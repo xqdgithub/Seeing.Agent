@@ -2,12 +2,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Rules;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
+using Seeing.Agent.Tui.Core;
 using Seeing.Agent.Tui.Infrastructure;
-using Seeing.Agent.Tui.Services;
 
 namespace Seeing.Agent.Tui;
 
@@ -18,10 +19,18 @@ public static class TuiWorkspace
 {
     public static async Task InitializeAsync(IServiceProvider services, ILogger logger, CancellationToken cancellationToken = default)
     {
-        var state = services.GetRequiredService<TuiHostState>();
-        var opts = services.GetRequiredService<IOptions<SeeingAgentOptions>>().Value;
-        if (!string.IsNullOrEmpty(opts.DefaultAgent) && opts.Agents.ContainsKey(opts.DefaultAgent))
-            state.CurrentAgentKey = opts.DefaultAgent;
+        var state = services.GetRequiredService<TuiState>();
+        var registry = services.GetRequiredService<IAgentRegistry>();
+        try
+        {
+            state.CurrentAgentKey = await registry.GetDefaultAgentNameAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            var primaries = await registry.GetPrimaryAgentsAsync();
+            if (primaries.Count > 0)
+                state.CurrentAgentKey = primaries[0].Name;
+        }
 
         var (rulesText, sources) = RulesMarkdownLoader.Load(state.WorkspaceRoot);
         state.RulesMarkdown = rulesText;
@@ -40,7 +49,7 @@ public static class TuiWorkspace
 
     public static async Task ChangeWorkspaceAsync(IServiceProvider services, string newRoot, ILogger logger, CancellationToken cancellationToken = default)
     {
-        var state = services.GetRequiredService<TuiHostState>();
+        var state = services.GetRequiredService<TuiState>();
         var mcp = services.GetRequiredService<McpClientManager>();
         var invoker = services.GetRequiredService<ToolInvoker>();
 
@@ -69,7 +78,7 @@ public static class TuiWorkspace
     {
         var mcp = services.GetRequiredService<McpClientManager>();
         var invoker = services.GetRequiredService<ToolInvoker>();
-        var state = services.GetRequiredService<TuiHostState>();
+        var state = services.GetRequiredService<TuiState>();
 
         var configs = SeeingMcpConfigLoader.LoadDefault(state.WorkspaceRoot, logger);
 

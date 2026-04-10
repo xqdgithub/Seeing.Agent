@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
@@ -379,62 +380,81 @@ public class LlmService : ILlmService
 
         _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
 
-        var hasError = false;
-        Exception? caughtException = null;
+        // 使用 Channel 解决 C# 不允许 yield 在 try-catch 中的限制
+        // 这样可以确保异常能够正确传播给用户，不会静默吞掉
+        var channel = Channel.CreateUnbounded<StreamUpdate>();
+        var writer = channel.Writer;
         var messageId = Guid.NewGuid().ToString("N");
+        Exception? capturedException = null;
 
-        // 使用 List 收集结果以避免 yield 在 try-catch 中的限制
-        var updates = new List<StreamUpdate>();
-
-        try
+        // 在后台处理流式数据，捕获任何异常
+        var processTask = Task.Run(async () =>
         {
-            await foreach (var update in client.CompleteStreamAsync(request, cancellationToken))
+            try
             {
-                if (!string.IsNullOrEmpty(update.Id))
-                    messageId = update.Id;
-                updates.Add(update);
-            }
-        }
-        catch (Exception ex)
-        {
-            hasError = true;
-            caughtException = ex;
-            _logger.LogError(ex, "流式聊天请求失败: Model={Model}", apiModelId);
-
-            // ========== Hook: chat.on_error ==========
-            await _hookManager.TriggerAsync(
-                HookPoints.ChatOnError,
-                new Dictionary<string, object>
+                await foreach (var update in client.CompleteStreamAsync(request, cancellationToken))
                 {
-                    ["sessionId"] = sessionId ?? string.Empty,
-                    ["modelId"] = modelId,
-                    ["provider"] = client.ProviderId,
-                    ["streaming"] = true,
-                    ["error"] = ex
-                },
-                cancellationToken: cancellationToken);
-        }
+                    if (!string.IsNullOrEmpty(update.Id))
+                        messageId = update.Id;
+                    await writer.WriteAsync(update, cancellationToken);
+                }
+                writer.Complete();
+            }
+            catch (Exception ex)
+            {
+                capturedException = ex;
+                _logger.LogError(ex, "流式聊天请求失败: Model={Model}", apiModelId);
 
-        // 返回所有结果
-        foreach (var update in updates)
+                // ========== Hook: chat.on_error ==========
+                try
+                {
+                    await _hookManager.TriggerAsync(
+                        HookPoints.ChatOnError,
+                        new Dictionary<string, object>
+                        {
+                            ["sessionId"] = sessionId ?? string.Empty,
+                            ["modelId"] = modelId,
+                            ["provider"] = client.ProviderId,
+                            ["streaming"] = true,
+                            ["error"] = ex
+                        },
+                        cancellationToken: CancellationToken.None); // 使用 None 防止 Hook 也被取消
+                }
+                catch (Exception hookEx)
+                {
+                    _logger.LogWarning(hookEx, "Hook chat.on_error 执行失败");
+                }
+
+                writer.Complete(ex);
+            }
+        }, cancellationToken);
+
+        // 从 channel 读取并 yield 返回给调用者
+        await foreach (var update in channel.Reader.ReadAllAsync(cancellationToken))
         {
             yield return update;
         }
 
-        // ========== Hook: chat.after_complete ==========
-        if (!hasError)
+        // 确保后台任务完成
+        await processTask;
+
+        // ✅ 如果有异常，必须抛出让用户看到！绝不静默吞掉
+        if (capturedException != null)
         {
-            await _hookManager.TriggerAsync(
-                HookPoints.ChatAfterComplete,
-                new Dictionary<string, object>
-                {
-                    ["sessionId"] = sessionId ?? string.Empty,
-                    ["modelId"] = modelId,
-                    ["messageId"] = messageId,
-                    ["streaming"] = true
-                },
-                cancellationToken: cancellationToken);
+            throw capturedException;
         }
+
+        // ========== Hook: chat.after_complete ==========
+        await _hookManager.TriggerAsync(
+            HookPoints.ChatAfterComplete,
+            new Dictionary<string, object>
+            {
+                ["sessionId"] = sessionId ?? string.Empty,
+                ["modelId"] = modelId,
+                ["messageId"] = messageId,
+                ["streaming"] = true
+            },
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>测试 Provider 连接</summary>

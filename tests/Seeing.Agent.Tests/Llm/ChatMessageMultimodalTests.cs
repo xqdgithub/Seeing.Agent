@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Xunit;
 using LlmChatMessage = Seeing.Agent.Llm.ChatMessage;
@@ -12,7 +11,7 @@ public class ChatMessageMultimodalTests
     public void LlmChatMessage_GetEffectiveParts_WhenPartsEmpty_UsesContentAsText()
     {
         // Arrange
-        var msg = new LlmChatMessage { Role = Seeing.Agent.Llm.ChatRole.User, Content = "hello" };
+        var msg = new LlmChatMessage { Role = ChatRole.User, Content = "hello" };
 
         // Act
         var parts = msg.GetEffectiveParts();
@@ -29,7 +28,7 @@ public class ChatMessageMultimodalTests
         // Arrange
         var msg = new LlmChatMessage
         {
-            Role = Seeing.Agent.Llm.ChatRole.User,
+            Role = ChatRole.User,
             Content = "ignored",
             Parts =
             [
@@ -48,12 +47,12 @@ public class ChatMessageMultimodalTests
     }
 
     [Fact]
-    public void CoreChatMessage_GetEffectiveParts_MatchesLlmSemantics()
+    public void ChatMessage_GetEffectiveParts_WithParts_ReturnsParts()
     {
         // Arrange
-        var msg = new Core.Models.ChatMessage
+        var msg = new ChatMessage
         {
-            Role = Core.Models.ChatRole.User,
+            Role = ChatRole.User,
             Parts = [ChatContentPart.CreateFileFromBase64("YQ==", "application/pdf", "a.pdf")]
         };
 

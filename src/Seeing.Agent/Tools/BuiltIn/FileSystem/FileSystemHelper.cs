@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -273,7 +274,12 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                                 continue;
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            // ✅ 符号链接解析失败时记录，不再静默吞掉
+                            // 失败时当作普通文件处理是合理的业务逻辑
+                            Debug.WriteLine($"[FileSystemHelper] 无法解析符号链接 '{item.Name}': {ex.Message}");
+                        }
                     }
                     entries.Add(item.Name);
                 }

@@ -119,11 +119,11 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
             }
             catch (OperationCanceledException)
             {
-                return Failure($"命令被取消: {command}", description);
+                return Failure($"命令被取消: {command}");
             }
             catch (Exception ex)
             {
-                return Failure(ex, description);
+                return Failure($"{description}: {ex.Message}");
             }
         }
 

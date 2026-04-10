@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Helpers;
 using Seeing.Agent.Hooks;
 using Seeing.Agent.Tools.Attributes;
@@ -62,8 +63,7 @@ namespace Seeing.Agent.Tools.Discovery
                         return new ToolResult
                         {
                             Success = false,
-                            Title = "参数错误",
-                            Output = errorMsg
+                            Error = errorMsg
                         };
                     }
                     else
@@ -109,8 +109,7 @@ namespace Seeing.Agent.Tools.Discovery
                             return new ToolResult
                             {
                                 Success = false,
-                                Title = "实例化失败",
-                                Output = $"无法创建工具实例：{_discovered.DeclaringType.Name}。请确保类型已注册到 DI 容器或有公共无参构造函数。"
+                                Error = $"无法创建工具实例：{_discovered.DeclaringType.Name}。请确保类型已注册到 DI 容器或有公共无参构造函数。"
                             };
                         }
                     }
@@ -135,7 +134,6 @@ namespace Seeing.Agent.Tools.Discovery
                 return new ToolResult
                 {
                     Success = true,
-                    Title = _discovered.Id,
                     Output = result?.ToString() ?? "完成"
                 };
             }
@@ -147,8 +145,7 @@ namespace Seeing.Agent.Tools.Discovery
                 return new ToolResult
                 {
                     Success = false,
-                    Title = "执行错误",
-                    Output = $"工具执行异常：{innerEx.Message}"
+                    Error = $"工具执行异常：{innerEx.Message}"
                 };
             }
             catch (Exception ex)
@@ -157,8 +154,7 @@ namespace Seeing.Agent.Tools.Discovery
                 return new ToolResult
                 {
                     Success = false,
-                    Title = "执行错误",
-                    Output = $"工具执行异常：{ex.Message}"
+                    Error = $"工具执行异常：{ex.Message}"
                 };
             }
         }

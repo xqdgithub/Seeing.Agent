@@ -1,4 +1,4 @@
-using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Llm;
 using Seeing.Agent.Sessions;
 
 namespace Seeing.Agent.Core.Interfaces
@@ -58,5 +58,13 @@ namespace Seeing.Agent.Core.Interfaces
         
         /// <summary>设置会话错误状态（触发 session.error Hook）</summary>
         Task SetErrorAsync(string sessionId, Exception error);
+        
+        /// <summary>
+        /// 压缩会话历史（Sliding Window）
+        /// </summary>
+        /// <param name="sessionId">会话 ID</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>压缩后保留的消息数量</returns>
+        Task<int> CompactAsync(string sessionId, CancellationToken cancellationToken = default);
     }
 }

@@ -1,9 +1,10 @@
+using Microsoft.Extensions.Logging;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.Llm.Clients;
 
@@ -39,13 +40,25 @@ public class AnthropicClient : ILlmClient
             throw new ArgumentException("ApiKey is required", nameof(config));
 
         // 配置 HTTP 客户端
-        var baseUrl = config.BaseUrl ?? "https://api.anthropic.com/v1";
-        _httpClient.BaseAddress = new Uri(baseUrl);
+        var baseUrl = config.BaseUrl ?? "https://api.anthropic.com";
+        
+        // 确保 Base URL 以 / 结尾，这样相对路径才能正确追加
+        // 例如：https://seeingyou.top/llm/router/anthropic/ + v1/messages
+        if (!baseUrl.EndsWith("/", StringComparison.Ordinal))
+            baseUrl += "/";
+        
+_httpClient.BaseAddress = new Uri(baseUrl);
         _httpClient.Timeout = TimeSpan.FromMilliseconds(config.Timeout > 0 ? config.Timeout : 300000);
 
         _httpClient.DefaultRequestHeaders.Clear();
         _httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
         _httpClient.DefaultRequestHeaders.Add("anthropic-version", ApiVersion);
+        
+        // 使用特定格式的 User-Agent（跳过验证以支持多 product token 格式）
+        // 格式：opencode/1.2.26 ai-sdk/provider-utils/3.0.21 runtime/bun/1.3.10
+        _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "opencode/1.2.26 ai-sdk/provider-utils/3.0.21 runtime/bun/1.3.10");
+        
+        _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
         _logger.LogDebug("Anthropic 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}", 
             ProviderId, baseUrl);
@@ -62,7 +75,7 @@ public class AnthropicClient : ILlmClient
         var json = JsonSerializer.Serialize(anthropicRequest);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.PostAsync("/v1/messages", content, cancellationToken);
+        var response = await _httpClient.PostAsync("messages", content, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -84,7 +97,7 @@ public class AnthropicClient : ILlmClient
         var json = JsonSerializer.Serialize(anthropicRequest);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/messages")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages")
         {
             Content = content
         };
@@ -114,10 +127,10 @@ public class AnthropicClient : ILlmClient
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
-            if (!line.StartsWith("data: ", StringComparison.Ordinal))
+            if (!line.StartsWith("data:", StringComparison.Ordinal))
                 continue;
 
-            var eventData = line[6..];
+            var eventData = line[5..];
             if (eventData == "[DONE]")
                 continue;
 
@@ -141,7 +154,7 @@ public class AnthropicClient : ILlmClient
                 throw new InvalidOperationException(errMsg);
             }
 
-            responseId ??= evt.Message?.Id ?? "";
+            responseId = evt.Message?.Id ?? "";
 
             if (string.Equals(evt.Type, "content_block_start", StringComparison.Ordinal)
                 && evt.Index is >= 0
@@ -306,15 +319,19 @@ public class AnthropicClient : ILlmClient
     {
         var messages = new List<object>();
 
-        // Anthropic 的 system 是单独的字段，不在 messages 中
+// Anthropic 的 system 是单独的字段，不在 messages 中
+        // 注意：Anthropic 没有 "tool" 角色，工具调用结果必须作为 "user" 消息发送
         foreach (var msg in request.Messages)
         {
             if (msg.Role == ChatRole.System)
                 continue;
 
+            // 工具调用结果必须作为 user 消息
+            var effectiveRole = msg.Role == ChatRole.Tool ? "user" : msg.Role;
+
             messages.Add(new
             {
-                role = msg.Role,
+                role = effectiveRole,
                 content = BuildContent(msg)
             });
         }
@@ -337,9 +354,9 @@ public class AnthropicClient : ILlmClient
         };
     }
 
-    private object BuildContent(ChatMessage msg)
+private object BuildContent(ChatMessage msg)
     {
-        // 工具调用结果
+        // 工具调用结果 - Anthropic 要求作为 user 消息的一部分
         if (!string.IsNullOrEmpty(msg.ToolCallId))
         {
             return new[]
@@ -353,11 +370,11 @@ public class AnthropicClient : ILlmClient
             };
         }
 
-        // 工具调用
+        // 工具调用（助手消息）
         if (msg.ToolCalls?.Count > 0)
         {
             var contents = new List<object>();
-            
+
             if (!string.IsNullOrEmpty(msg.Content))
                 contents.Add(new { type = "text", text = msg.Content });
 
@@ -375,6 +392,7 @@ public class AnthropicClient : ILlmClient
             return contents;
         }
 
+        // 普通消息
         var parts = msg.GetEffectiveParts();
         if (parts.Count == 0)
             return new[] { new { type = "text", text = "" } };

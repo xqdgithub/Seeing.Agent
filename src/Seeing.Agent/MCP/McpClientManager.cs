@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Seeing.Agent.Core.Interfaces;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Text.Json;
 
 namespace Seeing.Agent.MCP
@@ -18,6 +19,8 @@ namespace Seeing.Agent.MCP
         private readonly IHttpClientFactory? _httpClientFactory;
         private readonly ConcurrentDictionary<string, IMcpClientWrapper> _clients = new();
         private readonly ConcurrentDictionary<string, McpTool> _tools = new();
+        private readonly ConcurrentDictionary<string, McpServerConfig> _serverConfigs = new();
+        private readonly ConcurrentDictionary<string, SemaphoreSlim> _reconnectLocks = new();
 
         /// <summary>
         /// 创建 MCP 客户端管理器
@@ -76,6 +79,7 @@ namespace Seeing.Agent.MCP
                 await client.ConnectAsync(cancellationToken);
 
                 _clients[config.Name] = client;
+                _serverConfigs[config.Name] = config;
 
                 // 获取工具列表
                 var tools = await client.ListToolsAsync(cancellationToken);
@@ -131,19 +135,114 @@ namespace Seeing.Agent.MCP
             Dictionary<string, object?> args,
             CancellationToken cancellationToken = default)
         {
-            if (!_clients.TryGetValue(serverName, out var client))
+            for (var attempt = 0; attempt < 2; attempt++)
             {
-                return new McpToolResult { IsError = true, Content = $"MCP Server 未连接: {serverName}" };
+                if (!_clients.TryGetValue(serverName, out var client))
+                {
+                    return new McpToolResult { IsError = true, Content = $"MCP Server 未连接: {serverName}" };
+                }
+
+                try
+                {
+                    return await client.CallToolAsync(toolName, args, cancellationToken);
+                }
+                catch (Exception ex) when (attempt == 0 && IsRecoverableStreamableHttpSessionError(ex))
+                {
+                    _logger.LogWarning(ex,
+                        "MCP HTTP 会话失效或 401（{Server}.{Tool}），尝试重新建立连接后重试一次",
+                        serverName, toolName);
+                    if (!await TryReconnectServerAsync(serverName, cancellationToken))
+                    {
+                        return new McpToolResult
+                        {
+                            IsError = true,
+                            Content = $"MCP 重新连接失败，无法重试工具调用: {ex.Message}"
+                        };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "MCP 工具执行失败: {ServerName}.{ToolName}", serverName, toolName);
+                    return new McpToolResult { IsError = true, Content = ex.Message };
+                }
             }
 
+            return new McpToolResult { IsError = true, Content = "MCP 工具调用重试后仍失败" };
+        }
+
+        /// <summary>
+        /// Streamable HTTP 等远端会话过期时常见为 401 + SessionExpired；允许断线重连后重试。
+        /// </summary>
+        private static bool IsRecoverableStreamableHttpSessionError(Exception ex)
+        {
+            for (var e = ex; e != null; e = e.InnerException)
+            {
+                if (e is not HttpRequestException h)
+                    continue;
+                if (h.StatusCode == HttpStatusCode.Unauthorized)
+                    return true;
+                if (h.Message.Contains("SessionExpired", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (h.Message.Contains("401", StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 使用已保存的配置重新创建 HTTP/SSE 客户端（不重复注册 ToolInvoker 中的工具条目）。
+        /// </summary>
+        private async Task<bool> TryReconnectServerAsync(string serverName, CancellationToken cancellationToken)
+        {
+            if (!_serverConfigs.TryGetValue(serverName, out var config))
+            {
+                _logger.LogError("无法重连 MCP：未找到服务器 {Name} 的配置快照", serverName);
+                return false;
+            }
+
+            if (config.TransportType is not (McpTransportType.StreamableHttp or McpTransportType.Sse))
+            {
+                _logger.LogWarning("MCP 服务器 {Name} 非 HTTP 传输，跳过重连", serverName);
+                return false;
+            }
+
+            if (_httpClientFactory == null)
+            {
+                _logger.LogError("无法重连 MCP：未注册 IHttpClientFactory");
+                return false;
+            }
+
+            var gate = _reconnectLocks.GetOrAdd(serverName, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                return await client.CallToolAsync(toolName, args, cancellationToken);
+                if (_clients.TryRemove(serverName, out var old))
+                {
+                    try
+                    {
+                        await old.DisconnectAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "断开旧 MCP 连接时异常（可忽略）: {Name}", serverName);
+                    }
+                }
+
+                var fresh = CreateClientWrapper(config);
+                await fresh.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                _clients[serverName] = fresh;
+                _logger.LogInformation("MCP 服务器 {Name} 已重新连接", serverName);
+                return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "MCP 工具执行失败: {ServerName}.{ToolName}", serverName, toolName);
-                return new McpToolResult { IsError = true, Content = ex.Message };
+                _logger.LogError(ex, "MCP 服务器 {Name} 重新连接失败", serverName);
+                return false;
+            }
+            finally
+            {
+                gate.Release();
             }
         }
 
@@ -166,6 +265,20 @@ namespace Seeing.Agent.MCP
 
             _clients.Clear();
             _tools.Clear();
+            _serverConfigs.Clear();
+            foreach (var s in _reconnectLocks.Values)
+            {
+                try
+                {
+                    s.Dispose();
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            _reconnectLocks.Clear();
         }
 
         /// <summary>
@@ -537,6 +650,11 @@ namespace Seeing.Agent.MCP
 
                 var result = await _mcpClient.CallToolAsync(toolName, args, cancellationToken: cancellationToken);
                 return StdioMcpClientWrapper.BuildToolResult(result, _config.Name, toolName);
+            }
+            catch (HttpRequestException)
+            {
+                // 交由 McpClientManager 识别 401/SessionExpired 并断线重连后重试
+                throw;
             }
             catch (Exception ex)
             {

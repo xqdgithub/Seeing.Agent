@@ -1,8 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Hooks;
+using Seeing.Agent.Llm;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.Attributes;
 using System.Text.Json;
@@ -56,15 +58,18 @@ namespace Seeing.Agent.Tests.Tools
 
             var toolCall = new ToolCall
             {
-                Name = "Add",
                 Id = "call-001",
-                Arguments = JsonSerializer.SerializeToElement(new { a = 5, b = 3 })
+                Function = new FunctionCall
+                {
+                    Name = "Add",
+                    Arguments = JsonSerializer.Serialize(new { a = 5, b = 3 })
+                }
             };
 
             var result = await invoker.ExecuteAsync(toolCall);
 
             result.Success.Should().BeTrue();
-            result.CallResult?.ToString().Should().Be("8");
+            result.Output.Should().Be("8");
         }
 
         [Fact]
@@ -74,15 +79,18 @@ namespace Seeing.Agent.Tests.Tools
 
             var toolCall = new ToolCall
             {
-                Name = "nonexistent",
                 Id = "call-001",
-                Arguments = JsonSerializer.SerializeToElement(new { })
+                Function = new FunctionCall
+                {
+                    Name = "nonexistent",
+                    Arguments = "{}"
+                }
             };
 
             var result = await invoker.ExecuteAsync(toolCall);
 
             result.Success.Should().BeFalse();
-            result.Message?.ToString().Should().Contain("工具不存在");
+            result.Error?.Should().Contain("工具不存在");
         }
 
         [Fact]
@@ -106,6 +114,48 @@ namespace Seeing.Agent.Tests.Tools
 
             schemas.Should().HaveCount(2);
             schemas.Select(s => s.Function.Name).Should().Contain("Add", "greet");
+        }
+
+        [Fact]
+        public async Task GetToolSchemasForAgentAsync_WithAllowedList_FiltersToAllowed()
+        {
+            // Arrange
+            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            invoker.RegisterToolsFromType(typeof(TestToolClass));
+            var agent = new AgentInfo
+            {
+                Name = "test",
+                Mode = AgentMode.All,
+                AllowedTools = new List<string> { "Add" }
+            };
+
+            // Act
+            var schemas = await invoker.GetToolSchemasForAgentAsync(agent);
+
+            // Assert
+            schemas.Should().HaveCount(1);
+            schemas[0].Function!.Name.Should().Be("Add");
+        }
+
+        [Fact]
+        public async Task GetToolSchemasForAgentAsync_WithDeniedList_ExcludesDenied()
+        {
+            // Arrange
+            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            invoker.RegisterToolsFromType(typeof(TestToolClass));
+            var agent = new AgentInfo
+            {
+                Name = "test",
+                Mode = AgentMode.All,
+                DeniedTools = new List<string> { "greet" }
+            };
+
+            // Act
+            var schemas = await invoker.GetToolSchemasForAgentAsync(agent);
+
+            // Assert
+            schemas.Select(s => s.Function!.Name).Should().Contain("Add");
+            schemas.Select(s => s.Function!.Name).Should().NotContain("greet");
         }
     }
 
@@ -138,12 +188,11 @@ namespace Seeing.Agent.Tests.Tools
         public string Description => "测试工具";
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
 
-        public async Task<Seeing.Agent.Core.Interfaces.ToolResult> ExecuteAsync(JsonElement arguments, Seeing.Agent.Core.Interfaces.ToolContext context)
+        public async Task<Seeing.Agent.Core.Models.ToolResult> ExecuteAsync(JsonElement arguments, Seeing.Agent.Core.Interfaces.ToolContext context)
         {
-            return new Seeing.Agent.Core.Interfaces.ToolResult
+            return new Seeing.Agent.Core.Models.ToolResult
             {
                 Success = true,
-                Title = "测试",
                 Output = "完成"
             };
         }

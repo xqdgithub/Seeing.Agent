@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Seeing.Agent.Core.Models;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Skills;

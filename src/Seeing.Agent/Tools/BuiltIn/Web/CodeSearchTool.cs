@@ -3,6 +3,7 @@ using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using System.Text;
 using System.Text.Json;
+using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Tools.BuiltIn.Web
 {

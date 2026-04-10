@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Llm;
@@ -14,7 +16,7 @@ public static class ChatRole
 }
 
 /// <summary>
-/// 聊天消息
+/// 聊天消息 - 统一的消息模型，符合 OpenAI Chat Completions API 规范
 /// </summary>
 public class ChatMessage
 {
@@ -27,27 +29,29 @@ public class ChatMessage
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
-    /// 多模态内容段（文本、图片、文件、音频等）。非空时由 LLM 客户端优先映射到 Provider；
-    /// 纯文本场景可只使用 <see cref="Content"/>。
-    /// 若同时设置 <see cref="Content"/> 与本集合，以 <see cref="Parts"/> 为准（<see cref="Content"/> 不会自动合并）。
+    /// 多模态内容段（文本、图片、文件、音频等）
     /// </summary>
     [JsonPropertyName("parts")]
     public List<ChatContentPart>? Parts { get; set; }
 
-    /// <summary>推理内容（用于思考模型）</summary>
+    /// <summary>推理内容（用于思考模型，如 DeepSeek-R1）</summary>
     [JsonPropertyName("reasoning_content")]
     public string? ReasoningContent { get; set; }
 
-    /// <summary>工具调用列表</summary>
+    /// <summary>工具调用列表（Assistant 消息中的工具调用请求）</summary>
     [JsonPropertyName("tool_calls")]
     public List<ToolCall>? ToolCalls { get; set; }
 
-    /// <summary>工具调用结果</summary>
+    /// <summary>工具调用 ID（Tool 消息中标识对应的工具调用）</summary>
     [JsonPropertyName("tool_call_id")]
     public string? ToolCallId { get; set; }
 
+    /// <summary>是否是思考消息</summary>
+    [JsonIgnore]
+    public bool IsThought => !string.IsNullOrEmpty(ReasoningContent);
+
     /// <summary>
-    /// 供下游使用的有效内容段：<see cref="Parts"/> 非空时返回之，否则将 <see cref="Content"/> 视为单段文本。
+    /// 供下游使用的有效内容段
     /// </summary>
     public IReadOnlyList<ChatContentPart> GetEffectiveParts()
     {
@@ -57,28 +61,73 @@ public class ChatMessage
             return new[] { ChatContentPart.CreateText(Content) };
         return Array.Empty<ChatContentPart>();
     }
+
+    public override string ToString()
+    {
+        var result = $"{Role}:\n{Content}";
+        if (ToolCalls?.Count > 0)
+        {
+            result += $"\nToolCalls: {System.Text.Json.JsonSerializer.Serialize(ToolCalls.Select(tc => new { tc.Id, tc.Function?.Name }))}";
+        }
+        if (!string.IsNullOrEmpty(ToolCallId))
+        {
+            result += $"\nToolCallId: {ToolCallId}";
+        }
+        return result;
+    }
 }
 
 /// <summary>
-/// 工具调用
+/// 工具调用 - 符合 OpenAI API 规范
 /// </summary>
 public class ToolCall
 {
-    /// <summary>工具调用 ID</summary>
+    /// <summary>工具调用 ID（由 LLM 生成，用于关联工具响应）</summary>
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>工具类型</summary>
+    /// <summary>工具类型（固定为 "function"）</summary>
     [JsonPropertyName("type")]
     public string Type { get; set; } = "function";
 
-    /// <summary>函数调用</summary>
+    /// <summary>函数调用详情</summary>
     [JsonPropertyName("function")]
     public FunctionCall? Function { get; set; }
+
+    /// <summary>便捷访问：工具名称（等价于 Function.Name）</summary>
+    [JsonIgnore]
+    public string Name => Function?.Name ?? string.Empty;
+
+    /// <summary>便捷访问：参数 JSON（等价于 Function.Arguments 解析后）</summary>
+    [JsonIgnore]
+    public JsonElement? Arguments
+    {
+        get
+        {
+            if (Function?.Arguments is string args && !string.IsNullOrEmpty(args))
+            {
+                try
+                {
+                    return JsonDocument.Parse(args).RootElement.Clone();
+                }
+                catch (JsonException ex)
+                {
+                    // ✅ 记录解析失败，不再静默吞掉
+                    Debug.WriteLine($"[LlmModels] JSON 解析失败: {ex.Message}, 原始参数: {args}");
+                }
+                catch (Exception ex)
+                {
+                    // ✅ 记录其他异常
+                    Debug.WriteLine($"[LlmModels] 解析异常: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+            return null;
+        }
+    }
 }
 
 /// <summary>
-/// 函数调用
+/// 函数调用详情
 /// </summary>
 public class FunctionCall
 {

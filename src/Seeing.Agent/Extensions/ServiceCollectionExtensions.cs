@@ -1,9 +1,14 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Commands;
+using Seeing.Agent.Commands.Discovery;
+using Seeing.Agent.Core;
+using Seeing.Agent.Core.Background;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.BuiltInAgents;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Decorators;
@@ -19,6 +24,7 @@ using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn.FileSystem;
 using Seeing.Agent.Tools.BuiltIn.Shell;
+using Seeing.Agent.Tools.BuiltIn.SubTask;
 using Seeing.Agent.Tools.BuiltIn.Todo;
 using Seeing.Agent.Tools.BuiltIn.Web;
 
@@ -105,6 +111,89 @@ namespace Seeing.Agent.Extensions
         }
 
         /// <summary>
+        /// 注册命令系统
+        /// </summary>
+        public static IServiceCollection AddCommandSystem(
+            this IServiceCollection services,
+            Action<CommandSystemOptions>? configure = null)
+        {
+            // 配置选项
+            var options = new CommandSystemOptions();
+            configure?.Invoke(options);
+
+            // 注册命令注册表
+            services.AddSingleton<ICommandRegistry, CommandRegistry>();
+
+            // 注册命令发现器
+            services.AddSingleton<CommandDiscovery>();
+
+            // 注册命令分发器（需要 CommandService 用于 Hook）
+            services.AddSingleton<CommandDispatcher>(sp =>
+            {
+                var registry = sp.GetRequiredService<ICommandRegistry>();
+                var commandService = sp.GetService<ICommandService>();
+                var logger = sp.GetService<ILogger<CommandDispatcher>>();
+                return new CommandDispatcher(registry, commandService, logger);
+            });
+
+            // 如果配置了自动发现，从指定程序集发现命令
+            if (options.DiscoveryAssemblies != null && options.DiscoveryAssemblies.Count > 0)
+            {
+                services.AddSingleton<ICommandDiscoveryInitializer>(sp =>
+                {
+                    var registry = sp.GetRequiredService<ICommandRegistry>();
+                    var discovery = sp.GetRequiredService<CommandDiscovery>();
+                    var logger = sp.GetService<ILogger<ICommandDiscoveryInitializer>>();
+
+                    return new CommandDiscoveryInitializer(
+                        registry,
+                        discovery,
+                        options.DiscoveryAssemblies,
+                        sp,
+                        logger);
+                });
+            }
+
+            return services;
+        }
+
+        /// <summary>
+        /// 注册命令类型（手动方式）
+        /// </summary>
+        public static IServiceCollection AddCommand<TCommand>(
+            this IServiceCollection services)
+            where TCommand : class, ICommand
+        {
+            services.AddSingleton<TCommand>();
+            return services;
+        }
+
+        /// <summary>
+        /// 初始化命令系统（在服务提供者构建后调用）
+        /// </summary>
+        public static IServiceProvider InitializeCommands(
+            this IServiceProvider services,
+            IEnumerable<ICommand>? additionalCommands = null)
+        {
+            var registry = services.GetRequiredService<ICommandRegistry>();
+
+            // 注册手动添加的命令
+            if (additionalCommands != null)
+            {
+                registry.RegisterAll(additionalCommands);
+            }
+
+            // 执行自动发现初始化
+            var initializer = services.GetService<ICommandDiscoveryInitializer>();
+            if (initializer != null)
+            {
+                initializer.Initialize();
+            }
+
+            return services;
+        }
+
+        /// <summary>
         /// 注册 LLM 服务
         /// </summary>
         public static IServiceCollection AddLlmProviders(
@@ -129,6 +218,9 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         private static void RegisterCoreServices(IServiceCollection services)
         {
+            // 配置持久化服务
+            services.AddSingleton<IConfigurationPersistence, ConfigurationPersistence>();
+
             // 权限评估器（具体类型与接口共享同一单例，避免双实例）
             services.AddSingleton<RuleEngine>();
             services.AddSingleton<IRuleEvaluator>(sp => sp.GetRequiredService<RuleEngine>());
@@ -137,6 +229,55 @@ namespace Seeing.Agent.Extensions
             // Hook 管理器
             services.AddSingleton<HookManager>();
             services.AddSingleton<IHookManager>(sp => sp.GetRequiredService<HookManager>());
+
+            // Agent 发现服务
+            services.AddSingleton<AgentDiscovery>();
+
+            // Agent 存储（纯存储操作）
+            services.AddSingleton<AgentStore>();
+            services.AddSingleton<IAgentStore>(sp => sp.GetRequiredService<AgentStore>());
+
+            // Agent 运行时管理器（运行时设置）
+            services.AddSingleton<AgentRuntimeManager>();
+            services.AddSingleton<IAgentRuntimeManager>(sp => sp.GetRequiredService<AgentRuntimeManager>());
+
+            // Agent 注册表（协调者）
+            services.AddSingleton<AgentRegistry>(sp =>
+            {
+                var logger = sp.GetRequiredService<ILogger<AgentRegistry>>();
+                var ruleEngine = sp.GetRequiredService<IRuleEngine>();
+                var agentStore = sp.GetRequiredService<IAgentStore>();
+                var runtimeManager = sp.GetRequiredService<IAgentRuntimeManager>();
+                var discovery = sp.GetRequiredService<AgentDiscovery>();
+                var options = sp.GetService<IOptions<SeeingAgentOptions>>();
+
+                // 获取内置代理
+                var builtInAgents = BuiltInAgents.GetBuiltInAgents();
+
+                // 从文件系统发现代理
+                var discoveredAgents = discovery.DiscoverAgentsAsync().GetAwaiter().GetResult();
+                var allAgents = builtInAgents.Concat(discoveredAgents);
+
+                var registry = new AgentRegistry(
+                    logger,
+                    ruleEngine,
+                    agentStore,
+                    runtimeManager,
+                    allAgents,
+                    options?.Value?.DefaultAgent);
+
+                // 从配置扩展代理
+                if (options?.Value?.Agents != null)
+                {
+                    registry.ExtendFromConfig(options.Value.Agents);
+                }
+
+                return registry;
+            });
+            services.AddSingleton<IAgentRegistry>(sp => sp.GetRequiredService<AgentRegistry>());
+
+            // Agent 初始化服务（IHostedService）- 异步初始化运行时设置
+            services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, AgentInitializationService>();
 
             // 会话管理器（同一 Scoped 实例）
             services.AddScoped<SessionManager>();
@@ -192,8 +333,10 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient()));
 
             // 任务和 Todo 工具
-            // TaskTool 需要实现 IAgentRegistry，暂时跳过
-            // services.AddSingleton<ITool, Tools.BuiltIn.SubTask.TaskTool>();
+            services.AddSingleton<ITool>(sp => new TaskTool(
+                sp.GetRequiredService<ILogger<TaskTool>>(),
+                sp.GetRequiredService<ISessionManager>(),
+                sp.GetRequiredService<IAgentRegistry>()));
             services.AddSingleton<ITool, TodoWriteTool>();
 
             // 工具调用器（自动注册所有 ITool）
@@ -224,9 +367,33 @@ namespace Seeing.Agent.Extensions
                 return new McpClientManager(logger, loggerFactory, httpClientFactory);
             });
 
+            // 扩展系统
+            services.AddSingleton<ExtensionLoader>();
+            services.AddSingleton<ExtensionManager>();
+
             // 执行上下文相关
             services.AddSingleton<IMetadataStore, ConcurrentMetadataStore>();
-            services.AddSingleton<IPermissionChannel, DefaultPermissionChannel>();
+
+            // 权限通道 - 根据配置选择安全模式
+            // 注意：如果用户在其他地方注册了 IPermissionChannel（如 ConsolePermissionChannel），
+            // 那个注册会覆盖这里的默认注册
+            services.AddSingleton<IPermissionChannel>(sp =>
+            {
+                var options = sp.GetService<IOptions<SeeingAgentOptions>>();
+                var autoApprove = options?.Value?.Permission?.AutoApproveAll ?? false;
+
+                if (autoApprove)
+                {
+                    // 用户明确选择自动批准所有（危险模式）
+                    return Core.Interfaces.DefaultPermissionChannel.AutoApproveInstance;
+                }
+
+                // 安全默认：拒绝所有，提示用户配置权限通道
+                return Core.Interfaces.DefaultPermissionChannel.Instance;
+            });
+
+            // Agent 执行器（统一执行引擎）
+            services.AddSingleton<AgentExecutor>();
 
             // Shell 环境服务（触发 shell.env Hook）
             services.AddSingleton<IShellEnvironmentService, ShellEnvironmentService>();
@@ -236,6 +403,10 @@ namespace Seeing.Agent.Extensions
 
             // 命令执行服务（触发 command.execute.before Hook）
             services.AddSingleton<ICommandService, CommandService>();
+
+            // 后台任务管理器
+            services.AddSingleton<BackgroundTaskManager>();
+            services.AddSingleton<IBackgroundTaskManager>(sp => sp.GetRequiredService<BackgroundTaskManager>());
         }
 
         /// <summary>

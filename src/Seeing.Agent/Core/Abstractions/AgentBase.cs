@@ -1,12 +1,18 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Hooks;
+using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.Core.Abstractions
 {
     /// <summary>
-    /// Agent 基类 - 提供常用 Agent 实现的便捷方法
+    /// Agent 基类 - 提供两种实现模式
+    /// <para>
+    /// 1. 配置模式：返回 Definition 属性，框架使用 AgentExecutor 统一执行
+    /// 2. 代码模式：实现 ExecuteCoreAsync 方法，自定义执行逻辑
+    /// </para>
     /// </summary>
     public abstract class AgentBase : IAgent
     {
@@ -31,6 +37,24 @@ namespace Seeing.Agent.Core.Abstractions
             _hookManager = hookManager;
         }
 
+        // ========== 新增：配置驱动模式 ==========
+
+        /// <summary>
+        /// Agent 定义（配置模式）
+        /// <para>
+        /// 如果返回非 null，框架使用 AgentExecutor 统一执行。
+        /// 子类可以重写此属性返回配置，无需实现 ExecuteCoreAsync。
+        /// </para>
+        /// </summary>
+        public virtual AgentDefinition? Definition => null;
+
+        /// <summary>
+        /// 是否使用配置驱动模式
+        /// </summary>
+        public bool IsConfigDriven => Definition != null;
+
+        // ========== 现有属性 ==========
+
         /// <summary>Agent 名称</summary>
         public abstract string Name { get; }
 
@@ -44,17 +68,33 @@ namespace Seeing.Agent.Core.Abstractions
         public virtual IReadOnlyList<PermissionRule> Permissions => Array.Empty<PermissionRule>();
 
         /// <summary>系统提示词</summary>
-        public virtual string? SystemPrompt => null;
+        public virtual string? SystemPrompt => Definition?.SystemPrompt;
 
         /// <summary>模型配置</summary>
-        public virtual ModelReference? Model => null;
+        public virtual ModelReference? Model => Definition?.Model;
 
         /// <summary>最大迭代步骤</summary>
-        public virtual int? MaxSteps => null;
+        public virtual int? MaxSteps => Definition?.MaxSteps;
+
+        /// <summary>Agent 状态</summary>
+        public virtual AgentStatus Status => AgentStatus.Ready;
 
         /// <summary>
-        /// 执行 Agent（带 Hook 包装）
-        /// 子类应实现 ExecuteCoreAsync 而不是直接重写此方法
+        /// 允许的工具列表 - 子 Agent 可限制使用的工具
+        /// <para>默认空数组表示允许所有工具</para>
+        /// </summary>
+        public virtual IReadOnlyList<string> AllowedTools => Definition?.AllowedTools ?? Array.Empty<string>();
+
+        /// <summary>
+        /// 禁止的工具列表 - 子 Agent 可禁止特定工具
+        /// <para>默认空数组表示不禁止任何工具</para>
+        /// </summary>
+        public virtual IReadOnlyList<string> DeniedTools => Definition?.DeniedTools ?? Array.Empty<string>();
+
+        // ========== 统一执行入口 ==========
+
+        /// <summary>
+        /// 执行 Agent（支持配置模式和代码模式）
         /// </summary>
         public async IAsyncEnumerable<ChatMessage> ExecuteAsync(
             ChatMessage input,
@@ -79,7 +119,8 @@ namespace Seeing.Agent.Core.Abstractions
                     {
                         ["sessionId"] = sessionId,
                         ["agentName"] = Name,
-                        ["inputPreview"] = Truncate(inputPreview, 100)
+                        ["inputPreview"] = Truncate(inputPreview, 100),
+                        ["isConfigDriven"] = IsConfigDriven
                     },
                     beforeOutput,
                     cancellationToken);
@@ -101,9 +142,44 @@ namespace Seeing.Agent.Core.Abstractions
 
             try
             {
-                await foreach (var message in ExecuteCoreAsync(input, context, cancellationToken))
+                // ========== 配置模式：委托给 AgentExecutor ==========
+                if (IsConfigDriven && context.Services != null)
                 {
-                    results.Add(message);
+                    var executor = context.Services.GetService(typeof(AgentExecutor)) as AgentExecutor;
+                    if (executor != null)
+                    {
+                        // 将输入消息添加到历史
+                        context.History.Add(input);
+
+                        // 订阅事件流并提取 ChatMessage
+                        await foreach (var evt in executor.ExecuteAsync(
+                            Definition!,
+                            context,
+                            cancellationToken))
+                        {
+                            // 从 StreamCompleteEvent 中提取 ChatMessage
+                            if (evt is StreamCompleteEvent completeEvent)
+                            {
+                                results.Add(completeEvent.Message);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("AgentExecutor 未注册，回退到代码模式");
+                        await foreach (var message in ExecuteCoreAsync(input, context, cancellationToken))
+                        {
+                            results.Add(message);
+                        }
+                    }
+                }
+                // ========== 代码模式：调用子类实现 ==========
+                else
+                {
+                    await foreach (var message in ExecuteCoreAsync(input, context, cancellationToken))
+                    {
+                        results.Add(message);
+                    }
                 }
             }
             catch (Exception ex)
@@ -132,27 +208,39 @@ namespace Seeing.Agent.Core.Abstractions
                         ["sessionId"] = sessionId,
                         ["agentName"] = Name,
                         ["success"] = success,
-                        ["error"] = caughtException as object
+                        ["error"] = caughtException as object,
+                        ["isConfigDriven"] = IsConfigDriven
                     },
                     cancellationToken: cancellationToken);
             }
         }
 
         /// <summary>
-        /// 执行 Agent 核心 logic（子类实现）
+        /// 执行 Agent 核心 logic（代码模式）
+        /// <para>
+        /// 配置驱动的 Agent 不需要实现此方法。
+        /// 代码驱动的 Agent 必须重写此方法。
+        /// </para>
         /// </summary>
-        protected abstract IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
+        protected virtual IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
             ChatMessage input,
             AgentContext context,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default)
+        {
+            // 默认实现：抛出异常提示用户选择模式
+            throw new NotImplementedException(
+                $"Agent '{Name}' 必须实现以下之一：\n" +
+                $"1. 返回 Definition 属性（配置模式，推荐）\n" +
+                $"2. 重写 ExecuteCoreAsync 方法（代码模式）");
+        }
 
         /// <summary>
         /// 记录 Agent 开始执行
         /// </summary>
         protected virtual void LogStart(string sessionId, string inputPreview)
         {
-            _logger.LogInformation("Agent [{Name}] 开始执行, SessionId: {SessionId}, Input: {Input}",
-                Name, sessionId, Truncate(inputPreview, 100));
+            _logger.LogInformation("Agent [{Name}] 开始执行, SessionId: {SessionId}, Input: {Input}, Mode: {Mode}",
+                Name, sessionId, Truncate(inputPreview, 100), IsConfigDriven ? "配置驱动" : "代码驱动");
         }
 
         /// <summary>

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Sessions;
 using Seeing.Agent.Hooks;
 using Seeing.Agent.Llm;
 using System.Collections.Concurrent;
@@ -92,17 +93,15 @@ namespace Seeing.Agent.Sessions
         /// 获取消息数量
         /// </summary>
         public int MessageCount => _messages.Count;
-    }
 
-    /// <summary>
-    /// 聊天消息
-    /// </summary>
-    public class ChatMessage
-    {
-        public string Role { get; set; } = string.Empty;
-        public string Content { get; set; } = string.Empty;
-        /// <summary>可选多模态段（与会话快照一并存储）。</summary>
-        public List<ChatContentPart>? Parts { get; set; }
+        /// <summary>
+        /// 清除所有消息 - 线程安全
+        /// </summary>
+        public void ClearMessages()
+        {
+            // ConcurrentQueue 没有 Clear 方法，需要逐个取出
+            while (_messages.TryDequeue(out _)) { }
+        }
     }
 
     /// <summary>
@@ -386,6 +385,55 @@ namespace Seeing.Agent.Sessions
                     ["session"] = session,
                     ["error"] = error
                 });
+        }
+
+        /// <summary>
+        /// 压缩会话历史（Sliding Window）
+        /// </summary>
+        /// <param name="sessionId">会话 ID</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>压缩后保留的消息数量</returns>
+        public async Task<int> CompactAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            var session = GetSession(sessionId);
+            if (session == null)
+            {
+                _logger.LogWarning("会话不存在，无法压缩: {SessionId}", sessionId);
+                return 0;
+            }
+
+            var messages = session.Messages;
+            if (messages.Count == 0)
+            {
+                return 0;
+            }
+
+            // 触发 session.compacting Hook
+            await _hookManager.TriggerAsync(
+                HookPoints.SessionCompacting,
+                new Dictionary<string, object>
+                {
+                    ["sessionId"] = sessionId,
+                    ["messageCount"] = messages.Count
+                });
+
+            var compressor = new SessionCompressor();
+            var compressedMessages = await compressor.CompressAsync(messages, cancellationToken);
+            var retainedCount = compressedMessages.Count;
+
+            // 更新会话消息（需要清除原有消息并添加压缩后的消息）
+            // 由于 SessionData 使用 ConcurrentQueue，我们需要替换整个队列
+            session.ClearMessages();
+            foreach (var msg in compressedMessages)
+            {
+                session.AddMessage(msg);
+            }
+
+            _logger.LogInformation(
+                "压缩会话历史: {SessionId}, 原始消息数: {OriginalCount}, 保留消息数: {RetainedCount}",
+                sessionId, messages.Count, retainedCount);
+
+            return retainedCount;
         }
 
         private string GenerateSessionId()

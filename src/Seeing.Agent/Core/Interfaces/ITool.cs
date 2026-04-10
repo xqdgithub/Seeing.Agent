@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Core.Interfaces
 {
@@ -32,28 +31,6 @@ namespace Seeing.Agent.Core.Interfaces
     }
 
     /// <summary>
-    /// 工具结果
-    /// </summary>
-    public class ToolResult
-    {
-        public bool Success { get; set; }
-        public string Title { get; set; } = string.Empty;
-        public string Output { get; set; } = string.Empty;
-        public Dictionary<string, object> Metadata { get; set; } = new();
-        public List<FileAttachment>? Attachments { get; set; }
-    }
-
-    /// <summary>
-    /// 文件附件
-    /// </summary>
-    public class FileAttachment
-    {
-        public string Name { get; set; } = string.Empty;
-        public string Path { get; set; } = string.Empty;
-        public string MimeType { get; set; } = string.Empty;
-    }
-
-    /// <summary>
     /// 工具接口 - LLM 可调用的工具
     /// </summary>
     public interface ITool
@@ -74,7 +51,7 @@ namespace Seeing.Agent.Core.Interfaces
         JsonElement ParametersSchema { get; }
         
         /// <summary>执行工具</summary>
-        Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context);
+        Task<Models.ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context);
     }
 
     /// <summary>

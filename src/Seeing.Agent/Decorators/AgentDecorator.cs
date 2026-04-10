@@ -26,6 +26,9 @@ namespace Seeing.Agent.Decorators
         public virtual AgentMode Mode => Inner.Mode;
 
         /// <inheritdoc />
+        public virtual AgentStatus Status => Inner.Status;
+
+        /// <inheritdoc />
         public virtual string Description => Inner.Description;
 
         /// <inheritdoc />
@@ -39,6 +42,12 @@ namespace Seeing.Agent.Decorators
 
         /// <inheritdoc />
         public virtual IReadOnlyList<PermissionRule> Permissions => Inner.Permissions;
+
+        /// <inheritdoc />
+        public virtual IReadOnlyList<string> AllowedTools => Inner.AllowedTools;
+
+        /// <inheritdoc />
+        public virtual IReadOnlyList<string> DeniedTools => Inner.DeniedTools;
 
         /// <inheritdoc />
         public virtual async IAsyncEnumerable<ChatMessage> ExecuteAsync(

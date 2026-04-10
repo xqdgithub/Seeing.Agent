@@ -1,14 +1,19 @@
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core;
+using Seeing.Agent.Core.Abstractions;
+using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Rules;
 using Seeing.Agent.Skills;
-using Seeing.Agent.Tools;
+using Seeing.Agent.Tui.Core;
+using Seeing.Agent.Tui.Core.Models;
+using Seeing.Agent.Tui.Integration.Adapters;
+using Seeing.Agent.Tui.UI.Renderers;
 using ChatMessage = Seeing.Agent.Llm.ChatMessage;
 using ChatRole = Seeing.Agent.Llm.ChatRole;
 using LlmToolCall = Seeing.Agent.Llm.ToolCall;
@@ -16,293 +21,215 @@ using LlmToolCall = Seeing.Agent.Llm.ToolCall;
 namespace Seeing.Agent.Tui.Services;
 
 /// <summary>
-/// 多轮 LLM + ToolInvoker 编排，含 RuleEngine 工具门禁。
+/// 聊天编排器 - 统一入口
+/// <para>
+/// 使用事件驱动架构，通过 IAgentAdapter 订阅事件流并调用 LiveStreamRenderer 渲染。
+/// </para>
 /// </summary>
 public sealed class ChatOrchestrator
 {
-    private readonly ILlmService _llm;
-    private readonly ToolInvoker _tools;
-    private readonly RuleEngine _rules;
-    private readonly IPermissionChannel _permission;
+    private readonly IAgentAdapter _agentAdapter;
+    private readonly IAgentRegistry _registry;
     private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IPermissionChannel _permission;
     private readonly SkillManager _skills;
-    private readonly TuiHostState _host;
+    private readonly TuiState _host;
     private readonly ILogger<ChatOrchestrator> _logger;
+    private readonly IServiceProvider _serviceProvider;
 
     public ChatOrchestrator(
-        ILlmService llm,
-        ToolInvoker tools,
-        RuleEngine rules,
-        IPermissionChannel permission,
+        IAgentAdapter agentAdapter,
+        IAgentRegistry registry,
         IOptions<SeeingAgentOptions> options,
+        IPermissionChannel permission,
         SkillManager skills,
-        TuiHostState host,
-        ILogger<ChatOrchestrator> logger)
+        TuiState host,
+        ILogger<ChatOrchestrator> logger,
+        IServiceProvider serviceProvider)
     {
-        _llm = llm;
-        _tools = tools;
-        _rules = rules;
-        _permission = permission;
+        _agentAdapter = agentAdapter;
+        _registry = registry;
         _options = options;
+        _permission = permission;
         _skills = skills;
         _host = host;
         _logger = logger;
+        _serviceProvider = serviceProvider;
     }
 
-    public async Task RunTurnAsync(List<ChatMessage> history, string userContent, Action<string> onAssistantChunk, CancellationToken cancellationToken)
+    /// <summary>
+    /// 运行对话轮次 - 事件驱动架构
+    /// </summary>
+    public async Task RunTurnAsync(
+        string userContent,
+        CancellationToken cancellationToken)
     {
-        history.Add(new ChatMessage { Role = ChatRole.User, Content = userContent });
-
-        var agent = ResolveAgentConfig();
-        var modelId = !string.IsNullOrEmpty(agent.Model)
-            ? agent.Model!
-            : _options.Value.DefaultModel ?? throw new InvalidOperationException("未配置模型：请在 seeing.json / appsettings 中设置 DefaultModel 或 Agents.*.Model");
-
-        var maxSteps = agent.MaxSteps ?? 32;
-        var toolSchemas = _tools.GetToolSchemas();
-        var llmTools = MapToLlmTools(toolSchemas);
-
-        for (var step = 0; step < maxSteps; step++)
+        var key = _host.CurrentAgentKey;
+        var allAgents = await _agentAdapter.GetAgentsAsync();
+        var info = allAgents.FirstOrDefault(a => string.Equals(a.Name, key, StringComparison.OrdinalIgnoreCase));
+        
+        if (info == null)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var request = new ChatRequest
+            _host.AddMessage(new MessageDisplay
             {
-                Messages = new List<ChatMessage>(history),
-                SystemPrompt = BuildSystemPrompt(agent),
-                Tools = llmTools.Count > 0 ? llmTools : null,
-                Temperature = agent.Temperature,
-                MaxTokens = agent.MaxTokens
-            };
+                Role = "system",
+                Content = $"[red]注册中心中不存在 Agent: {key}[/]",
+                Timestamp = DateTime.Now
+            });
+            return;
+        }
 
-            ChatMessage assistantMsg;
-            try
+        if (info.IsHidden || !CanSelectAsChatAgent(info))
+        {
+            _host.AddMessage(new MessageDisplay
             {
-                assistantMsg = await StreamAssistantMessageAsync(
-                    modelId,
-                    request,
-                    onAssistantChunk,
-                    cancellationToken);
-            }
-            catch (Exception ex)
+                Role = "system",
+                Content = $"[red]Agent「{info.Name}」当前不可用于对话（已隐藏或模式不允许）。[/]",
+                Timestamp = DateTime.Now
+            });
+            return;
+        }
+
+        var instance = _registry.GetOrCreateAgentInstance(info.Name);
+        if (instance == null)
+        {
+            _host.AddMessage(new MessageDisplay
             {
-                _logger.LogError(ex, "LLM 流式调用失败");
-                onAssistantChunk($"\n[错误] {ex.Message}\n");
-                return;
-            }
+                Role = "system",
+                Content = "[red]无法创建 Agent 实例。[/]",
+                Timestamp = DateTime.Now
+            });
+            return;
+        }
 
-            history.Add(assistantMsg);
+        // 构建执行上下文
+        var context = new AgentContext
+        {
+            SessionId = _host.SessionId,
+            Services = _serviceProvider,
+            CancellationToken = cancellationToken,
+            PermissionChannel = _permission,
+            History = BuildHistory(),
+            WorkingDirectory = _host.WorkspaceRoot
+        };
 
-            if (!string.IsNullOrEmpty(assistantMsg.Content) && assistantMsg.ToolCalls is { Count: > 0 })
-                onAssistantChunk("\n");
+        // 添加用户消息
+        context.History.Add(new ChatMessage
+        {
+            Role = ChatRole.User,
+            Content = userContent
+        });
 
-            var toolCalls = assistantMsg.ToolCalls;
-            if (toolCalls == null || toolCalls.Count == 0)
-                return;
+        // 添加用户消息到 UI
+        _host.AddMessage(new MessageDisplay
+        {
+            Role = "user",
+            Content = userContent,
+            Timestamp = DateTime.Now
+        });
 
-            foreach (var tc in toolCalls)
+        // 获取 Agent 定义
+        var definition = AgentDefinition.FromAgent(instance);
+
+        // 创建流式渲染器
+        var renderer = new LiveStreamRenderer(_host);
+
+        try
+        {
+            // 通过适配器订阅事件流并处理
+            await foreach (var evt in _agentAdapter.ExecuteStreamAsync(definition, context, cancellationToken))
             {
-                var name = tc.Function?.Name ?? "";
-                if (string.IsNullOrEmpty(name))
-                    continue;
-
-                var decision = _rules.EvaluateTool(name, null);
-                if (decision.Action == PermissionAction.Deny)
+                switch (evt.Type)
                 {
-                    history.Add(new ChatMessage
-                    {
-                        Role = ChatRole.Tool,
-                        ToolCallId = tc.Id,
-                        Content = $"[已拒绝] {decision.Reason ?? "权限规则拒绝"}"
-                    });
-                    continue;
+                    case MessageEventType.StreamDelta:
+                        await renderer.HandleDeltaAsync((StreamDeltaEvent)evt);
+                        break;
+                    
+                    case MessageEventType.StreamComplete:
+                        await renderer.HandleCompleteAsync((StreamCompleteEvent)evt);
+                        break;
+                    
+                    case MessageEventType.ToolCallPending:
+                    case MessageEventType.ToolCallRunning:
+                    case MessageEventType.ToolCallComplete:
+                        await renderer.HandleToolCallAsync((ToolCallEvent)evt);
+                        break;
+                    
+                    case MessageEventType.SubAgentStarted:
+                    case MessageEventType.SubAgentCompleted:
+                        await renderer.HandleSubAgentAsync((SubAgentEvent)evt);
+                        break;
+                    
+                    case MessageEventType.Error:
+                        await renderer.HandleErrorAsync((ErrorEvent)evt);
+                        break;
                 }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _host.AddMessage(new MessageDisplay
+            {
+                Role = "system",
+                Content = "[yellow]操作已取消[/]",
+                Timestamp = DateTime.Now
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Agent 执行失败: {Name}", definition.Name);
+            _host.AddMessage(new MessageDisplay
+            {
+                Role = "system",
+                Content = $"[red]Agent 执行错误: {ex.Message}[/]",
+                Timestamp = DateTime.Now
+            });
+        }
+    }
 
-                if (decision.Action == PermissionAction.Ask)
+    private static bool CanSelectAsChatAgent(AgentInfo info) =>
+        info.Mode is AgentMode.Primary or AgentMode.All or AgentMode.SubAgent;
+
+    private List<ChatMessage> BuildHistory()
+    {
+        var history = new List<ChatMessage>();
+
+        foreach (var msg in _host.Messages)
+        {
+            if (msg.Role == "user")
+            {
+                history.Add(new ChatMessage { Role = ChatRole.User, Content = msg.Content });
+            }
+            else if (msg.Role == "assistant")
+            {
+                history.Add(new ChatMessage
                 {
-                    var approved = await _permission.RequestConfirmationAsync(new PermissionRequest
-                    {
-                        Permission = "tool",
-                        Patterns = new List<string> { name },
-                        Metadata = new Dictionary<string, object> { ["reason"] = decision.Reason ?? "" }
-                    });
-                    if (!approved)
-                    {
-                        history.Add(new ChatMessage
+                    Role = ChatRole.Assistant,
+                    Content = msg.Content,
+                    ToolCalls = msg.ToolCalls.Count > 0
+                        ? msg.ToolCalls.Select(tc => new LlmToolCall
                         {
-                            Role = ChatRole.Tool,
-                            ToolCallId = tc.Id,
-                            Content = "[用户拒绝] 工具调用未执行"
-                        });
-                        continue;
-                    }
-                }
-
-                Core.Models.ToolCall coreCall;
-                try
-                {
-                    var argsJson = tc.Function?.Arguments ?? "{}";
-                    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(argsJson) ? "{}" : argsJson);
-                    coreCall = new Core.Models.ToolCall
-                    {
-                        Id = tc.Id,
-                        Name = name,
-                        Arguments = doc.RootElement.Clone()
-                    };
-                }
-                catch (Exception ex)
-                {
-                    history.Add(new ChatMessage
-                    {
-                        Role = ChatRole.Tool,
-                        ToolCallId = tc.Id,
-                        Content = $"[参数错误] {ex.Message}"
-                    });
-                    continue;
-                }
-
-                ToolCallResult execResult;
-                try
-                {
-                    execResult = await _tools.ExecuteAsync(coreCall, _host.SessionId, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "工具执行异常: {Tool}", name);
-                    history.Add(new ChatMessage
-                    {
-                        Role = ChatRole.Tool,
-                        ToolCallId = tc.Id,
-                        Content = $"[异常] {ex.Message}"
-                    });
-                    continue;
-                }
-
-                var outText = execResult.Success
-                    ? execResult.CallResult?.ToString() ?? ""
-                    : execResult.Message?.ToString() ?? execResult.CallResult?.ToString() ?? "失败";
+                            Id = tc.Id,
+                            Function = new FunctionCall
+                            {
+                                Name = tc.Name,
+                                Arguments = tc.Arguments
+                            }
+                        }).ToList()
+                        : null
+                });
+            }
+            else if (msg.Role == "tool")
+            {
                 history.Add(new ChatMessage
                 {
                     Role = ChatRole.Tool,
-                    ToolCallId = tc.Id,
-                    Content = string.IsNullOrEmpty(outText) ? "(空结果)" : outText
+                    ToolCallId = msg.ToolCallId,
+                    Content = msg.ToolResult ?? ""
                 });
             }
         }
 
-        onAssistantChunk($"\n[达到最大步数 {maxSteps}，已停止]\n");
-    }
-
-    /// <summary>
-    /// 使用 <see cref="ILlmService.CompleteStreamAsync"/> 聚合助手消息（正文 + 工具调用），并增量回调 UI。
-    /// </summary>
-    private async Task<ChatMessage> StreamAssistantMessageAsync(
-        string modelId,
-        ChatRequest request,
-        Action<string> onAssistantChunk,
-        CancellationToken cancellationToken)
-    {
-        var contentSb = new StringBuilder();
-        List<LlmToolCall>? finalTools = null;
-
-        await foreach (var update in _llm.CompleteStreamAsync(modelId, request, cancellationToken))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (!string.IsNullOrEmpty(update.ReasoningDelta))
-                onAssistantChunk(update.ReasoningDelta);
-
-            if (!string.IsNullOrEmpty(update.ContentDelta))
-            {
-                if (!update.IsComplete)
-                {
-                    contentSb.Append(update.ContentDelta);
-                    onAssistantChunk(update.ContentDelta);
-                }
-                else if (contentSb.Length == 0)
-                {
-                    contentSb.Append(update.ContentDelta);
-                    onAssistantChunk(update.ContentDelta);
-                }
-            }
-
-            if (update.IsComplete && update.ToolCallDeltas is { Count: > 0 } t)
-                finalTools = t;
-        }
-
-        return new ChatMessage
-        {
-            Role = ChatRole.Assistant,
-            Content = contentSb.ToString(),
-            ToolCalls = finalTools
-        };
-    }
-
-    private AgentConfig ResolveAgentConfig()
-    {
-        var agents = _options.Value.Agents;
-        var key = _host.CurrentAgentKey;
-        if (!string.IsNullOrEmpty(key) && agents.TryGetValue(key, out var cfg) && cfg != null)
-            return cfg;
-
-        if (agents.Count > 0)
-            return agents.Values.First();
-
-        return new AgentConfig();
-    }
-
-    private string BuildSystemPrompt(AgentConfig agent)
-    {
-        var sb = new System.Text.StringBuilder();
-        if (!string.IsNullOrEmpty(agent.SystemPrompt))
-        {
-            sb.AppendLine(agent.SystemPrompt.Trim());
-            sb.AppendLine();
-        }
-
-        sb.AppendLine($"工作区目录: {_host.WorkspaceRoot}");
-
-        var skillInfos = _skills.GetAllSkillInfos();
-        if (skillInfos.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("## 可用 Skill（SKILL.md 元数据，可按名称委派）");
-            foreach (var kv in skillInfos.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
-                sb.AppendLine($"- **{kv.Key}**: {kv.Value.Description}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(_host.RulesMarkdown))
-        {
-            sb.AppendLine();
-            sb.AppendLine(_host.RulesMarkdown);
-        }
-
-        return sb.ToString().Trim();
-    }
-
-    private static List<Seeing.Agent.Llm.ToolDefinition> MapToLlmTools(List<FunctionToolSchema> schemas)
-    {
-        var list = new List<Seeing.Agent.Llm.ToolDefinition>(schemas.Count);
-        foreach (var s in schemas)
-        {
-            if (s.Function == null)
-                continue;
-            object? parameters = new { };
-            if (s.Function.Parameters is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null } p)
-                parameters = p;
-
-            list.Add(new Seeing.Agent.Llm.ToolDefinition
-            {
-                Type = "function",
-                Function = new Seeing.Agent.Llm.FunctionDefinition
-                {
-                    Name = s.Function.Name,
-                    Description = s.Function.Description,
-                    Parameters = parameters
-                }
-            });
-        }
-
-        return list;
+        return history;
     }
 }

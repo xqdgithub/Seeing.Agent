@@ -7,6 +7,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 {
@@ -170,7 +171,6 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             }
 
             return Success(
-                Path.GetFileName(filePath) ?? filePath,
                 string.Join("\n", outputLines),
                 new Dictionary<string, object>
                 {
@@ -248,7 +248,6 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             var preview = string.Join("\n", lines.Take(20));
 
             return Success(
-                Path.GetFileName(filePath) ?? filePath,
                 string.Join("\n", outputLines),
                 new Dictionary<string, object>
                 {
@@ -276,7 +275,6 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 var result = new ToolResult
                 {
                     Success = true,
-                    Title = Path.GetFileName(filePath) ?? filePath,
                     Output = $"{typeLabel} 读取成功",
                     Metadata = new Dictionary<string, object>
                     {
@@ -302,7 +300,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             }
             catch (Exception ex)
             {
-                return Failure(ex, $"读取 {typeLabel} 失败");
+                return Failure($"读取 {typeLabel} 失败: {ex.Message}");
             }
         }
     }

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using System.Text;
@@ -139,14 +140,13 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
                     return Failure("响应过大（超过 5MB 限制）");
                 }
 
-                var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-                var title = $"{url} ({contentType})";
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
 
                 // 检查是否为图片
                 if (IsImageContentType(contentType))
                 {
                     var base64Content = Convert.ToBase64String(contentBytes);
-                    return Success(title, "图片已获取", new Dictionary<string, object>
+                    return Success("图片已获取", new Dictionary<string, object>
                     {
                         ["contentType"] = contentType,
                         ["base64"] = base64Content,
@@ -159,7 +159,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
                 // 根据格式处理内容
                 var output = ProcessContent(content, contentType, format);
 
-                return Success(title, output, new Dictionary<string, object>
+                return Success(output, new Dictionary<string, object>
                 {
                     ["url"] = url,
                     ["contentType"] = contentType,
