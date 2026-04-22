@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- 启用中央包管理 (CPM) -->
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

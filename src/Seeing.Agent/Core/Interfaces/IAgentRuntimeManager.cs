@@ -94,7 +94,7 @@ namespace Seeing.Agent.Core.Interfaces
         public ModelReference? NewModel { get; set; }
 
         /// <summary>变更时间</summary>
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public DateTime Timestamp { get; set; } = DateTime.Now;
 
         /// <summary>变更来源</summary>
         public ModelChangeSource Source { get; set; } = ModelChangeSource.Manual;

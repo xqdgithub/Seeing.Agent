@@ -1,14 +1,15 @@
 <Solution>
   <Folder Name="/samples/">
-    <Project Path="samples/Seeing.Agent.Tui/Seeing.Agent.Tui.csproj" />
+    <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Seeing.Agent.Plugins/Seeing.Agent.Plugins.csproj" />
     <Project Path="src/Seeing.Agent/Seeing.Agent.csproj" />
+    <Project Path="src/Seeing.Session/Seeing.Session.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Seeing.Agent.Plugins.Tests/Seeing.Agent.Plugins.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
   </Folder>
-  <Project Path="src/Seeing.Agent.NewTui/Seeing.Agent.NewTui.csproj" />
+  <Folder Name="/解决方案项/" />
 </Solution>

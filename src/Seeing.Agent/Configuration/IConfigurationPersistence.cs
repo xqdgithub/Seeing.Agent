@@ -35,7 +35,7 @@ namespace Seeing.Agent.Configuration
         public Dictionary<string, string> AgentModels { get; set; } = new();
 
         /// <summary>最后更新时间</summary>
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
         /// <summary>设置版本（用于迁移）</summary>
         public int Version { get; set; } = 1;
@@ -54,7 +54,7 @@ namespace Seeing.Agent.Configuration
         public void SetAgentModel(string agentName, string modelId)
         {
             AgentModels[agentName] = modelId;
-            UpdatedAt = DateTime.UtcNow;
+            UpdatedAt = DateTime.Now;
         }
 
         /// <summary>
@@ -63,7 +63,7 @@ namespace Seeing.Agent.Configuration
         public void ClearAgentModel(string agentName)
         {
             AgentModels.Remove(agentName);
-            UpdatedAt = DateTime.UtcNow;
+            UpdatedAt = DateTime.Now;
         }
     }
 }

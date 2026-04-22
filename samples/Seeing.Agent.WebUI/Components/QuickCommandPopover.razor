@@ -1,0 +1,140 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+<div Class="@GetPopoverClass()">
+    <Popover Placement="@Placement.TopLeft"
+              @bind-Visible="@PopoverVisible">
+        <ChildContent>
+            <Button Type="@ButtonType.Text"
+                    Size="@ButtonSize.Small"
+                    Icon="@IconType.Outline.Appstore"
+                    Disabled="@IsDisabled"
+                    Class="quick-cmd-trigger"
+                    OnClick="@OnTriggerClick" />
+        </ChildContent>
+        <ContentTemplate>
+            <div Class="quick-cmd-popover" @onclick:stopPropagation="true">
+                <Input Placeholder="搜索..."
+                       @bind-Value="@SearchText"
+                       AllowClear="true"
+                       PrefixIcon="@IconType.Outline.Search"
+                       Class="quick-cmd-search" />
+                
+                <Tabs DefaultActiveKey="tools" Class="quick-cmd-tabs">
+                    <TabPane Tab="工具" Key="tools">
+                        <div Class="quick-cmd-list">
+                            @foreach (var tool in FilteredTools)
+                            {
+                                <div Class="quick-cmd-item" 
+                                     @onclick="@(() => OnToolClick(tool))"
+                                     @onclick:stopPropagation="true">
+                                    <div Class="quick-cmd-item-header">
+                                        <Icon Type="@IconType.Outline.Tool" Class="quick-cmd-icon" />
+                                        <span Class="quick-cmd-name">@tool.Name</span>
+                                    </div>
+                                    <div Class="quick-cmd-desc">@tool.Description</div>
+                                </div>
+                            }
+                        </div>
+                    </TabPane>
+                    <TabPane Tab="技能" Key="skills">
+                        <div Class="quick-cmd-list">
+                            @foreach (var skill in FilteredSkills)
+                            {
+                                <div Class="quick-cmd-item"
+                                     @onclick="@(() => OnSkillClick(skill))"
+                                     @onclick:stopPropagation="true">
+                                    <div Class="quick-cmd-item-header">
+                                        <Icon Type="@IconType.Outline.Book" Class="quick-cmd-icon" />
+                                        <span Class="quick-cmd-name">@skill.Name</span>
+                                    </div>
+                                    <div Class="quick-cmd-desc">@skill.Description</div>
+                                </div>
+                            }
+                        </div>
+                    </TabPane>
+                </Tabs>
+                
+                <div Class="quick-cmd-hint">
+                    <span>点击添加到输入框</span>
+                </div>
+            </div>
+        </ContentTemplate>
+    </Popover>
+</div>
+
+@code {
+    [Parameter] public bool IsDisabled { get; set; }
+    [Parameter] public List<QuickToolViewModel> Tools { get; set; } = new();
+    [Parameter] public List<QuickSkillViewModel> Skills { get; set; } = new();
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+    
+    private string SearchText { get; set; } = "";
+    private bool PopoverVisible { get; set; } = false;
+    
+    private List<QuickToolViewModel> FilteredTools
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(SearchText)) return Tools;
+            var searchLower = SearchText.ToLowerInvariant();
+            return Tools.Where(t => 
+                t.Name.ToLowerInvariant().Contains(searchLower) ||
+                t.Description.ToLowerInvariant().Contains(searchLower)).ToList();
+        }
+    }
+    
+    private List<QuickSkillViewModel> FilteredSkills
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(SearchText)) return Skills;
+            var searchLower = SearchText.ToLowerInvariant();
+            return Skills.Where(s =>
+                s.Name.ToLowerInvariant().Contains(searchLower) ||
+                s.Description.ToLowerInvariant().Contains(searchLower)).ToList();
+        }
+    }
+    
+    private string GetPopoverClass() => IsDisabled ? "quick-cmd-container disabled" : "quick-cmd-container";
+    
+    /// <summary>
+    /// 触发按钮点击
+    /// </summary>
+    private void OnTriggerClick()
+    {
+        PopoverVisible = !PopoverVisible;
+    }
+    
+    /// <summary>
+    /// 工具点击处理
+    /// </summary>
+    private async Task OnToolClick(QuickToolViewModel tool)
+    {
+        // 先关闭 Popover
+        PopoverVisible = false;
+        StateHasChanged();
+        
+        // 触发选择事件
+        if (OnSelect.HasDelegate)
+        {
+            await OnSelect.InvokeAsync($"/{tool.Name}");
+        }
+    }
+    
+    /// <summary>
+    /// 技能点击处理
+    /// </summary>
+    private async Task OnSkillClick(QuickSkillViewModel skill)
+    {
+        // 先关闭 Popover
+        PopoverVisible = false;
+        StateHasChanged();
+        
+        // 触发选择事件
+        if (OnSelect.HasDelegate)
+        {
+            await OnSelect.InvokeAsync($"/{skill.Name}");
+        }
+    }
+}

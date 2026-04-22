@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using SessionData = Seeing.Agent.Sessions.SessionData;
+using Seeing.Session.Core;
 using System.Text;
 using System.Text.Json;
 
@@ -19,7 +19,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
     /// </summary>
     public class TaskTool : ToolBase
     {
-        private readonly ISessionManager _sessionManager;
+        private readonly dynamic _sessionManager;
         private readonly IAgentRegistry _agentRegistry;
 
         /// <summary>
@@ -27,7 +27,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
         /// </summary>
         public TaskTool(
             ILogger<TaskTool> logger,
-            ISessionManager sessionManager,
+            dynamic sessionManager,
             IAgentRegistry agentRegistry) : base(logger)
         {
             _sessionManager = sessionManager;
@@ -113,7 +113,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
             try
             {
                 // 获取或创建子 Session
-                SessionData session;
+                Seeing.Session.Core.SessionData session;
                 if (taskId != null)
                 {
                     var existingSession = _sessionManager.GetSession(taskId);
@@ -125,7 +125,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
                     else
                     {
                         session = await CreateSubSession(context.SessionId, description, agentInfo);
-                        _logger.LogInformation("创建新的子 Session（未找到现有）: {SessionId}", session.SessionId);
+                        _logger.LogInformation("创建新的子 Session（未找到现有）: {SessionId}", session.Id);
                     }
                 }
                 else if (sessionId != null)
@@ -139,13 +139,13 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
                     else
                     {
                         session = await CreateSubSession(context.SessionId, description, agentInfo);
-                        _logger.LogInformation("创建新的子 Session（未找到指定会话）: {SessionId}", session.SessionId);
+                        _logger.LogInformation("创建新的子 Session（未找到指定会话）: {SessionId}", session.Id);
                     }
                 }
                 else
                 {
                     session = await CreateSubSession(context.SessionId, description, agentInfo);
-                    _logger.LogInformation("创建新的子 Session: {SessionId}", session.SessionId);
+                    _logger.LogInformation("创建新的子 Session: {SessionId}", session.Id);
                 }
 
                 // 设置元数据
@@ -153,7 +153,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
                 {
                     context.SetMetadata(description, new Dictionary<string, object>
                     {
-                        ["sessionId"] = session.SessionId,
+                        ["sessionId"] = session.Id,
                         ["agent"] = agentInfo.Name,
                         ["model"] = agentInfo.Model?.ModelId ?? "default",
                         ["runInBackground"] = runInBackground
@@ -163,7 +163,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
                 // 加载指定技能
                 if (loadSkills != null && loadSkills.Count > 0)
                 {
-                    await _sessionManager.SetContextAsync(session.SessionId, "loadSkills", loadSkills);
+                    await _sessionManager.SetContextAsync(session.Id, "loadSkills", loadSkills);
                 }
 
                 // 构建输入消息
@@ -182,7 +182,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
 
                 var agentContext = new AgentContext
                 {
-                    SessionId = session.SessionId,
+                    SessionId = session.Id,
                     MessageId = $"msg_{Guid.NewGuid():N}",
                     CancellationToken = context.CancellationToken,
                     Metadata = new Dictionary<string, object>
@@ -213,7 +213,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
 
                 // 构建返回结果
                 var output = new StringBuilder();
-                output.AppendLine($"task_id: {session.SessionId}（用于继续此任务）");
+                output.AppendLine($"task_id: {session.Id}（用于继续此任务）");
                 output.AppendLine();
                 output.AppendLine("<task_result>");
                 output.AppendLine(outputText);
@@ -221,7 +221,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
 
                 return Success(description, output.ToString(), new Dictionary<string, object>
                 {
-                    ["sessionId"] = session.SessionId,
+                    ["sessionId"] = session.Id,
                     ["agent"] = agentInfo.Name,
                     ["messages"] = messages.Count,
                     ["model"] = agentInfo.Model?.ModelId ?? "default"
@@ -288,14 +288,14 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
         /// <summary>
         /// 创建子 Session
         /// </summary>
-        private async Task<SessionData> CreateSubSession(string parentSessionId, string description, AgentInfo agentInfo)
+        private async Task<Seeing.Session.Core.SessionData> CreateSubSession(string parentSessionId, string description, AgentInfo agentInfo)
         {
             var agent = _agentRegistry.GetOrCreateAgentInstance(agentInfo.Name);
-            var session = await _sessionManager.CreateSessionAsync(agent);
+            var session = await _sessionManager.CreateSessionAsync(agent?.Name, agent?.Name);
 
             // 设置父 Session 关系
-            await _sessionManager.SetContextAsync(session.SessionId, "parentSessionId", parentSessionId);
-            await _sessionManager.SetContextAsync(session.SessionId, "taskDescription", description);
+            await _sessionManager.SetContextAsync(session.Id, "parentSessionId", parentSessionId);
+            await _sessionManager.SetContextAsync(session.Id, "taskDescription", description);
 
             // 根据 Agent 权限配置禁用工具
             var disabledTools = new List<string>();
@@ -314,7 +314,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
 
             if (disabledTools.Count > 0)
             {
-                await _sessionManager.SetContextAsync(session.SessionId, "disabledTools", disabledTools.ToArray());
+                await _sessionManager.SetContextAsync(session.Id, "disabledTools", disabledTools.ToArray());
             }
 
             return session;

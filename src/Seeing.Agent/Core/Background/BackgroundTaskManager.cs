@@ -48,7 +48,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
             Id = taskId,
             AgentName = args.AgentName,
             Status = BackgroundTaskStatus.Pending,
-            StartedAt = DateTimeOffset.UtcNow,
+            StartedAt = DateTimeOffset.Now,
             Description = args.Description ?? args.Input.Content,
             SessionId = args.Context.SessionId,
             ParentSessionId = args.Context.SessionId
@@ -206,10 +206,10 @@ public class BackgroundTaskManager : IBackgroundTaskManager
             return null;
         }
 
-        var startTime = DateTimeOffset.UtcNow;
+        var startTime = DateTimeOffset.Now;
         var timeout = TimeSpan.FromMilliseconds(timeoutMs);
 
-        while (DateTimeOffset.UtcNow - startTime < timeout)
+        while (DateTimeOffset.Now - startTime < timeout)
         {
             // 检查任务状态
             if (!_tasks.TryGetValue(taskId, out var currentTask))
@@ -306,7 +306,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         if (_tasks.TryGetValue(taskId, out var task))
         {
             task.Status = status;
-            task.CompletedAt = DateTimeOffset.UtcNow;
+            task.CompletedAt = DateTimeOffset.Now;
             
             if (result != null)
             {
@@ -325,9 +325,9 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     /// </summary>
     private async Task WaitForRunningStatusAsync(string taskId, TimeSpan timeout)
     {
-        var startTime = DateTimeOffset.UtcNow;
+        var startTime = DateTimeOffset.Now;
         
-        while (DateTimeOffset.UtcNow - startTime < timeout)
+        while (DateTimeOffset.Now - startTime < timeout)
         {
             if (_tasks.TryGetValue(taskId, out var task) &&
                 task.Status == BackgroundTaskStatus.Running)
@@ -344,7 +344,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     /// </summary>
     public void CleanupCompletedTasks(TimeSpan retentionTime)
     {
-        var cutoff = DateTimeOffset.UtcNow - retentionTime;
+        var cutoff = DateTimeOffset.Now - retentionTime;
         
         foreach (var (taskId, task) in _tasks)
         {

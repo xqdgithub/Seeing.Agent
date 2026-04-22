@@ -1,0 +1,186 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components
+@using Seeing.Agent.WebUI.State
+@using Seeing.Agent.Llm
+@inject AppState AppState
+
+<div Class="@GetSelectorClass()">
+    @if (!Collapsed)
+    {
+        <div Class="selector-label">
+            <span Class="selector-label-text">Model</span>
+        </div>
+        <Select TValue="string"
+                Value="@_displayValue"
+                ValueChanged="EventCallback.Factory.Create<string>(this, OnSelectValueChanged)"
+                DataSource="@GetModelOptions()"
+                ValueName="@nameof(ModelOption.Value)"
+                LabelName="@nameof(ModelOption.Label)"
+                Placeholder="选择 Model"
+                Style="width: 100%;"
+                Disabled="@IsDisabled">
+            <LabelTemplate>
+                <div Class="selector-selected">
+                    <Icon Type="@IconType.Outline.CloudServer" />
+                    <span Style="margin-left: var(--space-1);">@context.Label</span>
+                </div>
+            </LabelTemplate>
+            <ItemTemplate>
+                <div Class="selector-item">
+                    <Icon Type="@IconType.Outline.CloudServer" />
+                    <div Class="selector-item-content">
+                        <strong>@context.Label</strong>
+                        @if (!string.IsNullOrEmpty(context.Provider))
+                        {
+                            <Tag Color="@GetProviderColor(context.Provider)"
+                                 Style="font-size: var(--font-size-xs);">
+                                @context.Provider
+                            </Tag>
+                        }
+                    </div>
+                </div>
+            </ItemTemplate>
+        </Select>
+    }
+    else
+    {
+        <Tooltip Title="@GetModelTooltipTitle()">
+            <Button Type="@ButtonType.Text"
+                    Size="@ButtonSize.Small"
+                    Icon="@IconType.Outline.CloudServer"
+                    Style="color: var(--color-text-secondary);" />
+        </Tooltip>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string SelectedModel { get; set; } = "";
+    
+    [Parameter]
+    public EventCallback<string> SelectedModelChanged { get; set; }
+    
+    [Parameter]
+    public bool Collapsed { get; set; }
+    
+    [Parameter]
+    public bool IsDisabled { get; set; }
+    
+    /// <summary>
+    /// 显示值（用于 Select 组件，始终是 AvailableModels 中的键）
+    /// </summary>
+    private string _displayValue { get; set; } = "";
+    
+    /// <summary>
+    /// 上一次的 SelectedModel 值，用于检测变化
+    /// </summary>
+    private string _lastSelectedModel { get; set; } = "";
+    
+    protected override void OnParametersSet()
+    {
+        // 仅当 SelectedModel 真正变化时才更新显示值
+        if (SelectedModel != _lastSelectedModel)
+        {
+            _lastSelectedModel = SelectedModel;
+            _displayValue = FindBestMatch(SelectedModel) ?? "";
+        }
+    }
+    
+    private string GetSelectorClass()
+        => Collapsed ? "model-selector model-selector-collapsed" : "model-selector";
+    
+    private string GetModelTooltipTitle() => $"Model: {_displayValue}";
+    
+    private string GetProviderColor(string provider)
+    {
+        return provider?.ToLowerInvariant() switch
+        {
+            "openai" => "blue",
+            "anthropic" => "purple",
+            "google" => "green",
+            "deepseek" => "cyan",
+            "local" => "orange",
+            _ => "default"
+        };
+    }
+    
+    /// <summary>
+    /// 在 AvailableModels 中查找最佳匹配值
+    /// </summary>
+    private string? FindBestMatch(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return null;
+        
+        var keys = AppState.AvailableModels.Keys.ToList();
+        
+        // 1. 直接匹配
+        if (keys.Contains(value))
+            return value;
+        
+        // 2. 去掉 provider 前缀匹配（如 "anthropic/qwen3-coder-next" → "qwen3-coder-next"）
+        if (value.Contains('/'))
+        {
+            var withoutProvider = value.Split('/').Last();
+            if (keys.Contains(withoutProvider))
+                return withoutProvider;
+            
+            // 也尝试查找另一个带前缀的版本
+            foreach (var key in keys)
+            {
+                if (key.EndsWith($"/{withoutProvider}"))
+                    return key;
+            }
+        }
+        
+        // 3. 添加 provider 前缀匹配（如 "qwen3-coder-next" → "anthropic/qwen3-coder-next"）
+        foreach (var key in keys)
+        {
+            if (key.EndsWith($"/{value}"))
+                return key;
+        }
+        
+        // 4. 返回第一个选项作为保底
+        return keys.FirstOrDefault();
+    }
+    
+    private List<ModelOption> GetModelOptions()
+    {
+        var options = new List<ModelOption>();
+        
+        foreach (var (modelId, config) in AppState.AvailableModels)
+        {
+            options.Add(new ModelOption
+            {
+                Value = modelId,
+                Label = config.Name ?? modelId,
+                Provider = config.Provider
+            });
+        }
+        
+        return options;
+    }
+    
+    /// <summary>
+    /// 用户选择新值时的处理
+    /// </summary>
+    private async Task OnSelectValueChanged(string newValue)
+    {
+        // 更新显示值
+        _displayValue = newValue;
+        _lastSelectedModel = newValue;
+        
+        // 通知父组件（值已经是 AvailableModels 中的键，格式正确）
+        if (SelectedModelChanged.HasDelegate)
+        {
+            await SelectedModelChanged.InvokeAsync(newValue);
+        }
+    }
+    
+    public class ModelOption
+    {
+        public string Value { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string? Provider { get; set; }
+    }
+}

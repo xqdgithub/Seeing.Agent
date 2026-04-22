@@ -145,7 +145,7 @@ public class QuestionManager : IQuestionManager
     /// </summary>
     private static string GenerateQuestionId()
     {
-        var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss");
+        var timestamp = DateTimeOffset.Now.ToString("yyyyMMddHHmmss");
         var random = Guid.NewGuid().ToString("N").Substring(0, 8);
         return $"q_{timestamp}_{random}";
     }

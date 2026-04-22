@@ -1,0 +1,17 @@
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Agent.WebUI.Shared
+@using AntDesign
+
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>未找到页面</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p role="alert">抱歉，此地址没有内容。</p>
+        </LayoutView>
+    </NotFound>
+</Router>

@@ -108,7 +108,7 @@ public class TodoManager : ITodoManager
                 _logger.LogDebug("已创建 Todo 存储目录: {Directory}", _storagePath);
             }
 
-            todoList.UpdatedAt = DateTimeOffset.UtcNow;
+            todoList.UpdatedAt = DateTimeOffset.Now;
             var json = JsonSerializer.Serialize(todoList, _jsonOptions);
             
             await File.WriteAllTextAsync(filePath, json);
@@ -151,7 +151,7 @@ public class TodoManager : ITodoManager
             Content = content,
             Status = TodoStatus.Pending,
             Priority = priority,
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.Now,
             CompletedAt = null
         };
 
@@ -192,7 +192,7 @@ public class TodoManager : ITodoManager
         // 如果状态变为已完成或已取消，设置完成时间
         if (status == TodoStatus.Completed || status == TodoStatus.Cancelled)
         {
-            todoItem.CompletedAt = DateTimeOffset.UtcNow;
+            todoItem.CompletedAt = DateTimeOffset.Now;
         }
         // 如果从已完成/已取消变为其他状态，清除完成时间
         else if (oldStatus == TodoStatus.Completed || oldStatus == TodoStatus.Cancelled)
@@ -266,7 +266,7 @@ public class TodoManager : ITodoManager
     /// </summary>
     private static string GenerateTodoId()
     {
-        var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss");
+        var timestamp = DateTimeOffset.Now.ToString("yyyyMMddHHmmss");
         var random = Guid.NewGuid().ToString("N").Substring(0, 8);
         return $"todo_{timestamp}_{random}";
     }

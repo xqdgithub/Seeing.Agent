@@ -17,6 +17,9 @@ public class MessageDisplay
     /// <summary>工具调用列表</summary>
     public List<ToolCallDisplay> ToolCalls { get; set; } = new();
     
+    /// <summary>子代理调用列表</summary>
+    public List<SubAgentDisplay> SubAgents { get; set; } = new();
+    
     /// <summary>文件附件</summary>
     public List<FileAttachment> Attachments { get; set; } = new();
     
@@ -92,6 +95,57 @@ public class ToolCallDisplay
         Seeing.Agent.Core.Events.ToolCallStatus.Rejected => "grey",
         _ => "white"
     };
+}
+
+/// <summary>
+/// 子代理展示模型
+/// </summary>
+public class SubAgentDisplay
+{
+    /// <summary>唯一标识</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+    
+    /// <summary>子代理名称</summary>
+    public string Name { get; set; } = "";
+    
+    /// <summary>状态（started/completed/failed）</summary>
+    public SubAgentStatus Status { get; set; } = SubAgentStatus.Starting;
+    
+    /// <summary>子会话 ID（可选跳转）</summary>
+    public string? SubSessionId { get; set; }
+    
+    /// <summary>开始时间</summary>
+    public DateTime StartTime { get; set; } = DateTime.Now;
+    
+    /// <summary>结束时间</summary>
+    public DateTime? EndTime { get; set; }
+    
+    /// <summary>执行耗时</summary>
+    public TimeSpan? Duration => EndTime - StartTime;
+    
+    /// <summary>执行结果（Completed 时有）</summary>
+    public string? Result { get; set; }
+    
+    /// <summary>错误信息（Failed 时有）</summary>
+    public string? Error { get; set; }
+}
+
+/// <summary>
+/// 子代理状态枚举
+/// </summary>
+public enum SubAgentStatus
+{
+    /// <summary>启动中</summary>
+    Starting,
+    
+    /// <summary>运行中</summary>
+    Running,
+    
+    /// <summary>已完成</summary>
+    Completed,
+    
+    /// <summary>失败</summary>
+    Failed
 }
 
 /// <summary>

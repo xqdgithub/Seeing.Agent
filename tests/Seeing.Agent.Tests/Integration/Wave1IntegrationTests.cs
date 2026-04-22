@@ -241,8 +241,8 @@ public class Wave1IntegrationTests
         public TestAgent(ILogger logger, IHookManager? hookManager = null) 
             : base(logger, hookManager) { }
 
-        public override string Name => "test-agent";
-        public override string Description => "测试 Agent";
+        public override string Name { get; set; } = "test-agent";
+        public override string Description { get; set; } = "测试 Agent";
         public override int? MaxSteps => OverrideMaxSteps;
 
         protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(

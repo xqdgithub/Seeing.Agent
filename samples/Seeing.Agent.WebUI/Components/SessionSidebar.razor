@@ -1,0 +1,421 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using Seeing.Agent.WebUI.State
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Session.Core
+@inject IJSRuntime JSRuntime
+@inject SessionProvider SessionProvider
+
+<div Class="session-sidebar" @ref="@SidebarRef">
+    <!-- 新建会话按钮 -->
+    <div Class="sidebar-header">
+        <Button Type="@ButtonType.Primary"
+                Size="@ButtonSize.Small"
+                Icon="@IconType.Outline.Plus"
+                Block="true"
+                OnClick="@OnNewSession">
+            @if (!Collapsed)
+            {
+                <span>新建会话</span>
+            }
+        </Button>
+    </div>
+
+    <!-- 搜索框 -->
+    @if (!Collapsed)
+    {
+        <div Class="sidebar-search">
+            <Input Placeholder="搜索会话..."
+                   AllowClear="true"
+                   @bind-Value="@SearchText"
+                   PrefixIcon="@IconType.Outline.Search"
+                   Class="search-input" />
+        </div>
+    }
+
+    <!-- 会话列表 -->
+    <div Class="session-list-container">
+        @if (FilteredSessions.Count == 0)
+        {
+            <Empty Class="session-empty">
+                <DescriptionTemplate>
+                    @if (!string.IsNullOrEmpty(SearchText))
+                    {
+                        <span>未找到匹配的会话</span>
+                    }
+                    else
+                    {
+                        <span>暂无会话记录</span>
+                    }
+                </DescriptionTemplate>
+            </Empty>
+        }
+        else
+        {
+            <div Class="session-list">
+                @foreach (var group in GetGroupedSessions())
+                {
+                    var groupName = group.Key;
+                    var isCollapsed = _groupCollapsed.GetValueOrDefault(groupName, false);
+                    
+                    <!-- 分组标题 -->
+                    <div Class="session-group-title" @onclick="@(() => ToggleGroupCollapse(groupName))">
+                        <Icon Type="@(isCollapsed ? IconType.Outline.Right : IconType.Outline.Down)" Class="session-group-icon" />
+                        <span Class="session-group-label">@groupName</span>
+                        <Badge Count="@group.Count()" Class="session-group-count" />
+                    </div>
+                    
+                    <!-- 分组内容 -->
+                    @if (!isCollapsed)
+                    {
+                        <div Class="session-group-content">
+                            @foreach (var session in group)
+                            {
+                                var currentSession = session; // 捕获 foreach 变量
+                                <div Class="@GetSessionItemClass(session)"
+                                     @oncontextmenu:preventDefault="true"
+                                     @oncontextmenu="@((e) => OnContextMenu(e, currentSession))"
+                                     @onclick="@(() => OnSelectSession(currentSession))">
+                                    <div Class="session-item-content">
+                                        @if (Collapsed)
+                                        {
+                                            <Icon Type="@IconType.Outline.Message" Class="session-icon" />
+                                        }
+                                        else
+                                        {
+                                            <div Class="session-info">
+                                                <div Class="session-title">@session.Title</div>
+                                                <div Class="session-meta">
+                                                    <span Class="session-time" Title="@GetCreatedTimeTooltip(session)">@GetSessionTime(session)</span>
+                                                    @if (session.Messages.Count > 0)
+                                                    {
+                                                        <Badge Count="@session.Messages.Count"
+                                                                Style="margin-left: var(--space-2);" />
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <!-- 选中指示器 -->
+                                    @if (SelectedSessionId == session.Id)
+                                    {
+                                        <div Class="session-selected-indicator"></div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+
+    <!-- 右键菜单 -->
+    <SessionContextMenu Visible="@ContextMenuVisible"
+                        PositionX="@ContextMenuX"
+                        PositionY="@ContextMenuY"
+                        CurrentSession="@ContextMenuSession"
+                        OnRename="@OnRenameSession"
+                        OnDelete="@OnDeleteSession"
+                        OnBranch="@OnBranchSession"
+                        OnClose="@OnContextMenuClose" />
+</div>
+
+@code {
+    /// <summary>
+    /// 侧边栏元素引用
+    /// </summary>
+    private ElementReference SidebarRef { get; set; }
+
+    /// <summary>
+    /// 会话列表数据
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<SessionData> Sessions { get; set; } = new List<SessionData>();
+
+    /// <summary>
+    /// 当前选中的会话 ID
+    /// </summary>
+    [Parameter]
+    public string SelectedSessionId { get; set; } = "";
+
+    /// <summary>
+    /// 选中会话变更事件
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> SelectedSessionIdChanged { get; set; }
+
+    /// <summary>
+    /// 新建会话事件
+    /// </summary>
+    [Parameter]
+    public EventCallback OnNewSessionCallback { get; set; }
+
+    /// <summary>
+    /// 重命名会话事件
+    /// </summary>
+    [Parameter]
+    public EventCallback<SessionData> OnRenameCallback { get; set; }
+
+    /// <summary>
+    /// 删除会话事件
+    /// </summary>
+    [Parameter]
+    public EventCallback<SessionData> OnDeleteCallback { get; set; }
+
+    /// <summary>
+    /// 分支会话事件
+    /// </summary>
+    [Parameter]
+    public EventCallback<SessionData> OnBranchCallback { get; set; }
+
+    /// <summary>
+    /// 是否折叠状态
+    /// </summary>
+    [Parameter]
+    public bool Collapsed { get; set; }
+
+    /// <summary>
+    /// 搜索文本
+    /// </summary>
+    private string SearchText { get; set; } = "";
+
+    /// <summary>
+    /// 过滤后的会话列表
+    /// </summary>
+    private IReadOnlyList<SessionData> FilteredSessions
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(SearchText))
+                return Sessions;
+            return Sessions.Where(s => s.Title.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
+                           .ToList();
+        }
+    }
+
+    /// <summary>
+    /// 右键菜单是否可见
+    /// </summary>
+    private bool ContextMenuVisible { get; set; }
+
+    /// <summary>
+    /// 右键菜单位置
+    /// </summary>
+    private int ContextMenuX { get; set; }
+    private int ContextMenuY { get; set; }
+
+    /// <summary>
+    /// 右键菜单操作的会话
+    /// </summary>
+    private SessionData? ContextMenuSession { get; set; }
+
+    /// <summary>
+    /// 获取会话项 CSS 类
+    /// </summary>
+    private string GetSessionItemClass(SessionData session)
+    {
+        var baseClass = "session-item";
+        if (SelectedSessionId == session.Id)
+            baseClass += " selected";
+        return baseClass;
+    }
+
+    /// <summary>
+    /// 分组折叠状态字典
+    /// 结构：key 为分组名称，value 表示是否折叠（true 折叠，false 展开）
+    /// 初始默认：今天/昨天 展开（false），本周/更早 折叠（true）
+    /// </summary>
+    private System.Collections.Generic.Dictionary<string, bool> _groupCollapsed = new System.Collections.Generic.Dictionary<string, bool>
+    {
+        { "今天", false },
+        { "昨天", false },
+        { "本周", true },
+        { "更早", true }
+    };
+
+    /// <summary>
+    /// 切换指定分组的折叠状态
+    /// </summary>
+    private void ToggleGroupCollapse(string group)
+    {
+        if (_groupCollapsed.ContainsKey(group))
+        {
+            _groupCollapsed[group] = !_groupCollapsed[group];
+        }
+        else
+        {
+            _groupCollapsed[group] = true;
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 获取会话时间显示（相对时间）
+    /// </summary>
+    private string GetSessionTime(SessionData session)
+    {
+        var now = DateTime.Now;
+        var diff = now - session.UpdatedAt;
+
+        if (diff.TotalMinutes < 1)
+            return "刚刚";
+        if (diff.TotalHours < 1)
+            return $"{(int)diff.TotalMinutes}分钟前";
+        if (diff.TotalDays < 1)
+            return $"{(int)diff.TotalHours}小时前";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}天前";
+        return session.UpdatedAt.ToString("MM-dd HH:mm");
+    }
+    
+    /// <summary>
+    /// 获取创建时间 Tooltip（显示详细信息）
+    /// </summary>
+    private string GetCreatedTimeTooltip(SessionData session)
+    {
+        return $"创建: {session.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm}\n更新: {session.UpdatedAt.ToLocalTime():yyyy-MM-dd HH:mm}";
+    }
+
+    /// <summary>
+    /// 根据会话的更新时间，返回分组名称
+    /// 分组规则：
+    /// - 24小时内更新 → "今天"
+    /// - 24-48小时内更新 → "昨天"
+    /// - 7天内更新 → "本周"
+    /// - 更早 → "更早"
+    /// </summary>
+    private string GetSessionGroup(SessionData session)
+    {
+        var now = DateTime.Now;
+        var diff = now - session.UpdatedAt.ToLocalTime();
+
+        if (diff.TotalHours < 24)
+            return "今天";
+        if (diff.TotalHours < 48)
+            return "昨天";
+        if (diff.TotalDays < 7)
+            return "本周";
+        return "更早";
+    }
+
+    /// <summary>
+    /// 根据分组获取分组后的会话集合
+    /// 使用 LINQ GroupBy 对会话进行分组，并按自定义顺序排序分组
+    /// </summary>
+    private IEnumerable<IGrouping<string, SessionData>> GetGroupedSessions()
+    {
+        return FilteredSessions.GroupBy(GetSessionGroup)
+                               .OrderBy(g => GetGroupIndex(g.Key));
+    }
+
+    /// <summary>
+    /// 获取分组的排序索引，确保分组按自定义顺序排列
+    /// </summary>
+    private int GetGroupIndex(string group)
+    {
+        return group switch
+        {
+            "今天" => 0,
+            "昨天" => 1,
+            "本周" => 2,
+            "更早" => 3,
+            _ => 4
+        };
+    }
+
+    /// <summary>
+    /// 新建会话
+    /// </summary>
+    private async Task OnNewSession()
+    {
+        if (OnNewSessionCallback.HasDelegate)
+        {
+            await OnNewSessionCallback.InvokeAsync();
+        }
+    }
+
+    /// <summary>
+    /// 选中会话
+    /// </summary>
+    private async Task OnSelectSession(SessionData session)
+    {
+        SelectedSessionId = session.Id;
+        if (SelectedSessionIdChanged.HasDelegate)
+        {
+            await SelectedSessionIdChanged.InvokeAsync(session.Id);
+        }
+    }
+
+    /// <summary>
+    /// 右键菜单触发
+    /// </summary>
+    private async Task OnContextMenu(MouseEventArgs e, SessionData session)
+    {
+        ContextMenuSession = session;
+        ContextMenuX = (int)e.ClientX;
+        ContextMenuY = (int)e.ClientY;
+        ContextMenuVisible = true;
+    }
+
+    /// <summary>
+    /// 关闭右键菜单
+    /// </summary>
+    private async Task OnContextMenuClose()
+    {
+        ContextMenuVisible = false;
+    }
+
+    /// <summary>
+    /// 重命名会话
+    /// </summary>
+    private async Task OnRenameSession(SessionData session)
+    {
+        if (OnRenameCallback.HasDelegate)
+        {
+            await OnRenameCallback.InvokeAsync(session);
+        }
+    }
+
+    /// <summary>
+    /// 删除会话
+    /// </summary>
+    private async Task OnDeleteSession(SessionData session)
+    {
+        if (OnDeleteCallback.HasDelegate)
+        {
+            await OnDeleteCallback.InvokeAsync(session);
+        }
+    }
+
+    /// <summary>
+    /// 分支会话
+    /// </summary>
+    private async Task OnBranchSession(SessionData session)
+    {
+        if (OnBranchCallback.HasDelegate)
+        {
+            await OnBranchCallback.InvokeAsync(session);
+        }
+    }
+
+    /// <summary>
+    /// 更新会话列表（供外部调用）
+    /// </summary>
+    public void UpdateSessions(IReadOnlyList<SessionData> sessions)
+    {
+        Sessions = sessions;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 刷新显示
+    /// </summary>
+    public void Refresh()
+    {
+        StateHasChanged();
+    }
+}

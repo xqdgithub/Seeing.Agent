@@ -52,7 +52,7 @@ namespace Seeing.Agent.Core.Permission
         {
             if (_cache.TryGetValue(key, out var entry))
             {
-                if (entry.ExpiresAt > DateTimeOffset.UtcNow)
+                if (entry.ExpiresAt > DateTimeOffset.Now)
                 {
                     _logger?.LogDebug("权限缓存命中: {Key}", key);
                     return entry.Action;
@@ -78,7 +78,7 @@ namespace Seeing.Agent.Core.Permission
             var entry = new PermissionCacheEntry
             {
                 Action = action,
-                ExpiresAt = DateTimeOffset.UtcNow.Add(effectiveTtl)
+                ExpiresAt = DateTimeOffset.Now.Add(effectiveTtl)
             };
 
             _cache[key] = entry;
@@ -143,7 +143,7 @@ namespace Seeing.Agent.Core.Permission
         /// </summary>
         public (int TotalEntries, int ExpiredEntries) GetStats()
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = DateTimeOffset.Now;
             var total = _cache.Count;
             var expired = _cache.Values.Count(e => e.ExpiresAt <= now);
             return (total, expired);

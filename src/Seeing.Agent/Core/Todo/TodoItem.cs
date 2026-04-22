@@ -40,7 +40,7 @@ public class TodoItem
 
     /// <summary>创建时间</summary>
     [JsonPropertyName("createdAt")]
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
     /// <summary>完成时间（可选）</summary>
     [JsonPropertyName("completedAt")]
@@ -62,9 +62,9 @@ public class TodoList
 
     /// <summary>创建时间</summary>
     [JsonPropertyName("createdAt")]
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
     /// <summary>最后更新时间</summary>
     [JsonPropertyName("updatedAt")]
-    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
 }

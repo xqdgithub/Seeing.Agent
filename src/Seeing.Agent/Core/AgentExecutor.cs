@@ -91,6 +91,13 @@ public class AgentExecutor
         {
             effectiveToken.ThrowIfCancellationRequested();
 
+            // ========== 发布 StreamStart 事件（标记新轮次开始）==========
+            yield return new StreamStartEvent
+            {
+                SessionId = context.SessionId,
+                Step = step
+            };
+
             // 构建请求
             var request = BuildRequest(agent, messages, context);
 
@@ -398,7 +405,7 @@ public class AgentExecutor
     {
         var name = tc.Function?.Name ?? "";
         var arguments = ParseArguments(tc.Function?.Arguments);
-        var startTime = DateTime.UtcNow;
+        var startTime = DateTime.Now;
 
         // ========== 特殊处理：task 工具（子代理调用） ==========
         if (string.Equals(name, "task", StringComparison.OrdinalIgnoreCase))
@@ -420,7 +427,7 @@ public class AgentExecutor
                 Arguments = arguments,
                 Status = ToolCallStatus.Rejected,
                 Error = decision.Reason ?? "权限拒绝",
-                Duration = DateTime.UtcNow - startTime
+                Duration = DateTime.Now - startTime
             };
         }
 
@@ -440,7 +447,7 @@ public class AgentExecutor
                     Arguments = arguments,
                     Status = ToolCallStatus.Rejected,
                     Error = "用户拒绝",
-                    Duration = DateTime.UtcNow - startTime
+                    Duration = DateTime.Now - startTime
                 };
             }
         }
@@ -475,7 +482,7 @@ public class AgentExecutor
                 Arguments = arguments,
                 Status = ToolCallStatus.Failed,
                 Error = ex.Message,
-                Duration = DateTime.UtcNow - startTime
+                Duration = DateTime.Now - startTime
             };
         }
 
@@ -501,7 +508,7 @@ public class AgentExecutor
             Status = result.Success ? ToolCallStatus.Success : ToolCallStatus.Failed,
             Output = result.Output,
             Error = result.Error,
-            Duration = DateTime.UtcNow - startTime
+            Duration = DateTime.Now - startTime
         };
     }
 
@@ -515,7 +522,7 @@ public class AgentExecutor
         CancellationToken cancellationToken)
     {
         var args = ParseTaskArguments(tc.Function?.Arguments);
-        var startTime = DateTime.UtcNow;
+        var startTime = DateTime.Now;
 
         // 解析目标 Agent
         var targetAgentName = args.SubAgentType ?? args.Category ?? "sisyphus-junior";
@@ -531,7 +538,7 @@ public class AgentExecutor
                 ToolName = "task",
                 Status = ToolCallStatus.Failed,
                 Error = $"未找到 Agent: {targetAgentName}",
-                Duration = DateTime.UtcNow - startTime
+                Duration = DateTime.Now - startTime
             };
         }
 
@@ -585,7 +592,7 @@ public class AgentExecutor
                 ToolName = "task",
                 Status = ToolCallStatus.Failed,
                 Error = $"子代理执行失败: {ex.Message}",
-                Duration = DateTime.UtcNow - startTime
+                Duration = DateTime.Now - startTime
             };
         }
 
@@ -601,7 +608,7 @@ public class AgentExecutor
             Status = ToolCallStatus.Success,
             Output = resultContent,
             Title = "子代理完成",
-            Duration = DateTime.UtcNow - startTime
+            Duration = DateTime.Now - startTime
         };
     }
 

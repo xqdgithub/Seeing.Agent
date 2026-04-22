@@ -1,0 +1,178 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Agent.WebUI.Models
+
+<div Class="attachment-preview-container">
+    @foreach (var attachment in Attachments)
+    {
+        var currentAttachment = attachment; // 捕获 foreach 变量
+        <div Class="@GetAttachmentClass(currentAttachment)"
+             Title="@currentAttachment.FileName">
+            <!-- 图片预览 -->
+            @if (currentAttachment.IsImage && !string.IsNullOrEmpty(currentAttachment.Base64Content))
+            {
+                <div Class="attachment-image-preview">
+                    <img Src="@currentAttachment.Base64Content"
+                         Alt="@currentAttachment.FileName"
+                         Class="attachment-image" />
+                </div>
+            }
+            else
+            {
+                <!-- 文件图标 -->
+                <div Class="attachment-icon-wrapper">
+                    <Icon Type="@GetIconType(currentAttachment)"
+                          Class="attachment-icon" />
+                </div>
+            }
+
+            <!-- 文件信息 -->
+            <div Class="attachment-info">
+                <div Class="attachment-name">@currentAttachment.FileName</div>
+                <div Class="attachment-size">@currentAttachment.GetFormattedSize()</div>
+            </div>
+
+            <!-- 状态指示 -->
+            @if (currentAttachment.Status == AttachmentUploadStatus.Uploading)
+            {
+                <div Class="attachment-status">
+                    <Spin Size="@SpinSize.Small" />
+                </div>
+            }
+            else if (currentAttachment.Status == AttachmentUploadStatus.Failed)
+            {
+                <div Class="attachment-status attachment-status-error">
+                    <Tooltip Title="@currentAttachment.ErrorMessage">
+                        <Icon Type="@IconType.Outline.CloseCircle"
+                              Style="color: var(--color-error);" />
+                    </Tooltip>
+                </div>
+            }
+
+            <!-- 删除按钮 -->
+            <div Class="attachment-actions">
+                <Tooltip Title="删除附件">
+                    <Button Type="@ButtonType.Text"
+                            Size="@ButtonSize.Small"
+                            Icon="@IconType.Outline.Close"
+                            OnClick="@(() => OnRemoveAttachment(currentAttachment))"
+                            Class="attachment-remove-btn" />
+                </Tooltip>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// 附件列表
+    /// </summary>
+    [Parameter]
+    public List<AttachmentViewModel> Attachments { get; set; } = new();
+
+    /// <summary>
+    /// 最大附件数量
+    /// </summary>
+    [Parameter]
+    public int MaxAttachments { get; set; } = 10;
+
+    /// <summary>
+    /// 单文件最大大小（字节）
+    /// </summary>
+    [Parameter]
+    public long MaxFileSize { get; set; } = 10 * 1024 * 1024; // 10MB
+
+    /// <summary>
+    /// 删除附件事件回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<AttachmentViewModel> OnRemove { get; set; }
+
+    /// <summary>
+    /// 获取附件项 CSS 类
+    /// </summary>
+    private string GetAttachmentClass(AttachmentViewModel attachment)
+    {
+        var baseClass = "attachment-item";
+        if (attachment.IsImage)
+            baseClass += " attachment-item-image";
+        if (attachment.Status == AttachmentUploadStatus.Failed)
+            baseClass += " attachment-item-error";
+        return baseClass;
+    }
+
+    /// <summary>
+    /// 获取图标类型
+    /// </summary>
+    private string GetIconType(AttachmentViewModel attachment)
+    {
+        return attachment.GetIconType() switch
+        {
+            "image" => IconType.Outline.FileImage,
+            "pdf" => IconType.Outline.FilePdf,
+            "word" => IconType.Outline.FileWord,
+            "excel" => IconType.Outline.FileExcel,
+            "ppt" => IconType.Outline.FilePpt,
+            "text" => IconType.Outline.FileText,
+            "archive" => IconType.Outline.FileZip,
+            "audio" => IconType.Outline.Sound,
+            "video" => IconType.Outline.VideoCamera,
+            "data" => IconType.Outline.FileMarkdown,
+            "code" => IconType.Outline.FileMarkdown,
+            _ => IconType.Outline.File
+        };
+    }
+
+    /// <summary>
+    /// 删除附件
+    /// </summary>
+    private async Task OnRemoveAttachment(AttachmentViewModel attachment)
+    {
+        Attachments.Remove(attachment);
+        if (OnRemove.HasDelegate)
+        {
+            await OnRemove.InvokeAsync(attachment);
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 添加附件（供外部调用）
+    /// </summary>
+    public bool AddAttachment(AttachmentViewModel attachment)
+    {
+        if (Attachments.Count >= MaxAttachments)
+            return false;
+
+        if (attachment.FileSize > MaxFileSize)
+        {
+            attachment.Status = AttachmentUploadStatus.Failed;
+            attachment.ErrorMessage = $"文件大小超过限制（最大 {MaxFileSize / (1024 * 1024)}MB）";
+        }
+        else
+        {
+            attachment.Status = AttachmentUploadStatus.Completed;
+        }
+
+        Attachments.Add(attachment);
+        StateHasChanged();
+        return attachment.Status == AttachmentUploadStatus.Completed;
+    }
+
+    /// <summary>
+    /// 清空所有附件
+    /// </summary>
+    public void ClearAttachments()
+    {
+        Attachments.Clear();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 获取所有有效的附件
+    /// </summary>
+    public List<AttachmentViewModel> GetValidAttachments()
+    {
+        return Attachments.Where(a => a.Status == AttachmentUploadStatus.Completed).ToList();
+    }
+}

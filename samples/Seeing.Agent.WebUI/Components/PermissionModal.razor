@@ -1,0 +1,239 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+<Modal Title="@ModalTitle"
+       Visible="@Visible"
+       MaskClosable="false"
+       Width="600"
+       OnCancel="@OnDeny"
+       Footer="@null"
+       Class="permission-modal">
+    
+    <!-- 风险警告 -->
+    @if (Request.IsHighRisk || !string.IsNullOrEmpty(Request.RiskWarning))
+    {
+        <Alert Type="@AlertType.Warning"
+               ShowIcon="true"
+               Message="风险提示"
+               Description="@Request.RiskWarning"
+               Style="margin-bottom: var(--space-3);" />
+    }
+    
+    <!-- 请求详情 -->
+    <div Class="permission-request-details">
+        <!-- 请求类型和目标 -->
+        <div Class="permission-detail-row"
+             Style="margin-bottom: var(--space-3);">
+            <div Class="permission-detail-label"
+                 Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                请求类型
+            </div>
+            <div Class="permission-detail-value">
+                <Tag Color="@GetRequestTypeColor()">
+                    <Icon Type="@GetRequestTypeIcon()" />
+                    <span Style="margin-left: var(--space-1);">@Request.GetRequestTypeText()</span>
+                </Tag>
+            </div>
+        </div>
+        
+        <!-- 目标名称 -->
+        <div Class="permission-detail-row"
+             Style="margin-bottom: var(--space-3);">
+            <div Class="permission-detail-label"
+                 Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                目标
+            </div>
+            <div Class="permission-detail-value"
+                 Style="font-weight: var(--font-weight-medium);">
+                @Request.Target
+            </div>
+        </div>
+        
+        <!-- 描述信息 -->
+        @if (!string.IsNullOrEmpty(Request.Description))
+        {
+            <div Class="permission-detail-row"
+                 Style="margin-bottom: var(--space-3);">
+                <div Class="permission-detail-label"
+                     Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                    描述
+                </div>
+                <div Class="permission-detail-value">
+                    @Request.Description
+                </div>
+            </div>
+        }
+        
+        <!-- 参数/内容预览 -->
+        @if (!string.IsNullOrEmpty(Request.Arguments))
+        {
+            <div Class="permission-detail-row"
+                 Style="margin-bottom: var(--space-3);">
+                <div Class="permission-detail-label"
+                     Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                    @GetArgumentsLabel()
+                </div>
+                <div Class="permission-detail-value"
+                     Style="background: var(--color-bg-tertiary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); max-height: 150px; overflow-y: auto;">
+                    <pre Style="margin: 0; font-size: var(--font-size-xs); white-space: pre-wrap; word-break: break-all;">
+@Request.Arguments
+                    </pre>
+                </div>
+            </div>
+        }
+        
+        <!-- 请求时间 -->
+        <div Class="permission-detail-row"
+             Style="margin-bottom: var(--space-3);">
+            <div Class="permission-detail-label"
+                 Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                请求时间
+            </div>
+            <div Class="permission-detail-value"
+                 Style="font-size: var(--font-size-xs); color: var(--color-text-tertiary);">
+                @Request.RequestTime.ToString("HH:mm:ss")
+            </div>
+        </div>
+    </div>
+    
+    <!-- 操作按钮 -->
+    <div Class="permission-actions"
+         Style="margin-top: var(--space-4); display: flex; justify-content: flex-end; gap: var(--space-2);">
+        
+        <!-- 记住决策选项 -->
+        <Checkbox @bind-Value="@RememberDecision"
+                  Style="margin-right: var(--space-2); font-size: var(--font-size-sm);">
+            始终允许此操作
+        </Checkbox>
+        
+        <Space>
+            <SpaceItem>
+                <Button Type="@ButtonType.Default"
+                        Danger="true"
+                        OnClick="@OnDeny">
+                    <Icon Type="@IconType.Outline.CloseCircle" />
+                    拒绝
+                </Button>
+            </SpaceItem>
+            <SpaceItem>
+                <Button Type="@ButtonType.Primary"
+                        OnClick="@OnAllow">
+                    <Icon Type="@IconType.Outline.CheckCircle" />
+                    允许
+                </Button>
+            </SpaceItem>
+        </Space>
+    </div>
+</Modal>
+
+@code {
+    /// <summary>
+    /// 权限请求数据
+    /// </summary>
+    [Parameter]
+    public PermissionRequestViewModel Request { get; set; } = new();
+    
+    /// <summary>
+    /// 是否显示
+    /// </summary>
+    [Parameter]
+    public bool Visible { get; set; }
+    
+    /// <summary>
+    /// 决策事件回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<PermissionDecisionViewModel> OnDecision { get; set; }
+    
+    /// <summary>
+    /// 关闭事件回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnVisibleChange { get; set; }
+    
+    /// <summary>
+    /// 是否记住决策
+    /// </summary>
+    private bool RememberDecision { get; set; } = false;
+    
+    /// <summary>
+    /// 获取模态框标题
+    /// </summary>
+    private string ModalTitle => $"权限请求 - {Request.GetRequestTypeText()}";
+    
+    /// <summary>
+    /// 获取请求类型颜色
+    /// </summary>
+    private string GetRequestTypeColor()
+    {
+        return Request.Type switch
+        {
+            PermissionRequestType.Tool => "blue",
+            PermissionRequestType.SubAgent => "purple",
+            PermissionRequestType.Write => "orange",
+            PermissionRequestType.Confirmation => "cyan",
+            _ => "default"
+        };
+    }
+    
+    /// <summary>
+    /// 获取请求类型图标
+    /// </summary>
+    private string GetRequestTypeIcon()
+    {
+        return Request.Type switch
+        {
+            PermissionRequestType.Tool => IconType.Outline.Tool,
+            PermissionRequestType.SubAgent => IconType.Outline.Robot,
+            PermissionRequestType.Write => IconType.Outline.FileText,
+            PermissionRequestType.Confirmation => IconType.Outline.QuestionCircle,
+            _ => IconType.Outline.InfoCircle
+        };
+    }
+    
+    /// <summary>
+    /// 获取参数标签
+    /// </summary>
+    private string GetArgumentsLabel()
+    {
+        return Request.Type switch
+        {
+            PermissionRequestType.Tool => "工具参数",
+            PermissionRequestType.SubAgent => "调用提示",
+            PermissionRequestType.Write => "内容预览",
+            _ => "参数"
+        };
+    }
+    
+    /// <summary>
+    /// 允许操作
+    /// </summary>
+    private async Task OnAllow()
+    {
+        var decision = new PermissionDecisionViewModel
+        {
+            Approved = true,
+            RememberDecision = RememberDecision
+        };
+        
+        await OnDecision.InvokeAsync(decision);
+        await OnVisibleChange.InvokeAsync(false);
+        RememberDecision = false;
+    }
+    
+    /// <summary>
+    /// 拒绝操作
+    /// </summary>
+    private async Task OnDeny()
+    {
+        var decision = new PermissionDecisionViewModel
+        {
+            Approved = false,
+            RememberDecision = false
+        };
+        
+        await OnDecision.InvokeAsync(decision);
+        await OnVisibleChange.InvokeAsync(false);
+        RememberDecision = false;
+    }
+}

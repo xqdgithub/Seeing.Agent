@@ -18,7 +18,7 @@ using Seeing.Agent.Llm.Clients;
 using Seeing.Agent.Middlewares;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Rules;
-using Seeing.Agent.Sessions;
+using Seeing.Session.Core;
 using Seeing.Agent.Shell;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
@@ -36,15 +36,67 @@ namespace Seeing.Agent.Extensions
     public static class ServiceCollectionExtensions
     {
         /// <summary>
+        /// 配置反序列化选项（支持字符串到枚举的转换）
+        /// </summary>
+        private static readonly System.Text.Json.JsonSerializerOptions ConfigJsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+        
+        /// <summary>
         /// 注册 Seeing.Agent 核心服务
         /// </summary>
         public static IServiceCollection AddSeeingAgent(
             this IServiceCollection services,
             IConfiguration configuration)
         {
-            // 注册配置选项
-            services.Configure<SeeingAgentOptions>(
-                configuration.GetSection("SeeingAgent"));
+            // 获取日志记录器（用于配置加载过程）
+            var loggerFactory = services.BuildServiceProvider().GetService<ILoggerFactory>();
+            var logger = loggerFactory?.CreateLogger(typeof(ServiceCollectionExtensions));
+            
+            // 从用户配置文件加载配置
+            var options = LoadUserConfiguration(logger);
+            
+            // 合并 IConfiguration 中的配置（覆盖用户配置）
+            var configSection = configuration.GetSection("SeeingAgent");
+            if (configSection.Exists())
+            {
+                var configOptions = configSection.Get<SeeingAgentOptions>();
+                if (configOptions != null)
+                {
+                    // 合并 Providers
+                    foreach (var (key, value) in configOptions.Providers)
+                        options.Providers[key] = value;
+                    // 合并 Models
+                    if (configOptions.Models != null)
+                    {
+                        foreach (var (key, value) in configOptions.Models)
+                            options.Models![key] = value;
+                    }
+                    // 合并其他配置
+                    if (!string.IsNullOrEmpty(configOptions.DefaultProvider))
+                        options.DefaultProvider = configOptions.DefaultProvider;
+                    if (!string.IsNullOrEmpty(configOptions.DefaultModel))
+                        options.DefaultModel = configOptions.DefaultModel;
+                    if (!string.IsNullOrEmpty(configOptions.DefaultAgent))
+                        options.DefaultAgent = configOptions.DefaultAgent;
+                }
+            }
+            
+            services.Configure<SeeingAgentOptions>(opt =>
+            {
+                opt.DefaultProvider = options.DefaultProvider;
+                opt.DefaultModel = options.DefaultModel;
+                opt.DefaultAgent = options.DefaultAgent;
+                opt.Providers = options.Providers;
+                opt.Models = options.Models;
+                opt.ModelScope = options.ModelScope;
+                opt.Agents = options.Agents;
+                opt.Skills = options.Skills;
+                opt.Permission = options.Permission;
+                opt.Plugins = options.Plugins;
+                opt.PluginEnabled = options.PluginEnabled;
+            });
 
             // 注册核心接口和实现
             RegisterCoreServices(services);
@@ -56,6 +108,148 @@ namespace Seeing.Agent.Extensions
             services.AddHttpClient();
 
             return services;
+        }
+        
+        /// <summary>
+        /// 从用户配置文件加载配置（~/.seeing/seeing.json + 项目级）
+        /// </summary>
+        private static SeeingAgentOptions LoadUserConfiguration(ILogger? logger = null)
+        {
+            var options = new SeeingAgentOptions
+            {
+                Models = new Dictionary<string, ModelConfig>(),
+                Providers = new Dictionary<string, ProviderConfig>(),
+                Agents = new Dictionary<string, AgentConfig>()
+            };
+            
+            // 用户级配置：~/.seeing/seeing.json
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var userConfigPath = Path.Combine(userProfile, ".seeing", "seeing.json");
+            LoadFromFile(userConfigPath, options, "用户级", logger);
+            
+            // 项目级配置：./.seeing/seeing.json
+            var projectConfigPath = Path.Combine(Directory.GetCurrentDirectory(), ".seeing", "seeing.json");
+            LoadFromFile(projectConfigPath, options, "项目级", logger);
+            
+            return options;
+        }
+        
+        /// <summary>
+        /// 从文件加载配置
+        /// </summary>
+        private static void LoadFromFile(string path, SeeingAgentOptions options, string level, ILogger? logger = null)
+        {
+            if (!File.Exists(path))
+                return;
+            
+            try
+            {
+                var json = File.ReadAllText(path);
+                using var doc = System.Text.Json.JsonDocument.Parse(json, new System.Text.Json.JsonDocumentOptions
+                {
+                    CommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true
+                });
+                
+                var root = doc.RootElement;
+                
+                // 尝试从 SeeingAgent 节读取
+                if (root.TryGetProperty("SeeingAgent", out var seeingAgentSection))
+                {
+                    ParseOptions(seeingAgentSection, options, logger);
+                }
+                else
+                {
+                    // 直接从根节点读取
+                    ParseOptions(root, options, logger);
+                }
+                
+                logger?.LogDebug("已从 {Level} 配置文件加载配置: {Path}", level, path);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                logger?.LogWarning(ex, 
+                    "{Level} 配置文件格式错误，已跳过: {Path}。错误位置: {Message}", 
+                    level, path, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, 
+                    "加载 {Level} 配置文件失败，已跳过: {Path}", 
+                    level, path);
+            }
+        }
+        
+        /// <summary>
+        /// 解析配置选项
+        /// </summary>
+        private static void ParseOptions(System.Text.Json.JsonElement element, SeeingAgentOptions options, ILogger? logger = null)
+        {
+            // Providers
+            if (element.TryGetProperty("Providers", out var providers) && providers.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                foreach (var prop in providers.EnumerateObject())
+                {
+                    try
+                    {
+                        var providerConfig = System.Text.Json.JsonSerializer.Deserialize<ProviderConfig>(prop.Value.GetRawText(), ConfigJsonOptions);
+                        if (providerConfig != null)
+                            options.Providers[prop.Name] = providerConfig;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "解析 Providers.{Name} 失败，已跳过", prop.Name);
+                    }
+                }
+            }
+            
+            // Models
+            if (element.TryGetProperty("Models", out var models) && models.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                foreach (var prop in models.EnumerateObject())
+                {
+                    try
+                    {
+                        var modelConfig = System.Text.Json.JsonSerializer.Deserialize<ModelConfig>(prop.Value.GetRawText(), ConfigJsonOptions);
+                        if (modelConfig != null)
+                            options.Models![prop.Name] = modelConfig;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "解析 Models.{Name} 失败，已跳过", prop.Name);
+                    }
+                }
+            }
+            
+            // DefaultProvider
+            if (element.TryGetProperty("DefaultProvider", out var defaultProvider) && defaultProvider.ValueKind == System.Text.Json.JsonValueKind.String)
+                options.DefaultProvider = defaultProvider.GetString();
+            
+            // DefaultModel
+            if (element.TryGetProperty("DefaultModel", out var defaultModel) && defaultModel.ValueKind == System.Text.Json.JsonValueKind.String)
+                options.DefaultModel = defaultModel.GetString();
+            
+            // DefaultAgent
+            if (element.TryGetProperty("DefaultAgent", out var defaultAgent) && defaultAgent.ValueKind == System.Text.Json.JsonValueKind.String)
+                options.DefaultAgent = defaultAgent.GetString();
+            
+            // Agents
+            if (element.TryGetProperty("Agents", out var agents) && agents.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                foreach (var prop in agents.EnumerateObject())
+                {
+                    try
+                    {
+                        var agentConfig = System.Text.Json.JsonSerializer.Deserialize<AgentConfig>(prop.Value.GetRawText(), ConfigJsonOptions);
+                        if (agentConfig != null)
+                            options.Agents[prop.Name] = agentConfig;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "解析 Agents.{Name} 失败，已跳过", prop.Name);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -279,9 +473,13 @@ namespace Seeing.Agent.Extensions
             // Agent 初始化服务（IHostedService）- 异步初始化运行时设置
             services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, AgentInitializationService>();
 
-            // 会话管理器（同一 Scoped 实例）
-            services.AddScoped<SessionManager>();
-            services.AddScoped<ISessionManager>(sp => sp.GetRequiredService<SessionManager>());
+            // 会话管理器 - 使用 Seeing.Session 包的实现
+            services.AddSingleton<Seeing.Session.Hooks.SessionHookManager>();
+            services.AddSingleton<Seeing.Session.Management.SessionManager>();
+            services.AddSingleton<Seeing.Session.Core.ISessionManager>(sp => sp.GetRequiredService<Seeing.Session.Management.SessionManager>());
+            // 新增 DI 注册：会话事件发布器与会话生命周期管理
+            services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
+            services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 
             // 技能管理器（集成配置的 Skills.Paths）
             services.AddSingleton<SkillManager>(sp =>
@@ -407,6 +605,9 @@ namespace Seeing.Agent.Extensions
             // 后台任务管理器
             services.AddSingleton<BackgroundTaskManager>();
             services.AddSingleton<IBackgroundTaskManager>(sp => sp.GetRequiredService<BackgroundTaskManager>());
+
+            // 组件管理器（统一管理 Skills/MCP/Plugins/Rules）
+            services.AddSingleton<IComponentManager, ComponentManager>();
         }
 
         /// <summary>
@@ -455,6 +656,42 @@ namespace Seeing.Agent.Extensions
                     _loggerFactory.CreateLogger<AnthropicClient>()),
                 _ => throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}")
             };
+        }
+    }
+}
+
+namespace Seeing.Agent.Extensions
+{
+    /// <summary>
+    /// 初始化扩展 - 使用统一组件管理器加载所有组件
+    /// </summary>
+    public static class SeeingAgentInitializationExtensions
+    {
+        /// <summary>
+        /// 初始化 Seeing.Agent - 通过 ComponentManager 加载 Skills/MCP/Plugins/Rules
+        /// </summary>
+        /// <param name="services">服务提供者</param>
+        /// <param name="workspaceRoot">工作区根目录</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>各组件加载结果</returns>
+        public static async Task<IReadOnlyList<ComponentLoadResult>> InitializeSeeingAgentAsync(
+            this IServiceProvider services,
+            string workspaceRoot,
+            CancellationToken cancellationToken = default)
+        {
+            var componentManager = services.GetRequiredService<IComponentManager>();
+            return await componentManager.LoadAllAsync(workspaceRoot, cancellationToken);
+        }
+
+        /// <summary>
+        /// 注册自定义组件加载器
+        /// </summary>
+        public static void RegisterComponentLoader(
+            this IServiceProvider services,
+            IComponentLoader loader)
+        {
+            var componentManager = services.GetRequiredService<IComponentManager>();
+            componentManager.RegisterLoader(loader);
         }
     }
 }

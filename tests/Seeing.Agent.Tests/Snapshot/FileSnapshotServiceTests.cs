@@ -49,7 +49,7 @@ public class FileSnapshotServiceTests
         snapshot.Content.Should().Be(content);
         snapshot.Operation.Should().Be("update");
         snapshot.SessionId.Should().Be("session-001");
-        snapshot.CreatedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
+        snapshot.CreatedAt.Should().BeCloseTo(DateTimeOffset.Now, TimeSpan.FromSeconds(5));
     }
 
     [Fact]

@@ -145,7 +145,7 @@ public class LoopDetector
         lock (_lock)
         {
             // 添加到历史记录
-            _callHistory.AddLast(new CallRecord(toolName, argumentsHash, DateTime.UtcNow));
+            _callHistory.AddLast(new CallRecord(toolName, argumentsHash, DateTime.Now));
 
             // 限制历史记录大小
             while (_callHistory.Count > MaxHistorySize)

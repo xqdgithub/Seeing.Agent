@@ -1,0 +1,33 @@
+/**
+ * MessageList 组件样式
+ */
+
+.message-list {
+    height: 100%;
+    min-height: 0;  /* 修复：允许 flex 子项收缩，防止被挤压 */
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+}
+
+.message-list-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-16);
+}
+
+.message-list-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.scroll-anchor {
+    height: 1px;
+    visibility: hidden;
+}

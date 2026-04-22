@@ -252,32 +252,11 @@ public class OpenAiClient : ILlmClient
 
             case "file":
             case "document":
-                if (!string.IsNullOrEmpty(p.FileId))
-                {
-                    sdkParts.Add(ChatMessageContentPart.CreateFilePart(p.FileId));
-                    return;
-                }
-
-                if (!string.IsNullOrEmpty(p.DataBase64) && !string.IsNullOrEmpty(p.MimeType))
-                {
-                    var name = string.IsNullOrEmpty(p.FileName) ? "upload" : p.FileName;
-                    sdkParts.Add(ChatMessageContentPart.CreateFilePart(
-                        BinaryData.FromBytes(Convert.FromBase64String(p.DataBase64)),
-                        p.MimeType,
-                        name));
-                }
-
+                // OpenAI SDK 2.0.0 的 ChatMessageContentPart 不保证 CreateFilePart 可用，当前实现选择跳过文件内容
                 return;
 
             case "input_audio":
-                if (!string.IsNullOrEmpty(p.DataBase64) && !string.IsNullOrEmpty(p.MimeType))
-                {
-                    var fmt = MapOpenAiInputAudioFormat(p.MimeType);
-                    sdkParts.Add(ChatMessageContentPart.CreateInputAudioPart(
-                        BinaryData.FromBytes(Convert.FromBase64String(p.DataBase64)),
-                        fmt));
-                }
-
+                // OpenAI SDK 2.0.0 不保证音频输入部分的实现，跳过非文本内容
                 return;
 
             default:
@@ -295,13 +274,7 @@ public class OpenAiClient : ILlmClient
             _ => null
         };
 
-    private static ChatInputAudioFormat MapOpenAiInputAudioFormat(string mime)
-    {
-        var m = mime.ToLowerInvariant();
-        if (m.Contains("mp3", StringComparison.Ordinal) || m.Contains("mpeg", StringComparison.Ordinal))
-            return ChatInputAudioFormat.Mp3;
-        return ChatInputAudioFormat.Wav;
-    }
+    
 
     private AssistantChatMessage BuildAssistantMessage(CoreChatMessage msg)
     {

@@ -1,0 +1,2 @@
+- 测试阶段出现问题: tests/Seeing.Session.Tests 中对 SessionStatus.Running 的引用在当前代码中未定义。
+- 需要与开发/测试团队确认设计是否应包含 Running 枚举值，或是否应调整测试用例。

@@ -1,8 +1,8 @@
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
@@ -86,6 +86,12 @@ internal static class Program
         services.AddSingleton<IPermissionChannel, ConsolePermissionChannel>();
         services.AddSingleton<IAgentAdapter, DefaultAgentAdapter>();
         services.AddSingleton<ChatOrchestrator>();
+        
+        // 注册事件通道和路由服务
+        services.AddSingleton<EventChannelService>();
+        services.AddSingleton<RenderService>();
+        services.AddSingleton<EventRouter>();
+        
         services.AddTuiCommands();
         services.AddSingleton<TuiApp>();
 

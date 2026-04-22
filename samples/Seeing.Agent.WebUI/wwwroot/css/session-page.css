@@ -1,0 +1,134 @@
+/* Session Page Styles */
+
+.session-page-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--color-bg-base);
+}
+
+/* Session Header */
+.session-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-container);
+    border-bottom: 1px solid var(--color-border);
+    min-height: 48px;
+}
+
+.session-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.session-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-left: var(--space-2);
+}
+
+.session-header-right {
+    display: flex;
+    align-items: center;
+}
+
+/* Messages Container */
+.session-messages-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-4);
+    position: relative;
+}
+
+.session-empty-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+
+.empty-content {
+    text-align: center;
+    color: var(--color-text-secondary);
+}
+
+.empty-content .empty-icon {
+    font-size: 48px;
+    color: var(--color-text-tertiary);
+    margin-bottom: var(--space-4);
+}
+
+.empty-content p {
+    margin: var(--space-2) 0;
+}
+
+.empty-content .empty-hint {
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-sm);
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+/* Input Container */
+.session-input-container {
+    padding: var(--space-4);
+    background: var(--color-bg-container);
+    border-top: 1px solid var(--color-border);
+}
+
+/* Error Alert */
+.session-error-alert {
+    position: fixed;
+    bottom: var(--space-4);
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 600px;
+    z-index: 1000;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .session-header {
+        padding: var(--space-2) var(--space-3);
+    }
+    
+    .session-title {
+        font-size: var(--font-size-md);
+    }
+    
+    .session-messages-container {
+        padding: var(--space-2);
+    }
+    
+    .session-input-container {
+        padding: var(--space-2);
+    }
+}

@@ -1,0 +1,12 @@
+@using Microsoft.AspNetCore.Components
+@* SlotHost renders a named slot if registered in SlotRegistry *@
+@code {
+  [Parameter] public string SlotName {get;set;}
+}
+<div>
+  @{ var fragment = Seeing.Agent.WebUI.State.SlotRegistry.GetSlot(SlotName); }
+  @if (fragment != null)
+  {
+     @fragment
+  }
+</div>

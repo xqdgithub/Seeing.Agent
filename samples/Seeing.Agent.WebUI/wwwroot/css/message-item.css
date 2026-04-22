@@ -1,0 +1,285 @@
+/**
+ * MessageItem 组件样式
+ */
+
+.message-item {
+    max-width: var(--message-max-width);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    transition: var(--transition-fast);
+}
+
+.message-item:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+/* ========== 角色样式 ========== */
+.message-user {
+    align-self: flex-end;
+    background: var(--color-user-bg);
+    border-color: var(--color-user-border);
+}
+
+.message-assistant {
+    align-self: flex-start;
+    background: var(--color-assistant-bg);
+    border-color: var(--color-assistant-border);
+}
+
+.message-system {
+    align-self: flex-start;
+    background: var(--color-system-bg);
+    border-color: var(--color-system-border);
+    max-width: 100%;
+}
+
+.message-tool {
+    align-self: flex-start;
+    background: var(--color-tool-bg);
+    border-color: var(--color-tool-border);
+}
+
+/* ========== 消息头部 ========== */
+.message-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
+}
+
+.message-role {
+    display: flex;
+    align-items: center;
+}
+
+.message-time {
+    display: flex;
+    align-items: center;
+}
+
+/* ========== 推理过程 ========== */
+.message-reasoning-section {
+    margin-bottom: var(--space-3);
+    border: 1px solid var(--color-border-secondary);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-tertiary);
+}
+
+.message-reasoning-header {
+    display: flex;
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    transition: var(--transition-fast);
+    user-select: none;
+}
+
+.message-reasoning-header:hover {
+    background: var(--color-bg-secondary);
+}
+
+/* 展开状态下的 header 边框 */
+.message-reasoning-section.expanded .message-reasoning-header {
+    border-bottom: 1px solid var(--color-border-secondary);
+}
+
+/* 展开/折叠图标 */
+.message-reasoning-icon {
+    margin-right: var(--space-1);
+    transition: transform var(--transition-fast);
+}
+
+.message-reasoning-section.collapsed .message-reasoning-icon {
+    transform: rotate(0deg);
+}
+
+.message-reasoning-section.expanded .message-reasoning-icon {
+    transform: rotate(90deg);
+}
+
+.message-reasoning {
+    padding: var(--space-3);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-sm);
+    max-height: 300px;
+    overflow-y: auto;
+    animation: expandContent 0.15s ease-out;
+}
+
+/* 推理过程流式显示状态 */
+.message-reasoning.reasoning-streaming {
+    border-left: 3px solid var(--color-primary);
+    background: linear-gradient(90deg, var(--color-bg-tertiary), transparent);
+}
+
+/* 推理过程完成状态 */
+.message-reasoning.reasoning-complete {
+    border-left: 3px solid var(--color-success);
+}
+
+/* 推理状态指示器 */
+.reasoning-status {
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-primary);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* 推理预览文本 */
+.reasoning-preview {
+    margin-left: var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+@keyframes expandContent {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 300px;
+    }
+}
+
+/* ========== 消息内容 ========== */
+.message-content {
+    line-height: var(--line-height-relaxed);
+    word-wrap: break-word;
+}
+
+.message-content p {
+    margin-bottom: var(--space-2);
+}
+
+.message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4 {
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-2);
+    font-weight: var(--font-weight-semibold);
+}
+
+.message-content ul,
+.message-content ol {
+    margin-left: var(--space-4);
+    margin-bottom: var(--space-2);
+}
+
+.message-content li {
+    margin-bottom: var(--space-1);
+}
+
+.message-content blockquote {
+    margin: var(--space-3) 0;
+    padding: var(--space-2) var(--space-4);
+    background: var(--color-bg-tertiary);
+    border-left: 4px solid var(--color-primary);
+    border-radius: var(--radius-sm);
+}
+
+.message-content a {
+    color: var(--color-primary);
+    text-decoration: none;
+}
+
+.message-content a:hover {
+    text-decoration: underline;
+}
+
+.message-content table {
+    width: 100%;
+    margin: var(--space-3) 0;
+    border-collapse: collapse;
+}
+
+.message-content th,
+.message-content td {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+}
+
+.message-content th {
+    background: var(--color-bg-tertiary);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* ========== 工具调用 ========== */
+.message-toolcalls {
+    margin-top: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    flex-shrink: 0;  /* 修复：防止工具调用列表被压缩 */
+}
+
+.toolcall-item {
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    flex-shrink: 0;  /* 修复：防止单个工具调用被压缩 */
+    min-height: 48px;  /* 修复：保证最小高度 */
+}
+
+.toolcall-item:hover {
+    background: var(--color-bg-tertiary);
+}
+
+.toolcall-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.toolcall-status {
+    margin-left: var(--space-2);
+}
+
+.toolcall-result {
+    margin-top: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    background: var(--color-success-bg);
+    border-radius: var(--radius-sm);
+}
+
+.toolcall-error {
+    margin-top: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    background: var(--color-error-bg);
+    border-radius: var(--radius-sm);
+}
+
+/* ========== 加载状态 ========== */
+.message-loading {
+    display: flex;
+    align-items: center;
+    margin-top: var(--space-2);
+    padding: var(--space-2);
+}

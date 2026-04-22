@@ -30,5 +30,5 @@ public class PromptContext
     public string? WorkingDirectory { get; set; }
 
     /// <summary>创建时间</summary>
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; set; } = DateTime.Now;
 }

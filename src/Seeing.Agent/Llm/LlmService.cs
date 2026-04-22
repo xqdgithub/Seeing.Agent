@@ -477,8 +477,8 @@ public class LlmService : ILlmService
     /// </summary>
     private void InitializeModels()
     {
-        foreach (var (key, config) in PredefinedModels.GetAll())
-            RegisterModelEntry(key, config);
+        //foreach (var (key, config) in PredefinedModels.GetAll())
+        //    RegisterModelEntry(key, config);
 
         if (_options.ModelScope?.Models != null)
         {
@@ -509,8 +509,8 @@ public class LlmService : ILlmService
             {
                 EnsureModelDefaults(modelId, config, providerId);
                 RegisterModelEntry($"{providerId}/{modelId}", config);
-                if (!_modelConfigs.ContainsKey(modelId))
-                    RegisterModelEntry(modelId, config);
+                //if (!_modelConfigs.ContainsKey(modelId))
+                //    RegisterModelEntry(modelId, config);
             }
         }
 

@@ -56,40 +56,40 @@ namespace Seeing.Agent.Core.Abstractions
         // ========== 现有属性 ==========
 
         /// <summary>Agent 名称</summary>
-        public abstract string Name { get; }
+        public virtual string Name { get; set; } = "";
 
         /// <summary>Agent 模式</summary>
-        public virtual AgentMode Mode => AgentMode.All;
+        public virtual AgentMode Mode { get; set; } = AgentMode.All;
 
         /// <summary>Agent 描述</summary>
-        public abstract string Description { get; }
+        public virtual string Description { get; set; } = "";
 
         /// <summary>权限规则集</summary>
-        public virtual IReadOnlyList<PermissionRule> Permissions => Array.Empty<PermissionRule>();
+        public virtual IReadOnlyList<PermissionRule> Permissions { get; set; } = Array.Empty<PermissionRule>();
 
         /// <summary>系统提示词</summary>
-        public virtual string? SystemPrompt => Definition?.SystemPrompt;
+        public virtual string? SystemPrompt { get; set; }
 
         /// <summary>模型配置</summary>
-        public virtual ModelReference? Model => Definition?.Model;
+        public virtual ModelReference? Model { get; set; }
 
         /// <summary>最大迭代步骤</summary>
-        public virtual int? MaxSteps => Definition?.MaxSteps;
+        public virtual int? MaxSteps { get; set; }
 
         /// <summary>Agent 状态</summary>
-        public virtual AgentStatus Status => AgentStatus.Ready;
+        public virtual AgentStatus Status { get; set; } = AgentStatus.Ready;
 
         /// <summary>
         /// 允许的工具列表 - 子 Agent 可限制使用的工具
         /// <para>默认空数组表示允许所有工具</para>
         /// </summary>
-        public virtual IReadOnlyList<string> AllowedTools => Definition?.AllowedTools ?? Array.Empty<string>();
+        public virtual IReadOnlyList<string> AllowedTools { get; set; } = Array.Empty<string>();
 
         /// <summary>
         /// 禁止的工具列表 - 子 Agent 可禁止特定工具
         /// <para>默认空数组表示不禁止任何工具</para>
         /// </summary>
-        public virtual IReadOnlyList<string> DeniedTools => Definition?.DeniedTools ?? Array.Empty<string>();
+        public virtual IReadOnlyList<string> DeniedTools { get; set; } = Array.Empty<string>();
 
         // ========== 统一执行入口 ==========
 

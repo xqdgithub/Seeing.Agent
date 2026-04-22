@@ -399,7 +399,7 @@ namespace Seeing.Agent.Tools
 
             // ========== Oracle 建议：工具级重试策略 ==========
             Exception? lastException = null;
-            var startTime = DateTime.UtcNow;
+            var startTime = DateTime.Now;
             
             for (int attempt = 0; attempt < _maxRetries; attempt++)
             {
@@ -453,7 +453,7 @@ namespace Seeing.Agent.Tools
                     toolResult.Output = afterOutput["output"]?.ToString() ?? toolResult.Output;
                     toolResult.Error = afterOutput["error"]?.ToString() ?? toolResult.Error;
                     toolResult.ToolCallId = toolCall.Id;
-                    toolResult.Duration = DateTime.UtcNow - startTime;
+                    toolResult.Duration = DateTime.Now - startTime;
 
                     return toolResult;
                 }
@@ -498,7 +498,7 @@ namespace Seeing.Agent.Tools
                 Success = false,
                 ToolCallId = toolCall.Id,
                 Error = $"[重试耗尽] {lastException?.Message}",
-                Duration = DateTime.UtcNow - startTime
+                Duration = DateTime.Now - startTime
             };
         }
 

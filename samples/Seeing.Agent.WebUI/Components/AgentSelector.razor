@@ -1,0 +1,104 @@
+@using AntDesign
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Core.Models
+@using Seeing.Agent.WebUI.State
+@inject AppState AppState
+
+<div Class="@GetSelectorClass()">
+    @if (!Collapsed)
+    {
+        <div Class="selector-label">
+            <span Class="selector-label-text">Agent</span>
+        </div>
+        <Select @bind-Value="@SelectedAgent"
+                DataSource="@GetAgentOptions()"
+                ValueName="@nameof(AgentOption.Value)"
+                LabelName="@nameof(AgentOption.Label)"
+                Placeholder="选择 Agent"
+                Style="width: 100%;"
+                Disabled="@IsDisabled">
+            <LabelTemplate>
+                <div Class="selector-selected">
+                    <Icon Type="@IconType.Outline.Robot" />
+                    <span Style="margin-left: var(--space-1);">@context.Label</span>
+                </div>
+            </LabelTemplate>
+            <ItemTemplate>
+                <div Class="selector-item">
+                    <Icon Type="@IconType.Outline.Robot" />
+                    <div Class="selector-item-content">
+                        <strong>@context.Label</strong>
+                        @if (!string.IsNullOrEmpty(context.Description))
+                        {
+                            <span Class="selector-item-desc">@context.Description</span>
+                        }
+                    </div>
+                </div>
+            </ItemTemplate>
+        </Select>
+    }
+    else
+    {
+        <Tooltip Title="@GetAgentTooltipTitle()">
+            <Button Type="@ButtonType.Text"
+                    Size="@ButtonSize.Small"
+                    Icon="@IconType.Outline.Robot"
+                    Style="color: var(--color-text-secondary);" />
+        </Tooltip>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string SelectedAgent { get; set; } = "";
+    
+    [Parameter]
+    public EventCallback<string> SelectedAgentChanged { get; set; }
+    
+    [Parameter]
+    public bool Collapsed { get; set; }
+    
+    [Parameter]
+    public bool IsDisabled { get; set; }
+    
+    private string GetSelectorClass()
+        => Collapsed ? "agent-selector agent-selector-collapsed" : "agent-selector";
+    
+    private string GetAgentTooltipTitle() => $"Agent: {SelectedAgent}";
+    
+    private List<AgentOption> GetAgentOptions()
+    {
+        var options = new List<AgentOption>();
+        
+        // 显示所有非隐藏的 Agent（包括 Primary 和 SubAgent）
+        foreach (var agent in AppState.AvailableAgents)
+        {
+            if (!agent.IsHidden)
+            {
+                var modeLabel = agent.Mode == AgentMode.Primary ? "主代理" : 
+                                agent.Mode == AgentMode.SubAgent ? "子代理" : "通用";
+                options.Add(new AgentOption
+                {
+                    Value = agent.Name,
+                    Label = agent.Name,
+                    Description = $"{agent.Description ?? modeLabel} ({modeLabel})"
+                });
+            }
+        }
+        
+        // 如果没有可用的 Agent，提供默认选项
+        if (options.Count == 0)
+        {
+            options.Add(new AgentOption { Value = "build", Label = "build", Description = "默认代理" });
+        }
+        
+        return options;
+    }
+    
+    public class AgentOption
+    {
+        public string Value { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string? Description { get; set; }
+    }
+}

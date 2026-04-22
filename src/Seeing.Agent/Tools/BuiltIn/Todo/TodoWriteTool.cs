@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Sessions;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.Todo
@@ -56,12 +55,12 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
     public class TodoWriteTool : ToolBase
     {
         private const string TodoContextKey = "todos";
-        private readonly ISessionManager _sessionManager;
+        private readonly Seeing.Session.Core.ISessionManager _sessionManager;
 
         /// <summary>
         /// 创建 TodoWriteTool 实例
         /// </summary>
-        public TodoWriteTool(ILogger<TodoWriteTool> logger, ISessionManager sessionManager) : base(logger)
+        public TodoWriteTool(ILogger<TodoWriteTool> logger, Seeing.Session.Core.ISessionManager sessionManager) : base(logger)
         {
             _sessionManager = sessionManager;
         }
@@ -107,13 +106,14 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
             }
 
             // 更新会话中的 Todo 列表
-            var session = _sessionManager.GetSession(context.SessionId);
+            var session = _sessionManager.Get(context.SessionId);
             if (session == null)
             {
                 return Failure($"会话不存在: {context.SessionId}");
             }
 
-            await _sessionManager.SetContextAsync(context.SessionId, TodoContextKey, todos);
+            // 直接设置 SessionData 的 Context
+            session.SetContext(TodoContextKey, todos);
 
             var pendingCount = todos.Count(t => t.Status != TodoStatus.Completed);
             var output = JsonSerializer.Serialize(todos, new JsonSerializerOptions
@@ -274,12 +274,12 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
     public class TodoReadTool : ToolBase
     {
         private const string TodoContextKey = "todos";
-        private readonly ISessionManager _sessionManager;
+        private readonly Seeing.Session.Core.ISessionManager _sessionManager;
 
         /// <summary>
         /// 创建 TodoReadTool 实例
         /// </summary>
-        public TodoReadTool(ILogger<TodoReadTool> logger, ISessionManager sessionManager) : base(logger)
+        public TodoReadTool(ILogger<TodoReadTool> logger, Seeing.Session.Core.ISessionManager sessionManager) : base(logger)
         {
             _sessionManager = sessionManager;
         }
@@ -311,8 +311,8 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
                 });
             }
 
-            var todos = _sessionManager.GetContext<List<TodoItem>>(context.SessionId, TodoContextKey) 
-                ?? new List<TodoItem>();
+            var session = _sessionManager.Get(context.SessionId);
+            var todos = session?.GetContext<List<TodoItem>>(TodoContextKey) ?? new List<TodoItem>();
 
             var pendingCount = todos.Count(t => t.Status != TodoStatus.Completed);
             var output = JsonSerializer.Serialize(todos, new JsonSerializerOptions

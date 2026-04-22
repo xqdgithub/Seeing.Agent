@@ -37,8 +37,8 @@ namespace Seeing.Agent.Skills
             _logger = logger;
 
             // 项目相对路径
-            AddDefaultDirectory("./.seeing/skills");
             AddDefaultDirectory("./.agents/skills");
+            AddDefaultDirectory("./.seeing/skills");
 
             // 用户目录（跨平台支持）
             var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

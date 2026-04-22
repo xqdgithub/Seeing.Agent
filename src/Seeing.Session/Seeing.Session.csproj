@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Session</RootNamespace>
+    <AssemblyName>Seeing.Session</AssemblyName>
+    
+    <!-- NuGet 包信息 -->
+    <PackageId>Seeing.Session</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Seeing</Authors>
+    <Description>Independent Session management package for AI Agent frameworks</Description>
+    <PackageTags>AI;Agent;Session;Management</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 核心依赖（使用中央包管理） -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>

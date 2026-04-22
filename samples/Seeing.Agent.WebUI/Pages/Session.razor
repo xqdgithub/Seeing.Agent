@@ -1,0 +1,1019 @@
+@page "/session"
+@page "/session/{SessionId}"
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Agent.WebUI.Models
+@using Services = Seeing.Agent.WebUI.Services
+@using Core = Seeing.Agent.Core
+@using Seeing.Agent.WebUI.State
+@using Seeing.Agent.Tools
+@using Seeing.Agent.Skills
+@using Seeing.Agent.Llm
+@using Seeing.Session.Core
+@using Seeing.Session.Management
+@inject SessionState SessionState
+@inject AppState AppState
+@inject SessionProvider SessionProvider
+@inject EventStreamHandler EventStreamHandler
+@inject ErrorHandlingService ErrorHandlingService
+@inject NavigationManager NavigationManager
+@inject IMessageService MessageService
+@inject Core.AgentExecutor AgentExecutor
+@inject Core.Interfaces.IAgentRegistry AgentRegistry
+@inject Core.Interfaces.IPermissionChannel PermissionChannel
+@inject ToolInvoker ToolInvoker
+@inject SkillManager SkillManager
+@implements IDisposable
+
+<div Class="session-page-container">
+    <!-- 会话头部 -->
+    <div Class="session-header">
+        <div Class="session-header-left">
+            <Button Type="@ButtonType.Text"
+                    Size="@ButtonSize.Small"
+                    Icon="@IconType.Outline.Home"
+                    OnClick="@GoToHome">
+                @if (!SidebarCollapsed)
+                {
+                    <span>首页</span>
+                }
+            </Button>
+            <Divider Type="@DividerType.Vertical" />
+            <span Class="session-title">@SessionState.Title</span>
+            @if (SessionState.IsExecuting)
+            {
+                <Badge Status="@BadgeStatus.Processing" Text="执行中" />
+            }
+        </div>
+        <div Class="session-header-right">
+            <Space>
+                <SpaceItem>
+                    <Tooltip Title="重命名会话">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Edit"
+                                OnClick="@OnRenameSession" />
+                    </Tooltip>
+                </SpaceItem>
+                <SpaceItem>
+                    <Tooltip Title="分支会话">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Copy"
+                                OnClick="@OnBranchSession" />
+                    </Tooltip>
+                </SpaceItem>
+                <SpaceItem>
+                    <Tooltip Title="清空会话">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Delete"
+                                OnClick="@OnClearSession"
+                                Disabled="@SessionState.IsExecuting" />
+                    </Tooltip>
+                </SpaceItem>
+            </Space>
+        </div>
+    </div>
+
+    <!-- 消息列表区域 -->
+    <div Class="session-messages-container">
+        @if (ShowEmptyState)
+        {
+            <!-- 无会话状态：引导用户创建新会话 -->
+            <Empty Class="session-empty-state">
+                <DescriptionTemplate>
+                    <div Class="empty-content">
+                        <Icon Type="@IconType.Outline.FileAdd" Class="empty-icon" Style="font-size: 48px;" />
+                        <p Style="font-size: 18px; margin-top: 16px;">暂无会话</p>
+                        <p Class="empty-hint">点击左侧边栏的"新建会话"按钮开始对话</p>
+                    </div>
+                </DescriptionTemplate>
+            </Empty>
+        }
+        else if (_messageViewModels.Count == 0)
+        {
+            <Empty Class="session-empty-state">
+                <DescriptionTemplate>
+                    <div Class="empty-content">
+                        <Icon Type="@IconType.Outline.Message" Class="empty-icon" />
+                        <p>暂无消息</p>
+                        <p Class="empty-hint">输入问题开始与 AI Agent 对话</p>
+                    </div>
+                </DescriptionTemplate>
+            </Empty>
+        }
+        else
+        {
+            <MessageList Messages="@_messageViewModels"
+                         AutoScroll="true"
+                         OnToolClick="@OnToolClick" />
+        }
+        
+        <!-- 加载状态指示器 -->
+        @if (IsLoadingSession)
+        {
+            <div Class="loading-overlay">
+                <Spin Size="@SpinSize.Large" Tip="加载会话..." />
+            </div>
+        }
+    </div>
+
+    <!-- 输入区域：仅在非空状态时显示 -->
+    @if (!ShowEmptyState)
+    {
+        <div Class="session-input-container">
+            <!-- Slot 扩展点: session_prompt -->
+            <SlotHost SlotName="session_prompt" />
+            
+            <PromptInput IsProcessing="@SessionState.IsExecuting"
+                         Placeholder="@GetPlaceholderText()"
+                         HelpText="@GetHelpText()"
+                         AvailableTools="_availableTools"
+                         AvailableSkills="_availableSkills"
+                         CancellationTokenSource="@SessionState.CancellationTokenSource"
+                         OnSubmitCallback="@OnSubmitMessage"
+                         OnCancelCallback="@OnCancelExecution" />
+        </div>
+    }
+    
+    <!-- 错误提示 -->
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <Alert Type="@AlertType.Error"
+               Message="@ErrorMessage"
+               ShowIcon="true"
+               Closable="true"
+               OnClose="@OnClearError"
+               Class="session-error-alert" />
+    }
+    
+    <!-- 重命名对话框 -->
+    <Modal Title="重命名会话"
+           Visible="@RenameModalVisible"
+           OnOk="@OnRenameConfirm"
+           OnCancel="@OnRenameCancel"
+           OkText="@OkText"
+           CancelText="@CancelText">
+        <Form Model="@RenameForm" Layout="@FormLayout.Horizontal">
+            <FormItem Label="会话标题">
+                <Input @bind-Value="@RenameForm.Title"
+                       Placeholder="输入新的会话标题" />
+            </FormItem>
+        </Form>
+    </Modal>
+</div>
+
+@code {
+
+    /// <summary>
+    /// 常量文本（避免编码问题）
+    /// </summary>
+    private const string OkText = "确定";
+    private const string CancelText = "取消";
+    
+    /// <summary>
+    /// 可用工具列表（用于快速命令）
+    /// </summary>
+    private List<QuickToolViewModel> _availableTools = new();
+    
+    /// <summary>
+    /// 可用技能列表（用于快速命令）
+    /// </summary>
+    private List<QuickSkillViewModel> _availableSkills = new();
+
+    /// <summary>
+    /// UI 显示用的消息视图模型列表（从 SessionData.Messages 转换）
+    /// </summary>
+    private List<MessageViewModel> _messageViewModels = new();
+
+    /// <summary>
+    /// 路由参数：会话 ID
+    /// </summary>
+    [Parameter]
+    public string? SessionId { get; set; }
+
+    /// <summary>
+    /// 侧边栏折叠状态（从 MainLayout 获取）
+    /// </summary>
+    private bool SidebarCollapsed { get; set; } = false;
+
+    /// <summary>
+    /// 是否正在加载会话
+    /// </summary>
+    private bool IsLoadingSession { get; set; } = false;
+
+    /// <summary>
+    /// 是否显示空状态（无会话）
+    /// </summary>
+    private bool ShowEmptyState { get; set; } = false;
+
+    /// <summary>
+    /// 错误消息
+    /// </summary>
+    private string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// 重命名对话框可见性
+    /// </summary>
+    private bool RenameModalVisible { get; set; } = false;
+
+    /// <summary>
+    /// 重命名表单
+    /// </summary>
+    private RenameSessionForm RenameForm { get; set; } = new();
+
+    /// <summary>
+    /// 当前选中的工具调用（用于详情显示）
+    /// </summary>
+    private ToolCallViewModel? SelectedToolCall { get; set; }
+
+    /// <summary>
+    /// 组件初始化
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        // 订阅会话变更事件
+        SessionProvider.OnCurrentSessionChanged += OnSessionProviderChanged;
+        
+        // 加载工具和技能数据
+        await LoadToolsAndSkillsAsync();
+        
+        // 加载会话
+        await LoadSessionAsync();
+    }
+    
+    /// <summary>
+    /// 会话变更事件处理
+    /// </summary>
+    private async void OnSessionProviderChanged()
+    {
+        // 当 SessionProvider 的会话变化时，同步更新 SessionState 并刷新 UI
+        if (SessionProvider.CurrentSession != null)
+        {
+            // 检查是否是不同的会话
+            if (SessionState.CurrentSession?.Id != SessionProvider.CurrentSession.Id)
+            {
+                SessionState.SetSession(SessionProvider.CurrentSession);
+                RefreshMessageViewModels();
+                
+                // 同步 AppState
+                AppState.SelectedAgent = SessionState.SelectedAgent;
+                AppState.SelectedModel = SessionState.SelectedModel;
+                AppState.SelectedModelProvider = SessionState.SelectedModelProvider;
+                AppState.CurrentSessionId = SessionProvider.CurrentSession.Id;
+                AppState.NotifyChange();
+                
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// 加载工具和技能数据（用于快速命令浮窗）
+    /// </summary>
+    private async Task LoadToolsAndSkillsAsync()
+    {
+        try
+        {
+            // 加载工具
+            var toolSchemas = await ToolInvoker.GetToolSchemasAsync();
+            _availableTools = toolSchemas.Select(t => new QuickToolViewModel
+            {
+                Name = t.Function.Name,
+                Id = t.Function.Name,
+                Description = t.Function.Description ?? "",
+                ParametersHint = GetParametersHint(t.Function.Parameters)
+            }).ToList();
+            
+            // 加载技能
+            await SkillManager.DiscoverSkillsAsync();
+            var skillInfos = SkillManager.GetAllSkillInfos();
+            _availableSkills = skillInfos.Values.Select(s => new QuickSkillViewModel
+            {
+                Name = s.Name,
+                Description = s.Description ?? "",
+                Version = s.Version,
+                Author = s.Author
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            // 静默处理，不影响主流程
+            Console.WriteLine($"加载工具/技能失败: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// 获取参数提示（简要描述）
+    /// </summary>
+    private string? GetParametersHint(object? parameters)
+    {
+        if (parameters == null) return null;
+        
+        try
+        {
+            // 尝试解析为 JsonElement
+            if (parameters is System.Text.Json.JsonElement element)
+            {
+                if (element.TryGetProperty("properties", out var props))
+                {
+                    var names = props.EnumerateObject().Select(p => p.Name).Take(3);
+                    return $"参数: {string.Join(", ", names)}";
+                }
+            }
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 参数变更时重新加载会话
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        // 如果路由参数变更，重新加载会话
+        var currentLoadedId = SessionState.CurrentSession?.Id;
+        
+        // 有新的 SessionId 且与当前不同时，重新加载
+        if (!string.IsNullOrEmpty(SessionId) && SessionId != currentLoadedId)
+        {
+            await LoadSessionByIdAsync(SessionId);
+        }
+        // SessionId 相同但需要刷新 UI（比如外部切换会话后）
+        else if (!string.IsNullOrEmpty(SessionId) && SessionId == currentLoadedId)
+        {
+            // 确保 SessionState 与 SessionProvider 同步
+            if (SessionProvider.CurrentSession != null && 
+                SessionProvider.CurrentSession.Id == SessionId &&
+                SessionState.CurrentSession != SessionProvider.CurrentSession)
+            {
+                SessionState.SetSession(SessionProvider.CurrentSession);
+            }
+            
+            // 刷新消息列表 UI
+            RefreshMessageViewModels();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// 加载会话
+    /// </summary>
+    private async Task LoadSessionAsync()
+    {
+        IsLoadingSession = true;
+
+        try
+        {
+            // 如果路由有指定会话 ID，加载该会话
+            if (!string.IsNullOrEmpty(SessionId))
+            {
+                await LoadSessionByIdAsync(SessionId);
+            }
+            else
+            {
+                // 无路由参数时，确保有会话可用
+                // 等待 MainLayout 完成初始化（检查 CurrentSession）
+                if (SessionProvider.CurrentSession == null)
+                {
+                    // MainLayout 可能还没完成初始化，自行初始化
+                    await SessionProvider.InitializeSessionListAsync();
+                    
+                    var sessions = SessionProvider.GetSessionList();
+                    if (sessions.Count > 0)
+                    {
+                        // 加载最近的会话
+                        await LoadSessionByIdAsync(sessions.First().Id);
+                    }
+                    else
+                    {
+                        // 无任何会话，显示空状态
+                        ShowEmptyState = true;
+                    }
+                }
+                else
+                {
+                    // 已有当前会话，直接使用
+                    SessionState.SetSession(SessionProvider.CurrentSession);
+                    RefreshMessageViewModels();
+                    ShowEmptyState = false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"加载会话失败: {ex.Message}";
+            ShowEmptyState = true;
+        }
+        finally
+        {
+            IsLoadingSession = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// 根据 ID 加载会话（使用 SessionProvider）
+    /// </summary>
+    private async Task LoadSessionByIdAsync(string sessionId)
+    {
+        // 使用 SessionProvider 加载 SessionData
+        var sessionData = await SessionProvider.LoadSessionAsync(sessionId);
+
+        if (sessionData != null)
+        {
+            // 设置当前会话到 SessionState
+            SessionState.SetSession(sessionData);
+            
+            // 转换消息为 UI 显示用的 MessageViewModel
+            RefreshMessageViewModels();
+            
+            // 同步更新 AppState（用于 AgentSelector/ModelSelector 显示）
+            AppState.SelectedAgent = SessionState.SelectedAgent;
+            AppState.SelectedModel = SessionState.SelectedModel;
+            AppState.CurrentSessionId = sessionId;
+            
+            // 通知 UI 更新
+            AppState.NotifyChange();
+            
+            // 隐藏空状态
+            ShowEmptyState = false;
+        }
+        else
+        {
+            ErrorMessage = $"找不到会话: {sessionId}";
+            ShowEmptyState = true;
+        }
+    }
+
+    /// <summary>
+    /// 从 SessionData.Messages 刷新 UI 显示的消息列表
+    /// </summary>
+    private void RefreshMessageViewModels()
+    {
+        _messageViewModels.Clear();
+        
+        if (SessionState.CurrentSession?.Messages != null)
+        {
+            foreach (var msg in SessionState.CurrentSession.Messages)
+            {
+                _messageViewModels.Add(ConvertToMessageViewModel(msg));
+            }
+        }
+    }
+
+    /// <summary>
+    /// 将 SessionMessage 转换为 MessageViewModel（用于 UI 显示）
+    /// </summary>
+    private MessageViewModel ConvertToMessageViewModel(SessionMessage msg)
+    {
+        var viewModel = new MessageViewModel
+        {
+            Id = msg.Id ?? Guid.NewGuid().ToString("N")[..8],
+            Role = msg.Role,
+            Content = msg.Content,
+            Reasoning = msg.ReasoningContent,
+            Timestamp = msg.CreatedAt.ToLocalTime(),
+            IsComplete = true
+        };
+
+        // 转换多模态内容段（修复：复制 Parts）
+        if (msg.Parts != null && msg.Parts.Count > 0)
+        {
+            viewModel.Parts = msg.Parts.Select(p => ContentPartViewModel.FromSessionPart(p)).ToList();
+        }
+
+        // 转换工具调用
+        if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
+        {
+            viewModel.ToolCalls = msg.ToolCalls.Select(tc => new ToolCallViewModel
+            {
+                Id = tc.Id,
+                Name = tc.Name,
+                Parameters = tc.Arguments,
+                Result = tc.Result,
+                Status = tc.Status,
+                Error = tc.Error
+            }).ToList();
+        }
+
+        return viewModel;
+    }
+
+    /// <summary>
+    /// 获取占位符文本
+    /// </summary>
+    private string GetPlaceholderText()
+    {
+        if (SessionState.IsExecuting)
+            return "正在处理...";
+        return $"向 {SessionState.SelectedAgent} Agent 发送消息...";
+    }
+
+    /// <summary>
+    /// 获取帮助文本
+    /// </summary>
+    private string GetHelpText()
+    {
+        return "Enter 发送 | Shift+Enter 换行 | 支持粘贴图片和拖放文件";
+    }
+
+    /// <summary>
+    /// 提交消息处理
+    /// </summary>
+    private async Task OnSubmitMessage(PromptSubmitEventArgs args)
+    {
+        // 验证输入
+        if (string.IsNullOrWhiteSpace(args.Text) && args.Attachments.Count == 0)
+        {
+            ErrorMessage = "请输入消息内容";
+            return;
+        }
+
+        // 确保有当前会话
+        if (SessionState.CurrentSession == null)
+        {
+            ErrorMessage = "请先创建或选择一个会话";
+            return;
+        }
+
+        // 清除错误消息
+        ErrorMessage = null;
+
+        // 开始执行
+        SessionState.StartExecution();
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // 构建多模态内容段列表
+            var parts = new List<SessionContentPart>();
+            
+            // 添加文本内容
+            if (!string.IsNullOrWhiteSpace(args.Text))
+            {
+                parts.Add(SessionContentPart.CreateText(args.Text));
+            }
+            
+            // 添加附件内容段
+            foreach (var att in args.Attachments)
+            {
+                if (att.Status != AttachmentUploadStatus.Completed)
+                    continue;
+                    
+                // 从 Base64Content 中提取纯 Base64 数据（去除 data: 前缀）
+                var base64Data = ExtractBase64Data(att.Base64Content);
+                
+                if (att.IsImage)
+                {
+                    // 图片：创建图片内容段
+                    parts.Add(SessionContentPart.CreateImageFromBase64(
+                        base64Data, 
+                        att.FileType));
+                }
+                else
+                {
+                    // 文件：创建文件内容段
+                    parts.Add(SessionContentPart.CreateFileFromBase64(
+                        base64Data, 
+                        att.FileType, 
+                        att.FileName));
+                }
+            }
+            
+            // 创建用户消息（多模态）
+            SessionMessage userMessage;
+            if (parts.Count > 1 || args.Attachments.Count > 0)
+            {
+                // 有附件或多个内容段时，使用多模态消息
+                userMessage = SessionMessage.UserMessageWithParts(parts);
+            }
+            else
+            {
+                // 仅文本时，使用简化消息
+                userMessage = SessionMessage.UserMessage(args.Text);
+            }
+            
+            SessionState.CurrentSession.AddMessage(userMessage);
+            
+            // 更新 UI 显示
+            _messageViewModels.Add(ConvertToMessageViewModel(userMessage));
+
+            // 执行 Agent 响应
+            await SimulateAgentResponseAsync(args.Text, args.Attachments);
+
+            SessionState.CompleteExecution();
+
+            // 自动保存会话（使用 SessionProvider）
+            await SessionProvider.SaveCurrentSessionAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // 执行被取消
+            var cancelMessage = SessionMessage.SystemMessage("⚠️ 执行已被取消");
+            SessionState.CurrentSession.AddMessage(cancelMessage);
+            _messageViewModels.Add(ConvertToMessageViewModel(cancelMessage));
+            
+            SessionState.CancelExecution();
+            await SessionProvider.SaveCurrentSessionAsync();
+        }
+        catch (Exception ex)
+        {
+            // 执行出错
+            ErrorMessage = $"执行失败: {ex.Message}";
+            var errorMessage = SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}");
+            SessionState.CurrentSession.AddMessage(errorMessage);
+            _messageViewModels.Add(ConvertToMessageViewModel(errorMessage));
+            
+            SessionState.CancelExecution();
+            await SessionProvider.SaveCurrentSessionAsync();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+/// <summary>
+    /// 执行 Agent 响应（真实调用 AgentExecutor）
+    /// </summary>
+    private async Task SimulateAgentResponseAsync(string userInput, List<AttachmentViewModel>? attachments = null)
+    {
+        // 清空 EventStreamHandler 缓存，准备接收新消息
+        EventStreamHandler.ClearCache();
+        
+        // 创建 UI 占位消息（用于流式显示）
+        var placeholderMessage = new MessageViewModel
+        {
+            Id = SessionState.SessionId,
+            Role = "assistant",
+            Content = "",
+            Reasoning = "",
+            IsComplete = false
+        };
+        _messageViewModels.Add(placeholderMessage);
+
+        try
+        {
+            // 1. 获取 Agent 定义
+            var agentInstance = AgentRegistry.GetOrCreateAgentInstance(SessionState.SelectedAgent);
+            if (agentInstance == null)
+            {
+                throw new InvalidOperationException($"Agent '{SessionState.SelectedAgent}' not found");
+            }
+            
+            var useModel = SessionState.SelectedModel;
+            if (!string.IsNullOrEmpty(useModel))
+            {
+                // 使用 ModelReference.Parse 解析模型 ID
+                // 如果 useModel 已包含 provider 前缀（如 "anthropic/qwen3.5-plus"），Parse 会正确拆分
+                // 如果 useModel 只是 modelId（如 "gpt-4"），则 ProviderId 会为空，此时使用 SelectedModelProvider
+                var modelRef = Seeing.Agent.Core.Models.ModelReference.Parse(useModel);
+                if (modelRef != null)
+                {
+                    // 如果解析后 ProviderId 为空，使用 SessionState.SelectedModelProvider
+                    if (string.IsNullOrEmpty(modelRef.ProviderId) && !string.IsNullOrEmpty(SessionState.SelectedModelProvider))
+                    {
+                        modelRef.ProviderId = SessionState.SelectedModelProvider;
+                    }
+                    agentInstance.Model = modelRef;
+                }
+                else
+                {
+                    // 解析失败，直接使用 SelectedModelProvider 和 useModel
+                    agentInstance.Model = new Seeing.Agent.Core.Models.ModelReference
+                    {
+                        ModelId = useModel,
+                        ProviderId = SessionState.SelectedModelProvider
+                    };
+                }
+            }
+
+            // 2. 构建历史消息（从 SessionData.Messages）
+            var historyMessages = BuildHistoryFromSessionMessages();
+
+            // 3. 构建执行上下文
+            var context = new Seeing.Agent.Core.Models.AgentContext
+            {
+                SessionId = SessionState.SessionId,
+                CancellationToken = SessionState.CancellationToken,
+                PermissionChannel = PermissionChannel,
+                History = historyMessages,
+                WorkingDirectory = Directory.GetCurrentDirectory()
+            };
+
+            // 4. 获取 Agent 定义
+            var agentDefinition = Seeing.Agent.Core.Models.AgentDefinition.FromAgent(agentInstance);
+            var charCount = 0;
+            
+            // 使用注入的 AgentExecutor
+            await foreach (var coreEvent in AgentExecutor.ExecuteAsync(agentDefinition, context, SessionState.CancellationToken))
+            {
+                SessionState.CancellationToken.ThrowIfCancellationRequested();
+
+                // 将 Core 事件转换为 WebUI 事件并处理
+                var webuiEvent = coreEvent;
+                if (webuiEvent != null)
+                {
+                    await EventStreamHandler.ProcessEventAsync(webuiEvent);
+                }
+
+                // 更新 UI 占位消息的内容
+                placeholderMessage.Content = EventStreamHandler.GetCurrentAssistantContent();
+                placeholderMessage.Reasoning = EventStreamHandler.GetCurrentAssistantReasoning();
+                
+                // 转换工具调用（保持现有实例，只更新属性）
+                var toolCalls = EventStreamHandler.GetCurrentAssistantToolCalls();
+                var toolCallPositions = EventStreamHandler.GetToolCallPositions();
+                
+                if (toolCalls != null)
+                {
+                    // 更新或添加工具调用
+                    foreach (var tc in toolCalls)
+                    {
+                        var existing = placeholderMessage.ToolCalls.FirstOrDefault(x => x.Id == tc.Id);
+                        if (existing != null)
+                        {
+                            // 更新现有实例（保持 IsExpanded 状态）
+                            existing.Name = tc.Name;
+                            existing.Parameters = tc.Arguments;
+                            existing.Result = tc.Result;
+                            existing.Status = tc.Status;
+                            existing.Error = tc.Error;
+                            // 从 UI 层管理的位置字典获取内容位置
+                            if (toolCallPositions.TryGetValue(tc.Id, out var pos))
+                            {
+                                existing.ContentPosition = pos;
+                            }
+                        }
+                        else
+                        {
+                            // 新增工具调用，获取内容位置
+                            int? contentPos = toolCallPositions.TryGetValue(tc.Id, out var pos) ? pos : (int?)null;
+                            
+                            placeholderMessage.ToolCalls.Add(new ToolCallViewModel
+                            {
+                                Id = tc.Id,
+                                Name = tc.Name,
+                                Parameters = tc.Arguments,
+                                Result = tc.Result,
+                                Status = tc.Status,
+                                Error = tc.Error,
+                                ContentPosition = contentPos
+                            });
+                        }
+                    }
+                }
+
+                // UI 更新节流
+                if (webuiEvent is Core.Events.StreamDeltaEvent delta)
+                {
+                    var contentLen = delta.ContentDelta?.Length ?? 0;
+                    var reasoningLen = delta.ReasoningDelta?.Length ?? 0;
+                    charCount += contentLen + reasoningLen;
+                    
+                    if (charCount >= 30 || delta.ContentDelta?.Contains("\n") == true || delta.ReasoningDelta?.Contains("\n") == true)
+                    {
+                        await InvokeAsync(StateHasChanged);
+                        charCount = 0;
+                    }
+                }
+                else
+                {
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            
+            // 标记完成
+            placeholderMessage.IsComplete = true;
+        }
+        catch (OperationCanceledException)
+        {
+            placeholderMessage.Content += "\n\n⚠️ 执行已取消";
+            placeholderMessage.IsComplete = true;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"执行失败: {ex.Message}";
+            placeholderMessage.Content += $"\n\n❌ 执行出错: {ex.Message}";
+            placeholderMessage.IsComplete = true;
+        }
+    }
+
+    /// <summary>
+    /// 从 SessionData.Messages 构建历史消息
+    /// </summary>
+    private List<ChatMessage> BuildHistoryFromSessionMessages()
+    {
+        var history = new List<ChatMessage>();
+
+        if (SessionState.Messages == null) return history;
+
+        foreach (var msg in SessionState.Messages)
+        {
+            var chatMessage = new ChatMessage
+            {
+                Role = msg.Role,
+                Content = msg.Content,
+                ReasoningContent = msg.ReasoningContent
+            };
+
+            // 转换多模态内容段（修复：复制 Parts 字段）
+            if (msg.Parts != null && msg.Parts.Count > 0)
+            {
+                chatMessage.Parts = msg.Parts.Select(p => new ChatContentPart
+                {
+                    Type = p.Type,
+                    Text = p.Text,
+                    Url = p.Url,
+                    DataBase64 = p.DataBase64,
+                    MimeType = p.MimeType,
+                    FileName = p.FileName,
+                    FileId = p.FileId,
+                    ImageDetail = p.ImageDetail
+                }).ToList();
+            }
+
+            // 转换工具调用
+            if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
+            {
+                chatMessage.ToolCalls = msg.ToolCalls.Select(tc => new ToolCall
+                {
+                    Id = tc.Id,
+                    Type = tc.Type,
+                    Function = new FunctionCall
+                    {
+                        Name = tc.Name,
+                        Arguments = tc.Arguments
+                    }
+                }).ToList();
+            }
+
+            history.Add(chatMessage);
+        }
+
+        return history;
+    }
+    
+    /// <summary>
+    /// 从 Base64 字符串中提取纯 Base64 数据（去除 data: 前缀）
+    /// </summary>
+    private static string ExtractBase64Data(string? base64Content)
+    {
+        if (string.IsNullOrEmpty(base64Content))
+            return string.Empty;
+        
+        // 检查是否有 data: URL 前缀
+        const string dataPrefix = "data:";
+        if (base64Content.StartsWith(dataPrefix))
+        {
+            // 找到 base64, 的位置
+            var base64Index = base64Content.IndexOf(";base64,");
+            if (base64Index >= 0)
+            {
+                return base64Content.Substring(base64Index + 8);
+            }
+        }
+        
+        return base64Content;
+    }
+
+    /// <summary>
+    /// 取消执行处理
+    /// </summary>
+    private async Task OnCancelExecution()
+    {
+        if (SessionState.CancellationTokenSource != null &&
+            !SessionState.CancellationTokenSource.IsCancellationRequested)
+        {
+            SessionState.CancellationTokenSource.Cancel();
+        }
+        
+        SessionState.CancelExecution();
+        
+        // 添加取消提示
+        if (SessionState.CurrentSession != null)
+        {
+            SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("⏹️ 用户取消了当前执行"));
+        }
+        
+        // 保存取消状态
+        await SessionProvider.SaveCurrentSessionAsync();
+        
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    /// <summary>
+    /// 工具点击处理
+    /// </summary>
+    private void OnToolClick(ToolCallViewModel tool)
+    {
+        SelectedToolCall = tool;
+        // TODO: 显示工具详情面板或弹窗
+    }
+    
+    /// <summary>
+    /// 返回首页
+    /// </summary>
+    private void GoToHome()
+    {
+        NavigationManager.NavigateTo("/home");
+    }
+    
+    /// <summary>
+    /// 重命名会话
+    /// </summary>
+    private void OnRenameSession()
+    {
+        RenameForm.Title = SessionState.Title;
+        RenameModalVisible = true;
+    }
+    
+    /// <summary>
+    /// 确认重命名
+    /// </summary>
+    private async Task OnRenameConfirm()
+    {
+        if (!string.IsNullOrWhiteSpace(RenameForm.Title) && SessionState.CurrentSession != null)
+        {
+            await SessionProvider.RenameSessionAsync(SessionState.CurrentSession.Id, RenameForm.Title.Trim());
+            MessageService.Success("会话已重命名");
+        }
+        
+        RenameModalVisible = false;
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    /// <summary>
+    /// 取消重命名
+    /// </summary>
+    private void OnRenameCancel()
+    {
+        RenameModalVisible = false;
+    }
+    
+    /// <summary>
+    /// 分支会话
+    /// </summary>
+    private async Task OnBranchSession()
+    {
+        if (SessionState.CurrentSession == null) return;
+        
+        var branchedSession = await SessionProvider.BranchSessionAsync(SessionState.CurrentSession.Id, $"{SessionState.Title} (分支)");
+        
+        MessageService.Success("会话已分支");
+        
+        // 导航到新会话
+        NavigationManager.NavigateTo($"/session/{branchedSession.Id}");
+    }
+    
+    /// <summary>
+    /// 清空会话
+    /// </summary>
+    private async Task OnClearSession()
+    {
+        if (SessionState.CurrentSession != null)
+        {
+            SessionState.CurrentSession.ClearMessages();
+            SessionState.CurrentSession.Title = "新会话";
+            
+            await SessionProvider.SaveCurrentSessionAsync();
+            MessageService.Info("会话已清空");
+            
+            // 刷新 UI
+            RefreshMessageViewModels();
+        }
+        
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    /// <summary>
+    /// 清除错误消息
+    /// </summary>
+    private void OnClearError()
+    {
+        ErrorMessage = null;
+    }
+    
+    /// <summary>
+    /// 释放资源
+    /// </summary>
+    public void Dispose()
+    {
+        // 取消事件订阅
+        SessionProvider.OnCurrentSessionChanged -= OnSessionProviderChanged;
+        
+        // 清理资源
+        SessionState.CancelExecution();
+    }
+    
+    /// <summary>
+    /// 重命名表单模型
+    /// </summary>
+    private class RenameSessionForm
+    {
+        public string Title { get; set; } = "";
+    }
+}

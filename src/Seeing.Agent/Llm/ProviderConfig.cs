@@ -5,6 +5,7 @@ namespace Seeing.Agent.Llm;
 /// <summary>
 /// Provider 类型
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ProviderType
 {
     /// <summary>OpenAI</summary>

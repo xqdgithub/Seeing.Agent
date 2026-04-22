@@ -46,7 +46,7 @@ namespace Seeing.Agent.Tests.Instructions
             result.Should().NotBeNull();
             result!.Path.Should().Be(filePath);
             result.Content.Should().Be(content);
-            result.LastModified.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
+            result.LastModified.Should().BeCloseTo(DateTimeOffset.Now, TimeSpan.FromSeconds(5));
         }
 
         [Fact]

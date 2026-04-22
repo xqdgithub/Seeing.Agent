@@ -406,18 +406,16 @@ namespace Seeing.Agent.Core
                 _info = info;
             }
 
-            public string Name => _info.Name;
-            public AgentMode Mode => _info.Mode;
-            public string Description => _info.Description ?? string.Empty;
-            public IReadOnlyList<PermissionRule> Permissions => _info.Permissions;
-            public string? SystemPrompt => _info.SystemPrompt;
-            public ModelReference? Model => _info.Model;
-            public int? MaxSteps => _info.MaxSteps;
-            public AgentStatus Status => _info.AgentFactory != null
-                ? AgentStatus.Ready
-                : AgentStatus.RequiresFactory;
-            public IReadOnlyList<string> AllowedTools => _info.AllowedTools;
-            public IReadOnlyList<string> DeniedTools => _info.DeniedTools;
+            public string Name { get => _info.Name; set => _info.Name = value; }
+            public AgentMode Mode { get => _info.Mode; set => _info.Mode = value; }
+            public string Description { get => _info.Description ?? string.Empty; set => _info.Description = value; }
+            public IReadOnlyList<PermissionRule> Permissions { get => _info.Permissions.AsReadOnly(); set { _info.Permissions.Clear(); _info.Permissions.AddRange(value); } }
+            public string? SystemPrompt { get => _info.SystemPrompt; set => _info.SystemPrompt = value; }
+            public ModelReference? Model { get => _info.Model; set => _info.Model = value; }
+            public int? MaxSteps { get => _info.MaxSteps; set => _info.MaxSteps = value; }
+            public AgentStatus Status { get => _info.AgentFactory != null ? AgentStatus.Ready : AgentStatus.RequiresFactory; set { } }
+            public IReadOnlyList<string> AllowedTools { get => _info.AllowedTools.AsReadOnly(); set { _info.AllowedTools.Clear(); _info.AllowedTools.AddRange(value); } }
+            public IReadOnlyList<string> DeniedTools { get => _info.DeniedTools.AsReadOnly(); set { _info.DeniedTools.Clear(); _info.DeniedTools.AddRange(value); } }
 
             public async IAsyncEnumerable<ChatMessage> ExecuteAsync(
                 ChatMessage input,

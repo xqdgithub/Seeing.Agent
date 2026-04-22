@@ -1,23 +1,7 @@
 {
-  "active_plan": "E:\\Projects\\CSharp\\Seeing.Agent\\.sisyphus\\plans\\new-tui-implementation.md",
-  "started_at": "2026-04-10T14:04:34.000Z",
-  "session_ids": [
-    "ses_288798bb3ffeoXwoqF0yxHT2IZ"
-  ],
-  "session_origins": {
-    "ses_288798bb3ffeoXwoqF0yxHT2IZ": "direct"
-  },
-  "plan_name": "new-tui-implementation",
-  "agent": "atlas",
-  "task_sessions": {
-    "todo:1": {
-      "task_key": "todo:1",
-      "task_label": "1",
-      "task_title": "**项目创建 + .csproj**",
-      "session_id": "ses_2882c2b5dffeb0E9hCd3yVYEHH",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-10T14:44:23.784Z"
-    }
-  }
+  "active_plan": "E:\Projects\CSharp\Seeing.Agent\.sisyphus\plans\webui-session-refactor.md",
+  "started_at": "2026-04-22T03:18:02.406Z",
+  "session_ids": ["ses_24cff44cfffeT8Zn3u1yILdY0T"],
+  "plan_name": "webui-session-refactor",
+  "worktree_path": null
 }

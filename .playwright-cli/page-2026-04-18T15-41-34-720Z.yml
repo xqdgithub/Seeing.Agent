@@ -1,0 +1,162 @@
+- generic [ref=e178]:
+  - complementary [ref=e179]:
+    - generic [ref=e180]:
+      - heading "Seeing.Agent" [level=3] [ref=e182]
+      - generic [ref=e183]:
+        - generic [ref=e184]:
+          - generic [ref=e185]: Agent
+          - generic [ref=e186] [cursor=pointer]:
+            - generic [ref=e187]:
+              - combobox [ref=e189]
+              - generic [ref=e190]:
+                - img [ref=e191]:
+                  - img
+                - generic [ref=e192]: primary
+            - img [ref=e193]:
+              - img
+        - generic [ref=e194]:
+          - generic [ref=e195]: Model
+          - generic [ref=e196] [cursor=pointer]:
+            - generic [ref=e197]:
+              - combobox [ref=e199]
+              - generic [ref=e200]:
+                - img [ref=e201]:
+                  - img
+                - generic [ref=e202]: Qwen3 Coder Next
+            - img [ref=e203]:
+              - img
+      - generic [ref=e205]:
+        - button "新建会话" [ref=e207] [cursor=pointer]:
+          - img [ref=e208]:
+            - img
+          - generic [ref=e209]: 新建会话
+        - textbox "搜索会话..." [ref=e212]
+        - generic [ref=e215]:
+          - generic [ref=e216] [cursor=pointer]:
+            - img [ref=e217]:
+              - img
+            - generic [ref=e218]: 今天
+            - superscript [ref=e220]:
+              - generic [ref=e221]:
+                - paragraph [ref=e222]: "0"
+                - paragraph [ref=e223]: "1"
+                - paragraph [ref=e224]: "2"
+                - paragraph [ref=e225]: "3"
+                - paragraph [ref=e226]: "4"
+                - paragraph [ref=e227]: "5"
+                - paragraph [ref=e228]: "6"
+                - paragraph [ref=e229]: "7"
+                - paragraph [ref=e230]: "8"
+                - paragraph [ref=e231]: "9"
+          - generic [ref=e232]:
+            - generic [ref=e235] [cursor=pointer]:
+              - generic [ref=e236]: 新会话
+              - generic [ref=e237]:
+                - 'generic "创建: 2026-04-18 22:38 更新: 2026-04-18 23:23" [ref=e238]': 18分钟前
+                - superscript [ref=e240]:
+                  - generic [ref=e241]:
+                    - paragraph [ref=e242]: "0"
+                    - paragraph [ref=e243]: "1"
+                    - paragraph [ref=e244]: "2"
+                    - paragraph [ref=e245]: "3"
+                    - paragraph [ref=e246]: "4"
+                    - paragraph [ref=e247]: "5"
+                    - paragraph [ref=e248]: "6"
+                    - paragraph [ref=e249]: "7"
+                    - paragraph [ref=e250]: "8"
+                    - paragraph [ref=e251]: "9"
+                  - generic [ref=e252]:
+                    - paragraph [ref=e253]: "0"
+                    - paragraph [ref=e254]: "1"
+                    - paragraph [ref=e255]: "2"
+                    - paragraph [ref=e256]: "3"
+                    - paragraph [ref=e257]: "4"
+                    - paragraph [ref=e258]: "5"
+                    - paragraph [ref=e259]: "6"
+                    - paragraph [ref=e260]: "7"
+                    - paragraph [ref=e261]: "8"
+                    - paragraph [ref=e262]: "9"
+            - generic [ref=e266] [cursor=pointer]:
+              - generic [ref=e267]: 新会话
+              - generic [ref=e268]:
+                - 'generic "创建: 2026-04-18 22:00 更新: 2026-04-18 23:16" [ref=e269]': 24分钟前
+                - superscript [ref=e271]:
+                  - generic [ref=e272]:
+                    - paragraph [ref=e273]: "0"
+                    - paragraph [ref=e274]: "1"
+                    - paragraph [ref=e275]: "2"
+                    - paragraph [ref=e276]: "3"
+                    - paragraph [ref=e277]: "4"
+                    - paragraph [ref=e278]: "5"
+                    - paragraph [ref=e279]: "6"
+                    - paragraph [ref=e280]: "7"
+                    - paragraph [ref=e281]: "8"
+                    - paragraph [ref=e282]: "9"
+                  - generic [ref=e283]:
+                    - paragraph [ref=e284]: "0"
+                    - paragraph [ref=e285]: "1"
+                    - paragraph [ref=e286]: "2"
+                    - paragraph [ref=e287]: "3"
+                    - paragraph [ref=e288]: "4"
+                    - paragraph [ref=e289]: "5"
+                    - paragraph [ref=e290]: "6"
+                    - paragraph [ref=e291]: "7"
+                    - paragraph [ref=e292]: "8"
+                    - paragraph [ref=e293]: "9"
+      - generic [ref=e294]:
+        - generic [ref=e295]:
+          - button "首页" [ref=e296] [cursor=pointer]:
+            - img [ref=e297]:
+              - img
+            - generic [ref=e298]: 首页
+          - button "设置" [ref=e299] [cursor=pointer]:
+            - img [ref=e300]:
+              - img
+            - generic [ref=e301]: 设置
+        - generic [ref=e302]: v1.0.0-preview
+    - img [ref=e304] [cursor=pointer]:
+      - img
+  - generic [ref=e305]:
+    - main [ref=e306]:
+      - generic [ref=e308]:
+        - generic [ref=e309]:
+          - heading "Seeing.Agent WebUI" [level=2] [ref=e310]
+          - paragraph [ref=e311]: AI Agent 框架的 Blazor Server Web 界面
+        - generic [ref=e313]:
+          - button "进入会话" [ref=e315] [cursor=pointer]:
+            - img [ref=e316]:
+              - img
+            - generic [ref=e317]: 进入会话
+          - button "新建会话" [ref=e319] [cursor=pointer]:
+            - img [ref=e320]:
+              - img
+            - generic [ref=e321]: 新建会话
+          - button "欢迎页" [ref=e323] [cursor=pointer]:
+            - img [ref=e324]:
+              - img
+            - generic [ref=e325]: 欢迎页
+        - generic [ref=e328]:
+          - heading "当前状态" [active] [level=1] [ref=e329]:
+            - generic [ref=e330]:
+              - img [ref=e331]:
+                - img
+              - generic [ref=e332]: 当前状态
+          - table [ref=e336]:
+            - rowgroup [ref=e337]:
+              - row "Agent primary Model anthropic/qwen3-coder-next" [ref=e338]:
+                - cell "Agent" [ref=e339]
+                - cell "primary" [ref=e340]
+                - cell "Model" [ref=e341]
+                - cell "anthropic/qwen3-coder-next" [ref=e342]
+              - row "会话数量 2 当前会话 新会话" [ref=e343]:
+                - cell "会话数量" [ref=e344]
+                - cell "2" [ref=e345]
+                - cell "当前会话" [ref=e346]
+                - cell "新会话" [ref=e347]
+    - generic [ref=e348]:
+      - generic [ref=e350]:
+        - generic [ref=e351]: 就绪
+        - generic [ref=e357]: "Agent: primary"
+        - generic [ref=e361]: "Model: anthropic/qwen3-coder-next"
+        - generic [ref=e365]: "会话: 2"
+      - generic [ref=e367]: Guest

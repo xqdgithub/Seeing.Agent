@@ -1,0 +1,184 @@
+@page "/"
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Session.Core
+@inject SessionState SessionState
+@inject SessionProvider SessionProvider
+@inject AppState AppState
+@inject NavigationManager NavigationManager
+
+<div Class="home-container">
+    <div Class="home-header">
+        <h2 Style="margin-bottom: var(--space-2);">Seeing.Agent WebUI</h2>
+        <p Style="color: var(--color-text-secondary);">
+            AI Agent 框架的 Blazor Server Web 界面
+        </p>
+    </div>
+    
+    <!-- Slot 扩展点: home_logo -->
+    <SlotHost SlotName="home_logo" />
+    
+    <!-- 快速入口 -->
+    <div Class="home-quick-actions">
+        <Space Size="@SpaceSize.Large">
+            <SpaceItem>
+                <Button Type="@ButtonType.Primary"
+                        Size="@ButtonSize.Large"
+                        Icon="@IconType.Outline.Message"
+                        OnClick="@GoToSession">
+                    进入会话
+                </Button>
+            </SpaceItem>
+            <SpaceItem>
+                <Button Type="@ButtonType.Default"
+                        Size="@ButtonSize.Large"
+                        Icon="@IconType.Outline.Plus"
+                        OnClick="@CreateNewSession">
+                    新建会话
+                </Button>
+            </SpaceItem>
+            <SpaceItem>
+                <Button Type="@ButtonType.Default"
+                        Size="@ButtonSize.Large"
+                        Icon="@IconType.Outline.Home"
+                        OnClick="@GoToWelcome">
+                    欢迎页
+                </Button>
+            </SpaceItem>
+        </Space>
+    </div>
+    
+    <!-- 会话状态信息 -->
+    <div Class="home-status">
+        <Card>
+            <Title>
+                <div Class="status-header">
+                    <Icon Type="@IconType.Outline.InfoCircle" />
+                    <span Style="margin-left: var(--space-2);">当前状态</span>
+                </div>
+            </Title>
+            <div Class="status-content">
+                <Descriptions Bordered="true" Size="@DescriptionsSize.Small" Column="2">
+                    <DescriptionsItem Title="Agent">@AppState.SelectedAgent</DescriptionsItem>
+                    <DescriptionsItem Title="Model">@AppState.SelectedModel</DescriptionsItem>
+                    <DescriptionsItem Title="会话数量">@_sessionCount</DescriptionsItem>
+                    <DescriptionsItem Title="当前会话">@SessionState.Title</DescriptionsItem>
+                </Descriptions>
+            </div>
+        </Card>
+    </div>
+    
+    <!-- 消息预览 -->
+    @if (SessionState.Messages.Count > 0)
+    {
+        <div Class="home-messages-preview">
+            <div Class="preview-header">
+                <span Class="preview-title">最近消息</span>
+                <Button Type="@ButtonType.Text"
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.Right"
+                        OnClick="@GoToSession">
+                    查看全部
+                </Button>
+            </div>
+            <div Class="preview-messages">
+                @foreach (var msg in SessionState.Messages.Take(5))
+                {
+                    <div Class="@GetMessagePreviewClass(msg.Role)">
+                        <div Class="preview-role">@GetRoleLabel(msg.Role)</div>
+                        <div Class="preview-content">
+                            @(msg.Content.Length > 100 ? msg.Content.Substring(0, 100) + "..." : msg.Content)
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    
+    <!-- Slot 扩展点: home_prompt -->
+    <SlotHost SlotName="home_prompt" />
+</div>
+
+@code {
+    /// <summary>
+    /// 会话数量（从 SessionProvider 获取）
+    /// </summary>
+    private int _sessionCount = 0;
+    
+    /// <summary>
+    /// 初始化
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        // 初始化会话列表（从持久化存储加载历史会话）
+        await SessionProvider.InitializeSessionListAsync();
+        _sessionCount = SessionProvider.GetSessionList().Count;
+        
+        // 如果有会话，加载最近的会话
+        if (_sessionCount > 0)
+        {
+            var recentSession = SessionProvider.GetSessionList().First();
+            await SessionProvider.LoadSessionAsync(recentSession.Id);
+            AppState.CurrentSessionId = recentSession.Id;
+        }
+    }
+    
+    /// <summary>
+    /// 进入会话页面
+    /// </summary>
+    private void GoToSession()
+    {
+        if (!string.IsNullOrEmpty(AppState.CurrentSessionId))
+        {
+            NavigationManager.NavigateTo($"/session/{AppState.CurrentSessionId}");
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/session");
+        }
+    }
+    
+/// <summary>
+    /// 创建新会话
+    /// </summary>
+    private async Task CreateNewSession()
+    {
+        var newSession = await SessionProvider.CreateSessionAsync("新会话", AppState.SelectedAgent);
+        newSession.SelectedModel = AppState.SelectedModel;
+        
+        await SessionProvider.SaveCurrentSessionAsync();
+        
+        NavigationManager.NavigateTo($"/session/{newSession.Id}");
+    }
+    
+    /// <summary>
+    /// 进入欢迎页
+    /// </summary>
+    private void GoToWelcome()
+    {
+        NavigationManager.NavigateTo("/home");
+    }
+    
+    /// <summary>
+    /// 获取消息预览样式类
+    /// </summary>
+    private string GetMessagePreviewClass(string role)
+    {
+        return $"preview-message preview-{role.ToLowerInvariant()}";
+    }
+    
+    /// <summary>
+    /// 获取角色标签
+    /// </summary>
+    private string GetRoleLabel(string role)
+    {
+        return role.ToLowerInvariant() switch
+        {
+            "user" => "👤 用户",
+            "assistant" => "🤖 助手",
+            "system" => "⚙️ 系统",
+            _ => role
+        };
+    }
+}

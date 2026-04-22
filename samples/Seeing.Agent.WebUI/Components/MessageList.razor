@@ -1,0 +1,117 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using Seeing.Agent.WebUI.State
+@using Seeing.Agent.WebUI.Models
+@inject SessionState SessionState
+@inject IJSRuntime JSRuntime
+
+<div Class="message-list" @ref="@MessageListElement">
+    @if (Messages.Count == 0)
+    {
+        <Empty Class="message-list-empty">
+            <DescriptionTemplate>
+                暂无消息，开始对话吧
+            </DescriptionTemplate>
+        </Empty>
+    }
+    else
+    {
+        <div Class="message-list-container">
+            @foreach (var message in Messages)
+            {
+                <ChatMessageItem Message="@message" 
+                              OnToolClick="@OnToolClickHandler" />
+            }
+            
+            <!-- 自动滚动锚点 -->
+            <div Id="@ScrollAnchorId" Class="scroll-anchor"></div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// 消息列表元素引用，用于自动滚动
+    /// </summary>
+    private ElementReference MessageListElement { get; set; }
+    
+    /// <summary>
+    /// 滚动锚点 ID
+    /// </summary>
+    private const string ScrollAnchorId = "message-list-scroll-anchor";
+    
+    /// <summary>
+    /// 消息列表数据源
+    /// </summary>
+    [Parameter]
+    public List<MessageViewModel> Messages { get; set; } = new();
+    
+    /// <summary>
+    /// 工具点击事件回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+    
+    /// <summary>
+    /// 是否自动滚动到底部
+    /// </summary>
+    [Parameter]
+    public bool AutoScroll { get; set; } = true;
+    
+    /// <summary>
+    /// 工具点击处理
+    /// </summary>
+    private async Task OnToolClickHandler(ToolCallViewModel tool)
+    {
+        if (OnToolClick.HasDelegate)
+        {
+            await OnToolClick.InvokeAsync(tool);
+        }
+    }
+    
+    /// <summary>
+    /// 组件渲染后自动滚动
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (AutoScroll && Messages.Count > 0)
+        {
+            await ScrollToBottomAsync();
+        }
+    }
+    
+    /// <summary>
+    /// 滚动到底部
+    /// </summary>
+    private async Task ScrollToBottomAsync()
+    {
+        try
+        {
+            // 使用 JSInterop 滚动到锚点元素
+            await JSRuntime.InvokeVoidAsync("scrollIntoView", ScrollAnchorId);
+        }
+        catch
+        {
+            // JSInterop 可能未就绪，静默忽略
+        }
+    }
+    
+    /// <summary>
+    /// 添加新消息（供外部调用）
+    /// </summary>
+    public void AddMessage(MessageViewModel message)
+    {
+        Messages.Add(message);
+        StateHasChanged();
+    }
+    
+    /// <summary>
+    /// 清空消息列表
+    /// </summary>
+    public void ClearMessages()
+    {
+        Messages.Clear();
+        StateHasChanged();
+    }
+}

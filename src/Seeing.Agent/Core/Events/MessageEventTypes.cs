@@ -8,6 +8,9 @@ namespace Seeing.Agent.Core.Events;
 /// </summary>
 public enum MessageEventType
 {
+    /// <summary>流式开始（新轮次开始信号）</summary>
+    StreamStart,
+    
     /// <summary>流式增量（实时渲染用）</summary>
     StreamDelta,
     
@@ -49,12 +52,29 @@ public interface IMessageEvent
 }
 
 /// <summary>
+/// 流式开始事件 - 标记新轮次开始
+/// <para>
+/// AgentExecutor 多轮循环中，每轮 LLM 调用前发出此事件，
+/// 通知 UI 层清空状态，准备接收新一轮的 delta。
+/// </para>
+/// </summary>
+public record StreamStartEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.StreamStart;
+    
+    /// <summary>轮次索引（step=0, 1, 2...）</summary>
+    public int Step { get; init; }
+}
+
+/// <summary>
 /// 流式增量事件 - 用于实时渲染
 /// </summary>
 public record StreamDeltaEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type => MessageEventType.StreamDelta;
     
     /// <summary>内容增量</summary>
@@ -76,7 +96,7 @@ public record StreamDeltaEvent : IMessageEvent
 public record StreamCompleteEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type => MessageEventType.StreamComplete;
     
     /// <summary>完整的消息对象</summary>
@@ -113,7 +133,7 @@ public enum ToolCallStatus
 public record ToolCallEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type { get; init; }
     
     /// <summary>工具调用 ID</summary>
@@ -147,7 +167,7 @@ public record ToolCallEvent : IMessageEvent
 public record SubAgentEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type { get; init; }
     
     /// <summary>子代理名称</summary>
@@ -172,7 +192,7 @@ public record SubAgentEvent : IMessageEvent
 public record ErrorEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type => MessageEventType.Error;
     
     /// <summary>错误信息</summary>

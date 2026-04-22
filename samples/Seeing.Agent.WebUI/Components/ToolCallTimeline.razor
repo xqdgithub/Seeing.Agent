@@ -1,0 +1,218 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+<div Class="tool-call-timeline">
+    <Timeline Mode="@TimelineMode.Left">
+        @foreach (var toolCall in ToolCalls)
+        {
+            <TimelineItem Color="@GetTimelineColor(toolCall.Status)">
+                <div Class="timeline-item-content">
+                    <!-- 时间线节点头部 -->
+                    <div Class="timeline-node-header"
+                         @onclick="@(() => ToggleExpand(toolCall.Id))">
+                        <div Class="timeline-node-info">
+                            <Icon Type="@GetStatusIcon(toolCall.Status)" 
+                                  Style="@GetStatusIconStyle(toolCall.Status)" />
+                            <span Class="timeline-tool-name"
+                                  Style="margin-left: var(--space-2); font-weight: var(--font-weight-medium);">
+                                @toolCall.Name
+                            </span>
+                            <Tag Color="@GetStatusColor(toolCall.Status)"
+                                 Class="timeline-status-tag"
+                                 Style="font-size: var(--font-size-xs);">
+                                @GetStatusText(toolCall.Status)
+                            </Tag>
+                        </div>
+                        <div Class="timeline-node-meta">
+                            @if (!string.IsNullOrEmpty(toolCall.GetFormattedDuration()))
+                            {
+                                <span Class="timeline-duration"
+                                      Style="font-size: var(--font-size-xs); color: var(--color-text-tertiary);">
+                                    @toolCall.GetFormattedDuration()
+                                </span>
+                            }
+                            @if (toolCall.StartTime.HasValue)
+                            {
+                                <span Class="timeline-time"
+                                      Style="font-size: var(--font-size-xs); color: var(--color-text-tertiary); margin-left: var(--space-2);">
+                                    @toolCall.StartTime.Value.ToString("HH:mm:ss")
+                                </span>
+                            }
+                            <Icon Type="@(IsItemExpanded(toolCall.Id) ? IconType.Outline.Down : IconType.Outline.Right)"
+                                  Style="margin-left: var(--space-2); color: var(--color-text-tertiary);" />
+                        </div>
+                    </div>
+                    
+                    <!-- 展开详情 -->
+                    @if (IsItemExpanded(toolCall.Id))
+                    {
+                        <div Class="timeline-item-details"
+                             Style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-bg-secondary); border-radius: var(--radius-sm);">
+                            <!-- 参数 -->
+                            @if (!string.IsNullOrEmpty(toolCall.Parameters))
+                            {
+                                <div Class="timeline-detail-section">
+                                    <div Class="timeline-detail-label"
+                                         Style="font-size: var(--font-size-xs); color: var(--color-text-secondary); margin-bottom: var(--space-1);">
+                                        参数
+                                    </div>
+                                    <pre Style="margin: 0; padding: var(--space-2); background: var(--color-bg-tertiary); border-radius: var(--radius-sm); font-size: var(--font-size-xs); white-space: pre-wrap; word-break: break-all;">
+@toolCall.Parameters
+                                    </pre>
+                                </div>
+                            }
+                            
+                            <!-- 结果 -->
+                            @if (!string.IsNullOrEmpty(toolCall.Result))
+                            {
+                                <div Class="timeline-detail-section"
+                                     Style="margin-top: var(--space-2);">
+                                    <div Class="timeline-detail-label"
+                                         Style="font-size: var(--font-size-xs); color: var(--color-success); margin-bottom: var(--space-1);">
+                                        <Icon Type="@IconType.Outline.CheckCircle" />
+                                        <span Style="margin-left: var(--space-1);">执行结果</span>
+                                    </div>
+                                    <pre Style="margin: 0; padding: var(--space-2); background: var(--color-success-bg); border-radius: var(--radius-sm); font-size: var(--font-size-xs); white-space: pre-wrap; word-break: break-all;">
+@toolCall.Result
+                                    </pre>
+                                </div>
+                            }
+                            
+                            <!-- 错误 -->
+                            @if (!string.IsNullOrEmpty(toolCall.Error))
+                            {
+                                <div Class="timeline-detail-section"
+                                     Style="margin-top: var(--space-2);">
+                                    <div Class="timeline-detail-label"
+                                         Style="font-size: var(--font-size-xs); color: var(--color-error); margin-bottom: var(--space-1);">
+                                        <Icon Type="@IconType.Outline.CloseCircle" />
+                                        <span Style="margin-left: var(--space-1);">错误信息</span>
+                                    </div>
+                                    <pre Style="margin: 0; padding: var(--space-2); background: var(--color-error-bg); border-radius: var(--radius-sm); font-size: var(--font-size-xs); white-space: pre-wrap; word-break: break-all; color: var(--color-error);">
+@toolCall.Error
+                                    </pre>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </TimelineItem>
+        }
+    </Timeline>
+    
+    @if (ToolCalls.Count == 0)
+    {
+        <div Class="timeline-empty"
+             Style="padding: var(--space-4); text-align: center; color: var(--color-text-tertiary);">
+            <Icon Type="@IconType.Outline.Tool"
+                  Style="font-size: var(--font-size-xl); color: var(--color-text-quaternary);" />
+            <div Style="margin-top: var(--space-2); font-size: var(--font-size-sm);">
+                暂无工具调用记录
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// 工具调用列表
+    /// </summary>
+    [Parameter]
+    public List<ToolCallViewModel> ToolCalls { get; set; } = new();
+    
+    /// <summary>
+    /// 展开的项目 ID 集合
+    /// </summary>
+    private HashSet<string> ExpandedItems { get; set; } = new();
+    
+    /// <summary>
+    /// 判断项目是否展开
+    /// </summary>
+    private bool IsItemExpanded(string id) => ExpandedItems.Contains(id);
+    
+    /// <summary>
+    /// 切换项目展开状态
+    /// </summary>
+    private void ToggleExpand(string id)
+    {
+        if (ExpandedItems.Contains(id))
+            ExpandedItems.Remove(id);
+        else
+            ExpandedItems.Add(id);
+    }
+    
+    /// <summary>
+    /// 获取时间线颜色
+    /// </summary>
+    private string GetTimelineColor(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "pending" => "gray",
+            "running" => "blue",
+            "success" => "green",
+            "failed" => "red",
+            _ => "gray"
+        };
+    }
+    
+    /// <summary>
+    /// 获取状态图标
+    /// </summary>
+    private string GetStatusIcon(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "pending" => IconType.Outline.ClockCircle,
+            "running" => IconType.Outline.Loading,
+            "success" => IconType.Outline.CheckCircle,
+            "failed" => IconType.Outline.CloseCircle,
+            _ => IconType.Outline.QuestionCircle
+        };
+    }
+    
+    /// <summary>
+    /// 获取状态图标样式
+    /// </summary>
+    private string GetStatusIconStyle(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "pending" => "color: var(--color-warning);",
+            "running" => "color: var(--color-primary); animation: spin 1s linear infinite;",
+            "success" => "color: var(--color-success);",
+            "failed" => "color: var(--color-error);",
+            _ => "color: var(--color-text-tertiary);"
+        };
+    }
+    
+    /// <summary>
+    /// 获取状态颜色（Tag）
+    /// </summary>
+    private string GetStatusColor(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "pending" => "warning",
+            "running" => "processing",
+            "success" => "success",
+            "failed" => "error",
+            _ => "default"
+        };
+    }
+    
+    /// <summary>
+    /// 获取状态文本
+    /// </summary>
+    private string GetStatusText(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "pending" => "等待",
+            "running" => "执行中",
+            "success" => "成功",
+            "failed" => "失败",
+            _ => status
+        };
+    }
+}

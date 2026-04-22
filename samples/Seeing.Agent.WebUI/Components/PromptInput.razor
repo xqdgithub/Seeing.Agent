@@ -1,0 +1,490 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using Seeing.Agent.WebUI.Shared
+@using Seeing.Agent.WebUI.Models
+@inject IJSRuntime JSRuntime
+
+<div Class="prompt-input-container" @ref="@ContainerRef">
+    <!-- 附件预览 -->
+    @if (Attachments.Count > 0)
+    {
+        <AttachmentPreview Attachments="@Attachments"
+                           MaxAttachments="@MaxAttachments"
+                           MaxFileSize="@MaxFileSize"
+                           OnRemove="@OnAttachmentRemoved" />
+    }
+
+    <div Class="@GetDropZoneClass()">
+        <!-- 文件上传组件（使用 InputFile） -->
+        <InputFile OnChange="@OnInputFileChange"
+                   Accept="@AcceptFileTypes"
+                   Multiple="true"
+                   Style="display: none;"
+                   @ref="@FileInputRef" />
+
+        <textarea Id="@TextareaId"
+                  Class="prompt-textarea"
+                  @bind="@InputText"
+                  @bind:event="oninput"
+                  placeholder="@Placeholder"
+                  disabled="@IsProcessing"
+                  @onkeydown="@HandleKeyDown"
+                  @ref="@TextareaRef"
+                  rows="1"
+                  style="resize: none; overflow-y: auto; min-height: 40px; max-height: 200px;"></textarea>
+        
+        <div Class="prompt-actions">
+            <Space>
+                <SpaceItem>
+                    <QuickCommandPopover Tools="@AvailableTools"
+                                         Skills="@AvailableSkills"
+                                         OnSelect="@OnQuickCommandSelect"
+                                         IsDisabled="@IsProcessing" />
+                </SpaceItem>
+                <SpaceItem>
+                    <Tooltip Title="上传文件">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.PaperClip"
+                                OnClick="@OnUploadClick"
+                                Disabled="@IsProcessing" />
+                    </Tooltip>
+                </SpaceItem>
+                @if (IsProcessing && CancellationTokenSource != null)
+                {
+                    <SpaceItem>
+                        <Tooltip Title="取消执行">
+                            <Button Type="@ButtonType.Text"
+                                    Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.CloseCircle"
+                                    OnClick="@OnCancelClick" />
+                        </Tooltip>
+                    </SpaceItem>
+                }
+                <SpaceItem>
+                    <Tooltip Title="清空输入">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Delete"
+                                OnClick="@OnClear"
+                                Disabled="@IsProcessing" />
+                    </Tooltip>
+                </SpaceItem>
+                <SpaceItem>
+                    <Tooltip Title="发送消息 (Enter)">
+                        <Button Type="@ButtonType.Primary"
+                                Icon="@IconType.Outline.Send"
+                                Loading="@IsProcessing"
+                                OnClick="@OnSubmit">
+                            发送
+                        </Button>
+                    </Tooltip>
+                </SpaceItem>
+            </Space>
+        </div>
+    </div>
+    
+    <!-- Slot 扩展点 -->
+    <SlotHost SlotName="message_toolbar" />
+    
+    <!-- 提示文字 -->
+    @if (!string.IsNullOrEmpty(HelpText))
+    {
+        <div Class="prompt-help">
+            <span Style="font-size: var(--font-size-xs); color: var(--color-text-tertiary);">
+                @HelpText
+            </span>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// 输入文本
+    /// </summary>
+    private string InputText { get; set; } = "";
+
+    /// <summary>
+    /// 是否正在处理
+    /// </summary>
+    [Parameter]
+    public bool IsProcessing { get; set; }
+    
+    /// <summary>
+    /// 可用工具列表（用于快速命令）
+    /// </summary>
+    [Parameter]
+    public List<QuickToolViewModel> AvailableTools { get; set; } = new();
+    
+    /// <summary>
+    /// 可用技能列表（用于快速命令）
+    /// </summary>
+    [Parameter]
+    public List<QuickSkillViewModel> AvailableSkills { get; set; } = new();
+
+    /// <summary>
+    /// 占位符文本
+    /// </summary>
+    [Parameter]
+    public string Placeholder { get; set; } = "输入消息...";
+
+    /// <summary>
+    /// 帮助提示文本
+    /// </summary>
+    [Parameter]
+    public string HelpText { get; set; } = "Enter 发送，Shift+Enter 换行，支持粘贴图片";
+
+    /// <summary>
+    /// 提交事件回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<PromptSubmitEventArgs> OnSubmitCallback { get; set; }
+
+    /// <summary>
+    /// 取消事件回调
+    /// </summary>
+    [Parameter]
+    public EventCallback OnCancelCallback { get; set; }
+
+    /// <summary>
+    /// 最大附件数量
+    /// </summary>
+    [Parameter]
+    public int MaxAttachments { get; set; } = 10;
+
+    /// <summary>
+    /// 单文件最大大小（字节）
+    /// </summary>
+    [Parameter]
+    public long MaxFileSize { get; set; } = 10 * 1024 * 1024; // 10MB
+
+    /// <summary>
+    /// 允许的文件类型
+    /// </summary>
+    [Parameter]
+    public string AcceptFileTypes { get; set; } = "image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.json,.xml";
+
+    /// <summary>
+    /// 取消令牌源（用于取消执行）
+    /// </summary>
+    [Parameter]
+    public CancellationTokenSource? CancellationTokenSource { get; set; }
+
+    /// <summary>
+    /// 附件列表
+    /// </summary>
+    private List<AttachmentViewModel> Attachments { get; set; } = new();
+
+    /// <summary>
+    /// Textarea 元素 ID
+    /// </summary>
+    private string TextareaId { get; set; } = $"textarea-{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// 元素引用
+    /// </summary>
+    private ElementReference ContainerRef { get; set; }
+    private InputFile? FileInputRef { get; set; }
+    private ElementReference TextareaRef { get; set; }
+
+    /// <summary>
+    /// 是否正在拖拽
+    /// </summary>
+    private bool IsDragging { get; set; }
+
+    /// <summary>
+    /// 获取拖拽区域 CSS 类
+    /// </summary>
+    private string GetDropZoneClass()
+    {
+        return IsDragging ? "prompt-input-wrapper drag-over" : "prompt-input-wrapper";
+    }
+
+    /// <summary>
+    /// 键盘事件处理
+    /// </summary>
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        // Enter 发送，Shift+Enter 换行
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            // 阻止默认换行行为并发送消息
+            if (!string.IsNullOrWhiteSpace(InputText) || Attachments.Count > 0)
+            {
+                await OnSubmit();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 提交处理
+    /// </summary>
+    private async Task OnSubmit()
+    {
+        if ((string.IsNullOrWhiteSpace(InputText) && Attachments.Count == 0) || IsProcessing)
+            return;
+
+        var submitArgs = new PromptSubmitEventArgs
+        {
+            Text = InputText.Trim(),
+            Attachments = Attachments.ToList()
+        };
+
+        InputText = "";
+        Attachments.Clear();
+
+        if (OnSubmitCallback.HasDelegate)
+        {
+            await OnSubmitCallback.InvokeAsync(submitArgs);
+        }
+
+        StateHasChanged();
+    }
+    
+    /// <summary>
+    /// 快速命令选择处理
+    /// </summary>
+    private void OnQuickCommandSelect(string command)
+    {
+        // 在当前输入后追加命令
+        if (string.IsNullOrEmpty(InputText))
+        {
+            InputText = command;
+        }
+        else
+        {
+            // 如果已有内容，在末尾添加（确保有空格分隔）
+            InputText = InputText.TrimEnd() + " " + command;
+        }
+        
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 清空输入
+    /// </summary>
+    private void OnClear()
+    {
+        InputText = "";
+        Attachments.Clear();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 上传按钮点击
+    /// </summary>
+    private async Task OnUploadClick()
+    {
+        // InputFile 组件需要通过 JS 或特定方式触发
+        // 由于 InputFile 没有直接的触发方法，我们使用 JSInterop
+        if (FileInputRef != null)
+        {
+            // 通过查找 InputFile 内部的 input 元素来触发
+            await JSRuntime.InvokeVoidAsync("triggerFileInputByRef", DotNetObjectReference.Create(this));
+        }
+    }
+
+    /// <summary>
+    /// 文件输入变更（使用 InputFile 组件）
+    /// </summary>
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(MaxAttachments);
+        
+        foreach (var file in files)
+        {
+            if (Attachments.Count >= MaxAttachments)
+                break;
+
+            // 验证文件大小
+            if (file.Size > MaxFileSize)
+            {
+                var failedAttachment = new AttachmentViewModel
+                {
+                    FileName = file.Name,
+                    FileSize = file.Size,
+                    FileType = file.ContentType,
+                    Status = AttachmentUploadStatus.Failed,
+                    ErrorMessage = $"文件大小超过限制（最大 {MaxFileSize / (1024 * 1024)}MB）"
+                };
+                Attachments.Add(failedAttachment);
+                continue;
+            }
+
+            try
+            {
+                // 读取文件内容为 Base64
+                using var stream = file.OpenReadStream(MaxFileSize);
+                using var ms = new System.IO.MemoryStream();
+                await stream.CopyToAsync(ms);
+                var base64 = Convert.ToBase64String(ms.ToArray());
+                
+                // 根据文件类型添加前缀
+                var mimeType = file.ContentType;
+                var base64Content = !string.IsNullOrEmpty(mimeType) && mimeType.StartsWith("image/")
+                    ? $"data:{mimeType};base64,{base64}"
+                    : $"data:application/octet-stream;base64,{base64}";
+
+                var attachment = new AttachmentViewModel
+                {
+                    FileName = file.Name,
+                    FileSize = file.Size,
+                    FileType = file.ContentType,
+                    Base64Content = base64Content,
+                    Status = AttachmentUploadStatus.Completed
+                };
+
+                Attachments.Add(attachment);
+            }
+            catch (Exception ex)
+            {
+                var failedAttachment = new AttachmentViewModel
+                {
+                    FileName = file.Name,
+                    FileSize = file.Size,
+                    FileType = file.ContentType,
+                    Status = AttachmentUploadStatus.Failed,
+                    ErrorMessage = $"读取文件失败: {ex.Message}"
+                };
+                Attachments.Add(failedAttachment);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 取消执行
+    /// </summary>
+    private async Task OnCancelClick()
+    {
+        if (CancellationTokenSource != null && !CancellationTokenSource.IsCancellationRequested)
+        {
+            CancellationTokenSource.Cancel();
+        }
+        if (OnCancelCallback.HasDelegate)
+        {
+            await OnCancelCallback.InvokeAsync();
+        }
+    }
+
+    /// <summary>
+    /// 附件删除处理
+    /// </summary>
+    private async Task OnAttachmentRemoved(AttachmentViewModel attachment)
+    {
+        Attachments.Remove(attachment);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 处理粘贴的文件信息
+    /// </summary>
+    [JSInvokable]
+    public async Task HandlePasteImage(FileInfoJsInterop fileInfo)
+    {
+        if (Attachments.Count >= MaxAttachments)
+            return;
+
+        var attachment = new AttachmentViewModel
+        {
+            FileName = fileInfo.Info.Name,
+            FileSize = fileInfo.Info.Size,
+            FileType = fileInfo.Info.Type,
+            Base64Content = fileInfo.Base64,
+            Status = AttachmentUploadStatus.Completed
+        };
+
+        if (attachment.FileSize > MaxFileSize)
+        {
+            attachment.Status = AttachmentUploadStatus.Failed;
+            attachment.ErrorMessage = $"文件大小超过限制（最大 {MaxFileSize / (1024 * 1024)}MB）";
+        }
+
+        Attachments.Add(attachment);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 处理拖放的文件
+    /// </summary>
+    [JSInvokable]
+    public async Task HandleFilesDrop(FileInfoJsInterop[] files)
+    {
+        foreach (var file in files)
+        {
+            if (Attachments.Count >= MaxAttachments)
+                break;
+
+            var attachment = new AttachmentViewModel
+            {
+                FileName = file.Info.Name,
+                FileSize = file.Info.Size,
+                FileType = file.Info.Type,
+                Base64Content = file.Base64,
+                Status = AttachmentUploadStatus.Completed
+            };
+
+            if (attachment.FileSize > MaxFileSize)
+            {
+                attachment.Status = AttachmentUploadStatus.Failed;
+                attachment.ErrorMessage = $"文件大小超过限制";
+            }
+
+            Attachments.Add(attachment);
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 获取当前输入文本
+    /// </summary>
+    public string GetInputText() => InputText;
+
+    /// <summary>
+    /// 设置输入文本
+    /// </summary>
+    public void SetInputText(string text)
+    {
+        InputText = text;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 获取所有附件
+    /// </summary>
+    public List<AttachmentViewModel> GetAttachments() => Attachments;
+
+    /// <summary>
+    /// 清空所有内容
+    /// </summary>
+    public void ClearAll()
+    {
+        InputText = "";
+        Attachments.Clear();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 组件初始化后设置 JSInterop
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // 设置拖放处理
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("setupDropZone", ContainerRef.Id, DotNetObjectReference.Create(this));
+                await JSRuntime.InvokeVoidAsync("setupPasteHandler", ContainerRef.Id, DotNetObjectReference.Create(this));
+                await JSRuntime.InvokeVoidAsync("setupTextareaAutoResize", TextareaId);
+            }
+            catch
+            {
+                // JSInterop 可能未就绪，静默处理
+            }
+        }
+    }
+}

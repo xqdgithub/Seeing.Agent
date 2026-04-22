@@ -20,34 +20,34 @@ namespace Seeing.Agent.Decorators
         }
 
         /// <inheritdoc />
-        public virtual string Name => Inner.Name;
+        public virtual string Name { get => Inner.Name; set => Inner.Name = value; }
 
         /// <inheritdoc />
-        public virtual AgentMode Mode => Inner.Mode;
+        public virtual AgentMode Mode { get => Inner.Mode; set => Inner.Mode = value; }
 
         /// <inheritdoc />
-        public virtual AgentStatus Status => Inner.Status;
+        public virtual AgentStatus Status { get => Inner.Status; set => Inner.Status = value; }
 
         /// <inheritdoc />
-        public virtual string Description => Inner.Description;
+        public virtual string Description { get => Inner.Description; set => Inner.Description = value; }
 
         /// <inheritdoc />
-        public virtual string? SystemPrompt => Inner.SystemPrompt;
+        public virtual string? SystemPrompt { get => Inner.SystemPrompt; set => Inner.SystemPrompt = value; }
 
         /// <inheritdoc />
-        public virtual ModelReference? Model => Inner.Model;
+        public virtual ModelReference? Model { get => Inner.Model; set => Inner.Model = value; }
 
         /// <inheritdoc />
-        public virtual int? MaxSteps => Inner.MaxSteps;
+        public virtual int? MaxSteps { get => Inner.MaxSteps; set => Inner.MaxSteps = value; }
 
         /// <inheritdoc />
-        public virtual IReadOnlyList<PermissionRule> Permissions => Inner.Permissions;
+        public virtual IReadOnlyList<PermissionRule> Permissions { get => Inner.Permissions; set => Inner.Permissions = value; }
 
         /// <inheritdoc />
-        public virtual IReadOnlyList<string> AllowedTools => Inner.AllowedTools;
+        public virtual IReadOnlyList<string> AllowedTools { get => Inner.AllowedTools; set => Inner.AllowedTools = value; }
 
         /// <inheritdoc />
-        public virtual IReadOnlyList<string> DeniedTools => Inner.DeniedTools;
+        public virtual IReadOnlyList<string> DeniedTools { get => Inner.DeniedTools; set => Inner.DeniedTools = value; }
 
         /// <inheritdoc />
         public virtual async IAsyncEnumerable<ChatMessage> ExecuteAsync(

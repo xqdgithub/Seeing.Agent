@@ -86,7 +86,7 @@ namespace Seeing.Agent.Tests.Todo
             result.Content.Should().Be(content);
             result.Status.Should().Be(TodoStatus.Pending);
             result.Priority.Should().Be(priority);
-            result.CreatedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(1));
+            result.CreatedAt.Should().BeCloseTo(DateTimeOffset.Now, TimeSpan.FromSeconds(1));
             result.CompletedAt.Should().BeNull();
 
             // 验证持久化
@@ -117,7 +117,7 @@ namespace Seeing.Agent.Tests.Todo
             // Assert
             completedResult!.Status.Should().Be(TodoStatus.Completed);
             completedResult.CompletedAt.Should().NotBeNull();
-            completedResult.CompletedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(1));
+            completedResult.CompletedAt.Should().BeCloseTo(DateTimeOffset.Now, TimeSpan.FromSeconds(1));
         }
 
         [Fact]

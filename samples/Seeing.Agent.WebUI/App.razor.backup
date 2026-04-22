@@ -1,0 +1,67 @@
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Agent.WebUI.Shared
+@using AntDesign
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1890ff" />
+    
+    <!-- Favicon (inline SVG) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>" />
+    
+    <title>Seeing.Agent WebUI</title>
+    <base href="/" />
+    
+    <!-- 禁用 AntDesign 自动导入 CSS（使用 CSS-in-JS） -->
+    <link no-antblazor-css />
+    
+    <!-- AntDesign 2.0 CSS-in-JS 样式输出 -->
+    <HeadOutlet />
+    
+    <!-- 设计系统 CSS -->
+    <link href="css/design-system.css" rel="stylesheet" />
+    <link href="css/main-layout.css" rel="stylesheet" />
+    <link href="css/message-list.css" rel="stylesheet" />
+    <link href="css/message-item.css" rel="stylesheet" />
+    <link href="css/prompt-input.css" rel="stylesheet" />
+    <link href="css/selectors.css" rel="stylesheet" />
+    <link href="css/tool-components.css" rel="stylesheet" />
+    <link href="css/session-sidebar.css" rel="stylesheet" />
+    <link href="css/home-welcome.css" rel="stylesheet" />
+    <link href="css/session-page.css" rel="stylesheet" />
+    <link href="css/index.css" rel="stylesheet" />
+</head>
+<body>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>未找到页面</PageTitle>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <p role="alert">抱歉，此地址没有内容。</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+    
+    <!-- AntDesign 弹窗容器 -->
+    <AntContainer />
+    
+    <!-- Blazor Server JS -->
+    <script src="_framework/blazor.server.js"></script>
+    
+    <!-- AntDesign JS -->
+    <script src="_content/AntDesign/js/ant-design-blazor.js"></script>
+    
+    <!-- App Utilities JS -->
+    <script src="js/app.js"></script>
+    
+    <!-- 禁用 AntDesign 自动导入 JS -->
+    <script no-antblazor-js></script>
+</body>
+</html>

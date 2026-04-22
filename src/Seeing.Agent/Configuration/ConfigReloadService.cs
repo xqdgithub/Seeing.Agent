@@ -35,7 +35,7 @@ namespace Seeing.Agent.Configuration
         public RuntimeSettings? NewSettings { get; set; }
         
         /// <summary>变更时间</summary>
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public DateTime Timestamp { get; set; } = DateTime.Now;
     }
 
     /// <summary>

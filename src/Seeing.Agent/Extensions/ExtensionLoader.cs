@@ -261,7 +261,7 @@ namespace Seeing.Agent.Extensions
                 var id = instance.Id ?? ExtractIdFromSpec(spec.Spec);
 
                 // 4. 构建元数据
-                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var now = DateTimeOffset.Now.ToUnixTimeMilliseconds();
                 var meta = new ExtensionMeta
                 {
                     State = "first",

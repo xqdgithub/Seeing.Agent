@@ -15,7 +15,7 @@ public class FileSnapshot
     public string Content { get; set; } = string.Empty;
     
     /// <summary>创建时间</summary>
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
     
     /// <summary>操作类型（如：create, update, delete）</summary>
     public string? Operation { get; set; }

@@ -1,0 +1,195 @@
+/**
+ * ToolCallCard 和 ToolCallTimeline 组件样式
+ */
+
+/* ========== ToolCallCard ========== */
+.tool-call-card {
+    margin-bottom: var(--space-3);
+    transition: var(--transition-fast);
+}
+
+.tool-call-card:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.tool-call-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.tool-call-title {
+    display: flex;
+    align-items: center;
+}
+
+.tool-call-params {
+    margin-bottom: var(--space-2);
+}
+
+.tool-call-params-content {
+    background: var(--color-bg-tertiary);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+}
+
+.tool-call-result {
+    background: var(--color-success-bg);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(82, 196, 26, 0.2);
+}
+
+.tool-call-error {
+    background: var(--color-error-bg);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 77, 79, 0.2);
+}
+
+.tool-call-loading {
+    display: flex;
+    align-items: center;
+    padding: var(--space-2);
+}
+
+/* ========== ToolCallTimeline ========== */
+.tool-call-timeline {
+    padding: var(--space-2);
+}
+
+.timeline-item-content {
+    width: 100%;
+}
+
+.timeline-node-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.timeline-node-header:hover {
+    background: var(--color-bg-secondary);
+}
+
+.timeline-node-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.timeline-tool-name {
+    color: var(--color-text);
+}
+
+.timeline-status-tag {
+    margin-left: var(--space-2);
+}
+
+.timeline-node-meta {
+    display: flex;
+    align-items: center;
+}
+
+.timeline-duration {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+}
+
+.timeline-time {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    margin-left: var(--space-2);
+}
+
+.timeline-item-details {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border-secondary);
+}
+
+.timeline-detail-section {
+    margin-bottom: var(--space-2);
+}
+
+.timeline-detail-section:last-child {
+    margin-bottom: 0;
+}
+
+.timeline-detail-label {
+    display: flex;
+    align-items: center;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-1);
+}
+
+.timeline-empty {
+    padding: var(--space-4);
+    text-align: center;
+    color: var(--color-text-tertiary);
+}
+
+/* ========== PermissionModal ========== */
+.permission-modal .ant-modal-body {
+    padding: var(--space-4);
+}
+
+.permission-request-details {
+    margin-top: var(--space-3);
+}
+
+.permission-detail-row {
+    margin-bottom: var(--space-3);
+}
+
+.permission-detail-label {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-1);
+}
+
+.permission-detail-value {
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+}
+
+.permission-actions {
+    margin-top: var(--space-4);
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* ========== 动画 ========== */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ========== 暗色主题 ========== */
+[data-theme="dark"] .tool-call-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="dark"] .timeline-node-header:hover {
+    background: var(--color-bg-tertiary);
+}
+
+[data-theme="dark"] .timeline-item-details {
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border);
+}

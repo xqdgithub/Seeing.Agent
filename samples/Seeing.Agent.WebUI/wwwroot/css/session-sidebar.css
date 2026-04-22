@@ -1,0 +1,246 @@
+/**
+ * SessionSidebar 和 SessionContextMenu 组件样式
+ */
+
+/* ========== SessionSidebar 样式 ========== */
+.session-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--color-bg-secondary);
+    padding: var(--space-4);
+    gap: var(--space-3);
+}
+
+.sidebar-header {
+    padding: 0;
+    margin-bottom: 0;
+}
+
+.sidebar-search {
+    padding: 0;
+    margin-bottom: 0;
+}
+
+.search-input {
+    width: 100%;
+}
+
+.session-list-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-2) 0;
+}
+
+.session-empty {
+    padding: var(--space-8);
+    text-align: center;
+}
+
+.session-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.session-item {
+    position: relative;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+    min-height: 44px;
+    margin-left: 0;
+}
+
+.session-item:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.session-item.selected {
+    background: var(--color-primary-bg);
+}
+
+.session-item-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.session-icon {
+    font-size: var(--font-size-lg);
+    color: var(--color-text-secondary);
+}
+
+.session-info {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex: 1;
+    overflow: hidden;
+}
+
+.session-title {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.session-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.session-time {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+}
+
+.session-selected-indicator {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 60%;
+    background: var(--color-primary);
+    border-radius: var(--radius-full);
+}
+
+/* ========== SessionContextMenu 样式 ========== */
+.session-context-menu {
+    position: fixed;
+    z-index: var(--z-popover);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--color-border);
+    min-width: 150px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition-fast), visibility var(--transition-fast);
+}
+
+.session-context-menu.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.context-menu {
+    border: none;
+    background: transparent;
+    padding: var(--space-1);
+}
+
+.menu-item-danger {
+    border-radius: var(--radius-sm);
+}
+
+/* ========== 会话分组样式 ========== */
+.session-group {
+    margin-bottom: var(--space-2);
+}
+
+.session-group-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+    user-select: none;
+}
+
+.session-group-title:hover {
+    color: var(--color-text);
+}
+
+.session-group-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+    color: var(--color-text-tertiary);
+    transition: transform var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.session-group-title:hover .session-group-icon {
+    color: var(--color-text-secondary);
+}
+
+.session-group-icon.collapsed {
+    transform: rotate(-90deg);
+}
+
+.session-group-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-group-count {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-normal);
+    color: var(--color-text-tertiary);
+    background: var(--color-bg-tertiary);
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    min-width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.session-group-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-left: var(--space-3);
+    margin-top: var(--space-1);
+    overflow: hidden;
+    max-height: 2000px;
+    transition: max-height var(--transition-base), opacity var(--transition-fast), padding var(--transition-fast);
+    opacity: 1;
+}
+
+.session-group-content.collapsed {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* ========== 响应式调整 ========== */
+@media (max-width: 768px) {
+    .session-sidebar {
+        padding: var(--space-3);
+    }
+
+    .session-item {
+        padding: var(--space-2) var(--space-3);
+    }
+
+    .session-group-content {
+        padding-left: 0;
+    }
+}

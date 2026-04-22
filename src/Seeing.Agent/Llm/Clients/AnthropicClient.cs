@@ -380,12 +380,25 @@ private object BuildContent(ChatMessage msg)
 
             foreach (var tc in msg.ToolCalls)
             {
+                // 安全解析 Arguments（可能不是有效 JSON）
+                object? inputObj = null;
+                var argsStr = tc.Function?.Arguments ?? "{}";
+                try
+                {
+                    inputObj = JsonSerializer.Deserialize<object>(argsStr);
+                }
+                catch (JsonException)
+                {
+                    // 如果不是有效 JSON，作为字符串处理
+                    inputObj = argsStr;
+                }
+
                 contents.Add(new
                 {
                     type = "tool_use",
                     id = tc.Id,
                     name = tc.Function?.Name,
-                    input = JsonSerializer.Deserialize<object>(tc.Function?.Arguments ?? "{}")
+                    input = inputObj
                 });
             }
 

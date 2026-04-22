@@ -87,7 +87,7 @@ namespace Seeing.Agent.Configuration
                     _logger.LogDebug("已创建配置目录: {Directory}", directory);
                 }
 
-                settings.UpdatedAt = DateTime.UtcNow;
+                settings.UpdatedAt = DateTime.Now;
                 var json = JsonSerializer.Serialize(settings, _jsonOptions);
                 
                 await File.WriteAllTextAsync(_settingsFilePath, json, cancellationToken);

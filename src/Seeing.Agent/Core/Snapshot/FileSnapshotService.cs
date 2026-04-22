@@ -36,7 +36,7 @@ public class FileSnapshotService : IFileSnapshotService
             Content = content,
             Operation = operation,
             SessionId = sessionId,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.Now
         };
 
         _snapshots[snapshot.Id] = snapshot;
