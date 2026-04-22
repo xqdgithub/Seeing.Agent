@@ -6,20 +6,43 @@
 
 ```
 Core/
-├── Interfaces/           # 6 个核心接口
+├── Interfaces/           # 核心接口（15+ 文件）
 │   ├── IAgent.cs         # Agent 契约 + AgentMode/AgentContext/AgentResult
 │   ├── ITool.cs          # Tool 契约 + ToolContext/ToolResult/FileAttachment
 │   ├── ISkill.cs         # Skill 契约 + SkillContext/SkillResult/SkillInfo
 │   ├── IHook.cs          # Hook 契约 + HookContext/HookResult/HookPoints
 │   ├── IRuleEngine.cs    # 权限引擎契约
-│   └── IExtension.cs     # 扩展插件契约
-├── Abstractions/         # 3 个抽象基类
-│   ├── AgentBase.cs      # Agent 基类（日志辅助方法）
+│   ├── IExtension.cs     # 扩展插件契约
+│   ├── IAgentRegistry.cs # Agent 注册表
+│   ├── IComponentManager.cs # 组件管理器
+│   └── IPermissionChannel.cs # 权限通道
+│
+├── Abstractions/         # 抽象基类
+│   ├── AgentBase.cs      # Agent 基类（配置驱动/代码驱动双模式）
 │   ├── SkillBase.cs      # Skill 基类（参数获取/结果构造）
 │   └── ToolBase.cs       # Tool 基类（JSON 解析/Success/Failure）
-└── Models/               # 2 个数据模型
-    ├── ChatMessage.cs    # 对话消息（Role/Content/Attachments）
-    └── ConfigurationModels.cs  # 配置模型（LlmConfig/AgentOptions）
+│
+├── Models/               # 数据模型
+│   ├── AgentDefinition.cs # Agent 定义模型
+│   ├── ConfigurationModels.cs # 配置模型
+│   └── ConcurrentMetadataStore.cs # 元数据存储
+│
+├── Detection/            # 检测服务
+│   └── LoopDetector.cs   # 循环调用检测（SHA256 哈希）
+│
+├── Configuration/        # 配置工具
+│   └── MergeDeep.cs      # 深度合并算法
+│
+├── Permission/           # 权限系统
+│   └ PermissionCache.cs  # 权限缓存层
+│
+├── Sessions/             # 会话集成
+├── Prompts/              # 动态提示构建
+├── Questions/            # 问题管理
+├── Todo/                 # Todo 管理
+├── Snapshot/             # 文件快照
+├── Background/           # 后台任务
+└── Events/               # 消息事件类型
 ```
 
 ## WHERE TO LOOK
@@ -32,6 +55,11 @@ Core/
 | 实现 Hook | `Interfaces/IHook.cs` | `HookPoint`, `Priority`, `HookPoints.*` |
 | 权限规则 | `Interfaces/IRuleEngine.cs` | `Evaluate()`, `AddRule()` |
 | 扩展插件 | `Interfaces/IExtension.cs` | `InitializeAsync()`, `ConfigureServices()` |
+| Agent 注册 | `Interfaces/IAgentRegistry.cs` | `GetAgentAsync()`, `RegisterAgent()` |
+| 组件加载 | `Interfaces/IComponentManager.cs` | `LoadAllAsync()` |
+| 循环检测 | `Detection/LoopDetector.cs` | `DetectLoop()` |
+| 权限缓存 | `Permission/PermissionCache.cs` | `GetOrAdd()` |
+| 配置合并 | `Configuration/MergeDeep.cs` | `Merge()` |
 
 ## CONVENTIONS（核心层特定）
 
@@ -76,11 +104,11 @@ protected SkillResult Failure(string message);
 | **Result 类继承层次** | 每个领域独立 Result，无通用基类 |
 | **Hook 点字符串硬编码** | 使用 `HookPoints.*` 常量 |
 | **AgentMode 扩展新值** | 固定三种：Primary/SubAgent/All |
+| **绕过 LoopDetector** | 可能导致 LLM 无限循环 |
 
-## 扩展指南
+## NOTES
 
-**新增领域接口：**
-1. 定义 `I{领域}` 接口继承核心能力
-2. 定义 `{领域}Context` 包含 SessionId/MessageId
-3. 定义 `{领域}Result` 包含 Success/Error
-4. 可选：定义 `{领域}Base` 抽象基类提供辅助方法
+- **接口数量**: 15+ 核心接口
+- **AgentBase 双模式**: 配置驱动（`.md` 文件）+ 代码驱动（继承）
+- **LoopDetector**: SHA256 参数哈希，3 次警告，5 次终止
+- **MergeDeep**: 数组不合并（替换），对象递归合并
