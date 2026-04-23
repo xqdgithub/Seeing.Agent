@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Agent.Memory</RootNamespace>
+    <AssemblyName>Seeing.Agent.Memory</AssemblyName>
+    <BaseOutputPath>C:\Users\quand\.seeing\plugins\Seeing.Agent.Memory</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference main Seeing.Agent library -->
+    <ProjectReference Include="..\\Seeing.Agent\\Seeing.Agent.csproj" />
+  </ItemGroup>
+
+</Project>

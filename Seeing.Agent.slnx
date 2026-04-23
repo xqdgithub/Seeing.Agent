@@ -5,9 +5,11 @@
   <Folder Name="/src/">
     <Project Path="src/Seeing.Agent.Plugins/Seeing.Agent.Plugins.csproj" />
     <Project Path="src/Seeing.Agent/Seeing.Agent.csproj" />
+    <Project Path="src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
     <Project Path="src/Seeing.Session/Seeing.Session.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Plugins.Tests/Seeing.Agent.Plugins.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
   </Folder>
