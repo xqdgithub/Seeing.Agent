@@ -7,7 +7,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Hooks;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Rules;
 using Seeing.Agent.Tools;
@@ -76,17 +76,6 @@ public class AgentExecutor
         var permissionChannel = context.PermissionChannel 
             ?? Interfaces.DefaultPermissionChannel.Instance;
 
-        // ========== Hook: agent.before_invoke ==========
-        await TriggerHookAsync(
-            HookPoints.AgentBeforeInvoke,
-            new Dictionary<string, object>
-            {
-                ["sessionId"] = context.SessionId,
-                ["agentName"] = agent.Name,
-                ["mode"] = agent.Mode.ToString()
-            },
-            effectiveToken);
-
         for (var step = 0; step < maxSteps; step++)
         {
             effectiveToken.ThrowIfCancellationRequested();
@@ -100,17 +89,6 @@ public class AgentExecutor
 
             // 构建请求
             var request = BuildRequest(agent, messages, context);
-
-            // ========== Hook: chat.before_start ==========
-            await TriggerHookAsync(
-                HookPoints.ChatBeforeStart,
-                new Dictionary<string, object>
-                {
-                    ["sessionId"] = context.SessionId,
-                    ["modelId"] = request.Model ?? "default",
-                    ["step"] = step
-                },
-                effectiveToken);
 
             // 调用 LLM（流式）
             ChatMessage? assistantMessage = null;
@@ -172,16 +150,6 @@ public class AgentExecutor
                 }
             }
 
-            // ========== Hook: chat.after_complete ==========
-            await TriggerHookAsync(
-                HookPoints.ChatAfterComplete,
-                new Dictionary<string, object>
-                {
-                    ["sessionId"] = context.SessionId,
-                    ["step"] = step
-                },
-                effectiveToken);
-
             if (assistantMessage == null)
             {
                 _logger.LogWarning("[AgentExecutor] LLM 返回空响应");
@@ -242,16 +210,6 @@ public class AgentExecutor
             Message = $"达到最大步数 {maxSteps}，已停止",
             Source = "agent"
         };
-
-        // ========== Hook: agent.after_invoke ==========
-        await TriggerHookAsync(
-            HookPoints.AgentAfterInvoke,
-            new Dictionary<string, object>
-            {
-                ["sessionId"] = context.SessionId,
-                ["agentName"] = agent.Name
-            },
-            effectiveToken);
     }
 
     /// <summary>
@@ -452,17 +410,6 @@ public class AgentExecutor
             }
         }
 
-        // ========== Hook: tool.execute.before ==========
-        await TriggerHookAsync(
-            HookPoints.ToolExecuteBefore,
-            new Dictionary<string, object>
-            {
-                ["toolId"] = name,
-                ["sessionId"] = context.SessionId,
-                ["callId"] = tc.Id
-            },
-            cancellationToken);
-
         // 执行工具
         ToolResult result;
         try
@@ -485,18 +432,6 @@ public class AgentExecutor
                 Duration = DateTime.Now - startTime
             };
         }
-
-        // ========== Hook: tool.execute.after ==========
-        await TriggerHookAsync(
-            HookPoints.ToolExecuteAfter,
-            new Dictionary<string, object>
-            {
-                ["toolId"] = name,
-                ["sessionId"] = context.SessionId,
-                ["callId"] = tc.Id,
-                ["success"] = result.Success
-            },
-            cancellationToken);
 
         return new ToolCallEvent
         {
@@ -530,6 +465,16 @@ public class AgentExecutor
 
         if (targetAgent == null)
         {
+            // ========== Hook: PermissionDenied（未找到目标 Agent）==========
+            _hooks.TriggerFireAndForget(
+                HookRegistry.PermissionDenied,
+                parentContext.SessionId,
+                new Dictionary<string, object?>
+                {
+                    ["resource"] = targetAgentName,
+                    ["reason"] = $"未找到 Agent: {targetAgentName}"
+                });
+
             return new ToolCallEvent
             {
                 SessionId = parentContext.SessionId,
@@ -544,6 +489,18 @@ public class AgentExecutor
 
         // 创建子会话
         var subSessionId = $"{parentContext.SessionId}:{targetAgentName}:{Guid.NewGuid():N}";
+
+        // ========== Hook: SubAgentStarted（子代理开始前）==========
+        _hooks.TriggerFireAndForget(
+            HookRegistry.SubagentStarted,
+            parentContext.SessionId,
+            new Dictionary<string, object?>
+            {
+                ["parentSessionId"] = parentContext.SessionId,
+                ["subSessionId"] = subSessionId,
+                ["subAgentName"] = targetAgentName,
+                ["prompt"] = args.Prompt
+            });
 
         // 发布子代理启动事件
         var startEvent = new SubAgentEvent
@@ -598,6 +555,18 @@ public class AgentExecutor
 
         // 构建返回结果
         var resultContent = BuildSubAgentResult(lastAssistantContent.ToString(), subSessionId, targetAgentName);
+
+        // ========== Hook: SubAgentCompleted（子代理完成后）==========
+        _hooks.TriggerFireAndForget(
+            HookRegistry.SubagentCompleted,
+            parentContext.SessionId,
+            new Dictionary<string, object?>
+            {
+                ["parentSessionId"] = parentContext.SessionId,
+                ["subSessionId"] = subSessionId,
+                ["subAgentName"] = targetAgentName,
+                ["success"] = true
+            });
 
         return new ToolCallEvent
         {
@@ -841,17 +810,6 @@ public class AgentExecutor
         string agentName)
     {
         return $"[子代理 {agentName} 完成]\n{content}\n\nSession: {sessionId}";
-    }
-
-    /// <summary>
-    /// 触发 Hook
-    /// </summary>
-    private async Task TriggerHookAsync(
-        string hookPoint,
-        Dictionary<string, object> input,
-        CancellationToken cancellationToken)
-    {
-        await _hooks.TriggerAsync(hookPoint, input, cancellationToken: cancellationToken);
     }
 
     /// <summary>

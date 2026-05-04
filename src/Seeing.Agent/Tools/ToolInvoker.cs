@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Decorators;
-using Seeing.Agent.Hooks;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Middlewares;
 using System.Collections.Concurrent;
@@ -22,7 +22,7 @@ namespace Seeing.Agent.Tools
     public class ToolInvoker
     {
         private readonly ILogger<ToolInvoker> _logger;
-        private readonly IHookManager _hookManager;
+        private readonly Core.Hooks.IHookManager _hookManager;
         private readonly IRuleEvaluator? _ruleEvaluator;
         private readonly ConcurrentDictionary<string, ITool> _tools = new();
         private readonly IServiceProvider? _serviceProvider;
@@ -32,7 +32,7 @@ namespace Seeing.Agent.Tools
 
         public ToolInvoker(
             ILogger<ToolInvoker> logger,
-            IHookManager hookManager,
+            Core.Hooks.IHookManager hookManager,
             IServiceProvider? serviceProvider = null,
             IToolDecoratorRegistry? decoratorRegistry = null,
             IRuleEvaluator? ruleEvaluator = null,
@@ -152,24 +152,25 @@ namespace Seeing.Agent.Tools
             foreach (var tool in _tools.Values)
             {
                 // ========== Hook: tool.definition ==========
-                var output = new Dictionary<string, object>
+                var mutable = new Dictionary<string, object?>
                 {
                     ["description"] = tool.Description,
                     ["parameters"] = tool.ParametersSchema
                 };
 
-                await _hookManager.TriggerAsync(
-                    HookPoints.ToolDefinition,
-                    new Dictionary<string, object> { ["toolId"] = tool.Id },
-                    output);
+                await _hookManager.TriggerBlockingAsync(
+                    HookRegistry.ToolDefinition,
+                    string.Empty,
+                    new Dictionary<string, object?> { ["toolId"] = tool.Id },
+                    mutable);
 
                 schemas.Add(new FunctionToolSchema
                 {
                     Function = new FunctionSchema
                     {
                         Name = tool.Id,
-                        Description = output["description"]?.ToString() ?? tool.Description,
-                        Parameters = output["parameters"] is JsonElement je ? je : tool.ParametersSchema
+                        Description = mutable["description"]?.ToString() ?? tool.Description,
+                        Parameters = mutable["parameters"] is JsonElement je ? je : tool.ParametersSchema
                     }
                 });
             }
@@ -219,7 +220,7 @@ namespace Seeing.Agent.Tools
             }
 
             // ========== Hook: tool.before_register ==========
-            var beforeOutput = new Dictionary<string, object>
+            var beforeMutable = new Dictionary<string, object?>
             {
                 ["toolId"] = tool.Id,
                 ["description"] = tool.Description,
@@ -227,14 +228,15 @@ namespace Seeing.Agent.Tools
                 ["tags"] = string.Join(",", tool.Tags)
             };
 
-            var beforeResult = await _hookManager.TriggerAsync(
-                HookPoints.ToolBeforeRegister,
-                new Dictionary<string, object>
+            var beforeResult = await _hookManager.TriggerBlockingAsync(
+                HookRegistry.ToolBeforeRegister,
+                string.Empty,
+                new Dictionary<string, object?>
                 {
                     ["toolId"] = tool.Id,
                     ["tool"] = tool
                 },
-                beforeOutput,
+                beforeMutable,
                 cancellationToken);
 
             if (!beforeResult.Continue)
@@ -251,14 +253,14 @@ namespace Seeing.Agent.Tools
                 tool.Id, string.Join(",", tool.Tags), tool.Category);
 
             // ========== Hook: tool.after_register ==========
-            await _hookManager.TriggerAsync(
-                HookPoints.ToolAfterRegister,
-                new Dictionary<string, object>
+            _hookManager.TriggerFireAndForget(
+                HookRegistry.ToolAfterRegister,
+                string.Empty,
+                new Dictionary<string, object?>
                 {
                     ["toolId"] = tool.Id,
                     ["tool"] = finalTool
-                },
-                cancellationToken: cancellationToken);
+                });
         }
 
         /// <summary>
@@ -371,20 +373,21 @@ namespace Seeing.Agent.Tools
             }
 
             // ========== Hook: tool.execute.before ==========
-            var argsOutput = new Dictionary<string, object>
+            var argsMutable = new Dictionary<string, object?>
             {
                 ["args"] = toolCall.Arguments ?? new JsonElement()
             };
 
-            var hookResult = await _hookManager.TriggerAsync(
-                HookPoints.ToolExecuteBefore,
-                new Dictionary<string, object>
+            var hookResult = await _hookManager.TriggerBlockingAsync(
+                HookRegistry.ToolExecuteBefore,
+                sessionId,
+                new Dictionary<string, object?>
                 {
                     ["toolId"] = toolId,
                     ["sessionId"] = sessionId,
                     ["callId"] = toolCall.Id
                 },
-                argsOutput,
+                argsMutable,
                 cancellationToken);
 
             if (!hookResult.Continue)
@@ -414,13 +417,13 @@ namespace Seeing.Agent.Tools
 
                     // 使用可能被 Hook 修改的参数
                     JsonElement args;
-                    if (argsOutput["args"] is JsonElement je)
+                    if (argsMutable["args"] is JsonElement je)
                     {
                         args = je;
                     }
-                    else if (argsOutput["args"] != null)
+                    else if (argsMutable["args"] != null)
                     {
-                        args = JsonSerializer.SerializeToElement(argsOutput["args"]);
+                        args = JsonSerializer.SerializeToElement(argsMutable["args"]);
                     }
                     else
                     {
@@ -430,28 +433,24 @@ namespace Seeing.Agent.Tools
                     var toolResult = await tool.ExecuteAsync(args, context);
 
                     // ========== Hook: tool.execute.after ==========
-                    var afterOutput = new Dictionary<string, object>
-                    {
-                        ["output"] = toolResult.Output,
-                        ["error"] = toolResult.Error,
-                        ["metadata"] = toolResult.Metadata
-                    };
-
-                    await _hookManager.TriggerAsync(
-                        HookPoints.ToolExecuteAfter,
-                        new Dictionary<string, object>
+                    _hookManager.TriggerFireAndForget(
+                        HookRegistry.ToolExecuteAfter,
+                        sessionId,
+                        new Dictionary<string, object?>
                         {
                             ["toolId"] = toolId,
-                            ["sessionId"] = sessionId,
                             ["callId"] = toolCall.Id,
                             ["args"] = args
                         },
-                        afterOutput,
-                        cancellationToken);
+                        new Dictionary<string, object?>
+                        {
+                            ["success"] = toolResult.Success,
+                            ["output"] = toolResult.Output,
+                            ["error"] = toolResult.Error,
+                            ["metadata"] = toolResult.Metadata,
+                            ["duration"] = DateTime.Now - startTime
+                        });
 
-                    // 应用 Hook 修改后的输出
-                    toolResult.Output = afterOutput["output"]?.ToString() ?? toolResult.Output;
-                    toolResult.Error = afterOutput["error"]?.ToString() ?? toolResult.Error;
                     toolResult.ToolCallId = toolCall.Id;
                     toolResult.Duration = DateTime.Now - startTime;
 
@@ -473,16 +472,15 @@ namespace Seeing.Agent.Tools
                     _logger.LogError(ex, "工具执行失败: {ToolId}", toolId);
 
                     // ========== Hook: tool.on_error ==========
-                    await _hookManager.TriggerAsync(
-                        HookPoints.ToolOnError,
-                        new Dictionary<string, object>
+                    _hookManager.TriggerFireAndForget(
+                        HookRegistry.ToolOnError,
+                        sessionId,
+                        new Dictionary<string, object?>
                         {
                             ["toolId"] = toolId,
-                            ["sessionId"] = sessionId,
                             ["callId"] = toolCall.Id,
                             ["error"] = ex
-                        },
-                        cancellationToken: cancellationToken);
+                        });
 
                     throw;
                 }
@@ -553,6 +551,34 @@ namespace Seeing.Agent.Tools
             string sessionId = "",
             CancellationToken cancellationToken = default)
         {
+            // ========== Hook: tool.batch.before ==========
+            var batchMutable = new Dictionary<string, object?>
+            {
+                ["toolCalls"] = toolCalls.Select(tc => tc.Name).ToList()
+            };
+
+            var beforeResult = await _hookManager.TriggerBlockingAsync(
+                HookRegistry.ToolBatchBefore,
+                sessionId,
+                new Dictionary<string, object?>
+                {
+                    ["count"] = toolCalls.Count,
+                    ["toolIds"] = toolCalls.Select(tc => tc.Name).Distinct().ToList()
+                },
+                batchMutable,
+                cancellationToken);
+
+            if (!beforeResult.Continue)
+            {
+                _logger.LogWarning("批量工具调用被 Hook 中断");
+                return toolCalls.Select(tc => new ToolResult
+                {
+                    Success = false,
+                    ToolCallId = tc.Id,
+                    Error = "批量工具调用被 Hook 中断"
+                }).ToList();
+            }
+
             var results = new List<ToolResult>();
 
             foreach (var toolCall in toolCalls)
@@ -560,6 +586,24 @@ namespace Seeing.Agent.Tools
                 var result = await ExecuteAsync(toolCall, sessionId, cancellationToken);
                 results.Add(result);
             }
+
+            // ========== Hook: tool.batch.after ==========
+            _hookManager.TriggerFireAndForget(
+                HookRegistry.ToolBatchAfter,
+                sessionId,
+                new Dictionary<string, object?>
+                {
+                    ["count"] = toolCalls.Count
+                },
+                new Dictionary<string, object?>
+                {
+                    ["results"] = results.Select(r => new Dictionary<string, object?>
+                    {
+                        ["toolCallId"] = r.ToolCallId,
+                        ["success"] = r.Success,
+                        ["error"] = r.Error
+                    }).ToList()
+                });
 
             return results;
         }

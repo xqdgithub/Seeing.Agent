@@ -1,3 +1,5 @@
+using Seeing.Agent.Llm;
+
 namespace Seeing.Agent.Core.Models
 {
     /// <summary>
@@ -31,7 +33,7 @@ namespace Seeing.Agent.Core.Models
         /// <summary>
         /// 消息历史
         /// </summary>
-        public List<Llm.ChatMessage> History { get; set; } = new();
+        public List<ChatMessage> History { get; set; } = new();
         
         /// <summary>
         /// 工作目录
@@ -51,24 +53,38 @@ namespace Seeing.Agent.Core.Models
         /// <summary>元数据</summary>
         public Dictionary<string, object> Metadata { get; set; } = new();
         
+        /// <summary>是否顶层 Agent（避免嵌套重复触发 Hook）</summary>
+        public bool IsTopLevel { get; init; } = true;
+        
+        /// <summary>父代理名称（子代理时设置）</summary>
+        public string? ParentAgentName { get; init; }
+        
+        /// <summary>累计步骤数（供 agent.after_invoke Hook 使用）</summary>
+        public int TotalSteps { get; set; }
+        
+        /// <summary>累计 Token 使用（供 agent.after_invoke Hook 使用）</summary>
+        public TokenUsage? TotalUsage { get; set; }
+        
         /// <summary>
         /// 创建子代理上下文
         /// </summary>
         /// <param name="subSessionId">子会话 ID</param>
-        /// <param name="subAgent">子代理定义</param>
+        /// <param name="targetAgent">目标代理定义</param>
         /// <returns>新的执行上下文</returns>
-        public AgentContext CreateSubAgentContext(string subSessionId, AgentDefinition subAgent)
+        public AgentContext CreateSubAgentContext(string subSessionId, AgentDefinition targetAgent)
         {
             return new AgentContext
             {
                 SessionId = subSessionId,
                 Services = Services,
                 CancellationToken = CancellationToken,
-                PermissionChannel = PermissionChannel,  // 继承权限通道
-                History = new List<Llm.ChatMessage>(),
+                PermissionChannel = PermissionChannel,
+                History = new List<ChatMessage>(),
                 WorkingDirectory = WorkingDirectory,
                 ParentSessionId = SessionId,
-                IsBackground = subAgent.IsBackground || subAgent.Mode == AgentMode.SubAgent,
+                ParentAgentName = ParentAgentName,
+                IsBackground = targetAgent.IsBackground || targetAgent.Mode == AgentMode.SubAgent,
+                IsTopLevel = false,
                 Metadata = new Dictionary<string, object>(Metadata)
             };
         }

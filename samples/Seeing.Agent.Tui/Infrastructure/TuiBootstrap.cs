@@ -6,7 +6,7 @@ using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
-using Seeing.Agent.Hooks;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Llm;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Rules;
@@ -83,7 +83,7 @@ public static class TuiBootstrap
             Configuration = provider.GetRequiredService<IConfiguration>(),
             Directory = Directory.GetCurrentDirectory(),
             WorkspaceRoot = state.WorkspaceRoot,
-            HookManager = provider.GetRequiredService<HookManager>(),
+            HookManager = provider.GetRequiredService<IHookManager>(),
             ToolInvoker = provider.GetRequiredService<ToolInvoker>(),
             RuleEngine = provider.GetRequiredService<RuleEngine>(),
             SkillManager = provider.GetRequiredService<SkillManager>(),

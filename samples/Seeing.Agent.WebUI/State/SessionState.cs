@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.State
@@ -13,6 +14,11 @@ namespace Seeing.Agent.WebUI.State
     /// </summary>
     public class SessionState
     {
+        /// <summary>
+        /// 执行锁 - 确保只有一个任务在执行
+        /// </summary>
+        private readonly SemaphoreSlim _executionLock = new SemaphoreSlim(1, 1);
+        
         /// <summary>
         /// 当前会话数据（由 SessionManager 管理）
         /// </summary>
@@ -75,12 +81,12 @@ namespace Seeing.Agent.WebUI.State
         /// <summary>
         /// 是否正在执行
         /// </summary>
-        public bool IsExecuting { get; set; }
+        public bool IsExecuting { get; private set; }
 
         /// <summary>
         /// 是否已完成
         /// </summary>
-        public bool IsCompleted { get; set; }
+        public bool IsCompleted { get; private set; }
 
         /// <summary>
         /// 最后更新时间
@@ -101,11 +107,43 @@ namespace Seeing.Agent.WebUI.State
         public CancellationTokenSource? CancellationTokenSource => _cancellationTokenSource;
 
         /// <summary>
-        /// 开始执行，创建新的取消令牌源
+        /// 尝试开始执行 - 如果已有任务执行则返回 false
+        /// </summary>
+        public bool TryStartExecution()
+        {
+            // 尝试获取锁，如果已有任务执行则立即返回 false
+            if (!_executionLock.Wait(0))
+            {
+                return false;
+            }
+            
+            // 取消之前的执行（如果有）
+            if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
+            {
+                _cancellationTokenSource.Cancel();
+                _cancellationTokenSource.Dispose();
+            }
+            
+            _cancellationTokenSource = new CancellationTokenSource();
+            IsExecuting = true;
+            IsCompleted = false;
+            return true;
+        }
+
+        /// <summary>
+        /// 开始执行，创建新的取消令牌源（会取消之前的执行）
         /// </summary>
         public void StartExecution()
         {
-            CancelExecution();
+            // 等待获取锁
+            _executionLock.Wait();
+            
+            // 取消之前的执行
+            if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
+            {
+                _cancellationTokenSource.Cancel();
+                _cancellationTokenSource.Dispose();
+            }
             _cancellationTokenSource = new CancellationTokenSource();
             IsExecuting = true;
             IsCompleted = false;
@@ -119,10 +157,14 @@ namespace Seeing.Agent.WebUI.State
             if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
             {
                 _cancellationTokenSource.Cancel();
-                _cancellationTokenSource.Dispose();
             }
-            _cancellationTokenSource = null;
             IsExecuting = false;
+            
+            // 释放锁
+            if (_executionLock.CurrentCount == 0)
+            {
+                _executionLock.Release();
+            }
         }
 
         /// <summary>
@@ -137,6 +179,12 @@ namespace Seeing.Agent.WebUI.State
             _cancellationTokenSource = null;
             IsExecuting = false;
             IsCompleted = true;
+            
+            // 释放锁
+            if (_executionLock.CurrentCount == 0)
+            {
+                _executionLock.Release();
+            }
         }
 
         /// <summary>

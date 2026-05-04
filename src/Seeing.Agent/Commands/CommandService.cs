@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Hooks;
 
 namespace Seeing.Agent.Commands
 {
@@ -32,11 +32,11 @@ namespace Seeing.Agent.Commands
     public class CommandService : ICommandService
     {
         private readonly ILogger<CommandService> _logger;
-        private readonly IHookManager _hookManager;
+        private readonly Core.Hooks.IHookManager _hookManager;
 
         public CommandService(
             ILogger<CommandService> logger,
-            IHookManager hookManager)
+            Core.Hooks.IHookManager hookManager)
         {
             _logger = logger;
             _hookManager = hookManager;
@@ -65,12 +65,12 @@ namespace Seeing.Agent.Commands
                 ["proceed"] = true
             };
 
-            var hookResult = await _hookManager.TriggerAsync(
-                HookPoints.CommandExecuteBefore,
-                new Dictionary<string, object>
+            var hookResult = await _hookManager.TriggerBlockingAsync(
+                HookRegistry.CommandExecuteBefore,
+                context.SessionId ?? string.Empty,
+                new Dictionary<string, object?>
                 {
                     ["command"] = context.CommandName,
-                    ["sessionId"] = context.SessionId,
                     ["arguments"] = context.Arguments,
                     ["messageId"] = context.MessageId ?? string.Empty
                 },

@@ -1,65 +1,73 @@
 using FluentAssertions;
-using Seeing.Agent.Memory.Core;
+using Seeing.Agent.Core.Hooks;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests;
 
-/// <summary>
-/// Task 29: MemoryHookHandler 单元测试
-/// 测试 MemoryHookPoints 的定义
-/// </summary>
 public class MemoryHookHandlerTests
 {
-    [Fact(DisplayName = "Hook 点应定义正确的常量")]
-    public void HookPoints_ShouldHaveCorrectConstants()
+    [Fact(DisplayName = "HookRegistry Memory 点应定义正确的常量")]
+    public void HookRegistry_MemoryPoints_ShouldHaveCorrectConstants()
     {
-        // Assert
-        MemoryHookPoints.Created.Should().Be("memory.created");
-        MemoryHookPoints.Searched.Should().Be("memory.searched");
-        MemoryHookPoints.Retrieved.Should().Be("memory.retrieved");
-        MemoryHookPoints.Updated.Should().Be("memory.updated");
-        MemoryHookPoints.Deleted.Should().Be("memory.deleted");
+        HookRegistry.MemoryBeforeStore.Point.Should().Be("memory.before_store");
+        HookRegistry.MemoryAfterStore.Point.Should().Be("memory.after_store");
+        HookRegistry.MemoryBeforeRetrieve.Point.Should().Be("memory.before_retrieve");
+        HookRegistry.MemoryAfterRetrieve.Point.Should().Be("memory.after_retrieve");
+        HookRegistry.MemoryBeforeClear.Point.Should().Be("memory.before_clear");
+        HookRegistry.MemoryAfterClear.Point.Should().Be("memory.after_clear");
     }
 
-    [Fact(DisplayName = "所有 Hook 点应以 memory. 开头")]
-    public void HookPoints_ShouldStartWithMemoryPrefix()
+    [Fact(DisplayName = "所有 Memory Hook 点应以 memory. 开头")]
+    public void HookRegistry_MemoryPoints_ShouldStartWithMemoryPrefix()
     {
-        // Assert
-        MemoryHookPoints.Created.Should().StartWith("memory.");
-        MemoryHookPoints.Searched.Should().StartWith("memory.");
-        MemoryHookPoints.Retrieved.Should().StartWith("memory.");
-        MemoryHookPoints.Updated.Should().StartWith("memory.");
-        MemoryHookPoints.Deleted.Should().StartWith("memory.");
+        HookRegistry.MemoryBeforeStore.Point.Should().StartWith("memory.");
+        HookRegistry.MemoryAfterStore.Point.Should().StartWith("memory.");
+        HookRegistry.MemoryBeforeRetrieve.Point.Should().StartWith("memory.");
+        HookRegistry.MemoryAfterRetrieve.Point.Should().StartWith("memory.");
+        HookRegistry.MemoryBeforeClear.Point.Should().StartWith("memory.");
+        HookRegistry.MemoryAfterClear.Point.Should().StartWith("memory.");
     }
 
-    [Fact(DisplayName = "Hook 点名称应唯一")]
-    public void HookPoints_ShouldBeUnique()
+    [Fact(DisplayName = "Memory Hook 点名称应唯一")]
+    public void HookRegistry_MemoryPoints_ShouldBeUnique()
     {
-        // Arrange
         var hookPoints = new[]
         {
-            MemoryHookPoints.Created,
-            MemoryHookPoints.Searched,
-            MemoryHookPoints.Retrieved,
-            MemoryHookPoints.Updated,
-            MemoryHookPoints.Deleted
+            HookRegistry.MemoryBeforeStore.Point,
+            HookRegistry.MemoryAfterStore.Point,
+            HookRegistry.MemoryBeforeRetrieve.Point,
+            HookRegistry.MemoryAfterRetrieve.Point,
+            HookRegistry.MemoryBeforeClear.Point,
+            HookRegistry.MemoryAfterClear.Point
         };
 
-        // Assert
         hookPoints.Should().OnlyHaveUniqueItems();
     }
 
-    [Fact(DisplayName = "Hook 点总数应为 5")]
-    public void HookPoints_CountShouldBe5()
+    [Fact(DisplayName = "Memory Hook 点总数应为 6")]
+    public void HookRegistry_MemoryPoints_CountShouldBe6()
     {
-        // Arrange - 使用反射获取所有常量
-        var constants = typeof(MemoryHookPoints)
-            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy)
-            .Where(f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(string))
-            .Select(f => f.GetValue(null) as string)
-            .ToList();
+        var memoryPoints = new[]
+        {
+            HookRegistry.MemoryBeforeStore,
+            HookRegistry.MemoryAfterStore,
+            HookRegistry.MemoryBeforeRetrieve,
+            HookRegistry.MemoryAfterRetrieve,
+            HookRegistry.MemoryBeforeClear,
+            HookRegistry.MemoryAfterClear
+        };
 
-        // Assert
-        constants.Should().HaveCount(5);
+        memoryPoints.Should().HaveCount(6);
+    }
+
+    [Fact(DisplayName = "Memory Hook 点应为 FireAndForget 策略")]
+    public void HookRegistry_MemoryPoints_ShouldBeFireAndForgetPolicy()
+    {
+        HookRegistry.MemoryBeforeStore.Policy.Should().Be(HookPolicy.FireAndForget);
+        HookRegistry.MemoryAfterStore.Policy.Should().Be(HookPolicy.FireAndForget);
+        HookRegistry.MemoryBeforeRetrieve.Policy.Should().Be(HookPolicy.FireAndForget);
+        HookRegistry.MemoryAfterRetrieve.Policy.Should().Be(HookPolicy.FireAndForget);
+        HookRegistry.MemoryBeforeClear.Policy.Should().Be(HookPolicy.FireAndForget);
+        HookRegistry.MemoryAfterClear.Policy.Should().Be(HookPolicy.FireAndForget);
     }
 }

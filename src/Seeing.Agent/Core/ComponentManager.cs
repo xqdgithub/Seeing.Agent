@@ -4,9 +4,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
-using Seeing.Agent.Hooks;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Rules;
 using Seeing.Agent.Skills;
@@ -222,36 +222,32 @@ internal class McpLoader : IComponentLoader
         CancellationToken cancellationToken = default)
     {
         var mcpManager = services.GetRequiredService<McpClientManager>();
-        var toolInvoker = services.GetRequiredService<ToolInvoker>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<McpLoader>();
 
+        // 加载配置（不阻塞）
         var configs = McpConfigLoader.LoadDefault(workspaceRoot, logger);
-        var connected = new List<string>();
 
+        // 转换为字典格式
+        var configDict = new Dictionary<string, McpServerConfig>();
         foreach (var config in configs)
         {
-            try
-            {
-                await mcpManager.ConnectAsync(config, cancellationToken);
-                connected.Add(config.Name);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "MCP {Name} 连接失败", config.Name);
-            }
+            if (!string.IsNullOrEmpty(config.Name))
+                configDict[config.Name] = config;
         }
 
-        // 注册工具
-        foreach (var tool in mcpManager.GetToolsAsITools())
-            toolInvoker.RegisterTool(tool);
+        // 非阻塞初始化（后台启动连接）
+        await mcpManager.InitializeAsync(configDict, cancellationToken);
+
+        // 注意：工具注册已由 McpClientManager 内部处理（通过 McpToolRegistry）
+        // 不需要在此手动注册
 
         return new ComponentLoadResult
         {
             Type = Type,
             Success = true,
-            Count = mcpManager.GetTools().Count,
-            Details = connected
+            Count = configs.Count,
+            Details = configs.Select(c => c.Name).ToList()
         };
     }
 }

@@ -1,11 +1,12 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Hooks;
 
 namespace Seeing.Agent.Llm;
 
@@ -49,7 +50,7 @@ public class LlmService : ILlmService
 {
     private readonly SeeingAgentOptions _options;
     private readonly ILlmClientFactory _clientFactory;
-    private readonly IHookManager _hookManager;
+    private readonly Core.Hooks.IHookManager _hookManager;
     private readonly ILogger _logger;
     
     // 模型配置缓存
@@ -64,7 +65,7 @@ public class LlmService : ILlmService
     public LlmService(
         IOptions<SeeingAgentOptions> options,
         ILlmClientFactory clientFactory,
-        IHookManager hookManager,
+        Core.Hooks.IHookManager hookManager,
         ILogger<LlmService> logger)
     {
         _options = options.Value;
@@ -153,25 +154,18 @@ public class LlmService : ILlmService
         request.Model = apiModelId;
 
         // ========== Hook: chat.before_start ==========
-        var beforeOutput = new Dictionary<string, object>
-        {
-            ["modelId"] = apiModelId,
-            ["provider"] = client.ProviderId
-        };
-
-        await _hookManager.TriggerAsync(
-            HookPoints.ChatBeforeStart,
-            new Dictionary<string, object>
+        await _hookManager.TriggerBlockingAsync(
+            HookRegistry.ChatBeforeStart,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
             {
-                ["sessionId"] = sessionId ?? string.Empty,
-                ["modelId"] = modelId,
+                ["modelId"] = apiModelId,
                 ["provider"] = client.ProviderId
             },
-            beforeOutput,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         // ========== Hook: chat.params ==========
-        var paramsOutput = new Dictionary<string, object>
+        var paramsOutput = new Dictionary<string, object?>
         {
             ["temperature"] = request.Temperature ?? 0.7,
             ["topP"] = request.TopP ?? 1.0,
@@ -179,11 +173,11 @@ public class LlmService : ILlmService
             ["maxTokens"] = request.MaxTokens ?? 4096
         };
 
-        await _hookManager.TriggerAsync(
-            HookPoints.ChatParams,
-            new Dictionary<string, object>
+        await _hookManager.TriggerBlockingAsync(
+            HookRegistry.ChatParams,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
             {
-                ["sessionId"] = sessionId ?? string.Empty,
                 ["modelId"] = modelId,
                 ["provider"] = client.ProviderId
             },
@@ -196,16 +190,16 @@ public class LlmService : ILlmService
         request.MaxTokens = Convert.ToInt32(paramsOutput["maxTokens"]);
 
         // ========== Hook: chat.headers ==========
-        var headersOutput = new Dictionary<string, object>
+        var headersOutput = new Dictionary<string, object?>
         {
             ["headers"] = new Dictionary<string, string>()
         };
 
-        await _hookManager.TriggerAsync(
-            HookPoints.ChatHeaders,
-            new Dictionary<string, object>
+        await _hookManager.TriggerBlockingAsync(
+            HookRegistry.ChatHeaders,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
             {
-                ["sessionId"] = sessionId ?? string.Empty,
                 ["modelId"] = modelId,
                 ["provider"] = client.ProviderId
             },
@@ -215,16 +209,16 @@ public class LlmService : ILlmService
         // ========== Hook: llm.system_prompt ==========
         if (!string.IsNullOrEmpty(request.SystemPrompt))
         {
-            var promptOutput = new Dictionary<string, object>
+            var promptOutput = new Dictionary<string, object?>
             {
                 ["prompt"] = request.SystemPrompt
             };
 
-            await _hookManager.TriggerAsync(
-                HookPoints.LlmSystemPrompt,
-                new Dictionary<string, object>
+            await _hookManager.TriggerBlockingAsync(
+                HookRegistry.LlmSystemPrompt,
+                sessionId ?? string.Empty,
+                new Dictionary<string, object?>
                 {
-                    ["sessionId"] = sessionId ?? string.Empty,
                     ["modelId"] = modelId
                 },
                 promptOutput,
@@ -243,49 +237,42 @@ public class LlmService : ILlmService
         catch (Exception ex)
         {
             // ========== Hook: chat.on_error ==========
-            await _hookManager.TriggerAsync(
-                HookPoints.ChatOnError,
-                new Dictionary<string, object>
+            _hookManager.TriggerFireAndForget(
+                HookRegistry.ChatOnError,
+                sessionId ?? string.Empty,
+                new Dictionary<string, object?>
                 {
-                    ["sessionId"] = sessionId ?? string.Empty,
                     ["modelId"] = modelId,
                     ["provider"] = client.ProviderId,
                     ["error"] = ex
-                },
-                cancellationToken: cancellationToken);
+                });
             throw;
         }
 
         // ========== Hook: chat.message ==========
-        await _hookManager.TriggerAsync(
-            HookPoints.ChatMessage,
-            new Dictionary<string, object>
+        await _hookManager.TriggerParallelAsync(
+            HookRegistry.ChatMessage,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
             {
-                ["sessionId"] = sessionId ?? string.Empty,
                 ["messageId"] = response.Id,
                 ["modelId"] = modelId
-            },
-            new Dictionary<string, object>
-            {
-                ["message"] = response.Message,
-                ["role"] = response.Message.Role
             },
             cancellationToken);
 
         // ========== Hook: chat.after_complete ==========
-        await _hookManager.TriggerAsync(
-            HookPoints.ChatAfterComplete,
-            new Dictionary<string, object>
+        _hookManager.TriggerFireAndForget(
+            HookRegistry.ChatAfterComplete,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
             {
-                ["sessionId"] = sessionId ?? string.Empty,
                 ["modelId"] = modelId,
                 ["messageId"] = response.Id
             },
-            new Dictionary<string, object>
+            new Dictionary<string, object?>
             {
                 ["response"] = response
-            },
-            cancellationToken);
+            });
 
         return response;
     }
@@ -321,11 +308,11 @@ public class LlmService : ILlmService
         request.Model = apiModelId;
 
         // ========== Hook: chat.before_start ==========
-        await _hookManager.TriggerAsync(
-            HookPoints.ChatBeforeStart,
-            new Dictionary<string, object>
+        await _hookManager.TriggerBlockingAsync(
+            HookRegistry.ChatBeforeStart,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
             {
-                ["sessionId"] = sessionId ?? string.Empty,
                 ["modelId"] = modelId,
                 ["provider"] = client.ProviderId,
                 ["streaming"] = true
@@ -333,18 +320,18 @@ public class LlmService : ILlmService
             cancellationToken: cancellationToken);
 
         // ========== Hook: chat.params ==========
-        var paramsOutput = new Dictionary<string, object>
+        var paramsOutput = new Dictionary<string, object?>
         {
             ["temperature"] = request.Temperature ?? 0.7,
             ["topP"] = request.TopP ?? 1.0,
             ["maxTokens"] = request.MaxTokens ?? 4096
         };
 
-        await _hookManager.TriggerAsync(
-            HookPoints.ChatParams,
-            new Dictionary<string, object>
+        await _hookManager.TriggerBlockingAsync(
+            HookRegistry.ChatParams,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
             {
-                ["sessionId"] = sessionId ?? string.Empty,
                 ["modelId"] = modelId,
                 ["provider"] = client.ProviderId,
                 ["streaming"] = true
@@ -359,16 +346,16 @@ public class LlmService : ILlmService
         // ========== Hook: llm.system_prompt ==========
         if (!string.IsNullOrEmpty(request.SystemPrompt))
         {
-            var promptOutput = new Dictionary<string, object>
+            var promptOutput = new Dictionary<string, object?>
             {
                 ["prompt"] = request.SystemPrompt
             };
 
-            await _hookManager.TriggerAsync(
-                HookPoints.LlmSystemPrompt,
-                new Dictionary<string, object>
+            await _hookManager.TriggerBlockingAsync(
+                HookRegistry.LlmSystemPrompt,
+                sessionId ?? string.Empty,
+                new Dictionary<string, object?>
                 {
-                    ["sessionId"] = sessionId ?? string.Empty,
                     ["modelId"] = modelId,
                     ["streaming"] = true
                 },
@@ -379,6 +366,14 @@ public class LlmService : ILlmService
         }
 
         _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
+
+        var startTime = DateTime.Now;
+        
+        // 流式数据累计变量
+        var streamedContent = new StringBuilder();
+        var streamedReasoning = new StringBuilder();
+        var streamedToolCalls = new List<ToolCall>();
+        TokenUsage? streamedUsage = null;
 
         // 使用 Channel 解决 C# 不允许 yield 在 try-catch 中的限制
         // 这样可以确保异常能够正确传播给用户，不会静默吞掉
@@ -405,33 +400,50 @@ public class LlmService : ILlmService
                 capturedException = ex;
                 _logger.LogError(ex, "流式聊天请求失败: Model={Model}", apiModelId);
 
-                // ========== Hook: chat.on_error ==========
-                try
-                {
-                    await _hookManager.TriggerAsync(
-                        HookPoints.ChatOnError,
-                        new Dictionary<string, object>
-                        {
-                            ["sessionId"] = sessionId ?? string.Empty,
-                            ["modelId"] = modelId,
-                            ["provider"] = client.ProviderId,
-                            ["streaming"] = true,
-                            ["error"] = ex
-                        },
-                        cancellationToken: CancellationToken.None); // 使用 None 防止 Hook 也被取消
-                }
-                catch (Exception hookEx)
-                {
-                    _logger.LogWarning(hookEx, "Hook chat.on_error 执行失败");
-                }
-
                 writer.Complete(ex);
             }
         }, cancellationToken);
 
-        // 从 channel 读取并 yield 返回给调用者
+        // 从 channel 读取并 yield 返回给调用者，同时累计数据
         await foreach (var update in channel.Reader.ReadAllAsync(cancellationToken))
         {
+            // 累计内容
+            if (!string.IsNullOrEmpty(update.ContentDelta))
+                streamedContent.Append(update.ContentDelta);
+            
+            // 累计推理内容
+            if (!string.IsNullOrEmpty(update.ReasoningDelta))
+                streamedReasoning.Append(update.ReasoningDelta);
+            
+            // 累计工具调用
+            if (update.ToolCallDeltas != null && update.ToolCallDeltas.Count > 0)
+            {
+                foreach (var toolCall in update.ToolCallDeltas)
+                {
+                    var existingCall = streamedToolCalls.FirstOrDefault(tc => tc.Id == toolCall.Id);
+                    if (existingCall != null)
+                    {
+                        // 追加到现有工具调用
+                        if (toolCall.Function != null)
+                        {
+                            existingCall.Function ??= new FunctionCall();
+                            if (!string.IsNullOrEmpty(toolCall.Function.Name))
+                                existingCall.Function.Name += toolCall.Function.Name;
+                            if (!string.IsNullOrEmpty(toolCall.Function.Arguments))
+                                existingCall.Function.Arguments += toolCall.Function.Arguments;
+                        }
+                    }
+                    else
+                    {
+                        streamedToolCalls.Add(toolCall);
+                    }
+                }
+            }
+            
+            // 累计使用统计（通常在最后一个 update 中）
+            if (update.Usage != null)
+                streamedUsage = update.Usage;
+            
             yield return update;
         }
 
@@ -445,16 +457,20 @@ public class LlmService : ILlmService
         }
 
         // ========== Hook: chat.after_complete ==========
-        await _hookManager.TriggerAsync(
-            HookPoints.ChatAfterComplete,
-            new Dictionary<string, object>
-            {
-                ["sessionId"] = sessionId ?? string.Empty,
-                ["modelId"] = modelId,
-                ["messageId"] = messageId,
-                ["streaming"] = true
-            },
-            cancellationToken: cancellationToken);
+        var completeResult = new Dictionary<string, object?>
+        {
+            ["content"] = streamedContent.ToString(),
+            ["reasoning"] = streamedReasoning.ToString(),
+            ["usage"] = streamedUsage,
+            ["toolCalls"] = streamedToolCalls,
+            ["duration"] = DateTime.Now - startTime
+        };
+
+        _hookManager.TriggerFireAndForget(
+            HookRegistry.ChatAfterComplete,
+            sessionId ?? "",
+            input: new Dictionary<string, object?> { ["modelId"] = modelId, ["streaming"] = true },
+            result: completeResult);
     }
 
     /// <summary>测试 Provider 连接</summary>

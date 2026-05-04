@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Commands;
-using Seeing.Agent.Hooks;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;

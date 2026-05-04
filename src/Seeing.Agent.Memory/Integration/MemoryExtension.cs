@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core;
@@ -42,16 +43,14 @@ public class MemoryExtension : IExtension
     /// </summary>
     public void ConfigureServices(IServiceCollection services)
     {
-        // 注册核心服务（Singleton）
         services.AddSingleton<IMemoryManager, MemoryManager>();
         services.AddSingleton<MemoryOrchestrator>();
         services.AddSingleton<MemoryWriteQueue>();
 
-        // 注册工具（Transient）
         services.AddTransient<MemoryTools>();
 
-        // 注册 Hook Handler（Transient）
-        services.AddTransient<MemoryHookHandler>();
+        services.AddTransient<ChatMemoryHandler>();
+        services.AddTransient<ToolMemoryHandler>();
     }
 
     /// <summary>
@@ -59,17 +58,14 @@ public class MemoryExtension : IExtension
     /// </summary>
     public async Task InitializeAsync(ExtensionContext context, ExtensionMeta meta)
     {
-        // 获取日志工厂
         var loggerFactory = context.Services.GetRequiredService<ILoggerFactory>();
         _logger = loggerFactory.CreateLogger<MemoryExtension>();
 
         _logger?.LogInformation("初始化 {Name} v{Version} (state: {State})",
             Name, Version, meta.State);
 
-        // 加载默认 Memory 配置并记录来源与摘要信息
         var memoryOptions = MemoryConfigLoader.LoadDefault(context.WorkspaceRoot, _logger);
 
-        // 尝试确定配置来源路径（优先用户级 -> 项目级）
         try
         {
             var userRel = MemoryConfigLoader.UserMemoryJsonPath;
@@ -97,32 +93,31 @@ public class MemoryExtension : IExtension
             _logger?.LogWarning("MemoryConfigLoader could not determine config load path");
         }
 
-        // 配置摘要日志：MemoryStore 目录等关键字段
         _logger?.LogInformation("MemoryStore.Directory = {Dir}", memoryOptions.MemoryStore.MemoryDirectory);
 
-        // 获取核心服务
-        var hookManager = context.HookManager;
+        var hookManager = context.Services.GetService<IHookManager>();
         _writeQueue = context.Services.GetRequiredService<MemoryWriteQueue>();
         var orchestrator = context.Services.GetRequiredService<MemoryOrchestrator>();
 
-        // 创建 Hook Handler
-        var hookHandlerLogger = loggerFactory.CreateLogger<MemoryHookHandler>();
-        var hookHandler = new MemoryHookHandler(_writeQueue, orchestrator, hookHandlerLogger);
+        var chatHandlerLogger = loggerFactory.CreateLogger<ChatMemoryHandler>();
+        var toolHandlerLogger = loggerFactory.CreateLogger<ToolMemoryHandler>();
 
-        _hookHandlers.Add(hookHandler);
+        var chatHandler = new ChatMemoryHandler(_writeQueue, chatHandlerLogger);
+        var toolHandler = new ToolMemoryHandler(_writeQueue, orchestrator, toolHandlerLogger);
 
-        // 注册 Hook Handler 到 HookManager
+        _hookHandlers.Add(chatHandler);
+        _hookHandlers.Add(toolHandler);
+
         if (hookManager != null)
         {
             foreach (var handler in _hookHandlers)
             {
-                hookManager.RegisterHandler(handler);
+                hookManager.Register(handler);
             }
 
             _logger?.LogInformation("已注册 {Count} 个 Hook Handler", _hookHandlers.Count);
         }
 
-        // 启动后台写入队列
         if (_writeQueue != null)
         {
             _ = _writeQueue.StartProcessingAsync();
@@ -149,7 +144,6 @@ public class MemoryExtension : IExtension
     {
         _logger?.LogInformation("清理 {Name}", Name);
 
-        // 停止写入队列
         if (_writeQueue != null)
         {
             _writeQueue.StopProcessing();

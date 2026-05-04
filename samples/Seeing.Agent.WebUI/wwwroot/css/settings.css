@@ -1,0 +1,213 @@
+/**
+ * Settings 页面样式
+ */
+
+.settings-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-6);
+    gap: var(--space-4);
+    background: var(--color-bg-layout);
+}
+
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-4);
+    background: var(--color-bg-container);
+    border-radius: var(--radius-lg);
+    border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.settings-header h2 {
+    margin: 0;
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+.settings-content {
+    flex: 1;
+    background: var(--color-bg-container);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    overflow: auto;
+}
+
+.settings-section {
+    padding: var(--space-4);
+}
+
+.settings-section h4 {
+    margin: 0 0 var(--space-4) 0;
+    color: var(--color-text);
+    font-weight: 500;
+    border-bottom: 1px solid var(--color-border-secondary);
+    padding-bottom: var(--space-2);
+}
+
+.settings-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--space-4);
+    background: var(--color-bg-container);
+    border-radius: var(--radius-lg);
+    border-top: 1px solid var(--color-border-secondary);
+}
+
+/* ========== MCP Status Panel 样式 ========== */
+
+.mcp-status-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.mcp-status-panel .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.mcp-status-panel .panel-header h5 {
+    margin: 0;
+    color: var(--color-text);
+    font-weight: 500;
+}
+
+.mcp-status-panel .panel-summary {
+    padding: var(--space-2);
+    background: var(--color-bg-layout);
+    border-radius: var(--radius-md);
+}
+
+.mcp-status-panel .panel-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.mcp-status-panel .server-item {
+    padding: var(--space-3);
+    background: var(--color-bg-layout);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    transition: all 0.2s ease;
+}
+
+.mcp-status-panel .server-item:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.mcp-status-panel .server-item.state-connected {
+    border-left: 3px solid var(--color-success);
+}
+
+.mcp-status-panel .server-item.state-error {
+    border-left: 3px solid var(--color-error);
+    background: rgba(var(--color-error-rgb), 0.05);
+}
+
+.mcp-status-panel .server-item.state-paused {
+    border-left: 3px solid var(--color-warning);
+}
+
+.mcp-status-panel .server-item.state-reconnecting {
+    border-left: 3px solid var(--color-processing);
+}
+
+.mcp-status-panel .server-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.mcp-status-panel .server-name {
+    font-weight: 500;
+    color: var(--color-text);
+    flex: 1;
+}
+
+.mcp-status-panel .server-details {
+    margin-top: var(--space-2);
+    padding: var(--space-2);
+    background: var(--color-bg-container);
+    border-radius: var(--radius-sm);
+}
+
+.mcp-status-panel .detail-row {
+    display: flex;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-1);
+}
+
+.mcp-status-panel .detail-row .label {
+    color: var(--color-text-secondary);
+    min-width: 60px;
+}
+
+.mcp-status-panel .detail-row .value {
+    color: var(--color-text);
+}
+
+.mcp-status-panel .detail-row.error .value {
+    color: var(--color-error);
+}
+
+.mcp-status-panel .server-tools {
+    margin-top: var(--space-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+}
+
+.mcp-status-panel .server-actions {
+    margin-top: var(--space-2);
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* 状态图标颜色 */
+.mcp-status-panel .color-success {
+    color: var(--color-success);
+}
+
+.mcp-status-panel .color-error {
+    color: var(--color-error);
+}
+
+.mcp-status-panel .color-processing {
+    color: var(--color-processing);
+}
+
+.mcp-status-panel .color-default {
+    color: var(--color-text-secondary);
+}
+
+/* ========== 响应式调整 ========== */
+@media (max-width: 768px) {
+    .settings-container {
+        padding: var(--space-3);
+    }
+    
+    .settings-header {
+        flex-direction: column;
+        gap: var(--space-2);
+        align-items: flex-start;
+    }
+    
+    .settings-content {
+        padding: var(--space-2);
+    }
+    
+    .mcp-status-panel .panel-content {
+        max-height: 400px;
+    }
+}

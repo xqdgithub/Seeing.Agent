@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Hooks;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Rules
@@ -11,7 +11,7 @@ namespace Seeing.Agent.Rules
     public class RuleEngine : IRuleEngine, IRuleEvaluator
     {
         private readonly ILogger<RuleEngine> _logger;
-        private readonly IHookManager? _hookManager;
+        private readonly Core.Hooks.IHookManager? _hookManager;
         // 使用并发字典替代 ConcurrentBag，以支持按键删除规则
         private readonly ConcurrentDictionary<string, PermissionRule> _rules = new();
 
@@ -27,7 +27,7 @@ namespace Seeing.Agent.Rules
         /// <summary>
         /// 创建规则引擎实例（带 Hook 支持）
         /// </summary>
-        public RuleEngine(ILogger<RuleEngine> logger, IHookManager hookManager)
+        public RuleEngine(ILogger<RuleEngine> logger, Core.Hooks.IHookManager hookManager)
         {
             _logger = logger;
             _hookManager = hookManager;
@@ -134,9 +134,10 @@ namespace Seeing.Agent.Rules
                     ["reason"] = decision.Reason ?? string.Empty
                 };
 
-                var hookResult = await _hookManager.TriggerAsync(
-                    HookPoints.PermissionAsk,
-                    new Dictionary<string, object>
+                var hookResult = await _hookManager.TriggerBlockingAsync(
+                    HookRegistry.PermissionAsk,
+                    string.Empty,
+                    new Dictionary<string, object?>
                     {
                         ["permission"] = permission,
                         ["pattern"] = pattern,

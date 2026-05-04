@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Helpers;
-using Seeing.Agent.Hooks;
 using Seeing.Agent.Tools.Attributes;
 using System.Reflection;
 using System.Text.Json;

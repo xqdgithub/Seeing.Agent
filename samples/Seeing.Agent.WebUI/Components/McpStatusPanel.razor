@@ -1,0 +1,276 @@
+@using AntDesign
+@using Seeing.Agent.MCP.Core
+@using Seeing.Agent.WebUI.Services
+@inject McpStateService McpStateService
+@inject IMcpManager McpManager
+@inject IMessageService MessageService
+@implements IDisposable
+
+<div class="mcp-status-panel">
+    <div class="panel-header">
+        <h5>MCP 服务器状态</h5>
+        <Space>
+            <SpaceItem>
+                <Button Type="@ButtonType.Text" 
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.Sync"
+                        OnClick="@RefreshAllAsync" />
+            </SpaceItem>
+        </Space>
+    </div>
+    
+    <div class="panel-summary">
+        <Space>
+            <SpaceItem>
+                <Badge Status="@BadgeStatus.Success" Text="@($"{_connectedCount} 已连接")" />
+            </SpaceItem>
+            <SpaceItem>
+                <Badge Status="@BadgeStatus.Error" Text="@($"{_errorCount} 错误")" />
+            </SpaceItem>
+            <SpaceItem>
+                <Badge Status="@BadgeStatus.Default" Text="@($"共 {_totalTools} 工具")" />
+            </SpaceItem>
+        </Space>
+    </div>
+    
+    <div class="panel-content">
+        @if (_statuses.Count == 0)
+        {
+            <Empty>
+                <DescriptionTemplate>
+                    <span>无 MCP 服务器</span>
+                </DescriptionTemplate>
+            </Empty>
+        }
+        else
+        {
+            @foreach (var kvp in _statuses.OrderBy(s => (int)s.Value.Priority))
+            {
+                <div class="server-item @GetStateClass(kvp.Value.State)">
+                    <div class="server-header">
+                        <Icon Type="@GetStateIcon(kvp.Value.State)" 
+                              Class="@GetStateIconClass(kvp.Value.State)" />
+                        <span class="server-name">@kvp.Key</span>
+                        <Badge Status="@GetBadgeStatus(kvp.Value.State)" 
+                               Text="@GetStateText(kvp.Value.State)" />
+                    </div>
+                    
+                    @if (_expandedServers.Contains(kvp.Key))
+                    {
+                        <div class="server-details">
+                            <div class="detail-row">
+                                <span class="label">传输:</span>
+                                <span class="value">@kvp.Value.Config?.TransportType</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">工具:</span>
+                                <span class="value">@kvp.Value.ToolCount 个</span>
+                            </div>
+                            @if (kvp.Value.LastError != null)
+                            {
+                                <div class="detail-row error">
+                                    <span class="label">错误:</span>
+                                    <span class="value">@kvp.Value.LastError.UserMessage</span>
+                                </div>
+                            }
+                        </div>
+                        
+                        <div class="server-tools">
+                            @foreach (var toolName in kvp.Value.ToolNames.Take(5))
+                            {
+                                <Tag Color="default">@toolName</Tag>
+                            }
+                            @if (kvp.Value.ToolNames.Count > 5)
+                            {
+                                <Tag Color="default">+@(kvp.Value.ToolNames.Count - 5)</Tag>
+                            }
+                        </div>
+                    }
+                    
+                    <div class="server-actions">
+                        <Space Size="@SpaceSize.Small">
+                            <SpaceItem>
+                                <Button Size="@ButtonSize.Small" 
+                                        Type="@ButtonType.Text"
+                                        Icon="@(_expandedServers.Contains(kvp.Key) ? IconType.Outline.Down : IconType.Outline.Right)"
+                                        OnClick="@(() => ToggleExpand(kvp.Key))" />
+                            </SpaceItem>
+                            @if (kvp.Value.State == McpConnectionState.Connected)
+                            {
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small" 
+                                            Type="@ButtonType.Text"
+                                            Icon="@IconType.Outline.PauseCircle"
+                                            OnClick="@(() => PauseServer(kvp.Key))">
+                                        暂停
+                                    </Button>
+                                </SpaceItem>
+                            }
+                            else if (kvp.Value.State == McpConnectionState.Paused)
+                            {
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small" 
+                                            Type="@ButtonType.Text"
+                                            Icon="@IconType.Outline.PlayCircle"
+                                            OnClick="@(() => ResumeServer(kvp.Key))">
+                                        恢复
+                                    </Button>
+                                </SpaceItem>
+                            }
+                            @if (kvp.Value.State == McpConnectionState.Error)
+                            {
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small" 
+                                            Type="@ButtonType.Text"
+                                            Icon="@IconType.Outline.Reload"
+                                            OnClick="@(() => ReconnectServerAsync(kvp.Key))">
+                                        重连
+                                    </Button>
+                                </SpaceItem>
+                            }
+                        </Space>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private IReadOnlyDictionary<string, McpServerStatus> _statuses = new Dictionary<string, McpServerStatus>();
+    private HashSet<string> _expandedServers = new();
+    private int _connectedCount;
+    private int _errorCount;
+    private int _totalTools;
+    
+    protected override void OnInitialized()
+    {
+        McpStateService.StateChanged += OnStateChanged;
+        RefreshStatuses();
+    }
+    
+    private void OnStateChanged(object? sender, EventArgs e)
+    {
+        RefreshStatuses();
+        InvokeAsync(StateHasChanged);
+    }
+    
+    private void RefreshStatuses()
+    {
+        _statuses = McpStateService.GetCachedStatus();
+        _connectedCount = _statuses.Values.Count(s => s.State == McpConnectionState.Connected);
+        _errorCount = _statuses.Values.Count(s => s.State == McpConnectionState.Error);
+        _totalTools = _statuses.Values.Sum(s => s.ToolCount);
+    }
+    
+    private void ToggleExpand(string serverName)
+    {
+        if (_expandedServers.Contains(serverName))
+            _expandedServers.Remove(serverName);
+        else
+            _expandedServers.Add(serverName);
+    }
+    
+    private async Task RefreshAllAsync()
+    {
+        try
+        {
+            await McpManager.ReloadAllAsync();
+            McpStateService.ManualRefresh();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"刷新失败: {ex.Message}");
+        }
+    }
+    
+    private void PauseServer(string name)
+    {
+        var result = McpManager.PauseServer(name);
+        if (!result.Success)
+        {
+            MessageService.Error(result.Error?.UserMessage ?? "暂停失败");
+        }
+        else
+        {
+            MessageService.Success($"服务器 {name} 已暂停");
+        }
+    }
+    
+    private void ResumeServer(string name)
+    {
+        var result = McpManager.ResumeServer(name);
+        if (!result.Success)
+        {
+            MessageService.Error(result.Error?.UserMessage ?? "恢复失败");
+        }
+        else
+        {
+            MessageService.Success($"服务器 {name} 已恢复");
+        }
+    }
+    
+    private async Task ReconnectServerAsync(string name)
+    {
+        var result = await McpManager.ReconnectServerAsync(name);
+        if (!result.Success)
+        {
+            MessageService.Error(result.Error?.UserMessage ?? "重连失败");
+        }
+        else
+        {
+            MessageService.Success($"服务器 {name} 重连成功");
+        }
+    }
+    
+    private string GetStateClass(McpConnectionState state) => state switch
+    {
+        McpConnectionState.Connected => "state-connected",
+        McpConnectionState.Error => "state-error",
+        McpConnectionState.Paused => "state-paused",
+        McpConnectionState.Reconnecting => "state-reconnecting",
+        _ => "state-pending"
+    };
+    
+    private string GetStateIcon(McpConnectionState state) => state switch
+    {
+        McpConnectionState.Connected => IconType.Outline.CheckCircle,
+        McpConnectionState.Error => IconType.Outline.CloseCircle,
+        McpConnectionState.Paused => IconType.Outline.PauseCircle,
+        McpConnectionState.Reconnecting => IconType.Outline.Loading,
+        _ => IconType.Outline.ClockCircle
+    };
+    
+    private string GetStateIconClass(McpConnectionState state) => state switch
+    {
+        McpConnectionState.Connected => "color-success",
+        McpConnectionState.Error => "color-error",
+        McpConnectionState.Reconnecting => "color-processing",
+        _ => "color-default"
+    };
+    
+    private BadgeStatus GetBadgeStatus(McpConnectionState state) => state switch
+    {
+        McpConnectionState.Connected => BadgeStatus.Success,
+        McpConnectionState.Error => BadgeStatus.Error,
+        McpConnectionState.Paused => BadgeStatus.Warning,
+        McpConnectionState.Reconnecting => BadgeStatus.Processing,
+        _ => BadgeStatus.Default
+    };
+    
+    private string GetStateText(McpConnectionState state) => state switch
+    {
+        McpConnectionState.Connected => "已连接",
+        McpConnectionState.Error => "错误",
+        McpConnectionState.Paused => "已暂停",
+        McpConnectionState.Reconnecting => "重连中",
+        McpConnectionState.Connecting => "连接中",
+        McpConnectionState.Pending => "待连接",
+        _ => "未知"
+    };
+    
+    public void Dispose()
+    {
+        McpStateService.StateChanged -= OnStateChanged;
+    }
+}

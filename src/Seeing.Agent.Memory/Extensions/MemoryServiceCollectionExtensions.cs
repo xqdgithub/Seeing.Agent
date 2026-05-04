@@ -35,6 +35,11 @@ public static class MemoryServiceCollectionExtensions
         services.AddSingleton<IMemoryRepository, MdMemoryRepository>();
         services.AddSingleton<IMemoryRetriever, MemoryRetriever>();
 
+        // 注册相似度检查器与去重器（Singleton）
+        // TextSimilarityChecker 为默认实现，用于 MemoryDeduplicator
+        services.AddSingleton<ISimilarityChecker, TextSimilarityChecker>();
+        services.AddSingleton<MemoryDeduplicator>();
+
         // 注册核心服务（Singleton）
         services.AddSingleton<IMemoryManager, MemoryManager>();
         services.AddSingleton<MemoryOrchestrator>();
@@ -44,7 +49,8 @@ public static class MemoryServiceCollectionExtensions
         services.AddTransient<MemoryTools>();
 
         // 注册 Hook Handler（Transient）
-        services.AddTransient<MemoryHookHandler>();
+        services.AddTransient<ChatMemoryHandler>();
+        services.AddTransient<ToolMemoryHandler>();
 
         // 注册 Extension（Singleton）
         services.AddSingleton<IExtension, MemoryExtension>();

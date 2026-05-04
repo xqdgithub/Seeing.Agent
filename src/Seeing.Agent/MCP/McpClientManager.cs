@@ -1,53 +1,484 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Helpers;
+using Seeing.Agent.MCP.Core;
+using Seeing.Agent.MCP.Factory;
+using Seeing.Agent.MCP.Management;
+using Seeing.Agent.MCP.Policy;
+using Seeing.Agent.MCP.Validation;
+using Seeing.Agent.Tools;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
 
+using CoreMcpConnectionState = Seeing.Agent.MCP.Core.McpConnectionState;
+
 namespace Seeing.Agent.MCP
 {
-    /// <summary>
-    /// MCP 客户端管理器 - 管理 MCP Server 连接和工具
-    /// 支持 stdio、Streamable HTTP、SSE 三种传输类型
-    /// </summary>
-    public class McpClientManager
+    public sealed class McpClientManager : IMcpManager
     {
         private readonly ILogger<McpClientManager> _logger;
         private readonly ILoggerFactory _loggerFactory;
+        private readonly IHookManager _hookManager;
+        private readonly ToolInvoker _toolInvoker;
+        private readonly McpWrapperFactoryRegistry _factoryRegistry;
+        private readonly McpGlobalPolicy _globalPolicy;
         private readonly IHttpClientFactory? _httpClientFactory;
-        private readonly ConcurrentDictionary<string, IMcpClientWrapper> _clients = new();
-        private readonly ConcurrentDictionary<string, McpTool> _tools = new();
-        private readonly ConcurrentDictionary<string, McpServerConfig> _serverConfigs = new();
+
+        private readonly ConcurrentDictionary<string, McpServerStatus> _statuses = new();
+        private readonly ConcurrentDictionary<string, McpServerConfig> _configs = new();
+        private readonly ConcurrentDictionary<string, McpConnectionCoordinator> _coordinators = new();
         private readonly ConcurrentDictionary<string, SemaphoreSlim> _reconnectLocks = new();
 
-        /// <summary>
-        /// 创建 MCP 客户端管理器
-        /// </summary>
+        private readonly McpToolRegistry _toolRegistry;
+        private readonly McpBackgroundReconnector _reconnector;
+        private readonly McpProcessMonitor _processMonitor;
+
+        private readonly CancellationTokenSource _shutdownCts = new();
+        private readonly object _stateLock = new();
+        private bool _initialized;
+        private bool _disposed;
+
+        public event EventHandler<McpStatusChangedEventArgs>? StatusChanged;
+
         public McpClientManager(
             ILogger<McpClientManager> logger,
             ILoggerFactory loggerFactory,
+            IHookManager hookManager,
+            ToolInvoker toolInvoker,
+            McpWrapperFactoryRegistry factoryRegistry,
+            McpGlobalPolicy globalPolicy,
             IHttpClientFactory? httpClientFactory = null)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
+            _hookManager = hookManager;
+            _toolInvoker = toolInvoker;
+            _factoryRegistry = factoryRegistry;
+            _globalPolicy = globalPolicy;
             _httpClientFactory = httpClientFactory;
+
+            _toolRegistry = new McpToolRegistry(_toolInvoker, _hookManager, logger);
+            _processMonitor = new McpProcessMonitor(logger);
+            _reconnector = new McpBackgroundReconnector(
+                logger,
+                _globalPolicy,
+                async name =>
+                {
+                    if (_coordinators.TryGetValue(name, out var coordinator))
+                        return await coordinator.ReconnectAsync(_shutdownCts.Token);
+                    return McpOperationResult.Failed(name, McpOperationType.Reconnect, McpErrorInfo.ServerRemoved(name));
+                },
+                GetAllStatus);
         }
 
-        /// <summary>
-        /// 获取所有已注册的 MCP 工具
-        /// </summary>
-        public IReadOnlyCollection<McpTool> GetTools() => _tools.Values.ToList().AsReadOnly();
+        #region 兼容性构造函数（旧版）
 
-        /// <summary>
-        /// 获取所有已注册的工具（作为 ITool）
-        /// </summary>
-        public IEnumerable<ITool> GetToolsAsITools() => _tools.Values.Cast<ITool>();
+        private static HookManager? s_defaultHookManager;
+        private static ToolInvoker? s_defaultToolInvoker;
 
-        /// <summary>
-        /// 连接到 MCP Server 并注册工具
-        /// </summary>
+        public McpClientManager(
+            ILogger<McpClientManager> logger,
+            ILoggerFactory loggerFactory,
+            IHttpClientFactory? httpClientFactory = null)
+            : this(
+                logger,
+                loggerFactory,
+                GetOrCreateDefaultHookManager(loggerFactory),
+                GetOrCreateDefaultToolInvoker(loggerFactory),
+                CreateDefaultFactoryRegistry(loggerFactory),
+                new McpGlobalPolicy(),
+                httpClientFactory)
+        {
+        }
+
+        private static HookManager GetOrCreateDefaultHookManager(ILoggerFactory loggerFactory)
+        {
+            if (s_defaultHookManager == null)
+                s_defaultHookManager = new HookManager(loggerFactory.CreateLogger<HookManager>());
+            return s_defaultHookManager;
+        }
+
+        private static ToolInvoker GetOrCreateDefaultToolInvoker(ILoggerFactory loggerFactory)
+        {
+            if (s_defaultToolInvoker == null)
+            {
+                var hookManager = GetOrCreateDefaultHookManager(loggerFactory);
+                s_defaultToolInvoker = new ToolInvoker(
+                    loggerFactory.CreateLogger<ToolInvoker>(),
+                    hookManager);
+            }
+            return s_defaultToolInvoker;
+        }
+
+        private static McpWrapperFactoryRegistry CreateDefaultFactoryRegistry(ILoggerFactory loggerFactory)
+        {
+            var registry = new McpWrapperFactoryRegistry();
+            registry.Register(new StdioWrapperFactory(loggerFactory));
+            registry.Register(new StreamableHttpWrapperFactory(loggerFactory));
+            registry.Register(new SseWrapperFactory(loggerFactory));
+            return registry;
+        }
+
+        #endregion
+
+        #region IMcpStatusProvider 实现
+
+        public IReadOnlyDictionary<string, McpServerStatus> GetAllStatus()
+        {
+            lock (_stateLock)
+            {
+                return _statuses.ToDictionary(k => k.Key, v => v.Value.Clone());
+            }
+        }
+
+        public McpServerStatus? GetStatus(string name)
+        {
+            lock (_stateLock)
+            {
+                return _statuses.TryGetValue(name, out var status) ? status.Clone() : null;
+            }
+        }
+
+        public IReadOnlyList<Core.McpToolInfo> GetTools()
+        {
+            return _toolRegistry.GetTools()
+                .Select(t => new Core.McpToolInfo
+                {
+                    Name = t.ToolName,
+                    ServerName = t.ServerName,
+                    Description = t.Description,
+                    Schema = t.ParametersSchema.ToDictionary()
+                })
+                .ToList();
+        }
+
+        public bool IsAvailable(string name)
+        {
+            var status = GetStatus(name);
+            return status?.IsAvailable ?? false;
+        }
+
+        public IReadOnlyList<string> GetAvailableServers()
+        {
+            return GetAllStatus()
+                .Where(s => s.Value.IsAvailable)
+                .Select(s => s.Key)
+                .ToList();
+        }
+
+        #endregion
+
+        #region IMcpController 实现
+
+        public async Task<McpOperationResult> ConnectServerAsync(string name, CancellationToken cancellationToken = default)
+        {
+            var config = GetConfig(name);
+            if (config == null)
+                return McpOperationResult.Failed(name, McpOperationType.Connect, McpErrorInfo.ConfigMissing(name));
+
+            var coordinator = GetOrCreateCoordinator(name);
+            return await coordinator.ConnectAsync(config, cancellationToken);
+        }
+
+        public async Task<McpOperationResult> DisconnectServerAsync(string name, CancellationToken cancellationToken = default)
+        {
+            if (!_coordinators.TryGetValue(name, out var coordinator))
+                return McpOperationResult.NoChange(name, McpOperationType.Disconnect, CoreMcpConnectionState.Pending);
+
+            var result = await coordinator.DisconnectAsync(cancellationToken);
+
+            if (result.Success)
+            {
+                _processMonitor.Unwatch(name);
+            }
+
+            return result;
+        }
+
+        public async Task<McpOperationResult> ReconnectServerAsync(string name, CancellationToken cancellationToken = default)
+        {
+            if (!_coordinators.TryGetValue(name, out var coordinator))
+                return McpOperationResult.Failed(name, McpOperationType.Reconnect, McpErrorInfo.ServerRemoved(name));
+
+            _reconnector.ResetReconnectTime(name);
+            return await coordinator.ReconnectAsync(cancellationToken);
+        }
+
+        public McpOperationResult PauseServer(string name)
+        {
+            if (!_coordinators.TryGetValue(name, out var coordinator))
+                return McpOperationResult.Failed(name, McpOperationType.Pause, McpErrorInfo.ServerRemoved(name));
+
+            return coordinator.PauseAsync(_shutdownCts.Token).GetAwaiter().GetResult();
+        }
+
+        public McpOperationResult ResumeServer(string name)
+        {
+            if (!_coordinators.TryGetValue(name, out var coordinator))
+                return McpOperationResult.Failed(name, McpOperationType.Resume, McpErrorInfo.ServerRemoved(name));
+
+            return coordinator.ResumeAsync(_shutdownCts.Token).GetAwaiter().GetResult();
+        }
+
+        public int PauseAllServers()
+        {
+            var count = 0;
+            foreach (var coordinator in _coordinators.Values)
+            {
+                var result = coordinator.PauseAsync(_shutdownCts.Token).GetAwaiter().GetResult();
+                if (result.Success) count++;
+            }
+            return count;
+        }
+
+        public int ResumeAllServers()
+        {
+            var count = 0;
+            foreach (var coordinator in _coordinators.Values)
+            {
+                var result = coordinator.ResumeAsync(_shutdownCts.Token).GetAwaiter().GetResult();
+                if (result.Success) count++;
+            }
+            return count;
+        }
+
+        public async Task<bool> WaitForReadyAsync(string name, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        {
+            if (!_coordinators.TryGetValue(name, out var coordinator))
+                return false;
+
+            return await coordinator.WaitForReadyAsync(TimeSpan.FromMilliseconds(timeoutMs), cancellationToken);
+        }
+
+        #endregion
+
+        #region IMcpConfigManager 实现
+
+        public async Task<McpOperationResult> AddServerAsync(string name, McpServerConfig config, CancellationToken cancellationToken = default)
+        {
+            config.Name = name;
+            var validation = McpConfigValidator.Validate(config);
+            if (!validation.IsValid)
+                return McpOperationResult.Failed(name, McpOperationType.Add, validation.Error!);
+
+            lock (_stateLock)
+            {
+                _configs[name] = config;
+                _statuses[name] = McpServerStatus.Create(name, config, GetPriorityFromConfig(config));
+            }
+
+            if (_globalPolicy.AutoStartOnAdd)
+            {
+                var coordinator = GetOrCreateCoordinator(name);
+                _ = coordinator.ConnectInBackgroundAsync(config, cancellationToken);
+                return McpOperationResult.Succeeded(name, McpOperationType.Add, GetStatus(name)?.State);
+            }
+
+            return McpOperationResult.Succeeded(name, McpOperationType.Add, CoreMcpConnectionState.Pending);
+        }
+
+        public async Task<McpOperationResult> RemoveServerAsync(string name, CancellationToken cancellationToken = default)
+        {
+            var config = GetConfig(name);
+            if (config == null)
+                return McpOperationResult.NoChange(name, McpOperationType.Remove, CoreMcpConnectionState.Removed);
+
+            var disconnectResult = await DisconnectServerAsync(name, cancellationToken);
+
+            lock (_stateLock)
+            {
+                _configs.TryRemove(name, out _);
+                _statuses.TryRemove(name, out _);
+                _coordinators.TryRemove(name, out _);
+            }
+
+            await _toolRegistry.UnregisterAllToolsAsync(name);
+
+            return McpOperationResult.Succeeded(name, McpOperationType.Remove, CoreMcpConnectionState.Removed);
+        }
+
+        public async Task<McpOperationResult> UpdateConfigAsync(string name, McpServerConfig config, CancellationToken cancellationToken = default)
+        {
+            config.Name = name;
+            var validation = McpConfigValidator.Validate(config);
+            if (!validation.IsValid)
+                return McpOperationResult.Failed(name, McpOperationType.UpdateConfig, validation.Error!);
+
+            var beforeInput = new Dictionary<string, object?>
+            {
+                ["serverName"] = name,
+                ["oldConfig"] = GetConfig(name),
+                ["newConfig"] = config
+            };
+            var beforeResult = await _hookManager.TriggerBlockingAsync(
+                HookRegistry.McpBeforeConfigUpdate, "", beforeInput, null, cancellationToken);
+
+            if (!beforeResult.Continue)
+                return McpOperationResult.Failed(name, McpOperationType.UpdateConfig,
+                    McpErrorInfo.ConfigInvalid(name, "Hook 拒绝配置更新"));
+
+            var wasConnected = IsAvailable(name);
+
+            if (wasConnected)
+            {
+                await DisconnectServerAsync(name, cancellationToken);
+            }
+
+            lock (_stateLock)
+            {
+                _configs[name] = config;
+                var existingStatus = GetStatus(name);
+                if (existingStatus != null)
+                {
+                    _statuses[name] = McpServerStatusBuilder.From(existingStatus)
+                        .WithConfig(config)
+                        .Build();
+                }
+                else
+                {
+                    _statuses[name] = McpServerStatus.Create(name, config, GetPriorityFromConfig(config));
+                }
+            }
+
+            if (wasConnected)
+            {
+                await ConnectServerAsync(name, cancellationToken);
+            }
+
+            return McpOperationResult.Succeeded(name, McpOperationType.UpdateConfig, GetStatus(name)?.State);
+        }
+
+        public async Task<int> ReloadAllAsync(CancellationToken cancellationToken = default)
+        {
+            var reloadedCount = 0;
+            var configNames = _configs.Keys.ToList();
+
+            foreach (var name in configNames)
+            {
+                try
+                {
+                    var result = await ReconnectServerAsync(name, cancellationToken);
+                    if (result.Success) reloadedCount++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "重载 MCP Server {Name} 失败", name);
+                }
+            }
+
+            return reloadedCount;
+        }
+
+        public (bool Valid, string? Error) ValidateConfig(string name, McpServerConfig config)
+        {
+            config.Name = name;
+            var result = McpConfigValidator.Validate(config);
+            return (result.IsValid, result.Error?.UserMessage);
+        }
+
+        public McpServerConfig? GetConfig(string name)
+        {
+            return _configs.TryGetValue(name, out var config) ? config : null;
+        }
+
+        public async Task SaveConfigAsync(string? path = null, CancellationToken cancellationToken = default)
+        {
+            _logger.LogWarning("SaveConfigAsync 尚未实现");
+        }
+
+        private static McpServerPriority GetPriorityFromConfig(McpServerConfig config)
+        {
+            return McpServerPriority.Normal;
+        }
+
+        #endregion
+
+        #region IMcpManager 核心方法
+
+        public async Task InitializeAsync(IReadOnlyDictionary<string, McpServerConfig> configs, CancellationToken cancellationToken = default)
+        {
+            if (_initialized) return;
+            _initialized = true;
+
+            var beforeInput = new Dictionary<string, object?> { ["configCount"] = configs.Count };
+            await _hookManager.TriggerBlockingAsync(HookRegistry.McpBeforeInitialize, "", beforeInput, null, cancellationToken);
+
+            foreach (var kvp in configs)
+            {
+                var name = kvp.Key;
+                var config = kvp.Value;
+                config.Name = name;
+
+                var validation = McpConfigValidator.Validate(config);
+                if (!validation.IsValid)
+                {
+                    _logger.LogWarning("MCP Server {Name} 配置无效: {Error}", name, validation.Error?.UserMessage);
+                    continue;
+                }
+
+                lock (_stateLock)
+                {
+                    _configs[name] = config;
+                    _statuses[name] = McpServerStatus.Create(name, config, GetPriorityFromConfig(config));
+                }
+
+                var coordinator = GetOrCreateCoordinator(name);
+                _ = coordinator.ConnectInBackgroundAsync(config, cancellationToken);
+            }
+
+            _reconnector.Start(_shutdownCts.Token);
+
+            _logger.LogInformation("MCP Manager 已初始化，共 {Count} 个服务器配置", configs.Count);
+        }
+
+        public async Task ShutdownAsync(CancellationToken cancellationToken = default)
+        {
+            if (!_initialized) return;
+
+            _reconnector.Stop();
+            _processMonitor.Stop();
+
+            foreach (var coordinator in _coordinators.Values.ToList())
+            {
+                try
+                {
+                    await coordinator.DisconnectAsync(cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "断开 MCP Server 连接时发生错误");
+                }
+            }
+
+            lock (_stateLock)
+            {
+                foreach (var name in _statuses.Keys.ToList())
+                {
+                    var current = _statuses[name];
+                    _statuses[name] = McpServerStatusBuilder.From(current)
+                        .WithState(CoreMcpConnectionState.Pending)
+                        .Build();
+                }
+            }
+
+            _hookManager.TriggerFireAndForget(HookRegistry.McpShutdown, "",
+                new Dictionary<string, object?> { ["timestamp"] = DateTimeOffset.UtcNow });
+
+            _logger.LogInformation("MCP Manager 已关闭");
+        }
+
+        #endregion
+
+        #region 兼容性方法（旧版 API）
+
+        public IReadOnlyCollection<McpTool> GetMcpTools() => _toolRegistry.GetTools();
+
+        public IEnumerable<ITool> GetToolsAsITools() => _toolRegistry.GetTools().Cast<ITool>();
+
         public async Task ConnectAsync(McpServerConfig config, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(config.Name))
@@ -62,73 +493,105 @@ namespace Seeing.Agent.MCP
                 return;
             }
 
-            // 检查是否已连接
-            if (_clients.ContainsKey(config.Name))
+            var result = await AddServerAsync(config.Name, config, cancellationToken);
+
+            if (!result.Success)
             {
-                _logger.LogWarning("MCP Server {Name} 已连接，跳过重复连接", config.Name);
-                return;
+                _logger.LogError("连接 MCP Server {Name} 失败: {Error}", config.Name, result.Error?.UserMessage);
+                throw new InvalidOperationException(result.Error?.UserMessage ?? "连接失败");
             }
 
-            _logger.LogInformation("连接 MCP Server: {Name} (Transport: {TransportType})",
-                config.Name, config.TransportType);
-
-            try
-            {
-                // 创建客户端包装器
-                var client = CreateClientWrapper(config);
-                await client.ConnectAsync(cancellationToken);
-
-                _clients[config.Name] = client;
-                _serverConfigs[config.Name] = config;
-
-                // 获取工具列表
-                var tools = await client.ListToolsAsync(cancellationToken);
-                foreach (var tool in tools)
-                {
-                    var mcpTool = new McpTool(
-                        config.Name,
-                        tool.Name,
-                        tool.Description ?? "",
-                        tool.ParametersSchema,
-                        async (toolName, args) => await ExecuteMcpToolAsync(config.Name, toolName, args, cancellationToken)
-                    );
-
-                    var toolId = $"{config.Name}_{tool.Name}";
-                    _tools[toolId] = mcpTool;
-
-                    _logger.LogDebug("注册 MCP 工具: {ToolId} - {Description}", toolId, tool.Description);
-                }
-
-                _logger.LogInformation("MCP Server {Name} 已连接，注册 {Count} 个工具", config.Name, tools.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "连接 MCP Server 失败: {Name}", config.Name);
-                throw;
-            }
+            var coordinator = GetOrCreateCoordinator(config.Name);
+            await coordinator.WaitForReadyAsync(_globalPolicy.WaitForReadyTimeout, cancellationToken);
         }
 
-        /// <summary>
-        /// 批量连接 MCP Server
-        /// </summary>
         public async Task ConnectAsync(IEnumerable<McpServerConfig> configs, CancellationToken cancellationToken = default)
         {
+            var configDict = new Dictionary<string, McpServerConfig>();
             foreach (var config in configs)
             {
-                try
-                {
-                    await ConnectAsync(config, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "连接 MCP Server {Name} 失败，继续连接其他服务器", config.Name);
-                }
+                if (!string.IsNullOrEmpty(config.Name))
+                    configDict[config.Name] = config;
             }
+
+            await InitializeAsync(configDict, cancellationToken);
         }
 
-        /// <summary>
-        /// 执行 MCP 工具
-        /// </summary>
+        public async Task DisconnectAllAsync()
+        {
+            await ShutdownAsync(_shutdownCts.Token);
+
+            lock (_stateLock)
+            {
+                _configs.Clear();
+                _statuses.Clear();
+                _coordinators.Clear();
+            }
+
+            await _toolRegistry.UnregisterAllToolsAsync("");
+
+            foreach (var s in _reconnectLocks.Values)
+            {
+                try { s.Dispose(); } catch { }
+            }
+            _reconnectLocks.Clear();
+        }
+
+        public bool IsConnected(string serverName) => IsAvailable(serverName);
+
+        public IReadOnlyCollection<string> GetConnectedServers() => GetAvailableServers();
+
+        #endregion
+
+        #region 内部方法
+
+        internal void UpdateState(string serverName, McpServerStatus newStatus)
+        {
+            McpServerStatus? previous;
+            lock (_stateLock)
+            {
+                previous = _statuses.TryGetValue(serverName, out var p) ? p : null;
+                _statuses[serverName] = newStatus;
+            }
+
+            OnStatusChanged(serverName, newStatus.State, previous);
+        }
+
+        private void OnStatusChanged(string serverName, CoreMcpConnectionState newState, McpServerStatus? previous)
+        {
+            var previousState = previous?.State ?? CoreMcpConnectionState.Pending;
+            var current = GetStatus(serverName);
+
+            if (current == null) return;
+
+            StatusChanged?.Invoke(this, new McpStatusChangedEventArgs(
+                serverName, previousState, newState, current));
+
+            _hookManager.TriggerFireAndForget(HookRegistry.McpStatusChanged, "",
+                new Dictionary<string, object?>
+                {
+                    ["serverName"] = serverName,
+                    ["previousState"] = previousState,
+                    ["newState"] = newState
+                });
+        }
+
+        private McpConnectionCoordinator GetOrCreateCoordinator(string serverName)
+        {
+            return _coordinators.GetOrAdd(serverName, name => new McpConnectionCoordinator(
+                name,
+                _logger,
+                _loggerFactory,
+                _httpClientFactory,
+                _hookManager,
+                _factoryRegistry,
+                _toolRegistry,
+                _globalPolicy,
+                (s, status) => UpdateState(s, status),
+                s => GetConfig(s),
+                s => GetStatus(s)));
+        }
+
         private async Task<McpToolResult> ExecuteMcpToolAsync(
             string serverName,
             string toolName,
@@ -137,9 +600,27 @@ namespace Seeing.Agent.MCP
         {
             for (var attempt = 0; attempt < 2; attempt++)
             {
-                if (!_clients.TryGetValue(serverName, out var client))
+                var status = GetStatus(serverName);
+                if (status == null || !status.IsAvailable)
                 {
+                    if (status?.CanReconnect == true && attempt == 0)
+                    {
+                        _logger.LogWarning("MCP Server {Server} 未连接，尝试重连", serverName);
+                        await ReconnectServerAsync(serverName, cancellationToken);
+                        continue;
+                    }
                     return new McpToolResult { IsError = true, Content = $"MCP Server 未连接: {serverName}" };
+                }
+
+                if (!_coordinators.TryGetValue(serverName, out var coordinator))
+                {
+                    return new McpToolResult { IsError = true, Content = $"MCP Server 协调器未找到: {serverName}" };
+                }
+
+                var client = coordinator.GetClient();
+                if (client == null)
+                {
+                    return new McpToolResult { IsError = true, Content = $"MCP Server 客户端未初始化: {serverName}" };
                 }
 
                 try
@@ -148,10 +629,10 @@ namespace Seeing.Agent.MCP
                 }
                 catch (Exception ex) when (attempt == 0 && IsRecoverableStreamableHttpSessionError(ex))
                 {
-                    _logger.LogWarning(ex,
-                        "MCP HTTP 会话失效或 401（{Server}.{Tool}），尝试重新建立连接后重试一次",
-                        serverName, toolName);
-                    if (!await TryReconnectServerAsync(serverName, cancellationToken))
+                    _logger.LogWarning(ex, "MCP HTTP 会话失效（{Server}.{Tool}），尝试重新连接后重试一次", serverName, toolName);
+
+                    var reconnectResult = await ReconnectServerAsync(serverName, cancellationToken);
+                    if (!reconnectResult.Success)
                     {
                         return new McpToolResult
                         {
@@ -170,179 +651,115 @@ namespace Seeing.Agent.MCP
             return new McpToolResult { IsError = true, Content = "MCP 工具调用重试后仍失败" };
         }
 
-        /// <summary>
-        /// Streamable HTTP 等远端会话过期时常见为 401 + SessionExpired；允许断线重连后重试。
-        /// </summary>
         private static bool IsRecoverableStreamableHttpSessionError(Exception ex)
         {
             for (var e = ex; e != null; e = e.InnerException)
             {
-                if (e is not HttpRequestException h)
-                    continue;
-                if (h.StatusCode == HttpStatusCode.Unauthorized)
-                    return true;
-                if (h.Message.Contains("SessionExpired", StringComparison.OrdinalIgnoreCase))
-                    return true;
-                if (h.Message.Contains("401", StringComparison.Ordinal))
-                    return true;
+                if (e is not HttpRequestException h) continue;
+                if (h.StatusCode == HttpStatusCode.Unauthorized) return true;
+                if (h.Message.Contains("SessionExpired", StringComparison.OrdinalIgnoreCase)) return true;
+                if (h.Message.Contains("401", StringComparison.Ordinal)) return true;
             }
-
             return false;
         }
 
-        /// <summary>
-        /// 使用已保存的配置重新创建 HTTP/SSE 客户端（不重复注册 ToolInvoker 中的工具条目）。
-        /// </summary>
-        private async Task<bool> TryReconnectServerAsync(string serverName, CancellationToken cancellationToken)
+        #endregion
+
+        #region IAsyncDisposable 实现
+
+        public async ValueTask DisposeAsync()
         {
-            if (!_serverConfigs.TryGetValue(serverName, out var config))
-            {
-                _logger.LogError("无法重连 MCP：未找到服务器 {Name} 的配置快照", serverName);
-                return false;
-            }
+            if (_disposed) return;
+            _disposed = true;
 
-            if (config.TransportType is not (McpTransportType.StreamableHttp or McpTransportType.Sse))
-            {
-                _logger.LogWarning("MCP 服务器 {Name} 非 HTTP 传输，跳过重连", serverName);
-                return false;
-            }
-
-            if (_httpClientFactory == null)
-            {
-                _logger.LogError("无法重连 MCP：未注册 IHttpClientFactory");
-                return false;
-            }
-
-            var gate = _reconnectLocks.GetOrAdd(serverName, _ => new SemaphoreSlim(1, 1));
-            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (_clients.TryRemove(serverName, out var old))
-                {
-                    try
-                    {
-                        await old.DisconnectAsync().ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogDebug(ex, "断开旧 MCP 连接时异常（可忽略）: {Name}", serverName);
-                    }
-                }
-
-                var fresh = CreateClientWrapper(config);
-                await fresh.ConnectAsync(cancellationToken).ConfigureAwait(false);
-                _clients[serverName] = fresh;
-                _logger.LogInformation("MCP 服务器 {Name} 已重新连接", serverName);
-                return true;
+                await ShutdownAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "MCP 服务器 {Name} 重新连接失败", serverName);
-                return false;
+                _logger.LogWarning(ex, "关闭 MCP Manager 时发生错误");
             }
-            finally
+
+            lock (_stateLock)
             {
-                gate.Release();
+                _configs.Clear();
+                _statuses.Clear();
+                _coordinators.Clear();
             }
+
+            _reconnector.Stop();
+            _processMonitor.Stop();
+
+            foreach (var coordinator in _coordinators.Values)
+            {
+                coordinator.Dispose();
+            }
+
+            _shutdownCts.Dispose();
         }
 
-        /// <summary>
-        /// 断开所有连接
-        /// </summary>
-        public async Task DisconnectAllAsync()
+        #endregion
+    }
+
+    #region 默认工厂实现
+
+    internal class StdioWrapperFactory : IMcpClientWrapperFactory
+    {
+        private readonly ILoggerFactory _loggerFactory;
+
+        public McpTransportType TransportType => McpTransportType.Stdio;
+
+        public StdioWrapperFactory(ILoggerFactory loggerFactory) => _loggerFactory = loggerFactory;
+
+        public IMcpClientWrapper Create(McpServerConfig config, IHttpClientFactory? httpClientFactory, ILoggerFactory loggerFactory)
+            => new StdioMcpClientWrapper(config, loggerFactory.CreateLogger<StdioMcpClientWrapper>());
+    }
+
+    internal class StreamableHttpWrapperFactory : IMcpClientWrapperFactory
+    {
+        private readonly ILoggerFactory _loggerFactory;
+
+        public McpTransportType TransportType => McpTransportType.StreamableHttp;
+
+        public StreamableHttpWrapperFactory(ILoggerFactory loggerFactory) => _loggerFactory = loggerFactory;
+
+        public IMcpClientWrapper Create(McpServerConfig config, IHttpClientFactory? httpClientFactory, ILoggerFactory loggerFactory)
         {
-            foreach (var client in _clients.Values)
-            {
-                try
-                {
-                    await client.DisconnectAsync();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "断开 MCP 连接失败");
-                }
-            }
-
-            _clients.Clear();
-            _tools.Clear();
-            _serverConfigs.Clear();
-            foreach (var s in _reconnectLocks.Values)
-            {
-                try
-                {
-                    s.Dispose();
-                }
-                catch
-                {
-                    // ignore
-                }
-            }
-
-            _reconnectLocks.Clear();
-        }
-
-        /// <summary>
-        /// 获取指定服务器的连接状态
-        /// </summary>
-        public bool IsConnected(string serverName) => _clients.ContainsKey(serverName);
-
-        /// <summary>
-        /// 获取所有已连接的服务器名称
-        /// </summary>
-        public IReadOnlyCollection<string> GetConnectedServers() => _clients.Keys.ToList().AsReadOnly();
-
-        /// <summary>
-        /// 创建 MCP 客户端包装器（根据传输类型）
-        /// </summary>
-        protected virtual IMcpClientWrapper CreateClientWrapper(McpServerConfig config)
-        {
-            return config.TransportType switch
-            {
-                McpTransportType.Stdio => new StdioMcpClientWrapper(config, _loggerFactory.CreateLogger<StdioMcpClientWrapper>()),
-                McpTransportType.StreamableHttp => CreateHttpWrapper(config, HttpTransportMode.StreamableHttp),
-                McpTransportType.Sse => CreateHttpWrapper(config, HttpTransportMode.Sse),
-                _ => throw new NotSupportedException($"不支持的传输类型: {config.TransportType}")
-            };
-        }
-
-        /// <summary>
-        /// 创建 HTTP 传输包装器
-        /// </summary>
-        private IMcpClientWrapper CreateHttpWrapper(McpServerConfig config, HttpTransportMode mode)
-        {
-            if (_httpClientFactory == null)
-            {
-                throw new InvalidOperationException("HTTP 传输需要 IHttpClientFactory，请在 DI 中注册 HttpClient 服务");
-            }
-
-            return new HttpMcpClientWrapper(config, _httpClientFactory, _loggerFactory.CreateLogger<HttpMcpClientWrapper>(), mode);
+            if (httpClientFactory == null)
+                throw new InvalidOperationException("HTTP 传输需要 IHttpClientFactory");
+            return new HttpMcpClientWrapper(config, httpClientFactory, loggerFactory.CreateLogger<HttpMcpClientWrapper>(), HttpTransportMode.StreamableHttp);
         }
     }
 
-    /// <summary>
-    /// MCP 客户端包装器接口
-    /// </summary>
+    internal class SseWrapperFactory : IMcpClientWrapperFactory
+    {
+        private readonly ILoggerFactory _loggerFactory;
+
+        public McpTransportType TransportType => McpTransportType.Sse;
+
+        public SseWrapperFactory(ILoggerFactory loggerFactory) => _loggerFactory = loggerFactory;
+
+        public IMcpClientWrapper Create(McpServerConfig config, IHttpClientFactory? httpClientFactory, ILoggerFactory loggerFactory)
+        {
+            if (httpClientFactory == null)
+                throw new InvalidOperationException("HTTP 传输需要 IHttpClientFactory");
+            return new HttpMcpClientWrapper(config, httpClientFactory, loggerFactory.CreateLogger<HttpMcpClientWrapper>(), HttpTransportMode.Sse);
+        }
+    }
+
+    #endregion
+
+    #region 旧版包装器接口和类型（兼容性保留）
+
     public interface IMcpClientWrapper
     {
         Task ConnectAsync(CancellationToken cancellationToken = default);
         Task DisconnectAsync();
-        Task<IReadOnlyList<McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<Seeing.Agent.MCP.Management.McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default);
         Task<McpToolResult> CallToolAsync(string toolName, Dictionary<string, object?> args, CancellationToken cancellationToken = default);
     }
 
-    /// <summary>
-    /// MCP 工具信息
-    /// </summary>
-    public class McpToolInfo
-    {
-        public string Name { get; set; } = "";
-        public string? Description { get; set; }
-        public JsonElement ParametersSchema { get; set; }
-    }
-
-    /// <summary>
-    /// stdio 传输 MCP 客户端包装器
-    /// </summary>
     public class StdioMcpClientWrapper : IMcpClientWrapper
     {
         private readonly McpServerConfig _config;
@@ -359,14 +776,10 @@ namespace Seeing.Agent.MCP
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(_config.Command))
-            {
                 throw new InvalidOperationException("stdio 传输需要配置 command");
-            }
 
-            _logger.LogInformation("正在连接 MCP Server (stdio): {Name}, Command: {Command}",
-                _config.Name, _config.Command);
+            _logger.LogInformation("正在连接 MCP Server (stdio): {Name}, Command: {Command}", _config.Name, _config.Command);
 
-            // 创建 Stdio 传输层
             var transportOptions = new StdioClientTransportOptions
             {
                 Name = _config.Name,
@@ -375,25 +788,17 @@ namespace Seeing.Agent.MCP
                 ShutdownTimeout = _config.ShutdownTimeout
             };
 
-            // 工作目录
             if (!string.IsNullOrEmpty(_config.WorkingDirectory))
-            {
                 transportOptions.WorkingDirectory = _config.WorkingDirectory;
-            }
 
-            // 设置环境变量
             if (_config.Env != null && _config.Env.Count > 0)
             {
                 transportOptions.EnvironmentVariables = new Dictionary<string, string?>();
                 foreach (var env in _config.Env)
-                {
                     transportOptions.EnvironmentVariables[env.Key] = env.Value;
-                }
             }
 
             _transport = new StdioClientTransport(transportOptions);
-
-            // 创建 MCP 客户端
             _mcpClient = await McpClient.CreateAsync(_transport, cancellationToken: cancellationToken);
 
             _logger.LogInformation("MCP Server {Name} 连接成功", _config.Name);
@@ -420,29 +825,27 @@ namespace Seeing.Agent.MCP
             }
         }
 
-        public async Task<IReadOnlyList<McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<Seeing.Agent.MCP.Management.McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
         {
             if (_mcpClient == null)
             {
                 _logger.LogError("MCP 客户端未连接，无法获取工具列表");
-                return new List<McpToolInfo>();
+                return new List<Seeing.Agent.MCP.Management.McpToolInfo>();
             }
 
             try
             {
                 var tools = await _mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
-                var result = new List<McpToolInfo>();
+                var result = new List<Seeing.Agent.MCP.Management.McpToolInfo>();
 
                 foreach (var tool in tools)
                 {
-                    var toolInfo = new McpToolInfo
+                    result.Add(new Seeing.Agent.MCP.Management.McpToolInfo
                     {
                         Name = tool.Name,
                         Description = tool.Description,
                         ParametersSchema = tool.JsonSchema
-                    };
-
-                    result.Add(toolInfo);
+                    });
                     _logger.LogDebug("发现 MCP 工具: {Name} - {Description}", tool.Name, tool.Description);
                 }
 
@@ -467,28 +870,16 @@ namespace Seeing.Agent.MCP
             try
             {
                 _logger.LogDebug("调用 MCP 工具: {ServerName}.{ToolName}", _config.Name, toolName);
-
-                var result = await _mcpClient.CallToolAsync(
-                    toolName,
-                    args,
-                    cancellationToken: cancellationToken);
-
+                var result = await _mcpClient.CallToolAsync(toolName, args, cancellationToken: cancellationToken);
                 return BuildToolResult(result, _config.Name, toolName);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "调用 MCP 工具 {ServerName}.{ToolName} 失败", _config.Name, toolName);
-                return new McpToolResult
-                {
-                    IsError = true,
-                    Content = $"工具调用异常: {ex.Message}"
-                };
+                return new McpToolResult { IsError = true, Content = $"工具调用异常: {ex.Message}" };
             }
         }
 
-        /// <summary>
-        /// 构建 MCP 工具结果
-        /// </summary>
         public static McpToolResult BuildToolResult(CallToolResult result, string serverName, string toolName)
         {
             var contentBuilder = new System.Text.StringBuilder();
@@ -497,34 +888,19 @@ namespace Seeing.Agent.MCP
             foreach (var content in result.Content)
             {
                 if (content is TextContentBlock textBlock)
-                {
                     contentBuilder.AppendLine(textBlock.Text);
-                }
                 else if (content is ImageContentBlock imageBlock)
-                {
                     contentBuilder.AppendLine($"[Image: {imageBlock.MimeType}]");
-                }
                 else if (content is EmbeddedResourceBlock resourceBlock)
-                {
                     contentBuilder.AppendLine($"[Resource: {resourceBlock.Resource?.Uri}]");
-                }
                 else
-                {
                     contentBuilder.AppendLine($"[Content: {content.Type}]");
-                }
             }
 
-            return new McpToolResult
-            {
-                IsError = hasError,
-                Content = contentBuilder.ToString().TrimEnd()
-            };
+            return new McpToolResult { IsError = hasError, Content = contentBuilder.ToString().TrimEnd() };
         }
     }
 
-    /// <summary>
-    /// HTTP 传输 MCP 客户端包装器（支持 Streamable HTTP 和 SSE）
-    /// </summary>
     public class HttpMcpClientWrapper : IMcpClientWrapper
     {
         private readonly McpServerConfig _config;
@@ -549,14 +925,10 @@ namespace Seeing.Agent.MCP
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             if (_config.Url == null)
-            {
                 throw new InvalidOperationException("HTTP 传输需要配置 endpoint");
-            }
 
-            _logger.LogInformation("正在连接 MCP Server (HTTP): {Name}, Endpoint: {Endpoint}",
-                _config.Name, _config.Url);
+            _logger.LogInformation("正在连接 MCP Server (HTTP): {Name}, Endpoint: {Endpoint}", _config.Name, _config.Url);
 
-            // 创建 HTTP 传输选项
             var transportOptions = new HttpClientTransportOptions
             {
                 Endpoint = _config.Url,
@@ -566,17 +938,11 @@ namespace Seeing.Agent.MCP
                 DefaultReconnectionInterval = _config.ReconnectionInterval
             };
 
-            // 设置请求头
             if (_config.Headers != null && _config.Headers.Count > 0)
-            {
                 transportOptions.AdditionalHeaders = new Dictionary<string, string>(_config.Headers);
-            }
 
-            // 创建 HTTP 客户端和传输层
             var httpClient = _httpClientFactory.CreateClient($"Mcp_{_config.Name}");
             _transport = new HttpClientTransport(transportOptions, httpClient, null, ownsHttpClient: false);
-
-            // 创建 MCP 客户端
             _mcpClient = await McpClient.CreateAsync(_transport, cancellationToken: cancellationToken);
 
             _logger.LogInformation("MCP Server {Name} 连接成功 (Mode: {Mode})", _config.Name, _transportMode);
@@ -603,22 +969,22 @@ namespace Seeing.Agent.MCP
             }
         }
 
-        public async Task<IReadOnlyList<McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<Seeing.Agent.MCP.Management.McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
         {
             if (_mcpClient == null)
             {
                 _logger.LogError("MCP 客户端未连接，无法获取工具列表");
-                return new List<McpToolInfo>();
+                return new List<Seeing.Agent.MCP.Management.McpToolInfo>();
             }
 
             try
             {
                 var tools = await _mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
-                var result = new List<McpToolInfo>();
+                var result = new List<Seeing.Agent.MCP.Management.McpToolInfo>();
 
                 foreach (var tool in tools)
                 {
-                    result.Add(new McpToolInfo
+                    result.Add(new Seeing.Agent.MCP.Management.McpToolInfo
                     {
                         Name = tool.Name,
                         Description = tool.Description,
@@ -647,24 +1013,20 @@ namespace Seeing.Agent.MCP
             try
             {
                 _logger.LogDebug("调用 MCP 工具: {ServerName}.{ToolName}", _config.Name, toolName);
-
                 var result = await _mcpClient.CallToolAsync(toolName, args, cancellationToken: cancellationToken);
                 return StdioMcpClientWrapper.BuildToolResult(result, _config.Name, toolName);
             }
             catch (HttpRequestException)
             {
-                // 交由 McpClientManager 识别 401/SessionExpired 并断线重连后重试
                 throw;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "调用 MCP 工具 {ServerName}.{ToolName} 失败", _config.Name, toolName);
-                return new McpToolResult
-                {
-                    IsError = true,
-                    Content = $"工具调用异常: {ex.Message}"
-                };
+                return new McpToolResult { IsError = true, Content = $"工具调用异常: {ex.Message}" };
             }
         }
     }
+
+    #endregion
 }

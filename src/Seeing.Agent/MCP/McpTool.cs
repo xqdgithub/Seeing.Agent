@@ -1,6 +1,8 @@
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Helpers;
+using Seeing.Agent.MCP.Core;
+using Seeing.Agent.MCP.Policy;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -84,11 +86,43 @@ namespace Seeing.Agent.MCP
         [JsonPropertyName("reconnectionInterval")]
         public int ReconnectionIntervalMs { get; set; } = 1000;
 
+        // —— 扩展配置 ——
+
+        /// <summary>Server 优先级（影响重连顺序）</summary>
+        [JsonPropertyName("priority")]
+        public McpServerPriority Priority { get; set; } = McpServerPriority.Normal;
+
+        /// <summary>Server 级重连策略（覆盖全局策略）</summary>
+        [JsonPropertyName("reconnectionPolicy")]
+        public McpReconnectionPolicy? ReconnectionPolicy { get; set; }
+
+        /// <summary>是否自动启动（默认 true）</summary>
+        [JsonPropertyName("autoStart")]
+        public bool AutoStart { get; set; } = true;
+
+        /// <summary>连接超时（秒），覆盖全局配置</summary>
+        [JsonPropertyName("connectionTimeoutSeconds")]
+        public int? ConnectionTimeoutSecondsOverride { get; set; }
+
+        /// <summary>标签（用于分组和筛选）</summary>
+        [JsonPropertyName("tags")]
+        public List<string>? Tags { get; set; }
+
+        /// <summary>描述（用于 UI 展示）</summary>
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        /// <summary>是否禁用（配置存在但不启动）</summary>
+        [JsonPropertyName("disabled")]
+        public bool Disabled { get; set; } = false;
+
         // —— 便捷属性 ——
 
         /// <summary>连接超时时间</summary>
         [JsonIgnore]
-        public TimeSpan ConnectionTimeout => TimeSpan.FromSeconds(ConnectionTimeoutSeconds);
+        public TimeSpan ConnectionTimeout => ConnectionTimeoutSecondsOverride.HasValue
+            ? TimeSpan.FromSeconds(ConnectionTimeoutSecondsOverride.Value)
+            : TimeSpan.FromSeconds(ConnectionTimeoutSeconds);
 
         /// <summary>关闭超时时间</summary>
         [JsonIgnore]
@@ -121,6 +155,8 @@ namespace Seeing.Agent.MCP
         private readonly Func<string, Dictionary<string, object?>, Task<McpToolResult>> _executeFunc;
 
         public string Id => $"{_serverName}_{_realName}";
+        public string ServerName => _serverName;
+        public string ToolName => _realName;
         public string Description => _description;
         public JsonElement ParametersSchema => _parametersSchema;
 

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Hooks;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Plugins.Agents;
 
 namespace Seeing.Agent.Plugins

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Hooks;
 
 namespace Seeing.Agent.Shell
 {
@@ -30,11 +30,11 @@ namespace Seeing.Agent.Shell
     public class ShellEnvironmentService : IShellEnvironmentService
     {
         private readonly ILogger<ShellEnvironmentService> _logger;
-        private readonly IHookManager _hookManager;
+        private readonly Core.Hooks.IHookManager _hookManager;
 
         public ShellEnvironmentService(
             ILogger<ShellEnvironmentService> logger,
-            IHookManager hookManager)
+            Core.Hooks.IHookManager hookManager)
         {
             _logger = logger;
             _hookManager = hookManager;
@@ -56,12 +56,12 @@ namespace Seeing.Agent.Shell
             };
 
             // 触发 shell.env Hook
-            await _hookManager.TriggerAsync(
-                HookPoints.ShellEnv,
-                new Dictionary<string, object>
+            await _hookManager.TriggerBlockingAsync(
+                HookRegistry.ShellEnv,
+                sessionId ?? string.Empty,
+                new Dictionary<string, object?>
                 {
                     ["cwd"] = cwd,
-                    ["sessionId"] = sessionId ?? string.Empty,
                     ["callId"] = callId ?? string.Empty
                 },
                 output,

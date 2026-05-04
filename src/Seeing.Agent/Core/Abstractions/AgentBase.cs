@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Events;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Hooks;
 using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.Core.Abstractions
@@ -17,7 +17,7 @@ namespace Seeing.Agent.Core.Abstractions
     public abstract class AgentBase : IAgent
     {
         protected readonly ILogger _logger;
-        protected readonly IHookManager? _hookManager;
+        protected readonly Core.Hooks.IHookManager? _hookManager;
 
         /// <summary>
         /// 创建 Agent 基类实例（无 Hook 支持）
@@ -31,7 +31,7 @@ namespace Seeing.Agent.Core.Abstractions
         /// <summary>
         /// 创建 Agent 基类实例（带 Hook 支持）
         /// </summary>
-        protected AgentBase(ILogger logger, IHookManager hookManager)
+        protected AgentBase(ILogger logger, Core.Hooks.IHookManager hookManager)
         {
             _logger = logger;
             _hookManager = hookManager;
@@ -104,26 +104,20 @@ namespace Seeing.Agent.Core.Abstractions
             var sessionId = context.SessionId;
             var inputPreview = input.Content ?? "";
 
-            // ========== Hook: agent.before_invoke ==========
-            if (_hookManager != null)
+            // ========== Hook: agent.before_invoke (仅顶层调用) ==========
+            var isTopLevel = string.IsNullOrEmpty(context.ParentSessionId);
+            if (_hookManager != null && isTopLevel)
             {
-                var beforeOutput = new Dictionary<string, object>
-                {
-                    ["agentName"] = Name,
-                    ["mode"] = Mode.ToString()
-                };
-
-                var beforeResult = await _hookManager.TriggerAsync(
-                    HookPoints.AgentBeforeInvoke,
-                    new Dictionary<string, object>
+                var beforeResult = await _hookManager.TriggerBlockingAsync(
+                    HookRegistry.AgentBeforeInvoke,
+                    sessionId,
+                    new Dictionary<string, object?>
                     {
-                        ["sessionId"] = sessionId,
                         ["agentName"] = Name,
-                        ["inputPreview"] = Truncate(inputPreview, 100),
-                        ["isConfigDriven"] = IsConfigDriven
+                        ["mode"] = Mode.ToString(),
+                        ["isTopLevel"] = isTopLevel
                     },
-                    beforeOutput,
-                    cancellationToken);
+                    cancellationToken: cancellationToken);
 
                 if (!beforeResult.Continue)
                 {
@@ -198,20 +192,18 @@ namespace Seeing.Agent.Core.Abstractions
 
             LogComplete(sessionId, success);
 
-            // ========== Hook: agent.after_invoke ==========
-            if (_hookManager != null)
+            // ========== Hook: agent.after_invoke (仅顶层调用) ==========
+            if (_hookManager != null && isTopLevel)
             {
-                await _hookManager.TriggerAsync(
-                    HookPoints.AgentAfterInvoke,
-                    new Dictionary<string, object>
+                _hookManager.TriggerFireAndForget(
+                    HookRegistry.AgentAfterInvoke,
+                    sessionId,
+                    new Dictionary<string, object?>
                     {
-                        ["sessionId"] = sessionId,
                         ["agentName"] = Name,
                         ["success"] = success,
-                        ["error"] = caughtException as object,
-                        ["isConfigDriven"] = IsConfigDriven
-                    },
-                    cancellationToken: cancellationToken);
+                        ["error"] = caughtException?.Message
+                    });
             }
         }
 

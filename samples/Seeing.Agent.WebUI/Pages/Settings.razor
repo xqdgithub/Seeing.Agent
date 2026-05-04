@@ -1,0 +1,70 @@
+@page "/settings"
+@using AntDesign
+@using Seeing.Agent.WebUI.Components
+@inject NavigationManager NavigationManager
+
+<PageTitle>设置 - Seeing.Agent</PageTitle>
+
+<div class="settings-container">
+    <div class="settings-header">
+        <h2>设置</h2>
+        <Breadcrumb>
+            <BreadcrumbItem>首页</BreadcrumbItem>
+            <BreadcrumbItem>设置</BreadcrumbItem>
+        </Breadcrumb>
+    </div>
+    
+    <div class="settings-content">
+        <Tabs DefaultActiveKey="1">
+            <TabPane Key="1" Tab="常规设置">
+                <div class="settings-section">
+                    <h4>基础配置</h4>
+                    <Alert Type="@AlertType.Info" 
+                           Message="常规设置功能正在开发中"
+                           ShowIcon="true" />
+                </div>
+            </TabPane>
+            
+            <TabPane Key="2" Tab="MCP 服务">
+                <div class="settings-section">
+                    <McpStatusPanel />
+                </div>
+            </TabPane>
+            
+            <TabPane Key="3" Tab="权限管理">
+                <div class="settings-section">
+                    <h4>权限规则</h4>
+                    <Alert Type="@AlertType.Info" 
+                           Message="权限管理功能正在开发中"
+                           ShowIcon="true" />
+                </div>
+            </TabPane>
+            
+            <TabPane Key="4" Tab="高级设置">
+                <div class="settings-section">
+                    <h4>高级配置</h4>
+                    <Alert Type="@AlertType.Info" 
+                           Message="高级设置功能正在开发中"
+                           ShowIcon="true" />
+                </div>
+            </TabPane>
+        </Tabs>
+    </div>
+    
+    <div class="settings-footer">
+        <Space>
+            <SpaceItem>
+                <Button Type="@ButtonType.Default" Icon="@IconType.Outline.Rollback" OnClick="@GoBack">
+                    返回
+                </Button>
+            </SpaceItem>
+        </Space>
+    </div>
+</div>
+
+@code {
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo("/home");
+    }
+}

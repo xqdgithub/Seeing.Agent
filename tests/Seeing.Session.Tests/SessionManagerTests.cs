@@ -31,7 +31,7 @@ namespace Seeing.Session.Tests
             _sessionManager = new SessionManager(
                 store: _mockStore.Object,
                 compressor: _mockCompressor.Object,
-                hooks: _hookManager,
+                hookManager: _hookManager,
                 logger: new NullLogger<SessionManager>());
         }
 

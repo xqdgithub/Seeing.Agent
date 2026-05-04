@@ -527,10 +527,19 @@
     /// </summary>
     private async Task OnSubmitMessage(PromptSubmitEventArgs args)
     {
+        // 尝试开始执行（如果已有任务执行则返回 false）
+        if (!SessionState.TryStartExecution())
+        {
+            ErrorMessage = "请等待当前任务完成后再发送新消息";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         // 验证输入
         if (string.IsNullOrWhiteSpace(args.Text) && args.Attachments.Count == 0)
         {
             ErrorMessage = "请输入消息内容";
+            SessionState.CancelExecution();
             return;
         }
 
@@ -538,14 +547,14 @@
         if (SessionState.CurrentSession == null)
         {
             ErrorMessage = "请先创建或选择一个会话";
+            SessionState.CancelExecution();
             return;
         }
 
         // 清除错误消息
         ErrorMessage = null;
 
-        // 开始执行
-        SessionState.StartExecution();
+        // UI 已更新为执行状态（TryStartExecution 已设置 IsExecuting = true）
         await InvokeAsync(StateHasChanged);
 
         try

@@ -167,9 +167,9 @@ namespace Seeing.Agent.Extensions
                 // 注册 Hook
                 foreach (var hook in ext.Instance.GetHookHandlers())
                 {
-                    context.HookManager.RegisterHandler(hook);
+                    context.HookManager.Register(hook);
                     _logger.LogDebug("Registered hook: {HookPoint} from extension {Id}",
-                        hook.HookPoint, ext.Id);
+                        hook.Spec.Point, ext.Id);
                 }
 
                 // 连接 MCP Server

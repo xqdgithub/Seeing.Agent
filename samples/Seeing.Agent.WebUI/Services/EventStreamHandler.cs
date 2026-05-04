@@ -164,7 +164,8 @@ namespace Seeing.Agent.WebUI.Services
                     _currentAssistantMessage.ReasoningContent = evt.Message.ReasoningContent;
                 }
             }
-            _sessionState.CompleteExecution();
+            // 注意：不在此处调用 CompleteExecution()
+            // 因为工具调用后可能还有后续轮次，整个 Agent 执行由 Session.razor 控制
         }
 
         /// <summary>

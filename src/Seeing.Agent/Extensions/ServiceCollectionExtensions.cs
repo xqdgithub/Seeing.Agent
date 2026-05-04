@@ -3,20 +3,25 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Client;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Background;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.BuiltInAgents;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Decorators;
-using Seeing.Agent.Hooks;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Llm.Clients;
 using Seeing.Agent.Middlewares;
 using Seeing.Agent.MCP;
+using Seeing.Agent.MCP.Core;
+using Seeing.Agent.MCP.Factory;
+using Seeing.Agent.MCP.Management;
+using Seeing.Agent.MCP.Policy;
 using Seeing.Agent.Rules;
 using Seeing.Session.Core;
 using Seeing.Agent.Shell;
@@ -474,7 +479,6 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, AgentInitializationService>();
 
             // 会话管理器 - 使用 Seeing.Session 包的实现
-            services.AddSingleton<Seeing.Session.Hooks.SessionHookManager>();
             services.AddSingleton<Seeing.Session.Management.SessionManager>();
             services.AddSingleton<Seeing.Session.Core.ISessionManager>(sp => sp.GetRequiredService<Seeing.Session.Management.SessionManager>());
             // 新增 DI 注册：会话事件发布器与会话生命周期管理
@@ -556,14 +560,51 @@ namespace Seeing.Agent.Extensions
                 return invoker;
             });
 
-            // MCP 客户端管理器（支持 stdio 和 HTTP 传输）
-            services.AddSingleton<McpClientManager>(sp =>
+            // === MCP 服务注册 ===
+
+            // 1. 全局策略配置（从 IConfiguration 加载）
+            services.AddSingleton<McpGlobalPolicy>(sp =>
             {
-                var logger = sp.GetRequiredService<ILogger<McpClientManager>>();
-                var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
-                var httpClientFactory = sp.GetService<IHttpClientFactory>();
-                return new McpClientManager(logger, loggerFactory, httpClientFactory);
+                var config = sp.GetService<IConfiguration>()?.GetSection("SeeingAgent:Mcp");
+                return new McpGlobalPolicy
+                {
+                    ConnectionTimeout = TimeSpan.FromSeconds(config?.GetValue("ConnectionTimeoutSeconds", 30) ?? 30),
+                    OperationTimeout = TimeSpan.FromSeconds(config?.GetValue("OperationTimeoutSeconds", 60) ?? 60),
+                    BackgroundCheckInterval = TimeSpan.FromSeconds(config?.GetValue("BackgroundCheckIntervalSeconds", 10) ?? 10),
+                    MaxConcurrentConnections = config?.GetValue("MaxConcurrentConnections", 3) ?? 3,
+                    AutoStartOnAdd = config?.GetValue("AutoStartOnAdd", true) ?? true
+                };
             });
+
+            // 2. 工厂注册表
+            services.AddSingleton<McpWrapperFactoryRegistry>(sp =>
+            {
+                var registry = new McpWrapperFactoryRegistry();
+                registry.Register(new Seeing.Agent.MCP.Factory.StdioWrapperFactory());
+                registry.Register(new Seeing.Agent.MCP.Factory.HttpWrapperFactory(HttpTransportMode.StreamableHttp));
+                registry.Register(new Seeing.Agent.MCP.Factory.HttpWrapperFactory(HttpTransportMode.Sse));
+                return registry;
+            });
+
+            // 3. 工具注册管理（内部服务）
+            services.AddSingleton<McpToolRegistry>(sp =>
+            {
+                var toolInvoker = sp.GetRequiredService<ToolInvoker>();
+                var hookManager = sp.GetRequiredService<IHookManager>();
+                var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<McpToolRegistry>();
+                return new McpToolRegistry(toolInvoker, hookManager, logger);
+            });
+
+            // 4. 进程监控（内部服务）
+            services.AddSingleton<McpProcessMonitor>(sp =>
+            {
+                var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<McpProcessMonitor>();
+                return new McpProcessMonitor(logger);
+            });
+
+            // 5. MCP 客户端管理器（实现 IMcpManager 接口）
+            services.AddSingleton<IMcpManager, McpClientManager>();
+            services.AddSingleton<McpClientManager>(sp => (McpClientManager)sp.GetRequiredService<IMcpManager>());
 
             // 扩展系统
             services.AddSingleton<ExtensionLoader>();
