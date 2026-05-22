@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Skills.Pulling;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 
@@ -16,6 +17,7 @@ namespace Seeing.Agent.Skills
         private readonly ILogger<SkillManager> _logger;
         private readonly ConcurrentDictionary<string, SkillInfo> _skillInfos = new();
         private readonly List<string> _skillDirectories = new();
+        private readonly ISkillPuller? _skillPuller;
 
         /// <summary>
         /// 技能名称验证正则：小写字母数字，单个连字符分隔，1-64字符
@@ -32,9 +34,10 @@ namespace Seeing.Agent.Skills
         /// </summary>
         private const int MaxNameLength = 64;
 
-        public SkillManager(ILogger<SkillManager> logger)
+        public SkillManager(ILogger<SkillManager> logger, ISkillPuller? skillPuller = null)
         {
             _logger = logger;
+            _skillPuller = skillPuller;
 
             // 项目相对路径
             AddDefaultDirectory("./.agents/skills");
@@ -364,6 +367,81 @@ namespace Seeing.Agent.Skills
             }
 
             return info;
+        }
+
+        /// <summary>
+        /// 从远程源拉取技能
+        /// </summary>
+        /// <param name="source">远程源 (Git URL, HTTP URL, 或本地路径)</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>拉取结果</returns>
+        public async Task<SkillPullResult> PullSkillAsync(string source, CancellationToken cancellationToken = default)
+        {
+            if (_skillPuller == null)
+            {
+                return new SkillPullResult
+                {
+                    Success = false,
+                    Error = "SkillPuller not configured"
+                };
+            }
+
+            // 验证源
+            var validation = await _skillPuller.ValidateSourceAsync(source, cancellationToken);
+            if (!validation.IsValid)
+            {
+                return new SkillPullResult
+                {
+                    Success = false,
+                    Error = validation.Error
+                };
+            }
+
+            // 判断源类型并拉取
+            SkillPullResult result;
+            if (source.StartsWith("git@", StringComparison.OrdinalIgnoreCase) ||
+                source.Contains("github.com", StringComparison.OrdinalIgnoreCase) ||
+                source.Contains("gitlab.com", StringComparison.OrdinalIgnoreCase))
+            {
+                result = await _skillPuller.PullFromGitAsync(source, null, null, cancellationToken);
+            }
+            else if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                     source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                result = await _skillPuller.PullFromHttpAsync(source, cancellationToken);
+            }
+            else
+            {
+                result = await _skillPuller.PullFromLocalAsync(source, cancellationToken);
+            }
+
+            // 如果拉取成功，添加到搜索目录并重新发现
+            if (result.Success && !string.IsNullOrEmpty(result.LocalPath))
+            {
+                var skillDir = Path.GetDirectoryName(result.LocalPath);
+                if (!string.IsNullOrEmpty(skillDir) && Directory.Exists(skillDir))
+                {
+                    AddSearchDirectory(skillDir);
+                    await DiscoverSkillsAsync(cancellationToken);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 注册技能（手动添加）
+        /// </summary>
+        public void RegisterSkill(SkillInfo skillInfo)
+        {
+            if (skillInfo == null || string.IsNullOrEmpty(skillInfo.Name))
+            {
+                _logger.LogWarning("Invalid skill info, cannot register");
+                return;
+            }
+
+            _skillInfos[skillInfo.Name] = skillInfo;
+            _logger.LogInformation("Registered skill: {Name}", skillInfo.Name);
         }
     }
 }

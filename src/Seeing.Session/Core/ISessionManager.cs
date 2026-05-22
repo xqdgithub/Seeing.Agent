@@ -39,5 +39,45 @@ namespace Seeing.Session.Core
 
         /// <summary>压缩会话消息</summary>
         IReadOnlyList<SessionMessage> Compress(string id);
+
+        // === 新增方法 ===
+
+        /// <summary>添加消息到会话</summary>
+        Task AddMessageAsync(string sessionId, SessionMessage message, CancellationToken ct = default);
+
+        /// <summary>Fork Session - 创建分支</summary>
+        Task<SessionData> ForkAsync(
+            string sessionId,
+            string? atMessageId = null,
+            string? label = null,
+            CancellationToken ct = default);
+
+        /// <summary>Archive Session - 归档</summary>
+        Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default);
+
+        /// <summary>Share Session - 分享</summary>
+        Task<string> ShareAsync(string sessionId, CancellationToken ct = default);
+
+        /// <summary>Revert Session - 回滚到指定消息</summary>
+        Task<bool> RevertAsync(
+            string sessionId, string messageId, CancellationToken ct = default);
+
+        /// <summary>列出所有 Session (全局)</summary>
+        Task<IReadOnlyList<SessionMetadata>> ListAllAsync(
+            string? partitionId = null, CancellationToken ct = default);
+    }
+
+    /// <summary>Session 元数据（用于列表显示）</summary>
+    public class SessionMetadata
+    {
+        public string Id { get; init; } = string.Empty;
+        public string? PartitionId { get; init; }
+        public string? SelectedAgent { get; init; }
+        public string? ParentSessionId { get; init; }
+        public string? ForkLabel { get; init; }
+        public bool IsArchived { get; init; }
+        public int MessageCount { get; init; }
+        public DateTimeOffset CreatedAt { get; init; }
+        public DateTimeOffset LastActiveAt { get; init; }
     }
 }

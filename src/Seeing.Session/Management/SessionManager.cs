@@ -29,6 +29,13 @@ namespace Seeing.Session.Management
         private readonly ILogger<SessionManager>? _logger;
         private readonly ConcurrentDictionary<string, SessionData> _sessionDataCache = new();
 
+        // 新增组件（可选）
+        private readonly SessionForker? _forker;
+        private readonly SessionArchiver? _archiver;
+        private readonly SessionSharer? _sharer;
+        private readonly SessionReverter? _reverter;
+        private readonly GlobalSessionStore? _globalStore;
+
         /// <summary>
         /// 创建 SessionManager 实例
         /// </summary>
@@ -36,16 +43,31 @@ namespace Seeing.Session.Management
         /// <param name="compressor">压缩策略（可选，默认 SlidingWindowCompression）</param>
         /// <param name="hookManager">Hook 管理器（可选）</param>
         /// <param name="logger">日志（可选）</param>
+        /// <param name="forker">Session 分支器（可选）</param>
+        /// <param name="archiver">Session 归档器（可选）</param>
+        /// <param name="sharer">Session 分享器（可选）</param>
+        /// <param name="reverter">Session 回滚器（可选）</param>
+        /// <param name="globalStore">全局 Session 存储（可选）</param>
         public SessionManager(
             ISessionStore? store = null,
             ICompressionStrategy? compressor = null,
             IHookManager? hookManager = null,
-            ILogger<SessionManager>? logger = null)
+            ILogger<SessionManager>? logger = null,
+            SessionForker? forker = null,
+            SessionArchiver? archiver = null,
+            SessionSharer? sharer = null,
+            SessionReverter? reverter = null,
+            GlobalSessionStore? globalStore = null)
         {
             _store = store;
             _compressor = compressor ?? new SlidingWindowCompression();
             _hookManager = hookManager;
             _logger = logger;
+            _forker = forker;
+            _archiver = archiver;
+            _sharer = sharer;
+            _reverter = reverter;
+            _globalStore = globalStore;
         }
 
         /// <summary>
@@ -256,6 +278,191 @@ namespace Seeing.Session.Management
                 id, original.Count, compressed.Count);
             
             return compressed;
+        }
+
+        // === 新增接口方法实现 ===
+
+        /// <summary>
+        /// 添加消息到会话
+        /// </summary>
+        public async Task AddMessageAsync(string sessionId, SessionMessage message, CancellationToken ct = default)
+        {
+            var session = Get(sessionId);
+            if (session == null)
+            {
+                _logger?.LogWarning("会话不存在，无法添加消息: {SessionId}", sessionId);
+                return;
+            }
+
+            session.AddMessage(message);
+
+            // 触发 Updated Hook
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.Updated,
+                session.Id,
+                result: new Dictionary<string, object?> { ["session"] = session, ["message"] = message });
+
+            // 自动保存
+            if (_store != null)
+            {
+                await SaveAsync(sessionId);
+            }
+        }
+
+        /// <summary>
+        /// Fork Session - 创建分支
+        /// </summary>
+        public async Task<SessionData> ForkAsync(
+            string sessionId,
+            string? atMessageId = null,
+            string? label = null,
+            CancellationToken ct = default)
+        {
+            if (_forker == null)
+            {
+                throw new InvalidOperationException("SessionForker not configured. Inject SessionForker via constructor.");
+            }
+
+            var forkedSession = await _forker.ForkAsync(sessionId, atMessageId, label, ct);
+
+            // 触发 Hook
+            _hookManager?.TriggerFireAndForget(
+                "session.forked",
+                forkedSession.Id,
+                result: new Dictionary<string, object?>
+                {
+                    ["session"] = forkedSession,
+                    ["parentSessionId"] = sessionId
+                });
+
+            return forkedSession;
+        }
+
+        /// <summary>
+        /// Archive Session - 归档
+        /// </summary>
+        public async Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default)
+        {
+            var session = Get(sessionId);
+            if (session == null)
+            {
+                _logger?.LogWarning("会话不存在，无法归档: {SessionId}", sessionId);
+                return false;
+            }
+
+            if (_archiver == null)
+            {
+                throw new InvalidOperationException("SessionArchiver not configured. Inject SessionArchiver via constructor.");
+            }
+
+            var result = await _archiver.ArchiveAsync(session, ct);
+
+            if (result)
+            {
+                // 从缓存中移除
+                _sessionDataCache.TryRemove(sessionId, out _);
+
+                // 触发 Hook
+                _hookManager?.TriggerFireAndForget(
+                    "session.archived",
+                    sessionId,
+                    result: new Dictionary<string, object?> { ["session"] = session });
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Share Session - 分享
+        /// </summary>
+        public async Task<string> ShareAsync(string sessionId, CancellationToken ct = default)
+        {
+            var session = Get(sessionId);
+            if (session == null)
+            {
+                throw new InvalidOperationException($"Session not found: {sessionId}");
+            }
+
+            if (_sharer == null)
+            {
+                throw new InvalidOperationException("SessionSharer not configured. Inject SessionSharer via constructor.");
+            }
+
+            var shareId = await _sharer.ShareAsync(session, ct);
+
+            // 触发 Hook
+            _hookManager?.TriggerFireAndForget(
+                "session.shared",
+                sessionId,
+                result: new Dictionary<string, object?>
+                {
+                    ["session"] = session,
+                    ["shareId"] = shareId
+                });
+
+            return shareId;
+        }
+
+        /// <summary>
+        /// Revert Session - 回滚到指定消息
+        /// </summary>
+        public async Task<bool> RevertAsync(
+            string sessionId, string messageId, CancellationToken ct = default)
+        {
+            if (_reverter == null)
+            {
+                throw new InvalidOperationException("SessionReverter not configured. Inject SessionReverter via constructor.");
+            }
+
+            var result = await _reverter.RevertAsync(sessionId, messageId, ct);
+
+            if (result)
+            {
+                // 触发 Hook
+                _hookManager?.TriggerFireAndForget(
+                    "session.reverted",
+                    sessionId,
+                    result: new Dictionary<string, object?>
+                    {
+                        ["messageId"] = messageId
+                    });
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 列出所有 Session (全局)
+        /// </summary>
+        public async Task<IReadOnlyList<SessionMetadata>> ListAllAsync(
+            string? partitionId = null, CancellationToken ct = default)
+        {
+            if (_globalStore != null)
+            {
+                return await _globalStore.ListAllAsync(partitionId, ct);
+            }
+
+            // 降级：从内存缓存生成元数据
+            var sessions = _sessionDataCache.Values.AsEnumerable();
+
+            if (partitionId != null)
+                sessions = sessions.Where(s => s.PartitionId == partitionId);
+
+            return sessions
+                .Select(s => new SessionMetadata
+                {
+                    Id = s.Id,
+                    PartitionId = s.PartitionId,
+                    SelectedAgent = s.SelectedAgent,
+                    ParentSessionId = s.ParentSessionId,
+                    ForkLabel = s.ForkLabel,
+                    IsArchived = s.IsArchived,
+                    MessageCount = s.MessageCount,
+                    CreatedAt = new DateTimeOffset(s.CreatedAt),
+                    LastActiveAt = new DateTimeOffset(s.LastActiveAt)
+                })
+                .OrderByDescending(m => m.LastActiveAt)
+                .ToList();
         }
     }
 }

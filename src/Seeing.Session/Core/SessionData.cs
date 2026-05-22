@@ -56,6 +56,19 @@ namespace Seeing.Session.Core
         // === 元数据（用于存储用户自定义标签等） ===
         public Dictionary<string, string> Metadata { get; set; } = new();
 
+        // === Fork/Archive 支持（新增） ===
+        /// <summary>父会话 ID（Fork 时设置）</summary>
+        public string? ParentSessionId { get; set; }
+
+        /// <summary>Fork 标签</summary>
+        public string? ForkLabel { get; set; }
+
+        /// <summary>是否已归档</summary>
+        public bool IsArchived { get; set; }
+
+        /// <summary>归档时间</summary>
+        public DateTimeOffset? ArchivedAt { get; set; }
+
         // === 向后兼容字段（Deprecated） ===
         [Obsolete("使用 SelectedAgent 替代")]
         public AgentMetadata? Agent { get; set; }
@@ -153,7 +166,12 @@ namespace Seeing.Session.Core
                 Messages = new List<SessionMessage>(Messages),
                 Context = new Dictionary<string, object>(Context),
                 Metadata = new Dictionary<string, string>(Metadata),
-                State = new Dictionary<string, string>(State)
+                State = new Dictionary<string, string>(State),
+                // 新增字段
+                ParentSessionId = ParentSessionId,
+                ForkLabel = ForkLabel,
+                IsArchived = IsArchived,
+                ArchivedAt = ArchivedAt
             };
         }
     }

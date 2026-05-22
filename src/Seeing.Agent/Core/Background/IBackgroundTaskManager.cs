@@ -1,5 +1,6 @@
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using System;
 
 namespace Seeing.Agent.Core.Background;
 
@@ -32,7 +33,7 @@ public interface IBackgroundTaskManager
     /// <summary>
     /// 取消任务
     /// </summary>
-    /// <param name="taskId">任务 ID</param>
+    /// <param name="taskId">���务 ID</param>
     /// <returns>是否成功取消</returns>
     Task<bool> CancelAsync(string taskId);
     
@@ -56,4 +57,15 @@ public interface IBackgroundTaskManager
     /// <param name="timeoutMs">超时时间（毫秒），默认 60000，最大 600000</param>
     /// <returns>任务信息</returns>
     Task<BackgroundTaskInfo?> WaitAsync(string taskId, int timeoutMs = 60000);
+
+    // === 新增方法 ===
+
+    /// <summary>订阅任务进度 (IObservable)</summary>
+    IObservable<BackgroundTaskProgress> SubscribeProgress(string taskId);
+
+    /// <summary>订阅任务输出流 (IObservable)</summary>
+    IObservable<string> SubscribeOutput(string taskId);
+
+    /// <summary>注入任务结果到当前会话</summary>
+    Task<bool> InjectResultAsync(string taskId, string sessionId, CancellationToken ct = default);
 }

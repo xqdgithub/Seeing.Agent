@@ -8,6 +8,9 @@ public static class HookPoints
     /// <summary>Session 创建 - 非阻塞</summary>
     public const string Created = "session.created";
     
+    /// <summary>Session 更新 - 非阻塞</summary>
+    public const string Updated = "session.updated";
+    
     /// <summary>Session 销毁 - 非阻塞</summary>
     public const string Destroyed = "session.destroyed";
     

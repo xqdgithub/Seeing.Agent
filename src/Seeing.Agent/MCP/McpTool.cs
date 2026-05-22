@@ -116,6 +116,12 @@ namespace Seeing.Agent.MCP
         [JsonPropertyName("disabled")]
         public bool Disabled { get; set; } = false;
 
+        // —— OAuth 配置 ——
+
+        /// <summary>OAuth 配置（用于需要授权的远程 MCP 服务器）</summary>
+        [JsonPropertyName("oauth")]
+        public OAuth.McpOAuthConfig? OAuth { get; set; }
+
         // —— 便捷属性 ——
 
         /// <summary>连接超时时间</summary>

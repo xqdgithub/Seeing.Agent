@@ -1,0 +1,552 @@
+- generic [ref=e5]:
+  - banner [ref=e6]:
+    - generic [ref=e7]:
+      - img "QwenPaw" [ref=e8]
+      - generic [ref=e11]: v1.1.8.post1
+    - generic [ref=e12]:
+      - button "Documentation down" [ref=e14] [cursor=pointer]:
+        - generic [ref=e15]: Documentation
+        - img "down" [ref=e16]:
+          - img [ref=e17]
+      - button "github GitHub" [ref=e20] [cursor=pointer]:
+        - img "github" [ref=e22]:
+          - img [ref=e23]
+        - generic [ref=e25]: GitHub
+      - button "spark-english02-line" [ref=e29] [cursor=pointer]:
+        - img "spark-english02-line" [ref=e31]:
+          - img [ref=e32]
+      - button "spark-computer-line" [ref=e35] [cursor=pointer]:
+        - img "spark-computer-line" [ref=e37]:
+          - img [ref=e38]
+  - generic [ref=e40]:
+    - complementary [ref=e41]:
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e47]:
+                - text: Current Agent
+                - generic [ref=e48]: (2)
+              - generic [ref=e49] [cursor=pointer]:
+                - generic [ref=e51]:
+                  - combobox [ref=e53]
+                  - generic [ref=e55]:
+                    - img [ref=e56]
+                    - generic [ref=e59]: Default Agent
+                - generic:
+                  - img:
+                    - img
+            - button "spark-chatTab-fill Chat" [ref=e60] [cursor=pointer]:
+              - img "spark-chatTab-fill" [ref=e61]:
+                - img [ref=e62]
+              - generic [ref=e64]: Chat
+          - menu [ref=e65]:
+            - menuitem "spark-email-line Inbox" [ref=e66] [cursor=pointer]:
+              - img "spark-email-line" [ref=e67]:
+                - img [ref=e68]
+              - generic [ref=e71]: Inbox
+            - menuitem "Control" [expanded] [ref=e72] [cursor=pointer]:
+              - generic [ref=e73]: Control
+            - menu [ref=e74]:
+              - menuitem "spark-wifi-line Channels" [ref=e75] [cursor=pointer]:
+                - img "spark-wifi-line" [ref=e76]:
+                  - img [ref=e77]
+                - generic [ref=e79]: Channels
+              - menuitem "spark-userGroup-line Sessions" [ref=e80] [cursor=pointer]:
+                - img "spark-userGroup-line" [ref=e81]:
+                  - img [ref=e82]
+                - generic [ref=e85]: Sessions
+              - menuitem "spark-date-line Cron Jobs" [ref=e86] [cursor=pointer]:
+                - img "spark-date-line" [ref=e87]:
+                  - img [ref=e88]
+                - generic [ref=e91]: Cron Jobs
+              - menuitem "spark-voiceChat01-line Heartbeat" [ref=e92] [cursor=pointer]:
+                - img "spark-voiceChat01-line" [ref=e93]:
+                  - img [ref=e94]
+                - generic [ref=e96]: Heartbeat
+            - menuitem "Workspace" [expanded] [ref=e97] [cursor=pointer]:
+              - generic [ref=e98]: Workspace
+            - menu [ref=e99]:
+              - menuitem "spark-localFile-line Files" [ref=e100] [cursor=pointer]:
+                - img "spark-localFile-line" [ref=e101]:
+                  - img [ref=e102]
+                - generic [ref=e105]: Files
+              - menuitem "spark-magicWand-line Skills" [active] [ref=e106] [cursor=pointer]:
+                - img "spark-magicWand-line" [ref=e107]:
+                  - img [ref=e108]
+                - generic [ref=e110]: Skills
+              - menuitem "spark-tool-line Tools" [ref=e111] [cursor=pointer]:
+                - img "spark-tool-line" [ref=e112]:
+                  - img [ref=e113]
+                - generic [ref=e115]: Tools
+              - menuitem "spark-MCP-mcp-line MCP" [ref=e116] [cursor=pointer]:
+                - img "spark-MCP-mcp-line" [ref=e117]:
+                  - img [ref=e118]
+                - generic [ref=e120]: MCP
+              - menuitem "spark-scan-line ACP" [ref=e121] [cursor=pointer]:
+                - img "spark-scan-line" [ref=e122]:
+                  - img [ref=e123]
+                - generic [ref=e125]: ACP
+              - menuitem "spark-modify-line Configuration" [ref=e126] [cursor=pointer]:
+                - img "spark-modify-line" [ref=e127]:
+                  - img [ref=e128]
+                - generic [ref=e131]: Configuration
+              - menuitem "spark-barChart-line Agent Statistics" [ref=e132] [cursor=pointer]:
+                - img "spark-barChart-line" [ref=e133]:
+                  - img [ref=e134]
+                - generic [ref=e136]: Agent Statistics
+        - menu [ref=e137]:
+          - menuitem "Settings" [expanded] [ref=e138] [cursor=pointer]:
+            - generic [ref=e139]: Settings
+          - menu [ref=e140]:
+            - menuitem "spark-agent-line Agent Management" [ref=e141] [cursor=pointer]:
+              - img "spark-agent-line" [ref=e142]:
+                - img [ref=e143]
+              - generic [ref=e146]: Agent Management
+            - menuitem "spark-modePlaza-line Models" [ref=e147] [cursor=pointer]:
+              - img "spark-modePlaza-line" [ref=e148]:
+                - img [ref=e149]
+              - generic [ref=e151]: Models
+            - menuitem "spark-other-line Skill Pool" [ref=e152] [cursor=pointer]:
+              - img "spark-other-line" [ref=e153]:
+                - img [ref=e154]
+              - generic [ref=e156]: Skill Pool
+            - menuitem "spark-internet-line Environments" [ref=e157] [cursor=pointer]:
+              - img "spark-internet-line" [ref=e158]:
+                - img [ref=e159]
+              - generic [ref=e163]: Environments
+            - menuitem "spark-browse-line Security" [ref=e164] [cursor=pointer]:
+              - img "spark-browse-line" [ref=e165]:
+                - img [ref=e166]
+              - generic [ref=e168]: Security
+            - menuitem "spark-data-line Token Usage" [ref=e169] [cursor=pointer]:
+              - img "spark-data-line" [ref=e170]:
+                - img [ref=e171]
+              - generic [ref=e173]: Token Usage
+            - menuitem "spark-save-line Backups" [ref=e174] [cursor=pointer]:
+              - img "spark-save-line" [ref=e175]:
+                - img [ref=e176]
+              - generic [ref=e179]: Backups
+            - menuitem "spark-mic-line Voice Transcription" [ref=e180] [cursor=pointer]:
+              - img "spark-mic-line" [ref=e181]:
+                - img [ref=e182]
+              - generic [ref=e186]: Voice Transcription
+            - menuitem "spark-debug-line Debug" [ref=e187] [cursor=pointer]:
+              - img "spark-debug-line" [ref=e188]:
+                - img [ref=e189]
+              - generic [ref=e191]: Debug
+            - menuitem "Plugin Manager" [ref=e192] [cursor=pointer]:
+              - img [ref=e193]
+              - generic [ref=e197]: Plugin Manager
+        - button "spark-menuFold-line" [ref=e199] [cursor=pointer]:
+          - img "spark-menuFold-line" [ref=e201]:
+            - img [ref=e202]
+    - main [ref=e204]:
+      - generic [ref=e370]:
+        - generic [ref=e371]:
+          - generic [ref=e374]:
+            - generic [ref=e375]: Workspace
+            - generic [ref=e376]: /
+            - generic [ref=e377]: Skills
+          - generic [ref=e379]:
+            - generic [ref=e380]:
+              - button "reload" [ref=e381] [cursor=pointer]:
+                - img "reload" [ref=e383]:
+                  - img [ref=e384]
+              - button "download Load from Skill Pool" [ref=e386] [cursor=pointer]:
+                - img "download" [ref=e388]:
+                  - img [ref=e389]
+                - generic [ref=e391]: Load from Skill Pool
+              - button "swap Sync to Skill Pool" [ref=e392] [cursor=pointer]:
+                - img "swap" [ref=e394]:
+                  - img [ref=e395]
+                - generic [ref=e397]: Sync to Skill Pool
+            - generic [ref=e398]:
+              - button "upload Upload via Zip" [ref=e399] [cursor=pointer]:
+                - img "upload" [ref=e401]:
+                  - img [ref=e402]
+                - generic [ref=e404]: Upload via Zip
+              - button "import Import Hub" [ref=e405] [cursor=pointer]:
+                - img "import" [ref=e407]:
+                  - img [ref=e408]
+                - generic [ref=e410]: Import Hub
+              - button "Batch Operation" [ref=e411] [cursor=pointer]:
+                - generic [ref=e412]: Batch Operation
+              - button "plus Create Skill" [ref=e413] [cursor=pointer]:
+                - img "plus" [ref=e415]:
+                  - img [ref=e416]
+                - generic [ref=e419]: Create Skill
+        - generic [ref=e420]:
+          - generic [ref=e421]:
+            - textbox "Filter by name" [ref=e422]
+            - generic [ref=e423] [cursor=pointer]:
+              - generic [ref=e425]:
+                - combobox [ref=e429]
+                - generic: Filter by tag
+              - generic:
+                - img:
+                  - img
+          - generic [ref=e431]:
+            - button "unordered-list" [ref=e432] [cursor=pointer]:
+              - img "unordered-list" [ref=e433]:
+                - img [ref=e434]
+            - button "appstore" [ref=e436] [cursor=pointer]:
+              - img "appstore" [ref=e437]:
+                - img [ref=e438]
+        - generic [ref=e440]:
+          - generic [ref=e444] [cursor=pointer]:
+            - generic [ref=e445]:
+              - img "file-text" [ref=e447]:
+                - img [ref=e448]
+              - generic [ref=e451]: Enabled
+            - heading "Agent Browser Custom" [level=3] [ref=e454]
+            - generic [ref=e455]:
+              - generic [ref=e456]: Channels
+              - generic [ref=e457]: All
+            - generic [ref=e458]:
+              - generic [ref=e459]: Updated
+              - generic [ref=e460]: 2 个月前
+            - generic [ref=e461]:
+              - generic [ref=e462]: Tags
+              - generic [ref=e463]: "-"
+            - generic [ref=e464]:
+              - generic [ref=e465]: Description
+              - paragraph [ref=e466]: A fast Rust-based headless browser automation CLI with Node.js fallback that enables AI agents to navigate, click, type, and snapshot pages via structured commands.
+          - generic [ref=e470] [cursor=pointer]:
+            - generic [ref=e471]:
+              - generic [ref=e473]: 🔌
+              - generic [ref=e475]: Enabled
+            - heading "browser_cdp Built-in" [level=3] [ref=e478]
+            - generic [ref=e479]:
+              - generic [ref=e480]: Channels
+              - generic [ref=e481]: All
+            - generic [ref=e482]:
+              - generic [ref=e483]: Updated
+              - generic [ref=e484]: 18 天前
+            - generic [ref=e485]:
+              - generic [ref=e486]: Tags
+              - generic [ref=e487]: "-"
+            - generic [ref=e488]:
+              - generic [ref=e489]: Description
+              - paragraph [ref=e490]: "Use this skill when the user explicitly wants to connect to a running Chrome browser, scan local CDP ports, specify a `cdp_port`, or share a single browser across multiple agents/tools. By default, browser_use already launches the browser using managed CDP; if the user does not want to expose browser history, cookies, or other sensitive data, recommend using `private_mode=true` instead."
+          - generic [ref=e494] [cursor=pointer]:
+            - generic [ref=e495]:
+              - img "file-text" [ref=e497]:
+                - img [ref=e498]
+              - generic [ref=e501]: Enabled
+            - heading "browser_visible Built-in" [level=3] [ref=e504]
+            - generic [ref=e505]:
+              - generic [ref=e506]: Channels
+              - generic [ref=e507]: All
+            - generic [ref=e508]:
+              - generic [ref=e509]: Updated
+              - generic [ref=e510]: 2 个月前
+            - generic [ref=e511]:
+              - generic [ref=e512]: Tags
+              - generic [ref=e513]: "-"
+            - generic [ref=e514]:
+              - generic [ref=e515]: Description
+              - paragraph [ref=e516]: 当用户希望打开真实可见的浏览器窗口（而非后台无头模式）时，使用 browser_use 的 headed 参数启动浏览器，随后可正常 open/snapshot/click 等。适用于用户想亲眼看到页面、演示或调试场景。
+          - generic [ref=e520] [cursor=pointer]:
+            - generic [ref=e521]:
+              - img "file-text" [ref=e523]:
+                - img [ref=e524]
+              - generic [ref=e527]: Enabled
+            - heading "channel_message Built-in" [level=3] [ref=e530]
+            - generic [ref=e531]:
+              - generic [ref=e532]: Channels
+              - generic [ref=e533]: All
+            - generic [ref=e534]:
+              - generic [ref=e535]: Updated
+              - generic [ref=e536]: 2 个月前
+            - generic [ref=e537]:
+              - generic [ref=e538]: Tags
+              - generic [ref=e539]: "-"
+            - generic [ref=e540]:
+              - generic [ref=e541]: Description
+              - paragraph [ref=e542]: Use this skill to proactively send a one-way message to a user/session/channel, usually only when the user explicitly asks to send to a channel/session or when proactive notification is needed. First query sessions with copaw chats list, then push with copaw channels send. | 当需要主动向用户/会话/频道单向推送消息时使用，通常仅在用户明确要求发往某个 channel / 会话，或需要主动通知时使用；先用 copaw chats list 查 session，再用 copaw channels send 推送
+          - generic [ref=e546] [cursor=pointer]:
+            - generic [ref=e547]:
+              - generic [ref=e549]: 💬
+              - generic [ref=e551]: Enabled
+            - heading "chat_with_agent Built-in" [level=3] [ref=e554]
+            - generic [ref=e555]:
+              - generic [ref=e556]: Channels
+              - generic [ref=e557]: All
+            - generic [ref=e558]:
+              - generic [ref=e559]: Updated
+              - generic [ref=e560]: 18 天前
+            - generic [ref=e561]:
+              - generic [ref=e562]: Tags
+              - generic [ref=e563]: "-"
+            - generic [ref=e564]:
+              - generic [ref=e565]: Description
+              - paragraph [ref=e566]: Use this skill when you need to consult another agent, ask for help, or involve a specific agent the user asked for.
+          - generic [ref=e570] [cursor=pointer]:
+            - generic [ref=e571]:
+              - img "file-text" [ref=e573]:
+                - img [ref=e574]
+              - generic [ref=e577]: Enabled
+            - heading "copaw_source_index Custom" [level=3] [ref=e580]
+            - generic [ref=e581]:
+              - generic [ref=e582]: Channels
+              - generic [ref=e583]: All
+            - generic [ref=e584]:
+              - generic [ref=e585]: Updated
+              - generic [ref=e586]: 2 个月前
+            - generic [ref=e587]:
+              - generic [ref=e588]: Tags
+              - generic [ref=e589]: "-"
+            - generic [ref=e590]:
+              - generic [ref=e591]: Description
+              - paragraph [ref=e592]: 将用户问题中的主题、关键词映射到 CoPaw 官方文档路径与常见源码入口，减少盲目搜索。适用于内置 QA Agent 在回答安装、配置、技能、MCP、多智能体、记忆、CLI 等问题时快速选定要读的文件。
+          - generic [ref=e596] [cursor=pointer]:
+            - generic [ref=e597]:
+              - img "calendar" [ref=e599]:
+                - img [ref=e600]
+              - generic [ref=e603]: Enabled
+            - heading "cron Built-in" [level=3] [ref=e606]
+            - generic [ref=e607]:
+              - generic [ref=e608]: Channels
+              - generic [ref=e609]: All
+            - generic [ref=e610]:
+              - generic [ref=e611]: Updated
+              - generic [ref=e612]: 3 个月前
+            - generic [ref=e613]:
+              - generic [ref=e614]: Tags
+              - generic [ref=e615]: "-"
+            - generic [ref=e616]:
+              - generic [ref=e617]: Description
+              - paragraph [ref=e618]: 通过 copaw 命令管理定时任务 - 创建、查询、暂停、恢复、删除任务
+          - generic [ref=e622] [cursor=pointer]:
+            - generic [ref=e623]:
+              - img "file-text" [ref=e625]:
+                - img [ref=e626]
+              - generic [ref=e629]: Enabled
+            - heading "dingtalk_channel Built-in" [level=3] [ref=e632]
+            - generic [ref=e633]:
+              - generic [ref=e634]: Channels
+              - generic [ref=e635]: All
+            - generic [ref=e636]:
+              - generic [ref=e637]: Updated
+              - generic [ref=e638]: 3 个月前
+            - generic [ref=e639]:
+              - generic [ref=e640]: Tags
+              - generic [ref=e641]: "-"
+            - generic [ref=e642]:
+              - generic [ref=e643]: Description
+              - paragraph [ref=e644]: 使用可视浏览器自动完成 CoPaw 的钉钉频道接入。适用于用户提到钉钉、DingTalk、开发者后台、Client ID、Client Secret、机器人、Stream 模式、绑定或配置 channel 的场景；支持遇到登录页时暂停，等待用户登录后继续。
+          - generic [ref=e648] [cursor=pointer]:
+            - generic [ref=e649]:
+              - img "file-word" [ref=e651]:
+                - img [ref=e652]
+              - generic [ref=e655]: Enabled
+            - heading "docx Built-in" [level=3] [ref=e658]
+            - generic [ref=e659]:
+              - generic [ref=e660]: Channels
+              - generic [ref=e661]: All
+            - generic [ref=e662]:
+              - generic [ref=e663]: Updated
+              - generic [ref=e664]: 3 个月前
+            - generic [ref=e665]:
+              - generic [ref=e666]: Tags
+              - generic [ref=e667]: "-"
+            - generic [ref=e668]:
+              - generic [ref=e669]: Description
+              - paragraph [ref=e670]: "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx files). Triggers include: any mention of \"Word doc\", \"word document\", \".docx\", or requests to produce professional documents with formatting like tables of contents, headings, page numbers, or letterheads. Also use when extracting or reorganizing content from .docx files, inserting or replacing images in documents, performing find-and-replace in Word files, working with tracked changes or comments, or converting content into a polished Word document. If the user asks for a \"report\", \"memo\", \"letter\", \"template\", or similar deliverable as a Word or .docx file, use this skill. Do NOT use for PDFs, spreadsheets, Google Docs, or general coding tasks unrelated to document generation."
+          - generic [ref=e674] [cursor=pointer]:
+            - generic [ref=e675]:
+              - img "file-text" [ref=e677]:
+                - img [ref=e678]
+              - generic [ref=e681]: Enabled
+            - heading "file_reader Built-in" [level=3] [ref=e684]
+            - generic [ref=e685]:
+              - generic [ref=e686]: Channels
+              - generic [ref=e687]: All
+            - generic [ref=e688]:
+              - generic [ref=e689]: Updated
+              - generic [ref=e690]: 3 个月前
+            - generic [ref=e691]:
+              - generic [ref=e692]: Tags
+              - generic [ref=e693]: "-"
+            - generic [ref=e694]:
+              - generic [ref=e695]: Description
+              - paragraph [ref=e696]: Read and summarize text-based file types only. Prefer read_file for text formats; use execute_shell_command for type detection when needed. PDF/Office/images/archives are handled by other skills.
+          - generic [ref=e700] [cursor=pointer]:
+            - generic [ref=e701]:
+              - img "file-text" [ref=e703]:
+                - img [ref=e704]
+              - generic [ref=e707]: Enabled
+            - heading "Find Skills Custom" [level=3] [ref=e710]
+            - generic [ref=e711]:
+              - generic [ref=e712]: Channels
+              - generic [ref=e713]: All
+            - generic [ref=e714]:
+              - generic [ref=e715]: Updated
+              - generic [ref=e716]: 2 个月前
+            - generic [ref=e717]:
+              - generic [ref=e718]: Tags
+              - generic [ref=e719]: "-"
+            - generic [ref=e720]:
+              - generic [ref=e721]: Description
+              - paragraph [ref=e722]: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
+          - generic [ref=e726] [cursor=pointer]:
+            - generic [ref=e727]:
+              - generic [ref=e729]: 🧭
+              - generic [ref=e731]: Enabled
+            - heading "guidance Built-in" [level=3] [ref=e734]
+            - generic [ref=e735]:
+              - generic [ref=e736]: Channels
+              - generic [ref=e737]: All
+            - generic [ref=e738]:
+              - generic [ref=e739]: Updated
+              - generic [ref=e740]: 18 天前
+            - generic [ref=e741]:
+              - generic [ref=e742]: Tags
+              - generic [ref=e743]: "-"
+            - generic [ref=e744]:
+              - generic [ref=e745]: Description
+              - paragraph [ref=e746]: "Answer user questions about QwenPaw installation and configuration: first locate and read local documentation, then distill the answer; if local information is insufficient, fall back to the official website documentation."
+          - generic [ref=e750] [cursor=pointer]:
+            - generic [ref=e751]:
+              - img "file-text" [ref=e753]:
+                - img [ref=e754]
+              - generic [ref=e757]: Enabled
+            - heading "himalaya Built-in" [level=3] [ref=e760]
+            - generic [ref=e761]:
+              - generic [ref=e762]: Channels
+              - generic [ref=e763]: All
+            - generic [ref=e764]:
+              - generic [ref=e765]: Updated
+              - generic [ref=e766]: 3 个月前
+            - generic [ref=e767]:
+              - generic [ref=e768]: Tags
+              - generic [ref=e769]: "-"
+            - generic [ref=e770]:
+              - generic [ref=e771]: Description
+              - paragraph [ref=e772]: "CLI to manage emails via IMAP/SMTP. Use `himalaya` to list, read, write, reply, forward, search, and organize emails from the terminal. Supports multiple accounts and message composition with MML (MIME Meta Language)."
+          - generic [ref=e776] [cursor=pointer]:
+            - generic [ref=e777]:
+              - generic [ref=e779]: 🗺️
+              - generic [ref=e781]: Enabled
+            - heading "make_plan Built-in" [level=3] [ref=e784]
+            - generic [ref=e785]:
+              - generic [ref=e786]: Channels
+              - generic [ref=e787]: All
+            - generic [ref=e788]:
+              - generic [ref=e789]: Updated
+              - generic [ref=e790]: 18 天前
+            - generic [ref=e791]:
+              - generic [ref=e792]: Tags
+              - generic [ref=e793]: "-"
+            - generic [ref=e794]:
+              - generic [ref=e795]: Description
+              - paragraph [ref=e796]: For external plan request scenarios, guides the Agent to request a clear, actionable, step-by-step plan from a stronger Agent via list_agents and chat_with_agent, emphasizing that the plan is executed by the requester, not by the consulted Agent.
+          - generic [ref=e800] [cursor=pointer]:
+            - generic [ref=e801]:
+              - img "file-text" [ref=e803]:
+                - img [ref=e804]
+              - generic [ref=e807]: Enabled
+            - heading "Mcporter Custom" [level=3] [ref=e810]
+            - generic [ref=e811]:
+              - generic [ref=e812]: Channels
+              - generic [ref=e813]: All
+            - generic [ref=e814]:
+              - generic [ref=e815]: Updated
+              - generic [ref=e816]: 2 个月前
+            - generic [ref=e817]:
+              - generic [ref=e818]: Tags
+              - generic [ref=e819]: "-"
+            - generic [ref=e820]:
+              - generic [ref=e821]: Description
+              - paragraph [ref=e822]: Use the mcporter CLI to list, configure, auth, and call MCP servers/tools directly (HTTP or stdio), including ad-hoc servers, config edits, and CLI/type generation.
+          - generic [ref=e826] [cursor=pointer]:
+            - generic [ref=e827]:
+              - img "file-text" [ref=e829]:
+                - img [ref=e830]
+              - generic [ref=e833]: Enabled
+            - heading "multi_agent_collaboration Built-in" [level=3] [ref=e836]
+            - generic [ref=e837]:
+              - generic [ref=e838]: Channels
+              - generic [ref=e839]: All
+            - generic [ref=e840]:
+              - generic [ref=e841]: Updated
+              - generic [ref=e842]: 2 个月前
+            - generic [ref=e843]:
+              - generic [ref=e844]: Tags
+              - generic [ref=e845]: "-"
+            - generic [ref=e846]:
+              - generic [ref=e847]: Description
+              - paragraph [ref=e848]: Use this skill when another agent's expertise/context is needed, or when the user explicitly asks to involve another agent. First list agents, then use copaw agents chat for two-way communication with replies. | 当需要其他 agent 的专长/上下文，或用户明确要求调用其他 agent 时使用；先查 agent，再用 copaw agents chat 双向通信（有回复）
+          - generic [ref=e852] [cursor=pointer]:
+            - generic [ref=e853]:
+              - img "file-text" [ref=e855]:
+                - img [ref=e856]
+              - generic [ref=e859]: Enabled
+            - heading "news Built-in" [level=3] [ref=e862]
+            - generic [ref=e863]:
+              - generic [ref=e864]: Channels
+              - generic [ref=e865]: All
+            - generic [ref=e866]:
+              - generic [ref=e867]: Updated
+              - generic [ref=e868]: 3 个月前
+            - generic [ref=e869]:
+              - generic [ref=e870]: Tags
+              - generic [ref=e871]: "-"
+            - generic [ref=e872]:
+              - generic [ref=e873]: Description
+              - paragraph [ref=e874]: Look up the latest news for the user from specified news sites. Provides authoritative URLs for politics, finance, society, world, tech, sports, and entertainment. Use browser_use to open each URL and snapshot to get content, then summarize for the user.
+          - generic [ref=e878] [cursor=pointer]:
+            - generic [ref=e879]:
+              - img "file-pdf" [ref=e881]:
+                - img [ref=e882]
+              - generic [ref=e885]: Enabled
+            - heading "pdf Built-in" [level=3] [ref=e888]
+            - generic [ref=e889]:
+              - generic [ref=e890]: Channels
+              - generic [ref=e891]: All
+            - generic [ref=e892]:
+              - generic [ref=e893]: Updated
+              - generic [ref=e894]: 3 个月前
+            - generic [ref=e895]:
+              - generic [ref=e896]: Tags
+              - generic [ref=e897]: "-"
+            - generic [ref=e898]:
+              - generic [ref=e899]: Description
+              - paragraph [ref=e900]: Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.
+          - generic [ref=e904] [cursor=pointer]:
+            - generic [ref=e905]:
+              - img "file-text" [ref=e907]:
+                - img [ref=e908]
+              - generic [ref=e911]: Enabled
+            - heading "playwright-cli Custom" [level=3] [ref=e914]
+            - generic [ref=e915]:
+              - generic [ref=e916]: Channels
+              - generic [ref=e917]: All
+            - generic [ref=e918]:
+              - generic [ref=e919]: Updated
+              - generic [ref=e920]: 2 个月前
+            - generic [ref=e921]:
+              - generic [ref=e922]: Tags
+              - generic [ref=e923]: "-"
+            - generic [ref=e924]:
+              - generic [ref=e925]: Description
+              - paragraph [ref=e926]: Automates browser interactions for web testing, form filling, screenshots, and data extraction. Use when the user needs to navigate websites, interact with web pages, fill forms, take screenshots, test web applications, or extract information from web pages.
+          - generic [ref=e930] [cursor=pointer]:
+            - generic [ref=e931]:
+              - img "file-ppt" [ref=e933]:
+                - img [ref=e934]
+              - generic [ref=e937]: Enabled
+            - heading "pptx Built-in" [level=3] [ref=e940]
+            - generic [ref=e941]:
+              - generic [ref=e942]: Channels
+              - generic [ref=e943]: All
+            - generic [ref=e944]:
+              - generic [ref=e945]: Updated
+              - generic [ref=e946]: 3 个月前
+            - generic [ref=e947]:
+              - generic [ref=e948]: Tags
+              - generic [ref=e949]: "-"
+            - generic [ref=e950]:
+              - generic [ref=e951]: Description
+              - paragraph [ref=e952]: "Use this skill any time a .pptx file is involved in any way — as input, output, or both. This includes: creating slide decks, pitch decks, or presentations; reading, parsing, or extracting text from any .pptx file (even if the extracted content will be used elsewhere, like in an email or summary); editing, modifying, or updating existing presentations; combining or splitting slide files; working with templates, layouts, speaker notes, or comments. Trigger whenever the user mentions \"deck,\" \"slides,\" \"presentation,\" or references a .pptx filename, regardless of what they plan to do with the content afterward. If a .pptx file needs to be opened, created, or touched, use this skill."

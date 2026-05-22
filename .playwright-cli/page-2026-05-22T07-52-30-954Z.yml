@@ -1,0 +1,258 @@
+- generic [ref=e5]:
+  - banner [ref=e6]:
+    - generic [ref=e7]:
+      - img "QwenPaw" [ref=e8]
+      - generic [ref=e11]: v1.1.8.post1
+    - generic [ref=e12]:
+      - button "Documentation down" [ref=e14] [cursor=pointer]:
+        - generic [ref=e15]: Documentation
+        - img "down" [ref=e16]:
+          - img [ref=e17]
+      - button "github GitHub" [ref=e20] [cursor=pointer]:
+        - img "github" [ref=e22]:
+          - img [ref=e23]
+        - generic [ref=e25]: GitHub
+      - button "spark-english02-line" [ref=e29] [cursor=pointer]:
+        - img "spark-english02-line" [ref=e31]:
+          - img [ref=e32]
+      - button "spark-computer-line" [ref=e35] [cursor=pointer]:
+        - img "spark-computer-line" [ref=e37]:
+          - img [ref=e38]
+  - generic [ref=e40]:
+    - complementary [ref=e41]:
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e47]:
+                - text: Current Agent
+                - generic [ref=e48]: (2)
+              - generic [ref=e49] [cursor=pointer]:
+                - generic [ref=e51]:
+                  - combobox [ref=e53]
+                  - generic [ref=e55]:
+                    - img [ref=e56]
+                    - generic [ref=e59]: Default Agent
+                - generic:
+                  - img:
+                    - img
+            - button "spark-chatTab-fill Chat" [ref=e60] [cursor=pointer]:
+              - img "spark-chatTab-fill" [ref=e61]:
+                - img [ref=e62]
+              - generic [ref=e64]: Chat
+          - menu [ref=e65]:
+            - menuitem "spark-email-line Inbox" [ref=e66] [cursor=pointer]:
+              - img "spark-email-line" [ref=e67]:
+                - img [ref=e68]
+              - generic [ref=e71]: Inbox
+            - menuitem "Control" [expanded] [ref=e72] [cursor=pointer]:
+              - generic [ref=e73]: Control
+            - menu [ref=e74]:
+              - menuitem "spark-wifi-line Channels" [ref=e75] [cursor=pointer]:
+                - img "spark-wifi-line" [ref=e76]:
+                  - img [ref=e77]
+                - generic [ref=e79]: Channels
+              - menuitem "spark-userGroup-line Sessions" [ref=e80] [cursor=pointer]:
+                - img "spark-userGroup-line" [ref=e81]:
+                  - img [ref=e82]
+                - generic [ref=e85]: Sessions
+              - menuitem "spark-date-line Cron Jobs" [ref=e86] [cursor=pointer]:
+                - img "spark-date-line" [ref=e87]:
+                  - img [ref=e88]
+                - generic [ref=e91]: Cron Jobs
+              - menuitem "spark-voiceChat01-line Heartbeat" [ref=e92] [cursor=pointer]:
+                - img "spark-voiceChat01-line" [ref=e93]:
+                  - img [ref=e94]
+                - generic [ref=e96]: Heartbeat
+            - menuitem "Workspace" [expanded] [ref=e97] [cursor=pointer]:
+              - generic [ref=e98]: Workspace
+            - menu [ref=e99]:
+              - menuitem "spark-localFile-line Files" [ref=e100] [cursor=pointer]:
+                - img "spark-localFile-line" [ref=e101]:
+                  - img [ref=e102]
+                - generic [ref=e105]: Files
+              - menuitem "spark-magicWand-line Skills" [ref=e106] [cursor=pointer]:
+                - img "spark-magicWand-line" [ref=e107]:
+                  - img [ref=e108]
+                - generic [ref=e110]: Skills
+              - menuitem "spark-tool-line Tools" [ref=e111] [cursor=pointer]:
+                - img "spark-tool-line" [ref=e112]:
+                  - img [ref=e113]
+                - generic [ref=e115]: Tools
+              - menuitem "spark-MCP-mcp-line MCP" [ref=e116] [cursor=pointer]:
+                - img "spark-MCP-mcp-line" [ref=e117]:
+                  - img [ref=e118]
+                - generic [ref=e120]: MCP
+              - menuitem "spark-scan-line ACP" [ref=e121] [cursor=pointer]:
+                - img "spark-scan-line" [ref=e122]:
+                  - img [ref=e123]
+                - generic [ref=e125]: ACP
+              - menuitem "spark-modify-line Configuration" [ref=e126] [cursor=pointer]:
+                - img "spark-modify-line" [ref=e127]:
+                  - img [ref=e128]
+                - generic [ref=e131]: Configuration
+              - menuitem "spark-barChart-line Agent Statistics" [ref=e132] [cursor=pointer]:
+                - img "spark-barChart-line" [ref=e133]:
+                  - img [ref=e134]
+                - generic [ref=e136]: Agent Statistics
+        - menu [ref=e137]:
+          - menuitem "Settings" [expanded] [ref=e138] [cursor=pointer]:
+            - generic [ref=e139]: Settings
+          - menu [ref=e140]:
+            - menuitem "spark-agent-line Agent Management" [ref=e141] [cursor=pointer]:
+              - img "spark-agent-line" [ref=e142]:
+                - img [ref=e143]
+              - generic [ref=e146]: Agent Management
+            - menuitem "spark-modePlaza-line Models" [ref=e147] [cursor=pointer]:
+              - img "spark-modePlaza-line" [ref=e148]:
+                - img [ref=e149]
+              - generic [ref=e151]: Models
+            - menuitem "spark-other-line Skill Pool" [ref=e152] [cursor=pointer]:
+              - img "spark-other-line" [ref=e153]:
+                - img [ref=e154]
+              - generic [ref=e156]: Skill Pool
+            - menuitem "spark-internet-line Environments" [ref=e157] [cursor=pointer]:
+              - img "spark-internet-line" [ref=e158]:
+                - img [ref=e159]
+              - generic [ref=e163]: Environments
+            - menuitem "spark-browse-line Security" [ref=e164] [cursor=pointer]:
+              - img "spark-browse-line" [ref=e165]:
+                - img [ref=e166]
+              - generic [ref=e168]: Security
+            - menuitem "spark-data-line Token Usage" [ref=e169] [cursor=pointer]:
+              - img "spark-data-line" [ref=e170]:
+                - img [ref=e171]
+              - generic [ref=e173]: Token Usage
+            - menuitem "spark-save-line Backups" [ref=e174] [cursor=pointer]:
+              - img "spark-save-line" [ref=e175]:
+                - img [ref=e176]
+              - generic [ref=e179]: Backups
+            - menuitem "spark-mic-line Voice Transcription" [ref=e180] [cursor=pointer]:
+              - img "spark-mic-line" [ref=e181]:
+                - img [ref=e182]
+              - generic [ref=e186]: Voice Transcription
+            - menuitem "spark-debug-line Debug" [ref=e187] [cursor=pointer]:
+              - img "spark-debug-line" [ref=e188]:
+                - img [ref=e189]
+              - generic [ref=e191]: Debug
+            - menuitem "Plugin Manager" [ref=e192] [cursor=pointer]:
+              - img [ref=e193]
+              - generic [ref=e197]: Plugin Manager
+        - button "spark-menuFold-line" [ref=e199] [cursor=pointer]:
+          - img "spark-menuFold-line" [ref=e201]:
+            - img [ref=e202]
+    - main [ref=e204]:
+      - generic [ref=e210]:
+        - generic [ref=e212]:
+          - generic [ref=e213]: 北京今日天气
+          - generic [ref=e214] [cursor=pointer]:
+            - generic "seeing" [ref=e215]: S
+            - generic [ref=e216]: GLM-5
+            - img "spark-down-line" [ref=e217]:
+              - img [ref=e218]
+          - generic [ref=e220]:
+            - button "spark-newChat-fill" [ref=e221] [cursor=pointer]:
+              - img "spark-newChat-fill" [ref=e223]:
+                - img [ref=e224]
+            - button "spark-search-line" [ref=e226] [cursor=pointer]:
+              - img "spark-search-line" [ref=e228]:
+                - img [ref=e229]
+            - button "spark-history-line" [ref=e232] [cursor=pointer]:
+              - img "spark-history-line" [ref=e234]:
+                - img [ref=e235]
+        - generic [ref=e237]:
+          - generic [ref=e238]:
+            - generic [ref=e239]:
+              - generic [ref=e241]:
+                - generic [ref=e242]:
+                  - img [ref=e244]
+                  - generic [ref=e245]: QwenPaw
+                - generic [ref=e247] [cursor=pointer]:
+                  - img "spark-memory-line" [ref=e249]:
+                    - img [ref=e250]
+                  - generic [ref=e252]: Thinking
+                  - button "spark-down-line" [ref=e253]:
+                    - img "spark-down-line" [ref=e255]:
+                      - img [ref=e256]
+                - generic [ref=e258]:
+                  - paragraph [ref=e259]: 根据刚才查询的7天预报，明天（5月23日）北京的天气情况如下：
+                  - heading "📍 北京明日天气（2026年5月23日）" [level=2] [ref=e260]
+                  - paragraph [ref=e261]:
+                    - strong [ref=e262]: 天气状况：
+                    - text: 多云 ⛅
+                    - strong [ref=e263]: 温度范围：
+                    - text: 27℃ / 17℃（最高/最低）
+                    - strong [ref=e264]: 风力：
+                    - text: <3级
+                  - paragraph [ref=e265]:
+                    - strong [ref=e266]: 生活指数：
+                  - list [ref=e267]:
+                    - listitem [ref=e268]: 🤧 感冒指数：少发，无明显降温，感冒机率较低
+                    - listitem [ref=e269]: 🏃 运动指数：适宜，天气较好，尽情感受运动的快乐
+                    - listitem [ref=e270]: 🌸 过敏指数：较易发，外出需远离过敏源
+                    - listitem [ref=e271]: 👕 穿衣指数：热，适合穿T恤、短薄外套等夏季服装
+                    - listitem [ref=e272]: 🚗 洗车指数：较适宜，无雨且风力较小，易保持清洁度
+                    - listitem [ref=e273]: ☀️ 紫外线指数：强，涂擦SPF大于15、PA+防晒护肤品
+                  - paragraph [ref=e274]: 比今天好不少，雨停了气温也会升到27℃，可以轻装出门～ 🌤️
+                - button "spark-copy-line" [ref=e278] [cursor=pointer]:
+                  - generic "Copy" [ref=e280]:
+                    - img "spark-copy-line" [ref=e281]:
+                      - img [ref=e282]
+              - generic [ref=e290]: 明天的天气
+              - generic [ref=e292]:
+                - generic [ref=e293]:
+                  - img [ref=e295]
+                  - generic [ref=e296]: QwenPaw
+                - paragraph [ref=e298]: 我来帮你查询北京的天气情况。我会使用必应搜索引擎来获取最新的天气信息。
+                - generic [ref=e300] [cursor=pointer]:
+                  - img "spark-tool-line" [ref=e302]:
+                    - img [ref=e303]
+                  - generic [ref=e305]: bing_search
+                  - button "spark-down-line" [ref=e306]:
+                    - img "spark-down-line" [ref=e308]:
+                      - img [ref=e309]
+                - paragraph [ref=e312]: 现在让我抓取第一个天气网站的具体内容来获取详细天气信息
+                - generic [ref=e314] [cursor=pointer]:
+                  - img "spark-tool-line" [ref=e316]:
+                    - img [ref=e317]
+                  - generic [ref=e319]: crawl_webpage
+                  - button "spark-down-line" [ref=e320]:
+                    - img "spark-down-line" [ref=e322]:
+                      - img [ref=e323]
+                - generic [ref=e325]:
+                  - paragraph [ref=e326]: 根据中国天气网的最新信息，今天（5月22日）北京的天气情况如下：
+                  - heading "📍 北京今日天气（2026年5月22日）" [level=2] [ref=e327]
+                  - paragraph [ref=e328]:
+                    - strong [ref=e329]: 天气状况：
+                    - text: 小雨转阴 ☁️
+                    - strong [ref=e330]: 温度范围：
+                    - text: 21℃ / 17℃（最高/最低） **风力：
+                - button "spark-copy-line" [ref=e334] [cursor=pointer]:
+                  - generic "Copy" [ref=e336]:
+                    - img "spark-copy-line" [ref=e337]:
+                      - img [ref=e338]
+              - generic [ref=e346]: 今天的北京的天气
+            - generic:
+              - button "spark-downArrow-line":
+                - generic:
+                  - img "spark-downArrow-line":
+                    - img
+          - generic [ref=e347]:
+            - generic [ref=e350]:
+              - textbox "\"↑↓\" for message navigation · \"/\" for quick commands (\"/approve\" or \"/deny\" during approvals)" [ref=e352]
+              - generic [ref=e353]:
+                - generic [ref=e355]:
+                  - button "spark-micOff-line" [disabled] [ref=e356]:
+                    - generic:
+                      - img "spark-micOff-line":
+                        - img
+                  - button "spark-attachment-line" [ref=e360] [cursor=pointer]:
+                    - img "spark-attachment-line" [ref=e362]:
+                      - img [ref=e363]
+                - generic [ref=e365]:
+                  - generic [ref=e366]: 0/10000
+                  - button "arrow-up" [disabled] [ref=e368]:
+                    - generic:
+                      - img "arrow-up":
+                        - img
+            - generic [ref=e369]: Works for you, grows with you

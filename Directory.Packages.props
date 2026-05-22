@@ -18,6 +18,8 @@
     <PackageVersion Include="ModelContextProtocol.Core" Version="1.0.0" />
     <PackageVersion Include="OpenAI" Version="2.0.0" />
     <PackageVersion Include="YamlDotNet" Version="16.0.0" />
+    <PackageVersion Include="System.Reactive" Version="6.0.0" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     
     <!-- 测试相关 -->
     <PackageVersion Include="coverlet.collector" Version="6.0.0" />

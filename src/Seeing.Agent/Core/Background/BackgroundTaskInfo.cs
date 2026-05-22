@@ -55,6 +55,20 @@ public class BackgroundTaskInfo
     
     /// <summary>任务描述</summary>
     public string Description { get; set; } = string.Empty;
+
+    // === 新增字段 ===
+
+    /// <summary>进度百分比 (0-100)</summary>
+    public int Progress { get; set; }
+
+    /// <summary>进度消息</summary>
+    public string? ProgressMessage { get; set; }
+
+    /// <summary>进度更新时间</summary>
+    public DateTimeOffset? ProgressUpdatedAt { get; set; }
+
+    /// <summary>输出行列表</summary>
+    public List<string> OutputLines { get; set; } = new();
 }
 
 /// <summary>

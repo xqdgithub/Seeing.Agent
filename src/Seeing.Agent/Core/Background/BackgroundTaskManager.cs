@@ -1,9 +1,11 @@
 using System.Collections.Concurrent;
+using System.Reactive.Subjects;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Session.Core;
 using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.Core.Background;
@@ -16,7 +18,10 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     private readonly ConcurrentDictionary<string, BackgroundTaskInfo> _tasks = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new();
     private readonly ConcurrentDictionary<string, StringBuilder> _outputs = new();
+    private readonly ConcurrentDictionary<string, Subject<BackgroundTaskProgress>> _progressSubjects = new();
+    private readonly ConcurrentDictionary<string, Subject<string>> _outputSubjects = new();
     private readonly IAgentRegistry _agentRegistry;
+    private readonly ISessionManager? _sessionManager;
     private readonly ILogger<BackgroundTaskManager> _logger;
 
     /// <summary>
@@ -24,10 +29,12 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     /// </summary>
     public BackgroundTaskManager(
         IAgentRegistry agentRegistry,
-        ILogger<BackgroundTaskManager> logger)
+        ILogger<BackgroundTaskManager> logger,
+        ISessionManager? sessionManager = null)
     {
         _agentRegistry = agentRegistry;
         _logger = logger;
+        _sessionManager = sessionManager;
     }
 
     /// <summary>
@@ -317,6 +324,14 @@ public class BackgroundTaskManager : IBackgroundTaskManager
             {
                 task.Error = error;
             }
+
+            // 如果任务完成（成功、失败或取消），完成 Subjects
+            if (status == BackgroundTaskStatus.Completed ||
+                status == BackgroundTaskStatus.Failed ||
+                status == BackgroundTaskStatus.Cancelled)
+            {
+                CompleteSubjects(taskId);
+            }
         }
     }
 
@@ -355,8 +370,132 @@ public class BackgroundTaskManager : IBackgroundTaskManager
                 cts?.Dispose();
                 _outputs.TryRemove(taskId, out _);
                 
+                // 完成 Subjects
+                if (_progressSubjects.TryRemove(taskId, out var progressSubject))
+                {
+                    progressSubject.OnCompleted();
+                    progressSubject.Dispose();
+                }
+                if (_outputSubjects.TryRemove(taskId, out var outputSubject))
+                {
+                    outputSubject.OnCompleted();
+                    outputSubject.Dispose();
+                }
+                
                 _logger.LogInformation("清理已完成任务: {TaskId}", taskId);
             }
+        }
+    }
+
+    // === 新增方法 ===
+
+    /// <summary>订阅任务进度</summary>
+    public IObservable<BackgroundTaskProgress> SubscribeProgress(string taskId)
+    {
+        var subject = _progressSubjects.GetOrAdd(taskId, _ => new Subject<BackgroundTaskProgress>());
+        return subject;
+    }
+
+    /// <summary>订阅任务输出流</summary>
+    public IObservable<string> SubscribeOutput(string taskId)
+    {
+        var subject = _outputSubjects.GetOrAdd(taskId, _ => new Subject<string>());
+        return subject;
+    }
+
+    /// <summary>注入任务结果到当前会话</summary>
+    public async Task<bool> InjectResultAsync(string taskId, string sessionId, CancellationToken ct = default)
+    {
+        var task = await GetAsync(taskId);
+        if (task == null)
+        {
+            _logger.LogWarning("任务不存在: {TaskId}", taskId);
+            return false;
+        }
+
+        if (task.Status != BackgroundTaskStatus.Completed)
+        {
+            _logger.LogWarning("任务未完成，无法注入: {TaskId}, Status: {Status}", taskId, task.Status);
+            return false;
+        }
+
+        if (_sessionManager == null)
+        {
+            _logger.LogWarning("SessionManager 未配置，无法注入结果");
+            return false;
+        }
+
+        try
+        {
+            // 创建工具结果消息
+            var message = SessionMessage.ToolMessage(
+                task.Result ?? task.Error ?? "Task completed with no output",
+                toolCallId: $"bg_{taskId}",
+                toolName: $"background_{task.AgentName}"
+            );
+
+            await _sessionManager.AddMessageAsync(sessionId, message, ct);
+            _logger.LogInformation("已注入任务结果到会话: {TaskId} -> {SessionId}", taskId, sessionId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "注入任务结果失败: {TaskId}", taskId);
+            return false;
+        }
+    }
+
+    /// <summary>报告进度（内部方法）</summary>
+    private void ReportProgress(string taskId, int percent, string? message = null)
+    {
+        if (!_tasks.TryGetValue(taskId, out var task)) return;
+
+        task.Progress = Math.Clamp(percent, 0, 100);
+        task.ProgressMessage = message;
+        task.ProgressUpdatedAt = DateTimeOffset.Now;
+
+        if (_progressSubjects.TryGetValue(taskId, out var subject))
+        {
+            subject.OnNext(new BackgroundTaskProgress
+            {
+                TaskId = taskId,
+                Percent = task.Progress,
+                Message = message,
+                Type = ProgressType.Update
+            });
+        }
+    }
+
+    /// <summary>报告输出行（内部方法）</summary>
+    private void ReportOutput(string taskId, string line)
+    {
+        if (!_tasks.TryGetValue(taskId, out var task)) return;
+
+        task.OutputLines.Add(line);
+
+        if (_outputSubjects.TryGetValue(taskId, out var subject))
+        {
+            subject.OnNext(line);
+        }
+    }
+
+    /// <summary>完成任务 Subjects</summary>
+    private void CompleteSubjects(string taskId)
+    {
+        if (_progressSubjects.TryRemove(taskId, out var progressSubject))
+        {
+            progressSubject.OnNext(new BackgroundTaskProgress
+            {
+                TaskId = taskId,
+                Percent = 100,
+                Type = ProgressType.Completed
+            });
+            progressSubject.OnCompleted();
+        }
+
+        if (_outputSubjects.TryRemove(taskId, out var outputSubject))
+        {
+            outputSubject.OnCompleted();
         }
     }
 }
