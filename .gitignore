@@ -364,3 +364,4 @@ FodyWeavers.xsd
 /.playwright-cli
 /screenshots
 /samples/Seeing.Agent.WebUI/nul
+/nul
