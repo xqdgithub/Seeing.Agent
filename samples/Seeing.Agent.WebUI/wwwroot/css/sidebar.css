@@ -1,0 +1,98 @@
+/**
+ * AppSidebar 组件样式 - 使用 AntDesign Sider
+ */
+
+.app-sider {
+    background: #fafafa !important;
+    border-right: 1px solid #e8e8e8 !important;
+}
+
+.app-sider .ant-layout-sider-children {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ========== Header ========== */
+.sider-header {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #e8e8e8;
+    flex-shrink: 0;
+}
+
+.logo-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logo-icon {
+    font-size: 24px;
+}
+
+.logo-text {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1890ff;
+    white-space: nowrap;
+}
+
+.logo-icon-only {
+    font-size: 24px;
+}
+
+/* ========== Agent Selector ========== */
+.sider-agent-selector {
+    padding: 12px 16px;
+    border-bottom: 1px solid #e8e8e8;
+    flex-shrink: 0;
+}
+
+.agent-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ========== Menu ========== */
+.sider-menu {
+    flex: 1;
+    overflow-y: auto;
+    border-right: none !important;
+}
+
+.sider-menu .ant-menu-item {
+    margin: 4px 8px !important;
+    border-radius: 6px !important;
+}
+
+.sider-menu .ant-menu-submenu-title {
+    margin: 4px 8px !important;
+    border-radius: 6px !important;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+    .sider-header {
+        height: 48px;
+    }
+}
+
+/* ========== Dark Theme Support ========== */
+@media (prefers-color-scheme: dark) {
+    .app-sider {
+        background: #141414 !important;
+        border-right-color: #303030 !important;
+    }
+    
+    .sider-header {
+        border-bottom-color: #303030;
+    }
+    
+    .sider-agent-selector {
+        border-bottom-color: #303030;
+    }
+}

@@ -1,0 +1,261 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Routing
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Core.Models
+@using Seeing.Agent.WebUI.State
+@implements IDisposable
+@inject AppState AppState
+@inject IAgentRegistry AgentRegistry
+@inject NavigationManager NavigationManager
+
+<Sider Class="app-sider"
+        Width="@GetSiderWidth()"
+        Collapsed="@Collapsed"
+        CollapsedChanged="@OnCollapsedChanged"
+        Theme="@SiderTheme.Light">
+    
+    <!-- Header: Logo -->
+    <div class="sider-header">
+        @if (!Collapsed)
+        {
+            <div class="logo-section">
+                <span class="logo-icon">🤖</span>
+                <span class="logo-text">Seeing.Agent</span>
+            </div>
+        }
+        else
+        {
+            <Tooltip Title="Seeing.Agent" Placement="@Placement.Right">
+                <span class="logo-icon-only">🤖</span>
+            </Tooltip>
+        }
+    </div>
+
+    <!-- Navigation Menu -->
+    <Menu Mode="@MenuMode.Inline"
+          Theme="@MenuTheme.Light"
+          SelectedKeys="@_selectedKeys"
+          OpenKeys="@_openKeys"
+          Class="sider-menu">
+        
+        @* 聊天 *@
+        <MenuItem Key="chat" OnClick="@(() => NavigateTo(GetChatPath()))">
+            <Icon Type="@IconType.Outline.Message" />
+            <span>聊天</span>
+        </MenuItem>
+        
+        @* 工作区分组 *@
+        <SubMenu Key="workspace">
+            <TitleTemplate>
+                <Icon Type="@IconType.Outline.Folder" />
+                <span>工作区</span>
+            </TitleTemplate>
+            <ChildContent>
+                <MenuItem Key="sessions" OnClick="@(() => NavigateTo("/sessions"))">
+                    <Icon Type="@IconType.Outline.Team" />
+                    <span>会话</span>
+                </MenuItem>
+                <MenuItem Key="skills" OnClick="@(() => NavigateTo("/skills"))">
+                    <Icon Type="@IconType.Outline.Star" />
+                    <span>技能</span>
+                </MenuItem>
+                <MenuItem Key="tools" OnClick="@(() => NavigateTo("/tools"))">
+                    <Icon Type="@IconType.Outline.Tool" />
+                    <span>工具</span>
+                </MenuItem>
+                <MenuItem Key="mcp" OnClick="@(() => NavigateTo("/mcp"))">
+                    <Icon Type="@IconType.Outline.Api" />
+                    <span>MCP</span>
+                </MenuItem>
+            </ChildContent>
+        </SubMenu>
+        
+        @* 设置分组 *@
+        <SubMenu Key="settings">
+            <TitleTemplate>
+                <Icon Type="@IconType.Outline.Setting" />
+                <span>设置</span>
+            </TitleTemplate>
+            <ChildContent>
+                <MenuItem Key="agents" OnClick="@(() => NavigateTo("/agents"))">
+                    <Icon Type="@IconType.Outline.UsergroupAdd" />
+                    <span>智能体管理</span>
+                </MenuItem>
+                <MenuItem Key="models" OnClick="@(() => NavigateTo("/models"))">
+                    <Icon Type="@IconType.Outline.CloudServer" />
+                    <span>模型</span>
+                </MenuItem>
+                <MenuItem Key="security" OnClick="@(() => NavigateTo("/security"))">
+                    <Icon Type="@IconType.Outline.Lock" />
+                    <span>安全</span>
+                </MenuItem>
+            </ChildContent>
+        </SubMenu>
+    </Menu>
+</Sider>
+
+@code {
+    #region Parameters
+
+    [Parameter]
+    public bool Collapsed { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> CollapsedChanged { get; set; }
+
+    #endregion
+
+    #region Private Fields
+
+    private List<AgentInfo> _agents = new();
+    private List<AgentOption> _agentOptions = new();
+    private string _selectedAgentName = "";
+    private string[] _selectedKeys = Array.Empty<string>();
+    private string[] _openKeys = new[] { "workspace", "settings" };
+
+    #endregion
+
+    #region Properties
+
+    private string SelectedAgentName
+    {
+        get => _selectedAgentName;
+        set
+        {
+            if (_selectedAgentName != value)
+            {
+                _selectedAgentName = value;
+                AppState.SelectedAgent = value;
+                AppState.NotifyChange();
+            }
+        }
+    }
+
+    #endregion
+
+    #region Lifecycle Methods
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += OnAppStateChange;
+        NavigationManager.LocationChanged += OnLocationChanged;
+        await LoadAgentsAsync();
+        _selectedAgentName = AppState.SelectedAgent;
+        UpdateSelectedKey();
+    }
+
+    protected override void OnParametersSet()
+    {
+        UpdateSelectedKey();
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= OnAppStateChange;
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+
+    #endregion
+
+    #region Private Methods
+
+    private int GetSiderWidth() => Collapsed ? 80 : 240;
+
+    private void UpdateSelectedKey()
+    {
+        var currentPath = NavigationManager.Uri.Replace(NavigationManager.BaseUri, "/");
+        if (!currentPath.StartsWith("/"))
+        {
+            currentPath = "/" + currentPath;
+        }
+        
+        var key = currentPath.TrimStart('/').Split('/')[0];
+        if (string.IsNullOrEmpty(key))
+        {
+            key = "chat";
+        }
+        
+        _selectedKeys = new[] { key };
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        UpdateSelectedKey();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAgentsAsync()
+    {
+        try
+        {
+            var agents = await AgentRegistry.GetAgentsAsync();
+            _agents = agents.Where(a => !a.IsHidden).ToList();
+
+            _agentOptions = _agents.Select(a => new AgentOption
+            {
+                Value = a.Name,
+                Label = a.Name
+            }).ToList();
+
+            if (string.IsNullOrEmpty(_selectedAgentName) && _agents.Count > 0)
+            {
+                var defaultName = await AgentRegistry.GetDefaultAgentNameAsync();
+                _selectedAgentName = defaultName ?? _agents[0].Name;
+                AppState.SelectedAgent = _selectedAgentName;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load agents: {ex.Message}");
+        }
+    }
+
+    private void OnAppStateChange()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ShowAgentSelector()
+    {
+        Collapsed = false;
+        if (CollapsedChanged.HasDelegate)
+        {
+            await CollapsedChanged.InvokeAsync(Collapsed);
+        }
+    }
+
+    private void NavigateTo(string path)
+    {
+        NavigationManager.NavigateTo(path);
+    }
+
+    private string GetChatPath()
+    {
+        if (!string.IsNullOrEmpty(AppState.CurrentSessionId))
+        {
+            return $"/session/{AppState.CurrentSessionId}";
+        }
+        return "/sessions";
+    }
+
+    private async Task OnCollapsedChanged(bool collapsed)
+    {
+        Collapsed = collapsed;
+        if (CollapsedChanged.HasDelegate)
+        {
+            await CollapsedChanged.InvokeAsync(Collapsed);
+        }
+    }
+
+    #endregion
+
+    #region Helper Classes
+
+    public class AgentOption
+    {
+        public string Value { get; set; } = "";
+        public string Label { get; set; } = "";
+    }
+
+    #endregion
+}

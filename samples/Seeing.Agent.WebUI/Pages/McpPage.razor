@@ -1,0 +1,327 @@
+﻿@page "/mcp"
+@using AntDesign
+@using Seeing.Agent.MCP
+@using Seeing.Agent.MCP.Core
+@using Seeing.Agent.WebUI.Services
+@inject IMcpManager McpManager
+@inject McpStateService McpStateService
+@inject IMessageService MessageService
+@implements IDisposable
+
+<PageTitle>MCP - Seeing.Agent</PageTitle>
+
+<div class="workspace-page">
+    <div class="page-header">
+        <Breadcrumb>
+            <BreadcrumbItem>Workspace</BreadcrumbItem>
+            <BreadcrumbItem>MCP Clients</BreadcrumbItem>
+        </Breadcrumb>
+        <div class="header-actions">
+            <Space>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Default" Icon="@IconType.Outline.Reload" OnClick="HandleRefresh">Refresh</Button>
+                </SpaceItem>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowAddModal">Add Client</Button>
+                </SpaceItem>
+            </Space>
+        </div>
+    </div>
+    
+    @* Statistics Bar *@
+    @if (!_isLoading && _statuses.Any())
+    {
+        <div class="page-stats">
+            <div class="stat-item">
+                <div class="stat-icon">
+                    <Icon Type="@IconType.Outline.Appstore" />
+                </div>
+                <div class="stat-content">
+                    <span class="stat-value">@_statuses.Count</span>
+                    <span class="stat-label">Total</span>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon" style="background: var(--color-success-bg); color: var(--color-success);">
+                    <Icon Type="@IconType.Outline.CheckCircle" />
+                </div>
+                <div class="stat-content">
+                    <span class="stat-value">@_connectedCount</span>
+                    <span class="stat-label">Connected</span>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon" style="background: var(--color-error-bg); color: var(--color-error);">
+                    <Icon Type="@IconType.Outline.CloseCircle" />
+                </div>
+                <div class="stat-content">
+                    <span class="stat-value">@_errorCount</span>
+                    <span class="stat-label">Error</span>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon" style="background: var(--color-warning-bg); color: var(--color-warning);">
+                    <Icon Type="@IconType.Outline.PauseCircle" />
+                </div>
+                <div class="stat-content">
+                    <span class="stat-value">@_pausedCount</span>
+                    <span class="stat-label">Paused</span>
+                </div>
+            </div>
+        </div>
+    }
+    
+    <div class="page-content">
+        @if (_isLoading) { 
+            <div class="loading-spinner">
+                <Spin Size="@SpinSize.Large" />
+            </div>
+        }
+        else if (!_statuses.Any())
+        {
+            <div class="empty-state">
+                <div class="empty-state-icon">
+                    <Icon Type="@IconType.Outline.Api" />
+                </div>
+                <h3 class="empty-state-title">No MCP Clients</h3>
+                <p class="empty-state-description">Add an MCP client to connect to external tools and services.</p>
+                <div class="empty-state-action">
+                    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowAddModal">Add Client</Button>
+                </div>
+            </div>
+        }
+        else {
+            <div class="items-grid">
+            @foreach (var kvp in _statuses) {
+                var status = kvp.Value;
+                <div class="item-card @GetStateClass(status.State)">
+                    <div class="item-card-header">
+                        <div class="card-icon @GetIconClass(status.State)">
+                            <Icon Type="@GetStateIcon(status.State)" />
+                        </div>
+                        <div class="card-title-section">
+                            <h3 class="card-title">@status.Name</h3>
+                            <div class="card-subtitle">@GetTransportType(status)</div>
+                        </div>
+                        <Tag Color="@GetStateColor(status.State)">@status.State</Tag>
+                    </div>
+                    <div class="item-card-body">
+                        <div class="card-meta">
+                            @if (status.Config != null)
+                            {
+                                @if (!string.IsNullOrEmpty(status.Config.Command))
+                                {
+                                    <div class="meta-item">
+                                        <Icon Type="@IconType.Outline.Code" />
+                                        <span class="meta-label">Command:</span>
+                                        <span class="meta-value">@status.Config.Command</span>
+                                    </div>
+                                }
+                                @if (status.Config.Args != null && status.Config.Args.Any())
+                                {
+                                    <div class="meta-item">
+                                        <Icon Type="@IconType.Outline.ConsoleSql" />
+                                        <span class="meta-label">Args:</span>
+                                        <span class="meta-value">@(string.Join(" ", status.Config.Args))</span>
+                                    </div>
+                                }
+                                @if (status.Config.Url != null)
+                                {
+                                    <div class="meta-item">
+                                        <Icon Type="@IconType.Outline.Link" />
+                                        <span class="meta-label">URL:</span>
+                                        <span class="meta-value">@status.Config.Url.ToString()</span>
+                                    </div>
+                                }
+                            }
+                            <div class="meta-item">
+                                <Icon Type="@IconType.Outline.Tool" />
+                                <span class="meta-label">Tools:</span>
+                                <span class="meta-value">@status.ToolCount</span>
+                            </div>
+                            @if (status.LastConnectedAt.HasValue)
+                            {
+                                <div class="meta-item">
+                                    <Icon Type="@IconType.Outline.ClockCircle" />
+                                    <span class="meta-label">Last connected:</span>
+                                    <span class="meta-value">@status.LastConnectedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="item-card-footer">
+                        <div class="card-actions">
+                            <Space Size="@SpaceSize.Small">
+                                @if (status.State == McpConnectionState.Connected) {
+                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.PauseCircle" OnClick="@(() => PauseServer(status.Name))">Pause</Button></SpaceItem>
+                                }
+                                else if (status.State == McpConnectionState.Paused) {
+                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.PlayCircle" Type="@ButtonType.Primary" OnClick="@(() => ResumeServer(status.Name))">Resume</Button></SpaceItem>
+                                }
+                                else if (status.State == McpConnectionState.Error) {
+                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Reload" Type="@ButtonType.Primary" OnClick="@(() => ReconnectServer(status.Name))">Reconnect</Button></SpaceItem>
+                                }
+                                else if (status.State == McpConnectionState.Connecting || status.State == McpConnectionState.Reconnecting) {
+                                    <SpaceItem><Button Size="@ButtonSize.Small" Disabled><Spin Size="@SpinSize.Small" /> Connecting...</Button></SpaceItem>
+                                }
+                            </Space>
+                        </div>
+                        @if (status.LastError != null)
+                        {
+                            <Tooltip Title="@status.LastError.UserMessage">
+                                <Icon Type="@IconType.Outline.InfoCircle" Style="color: var(--color-error); cursor: help;" />
+                            </Tooltip>
+                        }
+                    </div>
+                </div>
+            }
+            </div>
+        }
+    </div>
+</div>
+
+@* Add Client Modal *@
+<Modal @bind-Visible="_addModalVisible" Title="Add MCP Client" Width="600">
+    <Form Model="@_newClientConfig" Layout="@FormLayout.Vertical">
+        <FormItem Label="Name">
+            <Input @bind-Value="_newClientConfig.Name" Placeholder="e.g., filesystem, github" />
+        </FormItem>
+        <FormItem Label="Transport Type">
+            <RadioGroup @bind-Value="_newClientConfig.TransportType">
+                <Radio Value="@McpTransportType.Stdio">Stdio</Radio>
+                <Radio Value="@McpTransportType.StreamableHttp">HTTP</Radio>
+            </RadioGroup>
+        </FormItem>
+        @if (_newClientConfig.TransportType == McpTransportType.Stdio)
+        {
+            <FormItem Label="Command">
+                <Input @bind-Value="_newClientConfig.Command" Placeholder="e.g., npx, python" />
+            </FormItem>
+            <FormItem Label="Arguments">
+                <Input @bind-Value="_newClientArgs" Placeholder="@("-y @modelcontextprotocol/server-filesystem")" />
+            </FormItem>
+        }
+        else
+        {
+            <FormItem Label="URL">
+                <Input @bind-Value="_newClientUrl" Placeholder="https://example.com/mcp" />
+            </FormItem>
+        }
+    </Form>
+    <div slot="footer">
+        <Button OnClick="() => _addModalVisible = false">Cancel</Button>
+        <Button Type="@ButtonType.Primary" OnClick="HandleAddClient">Add</Button>
+    </div>
+</Modal>
+
+@code {
+    private bool _isLoading = false;
+    private Dictionary<string, McpServerStatus> _statuses = new();
+    
+    // Statistics
+    private int _connectedCount => _statuses.Values.Count(s => s.State == McpConnectionState.Connected);
+    private int _errorCount => _statuses.Values.Count(s => s.State == McpConnectionState.Error);
+    private int _pausedCount => _statuses.Values.Count(s => s.State == McpConnectionState.Paused);
+    
+    // Add Modal
+    private bool _addModalVisible = false;
+    private McpServerConfig _newClientConfig = new();
+    private string _newClientArgs = "";
+    private string _newClientUrl = "";
+    
+    protected override void OnInitialized() {
+        McpStateService.StateChanged += OnStateChanged;
+        RefreshStatus();
+    }
+    
+    void OnStateChanged(object? s, EventArgs e) => InvokeAsync(() => { RefreshStatus(); StateHasChanged(); });
+    void RefreshStatus() => _statuses = McpManager.GetAllStatus().ToDictionary(x => x.Key, x => x.Value);
+    
+    void HandleRefresh() {
+        _isLoading = true;
+        StateHasChanged();
+        Task.Run(async () => {
+            await Task.Delay(100); // Brief delay for UX
+            RefreshStatus();
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+    
+    void ShowAddModal() {
+        _newClientConfig = new McpServerConfig();
+        _newClientArgs = "";
+        _newClientUrl = "";
+        _addModalVisible = true;
+    }
+    
+    async Task HandleAddClient() {
+        try {
+            if (_newClientConfig.TransportType == McpTransportType.Stdio) {
+                _newClientConfig.Args = _newClientArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+            } else if (!string.IsNullOrEmpty(_newClientUrl)) {
+                _newClientConfig.Url = new Uri(_newClientUrl);
+            }
+            
+            var result = await McpManager.AddServerAsync(_newClientConfig.Name, _newClientConfig);
+            if (result.Success) {
+                _addModalVisible = false;
+                RefreshStatus();
+                MessageService.Success($"MCP client '{_newClientConfig.Name}' added successfully");
+            } else {
+                MessageService.Error($"Failed to add client: {result.Error?.UserMessage ?? "Unknown error"}");
+            }
+        } catch (Exception ex) {
+            MessageService.Error($"Failed to add client: {ex.Message}");
+        }
+    }
+    
+    void PauseServer(string name) { McpManager.PauseServer(name); }
+    void ResumeServer(string name) { McpManager.ResumeServer(name); }
+    async Task ReconnectServer(string name) => await McpManager.ReconnectServerAsync(name);
+    
+    string GetStateClass(McpConnectionState s) => s switch {
+        McpConnectionState.Connected => "state-success",
+        McpConnectionState.Error => "state-error",
+        McpConnectionState.Paused => "state-warning",
+        _ => ""
+    };
+    
+    string GetStateColor(McpConnectionState s) => s switch {
+        McpConnectionState.Connected => "success",
+        McpConnectionState.Error => "error",
+        McpConnectionState.Paused => "warning",
+        McpConnectionState.Reconnecting => "processing",
+        McpConnectionState.Connecting => "processing",
+        _ => "default"
+    };
+    
+    string GetStateIcon(McpConnectionState s) => s switch {
+        McpConnectionState.Connected => IconType.Outline.CheckCircle,
+        McpConnectionState.Error => IconType.Outline.CloseCircle,
+        McpConnectionState.Paused => IconType.Outline.PauseCircle,
+        McpConnectionState.Connecting => IconType.Outline.Loading,
+        McpConnectionState.Reconnecting => IconType.Outline.Sync,
+        McpConnectionState.Pending => IconType.Outline.ClockCircle,
+        _ => IconType.Outline.Api
+    };
+    
+    string GetIconClass(McpConnectionState s) => s switch {
+        McpConnectionState.Connected => "success",
+        McpConnectionState.Error => "error",
+        McpConnectionState.Paused => "warning",
+        _ => ""
+    };
+    
+    string GetTransportType(McpServerStatus status) {
+        if (status.Config == null) return "Unknown";
+        return status.Config.TransportType switch {
+            McpTransportType.Stdio => $"Stdio: {status.Config.Command ?? "N/A"}",
+            McpTransportType.StreamableHttp => "HTTP",
+            McpTransportType.Sse => "SSE",
+            _ => "Unknown"
+        };
+    }
+    
+    public void Dispose() => McpStateService.StateChanged -= OnStateChanged;
+}

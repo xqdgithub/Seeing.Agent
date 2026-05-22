@@ -1,0 +1,230 @@
+﻿@page "/skills"
+@using AntDesign
+@using Seeing.Agent.Skills
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.Core.Interfaces
+@inject SkillManager SkillManager
+@inject SkillStateService SkillStateService
+@inject IMessageService MessageService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Skills - Seeing.Agent</PageTitle>
+
+<div class="workspace-page">
+    <div class="page-header">
+        <Breadcrumb>
+            <BreadcrumbItem>Workspace</BreadcrumbItem>
+            <BreadcrumbItem>Skills</BreadcrumbItem>
+        </Breadcrumb>
+        <div class="header-actions">
+            <Space>
+                <SpaceItem><Button Icon="@IconType.Outline.Sync" OnClick="RefreshSkills">Refresh</Button></SpaceItem>
+                <SpaceItem><Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateSkill">Create Skill</Button></SpaceItem>
+            </Space>
+        </div>
+    </div>
+    
+    <!-- Statistics Bar -->
+    <div class="page-stats">
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Appstore" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_totalCount</span>
+                <span class="stat-label">Total Skills</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon" style="background: var(--color-success-bg); color: var(--color-success);"><Icon Type="@IconType.Outline.CheckCircle" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_enabledCount</span>
+                <span class="stat-label">Enabled</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon" style="background: var(--color-bg-tertiary); color: var(--color-text-tertiary);"><Icon Type="@IconType.Outline.Stop" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_disabledCount</span>
+                <span class="stat-label">Disabled</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="page-filters">
+        <div class="filter-search">
+            <Input @bind-Value="_searchText" Placeholder="Search skills by name..." AllowClear="true" DebounceMilliseconds="300">
+                <Prefix><Icon Type="@IconType.Outline.Search" /></Prefix>
+            </Input>
+        </div>
+        <div class="filter-divider"></div>
+        <div class="view-mode-toggle">
+            <button class="view-mode-btn @(_isCardView ? "active" : "")" @onclick="() => SetViewMode(true)" title="Card View">
+                <Icon Type="@IconType.Outline.Appstore" />
+            </button>
+            <button class="view-mode-btn @(!_isCardView ? "active" : "")" @onclick="() => SetViewMode(false)" title="List View">
+                <Icon Type="@IconType.Outline.UnorderedList" />
+            </button>
+        </div>
+    </div>
+    
+    <div class="page-content">
+        @if (_isLoading) {
+            <div class="loading-spinner">
+                <Spin Size="@SpinSize.Large" />
+            </div>
+        }
+        else if (!_filteredSkills.Any()) {
+            <div class="empty-state">
+                <div class="empty-state-icon"><Icon Type="@IconType.Outline.FileText" /></div>
+                <h3 class="empty-state-title">@(_searchText.Length > 0 ? "No skills found" : "No skills yet")</h3>
+                <p class="empty-state-description">
+                    @if (_searchText.Length > 0) {
+                        @:No skills match your search criteria. Try a different search term.
+                    } else {
+                        @:Get started by creating your first skill to extend the agent's capabilities.
+                    }
+                </p>
+                <div class="empty-state-action">
+                    @if (_searchText.Length > 0) {
+                        <Button OnClick="ClearSearch">Clear Search</Button>
+                    } else {
+                        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateSkill">Create Skill</Button>
+                    }
+                </div>
+            </div>
+        }
+        else if (_isCardView) {
+            <div class="items-grid">
+            @foreach (var skill in _filteredSkills) {
+                <div class="item-card" @onclick="() => ViewSkill(skill.Key)">
+                    <div class="item-card-header">
+                        <div class="card-icon @(SkillStateService.IsEnabled(skill.Key) ? "success" : "")">
+                            <Icon Type="@IconType.Outline.Code" />
+                        </div>
+                        <div class="card-title-section">
+                            <h3 class="card-title">@skill.Key</h3>
+                            <div class="card-status-row">
+                                <span class="status-tag info">@GetSkillType(skill.Value)</span>
+                                <span class="status-tag @(SkillStateService.IsEnabled(skill.Key) ? "active" : "inactive")">
+                                    @(SkillStateService.IsEnabled(skill.Key) ? "Enabled" : "Disabled")
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="item-card-body">
+                        <p class="card-description">@GetDescriptionPreview(skill.Value?.Description)</p>
+                        @if (!string.IsNullOrEmpty(skill.Value?.Location)) {
+                            <div class="meta-item">
+                                <Icon Type="@IconType.Outline.Folder" />
+                                <span class="meta-value">@GetLocationPreview(skill.Value.Location)</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="item-card-footer">
+                        <div class="card-actions">
+                            <Switch Checked="@SkillStateService.IsEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
+                        </div>
+                        <span class="card-timestamp">Click to view details</span>
+                    </div>
+                </div>
+            }
+            </div>
+        }
+        else {
+            <div class="items-table-container">
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Description</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var skill in _filteredSkills) {
+                        <tr @onclick="() => ViewSkill(skill.Key)" style="cursor: pointer;">
+                            <td>
+                                <div class="table-cell-name">
+                                    <div class="table-cell-icon"><Icon Type="@IconType.Outline.Code" /></div>
+                                    <div class="table-cell-text">
+                                        <span class="table-cell-title">@skill.Key</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="status-tag info">@GetSkillType(skill.Value)</span>
+                            </td>
+                            <td>
+                                <span class="status-tag @(SkillStateService.IsEnabled(skill.Key) ? "active" : "inactive")">
+                                    @(SkillStateService.IsEnabled(skill.Key) ? "Enabled" : "Disabled")
+                                </span>
+                            </td>
+                            <td>
+                                <span class="table-cell-description">@GetDescriptionPreview(skill.Value?.Description)</span>
+                            </td>
+                            <td>
+                                <div class="table-cell-actions" @onclick:stopPropagation="true">
+                                    <Switch Checked="@SkillStateService.IsEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string _searchText = "";
+    private bool _isLoading = false;
+    private bool _isCardView = true;
+    private List<KeyValuePair<string, SkillInfo?>> _filteredSkills = new();
+    private List<KeyValuePair<string, SkillInfo?>> _allSkills = new();
+    
+    // Statistics
+    private int _totalCount => _allSkills.Count;
+    private int _enabledCount => _allSkills.Count(s => SkillStateService.IsEnabled(s.Key));
+    private int _disabledCount => _totalCount - _enabledCount;
+    
+    protected override async Task OnInitializedAsync() => await RefreshSkills();
+    
+    async Task RefreshSkills() {
+        _isLoading = true;
+        StateHasChanged();
+        
+        _allSkills = SkillManager.GetAllSkillInfos().ToList();
+        ApplyFilter();
+        
+        _isLoading = false;
+        StateHasChanged();
+    }
+    
+    void ApplyFilter() {
+        _filteredSkills = _allSkills
+            .Where(s => string.IsNullOrEmpty(_searchText) || s.Key.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+    
+    void SetViewMode(bool isCard) {
+        _isCardView = isCard;
+    }
+    
+    void ClearSearch() {
+        _searchText = "";
+        ApplyFilter();
+    }
+    
+    void ToggleSkill(string name, bool enabled) {
+        SkillStateService.SetEnabled(name, enabled);
+        StateHasChanged();
+    }
+    
+    string GetSkillType(SkillInfo? s) => s?.Location?.Contains(".agents") == true ? "Built-in" : "Custom";
+    string GetDescriptionPreview(string? d) => string.IsNullOrEmpty(d) ? "No description" : (d.Length > 100 ? d[..100] + "..." : d);
+    string GetLocationPreview(string? loc) => loc?.Length > 40 ? "..." + loc[^Math.Min(40, loc.Length)..] : loc ?? "";
+    void ViewSkill(string name) => NavigationManager.NavigateTo($"/skills/{name}");
+    void CreateSkill() => NavigationManager.NavigateTo("/skills/create");
+}

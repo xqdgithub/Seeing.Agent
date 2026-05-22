@@ -124,9 +124,19 @@ namespace Seeing.Agent.WebUI.Services
         {
             var session = await _sessionLifecycle.BeginSessionAsync(title, agentId);
             
+            // 注册到 SessionManager（确保可以被 LoadAsync 加载）
+            _sessionManager.Register(session);
+            
+            // 保存到存储
+            await _sessionManager.SaveAsync(session.Id);
+            
+            // 添加到列表缓存
+            _sessionList.Insert(0, session);
+            
             // 设置为当前会话
             CurrentSession = session;
             OnCurrentSessionChanged?.Invoke();
+            OnSessionListChanged?.Invoke();
 
             _logger?.LogInformation("创建新会话: {SessionId}, Title: {Title}", session.Id, session.Title);
             return session;

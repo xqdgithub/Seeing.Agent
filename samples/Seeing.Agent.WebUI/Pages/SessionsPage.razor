@@ -1,0 +1,288 @@
+@page "/sessions"
+@using AntDesign
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Session.Core
+@inject SessionProvider SessionProvider
+@inject IMessageService MessageService
+@inject NavigationManager NavigationManager
+
+<PageTitle>会话管理 - Seeing.Agent</PageTitle>
+
+<div class="workspace-page">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="page-header-left">
+            <Breadcrumb>
+                <BreadcrumbItem>工作区</BreadcrumbItem>
+                <BreadcrumbItem>会话</BreadcrumbItem>
+            </Breadcrumb>
+        </div>
+        <div class="page-header-actions">
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateSession">
+                新建会话
+            </Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="RefreshSessions">
+                刷新
+            </Button>
+        </div>
+    </div>
+    
+    <!-- Statistics Bar -->
+    <div class="page-stats">
+        <div class="stat-item">
+            <div class="stat-icon">
+                <Icon Type="@IconType.Outline.Folder" />
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">@_totalCount</div>
+                <div class="stat-label">总会话</div>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon">
+                <Icon Type="@IconType.Outline.Calendar" />
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">@_todayCount</div>
+                <div class="stat-label">今日创建</div>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon">
+                <Icon Type="@IconType.Outline.Thunderbolt" />
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">@_activeCount</div>
+                <div class="stat-label">活跃 (24h)</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Filters Bar -->
+    <div class="page-filters">
+        <div class="filter-search">
+            <Input @bind-Value="_searchText" Placeholder="搜索会话..." AllowClear="true">
+                <Prefix><Icon Type="@IconType.Outline.Search" /></Prefix>
+            </Input>
+        </div>
+    </div>
+    
+    <!-- Session List -->
+    <div class="page-content">
+        @if (_filteredSessions == null || _filteredSessions.Count == 0)
+        {
+            <Empty />
+        }
+        else
+        {
+            <div class="session-list">
+                @foreach (var session in _filteredSessions)
+                {
+                    <div class="session-card" @onclick="@(() => ViewSession(session.Id))">
+                        <div class="session-header">
+                            <div class="session-title">@session.Title</div>
+                            <div class="session-time">@GetRelativeTime(session.UpdatedAt)</div>
+                        </div>
+                        <div class="session-meta">
+                            <Tag>@session.SelectedAgent</Tag>
+                            <span class="session-messages">@session.MessageCount 条消息</span>
+                        </div>
+                        <div class="session-actions" @onclick:stopPropagation="true">
+                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
+                                    Icon="@IconType.Outline.Fork" 
+                                    OnClick="@(() => BranchSession(session.Id))">
+                                分支
+                            </Button>
+                            <Popconfirm Title="确定删除此会话？" OnConfirm="@(() => DeleteSession(session.Id))">
+                                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
+                                        Danger Icon="@IconType.Outline.Delete">
+                                    删除
+                                </Button>
+                            </Popconfirm>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+.session-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+}
+
+.session-card {
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.session-card:hover {
+    border-color: #1890ff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.session-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.session-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #262626;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-time {
+    font-size: 12px;
+    color: #8c8c8c;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.session-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.session-messages {
+    font-size: 12px;
+    color: #8c8c8c;
+}
+
+.session-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+</style>
+
+@code {
+    private List<SessionData> _filteredSessions = new();
+    private string _searchText = "";
+    private int _totalCount;
+    private int _todayCount;
+    private int _activeCount;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        SessionProvider.OnSessionListChanged += OnSessionListChanged;
+        await SessionProvider.InitializeSessionListAsync();
+        RefreshSessions();
+    }
+    
+    public void Dispose()
+    {
+        SessionProvider.OnSessionListChanged -= OnSessionListChanged;
+    }
+    
+    private void OnSessionListChanged()
+    {
+        InvokeAsync(() =>
+        {
+            RefreshSessions();
+            StateHasChanged();
+        });
+    }
+    
+    void RefreshSessions()
+    {
+        try
+        {
+            var sessions = SessionProvider.GetSessionList() ?? new List<SessionData>();
+            
+            _filteredSessions = sessions
+                .Where(s => string.IsNullOrEmpty(_searchText) || 
+                            (s.Title?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                            (s.SelectedAgent?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+                .OrderByDescending(s => s.UpdatedAt)
+                .ToList();
+            
+            _totalCount = sessions.Count;
+            var today = DateTime.Today;
+            _todayCount = sessions.Count(s => s.CreatedAt.Date == today);
+            var yesterday = DateTime.Now.AddHours(-24);
+            _activeCount = sessions.Count(s => s.UpdatedAt >= yesterday);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing sessions: {ex.Message}");
+            _filteredSessions = new List<SessionData>();
+        }
+    }
+    
+    async Task CreateSession()
+    {
+        try
+        {
+            var session = await SessionProvider.CreateSessionAsync();
+            MessageService.Success("会话已创建");
+            NavigationManager.NavigateTo($"/session/{session.Id}");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"创建失败: {ex.Message}");
+        }
+    }
+    
+    async Task DeleteSession(string id)
+    {
+        try
+        {
+            await SessionProvider.DeleteSessionAsync(id);
+            MessageService.Success("会话已删除");
+            RefreshSessions();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败: {ex.Message}");
+        }
+    }
+    
+    void ViewSession(string id) => NavigationManager.NavigateTo($"/session/{id}");
+    
+    async Task BranchSession(string id)
+    {
+        try
+        {
+            var session = await SessionProvider.BranchSessionAsync(id);
+            MessageService.Success("会话已分支");
+            NavigationManager.NavigateTo($"/session/{session.Id}");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"分支失败: {ex.Message}");
+        }
+    }
+    
+    string GetRelativeTime(DateTime time)
+    {
+        var diff = DateTime.Now - time;
+        
+        if (diff.TotalMinutes < 1)
+            return "刚刚";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}分钟前";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}小时前";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}天前";
+        
+        return time.ToString("MM-dd");
+    }
+}

@@ -46,6 +46,8 @@ builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<EventStreamHandler>();
 builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddSingleton<McpStateService>();
+builder.Services.AddSingleton<SkillStateService>();
+builder.Services.AddSingleton<ToolStateService>();
 
 // AntDesign 2.0 配置
 builder.Services.AddAntDesign();

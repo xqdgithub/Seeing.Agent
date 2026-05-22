@@ -19,180 +19,31 @@
 
 <Layout Class="app-layout" Style="min-height: 100vh;">
     <!-- 左侧边栏 -->
-    <Sider Class="app-sider"
-           Width="@SiderWidth"
-           Collapsible
-           Collapsed="@AppState.SidebarCollapsed"
-           CollapsedChanged="@OnSiderCollapse"
-           Theme="@SiderTheme.Light">
-        <div Class="sider-header">
-            @if (!AppState.SidebarCollapsed)
-            {
-                <h3 Class="app-title">Seeing.Agent</h3>
-            }
-            else
-            {
-                <span Class="app-title-collapsed">SA</span>
-            }
-        </div>
-        
-        <!-- Agent/Model 选择器区域 -->
-        <div Class="sider-selectors">
-            <AgentSelector SelectedAgent="@AppState.SelectedAgent"
-                           SelectedAgentChanged="@OnAgentChanged"
-                           Collapsed="@AppState.SidebarCollapsed"
-                           IsDisabled="@SessionState.IsExecuting" />
-            <ModelSelector SelectedModel="@AppState.SelectedModel"
-                           SelectedModelChanged="@OnModelChanged"
-                           Collapsed="@AppState.SidebarCollapsed"
-                           IsDisabled="@SessionState.IsExecuting" />
-        </div>
-        
-        <!-- 会话侧边栏 -->
-        <div Class="sider-sessions-container">
-            <SessionSidebar Sessions="@_sessionList"
-                            SelectedSessionId="@AppState.CurrentSessionId"
-                            SelectedSessionIdChanged="@OnSessionSelected"
-                            Collapsed="@AppState.SidebarCollapsed"
-                            OnNewSessionCallback="@OnNewSession"
-                            OnRenameCallback="@OnRenameSession"
-                            OnDeleteCallback="@OnDeleteSession"
-                            OnBranchCallback="@OnBranchSession" />
-        </div>
-        
-        <!-- Slot 扩展点: sidebar_content -->
-        <SlotHost SlotName="sidebar_content" />
-        
-        <!-- 侧边栏底部 -->
-        <div Class="sider-footer">
-            <SlotHost SlotName="sidebar_footer" />
-            <div Class="sider-footer-links">
-                @if (!AppState.SidebarCollapsed)
-                {
-                    <Button Type="@ButtonType.Text"
-                            Size="@ButtonSize.Small"
-                            Icon="@IconType.Outline.Home"
-                            OnClick="@GoToHome">
-                        首页
-                    </Button>
-                    <Button Type="@ButtonType.Text"
-                            Size="@ButtonSize.Small"
-                            Icon="@IconType.Outline.Setting"
-                            OnClick="@GoToSettings">
-                        设置
-                    </Button>
-                }
-                else
-                {
-                    <Tooltip Title="首页">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Home"
-                                OnClick="@GoToHome" />
-                    </Tooltip>
-                    <Tooltip Title="设置">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Setting"
-                                OnClick="@GoToSettings" />
-                    </Tooltip>
-                }
-            </div>
-            @if (!AppState.SidebarCollapsed)
-            {
-                <span Class="sider-version">v1.0.0-preview</span>
-            }
-        </div>
-    </Sider>
+    <AppSidebar Collapsed="@AppState.SidebarCollapsed"
+                CollapsedChanged="@OnSiderCollapse" />
     
     <!-- 主内容区域 -->
-    <Layout Class="app-content-layout">
-        <!-- 内容区 -->
-        <Content Class="app-content">
-            <div Class="content-wrapper">
-                @Body
-            </div>
+    <Layout Class="main-layout-content">
+        <Content Class="content-area">
+            @Body
         </Content>
-        
-        <!-- 底部状态栏 -->
-        <Footer Class="app-footer">
-            <div Class="footer-status">
-                <Space>
-                    <SpaceItem>
-                        @if (SessionState.IsExecuting)
-                        {
-                            <Badge Status="@BadgeStatus.Processing" />
-                            <span Class="footer-text">执行中</span>
-                        }
-                        else
-                        {
-                            <Badge Status="@BadgeStatus.Success" />
-                            <span Class="footer-text">就绪</span>
-                        }
-                    </SpaceItem>
-                    <SpaceItem>
-                        <Divider Type="@DividerType.Vertical" />
-                    </SpaceItem>
-                    <SpaceItem>
-                        <span Class="footer-text">Agent: @AppState.SelectedAgent</span>
-                    </SpaceItem>
-                    <SpaceItem>
-                        <Divider Type="@DividerType.Vertical" />
-                    </SpaceItem>
-                    <SpaceItem>
-                        <span Class="footer-text">Model: @AppState.SelectedModel</span>
-                    </SpaceItem>
-                    <SpaceItem>
-                        <Divider Type="@DividerType.Vertical" />
-                    </SpaceItem>
-                    <SpaceItem>
-                        <span Class="footer-text">会话: @GetSessionCount()</span>
-                    </SpaceItem>
-                </Space>
-            </div>
-            <div Class="footer-user">
-                <span Class="footer-text">@AppState.CurrentUser</span>
-            </div>
-        </Footer>
     </Layout>
 </Layout>
 
 @code {
-    /// <summary>
-    /// 侧边栏宽度
-    /// </summary>
-    private int SiderWidth => AppState.SidebarCollapsed ? 80 : 260;
-    
-    /// <summary>
-    /// SessionSidebar 组件引用
-    /// </summary>
-    private SessionSidebar? SidebarRef { get; set; }
-    
-    /// <summary>
-    /// 会话列表（从 SessionProvider 获取）
-    /// </summary>
     private IReadOnlyList<SessionData> _sessionList = new List<SessionData>();
     
-    /// <summary>
-    /// 初始化
-    /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        // 监听 AppState 变更事件（用于 Agent/Model 选择器更新）
         AppState.OnChange += OnAppStateChange;
-        
-        // 监听 SessionProvider 事件
         SessionProvider.OnSessionListChanged += OnSessionListChanged;
         SessionProvider.OnCurrentSessionChanged += OnCurrentSessionChanged;
         
-        // 加载可用的 Agent 和 Model
         await LoadAgentsAndModelsAsync();
         
-        // 初始化会话列表（从持久化存储加载历史会话）
         await SessionProvider.InitializeSessionListAsync();
         _sessionList = SessionProvider.GetSessionList();
         
-        // 如果有会话，加载最近的会话
         if (_sessionList.Count > 0)
         {
             var recentSession = _sessionList.First();
@@ -200,31 +51,21 @@
             AppState.CurrentSessionId = recentSession.Id;
         }
         
-        // 同步 Agent/Model 到 SessionState（不触发 NotifyChange）
         SessionState.SelectedAgent = AppState.SelectedAgent;
         SessionState.SelectedModel = AppState.SelectedModel;
     }
     
-    /// <summary>
-    /// AppState 变更回调
-    /// </summary>
     private void OnAppStateChange()
     {
         InvokeAsync(StateHasChanged);
     }
     
-    /// <summary>
-    /// 会话列表变更回调
-    /// </summary>
     private void OnSessionListChanged()
     {
         _sessionList = SessionProvider.GetSessionList();
         InvokeAsync(StateHasChanged);
     }
     
-    /// <summary>
-    /// 当前会话变更回调
-    /// </summary>
     private void OnCurrentSessionChanged()
     {
         if (SessionProvider.CurrentSession != null)
@@ -235,28 +76,21 @@
         InvokeAsync(StateHasChanged);
     }
     
-    /// <summary>
-    /// 加载可用的 Agent 和 Model
-    /// </summary>
     private async Task LoadAgentsAndModelsAsync()
     {
         try
         {
-            // 从注册中心获取所有 Agent（不只是 Primary）
             var allAgents = await AgentRegistry.GetAgentsAsync();
             AppState.AvailableAgents = allAgents.Where(a => !a.IsHidden).ToList();
             
-            // 设置默认 Agent
             if (string.IsNullOrEmpty(AppState.SelectedAgent) && AppState.AvailableAgents.Count > 0)
             {
                 var defaultAgent = await AgentRegistry.GetDefaultAgentNameAsync();
                 AppState.SelectedAgent = defaultAgent ?? AppState.AvailableAgents[0].Name;
             }
             
-            // 从 LlmService 获取 Model 列表
             AppState.AvailableModels = LlmService.GetAvailableModels();
             
-            // 设置默认 Model（优先选择第一个有 Provider 的模型）
             if (string.IsNullOrEmpty(AppState.SelectedModel) && AppState.AvailableModels.Count > 0)
             {
                 var firstWithProvider = AppState.AvailableModels.FirstOrDefault(m => !string.IsNullOrEmpty(m.Value.Provider));
@@ -265,186 +99,15 @@
         }
         catch (Exception ex)
         {
-            AppState.ErrorMessage = $"加载 Agent/Model 列表失败: {ex.Message}";
+            AppState.ErrorMessage = $"加载失败: {ex.Message}";
         }
     }
     
-    /// <summary>
-    /// 创建新会话
-    /// </summary>
-    private async Task CreateNewSessionAsync()
-    {
-        var newSession = await SessionProvider.CreateSessionAsync("新会话", AppState.SelectedAgent);
-        
-        // 设置会话配置
-        newSession.SelectedModel = AppState.SelectedModel;
-        newSession.SelectedModelProvider = AppState.SelectedModelProvider;
-        
-        // 设置到 SessionState
-        SessionState.SetSession(newSession);
-        
-        // 保存新会话
-        await SessionProvider.SaveCurrentSessionAsync();
-        
-        // 导航到新会话
-        NavigationManager.NavigateTo($"/session/{newSession.Id}");
-    }
-    
-    /// <summary>
-    /// 侧边栏折叠变更
-    /// </summary>
     private void OnSiderCollapse(bool collapsed)
     {
         AppState.SidebarCollapsed = collapsed;
     }
     
-    /// <summary>
-    /// Agent 变更
-    /// </summary>
-    private async Task OnAgentChanged(string agent)
-    {
-        if (string.IsNullOrEmpty(agent)) return;
-        
-        AppState.SelectedAgent = agent;
-        SessionState.SelectedAgent = agent;
-        
-        await SessionProvider.SaveCurrentSessionAsync();
-        
-        MessageService.Info($"已切换到 {agent} Agent");
-    }
-    
-    /// <summary>
-    /// Model 变更
-    /// </summary>
-    private async Task OnModelChanged(string model)
-    {
-        if (string.IsNullOrEmpty(model)) return;
-        
-        AppState.SelectedModel = model;
-        SessionState.SelectedModel = model;
-        
-        // 从可用模型中查找对应的 Provider
-        if (AppState.AvailableModels != null && AppState.AvailableModels.TryGetValue(model, out var modelConfig))
-        {
-            SessionState.SelectedModelProvider = modelConfig.Provider;
-        }
-        
-        await SessionProvider.SaveCurrentSessionAsync();
-        
-        MessageService.Info($"已切换到 {model} 模型");
-    }
-    
-    /// <summary>
-    /// 会话选中变更
-    /// </summary>
-    private async Task OnSessionSelected(string sessionId)
-    {
-        AppState.CurrentSessionId = sessionId;
-        var sessionData = await SessionProvider.LoadSessionAsync(sessionId);
-        
-        // 同步更新 SessionState
-        if (sessionData != null)
-        {
-            SessionState.SetSession(sessionData);
-            AppState.SelectedAgent = sessionData.SelectedAgent;
-            AppState.SelectedModel = sessionData.SelectedModel;
-            AppState.SelectedModelProvider = sessionData.SelectedModelProvider;
-            AppState.NotifyChange();
-        }
-        
-        NavigationManager.NavigateTo($"/session/{sessionId}");
-    }
-    
-    /// <summary>
-    /// 新建会话
-    /// </summary>
-    private async Task OnNewSession()
-    {
-        await CreateNewSessionAsync();
-    }
-    
-    /// <summary>
-    /// 重命名会话
-    /// </summary>
-    private async Task OnRenameSession(SessionData session)
-    {
-        await SessionProvider.RenameSessionAsync(session.Id, session.Title);
-        MessageService.Success("会话已重命名");
-    }
-    
-    /// <summary>
-    /// 删除会话
-    /// </summary>
-    private async Task OnDeleteSession(SessionData session)
-    {
-        await SessionProvider.DeleteSessionAsync(session.Id);
-        
-        MessageService.Warning($"已删除会话: {session.Title}");
-        
-        // 如果删除的是当前会话，切换到其他会话
-        if (AppState.CurrentSessionId == session.Id)
-        {
-            var remainingSessions = SessionProvider.GetSessionList();
-            if (remainingSessions.Count > 0)
-            {
-                AppState.CurrentSessionId = remainingSessions.First().Id;
-                await SessionProvider.LoadSessionAsync(AppState.CurrentSessionId);
-                NavigationManager.NavigateTo($"/session/{AppState.CurrentSessionId}");
-            }
-            else
-            {
-                await CreateNewSessionAsync();
-            }
-        }
-    }
-    
-    /// <summary>
-    /// 分支会话
-    /// </summary>
-    private async Task OnBranchSession(SessionData session)
-    {
-        var branchedSession = await SessionProvider.BranchSessionAsync(session.Id, $"{session.Title} (分支)");
-        NavigationManager.NavigateTo($"/session/{branchedSession.Id}");
-    }
-    
-    /// <summary>
-    /// 获取会话数量
-    /// </summary>
-    private string GetSessionCount()
-    {
-        return _sessionList.Count > 0 ? $"{_sessionList.Count}" : "0";
-    }
-    
-    /// <summary>
-    /// 返回首页
-    /// </summary>
-    private void GoToHome()
-    {
-        NavigationManager.NavigateTo("/home");
-    }
-    
-    /// <summary>
-    /// 进入设置页面
-    /// </summary>
-    private void GoToSettings()
-    {
-        NavigationManager.NavigateTo("/settings");
-    }
-    
-    /// <summary>
-    /// 组件渲染后更新侧边栏
-    /// </summary>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && SidebarRef != null)
-        {
-            SidebarRef.UpdateSessions(_sessionList);
-        }
-    }
-    
-    /// <summary>
-    /// 取消订阅事件
-    /// </summary>
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChange;

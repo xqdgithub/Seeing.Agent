@@ -1,6 +1,5 @@
 @page "/"
 @using AntDesign
-@using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @inject SessionState SessionState
@@ -8,114 +7,232 @@
 @inject AppState AppState
 @inject NavigationManager NavigationManager
 
-<div Class="home-container">
-    <div Class="home-header">
-        <h2 Style="margin-bottom: var(--space-2);">Seeing.Agent WebUI</h2>
-        <p Style="color: var(--color-text-secondary);">
-            AI Agent 框架的 Blazor Server Web 界面
-        </p>
+<div class="home-page">
+    <div class="home-hero">
+        <div class="hero-icon">🤖</div>
+        <h1 class="hero-title">Seeing.Agent</h1>
+        <p class="hero-subtitle">AI Agent 智能体框架 · Blazor Server Web 界面</p>
     </div>
     
-    <!-- Slot 扩展点: home_logo -->
-    <SlotHost SlotName="home_logo" />
-    
-    <!-- 快速入口 -->
-    <div Class="home-quick-actions">
-        <Space Size="@SpaceSize.Large">
-            <SpaceItem>
-                <Button Type="@ButtonType.Primary"
-                        Size="@ButtonSize.Large"
-                        Icon="@IconType.Outline.Message"
-                        OnClick="@GoToSession">
-                    进入会话
-                </Button>
-            </SpaceItem>
-            <SpaceItem>
-                <Button Type="@ButtonType.Default"
-                        Size="@ButtonSize.Large"
-                        Icon="@IconType.Outline.Plus"
-                        OnClick="@CreateNewSession">
-                    新建会话
-                </Button>
-            </SpaceItem>
-            <SpaceItem>
-                <Button Type="@ButtonType.Default"
-                        Size="@ButtonSize.Large"
-                        Icon="@IconType.Outline.Home"
-                        OnClick="@GoToWelcome">
-                    欢迎页
-                </Button>
-            </SpaceItem>
-        </Space>
+    <div class="home-actions">
+        <Button Type="@ButtonType.Primary"
+                Size="@ButtonSize.Large"
+                Icon="@IconType.Outline.Message"
+                OnClick="@GoToSession">
+            开始对话
+        </Button>
+        <Button Type="@ButtonType.Default"
+                Size="@ButtonSize.Large"
+                Icon="@IconType.Outline.Plus"
+                OnClick="@CreateNewSession">
+            新建会话
+        </Button>
     </div>
     
-    <!-- 会话状态信息 -->
-    <div Class="home-status">
-        <Card>
-            <Title>
-                <div Class="status-header">
-                    <Icon Type="@IconType.Outline.InfoCircle" />
-                    <span Style="margin-left: var(--space-2);">当前状态</span>
-                </div>
-            </Title>
-            <div Class="status-content">
-                <Descriptions Bordered="true" Size="@DescriptionsSize.Small" Column="2">
-                    <DescriptionsItem Title="Agent">@AppState.SelectedAgent</DescriptionsItem>
-                    <DescriptionsItem Title="Model">@AppState.SelectedModel</DescriptionsItem>
-                    <DescriptionsItem Title="会话数量">@_sessionCount</DescriptionsItem>
-                    <DescriptionsItem Title="当前会话">@SessionState.Title</DescriptionsItem>
-                </Descriptions>
+    <div class="home-stats">
+        <div class="stat-card">
+            <div class="stat-icon">
+                <Icon Type="@IconType.Outline.Team" />
             </div>
-        </Card>
+            <div class="stat-info">
+                <div class="stat-value">@_sessionCount</div>
+                <div class="stat-label">会话</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                <Icon Type="@IconType.Outline.Robot" />
+            </div>
+            <div class="stat-info">
+                <div class="stat-value">@AppState.SelectedAgent</div>
+                <div class="stat-label">当前智能体</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                <Icon Type="@IconType.Outline.CloudServer" />
+            </div>
+            <div class="stat-info">
+                <div class="stat-value">@GetModelShortName()</div>
+                <div class="stat-label">当前模型</div>
+            </div>
+        </div>
     </div>
     
-    <!-- 消息预览 -->
     @if (SessionState.Messages.Count > 0)
     {
-        <div Class="home-messages-preview">
-            <div Class="preview-header">
-                <span Class="preview-title">最近消息</span>
-                <Button Type="@ButtonType.Text"
-                        Size="@ButtonSize.Small"
-                        Icon="@IconType.Outline.Right"
-                        OnClick="@GoToSession">
-                    查看全部
+        <div class="home-recent">
+            <div class="recent-header">
+                <h3>最近消息</h3>
+                <Button Type="@ButtonType.Link" OnClick="@GoToSession">
+                    查看全部 →
                 </Button>
             </div>
-            <div Class="preview-messages">
-                @foreach (var msg in SessionState.Messages.Take(5))
+            <div class="recent-messages">
+                @foreach (var msg in SessionState.Messages.TakeLast(4))
                 {
-                    <div Class="@GetMessagePreviewClass(msg.Role)">
-                        <div Class="preview-role">@GetRoleLabel(msg.Role)</div>
-                        <div Class="preview-content">
-                            @(msg.Content.Length > 100 ? msg.Content.Substring(0, 100) + "..." : msg.Content)
-                        </div>
+                    <div class="@GetMessageClass(msg.Role)">
+                        <span class="msg-role">@GetRoleIcon(msg.Role)</span>
+                        <span class="msg-content">@(msg.Content.Length > 80 ? msg.Content.Substring(0, 80) + "..." : msg.Content)</span>
                     </div>
                 }
             </div>
         </div>
     }
-    
-    <!-- Slot 扩展点: home_prompt -->
-    <SlotHost SlotName="home_prompt" />
 </div>
 
+<style>
+.home-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+.home-hero {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.hero-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.hero-title {
+    font-size: 32px;
+    font-weight: 600;
+    color: #1890ff;
+    margin: 0 0 8px 0;
+}
+
+.hero-subtitle {
+    font-size: 14px;
+    color: #8c8c8c;
+    margin: 0;
+}
+
+.home-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 40px;
+}
+
+.home-stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 40px;
+}
+
+.stat-card {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e8e8e8;
+}
+
+.stat-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e6f7ff;
+    border-radius: 8px;
+    color: #1890ff;
+    font-size: 20px;
+}
+
+.stat-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: #262626;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #8c8c8c;
+}
+
+.home-recent {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e8e8e8;
+    padding: 16px;
+}
+
+.recent-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.recent-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.recent-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.msg-item {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.msg-user {
+    background: #e6f7ff;
+}
+
+.msg-assistant {
+    background: #f6ffed;
+}
+
+.msg-system {
+    background: #fff7e6;
+}
+
+.msg-role {
+    flex-shrink: 0;
+}
+
+.msg-content {
+    color: #595959;
+    line-height: 1.5;
+}
+
+@@media (max-width: 768px) {
+    .home-stats {
+        flex-direction: column;
+    }
+    
+    .home-actions {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+</style>
+
 @code {
-    /// <summary>
-    /// 会话数量（从 SessionProvider 获取）
-    /// </summary>
     private int _sessionCount = 0;
     
-    /// <summary>
-    /// 初始化
-    /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        // 初始化会话列表（从持久化存储加载历史会话）
         await SessionProvider.InitializeSessionListAsync();
         _sessionCount = SessionProvider.GetSessionList().Count;
         
-        // 如果有会话，加载最近的会话
         if (_sessionCount > 0)
         {
             var recentSession = SessionProvider.GetSessionList().First();
@@ -124,9 +241,6 @@
         }
     }
     
-    /// <summary>
-    /// 进入会话页面
-    /// </summary>
     private void GoToSession()
     {
         if (!string.IsNullOrEmpty(AppState.CurrentSessionId))
@@ -135,50 +249,39 @@
         }
         else
         {
-            NavigationManager.NavigateTo("/session");
+            NavigationManager.NavigateTo("/sessions");
         }
     }
     
-/// <summary>
-    /// 创建新会话
-    /// </summary>
     private async Task CreateNewSession()
     {
         var newSession = await SessionProvider.CreateSessionAsync("新会话", AppState.SelectedAgent);
         newSession.SelectedModel = AppState.SelectedModel;
-        
         await SessionProvider.SaveCurrentSessionAsync();
-        
         NavigationManager.NavigateTo($"/session/{newSession.Id}");
     }
     
-    /// <summary>
-    /// 进入欢迎页
-    /// </summary>
-    private void GoToWelcome()
+    private string GetModelShortName()
     {
-        NavigationManager.NavigateTo("/home");
+        if (string.IsNullOrEmpty(AppState.SelectedModel))
+            return "-";
+        var parts = AppState.SelectedModel.Split('/');
+        return parts.Length > 1 ? parts[1] : AppState.SelectedModel;
     }
     
-    /// <summary>
-    /// 获取消息预览样式类
-    /// </summary>
-    private string GetMessagePreviewClass(string role)
+    private string GetMessageClass(string role) => role.ToLowerInvariant() switch
     {
-        return $"preview-message preview-{role.ToLowerInvariant()}";
-    }
+        "user" => "msg-item msg-user",
+        "assistant" => "msg-item msg-assistant",
+        "system" => "msg-item msg-system",
+        _ => "msg-item"
+    };
     
-    /// <summary>
-    /// 获取角色标签
-    /// </summary>
-    private string GetRoleLabel(string role)
+    private string GetRoleIcon(string role) => role.ToLowerInvariant() switch
     {
-        return role.ToLowerInvariant() switch
-        {
-            "user" => "👤 用户",
-            "assistant" => "🤖 助手",
-            "system" => "⚙️ 系统",
-            _ => role
-        };
-    }
+        "user" => "👤",
+        "assistant" => "🤖",
+        "system" => "⚙️",
+        _ => "📝"
+    };
 }

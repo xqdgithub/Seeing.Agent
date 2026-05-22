@@ -1,0 +1,221 @@
+@page "/tools"
+@using AntDesign
+@using Seeing.Agent.Tools
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.WebUI.Services
+@inject ToolInvoker ToolInvoker
+@inject ToolStateService ToolStateService
+@inject IMessageService MessageService
+
+<PageTitle>Tools - Seeing.Agent</PageTitle>
+
+<div class="workspace-page">
+    <div class="page-header">
+        <Breadcrumb>
+            <BreadcrumbItem>Workspace</BreadcrumbItem>
+            <BreadcrumbItem>Built-in Tools</BreadcrumbItem>
+        </Breadcrumb>
+        <div class="header-actions">
+            <Switch Checked="@_allEnabled" OnChange="@ToggleAllTools" CheckedChildren="Enable All" UnCheckedChildren="Disable All" />
+        </div>
+    </div>
+    
+    <!-- Statistics Bar -->
+    <div class="page-stats">
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Tool" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_tools.Count</span>
+                <span class="stat-label">Total Tools</span>
+            </div>
+        </div>
+        @foreach (var category in _categoryStats) {
+            <div class="stat-item">
+                <div class="stat-icon">@GetCategoryIcon(category.Key)</div>
+                <div class="stat-content">
+                    <span class="stat-value">@category.Value</span>
+                    <span class="stat-label">@category.Key</span>
+                </div>
+            </div>
+        }
+        <div class="stat-item">
+            <div class="stat-icon" style="background: var(--color-success-bg); color: var(--color-success);"><Icon Type="@IconType.Outline.CheckCircle" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_enabledCount</span>
+                <span class="stat-label">Enabled</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon" style="background: var(--color-bg-tertiary); color: var(--color-text-tertiary);"><Icon Type="@IconType.Outline.Stop" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@(_tools.Count - _enabledCount)</span>
+                <span class="stat-label">Disabled</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Filters -->
+    <div class="page-filters">
+        <div class="filter-search">
+            <Input @bind-Value="_searchText" Placeholder="Search tools..." AllowClear="true" DebounceMilliseconds="300">
+                <Prefix><Icon Type="@IconType.Outline.Search" /></Prefix>
+            </Input>
+        </div>
+        <div class="filter-divider"></div>
+        <div class="filter-group">
+            <span class="filter-label">Category:</span>
+            <Select TItemValue="string" TItem="string" @bind-Value="_selectedCategory" Style="min-width: 140px;" AllowClear=true Placeholder="All Categories">
+                @foreach (var cat in _categories) {
+                    <SelectOption TItemValue="string" TItem="string" Value="@cat">@cat</SelectOption>
+                }
+            </Select>
+        </div>
+        <div class="filter-group">
+            <span class="filter-label">Status:</span>
+            <Select TItemValue="string" TItem="string" @bind-Value="_selectedStatus" Style="min-width: 120px;" AllowClear=true Placeholder="All">
+                <SelectOption TItemValue="string" TItem="string" Value="@("enabled")">Enabled</SelectOption>
+                <SelectOption TItemValue="string" TItem="string" Value="@("disabled")">Disabled</SelectOption>
+            </Select>
+        </div>
+    </div>
+    
+    <div class="page-content">
+        @if (_isLoading) {
+            <div class="loading-spinner">
+                <Spin />
+            </div>
+        }
+        else if (!_filteredTools.Any()) {
+            <div class="empty-state">
+                <div class="empty-state-icon"><Icon Type="@IconType.Outline.Search" /></div>
+                <div class="empty-state-title">No tools found</div>
+                <div class="empty-state-description">Try adjusting your search or filter criteria</div>
+            </div>
+        }
+        else {
+            <div class="items-grid">
+            @foreach (var tool in _filteredTools) {
+                <div class="item-card @(_expandedTool == tool.Id ? "expanded" : "")">
+                    <div class="item-card-header">
+                        <div class="card-icon">@GetToolIcon(tool)</div>
+                        <div class="card-title-section">
+                            <h3 class="card-title">@tool.Id</h3>
+                            <div class="card-status-row">
+                                <Tag Color="@GetCategoryColor(tool.Category)">@tool.Category</Tag>
+                                <Tag Color="@(ToolStateService.IsEnabled(tool.Id) ? "success" : "default")">
+                                    @(ToolStateService.IsEnabled(tool.Id) ? "Enabled" : "Disabled")
+                                </Tag>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="item-card-body">
+                        <p class="card-description">@tool.Description</p>
+                        @if (_expandedTool == tool.Id) {
+                            <div class="card-details">
+                                <div class="detail-section">
+                                    <span class="detail-label">Parameters Schema:</span>
+                                    <pre class="detail-code">@tool.ParametersSchema.GetRawText()</pre>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="item-card-footer">
+                        <div class="card-actions">
+                            <Switch Checked="@ToolStateService.IsEnabled(tool.Id)" OnChange="@((bool v) => ToggleTool(tool.Id, v))" />
+                        </div>
+                        <button class="card-action-btn" @onclick="() => ToggleExpand(tool.Id)" title="@(_expandedTool == tool.Id ? "Collapse" : "Expand")">
+                            <Icon Type="@(_expandedTool == tool.Id ? IconType.Outline.Up : IconType.Outline.Down)" />
+                        </button>
+                    </div>
+                </div>
+            }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _isLoading = false;
+    private bool _allEnabled = true;
+    private List<ITool> _tools = new();
+    private string _searchText = "";
+    private string? _selectedCategory = null;
+    private string? _selectedStatus = null;
+    private string? _expandedTool = null;
+    
+    private List<string> _categories = new();
+    private Dictionary<string, int> _categoryStats = new();
+    private int _enabledCount = 0;
+    
+    protected override void OnInitialized() {
+        _tools = ToolInvoker.GetTools().ToList();
+        _categories = _tools.Select(t => t.Category.ToString()).Distinct().OrderBy(c => c).ToList();
+        _categoryStats = _tools.GroupBy(t => t.Category.ToString()).ToDictionary(g => g.Key, g => g.Count());
+        _enabledCount = _tools.Count(t => ToolStateService.IsEnabled(t.Id));
+        _allEnabled = _enabledCount == _tools.Count;
+    }
+    
+    private IEnumerable<ITool> _filteredTools {
+        get {
+            var result = _tools.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(_searchText)) {
+                var search = _searchText.Trim().ToLowerInvariant();
+                result = result.Where(t => 
+                    t.Id.ToLowerInvariant().Contains(search) || 
+                    t.Description.ToLowerInvariant().Contains(search));
+            }
+            if (_selectedCategory != null) {
+                result = result.Where(t => t.Category.ToString() == _selectedCategory);
+            }
+            if (_selectedStatus == "enabled") {
+                result = result.Where(t => ToolStateService.IsEnabled(t.Id));
+            } else if (_selectedStatus == "disabled") {
+                result = result.Where(t => !ToolStateService.IsEnabled(t.Id));
+            }
+            return result;
+        }
+    }
+    
+    void ToggleTool(string id, bool enabled) {
+        ToolStateService.SetEnabled(id, enabled);
+        _enabledCount = _tools.Count(t => ToolStateService.IsEnabled(t.Id));
+        _allEnabled = _enabledCount == _tools.Count;
+        StateHasChanged();
+    }
+    
+    void ToggleAllTools(bool enabled) {
+        foreach (var tool in _tools) ToolStateService.SetEnabled(tool.Id, enabled);
+        _allEnabled = enabled;
+        _enabledCount = enabled ? _tools.Count : 0;
+        StateHasChanged();
+    }
+    
+    void ToggleExpand(string toolId) {
+        _expandedTool = _expandedTool == toolId ? null : toolId;
+    }
+    
+    string GetToolIcon(ITool t) => t.Category switch {
+        ToolCategory.FileSystem => "📁",
+        ToolCategory.Network => "🌐",
+        ToolCategory.Computation => "🖥️",
+        ToolCategory.LlmInteraction => "🤖",
+        ToolCategory.ExternalService => "🔌",
+        _ => "🔧"
+    };
+    
+    string GetCategoryIcon(string category) => category switch {
+        "FileSystem" => "📁",
+        "Network" => "🌐",
+        "Computation" => "🖥️",
+        "LlmInteraction" => "🤖",
+        "ExternalService" => "🔌",
+        _ => "🔧"
+    };
+    
+    string GetCategoryColor(ToolCategory c) => c switch {
+        ToolCategory.FileSystem => "blue",
+        ToolCategory.Network => "cyan",
+        ToolCategory.LlmInteraction => "purple",
+        _ => "default"
+    };
+}

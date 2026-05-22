@@ -1,0 +1,99 @@
+/**
+ * Sessions 页面样式
+ */
+
+.sessions-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-6);
+    gap: var(--space-4);
+    background: var(--color-bg-layout);
+}
+
+.sessions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-4);
+    background: var(--color-bg-container);
+    border-radius: var(--radius-lg);
+    border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.sessions-header .header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.sessions-header .header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.sessions-filters {
+    display: flex;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-container);
+    border-radius: var(--radius-lg);
+}
+
+.sessions-content {
+    flex: 1;
+    background: var(--color-bg-container);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    overflow: auto;
+}
+
+.sessions-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-container);
+    border-radius: var(--radius-lg);
+    border-top: 1px solid var(--color-border-secondary);
+}
+
+/* ID 单元格样式 */
+.id-cell {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+
+.id-cell:hover {
+    color: var(--color-primary);
+}
+
+/* 统计文本 */
+.stats-text {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+/* ========== 响应式调整 ========== */
+@media (max-width: 768px) {
+    .sessions-container {
+        padding: var(--space-3);
+    }
+    
+    .sessions-header {
+        flex-direction: column;
+        gap: var(--space-2);
+        align-items: flex-start;
+    }
+    
+    .sessions-filters {
+        flex-wrap: wrap;
+    }
+    
+    .sessions-content {
+        padding: var(--space-2);
+    }
+}

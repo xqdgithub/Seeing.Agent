@@ -23,6 +23,7 @@
 @inject Core.Interfaces.IPermissionChannel PermissionChannel
 @inject ToolInvoker ToolInvoker
 @inject SkillManager SkillManager
+@inject ILlmService LlmService
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -47,6 +48,32 @@
         </div>
         <div Class="session-header-right">
             <Space>
+                <SpaceItem>
+                    <Select Value="@_selectedAgent"
+                            ValueExpression="@(() => _selectedAgent)"
+                            ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
+                            DataSource="@_agentOptions"
+                            ValueName="@nameof(AgentOption.Value)"
+                            LabelName="@nameof(AgentOption.Label)"
+                            Style="min-width: 120px;"
+                            Size="@InputSize.Small"
+                            Placeholder="智能体">
+                        <ItemTemplate>
+                            <span>@context.Label</span>
+                        </ItemTemplate>
+                    </Select>
+                </SpaceItem>
+                <SpaceItem>
+                    <Select Value="@_selectedModel"
+                            ValueExpression="@(() => _selectedModel)"
+                            ValueChanged="EventCallback.Factory.Create<string>(this, OnModelChanged)"
+                            DataSource="@_modelOptions"
+                            ValueName="@nameof(ModelOption.Value)"
+                            LabelName="@nameof(ModelOption.Label)"
+                            Style="min-width: 160px;"
+                            Size="@InputSize.Small"
+                            Placeholder="模型" />
+                </SpaceItem>
                 <SpaceItem>
                     <Tooltip Title="重命名会话">
                         <Button Type="@ButtonType.Text"
@@ -173,6 +200,14 @@
     private const string CancelText = "取消";
     
     /// <summary>
+    /// Agent/模型选择器相关
+    /// </summary>
+    private string _selectedAgent = "";
+    private List<AgentOption> _agentOptions = new();
+    private string _selectedModel = "";
+    private List<ModelOption> _modelOptions = new();
+    
+    /// <summary>
     /// 可用工具列表（用于快速命令）
     /// </summary>
     private List<QuickToolViewModel> _availableTools = new();
@@ -236,11 +271,106 @@
         // 订阅会话变更事件
         SessionProvider.OnCurrentSessionChanged += OnSessionProviderChanged;
         
+        // 加载 Agent 和模型选项列表（不设置选中值）
+        await LoadOptionsAsync();
+        
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
         
         // 加载会话
         await LoadSessionAsync();
+        
+        // 会话加载完成后，同步选择器值
+        SyncSelectorValues();
+    }
+    
+    /// <summary>
+    /// 同步选择器值（从 SessionState 获取）
+    /// </summary>
+    private void SyncSelectorValues()
+    {
+        _selectedAgent = SessionState.SelectedAgent ?? "";
+        _selectedModel = SessionState.SelectedModel ?? "";
+        _ = InvokeAsync(StateHasChanged);
+    }
+    
+    /// <summary>
+    /// 加载模型选项
+    /// </summary>
+    private async Task LoadOptionsAsync()
+    {
+        // 加载 Agent 选项
+        try
+        {
+            var agents = await AgentRegistry.GetAgentsAsync();
+            _agentOptions = agents
+                .Where(a => !a.IsHidden)
+                .Select(a => new AgentOption { Value = a.Name, Label = a.Name })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"加载Agent列表失败: {ex.Message}");
+            _agentOptions = new List<AgentOption>();
+        }
+        
+        // 加载模型选项
+        try
+        {
+            var availableModels = LlmService.GetAvailableModels();
+            if (availableModels != null)
+            {
+                AppState.AvailableModels = availableModels;
+                _modelOptions = availableModels
+                    .Select(m => new ModelOption { Value = m.Key, Label = GetModelShortName(m.Key) })
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"加载模型列表失败: {ex.Message}");
+            _modelOptions = new List<ModelOption>();
+        }
+    }
+    
+    private static string GetModelShortName(string modelId)
+    {
+        if (string.IsNullOrEmpty(modelId)) return modelId;
+        var parts = modelId.Split('/');
+        return parts.Length > 1 ? parts[1] : modelId;
+    }
+    
+    /// <summary>
+    /// Agent 选择变更
+    /// </summary>
+    private async Task OnAgentChanged(string value)
+    {
+        _selectedAgent = value ?? "";
+        SessionState.SelectedAgent = _selectedAgent;
+        AppState.SelectedAgent = _selectedAgent;
+        await SaveSessionAsync();
+    }
+    
+    /// <summary>
+    /// 模型选择变更
+    /// </summary>
+    private async Task OnModelChanged(string value)
+    {
+        _selectedModel = value ?? "";
+        SessionState.SelectedModel = _selectedModel;
+        AppState.SelectedModel = _selectedModel;
+        await SaveSessionAsync();
+    }
+    
+    /// <summary>
+    /// 保存会话
+    /// </summary>
+    private async Task SaveSessionAsync()
+    {
+        if (SessionState.CurrentSession != null)
+        {
+            await SessionProvider.SaveCurrentSessionAsync();
+        }
     }
     
     /// <summary>
@@ -401,6 +531,7 @@
                     SessionState.SetSession(SessionProvider.CurrentSession);
                     RefreshMessageViewModels();
                     ShowEmptyState = false;
+                    SyncSelectorValues();
                 }
             }
         }
@@ -436,6 +567,9 @@
             AppState.SelectedAgent = SessionState.SelectedAgent;
             AppState.SelectedModel = SessionState.SelectedModel;
             AppState.CurrentSessionId = sessionId;
+            
+            // 同步选择器显示值
+            SyncSelectorValues();
             
             // 通知 UI 更新
             AppState.NotifyChange();
@@ -797,6 +931,14 @@
             
             // 标记完成
             placeholderMessage.IsComplete = true;
+            
+            // 将 assistant 消息保存到 SessionData
+            var assistantMessage = SessionMessage.AssistantMessage(placeholderMessage.Content);
+            if (!string.IsNullOrEmpty(placeholderMessage.Reasoning))
+            {
+                assistantMessage.WithMetadata("reasoning", placeholderMessage.Reasoning);
+            }
+            SessionState.CurrentSession.AddMessage(assistantMessage);
         }
         catch (OperationCanceledException)
         {
@@ -1024,5 +1166,23 @@
     private class RenameSessionForm
     {
         public string Title { get; set; } = "";
+    }
+    
+    /// <summary>
+    /// 模型选项
+    /// </summary>
+    public class ModelOption
+    {
+        public string Value { get; set; } = "";
+        public string Label { get; set; } = "";
+    }
+    
+    /// <summary>
+    /// Agent选项
+    /// </summary>
+    public class AgentOption
+    {
+        public string Value { get; set; } = "";
+        public string Label { get; set; } = "";
     }
 }
