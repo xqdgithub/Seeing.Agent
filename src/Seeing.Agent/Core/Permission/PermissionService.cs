@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Seeing.Agent.Core.Permission;
 
@@ -11,8 +12,8 @@ namespace Seeing.Agent.Core.Permission;
 /// </summary>
 public sealed class PermissionService : IPermissionService, IDisposable
 {
+    private readonly IServiceProvider _serviceProvider;
     private readonly IPermissionPolicyProvider _policyProvider;
-    private readonly IPermissionChannel _channel;
     private readonly IPermissionCache _cache;
     private readonly ILogger<PermissionService> _logger;
     private readonly byte[] _hmacKey;
@@ -22,14 +23,17 @@ public sealed class PermissionService : IPermissionService, IDisposable
     private readonly Timer _cleanupTimer;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _cacheExpirations = new();
     
+    // 懒加载的 IPermissionChannel（可能是 scoped）
+    private IPermissionChannel? _channel;
+    
     public PermissionService(
+        IServiceProvider serviceProvider,
         IPermissionPolicyProvider policyProvider,
-        IPermissionChannel channel,
         IPermissionCache cache,
         ILogger<PermissionService> logger)
     {
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _policyProvider = policyProvider ?? throw new ArgumentNullException(nameof(policyProvider));
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         
@@ -42,6 +46,21 @@ public sealed class PermissionService : IPermissionService, IDisposable
             state: null,
             dueTime: TimeSpan.FromMinutes(1),
             period: TimeSpan.FromMinutes(1));
+    }
+    
+    /// <summary>
+    /// 获取权限通道（支持 scoped 服务）
+    /// </summary>
+    private IPermissionChannel GetChannel()
+    {
+        if (_channel != null)
+            return _channel;
+        
+        // 尝试从 serviceProvider 获取（可能是 scoped）
+        _channel = _serviceProvider.GetService<IPermissionChannel>()
+            ?? Core.Interfaces.DefaultPermissionChannel.Instance;
+        
+        return _channel;
     }
     
     /// <inheritdoc />
@@ -167,7 +186,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
         // 对于写入操作，需要通过 IPermissionChannel 获取确认
         if (result.NeedsConfirmation && operation == FileOperation.Write)
         {
-            var decision = await _channel.RequestWritePermissionAsync(normalizedPath, null, CreateAgentContext(context));
+            var decision = await GetChannel().RequestWritePermissionAsync(normalizedPath, null, CreateAgentContext(context));
             return new PermissionResult
             {
                 Effect = MapToEffect(decision.Action),

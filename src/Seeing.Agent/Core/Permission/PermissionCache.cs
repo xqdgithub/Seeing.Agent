@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Seeing.Agent.Core.Permission
 {
@@ -24,11 +25,11 @@ namespace Seeing.Agent.Core.Permission
 
     /// <summary>
     /// 权限缓存 - 提供 TTL 缓存和线程安全访问
+    /// 注意：此服务为 Singleton，不直接依赖 scoped 服务
     /// </summary>
     public class PermissionCache : IPermissionCache
     {
         private readonly ConcurrentDictionary<PermissionCacheKey, PermissionCacheEntry> _cache = new();
-        private readonly IRuleEngine _ruleEngine;
         private readonly ILogger<PermissionCache>? _logger;
         private readonly PermissionCacheOptions _options;
 
@@ -36,17 +37,17 @@ namespace Seeing.Agent.Core.Permission
         /// 创建权限缓存实例
         /// </summary>
         public PermissionCache(
-            IRuleEngine ruleEngine,
             PermissionCacheOptions? options = null,
             ILogger<PermissionCache>? logger = null)
         {
-            _ruleEngine = ruleEngine ?? throw new ArgumentNullException(nameof(ruleEngine));
             _options = options ?? new PermissionCacheOptions();
             _logger = logger;
         }
 
         /// <summary>
         /// 获取缓存的权限决策
+        /// 注意：此方法不再自动评估权限，仅返回缓存结果
+        /// 如需评估，请使用 IPermissionService.EvaluateAsync
         /// </summary>
         public PermissionAction Get(PermissionCacheKey key)
         {
@@ -63,10 +64,10 @@ namespace Seeing.Agent.Core.Permission
                 _logger?.LogDebug("权限缓存过期: {Key}", key);
             }
 
-            // 缓存未命中，评估权限
-            var action = _ruleEngine.Evaluate(key.Permission, key.Pattern);
-            Set(key, action);
-            return action;
+            // 缓存未命中，返回默认值 Deny
+            // 调用方应通过 IPermissionService 进行权限评估
+            _logger?.LogDebug("权限缓存未命中: {Key}, 返回 Deny", key);
+            return PermissionAction.Deny;
         }
 
         /// <summary>
