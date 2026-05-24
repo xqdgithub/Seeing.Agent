@@ -51,8 +51,15 @@
                         <Icon Type="@GetStateIcon(kvp.Value.State)" 
                               Class="@GetStateIconClass(kvp.Value.State)" />
                         <span class="server-name">@kvp.Key</span>
-                        <Badge Status="@GetBadgeStatus(kvp.Value.State)" 
-                               Text="@GetStateText(kvp.Value.State)" />
+                        @if (kvp.Value.IsDisabled)
+                        {
+                            <Badge Status="@BadgeStatus.Default" Text="已禁用" />
+                        }
+                        else
+                        {
+                            <Badge Status="@GetBadgeStatus(kvp.Value.State)" 
+                                   Text="@GetStateText(kvp.Value.State)" />
+                        }
                     </div>
                     
                     @if (_expandedServers.Contains(kvp.Key))
@@ -95,7 +102,17 @@
                                         Icon="@(_expandedServers.Contains(kvp.Key) ? IconType.Outline.Down : IconType.Outline.Right)"
                                         OnClick="@(() => ToggleExpand(kvp.Key))" />
                             </SpaceItem>
-                            @if (kvp.Value.State == McpConnectionState.Connected)
+                            @if (kvp.Value.IsDisabled)
+                            {
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small" 
+                                            Type="@ButtonType.Text"
+                                            Disabled="true">
+                                        已禁用
+                                    </Button>
+                                </SpaceItem>
+                            }
+                            else if (kvp.Value.State == McpConnectionState.Connected)
                             {
                                 <SpaceItem>
                                     <Button Size="@ButtonSize.Small" 
@@ -158,9 +175,9 @@
     private void RefreshStatuses()
     {
         _statuses = McpStateService.GetCachedStatus();
-        _connectedCount = _statuses.Values.Count(s => s.State == McpConnectionState.Connected);
-        _errorCount = _statuses.Values.Count(s => s.State == McpConnectionState.Error);
-        _totalTools = _statuses.Values.Sum(s => s.ToolCount);
+        _connectedCount = _statuses.Values.Count(s => s.IsAvailable);
+        _errorCount = _statuses.Values.Count(s => !s.IsDisabled && s.State == McpConnectionState.Error);
+        _totalTools = _statuses.Values.Where(s => s.IsAvailable).Sum(s => s.ToolCount);
     }
     
     private void ToggleExpand(string serverName)

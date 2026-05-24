@@ -10,17 +10,22 @@ internal static class McpStateTransitions
         [McpConnectionState.Pending] = new HashSet<McpConnectionState>
         {
             McpConnectionState.Connecting,
+            McpConnectionState.Disabled,
             McpConnectionState.Removed
         },
         [McpConnectionState.Connecting] = new HashSet<McpConnectionState>
         {
             McpConnectionState.Connected,
+            McpConnectionState.Disabled,
+            McpConnectionState.Paused,
             McpConnectionState.Error,
             McpConnectionState.Removed
         },
         [McpConnectionState.Connected] = new HashSet<McpConnectionState>
         {
+            McpConnectionState.Pending,
             McpConnectionState.Paused,
+            McpConnectionState.Disabled,
             McpConnectionState.Reconnecting,
             McpConnectionState.Error,
             McpConnectionState.Removed
@@ -29,13 +34,22 @@ internal static class McpStateTransitions
         {
             McpConnectionState.Pending,
             McpConnectionState.Connecting,
+            McpConnectionState.Disabled,
             McpConnectionState.Reconnecting,
+            McpConnectionState.Removed
+        },
+        [McpConnectionState.Disabled] = new HashSet<McpConnectionState>
+        {
+            McpConnectionState.Connecting,
+            McpConnectionState.Pending,
             McpConnectionState.Removed
         },
         [McpConnectionState.Reconnecting] = new HashSet<McpConnectionState>
         {
             McpConnectionState.Connected,
             McpConnectionState.Pending,
+            McpConnectionState.Disabled,
+            McpConnectionState.Paused,
             McpConnectionState.Error,
             McpConnectionState.Removed
         },
@@ -43,6 +57,8 @@ internal static class McpStateTransitions
         {
             McpConnectionState.Reconnecting,
             McpConnectionState.Connecting,
+            McpConnectionState.Disabled,
+            McpConnectionState.Paused,
             McpConnectionState.Removed
         },
         [McpConnectionState.Removed] = new HashSet<McpConnectionState>()

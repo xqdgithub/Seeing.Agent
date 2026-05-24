@@ -92,6 +92,12 @@ internal sealed class McpConnectionCoordinator : IDisposable
         if (currentStatus.State == CoreMcpConnectionState.Connected)
             return McpOperationResult.NoChange(_serverName, McpOperationType.Connect, currentStatus.State);
 
+        if (config.Disabled)
+        {
+            var disabledError = McpErrorInfo.ConfigInvalid(_serverName, "服务器已禁用");
+            return McpOperationResult.Failed(_serverName, McpOperationType.Connect, disabledError);
+        }
+
         var beforeInput = new Dictionary<string, object?>
         {
             ["serverName"] = _serverName,
@@ -114,11 +120,20 @@ internal sealed class McpConnectionCoordinator : IDisposable
             _client = _factoryRegistry.Create(config, _httpClientFactory, _loggerFactory);
             await _client.ConnectAsync(ct);
 
+            if (await TryAbortConnectIfDisabledAsync(currentStatus, ct) is { } abortedAfterConnect)
+                return abortedAfterConnect;
+
             var tools = await _client.ListToolsAsync(ct);
             var toolNames = new List<string>();
 
             foreach (var tool in tools)
             {
+                if (IsServerDisabled())
+                {
+                    await RollbackConnectAsync(toolNames, ct);
+                    return await FinalizeDisabledConnectAbortAsync(currentStatus, ct);
+                }
+
                 var toolId = $"{_serverName}_{tool.Name}";
                 var toolInfo = new McpToolInfo
                 {
@@ -133,6 +148,9 @@ internal sealed class McpConnectionCoordinator : IDisposable
                     HookRegistry.McpToolAfterRegister, "",
                     new Dictionary<string, object?> { ["toolId"] = toolId, ["tool"] = tool });
             }
+
+            if (await TryAbortConnectIfDisabledAsync(currentStatus, ct) is { } abortedBeforeReady)
+                return abortedBeforeReady;
 
             // 绑定工具执行器到实际客户端
             _toolRegistry.UpdateToolExecutor(_serverName, async (toolName, args) =>
@@ -184,7 +202,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
 
     public Task ConnectInBackgroundAsync(McpServerConfig config, CancellationToken ct)
     {
-        if (_disposed)
+        if (_disposed || IsServerDisabled())
             return Task.CompletedTask;
 
         InitReadySource();
@@ -193,6 +211,9 @@ internal sealed class McpConnectionCoordinator : IDisposable
         {
             try
             {
+                if (IsServerDisabled())
+                    return;
+
                 await ConnectAsync(config, ct);
             }
             catch (OperationCanceledException)
@@ -289,6 +310,12 @@ internal sealed class McpConnectionCoordinator : IDisposable
         {
             var error = McpErrorInfo.ConfigMissing(_serverName);
             return McpOperationResult.Failed(_serverName, McpOperationType.Reconnect, error);
+        }
+
+        if (config.Disabled)
+        {
+            var disabledError = McpErrorInfo.ConfigInvalid(_serverName, "服务器已禁用");
+            return McpOperationResult.Failed(_serverName, McpOperationType.Reconnect, disabledError);
         }
 
         var currentStatus = _getStatusFunc(_serverName);
@@ -404,6 +431,12 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.Failed(_serverName, McpOperationType.Resume, error);
         }
 
+        if (config.Disabled)
+        {
+            var disabledError = McpErrorInfo.ConfigInvalid(_serverName, "服务器已禁用，请先启用");
+            return McpOperationResult.Failed(_serverName, McpOperationType.Resume, disabledError);
+        }
+
         var startTime = DateTime.UtcNow;
 
         // 设置为 Pending 状态
@@ -450,6 +483,61 @@ internal sealed class McpConnectionCoordinator : IDisposable
         {
             return false;
         }
+    }
+
+    private bool IsServerDisabled() => _getConfigFunc(_serverName)?.Disabled == true;
+
+    private async Task<McpOperationResult?> TryAbortConnectIfDisabledAsync(
+        McpServerStatus currentStatus,
+        CancellationToken ct)
+    {
+        if (!IsServerDisabled())
+            return null;
+
+        await RollbackConnectAsync(Array.Empty<string>(), ct);
+        return await FinalizeDisabledConnectAbortAsync(currentStatus, ct);
+    }
+
+    private async Task RollbackConnectAsync(IReadOnlyList<string> registeredToolNames, CancellationToken ct)
+    {
+        foreach (var toolName in registeredToolNames)
+        {
+            var toolId = $"{_serverName}_{toolName}";
+            await _toolRegistry.UnregisterToolAsync(_serverName, toolId, ct);
+        }
+
+        if (_client != null)
+        {
+            try
+            {
+                await _client.DisconnectAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "禁用中止连接时断开 MCP 客户端失败: {Server}", _serverName);
+            }
+
+            _client = null;
+        }
+    }
+
+    private async Task<McpOperationResult> FinalizeDisabledConnectAbortAsync(
+        McpServerStatus currentStatus,
+        CancellationToken ct)
+    {
+        var config = _getConfigFunc(_serverName);
+        var disabledStatus = McpServerStatusBuilder.From(currentStatus)
+            .WithConfig(config)
+            .WithState(CoreMcpConnectionState.Disabled)
+            .WithToolCount(0)
+            .WithToolNames(Array.Empty<string>())
+            .Build();
+
+        await UpdateStateAsync(CoreMcpConnectionState.Disabled, disabledStatus);
+        CompleteReadySource(false);
+
+        var error = McpErrorInfo.ConfigInvalid(_serverName, "服务器已禁用");
+        return McpOperationResult.Failed(_serverName, McpOperationType.Connect, error, CoreMcpConnectionState.Disabled);
     }
 
     private void UpdateState(CoreMcpConnectionState newState, McpServerStatus? customStatus = null)

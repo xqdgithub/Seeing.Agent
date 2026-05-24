@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Helpers;
+using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.MCP.Core;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
@@ -26,6 +28,7 @@ namespace Seeing.Agent.MCP
         private readonly ToolInvoker _toolInvoker;
         private readonly McpWrapperFactoryRegistry _factoryRegistry;
         private readonly McpGlobalPolicy _globalPolicy;
+        private readonly IMcpConfigPersistence _configPersistence;
         private readonly IHttpClientFactory? _httpClientFactory;
 
         private readonly ConcurrentDictionary<string, McpServerStatus> _statuses = new();
@@ -39,7 +42,7 @@ namespace Seeing.Agent.MCP
 
         private readonly CancellationTokenSource _shutdownCts = new();
         private readonly object _stateLock = new();
-        private bool _initialized;
+        private volatile bool _initialized;
         private bool _disposed;
 
         public event EventHandler<McpStatusChangedEventArgs>? StatusChanged;
@@ -51,6 +54,7 @@ namespace Seeing.Agent.MCP
             ToolInvoker toolInvoker,
             McpWrapperFactoryRegistry factoryRegistry,
             McpGlobalPolicy globalPolicy,
+            IMcpConfigPersistence configPersistence,
             IHttpClientFactory? httpClientFactory = null)
         {
             _logger = logger;
@@ -59,6 +63,7 @@ namespace Seeing.Agent.MCP
             _toolInvoker = toolInvoker;
             _factoryRegistry = factoryRegistry;
             _globalPolicy = globalPolicy;
+            _configPersistence = configPersistence;
             _httpClientFactory = httpClientFactory;
 
             _toolRegistry = new McpToolRegistry(_toolInvoker, _hookManager, logger);
@@ -91,6 +96,7 @@ namespace Seeing.Agent.MCP
                 GetOrCreateDefaultToolInvoker(loggerFactory),
                 CreateDefaultFactoryRegistry(loggerFactory),
                 new McpGlobalPolicy(),
+                CreateDefaultConfigPersistence(loggerFactory),
                 httpClientFactory)
         {
         }
@@ -122,6 +128,9 @@ namespace Seeing.Agent.MCP
             registry.Register(new SseWrapperFactory(loggerFactory));
             return registry;
         }
+
+        private static McpConfigPersistence CreateDefaultConfigPersistence(ILoggerFactory loggerFactory)
+            => new(loggerFactory.CreateLogger<McpConfigPersistence>(), new WorkspaceProvider());
 
         #endregion
 
@@ -180,6 +189,10 @@ namespace Seeing.Agent.MCP
             if (config == null)
                 return McpOperationResult.Failed(name, McpOperationType.Connect, McpErrorInfo.ConfigMissing(name));
 
+            if (config.Disabled)
+                return McpOperationResult.Failed(name, McpOperationType.Connect,
+                    McpErrorInfo.ConfigInvalid(name, "服务器已禁用"));
+
             var coordinator = GetOrCreateCoordinator(name);
             return await coordinator.ConnectAsync(config, cancellationToken);
         }
@@ -201,6 +214,11 @@ namespace Seeing.Agent.MCP
 
         public async Task<McpOperationResult> ReconnectServerAsync(string name, CancellationToken cancellationToken = default)
         {
+            var config = GetConfig(name);
+            if (config?.Disabled == true)
+                return McpOperationResult.Failed(name, McpOperationType.Reconnect,
+                    McpErrorInfo.ConfigInvalid(name, "服务器已禁用"));
+
             if (!_coordinators.TryGetValue(name, out var coordinator))
                 return McpOperationResult.Failed(name, McpOperationType.Reconnect, McpErrorInfo.ServerRemoved(name));
 
@@ -211,7 +229,8 @@ namespace Seeing.Agent.MCP
         public McpOperationResult PauseServer(string name)
         {
             if (!_coordinators.TryGetValue(name, out var coordinator))
-                return McpOperationResult.Failed(name, McpOperationType.Pause, McpErrorInfo.ServerRemoved(name));
+                return McpOperationResult.Failed(name, McpOperationType.Pause,
+                    McpErrorInfo.ConfigInvalid(name, "服务器未连接，无法暂停"));
 
             return coordinator.PauseAsync(_shutdownCts.Token).GetAwaiter().GetResult();
         }
@@ -219,7 +238,8 @@ namespace Seeing.Agent.MCP
         public McpOperationResult ResumeServer(string name)
         {
             if (!_coordinators.TryGetValue(name, out var coordinator))
-                return McpOperationResult.Failed(name, McpOperationType.Resume, McpErrorInfo.ServerRemoved(name));
+                return McpOperationResult.Failed(name, McpOperationType.Resume,
+                    McpErrorInfo.ConfigInvalid(name, "服务器未连接，无法恢复"));
 
             return coordinator.ResumeAsync(_shutdownCts.Token).GetAwaiter().GetResult();
         }
@@ -258,9 +278,10 @@ namespace Seeing.Agent.MCP
 
         #region IMcpConfigManager 实现
 
-        public async Task<McpOperationResult> AddServerAsync(string name, McpServerConfig config, CancellationToken cancellationToken = default)
+        public async Task<McpOperationResult> AddServerAsync(string name, McpServerConfig config, McpConfigLevel? level = null, bool persist = true, CancellationToken cancellationToken = default)
         {
             config.Name = name;
+            config.ConfigLevel = level ?? McpConfigLevel.Project;
             var validation = McpConfigValidator.Validate(config);
             if (!validation.IsValid)
                 return McpOperationResult.Failed(name, McpOperationType.Add, validation.Error!);
@@ -268,25 +289,39 @@ namespace Seeing.Agent.MCP
             lock (_stateLock)
             {
                 _configs[name] = config;
-                _statuses[name] = McpServerStatus.Create(name, config, GetPriorityFromConfig(config));
+                _statuses[name] = CreateInitialStatus(name, config);
             }
 
-            if (_globalPolicy.AutoStartOnAdd)
+            // 自动持久化
+            if (persist)
+            {
+                try
+                {
+                    await SaveConfigAsync(config.ConfigLevel.Value, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "持久化 MCP 配置失败 (AddServer: {Name})", name);
+                }
+            }
+
+            if (_globalPolicy.AutoStartOnAdd && !config.Disabled)
             {
                 var coordinator = GetOrCreateCoordinator(name);
                 _ = coordinator.ConnectInBackgroundAsync(config, cancellationToken);
                 return McpOperationResult.Succeeded(name, McpOperationType.Add, GetStatus(name)?.State);
             }
 
-            return McpOperationResult.Succeeded(name, McpOperationType.Add, CoreMcpConnectionState.Pending);
+            return McpOperationResult.Succeeded(name, McpOperationType.Add, GetStatus(name)?.State ?? CoreMcpConnectionState.Pending);
         }
 
-        public async Task<McpOperationResult> RemoveServerAsync(string name, CancellationToken cancellationToken = default)
+        public async Task<McpOperationResult> RemoveServerAsync(string name, bool persist = true, CancellationToken cancellationToken = default)
         {
             var config = GetConfig(name);
             if (config == null)
                 return McpOperationResult.NoChange(name, McpOperationType.Remove, CoreMcpConnectionState.Removed);
 
+            var configLevel = config.ConfigLevel ?? McpConfigLevel.Project;
             var disconnectResult = await DisconnectServerAsync(name, cancellationToken);
 
             lock (_stateLock)
@@ -298,10 +333,23 @@ namespace Seeing.Agent.MCP
 
             await _toolRegistry.UnregisterAllToolsAsync(name);
 
+            // 自动持久化
+            if (persist)
+            {
+                try
+                {
+                    await SaveConfigAsync(configLevel, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "持久化 MCP 配置失败 (RemoveServer: {Name})", name);
+                }
+            }
+
             return McpOperationResult.Succeeded(name, McpOperationType.Remove, CoreMcpConnectionState.Removed);
         }
 
-        public async Task<McpOperationResult> UpdateConfigAsync(string name, McpServerConfig config, CancellationToken cancellationToken = default)
+        public async Task<McpOperationResult> UpdateConfigAsync(string name, McpServerConfig config, bool persist = true, CancellationToken cancellationToken = default)
         {
             config.Name = name;
             var validation = McpConfigValidator.Validate(config);
@@ -328,6 +376,10 @@ namespace Seeing.Agent.MCP
                 await DisconnectServerAsync(name, cancellationToken);
             }
 
+            // 保留原有的 ConfigLevel
+            var existingConfig = GetConfig(name);
+            config.ConfigLevel = existingConfig?.ConfigLevel ?? McpConfigLevel.Project;
+
             lock (_stateLock)
             {
                 _configs[name] = config;
@@ -341,6 +393,19 @@ namespace Seeing.Agent.MCP
                 else
                 {
                     _statuses[name] = McpServerStatus.Create(name, config, GetPriorityFromConfig(config));
+                }
+            }
+
+            // 自动持久化
+            if (persist)
+            {
+                try
+                {
+                    await SaveConfigAsync(config.ConfigLevel.Value, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "持久化 MCP 配置失败 (UpdateConfig: {Name})", name);
                 }
             }
 
@@ -382,17 +447,308 @@ namespace Seeing.Agent.MCP
 
         public McpServerConfig? GetConfig(string name)
         {
-            return _configs.TryGetValue(name, out var config) ? config : null;
+            lock (_stateLock)
+            {
+                return _configs.TryGetValue(name, out var config) ? config : null;
+            }
         }
 
-        public async Task SaveConfigAsync(string? path = null, CancellationToken cancellationToken = default)
+        public async Task SaveConfigAsync(McpConfigLevel level, CancellationToken cancellationToken = default)
         {
-            _logger.LogWarning("SaveConfigAsync 尚未实现");
+            // 加锁获取配置快照，避免迭代期间被修改
+            Dictionary<string, McpServerConfig> configsToSave;
+            lock (_stateLock)
+            {
+                configsToSave = _configs
+                    .Where(kvp => kvp.Value.ConfigLevel == level)
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            }
+
+            await _configPersistence.SaveAsync(level, configsToSave, cancellationToken);
+            _logger.LogInformation("已保存 {Count} 个 MCP 配置到 {Level} 级别", configsToSave.Count, level);
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyDictionary<string, McpServerConfig> GetAllConfigs()
+        {
+            lock (_stateLock)
+            {
+                return new Dictionary<string, McpServerConfig>(_configs);
+            }
+        }
+
+        /// <inheritdoc />
+        public McpConfigLevel? GetConfigLevel(string name)
+        {
+            lock (_stateLock)
+            {
+                if (_configs.TryGetValue(name, out var config))
+                    return config.ConfigLevel ?? McpConfigLevel.Project;
+                return null;
+            }
+        }
+
+        /// <inheritdoc />
+        public string GetConfigFilePath(McpConfigLevel level)
+        {
+            return _configPersistence.GetConfigPath(level);
+        }
+
+        /// <inheritdoc />
+        public string GetConfigsAsJson(McpConfigLevel level, bool indented = true)
+        {
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = indented,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
+
+            var configs = GetAllConfigs();
+            var wrapper = new { mcpServers = configs };
+            return JsonSerializer.Serialize(wrapper, options);
+        }
+
+        /// <inheritdoc />
+        public string? GetServerConfigAsJson(string name, bool indented = true)
+        {
+            var config = GetConfig(name);
+            if (config == null) return null;
+
+            return _configPersistence.SerializeServerConfig(config);
+        }
+
+        /// <inheritdoc />
+        public async Task<McpOperationResult> EnableServerAsync(string name, bool persist = true, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                McpServerConfig? config;
+                bool wasDisabled;
+
+                lock (_stateLock)
+                {
+                    config = GetConfig(name);
+                    if (config == null)
+                        return McpOperationResult.Failed(name, McpOperationType.UpdateConfig, McpErrorInfo.ConfigMissing(name));
+
+                    wasDisabled = config.Disabled;
+                    if (!wasDisabled)
+                        return McpOperationResult.NoChange(name, McpOperationType.UpdateConfig, GetStatus(name)?.State ?? CoreMcpConnectionState.Pending);
+
+                    config.Disabled = false;
+                }
+
+                // 自动持久化
+                if (persist)
+                {
+                    try
+                    {
+                        var configLevel = config.ConfigLevel ?? McpConfigLevel.Project;
+                        await SaveConfigAsync(configLevel, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "持久化 MCP 配置失败 (EnableServer: {Name})", name);
+                    }
+                }
+
+                // 启用 = 清除 Disabled 标志并启动连接（不依赖 AutoStartOnAdd，也不走 Resume）
+                return await StartServerConnectionAsync(name, config, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return McpOperationResult.Failed(name, McpOperationType.UpdateConfig,
+                    McpErrorInfo.FromException(McpErrorCode.ToolExecutionError, ex, name));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<McpOperationResult> DisableServerAsync(string name, bool persist = true, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                McpServerConfig? config;
+                bool wasEnabled;
+
+                lock (_stateLock)
+                {
+                    config = GetConfig(name);
+                    if (config == null)
+                        return McpOperationResult.Failed(name, McpOperationType.UpdateConfig, McpErrorInfo.ConfigMissing(name));
+
+                    wasEnabled = !config.Disabled;
+                    if (!wasEnabled)
+                        return McpOperationResult.NoChange(name, McpOperationType.UpdateConfig, GetStatus(name)?.State ?? CoreMcpConnectionState.Pending);
+
+                    config.Disabled = true;
+                }
+
+                // 自动持久化
+                if (persist)
+                {
+                    try
+                    {
+                        var configLevel = config.ConfigLevel ?? McpConfigLevel.Project;
+                        await SaveConfigAsync(configLevel, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "持久化 MCP 配置失败 (DisableServer: {Name})", name);
+                    }
+                }
+
+                var status = GetStatus(name);
+
+                if (status?.State is CoreMcpConnectionState.Connected
+                    or CoreMcpConnectionState.Connecting
+                    or CoreMcpConnectionState.Reconnecting)
+                {
+                    var disconnectResult = await DisconnectServerAsync(name, cancellationToken);
+                    if (!disconnectResult.Success && status.State == CoreMcpConnectionState.Connected)
+                        return disconnectResult;
+                }
+
+                await _toolRegistry.UnregisterAllToolsAsync(name);
+                ApplyDisabledStatus(name, config);
+
+                return McpOperationResult.Succeeded(name, McpOperationType.UpdateConfig, CoreMcpConnectionState.Disabled);
+            }
+            catch (Exception ex)
+            {
+                return McpOperationResult.Failed(name, McpOperationType.UpdateConfig,
+                    McpErrorInfo.FromException(McpErrorCode.ToolExecutionError, ex, name));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<int> ImportFromJsonAsync(string json, McpConfigLevel level, bool overwrite = false, bool persist = true, CancellationToken cancellationToken = default)
+        {
+            var count = 0;
+            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+
+            if (!doc.RootElement.TryGetProperty("mcpServers", out var servers) ||
+                servers.ValueKind != JsonValueKind.Object)
+            {
+                return 0;
+            }
+
+            foreach (var prop in servers.EnumerateObject())
+            {
+                var name = prop.Name;
+                if (!overwrite && _configs.ContainsKey(name))
+                    continue;
+
+                try
+                {
+                    var config = _configPersistence.ParseServerConfig(name, prop.Value);
+                    if (config != null && config.IsValid())
+                    {
+                        config.ConfigLevel = level;
+                        // persist: false 因为 ImportFromJsonAsync 会在最后统一持久化
+                        var result = await AddServerAsync(name, config, level, persist: false, cancellationToken);
+                        if (result.Success) count++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "导入 MCP 服务 {Name} 失败", name);
+                }
+            }
+
+            // 导入成功后自动持久化
+            if (persist && count > 0)
+            {
+                try
+                {
+                    await SaveConfigAsync(level, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "持久化 MCP 配置到 {Level} 级别失败", level);
+                }
+            }
+
+            return count;
         }
 
         private static McpServerPriority GetPriorityFromConfig(McpServerConfig config)
         {
             return McpServerPriority.Normal;
+        }
+
+        private static McpServerStatus CreateInitialStatus(string name, McpServerConfig config)
+        {
+            var status = McpServerStatus.Create(name, config, GetPriorityFromConfig(config));
+            if (config.Disabled)
+            {
+                return McpServerStatusBuilder.From(status)
+                    .WithState(CoreMcpConnectionState.Disabled)
+                    .Build();
+            }
+
+            return status;
+        }
+
+        private void ApplyDisabledStatus(string name, McpServerConfig config)
+        {
+            lock (_stateLock)
+            {
+                var currentStatus = GetStatus(name);
+                if (currentStatus == null || currentStatus.State == CoreMcpConnectionState.Disabled)
+                    return;
+
+                McpStateTransitions.ValidateTransition(currentStatus.State, CoreMcpConnectionState.Disabled);
+
+                var disabledStatus = McpServerStatusBuilder.From(currentStatus)
+                    .WithConfig(config)
+                    .WithState(CoreMcpConnectionState.Disabled)
+                    .WithToolCount(0)
+                    .WithToolNames(Array.Empty<string>())
+                    .Build();
+                _statuses[name] = disabledStatus;
+                OnStatusChanged(name, CoreMcpConnectionState.Disabled, currentStatus);
+            }
+        }
+
+        private void TransitionToConnecting(string name, McpServerConfig config)
+        {
+            lock (_stateLock)
+            {
+                var current = GetStatus(name);
+                if (current == null)
+                    return;
+
+                if (current.State == CoreMcpConnectionState.Connecting)
+                    return;
+
+                McpStateTransitions.ValidateTransition(current.State, CoreMcpConnectionState.Connecting);
+
+                var connecting = McpServerStatusBuilder.From(current)
+                    .WithConfig(config)
+                    .WithState(CoreMcpConnectionState.Connecting)
+                    .WithToolCount(0)
+                    .WithToolNames(Array.Empty<string>())
+                    .Build();
+                _statuses[name] = connecting;
+                OnStatusChanged(name, CoreMcpConnectionState.Connecting, current);
+            }
+        }
+
+        private Task<McpOperationResult> StartServerConnectionAsync(
+            string name,
+            McpServerConfig config,
+            CancellationToken cancellationToken)
+        {
+            TransitionToConnecting(name, config);
+
+            var coordinator = GetOrCreateCoordinator(name);
+            _ = coordinator.ConnectInBackgroundAsync(config, cancellationToken);
+            return Task.FromResult(
+                McpOperationResult.Succeeded(name, McpOperationType.UpdateConfig, CoreMcpConnectionState.Connecting));
         }
 
         #endregion
@@ -401,8 +757,9 @@ namespace Seeing.Agent.MCP
 
         public async Task InitializeAsync(IReadOnlyDictionary<string, McpServerConfig> configs, CancellationToken cancellationToken = default)
         {
-            if (_initialized) return;
-            _initialized = true;
+            // 使用 Interlocked.CompareExchange 确保原子性
+            if (Interlocked.CompareExchange(ref _initialized, true, false))
+                return;
 
             var beforeInput = new Dictionary<string, object?> { ["configCount"] = configs.Count };
             await _hookManager.TriggerBlockingAsync(HookRegistry.McpBeforeInitialize, "", beforeInput, null, cancellationToken);
@@ -423,11 +780,15 @@ namespace Seeing.Agent.MCP
                 lock (_stateLock)
                 {
                     _configs[name] = config;
-                    _statuses[name] = McpServerStatus.Create(name, config, GetPriorityFromConfig(config));
+                    _statuses[name] = CreateInitialStatus(name, config);
                 }
 
-                var coordinator = GetOrCreateCoordinator(name);
-                _ = coordinator.ConnectInBackgroundAsync(config, cancellationToken);
+                // 只启动未被禁用的服务器
+                if (!config.Disabled)
+                {
+                    var coordinator = GetOrCreateCoordinator(name);
+                    _ = coordinator.ConnectInBackgroundAsync(config, cancellationToken);
+                }
             }
 
             _reconnector.Start(_shutdownCts.Token);
@@ -493,7 +854,8 @@ namespace Seeing.Agent.MCP
                 return;
             }
 
-            var result = await AddServerAsync(config.Name, config, cancellationToken);
+            // persist: false 因为这是从配置文件加载，不需要再保存
+            var result = await AddServerAsync(config.Name, config, null, persist: false, cancellationToken);
 
             if (!result.Success)
             {

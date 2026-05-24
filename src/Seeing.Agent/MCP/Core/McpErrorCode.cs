@@ -23,5 +23,14 @@ public enum McpErrorCode
     NotConnected,
     OperationCancelled,
     ReconnectExhausted,
-    TransitionInvalid
+    TransitionInvalid,
+
+    /// <summary>配置持久化失败</summary>
+    PersistenceError,
+
+    /// <summary>JSON 解析失败</summary>
+    JsonParseError,
+
+    /// <summary>配置导入失败</summary>
+    ImportError
 }

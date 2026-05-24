@@ -116,6 +116,10 @@ namespace Seeing.Agent.MCP
         [JsonPropertyName("disabled")]
         public bool Disabled { get; set; } = false;
 
+        /// <summary>配置来源级别（运行时设置，不序列化）</summary>
+        [JsonIgnore]
+        public McpConfigLevel? ConfigLevel { get; set; }
+
         // —— OAuth 配置 ——
 
         /// <summary>OAuth 配置（用于需要授权的远程 MCP 服务器）</summary>

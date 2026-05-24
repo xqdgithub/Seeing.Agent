@@ -1,6 +1,7 @@
 namespace Seeing.Agent.WebUI.Services;
 
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.MCP.Core;
 
@@ -44,7 +45,7 @@ public sealed class McpStateService : IDisposable
     
     /// <summary>获取可用 Server 数量</summary>
     public int GetAvailableCount()
-        => _cache.Values.Count(s => s.State == McpConnectionState.Connected);
+        => _cache.Values.Count(s => s.IsAvailable);
     
     /// <summary>获取总工具数量</summary>
     public int GetTotalToolCount()
@@ -80,6 +81,36 @@ public sealed class McpStateService : IDisposable
     public void ManualRefresh()
     {
         RefreshCache(null);
+    }
+    
+    /// <summary>获取所有 MCP 工具</summary>
+    public IReadOnlyList<McpToolInfo> GetAllTools()
+    {
+        return _manager.GetTools();
+    }
+    
+    /// <summary>获取指定 Server 的工具</summary>
+    public IReadOnlyList<McpToolInfo> GetServerTools(string serverName)
+    {
+        return _manager.GetTools().Where(t => t.ServerName == serverName).ToList();
+    }
+    
+    /// <summary>获取配置文件路径</summary>
+    public string GetConfigFilePath(McpConfigLevel level)
+    {
+        return _manager.GetConfigFilePath(level);
+    }
+    
+    /// <summary>获取指定级别的配置 JSON 字符串</summary>
+    public string GetConfigsAsJsonString(McpConfigLevel level = McpConfigLevel.Project)
+    {
+        return _manager.GetConfigsAsJson(level, indented: true);
+    }
+    
+    /// <summary>获取单个服务配置的 JSON 字符串</summary>
+    public string? GetServerConfigAsJsonString(string name)
+    {
+        return _manager.GetServerConfigAsJson(name, indented: true);
     }
     
     public void Dispose()

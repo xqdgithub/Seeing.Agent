@@ -184,9 +184,10 @@
 /* ========== Card Grid View ========== */
 .items-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
     gap: var(--space-4);
     padding: var(--space-1);
+    width: 100%;
 }
 
 /* ========== Card Item ========== */
@@ -198,6 +199,8 @@
     border-radius: var(--radius-lg);
     overflow: hidden;
     transition: all var(--transition-fast);
+    min-width: 0;
+    width: 100%;
 }
 
 .item-card:hover {
@@ -687,9 +690,15 @@
 }
 
 /* ========== Responsive Design ========== */
+@media (max-width: 1200px) {
+    .items-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+    }
+}
+
 @media (max-width: 1024px) {
     .items-grid {
-        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
     }
     
     .page-filters {

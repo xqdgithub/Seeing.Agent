@@ -3,6 +3,7 @@
 @using Seeing.Agent.MCP
 @using Seeing.Agent.MCP.Core
 @using Seeing.Agent.WebUI.Services
+@using System.Text.Json
 @inject IMcpManager McpManager
 @inject McpStateService McpStateService
 @inject IMessageService MessageService
@@ -68,6 +69,15 @@
                     <span class="stat-label">Paused</span>
                 </div>
             </div>
+            <div class="stat-item">
+                <div class="stat-icon" style="background: var(--color-bg-subtle); color: var(--color-text-secondary);">
+                    <Icon Type="@IconType.Outline.Stop" />
+                </div>
+                <div class="stat-content">
+                    <span class="stat-value">@_disabledCount</span>
+                    <span class="stat-label">Disabled</span>
+                </div>
+            </div>
         </div>
     }
     
@@ -94,16 +104,16 @@
             <div class="items-grid">
             @foreach (var kvp in _statuses) {
                 var status = kvp.Value;
-                <div class="item-card @GetStateClass(status.State)">
+                <div class="item-card @GetStateClass(status) @(status.State == McpConnectionState.Disabled ? "state-disabled" : "")">
                     <div class="item-card-header">
-                        <div class="card-icon @GetIconClass(status.State)">
-                            <Icon Type="@GetStateIcon(status.State)" />
+                        <div class="card-icon @GetIconClass(status)">
+                            <Icon Type="@GetStateIcon(status)" />
                         </div>
                         <div class="card-title-section">
                             <h3 class="card-title">@status.Name</h3>
                             <div class="card-subtitle">@GetTransportType(status)</div>
                         </div>
-                        <Tag Color="@GetStateColor(status.State)">@status.State</Tag>
+                        <Tag Color="@GetStateColor(status)">@GetDisplayState(status)</Tag>
                     </div>
                     <div class="item-card-body">
                         <div class="card-meta">
@@ -152,17 +162,48 @@
                     <div class="item-card-footer">
                         <div class="card-actions">
                             <Space Size="@SpaceSize.Small">
-                                @if (status.State == McpConnectionState.Connected) {
+                                @if (!status.IsDisabled && status.State == McpConnectionState.Connected) {
                                     <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.PauseCircle" OnClick="@(() => PauseServer(status.Name))">Pause</Button></SpaceItem>
                                 }
-                                else if (status.State == McpConnectionState.Paused) {
+                                else if (!status.IsDisabled && status.State == McpConnectionState.Paused) {
                                     <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.PlayCircle" Type="@ButtonType.Primary" OnClick="@(() => ResumeServer(status.Name))">Resume</Button></SpaceItem>
                                 }
-                                else if (status.State == McpConnectionState.Error) {
+                                else if (!status.IsDisabled && status.State == McpConnectionState.Error) {
                                     <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Reload" Type="@ButtonType.Primary" OnClick="@(() => ReconnectServer(status.Name))">Reconnect</Button></SpaceItem>
                                 }
-                                else if (status.State == McpConnectionState.Connecting || status.State == McpConnectionState.Reconnecting) {
+                                else if (!status.IsDisabled && (status.State == McpConnectionState.Connecting || status.State == McpConnectionState.Reconnecting)) {
                                     <SpaceItem><Button Size="@ButtonSize.Small" Disabled><Spin Size="@SpinSize.Small" /> Connecting...</Button></SpaceItem>
+                                }
+                                @* Edit, Delete, Enable/Disable buttons *@
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small" 
+                                            Type="@ButtonType.Text"
+                                            Icon="@IconType.Outline.Edit"
+                                            OnClick="@(() => EditServer(status.Name))">Edit</Button>
+                                </SpaceItem>
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small" 
+                                            Type="@ButtonType.Text"
+                                            Icon="@IconType.Outline.Delete"
+                                            Danger="true"
+                                            OnClick="@(() => DeleteServer(status.Name))">Delete</Button>
+                                </SpaceItem>
+                                @if (status.IsDisabled)
+                                {
+                                    <SpaceItem>
+                                        <Button Size="@ButtonSize.Small" 
+                                                Type="@ButtonType.Primary"
+                                                Icon="@IconType.Outline.PlayCircle"
+                                                OnClick="@(() => EnableServer(status.Name))">Enable</Button>
+                                    </SpaceItem>
+                                }
+                                else if (!status.IsDisabled && status.State != McpConnectionState.Connecting && status.State != McpConnectionState.Reconnecting)
+                                {
+                                    <SpaceItem>
+                                        <Button Size="@ButtonSize.Small"
+                                                Icon="@IconType.Outline.Stop"
+                                                OnClick="@(() => DisableServer(status.Name))">Disable</Button>
+                                    </SpaceItem>
                                 }
                             </Space>
                         </div>
@@ -173,6 +214,10 @@
                             </Tooltip>
                         }
                     </div>
+                    @* Tool List *@
+                    <div class="item-card-tools">
+                        <McpToolList Tools="@McpStateService.GetServerTools(status.Name)" IsDisabled="@status.IsDisabled" />
+                    </div>
                 </div>
             }
             </div>
@@ -180,37 +225,30 @@
     </div>
 </div>
 
-@* Add Client Modal *@
-<Modal @bind-Visible="_addModalVisible" Title="Add MCP Client" Width="600">
-    <Form Model="@_newClientConfig" Layout="@FormLayout.Vertical">
-        <FormItem Label="Name">
-            <Input @bind-Value="_newClientConfig.Name" Placeholder="e.g., filesystem, github" />
-        </FormItem>
-        <FormItem Label="Transport Type">
-            <RadioGroup @bind-Value="_newClientConfig.TransportType">
-                <Radio Value="@McpTransportType.Stdio">Stdio</Radio>
-                <Radio Value="@McpTransportType.StreamableHttp">HTTP</Radio>
-            </RadioGroup>
-        </FormItem>
-        @if (_newClientConfig.TransportType == McpTransportType.Stdio)
-        {
-            <FormItem Label="Command">
-                <Input @bind-Value="_newClientConfig.Command" Placeholder="e.g., npx, python" />
-            </FormItem>
-            <FormItem Label="Arguments">
-                <Input @bind-Value="_newClientArgs" Placeholder="@("-y @modelcontextprotocol/server-filesystem")" />
-            </FormItem>
-        }
-        else
-        {
-            <FormItem Label="URL">
-                <Input @bind-Value="_newClientUrl" Placeholder="https://example.com/mcp" />
-            </FormItem>
-        }
-    </Form>
-    <div slot="footer">
-        <Button OnClick="() => _addModalVisible = false">Cancel</Button>
-        <Button Type="@ButtonType.Primary" OnClick="HandleAddClient">Add</Button>
+@* Add/Edit JSON Modal *@
+<Modal @bind-Visible="_jsonEditorVisible" 
+       Title="@(_editMode == "add" ? "Add MCP Server" : "Edit MCP Server")" 
+       Width="800"
+       OnOk="SaveJsonEdit"
+       OkText="@("Save")"
+       CancelText="@("Cancel")"
+       ConfirmLoading="_saving">
+    <Alert Type="@AlertType.Info" Message="Config Format" 
+           Description="JSON must contain mcpServers object with server configurations." ShowIcon="true" />
+    
+    <div class="json-editor-container">
+        <TextArea @bind-Value="_editingJson"
+                  Rows="18"
+                  Placeholder="@_jsonPlaceholder" />
+    </div>
+    
+    <div class="config-path-info">
+        <span>Save to:</span>
+        <Select TItem="McpConfigLevel" TItemValue="McpConfigLevel" @bind-Value="_saveLevel" Style="width: 200px;">
+            <SelectOption TItem="McpConfigLevel" TItemValue="McpConfigLevel" Value="@McpConfigLevel.Project">Project Level</SelectOption>
+            <SelectOption TItem="McpConfigLevel" TItemValue="McpConfigLevel" Value="@McpConfigLevel.User">User Level</SelectOption>
+        </Select>
+        <Text Type="@TextElementType.Secondary">@McpStateService.GetConfigFilePath(_saveLevel)</Text>
     </div>
 </Modal>
 
@@ -219,15 +257,57 @@
     private Dictionary<string, McpServerStatus> _statuses = new();
     
     // Statistics
-    private int _connectedCount => _statuses.Values.Count(s => s.State == McpConnectionState.Connected);
-    private int _errorCount => _statuses.Values.Count(s => s.State == McpConnectionState.Error);
-    private int _pausedCount => _statuses.Values.Count(s => s.State == McpConnectionState.Paused);
+    private int _connectedCount => _statuses.Values.Count(s => s.IsAvailable);
+    private int _errorCount => _statuses.Values.Count(s => !s.IsDisabled && s.State == McpConnectionState.Error);
+    private int _pausedCount => _statuses.Values.Count(s => !s.IsDisabled && s.State == McpConnectionState.Paused);
+    private int _disabledCount => _statuses.Values.Count(s => s.State == McpConnectionState.Disabled || s.IsDisabled);
     
-    // Add Modal
-    private bool _addModalVisible = false;
-    private McpServerConfig _newClientConfig = new();
-    private string _newClientArgs = "";
-    private string _newClientUrl = "";
+    // JSON Editor Modal (统一用于 Add 和 Edit)
+    private bool _jsonEditorVisible = false;
+    private string _editMode = "";  // "add" or "edit"
+    private string _editingJson = "";
+    private string _editingServerName = "";
+    private McpConfigLevel _saveLevel = McpConfigLevel.Project;
+    private bool _saving = false;
+    
+    private readonly string _jsonPlaceholder = @"{
+  ""mcpServers"": {
+    ""server-name"": {
+      ""type"": ""stdio"" | ""http"" | ""sse"",
+      ""command"": ""npx"",           // stdio only
+      ""args"": [""-y"", ""package""], // stdio only
+      ""env"": { ""KEY"": ""value"" }, // stdio only, optional
+      ""workingDirectory"": ""path"",  // stdio only, optional
+      ""url"": ""https://..."",        // http/sse only
+      ""headers"": { ""Auth"": ""Bearer token"" }, // http only, optional
+      ""autoStart"": true,             // optional
+      ""disabled"": false              // optional
+    }
+  }
+}";
+    
+    private readonly string _jsonAddTemplate = @"{
+  ""mcpServers"": {
+    ""my-stdio-server"": {
+      ""type"": ""stdio"",
+      ""command"": ""npx"",
+      ""args"": [""-y"", ""@modelcontextprotocol/server-filesystem"", ""/path/to/files""],
+      ""env"": {
+        ""NODE_ENV"": ""production"",
+        ""API_KEY"": ""your-api-key""
+      },
+      ""workingDirectory"": ""/path/to/workdir""
+    },
+    ""my-http-server"": {
+      ""type"": ""http"",
+      ""url"": ""https://example.com/mcp"",
+      ""headers"": {
+        ""Authorization"": ""Bearer your-token"",
+        ""X-Custom-Header"": ""custom-value""
+      }
+    }
+  }
+}";
     
     protected override void OnInitialized() {
         McpStateService.StateChanged += OnStateChanged;
@@ -249,69 +329,55 @@
     }
     
     void ShowAddModal() {
-        _newClientConfig = new McpServerConfig();
-        _newClientArgs = "";
-        _newClientUrl = "";
-        _addModalVisible = true;
-    }
-    
-    async Task HandleAddClient() {
-        try {
-            if (_newClientConfig.TransportType == McpTransportType.Stdio) {
-                _newClientConfig.Args = _newClientArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-            } else if (!string.IsNullOrEmpty(_newClientUrl)) {
-                _newClientConfig.Url = new Uri(_newClientUrl);
-            }
-            
-            var result = await McpManager.AddServerAsync(_newClientConfig.Name, _newClientConfig);
-            if (result.Success) {
-                _addModalVisible = false;
-                RefreshStatus();
-                MessageService.Success($"MCP client '{_newClientConfig.Name}' added successfully");
-            } else {
-                MessageService.Error($"Failed to add client: {result.Error?.UserMessage ?? "Unknown error"}");
-            }
-        } catch (Exception ex) {
-            MessageService.Error($"Failed to add client: {ex.Message}");
-        }
+        _editMode = "add";
+        _editingServerName = "";
+        _editingJson = _jsonAddTemplate;
+        _saveLevel = McpConfigLevel.Project;
+        _jsonEditorVisible = true;
     }
     
     void PauseServer(string name) { McpManager.PauseServer(name); }
     void ResumeServer(string name) { McpManager.ResumeServer(name); }
     async Task ReconnectServer(string name) => await McpManager.ReconnectServerAsync(name);
     
-    string GetStateClass(McpConnectionState s) => s switch {
+    string GetStateClass(McpServerStatus status) => status.State switch {
         McpConnectionState.Connected => "state-success",
         McpConnectionState.Error => "state-error",
         McpConnectionState.Paused => "state-warning",
+        McpConnectionState.Disabled => "state-disabled-card",
         _ => ""
     };
     
-    string GetStateColor(McpConnectionState s) => s switch {
+    string GetStateColor(McpServerStatus status) => status.State switch {
         McpConnectionState.Connected => "success",
         McpConnectionState.Error => "error",
         McpConnectionState.Paused => "warning",
+        McpConnectionState.Disabled => "default",
         McpConnectionState.Reconnecting => "processing",
         McpConnectionState.Connecting => "processing",
         _ => "default"
     };
     
-    string GetStateIcon(McpConnectionState s) => s switch {
+    string GetStateIcon(McpServerStatus status) => status.State switch {
         McpConnectionState.Connected => IconType.Outline.CheckCircle,
         McpConnectionState.Error => IconType.Outline.CloseCircle,
         McpConnectionState.Paused => IconType.Outline.PauseCircle,
+        McpConnectionState.Disabled => IconType.Outline.Stop,
         McpConnectionState.Connecting => IconType.Outline.Loading,
         McpConnectionState.Reconnecting => IconType.Outline.Sync,
         McpConnectionState.Pending => IconType.Outline.ClockCircle,
         _ => IconType.Outline.Api
     };
     
-    string GetIconClass(McpConnectionState s) => s switch {
+    string GetIconClass(McpServerStatus status) => status.State switch {
         McpConnectionState.Connected => "success",
         McpConnectionState.Error => "error",
         McpConnectionState.Paused => "warning",
+        McpConnectionState.Disabled => "disabled",
         _ => ""
     };
+    
+    string GetDisplayState(McpServerStatus status) => status.State.ToString();
     
     string GetTransportType(McpServerStatus status) {
         if (status.Config == null) return "Unknown";
@@ -321,6 +387,96 @@
             McpTransportType.Sse => "SSE",
             _ => "Unknown"
         };
+    }
+    
+    void EditServer(string name)
+    {
+        var json = McpStateService.GetServerConfigAsJsonString(name);
+        if (json != null)
+        {
+            _editMode = "edit";
+            _editingServerName = name;
+            _editingJson = json;
+            _jsonEditorVisible = true;
+        }
+    }
+    
+    async Task SaveJsonEdit()
+    {
+        _saving = true;
+        try
+        {
+            var imported = await McpManager.ImportFromJsonAsync(_editingJson, _saveLevel, overwrite: _editMode == "edit");
+            if (imported > 0)
+            {
+                MessageService.Success(_editMode == "add" 
+                    ? $"Successfully added {imported} MCP server(s)" 
+                    : "Configuration saved and persisted successfully");
+                RefreshStatus();
+                // Modal 会自动关闭
+            }
+            else
+            {
+                MessageService.Error("Failed to import configuration");
+                throw new InvalidOperationException("No servers imported"); // 阻止 Modal 关闭
+            }
+        }
+        catch (JsonException ex)
+        {
+            MessageService.Error($"JSON format error: {ex.Message}");
+            throw; // 阻止 Modal 关闭
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"Save failed: {ex.Message}");
+            throw; // 阻止 Modal 关闭
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+    
+    async Task DeleteServer(string name)
+    {
+        var result = await McpManager.RemoveServerAsync(name);
+        if (result.Success)
+        {
+            MessageService.Success("Server deleted");
+            RefreshStatus();
+        }
+        else
+        {
+            MessageService.Error($"Delete failed: {result.Error?.UserMessage}");
+        }
+    }
+    
+    async Task EnableServer(string name)
+    {
+        var result = await McpManager.EnableServerAsync(name);
+        if (result.Success)
+        {
+            MessageService.Success("Server enabled");
+            RefreshStatus();
+        }
+        else
+        {
+            MessageService.Error($"Enable failed: {result.Error?.UserMessage}");
+        }
+    }
+    
+    async Task DisableServer(string name)
+    {
+        var result = await McpManager.DisableServerAsync(name);
+        if (result.Success)
+        {
+            MessageService.Success("Server disabled");
+            RefreshStatus();
+        }
+        else
+        {
+            MessageService.Error($"Disable failed: {result.Error?.UserMessage}");
+        }
     }
     
     public void Dispose() => McpStateService.StateChanged -= OnStateChanged;

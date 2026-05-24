@@ -1,0 +1,278 @@
+@using AntDesign
+@using Seeing.Agent.MCP.Core
+@using System.Text.Json
+
+<div class="mcp-tool-list">
+    <div class="tool-list-header" onclick="@OpenDrawer">
+        <Icon Type="@IconType.Outline.Tool" />
+        <span>可用工具 (@Tools.Count)</span>
+        <Icon Type="@IconType.Outline.Right" Class="expand-icon" />
+    </div>
+</div>
+
+<Drawer Closable="true"
+        Placement="@DrawerPlacement.Right"
+        @bind-Visible="_drawerVisible"
+        Title="@("可用工具列表")"
+        Width="450"
+        OnClose="OnDrawerClose">
+    @if (Tools.Any())
+    {
+        <div class="tool-drawer-content">
+            @foreach (var tool in Tools)
+            {
+                <div class="tool-card">
+                    <div class="tool-card-header" onclick="@(() => ToggleTool(tool.Name))">
+                        <Icon Type="@(_expandedTools.Contains(tool.Name) ? IconType.Outline.Down : IconType.Outline.Right)" />
+                        <span class="tool-name">@tool.Name</span>
+                    </div>
+                    
+                    @if (!string.IsNullOrWhiteSpace(tool.Description))
+                    {
+                        <div class="tool-description">@tool.Description</div>
+                    }
+                    
+                    @if (_expandedTools.Contains(tool.Name))
+                    {
+                        <div class="tool-schema-section">
+                            <div class="schema-label">参数 Schema</div>
+                            @if (tool.Schema != null && tool.Schema.Count > 0)
+                            {
+                                <pre class="schema-content">@FormatSchema(tool.Schema)</pre>
+                            }
+                            else
+                            {
+                                <div class="schema-empty">无参数</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <Empty Description="@(IsDisabled ? "服务器已禁用" : "暂无可用工具")" />
+    }
+</Drawer>
+
+<style>
+    .mcp-tool-list {
+        margin-top: var(--space-3);
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--color-border-secondary);
+    }
+    
+    .tool-list-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        cursor: pointer;
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
+        padding: var(--space-2) var(--space-3);
+        background: var(--color-bg-secondary);
+        border: 1px solid transparent;
+        border-radius: var(--radius-base);
+        transition: all var(--transition-fast);
+    }
+    
+    .tool-list-header:hover {
+        background: var(--color-bg-tertiary);
+        color: var(--color-text);
+        border-color: var(--color-border-secondary);
+    }
+    
+    .tool-list-header .expand-icon {
+        margin-left: auto;
+    }
+    
+    .tool-drawer-content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+    }
+    
+    .tool-card {
+        background: var(--color-bg-secondary);
+        border: 1px solid var(--color-border-secondary);
+        border-radius: var(--radius-md);
+        padding: var(--space-3);
+    }
+    
+    .tool-card-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        cursor: pointer;
+        font-weight: var(--font-weight-medium);
+        color: var(--color-text);
+    }
+    
+    .tool-card-header:hover {
+        color: var(--color-primary);
+    }
+    
+    .tool-name {
+        flex: 1;
+    }
+    
+    .tool-description {
+        margin-top: var(--space-2);
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
+        line-height: var(--line-height-relaxed);
+    }
+    
+    .tool-schema-section {
+        margin-top: var(--space-3);
+        padding-top: var(--space-3);
+        border-top: 1px dashed var(--color-border-secondary);
+    }
+    
+    .schema-label {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--color-text-secondary);
+        text-transform: uppercase;
+        margin-bottom: var(--space-2);
+    }
+    
+    .schema-content {
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        background: var(--color-bg);
+        border: 1px solid var(--color-border-secondary);
+        border-radius: var(--radius-sm);
+        padding: var(--space-3);
+        margin: 0;
+        overflow-x: auto;
+        max-height: 300px;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    
+    .schema-empty {
+        font-size: var(--font-size-sm);
+        color: var(--color-text-tertiary);
+        font-style: italic;
+    }
+</style>
+
+@code {
+    [Parameter] public IReadOnlyList<McpToolInfo> Tools { get; set; } = Array.Empty<McpToolInfo>();
+    [Parameter] public bool IsDisabled { get; set; }
+    
+    private bool _drawerVisible;
+    private HashSet<string> _expandedTools = new();
+    
+    void OpenDrawer()
+    {
+        _drawerVisible = true;
+    }
+    
+    void OnDrawerClose()
+    {
+        _drawerVisible = false;
+    }
+    
+    void ToggleTool(string toolName)
+    {
+        if (_expandedTools.Contains(toolName))
+            _expandedTools.Remove(toolName);
+        else
+            _expandedTools.Add(toolName);
+    }
+    
+    static string FormatSchema(IReadOnlyDictionary<string, object> schema)
+    {
+        try
+        {
+            var options = new JsonSerializerOptions 
+            { 
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(schema, options));
+            using var stream = new MemoryStream();
+            using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions 
+            { 
+                Indented = true, 
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping 
+            });
+            
+            RewriteNode(doc.RootElement, writer);
+            writer.Flush();
+            
+            return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+        }
+        catch
+        {
+            return "{}";
+        }
+    }
+
+    /// <summary>
+    /// 递归重写 JSON 节点：将字符串值中内嵌的 JSON 解析为真实 JSON 对象/数组
+    /// </summary>
+    static void RewriteNode(JsonElement element, Utf8JsonWriter writer)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var prop in element.EnumerateObject())
+                {
+                    writer.WritePropertyName(prop.Name);
+                    RewriteNode(prop.Value, writer);
+                }
+                writer.WriteEndObject();
+                break;
+
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in element.EnumerateArray())
+                    RewriteNode(item, writer);
+                writer.WriteEndArray();
+                break;
+
+            case JsonValueKind.String:
+                var str = element.GetString();
+                // 尝试将字符串值解析为内嵌 JSON
+                if (str != null && 
+                    (str.StartsWith('{') || str.StartsWith('[') || str.StartsWith('"')))
+                {
+                    try
+                    {
+                        using var innerDoc = JsonDocument.Parse(str);
+                        RewriteNode(innerDoc.RootElement, writer);
+                        break;
+                    }
+                    catch
+                    {
+                        // 不是有效 JSON，当作普通字符串
+                    }
+                }
+                writer.WriteStringValue(str);
+                break;
+
+            case JsonValueKind.Number:
+                if (element.TryGetInt64(out var l)) writer.WriteNumberValue(l);
+                else writer.WriteNumberValue(element.GetDouble());
+                break;
+
+            case JsonValueKind.True:
+                writer.WriteBooleanValue(true);
+                break;
+
+            case JsonValueKind.False:
+                writer.WriteBooleanValue(false);
+                break;
+
+            case JsonValueKind.Null:
+                writer.WriteNullValue();
+                break;
+        }
+    }
+}

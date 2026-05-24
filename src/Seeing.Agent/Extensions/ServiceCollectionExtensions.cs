@@ -18,6 +18,7 @@ using Seeing.Agent.Llm;
 using Seeing.Agent.Llm.Clients;
 using Seeing.Agent.Middlewares;
 using Seeing.Agent.MCP;
+using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.MCP.Core;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
@@ -126,16 +127,18 @@ namespace Seeing.Agent.Extensions
                 Providers = new Dictionary<string, ProviderConfig>(),
                 Agents = new Dictionary<string, AgentConfig>()
             };
-            
+
+            // 使用统一的 WorkspaceProvider
+            var workspaceProvider = new WorkspaceProvider();
+
             // 用户级配置：~/.seeing/seeing.json
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var userConfigPath = Path.Combine(userProfile, ".seeing", "seeing.json");
+            var userConfigPath = Path.Combine(workspaceProvider.UserSeeingDirectory, "seeing.json");
             LoadFromFile(userConfigPath, options, "用户级", logger);
-            
-            // 项目级配置：./.seeing/seeing.json
-            var projectConfigPath = Path.Combine(Directory.GetCurrentDirectory(), ".seeing", "seeing.json");
+
+            // 项目级配置：{WorkspaceRoot}/.seeing/seeing.json
+            var projectConfigPath = Path.Combine(workspaceProvider.ProjectSeeingDirectory, "seeing.json");
             LoadFromFile(projectConfigPath, options, "项目级", logger);
-            
+
             return options;
         }
         
@@ -602,7 +605,13 @@ namespace Seeing.Agent.Extensions
                 return new McpProcessMonitor(logger);
             });
 
-            // 5. MCP 客户端管理器（实现 IMcpManager 接口）
+            // 5. 工作区路径提供者（统一管理配置目录）
+            services.AddSingleton<IWorkspaceProvider, WorkspaceProvider>();
+
+            // 6. MCP 配置持久化服务
+            services.AddSingleton<IMcpConfigPersistence, McpConfigPersistence>();
+
+            // 7. MCP 客户端管理器（实现 IMcpManager 接口）
             services.AddSingleton<IMcpManager, McpClientManager>();
             services.AddSingleton<McpClientManager>(sp => (McpClientManager)sp.GetRequiredService<IMcpManager>());
 

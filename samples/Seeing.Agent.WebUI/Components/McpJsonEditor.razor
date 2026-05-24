@@ -1,0 +1,92 @@
+@using AntDesign
+@using System.Text.Json
+
+<div class="mcp-json-editor">
+    <div class="editor-header">
+        <span>JSON 编辑器</span>
+        <Space>
+            <SpaceItem>
+                <Button Type="@ButtonType.Text" 
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.FormatPainter"
+                        OnClick="FormatJson">格式化</Button>
+            </SpaceItem>
+        </Space>
+    </div>
+    
+    <div class="editor-body">
+        <TextArea @bind-Value="_jsonContent"
+                  Placeholder="@Placeholder"
+                  Rows="@Rows"
+                  Class="@(_isValid ? "" : "json-error")"
+                  @oninput="OnInputChanged" />
+    </div>
+    
+    @if (!_isValid && !string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="editor-error">
+            <Icon Type="@IconType.Outline.CloseCircle" />
+            <span>@_errorMessage</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string JsonContent { get; set; } = "";
+    [Parameter] public EventCallback<string> JsonContentChanged { get; set; }
+    [Parameter] public uint Rows { get; set; } = 15;
+    [Parameter] public string Placeholder { get; set; } = "{\n  \"mcpServers\": {\n    \"name\": {\n      \"type\": \"stdio\",\n      \"command\": \"...\"\n    }\n  }\n}";
+    
+    private string _jsonContent = "";
+    private bool _isValid = true;
+    private string _errorMessage = "";
+    
+    protected override void OnParametersSet()
+    {
+        _jsonContent = JsonContent;
+    }
+    
+    private void OnInputChanged(ChangeEventArgs e)
+    {
+        _jsonContent = e.Value?.ToString() ?? "";
+        ValidateJson();
+        _ = JsonContentChanged.InvokeAsync(_jsonContent);
+    }
+    
+    private void ValidateJson()
+    {
+        if (string.IsNullOrWhiteSpace(_jsonContent))
+        {
+            _isValid = true;
+            _errorMessage = "";
+            return;
+        }
+        
+        try
+        {
+            JsonDocument.Parse(_jsonContent);
+            _isValid = true;
+            _errorMessage = "";
+        }
+        catch (JsonException ex)
+        {
+            _isValid = false;
+            _errorMessage = $"JSON 格式错误: {ex.Message}";
+        }
+    }
+    
+    private void FormatJson()
+    {
+        try
+        {
+            var doc = JsonDocument.Parse(_jsonContent);
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            _jsonContent = JsonSerializer.Serialize(doc.RootElement, options);
+            _isValid = true;
+        }
+        catch
+        {
+            // 格式化失败，保持原样
+        }
+    }
+}

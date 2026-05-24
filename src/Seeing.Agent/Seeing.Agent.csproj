@@ -27,6 +27,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 核心依赖 -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />

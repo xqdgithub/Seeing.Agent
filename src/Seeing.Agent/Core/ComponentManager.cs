@@ -159,14 +159,12 @@ internal class SkillLoader : IComponentLoader
         var options = services.GetService<IOptions<SeeingAgentOptions>>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<SkillLoader>();
+        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
 
         skillManager.ResetSearchDirectoriesToDefault();
 
         // 用户级 ~/.seeing/skills
-        var userSkills = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".seeing", "skills");
-        AddIfExists(skillManager, userSkills);
+        AddIfExists(skillManager, Path.Combine(workspaceProvider.UserSeeingDirectory, "skills"));
 
         // 配置中的路径
         if (options?.Value?.Skills?.Paths != null)
@@ -174,14 +172,14 @@ internal class SkillLoader : IComponentLoader
             foreach (var p in options.Value.Skills.Paths)
             {
                 if (!string.IsNullOrWhiteSpace(p))
-                    AddIfExists(skillManager, ExpandPath(p.Trim(), workspaceRoot));
+                    AddIfExists(skillManager, ExpandPath(p.Trim(), workspaceProvider.WorkspaceRoot));
             }
         }
 
         // 项目级目录
-        AddIfExists(skillManager, Path.Combine(workspaceRoot, ".seeing", "skills"));
-        AddIfExists(skillManager, Path.Combine(workspaceRoot, ".agents", "skills"));
-        AddIfExists(skillManager, Path.Combine(workspaceRoot, "skills"));
+        AddIfExists(skillManager, Path.Combine(workspaceProvider.ProjectSeeingDirectory, "skills"));
+        AddIfExists(skillManager, Path.Combine(workspaceProvider.WorkspaceRoot, ".agents", "skills"));
+        AddIfExists(skillManager, Path.Combine(workspaceProvider.WorkspaceRoot, "skills"));
 
         await skillManager.DiscoverSkillsAsync(cancellationToken);
 
@@ -224,9 +222,10 @@ internal class McpLoader : IComponentLoader
         var mcpManager = services.GetRequiredService<McpClientManager>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<McpLoader>();
+        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
 
         // 加载配置（不阻塞）
-        var configs = McpConfigLoader.LoadDefault(workspaceRoot, logger);
+        var configs = McpConfigLoader.LoadDefault(workspaceProvider, logger);
 
         // 转换为字典格式
         var configDict = new Dictionary<string, McpServerConfig>();
@@ -267,13 +266,14 @@ internal class PluginLoader : IComponentLoader
         var configuration = services.GetRequiredService<IConfiguration>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<PluginLoader>();
+        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
 
         var context = new ExtensionContext
         {
             Services = services,
             Configuration = configuration,
-            Directory = Directory.GetCurrentDirectory(),
-            WorkspaceRoot = workspaceRoot,
+            Directory = workspaceProvider.WorkspaceRoot,
+            WorkspaceRoot = workspaceProvider.WorkspaceRoot,
             HookManager = services.GetRequiredService<HookManager>(),
             ToolInvoker = services.GetRequiredService<ToolInvoker>(),
             RuleEngine = services.GetRequiredService<RuleEngine>(),
@@ -347,18 +347,17 @@ internal class RuleLoader : IComponentLoader
         var ruleEngine = services.GetRequiredService<RuleEngine>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<RuleLoader>();
+        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
 
         // 用户级 ~/.seeing/rules
-        var userRulesDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".seeing", "rules");
+        var userRulesDir = Path.Combine(workspaceProvider.UserSeeingDirectory, "rules");
 
         // 项目级目录
         var projectRulesDirs = new[]
         {
-            Path.Combine(workspaceRoot, ".seeing", "rules"),
-            Path.Combine(workspaceRoot, ".agents", "rules"),
-            Path.Combine(workspaceRoot, "rules")
+            Path.Combine(workspaceProvider.ProjectSeeingDirectory, "rules"),
+            Path.Combine(workspaceProvider.WorkspaceRoot, ".agents", "rules"),
+            Path.Combine(workspaceProvider.WorkspaceRoot, "rules")
         };
 
         var loadedFiles = new List<string>();

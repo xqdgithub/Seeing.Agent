@@ -80,6 +80,7 @@ internal sealed class McpBackgroundReconnector
             var statuses = _getStatusFunc();
             
             var errorServers = statuses
+                .Where(s => !s.Value.IsDisabled)
                 .Where(s => s.Value.State == CoreMcpConnectionState.Error)
                 .Where(s => CanReconnect(s.Value))
                 .OrderBy(s => (int)s.Value.Priority)

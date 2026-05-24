@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Seeing.Agent.MCP.Core;
 
@@ -10,6 +11,9 @@ public sealed class McpOperationResult
     public McpConnectionState? Status { get; init; }
     public McpErrorInfo? Error { get; init; }
     public TimeSpan Duration { get; init; }
+
+    /// <summary>操作详情信息（如警告、跳过原因等）</summary>
+    public IReadOnlyDictionary<string, object>? Details { get; init; }
 
     private McpOperationResult(
         bool success,
@@ -48,4 +52,27 @@ public sealed class McpOperationResult
         McpConnectionState status,
         TimeSpan? duration = null)
         => new(true, serverName, operationType, status, null, duration);
+
+    /// <summary>
+    /// 创建带详情的成功结果
+    /// </summary>
+    public static McpOperationResult SucceededWithDetails(
+        string serverName,
+        McpOperationType operationType,
+        IReadOnlyDictionary<string, object> details,
+        McpConnectionState? status = null,
+        TimeSpan? duration = null)
+        => new(true, serverName, operationType, status, null, duration)
+        {
+            Details = details
+        };
+
+    /// <summary>
+    /// 返回带详情的新实例
+    /// </summary>
+    public McpOperationResult WithDetails(IReadOnlyDictionary<string, object> details)
+        => new(Success, ServerName, OperationType, Status, Error, Duration)
+        {
+            Details = details
+        };
 }

@@ -1,10 +1,12 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.MCP.Configuration;
+using Seeing.Agent.MCP.Core;
 
 namespace Seeing.Agent.MCP;
 
 /// <summary>
-/// MCP 配置加载器 - 从 mcp.json 加载并合并用户级和项目级配置
+/// MCP 配置加载器 - 静态便捷入口，委托给 McpConfigPersistence
 /// <para>
 /// 配置文件位置：
 /// - 用户级：~/.seeing/mcp.json
@@ -14,135 +16,98 @@ namespace Seeing.Agent.MCP;
 /// </summary>
 public static class McpConfigLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    /// <summary>
+    /// 加载默认路径的 MCP 配置（同步版本，用于启动时）
+    /// </summary>
+    public static IReadOnlyList<McpServerConfig> LoadDefault(string workspaceRoot, ILogger? logger = null)
     {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
-    };
-
-    /// <summary>用户级 ~/.seeing 目录</summary>
-    private static string UserSeeingDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".seeing");
-
-    /// <summary>用户级 mcp.json 路径</summary>
-    public static string UserMcpJsonPath => Path.Combine(UserSeeingDirectory, "mcp.json");
-
-    /// <summary>项目级 mcp.json 路径</summary>
-    public static string ProjectMcpJsonPath(string workspaceRoot) =>
-        Path.Combine(workspaceRoot, ".seeing", "mcp.json");
+        var workspaceProvider = new WorkspaceProvider(workspaceRoot);
+        return LoadDefault(workspaceProvider, logger);
+    }
 
     /// <summary>
-    /// 加载并合并 MCP Server 配置
+    /// 加载默认路径的 MCP 配置（同步版本，使用 IWorkspaceProvider）
     /// </summary>
-    public static IReadOnlyList<McpServerConfig> Load(string? userPath, string? projectPath, ILogger? logger = null)
+    public static IReadOnlyList<McpServerConfig> LoadDefault(IWorkspaceProvider workspaceProvider, ILogger? logger = null)
     {
+        // 创建持久化实例
+        var persistence = new McpConfigPersistence(
+            logger as ILogger<McpConfigPersistence> ?? new NullLogger<McpConfigPersistence>(),
+            workspaceProvider);
+
         var configs = new Dictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
 
         // 先加载用户级（作为基础）
-        LoadFromFile(userPath, configs, logger, "用户级");
+        if (persistence.ConfigExists(McpConfigLevel.User))
+        {
+            var userConfigs = persistence.LoadAsync(McpConfigLevel.User).GetAwaiter().GetResult();
+            foreach (var kvp in userConfigs)
+                configs[kvp.Key] = kvp.Value;
+        }
 
         // 后加载项目级（覆盖同名服务）
-        LoadFromFile(projectPath, configs, logger, "项目级");
+        if (persistence.ConfigExists(McpConfigLevel.Project))
+        {
+            var projectConfigs = persistence.LoadAsync(McpConfigLevel.Project).GetAwaiter().GetResult();
+            foreach (var kvp in projectConfigs)
+                configs[kvp.Key] = kvp.Value;
+        }
 
         return configs.Values.ToList().AsReadOnly();
     }
 
     /// <summary>
-    /// 加载默认路径的 MCP 配置
+    /// 加载默认路径的 MCP 配置（异步版本）
     /// </summary>
-    public static IReadOnlyList<McpServerConfig> LoadDefault(string workspaceRoot, ILogger? logger = null)
+    public static async Task<IReadOnlyList<McpServerConfig>> LoadDefaultAsync(
+        string workspaceRoot,
+        ILogger? logger = null,
+        CancellationToken cancellationToken = default)
     {
-        var userPath = File.Exists(UserMcpJsonPath) ? UserMcpJsonPath : null;
-        var projectPath = File.Exists(ProjectMcpJsonPath(workspaceRoot)) ? ProjectMcpJsonPath(workspaceRoot) : null;
-        return Load(userPath, projectPath, logger);
+        var workspaceProvider = new WorkspaceProvider(workspaceRoot);
+        return await LoadDefaultAsync(workspaceProvider, logger, cancellationToken);
     }
 
-    private static void LoadFromFile(string? path, Dictionary<string, McpServerConfig> configs, ILogger? logger, string levelLabel)
+    /// <summary>
+    /// 加载默认路径的 MCP 配置（异步版本，使用 IWorkspaceProvider）
+    /// </summary>
+    public static async Task<IReadOnlyList<McpServerConfig>> LoadDefaultAsync(
+        IWorkspaceProvider workspaceProvider,
+        ILogger? logger = null,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
-            return;
+        var persistence = new McpConfigPersistence(
+            logger as ILogger<McpConfigPersistence> ?? new NullLogger<McpConfigPersistence>(),
+            workspaceProvider);
 
-        try
+        var configs = new Dictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
+
+        // 先加载用户级
+        if (persistence.ConfigExists(McpConfigLevel.User))
         {
-            var json = File.ReadAllText(path);
-            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions
-            {
-                CommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true
-            });
-
-            if (!doc.RootElement.TryGetProperty("mcpServers", out var servers) ||
-                servers.ValueKind != JsonValueKind.Object)
-            {
-                logger?.LogWarning("{Level} MCP 配置文件缺少 mcpServers 节: {Path}", levelLabel, path);
-                return;
-            }
-
-            foreach (var prop in servers.EnumerateObject())
-            {
-                var config = ParseServerConfig(prop.Name, prop.Value);
-                if (config != null && config.IsValid())
-                {
-                    configs[prop.Name] = config;
-                    logger?.LogDebug("加载 {Level} MCP 服务: {Name}", levelLabel, prop.Name);
-                }
-            }
+            var userConfigs = await persistence.LoadAsync(McpConfigLevel.User, cancellationToken);
+            foreach (var kvp in userConfigs)
+                configs[kvp.Key] = kvp.Value;
         }
-        catch (Exception ex)
+
+        // 后加载项目级
+        if (persistence.ConfigExists(McpConfigLevel.Project))
         {
-            logger?.LogWarning(ex, "{Level} MCP 配置文件加载失败: {Path}", levelLabel, path);
+            var projectConfigs = await persistence.LoadAsync(McpConfigLevel.Project, cancellationToken);
+            foreach (var kvp in projectConfigs)
+                configs[kvp.Key] = kvp.Value;
         }
+
+        return configs.Values.ToList().AsReadOnly();
     }
+}
 
-    private static McpServerConfig? ParseServerConfig(string name, JsonElement element)
-    {
-        var transportType = element.TryGetProperty("type", out var ttProp)
-            ? ParseTransportType(ttProp.GetString())
-            : McpTransportType.Stdio;
-
-        var config = new McpServerConfig { Name = name, TransportType = transportType };
-
-        // stdio 配置
-        if (element.TryGetProperty("command", out var cmdProp))
-            config.Command = cmdProp.GetString();
-
-        if (element.TryGetProperty("args", out var argsProp) && argsProp.ValueKind == JsonValueKind.Array)
-        {
-            config.Args = argsProp.EnumerateArray().Select(a => a.GetString() ?? "").ToList();
-        }
-
-        if (element.TryGetProperty("env", out var envProp) && envProp.ValueKind == JsonValueKind.Object)
-        {
-            config.Env = envProp.EnumerateObject()
-                .ToDictionary(p => p.Name, p => p.Value.GetString() ?? "");
-        }
-
-        // HTTP 配置
-        if (element.TryGetProperty("url", out var urlProp))
-        {
-            var urlStr = urlProp.GetString();
-            if (!string.IsNullOrEmpty(urlStr) && Uri.TryCreate(urlStr, UriKind.Absolute, out var uri))
-                config.Url = uri;
-        }
-
-        if (element.TryGetProperty("headers", out var hdrProp) && hdrProp.ValueKind == JsonValueKind.Object)
-        {
-            config.Headers = hdrProp.EnumerateObject()
-                .ToDictionary(p => p.Name, p => p.Value.GetString() ?? "");
-        }
-
-        return config;
-    }
-
-    private static McpTransportType ParseTransportType(string? type)
-    {
-        return type?.ToLowerInvariant() switch
-        {
-            "stdio" => McpTransportType.Stdio,
-            "streamable_http" or "streamablehttp" or "http" => McpTransportType.StreamableHttp,
-            "sse" => McpTransportType.Sse,
-            _ => McpTransportType.Stdio
-        };
-    }
+/// <summary>
+/// 空 Logger 实现（用于无 logger 场景）
+/// </summary>
+file class NullLogger<T> : ILogger<T>
+{
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel logLevel) => false;
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) { }
 }

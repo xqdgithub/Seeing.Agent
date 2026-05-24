@@ -1,0 +1,363 @@
+/**
+ * MCP Page Styles - Model Context Protocol 客户端管理页面
+ * 
+ * 解决的问题：
+ * 1. 卡片响应式布局 - 全屏时自适应
+ * 2. 工具列表交互样式 - 按钮点击反馈
+ * 3. 整体风格统一
+ */
+
+/* ========================================
+   第一节：卡片网格系统 - 响应式布局
+   ======================================== */
+
+/* 重写网格布局，使用更灵活的响应式 */
+.workspace-page .items-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr));
+    gap: var(--space-4);
+    padding: var(--space-1);
+    width: 100%;
+}
+
+/* 卡片自适应 */
+.workspace-page .item-card {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 卡片头部允许换行 */
+.workspace-page .item-card-header {
+    flex-wrap: wrap;
+}
+
+/* 标题自适应宽度 */
+.workspace-page .card-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    flex: 1;
+}
+
+/* 元数据区域 */
+.workspace-page .card-meta {
+    overflow: hidden;
+    width: 100%;
+}
+
+/* 元数据值自适应 */
+.workspace-page .meta-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+    max-width: calc(100% - 5rem);
+    display: inline-block;
+    vertical-align: bottom;
+}
+
+/* ========================================
+   第二节：工具列表组件
+   ======================================== */
+
+.item-card-tools {
+    padding: 0 var(--space-4) var(--space-4);
+}
+
+.mcp-tool-list {
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border-secondary);
+}
+
+/* --- 工具列表头部按钮 --- */
+.mcp-tool-list .tool-list-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-secondary);
+    border: 1px solid transparent;
+    border-radius: var(--radius-base);
+    padding: var(--space-2) var(--space-3);
+    width: 100%;
+    text-align: left;
+    transition: all var(--transition-fast);
+    user-select: none;
+}
+
+.mcp-tool-list .tool-list-header:hover {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text);
+    border-color: var(--color-border-secondary);
+}
+
+.mcp-tool-list .tool-list-header:active {
+    transform: scale(0.99);
+    background: var(--color-bg);
+}
+
+.mcp-tool-list .tool-list-header:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-bg);
+}
+
+.mcp-tool-list .expand-icon {
+    margin-left: auto;
+    font-size: 12px;
+    transition: transform var(--transition-fast);
+}
+
+/* 工具列表内容 */
+.mcp-tool-list .tool-list-content {
+    margin-top: var(--space-3);
+    max-height: 320px;
+    overflow-y: auto;
+    padding: var(--space-2);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-secondary);
+}
+
+/* --- 单个工具项 --- */
+.mcp-tool-list .tool-item {
+    padding: var(--space-3);
+    background: var(--color-bg);
+    border-radius: var(--radius-base);
+    margin-bottom: var(--space-2);
+    border: 1px solid var(--color-border-secondary);
+    transition: all var(--transition-fast);
+}
+
+.mcp-tool-list .tool-item:last-child {
+    margin-bottom: 0;
+}
+
+.mcp-tool-list .tool-item:hover {
+    border-color: var(--color-border);
+}
+
+.mcp-tool-list .tool-item.expanded {
+    background: var(--color-bg);
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* 工具项头部按钮 */
+.mcp-tool-list .tool-item-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    transition: color var(--transition-fast);
+}
+
+.mcp-tool-list .tool-item-header:hover {
+    color: var(--color-primary);
+}
+
+.mcp-tool-list .tool-expand-icon {
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+}
+
+.mcp-tool-list .tool-name-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+/* 工具描述 */
+.mcp-tool-list .tool-desc {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    margin-top: var(--space-2);
+    padding-left: 20px;
+    line-height: var(--line-height-relaxed);
+}
+
+/* 工具详情 */
+.mcp-tool-list .tool-details {
+    margin-top: var(--space-3);
+    padding-left: 20px;
+}
+
+.mcp-tool-list .tool-schema-label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    margin-bottom: var(--space-1);
+    letter-spacing: 0.5px;
+}
+
+.mcp-tool-list .tool-schema {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    line-height: var(--line-height-normal);
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-secondary);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3);
+    margin: 0;
+    overflow-x: auto;
+    max-height: 200px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.mcp-tool-list .tool-schema-empty {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    font-style: italic;
+}
+
+/* 空工具列表 */
+.mcp-tool-list .tool-list-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+    background: var(--color-bg);
+    border-radius: var(--radius-base);
+    text-align: center;
+    justify-content: center;
+}
+
+/* ========================================
+   第三节：禁用状态
+   ======================================== */
+
+/* 禁用状态只降低透明度，不阻止点击（需要允许Enable按钮点击） */
+.item-card.state-disabled {
+    opacity: 0.6;
+}
+
+.item-card.state-disabled-card {
+    border-color: var(--color-border-secondary);
+    opacity: 0.6;
+}
+
+/* ========================================
+   第四节：卡片操作区
+   ======================================== */
+
+.card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+/* ========================================
+   第五节：JSON编辑器
+   ======================================== */
+
+.json-editor-container {
+    margin: var(--space-4) 0;
+}
+
+.json-editor-container textarea {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-normal);
+}
+
+.config-path-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-base);
+    flex-wrap: wrap;
+}
+
+/* ========================================
+   第六节：响应式设计
+   ======================================== */
+
+@media (max-width: 1400px) {
+    .workspace-page .items-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+    }
+}
+
+@media (max-width: 1200px) {
+    .workspace-page .items-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .workspace-page .items-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .workspace-page .meta-value {
+        max-width: 100%;
+    }
+    
+    .item-card-tools {
+        padding: 0 var(--space-3) var(--space-3);
+    }
+    
+    .mcp-tool-list .tool-list-content {
+        max-height: 240px;
+    }
+}
+
+/* ========================================
+   第七节：暗色主题
+   ======================================== */
+
+[data-theme="dark"] .mcp-tool-list .tool-list-header {
+    background: var(--color-bg-tertiary);
+}
+
+[data-theme="dark"] .mcp-tool-list .tool-list-header:hover {
+    background: var(--color-bg-secondary);
+}
+
+[data-theme="dark"] .mcp-tool-list .tool-list-content {
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border-secondary);
+}
+
+[data-theme="dark"] .mcp-tool-list .tool-item {
+    background: var(--color-bg-secondary);
+    border-color: var(--color-border-secondary);
+}
+
+[data-theme="dark"] .mcp-tool-list .tool-item:hover {
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .mcp-tool-list .tool-item.expanded {
+    background: var(--color-bg-secondary);
+    border-color: var(--color-primary);
+}
+
+[data-theme="dark"] .mcp-tool-list .tool-schema {
+    background: var(--color-bg-tertiary);
+}

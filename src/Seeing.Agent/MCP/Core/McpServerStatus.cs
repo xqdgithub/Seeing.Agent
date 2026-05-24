@@ -18,8 +18,9 @@ public sealed class McpServerStatus
     public int ReconnectAttempts { get; }
     public string? ActivePolicy { get; }
 
-    public bool IsAvailable => State == McpConnectionState.Connected;
-    public bool CanReconnect => State is McpConnectionState.Error or McpConnectionState.Reconnecting;
+    public bool IsDisabled => State == McpConnectionState.Disabled || Config?.Disabled == true;
+    public bool IsAvailable => State == McpConnectionState.Connected && !IsDisabled;
+    public bool CanReconnect => !IsDisabled && State is McpConnectionState.Error or McpConnectionState.Reconnecting;
 
     internal McpServerStatus(
         string name,

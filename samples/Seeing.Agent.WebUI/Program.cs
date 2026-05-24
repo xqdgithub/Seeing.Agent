@@ -55,6 +55,7 @@ builder.Services.AddAntDesign();
 var app = builder.Build();
 
 // 初始化 Seeing.Agent 组件（Skills/MCP/Plugins）
+// 使用启动应用程序的工作目录作为工作区根目录
 var workspaceRoot = Directory.GetCurrentDirectory();
 using (var scope = app.Services.CreateScope())
 {
