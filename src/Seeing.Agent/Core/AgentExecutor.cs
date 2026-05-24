@@ -595,20 +595,8 @@ public class AgentExecutor
         AgentContext context,
         IPermissionChannel permissionChannel)
     {
-        // 检查黑名单
-        if (agent.DeniedTools.Contains(toolName, StringComparer.OrdinalIgnoreCase))
-        {
-            return PermissionDecision.Deny("工具在黑名单中");
-        }
-
-        // 检查白名单（如果有）
-        if (agent.AllowedTools.Count > 0 &&
-            !agent.AllowedTools.Contains(toolName, StringComparer.OrdinalIgnoreCase))
-        {
-            return PermissionDecision.Deny("工具不在白名单中");
-        }
-
-        // 使用新的权限服务
+        // 统一使用 IPermissionService 进行权限检查
+        // AllowedTools/DeniedTools 检查已由 PermissionService.EvaluateRulesAsync 内部处理
         var permContext = context.PermissionContext 
             ?? PermissionContext.FromAgentContext(context, agent.BuildPermissionPolicy());
         

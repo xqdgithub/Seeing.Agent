@@ -54,6 +54,15 @@ public interface IPermissionService
     Task<PermissionResult> EvaluateMcpToolAsync(string mcpServer, string toolName, PermissionContext context, CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// 评估技能调用权限
+    /// </summary>
+    /// <param name="skillName">技能名称</param>
+    /// <param name="context">权限上下文</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>权限评估结果</returns>
+    Task<PermissionResult> EvaluateSkillAsync(string skillName, PermissionContext context, CancellationToken cancellationToken = default);
+    
+    /// <summary>
     /// 获取 Agent 的权限策略
     /// </summary>
     /// <param name="agentName">Agent 名称</param>

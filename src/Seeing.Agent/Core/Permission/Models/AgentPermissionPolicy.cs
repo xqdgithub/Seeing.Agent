@@ -126,7 +126,11 @@ public sealed class AgentPermissionPolicy
             : AllowedTools.Count > 0 ? AllowedTools : other.AllowedTools;
         
         var mergedDeniedTools = DeniedTools.Union(other.DeniedTools, StringComparer.OrdinalIgnoreCase).ToList();
-        var mergedDefault = (PermissionEffect)Math.Max((int)DefaultEffect, (int)other.DefaultEffect);
+        // 默认效果：选择最严格的（Deny > Ask > Allow）
+        // 注意：PermissionEffect 枚举值 Allow=0, Deny=1, Ask=2
+        // 我们需要 Deny 优先，所以取最小值（0 最宽松，1 最严格对于 Deny/Allow）
+        // 但 Ask=2 会干扰，所以需要自定义比较
+        var mergedDefault = ChooseStrictDefault(DefaultEffect, other.DefaultEffect);
         
         return new AgentPermissionPolicy
         {
@@ -191,5 +195,21 @@ public sealed class AgentPermissionPolicy
         }
         
         return false;
+    }
+    
+    /// <summary>
+    /// 选择更严格的默认效果 - 安全优先原则
+    /// 严格程度：Deny > Ask > Allow
+    /// </summary>
+    private static PermissionEffect ChooseStrictDefault(PermissionEffect a, PermissionEffect b)
+    {
+        // Deny 始终最严格，Ask 次之，Allow 最宽松
+        var strictness = new Dictionary<PermissionEffect, int>
+        {
+            [PermissionEffect.Deny] = 2,
+            [PermissionEffect.Ask] = 1,
+            [PermissionEffect.Allow] = 0
+        };
+        return strictness[a] >= strictness[b] ? a : b;
     }
 }

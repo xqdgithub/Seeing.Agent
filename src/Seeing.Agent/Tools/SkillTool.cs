@@ -123,18 +123,8 @@ namespace Seeing.Agent.Tools
                 return Failure($"Skill \"{skillName}\" not found. Available skills: {(string.IsNullOrEmpty(available) ? "none" : available)}");
             }
 
-            // 权限检查
-            if (context.Agent != null)
-            {
-                var hasPermission = CheckPermission(skillName, context.Agent);
-                if (!hasPermission)
-                {
-                    _logger.LogWarning("Agent 无权访问技能: {SkillName}", skillName);
-                    return Failure($"Permission denied: Agent cannot access skill '{skillName}'");
-                }
-            }
-
-            // 权限确认请求（如果需要）
+            // 权限检查由 AgentExecutor.EvaluatePermissionAsync 统一处理
+            // 此处仅保留 AskPermission 回调（用于需要用户确认的场景）
             if (context.AskPermission != null)
             {
                 await context.AskPermission(new PermissionRequest
@@ -169,63 +159,6 @@ namespace Seeing.Agent.Tools
                     ["fileCount"] = skillFiles.Count
                 }
             };
-        }
-
-        /// <summary>
-        /// 检查 Agent 是否有权访问技能
-        /// </summary>
-        private bool CheckPermission(string skillName, IAgent agent)
-        {
-            // 如果 Agent 没有权限规则，默认允许
-            if (agent.Permissions == null || agent.Permissions.Count == 0)
-                return true;
-
-            // 检查技能相关权限规则
-            PermissionAction? finalAction = null;
-            foreach (var rule in agent.Permissions)
-            {
-                // 只处理 skill 权限类型
-                if (rule.Permission != "skill") continue;
-
-                // 检查模式匹配
-                if (MatchesPattern(skillName, rule.Pattern))
-                {
-                    finalAction = rule.Action;
-                    // Deny 优先级最高
-                    if (rule.Action == PermissionAction.Deny)
-                        return false;
-                }
-            }
-
-            // 如果有匹配的规则，返回结果
-            if (finalAction.HasValue)
-            {
-                return finalAction.Value != PermissionAction.Deny;
-            }
-
-            // 默认允许
-            return true;
-        }
-
-        /// <summary>
-        /// 模式匹配（支持 * 通配符）
-        /// </summary>
-        private static bool MatchesPattern(string value, string pattern)
-        {
-            if (pattern == "*") return true;
-            if (pattern.StartsWith("*") && pattern.EndsWith("*"))
-            {
-                return value.Contains(pattern.Substring(1, pattern.Length - 2));
-            }
-            if (pattern.StartsWith("*"))
-            {
-                return value.EndsWith(pattern.Substring(1));
-            }
-            if (pattern.EndsWith("*"))
-            {
-                return value.StartsWith(pattern.Substring(0, pattern.Length - 1));
-            }
-            return value == pattern;
         }
 
         /// <summary>

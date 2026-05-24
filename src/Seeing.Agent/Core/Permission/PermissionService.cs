@@ -76,16 +76,25 @@ public sealed class PermissionService : IPermissionService, IDisposable
             // 4. 评估规则（按优先级）
             var (matchedRule, effect, reason) = await EvaluateRulesAsync(resource, context, cancellationToken);
             
-            // 5. 检查父上下文（递归）
-            if (effect == PermissionEffect.Allow && context.Parent != null)
+            // 5. 检查父上下文（递归）- 父上下文可以覆盖当前决策
+            if (context.Parent != null)
             {
                 var parentResult = await EvaluateAsync(resource, context.Parent, cancellationToken);
+                
+                // 父上下文 Deny 总是覆盖当前 Allow
                 if (parentResult.IsDenied)
                 {
                     effect = PermissionEffect.Deny;
                     reason = $"Denied by parent context: {parentResult.Reason}";
                     matchedRule = parentResult.MatchedRule;
                 }
+                // 父上下文 Ask 时，如果当前是 Allow，降级为 Ask
+                else if (parentResult.NeedsConfirmation && effect == PermissionEffect.Allow)
+                {
+                    effect = PermissionEffect.Ask;
+                    reason = $"Parent requires confirmation: {parentResult.Reason}";
+                }
+                
                 evaluationPath.Add(new PermissionEvaluationStep
                 {
                     Step = "ParentContextCheck",
@@ -182,6 +191,16 @@ public sealed class PermissionService : IPermissionService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var resource = new ResourceIdentifier(PermissionKind.McpTool, toolName, mcpServer);
+        return await EvaluateAsync(resource, context, cancellationToken);
+    }
+    
+    /// <inheritdoc />
+    public async Task<PermissionResult> EvaluateSkillAsync(
+        string skillName, 
+        PermissionContext context, 
+        CancellationToken cancellationToken = default)
+    {
+        var resource = new ResourceIdentifier(PermissionKind.Skill, skillName);
         return await EvaluateAsync(resource, context, cancellationToken);
     }
     
@@ -327,9 +346,11 @@ public sealed class PermissionService : IPermissionService, IDisposable
         PermissionContext context,
         CancellationToken cancellationToken)
     {
+        // 规则排序：优先级降序，相同优先级时 Deny 优先，最后按创建时间
         var rules = context.Policy.Rules
             .Where(r => r.Kind == resource.Kind)
             .OrderByDescending(r => r.Priority)
+            .ThenBy(r => r.Effect == PermissionEffect.Allow ? 1 : 0) // Deny (0) 优先于 Allow (1)
             .ThenBy(r => r.CreatedAt)
             .ToList();
         

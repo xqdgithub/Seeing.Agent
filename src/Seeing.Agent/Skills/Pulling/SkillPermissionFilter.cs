@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Skills.Pulling;
 
 namespace Seeing.Agent.Skills
@@ -17,25 +17,25 @@ namespace Seeing.Agent.Skills
     public class SkillPermissionFilter
     {
         private readonly ILogger<SkillPermissionFilter> _logger;
-        private readonly IRuleEngine? _ruleEngine;
+        private readonly IPermissionService? _permissionService;
 
-        public SkillPermissionFilter(ILogger<SkillPermissionFilter> logger, IRuleEngine? ruleEngine = null)
+        public SkillPermissionFilter(ILogger<SkillPermissionFilter> logger, IPermissionService? permissionService = null)
         {
             _logger = logger;
-            _ruleEngine = ruleEngine;
+            _permissionService = permissionService;
         }
 
         /// <summary>过滤 Skills 列表，返回允许访问的 Skills</summary>
         public async Task<IReadOnlyList<SkillAccess>> FilterAsync(
             IEnumerable<string> skillNames,
-            string context,
+            PermissionContext? permissionContext = null,
             CancellationToken cancellationToken = default)
         {
             var result = new List<SkillAccess>();
 
             foreach (var name in skillNames)
             {
-                var access = await CheckAccessAsync(name, context, cancellationToken);
+                var access = await CheckAccessAsync(name, permissionContext, cancellationToken);
                 result.Add(access);
             }
 
@@ -45,30 +45,29 @@ namespace Seeing.Agent.Skills
         /// <summary>检查单个 Skill 的访问权限</summary>
         public async Task<SkillAccess> CheckAccessAsync(
             string skillName,
-            string context,
+            PermissionContext? permissionContext = null,
             CancellationToken cancellationToken = default)
         {
-            if (_ruleEngine == null)
+            if (_permissionService == null || permissionContext == null)
             {
                 return new SkillAccess
                 {
                     SkillName = skillName,
-                    IsAllowed = true,
-                    Reason = "No rule engine configured"
+                    IsAllowed = false,
+                    Reason = "Permission service not configured"
                 };
             }
 
             try
             {
-                var permission = $"skill:{skillName}";
-                var action = _ruleEngine.Evaluate(permission, context);
+                var result = await _permissionService.EvaluateSkillAsync(skillName, permissionContext, cancellationToken);
 
                 return new SkillAccess
                 {
                     SkillName = skillName,
-                    IsAllowed = action != PermissionAction.Deny,
-                    RequiresConfirmation = action == PermissionAction.Ask,
-                    Reason = $"Rule evaluation: {action}"
+                    IsAllowed = result.IsAllowed,
+                    RequiresConfirmation = result.NeedsConfirmation,
+                    Reason = result.Reason
                 };
             }
             catch (Exception ex)

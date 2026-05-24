@@ -498,8 +498,10 @@ namespace Seeing.Agent.Tools
         {
             if (config == null)
             {
-                // 无权限配置，默认允许
-                return true;
+                // 安全默认：无权限配置时拒绝所有工具调用
+                // 调用方应通过 AgentExecutor 进行权限检查
+                _logger.LogWarning("[Permission] 无权限配置，默认拒绝: {ToolId}", toolId);
+                return false;
             }
 
             // 检查黑名单
