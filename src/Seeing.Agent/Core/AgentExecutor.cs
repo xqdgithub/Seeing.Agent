@@ -8,6 +8,7 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Rules;
 using Seeing.Agent.Tools;
@@ -29,6 +30,7 @@ public class AgentExecutor
     private readonly ILlmService _llm;
     private readonly ToolInvoker _tools;
     private readonly IRuleEngine _rules;
+    private readonly IPermissionService _permissions;
     private readonly IHookManager _hooks;
     private readonly IAgentRegistry _registry;
     private readonly SeeingAgentOptions _options;
@@ -38,6 +40,7 @@ public class AgentExecutor
         ILlmService llm,
         ToolInvoker tools,
         IRuleEngine rules,
+        IPermissionService permissions,
         IHookManager hooks,
         IAgentRegistry registry,
         IOptions<SeeingAgentOptions> options,
@@ -46,6 +49,7 @@ public class AgentExecutor
         _llm = llm;
         _tools = tools;
         _rules = rules;
+        _permissions = permissions;
         _hooks = hooks;
         _registry = registry;
         _options = options.Value;
@@ -584,7 +588,7 @@ public class AgentExecutor
     /// <summary>
     /// 评估权限
     /// </summary>
-    private Task<PermissionDecision> EvaluatePermissionAsync(
+    private async Task<PermissionDecision> EvaluatePermissionAsync(
         string toolName,
         object? arguments,
         AgentDefinition agent,
@@ -594,26 +598,37 @@ public class AgentExecutor
         // 检查黑名单
         if (agent.DeniedTools.Contains(toolName, StringComparer.OrdinalIgnoreCase))
         {
-            return Task.FromResult(PermissionDecision.Deny("工具在黑名单中"));
+            return PermissionDecision.Deny("工具在黑名单中");
         }
 
         // 检查白名单（如果有）
         if (agent.AllowedTools.Count > 0 &&
             !agent.AllowedTools.Contains(toolName, StringComparer.OrdinalIgnoreCase))
         {
-            return Task.FromResult(PermissionDecision.Deny("工具不在白名单中"));
+            return PermissionDecision.Deny("工具不在白名单中");
         }
 
-        // 检查规则引擎
-        var ruleAction = _rules.Evaluate("tool", toolName);
-        var decision = ruleAction switch
+        // 使用新的权限服务
+        var permContext = context.PermissionContext 
+            ?? PermissionContext.FromAgentContext(context, agent.BuildPermissionPolicy());
+        
+        var result = await _permissions.EvaluateToolAsync(toolName, null, permContext);
+        
+        // 处理 Ask 情况
+        if (result.NeedsConfirmation)
         {
-            PermissionAction.Allow => PermissionDecision.Allow(),
-            PermissionAction.Deny => PermissionDecision.Deny("规则引擎拒绝"),
-            PermissionAction.Ask => PermissionDecision.Ask("需要用户确认"),
-            _ => PermissionDecision.Allow()
-        };
-        return Task.FromResult(decision);
+            var userDecision = await permissionChannel.RequestToolPermissionAsync(
+                toolName, arguments, context);
+            
+            if (userDecision.Action != PermissionAction.Allow)
+            {
+                return PermissionDecision.Deny("用户拒绝");
+            }
+            
+            return PermissionDecision.Allow("用户确认允许");
+        }
+        
+        return result.ToDecision();
     }
 
     /// <summary>

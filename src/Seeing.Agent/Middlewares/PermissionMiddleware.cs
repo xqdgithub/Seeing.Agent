@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Middlewares
 {
@@ -8,7 +9,7 @@ namespace Seeing.Agent.Middlewares
     /// </summary>
     public class PermissionMiddleware : IExecutionMiddleware
     {
-        private readonly IRuleEvaluator _ruleEvaluator;
+        private readonly IPermissionService _permissions;
         private readonly ILogger<PermissionMiddleware> _logger;
 
         /// <inheritdoc />
@@ -21,10 +22,10 @@ namespace Seeing.Agent.Middlewares
         /// 创建权限中间件
         /// </summary>
         public PermissionMiddleware(
-            IRuleEvaluator ruleEvaluator,
+            IPermissionService permissions,
             ILogger<PermissionMiddleware> logger)
         {
-            _ruleEvaluator = ruleEvaluator ?? throw new ArgumentNullException(nameof(ruleEvaluator));
+            _permissions = permissions ?? throw new ArgumentNullException(nameof(permissions));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -36,20 +37,26 @@ namespace Seeing.Agent.Middlewares
             // 检查上下文是否实现了权限感知接口
             if (context is IPermissionAware permissionCtx)
             {
-                var decision = _ruleEvaluator.EvaluateTool(permissionCtx.ToolId, context as IExecutionContext);
+                // 创建权限上下文
+                var permContext = new PermissionContext();
+                
+                var result = await _permissions.EvaluateToolAsync(
+                    permissionCtx.ToolId, 
+                    null, 
+                    permContext);
 
                 _logger.LogDebug(
                     "[Permission] 工具 {ToolId} 权限决策: {Action}",
-                    permissionCtx.ToolId, decision.Action);
+                    permissionCtx.ToolId, result.Effect);
 
-                switch (decision.Action)
+                switch (result.Effect)
                 {
-                    case PermissionAction.Deny:
+                    case PermissionEffect.Deny:
                         throw new PermissionDeniedException(
                             permissionCtx.ToolId,
-                            decision.Reason ?? "权限被拒绝");
+                            result.Reason ?? "权限被拒绝");
 
-                    case PermissionAction.Ask:
+                    case PermissionEffect.Ask:
                         if (context is IExecutionContext execCtx)
                         {
                             var request = new PermissionRequest

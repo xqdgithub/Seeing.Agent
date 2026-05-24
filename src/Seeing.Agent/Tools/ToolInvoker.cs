@@ -357,20 +357,8 @@ namespace Seeing.Agent.Tools
                 };
             }
 
-            // 规则引擎评估
-            if (_ruleEvaluator != null)
-            {
-                var decision = _ruleEvaluator.EvaluateTool(toolId);
-                if (decision.Action == PermissionAction.Deny)
-                {
-                    return new ToolResult
-                    {
-                        Success = false,
-                        ToolCallId = toolCall.Id,
-                        Error = $"[规则拒绝] {decision.Reason ?? "权限规则拒绝"}"
-                    };
-                }
-            }
+            // 注意：权限检查已由 AgentExecutor.EvaluatePermissionAsync() 统一处理
+            // 此处不再重复检查，避免双重验证
 
             // ========== Hook: tool.execute.before ==========
             var argsMutable = new Dictionary<string, object?>

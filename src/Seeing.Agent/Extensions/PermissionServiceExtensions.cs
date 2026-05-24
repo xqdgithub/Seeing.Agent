@@ -16,6 +16,9 @@ public static class PermissionServiceExtensions
     /// <returns>服务集合</returns>
     public static IServiceCollection AddPermissionService(this IServiceCollection services)
     {
+        // 注册权限策略提供者
+        services.AddSingleton<IPermissionPolicyProvider, DefaultPermissionPolicyProvider>();
+        
         // 注册权限缓存
         services.AddSingleton<IPermissionCache, PermissionCache>();
         
