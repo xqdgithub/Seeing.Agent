@@ -1,6 +1,3 @@
-using System;
-using System.IO;
-
 namespace Seeing.Agent.Core.Snapshot
 {
     /// <summary>

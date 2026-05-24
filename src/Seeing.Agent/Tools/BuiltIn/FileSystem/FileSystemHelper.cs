@@ -1,11 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 {
@@ -104,7 +99,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         public static bool IsBinaryByContent(string filePath, int sampleSize = 4096)
         {
             if (!File.Exists(filePath)) return false;
-            
+
             var fileInfo = new FileInfo(filePath);
             if (fileInfo.Length == 0) return false;
 
@@ -165,8 +160,8 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         /// </summary>
         public static string TruncateLine(string line)
         {
-            return line.Length > MaxLineLength 
-                ? line.Substring(0, MaxLineLength) + MaxLineSuffix 
+            return line.Length > MaxLineLength
+                ? line.Substring(0, MaxLineLength) + MaxLineSuffix
                 : line;
         }
 
@@ -195,8 +190,8 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         /// 读取文件内容（带限制）
         /// </summary>
         public static (List<string> Lines, int TotalLines, bool Truncated, bool TruncatedByBytes) ReadFileWithLimit(
-            string filePath, 
-            int offset = 1, 
+            string filePath,
+            int offset = 1,
             int limit = DefaultReadLimit)
         {
             var lines = new List<string>();
@@ -353,7 +348,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 if (!Directory.Exists(dir)) return new List<string>();
 
                 var entries = Directory.GetFiles(dir)
-                    .Where(f => 
+                    .Where(f =>
                     {
                         var name = Path.GetFileName(f);
                         return name.ToLowerInvariant().Contains(fileName.ToLowerInvariant()) ||
@@ -433,7 +428,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         public static List<string> GlobSearch(string directory, string pattern, int limit = 100)
         {
             var files = new List<string>();
-            
+
             try
             {
                 // 处理不同类型的 glob 模式
@@ -462,12 +457,12 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             try
             {
                 var dirInfo = new DirectoryInfo(directory);
-                
+
                 // 搜索文件
                 foreach (var file in dirInfo.GetFiles())
                 {
                     if (files.Count >= limit) break;
-                    
+
                     if (Regex.IsMatch(file.FullName, regexPattern, RegexOptions.IgnoreCase))
                     {
                         files.Add(file.FullName);
@@ -478,10 +473,10 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 foreach (var subDir in dirInfo.GetDirectories())
                 {
                     if (files.Count >= limit) break;
-                    
+
                     // 跳过隐藏目录（可选）
                     if (subDir.Name.StartsWith(".")) continue;
-                    
+
                     SearchDirectory(subDir.FullName, regexPattern, files, limit);
                 }
             }
@@ -499,8 +494,8 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         /// Grep 搜索 - 在文件内容中搜索正则表达式模式
         /// </summary>
         public static List<GrepMatch> GrepSearch(
-            string directory, 
-            string pattern, 
+            string directory,
+            string pattern,
             string? includePattern = null,
             int limit = 100)
         {
@@ -527,10 +522,10 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         /// 在目录中搜索文件内容
         /// </summary>
         private static void SearchDirectoryForContent(
-            string directory, 
-            Regex regex, 
+            string directory,
+            Regex regex,
             string? includePattern,
-            List<GrepMatch> matches, 
+            List<GrepMatch> matches,
             int limit)
         {
             if (matches.Count >= limit) return;
@@ -538,7 +533,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             try
             {
                 var dirInfo = new DirectoryInfo(directory);
-                var includeRegex = includePattern != null 
+                var includeRegex = includePattern != null
                     ? new Regex(ConvertGlobToRegex(includePattern), RegexOptions.IgnoreCase | RegexOptions.Compiled)
                     : null;
 
@@ -563,10 +558,10 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 foreach (var subDir in dirInfo.GetDirectories())
                 {
                     if (matches.Count >= limit) break;
-                    
+
                     // 跳过隐藏目录（可选）
                     if (subDir.Name.StartsWith(".")) continue;
-                    
+
                     SearchDirectoryForContent(subDir.FullName, regex, includePattern, matches, limit);
                 }
             }
@@ -584,9 +579,9 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         /// 在单个文件中搜索内容
         /// </summary>
         private static void SearchFileContent(
-            string filePath, 
-            Regex regex, 
-            List<GrepMatch> matches, 
+            string filePath,
+            Regex regex,
+            List<GrepMatch> matches,
             int limit)
         {
             try

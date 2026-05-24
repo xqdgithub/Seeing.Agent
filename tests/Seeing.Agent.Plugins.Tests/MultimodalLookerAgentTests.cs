@@ -69,7 +69,7 @@ public class MultimodalLookerAgentTests
         // 验证系统提示词包含使用场景说明
         var prompt = _agent.SystemPrompt;
         prompt.Should().NotBeNullOrEmpty();
-        
+
         // 检查关键的使用场景内容
         prompt.Should().Contain("何时使用你");
         prompt.Should().Contain("媒体文件");
@@ -84,7 +84,7 @@ public class MultimodalLookerAgentTests
         // 验证系统提示词包含工作模式说明
         var prompt = _agent.SystemPrompt;
         prompt.Should().NotBeNullOrEmpty();
-        
+
         // 检查关键的工作模式内容
         prompt.Should().Contain("你如何工作");
         prompt.Should().Contain("文件路径");
@@ -99,7 +99,7 @@ public class MultimodalLookerAgentTests
         // 验证系统提示词包含响应规则
         var prompt = _agent.SystemPrompt;
         prompt.Should().NotBeNullOrEmpty();
-        
+
         // 检查响应规则内容
         prompt.Should().Contain("响应规则");
         prompt.Should().Contain("直接返回");
@@ -130,7 +130,7 @@ public class MultimodalLookerAgentTests
         // 验证系统提示词包含不应使用的场景说明
         var prompt = _agent.SystemPrompt;
         prompt.Should().NotBeNullOrEmpty();
-        
+
         // 检查不应使用的场景内容
         prompt.Should().Contain("何时不应使用你");
         prompt.Should().Contain("源代码");

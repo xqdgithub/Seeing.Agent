@@ -1,14 +1,13 @@
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
 using System.ClientModel;
-
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using CoreChatMessage = Seeing.Agent.Llm.ChatMessage;
 // 使用类型别名解决命名冲突
 using SdkChatMessage = OpenAI.Chat.ChatMessage;
-using CoreChatMessage = Seeing.Agent.Llm.ChatMessage;
 
 namespace Seeing.Agent.Llm.Clients;
 
@@ -48,7 +47,7 @@ public class OpenAiClient : ILlmClient
 
         _openAiClient = new OpenAIClient(new ApiKeyCredential(config.ApiKey), options);
 
-        _logger.LogDebug("OpenAI 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}", 
+        _logger.LogDebug("OpenAI 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}",
             ProviderId, config.BaseUrl ?? "https://api.openai.com/v1");
     }
 
@@ -64,7 +63,7 @@ public class OpenAiClient : ILlmClient
         var options = BuildOptions(request);
 
         var response = await chatClient.CompleteChatAsync(messages, options, cancellationToken);
-        
+
         return MapResponse(response.Value, request.Model);
     }
 
@@ -139,9 +138,9 @@ public class OpenAiClient : ILlmClient
             var testRequest = new ChatRequest
             {
                 Model = _config.DefaultModel ?? "gpt-4o-mini",
-                Messages = new List<CoreChatMessage> 
-                { 
-                    new() { Role = ChatRole.User, Content = "Hi" } 
+                Messages = new List<CoreChatMessage>
+                {
+                    new() { Role = ChatRole.User, Content = "Hi" }
                 },
                 MaxTokens = 5
             };
@@ -274,13 +273,13 @@ public class OpenAiClient : ILlmClient
             _ => null
         };
 
-    
+
 
     private AssistantChatMessage BuildAssistantMessage(CoreChatMessage msg)
     {
         if (msg.ToolCalls?.Count > 0)
         {
-            var toolCalls = msg.ToolCalls.Select(tc => 
+            var toolCalls = msg.ToolCalls.Select(tc =>
                 ChatToolCall.CreateFunctionToolCall(
                     tc.Id,
                     tc.Function?.Name ?? "",

@@ -54,7 +54,7 @@ namespace Seeing.Agent.Core.Configuration
                 return new T();
 
             T? result = default;
-            
+
             foreach (var source in sources)
             {
                 if (source == null) continue;
@@ -115,7 +115,7 @@ namespace Seeing.Agent.Core.Configuration
         private static bool IsDefault(object? value, Type type)
         {
             if (value == null) return true;
-            
+
             var defaultValue = GetDefault(type);
             return Equals(value, defaultValue);
         }
@@ -125,7 +125,7 @@ namespace Seeing.Agent.Core.Configuration
             // string 的默认值是空字符串，不是 null
             if (type == typeof(string))
                 return string.Empty;
-            
+
             return type.IsValueType ? Activator.CreateInstance(type) : null;
         }
 
@@ -163,9 +163,9 @@ namespace Seeing.Agent.Core.Configuration
 
         private static bool IsComplexObject(Type type)
         {
-            return !type.IsPrimitive && 
-                   type != typeof(string) && 
-                   !type.IsArray && 
+            return !type.IsPrimitive &&
+                   type != typeof(string) &&
+                   !type.IsArray &&
                    typeof(IEnumerable).IsAssignableFrom(type) == false &&
                    !type.IsValueType;
         }

@@ -1,8 +1,6 @@
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.Plan
 {

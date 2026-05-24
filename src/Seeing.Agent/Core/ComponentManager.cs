@@ -6,9 +6,9 @@ using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.MCP;
-using Seeing.Agent.Rules;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
 using System.Collections.Concurrent;
@@ -46,7 +46,7 @@ public class ComponentManager : IComponentManager
         _loaders[ComponentType.Skill] = new SkillLoader();
         _loaders[ComponentType.Mcp] = new McpLoader();
         _loaders[ComponentType.Plugin] = new PluginLoader();
-        _loaders[ComponentType.Rule] = new RuleLoader();
+        // Rule loader removed - rules are now managed through PermissionService
     }
 
     /// <inheritdoc/>
@@ -276,7 +276,7 @@ internal class PluginLoader : IComponentLoader
             WorkspaceRoot = workspaceProvider.WorkspaceRoot,
             HookManager = services.GetRequiredService<HookManager>(),
             ToolInvoker = services.GetRequiredService<ToolInvoker>(),
-            RuleEngine = services.GetRequiredService<RuleEngine>(),
+            PermissionService = services.GetRequiredService<IPermissionService>(),
             SkillManager = services.GetRequiredService<SkillManager>(),
             AgentRegistry = services.GetRequiredService<IAgentRegistry>(),
             McpClientManager = services.GetRequiredService<McpClientManager>(),
@@ -331,79 +331,6 @@ internal class PluginLoader : IComponentLoader
                 return path;
         }
         return null;
-    }
-}
-
-/// <summary>规则加载器</summary>
-internal class RuleLoader : IComponentLoader
-{
-    public ComponentType Type => ComponentType.Rule;
-
-    public async Task<ComponentLoadResult> LoadAsync(
-        IServiceProvider services,
-        string workspaceRoot,
-        CancellationToken cancellationToken = default)
-    {
-        var ruleEngine = services.GetRequiredService<RuleEngine>();
-        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
-        var logger = loggerFactory.CreateLogger<RuleLoader>();
-        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
-
-        // 用户级 ~/.seeing/rules
-        var userRulesDir = Path.Combine(workspaceProvider.UserSeeingDirectory, "rules");
-
-        // 项目级目录
-        var projectRulesDirs = new[]
-        {
-            Path.Combine(workspaceProvider.ProjectSeeingDirectory, "rules"),
-            Path.Combine(workspaceProvider.WorkspaceRoot, ".agents", "rules"),
-            Path.Combine(workspaceProvider.WorkspaceRoot, "rules")
-        };
-
-        var loadedFiles = new List<string>();
-
-        // 加载规则文件（用户级为基础，项目级覆盖）
-        foreach (var dir in new[] { userRulesDir }.Concat(projectRulesDirs))
-        {
-            if (Directory.Exists(dir))
-            {
-                var files = Directory.GetFiles(dir, "*.md");
-                foreach (var file in files)
-                {
-                    try
-                    {
-                        var content = await File.ReadAllTextAsync(file, cancellationToken);
-                        var rules = ParseRulesFromMarkdown(content);
-                        foreach (var rule in rules)
-                        {
-                            ruleEngine.AddRule(rule);
-                            loadedFiles.Add(Path.GetFileNameWithoutExtension(file));
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "规则文件加载失败: {File}", file);
-                    }
-                }
-            }
-        }
-
-        return new ComponentLoadResult
-        {
-            Type = Type,
-            Success = true,
-            Count = loadedFiles.Count,
-            Details = loadedFiles
-        };
-    }
-
-    private static List<PermissionRule> ParseRulesFromMarkdown(string content)
-    {
-        // 简化实现：从 Markdown 解析规则
-        // 实际实现可以更复杂
-        var rules = new List<PermissionRule>();
-        // TODO: 实现完整的 Markdown 规则解析
-        return rules;
     }
 }
 

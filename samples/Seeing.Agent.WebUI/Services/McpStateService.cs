@@ -1,9 +1,8 @@
 namespace Seeing.Agent.WebUI.Services;
 
-using System.Collections.Concurrent;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.MCP.Core;
+using System.Collections.Concurrent;
 
 /// <summary>
 /// MCP 状态服务 - Blazor UI 状态同步
@@ -12,45 +11,45 @@ public sealed class McpStateService : IDisposable
 {
     private readonly IMcpManager _manager;
     private readonly ILogger<McpStateService> _logger;
-    
+
     private readonly ConcurrentDictionary<string, McpServerStatus> _cache = new();
     private Timer? _refreshTimer;
-    
+
     /// <summary>状态变更事件（UI 组件订阅）</summary>
     public event EventHandler? StateChanged;
-    
+
     public McpStateService(IMcpManager manager, ILogger<McpStateService> logger)
     {
         _manager = manager;
         _logger = logger;
-        
+
         _manager.StatusChanged += OnManagerStatusChanged;
-        
+
         // 定时刷新（1秒）
         _refreshTimer = new Timer(
-            RefreshCache, 
-            null, 
-            TimeSpan.FromSeconds(1), 
+            RefreshCache,
+            null,
+            TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(1));
-        
+
         _logger.LogInformation("McpStateService 已初始化");
     }
-    
+
     /// <summary>获取缓存的所有状态</summary>
     public IReadOnlyDictionary<string, McpServerStatus> GetCachedStatus() => _cache;
-    
+
     /// <summary>获取指定 Server 的缓存状态</summary>
     public McpServerStatus? GetCachedStatus(string serverName)
         => _cache.TryGetValue(serverName, out var status) ? status : null;
-    
+
     /// <summary>获取可用 Server 数量</summary>
     public int GetAvailableCount()
         => _cache.Values.Count(s => s.IsAvailable);
-    
+
     /// <summary>获取总工具数量</summary>
     public int GetTotalToolCount()
         => _cache.Values.Sum(s => s.ToolCount);
-    
+
     private void RefreshCache(object? state)
     {
         try
@@ -60,7 +59,7 @@ public sealed class McpStateService : IDisposable
             {
                 _cache[kvp.Key] = kvp.Value.Clone();
             }
-            
+
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
@@ -68,56 +67,56 @@ public sealed class McpStateService : IDisposable
             _logger.LogWarning(ex, "刷新 MCP 状态缓存失败");
         }
     }
-    
+
     private void OnManagerStatusChanged(object? sender, McpStatusChangedEventArgs e)
     {
         _cache[e.ServerName] = e.Status.Clone();
         StateChanged?.Invoke(this, EventArgs.Empty);
-        
+
         _logger.LogDebug("MCP 状态变更: {Server} -> {State}", e.ServerName, e.NewState);
     }
-    
+
     /// <summary>手动刷新</summary>
     public void ManualRefresh()
     {
         RefreshCache(null);
     }
-    
+
     /// <summary>获取所有 MCP 工具</summary>
     public IReadOnlyList<McpToolInfo> GetAllTools()
     {
         return _manager.GetTools();
     }
-    
+
     /// <summary>获取指定 Server 的工具</summary>
     public IReadOnlyList<McpToolInfo> GetServerTools(string serverName)
     {
         return _manager.GetTools().Where(t => t.ServerName == serverName).ToList();
     }
-    
+
     /// <summary>获取配置文件路径</summary>
     public string GetConfigFilePath(McpConfigLevel level)
     {
         return _manager.GetConfigFilePath(level);
     }
-    
+
     /// <summary>获取指定级别的配置 JSON 字符串</summary>
     public string GetConfigsAsJsonString(McpConfigLevel level = McpConfigLevel.Project)
     {
         return _manager.GetConfigsAsJson(level, indented: true);
     }
-    
+
     /// <summary>获取单个服务配置的 JSON 字符串</summary>
     public string? GetServerConfigAsJsonString(string name)
     {
         return _manager.GetServerConfigAsJson(name, indented: true);
     }
-    
+
     public void Dispose()
     {
         _manager.StatusChanged -= OnManagerStatusChanged;  // 防止内存泄漏
         _refreshTimer?.Dispose();
-        
+
         _logger.LogInformation("McpStateService 已释放");
     }
 }

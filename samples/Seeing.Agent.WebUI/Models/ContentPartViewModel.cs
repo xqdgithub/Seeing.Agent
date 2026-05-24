@@ -67,13 +67,13 @@ public class ContentPartViewModel
     {
         if (!string.IsNullOrEmpty(ThumbnailUrl))
             return ThumbnailUrl;
-        
+
         if (!string.IsNullOrEmpty(Url))
             return Url;
-        
+
         if (!string.IsNullOrEmpty(DataBase64) && !string.IsNullOrEmpty(MimeType))
             return $"data:{MimeType};base64,{DataBase64}";
-        
+
         return string.Empty;
     }
 
@@ -84,7 +84,7 @@ public class ContentPartViewModel
     {
         if (IsImage)
             return "image";
-        
+
         var ext = System.IO.Path.GetExtension(FileName ?? "").ToLowerInvariant();
         return ext switch
         {
@@ -125,7 +125,7 @@ public class ContentPartViewModel
     {
         // 从 Base64Content 中提取纯 Base64 数据
         var base64Data = ExtractBase64Data(attachment.Base64Content);
-        
+
         return new ContentPartViewModel
         {
             Type = attachment.IsImage ? "image" : "file",
@@ -143,7 +143,7 @@ public class ContentPartViewModel
     {
         if (string.IsNullOrEmpty(base64Content))
             return null;
-        
+
         // 检查是否有 data: URL 前缀
         const string dataPrefix = "data:";
         if (base64Content.StartsWith(dataPrefix))
@@ -155,7 +155,7 @@ public class ContentPartViewModel
                 return base64Content.Substring(base64Index + 8);
             }
         }
-        
+
         return base64Content;
     }
 }

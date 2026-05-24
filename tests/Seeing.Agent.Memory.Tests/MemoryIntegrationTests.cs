@@ -1,6 +1,3 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Seeing.Agent.Memory.Core;
 using Xunit;
@@ -98,7 +95,7 @@ public class MemoryIntegrationTests : IDisposable
     {
         // Arrange
         await _memoryManager.InitializeAsync();
-        
+
         var semanticMemory = CreateTestMemory("semantic-001", type: MemoryType.Semantic);
         var episodicMemory = CreateTestMemory("episodic-001", type: MemoryType.Episodic);
         var proceduralMemory = CreateTestMemory("procedural-001", type: MemoryType.Procedural);

@@ -1,13 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 {
@@ -29,7 +24,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 
         public override string Id => "read";
 
-        public override string Description => 
+        public override string Description =>
             "读取文件或目录内容。\n\n" +
             "可以读取文件或目录。返回带行号的文件内容，或目录中的条目列表。\n" +
             "使用 offset 和 limit 参数分页读取大文件。\n" +
@@ -198,14 +193,14 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             }
 
             // 检查是否为二进制文件
-            if (FileSystemHelper.IsBinaryByExtension(filePath) || 
+            if (FileSystemHelper.IsBinaryByExtension(filePath) ||
                 FileSystemHelper.IsBinaryByContent(filePath))
             {
                 return Failure($"无法读取二进制文件: {filePath}");
             }
 
             // 读取文本文件
-            var (lines, totalLines, truncated, truncatedByBytes) = 
+            var (lines, totalLines, truncated, truncatedByBytes) =
                 FileSystemHelper.ReadFileWithLimit(filePath, offset, limit);
 
             // 检查 offset 是否超出范围

@@ -7,10 +7,10 @@ namespace Seeing.Agent.Core.Permission
     {
         /// <summary>权限名称</summary>
         public string Permission { get; }
-        
+
         /// <summary>模式</summary>
         public string Pattern { get; }
-        
+
         /// <summary>Agent 名称（可选）</summary>
         public string? AgentName { get; }
 
@@ -27,8 +27,8 @@ namespace Seeing.Agent.Core.Permission
         /// <inheritdoc />
         public bool Equals(PermissionCacheKey other)
         {
-            return Permission == other.Permission && 
-                   Pattern == other.Pattern && 
+            return Permission == other.Permission &&
+                   Pattern == other.Pattern &&
                    AgentName == other.AgentName;
         }
 
@@ -46,8 +46,8 @@ namespace Seeing.Agent.Core.Permission
         /// </summary>
         public override string ToString()
         {
-            return AgentName != null 
-                ? $"{AgentName}:{Permission}:{Pattern}" 
+            return AgentName != null
+                ? $"{AgentName}:{Permission}:{Pattern}"
                 : $"{Permission}:{Pattern}";
         }
     }

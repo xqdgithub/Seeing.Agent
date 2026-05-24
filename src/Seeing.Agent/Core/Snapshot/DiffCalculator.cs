@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 
 namespace Seeing.Agent.Core.Snapshot
@@ -18,29 +15,29 @@ namespace Seeing.Agent.Core.Snapshot
             var result = new List<DiffLine>();
 
             var lcs = LongestCommonSubsequence(lines1, lines2);
-            
+
             int i1 = 0, i2 = 0, lcsIndex = 0;
-            
+
             while (i1 < lines1.Length || i2 < lines2.Length)
             {
                 if (lcsIndex < lcs.Count)
                 {
                     var (lcsLine1, lcsLine2) = lcs[lcsIndex];
-                    
+
                     // 处理删除的行
                     while (i1 < lcsLine1)
                     {
                         result.Add(new DiffLine(DiffOperation.Delete, lines1[i1]));
                         i1++;
                     }
-                    
+
                     // 处理新增的行
                     while (i2 < lcsLine2)
                     {
                         result.Add(new DiffLine(DiffOperation.Insert, lines2[i2]));
                         i2++;
                     }
-                    
+
                     // 处理相同的行
                     if (i1 < lines1.Length && i2 < lines2.Length)
                     {
@@ -122,11 +119,11 @@ namespace Seeing.Agent.Core.Snapshot
         {
             var result = new List<DiffLine>();
             var lines = serialized.Split('\n');
-            
+
             foreach (var line in lines)
             {
                 if (string.IsNullOrEmpty(line)) continue;
-                
+
                 var operation = line[0] switch
                 {
                     ' ' => DiffOperation.Equal,
@@ -134,7 +131,7 @@ namespace Seeing.Agent.Core.Snapshot
                     '-' => DiffOperation.Delete,
                     _ => DiffOperation.Equal
                 };
-                
+
                 result.Add(new DiffLine(operation, line[1..]));
             }
 
@@ -146,15 +143,15 @@ namespace Seeing.Agent.Core.Snapshot
         {
             var diffs = ComputeDiff(text1, text2);
             var sb = new StringBuilder();
-            
+
             sb.AppendLine($"--- {filePath}");
             sb.AppendLine($"+++ {filePath}");
-            
+
             var lines1 = text1.Split('\n');
             var lines2 = text2.Split('\n');
-            
+
             sb.AppendLine($"@@ -1,{lines1.Length} +1,{lines2.Length} @@");
-            
+
             foreach (var diff in diffs)
             {
                 var prefix = diff.Operation switch
@@ -173,7 +170,7 @@ namespace Seeing.Agent.Core.Snapshot
         private List<(int, int)> LongestCommonSubsequence(string[] lines1, string[] lines2)
         {
             var dp = new int[lines1.Length + 1, lines2.Length + 1];
-            
+
             for (int i = 1; i <= lines1.Length; i++)
             {
                 for (int j = 1; j <= lines2.Length; j++)
@@ -187,7 +184,7 @@ namespace Seeing.Agent.Core.Snapshot
 
             var result = new List<(int, int)>();
             int i1 = lines1.Length, i2 = lines2.Length;
-            
+
             while (i1 > 0 && i2 > 0)
             {
                 if (lines1[i1 - 1] == lines2[i2 - 1])

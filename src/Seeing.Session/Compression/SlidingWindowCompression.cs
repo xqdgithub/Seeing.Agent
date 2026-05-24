@@ -1,5 +1,3 @@
-using Seeing.Session.Core;
-
 namespace Seeing.Session.Compression
 {
     /// <summary>

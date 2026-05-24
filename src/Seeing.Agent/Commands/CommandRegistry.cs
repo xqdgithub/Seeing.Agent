@@ -126,7 +126,7 @@ namespace Seeing.Agent.Commands
             if (command == null) return false;
 
             var metadata = command.Metadata;
-            
+
             // 移除主名称
             _commands.Remove(metadata.Name);
 

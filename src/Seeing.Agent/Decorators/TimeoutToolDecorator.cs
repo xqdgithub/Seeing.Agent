@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Text.Json;
 
 namespace Seeing.Agent.Decorators
 {
@@ -38,9 +38,9 @@ namespace Seeing.Agent.Decorators
             {
                 // 创建带超时的上下文
                 var timeoutContext = new TimeoutToolContext(context, cts.Token);
-                
+
                 var result = await base.ExecuteAsync(arguments, timeoutContext);
-                
+
                 return result;
             }
             catch (OperationCanceledException) when (!context.CancellationToken.IsCancellationRequested)

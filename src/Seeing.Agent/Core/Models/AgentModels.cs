@@ -1,5 +1,4 @@
 using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.Core.Models
 {
@@ -14,61 +13,61 @@ namespace Seeing.Agent.Core.Models
     {
         /// <summary>会话 ID</summary>
         public string SessionId { get; set; } = string.Empty;
-        
+
         /// <summary>消息 ID</summary>
         public string MessageId { get; set; } = string.Empty;
-        
+
         /// <summary>取消令牌</summary>
         public CancellationToken CancellationToken { get; set; }
-        
+
         /// <summary>
         /// 服务提供者（用于获取 AgentExecutor、ToolInvoker 等）
         /// </summary>
         public IServiceProvider? Services { get; set; }
-        
+
         /// <summary>
         /// 权限请求通道（多入口抽象）
         /// </summary>
         public Interfaces.IPermissionChannel? PermissionChannel { get; set; }
-        
+
         /// <summary>权限上下文</summary>
         public PermissionContext? PermissionContext { get; set; }
-        
+
         /// <summary>
         /// 消息历史
         /// </summary>
         public List<ChatMessage> History { get; set; } = new();
-        
+
         /// <summary>
         /// 工作目录
         /// </summary>
         public string WorkingDirectory { get; set; } = string.Empty;
-        
+
         /// <summary>
         /// 父会话 ID（子代理调用时）
         /// </summary>
         public string? ParentSessionId { get; set; }
-        
+
         /// <summary>
         /// 是否为后台任务
         /// </summary>
         public bool IsBackground { get; set; }
-        
+
         /// <summary>元数据</summary>
         public Dictionary<string, object> Metadata { get; set; } = new();
-        
+
         /// <summary>是否顶层 Agent（避免嵌套重复触发 Hook）</summary>
         public bool IsTopLevel { get; init; } = true;
-        
+
         /// <summary>父代理名称（子代理时设置）</summary>
         public string? ParentAgentName { get; init; }
-        
+
         /// <summary>累计步骤数（供 agent.after_invoke Hook 使用）</summary>
         public int TotalSteps { get; set; }
-        
+
         /// <summary>累计 Token 使用（供 agent.after_invoke Hook 使用）</summary>
         public TokenUsage? TotalUsage { get; set; }
-        
+
         /// <summary>
         /// 创建子代理上下文
         /// </summary>
@@ -80,7 +79,7 @@ namespace Seeing.Agent.Core.Models
         {
             // 计算子代理权限策略（与父策略求交集）
             var subPolicy = targetAgent.BuildPermissionPolicy();
-            
+
             // 创建子权限上下文（带父引用）
             PermissionContext? subPermContext = null;
             if (PermissionContext != null)
@@ -91,9 +90,9 @@ namespace Seeing.Agent.Core.Models
             else
             {
                 // 无父上下文时，从当前上下文创建
-                subPermContext = PermissionContext.FromAgentContext(this, subPolicy);
+                subPermContext = PermissionContext.FromAgentContext(this, subPolicy, targetAgent.Name);
             }
-            
+
             return new AgentContext
             {
                 SessionId = subSessionId,
@@ -119,13 +118,13 @@ namespace Seeing.Agent.Core.Models
     {
         /// <summary>是否成功</summary>
         public bool Success { get; set; }
-        
+
         /// <summary>生成的消息列表</summary>
         public List<Llm.ChatMessage> Messages { get; set; } = new();
-        
+
         /// <summary>输出文本</summary>
         public string Output { get; set; } = string.Empty;
-        
+
         /// <summary>错误信息</summary>
         public Exception? Error { get; set; }
     }
@@ -137,7 +136,7 @@ namespace Seeing.Agent.Core.Models
     {
         /// <summary>提供商 ID（如 openai、anthropic）</summary>
         public string ProviderId { get; set; } = string.Empty;
-        
+
         /// <summary>模型 ID（如 gpt-4o、claude-3-5-sonnet）</summary>
         public string ModelId { get; set; } = string.Empty;
 
@@ -146,8 +145,8 @@ namespace Seeing.Agent.Core.Models
         /// </summary>
         public override string ToString()
         {
-            return string.IsNullOrEmpty(ProviderId) 
-                ? ModelId 
+            return string.IsNullOrEmpty(ProviderId)
+                ? ModelId
                 : $"{ProviderId}/{ModelId}";
         }
 
@@ -168,7 +167,7 @@ namespace Seeing.Agent.Core.Models
                     ModelId = parts[1]
                 };
             }
-            
+
             // 只有模型 ID，无 Provider
             return new ModelReference
             {
@@ -185,13 +184,13 @@ namespace Seeing.Agent.Core.Models
     {
         /// <summary>就绪 - 可以执行</summary>
         Ready,
-        
+
         /// <summary>需要工厂 - 需要通过 AgentFactory 创建实例</summary>
         RequiresFactory,
-        
+
         /// <summary>已禁用 - 被配置禁用</summary>
         Disabled,
-        
+
         /// <summary>错误 - 初始化或执行出错</summary>
         Error
     }
@@ -206,13 +205,13 @@ namespace Seeing.Agent.Core.Models
         /// <para>仅出现在 UI 的代理选择列表中</para>
         /// </summary>
         Primary,
-        
+
         /// <summary>
         /// 子 Agent - 只能被其他 Agent 调用
         /// <para>不出现在 UI 的代理选择列表中</para>
         /// </summary>
         SubAgent,
-        
+
         /// <summary>
         /// 通用 Agent - 可作为主 Agent 或子 Agent
         /// <para>出现在 UI 列表中，也可被子任务调用</para>

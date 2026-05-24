@@ -1,30 +1,27 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Background;
-using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.BuiltInAgents;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Llm.Clients;
-using Seeing.Agent.Middlewares;
 using Seeing.Agent.MCP;
 using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.MCP.Core;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
 using Seeing.Agent.MCP.Policy;
-using Seeing.Agent.Rules;
-using Seeing.Session.Core;
+using Seeing.Agent.Middlewares;
 using Seeing.Agent.Shell;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
@@ -33,6 +30,7 @@ using Seeing.Agent.Tools.BuiltIn.Shell;
 using Seeing.Agent.Tools.BuiltIn.SubTask;
 using Seeing.Agent.Tools.BuiltIn.Todo;
 using Seeing.Agent.Tools.BuiltIn.Web;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Extensions
 {
@@ -48,7 +46,7 @@ namespace Seeing.Agent.Extensions
         {
             PropertyNameCaseInsensitive = true
         };
-        
+
         /// <summary>
         /// 注册 Seeing.Agent 核心服务
         /// </summary>
@@ -59,10 +57,10 @@ namespace Seeing.Agent.Extensions
             // 获取日志记录器（用于配置加载过程）
             var loggerFactory = services.BuildServiceProvider().GetService<ILoggerFactory>();
             var logger = loggerFactory?.CreateLogger(typeof(ServiceCollectionExtensions));
-            
+
             // 从用户配置文件加载配置
             var options = LoadUserConfiguration(logger);
-            
+
             // 合并 IConfiguration 中的配置（覆盖用户配置）
             var configSection = configuration.GetSection("SeeingAgent");
             if (configSection.Exists())
@@ -88,7 +86,7 @@ namespace Seeing.Agent.Extensions
                         options.DefaultAgent = configOptions.DefaultAgent;
                 }
             }
-            
+
             services.Configure<SeeingAgentOptions>(opt =>
             {
                 opt.DefaultProvider = options.DefaultProvider;
@@ -115,7 +113,7 @@ namespace Seeing.Agent.Extensions
 
             return services;
         }
-        
+
         /// <summary>
         /// 从用户配置文件加载配置（~/.seeing/seeing.json + 项目级）
         /// </summary>
@@ -141,7 +139,7 @@ namespace Seeing.Agent.Extensions
 
             return options;
         }
-        
+
         /// <summary>
         /// 从文件加载配置
         /// </summary>
@@ -149,7 +147,7 @@ namespace Seeing.Agent.Extensions
         {
             if (!File.Exists(path))
                 return;
-            
+
             try
             {
                 var json = File.ReadAllText(path);
@@ -158,9 +156,9 @@ namespace Seeing.Agent.Extensions
                     CommentHandling = System.Text.Json.JsonCommentHandling.Skip,
                     AllowTrailingCommas = true
                 });
-                
+
                 var root = doc.RootElement;
-                
+
                 // 尝试从 SeeingAgent 节读取
                 if (root.TryGetProperty("SeeingAgent", out var seeingAgentSection))
                 {
@@ -171,23 +169,23 @@ namespace Seeing.Agent.Extensions
                     // 直接从根节点读取
                     ParseOptions(root, options, logger);
                 }
-                
+
                 logger?.LogDebug("已从 {Level} 配置文件加载配置: {Path}", level, path);
             }
             catch (System.Text.Json.JsonException ex)
             {
-                logger?.LogWarning(ex, 
-                    "{Level} 配置文件格式错误，已跳过: {Path}。错误位置: {Message}", 
+                logger?.LogWarning(ex,
+                    "{Level} 配置文件格式错误，已跳过: {Path}。错误位置: {Message}",
                     level, path, ex.Message);
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, 
-                    "加载 {Level} 配置文件失败，已跳过: {Path}", 
+                logger?.LogWarning(ex,
+                    "加载 {Level} 配置文件失败，已跳过: {Path}",
                     level, path);
             }
         }
-        
+
         /// <summary>
         /// 解析配置选项
         /// </summary>
@@ -210,7 +208,7 @@ namespace Seeing.Agent.Extensions
                     }
                 }
             }
-            
+
             // Models
             if (element.TryGetProperty("Models", out var models) && models.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
@@ -228,19 +226,19 @@ namespace Seeing.Agent.Extensions
                     }
                 }
             }
-            
+
             // DefaultProvider
             if (element.TryGetProperty("DefaultProvider", out var defaultProvider) && defaultProvider.ValueKind == System.Text.Json.JsonValueKind.String)
                 options.DefaultProvider = defaultProvider.GetString();
-            
+
             // DefaultModel
             if (element.TryGetProperty("DefaultModel", out var defaultModel) && defaultModel.ValueKind == System.Text.Json.JsonValueKind.String)
                 options.DefaultModel = defaultModel.GetString();
-            
+
             // DefaultAgent
             if (element.TryGetProperty("DefaultAgent", out var defaultAgent) && defaultAgent.ValueKind == System.Text.Json.JsonValueKind.String)
                 options.DefaultAgent = defaultAgent.GetString();
-            
+
             // Agents
             if (element.TryGetProperty("Agents", out var agents) && agents.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
@@ -307,7 +305,7 @@ namespace Seeing.Agent.Extensions
         {
             // 注册类型本身（如果需要 DI）
             services.AddTransient(typeof(T));
-            
+
             // 工具发现和注册在 ToolInvoker 中完成
             return services;
         }
@@ -426,13 +424,6 @@ namespace Seeing.Agent.Extensions
             // 权限服务（新系统 - 统一权限检查入口）
             services.AddPermissionService();
 
-            // 权限评估器（旧系统 - 标记为过时，仅用于向后兼容）
-#pragma warning disable CS0618 // Type or member is obsolete
-            services.AddSingleton<RuleEngine>();
-            services.AddSingleton<IRuleEvaluator>(sp => sp.GetRequiredService<RuleEngine>());
-            services.AddSingleton<IRuleEngine>(sp => sp.GetRequiredService<RuleEngine>());
-#pragma warning restore CS0618 // Type or member is obsolete
-
             // Hook 管理器
             services.AddSingleton<HookManager>();
             services.AddSingleton<IHookManager>(sp => sp.GetRequiredService<HookManager>());
@@ -452,7 +443,6 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<AgentRegistry>(sp =>
             {
                 var logger = sp.GetRequiredService<ILogger<AgentRegistry>>();
-                var ruleEngine = sp.GetRequiredService<IRuleEngine>();
                 var agentStore = sp.GetRequiredService<IAgentStore>();
                 var runtimeManager = sp.GetRequiredService<IAgentRuntimeManager>();
                 var discovery = sp.GetRequiredService<AgentDiscovery>();
@@ -467,7 +457,6 @@ namespace Seeing.Agent.Extensions
 
                 var registry = new AgentRegistry(
                     logger,
-                    ruleEngine,
                     agentStore,
                     runtimeManager,
                     allAgents,
@@ -672,7 +661,7 @@ namespace Seeing.Agent.Extensions
         {
             // LLM 客户端工厂
             services.AddSingleton<ILlmClientFactory, DefaultLlmClientFactory>();
-            
+
             // LLM 服务
             services.AddSingleton<ILlmService, LlmService>();
         }

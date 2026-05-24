@@ -1,7 +1,4 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Configuration
 {
@@ -12,10 +9,10 @@ namespace Seeing.Agent.Configuration
     {
         /// <summary>配置变更事件</summary>
         event EventHandler<ConfigReloadEventArgs>? ConfigChanged;
-        
+
         /// <summary>启动监听</summary>
         Task StartAsync(CancellationToken cancellationToken = default);
-        
+
         /// <summary>停止监听</summary>
         Task StopAsync(CancellationToken cancellationToken = default);
     }
@@ -27,13 +24,13 @@ namespace Seeing.Agent.Configuration
     {
         /// <summary>变更类型</summary>
         public ConfigChangeType ChangeType { get; set; }
-        
+
         /// <summary>变更的配置节</summary>
         public string? Section { get; set; }
-        
+
         /// <summary>新的设置值</summary>
         public RuntimeSettings? NewSettings { get; set; }
-        
+
         /// <summary>变更时间</summary>
         public DateTime Timestamp { get; set; } = DateTime.Now;
     }
@@ -45,13 +42,13 @@ namespace Seeing.Agent.Configuration
     {
         /// <summary>默认代理变更</summary>
         DefaultAgentChanged,
-        
+
         /// <summary>Agent 模型变更</summary>
         AgentModelChanged,
-        
+
         /// <summary>设置重置</summary>
         SettingsReset,
-        
+
         /// <summary>文件变更</summary>
         FileChanged
     }
@@ -83,7 +80,7 @@ namespace Seeing.Agent.Configuration
             // 设置文件监听
             var directory = Path.GetDirectoryName(_persistence.SettingsFilePath);
             var fileName = Path.GetFileName(_persistence.SettingsFilePath);
-            
+
             if (!string.IsNullOrEmpty(directory) && !string.IsNullOrEmpty(fileName))
             {
                 _watcher = new FileSystemWatcher(directory, fileName)
@@ -91,7 +88,7 @@ namespace Seeing.Agent.Configuration
                     NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size,
                     EnableRaisingEvents = false
                 };
-                
+
                 _watcher.Changed += OnFileChanged;
             }
         }
@@ -101,7 +98,7 @@ namespace Seeing.Agent.Configuration
         {
             // 加载当前设置
             _currentSettings = await _persistence.LoadAsync(cancellationToken);
-            
+
             // 启动文件监听
             if (_watcher != null)
             {
@@ -130,14 +127,14 @@ namespace Seeing.Agent.Configuration
             {
                 // 防抖：等待文件写入完成
                 await Task.Delay(100);
-                
+
                 var newSettings = await _persistence.LoadAsync();
-                
+
                 lock (_lock)
                 {
                     var changes = DetectChanges(_currentSettings, newSettings);
                     _currentSettings = newSettings;
-                    
+
                     foreach (var change in changes)
                     {
                         OnConfigChanged(change);
@@ -156,7 +153,7 @@ namespace Seeing.Agent.Configuration
         private List<ConfigReloadEventArgs> DetectChanges(RuntimeSettings? oldSettings, RuntimeSettings newSettings)
         {
             var changes = new List<ConfigReloadEventArgs>();
-            
+
             // 默认代理变更
             if (oldSettings?.DefaultAgent != newSettings.DefaultAgent)
             {
@@ -203,12 +200,12 @@ namespace Seeing.Agent.Configuration
         public async Task ReloadAsync(CancellationToken cancellationToken = default)
         {
             var newSettings = await _persistence.LoadAsync(cancellationToken);
-            
+
             lock (_lock)
             {
                 _currentSettings = newSettings;
             }
-            
+
             OnConfigChanged(new ConfigReloadEventArgs
             {
                 ChangeType = ConfigChangeType.FileChanged,

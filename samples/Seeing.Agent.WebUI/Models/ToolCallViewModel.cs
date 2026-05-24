@@ -87,7 +87,7 @@ public class ToolCallViewModel
     public string GetFormattedDuration()
     {
         if (!DurationMs.HasValue) return "";
-        
+
         if (DurationMs.Value < 1000)
             return $"{DurationMs.Value:F0}ms";
         else if (DurationMs.Value < 60000)

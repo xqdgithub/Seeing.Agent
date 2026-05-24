@@ -13,7 +13,7 @@ public interface IPermissionService
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>权限评估结果</returns>
     Task<PermissionResult> EvaluateAsync(ResourceIdentifier resource, PermissionContext context, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// 评估工具调用权限
     /// </summary>
@@ -23,7 +23,7 @@ public interface IPermissionService
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>权限评估结果</returns>
     Task<PermissionResult> EvaluateToolAsync(string toolName, string? ns, PermissionContext context, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// 评估子代理调用权限
     /// </summary>
@@ -32,7 +32,7 @@ public interface IPermissionService
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>权限评估结果</returns>
     Task<PermissionResult> EvaluateAgentAsync(string agentName, PermissionContext context, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// 评估文件操作权限
     /// </summary>
@@ -42,7 +42,7 @@ public interface IPermissionService
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>权限评估结果</returns>
     Task<PermissionResult> EvaluateFileAsync(string filePath, FileOperation operation, PermissionContext context, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// 评估 MCP 工具调用权限
     /// </summary>
@@ -52,7 +52,7 @@ public interface IPermissionService
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>权限评估结果</returns>
     Task<PermissionResult> EvaluateMcpToolAsync(string mcpServer, string toolName, PermissionContext context, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// 评估技能调用权限
     /// </summary>
@@ -61,7 +61,7 @@ public interface IPermissionService
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>权限评估结果</returns>
     Task<PermissionResult> EvaluateSkillAsync(string skillName, PermissionContext context, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// 获取 Agent 的权限策略
     /// </summary>
@@ -69,7 +69,7 @@ public interface IPermissionService
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>权限策略</returns>
     Task<AgentPermissionPolicy> GetPolicyAsync(string agentName, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// 合并全局策略与 Agent 策略
     /// </summary>
@@ -77,14 +77,14 @@ public interface IPermissionService
     /// <param name="agent">Agent 策略</param>
     /// <returns>合并后的策略</returns>
     AgentPermissionPolicy MergePolicies(AgentPermissionPolicy global, AgentPermissionPolicy agent);
-    
+
     /// <summary>
     /// 使缓存失效
     /// </summary>
     /// <param name="agentName">Agent 名称（可选，null 表示所有）</param>
     /// <param name="resourcePattern">资源模式（可选）</param>
     void InvalidateCache(string? agentName = null, string? resourcePattern = null);
-    
+
     /// <summary>
     /// 记录审计日志
     /// </summary>

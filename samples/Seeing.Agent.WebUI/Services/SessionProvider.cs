@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
@@ -92,7 +87,7 @@ namespace Seeing.Agent.WebUI.Services
                 {
                     _sessionManager.Register(session);
                 }
-                
+
                 // 从内存缓存获取列表
                 _sessionList = _sessionManager.List().ToList();
                 _logger?.LogInformation("初始化会话列表完成，共加载 {Count} 个历史会话", _sessionList.Count);
@@ -123,16 +118,16 @@ namespace Seeing.Agent.WebUI.Services
         public async Task<SessionData> CreateSessionAsync(string? title = null, string? agentId = null)
         {
             var session = await _sessionLifecycle.BeginSessionAsync(title, agentId);
-            
+
             // 注册到 SessionManager（确保可以被 LoadAsync 加载）
             _sessionManager.Register(session);
-            
+
             // 保存到存储
             await _sessionManager.SaveAsync(session.Id);
-            
+
             // 添加到列表缓存
             _sessionList.Insert(0, session);
-            
+
             // 设置为当前会话
             CurrentSession = session;
             OnCurrentSessionChanged?.Invoke();
@@ -202,7 +197,7 @@ namespace Seeing.Agent.WebUI.Services
         public async Task<SessionData> BranchSessionAsync(string sourceId, string? newTitle = null)
         {
             var clonedSession = await _sessionLifecycle.CloneSessionAsync(sourceId, newTitle);
-            
+
             // 设置为当前会话
             CurrentSession = clonedSession;
             OnCurrentSessionChanged?.Invoke();

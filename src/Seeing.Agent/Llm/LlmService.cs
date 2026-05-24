@@ -1,12 +1,11 @@
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Interfaces;
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Llm;
 
@@ -52,10 +51,10 @@ public class LlmService : ILlmService
     private readonly ILlmClientFactory _clientFactory;
     private readonly Core.Hooks.IHookManager _hookManager;
     private readonly ILogger _logger;
-    
+
     // 模型配置缓存
     private readonly ConcurrentDictionary<string, ModelConfig> _modelConfigs;
-    
+
     // 客户端缓存
     private readonly ConcurrentDictionary<string, ILlmClient> _clients;
 
@@ -72,13 +71,13 @@ public class LlmService : ILlmService
         _clientFactory = clientFactory;
         _hookManager = hookManager;
         _logger = logger;
-        
+
         _modelConfigs = new ConcurrentDictionary<string, ModelConfig>();
         _clients = new ConcurrentDictionary<string, ILlmClient>();
-        
+
         // 预定义 + SeeingAgent.Models / ModelScope + 各 Provider.models
         InitializeModels();
-        
+
         // 初始化客户端
         InitializeClients();
     }
@@ -95,7 +94,7 @@ public class LlmService : ILlmService
         // 直接匹配
         if (_modelConfigs.TryGetValue(modelId, out var config))
             return config;
-        
+
         // 带 provider 前缀匹配 (如 openai/gpt-4o)
         foreach (var provider in _options.Providers.Keys)
         {
@@ -103,7 +102,7 @@ public class LlmService : ILlmService
             if (_modelConfigs.TryGetValue(prefixedId, out config))
                 return config;
         }
-        
+
         return null;
     }
 
@@ -128,8 +127,8 @@ public class LlmService : ILlmService
 
     /// <summary>发送聊天请求</summary>
     public async Task<ChatResponse> CompleteAsync(
-        string modelId, 
-        ChatRequest request, 
+        string modelId,
+        ChatRequest request,
         CancellationToken cancellationToken = default)
     {
         return await CompleteAsync(modelId, request, sessionId: null, cancellationToken);
@@ -137,8 +136,8 @@ public class LlmService : ILlmService
 
     /// <summary>发送聊天请求（带 Hook 支持）</summary>
     public async Task<ChatResponse> CompleteAsync(
-        string modelId, 
-        ChatRequest request, 
+        string modelId,
+        ChatRequest request,
         string? sessionId,
         CancellationToken cancellationToken = default)
     {
@@ -368,7 +367,7 @@ public class LlmService : ILlmService
         _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
 
         var startTime = DateTime.Now;
-        
+
         // 流式数据累计变量
         var streamedContent = new StringBuilder();
         var streamedReasoning = new StringBuilder();
@@ -410,11 +409,11 @@ public class LlmService : ILlmService
             // 累计内容
             if (!string.IsNullOrEmpty(update.ContentDelta))
                 streamedContent.Append(update.ContentDelta);
-            
+
             // 累计推理内容
             if (!string.IsNullOrEmpty(update.ReasoningDelta))
                 streamedReasoning.Append(update.ReasoningDelta);
-            
+
             // 累计工具调用
             if (update.ToolCallDeltas != null && update.ToolCallDeltas.Count > 0)
             {
@@ -439,11 +438,11 @@ public class LlmService : ILlmService
                     }
                 }
             }
-            
+
             // 累计使用统计（通常在最后一个 update 中）
             if (update.Usage != null)
                 streamedUsage = update.Usage;
-            
+
             yield return update;
         }
 
@@ -482,7 +481,7 @@ public class LlmService : ILlmService
             _logger.LogWarning("未找到 Provider: {ProviderId}", providerId);
             return false;
         }
-        
+
         return await client.TestConnectionAsync(cancellationToken);
     }
 
@@ -588,7 +587,7 @@ public class LlmService : ILlmService
                 _logger.LogWarning("不支持的 Provider 类型: {ProviderId} ({Type})", providerId, providerConfig.Type);
                 continue;
             }
-            
+
             try
             {
                 var client = _clientFactory.Create(providerConfig);

@@ -25,7 +25,7 @@ namespace Seeing.Agent.Configuration
             _logger = logger;
             var baseDir = basePath ?? Path.Combine(Directory.GetCurrentDirectory(), ".seeing");
             _settingsFilePath = Path.Combine(baseDir, "settings.json");
-            
+
             _jsonOptions = new JsonSerializerOptions
             {
                 WriteIndented = true,
@@ -50,16 +50,16 @@ namespace Seeing.Agent.Configuration
 
                 var json = await File.ReadAllTextAsync(_settingsFilePath, cancellationToken);
                 var settings = JsonSerializer.Deserialize<RuntimeSettings>(json, _jsonOptions);
-                
+
                 if (settings == null)
                 {
                     _logger.LogWarning("设置文件反序列化为 null，返回默认设置");
                     return new RuntimeSettings();
                 }
 
-                _logger.LogDebug("已加载运行时设置: DefaultAgent={Agent}, DefaultModel={Model}", 
+                _logger.LogDebug("已加载运行时设置: DefaultAgent={Agent}, DefaultModel={Model}",
                     settings.DefaultAgent, settings.DefaultModel);
-                
+
                 return settings;
             }
             catch (JsonException ex)
@@ -89,9 +89,9 @@ namespace Seeing.Agent.Configuration
 
                 settings.UpdatedAt = DateTime.Now;
                 var json = JsonSerializer.Serialize(settings, _jsonOptions);
-                
+
                 await File.WriteAllTextAsync(_settingsFilePath, json, cancellationToken);
-                
+
                 _logger.LogInformation("已保存运行时设置: DefaultAgent={Agent}, DefaultModel={Model}, Path={Path}",
                     settings.DefaultAgent, settings.DefaultModel, _settingsFilePath);
             }

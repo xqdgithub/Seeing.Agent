@@ -3,12 +3,8 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.Attributes;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools

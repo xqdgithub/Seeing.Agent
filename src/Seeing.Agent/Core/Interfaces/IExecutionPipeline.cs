@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Seeing.Agent.Core.Interfaces
 {
     /// <summary>
@@ -9,13 +7,13 @@ namespace Seeing.Agent.Core.Interfaces
     {
         /// <summary>添加中间件</summary>
         IExecutionPipeline Use(IExecutionMiddleware middleware);
-        
+
         /// <summary>添加中间件类型（通过 DI 解析）</summary>
         IExecutionPipeline Use<TMiddleware>() where TMiddleware : IExecutionMiddleware;
-        
+
         /// <summary>执行管道</summary>
         Task<TResult> ExecuteAsync<TContext, TResult>(
-            TContext context, 
+            TContext context,
             Func<TContext, Task<TResult>> handler);
     }
 
@@ -26,10 +24,10 @@ namespace Seeing.Agent.Core.Interfaces
     {
         /// <summary>中间件名称</summary>
         string Name { get; }
-        
+
         /// <summary>执行顺序（越小越先执行）</summary>
         int Order { get; }
-        
+
         /// <summary>执行中间件</summary>
         Task<TResult> InvokeAsync<TContext, TResult>(
             ExecutionDelegate<TContext, TResult> next,

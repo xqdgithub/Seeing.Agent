@@ -1,8 +1,8 @@
-using System.Reflection;
-using System.Runtime.Loader;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
+using System.Reflection;
+using System.Runtime.Loader;
 
 namespace Seeing.Agent.Extensions
 {
@@ -75,8 +75,8 @@ namespace Seeing.Agent.Extensions
             else if (path.StartsWith("~", StringComparison.Ordinal))
             {
                 var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                path = path.Length == 1 
-                    ? userProfile 
+                path = path.Length == 1
+                    ? userProfile
                     : Path.Combine(userProfile, path.Substring(1).TrimStart('/', '\\'));
             }
 

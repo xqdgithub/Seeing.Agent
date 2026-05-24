@@ -1,9 +1,8 @@
-using System.Collections.Concurrent;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Extensions
 {
@@ -225,7 +224,7 @@ namespace Seeing.Agent.Extensions
                 Mode = agent.Mode,
                 SystemPrompt = agent.SystemPrompt,
                 MaxSteps = agent.MaxSteps,
-                Permissions = agent.Permissions?.ToList() ?? new List<PermissionRule>(),
+                PermissionRules = agent.PermissionRules?.ToList() ?? new List<PermissionRuleEntry>(),
                 AllowedTools = agent.AllowedTools?.ToList() ?? new List<string>(),
                 DeniedTools = agent.DeniedTools?.ToList() ?? new List<string>(),
                 IsNative = false,

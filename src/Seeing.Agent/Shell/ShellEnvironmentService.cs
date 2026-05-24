@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Interfaces;
 
 namespace Seeing.Agent.Shell
 {

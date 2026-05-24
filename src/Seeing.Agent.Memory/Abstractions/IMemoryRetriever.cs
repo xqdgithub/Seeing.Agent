@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Seeing.Agent.Memory.Core;
 
 namespace Seeing.Agent.Memory.Abstractions
@@ -12,14 +9,14 @@ namespace Seeing.Agent.Memory.Abstractions
     {
         Task<IEnumerable<object>> RetrieveAsync(string query);
         Task<IEnumerable<object>> RetrieveAsync(object criteria);
-        
+
         /// <summary>
         /// 根据元数据过滤条件检索记忆
         /// </summary>
         /// <param name="filter">记忆过滤条件</param>
         /// <returns>匹配的记忆条目列表</returns>
         Task<IReadOnlyList<MemoryEntry>> RetrieveByMetadataAsync(MemoryFilter filter);
-        
+
         /// <summary>
         /// 根据时间范围检索记忆（基于 ValidAt 字段）
         /// </summary>
@@ -27,14 +24,14 @@ namespace Seeing.Agent.Memory.Abstractions
         /// <param name="to">结束时间</param>
         /// <returns>时间范围内的记忆条目列表</returns>
         Task<IReadOnlyList<MemoryEntry>> RetrieveByTimeRangeAsync(DateTimeOffset from, DateTimeOffset to);
-        
+
         /// <summary>
         /// 根据 Agent ID 检索记忆
         /// </summary>
         /// <param name="agentId">Agent 标识符</param>
         /// <returns>该 Agent 创建的记忆条目列表</returns>
         Task<IReadOnlyList<MemoryEntry>> RetrieveByAgentAsync(string agentId);
-        
+
         /// <summary>
         /// 检索当前有效的记忆（valid_at &lt;= now &lt; invalid_at）
         /// </summary>

@@ -1,6 +1,6 @@
+using Seeing.Agent.Core.Models;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Core.Permission;
 
@@ -11,31 +11,31 @@ public sealed class PermissionContext
 {
     private readonly byte[] _hmacKey;
     private string? _cachedIntegrityHash;
-    
+
     /// <summary>会话 ID</summary>
     public string SessionId { get; init; } = string.Empty;
-    
+
     /// <summary>Agent 名称</summary>
     public string AgentName { get; init; } = string.Empty;
-    
+
     /// <summary>父上下文（子代理调用时）</summary>
     public PermissionContext? Parent { get; init; }
-    
+
     /// <summary>权限策略</summary>
     public AgentPermissionPolicy Policy { get; init; } = AgentPermissionPolicy.Empty;
-    
+
     /// <summary>环境变量快照</summary>
     public IReadOnlyDictionary<string, string> EnvironmentSnapshot { get; init; } = new Dictionary<string, string>();
-    
+
     /// <summary>工作目录</summary>
     public string WorkingDirectory { get; init; } = Directory.GetCurrentDirectory();
-    
+
     /// <summary>时间戳</summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    
+
     /// <summary>随机数（防重放）</summary>
     public string Nonce { get; init; } = Guid.NewGuid().ToString("N");
-    
+
     /// <summary>
     /// 创建权限上下文
     /// </summary>
@@ -44,7 +44,7 @@ public sealed class PermissionContext
     {
         _hmacKey = hmacKey ?? GenerateHmacKey();
     }
-    
+
     /// <summary>
     /// 计算完整性哈希（HMAC-SHA256）
     /// </summary>
@@ -52,7 +52,7 @@ public sealed class PermissionContext
     public string ComputeIntegrityHash()
     {
         if (_cachedIntegrityHash != null) return _cachedIntegrityHash;
-        
+
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
             SessionId,
@@ -64,21 +64,21 @@ public sealed class PermissionContext
             Nonce,
             ParentHash = Parent?.ComputeIntegrityHash()
         });
-        
+
         using var hmac = new HMACSHA256(_hmacKey);
         var hash = hmac.ComputeHash(payload);
         _cachedIntegrityHash = Convert.ToBase64String(hash);
-        
+
         return _cachedIntegrityHash;
     }
-    
+
     /// <summary>
     /// 验证完整性
     /// </summary>
     /// <param name="expectedHash">期望的哈希值</param>
     /// <returns>是否验证通过</returns>
     public bool VerifyIntegrity(string expectedHash) => ComputeIntegrityHash() == expectedHash;
-    
+
     /// <summary>
     /// 创建子代理上下文
     /// </summary>
@@ -90,9 +90,9 @@ public sealed class PermissionContext
     {
         if (!Policy.IsDelegableTo(subAgentName))
             throw new PermissionDelegationException($"Agent '{AgentName}' cannot delegate to '{subAgentName}'");
-        
+
         var mergedPolicy = Policy.Intersect(subPolicy);
-        
+
         return new PermissionContext(_hmacKey)
         {
             SessionId = SessionId,
@@ -103,36 +103,38 @@ public sealed class PermissionContext
             WorkingDirectory = WorkingDirectory
         };
     }
-    
+
     private static byte[] GenerateHmacKey()
     {
         var key = new byte[32];
         RandomNumberGenerator.Fill(key);
         return key;
     }
-    
+
     /// <summary>
     /// 从 AgentContext 创建 PermissionContext
     /// </summary>
     /// <param name="agentContext">Agent 执行上下文</param>
     /// <param name="policy">权限策略</param>
+    /// <param name="agentName">Agent 名称（可选，用于审计日志）</param>
     /// <param name="hmacKey">HMAC 密钥（可选）</param>
     /// <returns>权限上下文</returns>
     public static PermissionContext FromAgentContext(
         AgentContext agentContext,
         AgentPermissionPolicy policy,
+        string? agentName = null,
         byte[]? hmacKey = null)
     {
         return new PermissionContext(hmacKey)
         {
             SessionId = agentContext.SessionId,
-            AgentName = "unknown", // agentContext.Agent?.Name ?? "unknown",
+            AgentName = agentName ?? policy.AgentName ?? "unknown",
             Policy = policy,
             EnvironmentSnapshot = CaptureEnvironment(),
             WorkingDirectory = agentContext.WorkingDirectory
         };
     }
-    
+
     private static IReadOnlyDictionary<string, string> CaptureEnvironment()
     {
         var whitelist = new[] { "PATH", "HOME", "USER", "TEMP", "TMP", "PWD" };

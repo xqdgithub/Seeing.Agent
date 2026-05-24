@@ -1,12 +1,6 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core.Snapshot
 {
@@ -60,7 +54,7 @@ namespace Seeing.Agent.Core.Snapshot
             }
 
             Snapshot snapshot;
-            
+
             if (lastSnapshot != null)
             {
                 // Diff 模式：存储差异
@@ -93,7 +87,7 @@ namespace Seeing.Agent.Core.Snapshot
             }
 
             await _storage.SaveMetadataAsync(snapshot, cancellationToken);
-            
+
             if (snapshot.IsFullSnapshot)
             {
                 await _storage.SaveContentAsync(snapshot.Id, content, sessionId, cancellationToken);
@@ -140,7 +134,7 @@ namespace Seeing.Agent.Core.Snapshot
             var content2 = await GetSnapshotContentAsync(snapshotId2, cancellationToken);
 
             var diffs = _diffCalculator.ComputeDiff(content1, content2);
-            
+
             return new SnapshotDiff
             {
                 SnapshotId1 = snapshotId1,
@@ -184,7 +178,7 @@ namespace Seeing.Agent.Core.Snapshot
             if (snapshot == null) return false;
 
             var content = await GetSnapshotContentAsync(snapshotId, cancellationToken);
-            
+
             Directory.CreateDirectory(Path.GetDirectoryName(snapshot.FilePath)!);
             await File.WriteAllTextAsync(snapshot.FilePath, content, cancellationToken);
 
@@ -225,7 +219,7 @@ namespace Seeing.Agent.Core.Snapshot
             // 递归获取基础快照内容并应用 Diff
             var baseContent = await GetSnapshotContentAsync(snapshot.BaseSnapshotId!, cancellationToken);
             var diffs = _diffCalculator.DeserializePatch(snapshot.DiffPatches!);
-            
+
             return _diffCalculator.ApplyPatch(baseContent, diffs);
         }
 

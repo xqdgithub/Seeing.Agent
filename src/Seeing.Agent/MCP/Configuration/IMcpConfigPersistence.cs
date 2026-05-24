@@ -1,7 +1,5 @@
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Seeing.Agent.MCP.Core;
+using System.Text.Json;
 
 namespace Seeing.Agent.MCP.Configuration;
 

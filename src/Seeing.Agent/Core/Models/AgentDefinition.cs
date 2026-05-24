@@ -1,4 +1,3 @@
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Core.Models
@@ -39,9 +38,6 @@ namespace Seeing.Agent.Core.Models
         /// <summary>禁止的工具（黑名单）</summary>
         public IReadOnlyList<string> DeniedTools { get; init; } = Array.Empty<string>();
 
-        /// <summary>权限规则</summary>
-        public IReadOnlyList<PermissionRule> Permissions { get; init; } = Array.Empty<PermissionRule>();
-
         /// <summary>温度参数</summary>
         public double? Temperature { get; init; }
 
@@ -72,8 +68,8 @@ namespace Seeing.Agent.Core.Models
         /// <summary>允许的子代理</summary>
         public IReadOnlyList<string> AllowedAgents { get; init; } = Array.Empty<string>();
 
-        /// <summary>权限默认效果</summary>
-        public PermissionEffect PermissionDefaultEffect { get; init; } = PermissionEffect.Deny;
+        /// <summary>权限默认效果（当没有匹配规则时，默认询问用户）</summary>
+        public PermissionEffect PermissionDefaultEffect { get; init; } = PermissionEffect.Ask;
 
         /// <summary>
         /// 构建权限策略
@@ -107,7 +103,8 @@ namespace Seeing.Agent.Core.Models
                 MaxSteps = agent.MaxSteps,
                 AllowedTools = agent.AllowedTools,
                 DeniedTools = agent.DeniedTools,
-                Permissions = agent.Permissions,
+                PermissionRules = agent.PermissionRules,
+                PermissionDefaultEffect = agent.PermissionDefaultEffect,
                 IsHidden = agent.Status == AgentStatus.Disabled
             };
         }

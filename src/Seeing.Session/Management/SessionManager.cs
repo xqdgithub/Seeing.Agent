@@ -1,14 +1,9 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Compression;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Storage;
+using System.Collections.Concurrent;
 
 namespace Seeing.Session.Management
 {
@@ -80,14 +75,14 @@ namespace Seeing.Session.Management
         {
             var session = SessionData.Create(partitionId, selectedAgent);
             _sessionDataCache[session.Id] = session;
-            
+
             // 触发 Created Hook（非阻塞）
             _hookManager?.TriggerFireAndForget(
                 HookPoints.Created,
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
-            
-            _logger?.LogInformation("创建会话: {SessionId}, Partition: {PartitionId}, Agent: {Agent}", 
+
+            _logger?.LogInformation("创建会话: {SessionId}, Partition: {PartitionId}, Agent: {Agent}",
                 session.Id, partitionId ?? "default", selectedAgent ?? "primary");
             return session;
         }
@@ -97,7 +92,7 @@ namespace Seeing.Session.Management
         /// </summary>
         /// <param name="id">会话 ID</param>
         /// <returns>SessionData 或 null</returns>
-        public SessionData? Get(string id) => 
+        public SessionData? Get(string id) =>
             string.IsNullOrEmpty(id) ? null : _sessionDataCache.TryGetValue(id, out var s) ? s : null;
 
         /// <summary>
@@ -116,13 +111,13 @@ namespace Seeing.Session.Management
                     HookPoints.Destroyed,
                     session.Id,
                     result: new Dictionary<string, object?> { ["session"] = session });
-                
+
                 // 异步删除存储（fire-and-forget）
                 if (_store != null)
                 {
                     _ = _store.DeleteAsync(id).ConfigureAwait(false);
                 }
-                
+
                 _logger?.LogInformation("删除会话: {SessionId}", id);
                 return true;
             }
@@ -136,15 +131,15 @@ namespace Seeing.Session.Management
         public void Register(SessionData session)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
-            
+
             _sessionDataCache[session.Id] = session;
-            
+
             // 触发 Created Hook（非阻塞）
             _hookManager?.TriggerFireAndForget(
                 HookPoints.Created,
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
-            
+
             _logger?.LogInformation("注册会话: {SessionId}", session.Id);
         }
 
@@ -166,7 +161,7 @@ namespace Seeing.Session.Management
                 _logger?.LogWarning("会话不存在，无法保存: {SessionId}", id);
                 return;
             }
-            
+
             if (_store == null)
             {
                 _logger?.LogWarning("未配置 SessionStore，无法保存: {SessionId}", id);
@@ -178,16 +173,16 @@ namespace Seeing.Session.Management
                 HookPoints.Saving,
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
-            
+
             // 保存克隆副本（避免后续修改影响）
             await _store.SaveAsync(session.Clone());
-            
+
             // 触发 Saved Hook（非阻塞）
             _hookManager?.TriggerFireAndForget(
                 HookPoints.Saved,
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
-            
+
             _logger?.LogInformation("保存会话: {SessionId}", id);
         }
 
@@ -219,13 +214,13 @@ namespace Seeing.Session.Management
 
             // 缓存到内存
             _sessionDataCache[data.Id] = data;
-            
+
             // 触发 Loaded Hook（非阻塞）
             _hookManager?.TriggerFireAndForget(
                 HookPoints.Loaded,
                 data.Id,
                 result: new Dictionary<string, object?> { ["session"] = data });
-            
+
             _logger?.LogInformation("加载会话: {SessionId}", id);
             return data;
         }
@@ -257,11 +252,11 @@ namespace Seeing.Session.Management
             }
 
             var compressed = _compressor.Compress(original);
-            
+
             // 更新会话消息
             session.Messages.Clear();
             session.Messages.AddRange(compressed);
-            
+
             // 触发 Compressed Hook（非阻塞）
             _hookManager?.TriggerFireAndForget(
                 HookPoints.Compressed,
@@ -272,11 +267,11 @@ namespace Seeing.Session.Management
                     ["originalCount"] = original.Count,
                     ["compressedCount"] = compressed.Count
                 });
-            
+
             _logger?.LogInformation(
                 "压缩会话消息: {SessionId}, 原始: {OriginalCount}, 保留: {CompressedCount}",
                 id, original.Count, compressed.Count);
-            
+
             return compressed;
         }
 

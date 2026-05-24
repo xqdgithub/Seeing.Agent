@@ -35,7 +35,7 @@ namespace Seeing.Agent.Tests.Hooks
             var handler1 = new Mock<IHookHandler>();
             handler1.Setup(h => h.Spec).Returns(HookRegistry.ChatBeforeStart);
             handler1.Setup(h => h.Priority).Returns(20);
-            
+
             var handler2 = new Mock<IHookHandler>();
             handler2.Setup(h => h.Spec).Returns(HookRegistry.ChatBeforeStart);
             handler2.Setup(h => h.Priority).Returns(10);
@@ -54,7 +54,7 @@ namespace Seeing.Agent.Tests.Hooks
             handler1.Setup(h => h.Priority).Returns(10);
             handler1.Setup(h => h.ExecuteAsync(It.IsAny<HookPayload>()))
                 .ReturnsAsync(HookResult.Success);
-            
+
             var handler2 = new Mock<IHookHandler>();
             handler2.Setup(h => h.Spec).Returns(HookRegistry.ToolExecuteBefore);
             handler2.Setup(h => h.Priority).Returns(20);
@@ -80,7 +80,7 @@ namespace Seeing.Agent.Tests.Hooks
             handler1.Setup(h => h.Priority).Returns(10);
             handler1.Setup(h => h.ExecuteAsync(It.IsAny<HookPayload>()))
                 .ReturnsAsync(HookResult.Stop);
-            
+
             var handler2 = new Mock<IHookHandler>();
             handler2.Setup(h => h.Spec).Returns(HookRegistry.ToolExecuteBefore);
             handler2.Setup(h => h.Priority).Returns(20);

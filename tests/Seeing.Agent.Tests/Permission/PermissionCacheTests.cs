@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Moq;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Permission;
 using Xunit;
@@ -8,28 +7,24 @@ namespace Seeing.Agent.Tests.Permission;
 
 public class PermissionCacheTests
 {
-    private readonly Mock<IRuleEngine> _mockRuleEngine;
     private readonly PermissionCache _cache;
 
     public PermissionCacheTests()
     {
-        _mockRuleEngine = new Mock<IRuleEngine>();
-        _cache = new PermissionCache(_mockRuleEngine.Object);
+        _cache = new PermissionCache();
     }
 
     [Fact]
-    public void Get_WhenCacheMiss_EvaluatesViaRuleEngine()
+    public void Get_WhenCacheMiss_ReturnsDeny()
     {
         // Arrange
         var key = new PermissionCacheKey("read", "*");
-        _mockRuleEngine.Setup(x => x.Evaluate("read", "*")).Returns(PermissionAction.Allow);
 
         // Act
         var result = _cache.Get(key);
 
-        // Assert
-        result.Should().Be(PermissionAction.Allow);
-        _mockRuleEngine.Verify(x => x.Evaluate("read", "*"), Times.Once);
+        // Assert - cache miss returns Deny (no automatic evaluation)
+        result.Should().Be(PermissionAction.Deny);
     }
 
     [Fact]
@@ -37,17 +32,42 @@ public class PermissionCacheTests
     {
         // Arrange
         var key = new PermissionCacheKey("write", "*");
-        _mockRuleEngine.Setup(x => x.Evaluate("write", "*")).Returns(PermissionAction.Deny);
-        
-        // First call - cache miss
-        _cache.Get(key);
-        
+        _cache.Set(key, PermissionAction.Deny);
+
         // Act - second call should use cache
         var result = _cache.Get(key);
 
-        // Assert - RuleEngine should only be called once
+        // Assert
         result.Should().Be(PermissionAction.Deny);
-        _mockRuleEngine.Verify(x => x.Evaluate("write", "*"), Times.Once);
+    }
+
+    [Fact]
+    public void TryGet_WhenCacheMiss_ReturnsFalse()
+    {
+        // Arrange
+        var key = new PermissionCacheKey("bash", "*");
+
+        // Act
+        var found = _cache.TryGet(key, out var action);
+
+        // Assert
+        found.Should().BeFalse();
+        action.Should().Be(PermissionAction.Deny);
+    }
+
+    [Fact]
+    public void TryGet_WhenCacheHit_ReturnsTrueAndCachedValue()
+    {
+        // Arrange
+        var key = new PermissionCacheKey("bash", "*");
+        _cache.Set(key, PermissionAction.Ask);
+
+        // Act
+        var found = _cache.TryGet(key, out var action);
+
+        // Assert
+        found.Should().BeTrue();
+        action.Should().Be(PermissionAction.Ask);
     }
 
     [Fact]
@@ -55,24 +75,22 @@ public class PermissionCacheTests
     {
         // Arrange
         var key = new PermissionCacheKey("bash", "*");
-        _mockRuleEngine.Setup(x => x.Evaluate("bash", "*")).Returns(PermissionAction.Ask);
-        _cache.Get(key);
+        _cache.Set(key, PermissionAction.Ask);
 
         // Act
         _cache.Invalidate(key);
-        _cache.Get(key);
+        var found = _cache.TryGet(key, out _);
 
-        // Assert - should evaluate twice after invalidation
-        _mockRuleEngine.Verify(x => x.Evaluate("bash", "*"), Times.Exactly(2));
+        // Assert
+        found.Should().BeFalse();
     }
 
     [Fact]
     public void Clear_RemovesAllEntries()
     {
         // Arrange
-        _mockRuleEngine.Setup(x => x.Evaluate(It.IsAny<string>(), It.IsAny<string>())).Returns(PermissionAction.Allow);
-        _cache.Get(new PermissionCacheKey("read", "*"));
-        _cache.Get(new PermissionCacheKey("write", "*"));
+        _cache.Set(new PermissionCacheKey("read", "*"), PermissionAction.Allow);
+        _cache.Set(new PermissionCacheKey("write", "*"), PermissionAction.Deny);
 
         // Act
         _cache.Clear();
@@ -80,6 +98,57 @@ public class PermissionCacheTests
 
         // Assert
         total.Should().Be(0);
+    }
+
+    [Fact]
+    public void Set_WithCustomTtl_StoresEntry()
+    {
+        // Arrange
+        var key = new PermissionCacheKey("read", "*");
+        _cache.Set(key, PermissionAction.Allow, TimeSpan.FromMinutes(10));
+
+        // Act
+        var found = _cache.TryGet(key, out var action);
+
+        // Assert
+        found.Should().BeTrue();
+        action.Should().Be(PermissionAction.Allow);
+    }
+
+    [Fact]
+    public void InvalidateByPermission_RemovesMatchingEntries()
+    {
+        // Arrange
+        var key1 = new PermissionCacheKey("file_read", "/public/*");
+        var key2 = new PermissionCacheKey("file_write", "/private/*");
+        _cache.Set(key1, PermissionAction.Allow);
+        _cache.Set(key2, PermissionAction.Deny);
+
+        // Act
+        _cache.InvalidateByPermission("file_read");
+
+        // Assert
+        _cache.TryGet(key1, out _).Should().BeFalse();
+        _cache.TryGet(key2, out var action).Should().BeTrue();
+        action.Should().Be(PermissionAction.Deny);
+    }
+
+    [Fact]
+    public void InvalidateByAgent_RemovesMatchingEntries()
+    {
+        // Arrange
+        var key1 = new PermissionCacheKey("read", "*", "agent1");
+        var key2 = new PermissionCacheKey("read", "*", "agent2");
+        _cache.Set(key1, PermissionAction.Allow);
+        _cache.Set(key2, PermissionAction.Deny);
+
+        // Act
+        _cache.InvalidateByAgent("agent1");
+
+        // Assert
+        _cache.TryGet(key1, out _).Should().BeFalse();
+        _cache.TryGet(key2, out var action).Should().BeTrue();
+        action.Should().Be(PermissionAction.Deny);
     }
 
     [Fact]

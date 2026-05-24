@@ -60,11 +60,11 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
                 killer.Exited += (s, e) => tcs.TrySetResult(true);
 
                 killer.Start();
-                
+
                 // 设置超时以防进程启动失败
                 using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-                
+
                 try
                 {
                     await tcs.Task.WaitAsync(linkedCts.Token);

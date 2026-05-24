@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core.Snapshot;
 
@@ -40,7 +40,7 @@ public class FileSnapshotService : IFileSnapshotService
         };
 
         _snapshots[snapshot.Id] = snapshot;
-        _logger.LogInformation("创建文件快照: {SnapshotId}, 文件: {FilePath}, 操作: {Operation}", 
+        _logger.LogInformation("创建文件快照: {SnapshotId}, 文件: {FilePath}, 操作: {Operation}",
             snapshot.Id, filePath, operation ?? "无");
 
         return snapshot;

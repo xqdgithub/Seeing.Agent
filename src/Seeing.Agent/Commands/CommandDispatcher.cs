@@ -96,9 +96,9 @@ namespace Seeing.Agent.Commands
         private string? GetSuggestion(string input)
         {
             var commands = _registry.GetAllCommands().ToList();
-            
+
             // 完全匹配前缀
-            var prefixMatch = commands.FirstOrDefault(c => 
+            var prefixMatch = commands.FirstOrDefault(c =>
                 c.Metadata.Name.StartsWith(input, StringComparison.OrdinalIgnoreCase));
             if (prefixMatch != null)
                 return prefixMatch.Metadata.Name;

@@ -1,14 +1,9 @@
-using System;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Seeing.Agent.Core.Snapshot
 {
@@ -32,7 +27,7 @@ namespace Seeing.Agent.Core.Snapshot
         {
             var path = GetMetadataPath(snapshot);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            
+
             var json = JsonSerializer.Serialize(snapshot);
             await File.WriteAllTextAsync(path, json, ct);
         }
@@ -60,7 +55,7 @@ namespace Seeing.Agent.Core.Snapshot
         {
             var path = GetContentPath(snapshotId, sessionId);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            
+
             await File.WriteAllTextAsync(path, content, ct);
             _contentCache[snapshotId] = content;
         }
@@ -125,7 +120,7 @@ namespace Seeing.Agent.Core.Snapshot
                     {
                         var json = await File.ReadAllTextAsync(file, ct);
                         var snapshot = JsonSerializer.Deserialize<Snapshot>(json);
-                        
+
                         if (snapshot != null && snapshot.CreatedAt < cutoff)
                         {
                             await DeleteSnapshotAsync(snapshot.Id, Path.GetFileName(sessionDir), ct);

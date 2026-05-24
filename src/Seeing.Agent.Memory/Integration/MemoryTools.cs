@@ -1,9 +1,7 @@
-using System;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Tools.Attributes;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core;
+using Seeing.Agent.Tools.Attributes;
 
 namespace Seeing.Agent.Memory.Integration;
 
@@ -76,7 +74,7 @@ public class MemoryTools
 
         var filter = new MemoryFilter
         {
-            SessionId = sessionId
+            SessionId = sessionId ?? string.Empty
         };
 
         var result = await _manager.SearchMemoriesAsync(query, filter);

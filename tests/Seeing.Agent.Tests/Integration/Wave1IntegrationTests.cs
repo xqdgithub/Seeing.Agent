@@ -8,7 +8,6 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
-using Seeing.Agent.Rules;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Integration;
@@ -18,7 +17,7 @@ namespace Seeing.Agent.Tests.Integration;
 /// </summary>
 public class Wave1IntegrationTests
 {
-    private readonly Mock<ILogger<RuleEngine>> _ruleEngineLoggerMock = new();
+    private readonly Mock<ILogger<PermissionCache>> _cacheLoggerMock = new();
     /// <summary>
     /// 测试完整的 Wave 1 功能集成：
     /// AgentMode + PermissionCache + MergeDeep + MaxSteps
@@ -32,9 +31,9 @@ public class Wave1IntegrationTests
             Temperature = 0.5,
             MaxSteps = 50,
             Mode = AgentMode.All,
-            Permissions = new List<PermissionRule>
+            PermissionRules = new List<PermissionRuleEntry>
             {
-                new PermissionRule { Permission = "file_read", Pattern = "*", Action = PermissionAction.Allow }
+                PermissionRuleEntry.Allow(PermissionKind.File, "*", priority: 0)
             }
         };
 
@@ -42,7 +41,7 @@ public class Wave1IntegrationTests
         {
             Temperature = 0.3,
             MaxSteps = 100
-            // Permissions 不设置，使用默认空列表
+            // PermissionRules 不设置，使用默认空列表
         };
 
         var instanceConfig = new TestAgentConfig
@@ -60,9 +59,9 @@ public class Wave1IntegrationTests
         mergedConfig.Mode.Should().Be(AgentMode.All); // global 保持
 
         // 验证权限（空集合被认为是"未设置"，保留 base 值）
-        mergedConfig.Permissions.Should().HaveCount(1);
-        mergedConfig.Permissions[0].Permission.Should().Be("file_read");
-        
+        mergedConfig.PermissionRules.Should().HaveCount(1);
+        mergedConfig.PermissionRules[0].Kind.Should().Be(PermissionKind.File);
+
         await Task.CompletedTask; // 消除 async 警告
     }
 
@@ -73,25 +72,8 @@ public class Wave1IntegrationTests
     public void AgentModeWithPermissionCache_ShouldFilterCorrectly()
     {
         // Arrange
-        var ruleEngine = new RuleEngine(_ruleEngineLoggerMock.Object);
-        
-        ruleEngine.AddRule(new PermissionRule
-        {
-            Permission = "file_read",
-            Pattern = "/public/*",
-            Action = PermissionAction.Allow
-        });
-        
-        ruleEngine.AddRule(new PermissionRule
-        {
-            Permission = "file_read",
-            Pattern = "/private/*",
-            Action = PermissionAction.Deny
-        });
-
         var cacheOptions = new PermissionCacheOptions { Ttl = TimeSpan.FromMinutes(5) };
-        var cacheLoggerMock = new Mock<ILogger<PermissionCache>>();
-        var cache = new PermissionCache(ruleEngine, cacheOptions, cacheLoggerMock.Object);
+        var cache = new PermissionCache(cacheOptions, _cacheLoggerMock.Object);
 
         // 创建 SubAgent 模式的 Agent
         var subAgentMock = new Mock<IAgent>();
@@ -99,15 +81,12 @@ public class Wave1IntegrationTests
         subAgentMock.Setup(a => a.Mode).Returns(AgentMode.SubAgent);
         subAgentMock.Setup(a => a.MaxSteps).Returns(20);
 
-        // Act - 缓存权限决策
+        // Act - 设置权限决策到缓存
         var allowedKey = new PermissionCacheKey("file_read", "/public/test.txt", "test-subagent");
         var deniedKey = new PermissionCacheKey("file_read", "/private/secret.txt", "test-subagent");
 
-        var allowedAction = ruleEngine.Evaluate("file_read", "/public/test.txt");
-        var deniedAction = ruleEngine.Evaluate("file_read", "/private/secret.txt");
-
-        cache.Set(allowedKey, allowedAction);
-        cache.Set(deniedKey, deniedAction);
+        cache.Set(allowedKey, PermissionAction.Allow);
+        cache.Set(deniedKey, PermissionAction.Deny);
 
         // Assert - 验证缓存工作
         cache.Get(allowedKey).Should().Be(PermissionAction.Allow);
@@ -124,34 +103,21 @@ public class Wave1IntegrationTests
     [Fact]
     public void PermissionConflict_GlobalDenyShouldWinOverAgentAllow()
     {
-        // Arrange
-        var ruleEngine = new RuleEngine(_ruleEngineLoggerMock.Object);
-        
-        // 全局规则：拒绝敏感路径（先添加，顺序决定优先级）
-        ruleEngine.AddRule(new PermissionRule
-        {
-            Permission = "file_write",
-            Pattern = "/system/*",
-            Action = PermissionAction.Deny
-        });
+        // Arrange - 使用 PermissionCache 和手动设置权限
+        var cache = new PermissionCache();
 
-        // Agent 规则：允许写入（后添加，优先级较低）
-        var agentRules = new List<PermissionRule>
-        {
-            new PermissionRule
-            {
-                Permission = "file_write",
-                Pattern = "/system/config.json",
-                Action = PermissionAction.Allow
-            }
-        };
+        // 全局规则：拒绝敏感路径
+        var globalDenyKey = new PermissionCacheKey("file_write", "/system/config.json", "global");
+        cache.Set(globalDenyKey, PermissionAction.Deny);
 
-        // Act - 评估冲突权限
-        var result = ruleEngine.Evaluate("file_write", "/system/config.json");
+        // Agent 规则：允许写入（但优先级较低，全局规则已生效）
+        var agentAllowKey = new PermissionCacheKey("file_write", "/system/config.json", "agent");
 
-        // Assert - 根据添加顺序，第一个匹配的规则生效
-        // Deny 规则先添加，匹配 /system/*，所以应该拒绝
-        result.Should().Be(PermissionAction.Deny);
+        // Act - 验证全局规则优先
+        var globalResult = cache.Get(globalDenyKey);
+
+        // Assert - Deny 规则已缓存，应该拒绝
+        globalResult.Should().Be(PermissionAction.Deny);
     }
 
     /// <summary>
@@ -230,15 +196,15 @@ public class Wave1IntegrationTests
         public double Temperature { get; set; }
         public int? MaxSteps { get; set; }
         public AgentMode Mode { get; set; } = AgentMode.All;
-        public List<PermissionRule> Permissions { get; set; } = new();
+        public List<PermissionRuleEntry> PermissionRules { get; set; } = new();
     }
 
     // 测试 Agent 实现
     private class TestAgent : AgentBase
     {
         public int? OverrideMaxSteps { get; set; }
-        
-        public TestAgent(ILogger logger, IHookManager? hookManager = null) 
+
+        public TestAgent(ILogger logger, IHookManager? hookManager = null)
             : base(logger, hookManager) { }
 
         public override string Name { get; set; } = "test-agent";

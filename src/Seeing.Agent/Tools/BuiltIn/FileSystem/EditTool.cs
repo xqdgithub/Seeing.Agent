@@ -1,13 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 {
@@ -353,21 +349,21 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         private int CalculateMinIndent(List<string> diffLines)
         {
             var minIndent = int.MaxValue;
-            
+
             foreach (var line in diffLines)
             {
                 if (line.StartsWith("---") || line.StartsWith("+++")) continue;
                 if (!line.StartsWith("+") && !line.StartsWith("-") && !line.StartsWith(" ")) continue;
-                
+
                 var content = line.Substring(1);
                 if (string.IsNullOrWhiteSpace(content)) continue;
-                
+
                 var indent = 0;
                 while (indent < content.Length && (content[indent] == ' ' || content[indent] == '\t'))
                 {
                     indent++;
                 }
-                
+
                 minIndent = Math.Min(minIndent, indent);
             }
 
@@ -581,9 +577,9 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
     {
         public IEnumerable<string> FindMatches(string content, string find)
         {
-            var normalizeWhitespace = (string text) => 
+            var normalizeWhitespace = (string text) =>
                 System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
-            
+
             var normalizedFind = normalizeWhitespace(find);
             var lines = content.Split('\n');
 

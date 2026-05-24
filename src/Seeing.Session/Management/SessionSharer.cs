@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Concurrent;
-using System.IO;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace Seeing.Session.Management
 {

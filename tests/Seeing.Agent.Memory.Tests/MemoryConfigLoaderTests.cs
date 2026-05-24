@@ -1,9 +1,7 @@
-using System;
-using System.IO;
 using FluentAssertions;
-using Xunit;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Configuration;
+using Xunit;
 
 namespace Seeing.Agent.Memory.Tests
 {

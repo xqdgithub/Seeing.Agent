@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
 
 namespace Seeing.Session.Storage
 {
@@ -100,17 +96,17 @@ namespace Seeing.Session.Storage
         /// 枚举过滤后的会话
         /// </summary>
         private async IAsyncEnumerable<SessionData> EnumerateSessionsFiltered(
-            string partitionId, 
+            string partitionId,
             string agentId)
         {
             await foreach (var session in EnumerateSessions())
             {
-                var matchPartition = string.IsNullOrEmpty(partitionId) || 
+                var matchPartition = string.IsNullOrEmpty(partitionId) ||
                                      session.PartitionId == partitionId;
-                
-                var matchAgent = string.IsNullOrEmpty(agentId) || 
+
+                var matchAgent = string.IsNullOrEmpty(agentId) ||
                                  (session.Agent?.AgentId == agentId);
-                
+
                 if (matchPartition && matchAgent)
                 {
                     yield return session;

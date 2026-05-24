@@ -1,7 +1,3 @@
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Abstractions;
-using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Llm;
 using System.Runtime.CompilerServices;
@@ -389,7 +385,7 @@ task(subagent_type="librarian", run_in_background=true, load_skills=[], descript
 
         // 实际的 LLM 调用和自主执行逻辑需要在此实现
         // 这需要集成 ILlmClient 或类似的接口
-        
+
         yield return new ChatMessage
         {
             Role = "assistant",

@@ -1,12 +1,7 @@
-using System;
-using System.IO;
-using System.IO.Compression;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
-using Seeing.Session.Storage;
+using System.IO.Compression;
+using System.Text.Json;
 
 namespace Seeing.Session.Management
 {

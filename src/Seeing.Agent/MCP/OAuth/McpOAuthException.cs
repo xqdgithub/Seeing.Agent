@@ -1,5 +1,3 @@
-using System;
-
 namespace Seeing.Agent.MCP.OAuth
 {
     /// <summary>
@@ -26,7 +24,7 @@ namespace Seeing.Agent.MCP.OAuth
         /// <summary>
         /// 创建 MCP OAuth 异常
         /// </summary>
-        public McpOAuthException(string message, string mcpName, McpAuthStatus? status = null) 
+        public McpOAuthException(string message, string mcpName, McpAuthStatus? status = null)
             : base(message)
         {
             McpName = mcpName;

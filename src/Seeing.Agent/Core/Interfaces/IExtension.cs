@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
@@ -15,35 +16,35 @@ namespace Seeing.Agent.Core.Interfaces
     {
         /// <summary>服务提供者</summary>
         public IServiceProvider Services { get; set; } = null!;
-        
+
         /// <summary>配置</summary>
         public IConfiguration Configuration { get; set; } = null!;
-        
+
         /// <summary>当前工作目录</summary>
         public string Directory { get; set; } = "";
-        
+
         /// <summary>工作区根目录</summary>
         public string WorkspaceRoot { get; set; } = "";
 
         // 核心服务引用
         /// <summary>Hook 管理器</summary>
         public HookManager HookManager { get; set; } = null!;
-        
+
         /// <summary>工具调用器</summary>
         public ToolInvoker ToolInvoker { get; set; } = null!;
-        
-        /// <summary>规则引擎</summary>
-        public Rules.RuleEngine RuleEngine { get; set; } = null!;
-        
+
+        /// <summary>权限服务</summary>
+        public IPermissionService PermissionService { get; set; } = null!;
+
         /// <summary>技能管理器</summary>
         public SkillManager SkillManager { get; set; } = null!;
-        
+
         /// <summary>Agent 注册表</summary>
         public IAgentRegistry AgentRegistry { get; set; } = null!;
-        
+
         /// <summary>MCP 客户端管理器</summary>
         public McpClientManager McpClientManager { get; set; } = null!;
-        
+
         /// <summary>命令注册表</summary>
         public ICommandRegistry CommandRegistry { get; set; } = null!;
     }
@@ -55,31 +56,31 @@ namespace Seeing.Agent.Core.Interfaces
     {
         /// <summary>状态：first（首次加载）、updated（更新）、same（相同）</summary>
         public string State { get; set; } = "first";
-        
+
         /// <summary>扩展唯一标识</summary>
         public string Id { get; set; } = "";
-        
+
         /// <summary>来源：npm 或 file</summary>
         public string Source { get; set; } = "";
-        
+
         /// <summary>原始 spec</summary>
         public string Spec { get; set; } = "";
-        
+
         /// <summary>目标路径（程序集路径）</summary>
         public string Target { get; set; } = "";
-        
+
         /// <summary>版本（NuGet 插件）</summary>
         public string? Version { get; set; }
-        
+
         /// <summary>加载次数</summary>
         public int LoadCount { get; set; } = 1;
-        
+
         /// <summary>首次加载时间（Unix 毫秒）</summary>
         public long FirstTime { get; set; }
-        
+
         /// <summary>最后加载时间（Unix 毫秒）</summary>
         public long LastTime { get; set; }
-        
+
         /// <summary>指纹（用于检测变更）</summary>
         public string Fingerprint { get; set; } = "";
     }
@@ -141,7 +142,7 @@ namespace Seeing.Agent.Core.Interfaces
         /// </summary>
         /// <param name="context">扩展上下文</param>
         /// <param name="meta">扩展元数据</param>
-        Task InitializeAsync(ExtensionContext context, ExtensionMeta meta) 
+        Task InitializeAsync(ExtensionContext context, ExtensionMeta meta)
             => Task.CompletedTask;
 
         /// <summary>

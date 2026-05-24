@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Helpers;
@@ -283,7 +282,7 @@ namespace Seeing.Agent.Tools.Discovery
         /// 从类型创建工具包装器列表
         /// </summary>
         public static List<ITool> CreateTools(
-            Type type, 
+            Type type,
             ILoggerFactory? loggerFactory = null,
             IServiceProvider? serviceProvider = null)
         {

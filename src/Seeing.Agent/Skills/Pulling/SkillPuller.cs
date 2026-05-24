@@ -1,11 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Skills.Pulling
 {
@@ -84,7 +78,7 @@ namespace Seeing.Agent.Skills.Pulling
                 var content = await httpClient.GetStringAsync(url, cancellationToken);
 
                 // 解析 Skill 名称
-                var skillName = ExtractSkillName(content) ?? 
+                var skillName = ExtractSkillName(content) ??
                     Path.GetFileNameWithoutExtension(new Uri(url).Segments.Last());
 
                 // 保存到本地
@@ -196,7 +190,7 @@ namespace Seeing.Agent.Skills.Pulling
                     var response = await httpClient.SendAsync(
                         new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Head, source),
                         cancellationToken);
-                    
+
                     return new SkillValidationResult
                     {
                         IsValid = response.IsSuccessStatusCode,
@@ -251,15 +245,15 @@ namespace Seeing.Agent.Skills.Pulling
                 var skills = new List<SkillPullInfo>();
                 var namePattern = new Regex(@"""name""\s*:\s*""([^""]+)""");
                 var pathPattern = new Regex(@"""path""\s*:\s*""([^""]+)""");
-                
+
                 var matches = namePattern.Matches(response);
                 var pathMatches = pathPattern.Matches(response);
-                
+
                 for (int i = 0; i < matches.Count && i < pathMatches.Count; i++)
                 {
                     var name = matches[i].Groups[1].Value;
                     var path = pathMatches[i].Groups[1].Value;
-                    
+
                     if (name.EndsWith(".md"))
                     {
                         skills.Add(new SkillPullInfo
@@ -287,7 +281,7 @@ namespace Seeing.Agent.Skills.Pulling
             // https://github.com/owner/repo/blob/branch/path/file.md
             var pattern = new Regex(@"github\.com/([^/]+)/([^/]+)(?:/(?:tree|blob)/[^/]+/(.+))?");
             var match = pattern.Match(url);
-            
+
             if (match.Success)
             {
                 return (match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Success ? match.Groups[3].Value : null);

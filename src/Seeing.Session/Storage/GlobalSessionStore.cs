@@ -1,12 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
+using System.Text.Json;
 
 namespace Seeing.Session.Storage
 {
@@ -69,7 +63,7 @@ namespace Seeing.Session.Storage
         public async Task<SessionStatistics> GetStatisticsAsync(CancellationToken ct = default)
         {
             var stats = new SessionStatistics();
-            
+
             if (!Directory.Exists(_basePath))
                 return stats;
 

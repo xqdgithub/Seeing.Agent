@@ -30,11 +30,11 @@ namespace Seeing.Agent.Middlewares
             TContext context)
         {
             var contextType = typeof(TContext).Name;
-            
+
             // 从上下文获取更多信息
             string? sessionId = null;
             string? messageId = null;
-            
+
             if (context is IExecutionContext execCtx)
             {
                 sessionId = execCtx.SessionId;

@@ -1,7 +1,7 @@
-using System.Text.Json;
+using Seeing.Agent.Helpers;
 using System.Security.Cryptography;
 using System.Text;
-using Seeing.Agent.Helpers;
+using System.Text.Json;
 
 namespace Seeing.Agent.Core.Models
 {
@@ -146,7 +146,7 @@ namespace Seeing.Agent.Core.Models
     {
         /// <summary>参数名</summary>
         public string ParameterName { get; }
-        
+
         /// <summary>期望类型</summary>
         public Type ExpectedType { get; }
 

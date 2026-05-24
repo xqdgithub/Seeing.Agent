@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.WebUI.State;
-using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 
@@ -17,19 +13,19 @@ namespace Seeing.Agent.WebUI.Services
         public required string SessionId { get; init; }
         public DateTime Timestamp { get; init; } = DateTime.Now;
         public MessageEventType Type => MessageEventType.Error; // 兼容接口，实际使用 EventType 属性
-        
+
         /// <summary>权限请求 ID</summary>
         public string PermissionId { get; init; } = "";
-        
+
         /// <summary>权限类型/工具名</summary>
         public string Permission { get; init; } = "";
-        
+
         /// <summary>资源路径</summary>
         public string? Resource { get; init; }
-        
+
         /// <summary>请求消息</summary>
         public string? Message { get; init; }
-        
+
         /// <summary>风险等级</summary>
         public string? RiskLevel { get; init; }
     }
@@ -153,7 +149,7 @@ namespace Seeing.Agent.WebUI.Services
             if (_currentAssistantMessage != null && evt.Message != null)
             {
                 // 更新完整消息内容（如果流式内容不完整）
-                if (!string.IsNullOrEmpty(evt.Message.Content) && 
+                if (!string.IsNullOrEmpty(evt.Message.Content) &&
                     string.IsNullOrEmpty(_currentAssistantMessage.Content))
                 {
                     _currentAssistantMessage.Content = evt.Message.Content;
@@ -187,27 +183,28 @@ namespace Seeing.Agent.WebUI.Services
             {
                 // UI 层自行记录内容位置：在工具调用首次创建时记录当前内容长度
                 var contentPosition = _currentAssistantMessage.Content?.Length ?? 0;
-                
+
+                var toolCallId = evt.ToolCallId ?? Guid.NewGuid().ToString();
                 toolCall = new SessionToolCall
                 {
-                    Id = evt.ToolCallId ?? Guid.NewGuid().ToString(),
+                    Id = toolCallId,
                     Name = evt.ToolName,
                     Arguments = FormatArgumentsJson(evt.Arguments)
                 };
                 _currentAssistantMessage.ToolCalls.Add(toolCall);
-                
+
                 // 记录该工具调用的内容位置（用于渲染）
-                _toolCallPositions[evt.ToolCallId] = contentPosition;
+                _toolCallPositions[toolCallId] = contentPosition;
             }
 
             // 根据状态更新显示
             toolCall.Status = MapToolCallStatus(evt.Status);
-            
+
             if (!string.IsNullOrEmpty(evt.Output))
             {
                 toolCall.Result = evt.Output;
             }
-            
+
             if (!string.IsNullOrEmpty(evt.Error))
             {
                 toolCall.Error = evt.Error;
@@ -266,7 +263,7 @@ namespace Seeing.Agent.WebUI.Services
         private static string FormatArgumentsJson(object? arguments)
         {
             if (arguments == null) return "{}";
-            
+
             // 如果已经是 JSON 字符串，直接返回
             if (arguments is string str)
             {
@@ -282,7 +279,7 @@ namespace Seeing.Agent.WebUI.Services
                     return System.Text.Json.JsonSerializer.Serialize(str);
                 }
             }
-            
+
             // 其他类型（字典等），序列化为 JSON
             try
             {

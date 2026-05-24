@@ -99,7 +99,7 @@ public class GitServiceTests
         var logger = new Mock<ILogger<GitService>>();
         var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempPath);
-        
+
         var options = new GitOptions { WorkingDirectory = tempPath };
         var service = new GitService(logger.Object, Mock.Of<IOptions<GitOptions>>(o => o.Value == options));
 
@@ -120,7 +120,7 @@ public class GitServiceTests
         var logger = new Mock<ILogger<GitService>>();
         var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempPath);
-        
+
         var options = new GitOptions { WorkingDirectory = tempPath };
         var service = new GitService(logger.Object, Mock.Of<IOptions<GitOptions>>(o => o.Value == options));
 

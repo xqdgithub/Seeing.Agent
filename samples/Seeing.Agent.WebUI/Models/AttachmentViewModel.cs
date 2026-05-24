@@ -71,7 +71,7 @@ public class AttachmentViewModel
     {
         if (IsImage)
             return "image";
-        
+
         var ext = System.IO.Path.GetExtension(FileName).ToLowerInvariant();
         return ext switch
         {

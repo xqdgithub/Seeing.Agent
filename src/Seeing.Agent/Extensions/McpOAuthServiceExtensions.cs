@@ -16,7 +16,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<McpOAuthStorage>();
             services.AddSingleton<McpOAuthCallbackServer>();
             services.AddSingleton<IMcpOAuthProvider, McpOAuthProvider>();
-            
+
             return services;
         }
     }

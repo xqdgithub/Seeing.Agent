@@ -1,6 +1,5 @@
-using System;
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Memory;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Memory.Core
 {
@@ -29,7 +28,7 @@ namespace Seeing.Agent.Memory.Core
         public MemoryEntry? Get(string id)
         {
             if (id == null) return null;
-            if (_cache.TryGetValue(id, out object value) && value is MemoryEntry me)
+            if (_cache.TryGetValue(id, out object? value) && value is MemoryEntry me)
             {
                 return me;
             }

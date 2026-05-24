@@ -34,7 +34,7 @@ public class QuestionManager : IQuestionManager
             request.Id = GenerateQuestionId();
         }
 
-        _logger.LogInformation("提问: Id={Id}, QuestionsCount={Count}", 
+        _logger.LogInformation("提问: Id={Id}, QuestionsCount={Count}",
             request.Id, request.Questions.Count);
 
         var completionSource = new TaskCompletionSource<QuestionResult>(
@@ -62,8 +62,8 @@ public class QuestionManager : IQuestionManager
         try
         {
             var result = await completionSource.Task;
-            
-            _logger.LogInformation("收到回答: Id={Id}, AnswersCount={Count}", 
+
+            _logger.LogInformation("收到回答: Id={Id}, AnswersCount={Count}",
                 request.Id, result.Answers.Count);
 
             return result;
@@ -99,7 +99,7 @@ public class QuestionManager : IQuestionManager
             Answers = answers ?? new List<QuestionAnswer>()
         };
 
-        _logger.LogInformation("提交回答: Id={Id}, AnswersCount={Count}", 
+        _logger.LogInformation("提交回答: Id={Id}, AnswersCount={Count}",
             requestId, result.Answers.Count);
 
         pending.CompletionSource.TrySetResult(result);
@@ -130,7 +130,7 @@ public class QuestionManager : IQuestionManager
     public Task<IReadOnlyList<QuestionRequest>> GetPendingAsync()
     {
         var pending = new List<QuestionRequest>();
-        
+
         // 只返回仍在等待的请求
         foreach (var kvp in _pending)
         {

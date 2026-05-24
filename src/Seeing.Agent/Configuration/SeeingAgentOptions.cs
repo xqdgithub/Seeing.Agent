@@ -1,4 +1,5 @@
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.Configuration
@@ -139,8 +140,11 @@ namespace Seeing.Agent.Configuration
         /// <summary>是否隐藏（不在 UI 中显示）</summary>
         public bool? IsHidden { get; set; }
 
-        /// <summary>权限配置</summary>
+        /// <summary>权限配置（旧格式，保留兼容）</summary>
         public Dictionary<string, object>? Permissions { get; set; }
+
+        /// <summary>权限规则（新格式）</summary>
+        public List<PermissionRuleEntry>? PermissionRules { get; set; }
 
         /// <summary>额外设置</summary>
         public Dictionary<string, object>? Options { get; set; }

@@ -1,13 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
+using Microsoft.Extensions.Logging;
+using Seeing.Session.Core;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Seeing.Session.Core;
 
 namespace Seeing.Session.Storage
 {
@@ -20,10 +15,10 @@ namespace Seeing.Session.Storage
         private readonly string _baseDirectory;
         private readonly ILogger<FileSessionStore>? _logger;
         private readonly JsonSerializerOptions _jsonOptions;
-        
+
         // 文件锁超时时间
         private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
-        
+
         // 文件锁字典，用于跨进程文件锁定
         private static readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
         private static readonly object _lockDictLock = new();
@@ -43,7 +38,7 @@ namespace Seeing.Session.Storage
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true
             };
-            
+
             EnsureDirectoryExists();
         }
 
@@ -86,13 +81,13 @@ namespace Seeing.Session.Storage
             {
                 throw new ArgumentException("会话ID不能为空", nameof(sessionId));
             }
-            
+
             // 检查路径遍历攻击（防止访问上级目录）
             if (sessionId.Contains("..") || sessionId.Contains("/") || sessionId.Contains("\\"))
             {
                 throw new ArgumentException("会话ID包含非法路径字符", nameof(sessionId));
             }
-            
+
             // 检查非法文件名字符
             var invalidChars = Path.GetInvalidFileNameChars();
             if (sessionId.IndexOfAny(invalidChars) >= 0)
@@ -128,7 +123,7 @@ namespace Seeing.Session.Storage
             }
 
             ValidateSessionId(data.Id);
-            
+
             var filePath = GetSessionFilePath(data.Id);
             var fileLock = GetFileLock(filePath);
 
@@ -148,14 +143,14 @@ namespace Seeing.Session.Storage
                 }
 
                 var json = JsonSerializer.Serialize(data, _jsonOptions);
-                
+
                 // 使用临时文件 + 原子替换确保写入完整性
                 var tempPath = filePath + ".tmp";
                 await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8);
-                
+
                 // 原子替换
                 File.Move(tempPath, filePath, overwrite: true);
-                
+
                 _logger?.LogDebug("保存会话成功: {SessionId}", data.Id);
             }
             finally
@@ -170,9 +165,9 @@ namespace Seeing.Session.Storage
         public async Task<SessionData?> LoadAsync(string sessionId)
         {
             ValidateSessionId(sessionId);
-            
+
             var filePath = GetSessionFilePath(sessionId);
-            
+
             if (!File.Exists(filePath))
             {
                 _logger?.LogDebug("会话文件不存在: {FilePath}", filePath);
@@ -206,33 +201,33 @@ namespace Seeing.Session.Storage
             {
                 // 使用 FileStream 读取，支持文件共享读取
                 using var stream = new FileStream(
-                    filePath, 
-                    FileMode.Open, 
-                    FileAccess.Read, 
+                    filePath,
+                    FileMode.Open,
+                    FileAccess.Read,
                     FileShare.Read,
                     bufferSize: 4096,
                     useAsync: true);
-                
+
                 using var reader = new StreamReader(stream, Encoding.UTF8);
                 var json = await reader.ReadToEndAsync();
-                
+
                 if (string.IsNullOrWhiteSpace(json))
                 {
                     _logger?.LogWarning("会话文件为空: {SessionId}", sessionId);
                     throw new SessionLoadException(
-                        sessionId, 
-                        filePath, 
+                        sessionId,
+                        filePath,
                         "会话文件为空");
                 }
 
                 var data = JsonSerializer.Deserialize<SessionData>(json, _jsonOptions);
-                
+
                 if (data == null)
                 {
                     _logger?.LogWarning("会话数据反序列化失败: {SessionId}", sessionId);
                     throw new SessionLoadException(
-                        sessionId, 
-                        filePath, 
+                        sessionId,
+                        filePath,
                         "会话数据反序列化失败");
                 }
 
@@ -242,18 +237,18 @@ namespace Seeing.Session.Storage
             {
                 _logger?.LogError(ex, "会话文件格式错误: {SessionId}", sessionId);
                 throw new SessionLoadException(
-                    sessionId, 
-                    filePath, 
-                    "会话文件格式错误，可能已损坏", 
+                    sessionId,
+                    filePath,
+                    "会话文件格式错误，可能已损坏",
                     ex);
             }
             catch (IOException ex)
             {
                 _logger?.LogError(ex, "读取会话文件失败: {SessionId}", sessionId);
                 throw new SessionLoadException(
-                    sessionId, 
-                    filePath, 
-                    "读取会话文件失败", 
+                    sessionId,
+                    filePath,
+                    "读取会话文件失败",
                     ex);
             }
         }
@@ -264,9 +259,9 @@ namespace Seeing.Session.Storage
         public async Task DeleteAsync(string sessionId)
         {
             ValidateSessionId(sessionId);
-            
+
             var filePath = GetSessionFilePath(sessionId);
-            
+
             if (!File.Exists(filePath))
             {
                 _logger?.LogDebug("会话文件不存在，无需删除: {FilePath}", filePath);
@@ -319,7 +314,7 @@ namespace Seeing.Session.Storage
 
                 var fileName = Path.GetFileNameWithoutExtension(filePath);
                 SessionData? data = null;
-                
+
                 try
                 {
                     var fileLock = GetFileLock(filePath);
@@ -365,18 +360,18 @@ namespace Seeing.Session.Storage
         /// 枚举过滤后的会话
         /// </summary>
         private async IAsyncEnumerable<SessionData> EnumerateSessionsFiltered(
-            string partitionId, 
+            string partitionId,
             string agentId,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await foreach (var session in EnumerateSessions(cancellationToken))
             {
-                var matchPartition = string.IsNullOrEmpty(partitionId) || 
+                var matchPartition = string.IsNullOrEmpty(partitionId) ||
                                      session.PartitionId == partitionId;
-                
-                var matchAgent = string.IsNullOrEmpty(agentId) || 
+
+                var matchAgent = string.IsNullOrEmpty(agentId) ||
                                  (session.Agent?.AgentId == agentId);
-                
+
                 if (matchPartition && matchAgent)
                 {
                     yield return session;

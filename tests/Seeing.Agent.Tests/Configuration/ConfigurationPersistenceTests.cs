@@ -5,8 +5,6 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Rules;
-using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Configuration
@@ -146,21 +144,17 @@ namespace Seeing.Agent.Tests.Configuration
     public class AgentRegistryPersistenceTests : IDisposable
     {
         private readonly Mock<ILogger<AgentRegistry>> _loggerMock;
-        private readonly Mock<ILogger<RuleEngine>> _ruleEngineLoggerMock;
         private readonly Mock<ILogger<ConfigurationPersistence>> _persistenceLoggerMock;
         private readonly Mock<ILogger<AgentStore>> _storeLoggerMock;
         private readonly Mock<ILogger<AgentRuntimeManager>> _runtimeManagerLoggerMock;
-        private readonly RuleEngine _ruleEngine;
         private readonly string _testDirectory;
 
         public AgentRegistryPersistenceTests()
         {
             _loggerMock = new Mock<ILogger<AgentRegistry>>();
-            _ruleEngineLoggerMock = new Mock<ILogger<RuleEngine>>();
             _persistenceLoggerMock = new Mock<ILogger<ConfigurationPersistence>>();
             _storeLoggerMock = new Mock<ILogger<AgentStore>>();
             _runtimeManagerLoggerMock = new Mock<ILogger<AgentRuntimeManager>>();
-            _ruleEngine = new RuleEngine(_ruleEngineLoggerMock.Object);
             _testDirectory = Path.Combine(Path.GetTempPath(), $"seeing_registry_test_{Guid.NewGuid():N}");
             Directory.CreateDirectory(_testDirectory);
         }
@@ -174,11 +168,11 @@ namespace Seeing.Agent.Tests.Configuration
         }
 
         private (AgentStore store, AgentRuntimeManager runtimeManager) CreateDependencies(
-            IEnumerable<AgentInfo> agents, 
+            IEnumerable<AgentInfo> agents,
             IConfigurationPersistence? persistence = null)
         {
             var agentList = agents.ToList();
-            
+
             // 创建 Store 并预注册代理
             var store = new AgentStore(_storeLoggerMock.Object);
             foreach (var agent in agentList)
@@ -207,7 +201,7 @@ namespace Seeing.Agent.Tests.Configuration
                 new AgentInfo { Name = "plan", Mode = AgentMode.Primary, IsHidden = false }
             };
             var (store, runtimeManager) = CreateDependencies(agents, persistence);
-            var registry = new AgentRegistry(_loggerMock.Object, _ruleEngine, store, runtimeManager, agents);
+            var registry = new AgentRegistry(_loggerMock.Object, store, runtimeManager, agents);
             await runtimeManager.InitializeAsync();
 
             // Act
@@ -232,7 +226,7 @@ namespace Seeing.Agent.Tests.Configuration
                 new AgentInfo { Name = "build", Mode = AgentMode.Primary }
             };
             var (store, runtimeManager) = CreateDependencies(agents, persistence);
-            var registry = new AgentRegistry(_loggerMock.Object, _ruleEngine, store, runtimeManager, agents);
+            var registry = new AgentRegistry(_loggerMock.Object, store, runtimeManager, agents);
             await runtimeManager.InitializeAsync();
 
             // Act & Assert
@@ -249,7 +243,7 @@ namespace Seeing.Agent.Tests.Configuration
                 new AgentInfo { Name = "build", Mode = AgentMode.Primary }
             };
             var (store, runtimeManager) = CreateDependencies(agents, persistence);
-            var registry = new AgentRegistry(_loggerMock.Object, _ruleEngine, store, runtimeManager, agents);
+            var registry = new AgentRegistry(_loggerMock.Object, store, runtimeManager, agents);
             await runtimeManager.InitializeAsync();
 
             // Act
@@ -286,7 +280,7 @@ namespace Seeing.Agent.Tests.Configuration
                 new AgentInfo { Name = "plan", Mode = AgentMode.Primary, IsHidden = false }
             };
             var (store, runtimeManager) = CreateDependencies(agents, persistence);
-            var registry = new AgentRegistry(_loggerMock.Object, _ruleEngine, store, runtimeManager, agents, "build");
+            var registry = new AgentRegistry(_loggerMock.Object, store, runtimeManager, agents, "build");
             await runtimeManager.InitializeAsync();
 
             // Act
@@ -311,7 +305,7 @@ namespace Seeing.Agent.Tests.Configuration
                 new AgentInfo { Name = "explore", Mode = AgentMode.SubAgent }
             };
             var (store, runtimeManager) = CreateDependencies(agents, persistence);
-            var registry = new AgentRegistry(_loggerMock.Object, _ruleEngine, store, runtimeManager, agents);
+            var registry = new AgentRegistry(_loggerMock.Object, store, runtimeManager, agents);
             await runtimeManager.InitializeAsync();
 
             // Act

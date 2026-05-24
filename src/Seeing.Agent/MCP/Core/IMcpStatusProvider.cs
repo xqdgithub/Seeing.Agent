@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
-
 namespace Seeing.Agent.MCP.Core;
 
 public interface IMcpStatusProvider

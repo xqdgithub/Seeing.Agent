@@ -183,7 +183,7 @@ namespace Seeing.Agent.Commands.Discovery
         {
             var commands = new List<ICommand>();
             var types = assembly.GetTypes()
-                .Where(t => t.GetCustomAttribute<CommandProviderAttribute>() != null || 
+                .Where(t => t.GetCustomAttribute<CommandProviderAttribute>() != null ||
                             t.GetMethods().Any(m => m.GetCustomAttribute<CommandAttribute>() != null));
 
             foreach (var type in types)

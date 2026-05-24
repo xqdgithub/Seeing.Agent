@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Seeing.Agent.MCP.Core;
 
 internal static class McpStateTransitions

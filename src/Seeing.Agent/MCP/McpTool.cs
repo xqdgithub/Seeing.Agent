@@ -219,7 +219,7 @@ namespace Seeing.Agent.MCP
     {
         /// <summary>是否错误</summary>
         public bool IsError { get; set; }
-        
+
         /// <summary>返回内容</summary>
         public string Content { get; set; } = "";
     }

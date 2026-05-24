@@ -1,5 +1,3 @@
-using System;
-
 namespace Seeing.Agent.Core.Background
 {
     /// <summary>

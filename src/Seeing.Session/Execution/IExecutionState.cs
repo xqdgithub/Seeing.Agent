@@ -1,6 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Seeing.Session.Execution
 {
     // Defines the execution state contract for a long-running operation

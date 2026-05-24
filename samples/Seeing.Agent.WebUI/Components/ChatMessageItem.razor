@@ -280,7 +280,7 @@
             
             foreach (var tc in sortedToolCalls)
             {
-                var pos = tc.ContentPosition.Value;
+                var pos = tc.ContentPosition ?? 0;
                 
                 // 确保位置有效
                 if (pos < 0 || pos > content.Length)

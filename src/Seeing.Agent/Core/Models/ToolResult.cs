@@ -7,13 +7,13 @@ public class FileAttachment
 {
     /// <summary>文件名</summary>
     public string Name { get; set; } = string.Empty;
-    
+
     /// <summary>文件路径</summary>
     public string Path { get; set; } = string.Empty;
-    
+
     /// <summary>MIME 类型</summary>
     public string MimeType { get; set; } = string.Empty;
-    
+
     /// <summary>文件大小（字节）</summary>
     public long? Size { get; set; }
 }
@@ -31,7 +31,7 @@ public class ToolResult
 {
     /// <summary>是否成功执行</summary>
     public bool Success { get; set; }
-    
+
     /// <summary>
     /// 输出内容（成功时）
     /// <para>对应 OpenAI 的 content，LangChain 的 output</para>
@@ -46,19 +46,19 @@ public class ToolResult
     /// <para>对应 LangChain 的 error</para>
     /// </summary>
     public string? Error { get; set; }
-    
+
     /// <summary>关联的工具调用 ID</summary>
     public string? ToolCallId { get; set; }
-    
+
     /// <summary>元数据</summary>
     public Dictionary<string, object> Metadata { get; set; } = new();
-    
+
     /// <summary>文件附件</summary>
     public List<FileAttachment>? Attachments { get; set; }
-    
+
     /// <summary>执行耗时</summary>
     public TimeSpan? Duration { get; set; }
-    
+
     /// <summary>
     /// 创建成功结果
     /// </summary>
@@ -70,7 +70,7 @@ public class ToolResult
             Output = output
         };
     }
-    
+
     /// <summary>
     /// 创建失败结果
     /// </summary>

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -201,7 +202,7 @@ namespace Seeing.Agent.Core
                 Variant = data.Variant,
                 Tags = data.Tags?.Split(',', ';').Select(t => t.Trim()).Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>(),
                 Category = data.Category,
-                Permissions = ParsePermissions(data.Permission, data.Tools),
+                PermissionRules = ParsePermissionRules(data.Permission, data.Tools),
                 Model = ParseModelReference(data.Model)
             };
 
@@ -232,39 +233,46 @@ namespace Seeing.Agent.Core
         }
 
         /// <summary>
-        /// 解析权限配置
+        /// 解析权限配置（新格式）
         /// </summary>
-        private List<PermissionRule> ParsePermissions(Dictionary<string, object>? permission, Dictionary<string, bool>? tools)
+        private List<PermissionRuleEntry> ParsePermissionRules(Dictionary<string, object>? permission, Dictionary<string, bool>? tools)
         {
-            var rules = new List<PermissionRule>();
+            var rules = new List<PermissionRuleEntry>();
+            var priority = 0;
 
-            // 从 tools 配置生成权限规则（旧格式）
+            // 从 tools 配置生成权限规则
             if (tools != null)
             {
                 foreach (var (tool, enabled) in tools)
                 {
-                    rules.Add(new PermissionRule
+                    rules.Add(new PermissionRuleEntry
                     {
-                        Permission = tool,
-                        Pattern = "*",
-                        Action = enabled ? PermissionAction.Allow : PermissionAction.Deny
+                        Kind = PermissionKind.Tool,
+                        Pattern = tool,
+                        Effect = enabled ? PermissionEffect.Allow : PermissionEffect.Deny,
+                        Priority = priority++,
+                        Source = "tools-config"
                     });
                 }
             }
 
-            // 从 permission 配置生成权限规则（新格式）
+            // 从 permission 配置生成权限规则
             if (permission != null)
             {
                 foreach (var (key, value) in permission)
                 {
+                    var kind = ParsePermissionKind(key);
+
                     if (value is string actionStr)
                     {
-                        var action = Enum.Parse<PermissionAction>(actionStr, true);
-                        rules.Add(new PermissionRule
+                        var effect = ParsePermissionEffect(actionStr);
+                        rules.Add(new PermissionRuleEntry
                         {
-                            Permission = key,
+                            Kind = kind,
                             Pattern = "*",
-                            Action = action
+                            Effect = effect,
+                            Priority = priority++,
+                            Source = "permission-config"
                         });
                     }
                     else if (value is Dictionary<object, object> patterns)
@@ -273,12 +281,14 @@ namespace Seeing.Agent.Core
                         {
                             if (patternValue is string patternActionStr)
                             {
-                                var action = Enum.Parse<PermissionAction>(patternActionStr, true);
-                                rules.Add(new PermissionRule
+                                var effect = ParsePermissionEffect(patternActionStr);
+                                rules.Add(new PermissionRuleEntry
                                 {
-                                    Permission = key,
+                                    Kind = kind,
                                     Pattern = patternKey?.ToString() ?? "*",
-                                    Action = action
+                                    Effect = effect,
+                                    Priority = priority++,
+                                    Source = "permission-config"
                                 });
                             }
                         }
@@ -287,6 +297,38 @@ namespace Seeing.Agent.Core
             }
 
             return rules;
+        }
+
+        /// <summary>
+        /// 解析权限类型
+        /// </summary>
+        private static PermissionKind ParsePermissionKind(string key)
+        {
+            return key?.ToLowerInvariant() switch
+            {
+                "tool" or "tools" => PermissionKind.Tool,
+                "mcp" or "mcptool" => PermissionKind.McpTool,
+                "file" => PermissionKind.File,
+                "shell" or "bash" => PermissionKind.Shell,
+                "network" => PermissionKind.Network,
+                "skill" => PermissionKind.Skill,
+                "agent" => PermissionKind.Agent,
+                _ => PermissionKind.Tool
+            };
+        }
+
+        /// <summary>
+        /// 解析权限效果
+        /// </summary>
+        private static PermissionEffect ParsePermissionEffect(string action)
+        {
+            return action?.ToLowerInvariant() switch
+            {
+                "allow" => PermissionEffect.Allow,
+                "deny" => PermissionEffect.Deny,
+                "ask" => PermissionEffect.Ask,
+                _ => PermissionEffect.Deny
+            };
         }
 
         /// <summary>

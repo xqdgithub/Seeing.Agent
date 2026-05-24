@@ -1,6 +1,6 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.Tools.BuiltIn.Shell
 {
@@ -247,7 +247,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
             {
                 // 使用 where（Windows）或 which（Unix）查找
                 var finder = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "where" : "which";
-                
+
                 using var process = Process.Start(new ProcessStartInfo
                 {
                     FileName = finder,

@@ -1,5 +1,3 @@
-using System;
-
 namespace Seeing.Agent.Memory.Core;
 
 // Memory entry entity with temporal validity fields (valid_at / invalid_at)

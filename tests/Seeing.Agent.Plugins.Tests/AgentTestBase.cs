@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using FluentAssertions;
 
 namespace Seeing.Agent.Plugins.Tests
@@ -56,7 +53,7 @@ namespace Seeing.Agent.Plugins.Tests
             var type = agent.GetType();
 
             // Try to read common tools collection
-            var toolsVal = (IEnumerable<string>)null;
+            IEnumerable<string>? toolsVal = null;
             var possibleProps = new[] { "Tools", "AvailableTools", "ToolNames", "SupportedTools" };
             foreach (var propName in possibleProps)
             {
@@ -71,7 +68,7 @@ namespace Seeing.Agent.Plugins.Tests
                     }
                     if (value is IEnumerable<object> objEnum)
                     {
-                        toolsVal = objEnum.Select(o => o?.ToString()).Where(s => s != null);
+                        toolsVal = objEnum.Select(o => o?.ToString()).Where(s => s != null)!;
                         break;
                     }
                 }

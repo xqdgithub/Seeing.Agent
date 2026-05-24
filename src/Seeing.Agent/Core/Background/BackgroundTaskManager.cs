@@ -1,12 +1,9 @@
-using System.Collections.Concurrent;
-using System.Reactive.Subjects;
-using System.Runtime.CompilerServices;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
-using Seeing.Agent.Llm;
+using System.Collections.Concurrent;
+using System.Reactive.Subjects;
+using System.Text;
 
 namespace Seeing.Agent.Core.Background;
 
@@ -44,7 +41,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     {
         // 生成任务 ID
         var taskId = $"bg_{Guid.NewGuid():N}".Substring(0, 12);
-        
+
         // 创建取消令牌源
         var cts = new CancellationTokenSource();
         _cancellationSources[taskId] = cts;
@@ -134,7 +131,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         }
 
         // 只有 Pending 或 Running 状态的任务可以取消
-        if (task.Status != BackgroundTaskStatus.Pending && 
+        if (task.Status != BackgroundTaskStatus.Pending &&
             task.Status != BackgroundTaskStatus.Running)
         {
             _logger.LogWarning("任务状态不允许取消: {TaskId}, Status: {Status}", taskId, task.Status);
@@ -166,7 +163,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         foreach (var (taskId, cts) in _cancellationSources)
         {
             if (_tasks.TryGetValue(taskId, out var task) &&
-                (task.Status == BackgroundTaskStatus.Pending || 
+                (task.Status == BackgroundTaskStatus.Pending ||
                  task.Status == BackgroundTaskStatus.Running))
             {
                 cts.Cancel();
@@ -188,7 +185,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     public Task<IReadOnlyList<BackgroundTaskInfo>> ListAsync(BackgroundTaskStatus? status = null)
     {
         var tasks = _tasks.Values.ToList();
-        
+
         if (status.HasValue)
         {
             tasks = tasks.Where(t => t.Status == status.Value).ToList();
@@ -207,7 +204,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     {
         // 限制超时时间
         timeoutMs = Math.Min(timeoutMs, 600000);
-        
+
         if (!_tasks.TryGetValue(taskId, out var task))
         {
             return null;
@@ -242,8 +239,8 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     /// 执行后台任务
     /// </summary>
     private async Task ExecuteTaskAsync(
-        string taskId, 
-        BackgroundTaskLaunchArgs args, 
+        string taskId,
+        BackgroundTaskLaunchArgs args,
         CancellationToken cancellationToken)
     {
         // 更新状态为 Running
@@ -305,21 +302,21 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     /// 更新任务状态
     /// </summary>
     private void UpdateTaskStatus(
-        string taskId, 
-        BackgroundTaskStatus status, 
-        string? result = null, 
+        string taskId,
+        BackgroundTaskStatus status,
+        string? result = null,
         string? error = null)
     {
         if (_tasks.TryGetValue(taskId, out var task))
         {
             task.Status = status;
             task.CompletedAt = DateTimeOffset.Now;
-            
+
             if (result != null)
             {
                 task.Result = result;
             }
-            
+
             if (error != null)
             {
                 task.Error = error;
@@ -341,7 +338,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     private async Task WaitForRunningStatusAsync(string taskId, TimeSpan timeout)
     {
         var startTime = DateTimeOffset.Now;
-        
+
         while (DateTimeOffset.Now - startTime < timeout)
         {
             if (_tasks.TryGetValue(taskId, out var task) &&
@@ -360,7 +357,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     public void CleanupCompletedTasks(TimeSpan retentionTime)
     {
         var cutoff = DateTimeOffset.Now - retentionTime;
-        
+
         foreach (var (taskId, task) in _tasks)
         {
             if (task.CompletedAt.HasValue && task.CompletedAt.Value < cutoff)
@@ -369,7 +366,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
                 _cancellationSources.TryRemove(taskId, out var cts);
                 cts?.Dispose();
                 _outputs.TryRemove(taskId, out _);
-                
+
                 // 完成 Subjects
                 if (_progressSubjects.TryRemove(taskId, out var progressSubject))
                 {
@@ -381,7 +378,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
                     outputSubject.OnCompleted();
                     outputSubject.Dispose();
                 }
-                
+
                 _logger.LogInformation("清理已完成任务: {TaskId}", taskId);
             }
         }

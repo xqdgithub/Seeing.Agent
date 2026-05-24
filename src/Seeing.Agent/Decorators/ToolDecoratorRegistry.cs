@@ -9,13 +9,13 @@ namespace Seeing.Agent.Decorators
     {
         /// <summary>注册装饰器工厂</summary>
         void Register(Func<ITool, ITool> factory);
-        
+
         /// <summary>注册类型化装饰器</summary>
         void Register<TDecorator>() where TDecorator : ITool;
-        
+
         /// <summary>应用所有装饰器到工具</summary>
         ITool Apply(ITool tool);
-        
+
         /// <summary>获取已注册的装饰器数量</summary>
         int Count { get; }
     }
@@ -44,7 +44,7 @@ namespace Seeing.Agent.Decorators
         {
             if (factory == null)
                 throw new ArgumentNullException(nameof(factory));
-            
+
             _factories.Add(factory);
         }
 

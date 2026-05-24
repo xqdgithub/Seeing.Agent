@@ -1,6 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Seeing.Agent.MCP.Core;
 
 public interface IMcpController

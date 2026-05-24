@@ -1,14 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Abstractions;
+using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Abstractions;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Interfaces;
 
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 {

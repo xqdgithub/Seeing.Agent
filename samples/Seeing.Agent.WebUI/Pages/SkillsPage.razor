@@ -181,8 +181,8 @@
     private string _searchText = "";
     private bool _isLoading = false;
     private bool _isCardView = true;
-    private List<KeyValuePair<string, SkillInfo?>> _filteredSkills = new();
-    private List<KeyValuePair<string, SkillInfo?>> _allSkills = new();
+    private List<KeyValuePair<string, SkillInfo>> _filteredSkills = new();
+    private List<KeyValuePair<string, SkillInfo>> _allSkills = new();
     
     // Statistics
     private int _totalCount => _allSkills.Count;

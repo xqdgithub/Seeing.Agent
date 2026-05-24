@@ -15,7 +15,7 @@ namespace Seeing.Agent.Core.Models
         {
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
-            
+
             _data[key] = value;
         }
 
@@ -43,7 +43,7 @@ namespace Seeing.Agent.Core.Models
                     value = typedValue;
                     return true;
                 }
-                
+
                 // 尝试转换
                 try
                 {
@@ -66,7 +66,7 @@ namespace Seeing.Agent.Core.Models
         {
             if (string.IsNullOrEmpty(key))
                 return false;
-            
+
             return _data.TryRemove(key, out _);
         }
 

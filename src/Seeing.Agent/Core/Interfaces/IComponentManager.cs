@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace Seeing.Agent.Core.Interfaces;
 
 /// <summary>

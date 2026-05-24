@@ -1,15 +1,10 @@
-using System;
-using System.IO;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Core;
 using Seeing.Agent.Memory.Configuration;
+using Seeing.Agent.Memory.Core;
 
 namespace Seeing.Agent.Memory.Integration;
 

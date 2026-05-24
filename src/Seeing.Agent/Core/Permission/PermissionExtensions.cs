@@ -20,7 +20,7 @@ public static class PermissionExtensions
             _ => PermissionAction.Deny
         };
     }
-    
+
     /// <summary>
     /// 将 PermissionAction 转换为 PermissionEffect
     /// </summary>
@@ -34,7 +34,7 @@ public static class PermissionExtensions
             _ => PermissionEffect.Deny
         };
     }
-    
+
     /// <summary>
     /// 将 PermissionDecision 转换为 PermissionResult
     /// </summary>

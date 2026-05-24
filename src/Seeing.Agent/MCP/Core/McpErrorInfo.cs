@@ -1,5 +1,3 @@
-using System;
-
 namespace Seeing.Agent.MCP.Core;
 
 public sealed class McpErrorInfo
@@ -102,7 +100,7 @@ public sealed class McpErrorInfo
             ex.ToString(),
             "请检查异常详情并重试",
             ex,
-            isTransient: code == McpErrorCode.ConnectionTimeout 
-                || code == McpErrorCode.NetworkError 
+            isTransient: code == McpErrorCode.ConnectionTimeout
+                || code == McpErrorCode.NetworkError
                 || code == McpErrorCode.ToolExecutionError);
 }

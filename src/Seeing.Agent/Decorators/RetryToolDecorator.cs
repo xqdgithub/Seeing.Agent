@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Text.Json;
 
 namespace Seeing.Agent.Decorators
 {
@@ -46,13 +46,13 @@ namespace Seeing.Agent.Decorators
                 try
                 {
                     var result = await base.ExecuteAsync(arguments, context);
-                    
+
                     // 成功则返回
                     if (result.Success)
                         return result;
-                    
+
                     // 如果结果标记为可重试，继续尝试
-                    if (result.Metadata.TryGetValue("retryable", out var retryable) 
+                    if (result.Metadata.TryGetValue("retryable", out var retryable)
                         && retryable is bool canRetry && canRetry)
                     {
                         _logger?.LogWarning(
@@ -68,11 +68,11 @@ namespace Seeing.Agent.Decorators
                 {
                     lastException = ex;
                     var delay = TimeSpan.FromMilliseconds(_delay.TotalMilliseconds * (attempt + 1));
-                    
+
                     _logger?.LogWarning(
                         "[Retry] 工具执行失败，准备重试: ToolId={ToolId}, Attempt={Attempt}/{Max}, Delay={Delay}ms, Error={Error}",
                         Id, attempt + 1, _maxRetries, delay.TotalMilliseconds, ex.Message);
-                    
+
                     await Task.Delay(delay);
                 }
             }

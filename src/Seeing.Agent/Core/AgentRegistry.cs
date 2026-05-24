@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Rules;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Core
 {
@@ -25,7 +25,6 @@ namespace Seeing.Agent.Core
     public class AgentRegistry : IAgentRegistry
     {
         private readonly ILogger<AgentRegistry> _logger;
-        private readonly IRuleEngine _ruleEngine;
         private readonly IAgentStore _agentStore;
         private readonly IAgentRuntimeManager _runtimeManager;
         private readonly string? _configDefaultAgentName;
@@ -35,14 +34,12 @@ namespace Seeing.Agent.Core
         /// </summary>
         public AgentRegistry(
             ILogger<AgentRegistry> logger,
-            IRuleEngine ruleEngine,
             IAgentStore agentStore,
             IAgentRuntimeManager runtimeManager,
             IEnumerable<AgentInfo>? builtInAgents = null,
             string? defaultAgent = null)
         {
             _logger = logger;
-            _ruleEngine = ruleEngine;
             _agentStore = agentStore;
             _runtimeManager = runtimeManager;
             _configDefaultAgentName = defaultAgent;
@@ -56,7 +53,7 @@ namespace Seeing.Agent.Core
                 }
             }
 
-            _logger.LogInformation("AgentRegistry 初始化完成，已注册 {Count} 个代理", 
+            _logger.LogInformation("AgentRegistry 初始化完成，已注册 {Count} 个代理",
                 _agentStore.GetAllAsync().Result.Count);
         }
 
@@ -129,7 +126,14 @@ namespace Seeing.Agent.Core
                 }
             }
 
-            // 3. 回退：查找第一个可见的主代理
+            // 3. 优先查找 "build" Agent（默认主代理）
+            var buildAgent = await GetAgentAsync("build");
+            if (buildAgent != null && !buildAgent.IsHidden)
+            {
+                return "build";
+            }
+
+            // 4. 回退：查找第一个可见的主代理（AgentMode.All 或 Primary）
             var primaryAgents = await GetPrimaryAgentsAsync();
             if (primaryAgents.Count > 0)
             {
@@ -189,20 +193,19 @@ namespace Seeing.Agent.Core
 
         /// <inheritdoc/>
         public async Task<IReadOnlyList<AgentInfo>> GetAccessibleSubAgentsAsync(
-            IReadOnlyList<PermissionRule> callerPermissions)
+            IReadOnlyList<PermissionRuleEntry> callerPermissions)
         {
             var subAgents = await GetSubAgentsAsync();
 
             // 根据权限筛选可访问的子代理
-            // 临时合并调用者权限到规则引擎进行评估
             var accessibleAgents = new List<AgentInfo>();
             foreach (var agent in subAgents)
             {
-                // 检查调用者权限中是否有对 task/agentName 的 Deny 规则
+                // 检查调用者权限中是否有对 Agent 类型的 Deny 规则
                 var hasDeny = callerPermissions.Any(r =>
-                    r.Permission == "task" &&
-                    (r.Pattern == "*" || r.Pattern == agent.Name) &&
-                    r.Action == PermissionAction.Deny);
+                    r.Kind == PermissionKind.Agent &&
+                    (r.Pattern == "*" || WildcardMatches(r.Pattern, agent.Name)) &&
+                    r.Effect == PermissionEffect.Deny);
 
                 if (!hasDeny)
                 {
@@ -211,6 +214,30 @@ namespace Seeing.Agent.Core
             }
 
             return accessibleAgents.OrderBy(a => a.Name).ToList().AsReadOnly();
+        }
+
+        /// <summary>
+        /// 通配符匹配
+        /// </summary>
+        private static bool WildcardMatches(string pattern, string input)
+        {
+            if (pattern == "*") return true;
+            if (string.IsNullOrEmpty(pattern) || string.IsNullOrEmpty(input)) return false;
+
+            // 简单通配符匹配
+            if (pattern.StartsWith("*") && pattern.EndsWith("*"))
+            {
+                return input.Contains(pattern[1..^1], StringComparison.OrdinalIgnoreCase);
+            }
+            if (pattern.StartsWith("*"))
+            {
+                return input.EndsWith(pattern[1..], StringComparison.OrdinalIgnoreCase);
+            }
+            if (pattern.EndsWith("*"))
+            {
+                return input.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
+            }
+            return string.Equals(pattern, input, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -259,7 +286,7 @@ namespace Seeing.Agent.Core
                         Name = key,
                         Mode = AgentMode.All,
                         IsNative = false,
-                        Permissions = GetDefaultPermissions()
+                        PermissionRules = GetDefaultPermissions()
                     };
                 }
 
@@ -283,11 +310,12 @@ namespace Seeing.Agent.Core
                 existing.Color = config.Color ?? existing.Color;
                 existing.IsHidden = config.IsHidden ?? existing.IsHidden;
 
-                // 合并权限
-                if (config.Permissions != null)
+                // 合并权限规则（新格式）
+                if (config.PermissionRules != null && config.PermissionRules.Count > 0)
                 {
-                    var configPermissions = PermissionFromConfig(config.Permissions);
-                    existing.Permissions = PermissionMerge(existing.Permissions, configPermissions);
+                    var mergedRules = new List<PermissionRuleEntry>(existing.PermissionRules);
+                    mergedRules.AddRange(config.PermissionRules);
+                    existing.PermissionRules = mergedRules;
                 }
 
                 // 应用选项
@@ -302,69 +330,19 @@ namespace Seeing.Agent.Core
                 _agentStore.RegisterAsync(existing).Wait();
             }
 
-            _logger.LogInformation("从配置扩展代理完成，当前共 {Count} 个代理", 
+            _logger.LogInformation("从配置扩展代理完成，当前共 {Count} 个代理",
                 _agentStore.GetAllAsync().Result.Count);
         }
 
         /// <summary>
         /// 获取默认权限集
         /// </summary>
-        private List<PermissionRule> GetDefaultPermissions()
+        private List<PermissionRuleEntry> GetDefaultPermissions()
         {
-            return new List<PermissionRule>
+            return new List<PermissionRuleEntry>
             {
-                new PermissionRule { Permission = "*", Pattern = "*", Action = PermissionAction.Allow },
-                new PermissionRule { Permission = "doom_loop", Pattern = "*", Action = PermissionAction.Ask },
-                new PermissionRule { Permission = "question", Pattern = "*", Action = PermissionAction.Deny },
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "*", 0),
             };
-        }
-
-        /// <summary>
-        /// 从配置字典解析权限
-        /// </summary>
-        private List<PermissionRule> PermissionFromConfig(Dictionary<string, object> config)
-        {
-            var rules = new List<PermissionRule>();
-            foreach (var (permission, value) in config)
-            {
-                if (value is string actionStr)
-                {
-                    var action = Enum.Parse<PermissionAction>(actionStr, true);
-                    rules.Add(new PermissionRule
-                    {
-                        Permission = permission,
-                        Pattern = "*",
-                        Action = action
-                    });
-                }
-                else if (value is Dictionary<string, object> patterns)
-                {
-                    foreach (var (pattern, patternValue) in patterns)
-                    {
-                        if (patternValue is string patternActionStr)
-                        {
-                            var action = Enum.Parse<PermissionAction>(patternActionStr, true);
-                            rules.Add(new PermissionRule
-                            {
-                                Permission = permission,
-                                Pattern = pattern,
-                                Action = action
-                            });
-                        }
-                    }
-                }
-            }
-            return rules;
-        }
-
-        /// <summary>
-        /// 合并权限规则
-        /// </summary>
-        private List<PermissionRule> PermissionMerge(List<PermissionRule> baseRules, List<PermissionRule> additionalRules)
-        {
-            var merged = new List<PermissionRule>(baseRules);
-            merged.AddRange(additionalRules);
-            return merged;
         }
 
         /// <summary>
@@ -409,13 +387,14 @@ namespace Seeing.Agent.Core
             public string Name { get => _info.Name; set => _info.Name = value; }
             public AgentMode Mode { get => _info.Mode; set => _info.Mode = value; }
             public string Description { get => _info.Description ?? string.Empty; set => _info.Description = value; }
-            public IReadOnlyList<PermissionRule> Permissions { get => _info.Permissions.AsReadOnly(); set { _info.Permissions.Clear(); _info.Permissions.AddRange(value); } }
+            public IReadOnlyList<PermissionRuleEntry> PermissionRules { get => _info.PermissionRules.AsReadOnly(); set { _info.PermissionRules.Clear(); _info.PermissionRules.AddRange(value); } }
             public string? SystemPrompt { get => _info.SystemPrompt; set => _info.SystemPrompt = value; }
             public ModelReference? Model { get => _info.Model; set => _info.Model = value; }
             public int? MaxSteps { get => _info.MaxSteps; set => _info.MaxSteps = value; }
             public AgentStatus Status { get => _info.AgentFactory != null ? AgentStatus.Ready : AgentStatus.RequiresFactory; set { } }
             public IReadOnlyList<string> AllowedTools { get => _info.AllowedTools.AsReadOnly(); set { _info.AllowedTools.Clear(); _info.AllowedTools.AddRange(value); } }
             public IReadOnlyList<string> DeniedTools { get => _info.DeniedTools.AsReadOnly(); set { _info.DeniedTools.Clear(); _info.DeniedTools.AddRange(value); } }
+            public PermissionEffect PermissionDefaultEffect { get => _info.PermissionDefaultEffect; set => _info.PermissionDefaultEffect = value; }
 
             public async IAsyncEnumerable<ChatMessage> ExecuteAsync(
                 ChatMessage input,

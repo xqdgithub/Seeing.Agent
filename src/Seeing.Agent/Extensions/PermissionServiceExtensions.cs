@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Core.Interfaces;
 
 namespace Seeing.Agent.Extensions;
 
@@ -16,15 +15,12 @@ public static class PermissionServiceExtensions
     /// <returns>服务集合</returns>
     public static IServiceCollection AddPermissionService(this IServiceCollection services)
     {
-        // 注册权限策略提供者
-        services.AddSingleton<IPermissionPolicyProvider, DefaultPermissionPolicyProvider>();
-        
         // 注册权限缓存
         services.AddSingleton<IPermissionCache, PermissionCache>();
-        
+
         // 注册权限服务
         services.AddSingleton<IPermissionService, PermissionService>();
-        
+
         return services;
     }
 }

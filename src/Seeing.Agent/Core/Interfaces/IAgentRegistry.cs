@@ -1,5 +1,5 @@
 using Seeing.Agent.Core.Models;
-using System.Collections.Generic;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Core.Interfaces
 {
@@ -72,7 +72,7 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>根据权限筛选可访问的子 Agent</summary>
         /// <param name="callerPermissions">调用者的权限规则</param>
         /// <returns>可访问的子 Agent 列表</returns>
-        Task<IReadOnlyList<AgentInfo>> GetAccessibleSubAgentsAsync(IReadOnlyList<PermissionRule> callerPermissions);
+        Task<IReadOnlyList<AgentInfo>> GetAccessibleSubAgentsAsync(IReadOnlyList<PermissionRuleEntry> callerPermissions);
 
         /// <summary>获取或创建 Agent 实例（用于执行）</summary>
         /// <param name="name">Agent 名称</param>
@@ -109,14 +109,17 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>颜色标识（UI 显示）</summary>
         public string? Color { get; set; }
 
-        /// <summary>权限规则集</summary>
-        public List<PermissionRule> Permissions { get; set; } = new();
+        /// <summary>权限规则集（新格式）</summary>
+        public List<PermissionRuleEntry> PermissionRules { get; set; } = new();
 
         /// <summary>允许的工具列表（Tool Ids）</summary>
         public List<string> AllowedTools { get; set; } = new();
 
         /// <summary>禁止的工具列表（Tool Ids）</summary>
         public List<string> DeniedTools { get; set; } = new();
+
+        /// <summary>权限默认效果（当没有匹配规则时）</summary>
+        public PermissionEffect PermissionDefaultEffect { get; set; } = PermissionEffect.Ask;
 
         /// <summary>模型配置（可选，默认使用系统配置）</summary>
         public ModelReference? Model { get; set; }

@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -6,6 +5,7 @@ using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Background
@@ -55,7 +55,7 @@ namespace Seeing.Agent.Tests.Background
             var agentMock = new Mock<IAgent>();
             agentMock.Setup(a => a.Name).Returns("test-agent");
             agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) => 
+                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
                     CreateAgentResponse("Test output", 100, ct));
 
             _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
@@ -108,7 +108,7 @@ namespace Seeing.Agent.Tests.Background
             var agentMock = new Mock<IAgent>();
             agentMock.Setup(a => a.Name).Returns("test-agent");
             agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) => 
+                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
                     CreateLongRunningAgentResponse(ct));
 
             _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
@@ -146,7 +146,7 @@ namespace Seeing.Agent.Tests.Background
             var agentMock = new Mock<IAgent>();
             agentMock.Setup(a => a.Name).Returns("test-agent");
             agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) => 
+                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
                     CreateAgentResponse("Test output", 100, ct));
 
             _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
@@ -177,7 +177,7 @@ namespace Seeing.Agent.Tests.Background
             var agentMock = new Mock<IAgent>();
             agentMock.Setup(a => a.Name).Returns("test-agent");
             agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) => 
+                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
                     CreateAgentResponse("Test output", 100, ct));
 
             _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
@@ -209,7 +209,7 @@ namespace Seeing.Agent.Tests.Background
             var agentMock = new Mock<IAgent>();
             agentMock.Setup(a => a.Name).Returns("test-agent");
             agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) => 
+                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
                     CreateAgentResponse("Test output", 0, ct));
 
             _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
@@ -240,7 +240,7 @@ namespace Seeing.Agent.Tests.Background
             var agentMock = new Mock<IAgent>();
             agentMock.Setup(a => a.Name).Returns("test-agent");
             agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) => 
+                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
                     CreateLongRunningAgentResponse(ct));
 
             _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
@@ -280,7 +280,7 @@ namespace Seeing.Agent.Tests.Background
             var agentMock = new Mock<IAgent>();
             agentMock.Setup(a => a.Name).Returns("test-agent");
             agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) => 
+                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
                     CreateAgentResponse("Hello from agent", 0, ct));
 
             _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))

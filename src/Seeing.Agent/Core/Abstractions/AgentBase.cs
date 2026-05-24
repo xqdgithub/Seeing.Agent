@@ -3,7 +3,7 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Llm;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Core.Abstractions
 {
@@ -64,8 +64,8 @@ namespace Seeing.Agent.Core.Abstractions
         /// <summary>Agent 描述</summary>
         public virtual string Description { get; set; } = "";
 
-        /// <summary>权限规则集</summary>
-        public virtual IReadOnlyList<PermissionRule> Permissions { get; set; } = Array.Empty<PermissionRule>();
+        /// <summary>权限规则集（新格式）</summary>
+        public virtual IReadOnlyList<PermissionRuleEntry> PermissionRules { get; set; } = Array.Empty<PermissionRuleEntry>();
 
         /// <summary>系统提示词</summary>
         public virtual string? SystemPrompt { get; set; }
@@ -90,6 +90,12 @@ namespace Seeing.Agent.Core.Abstractions
         /// <para>默认空数组表示不禁止任何工具</para>
         /// </summary>
         public virtual IReadOnlyList<string> DeniedTools { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// 权限默认效果（当没有匹配规则时）
+        /// 默认为 Ask，需要用户确认
+        /// </summary>
+        public virtual PermissionEffect PermissionDefaultEffect { get; set; } = PermissionEffect.Ask;
 
         // ========== 统一执行入口 ==========
 

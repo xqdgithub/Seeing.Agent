@@ -152,7 +152,7 @@ namespace Seeing.Agent.Core.Abstractions
         /// </summary>
         protected bool? GetBoolArgument(JsonElement arguments, string propertyName)
         {
-            if (arguments.TryGetProperty(propertyName, out var property) && 
+            if (arguments.TryGetProperty(propertyName, out var property) &&
                 (property.ValueKind == JsonValueKind.True || property.ValueKind == JsonValueKind.False))
             {
                 return property.GetBoolean();

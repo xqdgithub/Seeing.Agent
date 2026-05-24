@@ -2,21 +2,24 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Decorators;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Middlewares;
 using System.Collections.Concurrent;
 using System.Text.Json;
-using System.Linq;
 
 namespace Seeing.Agent.Tools
 {
     /// <summary>
     /// 统一工具调用器 - 支持本地工具和 MCP 工具的统一调用
     /// <para>
-    /// Oracle 评审建议：
-    /// - 工具级权限检查在 ToolInvoker 内部实现
-    /// - 重试策略针对工具执行失败
+    /// 功能：
+    /// - 工具注册与发现
+    /// - Hook 钩子支持
+    /// - 重试策略（针对可重试异常）
+    /// </para>
+    /// <para>
+    /// 注意：权限检查由 AgentExecutor.EvaluatePermissionAsync() 统一处理，
+    /// 此类不重复检查以避免双重验证。
     /// </para>
     /// </summary>
     public class ToolInvoker
@@ -326,16 +329,19 @@ namespace Seeing.Agent.Tools
         }
 
         /// <summary>
-        /// 执行工具调用（带权限检查和重试）
+        /// 执行工具调用（带重试支持）
+        /// <para>
+        /// 注意：权限检查由 AgentExecutor.EvaluatePermissionAsync() 统一处理，
+        /// 调用此方法前应确保权限已通过验证。
+        /// </para>
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(
             ToolCall toolCall,
             string sessionId = "",
-            CancellationToken cancellationToken = default,
-            AgentPermissionConfig? permissionConfig = null)
+            CancellationToken cancellationToken = default)
         {
             var toolId = toolCall.Name;
-            
+
             if (!_tools.TryGetValue(toolId, out var tool))
             {
                 return new ToolResult
@@ -345,20 +351,6 @@ namespace Seeing.Agent.Tools
                     Error = $"工具不存在: {toolId}"
                 };
             }
-
-            // ========== Oracle 建议：工具级权限检查 ==========
-            if (!await CheckToolPermissionAsync(toolId, permissionConfig, cancellationToken))
-            {
-                return new ToolResult
-                {
-                    Success = false,
-                    ToolCallId = toolCall.Id,
-                    Error = $"[权限拒绝] 工具 '{toolId}' 不在允许列表中或被禁止"
-                };
-            }
-
-            // 注意：权限检查已由 AgentExecutor.EvaluatePermissionAsync() 统一处理
-            // 此处不再重复检查，避免双重验证
 
             // ========== Hook: tool.execute.before ==========
             var argsMutable = new Dictionary<string, object?>
@@ -391,7 +383,7 @@ namespace Seeing.Agent.Tools
             // ========== Oracle 建议：工具级重试策略 ==========
             Exception? lastException = null;
             var startTime = DateTime.Now;
-            
+
             for (int attempt = 0; attempt < _maxRetries; attempt++)
             {
                 try
@@ -486,40 +478,6 @@ namespace Seeing.Agent.Tools
                 Error = $"[重试耗尽] {lastException?.Message}",
                 Duration = DateTime.Now - startTime
             };
-        }
-
-        /// <summary>
-        /// 检查工具权限
-        /// </summary>
-        private async Task<bool> CheckToolPermissionAsync(
-            string toolId,
-            AgentPermissionConfig? config,
-            CancellationToken cancellationToken)
-        {
-            if (config == null)
-            {
-                // 安全默认：无权限配置时拒绝所有工具调用
-                // 调用方应通过 AgentExecutor 进行权限检查
-                _logger.LogWarning("[Permission] 无权限配置，默认拒绝: {ToolId}", toolId);
-                return false;
-            }
-
-            // 检查黑名单
-            if (config.DeniedTools.Contains(toolId, StringComparer.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("[Permission] 工具 {ToolId} 在黑名单中", toolId);
-                return false;
-            }
-
-            // 检查白名单（如果有）
-            if (config.AllowedTools.Count > 0 &&
-                !config.AllowedTools.Contains(toolId, StringComparer.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("[Permission] 工具 {ToolId} 不在白名单中", toolId);
-                return false;
-            }
-
-            return true;
         }
 
         /// <summary>
@@ -620,20 +578,5 @@ namespace Seeing.Agent.Tools
 
             return await ExecuteAsync(toolCall, sessionId, cancellationToken);
         }
-    }
-
-    /// <summary>
-    /// Agent 权限配置 - 用于工具调用的权限检查
-    /// </summary>
-    public class AgentPermissionConfig
-    {
-        /// <summary>允许的工具（白名单）</summary>
-        public IReadOnlyList<string> AllowedTools { get; init; } = Array.Empty<string>();
-
-        /// <summary>禁止的工具（黑名单）</summary>
-        public IReadOnlyList<string> DeniedTools { get; init; } = Array.Empty<string>();
-
-        /// <summary>权限规则</summary>
-        public IReadOnlyList<PermissionRule> PermissionRules { get; init; } = Array.Empty<PermissionRule>();
     }
 }

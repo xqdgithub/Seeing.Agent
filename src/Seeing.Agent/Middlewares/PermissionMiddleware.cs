@@ -39,10 +39,10 @@ namespace Seeing.Agent.Middlewares
             {
                 // 创建权限上下文
                 var permContext = new PermissionContext();
-                
+
                 var result = await _permissions.EvaluateToolAsync(
-                    permissionCtx.ToolId, 
-                    null, 
+                    permissionCtx.ToolId,
+                    null,
                     permContext);
 
                 _logger.LogDebug(
@@ -66,7 +66,7 @@ namespace Seeing.Agent.Middlewares
                             };
 
                             var confirmed = await execCtx.PermissionChannel.RequestConfirmationAsync(request);
-                            
+
                             if (!confirmed)
                             {
                                 throw new PermissionDeniedException(

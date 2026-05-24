@@ -1,5 +1,3 @@
-using System;
-
 namespace Seeing.Agent.MCP.Core;
 
 public sealed class McpStatusChangedEventArgs : EventArgs

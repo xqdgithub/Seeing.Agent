@@ -12,7 +12,7 @@ namespace Seeing.Agent.Tools.BuiltIn
     {
         protected readonly string _workingDirectory;
 
-        protected BuiltInToolBase(ILogger logger, string? workingDirectory = null) 
+        protected BuiltInToolBase(ILogger logger, string? workingDirectory = null)
             : base(logger)
         {
             _workingDirectory = workingDirectory ?? Directory.GetCurrentDirectory();

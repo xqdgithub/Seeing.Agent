@@ -2,10 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using System.IO;
-using System.Text;
+using Seeing.Agent.Core.Permission;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Discovery
@@ -181,10 +179,10 @@ Agent with tool restrictions.";
 
             // Assert
             result.Should().HaveCount(1);
-            var permissions = result[0].Permissions;
-            permissions.Should().Contain(p => p.Permission == "read" && p.Action == PermissionAction.Allow);
-            permissions.Should().Contain(p => p.Permission == "write" && p.Action == PermissionAction.Deny);
-            permissions.Should().Contain(p => p.Permission == "bash" && p.Action == PermissionAction.Allow);
+            var permissions = result[0].PermissionRules;
+            permissions.Should().Contain(p => p.Pattern == "read" && p.Effect == PermissionEffect.Allow);
+            permissions.Should().Contain(p => p.Pattern == "write" && p.Effect == PermissionEffect.Deny);
+            permissions.Should().Contain(p => p.Pattern == "bash" && p.Effect == PermissionEffect.Allow);
         }
 
         [Fact]
@@ -214,10 +212,10 @@ Agent with permission config.";
 
             // Assert
             result.Should().HaveCount(1);
-            var permissions = result[0].Permissions;
-            permissions.Should().Contain(p => p.Permission == "read" && p.Action == PermissionAction.Allow);
-            permissions.Should().Contain(p => p.Permission == "edit" && p.Action == PermissionAction.Deny);
-            permissions.Should().Contain(p => p.Permission == "task" && p.Action == PermissionAction.Ask);
+            var permissions = result[0].PermissionRules;
+            permissions.Should().Contain(p => p.Pattern == "read" && p.Effect == PermissionEffect.Allow);
+            permissions.Should().Contain(p => p.Pattern == "edit" && p.Effect == PermissionEffect.Deny);
+            permissions.Should().Contain(p => p.Pattern == "task" && p.Effect == PermissionEffect.Ask);
         }
 
         [Fact]
@@ -309,10 +307,10 @@ Sub agent.";
             result.Should().HaveCount(2);
             var primaryAgent = result.FirstOrDefault(a => a.Name == "primary-agent");
             var subAgent = result.FirstOrDefault(a => a.Name == "sub-agent");
-            
+
             primaryAgent.Should().NotBeNull();
             primaryAgent!.Mode.Should().Be(AgentMode.Primary);
-            
+
             subAgent.Should().NotBeNull();
             subAgent!.Mode.Should().Be(AgentMode.SubAgent);
         }

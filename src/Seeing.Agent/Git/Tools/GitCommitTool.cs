@@ -1,10 +1,6 @@
-using System.Collections.Generic;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Git;
+using System.Text.Json;
 
 namespace Seeing.Agent.Git.Tools
 {

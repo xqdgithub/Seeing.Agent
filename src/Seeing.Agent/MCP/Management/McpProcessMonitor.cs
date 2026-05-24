@@ -1,9 +1,9 @@
 namespace Seeing.Agent.MCP.Management;
 
-using System.Collections.Concurrent;
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.MCP.Core;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 
 /// <summary>
 /// MCP 进程监控器 - 监控 stdio 进程退出事件

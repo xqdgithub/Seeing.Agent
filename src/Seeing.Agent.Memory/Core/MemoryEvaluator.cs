@@ -1,6 +1,3 @@
-using System;
-using System.Threading.Tasks;
-
 namespace Seeing.Agent.Memory.Core
 {
     // Future Work: Evaluates the memory snippet/content quality/value using LLM or heuristic later.
@@ -26,7 +23,7 @@ namespace Seeing.Agent.Memory.Core
         // Placeholder properties for future value judgement data.
         public double Score { get; set; } = 0.0;
         public string Verdict { get; set; } = "NotImplemented";
-        public string Details { get; set; } = null;
+        public string? Details { get; set; } = null;
     }
 
     /// <summary>

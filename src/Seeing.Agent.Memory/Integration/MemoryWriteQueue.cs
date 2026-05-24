@@ -1,9 +1,7 @@
-using System;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Memory.Integration;
 

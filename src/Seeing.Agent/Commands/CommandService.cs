@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Interfaces;
 
 namespace Seeing.Agent.Commands
 {
@@ -55,7 +54,7 @@ namespace Seeing.Agent.Commands
                 throw new ArgumentNullException(nameof(executor));
             }
 
-            _logger.LogInformation("准备执行命令: {CommandName}, SessionId: {SessionId}", 
+            _logger.LogInformation("准备执行命令: {CommandName}, SessionId: {SessionId}",
                 context.CommandName, context.SessionId);
 
             // 触发 command.execute.before Hook
@@ -105,10 +104,10 @@ namespace Seeing.Agent.Commands
             {
                 // 执行实际命令
                 var result = await executor(context, cancellationToken);
-                
-                _logger.LogInformation("命令执行完成: {CommandName}, Success: {Success}", 
+
+                _logger.LogInformation("命令执行完成: {CommandName}, Success: {Success}",
                     context.CommandName, result.Success);
-                
+
                 return result;
             }
             catch (Exception ex)

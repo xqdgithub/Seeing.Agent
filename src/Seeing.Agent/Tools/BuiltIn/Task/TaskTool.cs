@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Session.Core;
+using Seeing.Agent.Core.Permission;
 using System.Text;
 using System.Text.Json;
 
@@ -246,7 +246,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
             {
                 // 异步获取子代理列表，同步等待结果
                 var subAgents = _agentRegistry.GetSubAgentsAsync().GetAwaiter().GetResult();
-                
+
                 var agentListText = subAgents.Count > 0
                     ? string.Join("\n", subAgents.Select(a =>
                         $"- {a.Name}: {a.Description ?? "此子代理应仅由用户手动调用"}"))
@@ -273,7 +273,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
         private string BuildPrompt(string prompt, string? command)
         {
             var sb = new StringBuilder();
-            
+
             if (!string.IsNullOrEmpty(command))
             {
                 sb.AppendLine($"[命令触发: {command}]");
@@ -281,7 +281,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
             }
 
             sb.Append(prompt);
-            
+
             return sb.ToString();
         }
 
@@ -299,15 +299,15 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
 
             // 根据 Agent 权限配置禁用工具
             var disabledTools = new List<string>();
-            
+
             // 检查是否禁用 todowrite
-            if (agentInfo.Permissions.Any(p => p.Permission == "todowrite" && p.Action == PermissionAction.Deny))
+            if (agentInfo.PermissionRules.Any(p => p.Kind == PermissionKind.Tool && p.Pattern == "todowrite" && p.Effect == PermissionEffect.Deny))
             {
                 disabledTools.Add("todowrite");
             }
-            
+
             // 检查是否禁用 task
-            if (agentInfo.Permissions.Any(p => p.Permission == "task" && p.Action == PermissionAction.Deny))
+            if (agentInfo.PermissionRules.Any(p => p.Kind == PermissionKind.Tool && p.Pattern == "task" && p.Effect == PermissionEffect.Deny))
             {
                 disabledTools.Add("task");
             }

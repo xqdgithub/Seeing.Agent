@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -31,7 +31,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
         public override string Id => "webfetch";
 
         /// <inheritdoc/>
-        public override string Description => 
+        public override string Description =>
             "从指定 URL 获取内容，支持返回文本、Markdown 或 HTML 格式。" +
             "可用于获取网页内容、API 响应或在线文档。" +
             "自动将 HTML 转换为 Markdown 或纯文本格式。";
@@ -140,7 +140,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
                     return Failure("响应过大（超过 5MB 限制）");
                 }
 
-            var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
 
                 // 检查是否为图片
                 if (IsImageContentType(contentType))
@@ -238,7 +238,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
 
             foreach (var pattern in patterns)
             {
-                html = Regex.Replace(html, pattern, "", 
+                html = Regex.Replace(html, pattern, "",
                     RegexOptions.IgnoreCase | RegexOptions.Singleline);
             }
 

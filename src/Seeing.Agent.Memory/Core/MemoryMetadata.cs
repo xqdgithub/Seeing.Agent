@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Seeing.Agent.Memory.Core;
 
 public record MemoryMetadata(

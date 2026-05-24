@@ -123,7 +123,7 @@ namespace Seeing.Agent.Tools.BuiltIn
                 ".xml" => "application/xml",
                 ".md" => "text/markdown",
                 ".csv" => "text/csv",
-                
+
                 // 图片
                 ".png" => "image/png",
                 ".jpg" or ".jpeg" => "image/jpeg",
@@ -132,12 +132,12 @@ namespace Seeing.Agent.Tools.BuiltIn
                 ".ico" => "image/x-icon",
                 ".webp" => "image/webp",
                 ".svg" => "image/svg+xml",
-                
+
                 // 文档
                 ".pdf" => "application/pdf",
                 ".doc" => "application/msword",
                 ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                
+
                 // 其他
                 _ => "application/octet-stream"
             };

@@ -1,7 +1,6 @@
-using System;
-using System.Collections.Concurrent;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Memory.Core;
 

@@ -1,6 +1,6 @@
-using System.Text.Json;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Text.Json;
 
 namespace Seeing.Agent.Decorators
 {

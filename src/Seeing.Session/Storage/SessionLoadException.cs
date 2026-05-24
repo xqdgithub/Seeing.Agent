@@ -1,5 +1,3 @@
-using System;
-
 namespace Seeing.Session.Storage
 {
     /// <summary>

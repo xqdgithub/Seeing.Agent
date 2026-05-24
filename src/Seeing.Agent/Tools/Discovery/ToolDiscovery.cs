@@ -1,4 +1,3 @@
-using Seeing.Agent.Core.Interfaces;
 using System.Reflection;
 using System.Text.Json;
 
@@ -11,19 +10,19 @@ namespace Seeing.Agent.Tools.Discovery
     {
         /// <summary>工具 ID</summary>
         public string Id { get; set; } = "";
-        
+
         /// <summary>工具描述</summary>
         public string Description { get; set; } = "";
-        
+
         /// <summary>原始方法信息</summary>
         public MethodInfo MethodInfo { get; set; } = null!;
-        
+
         /// <summary>声明类型</summary>
         public Type DeclaringType { get; set; } = null!;
-        
+
         /// <summary>参数 Schema</summary>
         public JsonElement ParametersSchema { get; set; }
-        
+
         /// <summary>是否静态方法</summary>
         public bool IsStatic { get; set; }
     }

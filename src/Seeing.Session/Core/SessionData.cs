@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Seeing.Session.Core
 {
     public enum SessionStatus
@@ -34,10 +31,10 @@ namespace Seeing.Session.Core
         // === Agent 配置（一级字段） ===
         /// <summary>选中的 Agent ID（如 primary, build 等）</summary>
         public string SelectedAgent { get; set; } = "primary";
-        
+
         /// <summary>选中的 Model ID（如 gpt-4o, claude-3-5-sonnet 等）</summary>
         public string SelectedModel { get; set; } = string.Empty;
-        
+
         /// <summary>Model 所属 Provider ID（如 openai, anthropic 等）</summary>
         public string SelectedModelProvider { get; set; } = string.Empty;
 
@@ -52,7 +49,7 @@ namespace Seeing.Session.Core
 
         // === 扩展上下文（用于存储其他运行时数据） ===
         public Dictionary<string, object> Context { get; set; } = new();
-        
+
         // === 元数据（用于存储用户自定义标签等） ===
         public Dictionary<string, string> Metadata { get; set; } = new();
 
@@ -72,7 +69,7 @@ namespace Seeing.Session.Core
         // === 向后兼容字段（Deprecated） ===
         [Obsolete("使用 SelectedAgent 替代")]
         public AgentMetadata? Agent { get; set; }
-        
+
         public Dictionary<string, string> State { get; set; } = new Dictionary<string, string>();
 
         // === 统计属性 ===

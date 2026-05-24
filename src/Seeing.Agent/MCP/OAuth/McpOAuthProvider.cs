@@ -1,10 +1,7 @@
-using System;
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.MCP.OAuth
 {
@@ -99,7 +96,7 @@ namespace Seeing.Agent.MCP.OAuth
             CancellationToken cancellationToken = default)
         {
             var token = await _storage.LoadTokenAsync(mcpName);
-            
+
             if (token == null)
                 return new OAuthResult(false, McpAuthStatus.NotAuthenticated, "No stored token found");
 
@@ -118,7 +115,7 @@ namespace Seeing.Agent.MCP.OAuth
             CancellationToken cancellationToken = default)
         {
             var token = await _storage.LoadTokenAsync(mcpName);
-            
+
             if (token == null || string.IsNullOrEmpty(token.RefreshToken))
                 return new OAuthResult(false, McpAuthStatus.NeedsAuthorization, "No refresh token available");
 
@@ -142,7 +139,7 @@ namespace Seeing.Agent.MCP.OAuth
         public async Task<McpAuthStatus> GetAuthStatusAsync(string mcpName)
         {
             var token = await _storage.LoadTokenAsync(mcpName);
-            
+
             if (token == null) return McpAuthStatus.NotAuthenticated;
             if (token.IsExpired) return McpAuthStatus.Expired;
             return McpAuthStatus.Authenticated;

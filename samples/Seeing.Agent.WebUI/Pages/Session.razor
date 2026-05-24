@@ -938,7 +938,7 @@
             {
                 assistantMessage.WithMetadata("reasoning", placeholderMessage.Reasoning);
             }
-            SessionState.CurrentSession.AddMessage(assistantMessage);
+            SessionState.CurrentSession?.AddMessage(assistantMessage);
         }
         catch (OperationCanceledException)
         {

@@ -1,10 +1,7 @@
-using System;
-using System.IO;
+using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.MCP.OAuth
 {
@@ -22,7 +19,7 @@ namespace Seeing.Agent.MCP.OAuth
             _storagePath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".seeing", "oauth-tokens");
-            
+
             Directory.CreateDirectory(_storagePath);
         }
 
@@ -32,7 +29,7 @@ namespace Seeing.Agent.MCP.OAuth
             var filePath = GetTokenPath(mcpName);
             var json = JsonSerializer.Serialize(token);
             var bytes = Encoding.UTF8.GetBytes(json);
-            
+
             var encrypted = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
             await File.WriteAllBytesAsync(filePath, encrypted);
             _logger.LogDebug("Saved OAuth token for {McpName}", mcpName);

@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.State
@@ -18,7 +14,7 @@ namespace Seeing.Agent.WebUI.State
         /// 执行锁 - 确保只有一个任务在执行
         /// </summary>
         private readonly SemaphoreSlim _executionLock = new SemaphoreSlim(1, 1);
-        
+
         /// <summary>
         /// 当前会话数据（由 SessionManager 管理）
         /// </summary>
@@ -98,7 +94,7 @@ namespace Seeing.Agent.WebUI.State
         /// <summary>
         /// 获取当前取消令牌
         /// </summary>
-        public CancellationToken CancellationToken => 
+        public CancellationToken CancellationToken =>
             _cancellationTokenSource?.Token ?? CancellationToken.None;
 
         /// <summary>
@@ -116,14 +112,14 @@ namespace Seeing.Agent.WebUI.State
             {
                 return false;
             }
-            
+
             // 取消之前的执行（如果有）
             if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
             {
                 _cancellationTokenSource.Cancel();
                 _cancellationTokenSource.Dispose();
             }
-            
+
             _cancellationTokenSource = new CancellationTokenSource();
             IsExecuting = true;
             IsCompleted = false;
@@ -137,7 +133,7 @@ namespace Seeing.Agent.WebUI.State
         {
             // 等待获取锁
             _executionLock.Wait();
-            
+
             // 取消之前的执行
             if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
             {
@@ -159,7 +155,7 @@ namespace Seeing.Agent.WebUI.State
                 _cancellationTokenSource.Cancel();
             }
             IsExecuting = false;
-            
+
             // 释放锁
             if (_executionLock.CurrentCount == 0)
             {
@@ -179,7 +175,7 @@ namespace Seeing.Agent.WebUI.State
             _cancellationTokenSource = null;
             IsExecuting = false;
             IsCompleted = true;
-            
+
             // 释放锁
             if (_executionLock.CurrentCount == 0)
             {

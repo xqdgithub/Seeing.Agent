@@ -8,7 +8,7 @@ namespace Seeing.Agent.Tools.Attributes
     {
         /// <summary>工具名称（可选，默认使用方法名）</summary>
         public string? Name { get; set; }
-        
+
         /// <summary>工具描述</summary>
         public string Description { get; }
 

@@ -1,5 +1,3 @@
-using System.Threading.Tasks;
-
 namespace Seeing.Session.Core
 {
     // Factory responsible for creating, cloning and resuming sessions

@@ -1,10 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Core;
 
 namespace Seeing.Agent.Memory.Core;
 
@@ -70,7 +65,7 @@ public class TextSimilarityChecker : ISimilarityChecker
         }
 
         var totalSimilarity = Math.Min(1.0, scores.Sum());
-        
+
         _logger?.LogDebug(
             "记忆相似度计算: {Id1} vs {Id2} -> 内容={Content:F2}, 标签={Tag:F2}, 总分={Total:F2}",
             entry1.Id, entry2.Id, contentSimilarity, tagSimilarity, totalSimilarity);

@@ -1,10 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Core;
 
 namespace Seeing.Agent.Memory.Core;
 
@@ -128,7 +123,7 @@ public class MemoryDeduplicator
         for (var i = 0; i < memories.Count; i++)
         {
             var entry1 = memories[i];
-            
+
             if (processedIds.Contains(entry1.Id))
             {
                 continue;
@@ -140,20 +135,20 @@ public class MemoryDeduplicator
             for (var j = i + 1; j < memories.Count; j++)
             {
                 var entry2 = memories[j];
-                
+
                 if (processedIds.Contains(entry2.Id))
                 {
                     continue;
                 }
 
                 var similarity = await _similarityChecker.CalculateSimilarityAsync(entry1, entry2);
-                
+
                 if (similarity >= threshold)
                 {
                     duplicatesInGroup.Add(entry2);
                     processedIds.Add(entry2.Id);
                     maxSimilarity = Math.Max(maxSimilarity, similarity);
-                    
+
                     _logger?.LogDebug(
                         "发现重复: {Id1} <-> {Id2}, 相似度: {Similarity:F2}",
                         entry1.Id, entry2.Id, similarity);
@@ -164,7 +159,7 @@ public class MemoryDeduplicator
             if (duplicatesInGroup.Count >= 2)
             {
                 processedIds.Add(entry1.Id);
-                
+
                 var group = new DuplicateGroup
                 {
                     GroupId = Guid.NewGuid().ToString(),
@@ -172,9 +167,9 @@ public class MemoryDeduplicator
                     MaxSimilarity = maxSimilarity,
                     RecommendedPrimary = SelectPrimaryEntry(duplicatesInGroup)
                 };
-                
+
                 duplicateGroups.Add(group);
-                
+
                 _logger?.LogInformation(
                     "发现重复组: {GroupId}, 包含 {Count} 条记忆, 最大相似度: {Similarity:F2}",
                     group.GroupId, group.Entries.Count, group.MaxSimilarity);
@@ -230,7 +225,7 @@ public class MemoryDeduplicator
         {
             // 选择主要记忆作为合并摘要的基础
             var primary = SelectPrimaryEntry(duplicates);
-            
+
             // 创建合并摘要记忆
             var summaryContent = BuildSummaryContent(duplicates);
             var mergedTags = MergeTags(duplicates);
@@ -257,7 +252,7 @@ public class MemoryDeduplicator
             await _repository.SaveMemoryAsync(mergedEntry);
             result.MergedMemoryId = mergedEntry.Id;
             result.Message = $"ADD-only 策略：保留 {duplicates.Count} 条原始记忆，创建 1 条合并摘要";
-            
+
             _logger?.LogInformation(
                 "合并摘要已创建: {MergedId}, 基于 {Count} 条重复记忆",
                 mergedEntry.Id, duplicates.Count);
@@ -290,13 +285,13 @@ public class MemoryDeduplicator
     {
         var primary = SelectPrimaryEntry(entries);
         var otherIds = entries.Where(e => e.Id != primary.Id).Select(e => e.Id).ToList();
-        
+
         var summary = $"**合并摘要**（基于 {primary.Id}）\n\n" +
                       $"{primary.Content}\n\n" +
                       $"---\n" +
                       $"合并来源: {string.Join(", ", otherIds)}\n" +
                       $"合并时间: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss}";
-        
+
         return summary;
     }
 
@@ -306,7 +301,7 @@ public class MemoryDeduplicator
     private IReadOnlyList<string> MergeTags(List<MemoryEntry> entries)
     {
         var allTags = new HashSet<string>();
-        
+
         foreach (var entry in entries)
         {
             if (entry.Metadata?.Tags != null)
@@ -320,7 +315,7 @@ public class MemoryDeduplicator
 
         // 添加合并标记
         allTags.Add("merged");
-        
+
         return allTags.ToList();
     }
 }

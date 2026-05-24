@@ -1,5 +1,5 @@
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Llm;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Core.Interfaces
 {
@@ -15,34 +15,37 @@ namespace Seeing.Agent.Core.Interfaces
     {
         /// <summary>Agent 名称（唯一标识）</summary>
         string Name { get; set; }
-        
+
         /// <summary>Agent 模式（Primary/SubAgent/All）</summary>
         AgentMode Mode { get; set; }
-        
+
         /// <summary>Agent 描述</summary>
         string Description { get; set; }
-        
-        /// <summary>权限规则集</summary>
-        IReadOnlyList<PermissionRule> Permissions { get; set; }
-        
+
+        /// <summary>权限规则集（新格式）</summary>
+        IReadOnlyList<PermissionRuleEntry> PermissionRules { get; set; }
+
         /// <summary>系统提示词</summary>
         string? SystemPrompt { get; set; }
-        
+
         /// <summary>模型配置</summary>
         ModelReference? Model { get; set; }
-        
+
         /// <summary>最大迭代步骤</summary>
         int? MaxSteps { get; set; }
-        
+
         /// <summary>Agent 状态</summary>
         AgentStatus Status { get; set; }
-        
+
         /// <summary>允许使用的工具列表（白名单）</summary>
         IReadOnlyList<string> AllowedTools { get; set; }
-        
+
         /// <summary>禁止使用的工具列表（黑名单）</summary>
         IReadOnlyList<string> DeniedTools { get; set; }
-        
+
+        /// <summary>权限默认效果（当没有匹配规则时）</summary>
+        PermissionEffect PermissionDefaultEffect { get; set; }
+
         /// <summary>
         /// 执行 Agent
         /// </summary>

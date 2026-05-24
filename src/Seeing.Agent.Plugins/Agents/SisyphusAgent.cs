@@ -1,9 +1,5 @@
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Abstractions;
-using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Llm;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Plugins.Agents;
 
@@ -76,10 +72,10 @@ public class SisyphusAgent : AgentBase
 - {{sessionId}}: 当前会话 ID
 """,
         MaxSteps = 100,
-        Permissions = new[]
+        PermissionRules = new[]
         {
-            new PermissionRule { Permission = "question", Pattern = "*", Action = PermissionAction.Allow },
-            new PermissionRule { Permission = "call_omo_agent", Pattern = "*", Action = PermissionAction.Deny }
+            PermissionRuleEntry.Allow(PermissionKind.Tool, "question", priority: 0),
+            PermissionRuleEntry.Deny(PermissionKind.Tool, "call_omo_agent", priority: 100)
         },
         Color = "#00CED1"
     };

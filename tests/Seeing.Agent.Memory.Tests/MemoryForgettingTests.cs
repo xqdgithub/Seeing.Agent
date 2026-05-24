@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -28,7 +24,7 @@ public class MemoryForgettingTests
         _repositoryMock = new Mock<IMemoryRepository>();
         _scorerMock = new Mock<IMemoryScorer>();
         _options = new MemoryOptions();
-        
+
         var optionsWrapper = Options.Create(_options);
         _forgetManager = new MemoryForgetManager(
             _repositoryMock.Object,
@@ -150,7 +146,7 @@ public class MemoryForgettingTests
             .ReturnsAsync(new[] { CreateTestMemory("test-001") });
 
         // Act & Assert
-        await Assert.ThrowsAsync<OperationCanceledException>(() => 
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
             _forgetManager.GetForgettingCandidatesAsync(0.5, cts.Token));
     }
 

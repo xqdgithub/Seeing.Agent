@@ -9,7 +9,7 @@ namespace Seeing.Agent.Tests.Snapshot;
 /// <summary>
 /// FileSnapshotService 单元测试
 /// </summary>
-public class FileSnapshotServiceTests
+public class FileSnapshotServiceTests : IDisposable
 {
     private readonly Mock<ILogger<FileSnapshotService>> _loggerMock;
     private readonly FileSnapshotService _service;
@@ -23,7 +23,7 @@ public class FileSnapshotServiceTests
         Directory.CreateDirectory(_testDirectory);
     }
 
-    public void Dispose()
+    void IDisposable.Dispose()
     {
         if (Directory.Exists(_testDirectory))
         {

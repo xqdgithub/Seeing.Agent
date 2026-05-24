@@ -1,17 +1,16 @@
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Events;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
-using Seeing.Agent.Rules;
 using Seeing.Agent.Tools;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Core;
 
@@ -29,7 +28,6 @@ public class AgentExecutor
 {
     private readonly ILlmService _llm;
     private readonly ToolInvoker _tools;
-    private readonly IRuleEngine _rules;
     private readonly IPermissionService _permissions;
     private readonly IHookManager _hooks;
     private readonly IAgentRegistry _registry;
@@ -39,7 +37,6 @@ public class AgentExecutor
     public AgentExecutor(
         ILlmService llm,
         ToolInvoker tools,
-        IRuleEngine rules,
         IPermissionService permissions,
         IHookManager hooks,
         IAgentRegistry registry,
@@ -48,7 +45,6 @@ public class AgentExecutor
     {
         _llm = llm;
         _tools = tools;
-        _rules = rules;
         _permissions = permissions;
         _hooks = hooks;
         _registry = registry;
@@ -77,7 +73,7 @@ public class AgentExecutor
         var messages = context.History.ToList();
 
         // 获取权限通道（默认允许所有）
-        var permissionChannel = context.PermissionChannel 
+        var permissionChannel = context.PermissionChannel
             ?? Interfaces.DefaultPermissionChannel.Instance;
 
         for (var step = 0; step < maxSteps; step++)
@@ -111,7 +107,7 @@ public class AgentExecutor
                 if (!string.IsNullOrEmpty(update.ReasoningDelta))
                 {
                     streamingReasoning.Append(update.ReasoningDelta);
-                    
+
                     yield return new StreamDeltaEvent
                     {
                         SessionId = context.SessionId,
@@ -147,7 +143,7 @@ public class AgentExecutor
                 if (update.IsComplete)
                 {
                     assistantMessage = BuildAssistantMessage(
-                        update, 
+                        update,
                         streamingContent.ToString(),
                         streamingReasoning.ToString(),
                         accumulatedToolCalls);
@@ -157,7 +153,7 @@ public class AgentExecutor
             if (assistantMessage == null)
             {
                 _logger.LogWarning("[AgentExecutor] LLM 返回空响应");
-                
+
                 yield return new ErrorEvent
                 {
                     SessionId = context.SessionId,
@@ -192,9 +188,9 @@ public class AgentExecutor
                 effectiveToken))
             {
                 yield return toolEvent;
-                
+
                 // 将工具结果添加到消息历史
-                if (toolEvent is ToolCallEvent { Status: ToolCallStatus.Success or ToolCallStatus.Failed } tcEvent 
+                if (toolEvent is ToolCallEvent { Status: ToolCallStatus.Success or ToolCallStatus.Failed } tcEvent
                     && tcEvent.Output != null)
                 {
                     messages.Add(new ChatMessage
@@ -423,7 +419,7 @@ public class AgentExecutor
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AgentExecutor] 工具执行异常: {ToolName}", name);
-            
+
             return new ToolCallEvent
             {
                 SessionId = context.SessionId,
@@ -597,25 +593,25 @@ public class AgentExecutor
     {
         // 统一使用 IPermissionService 进行权限检查
         // AllowedTools/DeniedTools 检查已由 PermissionService.EvaluateRulesAsync 内部处理
-        var permContext = context.PermissionContext 
-            ?? PermissionContext.FromAgentContext(context, agent.BuildPermissionPolicy());
-        
+        var permContext = context.PermissionContext
+            ?? PermissionContext.FromAgentContext(context, agent.BuildPermissionPolicy(), agent.Name);
+
         var result = await _permissions.EvaluateToolAsync(toolName, null, permContext);
-        
+
         // 处理 Ask 情况
         if (result.NeedsConfirmation)
         {
             var userDecision = await permissionChannel.RequestToolPermissionAsync(
                 toolName, arguments, context);
-            
+
             if (userDecision.Action != PermissionAction.Allow)
             {
                 return PermissionDecision.Deny("用户拒绝");
             }
-            
+
             return PermissionDecision.Allow("用户确认允许");
         }
-        
+
         return result.ToDecision();
     }
 
@@ -714,7 +710,7 @@ public class AgentExecutor
     /// 构建 Assistant 消息
     /// </summary>
     private static ChatMessage BuildAssistantMessage(
-        StreamUpdate update, 
+        StreamUpdate update,
         string fullContent,
         string fullReasoning,
         List<ToolCall>? toolCalls)

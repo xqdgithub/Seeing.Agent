@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Core.Models;
 using DefaultPermissionChannelAlias = Seeing.Agent.Core.Interfaces.DefaultPermissionChannel;
 
 namespace Seeing.Agent.Core.Models
@@ -69,7 +68,7 @@ namespace Seeing.Agent.Core.Models
             var nullLogger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
             var nullServices = services ?? new ServiceCollection().BuildServiceProvider();
             var permissionChannel = DefaultPermissionChannelAlias.Instance;
-            
+
             return new DefaultExecutionContext(nullServices, nullLogger, permissionChannel)
             {
                 SessionId = sessionId,

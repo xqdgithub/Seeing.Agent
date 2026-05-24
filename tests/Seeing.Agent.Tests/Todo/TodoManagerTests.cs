@@ -126,7 +126,7 @@ namespace Seeing.Agent.Tests.Todo
             // Arrange
             var manager = new TodoManager(_loggerMock.Object, _testDirectory);
             var sessionId = "test_session_005";
-            
+
             await manager.AddAsync(sessionId, "任务一", "high");
             await manager.AddAsync(sessionId, "任务二", "medium");
             await manager.AddAsync(sessionId, "任务三", "low");
@@ -163,7 +163,7 @@ namespace Seeing.Agent.Tests.Todo
 
             // Assert
             File.Exists(filePath).Should().BeFalse();
-            
+
             // 验证重新加载返回空列表
             var result = await manager.LoadAsync(sessionId);
             result.Items.Should().BeEmpty();

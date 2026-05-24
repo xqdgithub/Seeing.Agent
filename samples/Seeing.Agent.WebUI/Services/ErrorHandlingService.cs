@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Seeing.Agent.WebUI.Services
 {
     /// <summary>
@@ -40,7 +37,7 @@ namespace Seeing.Agent.WebUI.Services
                 Exception = exception,
                 Timestamp = DateTime.Now
             });
-            
+
             OnStateChanged?.Invoke();
         }
 

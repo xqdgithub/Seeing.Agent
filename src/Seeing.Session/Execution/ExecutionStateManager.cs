@@ -1,6 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Seeing.Session.Execution
 {
     // Simple implementation of IExecutionState managing a CancellationTokenSource

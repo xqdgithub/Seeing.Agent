@@ -1,5 +1,3 @@
-using Seeing.Agent.Core.Interfaces;
-
 namespace Seeing.Agent.Core.Interfaces
 {
     /// <summary>

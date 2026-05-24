@@ -1,11 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Rules;
+using Seeing.Agent.Core.Permission;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Registry
@@ -16,14 +15,12 @@ namespace Seeing.Agent.Tests.Registry
     public class AgentRegistryTests
     {
         private readonly Mock<ILogger<AgentRegistry>> _loggerMock;
-        private readonly Mock<IRuleEngine> _ruleEngineMock;
         private readonly Mock<IAgentStore> _storeMock;
         private readonly Mock<IAgentRuntimeManager> _runtimeManagerMock;
 
         public AgentRegistryTests()
         {
             _loggerMock = new Mock<ILogger<AgentRegistry>>();
-            _ruleEngineMock = new Mock<IRuleEngine>();
             _storeMock = new Mock<IAgentStore>();
             _runtimeManagerMock = new Mock<IAgentRuntimeManager>();
         }
@@ -31,12 +28,12 @@ namespace Seeing.Agent.Tests.Registry
         private AgentRegistry CreateRegistry(IEnumerable<AgentInfo> agents, string? defaultAgent = null)
         {
             var agentList = agents.ToList();
-            
+
             // 设置 Store 的默认行为
             _storeMock
                 .Setup(s => s.GetAllAsync())
                 .ReturnsAsync(agentList.AsReadOnly());
-            
+
             foreach (var agent in agentList)
             {
                 _storeMock
@@ -54,7 +51,6 @@ namespace Seeing.Agent.Tests.Registry
 
             return new AgentRegistry(
                 _loggerMock.Object,
-                _ruleEngineMock.Object,
                 _storeMock.Object,
                 _runtimeManagerMock.Object,
                 agentList,
@@ -352,21 +348,21 @@ namespace Seeing.Agent.Tests.Registry
                 {
                     Name = "allowed",
                     Mode = AgentMode.SubAgent,
-                    Permissions = new List<PermissionRule>()
+                    PermissionRules = new List<PermissionRuleEntry>()
                 },
                 new AgentInfo
                 {
                     Name = "denied",
                     Mode = AgentMode.SubAgent,
-                    Permissions = new List<PermissionRule>()
+                    PermissionRules = new List<PermissionRuleEntry>()
                 }
             };
 
             var registry = CreateRegistry(agents);
 
-            var callerPermissions = new List<PermissionRule>
+            var callerPermissions = new List<PermissionRuleEntry>
             {
-                new PermissionRule { Permission = "task", Pattern = "denied", Action = PermissionAction.Deny }
+                PermissionRuleEntry.Deny(PermissionKind.Agent, "denied", 100)
             };
 
             // Act

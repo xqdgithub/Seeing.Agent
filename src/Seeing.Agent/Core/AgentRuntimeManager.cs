@@ -142,8 +142,8 @@ namespace Seeing.Agent.Core
                 return;
 
             // 解析 Agent 名称（Section 格式为 "AgentModels.{agentName}"）
-            var agentName = e.Section.StartsWith("AgentModels.") 
-                ? e.Section.Substring("AgentModels.".Length) 
+            var agentName = e.Section.StartsWith("AgentModels.")
+                ? e.Section.Substring("AgentModels.".Length)
                 : e.Section;
 
             var agent = await _agentStore.GetAsync(agentName);
@@ -171,7 +171,7 @@ namespace Seeing.Agent.Core
                 Source = ModelChangeSource.ConfigReload
             });
 
-            _logger.LogInformation("Agent 模型已通过热重载更新: {Agent} -> {Model}", 
+            _logger.LogInformation("Agent 模型已通过热重载更新: {Agent} -> {Model}",
                 agentName, agent.Model?.ToString() ?? "null");
         }
 
@@ -483,7 +483,7 @@ namespace Seeing.Agent.Core
         /// </summary>
         protected virtual void OnModelChanged(AgentModelChangedEventArgs e)
         {
-            _logger.LogDebug("触发模型变更事件: {Agent}, {Old} -> {New}", 
+            _logger.LogDebug("触发模型变更事件: {Agent}, {Old} -> {New}",
                 e.AgentName, e.OldModel?.ToString() ?? "null", e.NewModel?.ToString() ?? "null");
             ModelChanged?.Invoke(this, e);
         }

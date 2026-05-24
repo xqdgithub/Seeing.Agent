@@ -1,5 +1,3 @@
-using System.Threading.Tasks;
-
 namespace Seeing.Session.Core
 {
     /// <summary>

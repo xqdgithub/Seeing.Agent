@@ -1,8 +1,8 @@
-using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Text.Json;
 
 namespace Seeing.Agent.Decorators
 {
@@ -38,7 +38,7 @@ namespace Seeing.Agent.Decorators
         {
             // 计算缓存键
             var cacheKey = ComputeCacheKey(arguments);
-            
+
             // 尝试从缓存获取
             if (_cache.TryGetValue<ToolResult>(cacheKey, out var cachedResult))
             {

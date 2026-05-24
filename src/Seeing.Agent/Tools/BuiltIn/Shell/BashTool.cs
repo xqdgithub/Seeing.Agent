@@ -1,11 +1,11 @@
-using System.Diagnostics;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Shell;
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.Shell
 {
@@ -28,7 +28,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         public override string Id => "bash";
 
         /// <summary>工具描述</summary>
-        public override string Description => 
+        public override string Description =>
             "执行 Shell 命令。支持跨平台执行，提供超时控制和取消支持。" +
             "重要提示：请谨慎使用危险命令（如 rm、删除文件等）。";
 

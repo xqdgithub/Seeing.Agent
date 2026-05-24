@@ -26,7 +26,7 @@ public class TodoManager : ITodoManager
     {
         _logger = logger;
         _storagePath = storagePath ?? Path.Combine(Directory.GetCurrentDirectory(), ".seeing", "todos");
-        
+
         _jsonOptions = new JsonSerializerOptions
         {
             WriteIndented = true,
@@ -58,16 +58,16 @@ public class TodoManager : ITodoManager
 
             var json = await File.ReadAllTextAsync(filePath);
             var todoList = JsonSerializer.Deserialize<TodoList>(json, _jsonOptions);
-            
+
             if (todoList == null)
             {
                 _logger.LogWarning("Todo 文件反序列化为 null，返回空列表: {Path}", filePath);
                 return new TodoList { SessionId = sessionId };
             }
 
-            _logger.LogDebug("已加载 Todo 列表: SessionId={SessionId}, Items={Count}", 
+            _logger.LogDebug("已加载 Todo 列表: SessionId={SessionId}, Items={Count}",
                 sessionId, todoList.Items.Count);
-            
+
             return todoList;
         }
         catch (JsonException ex)
@@ -110,9 +110,9 @@ public class TodoManager : ITodoManager
 
             todoList.UpdatedAt = DateTimeOffset.Now;
             var json = JsonSerializer.Serialize(todoList, _jsonOptions);
-            
+
             await File.WriteAllTextAsync(filePath, json);
-            
+
             _logger.LogInformation("已保存 Todo 列表: SessionId={SessionId}, Items={Count}, Path={Path}",
                 todoList.SessionId, todoList.Items.Count, filePath);
         }
@@ -144,7 +144,7 @@ public class TodoManager : ITodoManager
         priority = NormalizePriority(priority);
 
         var todoList = await LoadAsync(sessionId);
-        
+
         var todoItem = new TodoItem
         {
             Id = GenerateTodoId(),
@@ -179,7 +179,7 @@ public class TodoManager : ITodoManager
 
         var todoList = await LoadAsync(sessionId);
         var todoItem = todoList.Items.FirstOrDefault(t => t.Id == todoId);
-        
+
         if (todoItem == null)
         {
             _logger.LogWarning("未找到 Todo 项: Id={Id}, SessionId={SessionId}", todoId, sessionId);

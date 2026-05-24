@@ -1,15 +1,7 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core.Generation
 {
@@ -62,7 +54,7 @@ namespace Seeing.Agent.Core.Generation
                     throw new InvalidOperationException($"Template render errors: {string.Join("; ", renderResult.Errors)}");
 
                 systemPrompt = renderResult.RenderedContent;
-                
+
                 if (renderResult.Warnings.Any())
                 {
                     foreach (var w in renderResult.Warnings)
@@ -103,7 +95,7 @@ namespace Seeing.Agent.Core.Generation
                 await _agentRegistry.RegisterAgentAsync(agentInfo);
             }
 
-            _logger.LogInformation("Generated agent {AgentName} from template {TemplateId}", 
+            _logger.LogInformation("Generated agent {AgentName} from template {TemplateId}",
                 definition.Name, template?.Id ?? "none");
 
             return definition;
@@ -261,7 +253,7 @@ Review criteria:
         {
             if (baseList == null || baseList.Count == 0) return new List<string>(overrideList);
             if (overrideList.Count == 0) return new List<string>(baseList);
-            
+
             // 合并去重
             return baseList.Concat(overrideList).Distinct().ToList();
         }

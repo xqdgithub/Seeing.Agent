@@ -1,9 +1,6 @@
-using System;
+using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.MCP.OAuth
 {
@@ -35,10 +32,10 @@ namespace Seeing.Agent.MCP.OAuth
 
             // Find an available port
             _port = GetAvailablePort();
-            
+
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://localhost:{_port}/");
-            
+
             try
             {
                 _listener.Start();
@@ -113,12 +110,12 @@ namespace Seeing.Agent.MCP.OAuth
                 if (!string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(state))
                 {
                     _tcs?.TrySetResult((code, state));
-                    await WriteResponseAsync(response, 
+                    await WriteResponseAsync(response,
                         "<html><body><h1>Authorization Complete</h1><p>You can close this window.</p></body></html>");
                 }
                 else
                 {
-                    await WriteResponseAsync(response, 
+                    await WriteResponseAsync(response,
                         "<html><body><h1>Authorization Failed</h1><p>Missing code or state parameter.</p></body></html>");
                 }
             }
@@ -136,14 +133,14 @@ namespace Seeing.Agent.MCP.OAuth
         private static string? GetQueryParam(string? query, string name)
         {
             if (string.IsNullOrEmpty(query)) return null;
-            
+
             var startIndex = query.IndexOf($"{name}=", StringComparison.OrdinalIgnoreCase);
             if (startIndex < 0) return null;
-            
+
             startIndex += name.Length + 1;
             var endIndex = query.IndexOf('&', startIndex);
             if (endIndex < 0) endIndex = query.Length;
-            
+
             return Uri.UnescapeDataString(query.Substring(startIndex, endIndex - startIndex));
         }
 
@@ -189,7 +186,7 @@ namespace Seeing.Agent.MCP.OAuth
             _disposed = true;
 
             _listenerCts?.Cancel();
-            
+
             try
             {
                 _listener?.Stop();

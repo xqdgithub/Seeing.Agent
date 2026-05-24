@@ -1,6 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Plugins.Agents;
 
@@ -60,7 +58,7 @@ namespace Seeing.Agent.Plugins
             // 插件在独立 AssemblyLoadContext 中加载时，DI 无法解析 ILogger<PluginsExtension>
             var loggerFactory = context.Services.GetRequiredService<ILoggerFactory>();
             _logger = loggerFactory.CreateLogger<PluginsExtension>();
-            _logger.LogInformation("初始化 {Name} v{Version} (state: {State})", 
+            _logger.LogInformation("初始化 {Name} v{Version} (state: {State})",
                 Name, Version, meta.State);
 
             var hookManager = context.HookManager;

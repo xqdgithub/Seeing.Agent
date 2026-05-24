@@ -1,6 +1,4 @@
 using Microsoft.Extensions.Logging;
-using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -41,26 +39,26 @@ public class AnthropicClient : ILlmClient
 
         // 配置 HTTP 客户端
         var baseUrl = config.BaseUrl ?? "https://api.anthropic.com";
-        
+
         // 确保 Base URL 以 / 结尾，这样相对路径才能正确追加
         // 例如：https://seeingyou.top/llm/router/anthropic/ + v1/messages
         if (!baseUrl.EndsWith("/", StringComparison.Ordinal))
             baseUrl += "/";
-        
-_httpClient.BaseAddress = new Uri(baseUrl);
+
+        _httpClient.BaseAddress = new Uri(baseUrl);
         _httpClient.Timeout = TimeSpan.FromMilliseconds(config.Timeout > 0 ? config.Timeout : 300000);
 
         _httpClient.DefaultRequestHeaders.Clear();
         _httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
         _httpClient.DefaultRequestHeaders.Add("anthropic-version", ApiVersion);
-        
+
         // 使用特定格式的 User-Agent（跳过验证以支持多 product token 格式）
         // 格式：opencode/1.2.26 ai-sdk/provider-utils/3.0.21 runtime/bun/1.3.10
         _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "opencode/1.2.26 ai-sdk/provider-utils/3.0.21 runtime/bun/1.3.10");
-        
+
         _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
-        _logger.LogDebug("Anthropic 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}", 
+        _logger.LogDebug("Anthropic 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}",
             ProviderId, baseUrl);
     }
 
@@ -296,9 +294,9 @@ _httpClient.BaseAddress = new Uri(baseUrl);
             var testRequest = new ChatRequest
             {
                 Model = _config.DefaultModel ?? "claude-3-5-haiku-20241022",
-                Messages = new List<ChatMessage> 
-                { 
-                    new() { Role = ChatRole.User, Content = "Hi" } 
+                Messages = new List<ChatMessage>
+                {
+                    new() { Role = ChatRole.User, Content = "Hi" }
                 },
                 MaxTokens = 5
             };
@@ -319,7 +317,7 @@ _httpClient.BaseAddress = new Uri(baseUrl);
     {
         var messages = new List<object>();
 
-// Anthropic 的 system 是单独的字段，不在 messages 中
+        // Anthropic 的 system 是单独的字段，不在 messages 中
         // 注意：Anthropic 没有 "tool" 角色，工具调用结果必须作为 "user" 消息发送
         foreach (var msg in request.Messages)
         {
@@ -354,7 +352,7 @@ _httpClient.BaseAddress = new Uri(baseUrl);
         };
     }
 
-private object BuildContent(ChatMessage msg)
+    private object BuildContent(ChatMessage msg)
     {
         // 工具调用结果 - Anthropic 要求作为 user 消息的一部分
         if (!string.IsNullOrEmpty(msg.ToolCallId))

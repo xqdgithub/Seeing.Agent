@@ -1,9 +1,4 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Seeing.Session.Core;
 
 namespace Seeing.Session.Management
 {
@@ -44,7 +39,7 @@ namespace Seeing.Session.Management
             // 保留到该消息（含）
             var messagesToKeep = messageIndex + 1;
             var removedCount = session.Messages.Count - messagesToKeep;
-            
+
             session.Messages = session.Messages.Take(messagesToKeep).ToList();
             session.UpdatedAt = DateTime.UtcNow;
             session.LastActiveAt = DateTime.UtcNow;

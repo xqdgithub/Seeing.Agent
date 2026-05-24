@@ -1,11 +1,11 @@
 namespace Seeing.Agent.MCP.Management;
 
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.MCP;
 using Seeing.Agent.MCP.Core;
 using Seeing.Agent.Tools;
+using System.Collections.Concurrent;
 
 internal sealed class McpToolRegistry : IMcpToolRegistry
 {

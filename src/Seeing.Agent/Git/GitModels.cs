@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Seeing.Agent.Git
 {
     /// <summary>Git 状态</summary>

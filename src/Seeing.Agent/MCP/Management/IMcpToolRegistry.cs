@@ -1,9 +1,9 @@
 namespace Seeing.Agent.MCP.Management;
 
-using System.Threading;
-using System.Threading.Tasks;
 using Seeing.Agent.MCP;
 using Seeing.Agent.MCP.Core;
+using System.Threading;
+using System.Threading.Tasks;
 
 public interface IMcpToolRegistry
 {

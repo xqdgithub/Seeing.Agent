@@ -1,13 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Core;
+using System.Text;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -22,14 +15,14 @@ public class MdMemoryRepository : IMemoryRepository
 {
     private readonly string _baseDirectory;
     private readonly ILogger<MdMemoryRepository>? _logger;
-    
+
     // 文件锁超时时间
     private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
-    
+
     // 文件锁字典，用于同一进程内的并发控制（V1 单进程）
     private static readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
     private static readonly object _lockDictLock = new();
-    
+
     // YAML 序列化器
     private static readonly ISerializer _yamlSerializer = new SerializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -89,7 +82,7 @@ public class MdMemoryRepository : IMemoryRepository
     private string GetMemoryFilePathById(string memoryId)
     {
         ValidateMemoryId(memoryId);
-        
+
         // 搜索所有类型目录查找文件
         var types = new[] { "semantic", "episodic", "procedural", "archive" };
         foreach (var type in types)
@@ -104,7 +97,7 @@ public class MdMemoryRepository : IMemoryRepository
                 }
             }
         }
-        
+
         // 返回假设路径（用于错误报告）
         return Path.Combine(_baseDirectory, "unknown", $"{memoryId}.md");
     }
@@ -126,13 +119,13 @@ public class MdMemoryRepository : IMemoryRepository
         {
             throw new ArgumentException("记忆ID不能为空", nameof(memoryId));
         }
-        
+
         // 检查路径遍历攻击（防止访问上级目录）
         if (memoryId.Contains("..") || memoryId.Contains("/") || memoryId.Contains("\\"))
         {
             throw new ArgumentException("记忆ID包含非法路径字符", nameof(memoryId));
         }
-        
+
         // 检查非法文件名字符
         var invalidChars = Path.GetInvalidFileNameChars();
         if (memoryId.IndexOfAny(invalidChars) >= 0)
@@ -150,12 +143,12 @@ public class MdMemoryRepository : IMemoryRepository
         {
             throw new ArgumentException("SessionId不能为空", nameof(sessionId));
         }
-        
+
         if (sessionId.Contains("..") || sessionId.Contains("/") || sessionId.Contains("\\"))
         {
             throw new ArgumentException("SessionId包含非法路径字符", nameof(sessionId));
         }
-        
+
         var invalidChars = Path.GetInvalidFileNameChars();
         if (sessionId.IndexOfAny(invalidChars) >= 0)
         {
@@ -189,12 +182,12 @@ public class MdMemoryRepository : IMemoryRepository
             throw new ArgumentNullException(nameof(memory));
         }
 
-        var entry = memory as MemoryEntry 
+        var entry = memory as MemoryEntry
             ?? throw new ArgumentException("memory 必须是 MemoryEntry 类型", nameof(memory));
 
         ValidateMemoryId(entry.Id);
         ValidateSessionId(entry.Metadata.SessionId);
-        
+
         var filePath = GetMemoryFilePath(entry);
         var fileLock = GetFileLock(filePath);
 
@@ -207,14 +200,14 @@ public class MdMemoryRepository : IMemoryRepository
         try
         {
             var content = BuildMarkdownContent(entry);
-            
+
             // 使用临时文件 + 原子替换确保写入完整性
             var tempPath = filePath + ".tmp";
             await File.WriteAllTextAsync(tempPath, content, Encoding.UTF8);
-            
+
             // 原子替换
             File.Move(tempPath, filePath, overwrite: true);
-            
+
             _logger?.LogDebug("保存记忆成功: {MemoryId} -> {FilePath}", entry.Id, filePath);
         }
         finally
@@ -244,7 +237,7 @@ public class MdMemoryRepository : IMemoryRepository
         };
 
         var yaml = _yamlSerializer.Serialize(frontMatter);
-        
+
         return $"---\n{yaml}---\n\n{entry.Content}";
     }
 
@@ -254,9 +247,9 @@ public class MdMemoryRepository : IMemoryRepository
     public async Task<object> GetMemoryAsync(string memoryId)
     {
         ValidateMemoryId(memoryId);
-        
+
         var filePath = GetMemoryFilePathById(memoryId);
-        
+
         if (!File.Exists(filePath))
         {
             _logger?.LogDebug("记忆文件不存在: {FilePath}", filePath);
@@ -290,16 +283,16 @@ public class MdMemoryRepository : IMemoryRepository
         try
         {
             using var stream = new FileStream(
-                filePath, 
-                FileMode.Open, 
-                FileAccess.Read, 
+                filePath,
+                FileMode.Open,
+                FileAccess.Read,
                 FileShare.Read,
                 bufferSize: 4096,
                 useAsync: true);
-            
+
             using var reader = new StreamReader(stream, Encoding.UTF8);
             var content = await reader.ReadToEndAsync();
-            
+
             if (string.IsNullOrWhiteSpace(content))
             {
                 _logger?.LogWarning("记忆文件为空: {MemoryId}", memoryId);
@@ -322,7 +315,7 @@ public class MdMemoryRepository : IMemoryRepository
     {
         var frontMatter = YamlParser.ParseYamlFrontMatter(content);
         var body = YamlParser.ExtractMarkdownBody(content);
-        
+
         if (frontMatter.Count == 0)
         {
             _logger?.LogWarning("无法解析 YAML front matter");
@@ -370,8 +363,8 @@ public class MdMemoryRepository : IMemoryRepository
             ? DateTimeOffset.FromUnixTimeMilliseconds(createdAtMs.Value)
             : DateTimeOffset.FromUnixTimeMilliseconds(validAtMs.Value); // 默认使用 validAt
         var validAt = DateTimeOffset.FromUnixTimeMilliseconds(validAtMs.Value);
-        var invalidAt = invalidAtMs.HasValue 
-            ? DateTimeOffset.FromUnixTimeMilliseconds(invalidAtMs.Value) 
+        var invalidAt = invalidAtMs.HasValue
+            ? DateTimeOffset.FromUnixTimeMilliseconds(invalidAtMs.Value)
             : (DateTimeOffset?)null;
 
         return new MemoryEntry(id, type, body, metadata, createdAt, validAt, invalidAt);
@@ -394,16 +387,16 @@ public class MdMemoryRepository : IMemoryRepository
     {
         if (!dict.TryGetValue(key, out var value) || value == null)
             return null;
-        
+
         if (value is long l)
             return l;
-        
+
         if (value is int i)
             return i;
-        
+
         if (double.TryParse(value.ToString(), out var d))
             return (long)d;
-        
+
         return null;
     }
 
@@ -414,16 +407,16 @@ public class MdMemoryRepository : IMemoryRepository
     {
         if (!dict.TryGetValue(key, out var value) || value == null)
             return null;
-        
+
         if (value is double d)
             return d;
-        
+
         if (value is float f)
             return f;
-        
+
         if (double.TryParse(value.ToString(), out var parsed))
             return parsed;
-        
+
         return null;
     }
 
@@ -434,23 +427,23 @@ public class MdMemoryRepository : IMemoryRepository
     {
         if (!dict.TryGetValue(key, out var value) || value == null)
             return null;
-        
+
         if (value is List<object?> list)
         {
             return list.Select(v => v?.ToString() ?? string.Empty).ToList();
         }
-        
+
         if (value is string[] arr)
         {
             return arr;
         }
-        
+
         // 单个字符串转换为列表
         if (value is string s)
         {
             return new List<string> { s };
         }
-        
+
         return null;
     }
 
@@ -468,7 +461,7 @@ public class MdMemoryRepository : IMemoryRepository
     private IEnumerable<MemoryEntry> EnumerateMemories()
     {
         var types = new[] { "semantic", "episodic", "procedural", "archive" };
-        
+
         foreach (var type in types)
         {
             var typeDir = Path.Combine(_baseDirectory, type);
@@ -478,7 +471,7 @@ public class MdMemoryRepository : IMemoryRepository
             foreach (var filePath in Directory.GetFiles(typeDir, "*.md"))
             {
                 MemoryEntry? entry = null;
-                
+
                 try
                 {
                     entry = ReadMemoryFileSync(filePath);
@@ -512,9 +505,9 @@ public class MdMemoryRepository : IMemoryRepository
     public async Task DeleteMemoryAsync(string memoryId)
     {
         ValidateMemoryId(memoryId);
-        
+
         var filePath = GetMemoryFilePathById(memoryId);
-        
+
         if (!File.Exists(filePath))
         {
             _logger?.LogDebug("记忆文件不存在，无需删除: {FilePath}", filePath);

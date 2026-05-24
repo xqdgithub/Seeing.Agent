@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Seeing.Agent.Memory.Core;
 
 public record MemorySearchResult(

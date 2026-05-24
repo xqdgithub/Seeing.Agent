@@ -1,5 +1,3 @@
-using System;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Management;
 
@@ -40,13 +38,13 @@ namespace Seeing.Session.Core
         {
             // 调用 SessionManager.Create()
             var session = _sessionManager.Create(selectedAgent: agentId);
-            
+
             // 设置标题（如果有）
             if (!string.IsNullOrEmpty(title))
             {
                 session.Title = title;
             }
-            
+
             // 触发 SessionEventPublisher.Publish(Created)
             _eventPublisher.Publish(new SessionEvent
             {
@@ -54,10 +52,10 @@ namespace Seeing.Session.Core
                 Type = SessionEventType.Created,
                 Data = session
             });
-            
-            _logger?.LogInformation("开始会话: {SessionId}, Title: {Title}, Agent: {Agent}", 
+
+            _logger?.LogInformation("开始会话: {SessionId}, Title: {Title}, Agent: {Agent}",
                 session.Id, title ?? session.Title, agentId ?? "primary");
-            
+
             return Task.FromResult(session);
         }
 
@@ -73,13 +71,13 @@ namespace Seeing.Session.Core
                 _logger?.LogWarning("无法结束会话：sessionId 为空");
                 return Task.CompletedTask;
             }
-            
+
             // 获取会话数据用于事件发布
             var session = _sessionManager.Get(sessionId);
-            
+
             // 调用 SessionManager.Delete()
             var deleted = _sessionManager.Delete(sessionId);
-            
+
             if (deleted)
             {
                 // 触发 SessionEventPublisher.Publish(Destroyed)
@@ -89,14 +87,14 @@ namespace Seeing.Session.Core
                     Type = SessionEventType.Destroyed,
                     Data = session
                 });
-                
+
                 _logger?.LogInformation("结束会话: {SessionId}", sessionId);
             }
             else
             {
                 _logger?.LogWarning("会话不存在或已结束: {SessionId}", sessionId);
             }
-            
+
             return Task.CompletedTask;
         }
 
@@ -112,33 +110,33 @@ namespace Seeing.Session.Core
             {
                 throw new ArgumentException("源会话 ID 不能为空", nameof(sourceId));
             }
-            
+
             // 获取源会话
             var source = _sessionManager.Get(sourceId);
             if (source == null)
             {
                 throw new InvalidOperationException($"源会话不存在: {sourceId}");
             }
-            
+
             // 调用 SessionData.Clone()
             var cloned = source.Clone();
-            
+
             // 分配新 ID 和更新时间戳
             cloned.Id = $"ses_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N").Substring(0, 8)}";
             cloned.CreatedAt = DateTime.Now;
             cloned.UpdatedAt = DateTime.Now;
             cloned.LastActiveAt = DateTime.Now;
             cloned.Status = SessionStatus.Created;
-            
+
             // 设置新标题（如果有）
             if (!string.IsNullOrEmpty(newTitle))
             {
                 cloned.Title = newTitle;
             }
-            
+
             // 注册到 SessionManager
             _sessionManager.Register(cloned);
-            
+
             // 触发 SessionEventPublisher.Publish(Created)
             _eventPublisher.Publish(new SessionEvent
             {
@@ -146,10 +144,10 @@ namespace Seeing.Session.Core
                 Type = SessionEventType.Created,
                 Data = cloned
             });
-            
-            _logger?.LogInformation("克隆会话: {SourceId} -> {ClonedId}, Title: {Title}", 
+
+            _logger?.LogInformation("克隆会话: {SourceId} -> {ClonedId}, Title: {Title}",
                 sourceId, cloned.Id, cloned.Title);
-            
+
             return Task.FromResult(cloned);
         }
     }

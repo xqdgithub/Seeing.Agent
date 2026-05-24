@@ -1,8 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using Microsoft.Extensions.Logging;
+using System.Text;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -60,7 +57,7 @@ public static class MemoryFileParser
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>解析后的 MemoryEntry，解析失败返回 null</returns>
     public static async Task<MemoryEntry?> ParseMemoryFileAsync(
-        string filePath, 
+        string filePath,
         ILogger? logger = null,
         CancellationToken cancellationToken = default)
     {
@@ -83,10 +80,10 @@ public static class MemoryFileParser
                 FileShare.Read,
                 bufferSize: 4096,
                 useAsync: true);
-            
+
             using var reader = new StreamReader(stream, Encoding.UTF8);
             var content = await reader.ReadToEndAsync(cancellationToken);
-            
+
             return ParseMemoryContent(content, logger);
         }
         catch (IOException ex)
@@ -210,7 +207,7 @@ public static class MemoryFileParser
     /// <param name="filePath">目标文件路径</param>
     /// <param name="cancellationToken">取消令牌</param>
     public static async Task SaveToFileAsync(
-        MemoryEntry memory, 
+        MemoryEntry memory,
         string filePath,
         CancellationToken cancellationToken = default)
     {
@@ -225,7 +222,7 @@ public static class MemoryFileParser
         }
 
         var content = SerializeToMarkdown(memory);
-        
+
         // 确保目录存在
         var directory = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -236,7 +233,7 @@ public static class MemoryFileParser
         // 使用临时文件 + 原子替换确保写入完整性
         var tempPath = filePath + ".tmp";
         await File.WriteAllTextAsync(tempPath, content, Encoding.UTF8, cancellationToken);
-        
+
         File.Move(tempPath, filePath, overwrite: true);
     }
 

@@ -1,14 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
-using Seeing.Agent.Memory.Core;
 
 namespace Seeing.Agent.Memory.Core
 {
@@ -73,7 +66,8 @@ namespace Seeing.Agent.Memory.Core
                 {
                     // 创建归档记忆（更改类型为 Archive）
                     // 使用记录的 with 表达式避免显式构造器参数问题
-                    var archivedMemory = memory with {
+                    var archivedMemory = memory with
+                    {
                         Type = MemoryType.Archive,
                         Content = memory.Content,
                         Metadata = memory.Metadata,
@@ -86,7 +80,7 @@ namespace Seeing.Agent.Memory.Core
                     await _repository.SaveMemoryAsync(archivedMemory);
                     archivedCount++;
 
-                    _logger?.LogDebug("记忆已归档: {MemoryId}, 原类型: {OriginalType}", 
+                    _logger?.LogDebug("记忆已归档: {MemoryId}, 原类型: {OriginalType}",
                         memory.Id, memory.Type);
                 }
                 catch (Exception ex)
@@ -154,7 +148,8 @@ namespace Seeing.Agent.Memory.Core
                         newImportance // 降低后的 importance
                     );
 
-                    var decayedMemory = memory with {
+                    var decayedMemory = memory with
+                    {
                         Metadata = decayedMetadata,
                         InvalidAt = memory.InvalidAt
                     };
@@ -163,7 +158,7 @@ namespace Seeing.Agent.Memory.Core
                     await _repository.SaveMemoryAsync(decayedMemory);
                     decayedCount++;
 
-                    _logger?.LogDebug("记忆衰减: {MemoryId}, age={AgeDays}天, importance {Old}->{New}", 
+                    _logger?.LogDebug("记忆衰减: {MemoryId}, age={AgeDays}天, importance {Old}->{New}",
                         memory.Id, ageDays, currentImportance, newImportance);
                 }
                 catch (Exception ex)
@@ -181,7 +176,7 @@ namespace Seeing.Agent.Memory.Core
         /// 返回低于阈值的记忆，不执行实际操作
         /// </summary>
         public async Task<IReadOnlyList<MemoryEntry>> GetForgettingCandidatesAsync(
-            double? threshold = null, 
+            double? threshold = null,
             CancellationToken cancellationToken = default)
         {
             var effectiveThreshold = threshold ?? _scoreOptions.ForgettingThreshold;
@@ -220,7 +215,7 @@ namespace Seeing.Agent.Memory.Core
                 if (score < effectiveThreshold)
                 {
                     candidates.Add(memory);
-                    _logger?.LogDebug("候选记忆: {MemoryId}, score={Score}, threshold={Threshold}", 
+                    _logger?.LogDebug("候选记忆: {MemoryId}, score={Score}, threshold={Threshold}",
                         memory.Id, score, effectiveThreshold);
                 }
             }
@@ -239,9 +234,9 @@ namespace Seeing.Agent.Memory.Core
             // 指数衰减：decayFactor = MaxDecayFactor * (1 - e^(-ageDays / halfLife))
             // halfLife = 30 天，表示 30 天后衰减达到 MaxDecayFactor 的 50%
             const double halfLife = 30.0;
-            
+
             var factor = MaxDecayFactor * (1.0 - Math.Exp(-ageDays / halfLife));
-            
+
             // 确保衰减因子不超过 MaxDecayFactor
             return Math.Min(factor, MaxDecayFactor);
         }

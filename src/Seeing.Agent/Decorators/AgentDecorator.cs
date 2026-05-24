@@ -1,5 +1,6 @@
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Decorators
 {
@@ -41,13 +42,16 @@ namespace Seeing.Agent.Decorators
         public virtual int? MaxSteps { get => Inner.MaxSteps; set => Inner.MaxSteps = value; }
 
         /// <inheritdoc />
-        public virtual IReadOnlyList<PermissionRule> Permissions { get => Inner.Permissions; set => Inner.Permissions = value; }
+        public virtual IReadOnlyList<PermissionRuleEntry> PermissionRules { get => Inner.PermissionRules; set => Inner.PermissionRules = value; }
 
         /// <inheritdoc />
         public virtual IReadOnlyList<string> AllowedTools { get => Inner.AllowedTools; set => Inner.AllowedTools = value; }
 
         /// <inheritdoc />
         public virtual IReadOnlyList<string> DeniedTools { get => Inner.DeniedTools; set => Inner.DeniedTools = value; }
+
+        /// <inheritdoc />
+        public virtual PermissionEffect PermissionDefaultEffect { get => Inner.PermissionDefaultEffect; set => Inner.PermissionDefaultEffect = value; }
 
         /// <inheritdoc />
         public virtual async IAsyncEnumerable<ChatMessage> ExecuteAsync(

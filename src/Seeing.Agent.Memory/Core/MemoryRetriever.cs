@@ -1,10 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Core;
 
 namespace Seeing.Agent.Memory.Core;
 
@@ -110,7 +105,7 @@ public class MemoryRetriever : IMemoryRetriever
         _logger?.LogDebug(
             "时间范围查询完成，范围: [{From}, {To}]，结果数量: {Count}",
             from, to, results.Count);
-        
+
         return results;
     }
 
@@ -196,21 +191,21 @@ public class MemoryRetriever : IMemoryRetriever
         }
 
         // SessionId 过滤
-        if (!string.IsNullOrEmpty(filter.SessionId) && 
+        if (!string.IsNullOrEmpty(filter.SessionId) &&
             !string.Equals(entry.Metadata.SessionId, filter.SessionId, StringComparison.Ordinal))
         {
             return false;
         }
 
         // AgentId 过滤
-        if (!string.IsNullOrEmpty(filter.AgentId) && 
+        if (!string.IsNullOrEmpty(filter.AgentId) &&
             !string.Equals(entry.Metadata.AgentId, filter.AgentId, StringComparison.Ordinal))
         {
             return false;
         }
 
         // Source 过滤
-        if (!string.IsNullOrEmpty(filter.Source) && 
+        if (!string.IsNullOrEmpty(filter.Source) &&
             !string.Equals(entry.Metadata.Source, filter.Source, StringComparison.Ordinal))
         {
             return false;
@@ -224,10 +219,10 @@ public class MemoryRetriever : IMemoryRetriever
                 return false;
             }
 
-            var hasMatchingTag = filter.Tags.Any(filterTag => 
-                entry.Metadata.Tags.Any(entryTag => 
+            var hasMatchingTag = filter.Tags.Any(filterTag =>
+                entry.Metadata.Tags.Any(entryTag =>
                     string.Equals(entryTag, filterTag, StringComparison.OrdinalIgnoreCase)));
-            
+
             if (!hasMatchingTag)
             {
                 return false;

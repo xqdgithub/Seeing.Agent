@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-
 // YamlDotNet is referenced in Directory.Packages.props (v16.0.0).
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;

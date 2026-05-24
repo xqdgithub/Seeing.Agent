@@ -1,8 +1,8 @@
-using System.Text.Json;
-using Seeing.Agent.Core.Models;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Skills;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools
 {
@@ -49,7 +49,7 @@ namespace Seeing.Agent.Tools
                 return "Load a specialized skill that provides domain-specific instructions and workflows. No skills are currently available.";
             }
 
-            var skillList = skills.Select(s => 
+            var skillList = skills.Select(s =>
                 $"    <skill>\n" +
                 $"      <name>{EscapeXml(s.Name)}</name>\n" +
                 $"      <description>{EscapeXml(s.Description)}</description>\n" +

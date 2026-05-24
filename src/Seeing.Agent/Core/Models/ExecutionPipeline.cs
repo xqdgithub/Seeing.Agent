@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
-using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core.Models
 {
@@ -26,10 +25,10 @@ namespace Seeing.Agent.Core.Models
         {
             if (middleware == null)
                 throw new ArgumentNullException(nameof(middleware));
-            
+
             _middlewares.Add(middleware);
             _middlewares.Sort((a, b) => a.Order.CompareTo(b.Order));
-            
+
             _logger?.LogDebug("添加中间件: {Name}, Order={Order}", middleware.Name, middleware.Order);
             return this;
         }
@@ -44,7 +43,7 @@ namespace Seeing.Agent.Core.Models
         /// <summary>
         /// 从 DI 容器解析并添加中间件
         /// </summary>
-        public IExecutionPipeline Use<TMiddleware>(IServiceProvider services) 
+        public IExecutionPipeline Use<TMiddleware>(IServiceProvider services)
             where TMiddleware : IExecutionMiddleware
         {
             var middleware = services.GetRequiredService<TMiddleware>();
@@ -53,7 +52,7 @@ namespace Seeing.Agent.Core.Models
 
         /// <inheritdoc />
         public async Task<TResult> ExecuteAsync<TContext, TResult>(
-            TContext context, 
+            TContext context,
             Func<TContext, Task<TResult>> handler)
         {
             if (handler == null)

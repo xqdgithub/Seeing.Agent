@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using System.Collections.Concurrent;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Seeing.Agent.Core.Permission
 {
@@ -58,7 +57,7 @@ namespace Seeing.Agent.Core.Permission
                     _logger?.LogDebug("权限缓存命中: {Key}", key);
                     return entry.Action;
                 }
-                
+
                 // TTL 过期，移除缓存
                 _cache.TryRemove(key, out _);
                 _logger?.LogDebug("权限缓存过期: {Key}", key);
@@ -76,7 +75,7 @@ namespace Seeing.Agent.Core.Permission
         public bool TryGet(PermissionCacheKey key, out PermissionAction action)
         {
             action = PermissionAction.Deny;
-            
+
             if (_cache.TryGetValue(key, out var entry))
             {
                 if (entry.ExpiresAt > DateTimeOffset.Now)
@@ -85,12 +84,12 @@ namespace Seeing.Agent.Core.Permission
                     action = entry.Action;
                     return true;
                 }
-                
+
                 // TTL 过期，移除缓存
                 _cache.TryRemove(key, out _);
                 _logger?.LogDebug("权限缓存过期（TryGet）: {Key}", key);
             }
-            
+
             return false;
         }
 
