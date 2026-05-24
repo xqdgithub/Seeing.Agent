@@ -516,8 +516,8 @@ public class AgentExecutor
             SubSessionId = subSessionId
         };
 
-        // 创建子代理上下文
-        var subContext = parentContext.CreateSubAgentContext(subSessionId, targetAgent);
+        // 创建子代理上下文（传入父代理名称建立权限继承链）
+        var subContext = parentContext.CreateSubAgentContext(subSessionId, targetAgent, parentAgent.Name);
         subContext.History.Add(new ChatMessage
         {
             Role = ChatRole.User,

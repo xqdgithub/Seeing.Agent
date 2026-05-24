@@ -74,19 +74,37 @@ namespace Seeing.Agent.Core.Models
         /// </summary>
         /// <param name="subSessionId">子会话 ID</param>
         /// <param name="targetAgent">目标代理定义</param>
+        /// <param name="currentAgentName">当前代理名称（父代理）</param>
         /// <returns>新的执行上下文</returns>
-        public AgentContext CreateSubAgentContext(string subSessionId, AgentDefinition targetAgent)
+        public AgentContext CreateSubAgentContext(string subSessionId, AgentDefinition targetAgent, string? currentAgentName = null)
         {
+            // 计算子代理权限策略（与父策略求交集）
+            var subPolicy = targetAgent.BuildPermissionPolicy();
+            
+            // 创建子权限上下文（带父引用）
+            PermissionContext? subPermContext = null;
+            if (PermissionContext != null)
+            {
+                // 使用父上下文创建子上下文，建立权限继承链
+                subPermContext = PermissionContext.CreateSubAgentContext(targetAgent.Name, subPolicy);
+            }
+            else
+            {
+                // 无父上下文时，从当前上下文创建
+                subPermContext = PermissionContext.FromAgentContext(this, subPolicy);
+            }
+            
             return new AgentContext
             {
                 SessionId = subSessionId,
                 Services = Services,
                 CancellationToken = CancellationToken,
                 PermissionChannel = PermissionChannel,
+                PermissionContext = subPermContext,
                 History = new List<ChatMessage>(),
                 WorkingDirectory = WorkingDirectory,
                 ParentSessionId = SessionId,
-                ParentAgentName = ParentAgentName,
+                ParentAgentName = currentAgentName ?? ParentAgentName,
                 IsBackground = targetAgent.IsBackground || targetAgent.Mode == AgentMode.SubAgent,
                 IsTopLevel = false,
                 Metadata = new Dictionary<string, object>(Metadata)
