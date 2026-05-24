@@ -18,6 +18,11 @@ namespace Seeing.Agent.Core.Interfaces
     /// <summary>
     /// 权限规则定义
     /// </summary>
+    /// <remarks>
+    /// 此类已被 <see cref="Permission.PermissionRuleEntry"/> 替代。
+    /// 请使用新的权限规则条目类型。
+    /// </remarks>
+    [Obsolete("Use PermissionRuleEntry instead. This class will be removed in a future version.")]
     public class PermissionRule
     {
         /// <summary>权限名称</summary>
@@ -33,6 +38,11 @@ namespace Seeing.Agent.Core.Interfaces
     /// <summary>
     /// 规则引擎接口
     /// </summary>
+    /// <remarks>
+    /// 此接口已被 <see cref="Permission.IPermissionService"/> 替代。
+    /// 请使用新的权限服务进行权限评估。
+    /// </remarks>
+    [Obsolete("Use IPermissionService instead. This interface will be removed in a future version.")]
     public interface IRuleEngine
     {
         /// <summary>添加规则</summary>

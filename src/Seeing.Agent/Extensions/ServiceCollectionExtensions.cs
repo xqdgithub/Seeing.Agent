@@ -423,10 +423,15 @@ namespace Seeing.Agent.Extensions
             // 配置持久化服务
             services.AddSingleton<IConfigurationPersistence, ConfigurationPersistence>();
 
-            // 权限评估器（具体类型与接口共享同一单例，避免双实例）
+            // 权限服务（新系统 - 统一权限检查入口）
+            services.AddPermissionService();
+
+            // 权限评估器（旧系统 - 标记为过时，仅用于向后兼容）
+#pragma warning disable CS0618 // Type or member is obsolete
             services.AddSingleton<RuleEngine>();
             services.AddSingleton<IRuleEvaluator>(sp => sp.GetRequiredService<RuleEngine>());
             services.AddSingleton<IRuleEngine>(sp => sp.GetRequiredService<RuleEngine>());
+#pragma warning restore CS0618 // Type or member is obsolete
 
             // Hook 管理器
             services.AddSingleton<HookManager>();

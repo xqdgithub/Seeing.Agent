@@ -37,7 +37,7 @@ namespace Seeing.Agent.Core.BuiltInAgents
             {
                 Name = "build",
                 Description = "默认代理。根据配置的权限执行工具。",
-                Mode = AgentMode.Primary,
+                Mode = AgentMode.All,
                 IsNative = true,
                 IsHidden = false,
                 Permissions = new List<PermissionRule>
