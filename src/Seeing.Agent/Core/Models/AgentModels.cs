@@ -1,3 +1,4 @@
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.Core.Models
@@ -29,6 +30,9 @@ namespace Seeing.Agent.Core.Models
         /// 权限请求通道（多入口抽象）
         /// </summary>
         public Interfaces.IPermissionChannel? PermissionChannel { get; set; }
+        
+        /// <summary>权限上下文</summary>
+        public PermissionContext? PermissionContext { get; set; }
         
         /// <summary>
         /// 消息历史

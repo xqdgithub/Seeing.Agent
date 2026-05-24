@@ -1,4 +1,5 @@
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Core.Models
 {
@@ -58,6 +59,38 @@ namespace Seeing.Agent.Core.Models
 
         /// <summary>是否为后台 Agent（异步执行）</summary>
         public bool IsBackground { get; init; }
+
+        /// <summary>权限策略引用（策略文件路径或策略 ID）</summary>
+        public string? PermissionPolicy { get; init; }
+
+        /// <summary>权限规则（新格式）</summary>
+        public IReadOnlyList<PermissionRuleEntry> PermissionRules { get; init; } = Array.Empty<PermissionRuleEntry>();
+
+        /// <summary>允许的 MCP 服务器</summary>
+        public IReadOnlyList<string> AllowedMcpServers { get; init; } = Array.Empty<string>();
+
+        /// <summary>允许的子代理</summary>
+        public IReadOnlyList<string> AllowedAgents { get; init; } = Array.Empty<string>();
+
+        /// <summary>权限默认效果</summary>
+        public PermissionEffect PermissionDefaultEffect { get; init; } = PermissionEffect.Deny;
+
+        /// <summary>
+        /// 构建权限策略
+        /// </summary>
+        public AgentPermissionPolicy BuildPermissionPolicy()
+        {
+            return new AgentPermissionPolicy
+            {
+                AgentName = Name,
+                Rules = PermissionRules,
+                AllowedTools = AllowedTools,
+                DeniedTools = DeniedTools,
+                AllowedAgents = AllowedAgents,
+                AllowedMcpServers = AllowedMcpServers,
+                DefaultEffect = PermissionDefaultEffect
+            };
+        }
 
         /// <summary>
         /// 从 IAgent 实例创建定义

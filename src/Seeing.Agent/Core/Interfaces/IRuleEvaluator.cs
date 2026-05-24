@@ -113,11 +113,19 @@ namespace Seeing.Agent.Core.Interfaces
     /// </summary>
     public enum ConditionOperator
     {
-        Equals,
-        NotEquals,
-        Contains,
-        StartsWith,
-        EndsWith,
-        Matches
+        Equals = 0,
+        NotEquals = 1,
+        Contains = 2,
+        StartsWith = 3,
+        EndsWith = 4,
+        Matches = 5,
+        // 新增值 - 用于权限系统条件评估
+        NotContains = 6,
+        GreaterThan = 7,
+        LessThan = 8,
+        InRange = 9,
+        FileExists = 10,
+        DirectoryExists = 11,
+        IsSubPathOf = 12
     }
 }

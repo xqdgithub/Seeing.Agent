@@ -25,7 +25,7 @@ namespace Seeing.Agent.Core.Permission
     /// <summary>
     /// 权限缓存 - 提供 TTL 缓存和线程安全访问
     /// </summary>
-    public class PermissionCache
+    public class PermissionCache : IPermissionCache
     {
         private readonly ConcurrentDictionary<PermissionCacheKey, PermissionCacheEntry> _cache = new();
         private readonly IRuleEngine _ruleEngine;
@@ -67,6 +67,30 @@ namespace Seeing.Agent.Core.Permission
             var action = _ruleEngine.Evaluate(key.Permission, key.Pattern);
             Set(key, action);
             return action;
+        }
+
+        /// <summary>
+        /// 尝试获取缓存的权限决策（不触发评估）
+        /// </summary>
+        public bool TryGet(PermissionCacheKey key, out PermissionAction action)
+        {
+            action = PermissionAction.Deny;
+            
+            if (_cache.TryGetValue(key, out var entry))
+            {
+                if (entry.ExpiresAt > DateTimeOffset.Now)
+                {
+                    _logger?.LogDebug("权限缓存命中（TryGet）: {Key}", key);
+                    action = entry.Action;
+                    return true;
+                }
+                
+                // TTL 过期，移除缓存
+                _cache.TryRemove(key, out _);
+                _logger?.LogDebug("权限缓存过期（TryGet）: {Key}", key);
+            }
+            
+            return false;
         }
 
         /// <summary>
