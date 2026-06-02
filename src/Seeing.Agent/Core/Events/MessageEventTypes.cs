@@ -5,6 +5,12 @@ namespace Seeing.Agent.Core.Events;
 /// </summary>
 public enum MessageEventType
 {
+    /// <summary>Agent Loop 开始（一次完整对话循环开始）</summary>
+    LoopStart,
+
+    /// <summary>Agent Loop 结束（一次完整对话循环结束）</summary>
+    LoopComplete,
+
     /// <summary>流式开始（新轮次开始信号）</summary>
     StreamStart,
 
@@ -34,6 +40,24 @@ public enum MessageEventType
 }
 
 /// <summary>
+/// Agent Loop 阶段
+/// </summary>
+public enum LoopPhase
+{
+    /// <summary>思考阶段（推理/Thinking）</summary>
+    Thinking,
+
+    /// <summary>工具调用阶段</summary>
+    ToolCalling,
+
+    /// <summary>回复生成阶段</summary>
+    Responding,
+
+    /// <summary>已完成</summary>
+    Completed
+}
+
+/// <summary>
 /// 消息事件基接口
 /// </summary>
 public interface IMessageEvent
@@ -41,11 +65,61 @@ public interface IMessageEvent
     /// <summary>会话 ID</summary>
     string SessionId { get; }
 
+    /// <summary>Agent Loop ID（一次完整对话循环的唯一标识）</summary>
+    /// <remarks>
+    /// LoopId 用于关联一次 Agent 交互中产生的所有事件（思考、工具调用、回复等），
+    /// 便于前端按对话单元渲染，避免不同 Loop 的内容交错显示。
+    /// </remarks>
+    string? LoopId { get; }
+
     /// <summary>时间戳</summary>
     DateTime Timestamp { get; }
 
     /// <summary>事件类型</summary>
     MessageEventType Type { get; }
+}
+
+/// <summary>
+/// Agent Loop 开始事件 - 标记一次完整对话循环开始
+/// </summary>
+public record LoopStartEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public required string LoopId { get; init; } = Guid.NewGuid().ToString("N");
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.LoopStart;
+
+    /// <summary>触发 Loop 的用户消息 ID</summary>
+    public string? TriggerMessageId { get; init; }
+
+    /// <summary>用户输入内容（简要）</summary>
+    public string? UserInput { get; init; }
+}
+
+/// <summary>
+/// Agent Loop 结束事件 - 标记一次完整对话循环结束
+/// </summary>
+public record LoopCompleteEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public required string LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.LoopComplete;
+
+    /// <summary>Loop 执行的总步数</summary>
+    public int TotalSteps { get; init; }
+
+    /// <summary>Loop 执行的总耗时</summary>
+    public TimeSpan Duration { get; init; }
+
+    /// <summary>是否成功完成</summary>
+    public bool Success { get; init; }
+
+    /// <summary>错误信息（失败时）</summary>
+    public string? Error { get; init; }
+
+    /// <summary>Token 使用统计</summary>
+    public TokenUsage? Usage { get; init; }
 }
 
 /// <summary>
@@ -58,6 +132,7 @@ public interface IMessageEvent
 public record StreamStartEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type => MessageEventType.StreamStart;
 
@@ -71,6 +146,7 @@ public record StreamStartEvent : IMessageEvent
 public record StreamDeltaEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type => MessageEventType.StreamDelta;
 
@@ -93,6 +169,7 @@ public record StreamDeltaEvent : IMessageEvent
 public record StreamCompleteEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type => MessageEventType.StreamComplete;
 
@@ -130,6 +207,7 @@ public enum ToolCallStatus
 public record ToolCallEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type { get; init; }
 
@@ -164,6 +242,7 @@ public record ToolCallEvent : IMessageEvent
 public record SubAgentEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type { get; init; }
 
@@ -189,6 +268,7 @@ public record SubAgentEvent : IMessageEvent
 public record ErrorEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
     public MessageEventType Type => MessageEventType.Error;
 

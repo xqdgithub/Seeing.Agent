@@ -147,6 +147,25 @@ namespace Seeing.Session.Core
         [JsonPropertyName("id")]
         public string? Id { get; set; }
 
+        /// <summary>
+        /// Agent Loop ID（一次完整对话循环的唯一标识）
+        /// <para>
+        /// 用于关联一次 Agent 交互中产生的所有消息，便于前端按对话单元渲染。
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("loop_id")]
+        public string? LoopId { get; set; }
+
+        /// <summary>
+        /// 步骤索引（同一 LoopId 内的顺序，step=0, 1, 2...）
+        /// <para>
+        /// 一次 Agent Loop 可能包含多轮 LLM 调用（工具调用前后），
+        /// Step 用于区分不同轮次的思考、工具调用和回复内容。
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("step")]
+        public int Step { get; set; }
+
         /// <summary>消息角色：system、user、assistant、tool</summary>
         [JsonPropertyName("role")]
         public string Role { get; set; } = string.Empty;

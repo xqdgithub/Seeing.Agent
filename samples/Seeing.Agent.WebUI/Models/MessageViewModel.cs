@@ -11,6 +11,23 @@ public class MessageViewModel
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
 
     /// <summary>
+    /// Agent Loop ID（一次完整对话循环的唯一标识）
+    /// <para>
+    /// 用于关联一次 Agent 交互中产生的所有消息，便于前端按对话单元渲染。
+    /// </para>
+    /// </summary>
+    public string? LoopId { get; set; }
+
+    /// <summary>
+    /// 步骤索引（同一 LoopId 内的顺序，step=0, 1, 2...）
+    /// <para>
+    /// 一次 Agent Loop 可能包含多轮 LLM 调用（工具调用前后），
+    /// Step 用于区分不同轮次的思考、工具调用和回复内容。
+    /// </para>
+    /// </summary>
+    public int Step { get; set; }
+
+    /// <summary>
     /// 消息角色 (user/assistant/system/tool)
     /// </summary>
     public string Role { get; set; } = "";

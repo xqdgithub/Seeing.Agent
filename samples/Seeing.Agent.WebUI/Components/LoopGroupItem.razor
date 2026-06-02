@@ -1,0 +1,257 @@
+@using AntDesign
+@using Markdig
+@using Seeing.Agent.WebUI.Models
+@implements IDisposable
+
+<div Class="@GetMessageClass()">
+    <!-- 消息头部：角色、Loop 信息和时间戳 -->
+    <div Class="message-header">
+        <div Class="message-role">
+            <Avatar Size="@AvatarSize.Small"
+                    Icon="@IconType.Outline.Robot"
+                    Style="background: var(--color-success);" />
+            <span Class="message-role-name" Style="margin-left: var(--space-2); font-weight: 600;">
+                助手
+            </span>
+            
+            @* Loop 标签 *@
+            @if (Loop.LoopIndex > 0)
+            {
+                <Tag Color="@GetLoopTagColor()" 
+                     Style="margin-left: var(--space-2); font-size: 11px;">
+                    @if (Loop.IsExecuting)
+                    {
+                        <Icon Type="@IconType.Outline.Loading" Style="margin-right: 4px;" />
+                    }
+                    Loop #@Loop.LoopIndex
+                </Tag>
+            }
+            
+            @* 状态指示 *@
+            @if (Loop.IsExecuting)
+            {
+                <Badge Status="@BadgeStatus.Processing" Style="margin-left: var(--space-1);" />
+            }
+        </div>
+        
+        <div Class="message-meta">
+            @* 统计信息 *@
+            @if (Loop.TotalSteps > 1)
+            {
+                <span Class="meta-item" Title="LLM 调用次数">
+                    <Icon Type="@IconType.Outline.Apartment" Style="font-size: 12px;" />
+                    @Loop.TotalSteps 步
+                </span>
+            }
+            
+            @if (Loop.TotalToolCalls > 0)
+            {
+                <span Class="meta-item" Title="工具调用次数">
+                    <Icon Type="@IconType.Outline.Tool" Style="font-size: 12px;" />
+                    @Loop.TotalToolCalls 工具
+                </span>
+            }
+            
+            @if (!string.IsNullOrEmpty(Loop.GetFormattedDuration()))
+            {
+                <span Class="meta-item" Title="执行耗时">
+                    <Icon Type="@IconType.Outline.ClockCircle" Style="font-size: 12px;" />
+                    @Loop.GetFormattedDuration()
+                </span>
+            }
+            
+            @if (Loop.TokenUsage != null)
+            {
+                <span Class="meta-item token-count" Title="Token 使用量">
+                    <Icon Type="@IconType.Outline.Calculator" Style="font-size: 12px;" />
+                    @Loop.TokenUsage.TotalTokens
+                </span>
+            }
+            
+            <span Class="message-time" Style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                @GetTimestamp()
+            </span>
+        </div>
+    </div>
+    
+    @* Loop 内的消息内容（按 Step 排序） *@
+    @foreach (var message in Loop.Messages.OrderBy(m => m.Step))
+    {
+        @* Step 分隔线（step > 0 时显示）*@
+        @if (message.Step > 0)
+        {
+            <div Class="step-divider" Style="display: flex; align-items: center; margin: var(--space-3) 0; color: var(--color-text-secondary);">
+                <div Style="flex: 1; height: 1px; background: var(--color-border);"></div>
+                <span Style="padding: 0 var(--space-2); font-size: var(--font-size-xs);">Step @message.Step</span>
+                <div Style="flex: 1; height: 1px; background: var(--color-border);"></div>
+            </div>
+        }
+        
+        @* 推理过程（如果有）*@
+        @if (!string.IsNullOrEmpty(message.Reasoning))
+        {
+            <div Class="message-reasoning-section @(_reasoningExpanded || !message.IsComplete ? "expanded" : "collapsed")">
+                <div Class="message-reasoning-header" @onclick="@ToggleReasoning">
+                    <Icon Type="@IconType.Outline.Bulb" Class="message-reasoning-icon" />
+                    @if (!message.IsComplete)
+                    {
+                        <span Class="reasoning-status">
+                            <Icon Type="@IconType.Outline.Loading" />
+                            <span Style="margin-left: var(--space-1);">思考中...</span>
+                        </span>
+                    }
+                    else if (!_reasoningExpanded)
+                    {
+                        <span Class="reasoning-preview">@GetReasoningPreview(message.Reasoning)</span>
+                    }
+                    else
+                    {
+                        <span>推理过程</span>
+                    }
+                </div>
+                @if (_reasoningExpanded || !message.IsComplete)
+                {
+                    <div Class="message-reasoning @(message.IsComplete ? "reasoning-complete" : "reasoning-streaming")">
+                        @((MarkupString)RenderMarkdown(message.Reasoning))
+                    </div>
+                }
+            </div>
+        }
+        
+        @* 工具调用（如果有）*@
+        @if (message.ToolCalls.Count > 0)
+        {
+            <div Class="message-toolcalls" Style="margin: var(--space-2) 0;">
+                @foreach (var toolCall in message.ToolCalls)
+                {
+                    <ToolCallCard ToolCall="@toolCall" />
+                }
+            </div>
+        }
+        
+        @* 消息内容 *@
+        @if (!string.IsNullOrEmpty(message.Content))
+        {
+            <div Class="message-content">
+                @((MarkupString)RenderMarkdown(message.Content))
+            </div>
+        }
+    }
+    
+    @* 加载状态 *@
+    @if (Loop.IsExecuting && Loop.Messages.All(m => string.IsNullOrEmpty(m.Content) && string.IsNullOrEmpty(m.Reasoning)))
+    {
+        <div Class="message-loading">
+            <Spin Size="@SpinSize.Small" />
+            <span Style="margin-left: var(--space-2); color: var(--color-text-secondary);">
+                正在思考...
+            </span>
+        </div>
+    }
+    
+    @* 错误信息 *@
+    @if (!string.IsNullOrEmpty(Loop.Error))
+    {
+        <Alert Type="@AlertType.Error"
+               Message="@Loop.Error"
+               ShowIcon="true"
+               Class="loop-error"
+               Style="margin-top: var(--space-2);" />
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Loop 分组数据
+    /// </summary>
+    [Parameter]
+    public LoopGroupViewModel Loop { get; set; } = new();
+
+    /// <summary>
+    /// 工具点击事件回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+
+    /// <summary>
+    /// 推理过程是否展开
+    /// </summary>
+    private bool _reasoningExpanded = false;
+
+    /// <summary>
+    /// Markdown 渲染管道
+    /// </summary>
+    private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
+        .UseAutoLinks()
+        .UseTaskLists()
+        .UsePipeTables()
+        .UseEmphasisExtras()
+        .UseListExtras()
+        .Build();
+
+    /// <summary>
+    /// 获取消息样式类名
+    /// </summary>
+    private string GetMessageClass()
+    {
+        var statusClass = Loop.IsExecuting ? "message-streaming" : 
+                          Loop.Success ? "message-complete" : "message-error";
+        return $"message-item message-assistant {statusClass}";
+    }
+
+    /// <summary>
+    /// 获取 Loop 标签颜色
+    /// </summary>
+    private string GetLoopTagColor()
+    {
+        if (Loop.IsExecuting)
+            return "blue";
+        return Loop.Success ? "green" : "red";
+    }
+
+    /// <summary>
+    /// 获取时间戳显示
+    /// </summary>
+    private string GetTimestamp()
+    {
+        var time = Loop.Messages.FirstOrDefault()?.Timestamp ?? DateTime.Now;
+        return time.ToString("HH:mm:ss");
+    }
+
+    /// <summary>
+    /// 渲染 Markdown 内容
+    /// </summary>
+    private string RenderMarkdown(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return string.Empty;
+        return Markdig.Markdown.ToHtml(content, MarkdownPipeline);
+    }
+
+    /// <summary>
+    /// 获取推理内容预览
+    /// </summary>
+    private string GetReasoningPreview(string reasoning)
+    {
+        if (string.IsNullOrEmpty(reasoning))
+            return string.Empty;
+        var firstLine = reasoning.Split('\n')[0].Trim();
+        if (firstLine.Length > 50)
+            return firstLine[..50] + "...";
+        return firstLine;
+    }
+
+    /// <summary>
+    /// 切换推理过程展开状态
+    /// </summary>
+    public async Task ToggleReasoning()
+    {
+        _reasoningExpanded = !_reasoningExpanded;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        // 清理资源
+    }
+}

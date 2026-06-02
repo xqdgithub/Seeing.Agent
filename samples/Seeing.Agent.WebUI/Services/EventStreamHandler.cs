@@ -2,6 +2,7 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
+using System.Text;
 
 namespace Seeing.Agent.WebUI.Services
 {
@@ -13,6 +14,7 @@ namespace Seeing.Agent.WebUI.Services
         public required string SessionId { get; init; }
         public DateTime Timestamp { get; init; } = DateTime.Now;
         public MessageEventType Type => MessageEventType.Error; // 兼容接口，实际使用 EventType 属性
+        public string? LoopId { get; init; }
 
         /// <summary>权限请求 ID</summary>
         public string PermissionId { get; init; } = "";
@@ -31,9 +33,43 @@ namespace Seeing.Agent.WebUI.Services
     }
 
     /// <summary>
+    /// Agent Loop 信息 - 用于 UI 渲染分组
+    /// </summary>
+    public class AgentLoopInfo
+    {
+        /// <summary>Loop ID</summary>
+        public string LoopId { get; set; } = string.Empty;
+
+        /// <summary>开始时间</summary>
+        public DateTime StartTime { get; set; }
+
+        /// <summary>结束时间（完成后设置）</summary>
+        public DateTime? EndTime { get; set; }
+
+        /// <summary>是否已完成</summary>
+        public bool IsComplete { get; set; }
+
+        /// <summary>总步数</summary>
+        public int TotalSteps { get; set; }
+
+        /// <summary>是否成功</summary>
+        public bool Success { get; set; }
+
+        /// <summary>错误信息</summary>
+        public string? Error { get; set; }
+
+        /// <summary>用户输入（触发消息）</summary>
+        public string? UserInput { get; set; }
+    }
+
+    /// <summary>
     /// 事件流处理器 - 处理 Core 层消息事件并更新 SessionState
     /// <para>
     /// 已重构：使用 Core 层统一事件类型（IMessageEvent），支持工具状态流转
+    /// </para>
+    /// <para>
+    /// 支持 LoopId 分组：一次 Agent 交互中产生的所有事件通过 LoopId 关联，
+    /// 便于前端按对话单元渲染。
     /// </para>
     /// </summary>
     public class EventStreamHandler
@@ -47,6 +83,26 @@ namespace Seeing.Agent.WebUI.Services
         private SessionMessage? _currentAssistantMessage;
 
         /// <summary>
+        /// 当前 Loop 累积的思考内容（跨多轮 LLM 调用）
+        /// </summary>
+        private readonly StringBuilder _accumulatedReasoning = new();
+
+        /// <summary>
+        /// 当前 Loop 累积的内容（跨多轮 LLM 调用）
+        /// </summary>
+        private readonly StringBuilder _accumulatedContent = new();
+
+        /// <summary>
+        /// 当前 Loop ID
+        /// </summary>
+        private string? _currentLoopId;
+
+        /// <summary>
+        /// 当前 Loop 信息
+        /// </summary>
+        private AgentLoopInfo? _currentLoop;
+
+        /// <summary>
         /// 工具调用的内容位置（UI 层自行管理）
         /// Key: ToolCallId, Value: 工具调用首次出现时的内容长度
         /// </summary>
@@ -57,11 +113,26 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public event Action? OnStateChanged;
 
+        /// <summary>
+        /// Loop 完成回调（用于 UI 渲染优化）
+        /// </summary>
+        public event Action<AgentLoopInfo>? OnLoopComplete;
+
         public EventStreamHandler(SessionState sessionState, SessionManager sessionManager)
         {
             _sessionState = sessionState ?? throw new ArgumentNullException(nameof(sessionState));
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         }
+
+        /// <summary>
+        /// 获取当前 Loop ID
+        /// </summary>
+        public string? GetCurrentLoopId() => _currentLoopId;
+
+        /// <summary>
+        /// 获取当前 Loop 信息
+        /// </summary>
+        public AgentLoopInfo? GetCurrentLoop() => _currentLoop;
 
         /// <summary>
         /// 处理 Core 层消息事件
@@ -78,6 +149,14 @@ namespace Seeing.Agent.WebUI.Services
 
             switch (evt.Type)
             {
+                case MessageEventType.LoopStart:
+                    HandleLoopStart((LoopStartEvent)evt);
+                    break;
+
+                case MessageEventType.LoopComplete:
+                    HandleLoopComplete((LoopCompleteEvent)evt);
+                    break;
+
                 case MessageEventType.StreamStart:
                     HandleStreamStart((StreamStartEvent)evt);
                     break;
@@ -112,10 +191,56 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
+        /// 处理 Loop 开始事件
+        /// </summary>
+        private void HandleLoopStart(LoopStartEvent evt)
+        {
+            _currentLoopId = evt.LoopId;
+            _currentLoop = new AgentLoopInfo
+            {
+                LoopId = evt.LoopId,
+                StartTime = evt.Timestamp,
+                UserInput = evt.UserInput
+            };
+
+            // 清空当前助手消息，准备接收新的 Loop
+            _currentAssistantMessage = null;
+            _toolCallPositions.Clear();
+            
+            // 清空累积缓冲区
+            _accumulatedReasoning.Clear();
+            _accumulatedContent.Clear();
+        }
+
+        /// <summary>
+        /// 处理 Loop 完成事件
+        /// </summary>
+        private void HandleLoopComplete(LoopCompleteEvent evt)
+        {
+            if (_currentLoop != null)
+            {
+                _currentLoop.EndTime = evt.Timestamp;
+                _currentLoop.IsComplete = true;
+                _currentLoop.TotalSteps = evt.TotalSteps;
+                _currentLoop.Success = evt.Success;
+                _currentLoop.Error = evt.Error;
+
+                // 触发 Loop 完成回调
+                OnLoopComplete?.Invoke(_currentLoop);
+            }
+        }
+
+        /// <summary>
         /// 处理流式开始事件 - 新轮次开始，清空状态
         /// </summary>
         private void HandleStreamStart(StreamStartEvent evt)
         {
+            // 更新当前 LoopId（如果事件中有）
+            if (!string.IsNullOrEmpty(evt.LoopId))
+            {
+                _currentLoopId = evt.LoopId;
+            }
+
             // 新轮次开始，清空当前助手消息，准备接收新一轮的 delta
             // 注意：step > 0 时表示这是工具调用后的后续轮次
             if (evt.Step > 0 || _currentAssistantMessage == null)
@@ -127,19 +252,35 @@ namespace Seeing.Agent.WebUI.Services
 
         private void HandleStreamDelta(StreamDeltaEvent evt)
         {
+            // 更新当前 LoopId（如果事件中有）
+            if (!string.IsNullOrEmpty(evt.LoopId))
+            {
+                _currentLoopId = evt.LoopId;
+            }
+
             // 确保有当前助手消息
             EnsureCurrentAssistantMessage(evt.SessionId);
 
             if (_currentAssistantMessage != null)
             {
+                // 设置 LoopId
+                if (!string.IsNullOrEmpty(evt.LoopId))
+                {
+                    _currentAssistantMessage.LoopId = evt.LoopId;
+                }
+
                 if (!string.IsNullOrEmpty(evt.ContentDelta))
                 {
                     _currentAssistantMessage.Content += evt.ContentDelta;
+                    // 同时累积到 Loop 级别
+                    _accumulatedContent.Append(evt.ContentDelta);
                 }
                 if (!string.IsNullOrEmpty(evt.ReasoningDelta))
                 {
                     _currentAssistantMessage.ReasoningContent =
                         (_currentAssistantMessage.ReasoningContent ?? string.Empty) + evt.ReasoningDelta;
+                    // 同时累积到 Loop 级别（支持多轮思考）
+                    _accumulatedReasoning.Append(evt.ReasoningDelta);
                 }
             }
         }
@@ -148,6 +289,12 @@ namespace Seeing.Agent.WebUI.Services
         {
             if (_currentAssistantMessage != null && evt.Message != null)
             {
+                // 设置 LoopId
+                if (!string.IsNullOrEmpty(evt.LoopId))
+                {
+                    _currentAssistantMessage.LoopId = evt.LoopId;
+                }
+
                 // 更新完整消息内容（如果流式内容不完整）
                 if (!string.IsNullOrEmpty(evt.Message.Content) &&
                     string.IsNullOrEmpty(_currentAssistantMessage.Content))
@@ -170,6 +317,12 @@ namespace Seeing.Agent.WebUI.Services
         private void HandleToolCall(ToolCallEvent evt)
         {
             if (_currentAssistantMessage == null) return;
+
+            // 设置 LoopId
+            if (!string.IsNullOrEmpty(evt.LoopId))
+            {
+                _currentAssistantMessage.LoopId = evt.LoopId;
+            }
 
             // 确保工具调用列表存在
             if (_currentAssistantMessage.ToolCalls == null)
@@ -302,6 +455,12 @@ namespace Seeing.Agent.WebUI.Services
             _currentAssistantMessage = SessionMessage.AssistantMessage("");
             _currentAssistantMessage.Id = sessionId;
 
+            // 设置 LoopId
+            if (!string.IsNullOrEmpty(_currentLoopId))
+            {
+                _currentAssistantMessage.LoopId = _currentLoopId;
+            }
+
             // 添加到 SessionData
             if (_sessionState.CurrentSession != null)
             {
@@ -325,7 +484,11 @@ namespace Seeing.Agent.WebUI.Services
         public void ClearCache()
         {
             _currentAssistantMessage = null;
+            _currentLoopId = null;
+            _currentLoop = null;
             _toolCallPositions.Clear();
+            _accumulatedReasoning.Clear();
+            _accumulatedContent.Clear();
         }
 
         /// <summary>
@@ -333,7 +496,10 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public string GetCurrentAssistantContent()
         {
-            return _currentAssistantMessage?.Content ?? "";
+            // 优先返回累积内容（跨多轮），否则返回当前消息内容
+            return _accumulatedContent.Length > 0 
+                ? _accumulatedContent.ToString() 
+                : _currentAssistantMessage?.Content ?? "";
         }
 
         /// <summary>
@@ -341,7 +507,10 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public string? GetCurrentAssistantReasoning()
         {
-            return _currentAssistantMessage?.ReasoningContent;
+            // 优先返回累积推理内容（跨多轮），否则返回当前消息内容
+            return _accumulatedReasoning.Length > 0 
+                ? _accumulatedReasoning.ToString() 
+                : _currentAssistantMessage?.ReasoningContent;
         }
 
         /// <summary>
@@ -358,6 +527,14 @@ namespace Seeing.Agent.WebUI.Services
         public Dictionary<string, int> GetToolCallPositions()
         {
             return _toolCallPositions;
+        }
+
+        /// <summary>
+        /// 获取当前助手消息（完整对象）
+        /// </summary>
+        public SessionMessage? GetCurrentAssistantMessage()
+        {
+            return _currentAssistantMessage;
         }
 
         /// <summary>

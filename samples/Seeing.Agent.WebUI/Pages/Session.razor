@@ -601,6 +601,47 @@
     }
 
     /// <summary>
+    /// 增量更新当前助手消息（用于流式显示，避免全量刷新）
+    /// </summary>
+    private void UpdateCurrentAssistantMessage()
+    {
+        var currentMsg = EventStreamHandler.GetCurrentAssistantMessage();
+        if (currentMsg == null) return;
+
+        // 查找或创建对应的 ViewModel
+        var existingViewModel = _messageViewModels.FirstOrDefault(m => m.Id == currentMsg.Id);
+        
+        if (existingViewModel != null)
+        {
+            // 增量更新现有消息
+            existingViewModel.Content = currentMsg.Content ?? "";
+            existingViewModel.Reasoning = currentMsg.ReasoningContent;
+            existingViewModel.LoopId = currentMsg.LoopId;
+            existingViewModel.Step = currentMsg.Step;
+            existingViewModel.IsComplete = false;
+            
+            // 更新工具调用
+            if (currentMsg.ToolCalls != null)
+            {
+                existingViewModel.ToolCalls = currentMsg.ToolCalls.Select(tc => new ToolCallViewModel
+                {
+                    Id = tc.Id,
+                    Name = tc.Name,
+                    Parameters = tc.Arguments,
+                    Result = tc.Result,
+                    Status = tc.Status,
+                    Error = tc.Error
+                }).ToList();
+            }
+        }
+        else
+        {
+            // 新消息，添加到列表
+            _messageViewModels.Add(ConvertToMessageViewModel(currentMsg));
+        }
+    }
+
+    /// <summary>
     /// 将 SessionMessage 转换为 MessageViewModel（用于 UI 显示）
     /// </summary>
     private MessageViewModel ConvertToMessageViewModel(SessionMessage msg)
@@ -608,6 +649,8 @@
         var viewModel = new MessageViewModel
         {
             Id = msg.Id ?? Guid.NewGuid().ToString("N")[..8],
+            LoopId = msg.LoopId,
+            Step = msg.Step,
             Role = msg.Role,
             Content = msg.Content,
             Reasoning = msg.ReasoningContent,
@@ -743,11 +786,12 @@
             
             SessionState.CurrentSession.AddMessage(userMessage);
             
-            // 更新 UI 显示
-            _messageViewModels.Add(ConvertToMessageViewModel(userMessage));
+            // 更新 UI 显示（保存用户消息的 ViewModel 引用，以便后续设置 LoopId）
+            var userMessageViewModel = ConvertToMessageViewModel(userMessage);
+            _messageViewModels.Add(userMessageViewModel);
 
-            // 执行 Agent 响应
-            await SimulateAgentResponseAsync(args.Text, args.Attachments);
+            // 执行 Agent 响应（传入用户消息 ViewModel 以便设置 LoopId）
+            await SimulateAgentResponseAsync(args.Text, args.Attachments, userMessageViewModel);
 
             SessionState.CompleteExecution();
 
@@ -782,21 +826,10 @@
 /// <summary>
     /// 执行 Agent 响应（真实调用 AgentExecutor）
     /// </summary>
-    private async Task SimulateAgentResponseAsync(string userInput, List<AttachmentViewModel>? attachments = null)
+    private async Task SimulateAgentResponseAsync(string userInput, List<AttachmentViewModel>? attachments = null, MessageViewModel? userMessageViewModel = null)
     {
         // 清空 EventStreamHandler 缓存，准备接收新消息
         EventStreamHandler.ClearCache();
-        
-        // 创建 UI 占位消息（用于流式显示）
-        var placeholderMessage = new MessageViewModel
-        {
-            Id = SessionState.SessionId,
-            Role = "assistant",
-            Content = "",
-            Reasoning = "",
-            IsComplete = false
-        };
-        _messageViewModels.Add(placeholderMessage);
 
         try
         {
@@ -863,50 +896,14 @@
                     await EventStreamHandler.ProcessEventAsync(webuiEvent);
                 }
 
-                // 更新 UI 占位消息的内容
-                placeholderMessage.Content = EventStreamHandler.GetCurrentAssistantContent();
-                placeholderMessage.Reasoning = EventStreamHandler.GetCurrentAssistantReasoning();
-                
-                // 转换工具调用（保持现有实例，只更新属性）
-                var toolCalls = EventStreamHandler.GetCurrentAssistantToolCalls();
-                var toolCallPositions = EventStreamHandler.GetToolCallPositions();
-                
-                if (toolCalls != null)
+                // 更新 LoopId（从事件或 EventStreamHandler 获取）
+                var currentLoopId = EventStreamHandler.GetCurrentLoopId();
+                if (!string.IsNullOrEmpty(currentLoopId))
                 {
-                    // 更新或添加工具调用
-                    foreach (var tc in toolCalls)
+                    // 回溯设置用户消息的 LoopId（关联到同一 Loop）
+                    if (userMessageViewModel != null && string.IsNullOrEmpty(userMessageViewModel.LoopId))
                     {
-                        var existing = placeholderMessage.ToolCalls.FirstOrDefault(x => x.Id == tc.Id);
-                        if (existing != null)
-                        {
-                            // 更新现有实例（保持 IsExpanded 状态）
-                            existing.Name = tc.Name;
-                            existing.Parameters = tc.Arguments;
-                            existing.Result = tc.Result;
-                            existing.Status = tc.Status;
-                            existing.Error = tc.Error;
-                            // 从 UI 层管理的位置字典获取内容位置
-                            if (toolCallPositions.TryGetValue(tc.Id, out var pos))
-                            {
-                                existing.ContentPosition = pos;
-                            }
-                        }
-                        else
-                        {
-                            // 新增工具调用，获取内容位置
-                            int? contentPos = toolCallPositions.TryGetValue(tc.Id, out var pos) ? pos : (int?)null;
-                            
-                            placeholderMessage.ToolCalls.Add(new ToolCallViewModel
-                            {
-                                Id = tc.Id,
-                                Name = tc.Name,
-                                Parameters = tc.Arguments,
-                                Result = tc.Result,
-                                Status = tc.Status,
-                                Error = tc.Error,
-                                ContentPosition = contentPos
-                            });
-                        }
+                        userMessageViewModel.LoopId = currentLoopId;
                     }
                 }
 
@@ -917,39 +914,53 @@
                     var reasoningLen = delta.ReasoningDelta?.Length ?? 0;
                     charCount += contentLen + reasoningLen;
                     
-                    if (charCount >= 30 || delta.ContentDelta?.Contains("\n") == true || delta.ReasoningDelta?.Contains("\n") == true)
+                    // 累积 5 字符或遇到换行时刷新 UI（进一步降低阈值提升流畅度）
+                    if (charCount >= 5 || delta.ContentDelta?.Contains("\n") == true || delta.ReasoningDelta?.Contains("\n") == true)
                     {
+                        // 增量更新当前消息（避免全量刷新）
+                        UpdateCurrentAssistantMessage();
                         await InvokeAsync(StateHasChanged);
                         charCount = 0;
                     }
                 }
+                else if (webuiEvent is Core.Events.StreamStartEvent)
+                {
+                    // StreamStart 表示新 step 开始，添加新消息
+                    UpdateCurrentAssistantMessage();
+                    await InvokeAsync(StateHasChanged);
+                }
                 else
                 {
+                    // 其他事件立即刷新
+                    UpdateCurrentAssistantMessage();
                     await InvokeAsync(StateHasChanged);
                 }
             }
-            
-            // 标记完成
-            placeholderMessage.IsComplete = true;
-            
-            // 将 assistant 消息保存到 SessionData
-            var assistantMessage = SessionMessage.AssistantMessage(placeholderMessage.Content);
-            if (!string.IsNullOrEmpty(placeholderMessage.Reasoning))
-            {
-                assistantMessage.WithMetadata("reasoning", placeholderMessage.Reasoning);
-            }
-            SessionState.CurrentSession?.AddMessage(assistantMessage);
         }
         catch (OperationCanceledException)
         {
-            placeholderMessage.Content += "\n\n⚠️ 执行已取消";
-            placeholderMessage.IsComplete = true;
+            // 执行取消，添加系统提示
+            if (SessionState.CurrentSession != null)
+            {
+                SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("⚠️ 执行已取消"));
+            }
+            RefreshMessageViewModels();
         }
         catch (Exception ex)
         {
             ErrorMessage = $"执行失败: {ex.Message}";
-            placeholderMessage.Content += $"\n\n❌ 执行出错: {ex.Message}";
-            placeholderMessage.IsComplete = true;
+            // 添加错误消息
+            if (SessionState.CurrentSession != null)
+            {
+                SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}"));
+            }
+            RefreshMessageViewModels();
+        }
+        finally
+        {
+            // 最终全量刷新确保数据一致性
+            RefreshMessageViewModels();
+            await InvokeAsync(StateHasChanged);
         }
     }
 

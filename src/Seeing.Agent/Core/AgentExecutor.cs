@@ -69,6 +69,22 @@ public class AgentExecutor
             context.CancellationToken, cancellationToken);
         var effectiveToken = linkedCts.Token;
 
+        // ========== 生成 LoopId（一次完整对话循环的唯一标识）==========
+        var loopId = Guid.NewGuid().ToString("N");
+        var loopStartTime = DateTime.Now;
+        var totalSteps = 0;
+        TokenUsage? totalUsage = null;
+        var hasError = false;
+        string? errorMessage = null;
+
+        // ========== 发布 LoopStart 事件 ==========
+        yield return new LoopStartEvent
+        {
+            SessionId = context.SessionId,
+            LoopId = loopId,
+            UserInput = context.History.LastOrDefault()?.Content
+        };
+
         var maxSteps = agent.MaxSteps ?? 32;
         var messages = context.History.ToList();
 
@@ -79,11 +95,13 @@ public class AgentExecutor
         for (var step = 0; step < maxSteps; step++)
         {
             effectiveToken.ThrowIfCancellationRequested();
+            totalSteps = step + 1;
 
             // ========== 发布 StreamStart 事件（标记新轮次开始）==========
             yield return new StreamStartEvent
             {
                 SessionId = context.SessionId,
+                LoopId = loopId,
                 Step = step
             };
 
@@ -111,6 +129,7 @@ public class AgentExecutor
                     yield return new StreamDeltaEvent
                     {
                         SessionId = context.SessionId,
+                        LoopId = loopId,
                         ReasoningDelta = update.ReasoningDelta
                     };
                 }
@@ -123,6 +142,7 @@ public class AgentExecutor
                     yield return new StreamDeltaEvent
                     {
                         SessionId = context.SessionId,
+                        LoopId = loopId,
                         ContentDelta = update.ContentDelta
                     };
                 }
@@ -138,6 +158,20 @@ public class AgentExecutor
                 if (update.Usage != null)
                 {
                     lastUsage = update.Usage;
+                    // 累加到总 Usage
+                    if (totalUsage == null)
+                    {
+                        totalUsage = new TokenUsage
+                        {
+                            InputTokens = update.Usage.InputTokens,
+                            OutputTokens = update.Usage.OutputTokens
+                        };
+                    }
+                    else
+                    {
+                        totalUsage.InputTokens += update.Usage.InputTokens;
+                        totalUsage.OutputTokens += update.Usage.OutputTokens;
+                    }
                 }
 
                 if (update.IsComplete)
@@ -153,12 +187,26 @@ public class AgentExecutor
             if (assistantMessage == null)
             {
                 _logger.LogWarning("[AgentExecutor] LLM 返回空响应");
+                hasError = true;
+                errorMessage = "LLM 返回空响应";
 
                 yield return new ErrorEvent
                 {
                     SessionId = context.SessionId,
+                    LoopId = loopId,
                     Message = "LLM 返回空响应",
                     Source = "llm"
+                };
+                
+                // 发布 LoopComplete 事件（失败）
+                yield return new LoopCompleteEvent
+                {
+                    SessionId = context.SessionId,
+                    LoopId = loopId,
+                    TotalSteps = totalSteps,
+                    Duration = DateTime.Now - loopStartTime,
+                    Success = false,
+                    Error = errorMessage
                 };
                 yield break;
             }
@@ -169,6 +217,7 @@ public class AgentExecutor
             yield return new StreamCompleteEvent
             {
                 SessionId = context.SessionId,
+                LoopId = loopId,
                 Message = assistantMessage,
                 Usage = lastUsage
             };
@@ -176,6 +225,16 @@ public class AgentExecutor
             // 无工具调用则结束
             if (assistantMessage.ToolCalls == null || assistantMessage.ToolCalls.Count == 0)
             {
+                // 发布 LoopComplete 事件（成功）
+                yield return new LoopCompleteEvent
+                {
+                    SessionId = context.SessionId,
+                    LoopId = loopId,
+                    TotalSteps = totalSteps,
+                    Duration = DateTime.Now - loopStartTime,
+                    Success = true,
+                    Usage = totalUsage
+                };
                 yield break;
             }
 
@@ -185,6 +244,7 @@ public class AgentExecutor
                 agent,
                 context,
                 permissionChannel,
+                loopId,
                 effectiveToken))
             {
                 yield return toolEvent;
@@ -204,11 +264,26 @@ public class AgentExecutor
         }
 
         // 达到最大步数
+        hasError = true;
+        errorMessage = $"达到最大步数 {maxSteps}，已停止";
+        
         yield return new ErrorEvent
         {
             SessionId = context.SessionId,
-            Message = $"达到最大步数 {maxSteps}，已停止",
+            LoopId = loopId,
+            Message = errorMessage,
             Source = "agent"
+        };
+
+        // 发布 LoopComplete 事件（失败）
+        yield return new LoopCompleteEvent
+        {
+            SessionId = context.SessionId,
+            LoopId = loopId,
+            TotalSteps = totalSteps,
+            Duration = DateTime.Now - loopStartTime,
+            Success = false,
+            Error = errorMessage
         };
     }
 
@@ -303,11 +378,12 @@ public class AgentExecutor
         AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel,
+        string loopId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // 并行执行多个工具调用，但按顺序返回事件
         var tasks = toolCalls.Select(tc => ExecuteSingleToolCallAsync(
-            tc, agent, context, permissionChannel, cancellationToken)).ToList();
+            tc, agent, context, permissionChannel, loopId, cancellationToken)).ToList();
 
         var results = await Task.WhenAll(tasks);
 
@@ -317,6 +393,7 @@ public class AgentExecutor
             yield return new ToolCallEvent
             {
                 SessionId = context.SessionId,
+                LoopId = loopId,
                 Type = MessageEventType.ToolCallPending,
                 ToolCallId = tc.Id,
                 ToolName = tc.Function?.Name ?? "",
@@ -328,6 +405,7 @@ public class AgentExecutor
             yield return new ToolCallEvent
             {
                 SessionId = context.SessionId,
+                LoopId = loopId,
                 Type = MessageEventType.ToolCallRunning,
                 ToolCallId = tc.Id,
                 ToolName = tc.Function?.Name ?? "",
@@ -341,6 +419,7 @@ public class AgentExecutor
             yield return new StreamCompleteEvent
             {
                 SessionId = context.SessionId,
+                LoopId = loopId,
                 Message = new ChatMessage
                 {
                     Role = ChatRole.Tool,
@@ -359,6 +438,7 @@ public class AgentExecutor
         AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel,
+        string loopId,
         CancellationToken cancellationToken)
     {
         var name = tc.Function?.Name ?? "";
@@ -368,7 +448,7 @@ public class AgentExecutor
         // ========== 特殊处理：task 工具（子代理调用） ==========
         if (string.Equals(name, "task", StringComparison.OrdinalIgnoreCase))
         {
-            return await HandleSubAgentCallAsync(tc, agent, context, cancellationToken);
+            return await HandleSubAgentCallAsync(tc, agent, context, loopId, cancellationToken);
         }
 
         // 权限检查
@@ -379,6 +459,7 @@ public class AgentExecutor
             return new ToolCallEvent
             {
                 SessionId = context.SessionId,
+                LoopId = loopId,
                 Type = MessageEventType.ToolCallComplete,
                 ToolCallId = tc.Id,
                 ToolName = name,
@@ -399,6 +480,7 @@ public class AgentExecutor
                 return new ToolCallEvent
                 {
                     SessionId = context.SessionId,
+                    LoopId = loopId,
                     Type = MessageEventType.ToolCallComplete,
                     ToolCallId = tc.Id,
                     ToolName = name,
@@ -423,6 +505,7 @@ public class AgentExecutor
             return new ToolCallEvent
             {
                 SessionId = context.SessionId,
+                LoopId = loopId,
                 Type = MessageEventType.ToolCallComplete,
                 ToolCallId = tc.Id,
                 ToolName = name,
@@ -436,6 +519,7 @@ public class AgentExecutor
         return new ToolCallEvent
         {
             SessionId = context.SessionId,
+            LoopId = loopId,
             Type = MessageEventType.ToolCallComplete,
             ToolCallId = tc.Id,
             ToolName = name,
@@ -454,6 +538,7 @@ public class AgentExecutor
         ToolCall tc,
         AgentDefinition parentAgent,
         AgentContext parentContext,
+        string loopId,
         CancellationToken cancellationToken)
     {
         var args = ParseTaskArguments(tc.Function?.Arguments);
@@ -478,6 +563,7 @@ public class AgentExecutor
             return new ToolCallEvent
             {
                 SessionId = parentContext.SessionId,
+                LoopId = loopId,
                 Type = MessageEventType.ToolCallComplete,
                 ToolCallId = tc.Id,
                 ToolName = "task",
@@ -506,6 +592,7 @@ public class AgentExecutor
         var startEvent = new SubAgentEvent
         {
             SessionId = parentContext.SessionId,
+            LoopId = loopId,
             Type = MessageEventType.SubAgentStarted,
             AgentName = targetAgentName,
             Status = "started",
@@ -544,6 +631,7 @@ public class AgentExecutor
             return new ToolCallEvent
             {
                 SessionId = parentContext.SessionId,
+                LoopId = loopId,
                 Type = MessageEventType.ToolCallComplete,
                 ToolCallId = tc.Id,
                 ToolName = "task",
@@ -571,6 +659,7 @@ public class AgentExecutor
         return new ToolCallEvent
         {
             SessionId = parentContext.SessionId,
+            LoopId = loopId,
             Type = MessageEventType.ToolCallComplete,
             ToolCallId = tc.Id,
             ToolName = "task",

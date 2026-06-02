@@ -20,8 +20,31 @@
         <div Class="message-list-container">
             @foreach (var message in Messages)
             {
-                <ChatMessageItem Message="@message" 
-                              OnToolClick="@OnToolClickHandler" />
+                <!-- 用户消息：传统左右布局 -->
+                @if (message.Role == "user")
+                {
+                    <ChatMessageItem @key="message.Id"
+                                     Message="@message" 
+                                     OnToolClick="@OnToolClickHandler" />
+                }
+                <!-- 助手消息：按 Loop 分组显示 -->
+                else if (message.Role == "assistant")
+                {
+                    <!-- 只显示该 LoopId 的第一条助手消息（避免重复渲染同一 Loop） -->
+                    @if (IsFirstAssistantInLoop(message))
+                    {
+                        <LoopGroupItem @key="message.LoopId ?? message.Id"
+                                       Loop="@BuildLoopFromMessage(message)"
+                                       OnToolClick="@OnToolClickHandler" />
+                    }
+                }
+                <!-- 系统消息：传统布局 -->
+                else
+                {
+                    <ChatMessageItem @key="message.Id"
+                                     Message="@message" 
+                                     OnToolClick="@OnToolClickHandler" />
+                }
             }
             
             <!-- 自动滚动锚点 -->
@@ -58,6 +81,111 @@
     /// </summary>
     [Parameter]
     public bool AutoScroll { get; set; } = true;
+
+    /// <summary>
+    /// 判断是否是同一 Loop 中的第一条助手消息
+    /// </summary>
+    private bool IsFirstAssistantInLoop(MessageViewModel message)
+    {
+        if (string.IsNullOrEmpty(message.LoopId))
+            return true;
+
+        var currentIndex = Messages.IndexOf(message);
+        
+        // 向前查找是否有相同 LoopId 的助手消息
+        for (var i = currentIndex - 1; i >= 0; i--)
+        {
+            var prev = Messages[i];
+            if (prev.Role == "assistant" && prev.LoopId == message.LoopId)
+            {
+                return false; // 前面已有相同 LoopId 的助手消息
+            }
+        }
+        
+        return true;
+    }
+
+    /// <summary>
+    /// 从助手消息构建 Loop 分组（包含同一 LoopId 的所有助手消息）
+    /// </summary>
+    private LoopGroupViewModel BuildLoopFromMessage(MessageViewModel assistantMessage)
+    {
+        var loopId = assistantMessage.LoopId ?? $"single-{Messages.IndexOf(assistantMessage)}";
+        
+        // 收集同一 LoopId 的所有助手消息
+        var loopMessages = new List<MessageViewModel>();
+        var loopIndex = 0;
+        var foundLoopIds = new HashSet<string>();
+        
+        foreach (var msg in Messages)
+        {
+            if (msg.Role == "assistant")
+            {
+                var msgLoopId = msg.LoopId ?? $"single-{Messages.IndexOf(msg)}";
+                
+                if (msgLoopId == loopId)
+                {
+                    loopMessages.Add(msg);
+                }
+                
+                // 计算当前 Loop 的索引
+                if (!foundLoopIds.Contains(msgLoopId) && msg.LoopId == loopId)
+                {
+                    foundLoopIds.Add(msgLoopId);
+                    if (msgLoopId == loopId)
+                    {
+                        // 计算这是第几个 Loop
+                        loopIndex = foundLoopIds.Count;
+                    }
+                }
+            }
+        }
+        
+        // 计算 Loop 索引（遍历所有消息，统计不同的 LoopId）
+        loopIndex = 0;
+        var seenLoopIds = new HashSet<string>();
+        foreach (var msg in Messages)
+        {
+            if (msg.Role == "assistant" && !string.IsNullOrEmpty(msg.LoopId))
+            {
+                if (!seenLoopIds.Contains(msg.LoopId))
+                {
+                    seenLoopIds.Add(msg.LoopId);
+                    if (msg.LoopId == loopId)
+                    {
+                        loopIndex = seenLoopIds.Count;
+                        break;
+                    }
+                }
+            }
+            else if (msg == assistantMessage && string.IsNullOrEmpty(msg.LoopId))
+            {
+                loopIndex = seenLoopIds.Count + 1;
+            }
+        }
+        
+        // 计算统计信息
+        var totalSteps = loopMessages.Count;
+        var startTime = loopMessages.FirstOrDefault()?.Timestamp;
+        var endTime = loopMessages.LastOrDefault()?.Timestamp;
+        var isComplete = loopMessages.All(m => m.IsComplete);
+        var hasError = loopMessages.Any(m => !string.IsNullOrEmpty(m.ToolCalls.FirstOrDefault()?.Error));
+        
+        return new LoopGroupViewModel
+        {
+            LoopId = loopId,
+            LoopIndex = loopIndex,
+            Messages = loopMessages,
+            IsComplete = isComplete,
+            TotalSteps = totalSteps,
+            StartTime = startTime,
+            EndTime = isComplete ? endTime : null,
+            Duration = startTime.HasValue && endTime.HasValue && isComplete 
+                ? endTime.Value - startTime.Value 
+                : null,
+            Success = !hasError
+        };
+    }
     
     /// <summary>
     /// 工具点击处理
@@ -88,7 +216,6 @@
     {
         try
         {
-            // 使用 JSInterop 滚动到锚点元素
             await JSRuntime.InvokeVoidAsync("scrollIntoView", ScrollAnchorId);
         }
         catch
