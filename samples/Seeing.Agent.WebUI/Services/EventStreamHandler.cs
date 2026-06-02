@@ -103,6 +103,11 @@ namespace Seeing.Agent.WebUI.Services
         private AgentLoopInfo? _currentLoop;
 
         /// <summary>
+        /// 当前 Step 索引
+        /// </summary>
+        private int _currentStep = 0;
+
+        /// <summary>
         /// 工具调用的内容位置（UI 层自行管理）
         /// Key: ToolCallId, Value: 工具调用首次出现时的内容长度
         /// </summary>
@@ -206,6 +211,7 @@ namespace Seeing.Agent.WebUI.Services
             // 清空当前助手消息，准备接收新的 Loop
             _currentAssistantMessage = null;
             _toolCallPositions.Clear();
+            _currentStep = 0;  // ✅ 重置 step，新 Loop 从 0 开始
             
             // 清空累积缓冲区
             _accumulatedReasoning.Clear();
@@ -242,9 +248,11 @@ namespace Seeing.Agent.WebUI.Services
             }
 
             // 新轮次开始，清空当前助手消息，准备接收新一轮的 delta
-            // 注意：step > 0 时表示这是工具调用后的后续轮次
+            // 注意：step > 0 时表示这是工具调用后的后续轮次，需要创建新的消息
             if (evt.Step > 0 || _currentAssistantMessage == null)
             {
+                // 保存当前消息的 step（用于创建新消息时设置正确的 step）
+                _currentStep = evt.Step;
                 _currentAssistantMessage = null;
                 _toolCallPositions.Clear();
             }
@@ -451,9 +459,14 @@ namespace Seeing.Agent.WebUI.Services
         {
             if (_currentAssistantMessage != null) return;
 
-            // 创建新的助手消息
+            // 创建新的助手消息，每个 step 使用独立的 ID
             _currentAssistantMessage = SessionMessage.AssistantMessage("");
-            _currentAssistantMessage.Id = sessionId;
+            
+            // 使用 loopId + step 生成唯一 ID，确保每个 Loop 的每个 step 都是独立的消息
+            // loopId 每次对话都是唯一的，step 在 Loop 内递增
+            var loopPrefix = _currentLoopId ?? sessionId;
+            _currentAssistantMessage.Id = $"{loopPrefix}_step{_currentStep}";
+            _currentAssistantMessage.Step = _currentStep;
 
             // 设置 LoopId
             if (!string.IsNullOrEmpty(_currentLoopId))
@@ -486,6 +499,7 @@ namespace Seeing.Agent.WebUI.Services
             _currentAssistantMessage = null;
             _currentLoopId = null;
             _currentLoop = null;
+            _currentStep = 0;
             _toolCallPositions.Clear();
             _accumulatedReasoning.Clear();
             _accumulatedContent.Clear();

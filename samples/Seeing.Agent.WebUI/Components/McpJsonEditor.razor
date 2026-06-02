@@ -19,7 +19,7 @@
                   Placeholder="@Placeholder"
                   Rows="@Rows"
                   Class="@(_isValid ? "" : "json-error")"
-                  @oninput="OnInputChanged" />
+                  oninput="OnInputChanged" />
     </div>
     
     @if (!_isValid && !string.IsNullOrEmpty(_errorMessage))

@@ -2,52 +2,52 @@
 @using System.Text.Json
 @using Seeing.Agent.WebUI.Models
 
-<div Class="tool-call-compact"
-     Style="display: flex; align-items: center; padding: 4px 8px; background: var(--color-bg-secondary); border-radius: var(--radius-sm); margin: 4px 0; cursor: pointer;"
-     @onclick="ToolCall.ToggleExpand">
+<div class="tool-call-compact"
+     style="display: flex; align-items: center; padding: 4px 8px; background: var(--color-bg-secondary); border-radius: var(--radius-sm); margin: 4px 0; cursor: pointer;"
+     onclick="@ToggleExpand">
      
-    <!-- 状态图标 -->
-    <Icon Type="@GetStatusIcon()" 
-          Style="@GetStatusIconStyle()" />
-    
-    <!-- 工具名称 -->
-    <span Style="margin-left: 6px; font-weight: 500; font-size: 13px;">
-        @ToolCall.Name
-    </span>
-    
-    <!-- 状态标签 -->
-    <Tag Color="@GetStatusColor()"
-         Style="margin-left: 6px; font-size: 11px;">
-        @GetStatusText()
-    </Tag>
-    
-    <!-- 简要结果/错误预览 -->
-    @if (!string.IsNullOrEmpty(ToolCall.Result))
-    {
-        <span Style="margin-left: 8px; color: var(--color-success); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            @GetResultPreview()
-        </span>
-    }
-    else if (!string.IsNullOrEmpty(ToolCall.Error))
-    {
-        <span Style="margin-left: 8px; color: var(--color-error); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            @GetErrorPreview()
-        </span>
-    }
-    
-    <!-- 执行中动画 -->
-    @if (ToolCall.Status == "running" || ToolCall.Status == "pending")
-    {
-        <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
-    }
-    
-    <!-- 展开/收起指示 -->
-    <Icon Type="@(ToolCall.IsExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
-          Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
+     <!-- 状态图标 -->
+     <Icon Type="@GetStatusIcon()" 
+           Style="@GetStatusIconStyle()" />
+     
+     <!-- 工具名称 -->
+     <span style="margin-left: 6px; font-weight: 500; font-size: 13px;">
+         @ToolCall.Name
+     </span>
+     
+     <!-- 状态标签 -->
+     <Tag Color="@GetStatusColor()"
+          Style="margin-left: 6px; font-size: 11px;">
+         @GetStatusText()
+     </Tag>
+     
+     <!-- 简要结果/错误预览 -->
+     @if (!string.IsNullOrEmpty(ToolCall.Result))
+     {
+         <span style="margin-left: 8px; color: var(--color-success); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+             @GetResultPreview()
+         </span>
+     }
+     else if (!string.IsNullOrEmpty(ToolCall.Error))
+     {
+         <span style="margin-left: 8px; color: var(--color-error); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+             @GetErrorPreview()
+         </span>
+     }
+     
+     <!-- 执行中动画 -->
+     @if (ToolCall.Status == "running" || ToolCall.Status == "pending")
+     {
+         <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
+     }
+     
+     <!-- 展开/收起指示 -->
+     <Icon Type="@(_isExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+           Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
 </div>
 
 <!-- 详情展开区域 -->
-@if (ToolCall.IsExpanded)
+@if (_isExpanded)
 {
     <div Style="padding: 8px 12px; background: var(--color-bg-tertiary); border-radius: var(--radius-sm); margin-top: 2px;">
         
@@ -86,6 +86,19 @@
     /// </summary>
     [Parameter]
     public ToolCallViewModel ToolCall { get; set; } = new();
+    
+    /// <summary>
+    /// 内部展开状态（避免修改 Parameter 属性）
+    /// </summary>
+    private bool _isExpanded = false;
+    
+    /// <summary>
+    /// 切换展开状态
+    /// </summary>
+    private void ToggleExpand()
+    {
+        _isExpanded = !_isExpanded;
+    }
     
     /// <summary>
     /// 获取状态图标

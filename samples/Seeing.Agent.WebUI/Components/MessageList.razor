@@ -5,8 +5,9 @@
 @using Seeing.Agent.WebUI.Models
 @inject SessionState SessionState
 @inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
 
-<div Class="message-list" @ref="@MessageListElement">
+<div Class="message-list" @ref="@MessageListElement" Id="@ContainerId">
     @if (Messages.Count == 0)
     {
         <Empty Class="message-list-empty">
@@ -49,6 +50,14 @@
             
             <!-- 自动滚动锚点 -->
             <div Id="@ScrollAnchorId" Class="scroll-anchor"></div>
+            
+            <!-- "滚动到底部"按钮（用户向上滚动时显示） -->
+            @if (_showScrollToBottomButton)
+            {
+                <div Class="scroll-to-bottom-button" onclick="@OnScrollToBottomClick">
+                    <Icon Type="@IconType.Outline.ArrowDown" />
+                </div>
+            }
         </div>
     }
 </div>
@@ -60,9 +69,24 @@
     private ElementReference MessageListElement { get; set; }
     
     /// <summary>
+    /// 滚动容器 ID
+    /// </summary>
+    private const string ContainerId = "message-list-container";
+    
+    /// <summary>
     /// 滚动锚点 ID
     /// </summary>
     private const string ScrollAnchorId = "message-list-scroll-anchor";
+    
+    /// <summary>
+    /// 是否显示"滚动到底部"按钮
+    /// </summary>
+    private bool _showScrollToBottomButton = false;
+    
+    /// <summary>
+    /// 是否已初始化滚动管理器
+    /// </summary>
+    private bool _scrollManagerInitialized = false;
     
     /// <summary>
     /// 消息列表数据源
@@ -199,29 +223,97 @@
     }
     
     /// <summary>
-    /// 组件渲染后自动滚动
+    /// 组件渲染后初始化滚动管理器并自动滚动
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // 初始化滚动管理器
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("initMessageListScroll", ContainerId, ScrollAnchorId);
+                _scrollManagerInitialized = true;
+            }
+            catch
+            {
+                // JSInterop 可能未就绪，静默忽略
+            }
+        }
+        
         if (AutoScroll && Messages.Count > 0)
         {
             await ScrollToBottomAsync();
         }
+        
+        // 检查是否应该显示"滚动到底部"按钮
+        await CheckScrollPositionAsync();
     }
     
     /// <summary>
-    /// 滚动到底部
+    /// 智能滚动到底部（尊重用户滚动行为）
     /// </summary>
     private async Task ScrollToBottomAsync()
     {
+        if (!_scrollManagerInitialized) return;
+        
         try
         {
-            await JSRuntime.InvokeVoidAsync("scrollIntoView", ScrollAnchorId);
+            await JSRuntime.InvokeVoidAsync("smartScrollToBottom");
         }
         catch
         {
             // JSInterop 可能未就绪，静默忽略
         }
+    }
+    
+    /// <summary>
+    /// 强制滚动到底部（忽略用户滚动）
+    /// </summary>
+    public async Task ForceScrollToBottomAsync()
+    {
+        if (!_scrollManagerInitialized) return;
+        
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("forceScrollToBottom");
+            _showScrollToBottomButton = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // JSInterop 可能未就绪，静默忽略
+        }
+    }
+    
+    /// <summary>
+    /// 检查滚动位置，决定是否显示"滚动到底部"按钮
+    /// </summary>
+    private async Task CheckScrollPositionAsync()
+    {
+        if (!_scrollManagerInitialized) return;
+        
+        try
+        {
+            var shouldAutoScroll = await JSRuntime.InvokeAsync<bool>("shouldAutoScroll");
+            if (_showScrollToBottomButton == shouldAutoScroll)
+            {
+                _showScrollToBottomButton = !shouldAutoScroll;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch
+        {
+            // JSInterop 可能未就绪，静默忽略
+        }
+    }
+    
+    /// <summary>
+    /// "滚动到底部"按钮点击处理
+    /// </summary>
+    private async Task OnScrollToBottomClick()
+    {
+        await ForceScrollToBottomAsync();
     }
     
     /// <summary>
@@ -239,6 +331,25 @@
     public void ClearMessages()
     {
         Messages.Clear();
+        _showScrollToBottomButton = false;
         StateHasChanged();
+    }
+    
+    /// <summary>
+    /// 释放资源
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_scrollManagerInitialized)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("destroyMessageListScroll");
+            }
+            catch
+            {
+                // JSInterop 可能未就绪，静默忽略
+            }
+        }
     }
 }

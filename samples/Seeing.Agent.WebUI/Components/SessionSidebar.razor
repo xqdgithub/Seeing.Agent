@@ -61,7 +61,7 @@
                     var isCollapsed = _groupCollapsed.GetValueOrDefault(groupName, false);
                     
                     <!-- 分组标题 -->
-                    <div Class="session-group-title" @onclick="@(() => ToggleGroupCollapse(groupName))">
+                    <div Class="session-group-title" onclick="@(() => ToggleGroupCollapse(groupName))">
                         <Icon Type="@(isCollapsed ? IconType.Outline.Right : IconType.Outline.Down)" Class="session-group-icon" />
                         <span Class="session-group-label">@groupName</span>
                         <Badge Count="@group.Count()" Class="session-group-count" />
@@ -75,9 +75,9 @@
                             {
                                 var currentSession = session; // 捕获 foreach 变量
                                 <div Class="@GetSessionItemClass(session)"
-                                     @oncontextmenu:preventDefault="true"
-                                     @oncontextmenu="@((e) => OnContextMenu(e, currentSession))"
-                                     @onclick="@(() => OnSelectSession(currentSession))">
+                                     oncontextmenu:preventDefault="true"
+                                     oncontextmenu="@((MouseEventArgs e) => OnContextMenu(e, currentSession))"
+                                     onclick="@(() => OnSelectSession(currentSession))">
                                     <div Class="session-item-content">
                                         @if (Collapsed)
                                         {

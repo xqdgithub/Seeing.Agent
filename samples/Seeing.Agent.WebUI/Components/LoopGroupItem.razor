@@ -35,15 +35,6 @@
         </div>
         
         <div Class="message-meta">
-            @* 统计信息 *@
-            @if (Loop.TotalSteps > 1)
-            {
-                <span Class="meta-item" Title="LLM 调用次数">
-                    <Icon Type="@IconType.Outline.Apartment" Style="font-size: 12px;" />
-                    @Loop.TotalSteps 步
-                </span>
-            }
-            
             @if (Loop.TotalToolCalls > 0)
             {
                 <span Class="meta-item" Title="工具调用次数">
@@ -77,45 +68,72 @@
     @* Loop 内的消息内容（按 Step 排序） *@
     @foreach (var message in Loop.Messages.OrderBy(m => m.Step))
     {
-        @* Step 分隔线（step > 0 时显示）*@
-        @if (message.Step > 0)
-        {
-            <div Class="step-divider" Style="display: flex; align-items: center; margin: var(--space-3) 0; color: var(--color-text-secondary);">
-                <div Style="flex: 1; height: 1px; background: var(--color-border);"></div>
-                <span Style="padding: 0 var(--space-2); font-size: var(--font-size-xs);">Step @message.Step</span>
-                <div Style="flex: 1; height: 1px; background: var(--color-border);"></div>
-            </div>
-        }
-        
-        @* 推理过程（如果有）*@
+        @* 推理过程（如果有）- 类似工具调用的折叠样式 *@
         @if (!string.IsNullOrEmpty(message.Reasoning))
         {
-            <div Class="message-reasoning-section @(_reasoningExpanded || !message.IsComplete ? "expanded" : "collapsed")">
-                <div Class="message-reasoning-header" @onclick="@ToggleReasoning">
-                    <Icon Type="@IconType.Outline.Bulb" Class="message-reasoning-icon" />
-                    @if (!message.IsComplete)
-                    {
-                        <span Class="reasoning-status">
-                            <Icon Type="@IconType.Outline.Loading" />
-                            <span Style="margin-left: var(--space-1);">思考中...</span>
-                        </span>
-                    }
-                    else if (!_reasoningExpanded)
-                    {
-                        <span Class="reasoning-preview">@GetReasoningPreview(message.Reasoning)</span>
-                    }
-                    else
-                    {
-                        <span>推理过程</span>
-                    }
-                </div>
-                @if (_reasoningExpanded || !message.IsComplete)
+            var isReasoningExpanded = !message.IsComplete || IsReasoningManuallyExpanded(message.Id);
+            <div class="reasoning-card-compact"
+                 style="display: flex; align-items: center; padding: 4px 8px; background: var(--color-bg-secondary); border-radius: var(--radius-sm); margin: 4px 0; cursor: pointer;"
+                 onclick="@(() => ToggleReasoning(message.Id))">
+                
+                <!-- 状态图标 -->
+                @if (!message.IsComplete)
                 {
-                    <div Class="message-reasoning @(message.IsComplete ? "reasoning-complete" : "reasoning-streaming")">
-                        @((MarkupString)RenderMarkdown(message.Reasoning))
-                    </div>
+                    <Icon Type="@IconType.Outline.Loading" Style="color: var(--color-primary); font-size: 14px; animation: spin 1s linear infinite;" />
                 }
+                else
+                {
+                    <Icon Type="@IconType.Outline.Bulb" Style="color: var(--color-warning); font-size: 14px;" />
+                }
+                
+                <!-- 标题 -->
+                <span style="margin-left: 6px; font-weight: 500; font-size: 13px;">
+                    思考过程
+                </span>
+                
+                <!-- 状态标签 -->
+                @if (!message.IsComplete)
+                {
+                    <Tag Color="@("processing")" Style="margin-left: 6px; font-size: 11px;">
+                        思考中
+                    </Tag>
+                }
+                else
+                {
+                    <Tag Color="@("warning")" Style="margin-left: 6px; font-size: 11px;">
+                        @GetReasoningCharCount(message.Reasoning) 字符
+                    </Tag>
+                }
+                
+                <!-- 预览文本（折叠时显示） -->
+                @if (!isReasoningExpanded && message.IsComplete)
+                {
+                    <span style="margin-left: 8px; color: var(--color-text-secondary); font-size: 12px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        @GetReasoningPreview(message.Reasoning)
+                    </span>
+                }
+                
+                <!-- 执行中动画 -->
+                @if (!message.IsComplete)
+                {
+                    <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
+                }
+                
+                <!-- 展开/收起指示 -->
+                <Icon Type="@(isReasoningExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+                      Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
             </div>
+            
+            <!-- 详情展开区域 -->
+            @if (isReasoningExpanded)
+            {
+                <div class="reasoning-detail"
+                     style="padding: 8px 12px; background: var(--color-bg-tertiary); border-radius: var(--radius-sm); margin-top: 2px; border-left: 3px solid @(message.IsComplete ? "var(--color-warning)" : "var(--color-primary)");">
+                    <div style="font-size: 12px; color: var(--color-text-secondary); max-height: 300px; overflow-y: auto;">
+                        @((MarkupString)RenderReasoningMarkdown(message.Reasoning, message.Id))
+                    </div>
+                </div>
+            }
         }
         
         @* 工具调用（如果有）*@
@@ -133,7 +151,7 @@
         @if (!string.IsNullOrEmpty(message.Content))
         {
             <div Class="message-content">
-                @((MarkupString)RenderMarkdown(message.Content))
+                @((MarkupString)RenderMarkdown(message.Content, message.Id))
             </div>
         }
     }
@@ -174,9 +192,9 @@
     public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
 
     /// <summary>
-    /// 推理过程是否展开
+    /// 每个消息的推理展开状态（按消息 ID 存储）
     /// </summary>
-    private bool _reasoningExpanded = false;
+    private readonly Dictionary<string, bool> _reasoningExpandedStates = new();
 
     /// <summary>
     /// Markdown 渲染管道
@@ -188,6 +206,54 @@
         .UseEmphasisExtras()
         .UseListExtras()
         .Build();
+    
+    // ========== Markdown 渲染缓存 ==========
+    
+    /// <summary>
+    /// 消息渲染缓存（按消息 ID 存储）
+    /// </summary>
+    private readonly Dictionary<string, (string content, string html)> _renderCache = new();
+    
+    /// <summary>
+    /// 推理渲染缓存（按消息 ID 存储）
+    /// </summary>
+    private readonly Dictionary<string, (string reasoning, string html)> _reasoningCache = new();
+    
+    /// <summary>
+    /// 上一次 Loop ID（用于检测切换，清空缓存）
+    /// </summary>
+    private string _lastLoopId = string.Empty;
+    
+    /// <summary>
+    /// 判断消息的推理内容是否被用户手动展开
+    /// </summary>
+    private bool IsReasoningManuallyExpanded(string messageId)
+    {
+        return _reasoningExpandedStates.TryGetValue(messageId, out var expanded) && expanded;
+    }
+    
+    /// <summary>
+    /// 切换消息的推理展开状态
+    /// </summary>
+    private void ToggleReasoning(string messageId)
+    {
+        if (_reasoningExpandedStates.ContainsKey(messageId))
+        {
+            _reasoningExpandedStates[messageId] = !_reasoningExpandedStates[messageId];
+        }
+        else
+        {
+            _reasoningExpandedStates[messageId] = true;
+        }
+    }
+    
+    /// <summary>
+    /// 获取推理内容字符数
+    /// </summary>
+    private int GetReasoningCharCount(string reasoning)
+    {
+        return reasoning?.Length ?? 0;
+    }
 
     /// <summary>
     /// 获取消息样式类名
@@ -219,13 +285,61 @@
     }
 
     /// <summary>
-    /// 渲染 Markdown 内容
+    /// 渲染 Markdown 内容（带缓存优化）
     /// </summary>
-    private string RenderMarkdown(string content)
+    private string RenderMarkdown(string content, string messageId)
     {
         if (string.IsNullOrEmpty(content))
             return string.Empty;
-        return Markdig.Markdown.ToHtml(content, MarkdownPipeline);
+        
+        // 检测 Loop 切换，清空缓存
+        if (Loop.LoopId != _lastLoopId)
+        {
+            _lastLoopId = Loop.LoopId;
+            _renderCache.Clear();
+            _reasoningCache.Clear();
+        }
+        
+        // 检查缓存
+        if (_renderCache.TryGetValue(messageId, out var cached))
+        {
+            if (cached.content == content)
+                return cached.html;
+        }
+        
+        // 重新渲染并缓存
+        var html = Markdig.Markdown.ToHtml(content, MarkdownPipeline);
+        _renderCache[messageId] = (content, html);
+        return html;
+    }
+    
+    /// <summary>
+    /// 渲染推理内容 Markdown（带缓存优化）
+    /// </summary>
+    private string RenderReasoningMarkdown(string reasoning, string messageId)
+    {
+        if (string.IsNullOrEmpty(reasoning))
+            return string.Empty;
+        
+        // 检测 Loop 切换，清空缓存
+        if (Loop.LoopId != _lastLoopId)
+        {
+            _lastLoopId = Loop.LoopId;
+            _renderCache.Clear();
+            _reasoningCache.Clear();
+        }
+        
+        // 检查缓存
+        if (_reasoningCache.TryGetValue(messageId, out var cached))
+        {
+            if (cached.reasoning == reasoning)
+                return cached.html;
+        }
+        
+        // 重新渲染并缓存
+        var html = Markdig.Markdown.ToHtml(reasoning, MarkdownPipeline);
+        _reasoningCache[messageId] = (reasoning, html);
+        return html;
     }
 
     /// <summary>
@@ -241,17 +355,11 @@
         return firstLine;
     }
 
-    /// <summary>
-    /// 切换推理过程展开状态
-    /// </summary>
-    public async Task ToggleReasoning()
-    {
-        _reasoningExpanded = !_reasoningExpanded;
-        await InvokeAsync(StateHasChanged);
-    }
-
     public void Dispose()
     {
         // 清理资源
+        _reasoningExpandedStates.Clear();
+        _renderCache.Clear();
+        _reasoningCache.Clear();
     }
 }

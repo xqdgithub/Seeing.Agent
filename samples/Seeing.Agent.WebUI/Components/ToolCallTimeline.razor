@@ -9,7 +9,7 @@
                 <div Class="timeline-item-content">
                     <!-- 时间线节点头部 -->
                     <div Class="timeline-node-header"
-                         @onclick="@(() => ToggleExpand(toolCall.Id))">
+                         onclick="@(() => ToggleExpand(toolCall.Id))">
                         <div Class="timeline-node-info">
                             <Icon Type="@GetStatusIcon(toolCall.Status)" 
                                   Style="@GetStatusIconStyle(toolCall.Status)" />

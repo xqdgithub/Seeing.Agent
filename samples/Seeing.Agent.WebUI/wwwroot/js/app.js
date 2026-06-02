@@ -202,3 +202,186 @@ function setupTextareaAutoResize(textareaId) {
         autoResizeTextarea(textarea);
     });
 }
+
+// ========== 智能滚动管理 ==========
+
+/**
+ * 滚动管理器 - 支持用户滚动时暂停自动滚动
+ */
+class ScrollManager {
+    constructor() {
+        this.userScrolled = false;
+        this.scrollTimeout = null;
+        this.lastScrollTop = 0;
+        this.container = null;
+        this.anchorElement = null;
+    }
+    
+    /**
+     * 初始化滚动管理器
+     * @param {string} containerId - 滚动容器 ID
+     * @param {string} anchorId - 滚动锚点 ID
+     * @param {number} threshold - 判断用户滚动的阈值（像素）
+     */
+    init(containerId, anchorId, threshold = 100) {
+        this.container = document.getElementById(containerId);
+        this.anchorElement = document.getElementById(anchorId);
+        this.threshold = threshold;
+        
+        if (this.container) {
+            // 监听用户滚动
+            this.container.addEventListener('scroll', () => this.handleScroll());
+            
+            // 监听鼠标滚轮
+            this.container.addEventListener('wheel', () => {
+                this.userScrolled = true;
+                this.resetScrollTimeout();
+            });
+            
+            // 监听触摸滑动（移动端）
+            this.container.addEventListener('touchmove', () => {
+                this.userScrolled = true;
+                this.resetScrollTimeout();
+            });
+        }
+    }
+    
+    /**
+     * 处理滚动事件
+     */
+    handleScroll() {
+        if (!this.container) return;
+        
+        const currentScrollTop = this.container.scrollTop;
+        const scrollHeight = this.container.scrollHeight;
+        const clientHeight = this.container.clientHeight;
+        
+        // 检测是否滚动到底部
+        const isAtBottom = scrollHeight - currentScrollTop - clientHeight < this.threshold;
+        
+        if (isAtBottom) {
+            // 滚动到底部，重置用户滚动标记
+            this.userScrolled = false;
+        } else if (currentScrollTop < this.lastScrollTop) {
+            // 向上滚动，标记为用户滚动
+            this.userScrolled = true;
+            this.resetScrollTimeout();
+        }
+        
+        this.lastScrollTop = currentScrollTop;
+    }
+    
+    /**
+     * 重置滚动超时（用户停止滚动一段时间后恢复自动滚动）
+     */
+    resetScrollTimeout() {
+        if (this.scrollTimeout) {
+            clearTimeout(this.scrollTimeout);
+        }
+        
+        // 3 秒后恢复自动滚动
+        this.scrollTimeout = setTimeout(() => {
+            this.userScrolled = false;
+        }, 3000);
+    }
+    
+    /**
+     * 滚动到底部（如果用户没有手动滚动）
+     * @param {boolean} force - 强制滚动，忽略用户滚动标记
+     */
+    scrollToBottom(force = false) {
+        if (this.userScrolled && !force) return;
+        
+        if (this.anchorElement) {
+            this.anchorElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        } else if (this.container) {
+            this.container.scrollTo({
+                top: this.container.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+    }
+    
+    /**
+     * 强制滚动到底部并重置用户滚动标记
+     */
+    forceScrollToBottom() {
+        this.userScrolled = false;
+        this.scrollToBottom(true);
+    }
+    
+    /**
+     * 检查是否应该自动滚动
+     */
+    shouldAutoScroll() {
+        return !this.userScrolled;
+    }
+    
+    /**
+     * 销毁滚动管理器
+     */
+    destroy() {
+        if (this.scrollTimeout) {
+            clearTimeout(this.scrollTimeout);
+        }
+        this.container = null;
+        this.anchorElement = null;
+    }
+}
+
+// 全局滚动管理器实例
+let messageListScrollManager = null;
+
+/**
+ * 初始化消息列表滚动管理器
+ * @param {string} containerId - 滚动容器 ID
+ * @param {string} anchorId - 滚动锚点 ID
+ */
+function initMessageListScroll(containerId, anchorId) {
+    if (messageListScrollManager) {
+        messageListScrollManager.destroy();
+    }
+    messageListScrollManager = new ScrollManager();
+    messageListScrollManager.init(containerId, anchorId);
+}
+
+/**
+ * 智能滚动到底部（尊重用户滚动行为）
+ */
+function smartScrollToBottom() {
+    if (messageListScrollManager) {
+        messageListScrollManager.scrollToBottom();
+    }
+}
+
+/**
+ * 强制滚动到底部（忽略用户滚动）
+ */
+function forceScrollToBottom() {
+    if (messageListScrollManager) {
+        messageListScrollManager.forceScrollToBottom();
+    } else {
+        // 回退到简单滚动
+        scrollIntoView('message-list-scroll-anchor');
+    }
+}
+
+/**
+ * 检查是否应该自动滚动
+ */
+function shouldAutoScroll() {
+    if (messageListScrollManager) {
+        return messageListScrollManager.shouldAutoScroll();
+    }
+    return true;
+}
+
+/**
+ * 销毁消息列表滚动管理器
+ */
+function destroyMessageListScroll() {
+    if (messageListScrollManager) {
+        messageListScrollManager.destroy();
+        messageListScrollManager = null;
+    }
+}

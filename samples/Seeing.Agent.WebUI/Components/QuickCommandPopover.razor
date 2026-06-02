@@ -13,7 +13,7 @@
                     OnClick="@OnTriggerClick" />
         </ChildContent>
         <ContentTemplate>
-            <div Class="quick-cmd-popover" @onclick:stopPropagation="true">
+            <div Class="quick-cmd-popover" onclick:stopPropagation="true">
                 <Input Placeholder="搜索..."
                        @bind-Value="@SearchText"
                        AllowClear="true"
@@ -26,8 +26,8 @@
                             @foreach (var tool in FilteredTools)
                             {
                                 <div Class="quick-cmd-item" 
-                                     @onclick="@(() => OnToolClick(tool))"
-                                     @onclick:stopPropagation="true">
+                                     onclick="@(() => OnToolClick(tool))"
+                                     onclick:stopPropagation="true">
                                     <div Class="quick-cmd-item-header">
                                         <Icon Type="@IconType.Outline.Tool" Class="quick-cmd-icon" />
                                         <span Class="quick-cmd-name">@tool.Name</span>
@@ -42,8 +42,8 @@
                             @foreach (var skill in FilteredSkills)
                             {
                                 <div Class="quick-cmd-item"
-                                     @onclick="@(() => OnSkillClick(skill))"
-                                     @onclick:stopPropagation="true">
+                                     onclick="@(() => OnSkillClick(skill))"
+                                     onclick:stopPropagation="true">
                                     <div Class="quick-cmd-item-header">
                                         <Icon Type="@IconType.Outline.Book" Class="quick-cmd-icon" />
                                         <span Class="quick-cmd-name">@skill.Name</span>

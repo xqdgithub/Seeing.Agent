@@ -57,10 +57,10 @@
         </div>
         <div class="filter-divider"></div>
         <div class="view-mode-toggle">
-            <button class="view-mode-btn @(_isCardView ? "active" : "")" @onclick="() => SetViewMode(true)" title="Card View">
+            <button class="view-mode-btn @(_isCardView ? "active" : "")" onclick="@(() => SetViewMode(true))" title="Card View">
                 <Icon Type="@IconType.Outline.Appstore" />
             </button>
-            <button class="view-mode-btn @(!_isCardView ? "active" : "")" @onclick="() => SetViewMode(false)" title="List View">
+            <button class="view-mode-btn @(!_isCardView ? "active" : "")" onclick="@(() => SetViewMode(false))" title="List View">
                 <Icon Type="@IconType.Outline.UnorderedList" />
             </button>
         </div>
@@ -95,7 +95,7 @@
         else if (_isCardView) {
             <div class="items-grid">
             @foreach (var skill in _filteredSkills) {
-                <div class="item-card" @onclick="() => ViewSkill(skill.Key)">
+                <div class="item-card" onclick="@(() => ViewSkill(skill.Key))">
                     <div class="item-card-header">
                         <div class="card-icon @(SkillStateService.IsEnabled(skill.Key) ? "success" : "")">
                             <Icon Type="@IconType.Outline.Code" />
@@ -143,7 +143,7 @@
                     </thead>
                     <tbody>
                     @foreach (var skill in _filteredSkills) {
-                        <tr @onclick="() => ViewSkill(skill.Key)" style="cursor: pointer;">
+                        <tr onclick="@(() => ViewSkill(skill.Key))" style="cursor: pointer;">
                             <td>
                                 <div class="table-cell-name">
                                     <div class="table-cell-icon"><Icon Type="@IconType.Outline.Code" /></div>
@@ -164,7 +164,7 @@
                                 <span class="table-cell-description">@GetDescriptionPreview(skill.Value?.Description)</span>
                             </td>
                             <td>
-                                <div class="table-cell-actions" @onclick:stopPropagation="true">
+                                <div class="table-cell-actions" onclick:stopPropagation="true">
                                     <Switch Checked="@SkillStateService.IsEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
                                 </div>
                             </td>

@@ -21,36 +21,72 @@
         </div>
     </div>
     
-    <!-- 推理过程（流式显示时自动展开，完成后显示第一行预览） -->
+    <!-- 推理过程（类似工具调用的折叠样式） -->
     @if (!string.IsNullOrEmpty(Message.Reasoning))
     {
-        <div Class="message-reasoning-section @(ShouldShowReasoningContent ? "expanded" : "collapsed")">
-            <div Class="message-reasoning-header" @onclick="@ToggleReasoning">
-                <Icon Type="@IconType.Outline.Bulb" Class="message-reasoning-icon" />
-                @if (!Message.IsComplete)
-                {
-                    <span Class="reasoning-status">
-                        <Icon Type="@IconType.Outline.Loading" />
-                        <span Style="margin-left: var(--space-1);">思考中...</span>
-                    </span>
-                }
-                else if (!_reasoningExpanded)
-                {
-                    <!-- 显示第一行预览 -->
-                    <span Class="reasoning-preview">@GetReasoningPreview()</span>
-                }
-                else
-                {
-                    <span>推理过程</span>
-                }
-            </div>
-            @if (ShouldShowReasoningContent)
+        var isReasoningExpanded = !Message.IsComplete || _reasoningExpanded;
+        <div class="reasoning-card-compact"
+             style="display: flex; align-items: center; padding: 4px 8px; background: var(--color-bg-secondary); border-radius: var(--radius-sm); margin: 4px 0; cursor: pointer;"
+             onclick="@ToggleReasoning">
+            
+            <!-- 状态图标 -->
+            @if (!Message.IsComplete)
             {
-                <div Class="message-reasoning @(Message.IsComplete ? "reasoning-complete" : "reasoning-streaming")">
-                    @((MarkupString)RenderMarkdown(Message.Reasoning))
-                </div>
+                <Icon Type="@IconType.Outline.Loading" Style="color: var(--color-primary); font-size: 14px; animation: spin 1s linear infinite;" />
             }
+            else
+            {
+                <Icon Type="@IconType.Outline.Bulb" Style="color: var(--color-warning); font-size: 14px;" />
+            }
+            
+            <!-- 标题 -->
+            <span style="margin-left: 6px; font-weight: 500; font-size: 13px;">
+                思考过程
+            </span>
+            
+            <!-- 状态标签 -->
+            @if (!Message.IsComplete)
+            {
+                <Tag Color="@("processing")" Style="margin-left: 6px; font-size: 11px;">
+                    思考中
+                </Tag>
+            }
+            else
+            {
+                <Tag Color="@("warning")" Style="margin-left: 6px; font-size: 11px;">
+                    @GetReasoningCharCount() 字符
+                </Tag>
+            }
+            
+            <!-- 预览文本（折叠时显示） -->
+            @if (!isReasoningExpanded && Message.IsComplete)
+            {
+                <span style="margin-left: 8px; color: var(--color-text-secondary); font-size: 12px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    @GetReasoningPreview()
+                </span>
+            }
+            
+            <!-- 执行中动画 -->
+            @if (!Message.IsComplete)
+            {
+                <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
+            }
+            
+            <!-- 展开/收起指示 -->
+            <Icon Type="@(isReasoningExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+                  Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
         </div>
+        
+        <!-- 详情展开区域 -->
+        @if (isReasoningExpanded)
+        {
+            <div class="reasoning-detail"
+                 style="padding: 8px 12px; background: var(--color-bg-tertiary); border-radius: var(--radius-sm); margin-top: 2px; border-left: 3px solid @(Message.IsComplete ? "var(--color-warning)" : "var(--color-primary)");">
+                <div style="font-size: 12px; color: var(--color-text-secondary); max-height: 300px; overflow-y: auto;">
+                    @((MarkupString)RenderReasoningMarkdown(Message.Reasoning))
+                </div>
+            </div>
+        }
     }
     
     <!-- 消息内容（根据 ContentPosition 插入工具卡片） -->
@@ -115,21 +151,32 @@
     /// </summary>
     private bool _reasoningExpanded = false;
     
+    // ========== Markdown 渲染缓存 ==========
+    
     /// <summary>
-    /// 是否应该显示推理内容
+    /// 缓存的内容原文（用于检测变化）
     /// </summary>
-    private bool ShouldShowReasoningContent
-    {
-        get
-        {
-            if (!Message.IsComplete)
-            {
-                _reasoningExpanded = true;
-                return true;
-            }
-            return _reasoningExpanded;
-        }
-    }
+    private string _cachedContent = string.Empty;
+    
+    /// <summary>
+    /// 缓存的渲染结果
+    /// </summary>
+    private string _cachedContentHtml = string.Empty;
+    
+    /// <summary>
+    /// 缓存的推理内容原文
+    /// </summary>
+    private string _cachedReasoning = string.Empty;
+    
+    /// <summary>
+    /// 缓存的推理渲染结果
+    /// </summary>
+    private string _cachedReasoningHtml = string.Empty;
+    
+    /// <summary>
+    /// 上一次消息 ID（用于检测消息切换）
+    /// </summary>
+    private string _lastMessageId = string.Empty;
     
     /// <summary>
     /// Markdown 渲染管道
@@ -141,6 +188,14 @@
         .UseEmphasisExtras()
         .UseListExtras()
         .Build();
+    
+    /// <summary>
+    /// 获取推理内容字符数
+    /// </summary>
+    private int GetReasoningCharCount()
+    {
+        return Message.Reasoning?.Length ?? 0;
+    }
     
     /// <summary>
     /// 渲染附件列表
@@ -375,13 +430,49 @@
     }
     
     /// <summary>
-    /// 渲染 Markdown 内容
+    /// 渲染 Markdown 内容（带缓存优化）
     /// </summary>
     private string RenderMarkdown(string content)
     {
         if (string.IsNullOrEmpty(content))
             return string.Empty;
-        return Markdown.ToHtml(content, MarkdownPipeline);
+        
+        // 检测消息切换，清空缓存
+        if (Message.Id != _lastMessageId)
+        {
+            _lastMessageId = Message.Id;
+            _cachedContent = string.Empty;
+            _cachedContentHtml = string.Empty;
+            _cachedReasoning = string.Empty;
+            _cachedReasoningHtml = string.Empty;
+        }
+        
+        // 内容未变化，返回缓存结果
+        if (content == _cachedContent)
+            return _cachedContentHtml;
+        
+        // 内容变化，重新渲染并缓存
+        _cachedContent = content;
+        _cachedContentHtml = Markdown.ToHtml(content, MarkdownPipeline);
+        return _cachedContentHtml;
+    }
+    
+    /// <summary>
+    /// 渲染推理内容 Markdown（带缓存优化）
+    /// </summary>
+    private string RenderReasoningMarkdown(string reasoning)
+    {
+        if (string.IsNullOrEmpty(reasoning))
+            return string.Empty;
+        
+        // 内容未变化，返回缓存结果
+        if (reasoning == _cachedReasoning)
+            return _cachedReasoningHtml;
+        
+        // 内容变化，重新渲染并缓存
+        _cachedReasoning = reasoning;
+        _cachedReasoningHtml = Markdown.ToHtml(reasoning, MarkdownPipeline);
+        return _cachedReasoningHtml;
     }
     
     /// <summary>
