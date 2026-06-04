@@ -95,21 +95,4 @@ public class MomusAgent : AgentBase
 - 你的工作是解除工作阻塞，而不是制造障碍
 """;
 
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation(
-            "Momus Agent 收到评审请求: {Preview}",
-            Truncate(input.Content ?? "", 100));
-
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = "Momus Agent 已接收请求，开始计划评审..."
-        };
-
-        await Task.CompletedTask;
-    }
 }

@@ -86,20 +86,4 @@ public class ExploreAgent : AgentBase
 - **专注搜索**：只报告发现，不进行代码修改建议
 """;
 
-    /// <summary>
-    /// 执行 Agent 核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        // Explore Agent 是一个配置型代理，实际执行由框架委托给 LLM 服务
-        // 这里返回一条系统消息提示调用者
-        yield return new ChatMessage
-        {
-            Role = "system",
-            Content = $"Explore Agent '{Name}' 已激活。等待 LLM 服务执行探索任务。"
-        };
-    }
 }

@@ -101,26 +101,4 @@ public class MultimodalLookerAgent : AgentBase
 你的输出直接发送给主 Agent 用于后续工作。
 """;
 
-    /// <summary>
-    /// 执行 Multimodal-Looker Agent 核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        // Multimodal-Looker 是配置型代理，实际分析由框架委托给 LLM 服务
-        _logger.LogInformation(
-            "Multimodal-Looker Agent 收到分析请求: {Preview}",
-            Truncate(input.Content ?? "", 100));
-
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = "Multimodal-Looker Agent 已接收请求，开始分析媒体文件..."
-        };
-
-        // 实际的 LLM 调用和多模态分析由外部 AgentRuntime/Orchestrator 完成
-        await Task.CompletedTask;
-    }
 }

@@ -535,38 +535,4 @@ task(category="quick", load_skills=[], run_in_background=false, prompt="任务 4
     /// <summary>系统提示词</summary>
     public override string? SystemPrompt => SystemPromptText;
 
-    /// <summary>
-    /// 执行 Agent 核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        // Atlas 代理的核心逻辑：
-        // 1. 读取工作计划文件
-        // 2. 解析 TODO 列表
-        // 3. 并行/顺序执行任务
-        // 4. 验证每个任务完成
-        // 5. 通过最终验证波
-
-        _logger.LogInformation("Atlas 开始编排任务, SessionId: {SessionId}", context.SessionId);
-
-        // 返回编排响应（实际实现需要与 LLM 后端集成）
-        var contentPreview = input.Content?.Substring(0, Math.Min(100, input.Content?.Length ?? 0)) ?? "";
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = $"[Atlas 编排代理] 收到请求: {contentPreview}..."
-        };
-
-        // 实际的 LLM 调用和编排逻辑需要在此实现
-        // 这需要集成 ILlmClient 或类似的接口
-
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = "提供工作计划路径（.sisyphus/plans/*.md），我将编排并完成所有任务。"
-        };
-    }
 }

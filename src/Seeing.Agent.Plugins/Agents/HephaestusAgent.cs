@@ -238,37 +238,4 @@ task(subagent_type="librarian", run_in_background=true, load_skills=[], descript
     /// <summary>系统提示词</summary>
     public override string? SystemPrompt => SystemPromptText;
 
-    /// <summary>
-    /// 执行 Agent 核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        // Hephaestus 代理的核心逻辑：
-        // 1. 分析任务类型并分类
-        // 2. 启动 explore/librarian 代理并行探索
-        // 3. 执行任务（自主多步骤执行）
-        // 4. 验证结果（lsp_diagnostics、构建、测试）
-
-        _logger.LogInformation("Hephaestus 开始自主执行, SessionId: {SessionId}", context.SessionId);
-
-        // 返回自主执行响应（实际实现需要与 LLM 后端集成）
-        var contentPreview = input.Content?.Substring(0, Math.Min(100, input.Content?.Length ?? 0)) ?? "";
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = $"[Hephaestus 自主深度工作者] 收到任务: {contentPreview}..."
-        };
-
-        // 实际的 LLM 调用和自主执行逻辑需要在此实现
-        // 这需要集成 ILlmClient 或类似的接口
-
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = "我将自主执行此任务，进行深度探索并完整解决问题。"
-        };
-    }
 }

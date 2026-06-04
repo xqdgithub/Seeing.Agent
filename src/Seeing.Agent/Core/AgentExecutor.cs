@@ -105,8 +105,8 @@ public class AgentExecutor
                 Step = step
             };
 
-            // 构建请求
-            var request = BuildRequest(agent, messages, context);
+            // 构建请求（异步注入动态上下文）
+            var request = await BuildRequestAsync(agent, messages, context);
 
             // 调用 LLM（流式）
             ChatMessage? assistantMessage = null;
@@ -397,12 +397,12 @@ public class AgentExecutor
     /// <summary>
     /// 构建聊天请求
     /// </summary>
-    private ChatRequest BuildRequest(
+    private async Task<ChatRequest> BuildRequestAsync(
         AgentDefinition agent,
         List<ChatMessage> messages,
         AgentContext context)
     {
-        var systemPrompt = BuildSystemPrompt(agent, context);
+        var systemPrompt = await BuildSystemPromptAsync(agent, context);
         var toolSchemas = GetToolSchemas(agent);
 
         // 转换 FunctionToolSchema 到 ToolDefinition
@@ -432,7 +432,7 @@ public class AgentExecutor
     /// <summary>
     /// 构建系统提示词
     /// </summary>
-    private string? BuildSystemPrompt(AgentDefinition agent, AgentContext context)
+    private async Task<string?> BuildSystemPromptAsync(AgentDefinition agent, AgentContext context)
     {
         var basePrompt = agent.SystemPrompt;
 
@@ -440,18 +440,18 @@ public class AgentExecutor
             return null;
 
         // 动态注入上下文
-        return InjectDynamicContext(basePrompt, agent, context);
+        return await InjectDynamicContextAsync(basePrompt, agent, context);
     }
 
     /// <summary>
     /// 注入动态上下文到提示词
     /// </summary>
-    private string InjectDynamicContext(string prompt, AgentDefinition agent, AgentContext context)
+    private async Task<string> InjectDynamicContextAsync(string prompt, AgentDefinition agent, AgentContext context)
     {
         // 注入可用 Agent 列表
         if (prompt.Contains("{{availableAgents}}"))
         {
-            var agents = GetAvailableAgentsAsync().GetAwaiter().GetResult();
+            var agents = await GetAvailableAgentsAsync();
             prompt = prompt.Replace("{{availableAgents}}", FormatAvailableAgents(agents));
         }
 

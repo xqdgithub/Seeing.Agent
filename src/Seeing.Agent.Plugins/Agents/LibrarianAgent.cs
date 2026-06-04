@@ -95,19 +95,4 @@ public class LibrarianAgent : AgentBase
 - "查找实现 X 的开源示例"
 """;
 
-    /// <summary>
-    /// 执行核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        yield return new ChatMessage
-        {
-            Role = ChatRole.Assistant,
-            Content = "Librarian Agent 已就绪。请告诉我您需要查找什么文档或示例。"
-        };
-        await Task.CompletedTask;
-    }
 }

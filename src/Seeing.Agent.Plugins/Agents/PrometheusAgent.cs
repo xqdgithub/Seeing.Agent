@@ -252,37 +252,4 @@ public class PrometheusAgent : AgentBase
     /// <summary>系统提示词</summary>
     public override string? SystemPrompt => SystemPromptText;
 
-    /// <summary>
-    /// 执行 Agent 核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        // Prometheus 代理的核心逻辑：
-        // 1. 分析用户输入，判断意图类型
-        // 2. 根据意图类型进行访谈或直接规划
-        // 3. 使用后台代理收集上下文
-        // 4. 生成工作计划
-
-        _logger.LogInformation("Prometheus 开始规划分析, SessionId: {SessionId}", context.SessionId);
-
-        // 返回规划响应（实际实现需要与 LLM 后端集成）
-        var contentPreview = input.Content?.Substring(0, Math.Min(100, input.Content?.Length ?? 0)) ?? "";
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = $"[Prometheus 规划代理] 收到请求: {contentPreview}..."
-        };
-
-        // 实际的 LLM 调用和规划逻辑需要在此实现
-        // 这需要集成 ILlmClient 或类似的接口
-
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = "请描述你的需求，我将通过访谈澄清并创建详细的工作计划。"
-        };
-    }
 }

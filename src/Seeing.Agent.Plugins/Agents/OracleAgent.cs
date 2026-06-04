@@ -145,29 +145,4 @@ public class OracleAgent : AgentBase
 - **输出目标**：你的分析输出给调用者，必须可行动
 """;
 
-    /// <summary>
-    /// 执行 Oracle Agent 核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        // Oracle 是只读咨询 Agent，其主要逻辑由外部编排器执行
-        // 这里返回输入消息的确认，实际分析工作由框架调用 LLM 完成
-        _logger.LogInformation(
-            "Oracle Agent 收到咨询请求: {Preview}",
-            Truncate(input.Content ?? "", 100));
-
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = $"Oracle Agent 已接收请求，开始分析..."
-        };
-
-        // 注意：实际的 LLM 调用和工具使用由外部 AgentRuntime/Orchestrator 完成
-        // OracleAgent 主要定义行为约束（AllowedTools/DeniedTools）和系统提示词
-
-        await Task.CompletedTask;
-    }
 }

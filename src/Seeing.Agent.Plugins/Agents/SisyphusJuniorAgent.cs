@@ -145,31 +145,4 @@ public class SisyphusJuniorAgent : AgentBase
 - 如果适用运行构建
 """;
 
-    /// <summary>
-    /// 执行 Sisyphus-Junior Agent 核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation(
-            "Sisyphus-Junior Agent 收到执行请求: {Preview}",
-            Truncate(input.Content ?? "", 100));
-
-        yield return new ChatMessage
-        {
-            Role = ChatRole.Assistant,
-            Content = "Sisyphus-Junior 执行 Agent 已就绪。请提供任务描述。"
-        };
-
-        await Task.CompletedTask;
-    }
-
-    private new static string Truncate(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-            return text ?? "";
-        return text[..maxLength] + "...";
-    }
 }

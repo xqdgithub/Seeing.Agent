@@ -221,29 +221,4 @@ public class MetisAgent : AgentBase
 - 每输出包含 QA 自动化指令
 """;
 
-    /// <summary>
-    /// 执行 Metis Agent 核心逻辑
-    /// </summary>
-    protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-        ChatMessage input,
-        AgentContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        // Metis 是只读预规划 Agent，其主要逻辑由外部编排器执行
-        // 这里返回输入消息的确认，实际分析工作由框架调用 LLM 完成
-        _logger.LogInformation(
-            "Metis Agent 收到预规划请求: {Preview}",
-            Truncate(input.Content ?? "", 100));
-
-        yield return new ChatMessage
-        {
-            Role = "assistant",
-            Content = "Metis Agent 已接收请求，开始预规划分析..."
-        };
-
-        // 注意：实际的 LLM 调用和工具使用由外部 AgentRuntime/Orchestrator 完成
-        // MetisAgent 主要定义行为约束（AllowedTools/DeniedTools）和系统提示词
-
-        await Task.CompletedTask;
-    }
 }

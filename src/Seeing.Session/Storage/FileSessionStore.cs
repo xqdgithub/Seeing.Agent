@@ -10,7 +10,7 @@ namespace Seeing.Session.Storage
     /// 基于文件系统的会话存储实现
     /// 使用 JSON 文件存储会话数据，兼容 WebUI 的 ~/.seeing/sessions/*.json 格式
     /// </summary>
-    public class FileSessionStore : ISessionStore
+    public class FileSessionStore : ISessionStore, IDisposable
     {
         private readonly string _baseDirectory;
         private readonly ILogger<FileSessionStore>? _logger;
@@ -19,9 +19,10 @@ namespace Seeing.Session.Storage
         // 文件锁超时时间
         private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
 
-        // 文件锁字典，用于跨进程文件锁定
-        private static readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
-        private static readonly object _lockDictLock = new();
+        // 文件锁字典（实例级别，随实例生命周期释放）
+        private readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
+        private readonly object _lockDictLock = new();
+        private bool _disposed;
 
         /// <summary>
         /// 创建 FileSessionStore 实例
@@ -401,6 +402,24 @@ namespace Seeing.Session.Storage
         public async Task<IAsyncEnumerable<SessionData>> LoadAllAsync()
         {
             return await ListAsync();
+        }
+
+        /// <summary>
+        /// 释放文件锁字典中的所有信号量
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            lock (_lockDictLock)
+            {
+                foreach (var semaphore in _fileLocks.Values)
+                {
+                    semaphore.Dispose();
+                }
+                _fileLocks.Clear();
+            }
         }
     }
 }
