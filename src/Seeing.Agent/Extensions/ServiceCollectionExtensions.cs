@@ -10,8 +10,10 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.BuiltInAgents;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Llm.Clients;
@@ -431,6 +433,9 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<Seeing.Session.Hooks.IHookManager>(sp =>
                 new Seeing.Agent.Services.HookManagerAdapter(sp.GetRequiredService<HookManager>()));
 
+            // 提示词构建服务
+            services.AddPromptBuilder();
+
             // Agent 发现服务
             services.AddSingleton<AgentDiscovery>();
 
@@ -691,6 +696,18 @@ namespace Seeing.Agent.Extensions
 
             // LLM 服务
             services.AddSingleton<ILlmService, LlmService>();
+        }
+
+        /// <summary>
+        /// 添加提示词构建服务
+        /// </summary>
+        public static IServiceCollection AddPromptBuilder(this IServiceCollection services)
+        {
+            services.AddSingleton<IInstructionLoader, InstructionLoader>();
+            services.AddSingleton<SystemPromptProvider>();
+            services.AddSingleton<PromptBuilder>();
+
+            return services;
         }
     }
 

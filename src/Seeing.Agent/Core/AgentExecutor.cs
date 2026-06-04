@@ -6,6 +6,7 @@ using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools;
 using System.Runtime.CompilerServices;
@@ -31,6 +32,7 @@ public class AgentExecutor
     private readonly IPermissionService _permissions;
     private readonly IHookManager _hooks;
     private readonly IAgentRegistry _registry;
+    private readonly PromptBuilder _promptBuilder;
     private readonly SeeingAgentOptions _options;
     private readonly ILogger<AgentExecutor> _logger;
 
@@ -40,6 +42,7 @@ public class AgentExecutor
         IPermissionService permissions,
         IHookManager hooks,
         IAgentRegistry registry,
+        PromptBuilder promptBuilder,
         IOptions<SeeingAgentOptions> options,
         ILogger<AgentExecutor> logger)
     {
@@ -48,6 +51,7 @@ public class AgentExecutor
         _permissions = permissions;
         _hooks = hooks;
         _registry = registry;
+        _promptBuilder = promptBuilder;
         _options = options.Value;
         _logger = logger;
     }
@@ -402,8 +406,27 @@ public class AgentExecutor
         List<ChatMessage> messages,
         AgentContext context)
     {
-        var systemPrompt = await BuildSystemPromptAsync(agent, context);
         var toolSchemas = GetToolSchemas(agent);
+
+        // 使用 PromptBuilder 构建系统提示词
+        string? systemPrompt = null;
+        if (!string.IsNullOrEmpty(agent.SystemPrompt))
+        {
+            var promptContext = new PromptContext
+            {
+                Agent = agent,
+                SessionId = context.SessionId,
+                WorkingDirectory = context.WorkingDirectory,
+                WorkspaceRoot = context.WorkspaceRoot,
+                ModelName = ResolveModelId(agent),
+                Timestamp = DateTime.Now,
+                Platform = Environment.OSVersion.Platform.ToString(),
+                Tools = toolSchemas.Select(ts => ts.Function).ToList(),
+            };
+            systemPrompt = await _promptBuilder.BuildAsync(promptContext, context.CancellationToken);
+            if (string.IsNullOrEmpty(systemPrompt))
+                systemPrompt = null;
+        }
 
         // 转换 FunctionToolSchema 到 ToolDefinition
         var tools = toolSchemas.Select(s => new ToolDefinition
@@ -427,54 +450,6 @@ public class AgentExecutor
             MaxTokens = agent.MaxTokens,
             Stream = true
         };
-    }
-
-    /// <summary>
-    /// 构建系统提示词
-    /// </summary>
-    private async Task<string?> BuildSystemPromptAsync(AgentDefinition agent, AgentContext context)
-    {
-        var basePrompt = agent.SystemPrompt;
-
-        if (basePrompt == null)
-            return null;
-
-        // 动态注入上下文
-        return await InjectDynamicContextAsync(basePrompt, agent, context);
-    }
-
-    /// <summary>
-    /// 注入动态上下文到提示词
-    /// </summary>
-    private async Task<string> InjectDynamicContextAsync(string prompt, AgentDefinition agent, AgentContext context)
-    {
-        // 注入可用 Agent 列表
-        if (prompt.Contains("{{availableAgents}}"))
-        {
-            var agents = await GetAvailableAgentsAsync();
-            prompt = prompt.Replace("{{availableAgents}}", FormatAvailableAgents(agents));
-        }
-
-        // 注入可用工具
-        if (prompt.Contains("{{availableTools}}"))
-        {
-            var tools = GetToolSchemas(agent);
-            prompt = prompt.Replace("{{availableTools}}", FormatAvailableTools(tools));
-        }
-
-        // 注入工作目录
-        if (prompt.Contains("{{workingDirectory}}"))
-        {
-            prompt = prompt.Replace("{{workingDirectory}}", context.WorkingDirectory);
-        }
-
-        // 注入会话 ID
-        if (prompt.Contains("{{sessionId}}"))
-        {
-            prompt = prompt.Replace("{{sessionId}}", context.SessionId);
-        }
-
-        return prompt;
     }
 
     /// <summary>
@@ -851,55 +826,6 @@ public class AgentExecutor
         };
 
         return _tools.GetToolSchemasForAgent(agentInfo);
-    }
-
-    /// <summary>
-    /// 获取可用 Agent 列表
-    /// </summary>
-    private async Task<List<AgentDefinition>> GetAvailableAgentsAsync()
-    {
-        var agents = await _registry.GetAgentsAsync();
-        return agents
-            .Where(a => !a.IsHidden && a.Mode != AgentMode.Primary)
-            .Select(a => AgentDefinition.FromAgent(
-                _registry.GetOrCreateAgentInstance(a.Name) ?? throw new InvalidOperationException()))
-            .ToList();
-    }
-
-    /// <summary>
-    /// 格式化可用 Agent 列表
-    /// </summary>
-    private static string FormatAvailableAgents(List<AgentDefinition> agents)
-    {
-        if (agents.Count == 0)
-            return "无可用子代理";
-
-        var sb = new StringBuilder();
-        foreach (var agent in agents)
-        {
-            sb.AppendLine($"- {agent.Name}: {agent.Description}");
-            if (!string.IsNullOrEmpty(agent.Category))
-            {
-                sb.AppendLine($"  类别: {agent.Category}");
-            }
-        }
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// 格式化可用工具列表
-    /// </summary>
-    private static string FormatAvailableTools(List<FunctionToolSchema> tools)
-    {
-        if (tools.Count == 0)
-            return "无可用工具";
-
-        var sb = new StringBuilder();
-        foreach (var tool in tools)
-        {
-            sb.AppendLine($"- {tool.Function.Name}: {tool.Function.Description}");
-        }
-        return sb.ToString();
     }
 
     /// <summary>

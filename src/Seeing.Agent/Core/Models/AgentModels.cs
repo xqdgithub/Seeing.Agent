@@ -43,6 +43,9 @@ namespace Seeing.Agent.Core.Models
         /// </summary>
         public string WorkingDirectory { get; set; } = string.Empty;
 
+        /// <summary>工作区根目录</summary>
+        public string? WorkspaceRoot { get; set; }
+
         /// <summary>
         /// 父会话 ID（子代理调用时）
         /// </summary>
@@ -102,6 +105,7 @@ namespace Seeing.Agent.Core.Models
                 PermissionContext = subPermContext,
                 History = new List<ChatMessage>(),
                 WorkingDirectory = WorkingDirectory,
+                WorkspaceRoot = WorkspaceRoot,
                 ParentSessionId = SessionId,
                 ParentAgentName = currentAgentName ?? ParentAgentName,
                 IsBackground = targetAgent.IsBackground || targetAgent.Mode == AgentMode.SubAgent,

@@ -31,4 +31,22 @@ public class PromptContext
 
     /// <summary>创建时间</summary>
     public DateTime Timestamp { get; set; } = DateTime.Now;
+
+    /// <summary>Provider ID</summary>
+    public string? ProviderId { get; set; }
+
+    /// <summary>模型变体</summary>
+    public string? ModelVariant { get; set; }
+
+    /// <summary>工作区根目录</summary>
+    public string? WorkspaceRoot { get; set; }
+
+    /// <summary>平台信息</summary>
+    public string? Platform { get; set; }
+
+    /// <summary>Agent 定义</summary>
+    public AgentDefinition? Agent { get; set; }
+
+    /// <summary>服务提供者（用于获取依赖）</summary>
+    public IServiceProvider? Services { get; set; }
 }

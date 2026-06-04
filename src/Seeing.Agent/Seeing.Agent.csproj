@@ -63,6 +63,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Core\Prompts\Templates\*.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" Condition="Exists('..\..\README.md')" />
   </ItemGroup>
 
