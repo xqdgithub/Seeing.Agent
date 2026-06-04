@@ -115,11 +115,76 @@ public class AgentExecutor
             List<ToolCall>? accumulatedToolCalls = null;
             TokenUsage? lastUsage = null;
 
-            await foreach (var update in _llm.CompleteStreamAsync(
-                ResolveModelId(agent),
-                request,
-                context.SessionId,
-                effectiveToken))
+            // 使用 Channel 模式捕获 LLM 流式异常
+            var llmChannel = System.Threading.Channels.Channel.CreateUnbounded<StreamUpdate>();
+            Exception? llmException = null;
+
+            var llmTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await foreach (var update in _llm.CompleteStreamAsync(
+                        ResolveModelId(agent),
+                        request,
+                        context.SessionId,
+                        effectiveToken))
+                    {
+                        await llmChannel.Writer.WriteAsync(update, effectiveToken);
+                    }
+                    llmChannel.Writer.Complete();
+                }
+                catch (OperationCanceledException ex) when (ex.CancellationToken == effectiveToken)
+                {
+                    // 用户主动取消，不作为错误
+                    _logger.LogInformation("[AgentExecutor] LLM 请求被取消");
+                    llmChannel.Writer.Complete();
+                }
+                catch (LlmRetryExhaustedException ex)
+                {
+                    // 重试耗尽
+                    llmException = ex;
+                    _logger.LogError(ex, "[AgentExecutor] LLM 重试耗尽: {Message}", ex.Message);
+                    llmChannel.Writer.Complete(ex);
+                }
+                catch (LlmTimeoutException ex)
+                {
+                    // 超时
+                    llmException = ex;
+                    _logger.LogError(ex, "[AgentExecutor] LLM 请求超时");
+                    llmChannel.Writer.Complete(ex);
+                }
+                catch (LlmStreamingException ex)
+                {
+                    // 流式错误
+                    llmException = ex;
+                    _logger.LogError(ex, "[AgentExecutor] LLM 流式错误: {Message}", ex.Message);
+                    llmChannel.Writer.Complete(ex);
+                }
+                catch (LlmException ex)
+                {
+                    // 其他 LLM 错误
+                    llmException = ex;
+                    _logger.LogError(ex, "[AgentExecutor] LLM 错误: {Message}", ex.Message);
+                    llmChannel.Writer.Complete(ex);
+                }
+                catch (IOException ex)
+                {
+                    // 网络连接错误
+                    llmException = new LlmConnectionException("网络连接错误", ex);
+                    _logger.LogError(ex, "[AgentExecutor] 网络连接错误");
+                    llmChannel.Writer.Complete(llmException);
+                }
+                catch (Exception ex)
+                {
+                    // 未知错误
+                    llmException = new LlmException($"LLM 调用失败: {ex.Message}", ex);
+                    _logger.LogError(ex, "[AgentExecutor] LLM 调用失败");
+                    llmChannel.Writer.Complete(llmException);
+                }
+            }, effectiveToken);
+
+            // 从 channel 读取流式更新
+            await foreach (var update in llmChannel.Reader.ReadAllAsync(effectiveToken))
             {
                 // ========== 处理思考过程增量 ==========
                 if (!string.IsNullOrEmpty(update.ReasoningDelta))
@@ -184,6 +249,48 @@ public class AgentExecutor
                 }
             }
 
+            // 确保后台任务完成
+            await llmTask;
+
+            // 处理 LLM 异常
+            if (llmException != null)
+            {
+                hasError = true;
+                errorMessage = llmException.Message;
+
+                // 触发 chat.on_error Hook
+                _hooks.TriggerFireAndForget(
+                    HookRegistry.ChatOnError,
+                    context.SessionId,
+                    new Dictionary<string, object?>
+                    {
+                        ["modelId"] = ResolveModelId(agent),
+                        ["error"] = llmException,
+                        ["source"] = llmException is LlmException lle ? lle.Source : "unknown"
+                    });
+
+                yield return new ErrorEvent
+                {
+                    SessionId = context.SessionId,
+                    LoopId = loopId,
+                    Message = llmException.Message,
+                    Exception = llmException,
+                    Source = "llm"
+                };
+
+                // 发布 LoopComplete 事件（失败）
+                yield return new LoopCompleteEvent
+                {
+                    SessionId = context.SessionId,
+                    LoopId = loopId,
+                    TotalSteps = totalSteps,
+                    Duration = DateTime.Now - loopStartTime,
+                    Success = false,
+                    Error = errorMessage
+                };
+                yield break;
+            }
+
             if (assistantMessage == null)
             {
                 _logger.LogWarning("[AgentExecutor] LLM 返回空响应");
@@ -197,7 +304,7 @@ public class AgentExecutor
                     Message = "LLM 返回空响应",
                     Source = "llm"
                 };
-                
+
                 // 发布 LoopComplete 事件（失败）
                 yield return new LoopCompleteEvent
                 {
@@ -266,7 +373,7 @@ public class AgentExecutor
         // 达到最大步数
         hasError = true;
         errorMessage = $"达到最大步数 {maxSteps}，已停止";
-        
+
         yield return new ErrorEvent
         {
             SessionId = context.SessionId,

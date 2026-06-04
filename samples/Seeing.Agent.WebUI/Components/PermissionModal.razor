@@ -65,7 +65,7 @@
         }
         
         <!-- 参数/内容预览 -->
-        @if (!string.IsNullOrEmpty(Request.Arguments))
+        @if (Request.Arguments != null)
         {
             <div Class="permission-detail-row"
                  Style="margin-bottom: var(--space-3);">
@@ -76,7 +76,7 @@
                 <div Class="permission-detail-value"
                      Style="background: var(--color-bg-tertiary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); max-height: 150px; overflow-y: auto;">
                     <pre Style="margin: 0; font-size: var(--font-size-xs); white-space: pre-wrap; word-break: break-all;">
-@Request.Arguments
+@GetArgumentsString()
                     </pre>
                 </div>
             </div>
@@ -202,6 +202,19 @@
             PermissionRequestType.SubAgent => "调用提示",
             PermissionRequestType.Write => "内容预览",
             _ => "参数"
+        };
+    }
+    
+    /// <summary>
+    /// 获取参数字符串
+    /// </summary>
+    private string GetArgumentsString()
+    {
+        if (Request.Arguments == null) return "";
+        return Request.Arguments switch
+        {
+            string s => s,
+            _ => System.Text.Json.JsonSerializer.Serialize(Request.Arguments, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })
         };
     }
     

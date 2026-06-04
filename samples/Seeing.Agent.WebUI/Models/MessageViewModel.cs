@@ -43,6 +43,15 @@ public class MessageViewModel
     public string? Reasoning { get; set; }
 
     /// <summary>
+    /// 推理/思考过程是否已完成
+    /// <para>
+    /// 在流式输出中，推理阶段可能先于整体消息完成。
+    /// 当推理内容停止更新时（LLM 进入工具调用或文本生成阶段），应标记为 true。
+    /// </para>
+    /// </summary>
+    public bool IsReasoningComplete { get; set; }
+
+    /// <summary>
     /// 消息时间戳
     /// </summary>
     public DateTime Timestamp { get; set; } = DateTime.Now;

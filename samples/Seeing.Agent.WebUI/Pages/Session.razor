@@ -103,8 +103,10 @@
         </div>
     </div>
 
-    <!-- 消息列表区域 -->
-    <div Class="session-messages-container">
+    <!-- 主内容区域（消息列表 + Todo 面板） -->
+    <div Class="session-content-wrapper">
+        <!-- 消息列表区域 -->
+        <div Class="session-messages-container">
         @if (ShowEmptyState)
         {
             <!-- 无会话状态：引导用户创建新会话 -->
@@ -142,6 +144,15 @@
         {
             <div Class="loading-overlay">
                 <Spin Size="@SpinSize.Large" Tip="加载会话..." />
+            </div>
+        }
+        </div>
+        
+        @* Todo 侧边面板（当有任务时显示） *@
+        @if (SessionState.CurrentTodoList != null && SessionState.CurrentTodoList.HasTasks)
+        {
+            <div Class="session-todo-panel">
+                <TodoPanel TodoList="@SessionState.CurrentTodoList" />
             </div>
         }
     </div>
@@ -613,6 +624,10 @@
         
         if (existingViewModel != null)
         {
+            // 跟踪推理内容是否还在更新
+            var hadReasoningBefore = !string.IsNullOrEmpty(existingViewModel.Reasoning);
+            var previousReasoning = existingViewModel.Reasoning;
+            
             // 增量更新现有消息
             existingViewModel.Content = currentMsg.Content ?? "";
             existingViewModel.Reasoning = currentMsg.ReasoningContent;
@@ -620,18 +635,20 @@
             existingViewModel.Step = currentMsg.Step;
             existingViewModel.IsComplete = false;
             
-            // 更新工具调用
+            // 推理完成判断：推理内容存在且本次更新未变化 → 推理阶段已完成
+            if (!string.IsNullOrEmpty(existingViewModel.Reasoning) && 
+                existingViewModel.Reasoning == previousReasoning &&
+                hadReasoningBefore)
+            {
+                existingViewModel.IsReasoningComplete = true;
+            }
+            
+            // 更新工具调用（使用统一工厂方法）
             if (currentMsg.ToolCalls != null)
             {
-                existingViewModel.ToolCalls = currentMsg.ToolCalls.Select(tc => new ToolCallViewModel
-                {
-                    Id = tc.Id,
-                    Name = tc.Name,
-                    Parameters = tc.Arguments,
-                    Result = tc.Result,
-                    Status = tc.Status,
-                    Error = tc.Error
-                }).ToList();
+                existingViewModel.ToolCalls = currentMsg.ToolCalls
+                    .Select(tc => ToolCallViewModel.FromSessionToolCall(tc, SessionState.SessionId))
+                    .ToList();
             }
         }
         else
@@ -657,7 +674,8 @@
             Content = msg.Content,
             Reasoning = msg.ReasoningContent,
             Timestamp = msg.CreatedAt.ToLocalTime(),
-            IsComplete = isComplete
+            IsComplete = isComplete,
+            IsReasoningComplete = isComplete && !string.IsNullOrEmpty(msg.ReasoningContent)
         };
 
         // 转换多模态内容段（修复：复制 Parts）
@@ -666,18 +684,12 @@
             viewModel.Parts = msg.Parts.Select(p => ContentPartViewModel.FromSessionPart(p)).ToList();
         }
 
-        // 转换工具调用
+        // 转换工具调用（使用统一工厂方法）
         if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
         {
-            viewModel.ToolCalls = msg.ToolCalls.Select(tc => new ToolCallViewModel
-            {
-                Id = tc.Id,
-                Name = tc.Name,
-                Parameters = tc.Arguments,
-                Result = tc.Result,
-                Status = tc.Status,
-                Error = tc.Error
-            }).ToList();
+            viewModel.ToolCalls = msg.ToolCalls
+                .Select(tc => ToolCallViewModel.FromSessionToolCall(tc, SessionState.SessionId))
+                .ToList();
         }
 
         return viewModel;

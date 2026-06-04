@@ -367,6 +367,10 @@ public class LlmService : ILlmService
         _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
 
         var startTime = DateTime.Now;
+        var maxRetries = _options.Providers.TryGetValue(modelConfig.Provider, out var providerConfig)
+            ? providerConfig.MaxRetries
+            : 3;
+        var retryDelay = TimeSpan.FromSeconds(1);
 
         // 流式数据累计变量
         var streamedContent = new StringBuilder();
@@ -380,26 +384,92 @@ public class LlmService : ILlmService
         var writer = channel.Writer;
         var messageId = Guid.NewGuid().ToString("N");
         Exception? capturedException = null;
+        var retryCount = 0;
 
-        // 在后台处理流式数据，捕获任何异常
+        // 在后台处理流式数据，捕获任何异常并支持重试
         var processTask = Task.Run(async () =>
         {
-            try
+            var attempt = 0;
+            while (attempt < maxRetries)
             {
-                await foreach (var update in client.CompleteStreamAsync(request, cancellationToken))
+                attempt++;
+                try
                 {
-                    if (!string.IsNullOrEmpty(update.Id))
-                        messageId = update.Id;
-                    await writer.WriteAsync(update, cancellationToken);
-                }
-                writer.Complete();
-            }
-            catch (Exception ex)
-            {
-                capturedException = ex;
-                _logger.LogError(ex, "流式聊天请求失败: Model={Model}", apiModelId);
+                    // 如果是重试，需要重置状态
+                    if (attempt > 1)
+                    {
+                        messageId = Guid.NewGuid().ToString("N");
+                        streamedContent.Clear();
+                        streamedReasoning.Clear();
+                        streamedToolCalls.Clear();
+                        streamedUsage = null;
 
-                writer.Complete(ex);
+                        _logger.LogWarning(
+                            "[LlmService] 流式请求重试: Model={Model}, Attempt={Attempt}/{MaxRetries}",
+                            apiModelId, attempt, maxRetries);
+                    }
+
+                    await foreach (var update in client.CompleteStreamAsync(request, cancellationToken))
+                    {
+                        if (!string.IsNullOrEmpty(update.Id))
+                            messageId = update.Id;
+                        await writer.WriteAsync(update, cancellationToken);
+                    }
+
+                    // 成功完成
+                    writer.Complete();
+                    retryCount = attempt - 1;
+                    return;
+                }
+                catch (Exception ex) when (attempt < maxRetries && IsRetryableException(ex, cancellationToken))
+                {
+                    // 可重试的瞬态故障
+                    capturedException = ex;
+                    _logger.LogWarning(ex,
+                        "[LlmService] 流式请求失败，准备重试: Model={Model}, Attempt={Attempt}/{MaxRetries}, Error={Error}",
+                        apiModelId, attempt, maxRetries, ex.Message);
+
+                    // 触发 chat.on_error Hook（可重试场景）
+                    _hookManager.TriggerFireAndForget(
+                        HookRegistry.ChatOnError,
+                        sessionId ?? string.Empty,
+                        new Dictionary<string, object?>
+                        {
+                            ["modelId"] = modelId,
+                            ["provider"] = client.ProviderId,
+                            ["error"] = ex,
+                            ["attempt"] = attempt,
+                            ["maxRetries"] = maxRetries,
+                            ["willRetry"] = true
+                        });
+
+                    // 指数退避
+                    var delay = TimeSpan.FromMilliseconds(retryDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
+                    await Task.Delay(delay, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    // 不可重试或已达到最大重试次数
+                    capturedException = ex;
+                    _logger.LogError(ex, "流式聊天请求失败: Model={Model}, Attempt={Attempt}", apiModelId, attempt);
+
+                    // 触发 chat.on_error Hook（最终失败）
+                    _hookManager.TriggerFireAndForget(
+                        HookRegistry.ChatOnError,
+                        sessionId ?? string.Empty,
+                        new Dictionary<string, object?>
+                        {
+                            ["modelId"] = modelId,
+                            ["provider"] = client.ProviderId,
+                            ["error"] = ex,
+                            ["attempt"] = attempt,
+                            ["maxRetries"] = maxRetries,
+                            ["willRetry"] = false
+                        });
+
+                    writer.Complete(ex);
+                    return;
+                }
             }
         }, cancellationToken);
 
@@ -449,10 +519,25 @@ public class LlmService : ILlmService
         // 确保后台任务完成
         await processTask;
 
-        // ✅ 如果有异常，必须抛出让用户看到！绝不静默吞掉
+        // ✅ 如果有异常，包装并抛出
         if (capturedException != null)
         {
-            throw capturedException;
+            // 根据异常类型包装
+            var wrappedException = capturedException switch
+            {
+                OperationCanceledException oce when !oce.CancellationToken.IsCancellationRequested
+                    => new LlmTimeoutException(timeout: TimeSpan.FromMinutes(5), oce)
+                    { ModelId = apiModelId, ProviderId = client.ProviderId, RetryCount = retryCount },
+
+                IOException ioEx
+                    => new LlmStreamingException("流式响应读取失败", ioEx)
+                    { ModelId = apiModelId, ProviderId = client.ProviderId, RetryCount = retryCount },
+
+                _ => new LlmException($"LLM 请求失败: {capturedException.Message}", capturedException)
+                { ModelId = apiModelId, ProviderId = client.ProviderId, IsRetryable = false, RetryCount = retryCount }
+            };
+
+            throw wrappedException;
         }
 
         // ========== Hook: chat.after_complete ==========
@@ -602,4 +687,16 @@ public class LlmService : ILlmService
     }
 
     #endregion
+
+    /// <summary>
+    /// 判断异常是否为可重试的瞬态故障
+    /// </summary>
+    private static bool IsRetryableException(Exception ex, CancellationToken cancellationToken)
+    {
+        return ex is TimeoutException
+            || ex is HttpRequestException
+            || ex is IOException
+            // OperationCanceledException 仅当非用户主动取消时才重试
+            || ex is OperationCanceledException oce && oce.CancellationToken != cancellationToken && !cancellationToken.IsCancellationRequested;
+    }
 }

@@ -1,0 +1,34 @@
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+
+@* 文本消息组件 - 渲染 Markdown 文本内容 *@
+
+<div style="margin-left:15px">
+    @((MarkupString)HtmlContent)
+    </div>
+
+@code {
+    /// <summary>
+    /// 文本内容
+    /// </summary>
+    [Parameter]
+    public string Content { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// 渲染上下文
+    /// </summary>
+    [Parameter]
+    public RenderContext Context { get; set; } = default!;
+    
+    /// <summary>
+    /// 内容块
+    /// </summary>
+    [Parameter]
+    public ContentBlock Block { get; set; } = default!;
+    
+    /// <summary>
+    /// 渲染后的 HTML 内容
+    /// </summary>
+    private string HtmlContent => string.IsNullOrEmpty(Content) 
+        ? string.Empty 
+        : Context.Cache?.GetOrCreateMarkdown(Content, Context.GetMarkdownCacheKey(Block)) ?? Content;
+}

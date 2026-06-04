@@ -29,14 +29,29 @@ public class PermissionRequestViewModel
     public string RequestId { get; set; } = Guid.NewGuid().ToString();
 
     /// <summary>
+    /// 权限请求 ID（与 Core 层事件对应）
+    /// </summary>
+    public string PermissionId { get; set; } = "";
+
+    /// <summary>
     /// 请求类型
     /// </summary>
     public PermissionRequestType Type { get; set; }
 
     /// <summary>
+    /// 权限类型 (tool, file, network, shell, agent)
+    /// </summary>
+    public string PermissionKind { get; set; } = "";
+
+    /// <summary>
     /// 目标名称（工具名/代理名/文件路径）
     /// </summary>
     public string Target { get; set; } = "";
+
+    /// <summary>
+    /// 资源标识
+    /// </summary>
+    public string? Resource { get; set; }
 
     /// <summary>
     /// 描述信息
@@ -46,7 +61,12 @@ public class PermissionRequestViewModel
     /// <summary>
     /// 参数或内容预览
     /// </summary>
-    public string? Arguments { get; set; }
+    public object? Arguments { get; set; }
+
+    /// <summary>
+    /// 风险等级 (low, medium, high, critical)
+    /// </summary>
+    public string RiskLevel { get; set; } = "medium";
 
     /// <summary>
     /// 风险警告
@@ -59,9 +79,24 @@ public class PermissionRequestViewModel
     public bool IsHighRisk { get; set; }
 
     /// <summary>
+    /// 提示消息
+    /// </summary>
+    public string? Message { get; set; }
+
+    /// <summary>
+    /// 超时时间（秒）
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 300;
+
+    /// <summary>
     /// 请求时间
     /// </summary>
     public DateTime RequestTime { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// 时间戳（与 Core 层事件对应）
+    /// </summary>
+    public DateTime Timestamp { get; set; } = DateTime.Now;
 
     /// <summary>
     /// 会话 ID

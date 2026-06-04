@@ -1,0 +1,31 @@
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+
+@* 错误消息组件 - 渲染错误信息 *@
+
+<div class="content-block-error" style="padding: 8px 12px; background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius-sm); margin: 4px 0;">
+    <div style="display: flex; align-items: center; margin-bottom: 4px;">
+        <span style="color: var(--color-error); font-size: 14px;">❌</span>
+        <span style="margin-left: 6px; font-weight: 500; color: var(--color-error);">错误</span>
+    </div>
+    <pre style="font-size: 12px; margin: 0; color: var(--color-error); white-space: pre-wrap; word-break: break-all;">@Content</pre>
+</div>
+
+@code {
+    /// <summary>
+    /// 错误内容
+    /// </summary>
+    [Parameter]
+    public string Content { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// 内容块
+    /// </summary>
+    [Parameter]
+    public ContentBlock Block { get; set; } = default!;
+    
+    /// <summary>
+    /// 渲染上下文
+    /// </summary>
+    [Parameter]
+    public RenderContext Context { get; set; } = default!;
+}

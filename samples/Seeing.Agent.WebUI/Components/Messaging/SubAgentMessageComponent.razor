@@ -1,0 +1,62 @@
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+
+@* 子代理消息组件 - 渲染子代理信息 *@
+
+<div class="content-block-subagent" style="padding: 4px 0;">
+    <div style="display: flex; align-items: center; padding: 4px 8px; background: var(--color-bg-secondary); border-radius: var(--radius-sm); border-left: 3px solid var(--color-primary);">
+        <span style="font-size: 14px;">🤖</span>
+        <span style="margin-left: 6px; font-weight: 500; font-size: 13px;">@AgentName</span>
+        @if (IsStreaming)
+        {
+            <span style="margin-left: 6px; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--color-primary-light, #e6f7ff); color: var(--color-primary); font-size: 11px;">
+                执行中...
+            </span>
+        }
+    </div>
+    
+    @if (!string.IsNullOrEmpty(Content))
+    {
+        <div style="padding: 4px 8px; font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;">
+            @((MarkupString)HtmlContent)
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// 子代理名称
+    /// </summary>
+    [Parameter]
+    public string AgentName { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// 内容
+    /// </summary>
+    [Parameter]
+    public string Content { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// 是否正在流式输出
+    /// </summary>
+    [Parameter]
+    public bool IsStreaming { get; set; }
+    
+    /// <summary>
+    /// 内容块
+    /// </summary>
+    [Parameter]
+    public ContentBlock Block { get; set; } = default!;
+    
+    /// <summary>
+    /// 渲染上下文
+    /// </summary>
+    [Parameter]
+    public RenderContext Context { get; set; } = default!;
+    
+    /// <summary>
+    /// 渲染后的 HTML 内容
+    /// </summary>
+    private string HtmlContent => string.IsNullOrEmpty(Content) 
+        ? string.Empty 
+        : Context.Cache?.GetOrCreateMarkdown(Content, Context.GetMarkdownCacheKey(Block)) ?? Content;
+}

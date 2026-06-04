@@ -385,3 +385,87 @@ function destroyMessageListScroll() {
         messageListScrollManager = null;
     }
 }
+
+// ========== 思考过程折叠/展开 ==========
+
+/**
+ * 切换思考过程的展开/折叠状态
+ * @param {string} reasoningId - 思考过程块的 ID
+ */
+function toggleReasoning(reasoningId) {
+    const section = document.querySelector(`[data-reasoning-id="${reasoningId}"]`);
+    if (!section) return;
+    
+    const isExpanded = section.classList.contains('expanded');
+    const icon = section.querySelector('.reasoning-toggle-icon');
+    const content = section.querySelector('.reasoning-content');
+    
+    if (isExpanded) {
+        // 折叠
+        section.classList.remove('expanded');
+        section.classList.add('collapsed');
+        if (icon) icon.style.transform = 'rotate(0deg)';
+        if (content) content.style.display = 'none';
+    } else {
+        // 展开
+        section.classList.remove('collapsed');
+        section.classList.add('expanded');
+        if (icon) icon.style.transform = 'rotate(90deg)';
+        if (content) content.style.display = 'block';
+    }
+}
+
+/**
+ * 展开思考过程
+ * @param {string} reasoningId - 思考过程块的 ID
+ */
+function expandReasoning(reasoningId) {
+    const section = document.querySelector(`[data-reasoning-id="${reasoningId}"]`);
+    if (!section) return;
+    
+    const icon = section.querySelector('.reasoning-toggle-icon');
+    const content = section.querySelector('.reasoning-content');
+    
+    section.classList.remove('collapsed');
+    section.classList.add('expanded');
+    if (icon) icon.style.transform = 'rotate(90deg)';
+    if (content) content.style.display = 'block';
+}
+
+/**
+ * 折叠思考过程
+ * @param {string} reasoningId - 思考过程块的 ID
+ */
+function collapseReasoning(reasoningId) {
+    const section = document.querySelector(`[data-reasoning-id="${reasoningId}"]`);
+    if (!section) return;
+    
+    const icon = section.querySelector('.reasoning-toggle-icon');
+    const content = section.querySelector('.reasoning-content');
+    
+    section.classList.remove('expanded');
+    section.classList.add('collapsed');
+    if (icon) icon.style.transform = 'rotate(0deg)';
+    if (content) content.style.display = 'none';
+}
+
+// ========== 工具调用展开/收起 ==========
+
+/**
+ * 切换工具调用的展开/收起状态（向后兼容，供 HTML onclick 调用）
+ * @param {string} toolCallId - 工具调用块的 ID
+ */
+function toggleToolCall(toolCallId) {
+    const compact = document.querySelector(`[data-tool-call-id="${toolCallId}"]`);
+    if (!compact) return;
+
+    const detail = compact.nextElementSibling;
+    if (!detail) return;
+
+    const isExpanded = detail.style.display !== 'none';
+    if (isExpanded) {
+        detail.style.display = 'none';
+    } else {
+        detail.style.display = 'block';
+    }
+}

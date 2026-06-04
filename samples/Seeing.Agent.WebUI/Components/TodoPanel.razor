@@ -1,0 +1,124 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+@* Todo 侧边面板组件 - 实时显示当前任务进度 *@
+
+<div class="todo-panel @(_isCollapsed ? "todo-panel-collapsed" : "")">
+    @* 面板头部 *@
+    <div class="todo-panel-header" onclick="@ToggleCollapse">
+        <div class="todo-panel-header-left">
+            <Icon Type="@IconType.Outline.UnorderedList" Style="font-size: 14px; color: var(--color-primary);" />
+            @if (!_isCollapsed)
+            {
+                <span class="todo-panel-title">任务列表</span>
+            }
+        </div>
+        <div class="todo-panel-header-right">
+            @if (!_isCollapsed)
+            {
+                <Tag Color="@GetProgressTagColor()" Style="font-size: 11px;">
+                    @(TodoList.CompletedCount)/@(TodoList.TotalCount)
+                </Tag>
+            }
+            else
+            {
+                <span class="todo-panel-mini-progress">@(TodoList.CompletedCount)/@(TodoList.TotalCount)</span>
+            }
+            <Icon Type="@(_isCollapsed ? IconType.Outline.Left : IconType.Outline.Right)"
+                  Style="font-size: 12px; color: var(--color-text-tertiary);" />
+        </div>
+    </div>
+    
+    @if (!_isCollapsed)
+    {
+        @* 进度条 *@
+        <div class="todo-panel-progress">
+            <div class="todo-progress-bar-container">
+                <div class="todo-progress-bar"
+                     style="width: @(TodoList.ProgressPercent)%; background: @(TodoList.ProgressColor);"></div>
+            </div>
+            <div class="todo-progress-text">@(TodoList.ProgressPercent)% 完成</div>
+        </div>
+        
+        @* 当前任务（如果有） *@
+        @if (TodoList.CurrentTask != null)
+        {
+            <div class="todo-current-task">
+                <div class="todo-current-task-label">
+                    <Icon Type="@IconType.Outline.Loading" Style="font-size: 12px; animation: spin 1s linear infinite;" />
+                    <span>当前任务</span>
+                </div>
+                <div class="todo-current-task-content">
+                    @TodoList.CurrentTask.Content
+                </div>
+            </div>
+        }
+        
+        @* 任务列表 *@
+        <div class="todo-panel-items">
+            @foreach (var item in TodoList.Items)
+            {
+                var itemClass = GetItemClass(item);
+                var statusColor = item.StatusColor;
+                
+                <div class="todo-panel-item @itemClass"
+                     style="border-left: 2px solid @statusColor;">
+                    <span class="todo-panel-item-icon">@item.StatusIcon</span>
+                    <span class="todo-panel-item-content">@item.Content</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Todo 列表数据
+    /// </summary>
+    [Parameter]
+    public TodoListViewModel TodoList { get; set; } = new();
+
+    /// <summary>
+    /// 是否折叠
+    /// </summary>
+    private bool _isCollapsed = false;
+
+    /// <summary>
+    /// 切换折叠状态
+    /// </summary>
+    private void ToggleCollapse()
+    {
+        _isCollapsed = !_isCollapsed;
+    }
+
+    /// <summary>
+    /// 获取进度标签颜色
+    /// </summary>
+    private string GetProgressTagColor()
+    {
+        var percent = TodoList.ProgressPercent;
+        if (percent < 30) return "error";
+        if (percent < 70) return "warning";
+        if (percent < 100) return "processing";
+        return "success";
+    }
+
+    /// <summary>
+    /// 获取任务项样式类
+    /// </summary>
+    private string GetItemClass(TodoItemViewModel item)
+    {
+        var classes = new List<string>();
+        
+        if (item.IsCurrentTask)
+            classes.Add("todo-panel-item-current");
+        
+        if (item.Status == TodoStatusViewModel.Completed)
+            classes.Add("todo-panel-item-completed");
+        
+        if (item.Status == TodoStatusViewModel.Cancelled)
+            classes.Add("todo-panel-item-cancelled");
+        
+        return string.Join(" ", classes);
+    }
+}

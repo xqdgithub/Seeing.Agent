@@ -39,7 +39,14 @@
                                        OnToolClick="@OnToolClickHandler" />
                     }
                 }
-                <!-- 系统消息：传统布局 -->
+                <!-- 工具消息：独立组件展示 -->
+                else if (message.Role == "tool")
+                {
+                    <ChatMessageItem @key="message.Id"
+                                     Message="@message" 
+                                     OnToolClick="@OnToolClickHandler" />
+                }
+                <!-- 系统消息和其他消息：传统布局 -->
                 else
                 {
                     <ChatMessageItem @key="message.Id"
@@ -106,100 +113,165 @@
     [Parameter]
     public bool AutoScroll { get; set; } = true;
 
+    // ========== Loop 缓存系统 ==========
+    
+    /// <summary>
+    /// 最大缓存数量
+    /// </summary>
+    private const int MaxCacheSize = 100;
+    
+    /// <summary>
+    /// LoopId → LoopIndex 映射
+    /// </summary>
+    private readonly Dictionary<string, int> _loopIndexMap = new();
+    
+    /// <summary>
+    /// LoopId → LoopGroupViewModel 缓存
+    /// </summary>
+    private readonly Dictionary<string, LoopGroupViewModel> _loopCache = new();
+    
+    /// <summary>
+    /// LoopId → 消息列表
+    /// </summary>
+    private readonly Dictionary<string, List<MessageViewModel>> _loopMessages = new();
+    
+    /// <summary>
+    /// 已处理的用户消息 ID 集合（用于关联用户消息到 Loop）
+    /// </summary>
+    private readonly HashSet<string> _processedUserMessageIds = new();
+    
+    /// <summary>
+    /// 下一个 Loop 索引
+    /// </summary>
+    private int _nextLoopIndex = 1;
+    
+    /// <summary>
+    /// 上次处理的消息数量
+    /// </summary>
+    private int _lastProcessedCount = 0;
+
+    /// <summary>
+    /// 获取已渲染的 LoopId 集合（每次渲染时重置）
+    /// </summary>
+    private readonly HashSet<string> _currentRenderLoopIds = new();
+
     /// <summary>
     /// 判断是否是同一 Loop 中的第一条助手消息
+    /// 使用方式：在渲染周期内，同一 LoopId 只渲染一次
     /// </summary>
     private bool IsFirstAssistantInLoop(MessageViewModel message)
     {
         if (string.IsNullOrEmpty(message.LoopId))
             return true;
 
-        var currentIndex = Messages.IndexOf(message);
-        
-        // 向前查找是否有相同 LoopId 的助手消息
-        for (var i = currentIndex - 1; i >= 0; i--)
+        // 检查当前渲染周期是否已处理过此 LoopId
+        if (_currentRenderLoopIds.Contains(message.LoopId))
         {
-            var prev = Messages[i];
-            if (prev.Role == "assistant" && prev.LoopId == message.LoopId)
-            {
-                return false; // 前面已有相同 LoopId 的助手消息
-            }
+            return false;
         }
         
+        // 标记为已处理
+        _currentRenderLoopIds.Add(message.LoopId);
         return true;
+    }
+    
+    /// <summary>
+    /// 重置渲染周期状态（在每次渲染开始时调用）
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        // 重置渲染周期状态
+        _currentRenderLoopIds.Clear();
+        
+        // 检查是否需要更新缓存
+        if (Messages.Count != _lastProcessedCount)
+        {
+            UpdateCacheIncremental();
+        }
     }
 
     /// <summary>
-    /// 从助手消息构建 Loop 分组（包含同一 LoopId 的所有助手消息）
+    /// 从助手消息构建 Loop 分组（使用缓存优化）
     /// </summary>
     private LoopGroupViewModel BuildLoopFromMessage(MessageViewModel assistantMessage)
     {
         var loopId = assistantMessage.LoopId ?? $"single-{Messages.IndexOf(assistantMessage)}";
         
-        // 收集同一 LoopId 的所有助手消息
-        var loopMessages = new List<MessageViewModel>();
-        var loopIndex = 0;
-        var foundLoopIds = new HashSet<string>();
-        
-        foreach (var msg in Messages)
+        // 尝试从缓存获取
+        if (_loopCache.TryGetValue(loopId, out var cached))
         {
+            return cached;
+        }
+        
+        // 缓存未命中，构建新的
+        return BuildAndCacheLoop(loopId, assistantMessage);
+    }
+    
+    /// <summary>
+    /// 增量更新缓存
+    /// </summary>
+    private void UpdateCacheIncremental()
+    {
+        var newCount = Messages.Count;
+        
+        // 只处理新增的消息
+        for (var i = _lastProcessedCount; i < newCount; i++)
+        {
+            var msg = Messages[i];
+            
             if (msg.Role == "assistant")
             {
-                var msgLoopId = msg.LoopId ?? $"single-{Messages.IndexOf(msg)}";
+                var loopId = msg.LoopId ?? $"single-{i}";
                 
-                if (msgLoopId == loopId)
+                // 添加到消息分组
+                if (!_loopMessages.ContainsKey(loopId))
                 {
-                    loopMessages.Add(msg);
+                    _loopMessages[loopId] = new List<MessageViewModel>();
+                    
+                    // 分配新索引
+                    _loopIndexMap[loopId] = _nextLoopIndex++;
                 }
                 
-                // 计算当前 Loop 的索引
-                if (!foundLoopIds.Contains(msgLoopId) && msg.LoopId == loopId)
-                {
-                    foundLoopIds.Add(msgLoopId);
-                    if (msgLoopId == loopId)
-                    {
-                        // 计算这是第几个 Loop
-                        loopIndex = foundLoopIds.Count;
-                    }
-                }
+                _loopMessages[loopId].Add(msg);
+                
+                // 使缓存失效
+                _loopCache.Remove(loopId);
+            }
+            else if (msg.Role == "user" && !_processedUserMessageIds.Contains(msg.Id))
+            {
+                _processedUserMessageIds.Add(msg.Id);
             }
         }
         
-        // 计算 Loop 索引（遍历所有消息，统计不同的 LoopId）
-        loopIndex = 0;
-        var seenLoopIds = new HashSet<string>();
-        foreach (var msg in Messages)
-        {
-            if (msg.Role == "assistant" && !string.IsNullOrEmpty(msg.LoopId))
-            {
-                if (!seenLoopIds.Contains(msg.LoopId))
-                {
-                    seenLoopIds.Add(msg.LoopId);
-                    if (msg.LoopId == loopId)
-                    {
-                        loopIndex = seenLoopIds.Count;
-                        break;
-                    }
-                }
-            }
-            else if (msg == assistantMessage && string.IsNullOrEmpty(msg.LoopId))
-            {
-                loopIndex = seenLoopIds.Count + 1;
-            }
-        }
+        _lastProcessedCount = newCount;
+        
+        // 清理超限缓存
+        TrimCacheIfNeeded();
+    }
+    
+    /// <summary>
+    /// 构建并缓存 Loop
+    /// </summary>
+    private LoopGroupViewModel BuildAndCacheLoop(string loopId, MessageViewModel assistantMessage)
+    {
+        var loopMessages = _loopMessages.TryGetValue(loopId, out var messages) 
+            ? messages 
+            : new List<MessageViewModel> { assistantMessage };
+        
+        var loopIndex = _loopIndexMap.TryGetValue(loopId, out var index) ? index : _nextLoopIndex++;
         
         // 计算统计信息
         var totalSteps = loopMessages.Count;
         var startTime = loopMessages.FirstOrDefault()?.Timestamp;
         var endTime = loopMessages.LastOrDefault()?.Timestamp;
         var isComplete = loopMessages.All(m => m.IsComplete);
-        var hasError = loopMessages.Any(m => !string.IsNullOrEmpty(m.ToolCalls.FirstOrDefault()?.Error));
+        var hasError = loopMessages.Any(m => m.ToolCalls.Any(t => !string.IsNullOrEmpty(t.Error)));
         
-        return new LoopGroupViewModel
+        var loop = new LoopGroupViewModel
         {
             LoopId = loopId,
             LoopIndex = loopIndex,
-            Messages = loopMessages,
+            Messages = loopMessages.ToList(), // 复制一份避免外部修改
             IsComplete = isComplete,
             TotalSteps = totalSteps,
             StartTime = startTime,
@@ -209,6 +281,47 @@
                 : null,
             Success = !hasError
         };
+        
+        _loopCache[loopId] = loop;
+        
+        return loop;
+    }
+    
+    /// <summary>
+    /// 清理超限缓存
+    /// </summary>
+    private void TrimCacheIfNeeded()
+    {
+        if (_loopCache.Count > MaxCacheSize)
+        {
+            // 按索引排序，保留最近的 MaxCacheSize 个
+            var toRemove = _loopIndexMap
+                .OrderByDescending(kvp => kvp.Value)
+                .Skip(MaxCacheSize)
+                .Select(kvp => kvp.Key)
+                .ToList();
+            
+            foreach (var key in toRemove)
+            {
+                _loopCache.Remove(key);
+                _loopMessages.Remove(key);
+                _loopIndexMap.Remove(key);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// 清空缓存（消息列表清空时调用）
+    /// </summary>
+    public void ClearCache()
+    {
+        _loopCache.Clear();
+        _loopMessages.Clear();
+        _loopIndexMap.Clear();
+        _processedUserMessageIds.Clear();
+        _currentRenderLoopIds.Clear();
+        _nextLoopIndex = 1;
+        _lastProcessedCount = 0;
     }
     
     /// <summary>
@@ -332,6 +445,7 @@
     {
         Messages.Clear();
         _showScrollToBottomButton = false;
+        ClearCache();
         StateHasChanged();
     }
     

@@ -426,7 +426,10 @@ namespace Seeing.Agent.Extensions
 
             // Hook 管理器
             services.AddSingleton<HookManager>();
-            services.AddSingleton<IHookManager>(sp => sp.GetRequiredService<HookManager>());
+            services.AddSingleton<Seeing.Agent.Core.Hooks.IHookManager>(sp => sp.GetRequiredService<HookManager>());
+            // Session Hook 管理器适配器（让 SessionManager 使用）
+            services.AddSingleton<Seeing.Session.Hooks.IHookManager>(sp =>
+                new Seeing.Agent.Services.HookManagerAdapter(sp.GetRequiredService<HookManager>()));
 
             // Agent 发现服务
             services.AddSingleton<AgentDiscovery>();
@@ -478,6 +481,7 @@ namespace Seeing.Agent.Extensions
             // 会话管理器 - 使用 Seeing.Session 包的实现
             services.AddSingleton<Seeing.Session.Management.SessionManager>();
             services.AddSingleton<Seeing.Session.Core.ISessionManager>(sp => sp.GetRequiredService<Seeing.Session.Management.SessionManager>());
+
             // 新增 DI 注册：会话事件发布器与会话生命周期管理
             services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
             services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
@@ -542,7 +546,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ToolInvoker>(sp =>
             {
                 var logger = sp.GetRequiredService<ILogger<ToolInvoker>>();
-                var hookManager = sp.GetRequiredService<IHookManager>();
+                var hookManager = sp.GetRequiredService<Seeing.Agent.Core.Hooks.IHookManager>();
                 var tools = sp.GetServices<ITool>();
                 var decoratorRegistry = sp.GetService<IToolDecoratorRegistry>();
 
@@ -587,7 +591,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<McpToolRegistry>(sp =>
             {
                 var toolInvoker = sp.GetRequiredService<ToolInvoker>();
-                var hookManager = sp.GetRequiredService<IHookManager>();
+                var hookManager = sp.GetRequiredService<Seeing.Agent.Core.Hooks.IHookManager>();
                 var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<McpToolRegistry>();
                 return new McpToolRegistry(toolInvoker, hookManager, logger);
             });
@@ -636,6 +640,29 @@ namespace Seeing.Agent.Extensions
 
             // Agent 执行器（统一执行引擎）
             services.AddSingleton<AgentExecutor>();
+
+            // 标题生成服务（实现 IHookHandler，自动注册到 HookManager）
+            services.AddSingleton<Seeing.Agent.Services.TitleGenerationService>(sp =>
+            {
+                var agentExecutor = sp.GetRequiredService<AgentExecutor>();
+                var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
+                var sessionManager = sp.GetRequiredService<Seeing.Session.Core.ISessionManager>();
+                var logger = sp.GetService<ILogger<Seeing.Agent.Services.TitleGenerationService>>();
+
+                var service = new Seeing.Agent.Services.TitleGenerationService(
+                    agentExecutor,
+                    agentRegistry,
+                    sessionManager,
+                    logger);
+
+                // 自动注册到 HookManager
+                var hookManager = sp.GetRequiredService<Seeing.Agent.Core.Hooks.HookManager>();
+                hookManager.Register(service);
+
+                return service;
+            });
+            services.AddSingleton<Seeing.Session.Management.ITitleGenerationService>(sp =>
+                sp.GetRequiredService<Seeing.Agent.Services.TitleGenerationService>());
 
             // Shell 环境服务（触发 shell.env Hook）
             services.AddSingleton<IShellEnvironmentService, ShellEnvironmentService>();

@@ -1,0 +1,76 @@
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+@using Seeing.Agent.WebUI.Models
+
+@* 附件消息组件 - 渲染附件内容 *@
+
+<div class="content-block-attachment" style="padding: 4px 0;">
+    @if (Attachment.IsImage)
+    {
+        @* 图片附件 *@
+        <div style="max-width: 300px; border-radius: var(--radius-sm); overflow: hidden;">
+            <img src="data:image/png;base64,@Attachment.DataBase64" 
+                 alt="@Attachment.FileName"
+                 style="width: 100%; height: auto; display: block;" />
+            @if (!string.IsNullOrEmpty(Attachment.FileName))
+            {
+                <div style="padding: 4px 8px; background: var(--color-bg-secondary); font-size: 11px; color: var(--color-text-secondary);">
+                    @Attachment.FileName
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        @* 其他附件 *@
+        <div style="display: flex; align-items: center; padding: 8px 12px; background: var(--color-bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--color-border);">
+            <span style="font-size: 16px;">📎</span>
+            <div style="margin-left: 8px; flex: 1;">
+                <div style="font-size: 12px; font-weight: 500;">@Attachment.FileName</div>
+                @if (!string.IsNullOrEmpty(Attachment.MimeType))
+                {
+                    <div style="font-size: 11px; color: var(--color-text-secondary);">@Attachment.MimeType</div>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(Attachment.DataBase64))
+            {
+                <span style="font-size: 11px; color: var(--color-text-secondary);">@GetFileSize()</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// 附件数据
+    /// </summary>
+    [Parameter]
+    public ContentPartViewModel Attachment { get; set; } = new();
+    
+    /// <summary>
+    /// 内容块
+    /// </summary>
+    [Parameter]
+    public ContentBlock Block { get; set; } = default!;
+    
+    /// <summary>
+    /// 渲染上下文
+    /// </summary>
+    [Parameter]
+    public RenderContext Context { get; set; } = default!;
+    
+    /// <summary>
+    /// 获取文件大小
+    /// </summary>
+    private string GetFileSize()
+    {
+        if (string.IsNullOrEmpty(Attachment.DataBase64)) return "";
+        
+        // Base64 编码后大小约为原始大小的 4/3
+        var base64Length = Attachment.DataBase64.Length;
+        var originalSize = (long)(base64Length * 0.75);
+        
+        if (originalSize < 1024) return $"{originalSize} B";
+        if (originalSize < 1024 * 1024) return $"{originalSize / 1024:F1} KB";
+        return $"{originalSize / (1024 * 1024):F1} MB";
+    }
+}

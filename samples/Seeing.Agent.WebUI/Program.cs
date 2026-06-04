@@ -4,6 +4,7 @@ using Seeing.Agent.Extensions;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration;
+using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
@@ -43,6 +44,9 @@ builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SkillStateService>();
 builder.Services.AddSingleton<ToolStateService>();
+
+// === 消息渲染管线 ===
+builder.Services.AddMessageRendering();
 
 // AntDesign 2.0 配置
 builder.Services.AddAntDesign();

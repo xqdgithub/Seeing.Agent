@@ -1,3 +1,4 @@
+using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.State
@@ -19,6 +20,25 @@ namespace Seeing.Agent.WebUI.State
         /// 当前会话数据（由 SessionManager 管理）
         /// </summary>
         public SessionData? CurrentSession { get; set; }
+
+        /// <summary>
+        /// 当前 Todo 列表（由 todowrite 工具更新）
+        /// </summary>
+        public TodoListViewModel? CurrentTodoList { get; set; }
+
+        /// <summary>
+        /// Todo 列表更新事件
+        /// </summary>
+        public event Action? OnTodoListChanged;
+
+        /// <summary>
+        /// 更新 Todo 列表
+        /// </summary>
+        public void UpdateTodoList(TodoListViewModel todoList)
+        {
+            CurrentTodoList = todoList;
+            OnTodoListChanged?.Invoke();
+        }
 
         /// <summary>
         /// 会话 ID（从 CurrentSession 获取）

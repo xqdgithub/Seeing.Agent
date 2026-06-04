@@ -1,0 +1,190 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+
+@* 工具调用消息组件 - 渲染工具调用信息 *@
+
+@if (ToolCall.IsTodoTool && ToolCall.TodoList != null && ToolCall.TodoList.HasTasks)
+{
+    <TodoCard TodoList="@ToolCall.TodoList" />
+}
+else
+{
+    <div class="tool-call-block" onclick="@ToggleExpand">
+        @* 状态图标 *@
+        <Icon Type="@ToolCall.StatusIcon" Style="@ToolCall.StatusIconStyle" />
+
+        @* 工具名称 *@
+        <span style="margin-left: 6px; font-weight: 500; font-size: 13px;">@ToolCall.Name</span>
+
+        @* 状态标签 *@
+        <Tag Color="@ToolCall.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@ToolCall.StatusText</Tag>
+
+        @* 简要结果/错误预览 *@
+        @if (!string.IsNullOrEmpty(ToolCall.Result))
+        {
+            <span style="margin-left: 8px; color: var(--color-success); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                @GetResultPreview()
+            </span>
+        }
+        else if (!string.IsNullOrEmpty(ToolCall.Error))
+        {
+            <span style="margin-left: 8px; color: var(--color-error); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                @GetErrorPreview()
+            </span>
+        }
+
+        @* 执行中动画 *@
+        @if (ToolCall.IsRunning)
+        {
+            <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
+        }
+
+        @* 展开/收起指示 *@
+        <Icon Type="@(ToolCall.IsExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+              Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
+    </div>
+
+    @* 详情展开区域 *@
+    @if (ToolCall.IsExpanded)
+    {
+        <div style="padding: 8px 12px; background: var(--color-bg-tertiary); border-radius: var(--radius-sm); margin-top: 2px;">
+            @* 参数 *@
+            @if (!string.IsNullOrEmpty(ToolCall.Parameters) && ToolCall.Parameters != "{}")
+            {
+                <div style="margin-bottom: 4px;">
+                    <span style="font-size: 11px; color: var(--color-text-secondary);">参数: </span>
+                    <span style="font-size: 12px; color: var(--color-text);">@FormatParametersBrief()</span>
+                </div>
+            }
+
+            @* 结果 *@
+            @if (!string.IsNullOrEmpty(ToolCall.Result))
+            {
+                <div>
+                    <span style="font-size: 11px; color: var(--color-success);">结果: </span>
+                    <pre style="font-size: 12px; margin: 0; white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow: auto;">@TruncateResult(ToolCall.Result, 500)</pre>
+                </div>
+            }
+
+            @* 错误 *@
+            @if (!string.IsNullOrEmpty(ToolCall.Error))
+            {
+                <div>
+                    <span style="font-size: 11px; color: var(--color-error);">错误: </span>
+                    <pre style="font-size: 12px; margin: 0; color: var(--color-error); white-space: pre-wrap;">@ToolCall.Error</pre>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    /// <summary>
+    /// 工具调用数据
+    /// </summary>
+    [Parameter]
+    public ToolCallViewModel ToolCall { get; set; } = new();
+
+    /// <summary>
+    /// 内容块
+    /// </summary>
+    [Parameter]
+    public ContentBlock Block { get; set; } = default!;
+
+    /// <summary>
+    /// 渲染上下文
+    /// </summary>
+    [Parameter]
+    public RenderContext Context { get; set; } = default!;
+
+    /// <summary>
+    /// 工具点击事件回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+
+    /// <summary>
+    /// 切换展开/收起状态
+    /// </summary>
+    private void ToggleExpand()
+    {
+        ToolCall.IsExpanded = !ToolCall.IsExpanded;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 获取结果预览（第一行，最多 40 字符）
+    /// </summary>
+    private string GetResultPreview()
+    {
+        if (string.IsNullOrEmpty(ToolCall.Result)) return "";
+        var firstLine = ToolCall.Result.Split('\n')[0].Trim();
+        if (firstLine.StartsWith("{") || firstLine.StartsWith("["))
+        {
+            try
+            {
+                var element = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(ToolCall.Result);
+                if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    var firstProp = element.EnumerateObject().FirstOrDefault();
+                    if (firstProp.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                        return firstProp.Value.GetString() ?? firstLine[..Math.Min(40, firstLine.Length)];
+                }
+            }
+            catch { }
+        }
+        if (firstLine.Length > 40) return firstLine[..40] + "...";
+        return firstLine;
+    }
+
+    /// <summary>
+    /// 获取错误预览（最多 40 字符）
+    /// </summary>
+    private string GetErrorPreview()
+    {
+        if (string.IsNullOrEmpty(ToolCall.Error)) return "";
+        if (ToolCall.Error.Length > 40) return ToolCall.Error[..40] + "...";
+        return ToolCall.Error;
+    }
+
+    /// <summary>
+    /// 格式化参数简要显示
+    /// </summary>
+    private string FormatParametersBrief()
+    {
+        if (string.IsNullOrEmpty(ToolCall.Parameters)) return "";
+
+        try
+        {
+            var element = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(ToolCall.Parameters);
+            if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                var keys = element.EnumerateObject().Select(p => p.Name).Take(5);
+                var result = string.Join(", ", keys);
+                if (element.EnumerateObject().Count() > 5)
+                    result += "...";
+                return result;
+            }
+            return ToolCall.Parameters.Length > 50
+                ? ToolCall.Parameters[..50] + "..."
+                : ToolCall.Parameters;
+        }
+        catch
+        {
+            return ToolCall.Parameters.Length > 50
+                ? ToolCall.Parameters[..50] + "..."
+                : ToolCall.Parameters;
+        }
+    }
+
+    /// <summary>
+    /// 截断结果文本
+    /// </summary>
+    private string TruncateResult(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        if (text.Length <= maxLength) return text;
+        return text[..maxLength] + "...";
+    }
+}

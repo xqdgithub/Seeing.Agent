@@ -1,0 +1,31 @@
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+
+@* 分隔线消息组件 - 渲染步骤分隔线 *@
+
+<div class="content-block-divider" style="display: flex; align-items: center; padding: 8px 0; margin: 4px 0;">
+    <div style="flex: 1; height: 1px; background: var(--color-border);"></div>
+    <span style="padding: 0 8px; font-size: 11px; color: var(--color-text-tertiary); white-space: nowrap;">
+        Step @StepIndex
+    </span>
+    <div style="flex: 1; height: 1px; background: var(--color-border);"></div>
+</div>
+
+@code {
+    /// <summary>
+    /// 步骤索引
+    /// </summary>
+    [Parameter]
+    public int StepIndex { get; set; }
+    
+    /// <summary>
+    /// 内容块
+    /// </summary>
+    [Parameter]
+    public ContentBlock Block { get; set; } = default!;
+    
+    /// <summary>
+    /// 渲染上下文
+    /// </summary>
+    [Parameter]
+    public RenderContext Context { get; set; } = default!;
+}

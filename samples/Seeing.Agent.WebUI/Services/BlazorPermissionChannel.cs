@@ -1,3 +1,4 @@
+using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using System.Collections.Concurrent;
@@ -40,8 +41,9 @@ namespace Seeing.Agent.WebUI.Services
             {
                 SessionId = context.SessionId,
                 PermissionId = requestId,
-                Permission = toolName,
-                Resource = arguments?.ToString(),
+                PermissionKind = "tool",
+                Resource = toolName,
+                Arguments = arguments,
                 Message = $"工具 {toolName} 需要权限确认",
                 RiskLevel = "medium"
             });

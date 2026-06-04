@@ -291,7 +291,7 @@ namespace Seeing.Session.Management
 
             session.AddMessage(message);
 
-            // 触发 Updated Hook
+            // 触发 Updated Hook（TitleGenerationService 通过此 Hook 监听并生成标题）
             _hookManager?.TriggerFireAndForget(
                 HookPoints.Updated,
                 session.Id,
@@ -458,6 +458,36 @@ namespace Seeing.Session.Management
                 })
                 .OrderByDescending(m => m.LastActiveAt)
                 .ToList();
+        }
+
+        /// <summary>
+        /// 设置会话标题
+        /// </summary>
+        public async Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default)
+        {
+            var session = Get(sessionId);
+            if (session == null)
+            {
+                _logger?.LogWarning("会话不存在，无法设置标题: {SessionId}", sessionId);
+                return;
+            }
+
+            session.Title = title;
+            session.UpdatedAt = DateTime.Now;
+
+            // 触发 Updated Hook
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.Updated,
+                session.Id,
+                result: new Dictionary<string, object?> { ["session"] = session, ["title"] = title });
+
+            // 自动保存
+            if (_store != null)
+            {
+                await SaveAsync(sessionId);
+            }
+
+            _logger?.LogInformation("设置会话标题: SessionId={SessionId}, Title={Title}", sessionId, title);
         }
     }
 }

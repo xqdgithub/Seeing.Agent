@@ -1,0 +1,200 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models.Messaging
+
+@* 消息头部组件 - 显示角色、时间戳和元信息 *@
+<div class="message-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+    <div class="message-role" style="display: flex; align-items: center;">
+        <Avatar Size="@AvatarSize.Small"
+                Icon="@GetRoleIcon()"
+                Style="@GetAvatarStyle()" />
+        <span class="message-role-name" style="margin-left: var(--space-2); font-weight: 600;">
+            @GetRoleDisplayName()
+        </span>
+        
+        @* 额外标签（如 Loop 标签） *@
+        @if (Tags != null)
+        {
+            @foreach (var tag in Tags)
+            {
+                <Tag Color="@tag.Color" Style="margin-left: var(--space-2); font-size: 11px;">
+                    @if (!string.IsNullOrEmpty(tag.Icon))
+                    {
+                        <Icon Type="@tag.Icon" Style="margin-right: 4px;" />
+                    }
+                    @tag.Text
+                </Tag>
+            }
+        }
+        
+        @* 状态指示器 *@
+        @if (ShowStatusIndicator)
+        {
+            <Badge Status="@GetBadgeStatus()" Style="margin-left: var(--space-1);" />
+        }
+    </div>
+    
+    <div class="message-meta" style="display: flex; align-items: center; gap: var(--space-2);">
+        @* 元信息项 *@
+        @if (MetaItems != null)
+        {
+            @foreach (var item in MetaItems)
+            {
+                <span class="meta-item" Title="@item.Title" style="display: flex; align-items: center; gap: 4px; font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                    @if (!string.IsNullOrEmpty(item.Icon))
+                    {
+                        <Icon Type="@item.Icon" Style="font-size: 12px;" />
+                    }
+                    @item.Value
+                </span>
+            }
+        }
+        
+        @* 时间戳 *@
+        @if (ShowTimestamp)
+        {
+            <span class="message-time" style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                @Timestamp.ToString(TimeFormat)
+            </span>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// 消息角色 (user/assistant/system/tool)
+    /// </summary>
+    [Parameter]
+    public string Role { get; set; } = "assistant";
+
+    /// <summary>
+    /// 时间戳
+    /// </summary>
+    [Parameter]
+    public DateTime Timestamp { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// 是否显示时间戳
+    /// </summary>
+    [Parameter]
+    public bool ShowTimestamp { get; set; } = true;
+
+    /// <summary>
+    /// 时间格式
+    /// </summary>
+    [Parameter]
+    public string TimeFormat { get; set; } = "HH:mm:ss";
+
+    /// <summary>
+    /// 是否显示状态指示器
+    /// </summary>
+    [Parameter]
+    public bool ShowStatusIndicator { get; set; } = false;
+
+    /// <summary>
+    /// 消息状态
+    /// </summary>
+    [Parameter]
+    public MessageStatus Status { get; set; } = MessageStatus.Complete;
+
+    /// <summary>
+    /// 标签列表
+    /// </summary>
+    [Parameter]
+    public List<MessageTag>? Tags { get; set; }
+
+    /// <summary>
+    /// 元信息项列表
+    /// </summary>
+    [Parameter]
+    public List<MessageMetaItem>? MetaItems { get; set; }
+
+    /// <summary>
+    /// 自定义角色显示名称（覆盖默认值）
+    /// </summary>
+    [Parameter]
+    public string? CustomRoleName { get; set; }
+
+    /// <summary>
+    /// 获取角色图标
+    /// </summary>
+    private string GetRoleIcon()
+    {
+        return Role.ToLowerInvariant() switch
+        {
+            "user" => IconType.Outline.User,
+            "assistant" => IconType.Outline.Robot,
+            "system" => IconType.Outline.Setting,
+            "tool" => IconType.Outline.Tool,
+            _ => IconType.Outline.Message
+        };
+    }
+
+    /// <summary>
+    /// 获取头像样式
+    /// </summary>
+    private string GetAvatarStyle()
+    {
+        return Role.ToLowerInvariant() switch
+        {
+            "user" => "background: var(--color-primary);",
+            "assistant" => "background: var(--color-success);",
+            "system" => "background: var(--color-warning);",
+            "tool" => "background: var(--color-info);",
+            _ => "background: var(--color-text-tertiary);"
+        };
+    }
+
+    /// <summary>
+    /// 获取角色显示名称
+    /// </summary>
+    private string GetRoleDisplayName()
+    {
+        if (!string.IsNullOrEmpty(CustomRoleName))
+            return CustomRoleName;
+
+        return Role.ToLowerInvariant() switch
+        {
+            "user" => "用户",
+            "assistant" => "助手",
+            "system" => "系统",
+            "tool" => "工具",
+            _ => Role
+        };
+    }
+
+    /// <summary>
+    /// 获取状态徽章
+    /// </summary>
+    private BadgeStatus GetBadgeStatus()
+    {
+        return Status switch
+        {
+            MessageStatus.Streaming => BadgeStatus.Processing,
+            MessageStatus.Complete => BadgeStatus.Success,
+            MessageStatus.Error => BadgeStatus.Error,
+            _ => BadgeStatus.Default
+        };
+    }
+}
+
+@code {
+    /// <summary>
+    /// 消息标签模型
+    /// </summary>
+    public class MessageTag
+    {
+        public string Text { get; set; } = string.Empty;
+        public string Color { get; set; } = "default";
+        public string? Icon { get; set; }
+    }
+
+    /// <summary>
+    /// 消息元信息项模型
+    /// </summary>
+    public class MessageMetaItem
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        public string? Icon { get; set; }
+    }
+}

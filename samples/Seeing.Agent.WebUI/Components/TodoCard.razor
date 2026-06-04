@@ -1,0 +1,145 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+@* Todo 卡片组件 - 在消息流中渲染任务列表 *@
+
+<div class="todo-card">
+    @* 卡片头部 - 可折叠 *@
+    <div class="todo-card-header" onclick="@ToggleExpand">
+        <div class="todo-card-header-left">
+            <Icon Type="@IconType.Outline.UnorderedList" Style="font-size: 14px; color: var(--color-primary);" />
+            <span class="todo-card-title">任务列表</span>
+            <Tag Color="@GetProgressTagColor()" Style="margin-left: 8px; font-size: 11px;">
+                @(TodoList.CompletedCount)/@(TodoList.TotalCount)
+            </Tag>
+        </div>
+        <div class="todo-card-header-right">
+            @if (!_isExpanded)
+            {
+                <span class="todo-progress-text">@(TodoList.ProgressPercent)% 完成</span>
+            }
+            <Icon Type="@(_isExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+                  Style="font-size: 12px; color: var(--color-text-tertiary);" />
+        </div>
+    </div>
+    
+    @* 进度条 *@
+    <div class="todo-progress-bar-container">
+        <div class="todo-progress-bar"
+             style="width: @(TodoList.ProgressPercent)%; background: @(TodoList.ProgressColor);"></div>
+    </div>
+    
+    @* 展开内容 *@
+    @if (_isExpanded)
+    {
+        <div class="todo-card-content">
+            @* 统计信息 *@
+            <div class="todo-stats">
+                @if (TodoList.CompletedCount > 0)
+                {
+                    <span class="todo-stat-item todo-stat-completed">
+                        ✅ @(TodoList.CompletedCount) 已完成
+                    </span>
+                }
+                @if (TodoList.InProgressCount > 0)
+                {
+                    <span class="todo-stat-item todo-stat-in-progress">
+                        🔄 @(TodoList.InProgressCount) 进行中
+                    </span>
+                }
+                @if (TodoList.PendingCount > 0)
+                {
+                    <span class="todo-stat-item todo-stat-pending">
+                        ⏳ @(TodoList.PendingCount) 待处理
+                    </span>
+                }
+                @if (TodoList.CancelledCount > 0)
+                {
+                    <span class="todo-stat-item todo-stat-cancelled">
+                        ❌ @(TodoList.CancelledCount) 已取消
+                    </span>
+                }
+            </div>
+            
+            @* 任务列表 *@
+            <div class="todo-items">
+                @foreach (var item in TodoList.Items)
+                {
+                    var itemClass = GetItemClass(item);
+                    var statusColor = item.StatusColor;
+                    
+                    <div class="todo-item @itemClass"
+                         style="border-left: 3px solid @statusColor;">
+                        <div class="todo-item-header">
+                            <span class="todo-item-icon">@item.StatusIcon</span>
+                            <span class="todo-item-content">@item.Content</span>
+                        </div>
+                        <div class="todo-item-meta">
+                            <Tag Color="@item.StatusTagColor" Style="font-size: 10px;">
+                                @item.StatusText
+                            </Tag>
+                            @if (item.Priority != TodoPriorityViewModel.Medium)
+                            {
+                                <Tag Color="@item.PriorityTagColor" Style="font-size: 10px; margin-left: 4px;">
+                                    @item.PriorityText
+                                </Tag>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Todo 列表数据
+    /// </summary>
+    [Parameter]
+    public TodoListViewModel TodoList { get; set; } = new();
+
+    /// <summary>
+    /// 是否展开
+    /// </summary>
+    private bool _isExpanded = true;
+
+    /// <summary>
+    /// 切换展开状态
+    /// </summary>
+    private void ToggleExpand()
+    {
+        _isExpanded = !_isExpanded;
+    }
+
+    /// <summary>
+    /// 获取进度标签颜色
+    /// </summary>
+    private string GetProgressTagColor()
+    {
+        var percent = TodoList.ProgressPercent;
+        if (percent < 30) return "error";
+        if (percent < 70) return "warning";
+        if (percent < 100) return "processing";
+        return "success";
+    }
+
+    /// <summary>
+    /// 获取任务项样式类
+    /// </summary>
+    private string GetItemClass(TodoItemViewModel item)
+    {
+        var classes = new List<string>();
+        
+        if (item.IsCurrentTask)
+            classes.Add("todo-item-current");
+        
+        if (item.Status == TodoStatusViewModel.Completed)
+            classes.Add("todo-item-completed");
+        
+        if (item.Status == TodoStatusViewModel.Cancelled)
+            classes.Add("todo-item-cancelled");
+        
+        return string.Join(" ", classes);
+    }
+}

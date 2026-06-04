@@ -35,6 +35,15 @@ public enum MessageEventType
     /// <summary>子代理完成</summary>
     SubAgentCompleted,
 
+    /// <summary>权限请求（需要用户确认）</summary>
+    PermissionRequest,
+
+    /// <summary>权限响应（用户确认/拒绝）</summary>
+    PermissionResponse,
+
+    /// <summary>Loop 被取消（用户主动取消）</summary>
+    LoopCancelled,
+
     /// <summary>错误</summary>
     Error
 }
@@ -280,4 +289,82 @@ public record ErrorEvent : IMessageEvent
 
     /// <summary>错误来源（agent/tool/llm/system）</summary>
     public string? Source { get; init; }
+}
+
+/// <summary>
+/// 权限请求事件 - 需要用户确认
+/// </summary>
+public record PermissionRequestEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.PermissionRequest;
+
+    /// <summary>权限请求 ID</summary>
+    public required string PermissionId { get; init; }
+
+    /// <summary>权限类型: tool, file, network, shell, agent</summary>
+    public required string PermissionKind { get; init; }
+
+    /// <summary>资源标识（工具名/文件路径等）</summary>
+    public string? Resource { get; init; }
+
+    /// <summary>请求参数（JSON）</summary>
+    public object? Arguments { get; init; }
+
+    /// <summary>风险等级: low, medium, high, critical</summary>
+    public string RiskLevel { get; init; } = "medium";
+
+    /// <summary>提示消息</summary>
+    public string? Message { get; init; }
+
+    /// <summary>超时时间（秒）</summary>
+    public int TimeoutSeconds { get; init; } = 300;
+}
+
+/// <summary>
+/// 权限响应事件 - 用户确认/拒绝
+/// </summary>
+public record PermissionResponseEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.PermissionResponse;
+
+    /// <summary>对应的权限请求 ID</summary>
+    public required string PermissionId { get; init; }
+
+    /// <summary>用户决策: allow, deny</summary>
+    public required string Decision { get; init; }
+
+    /// <summary>决策原因（可选）</summary>
+    public string? Reason { get; init; }
+
+    /// <summary>是否记住决策（会话级别）</summary>
+    public bool Remember { get; init; }
+}
+
+/// <summary>
+/// Loop 被取消事件 - 用户主动取消或超时
+/// </summary>
+public record LoopCancelledEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public required string LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.LoopCancelled;
+
+    /// <summary>取消原因: user, timeout, error, resource_limit</summary>
+    public required string Reason { get; init; }
+
+    /// <summary>已完成的步数</summary>
+    public int CompletedSteps { get; init; }
+
+    /// <summary>已完成的消息（部分结果）</summary>
+    public List<ChatMessage>? PartialMessages { get; init; }
+
+    /// <summary>Token 使用统计（部分）</summary>
+    public TokenUsage? PartialUsage { get; init; }
 }

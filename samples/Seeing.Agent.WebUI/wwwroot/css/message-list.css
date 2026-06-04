@@ -68,8 +68,7 @@
    ======================================== */
 
 .message-streaming {
-    border-left: 3px solid var(--color-primary);
-    background: linear-gradient(90deg, var(--color-primary-light) 0%, transparent 30%);
+    /* 流式传输中：无额外边框/背景，保持消息原有样式 */
 }
 
 .message-complete {

@@ -60,6 +60,9 @@ namespace Seeing.Session.Core
         /// <summary>列出所有 Session (全局)</summary>
         Task<IReadOnlyList<SessionMetadata>> ListAllAsync(
             string? partitionId = null, CancellationToken ct = default);
+
+        /// <summary>设置会话标题</summary>
+        Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default);
     }
 
     /// <summary>Session 元数据（用于列表显示）</summary>

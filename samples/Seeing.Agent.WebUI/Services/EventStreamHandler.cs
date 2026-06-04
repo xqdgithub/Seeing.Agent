@@ -1,4 +1,5 @@
 using Seeing.Agent.Core.Events;
+using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
@@ -6,32 +7,6 @@ using System.Text;
 
 namespace Seeing.Agent.WebUI.Services
 {
-    /// <summary>
-    /// 权限请求事件 - WebUI 特有事件，用于 UI 侧权限交互
-    /// </summary>
-    public record PermissionRequestEvent : IMessageEvent
-    {
-        public required string SessionId { get; init; }
-        public DateTime Timestamp { get; init; } = DateTime.Now;
-        public MessageEventType Type => MessageEventType.Error; // 兼容接口，实际使用 EventType 属性
-        public string? LoopId { get; init; }
-
-        /// <summary>权限请求 ID</summary>
-        public string PermissionId { get; init; } = "";
-
-        /// <summary>权限类型/工具名</summary>
-        public string Permission { get; init; } = "";
-
-        /// <summary>资源路径</summary>
-        public string? Resource { get; init; }
-
-        /// <summary>请求消息</summary>
-        public string? Message { get; init; }
-
-        /// <summary>风险等级</summary>
-        public string? RiskLevel { get; init; }
-    }
-
     /// <summary>
     /// Agent Loop 信息 - 用于 UI 渲染分组
     /// </summary>
@@ -114,6 +89,11 @@ namespace Seeing.Agent.WebUI.Services
         private readonly Dictionary<string, int> _toolCallPositions = new();
 
         /// <summary>
+        /// 待处理的权限请求
+        /// </summary>
+        private readonly Dictionary<string, PermissionRequestViewModel> _pendingPermissions = new();
+
+        /// <summary>
         /// UI 更新回调
         /// </summary>
         public event Action? OnStateChanged;
@@ -122,6 +102,16 @@ namespace Seeing.Agent.WebUI.Services
         /// Loop 完成回调（用于 UI 渲染优化）
         /// </summary>
         public event Action<AgentLoopInfo>? OnLoopComplete;
+
+        /// <summary>
+        /// 权限请求回调
+        /// </summary>
+        public event Action<PermissionRequestEvent>? OnPermissionRequest;
+
+        /// <summary>
+        /// 权限响应回调
+        /// </summary>
+        public event Action<PermissionResponseEvent>? OnPermissionResponse;
 
         public EventStreamHandler(SessionState sessionState, SessionManager sessionManager)
         {
@@ -144,14 +134,6 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public async Task ProcessEventAsync(IMessageEvent evt)
         {
-            // 特殊处理 WebUI 特有事件
-            if (evt is PermissionRequestEvent permEvent)
-            {
-                HandlePermissionRequest(permEvent);
-                OnStateChanged?.Invoke();
-                return;
-            }
-
             switch (evt.Type)
             {
                 case MessageEventType.LoopStart:
@@ -186,9 +168,26 @@ namespace Seeing.Agent.WebUI.Services
                     HandleSubAgent((SubAgentEvent)evt);
                     break;
 
+                case MessageEventType.PermissionRequest:
+                    HandlePermissionRequest((PermissionRequestEvent)evt);
+                    break;
+
+                case MessageEventType.PermissionResponse:
+                    HandlePermissionResponse((PermissionResponseEvent)evt);
+                    break;
+
+                case MessageEventType.LoopCancelled:
+                    HandleLoopCancelled((LoopCancelledEvent)evt);
+                    break;
+
                 case MessageEventType.Error:
                     HandleError((ErrorEvent)evt);
                     await SaveToSessionAsync();
+                    break;
+
+                default:
+                    // 未处理的事件类型，记录日志（用于调试）
+                    // _logger.LogDebug("未处理事件类型: {EventType}", evt.Type);
                     break;
             }
 
@@ -212,7 +211,7 @@ namespace Seeing.Agent.WebUI.Services
             _currentAssistantMessage = null;
             _toolCallPositions.Clear();
             _currentStep = 0;  // ✅ 重置 step，新 Loop 从 0 开始
-            
+
             // 清空累积缓冲区
             _accumulatedReasoning.Clear();
             _accumulatedContent.Clear();
@@ -370,6 +369,31 @@ namespace Seeing.Agent.WebUI.Services
             {
                 toolCall.Error = evt.Error;
             }
+
+            // 处理 todowrite 工具：提取 Todo 列表并更新 SessionState
+            if (evt.ToolName?.ToLowerInvariant() == "todowrite" &&
+                evt.Status == ToolCallStatus.Success &&
+                !string.IsNullOrEmpty(evt.Output))
+            {
+                UpdateTodoList(evt.SessionId, evt.Output);
+            }
+        }
+
+        /// <summary>
+        /// 从 todowrite 工具输出更新 Todo 列表
+        /// </summary>
+        private void UpdateTodoList(string sessionId, string output)
+        {
+            try
+            {
+                var todoList = TodoListViewModel.FromJson(sessionId, output);
+                todoList.LastUpdated = DateTime.Now;
+                _sessionState.UpdateTodoList(todoList);
+            }
+            catch
+            {
+                // 解析失败，忽略
+            }
         }
 
         /// <summary>
@@ -382,27 +406,135 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 处理权限请求事件（WebUI 特有）
+        /// 处理权限请求事件
         /// </summary>
         private void HandlePermissionRequest(PermissionRequestEvent evt)
         {
-            // 权限请求通过 BlazorPermissionChannel 的 RespondToPermission 方法处理
-            // 这里仅触发 UI 状态更新，让 UI 显示权限请求界面
-            // 实际实现由 UI 组件（如 PermissionDialog）完成
+            // 添加权限请求到待处理队列
+            _pendingPermissions[evt.PermissionId] = new PermissionRequestViewModel
+            {
+                PermissionId = evt.PermissionId,
+                PermissionKind = evt.PermissionKind,
+                Resource = evt.Resource,
+                Arguments = evt.Arguments,
+                RiskLevel = evt.RiskLevel,
+                Message = evt.Message,
+                TimeoutSeconds = evt.TimeoutSeconds,
+                Timestamp = evt.Timestamp
+            };
+
+            // 触发权限 UI 显示
+            OnPermissionRequest?.Invoke(evt);
+        }
+
+        /// <summary>
+        /// 处理权限响应事件
+        /// </summary>
+        private void HandlePermissionResponse(PermissionResponseEvent evt)
+        {
+            // 移除待处理权限
+            _pendingPermissions.Remove(evt.PermissionId);
+
+            // 触发权限 UI 更新
+            OnPermissionResponse?.Invoke(evt);
+        }
+
+        /// <summary>
+        /// 处理 Loop 取消事件
+        /// </summary>
+        private void HandleLoopCancelled(LoopCancelledEvent evt)
+        {
+            if (_currentLoop != null)
+            {
+                _currentLoop.EndTime = evt.Timestamp;
+                _currentLoop.IsComplete = true;
+                _currentLoop.Success = false;
+                _currentLoop.Error = $"已取消: {evt.Reason}";
+
+                OnLoopComplete?.Invoke(_currentLoop);
+            }
+
+            // 添加取消标记消息
+            if (_sessionState.CurrentSession != null)
+            {
+                _sessionState.CurrentSession.AddMessage(
+                    SessionMessage.SystemMessage($"⚠️ 对话已取消: {evt.Reason}"));
+            }
         }
 
         private void HandleError(ErrorEvent evt)
         {
+            var errorDetails = FormatErrorDetails(evt);
+
             if (_currentAssistantMessage != null)
             {
-                _currentAssistantMessage.Content += $"\n\n⚠️ 错误: {evt.Message}";
+                _currentAssistantMessage.Content += $"\n\n⚠️ 错误: {errorDetails}";
             }
 
             // 添加系统错误消息
             if (_sessionState.CurrentSession != null)
             {
-                _sessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage($"⚠️ 错误: {evt.Message}"));
+                var errorMessage = SessionMessage.SystemMessage($"⚠️ 错误: {errorDetails}");
+                errorMessage.Metadata["errorSource"] = evt.Source ?? "unknown";
+                errorMessage.Metadata["errorType"] = evt.Exception?.GetType().Name ?? "Unknown";
+
+                if (evt.Exception is Llm.LlmException llmEx)
+                {
+                    errorMessage.Metadata["modelId"] = llmEx.ModelId ?? "";
+                    errorMessage.Metadata["providerId"] = llmEx.ProviderId ?? "";
+                    errorMessage.Metadata["isRetryable"] = llmEx.IsRetryable;
+                    errorMessage.Metadata["retryCount"] = llmEx.RetryCount;
+                }
+
+                _sessionState.CurrentSession.AddMessage(errorMessage);
             }
+        }
+
+        /// <summary>
+        /// 格式化错误详情为用户友好的消息
+        /// </summary>
+        private static string FormatErrorDetails(ErrorEvent evt)
+        {
+            var message = evt.Message;
+
+            // 根据异常类型提供更友好的消息
+            if (evt.Exception is Llm.LlmRetryExhaustedException retryEx)
+            {
+                return $"请求在 {retryEx.MaxRetries} 次重试后仍然失败。请稍后重试或检查网络连接。";
+            }
+
+            if (evt.Exception is Llm.LlmTimeoutException timeoutEx)
+            {
+                return $"请求超时 ({timeoutEx.Timeout.TotalSeconds:F1}秒)。请稍后重试。";
+            }
+
+            if (evt.Exception is Llm.LlmStreamingException streamEx)
+            {
+                return $"流式响应中断: {streamEx.Message}。请重新发起请求。";
+            }
+
+            if (evt.Exception is Llm.LlmConnectionException)
+            {
+                return "网络连接错误。请检查网络连接后重试。";
+            }
+
+            if (evt.Exception is Llm.LlmException llmEx)
+            {
+                return $"LLM 服务错误: {llmEx.Message}";
+            }
+
+            if (evt.Exception is OperationCanceledException)
+            {
+                return "请求已被取消。";
+            }
+
+            if (evt.Exception is IOException ioEx)
+            {
+                return $"网络连接错误: {ioEx.Message}。请检查网络后重试。";
+            }
+
+            // 默认返回原始消息
+            return message;
         }
 
         /// <summary>
@@ -461,7 +593,7 @@ namespace Seeing.Agent.WebUI.Services
 
             // 创建新的助手消息，每个 step 使用独立的 ID
             _currentAssistantMessage = SessionMessage.AssistantMessage("");
-            
+
             // 使用 loopId + step 生成唯一 ID，确保每个 Loop 的每个 step 都是独立的消息
             // loopId 每次对话都是唯一的，step 在 Loop 内递增
             var loopPrefix = _currentLoopId ?? sessionId;
@@ -511,8 +643,8 @@ namespace Seeing.Agent.WebUI.Services
         public string GetCurrentAssistantContent()
         {
             // 优先返回累积内容（跨多轮），否则返回当前消息内容
-            return _accumulatedContent.Length > 0 
-                ? _accumulatedContent.ToString() 
+            return _accumulatedContent.Length > 0
+                ? _accumulatedContent.ToString()
                 : _currentAssistantMessage?.Content ?? "";
         }
 
@@ -522,8 +654,8 @@ namespace Seeing.Agent.WebUI.Services
         public string? GetCurrentAssistantReasoning()
         {
             // 优先返回累积推理内容（跨多轮），否则返回当前消息内容
-            return _accumulatedReasoning.Length > 0 
-                ? _accumulatedReasoning.ToString() 
+            return _accumulatedReasoning.Length > 0
+                ? _accumulatedReasoning.ToString()
                 : _currentAssistantMessage?.ReasoningContent;
         }
 

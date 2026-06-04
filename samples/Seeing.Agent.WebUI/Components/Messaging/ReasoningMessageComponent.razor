@@ -1,0 +1,90 @@
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+
+@* 推理消息组件 - 渲染思考/推理过程 *@
+
+<div class="content-block-reasoning reasoning-section @InitialState" data-reasoning-id="@Block.Id">
+    @* 折叠头部（可点击） *@
+    <div class="reasoning-header" onclick="toggleReasoning('@Block.Id')">
+        <span class="reasoning-toggle-icon">▶</span>
+        <span style="color: @(IsComplete ? "var(--color-success)" : "var(--color-primary)")">
+            @(IsComplete ? "✅" : "🔄")
+        </span>
+        <span style="margin-left: 6px; font-weight: 500; font-size: 13px;">思考</span>
+        <span class="reasoning-preview">
+            @(IsComplete? GetContentPreview() : "思考中...")
+        </span>
+        @if (!IsComplete)
+        {
+            <span style="margin-left: 8px;">⏳</span>
+        }
+    </div>
+    
+    @* 内容区域（始终渲染，通过 CSS 控制显示/隐藏） *@
+    <div class="reasoning-content">
+        <div style="font-size: 12px; color: var(--color-text-secondary); max-height: 300px; overflow-y: auto;">
+            @((MarkupString)HtmlContent)
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// 文本内容
+    /// </summary>
+    [Parameter]
+    public string Content { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// 渲染上下文
+    /// </summary>
+    [Parameter]
+    public RenderContext Context { get; set; } = default!;
+    
+    /// <summary>
+    /// 内容块
+    /// </summary>
+    [Parameter]
+    public ContentBlock Block { get; set; } = default!;
+    
+    /// <summary>
+    /// 是否已完成
+    /// </summary>
+    private bool IsComplete => Block.IsComplete;
+    
+    /// <summary>
+    /// 初始状态（流式时展开，完成后折叠）
+    /// </summary>
+    private string InitialState => IsComplete ? "collapsed" : "expanded";
+    
+    /// <summary>
+    /// 渲染后的 HTML 内容
+    /// </summary>
+    private string HtmlContent => string.IsNullOrEmpty(Content) 
+        ? string.Empty 
+        : Context.Cache?.GetOrCreateMarkdown(Content, Context.GetMarkdownCacheKey(Block)) ?? Content;
+    
+    /// <summary>
+    /// 获取内容预览（第一行，最多 40 字符）
+    /// </summary>
+    private string GetContentPreview()
+    {
+        if (string.IsNullOrEmpty(Content))
+            return "0 字符";
+        
+        // 去除 Markdown/HTML 标记，取纯文本
+        var text = Content;
+        
+        // 取第一行
+        var firstLine = text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .FirstOrDefault(l => l.Length > 0 && !l.StartsWith("```") && !l.StartsWith("#"));
+        
+        if (string.IsNullOrEmpty(firstLine))
+            firstLine = text.Split('\n').FirstOrDefault()?.Trim() ?? "";
+        
+        if (firstLine.Length > 40)
+            return firstLine[..40] + "...";
+        
+        return firstLine;
+    }
+}
