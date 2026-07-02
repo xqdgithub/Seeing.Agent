@@ -88,6 +88,52 @@ namespace Seeing.Session.Management
         }
 
         /// <summary>
+        /// 确保会话存在：先查缓存，再尝试从存储加载，均不存在则使用指定 ID 创建
+        /// </summary>
+        /// <param name="id">会话 ID（由调用方指定）</param>
+        /// <param name="selectedAgent">选中的 Agent ID（可选，仅新建时生效）</param>
+        /// <param name="partitionId">分区 ID（可选，仅新建时生效）</param>
+        /// <returns>已存在或新创建的 SessionData</returns>
+        public async Task<SessionData> EnsureSessionAsync(
+            string id,
+            string? selectedAgent = null,
+            string? partitionId = null)
+        {
+            if (string.IsNullOrEmpty(id))
+                throw new ArgumentException("Session id cannot be null or empty.", nameof(id));
+
+            var existing = Get(id);
+            if (existing != null)
+                return existing;
+
+            var loaded = await LoadAsync(id);
+            if (loaded != null)
+                return loaded;
+
+            var session = new SessionData
+            {
+                Id = id,
+                Title = $"Session {id}",
+                PartitionId = partitionId ?? "default",
+                SelectedAgent = selectedAgent ?? "primary",
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now,
+                LastActiveAt = DateTime.Now,
+                Status = SessionStatus.Created
+            };
+            _sessionDataCache[session.Id] = session;
+
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.Created,
+                session.Id,
+                result: new Dictionary<string, object?> { ["session"] = session });
+
+            _logger?.LogInformation("创建会话: {SessionId}, Partition: {PartitionId}, Agent: {Agent}",
+                session.Id, session.PartitionId, session.SelectedAgent);
+            return session;
+        }
+
+        /// <summary>
         /// 获取会话
         /// </summary>
         /// <param name="id">会话 ID</param>

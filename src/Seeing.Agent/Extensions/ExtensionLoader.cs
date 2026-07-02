@@ -80,10 +80,18 @@ namespace Seeing.Agent.Extensions
                     : Path.Combine(userProfile, path.Substring(1).TrimStart('/', '\\'));
             }
 
-            // 转换为绝对路径
+            // 转换为绝对路径（优先当前目录，其次应用程序基目录）
             if (!Path.IsPathRooted(path))
             {
-                path = Path.GetFullPath(path);
+                var cwdCandidate = Path.GetFullPath(path);
+                if (File.Exists(cwdCandidate))
+                    return cwdCandidate;
+
+                var baseCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
+                if (File.Exists(baseCandidate))
+                    return baseCandidate;
+
+                path = cwdCandidate;
             }
 
             if (!File.Exists(path))

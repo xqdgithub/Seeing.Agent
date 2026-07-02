@@ -1,6 +1,7 @@
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
+using Seeing.Agent.Gateway.Extensions;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration;
@@ -18,6 +19,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 
 builder.Services.AddSeeingAgent(builder.Configuration);
+builder.Services.AddSeeingGatewayServer(builder.Configuration);
 
 // === Memory 模块（直接 DI 注入，便于调试）===
 builder.Services.AddSeeingAgentMemory(options =>

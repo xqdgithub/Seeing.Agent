@@ -87,7 +87,7 @@
                             <Tag>@session.SelectedAgent</Tag>
                             <span class="session-messages">@session.MessageCount 条消息</span>
                         </div>
-                        <div class="session-actions" onclick:stopPropagation="true">
+                        <div class="session-actions" @onclick:stopPropagation @onclick="() => {}">
                             <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
                                     Icon="@IconType.Outline.Fork" 
                                     OnClick="@(() => BranchSession(session.Id))">

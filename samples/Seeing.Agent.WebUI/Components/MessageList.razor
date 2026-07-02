@@ -151,6 +151,11 @@
     private int _lastProcessedCount = 0;
 
     /// <summary>
+    /// 上次第一条消息的ID（用于检测消息列表是否被重置）
+    /// </summary>
+    private string? _lastFirstMessageId = null;
+
+    /// <summary>
     /// 获取已渲染的 LoopId 集合（每次渲染时重置）
     /// </summary>
     private readonly HashSet<string> _currentRenderLoopIds = new();
@@ -182,6 +187,17 @@
     {
         // 重置渲染周期状态
         _currentRenderLoopIds.Clear();
+        
+        // 检测消息列表是否被重置（消息数量减少或第一条消息ID变化）
+        var firstMsgId = Messages.FirstOrDefault()?.Id;
+        if (Messages.Count < _lastProcessedCount || 
+            (_lastFirstMessageId != null && firstMsgId != _lastFirstMessageId))
+        {
+            // 消息列表被重置，清空所有缓存
+            ClearCache();
+        }
+        
+        _lastFirstMessageId = firstMsgId;
         
         // 检查是否需要更新缓存
         if (Messages.Count != _lastProcessedCount)
@@ -322,6 +338,7 @@
         _currentRenderLoopIds.Clear();
         _nextLoopIndex = 1;
         _lastProcessedCount = 0;
+        _lastFirstMessageId = null;
     }
     
     /// <summary>

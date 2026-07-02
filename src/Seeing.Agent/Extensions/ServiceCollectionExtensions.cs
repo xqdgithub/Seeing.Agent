@@ -86,6 +86,10 @@ namespace Seeing.Agent.Extensions
                         options.DefaultModel = configOptions.DefaultModel;
                     if (!string.IsNullOrEmpty(configOptions.DefaultAgent))
                         options.DefaultAgent = configOptions.DefaultAgent;
+                    if (configOptions.Gateway != null)
+                        options.Gateway = configOptions.Gateway;
+                    if (configOptions.Plugins is { Count: > 0 })
+                        options.Plugins = configOptions.Plugins;
                 }
             }
 
@@ -100,9 +104,12 @@ namespace Seeing.Agent.Extensions
                 opt.Agents = options.Agents;
                 opt.Skills = options.Skills;
                 opt.Permission = options.Permission;
+                opt.Gateway = options.Gateway;
                 opt.Plugins = options.Plugins;
                 opt.PluginEnabled = options.PluginEnabled;
             });
+
+            services.Configure<GatewayOptions>(configuration.GetSection("SeeingAgent:Gateway"));
 
             // 注册核心接口和实现
             RegisterCoreServices(services);
@@ -258,6 +265,69 @@ namespace Seeing.Agent.Extensions
                     }
                 }
             }
+
+            // Gateway
+            if (element.TryGetProperty("Gateway", out var gateway) && gateway.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                try
+                {
+                    var gatewayOptions = System.Text.Json.JsonSerializer.Deserialize<GatewayOptions>(gateway.GetRawText(), ConfigJsonOptions);
+                    if (gatewayOptions != null)
+                        options.Gateway = gatewayOptions;
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "解析 Gateway 配置失败，已跳过");
+                }
+            }
+
+            // Plugins
+            if (element.TryGetProperty("Plugins", out var plugins) && plugins.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                options.Plugins = ParsePluginsFromJson(plugins, logger);
+            }
+        }
+
+        private static List<PluginSpec> ParsePluginsFromJson(System.Text.Json.JsonElement plugins, ILogger? logger)
+        {
+            var result = new List<PluginSpec>();
+
+            foreach (var item in plugins.EnumerateArray())
+            {
+                try
+                {
+                    switch (item.ValueKind)
+                    {
+                        case System.Text.Json.JsonValueKind.String:
+                            result.Add(new PluginSpec { Spec = item.GetString() ?? "" });
+                            break;
+                        case System.Text.Json.JsonValueKind.Object:
+                            var spec = System.Text.Json.JsonSerializer.Deserialize<PluginSpec>(item.GetRawText(), ConfigJsonOptions);
+                            if (spec != null && !string.IsNullOrEmpty(spec.Spec))
+                                result.Add(spec);
+                            break;
+                        case System.Text.Json.JsonValueKind.Array:
+                            var items = item.EnumerateArray().ToArray();
+                            if (items.Length >= 1 && items[0].ValueKind == System.Text.Json.JsonValueKind.String)
+                            {
+                                var pluginSpec = new PluginSpec { Spec = items[0].GetString() ?? "" };
+                                if (items.Length >= 2 && items[1].ValueKind == System.Text.Json.JsonValueKind.Object)
+                                {
+                                    pluginSpec.Options = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
+                                        items[1].GetRawText(), ConfigJsonOptions);
+                                }
+                                result.Add(pluginSpec);
+                            }
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "解析 Plugins 条目失败，已跳过");
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -681,6 +751,9 @@ namespace Seeing.Agent.Extensions
             // 后台任务管理器
             services.AddSingleton<BackgroundTaskManager>();
             services.AddSingleton<IBackgroundTaskManager>(sp => sp.GetRequiredService<BackgroundTaskManager>());
+
+            // 命令注册表（插件加载与扩展命令注册需要）
+            services.AddSingleton<ICommandRegistry, CommandRegistry>();
 
             // 组件管理器（统一管理 Skills/MCP/Plugins/Rules）
             services.AddSingleton<IComponentManager, ComponentManager>();

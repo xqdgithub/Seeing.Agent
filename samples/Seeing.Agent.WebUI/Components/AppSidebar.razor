@@ -12,7 +12,8 @@
         Width="@GetSiderWidth()"
         Collapsed="@Collapsed"
         CollapsedChanged="@OnCollapsedChanged"
-        Theme="@SiderTheme.Light">
+        Theme="@SiderTheme.Light"
+        Style="overflow: auto; height: 100vh; position: fixed; left: 0; top: 0; z-index: 100;">
     
     <!-- Header: Logo -->
     <div class="sider-header">
@@ -35,7 +36,7 @@
     <Menu Mode="@MenuMode.Inline"
           Theme="@MenuTheme.Light"
           SelectedKeys="@_selectedKeys"
-          OpenKeys="@_openKeys"
+          @bind-OpenKeys="_openKeys"
           Class="sider-menu">
         
         @* 聊天 *@

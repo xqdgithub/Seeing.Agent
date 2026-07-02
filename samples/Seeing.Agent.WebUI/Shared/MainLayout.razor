@@ -23,7 +23,7 @@
                 CollapsedChanged="@OnSiderCollapse" />
     
     <!-- 主内容区域 -->
-    <Layout Class="main-layout-content">
+    <Layout Class="@(AppState.SidebarCollapsed ? "main-layout-content collapsed" : "main-layout-content")">
         <Content Class="content-area">
             @Body
         </Content>

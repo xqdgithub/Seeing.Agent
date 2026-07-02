@@ -83,6 +83,109 @@ namespace Seeing.Session.Tests
             session.SelectedAgent.Should().Be("oracle");
         }
 
+        // === EnsureSessionAsync 测试 ===
+
+        [Fact]
+        public async Task EnsureSessionAsync_WhenInCache_ShouldReturnExisting()
+        {
+            // Arrange
+            var created = _sessionManager.Create(selectedAgent: "build");
+            _mockStore.Setup(s => s.LoadAsync(created.Id)).ReturnsAsync((SessionData?)null);
+
+            // Act
+            var result = await _sessionManager.EnsureSessionAsync(created.Id);
+
+            // Assert
+            result.Should().BeSameAs(created);
+            _mockStore.Verify(s => s.LoadAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task EnsureSessionAsync_WhenInStore_ShouldLoadAndReturn()
+        {
+            // Arrange
+            const string sessionId = "gateway-session-1";
+            var storedSession = SessionData.Create("stored-part", "stored-agent");
+            storedSession.Id = sessionId;
+            _mockStore.Setup(s => s.LoadAsync(sessionId)).ReturnsAsync(storedSession);
+
+            // Act
+            var result = await _sessionManager.EnsureSessionAsync(sessionId);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Id.Should().Be(sessionId);
+            result.PartitionId.Should().Be("stored-part");
+            result.SelectedAgent.Should().Be("stored-agent");
+            _sessionManager.Get(sessionId).Should().BeSameAs(result);
+            _mockStore.Verify(s => s.LoadAsync(sessionId), Times.Once);
+        }
+
+        [Fact]
+        public async Task EnsureSessionAsync_WhenNotExists_ShouldCreateWithProvidedId()
+        {
+            // Arrange
+            const string sessionId = "custom-gateway-id";
+            _mockStore.Setup(s => s.LoadAsync(sessionId)).ReturnsAsync((SessionData?)null);
+
+            // Act
+            var result = await _sessionManager.EnsureSessionAsync(
+                sessionId,
+                selectedAgent: "oracle",
+                partitionId: "gw-partition");
+
+            // Assert
+            result.Id.Should().Be(sessionId);
+            result.Id.Should().NotStartWith("ses_");
+            result.SelectedAgent.Should().Be("oracle");
+            result.PartitionId.Should().Be("gw-partition");
+            _sessionManager.Get(sessionId).Should().BeSameAs(result);
+        }
+
+        [Fact]
+        public async Task EnsureSessionAsync_WhenCreating_ShouldTriggerCreatedHook()
+        {
+            // Arrange
+            const string sessionId = "hook-test-id";
+            var hookInvoked = false;
+            _hookManager.AddHook(new TestCreatedHook(() => hookInvoked = true));
+            _mockStore.Setup(s => s.LoadAsync(sessionId)).ReturnsAsync((SessionData?)null);
+
+            // Act
+            await _sessionManager.EnsureSessionAsync(sessionId);
+            await Task.Delay(100);
+
+            // Assert
+            hookInvoked.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task EnsureSessionAsync_WithEmptyId_ShouldThrow()
+        {
+            // Act
+            var act = () => _sessionManager.EnsureSessionAsync(string.Empty);
+
+            // Assert
+            await act.Should().ThrowAsync<ArgumentException>()
+                .WithParameterName("id");
+        }
+
+        private sealed class TestCreatedHook : ISessionHook
+        {
+            private readonly Action _onExecute;
+
+            public TestCreatedHook(Action onExecute) => _onExecute = onExecute;
+
+            public string HookPoint => HookPoints.Created;
+            public int Priority => 0;
+
+            public Task<SessionHookResult> ExecuteAsync(SessionHookContext context)
+            {
+                _onExecute();
+                return Task.FromResult(new SessionHookResult());
+            }
+        }
+
         // === Get 测试 ===
 
         [Fact]

@@ -293,6 +293,15 @@ Seeing.Agent/
 ├── Rules/             # RuleEngine
 ├── Configuration/     # SeeingAgentOptions
 └── Extensions/        # ServiceCollectionExtensions
+
+Gateway 兼容层（Agent 外部通讯）→ 详见 [docs/gateway/README.md](docs/gateway/README.md)
+├── src/Seeing.Gateway/           # 协议模型与事件映射
+├── src/Seeing.Gateway.Client/      # HTTP/SSE + WebSocket 客户端 SDK
+├── src/Seeing.Agent.Gateway/       # Server 插件（独立 Kestrel）
+├── src/Seeing.Gateway.WeCom/       # 企业微信 Channel Bridge
+├── samples/Seeing.Gateway.Console.Demo/
+├── samples/Seeing.Gateway.Server/    # 无头 Agent+Gateway 宿主（推荐）
+└── samples/Seeing.Gateway.WeCom.Demo/
 ```
 
 ## 配置选项
@@ -319,6 +328,35 @@ Seeing.Agent/
     }
   }
 }
+```
+
+## Gateway 外部通讯
+
+除 Blazor WebUI 外，可通过 **Gateway 兼容层** 对接企业微信等 IM 渠道，或自建 Channel Bridge。
+
+| 文档 | 说明 |
+|------|------|
+| [Gateway 总览](docs/gateway/README.md) | 架构、快速启动、协议要点 |
+| [Seeing.Gateway](src/Seeing.Gateway/README.md) | 协议 DTO 与事件映射 |
+| [Seeing.Gateway.Client](src/Seeing.Gateway.Client/README.md) | Client SDK（HTTP SSE / WebSocket） |
+| [Seeing.Agent.Gateway](src/Seeing.Agent.Gateway/README.md) | Server 集成（`AddSeeingGatewayServer`）与 API |
+| [Gateway Server](samples/Seeing.Gateway.Server/README.md) | 无头 Agent+Gateway 宿主（推荐） |
+| [Seeing.Gateway.WeCom](src/Seeing.Gateway.WeCom/README.md) | 企业微信 Bridge |
+| [Console Demo](samples/Seeing.Gateway.Console.Demo/README.md) | 本地 Gateway 联调 |
+| [WeCom Demo](samples/Seeing.Gateway.WeCom.Demo/README.md) | 企微端到端联调 |
+
+```bash
+# 启动 Agent + Gateway（:8765，推荐无头宿主）
+dotnet run --project samples/Seeing.Gateway.Server
+
+# 或本地 UI 开发时联启 Gateway
+dotnet run --project samples/Seeing.Agent.WebUI
+
+# Console 客户端验证
+dotnet run --project samples/Seeing.Gateway.Console.Demo -- --transport ws
+
+# 企微 Bridge（需配置 BotId/Secret）
+dotnet run --project samples/Seeing.Gateway.WeCom.Demo
 ```
 
 ## 许可证

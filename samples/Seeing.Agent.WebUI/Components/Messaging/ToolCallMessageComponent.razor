@@ -110,7 +110,8 @@ else
     private void ToggleExpand()
     {
         ToolCall.IsExpanded = !ToolCall.IsExpanded;
-        StateHasChanged();
+        // 不调用 StateHasChanged，避免触发父组件重新渲染
+        // 状态变更会在下次自然渲染时体现
     }
 
     /// <summary>

@@ -14,6 +14,12 @@ namespace Seeing.Session.Core
         /// <summary>创建新会话</summary>
         SessionData Create(string? partitionId = null, string? selectedAgent = null);
 
+        /// <summary>确保会话存在（缓存 → 存储 → 创建）</summary>
+        Task<SessionData> EnsureSessionAsync(
+            string id,
+            string? selectedAgent = null,
+            string? partitionId = null);
+
         /// <summary>获取会话</summary>
         SessionData? Get(string id);
 

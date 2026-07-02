@@ -175,7 +175,7 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-#app {
+#app, app {
   height: 100%;
 }
 

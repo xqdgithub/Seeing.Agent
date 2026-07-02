@@ -1,13 +1,16 @@
 /* Session Page Styles */
 
+/* ========== 会话页面容器 ========== */
 .session-page-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
     background: var(--color-bg-base);
+    overflow: hidden !important;
 }
 
-/* Session Header */
+/* ========== Session Header ========== */
 .session-header {
     display: flex;
     justify-content: space-between;
@@ -16,6 +19,7 @@
     background: var(--color-bg-container);
     border-bottom: 1px solid var(--color-border);
     min-height: 48px;
+    flex-shrink: 0;
 }
 
 .session-header-left {
@@ -36,12 +40,25 @@
     align-items: center;
 }
 
-/* Messages Container */
+/* ========== 主内容区域包装器 ========== */
+.session-content-wrapper {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+}
+
+/* ========== Messages Container ========== */
 .session-messages-container {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: var(--space-4);
     position: relative;
+    /* 确保滚动生效 */
+    overscroll-behavior: contain;
 }
 
 .session-empty-state {
@@ -71,7 +88,7 @@
     font-size: var(--font-size-sm);
 }
 
-/* Loading Overlay */
+/* ========== Loading Overlay ========== */
 .loading-overlay {
     position: absolute;
     top: 0;
@@ -85,14 +102,24 @@
     z-index: 100;
 }
 
-/* Input Container */
+/* ========== Input Container ========== */
 .session-input-container {
     padding: var(--space-4);
     background: var(--color-bg-container);
     border-top: 1px solid var(--color-border);
+    flex-shrink: 0;
 }
 
-/* Error Alert */
+/* ========== Todo 侧边面板 ========== */
+.session-todo-panel {
+    width: 320px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--color-border);
+    background: var(--color-bg-container);
+    overflow-y: auto;
+}
+
+/* ========== Error Alert ========== */
 .session-error-alert {
     position: fixed;
     bottom: var(--space-4);
@@ -114,7 +141,7 @@
     }
 }
 
-/* Responsive Adjustments */
+/* ========== Responsive Adjustments ========== */
 @media (max-width: 768px) {
     .session-header {
         padding: var(--space-2) var(--space-3);
@@ -130,5 +157,9 @@
     
     .session-input-container {
         padding: var(--space-2);
+    }
+    
+    .session-todo-panel {
+        width: 280px;
     }
 }

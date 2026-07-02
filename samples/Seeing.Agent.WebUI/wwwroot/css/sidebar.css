@@ -1,15 +1,24 @@
 /**
  * AppSidebar 组件样式 - 使用 AntDesign Sider
+ * 
+ * 注意：固定定位通过 Sider 组件的 Style 属性设置，
+ * 因为 AntDesign 内联样式优先级高于 CSS 类
  */
 
-.app-sider {
+/* ========== 侧边栏容器 ========== */
+/* 背景和边框样式（定位由内联 Style 控制） */
+.app-sider.ant-layout-sider,
+aside.app-sider.ant-layout-sider {
     background: #fafafa !important;
     border-right: 1px solid #e8e8e8 !important;
 }
 
 .app-sider .ant-layout-sider-children {
-    display: flex;
-    flex-direction: column;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
 }
 
 /* ========== Header ========== */
@@ -60,7 +69,9 @@
 /* ========== Menu ========== */
 .sider-menu {
     flex: 1;
-    overflow-y: auto;
+    min-height: 0;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
     border-right: none !important;
 }
 
@@ -83,7 +94,8 @@
 
 /* ========== Dark Theme Support ========== */
 @media (prefers-color-scheme: dark) {
-    .app-sider {
+    .app-sider,
+    .app-sider.ant-layout-sider {
         background: #141414 !important;
         border-right-color: #303030 !important;
     }

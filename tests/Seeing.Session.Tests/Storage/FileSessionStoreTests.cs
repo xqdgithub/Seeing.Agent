@@ -420,7 +420,7 @@ namespace Seeing.Session.Tests.Storage
                     AgentName = "Test Agent",
                     Role = "assistant"
                 },
-                Status = SessionStatus.Running
+                Status = SessionStatus.Active
             };
         }
 

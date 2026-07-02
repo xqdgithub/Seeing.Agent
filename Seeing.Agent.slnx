@@ -1,17 +1,30 @@
 <Solution>
+  <Folder Name="/acp.net/">
+    <Project Path="../dotnet-acp/src/Acp/Acp.NetCore.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
+    <Project Path="samples/Seeing.Gateway.Console.Demo/Seeing.Gateway.Console.Demo.csproj" />
+    <Project Path="samples/Seeing.Gateway.Server/Seeing.Gateway.Server.csproj" />
+    <Project Path="samples/Seeing.Gateway.WeCom.Demo/Seeing.Gateway.WeCom.Demo.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Seeing.Agent.Gateway/Seeing.Agent.Gateway.csproj" />
+    <Project Path="src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
     <Project Path="src/Seeing.Agent.Plugins/Seeing.Agent.Plugins.csproj" />
     <Project Path="src/Seeing.Agent/Seeing.Agent.csproj" />
-    <Project Path="src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
+    <Project Path="src/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
+    <Project Path="src/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
+    <Project Path="src/Seeing.Gateway/Seeing.Gateway.csproj" />
     <Project Path="src/Seeing.Session/Seeing.Session.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Plugins.Tests/Seeing.Agent.Plugins.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
+    <Project Path="tests/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />
+    <Project Path="tests/Seeing.Gateway.Tests/Seeing.Gateway.Tests.csproj" />
+    <Project Path="tests/Seeing.Gateway.WeCom.Tests/Seeing.Gateway.WeCom.Tests.csproj" />
   </Folder>
   <Folder Name="/解决方案项/" />
 </Solution>

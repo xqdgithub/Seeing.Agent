@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Gateway</RootNamespace>
+    <AssemblyName>Seeing.Gateway</AssemblyName>
+
+    <PackageId>Seeing.Gateway</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Seeing</Authors>
+    <Description>Gateway protocol models and event mapping for Seeing.Agent</Description>
+    <PackageTags>AI;Agent;Gateway</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Seeing.Agent\Seeing.Agent.csproj" />
+  </ItemGroup>
+
+</Project>

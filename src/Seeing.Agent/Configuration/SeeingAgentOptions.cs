@@ -36,6 +36,9 @@ namespace Seeing.Agent.Configuration
         /// <summary>权限配置</summary>
         public PermissionOptions Permission { get; set; } = new();
 
+        /// <summary>Gateway 配置</summary>
+        public GatewayOptions Gateway { get; set; } = new();
+
         /// <summary>
         /// 插件列表
         /// <para>
