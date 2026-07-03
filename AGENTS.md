@@ -39,6 +39,14 @@ Seeing.Agent/
 │   ├── Seeing.Agent.SpectreTui/   # Spectre.Console TUI 示例
 │   └── Seeing.Agent.Host/         # Generic Host 示例
 │
+├── docs/                          # 集中文档（架构、Gateway、ACP、开发评审）
+│   ├── README.md                  # 文档索引
+│   ├── architecture/              # 框架设计与 Extension
+│   ├── gateway/                   # Gateway 集成
+│   ├── acp/                       # ACP 集成
+│   ├── development/               # 架构/Provider 评审
+│   └── plans/                     # 历史实施计划（维护者参考）
+│
 └── CommandLineUtils/              # [外部] McMaster 命令行库
 └── command-line-api/              # [外部] dotnet 命令行 API
 ```
@@ -63,6 +71,9 @@ Seeing.Agent/
 | 装饰器链模式 | `src/Seeing.Agent/Decorators/ToolDecoratorRegistry.cs` | 超时→重试→缓存 |
 | Agent 插件实现 | `src/Seeing.Agent.Plugins/Agents/*.cs` | Oracle/Metis/Momus/Sisyphus 等 |
 | ACP 集成 | `src/Seeing.Agent.Acp/` + `docs/acp/integration.md` | Passthrough 透传 + acp 工具委派，`IAgentExecutionRouter` 路由 |
+| 项目文档索引 | `docs/README.md` | 架构、Gateway、ACP、开发评审与历史计划 |
+| 框架架构 | `docs/architecture/ARCHITECTURE.md` | 分层设计、配置结构 |
+| Extension 开发 | `docs/architecture/EXTENSION.md` | 插件加载与配置层级 |
 
 ---
 
@@ -133,7 +144,7 @@ public static async Task<string> GetWeather(
 
 ---
 
-## 已知问题（REVIEW.md + PROVIDER_FLOW_REVIEW.md）
+## 已知问题（`docs/development/REVIEW.md` + `docs/development/PROVIDER_FLOW_REVIEW.md`）
 
 | 优先级 | 问题 | 影响 |
 |--------|------|------|

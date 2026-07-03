@@ -332,6 +332,17 @@ Seeing.Agent 从 **用户级** `~/.seeing/seeing.json` 与 **项目级** `./.see
 }
 ```
 
+## 文档
+
+完整文档索引见 [docs/README.md](docs/README.md)，主要包括：
+
+| 文档 | 说明 |
+|------|------|
+| [框架架构](docs/architecture/ARCHITECTURE.md) | 分层设计、核心模块 |
+| [Extension 扩展](docs/architecture/EXTENSION.md) | 插件开发与配置层级 |
+| [Gateway 总览](docs/gateway/README.md) | 外部通讯与协议 |
+| [ACP 集成](docs/acp/integration.md) | Agent Client Protocol |
+
 ## Gateway 外部通讯
 
 除 Blazor WebUI 外，可通过 **Gateway 兼容层** 对接企业微信等 IM 渠道，或自建 Channel Bridge。

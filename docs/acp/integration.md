@@ -246,3 +246,4 @@ where.exe agent
 | `src/Seeing.Agent.Acp/AcpExtension.cs` | 插件入口，装饰路由 |
 | `src/Seeing.Agent.Acp/Routing/AcpAgentExecutionRouter.cs` | ACP 路由装饰器 |
 | `samples/Seeing.Agent.WebUI/.seeing/seeing.json` | WebUI 示例配置 |
+| `samples/Seeing.Agent.WebUI/.seeing/mcp.json.example` | MCP 配置模板（复制为 `mcp.json` 后填入密钥） |

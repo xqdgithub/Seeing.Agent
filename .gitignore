@@ -365,3 +365,21 @@ FodyWeavers.xsd
 /screenshots
 /samples/Seeing.Agent.WebUI/nul
 /nul
+
+# --- Seeing.Agent project-specific ---
+
+# Local agent orchestration artifacts (Sisyphus / internal plans)
+.sisyphus/
+.sisyphusevidence/
+
+# Repo-root local Seeing config (sample templates live under samples/)
+/.seeing/
+
+# MCP config may contain API tokens; use mcp.json.example as template
+**/.seeing/mcp.json
+
+# Local build logs
+build_output.txt
+
+# Dev screenshots (not referenced by docs)
+/*.png
