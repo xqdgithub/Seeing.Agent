@@ -83,7 +83,7 @@ namespace Seeing.Session.Management
                 result: new Dictionary<string, object?> { ["session"] = session });
 
             _logger?.LogInformation("创建会话: {SessionId}, Partition: {PartitionId}, Agent: {Agent}",
-                session.Id, partitionId ?? "default", selectedAgent ?? "primary");
+                session.Id, partitionId ?? "default", selectedAgent ?? "(default)");
             return session;
         }
 
@@ -115,7 +115,7 @@ namespace Seeing.Session.Management
                 Id = id,
                 Title = $"Session {id}",
                 PartitionId = partitionId ?? "default",
-                SelectedAgent = selectedAgent ?? "primary",
+                SelectedAgent = selectedAgent ?? string.Empty,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now,
                 LastActiveAt = DateTime.Now,

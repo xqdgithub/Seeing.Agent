@@ -56,7 +56,7 @@ curl http://127.0.0.1:8765/api/gateway/health
 dotnet run --project samples/Seeing.Agent.WebUI
 ```
 
-WebUI 的 `appsettings.json` 已设置 `SeeingAgent:Gateway:Enabled: true`，无需插件 DLL。
+WebUI 的项目级 `.seeing/seeing.json` 已设置 `SeeingAgent:Gateway:Enabled: true`，无需插件 DLL。
 
 ### 3. 在自定义宿主中集成
 
@@ -69,19 +69,26 @@ await app.Services.InitializeSeeingAgentAsync(workspaceRoot);
 await app.RunAsync(); // GatewayHostedService 在 ApplicationStarted 后启动
 ```
 
-配置示例（`SeeingAgent:Gateway`）：
+配置示例（`.seeing/seeing.json`）：
 
 ```json
 {
-  "Enabled": true,
-  "AutoStart": true,
-  "Port": 8765,
-  "BindAddress": "127.0.0.1",
-  "DefaultAgentId": "build",
-  "PermissionMode": "auto_approve",
-  "EnableWebSocket": true
+  "SeeingAgent": {
+    "DefaultAgent": "build",
+    "DefaultModel": "openai/gpt-4",
+    "Gateway": {
+      "Enabled": true,
+      "AutoStart": true,
+      "Port": 8765,
+      "BindAddress": "127.0.0.1",
+      "PermissionMode": "auto_approve",
+      "EnableWebSocket": true
+    }
+  }
 }
 ```
+
+切换 ACP 透传默认：将 `DefaultAgent` 设为 `acp-opencode`（需 `Acp.Backends` 配置）。执行路径由 Agent `Runtime` 自动分流。
 
 <details>
 <summary>插件方式（高级，可选）</summary>

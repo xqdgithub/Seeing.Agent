@@ -146,7 +146,6 @@ public static class WeComMessageParser
 
     public static GatewayRequest ToGatewayRequest(
         ParsedWeComMessage parsed,
-        WeComOptions options,
         string sessionId)
     {
         return new GatewayRequest
@@ -154,7 +153,6 @@ public static class WeComMessageParser
             SessionId = sessionId,
             UserId = parsed.UserId,
             ChannelId = "wecom",
-            AgentId = options.DefaultAgentId,
             Input = parsed.InputParts,
             Stream = true,
             Metadata = new Dictionary<string, object?>

@@ -25,8 +25,6 @@ public sealed class WeComOptions
 
     public string? WelcomeText { get; set; } = "你好！我是 Seeing Agent，有什么可以帮你的？";
 
-    public string? DefaultAgentId { get; set; }
-
     public int HeartbeatIntervalSeconds { get; set; } = 30;
 
     public int DeltaThrottleMilliseconds { get; set; } = 150;

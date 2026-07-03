@@ -1,12 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Extensions;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddSeeingAgent(builder.Configuration);
+builder.Services.AddSeeingAcp();
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
 
 var host = builder.Build();

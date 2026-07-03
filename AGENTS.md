@@ -62,6 +62,7 @@ Seeing.Agent/
 | 配置深度合并 | `src/Seeing.Agent/Core/Configuration/MergeDeep.cs` | 递归合并算法 |
 | 装饰器链模式 | `src/Seeing.Agent/Decorators/ToolDecoratorRegistry.cs` | 超时→重试→缓存 |
 | Agent 插件实现 | `src/Seeing.Agent.Plugins/Agents/*.cs` | Oracle/Metis/Momus/Sisyphus 等 |
+| ACP 集成 | `src/Seeing.Agent.Acp/` + `docs/acp/integration.md` | Passthrough 透传 + acp 工具委派，`IAgentExecutionRouter` 路由 |
 
 ---
 
@@ -93,8 +94,10 @@ public static async Task<string> GetWeather(
 ### 配置文件命名
 - 选项类后缀 `Options`（如 `SeeingAgentOptions`）
 - 配置节名称 `SeeingAgent`
-- 用户级配置：`~/.seeing/seeing.json`
-- 项目级配置：`.seeing/seeing.json`
+- **Agent/Gateway/ACP 配置仅写在** `.seeing/seeing.json`（不使用 `appsettings.json` 的 `SeeingAgent` 节）
+- 用户级配置：`~/.seeing/seeing.json`（Providers、DefaultModel 等跨项目通用）
+- 项目级配置：`.seeing/seeing.json`（Gateway 服务行为、Agents、Acp 等项目专属，覆盖用户级）
+- **默认 Agent 统一使用** `DefaultAgent`；ACP / Native 由 Agent 的 `Runtime` 自动分流，勿在 `Gateway` 节重复配置 Agent
 
 ### 内部 Helper 类（不对外暴露）
 | 文件 | 用途 |

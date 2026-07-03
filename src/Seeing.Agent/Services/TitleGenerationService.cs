@@ -20,7 +20,7 @@ namespace Seeing.Agent.Services
     /// </remarks>
     public class TitleGenerationService : ITitleGenerationService, IHookHandler
     {
-        private readonly AgentExecutor _agentExecutor;
+        private readonly AgentExecutor _agentExecutor; // Native-only：标题生成不走 ACP 路由
         private readonly IAgentRegistry _agentRegistry;
         private readonly ISessionManager _sessionManager;
         private readonly ILogger<TitleGenerationService>? _logger;

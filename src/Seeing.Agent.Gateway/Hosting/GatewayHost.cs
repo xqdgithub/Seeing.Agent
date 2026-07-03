@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Endpoints;
 using Seeing.Agent.Gateway.Permission;
@@ -62,13 +63,15 @@ public sealed class GatewayHost : IAsyncDisposable
         var executionQueue = new SessionExecutionQueue();
         var connectionManager = new GatewayConnectionManager();
         var sessionManager = _rootServices.GetRequiredService<SessionManager>();
-        var sessionResolver = new GatewaySessionResolver(sessionManager, _options);
+        var selectionResolver = _rootServices.GetRequiredService<AgentSelectionResolver>();
+        var sessionResolver = new GatewaySessionResolver(sessionManager, selectionResolver);
         var loggerFactory = _rootServices.GetRequiredService<ILoggerFactory>();
         var orchestratorLogger = loggerFactory.CreateLogger<GatewayOrchestrator>();
 
         var orchestrator = new GatewayOrchestrator(
             _rootServices,
             _options,
+            selectionResolver,
             permissionChannel,
             runTracker,
             executionQueue,

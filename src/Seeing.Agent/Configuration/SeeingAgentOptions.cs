@@ -39,6 +39,9 @@ namespace Seeing.Agent.Configuration
         /// <summary>Gateway 配置</summary>
         public GatewayOptions Gateway { get; set; } = new();
 
+        /// <summary>ACP 集成配置</summary>
+        public AcpOptions Acp { get; set; } = new();
+
         /// <summary>
         /// 插件列表
         /// <para>
@@ -151,5 +154,47 @@ namespace Seeing.Agent.Configuration
 
         /// <summary>额外设置</summary>
         public Dictionary<string, object>? Options { get; set; }
+
+        /// <summary>执行运行时类型</summary>
+        public AgentRuntime? Runtime { get; set; }
+
+        /// <summary>ACP 后端标识（Runtime 为 AcpPassthrough 时使用）</summary>
+        public string? AcpBackend { get; set; }
+    }
+
+    /// <summary>
+    /// ACP 集成配置
+    /// </summary>
+    public class AcpOptions
+    {
+        /// <summary>是否启用 ACP 集成</summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>默认 ACP 后端标识</summary>
+        public string? DefaultBackend { get; set; }
+
+        /// <summary>请求超时</summary>
+        public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromMinutes(5);
+
+        /// <summary>空闲超时</summary>
+        public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(30);
+
+        /// <summary>ACP 后端配置（key 为后端标识）</summary>
+        public Dictionary<string, AcpBackendConfig> Backends { get; set; } = new();
+    }
+
+    /// <summary>
+    /// 单个 ACP 后端配置
+    /// </summary>
+    public class AcpBackendConfig
+    {
+        /// <summary>启动命令</summary>
+        public string? Command { get; set; }
+
+        /// <summary>命令参数</summary>
+        public List<string>? Args { get; set; }
+
+        /// <summary>环境变量</summary>
+        public Dictionary<string, string>? Environment { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Core;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 
@@ -10,18 +10,22 @@ namespace Seeing.Agent.Gateway.Core;
 public sealed class GatewaySessionResolver
 {
     private readonly SessionManager _sessionManager;
-    private readonly GatewayOptions _options;
+    private readonly AgentSelectionResolver _selectionResolver;
 
-    public GatewaySessionResolver(SessionManager sessionManager, GatewayOptions options)
+    public GatewaySessionResolver(SessionManager sessionManager, AgentSelectionResolver selectionResolver)
     {
         _sessionManager = sessionManager;
-        _options = options;
+        _selectionResolver = selectionResolver;
     }
 
     /// <summary>确保会话存在，不存在则按指定 ID 创建</summary>
-    public Task<SessionData> EnsureSessionAsync(string sessionId, string? agentId = null)
+    public async Task<SessionData> EnsureSessionAsync(
+        string sessionId,
+        string? agentId = null,
+        CancellationToken cancellationToken = default)
     {
-        var selectedAgent = agentId ?? _options.DefaultAgentId;
-        return _sessionManager.EnsureSessionAsync(sessionId, selectedAgent: selectedAgent);
+        var selectedAgent = await _selectionResolver.ResolveAgentIdAsync(agentId, sessionSelectedAgent: null, cancellationToken)
+            .ConfigureAwait(false);
+        return await _sessionManager.EnsureSessionAsync(sessionId, selectedAgent: selectedAgent).ConfigureAwait(false);
     }
 }

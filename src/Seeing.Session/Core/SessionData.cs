@@ -29,8 +29,8 @@ namespace Seeing.Session.Core
         public DateTime LastActiveAt { get; set; }
 
         // === Agent 配置（一级字段） ===
-        /// <summary>选中的 Agent ID（如 primary, build 等）</summary>
-        public string SelectedAgent { get; set; } = "primary";
+        /// <summary>选中的 Agent ID（未设置时由 Seeing.Agent 解析 DefaultAgent）</summary>
+        public string SelectedAgent { get; set; } = string.Empty;
 
         /// <summary>选中的 Model ID（如 gpt-4o, claude-3-5-sonnet 等）</summary>
         public string SelectedModel { get; set; } = string.Empty;
@@ -84,7 +84,7 @@ namespace Seeing.Session.Core
                 Id = id,
                 Title = $"Session {id}",
                 PartitionId = partitionId ?? "default",
-                SelectedAgent = selectedAgent ?? "primary",
+                SelectedAgent = selectedAgent ?? string.Empty,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now,
                 LastActiveAt = DateTime.Now,

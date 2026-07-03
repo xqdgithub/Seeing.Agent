@@ -97,6 +97,12 @@ namespace Seeing.Agent.Core.Abstractions
         /// </summary>
         public virtual PermissionEffect PermissionDefaultEffect { get; set; } = PermissionEffect.Ask;
 
+        /// <summary>执行运行时类型</summary>
+        public virtual AgentRuntime Runtime { get; set; } = AgentRuntime.Native;
+
+        /// <summary>ACP 后端标识</summary>
+        public virtual string? AcpBackend { get; set; }
+
         // ========== 统一执行入口 ==========
 
         /// <summary>
@@ -142,17 +148,17 @@ namespace Seeing.Agent.Core.Abstractions
 
             try
             {
-                // ========== 配置模式：委托给 AgentExecutor ==========
+                // ========== 配置模式：委托给 IAgentExecutionRouter ==========
                 if (IsConfigDriven && context.Services != null)
                 {
-                    var executor = context.Services.GetService(typeof(AgentExecutor)) as AgentExecutor;
-                    if (executor != null)
+                    var router = context.Services.GetService(typeof(IAgentExecutionRouter)) as IAgentExecutionRouter;
+                    if (router != null)
                     {
                         // 将输入消息添加到历史
                         context.History.Add(input);
 
                         // 订阅事件流并提取 ChatMessage
-                        await foreach (var evt in executor.ExecuteAsync(
+                        await foreach (var evt in router.ExecuteAsync(
                             Definition!,
                             context,
                             cancellationToken))
@@ -166,7 +172,7 @@ namespace Seeing.Agent.Core.Abstractions
                     }
                     else
                     {
-                        _logger.LogWarning("AgentExecutor 未注册，回退到代码模式");
+                        _logger.LogWarning("IAgentExecutionRouter 未注册，回退到代码模式");
                         await foreach (var message in ExecuteCoreAsync(input, context, cancellationToken))
                         {
                             results.Add(message);

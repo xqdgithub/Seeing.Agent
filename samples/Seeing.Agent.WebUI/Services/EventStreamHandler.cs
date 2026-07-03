@@ -474,16 +474,17 @@ namespace Seeing.Agent.WebUI.Services
             // 添加系统错误消息
             if (_sessionState.CurrentSession != null)
             {
-                var errorMessage = SessionMessage.SystemMessage($"⚠️ 错误: {errorDetails}");
-                errorMessage.Metadata["errorSource"] = evt.Source ?? "unknown";
-                errorMessage.Metadata["errorType"] = evt.Exception?.GetType().Name ?? "Unknown";
+                var errorMessage = SessionMessage.SystemMessage($"⚠️ 错误: {errorDetails}")
+                    .WithMetadata("errorSource", evt.Source ?? "unknown")
+                    .WithMetadata("errorType", evt.Exception?.GetType().Name ?? "Unknown");
 
                 if (evt.Exception is Llm.LlmException llmEx)
                 {
-                    errorMessage.Metadata["modelId"] = llmEx.ModelId ?? "";
-                    errorMessage.Metadata["providerId"] = llmEx.ProviderId ?? "";
-                    errorMessage.Metadata["isRetryable"] = llmEx.IsRetryable;
-                    errorMessage.Metadata["retryCount"] = llmEx.RetryCount;
+                    errorMessage
+                        .WithMetadata("modelId", llmEx.ModelId ?? "")
+                        .WithMetadata("providerId", llmEx.ProviderId ?? "")
+                        .WithMetadata("isRetryable", llmEx.IsRetryable)
+                        .WithMetadata("retryCount", llmEx.RetryCount);
                 }
 
                 _sessionState.CurrentSession.AddMessage(errorMessage);

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Agent.Acp</RootNamespace>
+    <AssemblyName>Seeing.Agent.Acp</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Seeing.Agent\Seeing.Agent.csproj" />
+    <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
+    <ProjectReference Include="..\..\..\dotnet-acp\src\Acp\Acp.NetCore.csproj" />
+  </ItemGroup>
+
+</Project>

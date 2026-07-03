@@ -1,3 +1,4 @@
+using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
@@ -19,6 +20,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 
 builder.Services.AddSeeingAgent(builder.Configuration);
+builder.Services.AddSeeingAcp();
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
 
 // === Memory 模块（直接 DI 注入，便于调试）===

@@ -68,6 +68,12 @@ namespace Seeing.Agent.Core.Models
         /// <summary>允许的子代理</summary>
         public IReadOnlyList<string> AllowedAgents { get; init; } = Array.Empty<string>();
 
+        /// <summary>执行运行时类型</summary>
+        public AgentRuntime Runtime { get; init; } = AgentRuntime.Native;
+
+        /// <summary>ACP 后端标识</summary>
+        public string? AcpBackend { get; init; }
+
         /// <summary>权限默认效果（当没有匹配规则时，默认询问用户）</summary>
         public PermissionEffect PermissionDefaultEffect { get; init; } = PermissionEffect.Ask;
 
@@ -105,7 +111,9 @@ namespace Seeing.Agent.Core.Models
                 DeniedTools = agent.DeniedTools,
                 PermissionRules = agent.PermissionRules,
                 PermissionDefaultEffect = agent.PermissionDefaultEffect,
-                IsHidden = agent.Status == AgentStatus.Disabled
+                IsHidden = agent.Status == AgentStatus.Disabled,
+                Runtime = agent.Runtime,
+                AcpBackend = agent.AcpBackend
             };
         }
     }

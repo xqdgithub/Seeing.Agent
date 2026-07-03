@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
@@ -27,7 +28,8 @@ namespace Seeing.Agent.Core
         private readonly ILogger<AgentRegistry> _logger;
         private readonly IAgentStore _agentStore;
         private readonly IAgentRuntimeManager _runtimeManager;
-        private readonly string? _configDefaultAgentName;
+        private readonly IOptions<SeeingAgentOptions>? _options;
+        private readonly string? _fallbackDefaultAgentName;
 
         /// <summary>
         /// 创建 Agent 注册表实例（协调者模式）
@@ -37,12 +39,14 @@ namespace Seeing.Agent.Core
             IAgentStore agentStore,
             IAgentRuntimeManager runtimeManager,
             IEnumerable<AgentInfo>? builtInAgents = null,
-            string? defaultAgent = null)
+            string? defaultAgent = null,
+            IOptions<SeeingAgentOptions>? options = null)
         {
             _logger = logger;
             _agentStore = agentStore;
             _runtimeManager = runtimeManager;
-            _configDefaultAgentName = defaultAgent;
+            _options = options;
+            _fallbackDefaultAgentName = defaultAgent;
 
             // 注册内置代理（委托给 Store）
             if (builtInAgents != null)
@@ -115,14 +119,15 @@ namespace Seeing.Agent.Core
                 }
             }
 
-            // 2. 检查配置文件默认
-            if (_configDefaultAgentName != null)
+            // 2. 检查配置文件默认（支持热更新）
+            var configDefault = _options?.Value.DefaultAgent ?? _fallbackDefaultAgentName;
+            if (configDefault != null)
             {
-                var agent = await GetAgentAsync(_configDefaultAgentName);
+                var agent = await GetAgentAsync(configDefault);
                 // AgentMode.All 模式的代理也可以作为主代理
                 if (agent != null && (agent.Mode == AgentMode.Primary || agent.Mode == AgentMode.All) && !agent.IsHidden)
                 {
-                    return _configDefaultAgentName;
+                    return configDefault;
                 }
             }
 
@@ -309,6 +314,9 @@ namespace Seeing.Agent.Core
                 existing.Mode = config.Mode ?? existing.Mode;
                 existing.Color = config.Color ?? existing.Color;
                 existing.IsHidden = config.IsHidden ?? existing.IsHidden;
+                if (config.Runtime.HasValue)
+                    existing.Runtime = config.Runtime.Value;
+                existing.AcpBackend = config.AcpBackend ?? existing.AcpBackend;
 
                 // 合并权限规则（新格式）
                 if (config.PermissionRules != null && config.PermissionRules.Count > 0)
@@ -395,6 +403,8 @@ namespace Seeing.Agent.Core
             public IReadOnlyList<string> AllowedTools { get => _info.AllowedTools.AsReadOnly(); set { _info.AllowedTools.Clear(); _info.AllowedTools.AddRange(value); } }
             public IReadOnlyList<string> DeniedTools { get => _info.DeniedTools.AsReadOnly(); set { _info.DeniedTools.Clear(); _info.DeniedTools.AddRange(value); } }
             public PermissionEffect PermissionDefaultEffect { get => _info.PermissionDefaultEffect; set => _info.PermissionDefaultEffect = value; }
+            public AgentRuntime Runtime { get => _info.Runtime; set => _info.Runtime = value; }
+            public string? AcpBackend { get => _info.AcpBackend; set => _info.AcpBackend = value; }
 
             public async IAsyncEnumerable<ChatMessage> ExecuteAsync(
                 ChatMessage input,

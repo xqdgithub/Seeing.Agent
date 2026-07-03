@@ -49,7 +49,6 @@ services.AddHostedService<WeComBridgeHostedService>(); // 见 Demo
 | `ShareSessionInGroup` | `true` | 群聊共享 session |
 | `MaxReconnectAttempts` | `-1` | 最大重连次数（-1 无限） |
 | `StreamingEnabled` | `true` | 流式 reply_stream |
-| `DefaultAgentId` | — | 转发给 Gateway 的 Agent |
 | `BotPrefix` | — | 回复文本前缀 |
 | `WelcomeText` | 默认欢迎语 | enter_chat 5s 内回复 |
 | `AutoApproveLowRisk` | `true` | 低风险权限自动批准 |
@@ -73,7 +72,6 @@ services.AddHostedService<WeComBridgeHostedService>(); // 见 Demo
     "Secret": "your-bot-secret",
     "ShareSessionInGroup": true,
     "StreamingEnabled": true,
-    "DefaultAgentId": "sisyphus",
     "WelcomeText": "你好！我是 Seeing Agent，有什么可以帮你的？",
     "AutoApproveLowRisk": true
   },
@@ -83,6 +81,8 @@ services.AddHostedService<WeComBridgeHostedService>(); // 见 Demo
   }
 }
 ```
+
+默认 Agent 由 Gateway Server 的 `.seeing/seeing.json` 中 `DefaultAgent` 决定（WeCom 请求不传 `AgentId`）。
 
 ## Session 映射
 

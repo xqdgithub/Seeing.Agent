@@ -54,7 +54,7 @@ namespace Seeing.Session.Core
             });
 
             _logger?.LogInformation("开始会话: {SessionId}, Title: {Title}, Agent: {Agent}",
-                session.Id, title ?? session.Title, agentId ?? "primary");
+                session.Id, title ?? session.Title, agentId ?? "(default)");
 
             return Task.FromResult(session);
         }

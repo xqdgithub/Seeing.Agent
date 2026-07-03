@@ -218,7 +218,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         {
             await streamState.StartProcessingIndicatorAsync(cancellationToken).ConfigureAwait(false);
 
-            var request = WeComMessageParser.ToGatewayRequest(parsed, _options, sessionId);
+            var request = WeComMessageParser.ToGatewayRequest(parsed, sessionId);
             var accumulated = string.Empty;
             var finished = false;
 

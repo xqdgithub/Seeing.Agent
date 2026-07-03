@@ -55,7 +55,7 @@ namespace Seeing.Agent.WebUI.State
         /// </summary>
         public string SelectedAgent
         {
-            get => CurrentSession?.SelectedAgent ?? "primary";
+            get => CurrentSession?.SelectedAgent ?? string.Empty;
             set
             {
                 if (CurrentSession != null)

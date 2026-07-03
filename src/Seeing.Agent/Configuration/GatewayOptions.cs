@@ -17,9 +17,6 @@ namespace Seeing.Agent.Configuration
         /// <summary>绑定地址</summary>
         public string BindAddress { get; set; } = "127.0.0.1";
 
-        /// <summary>默认 Agent ID</summary>
-        public string? DefaultAgentId { get; set; }
-
         /// <summary>权限请求超时（秒）</summary>
         public int PermissionTimeoutSeconds { get; set; } = 120;
 

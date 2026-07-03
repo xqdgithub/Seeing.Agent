@@ -39,7 +39,6 @@ dotnet run --project samples/Seeing.Gateway.Server
     "WsUrl": "wss://openws.work.weixin.qq.com",
     "ShareSessionInGroup": true,
     "StreamingEnabled": true,
-    "DefaultAgentId": "sisyphus",
     "WelcomeText": "你好！我是 Seeing Agent，有什么可以帮你的？",
     "AutoApproveLowRisk": true
   },

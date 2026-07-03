@@ -8,6 +8,7 @@
 @using Seeing.Agent.WebUI.State
 @using Seeing.Agent.Tools
 @using Seeing.Agent.Skills
+@using Seeing.Agent.Configuration
 @using Seeing.Agent.Llm
 @using Seeing.Session.Core
 @using Seeing.Session.Management
@@ -18,8 +19,10 @@
 @inject ErrorHandlingService ErrorHandlingService
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
-@inject Core.AgentExecutor AgentExecutor
+@inject Core.Interfaces.IAgentExecutionRouter AgentRouter
 @inject Core.Interfaces.IAgentRegistry AgentRegistry
+@inject Core.AgentSelectionResolver AgentSelectionResolver
+@inject IWorkspaceProvider WorkspaceProvider
 @inject Core.Interfaces.IPermissionChannel PermissionChannel
 @inject ToolInvoker ToolInvoker
 @inject SkillManager SkillManager
@@ -568,8 +571,8 @@
 
         if (sessionData != null)
         {
-            // 设置当前会话到 SessionState
             SessionState.SetSession(sessionData);
+            await EnsureDefaultAgentSelectionAsync();
             
             // 转换消息为 UI 显示用的 MessageViewModel
             RefreshMessageViewModels();
@@ -592,6 +595,40 @@
         {
             ErrorMessage = $"找不到会话: {sessionId}";
             ShowEmptyState = true;
+        }
+    }
+
+    /// <summary>
+    /// 会话未指定 Agent/Model 时，按 .seeing 配置解析默认值并同步到 UI 状态。
+    /// </summary>
+    private async Task EnsureDefaultAgentSelectionAsync()
+    {
+        if (SessionState.CurrentSession == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(SessionState.CurrentSession.SelectedAgent))
+        {
+            var agentId = await AgentSelectionResolver.ResolveAgentIdAsync(
+                null,
+                null,
+                SessionState.CancellationToken);
+            SessionState.SelectedAgent = agentId;
+            _selectedAgent = agentId;
+            AppState.SelectedAgent = agentId;
+        }
+
+        if (string.IsNullOrWhiteSpace(SessionState.CurrentSession.SelectedModel))
+        {
+            var modelId = AgentSelectionResolver.ResolveModelId(
+                null,
+                null,
+                SessionState.SelectedAgent);
+            if (!string.IsNullOrEmpty(modelId))
+            {
+                SessionState.SelectedModel = modelId;
+                _selectedModel = modelId;
+                AppState.SelectedModel = modelId;
+            }
         }
     }
 
@@ -838,7 +875,7 @@
     }
 
 /// <summary>
-    /// 执行 Agent 响应（真实调用 AgentExecutor）
+    /// 执行 Agent 响应（通过 IAgentExecutionRouter 路由到 Native 或 ACP 引擎）
     /// </summary>
     private async Task SimulateAgentResponseAsync(string userInput, List<AttachmentViewModel>? attachments = null, MessageViewModel? userMessageViewModel = null)
     {
@@ -847,37 +884,47 @@
 
         try
         {
-            // 1. 获取 Agent 定义
-            var agentInstance = AgentRegistry.GetOrCreateAgentInstance(SessionState.SelectedAgent);
+            var agentId = await AgentSelectionResolver.ResolveAgentIdAsync(
+                null,
+                SessionState.SelectedAgent,
+                SessionState.CancellationToken);
+            SessionState.SelectedAgent = agentId;
+            _selectedAgent = agentId;
+            AppState.SelectedAgent = agentId;
+
+            var agentInstance = AgentRegistry.GetOrCreateAgentInstance(agentId);
             if (agentInstance == null)
             {
-                throw new InvalidOperationException($"Agent '{SessionState.SelectedAgent}' not found");
+                throw new InvalidOperationException($"Agent '{agentId}' not found");
             }
-            
-            var useModel = SessionState.SelectedModel;
-            if (!string.IsNullOrEmpty(useModel))
+
+            if (agentInstance.Runtime != Seeing.Agent.Core.Models.AgentRuntime.AcpPassthrough)
             {
-                // 使用 ModelReference.Parse 解析模型 ID
-                // 如果 useModel 已包含 provider 前缀（如 "anthropic/qwen3.5-plus"），Parse 会正确拆分
-                // 如果 useModel 只是 modelId（如 "gpt-4"），则 ProviderId 会为空，此时使用 SelectedModelProvider
-                var modelRef = Seeing.Agent.Core.Models.ModelReference.Parse(useModel);
-                if (modelRef != null)
+                var useModel = AgentSelectionResolver.ResolveModelId(
+                    null,
+                    SessionState.SelectedModel,
+                    agentId);
+                if (!string.IsNullOrEmpty(useModel))
                 {
-                    // 如果解析后 ProviderId 为空，使用 SessionState.SelectedModelProvider
-                    if (string.IsNullOrEmpty(modelRef.ProviderId) && !string.IsNullOrEmpty(SessionState.SelectedModelProvider))
+                    SessionState.SelectedModel = useModel;
+                    _selectedModel = useModel;
+                    AppState.SelectedModel = useModel;
+
+                    var modelRef = Seeing.Agent.Core.Models.ModelReference.Parse(useModel);
+                    if (modelRef != null)
                     {
-                        modelRef.ProviderId = SessionState.SelectedModelProvider;
+                        if (string.IsNullOrEmpty(modelRef.ProviderId) && !string.IsNullOrEmpty(SessionState.SelectedModelProvider))
+                            modelRef.ProviderId = SessionState.SelectedModelProvider;
+                        agentInstance.Model = modelRef;
                     }
-                    agentInstance.Model = modelRef;
-                }
-                else
-                {
-                    // 解析失败，直接使用 SelectedModelProvider 和 useModel
-                    agentInstance.Model = new Seeing.Agent.Core.Models.ModelReference
+                    else
                     {
-                        ModelId = useModel,
-                        ProviderId = SessionState.SelectedModelProvider
-                    };
+                        agentInstance.Model = new Seeing.Agent.Core.Models.ModelReference
+                        {
+                            ModelId = useModel,
+                            ProviderId = SessionState.SelectedModelProvider
+                        };
+                    }
                 }
             }
 
@@ -885,13 +932,17 @@
             var historyMessages = BuildHistoryFromSessionMessages();
 
             // 3. 构建执行上下文
+            var workspaceRoot = WorkspaceProvider.WorkspaceRoot;
+            var workingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? workspaceRoot;
+
             var context = new Seeing.Agent.Core.Models.AgentContext
             {
                 SessionId = SessionState.SessionId,
                 CancellationToken = SessionState.CancellationToken,
                 PermissionChannel = PermissionChannel,
                 History = historyMessages,
-                WorkingDirectory = Directory.GetCurrentDirectory()
+                WorkingDirectory = workingDirectory,
+                WorkspaceRoot = workspaceRoot
             };
 
             // 4. 获取 Agent 定义
@@ -899,8 +950,7 @@
             var charCount = 0;
             var _currentCodeBlockDepth = 0;  // 跟踪代码块深度，用于动态节流
             
-            // 使用注入的 AgentExecutor
-            await foreach (var coreEvent in AgentExecutor.ExecuteAsync(agentDefinition, context, SessionState.CancellationToken))
+            await foreach (var coreEvent in AgentRouter.ExecuteAsync(agentDefinition, context, SessionState.CancellationToken))
             {
                 SessionState.CancellationToken.ThrowIfCancellationRequested();
 

@@ -28,14 +28,14 @@ dotnet add package Seeing.Agent
 ```csharp
 using Seeing.Agent.Extensions;
 
-// 使用配置文件
-services.AddSeeingAgent(configuration);
+// 配置来自 ~/.seeing/seeing.json 与项目级 .seeing/seeing.json（appsettings 不参与 SeeingAgent 节）
+services.AddSeeingAgent();
 
-// 或使用自定义配置
+// 或使用代码配置（覆盖/补充 seeing.json）
 services.AddSeeingAgent(options => 
 {
     options.DefaultModel = "gpt-4";
-    options.DefaultAgent = "primary";
+    options.DefaultAgent = "sisyphus";
 });
 ```
 
@@ -306,11 +306,13 @@ Gateway 兼容层（Agent 外部通讯）→ 详见 [docs/gateway/README.md](doc
 
 ## 配置选项
 
+Seeing.Agent 从 **用户级** `~/.seeing/seeing.json` 与 **项目级** `./.seeing/seeing.json` 加载配置；`appsettings.json` 仅用于宿主日志等，不再合并 `SeeingAgent` 节。
+
 ```json
 {
   "SeeingAgent": {
-    "DefaultModel": "gpt-4",
-    "DefaultAgent": "primary",
+    "DefaultModel": "openai/gpt-4",
+    "DefaultAgent": "sisyphus",
     "SkillPaths": [ "./skills", "./.agents/skills" ],
     "Providers": {
       "openai": {
@@ -320,8 +322,8 @@ Gateway 兼容层（Agent 外部通讯）→ 详见 [docs/gateway/README.md](doc
       }
     },
     "Agents": {
-      "primary": {
-        "Model": "gpt-4",
+      "sisyphus": {
+        "Runtime": "Native",
         "SystemPrompt": "You are a helpful assistant.",
         "MaxSteps": 50
       }

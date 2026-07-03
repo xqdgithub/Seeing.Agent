@@ -1,13 +1,35 @@
 {
   "SeeingAgent": {
+    "DefaultAgent": "sisyphus",
+    "DefaultModel": "openai/gpt-4",
     "Gateway": {
       "Enabled": true,
       "AutoStart": true,
       "Port": 8765,
       "BindAddress": "127.0.0.1",
-      "DefaultAgentId": "sisyphus",
       "PermissionMode": "auto_approve",
-      "EnableWebSocket": true
+      "EnableWebSocket": true,
+      "WebSocketPath": "/api/gateway/ws"
+    },
+    "Agents": {
+      "default": {
+        "Runtime": "Native",
+        "Description": "默认 Agent（Native 模式，可使用 acp 工具委派）",
+        "AllowedTools": ["read", "write", "grep", "glob", "bash", "acp"]
+      },
+      "sisyphus": {
+        "Runtime": "Native"
+      }
+    },
+    "Acp": {
+      "Enabled": true,
+      "DefaultBackend": "opencode",
+      "Backends": {
+        "opencode": {
+          "Command": "C:/Users/<user>/AppData/Roaming/npm/opencode.cmd",
+          "Args": ["acp"]
+        }
+      }
     }
   }
 }

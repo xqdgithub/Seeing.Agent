@@ -46,6 +46,12 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>权限默认效果（当没有匹配规则时）</summary>
         PermissionEffect PermissionDefaultEffect { get; set; }
 
+        /// <summary>执行运行时类型</summary>
+        AgentRuntime Runtime { get; set; }
+
+        /// <summary>ACP 后端标识</summary>
+        string? AcpBackend { get; set; }
+
         /// <summary>
         /// 执行 Agent
         /// </summary>

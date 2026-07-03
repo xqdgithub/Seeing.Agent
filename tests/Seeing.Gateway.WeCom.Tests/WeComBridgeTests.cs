@@ -105,14 +105,11 @@ public class WeComMessageParserTests
             InputParts = [new GatewayTextContentPart("hello")]
         };
 
-        var request = WeComMessageParser.ToGatewayRequest(
-            parsed,
-            new WeComOptions { DefaultAgentId = "sisyphus" },
-            "wecom_user_001");
+        var request = WeComMessageParser.ToGatewayRequest(parsed, "wecom_user_001");
 
         request.SessionId.Should().Be("wecom_user_001");
         request.ChannelId.Should().Be("wecom");
-        request.AgentId.Should().Be("sisyphus");
+        request.AgentId.Should().BeNull();
         request.Input.Should().ContainSingle(p => p is GatewayTextContentPart);
     }
 

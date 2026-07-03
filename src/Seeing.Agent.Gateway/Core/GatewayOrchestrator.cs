@@ -25,6 +25,7 @@ public sealed class GatewayOrchestrator
 {
     private readonly IServiceProvider _services;
     private readonly GatewayOptions _options;
+    private readonly AgentSelectionResolver _selectionResolver;
     private readonly GatewayPermissionChannel _permissionChannel;
     private readonly GatewayRunTracker _runTracker;
     private readonly SessionExecutionQueue _executionQueue;
@@ -35,6 +36,7 @@ public sealed class GatewayOrchestrator
     public GatewayOrchestrator(
         IServiceProvider services,
         GatewayOptions options,
+        AgentSelectionResolver selectionResolver,
         GatewayPermissionChannel permissionChannel,
         GatewayRunTracker runTracker,
         SessionExecutionQueue executionQueue,
@@ -44,6 +46,7 @@ public sealed class GatewayOrchestrator
     {
         _services = services;
         _options = options;
+        _selectionResolver = selectionResolver;
         _permissionChannel = permissionChannel;
         _runTracker = runTracker;
         _executionQueue = executionQueue;
@@ -116,32 +119,36 @@ public sealed class GatewayOrchestrator
         var sessionId = request.SessionId;
         var sessionManager = _services.GetRequiredService<SessionManager>();
         var agentRegistry = _services.GetRequiredService<IAgentRegistry>();
-        var agentExecutor = _services.GetRequiredService<AgentExecutor>();
+        var executionRouter = _services.GetRequiredService<IAgentExecutionRouter>();
+        var workspaceRoot = _services.GetService<IWorkspaceProvider>()?.WorkspaceRoot
+            ?? Directory.GetCurrentDirectory();
         var sessionTracker = new SessionEventTracker();
         var mapperOptions = new GatewayEventMapperOptions { FilterThinking = _options.FilterThinking };
 
-        runState.Session = await _sessionResolver.EnsureSessionAsync(sessionId, request.AgentId);
+        runState.Session = await _sessionResolver.EnsureSessionAsync(sessionId, request.AgentId, cancellationToken);
 
         var userMessage = ConvertInputToSessionMessage(request.Input);
         if (userMessage != null)
             runState.Session.AddMessage(userMessage);
 
-        var agentId = request.AgentId
-            ?? _options.DefaultAgentId
-            ?? runState.Session.SelectedAgent
-            ?? "primary";
+        var agentId = await _selectionResolver.ResolveAgentIdAsync(
+            request.AgentId,
+            runState.Session.SelectedAgent,
+            cancellationToken);
 
         var agentInstance = agentRegistry.GetOrCreateAgentInstance(agentId)
             ?? throw new InvalidOperationException($"Agent '{agentId}' not found");
 
-        ApplyModelSelection(agentInstance, request.ModelId, runState.Session);
+        ApplyModelSelection(agentInstance, request.ModelId, runState.Session, agentId);
 
-        if (!string.IsNullOrEmpty(request.AgentId))
-            runState.Session.SelectedAgent = agentId;
-        if (!string.IsNullOrEmpty(request.ModelId))
-            runState.Session.SelectedModel = request.ModelId;
+        runState.Session.SelectedAgent = agentId;
+        var resolvedModel = _selectionResolver.ResolveModelId(request.ModelId, runState.Session.SelectedModel, agentId);
+        if (!string.IsNullOrEmpty(resolvedModel))
+            runState.Session.SelectedModel = resolvedModel;
 
         var history = BuildHistoryFromSession(runState.Session);
+
+        var workingDirectory = runState.Session?.WorkingDirectory ?? workspaceRoot;
 
         var context = new AgentContext
         {
@@ -149,7 +156,9 @@ public sealed class GatewayOrchestrator
             CancellationToken = cancellationToken,
             PermissionChannel = _permissionChannel,
             History = history,
-            WorkingDirectory = Environment.CurrentDirectory
+            WorkingDirectory = workingDirectory,
+            WorkspaceRoot = workspaceRoot,
+            Services = _services
         };
 
         var agentDefinition = AgentDefinition.FromAgent(agentInstance);
@@ -171,7 +180,7 @@ public sealed class GatewayOrchestrator
         });
 
         var agentTask = RunAgentAsync(
-            agentExecutor,
+            executionRouter,
             agentDefinition,
             context,
             sessionTracker,
@@ -196,7 +205,7 @@ public sealed class GatewayOrchestrator
     }
 
     private async Task RunAgentAsync(
-        AgentExecutor agentExecutor,
+        IAgentExecutionRouter executionRouter,
         AgentDefinition agentDefinition,
         AgentContext context,
         SessionEventTracker sessionTracker,
@@ -213,7 +222,7 @@ public sealed class GatewayOrchestrator
 
         try
         {
-            await foreach (var coreEvent in agentExecutor.ExecuteAsync(agentDefinition, context, cancellationToken))
+            await foreach (var coreEvent in executionRouter.ExecuteAsync(agentDefinition, context, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -290,9 +299,12 @@ public sealed class GatewayOrchestrator
     /// <summary>停止指定会话的活跃运行</summary>
     public bool StopChat(string sessionId) => _runTracker.StopRun(sessionId);
 
-    private static void ApplyModelSelection(IAgent agentInstance, string? modelId, SessionData session)
+    private void ApplyModelSelection(IAgent agentInstance, string? modelId, SessionData session, string agentName)
     {
-        var useModel = modelId ?? session.SelectedModel;
+        if (agentInstance.Runtime == AgentRuntime.AcpPassthrough)
+            return;
+
+        var useModel = _selectionResolver.ResolveModelId(modelId, session.SelectedModel, agentName);
         if (string.IsNullOrEmpty(useModel))
             return;
 

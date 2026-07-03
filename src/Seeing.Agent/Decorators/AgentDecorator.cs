@@ -54,6 +54,12 @@ namespace Seeing.Agent.Decorators
         public virtual PermissionEffect PermissionDefaultEffect { get => Inner.PermissionDefaultEffect; set => Inner.PermissionDefaultEffect = value; }
 
         /// <inheritdoc />
+        public virtual AgentRuntime Runtime { get => Inner.Runtime; set => Inner.Runtime = value; }
+
+        /// <inheritdoc />
+        public virtual string? AcpBackend { get => Inner.AcpBackend; set => Inner.AcpBackend = value; }
+
+        /// <inheritdoc />
         public virtual async IAsyncEnumerable<ChatMessage> ExecuteAsync(
             ChatMessage input,
             AgentContext context,

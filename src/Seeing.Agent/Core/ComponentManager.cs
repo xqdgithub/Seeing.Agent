@@ -18,11 +18,10 @@ namespace Seeing.Agent.Core;
 /// <summary>
 /// 组件管理器 - 统一管理 Skills/MCP/Plugins/Rules 的发现和加载
 /// <para>
-/// 配置层级：
-/// - 用户级：~/.seeing/（基础配置）
-/// - 项目级：./.seeing/（覆盖同名）
-/// - IConfiguration：运行时覆盖
-/// </para>
+    /// 配置层级：
+    /// - 用户级：~/.seeing/（基础配置）
+    /// - 项目级：./.seeing/（覆盖同名）
+    /// </para>
 /// </summary>
 public class ComponentManager : IComponentManager
 {

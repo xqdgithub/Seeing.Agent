@@ -48,7 +48,7 @@ namespace Seeing.Session.Tests
             session.Id.Should().StartWith("ses_");
             session.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
             session.Status.Should().Be(SessionStatus.Created);
-            session.SelectedAgent.Should().Be("primary");
+            session.SelectedAgent.Should().BeEmpty();
             session.PartitionId.Should().Be("default");
         }
 

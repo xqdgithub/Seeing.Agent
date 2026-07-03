@@ -142,6 +142,12 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>Agent 标签</summary>
         public List<string> Tags { get; set; } = new();
 
+        /// <summary>执行运行时类型</summary>
+        public AgentRuntime Runtime { get; set; } = AgentRuntime.Native;
+
+        /// <summary>ACP 后端标识</summary>
+        public string? AcpBackend { get; set; }
+
         /// <summary>
         /// 创建 IAgent 实例（延迟创建，用于执行）
         /// </summary>

@@ -11,6 +11,7 @@
     <ProjectReference Include="../../src/Seeing.Agent/Seeing.Agent.csproj" />
     <ProjectReference Include="../../src/Seeing.Session/Seeing.Session.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
+    <ProjectReference Include="../../src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="AntDesign" Version="1.6.1" />

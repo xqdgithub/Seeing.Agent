@@ -25,7 +25,9 @@ await host.RunAsync();
 
 **启动顺序**：必须先 `InitializeSeeingAgentAsync`，再 `Run()` / `RunAsync()`。
 
-## 配置（`SeeingAgent:Gateway`）
+## 配置（`.seeing/seeing.json`）
+
+Gateway 节仅配置**服务行为**；默认 Agent / Model 使用根级 `DefaultAgent` / `DefaultModel`（ACP / Native 由 Agent 的 `Runtime` 自动分流）。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -33,10 +35,11 @@ await host.RunAsync();
 | `AutoStart` | `true` | 宿主启动后自动监听 |
 | `Port` | `8765` | 监听端口 |
 | `BindAddress` | `127.0.0.1` | 绑定地址 |
-| `DefaultAgentId` | — | 默认 Agent |
 | `PermissionMode` | `interactive` | 无头场景用 `auto_approve` |
 | `EnableWebSocket` | `true` | 启用 WS 端点 |
 | `WebSocketPath` | `/api/gateway/ws` | WS 路径 |
+
+默认 Agent 回退链：`request.AgentId` → `session.SelectedAgent` → `AgentRegistry.GetDefaultAgentNameAsync()`（含 `DefaultAgent`）。
 
 ## 示例宿主
 
@@ -94,6 +97,7 @@ curl -N -X POST http://127.0.0.1:8765/api/gateway/chat \
 | `GatewayHostedService` | 随 Generic Host 自动启动 |
 | `GatewayHost` | 独立 WebApplication 宿主 |
 | `GatewayOrchestrator` | 镜像 WebUI 执行流 |
+| `AgentSelectionResolver` | 统一默认 Agent / Model 解析 |
 | `SessionExecutionQueue` | 同 `(channelId, sessionId)` 串行 |
 | `GatewayPermissionChannel` | Gateway 专用权限通道 |
 | `GatewayWebSocketHandler` | WS 帧分发 |

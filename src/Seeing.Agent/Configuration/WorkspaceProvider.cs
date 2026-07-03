@@ -15,6 +15,9 @@ public interface IWorkspaceProvider
     /// </summary>
     string WorkspaceRoot { get; }
 
+    /// <summary>更新工作区根目录</summary>
+    void SetWorkspaceRoot(string workspaceRoot);
+
     /// <summary>
     /// 获取用户级 .seeing 目录路径
     /// </summary>
@@ -50,7 +53,7 @@ public enum ConfigLevel
 /// </summary>
 public class WorkspaceProvider : IWorkspaceProvider
 {
-    private readonly string _workspaceRoot;
+    private string _workspaceRoot;
 
     /// <summary>
     /// 创建工作区路径提供者
@@ -63,6 +66,14 @@ public class WorkspaceProvider : IWorkspaceProvider
 
     /// <inheritdoc/>
     public string WorkspaceRoot => _workspaceRoot;
+
+    /// <summary>更新工作区根目录（InitializeSeeingAgentAsync 时调用）</summary>
+    public void SetWorkspaceRoot(string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot))
+            throw new ArgumentException("Workspace root cannot be empty.", nameof(workspaceRoot));
+        _workspaceRoot = workspaceRoot;
+    }
 
     /// <inheritdoc/>
     public string UserSeeingDirectory =>

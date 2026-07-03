@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Gateway.Hosting;
@@ -38,9 +38,7 @@ public class GatewayExtension : IExtension
 
         _logger.LogInformation("初始化 {Name} v{Version} (state: {State})", Name, Version, meta.State);
 
-        var gatewayOptions = context.Configuration
-            .GetSection("SeeingAgent:Gateway")
-            .Get<GatewayOptions>() ?? new GatewayOptions();
+        var gatewayOptions = context.Services.GetRequiredService<IOptions<GatewayOptions>>().Value;
 
         _host = new GatewayHost(context.Services, gatewayOptions, loggerFactory.CreateLogger<GatewayHost>());
         await _host.StartAsync();
