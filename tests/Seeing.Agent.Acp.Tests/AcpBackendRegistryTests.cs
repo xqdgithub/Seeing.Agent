@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Configuration;
 using Xunit;
@@ -64,6 +63,10 @@ public class AcpBackendRegistryTests
         act.Should().Throw<InvalidOperationException>();
     }
 
-    private static AcpBackendRegistry CreateRegistry(SeeingAgentOptions options) =>
-        new(Options.Create(options), NullLogger<AcpBackendRegistry>.Instance);
+    private static AcpBackendRegistry CreateRegistry(SeeingAgentOptions options)
+    {
+        var provider = new SeeingAgentConfigurationProvider();
+        provider.Options.Acp = options.Acp;
+        return new AcpBackendRegistry(provider, NullLogger<AcpBackendRegistry>.Instance);
+    }
 }

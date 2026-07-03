@@ -1,0 +1,215 @@
+@page "/models"
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Llm
+@using Seeing.Agent.WebUI.Services
+@inject ILlmService LlmService
+@inject SeeingConfigService ConfigService
+@inject IMessageService MessageService
+
+<PageTitle>模型 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading">
+    <Breadcrumb>
+        <BreadcrumbItem>设置</BreadcrumbItem>
+        <BreadcrumbItem>模型</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button Icon="@IconType.Outline.Plus" OnClick="ShowAddProvider">添加 Provider</Button>
+            <Button Icon="@IconType.Outline.Save" Type="@ButtonType.Primary" OnClick="SaveOptions">保存</Button>
+        </Space>
+    </Extra>
+    <ChildContent>
+        <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
+               Message="@($"默认 Provider: {_options.DefaultProvider ?? "未设置"} | 默认模型: {_options.DefaultModel ?? "未设置"}")" />
+
+        <Row Gutter="16">
+            <Col Span="6">
+                <Card Title="Provider 列表" Size="@CardSize.Small">
+                    <Menu Mode="@MenuMode.Inline" SelectedKeys="@_selectedProviderKeys" OnMenuItemClicked="OnProviderSelected">
+                        @foreach (var p in _options.Providers.Keys.OrderBy(k => k))
+                        {
+                            <MenuItem Key="@p">@p</MenuItem>
+                        }
+                    </Menu>
+                </Card>
+            </Col>
+            <Col Span="18">
+                @if (_currentProvider != null)
+                {
+                    <Card Title="@($"Provider: {_selectedProviderId}")">
+                        <Form Layout="@FormLayout.Vertical" Model="@_currentProvider" Context="formContext">
+                        <div>
+                            <FormItem Label="ID"><Input @bind-Value="@_currentProvider.Id" Disabled="true" /></FormItem>
+                            <FormItem Label="类型">
+                                <Select TItemValue="ProviderType" TItem="ProviderType" @bind-Value="@_currentProvider.Type">
+                                    <SelectOption Value="ProviderType.OpenAI">OpenAI</SelectOption>
+                                    <SelectOption Value="ProviderType.Anthropic">Anthropic</SelectOption>
+                                </Select>
+                            </FormItem>
+                            <FormItem Label="名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
+                            <FormItem Label="Base URL"><Input @bind-Value="@_currentProvider.BaseUrl" /></FormItem>
+                            <FormItem Label="API Key"><Input Password @bind-Value="@_currentProvider.ApiKey" /></FormItem>
+                            <FormItem Label="默认模型"><Input @bind-Value="@_currentProvider.DefaultModel" /></FormItem>
+                            <Space>
+                                <Button Loading="@_testing" OnClick="TestConnection">测试连接</Button>
+                                <Button OnClick="SetAsDefaultProvider">设为默认 Provider</Button>
+                            </Space>
+                        </div>
+                        </Form>
+                    </Card>
+
+                    <Card Title="模型列表" Style="margin-top: 16px;">
+                        <Table TItem="ModelRow" DataSource="@_modelRows" RowKey="@(m => m.Key)" Size="@TableSize.Small">
+                            <PropertyColumn Property="c => c.Id" Title="模型 ID" />
+                            <PropertyColumn Property="c => c.Name" Title="名称" />
+                            <PropertyColumn Property="c => c.Provider" Title="Provider" />
+                            <PropertyColumn Property="c => c.Context" Title="上下文" />
+                            <ActionColumn Title="操作">
+                                <Button Size="@ButtonSize.Small" OnClick="@(() => SetDefaultModel(context.Key))">设为默认</Button>
+                            </ActionColumn>
+                        </Table>
+                    </Card>
+                }
+                else
+                {
+                    <Empty Description="@("请选择或添加 Provider")" />
+                }
+            </Col>
+        </Row>
+    </ChildContent>
+</WorkspacePageShell>
+
+<Modal Title="添加 Provider" Visible="@_addModalVisible" OnOk="ConfirmAddProvider" OnCancel="@(() => _addModalVisible = false)">
+    @if (_addModalVisible)
+    {
+        <Form Layout="@FormLayout.Vertical" Model="@_addProviderForm" Context="formContext">
+        <div>
+            <FormItem Label="Provider ID"><Input @bind-Value="@_newProviderId" Placeholder="如 openai" /></FormItem>
+            <FormItem Label="类型">
+                <Select TItemValue="ProviderType" TItem="ProviderType" @bind-Value="@_newProviderType">
+                    <SelectOption Value="ProviderType.OpenAI">OpenAI</SelectOption>
+                    <SelectOption Value="ProviderType.Anthropic">Anthropic</SelectOption>
+                </Select>
+            </FormItem>
+        </div>
+        </Form>
+    }
+</Modal>
+
+@code {
+    private SeeingAgentOptions _options = new();
+    private ProviderConfig? _currentProvider;
+    private string _selectedProviderId = "";
+    private string[] _selectedProviderKeys = Array.Empty<string>();
+    private List<ModelRow> _modelRows = new();
+    private bool _loading;
+    private bool _testing;
+    private bool _addModalVisible;
+    private string _newProviderId = "";
+    private ProviderType _newProviderType = ProviderType.OpenAI;
+    private readonly AddProviderForm _addProviderForm = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _options = await ConfigService.LoadProjectOptionsAsync();
+        if (_options.Providers.Count > 0 && string.IsNullOrEmpty(_selectedProviderId))
+            SelectProvider(_options.Providers.Keys.First());
+        _loading = false;
+    }
+
+    private void OnProviderSelected(MenuItem item) => SelectProvider(item.Key);
+
+    private void SelectProvider(string id)
+    {
+        _selectedProviderId = id;
+        _selectedProviderKeys = new[] { id };
+        _options.Providers.TryGetValue(id, out var provider);
+        _currentProvider = provider;
+        RefreshModelRows();
+    }
+
+    private void RefreshModelRows()
+    {
+        var models = LlmService.GetAvailableModels();
+        _modelRows = models
+            .Where(m => m.Value.Provider == _selectedProviderId || m.Key.StartsWith(_selectedProviderId + "/"))
+            .Select(m => new ModelRow
+            {
+                Key = m.Key,
+                Id = m.Value.Id,
+                Name = m.Value.Name ?? m.Value.Id,
+                Provider = m.Value.Provider,
+                Context = m.Value.Limit.Context
+            })
+            .ToList();
+    }
+
+    private async Task SaveOptions()
+    {
+        await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+        {
+            ["DefaultProvider"] = _options.DefaultProvider,
+            ["DefaultModel"] = _options.DefaultModel,
+            ["Providers"] = _options.Providers,
+            ["Models"] = _options.Models
+        });
+        MessageService.Success("模型配置已保存");
+        await LoadAsync();
+    }
+
+    private async Task TestConnection()
+    {
+        if (string.IsNullOrEmpty(_selectedProviderId)) return;
+        _testing = true;
+        try
+        {
+            var ok = await LlmService.TestConnectionAsync(_selectedProviderId);
+            if (ok) MessageService.Success("连接成功");
+            else MessageService.Error("连接失败");
+        }
+        finally { _testing = false; }
+    }
+
+    private void SetAsDefaultProvider()
+    {
+        _options.DefaultProvider = _selectedProviderId;
+        MessageService.Info($"已选择 {_selectedProviderId} 为默认 Provider，请保存");
+    }
+
+    private void SetDefaultModel(string key)
+    {
+        _options.DefaultModel = key;
+        MessageService.Info($"已选择 {key} 为默认模型，请保存");
+    }
+
+    private void ShowAddProvider()
+    {
+        _newProviderId = "";
+        _addModalVisible = true;
+    }
+
+    private void ConfirmAddProvider()
+    {
+        if (string.IsNullOrWhiteSpace(_newProviderId)) return;
+        var id = _newProviderId.Trim();
+        _options.Providers[id] = new ProviderConfig { Id = id, Type = _newProviderType, Name = id };
+        _addModalVisible = false;
+        SelectProvider(id);
+    }
+
+    private sealed class ModelRow
+    {
+        public string Key { get; set; } = "";
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Provider { get; set; } = "";
+        public int Context { get; set; }
+    }
+
+    private sealed class AddProviderForm { }
+}

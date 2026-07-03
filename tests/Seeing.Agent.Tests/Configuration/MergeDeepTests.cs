@@ -115,6 +115,41 @@ public class MergeDeepTests
         result.Model.Version.Should().Be("2");
     }
 
+    [Fact]
+    public void Merge_BoolFalse_OverrideWins()
+    {
+        var baseObj = new BoolConfig { Enabled = true };
+        var overrideObj = new BoolConfig { Enabled = false };
+
+        var result = MergeDeep.Merge(baseObj, overrideObj);
+
+        result.Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Merge_Dictionary_DeepMergesNestedObjects()
+    {
+        var baseObj = new NestedDictionaryConfig
+        {
+            Backends = new Dictionary<string, BackendConfig>
+            {
+                ["cursor"] = new() { Command = "old.cmd", Args = new List<string> { "acp" } }
+            }
+        };
+        var overrideObj = new NestedDictionaryConfig
+        {
+            Backends = new Dictionary<string, BackendConfig>
+            {
+                ["cursor"] = new() { Command = "new.cmd" }
+            }
+        };
+
+        var result = MergeDeep.Merge(baseObj, overrideObj);
+
+        result.Backends["cursor"].Command.Should().Be("new.cmd");
+        result.Backends["cursor"].Args.Should().Equal("acp");
+    }
+
     // Test types
     private class TestConfig
     {
@@ -130,6 +165,22 @@ public class MergeDeepTests
     private class NestedConfig
     {
         public ModelSettings Model { get; set; } = new();
+    }
+
+    private class BoolConfig
+    {
+        public bool Enabled { get; set; }
+    }
+
+    private class BackendConfig
+    {
+        public string Command { get; set; } = string.Empty;
+        public List<string> Args { get; set; } = new();
+    }
+
+    private class NestedDictionaryConfig
+    {
+        public Dictionary<string, BackendConfig> Backends { get; set; } = new();
     }
 
     private class ModelSettings

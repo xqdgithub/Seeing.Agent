@@ -114,6 +114,25 @@ public class WeComMessageParserTests
     }
 
     [Fact]
+    public void ToGatewayRequest_ShouldPassConfiguredAgentAndModel()
+    {
+        var parsed = new ParsedWeComMessage
+        {
+            Frame = new WeComWsFrame(),
+            UserId = "user_001",
+            ChatId = "chat_1",
+            ChatType = "single",
+            MessageId = "msg_1",
+            InputParts = [new GatewayTextContentPart("hello")]
+        };
+
+        var request = WeComMessageParser.ToGatewayRequest(parsed, "wecom_user_001", "build", "gpt-4");
+
+        request.AgentId.Should().Be("build");
+        request.ModelId.Should().Be("gpt-4");
+    }
+
+    [Fact]
     public async Task TryParseAsync_VoiceWithTranscription_ShouldUseTextPart()
     {
         var context = new WeComIncomingContext

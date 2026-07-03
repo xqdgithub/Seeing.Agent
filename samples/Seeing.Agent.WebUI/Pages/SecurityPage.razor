@@ -1,0 +1,129 @@
+@page "/security"
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Core.Permission
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.State
+@inject SeeingConfigService ConfigService
+@inject IAgentRegistry AgentRegistry
+@inject BlazorPermissionChannel PermissionChannel
+@inject AppState AppState
+@inject NavigationManager NavigationManager
+@inject IMessageService MessageService
+
+<PageTitle>安全 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell>
+    <Breadcrumb>
+        <BreadcrumbItem>设置</BreadcrumbItem>
+        <BreadcrumbItem>安全</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存</Button>
+    </Extra>
+    <ChildContent>
+        <Tabs>
+            <TabPane Key="global" Tab="全局策略">
+                <Card>
+                    <Form Layout="@FormLayout.Vertical" Model="@_permission" Context="formContext">
+                    <div>
+                        <FormItem Label="自动批准所有权限（危险）">
+                            <Switch @bind-Checked="@_permission.AutoApproveAll" />
+                        </FormItem>
+                        <FormItem Label="Gateway 权限模式">
+                            <Select TItemValue="string" TItem="string" @bind-Value="@_gateway.PermissionMode">
+                                <SelectOption Value="@("interactive")">交互式审批</SelectOption>
+                                <SelectOption Value="@("auto_approve")">自动批准</SelectOption>
+                            </Select>
+                        </FormItem>
+                    </div>
+                    </Form>
+                    <Alert Type="@AlertType.Warning" ShowIcon="true"
+                           Message="启用自动批准后，工具调用将不再弹出确认对话框。" />
+                </Card>
+            </TabPane>
+            <TabPane Key="tools" Tab="工具守卫">
+                <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
+                       Message="智能体级工具权限规则请在「智能体配置」页面维护。" />
+                <Button Type="@ButtonType.Link" OnClick="@(() => NavigationManager.NavigateTo("/agent-config"))">
+                    前往智能体配置 →
+                </Button>
+                @if (_agentRules.Any())
+                {
+                    <Table TItem="RuleRow" DataSource="@_ruleRows" RowKey="@(r => r.Id)" Style="margin-top: 16px;">
+                        <PropertyColumn Property="c => c.Kind" Title="类型" />
+                        <PropertyColumn Property="c => c.Pattern" Title="模式" />
+                        <PropertyColumn Property="c => c.Effect" Title="效果" />
+                        <PropertyColumn Property="c => c.Priority" Title="优先级" />
+                    </Table>
+                }
+                else
+                {
+                    <Empty Description="@("当前智能体无自定义权限规则")" Style="margin-top: 24px;" />
+                }
+            </TabPane>
+            <TabPane Key="approval" Tab="审批流程">
+                <Descriptions Column="1" Bordered>
+                    <DescriptionsItem Title="待处理权限请求">@PermissionChannel.PendingCount</DescriptionsItem>
+                    <DescriptionsItem Title="当前智能体">@AppState.SelectedAgent</DescriptionsItem>
+                    <DescriptionsItem Title="审批通道">Blazor UI 内嵌权限弹窗</DescriptionsItem>
+                </Descriptions>
+                <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-top: 16px;"
+                       Message="在聊天会话中执行工具时，将弹出权限确认对话框。" />
+            </TabPane>
+        </Tabs>
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private PermissionOptions _permission = new();
+    private GatewayOptions _gateway = new();
+    private List<PermissionRuleEntry> _agentRules = new();
+    private List<RuleRow> _ruleRows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var options = await ConfigService.LoadProjectOptionsAsync();
+        _permission = options.Permission;
+        _gateway = options.Gateway;
+        await LoadAgentRulesAsync();
+    }
+
+    private async Task LoadAgentRulesAsync()
+    {
+        var agent = await AgentRegistry.GetAgentAsync(AppState.SelectedAgent);
+        _agentRules = agent?.PermissionRules ?? new List<PermissionRuleEntry>();
+        _ruleRows = _agentRules.Select(r => new RuleRow
+        {
+            Id = r.Id,
+            Kind = r.Kind.ToString(),
+            Pattern = r.Pattern,
+            Effect = r.Effect.ToString(),
+            Priority = r.Priority
+        }).ToList();
+    }
+
+    private async Task SaveAsync()
+    {
+        var projectGateway = await ConfigService.LoadLevelSectionAsync<GatewayOptions>(ConfigLevel.Project, "Gateway")
+            ?? _gateway;
+        projectGateway.PermissionMode = _gateway.PermissionMode;
+
+        await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+        {
+            ["Permission"] = _permission,
+            ["Gateway"] = projectGateway
+        });
+        MessageService.Success("安全策略已保存");
+    }
+
+    private sealed class RuleRow
+    {
+        public string Id { get; set; } = "";
+        public string Kind { get; set; } = "";
+        public string Pattern { get; set; } = "";
+        public string Effect { get; set; } = "";
+        public int Priority { get; set; }
+    }
+}

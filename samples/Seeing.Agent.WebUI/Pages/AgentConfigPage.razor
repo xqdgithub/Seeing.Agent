@@ -1,0 +1,217 @@
+@page "/agent-config"
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Core.Permission
+@using Seeing.Agent.Llm
+@using Seeing.Agent.Tools
+@using Seeing.Agent.WebUI.Components.Agents
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.State
+@inject SeeingConfigService ConfigService
+@inject IAgentRegistry AgentRegistry
+@inject ILlmService LlmService
+@inject ToolInvoker ToolInvoker
+@inject AppState AppState
+@inject NavigationManager NavigationManager
+@inject IMessageService MessageService
+
+<PageTitle>智能体配置 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem>智能体配置</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            @if (_agentNames.Count > 0)
+            {
+                <Select TItemValue="string" TItem="string"
+                        Value="@_agentName"
+                        ValueExpression="@(() => _agentName)"
+                        ValueChanged="OnAgentChanged"
+                        DataSource="@_agentNames"
+                        Style="width: 200px;" />
+            }
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存</Button>
+        </Space>
+    </Extra>
+    <ChildContent>
+        @if (string.IsNullOrEmpty(_agentName))
+        {
+            <Empty>
+                <DescriptionTemplate>
+                    <span>未找到可配置的主智能体</span>
+                </DescriptionTemplate>
+            </Empty>
+        }
+        else
+        {
+            <Tabs>
+                <TabPane Key="basic" Tab="基础">
+                    <AgentConfigForm @key="@_agentName"
+                                     @ref="_form"
+                                     AgentConfig="@_agentConfig"
+                                     ModelKeys="@_modelKeys" />
+                </TabPane>
+                <TabPane Key="rules" Tab="权限规则">
+                    <Button Icon="@IconType.Outline.Plus" OnClick="AddRule" Style="margin-bottom: 16px;">添加规则</Button>
+                    <Table TItem="EditableRule" DataSource="@_rules" RowKey="@(r => r.Id)">
+                        <PropertyColumn Property="c => c.Kind" Title="类型" />
+                        <PropertyColumn Property="c => c.Pattern" Title="模式" />
+                        <PropertyColumn Property="c => c.Effect" Title="效果" />
+                        <PropertyColumn Property="c => c.Priority" Title="优先级" />
+                        <ActionColumn Title="操作">
+                            <Button Size="@ButtonSize.Small" Danger="true" OnClick="@(() => RemoveRule(context.Id))">删除</Button>
+                        </ActionColumn>
+                    </Table>
+                </TabPane>
+            </Tabs>
+        }
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private AgentConfigForm? _form;
+    private string _agentName = "";
+    private List<string> _agentNames = new();
+    private AgentConfig _agentConfig = new();
+    private List<EditableRule> _rules = new();
+    private List<string> _modelKeys = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var primaryAgents = await AgentRegistry.GetPrimaryAgentsAsync();
+        _agentNames = primaryAgents
+            .Where(a => !string.IsNullOrEmpty(a.Name))
+            .Select(a => a.Name)
+            .ToList();
+
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        _agentName = query["agent"] ?? AppState.SelectedAgent;
+        if (string.IsNullOrEmpty(_agentName) && _agentNames.Count > 0)
+            _agentName = await AgentRegistry.GetDefaultAgentNameAsync() ?? _agentNames[0];
+        if (!string.IsNullOrEmpty(_agentName) && !_agentNames.Contains(_agentName))
+            _agentName = _agentNames.FirstOrDefault() ?? "";
+
+        _modelKeys = LlmService.GetAvailableModels().Keys
+            .Where(k => !string.IsNullOrEmpty(k))
+            .ToList();
+        await LoadAgentAsync();
+    }
+
+    private async Task LoadAgentAsync()
+    {
+        if (string.IsNullOrEmpty(_agentName))
+        {
+            _agentConfig = new AgentConfig();
+            _rules = new();
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            var options = await ConfigService.LoadProjectOptionsAsync();
+            options.Agents.TryGetValue(_agentName, out var savedCfg);
+            savedCfg ??= new AgentConfig();
+
+            var agent = await AgentRegistry.GetAgentAsync(_agentName);
+            _agentConfig = MergeWithRegistry(savedCfg, agent);
+
+            _rules = (agent?.PermissionRules ?? savedCfg.PermissionRules ?? new List<PermissionRuleEntry>())
+                .Select(r => new EditableRule
+                {
+                    Id = r.Id,
+                    Kind = r.Kind.ToString(),
+                    Pattern = r.Pattern,
+                    Effect = r.Effect.ToString(),
+                    Priority = r.Priority
+                }).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static AgentConfig MergeWithRegistry(AgentConfig cfg, AgentInfo? agent)
+    {
+        if (agent == null)
+            return CloneConfig(cfg);
+
+        return new AgentConfig
+        {
+            Disable = cfg.Disable,
+            Provider = cfg.Provider ?? agent.Model?.ProviderId,
+            Model = cfg.Model ?? agent.Model?.ModelId,
+            Variant = cfg.Variant ?? agent.Variant,
+            SystemPrompt = string.IsNullOrWhiteSpace(cfg.SystemPrompt) ? agent.SystemPrompt : cfg.SystemPrompt,
+            Description = string.IsNullOrWhiteSpace(cfg.Description) ? agent.Description : cfg.Description,
+            MaxSteps = cfg.MaxSteps ?? agent.MaxSteps,
+            Temperature = cfg.Temperature ?? agent.Temperature,
+            TopP = cfg.TopP ?? agent.TopP,
+            Mode = cfg.Mode ?? agent.Mode,
+            Color = cfg.Color ?? agent.Color,
+            IsHidden = cfg.IsHidden ?? agent.IsHidden,
+            Runtime = cfg.Runtime ?? agent.Runtime,
+            AcpBackend = cfg.AcpBackend ?? agent.AcpBackend,
+            PermissionRules = cfg.PermissionRules?.Count > 0 ? cfg.PermissionRules : agent.PermissionRules.ToList(),
+            Options = cfg.Options
+        };
+    }
+
+    private static AgentConfig CloneConfig(AgentConfig cfg) =>
+        System.Text.Json.JsonSerializer.Deserialize<AgentConfig>(
+            System.Text.Json.JsonSerializer.Serialize(cfg)) ?? new AgentConfig();
+
+    private async Task OnAgentChanged(string name)
+    {
+        _agentName = name ?? "";
+        if (string.IsNullOrEmpty(_agentName))
+            return;
+
+        AppState.SelectedAgent = _agentName;
+        AppState.NotifyChange();
+        await LoadAgentAsync();
+    }
+
+    private void AddRule() =>
+        _rules.Add(new EditableRule { Id = Guid.NewGuid().ToString("N")[..8], Pattern = "*", Effect = "Ask" });
+
+    private void RemoveRule(string id) => _rules.RemoveAll(r => r.Id == id);
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrEmpty(_agentName))
+            return;
+
+        _form?.ApplyToConfig();
+        _agentConfig.PermissionRules = _rules.Select(r => new PermissionRuleEntry
+        {
+            Id = r.Id,
+            Kind = Enum.Parse<PermissionKind>(r.Kind),
+            Pattern = r.Pattern,
+            Effect = Enum.Parse<PermissionEffect>(r.Effect),
+            Priority = r.Priority
+        }).ToList();
+
+        var projectAgents = await ConfigService.LoadLevelSectionAsync<Dictionary<string, AgentConfig>>(ConfigLevel.Project, "Agents")
+            ?? new Dictionary<string, AgentConfig>(StringComparer.OrdinalIgnoreCase);
+        projectAgents[_agentName] = _agentConfig;
+        await ConfigService.SaveProjectSectionAsync("Agents", projectAgents);
+        MessageService.Success($"智能体 {_agentName} 配置已保存");
+    }
+
+    private sealed class EditableRule
+    {
+        public string Id { get; set; } = "";
+        public string Kind { get; set; } = "Tool";
+        public string Pattern { get; set; } = "*";
+        public string Effect { get; set; } = "Ask";
+        public int Priority { get; set; }
+    }
+}

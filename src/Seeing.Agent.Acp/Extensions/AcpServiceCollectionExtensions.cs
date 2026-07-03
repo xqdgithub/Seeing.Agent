@@ -30,6 +30,7 @@ public static class AcpServiceCollectionExtensions
     public static IServiceCollection AddSeeingAcp(this IServiceCollection services)
     {
         services.AddSingleton<IAcpBackendRegistry, AcpBackendRegistry>();
+        services.AddSingleton<IAcpConfigurationReloader, AcpConfigurationReloader>();
         services.AddSingleton<AcpPermissionBridge>();
         services.AddSingleton<AcpFileSystemBridge>();
         services.AddSingleton<AcpTerminalBridge>();

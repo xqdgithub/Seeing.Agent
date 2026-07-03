@@ -1,0 +1,105 @@
+@using AntDesign
+@using Seeing.Gateway.Configuration
+@using System.Text.Json
+
+<Form Layout="@FormLayout.Vertical"
+      Model="@_formModel"
+      RequiredMark="FormRequiredMark.Required"
+      Context="formContext">
+    @{
+        var requiredFields = Fields.Where(f => f.Required).ToList();
+        var optionalFields = Fields.Where(f => !f.Required).ToList();
+    }
+
+    @if (requiredFields.Count > 0)
+    {
+        @foreach (var fieldSection in requiredFields.GroupBy(f => f.Section ?? ""))
+        {
+            @if (!string.IsNullOrWhiteSpace(fieldSection.Key))
+            {
+                <Divider>@fieldSection.Key</Divider>
+            }
+
+            @foreach (var field in fieldSection)
+            {
+                <FormItem Label="@field.Label" Required="true" ToolTip="@field.Description">
+                    <SchemaFieldEditor @key="field.Name" Field="field" Options="Values" />
+                </FormItem>
+            }
+        }
+    }
+
+    @if (optionalFields.Count > 0)
+    {
+        <Collapse Bordered="false" Class="gateway-advanced-collapse">
+            <Panel Header="@($"高级选项（{optionalFields.Count}）")" Key="advanced">
+                @foreach (var fieldSection in optionalFields.GroupBy(f => f.Section ?? ""))
+                {
+                    @if (!string.IsNullOrWhiteSpace(fieldSection.Key))
+                    {
+                        <Divider>@fieldSection.Key</Divider>
+                    }
+
+                    @foreach (var field in fieldSection)
+                    {
+                        <FormItem Label="@field.Label" ToolTip="@field.Description">
+                            <SchemaFieldEditor @key="field.Name" Field="field" Options="Values" />
+                        </FormItem>
+                    }
+                }
+            </Panel>
+        </Collapse>
+    }
+</Form>
+
+@code {
+    private readonly object _formModel = new();
+
+    [Parameter] public IReadOnlyList<ConfigFieldSchema> Fields { get; set; } = Array.Empty<ConfigFieldSchema>();
+    [Parameter] public Dictionary<string, object?> Values { get; set; } = new();
+
+    public bool TryValidate(out string? errorMessage)
+    {
+        foreach (var field in Fields.Where(f => f.Required))
+        {
+            if (!HasValue(field, Values))
+            {
+                errorMessage = $"请填写必填项：{field.Label}";
+                return false;
+            }
+        }
+
+        errorMessage = null;
+        return true;
+    }
+
+    private static bool HasValue(ConfigFieldSchema field, Dictionary<string, object?> values)
+    {
+        if (!values.TryGetValue(field.Name, out var value) || value is null)
+            return field.Type is ConfigFieldType.Boolean;
+
+        value = ConvertJsonValue(value);
+
+        return field.Type switch
+        {
+            ConfigFieldType.Boolean => true,
+            ConfigFieldType.Number => value is not (0 or 0L or 0.0 or 0f or 0m),
+            ConfigFieldType.StringList => value is IEnumerable<string> list && list.Any(),
+            _ => !string.IsNullOrWhiteSpace(Convert.ToString(value))
+        };
+    }
+
+    private static object? ConvertJsonValue(object? value) =>
+        value is JsonElement json
+            ? json.ValueKind switch
+            {
+                JsonValueKind.String => json.GetString(),
+                JsonValueKind.Number => json.TryGetInt64(out var l) ? l : json.GetDouble(),
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                JsonValueKind.Array => json,
+                _ => json.GetRawText()
+            }
+            : value;
+}

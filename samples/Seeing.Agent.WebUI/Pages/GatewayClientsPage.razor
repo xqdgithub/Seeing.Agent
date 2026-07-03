@@ -1,0 +1,250 @@
+@page "/gateway-clients"
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Forms
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.WebUI.Components.GatewayClients
+@using Seeing.Agent.WebUI.Services
+@inject GatewayClientConfigService ConfigService
+@inject GatewayClientSupervisor Supervisor
+@inject IMessageService MessageService
+@inject IJSRuntime JsRuntime
+
+<PageTitle>Gateway 客户端 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(!_clients.Any())"
+                    EmptyTitle="暂无 Gateway 客户端" EmptyDescription="安装 Channel 插件或刷新注册表以发现可用客户端">
+    <Breadcrumb>
+        <BreadcrumbItem>设置</BreadcrumbItem>
+        <BreadcrumbItem>Gateway 客户端</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+            <Button Icon="@IconType.Outline.FolderOpen" OnClick="ScanPlugins">扫描插件</Button>
+            <Button Icon="@IconType.Outline.Upload" OnClick="InstallPlugin">安装插件</Button>
+        </Space>
+    </Extra>
+    <Stats>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Api" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_clients.Count</span>
+                <span class="stat-label">客户端总数</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.CheckCircle" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_clients.Count(c => c.Status == GatewayClientStatuses.Running)</span>
+                <span class="stat-label">运行中</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.PauseCircle" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_clients.Count(c => c.Status is GatewayClientStatuses.Stopped or GatewayClientStatuses.Disabled)</span>
+                <span class="stat-label">已停止</span>
+            </div>
+        </div>
+    </Stats>
+    <Filters>
+        <Tabs ActiveKey="@_filter" OnChange="OnFilterChanged">
+            <TabPane Key="all" Tab="全部" />
+            <TabPane Key="builtin" Tab="内置" />
+            <TabPane Key="custom" Tab="自定义" />
+        </Tabs>
+    </Filters>
+    <ChildContent>
+        <div class="items-grid">
+            @foreach (var client in FilteredClients)
+            {
+                <GatewayClientCard Client="client"
+                                   OnConfigure="OpenDrawer"
+                                   OnToggleEnabled="ToggleEnabled"
+                                   OnStart="StartClient"
+                                   OnStop="StopClient"
+                                   OnRestart="RestartClient" />
+            }
+        </div>
+    </ChildContent>
+</WorkspacePageShell>
+
+<GatewayClientDrawer Visible="@_drawerVisible"
+                     VisibleChanged="@(v => _drawerVisible = v)"
+                     Model="@_editing"
+                     Saving="@_saving"
+                     OnSave="SaveClient" />
+
+<InputFile id="gateway-plugin-upload" OnChange="OnPluginFileSelected" style="display:none" />
+
+@code {
+    private List<GatewayClientViewModel> _clients = new();
+    private GatewayClientViewModel _editing = new();
+    private bool _loading;
+    private bool _drawerVisible;
+    private bool _saving;
+    private string _filter = "all";
+
+    private IEnumerable<GatewayClientViewModel> FilteredClients => _filter switch
+    {
+        "builtin" => _clients.Where(c => c.IsBuiltin),
+        "custom" => _clients.Where(c => !c.IsBuiltin),
+        _ => _clients
+    };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _clients = (await Supervisor.RefreshStatusesAsync()).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnFilterChanged(string key) => _filter = key;
+
+    private void OpenDrawer(GatewayClientViewModel client)
+    {
+        _editing = Clone(client);
+        _drawerVisible = true;
+    }
+
+    private async Task SaveClient(GatewayClientViewModel model)
+    {
+        _saving = true;
+        try
+        {
+            await ConfigService.SaveClientAsync(model);
+            MessageService.Success($"{model.DisplayName} 配置已保存");
+            await LoadAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ToggleEnabled((string ChannelId, bool Enabled) args)
+    {
+        try
+        {
+            await ConfigService.SetClientEnabledAsync(args.ChannelId, args.Enabled);
+            if (args.Enabled)
+            {
+                await Supervisor.StartAsync(args.ChannelId);
+                MessageService.Success("客户端已启用并启动");
+            }
+            else
+            {
+                await Supervisor.StopAsync(args.ChannelId);
+                MessageService.Success("客户端已禁用并停止");
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error(ex.Message);
+            await LoadAsync();
+        }
+    }
+
+    private async Task StartClient(string channelId)
+    {
+        try
+        {
+            await Supervisor.StartAsync(channelId);
+            MessageService.Success("客户端已启动");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error(ex.Message);
+            await LoadAsync();
+        }
+    }
+
+    private async Task StopClient(string channelId)
+    {
+        await Supervisor.StopAsync(channelId);
+        MessageService.Success("客户端已停止");
+        await LoadAsync();
+    }
+
+    private async Task RestartClient(string channelId)
+    {
+        try
+        {
+            await Supervisor.RestartAsync(channelId);
+            MessageService.Success("客户端已重启");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error(ex.Message);
+            await LoadAsync();
+        }
+    }
+
+    private async Task ScanPlugins()
+    {
+        ConfigService.ReloadRegistry();
+        MessageService.Success("插件注册表已刷新");
+        await LoadAsync();
+    }
+
+    private async Task InstallPlugin()
+    {
+        await JsRuntime.InvokeVoidAsync("eval", "document.getElementById('gateway-plugin-upload').click()");
+        await Task.CompletedTask;
+    }
+
+    private async Task OnPluginFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null)
+            return;
+
+        var tempPath = Path.Combine(Path.GetTempPath(), file.Name);
+        await using (var stream = File.Create(tempPath))
+        {
+            await file.OpenReadStream(20 * 1024 * 1024).CopyToAsync(stream);
+        }
+
+        await ConfigService.InstallPluginAsync(tempPath);
+        MessageService.Success($"已安装插件: {file.Name}");
+        await LoadAsync();
+    }
+
+    private static GatewayClientViewModel Clone(GatewayClientViewModel source) => new()
+    {
+        ChannelId = source.ChannelId,
+        DisplayName = source.DisplayName,
+        Description = source.Description,
+        IsBuiltin = source.IsBuiltin,
+        PluginSpec = source.PluginSpec,
+        AssemblyPath = source.AssemblyPath,
+        Enabled = source.Enabled,
+        Gateway = new GatewayClientConnectionOptions
+        {
+            BaseUrl = source.Gateway.BaseUrl,
+            Transport = source.Gateway.Transport,
+            WebSocketPath = source.Gateway.WebSocketPath,
+            ApiKey = source.Gateway.ApiKey,
+            Timeout = source.Gateway.Timeout
+        },
+        Options = source.Options.ToDictionary(kv => kv.Key, kv => kv.Value),
+        Fields = source.Fields,
+        ConfigFormComponentType = source.ConfigFormComponentType,
+        ConfigFilePath = source.ConfigFilePath,
+        Status = source.Status,
+        LastError = source.LastError,
+        ProcessId = source.ProcessId
+    };
+}

@@ -5,6 +5,7 @@
 @inject SessionProvider SessionProvider
 @inject IMessageService MessageService
 @inject NavigationManager NavigationManager
+@implements IDisposable
 
 <PageTitle>会话管理 - Seeing.Agent</PageTitle>
 
@@ -177,22 +178,30 @@
     private int _totalCount;
     private int _todayCount;
     private int _activeCount;
-    
-    protected override async Task OnInitializedAsync()
+    private bool _hasRendered;
+
+    protected override void OnInitialized()
     {
         SessionProvider.OnSessionListChanged += OnSessionListChanged;
-        await SessionProvider.InitializeSessionListAsync();
         RefreshSessions();
     }
-    
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+            _hasRendered = true;
+    }
+
     public void Dispose()
     {
         SessionProvider.OnSessionListChanged -= OnSessionListChanged;
     }
-    
+
     private void OnSessionListChanged()
     {
-        InvokeAsync(() =>
+        if (!_hasRendered)
+            return;
+        _ = InvokeAsync(() =>
         {
             RefreshSessions();
             StateHasChanged();

@@ -25,4 +25,8 @@ public interface IGatewayClient
     Task<IReadOnlyList<GatewayPendingPermission>> GetPendingPermissionsAsync(
         string sessionId,
         CancellationToken cancellationToken = default);
+
+    Task<GatewaySessionResetResult> ResetSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default);
 }

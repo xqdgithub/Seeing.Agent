@@ -1,70 +1,157 @@
 @page "/settings"
 @using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Components
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.State
+@inject SeeingConfigService ConfigService
+@inject IWorkspaceProvider WorkspaceProvider
+@inject AppState AppState
 @inject NavigationManager NavigationManager
+@inject IMessageService MessageService
 
-<PageTitle>设置 - Seeing.Agent</PageTitle>
+<PageTitle>系统设置 - Seeing.Agent</PageTitle>
 
-<div class="settings-container">
-    <div class="settings-header">
-        <h2>设置</h2>
-        <Breadcrumb>
-            <BreadcrumbItem>首页</BreadcrumbItem>
-            <BreadcrumbItem>设置</BreadcrumbItem>
-        </Breadcrumb>
-    </div>
-    
-    <div class="settings-content">
-        <Tabs DefaultActiveKey="1">
-            <TabPane Key="1" Tab="常规设置">
-                <div class="settings-section">
-                    <h4>基础配置</h4>
-                    <Alert Type="@AlertType.Info" 
-                           Message="常规设置功能正在开发中"
-                           ShowIcon="true" />
-                </div>
+<WorkspacePageShell>
+    <Breadcrumb>
+        <BreadcrumbItem>设置</BreadcrumbItem>
+        <BreadcrumbItem>系统设置</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveCurrentTab">保存</Button>
+    </Extra>
+    <ChildContent>
+        <Tabs @bind-ActiveKey="_activeTab">
+            <TabPane Key="general" Tab="常规">
+                <Form Layout="@FormLayout.Vertical" Model="@_options">
+                    <FormItem Label="默认智能体"><Input @bind-Value="@_options.DefaultAgent" /></FormItem>
+                    <FormItem Label="默认模型"><Input @bind-Value="@_options.DefaultModel" /></FormItem>
+                    <FormItem Label="工作区路径"><Input Value="@_workspacePath" Disabled="true" /></FormItem>
+                    <FormItem Label="深色主题">
+                        <Switch Checked="@(_theme == "dark")" OnChange="@OnThemeChanged" />
+                    </FormItem>
+                </Form>
             </TabPane>
-            
-            <TabPane Key="2" Tab="MCP 服务">
-                <div class="settings-section">
-                    <McpStatusPanel />
-                </div>
+            <TabPane Key="scheduler" Tab="调度器">
+                <Form Layout="@FormLayout.Vertical" Model="@_scheduler">
+                    <FormItem Label="时区"><Input @bind-Value="@_scheduler.Timezone" /></FormItem>
+                    <FormItem Label="Tick 间隔（秒）"><InputNumber @bind-Value="@_scheduler.TickIntervalSeconds" Min="1" Style="width: 100%;" /></FormItem>
+                    <FormItem Label="最大并发任务"><InputNumber @bind-Value="@_scheduler.MaxConcurrentJobs" Min="1" Style="width: 100%;" /></FormItem>
+                </Form>
             </TabPane>
-            
-            <TabPane Key="3" Tab="权限管理">
-                <div class="settings-section">
-                    <h4>权限规则</h4>
-                    <Alert Type="@AlertType.Info" 
-                           Message="权限管理功能正在开发中"
-                           ShowIcon="true" />
-                </div>
+            <TabPane Key="plugins" Tab="插件">
+                @if (_options.Plugins.Count == 0 && _options.PluginEnabled.Count == 0)
+                {
+                    <Empty Description="@("未配置插件，可在 seeing.json 的 Plugins 节添加")" />
+                }
+                else
+                {
+                    <Table TItem="PluginRow" DataSource="@_pluginRows" RowKey="@(p => p.Id)">
+                        <PropertyColumn Property="c => c.Id" Title="插件" />
+                        <ActionColumn Title="启用">
+                            <Switch Checked="@context.Enabled" OnChange="@((bool v) => TogglePlugin(context.Id, v))" />
+                        </ActionColumn>
+                    </Table>
+                }
             </TabPane>
-            
-            <TabPane Key="4" Tab="高级设置">
-                <div class="settings-section">
-                    <h4>高级配置</h4>
-                    <Alert Type="@AlertType.Info" 
-                           Message="高级设置功能正在开发中"
-                           ShowIcon="true" />
-                </div>
+            <TabPane Key="mcp" Tab="MCP 概览">
+                <McpStatusPanel />
+                <Button Type="@ButtonType.Link" Style="margin-top: 16px;" OnClick="@(() => NavigationManager.NavigateTo("/mcp"))">
+                    前往 MCP 管理 →
+                </Button>
+            </TabPane>
+            <TabPane Key="advanced" Tab="高级">
+                <Alert Type="@AlertType.Warning" ShowIcon="true" Message="直接编辑 JSON，保存前请确保格式正确。" Style="margin-bottom: 16px;" />
+                <TextArea Rows="20" @bind-Value="@_rawJson" Style="font-family: monospace;" />
             </TabPane>
         </Tabs>
-    </div>
-    
-    <div class="settings-footer">
-        <Space>
-            <SpaceItem>
-                <Button Type="@ButtonType.Default" Icon="@IconType.Outline.Rollback" OnClick="@GoBack">
-                    返回
-                </Button>
-            </SpaceItem>
-        </Space>
-    </div>
-</div>
+    </ChildContent>
+</WorkspacePageShell>
 
 @code {
-    private void GoBack()
+    private string _activeTab = "general";
+    private SeeingAgentOptions _options = new();
+    private SchedulerOptions _scheduler = new();
+    private string _rawJson = "";
+    private string _workspacePath = "";
+    private string _theme = "light";
+    private List<PluginRow> _pluginRows = new();
+
+    protected override async Task OnInitializedAsync()
     {
-        NavigationManager.NavigateTo("/home");
+        _theme = AppState.Theme;
+        _workspacePath = WorkspaceProvider.WorkspaceRoot;
+        _options = await ConfigService.LoadProjectOptionsAsync();
+        _scheduler = ConfigService.GetSchedulerOptions();
+        _rawJson = await ConfigService.GetRawProjectJsonAsync();
+        BuildPluginRows();
+    }
+
+    private void BuildPluginRows()
+    {
+        var ids = _options.Plugins.Select(p => p.Spec).Concat(_options.PluginEnabled.Keys).Distinct();
+        _pluginRows = ids.Select(id => new PluginRow
+        {
+            Id = id ?? "",
+            Enabled = !_options.PluginEnabled.TryGetValue(id ?? "", out var enabled) || enabled
+        }).ToList();
+    }
+
+    private void TogglePlugin(string id, bool enabled)
+    {
+        _options.PluginEnabled[id] = enabled;
+        BuildPluginRows();
+    }
+
+    private async Task SaveCurrentTab()
+    {
+        try
+        {
+            switch (_activeTab)
+            {
+                case "general":
+                    await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+                    {
+                        ["DefaultAgent"] = _options.DefaultAgent,
+                        ["DefaultModel"] = _options.DefaultModel
+                    });
+                    break;
+                case "scheduler":
+                    await ConfigService.SaveSchedulerOptionsAsync(s =>
+                    {
+                        s.Enabled = _scheduler.Enabled;
+                        s.Timezone = _scheduler.Timezone;
+                        s.TickIntervalSeconds = _scheduler.TickIntervalSeconds;
+                        s.MaxConcurrentJobs = _scheduler.MaxConcurrentJobs;
+                    });
+                    break;
+                case "plugins":
+                    await ConfigService.SaveProjectSectionAsync("PluginEnabled", _options.PluginEnabled);
+                    break;
+                case "advanced":
+                    await ConfigService.SaveRawProjectJsonAsync(_rawJson);
+                    _options = await ConfigService.LoadEffectiveOptionsAsync();
+                    break;
+            }
+            MessageService.Success("保存成功");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+    }
+
+    private void OnThemeChanged(bool dark)
+    {
+        _theme = dark ? "dark" : "light";
+        AppState.Theme = _theme;
+        AppState.NotifyChange();
+    }
+
+    private sealed class PluginRow
+    {
+        public string Id { get; set; } = "";
+        public bool Enabled { get; set; }
     }
 }

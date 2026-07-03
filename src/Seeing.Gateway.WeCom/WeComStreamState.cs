@@ -5,7 +5,9 @@ namespace Seeing.Gateway.WeCom;
 /// </summary>
 public sealed class WeComStreamState : IAsyncDisposable
 {
-    private readonly WeComAibotWsClient _client;
+    private const string ProcessingText = "🤔 Thinking...";
+
+    private readonly IWeComStreamSender _sender;
     private readonly WeComWsFrame _requestFrame;
     private readonly WeComOptions _options;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -14,6 +16,7 @@ public sealed class WeComStreamState : IAsyncDisposable
     private string? _processingStreamId;
     private string _accumulatedText = string.Empty;
     private DateTime _lastDeltaSentUtc = DateTime.MinValue;
+    private bool _contentPhaseStarted;
     private CancellationTokenSource? _keepaliveCts;
     private Task? _keepaliveTask;
 
@@ -21,8 +24,16 @@ public sealed class WeComStreamState : IAsyncDisposable
         WeComAibotWsClient client,
         WeComWsFrame requestFrame,
         WeComOptions options)
+        : this(new WeComAibotStreamSender(client), requestFrame, options)
     {
-        _client = client;
+    }
+
+    internal WeComStreamState(
+        IWeComStreamSender sender,
+        WeComWsFrame requestFrame,
+        WeComOptions options)
+    {
+        _sender = sender;
         _requestFrame = requestFrame;
         _options = options;
     }
@@ -30,7 +41,7 @@ public sealed class WeComStreamState : IAsyncDisposable
     public async Task StartProcessingIndicatorAsync(CancellationToken cancellationToken)
     {
         _processingStreamId = WeComAibotWsClient.GenerateStreamId();
-        await _client.SendProcessingIndicatorAsync(_requestFrame, _processingStreamId, cancellationToken)
+        await _sender.SendProcessingIndicatorAsync(_requestFrame, _processingStreamId, cancellationToken)
             .ConfigureAwait(false);
 
         _keepaliveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -43,6 +54,8 @@ public sealed class WeComStreamState : IAsyncDisposable
             return;
 
         _accumulatedText = accumulatedText;
+        await EnterContentPhaseAsync(cancellationToken).ConfigureAwait(false);
+
         var throttleMs = Math.Max(0, _options.DeltaThrottleMilliseconds);
         var now = DateTime.UtcNow;
         if ((now - _lastDeltaSentUtc).TotalMilliseconds < throttleMs)
@@ -74,8 +87,19 @@ public sealed class WeComStreamState : IAsyncDisposable
         await SendContentAsync(finish: true, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task EnterContentPhaseAsync(CancellationToken cancellationToken)
+    {
+        if (_contentPhaseStarted)
+            return;
+
+        _contentPhaseStarted = true;
+        await CancelKeepaliveAsync().ConfigureAwait(false);
+    }
+
     private async Task SendContentAsync(bool finish, CancellationToken cancellationToken)
     {
+        await EnterContentPhaseAsync(cancellationToken).ConfigureAwait(false);
+
         await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -92,10 +116,34 @@ public sealed class WeComStreamState : IAsyncDisposable
                 }
             }
 
-            await _client.ReplyStreamAsync(
+            await _sender.ReplyStreamAsync(
                 _requestFrame,
                 _contentStreamId,
                 _accumulatedText,
+                finish,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    private async Task SendProcessingRefreshAsync(
+        string streamId,
+        bool finish,
+        CancellationToken cancellationToken)
+    {
+        await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_contentPhaseStarted)
+                return;
+
+            await _sender.ReplyStreamAsync(
+                _requestFrame,
+                streamId,
+                ProcessingText,
                 finish,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -118,20 +166,15 @@ public sealed class WeComStreamState : IAsyncDisposable
                 await Task.Delay(refreshInterval, cancellationToken).ConfigureAwait(false);
                 elapsed += refreshInterval;
 
-                await _client.ReplyStreamAsync(
-                    _requestFrame,
-                    streamId,
-                    "🤔 Thinking...",
-                    finish: false,
-                    cancellationToken).ConfigureAwait(false);
+                await SendProcessingRefreshAsync(streamId, finish: false, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
-            await _client.ReplyStreamAsync(
-                _requestFrame,
-                streamId,
-                "🤔 Thinking...",
-                finish: true,
-                cancellationToken).ConfigureAwait(false);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                await SendProcessingRefreshAsync(streamId, finish: true, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {

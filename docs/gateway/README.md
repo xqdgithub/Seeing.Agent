@@ -104,11 +104,32 @@ dotnet run --project samples/Seeing.Gateway.Console.Demo
 dotnet run --project samples/Seeing.Gateway.Console.Demo -- --transport ws
 ```
 
-### 5. 企微 Bridge（可选）
+### 5. Gateway Client 管理（WebUI）
+
+WebUI 提供 **Gateway 客户端** 页面（`/gateway-clients`），用于：
+
+- 发现内置/自定义 Channel 插件（`IGatewayChannelPlugin`）
+- 按 Schema 动态配置各 Channel 参数（如 WeCom `BotId`/`Secret`）
+- 启停独立 Bridge 进程（`Seeing.Gateway.ChannelHost`）
+
+配置写入各 Channel 独立文件 `.seeing/gateway-clients/{channelId}.json`；`seeing.json` 仅保留启用状态与插件引用。
+
+**新增 Channel 插件**：实现 `IGatewayChannelPlugin` + `XxxOptions`，将 DLL 放入 `.seeing/gateway-channels/` 或在 UI 中安装。
+
+```bash
+# 通用 Channel 宿主（WebUI 启动 Bridge 时调用）
+dotnet run --project samples/Seeing.Gateway.ChannelHost -- \
+  --plugin ./Seeing.Gateway.WeCom.dll \
+  --config ./.seeing/gateway-clients/wecom.json
+```
+
+### 6. 企微 Bridge（可选，旧 Demo）
 
 ```bash
 dotnet run --project samples/Seeing.Gateway.WeCom.Demo
 ```
+
+推荐使用 WebUI + ChannelHost 管理 WeCom Bridge。
 
 ## 传输方式
 
@@ -125,6 +146,7 @@ dotnet run --project samples/Seeing.Gateway.WeCom.Demo
 - **出站**：`GatewayEvent` 流（Content / Message / Response / Permission / Error）
 - **完成信号**：渠道侧「结束回复」应对齐 `LoopComplete` 或 WS `chat.complete`，而非单轮 `StreamComplete`
 - **会话 ID**：Client 传入；企微映射为 `wecom_{userid}` 或 `wecom_group_{chatid}`（文件系统安全格式）
+- **会话重置**：`POST /api/gateway/sessions/{sessionId}/reset` 清空消息历史（企微 `/clear` 使用）
 
 ## 多入口并存
 

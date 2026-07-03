@@ -42,6 +42,22 @@ public static class GatewayClientServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.Configure<GatewayClientOptions>(configuration.GetSection(GatewayClientOptions.SectionName));
+        services.ConfigureGatewayClientCommon(configuration);
         return AddSeeingGatewayClient(services);
+    }
+
+    /// <summary>
+    /// 绑定 Channel 配置文件根节的 Agent / Model（<see cref="GatewayClientCommonOptions"/>）。
+    /// </summary>
+    public static IServiceCollection ConfigureGatewayClientCommon(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.Configure<GatewayClientCommonOptions>(options =>
+        {
+            options.Agent = configuration[nameof(GatewayClientCommonOptions.Agent)];
+            options.Model = configuration[nameof(GatewayClientCommonOptions.Model)];
+        });
+        return services;
     }
 }

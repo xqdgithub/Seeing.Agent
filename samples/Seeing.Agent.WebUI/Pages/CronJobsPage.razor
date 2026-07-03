@@ -1,0 +1,209 @@
+@page "/cron-jobs"
+@using AntDesign
+@using Seeing.Agent.Scheduler
+@using Seeing.Agent.Scheduler.Abstractions
+@using Seeing.Agent.Scheduler.Models
+@using Seeing.Agent.WebUI.Components.CronJobs
+@inject IScheduleManager ScheduleManager
+@inject IScheduleRepository ScheduleRepository
+@inject IMessageService MessageService
+
+<PageTitle>定时任务 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(!_rows.Any())"
+                    EmptyTitle="暂无定时任务" EmptyDescription="创建第一个定时任务以自动执行 Agent 或发送消息">
+    <Breadcrumb>
+        <BreadcrumbItem>控制中心</BreadcrumbItem>
+        <BreadcrumbItem>定时任务</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowCreate">新建任务</Button>
+        </Space>
+    </Extra>
+    <Stats>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.ClockCircle" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_rows.Count</span>
+                <span class="stat-label">任务总数</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.CheckCircle" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_rows.Count(r => r.Enabled)</span>
+                <span class="stat-label">已启用</span>
+            </div>
+        </div>
+    </Stats>
+    <ChildContent>
+        <Table TItem="JobRow" DataSource="@_rows" RowKey="@(j => j.Id)">
+            <PropertyColumn Property="c => c.Name" Title="名称" />
+            <PropertyColumn Property="c => c.Id" Title="ID" />
+            <PropertyColumn Property="c => c.TaskType" Title="类型" />
+            <PropertyColumn Property="c => c.ScheduleText" Title="调度" />
+            <PropertyColumn Property="c => c.Agent" Title="Agent" />
+            <PropertyColumn Property="c => c.EnabledText" Title="启用" />
+            <PropertyColumn Property="c => c.NextRunText" Title="下次运行" />
+            <ActionColumn Title="操作">
+                <Space>
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => RunOnce(context.Id))">运行</Button>
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => EditJob(context.Id))">编辑</Button>
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => ShowHistory(context.Id))">历史</Button>
+                    <Popconfirm Title="确定删除此任务？" OnConfirm="@(() => DeleteJob(context.Id))">
+                        <Button Size="@ButtonSize.Small" Danger="true">删除</Button>
+                    </Popconfirm>
+                </Space>
+            </ActionColumn>
+        </Table>
+    </ChildContent>
+    <EmptyAction>
+        <Button Type="@ButtonType.Primary" OnClick="ShowCreate">新建任务</Button>
+    </EmptyAction>
+</WorkspacePageShell>
+
+<JobEditorModal Visible="@_editorVisible"
+                VisibleChanged="@(v => _editorVisible = v)"
+                Job="@_editingJob"
+                IsEdit="@_isEdit"
+                Saving="@_saving"
+                OnSave="SaveJob" />
+
+<Drawer Title="@("执行历史")" Visible="@_historyVisible" Width="480" OnClose="@(() => _historyVisible = false)">
+  @if (_history.Count == 0)
+  {
+    <Empty Description="@("暂无执行记录")" />
+  }
+  else
+  {
+    <Timeline>
+      @foreach (var record in _history)
+      {
+        <TimelineItem Color="@(record.Status == "success" ? "green" : record.Status == "failed" ? "red" : "blue")">
+          <p><strong>@record.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</strong> — @record.Status</p>
+          @if (!string.IsNullOrEmpty(record.Error))
+          {
+            <p style="color: var(--color-error);">@record.Error</p>
+          }
+          @if (!string.IsNullOrEmpty(record.Output))
+          {
+            <p style="white-space: pre-wrap; font-size: 12px;">@(record.Output.Length > 200 ? record.Output[..200] + "..." : record.Output)</p>
+          }
+        </TimelineItem>
+      }
+    </Timeline>
+  }
+</Drawer>
+
+@code {
+    private List<ScheduledJobSpec> _jobs = new();
+    private List<JobRow> _rows = new();
+    private List<JobExecutionRecord> _history = new();
+    private ScheduledJobSpec _editingJob = new();
+    private bool _loading;
+    private bool _editorVisible;
+    private bool _historyVisible;
+    private bool _isEdit;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _jobs = (await ScheduleManager.ListJobsAsync()).ToList();
+        _rows = _jobs.Select(j => new JobRow
+        {
+            Id = j.Id,
+            Name = j.Name ?? j.Id,
+            TaskType = j.TaskType,
+            ScheduleText = GetScheduleText(j),
+            Agent = j.Agent ?? "",
+            Enabled = j.Enabled,
+            EnabledText = j.Enabled ? "是" : "否",
+            NextRunText = j.NextRunAt?.ToString("yyyy-MM-dd HH:mm") ?? "-"
+        }).ToList();
+        _loading = false;
+    }
+
+    private void ShowCreate()
+    {
+        _editingJob = new ScheduledJobSpec
+        {
+            Id = $"job-{Guid.NewGuid():N}"[..12],
+            Enabled = true,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Cron, Timezone = "Asia/Shanghai" },
+            Dispatch = new DispatchSpec { Target = new DispatchTarget { SessionId = "main" } }
+        };
+        _isEdit = false;
+        _editorVisible = true;
+    }
+
+    private void EditJob(string id)
+    {
+        var job = _jobs.FirstOrDefault(j => j.Id == id);
+        if (job == null) return;
+        _editingJob = CloneJob(job);
+        _isEdit = true;
+        _editorVisible = true;
+    }
+
+    private static ScheduledJobSpec CloneJob(ScheduledJobSpec job) =>
+        System.Text.Json.JsonSerializer.Deserialize<ScheduledJobSpec>(
+            System.Text.Json.JsonSerializer.Serialize(job)) ?? new ScheduledJobSpec();
+
+    private async Task SaveJob(ScheduledJobSpec job)
+    {
+        _saving = true;
+        try
+        {
+            await ScheduleManager.CreateOrReplaceJobAsync(job);
+            MessageService.Success("任务已保存");
+            await LoadAsync();
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task DeleteJob(string id)
+    {
+        await ScheduleManager.DeleteJobAsync(id);
+        MessageService.Success("任务已删除");
+        await LoadAsync();
+    }
+
+    private async Task RunOnce(string id)
+    {
+        var result = await ScheduleManager.RunJobOnceAsync(id);
+        if (result.Success) MessageService.Success("任务执行成功");
+        else MessageService.Error(result.Error ?? "执行失败");
+        await LoadAsync();
+    }
+
+    private async Task ShowHistory(string jobId)
+    {
+        _history = (await ScheduleRepository.GetHistoryAsync(jobId, 20)).ToList();
+        _historyVisible = true;
+    }
+
+    private static string GetScheduleText(ScheduledJobSpec job) => job.Schedule.Type switch
+    {
+        ScheduleTypes.Cron => job.Schedule.Cron ?? "cron",
+        ScheduleTypes.Interval => job.Schedule.Every ?? "interval",
+        ScheduleTypes.Once => job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? "once",
+        _ => job.Schedule.Type
+    };
+
+    private sealed class JobRow
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string TaskType { get; set; } = "";
+        public string ScheduleText { get; set; } = "";
+        public string Agent { get; set; } = "";
+        public bool Enabled { get; set; }
+        public string EnabledText { get; set; } = "";
+        public string NextRunText { get; set; } = "";
+    }
+}

@@ -25,22 +25,25 @@
 </div>
 
 <!-- 重命名弹窗 -->
-<Modal Title="重命名会话"
-       Visible="@RenameModalVisible"
-       OnOk="@OnRenameConfirm"
-       OnCancel="@OnRenameCancel"
-       OkText="@OkText"
-       CancelText="@CancelText">
-    <Form Model="@RenameSession"
-          LabelColSpan="4"
-          WrapperColSpan="20">
-        <FormItem Label="标题">
-            <Input @bind-Value="@RenameSession.Title"
-                   Placeholder="请输入会话标题"
-                   AllowClear="true" />
-        </FormItem>
-    </Form>
-</Modal>
+@if (RenameModalVisible)
+{
+    <Modal Title="重命名会话"
+           Visible="true"
+           OnOk="@OnRenameConfirm"
+           OnCancel="@OnRenameCancel"
+           OkText="@OkText"
+           CancelText="@CancelText">
+        <Form Model="@RenameSession"
+              LabelColSpan="4"
+              WrapperColSpan="20">
+            <FormItem Label="标题">
+                <Input @bind-Value="@RenameSession.Title"
+                       Placeholder="请输入会话标题"
+                       AllowClear="true" />
+            </FormItem>
+        </Form>
+    </Modal>
+}
 
 <!-- 删除确认弹窗 -->
 <Popconfirm Title="确定删除此会话吗？"

@@ -39,6 +39,9 @@ namespace Seeing.Agent.Configuration
         /// <summary>Gateway 配置</summary>
         public GatewayOptions Gateway { get; set; } = new();
 
+        /// <summary>Gateway Client（Channel Bridge）管理配置</summary>
+        public GatewayClientsOptions GatewayClients { get; set; } = new();
+
         /// <summary>ACP 集成配置</summary>
         public AcpOptions Acp { get; set; } = new();
 

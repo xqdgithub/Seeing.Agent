@@ -5,6 +5,28 @@ namespace Seeing.Gateway.WeCom;
 /// </summary>
 public static class WeComSessionResolver
 {
+    public static string ResolveConversationKey(ParsedWeComMessage message, WeComOptions options) =>
+        ResolveSessionId(message, options);
+
+    public static string ResolveConversationKey(ParsedWeComEnterChat enterChat, WeComOptions options)
+    {
+        if (string.Equals(enterChat.ChatType, "group", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(enterChat.ChatId)
+            && options.ShareSessionInGroup)
+        {
+            return $"wecom_group_{SanitizeSegment(enterChat.ChatId)}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(enterChat.UserId))
+            return $"wecom_{SanitizeSegment(enterChat.UserId)}";
+
+        if (!string.IsNullOrWhiteSpace(enterChat.ChatId))
+            return $"wecom_{SanitizeSegment(enterChat.ChatId)}";
+
+        return "wecom_unknown";
+    }
+
+    /// <summary>解析基础 sessionId（不含 idle 轮换后缀）</summary>
     public static string ResolveSessionId(ParsedWeComMessage message, WeComOptions options)
     {
         if (string.Equals(message.ChatType, "group", StringComparison.OrdinalIgnoreCase)
@@ -22,6 +44,9 @@ public static class WeComSessionResolver
 
         return "wecom_unknown";
     }
+
+    internal static string GenerateRotatedSessionId(string conversationKey) =>
+        $"{conversationKey}_{DateTime.UtcNow:yyyyMMddHHmmss}";
 
     private static string SanitizeSegment(string value)
     {

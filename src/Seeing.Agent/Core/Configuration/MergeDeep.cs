@@ -77,6 +77,10 @@ namespace Seeing.Agent.Core.Configuration
             // 处理原始类型和字符串
             if (IsPrimitiveType(type))
             {
+                // bool 的 false 是合法覆盖值（如 Acp.Enabled），不能当作“未设置”
+                if (type == typeof(bool))
+                    return overrideValue;
+
                 // 如果覆盖值是默认值，使用基础值
                 if (IsDefault(overrideValue, type))
                     return baseValue;
@@ -189,6 +193,19 @@ namespace Seeing.Agent.Core.Configuration
             {
                 foreach (DictionaryEntry entry in overrideDict)
                 {
+                    if (entry.Value == null)
+                        continue;
+
+                    if (result.Contains(entry.Key) && result[entry.Key] != null)
+                    {
+                        var valueType = entry.Value.GetType();
+                        if (IsComplexObject(valueType))
+                        {
+                            result[entry.Key] = MergeObject(result[entry.Key]!, entry.Value, valueType);
+                            continue;
+                        }
+                    }
+
                     result[entry.Key] = entry.Value;
                 }
             }

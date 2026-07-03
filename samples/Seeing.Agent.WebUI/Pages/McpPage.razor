@@ -14,16 +14,16 @@
 <div class="workspace-page">
     <div class="page-header">
         <Breadcrumb>
-            <BreadcrumbItem>Workspace</BreadcrumbItem>
-            <BreadcrumbItem>MCP Clients</BreadcrumbItem>
+            <BreadcrumbItem>工作区</BreadcrumbItem>
+            <BreadcrumbItem>MCP 客户端</BreadcrumbItem>
         </Breadcrumb>
         <div class="header-actions">
             <Space>
                 <SpaceItem>
-                    <Button Type="@ButtonType.Default" Icon="@IconType.Outline.Reload" OnClick="HandleRefresh">Refresh</Button>
+                    <Button Type="@ButtonType.Default" Icon="@IconType.Outline.Reload" OnClick="HandleRefresh">刷新</Button>
                 </SpaceItem>
                 <SpaceItem>
-                    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowAddModal">Add Client</Button>
+                    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowAddModal">添加客户端</Button>
                 </SpaceItem>
             </Space>
         </div>
@@ -96,7 +96,7 @@
                 <h3 class="empty-state-title">No MCP Clients</h3>
                 <p class="empty-state-description">Add an MCP client to connect to external tools and services.</p>
                 <div class="empty-state-action">
-                    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowAddModal">Add Client</Button>
+                    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowAddModal">添加客户端</Button>
                 </div>
             </div>
         }

@@ -1,0 +1,88 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Services
+
+<Drawer Title="@($"配置 - {Model.DisplayName}")"
+        Visible="@Visible"
+        Width="520"
+        OnClose="Close">
+    @if (Visible && Model is not null)
+    {
+        <div @key="Model.ChannelId">
+        <CommonConfigSection Enabled="@Model.Enabled"
+                             EnabledChanged="@(v => Model.Enabled = v)"
+                             Gateway="@Model.Gateway"
+                             Agent="@Model.Agent"
+                             AgentChanged="@(v => Model.Agent = v)"
+                             ModelId="@Model.Model"
+                             ModelIdChanged="@(v => Model.Model = v)" />
+        <Divider>Channel 参数</Divider>
+        <SchemaDrivenConfigForm @ref="_optionsForm"
+                                Fields="@Model.Fields"
+                                Values="@Model.Options" />
+        <div style="margin-top: 8px; font-size: 12px; opacity: 0.7;">
+            配置文件：<code>@ToRelativeConfigPath(Model.ConfigFilePath)</code>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(_saveError))
+        {
+            <Alert Type="@AlertType.Error" Message="@_saveError" ShowIcon="true" Style="margin-top: 12px;" />
+        }
+        <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+            <Button OnClick="Close">取消</Button>
+            <Button Type="@ButtonType.Primary" Loading="@Saving" OnClick="SaveAsync">保存</Button>
+        </div>
+        </div>
+    }
+</Drawer>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public GatewayClientViewModel Model { get; set; } = new();
+    [Parameter] public bool Saving { get; set; }
+    [Parameter] public EventCallback<GatewayClientViewModel> OnSave { get; set; }
+
+    private string? _saveError;
+    private SchemaDrivenConfigForm? _optionsForm;
+
+    private async Task SaveAsync()
+    {
+        _saveError = null;
+
+        if (_optionsForm is not null && !_optionsForm.TryValidate(out var validationError))
+        {
+            _saveError = validationError;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Model.Gateway.BaseUrl))
+        {
+            _saveError = "请填写 Gateway 服务地址";
+            return;
+        }
+
+        try
+        {
+            await OnSave.InvokeAsync(Model);
+            await Close();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    private async Task Close()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private static string ToRelativeConfigPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return ".seeing/gateway-clients/{channelId}.json";
+
+        var cwd = Directory.GetCurrentDirectory();
+        return Path.GetRelativePath(cwd, path).Replace('\\', '/');
+    }
+}

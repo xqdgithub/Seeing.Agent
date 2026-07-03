@@ -1,0 +1,75 @@
+@using Seeing.Agent.Core.Events
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Core.Models
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Services
+@implements IDisposable
+@inject EventStreamHandler EventStreamHandler
+@inject BlazorPermissionChannel PermissionChannel
+
+<PermissionModal Request="@_request"
+                 Visible="@_visible"
+                 OnDecision="@OnDecision"
+                 OnVisibleChange="@OnVisibleChange" />
+
+@code {
+  private PermissionRequestViewModel _request = new();
+  private bool _visible;
+  private bool _decided;
+
+  protected override void OnInitialized()
+  {
+    EventStreamHandler.OnPermissionRequest += OnPermissionRequest;
+  }
+
+  private void OnPermissionRequest(PermissionRequestEvent evt)
+  {
+    _request = new PermissionRequestViewModel
+    {
+      PermissionId = evt.PermissionId,
+      PermissionKind = evt.PermissionKind,
+      Resource = evt.Resource,
+      Target = evt.Resource ?? "",
+      Type = MapType(evt.PermissionKind),
+      Arguments = evt.Arguments,
+      Description = evt.Message,
+      Message = evt.Message,
+      RiskLevel = evt.RiskLevel ?? "medium",
+      IsHighRisk = evt.RiskLevel is "high" or "critical",
+      TimeoutSeconds = evt.TimeoutSeconds,
+      Timestamp = evt.Timestamp,
+      RequestTime = evt.Timestamp,
+      SessionId = evt.SessionId
+    };
+    _decided = false;
+    _visible = true;
+    InvokeAsync(StateHasChanged);
+  }
+
+  private static PermissionRequestType MapType(string? kind) => kind switch
+  {
+    "tool" => PermissionRequestType.Tool,
+    "file" or "write" => PermissionRequestType.Write,
+    "agent" or "subagent" => PermissionRequestType.SubAgent,
+    _ => PermissionRequestType.Confirmation
+  };
+
+  private void OnDecision(PermissionDecisionViewModel decision)
+  {
+    _decided = true;
+    PermissionChannel.RespondToPermission(
+      _request.PermissionId,
+      decision.Approved ? PermissionAction.Allow : PermissionAction.Deny);
+    _visible = false;
+  }
+
+  private Task OnVisibleChange(bool visible)
+  {
+    _visible = visible;
+    if (!visible && !_decided && !string.IsNullOrEmpty(_request.PermissionId))
+      PermissionChannel.RespondToPermission(_request.PermissionId, PermissionAction.Deny);
+    return Task.CompletedTask;
+  }
+
+  public void Dispose() => EventStreamHandler.OnPermissionRequest -= OnPermissionRequest;
+}

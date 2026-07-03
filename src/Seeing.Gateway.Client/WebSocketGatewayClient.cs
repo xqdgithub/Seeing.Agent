@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -127,6 +128,40 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         }
 
         return GatewayPermissionRespondResult.Fail("Permission respond timed out");
+    }
+
+    public async Task<GatewaySessionResetResult> ResetSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl))
+            throw new InvalidOperationException("Gateway BaseUrl is required.");
+
+        using var httpClient = new HttpClient
+        {
+            BaseAddress = new Uri(_options.BaseUrl.TrimEnd('/') + "/"),
+            Timeout = _options.Timeout
+        };
+
+        if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+            httpClient.DefaultRequestHeaders.Add("X-Api-Key", _options.ApiKey);
+
+        var encodedSessionId = Uri.EscapeDataString(sessionId);
+        using var response = await httpClient.PostAsync(
+            $"api/gateway/sessions/{encodedSessionId}/reset",
+            content: null,
+            cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new InvalidOperationException($"Session not found: {sessionId}");
+
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<GatewaySessionResetResult>(
+            GatewayJsonOptions.Default,
+            cancellationToken).ConfigureAwait(false);
+
+        return result ?? throw new InvalidOperationException("Empty reset response body");
     }
 
     public async ValueTask DisposeAsync()
@@ -278,6 +313,11 @@ public sealed class WebSocketGatewayClientAdapter : IGatewayClient, IAsyncDispos
         string sessionId,
         CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<GatewayPendingPermission>>([]);
+
+    public Task<GatewaySessionResetResult> ResetSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default) =>
+        _connection.ResetSessionAsync(sessionId, cancellationToken);
 
     public ValueTask DisposeAsync() => _connection.DisposeAsync();
 }

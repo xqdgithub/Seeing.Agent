@@ -30,58 +30,66 @@
     </Layout>
 </Layout>
 
+<PermissionHost />
+
 @code {
-    private IReadOnlyList<SessionData> _sessionList = new List<SessionData>();
-    
+    private bool _hasRendered;
+
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChange;
-        SessionProvider.OnSessionListChanged += OnSessionListChanged;
         SessionProvider.OnCurrentSessionChanged += OnCurrentSessionChanged;
-        
+
         await LoadAgentsAndModelsAsync();
-        
+
         await SessionProvider.InitializeSessionListAsync();
-        _sessionList = SessionProvider.GetSessionList();
-        
-        if (_sessionList.Count > 0)
+        var sessionList = SessionProvider.GetSessionList();
+
+        if (sessionList.Count > 0)
         {
-            var recentSession = _sessionList.First();
+            var recentSession = sessionList.First();
             await SessionProvider.LoadSessionAsync(recentSession.Id);
             AppState.CurrentSessionId = recentSession.Id;
         }
-        
+
         SessionState.SelectedAgent = AppState.SelectedAgent;
         SessionState.SelectedModel = AppState.SelectedModel;
     }
-    
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+            _hasRendered = true;
+    }
+
     private void OnAppStateChange()
     {
-        InvokeAsync(StateHasChanged);
+        RequestRender();
     }
-    
-    private void OnSessionListChanged()
-    {
-        _sessionList = SessionProvider.GetSessionList();
-        InvokeAsync(StateHasChanged);
-    }
-    
+
     private void OnCurrentSessionChanged()
     {
         if (SessionProvider.CurrentSession != null)
         {
             SessionState.SetSession(SessionProvider.CurrentSession);
             AppState.CurrentSessionId = SessionProvider.CurrentSession.Id;
+            AppState.NotifyChange();
         }
-        InvokeAsync(StateHasChanged);
+    }
+
+    private void RequestRender()
+    {
+        if (!_hasRendered)
+            return;
+        _ = InvokeAsync(StateHasChanged);
     }
     
     private async Task LoadAgentsAndModelsAsync()
     {
         try
         {
-            var allAgents = await AgentRegistry.GetAgentsAsync();
-            AppState.AvailableAgents = allAgents.Where(a => !a.IsHidden).ToList();
+            var primaryAgents = await AgentRegistry.GetPrimaryAgentsAsync();
+            AppState.AvailableAgents = primaryAgents.Where(a => !string.IsNullOrEmpty(a.Name)).ToList();
             
             if (string.IsNullOrEmpty(AppState.SelectedAgent) && AppState.AvailableAgents.Count > 0)
             {
@@ -96,6 +104,8 @@
                 var firstWithProvider = AppState.AvailableModels.FirstOrDefault(m => !string.IsNullOrEmpty(m.Value.Provider));
                 AppState.SelectedModel = firstWithProvider.Key ?? AppState.AvailableModels.Keys.First();
             }
+
+            AppState.NotifyChange();
         }
         catch (Exception ex)
         {
@@ -111,7 +121,6 @@
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChange;
-        SessionProvider.OnSessionListChanged -= OnSessionListChanged;
         SessionProvider.OnCurrentSessionChanged -= OnCurrentSessionChanged;
     }
 }

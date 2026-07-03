@@ -1,0 +1,77 @@
+@using AntDesign
+
+<div class="workspace-page">
+  <div class="page-header">
+    <div class="page-header-left">
+      @if (Breadcrumb != null)
+      {
+        @Breadcrumb
+      }
+      else if (!string.IsNullOrEmpty(Title))
+      {
+        <h1 class="page-title">@Title</h1>
+      }
+    </div>
+    @if (Extra != null)
+    {
+      <div class="header-actions">@Extra</div>
+    }
+  </div>
+
+  @if (Stats != null)
+  {
+    <div class="page-stats">@Stats</div>
+  }
+
+  @if (Filters != null)
+  {
+    <div class="page-filters">@Filters</div>
+  }
+
+  <div class="page-content">
+    @if (Loading)
+    {
+      <div class="loading-spinner">
+        <Spin Size="@SpinSize.Large" Tip="@LoadingTip" />
+      </div>
+    }
+    else if (IsEmpty)
+    {
+      <div class="empty-state">
+        @if (EmptyIcon != null)
+        {
+          <div class="empty-state-icon">@EmptyIcon</div>
+        }
+        <h3 class="empty-state-title">@EmptyTitle</h3>
+        @if (!string.IsNullOrEmpty(EmptyDescription))
+        {
+          <p class="empty-state-description">@EmptyDescription</p>
+        }
+        @if (EmptyAction != null)
+        {
+          <div class="empty-state-action">@EmptyAction</div>
+        }
+      </div>
+    }
+    else
+    {
+      @ChildContent
+    }
+  </div>
+</div>
+
+@code {
+  [Parameter] public string? Title { get; set; }
+  [Parameter] public RenderFragment? Breadcrumb { get; set; }
+  [Parameter] public RenderFragment? Extra { get; set; }
+  [Parameter] public RenderFragment? Stats { get; set; }
+  [Parameter] public RenderFragment? Filters { get; set; }
+  [Parameter] public RenderFragment? ChildContent { get; set; }
+  [Parameter] public RenderFragment? EmptyAction { get; set; }
+  [Parameter] public RenderFragment? EmptyIcon { get; set; }
+  [Parameter] public bool Loading { get; set; }
+  [Parameter] public bool IsEmpty { get; set; }
+  [Parameter] public string LoadingTip { get; set; } = "加载中...";
+  [Parameter] public string EmptyTitle { get; set; } = "暂无数据";
+  [Parameter] public string? EmptyDescription { get; set; }
+}

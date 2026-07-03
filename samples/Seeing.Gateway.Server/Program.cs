@@ -4,11 +4,13 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Extensions;
+using Seeing.Agent.Scheduler.Extensions;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddSeeingAgent(builder.Configuration);
 builder.Services.AddSeeingAcp();
+builder.Services.AddSeeingScheduler();
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
 
 var host = builder.Build();

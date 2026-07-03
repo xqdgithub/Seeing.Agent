@@ -26,4 +26,8 @@
     <ProjectReference Include="..\Seeing.Gateway.Client\Seeing.Gateway.Client.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Gateway.WeCom.Tests" />
+  </ItemGroup>
+
 </Project>

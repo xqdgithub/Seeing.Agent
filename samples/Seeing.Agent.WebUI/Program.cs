@@ -2,10 +2,12 @@ using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
+using Seeing.Agent.Gateway.Channels;
 using Seeing.Agent.Gateway.Extensions;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration;
+using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
@@ -21,7 +23,9 @@ builder.Services.AddServerSideBlazor();
 
 builder.Services.AddSeeingAgent(builder.Configuration);
 builder.Services.AddSeeingAcp();
+builder.Services.AddSeeingScheduler();
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
+builder.Services.AddGatewayChannelRegistry();
 
 // === Memory 模块（直接 DI 注入，便于调试）===
 builder.Services.AddSeeingAgentMemory(options =>
@@ -40,7 +44,8 @@ builder.Services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 builder.Services.AddScoped<SessionProvider>();
 
 // === WebUI 服务 ===
-builder.Services.AddScoped<IPermissionChannel, BlazorPermissionChannel>();
+builder.Services.AddScoped<BlazorPermissionChannel>();
+builder.Services.AddScoped<IPermissionChannel>(sp => sp.GetRequiredService<BlazorPermissionChannel>());
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<EventStreamHandler>();
@@ -48,6 +53,11 @@ builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SkillStateService>();
 builder.Services.AddSingleton<ToolStateService>();
+builder.Services.AddSingleton<SeeingConfigService>();
+builder.Services.AddSingleton<GatewayClientConfigService>();
+builder.Services.AddSingleton<GatewayClientSupervisor>();
+builder.Services.AddHostedService<GatewayClientHostedService>();
+builder.Services.AddHttpClient();
 
 // === 消息渲染管线 ===
 builder.Services.AddMessageRendering();
@@ -58,8 +68,8 @@ builder.Services.AddAntDesign();
 var app = builder.Build();
 
 // 初始化 Seeing.Agent 组件（Skills/MCP/Plugins）
-// 使用启动应用程序的工作目录作为工作区根目录
-var workspaceRoot = Directory.GetCurrentDirectory();
+// 使用 ContentRootPath（项目目录），避免 dotnet run --project 时 CWD 落在解决方案根目录
+var workspaceRoot = app.Environment.ContentRootPath;
 using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
@@ -85,6 +95,13 @@ using (var scope = app.Services.CreateScope())
     // 记录日志
     var logger = sp.GetRequiredService<ILogger<MemoryWriteQueue>>();
     logger.LogInformation("Memory 模块已通过 DI 直接注入并初始化");
+
+    var skillState = sp.GetRequiredService<SkillStateService>();
+    var toolState = sp.GetRequiredService<ToolStateService>();
+    await skillState.LoadAsync();
+    await toolState.LoadAsync();
+
+    sp.ReloadGatewayChannelRegistry(workspaceRoot);
 }
 
 // Configure the HTTP request pipeline.

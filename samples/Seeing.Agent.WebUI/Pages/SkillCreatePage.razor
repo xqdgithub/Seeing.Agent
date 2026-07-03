@@ -1,0 +1,84 @@
+@page "/skills/create"
+@using AntDesign
+@using Seeing.Agent.WebUI.Services
+@inject NavigationManager NavigationManager
+@inject IMessageService MessageService
+
+<PageTitle>创建技能 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell>
+    <Breadcrumb>
+        <BreadcrumbItem><a @onclick="@(() => NavigationManager.NavigateTo("/skills"))" style="cursor:pointer;">技能</a></BreadcrumbItem>
+        <BreadcrumbItem>创建</BreadcrumbItem>
+    </Breadcrumb>
+    <ChildContent>
+        <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 24px;"
+               Message="技能通过工作区目录中的 SKILL.md 文件定义。"
+               Description="在技能目录下创建文件夹并添加 SKILL.md（含 YAML frontmatter），然后重启或刷新技能列表。" />
+        <Card Title="创建技能目录">
+            <Form Layout="@FormLayout.Vertical" Model="@_form">
+                <FormItem Label="技能名称" Required>
+                    <Input @bind-Value="@_form.Name" Placeholder="my-skill" />
+                </FormItem>
+                <FormItem Label="目标目录">
+                    <Input @bind-Value="@_form.Directory" Placeholder="留空则使用 .seeing/skills/{name}" />
+                </FormItem>
+                <FormItem Label="描述">
+                    <TextArea Rows="3" @bind-Value="@_form.Description" />
+                </FormItem>
+                <Space>
+                    <Button Type="@ButtonType.Primary" OnClick="CreateSkill">创建</Button>
+                    <Button OnClick="@(() => NavigationManager.NavigateTo("/skills"))">取消</Button>
+                </Space>
+            </Form>
+        </Card>
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private CreateForm _form = new();
+
+    private void CreateSkill()
+    {
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            MessageService.Error("请输入技能名称");
+            return;
+        }
+
+        var dir = string.IsNullOrWhiteSpace(_form.Directory)
+            ? Path.Combine(Directory.GetCurrentDirectory(), ".seeing", "skills", _form.Name)
+            : _form.Directory;
+
+        Directory.CreateDirectory(dir);
+        var skillPath = Path.Combine(dir, "SKILL.md");
+        if (File.Exists(skillPath))
+        {
+            MessageService.Warning("SKILL.md 已存在");
+            NavigationManager.NavigateTo($"/skills/{_form.Name}");
+            return;
+        }
+
+        var content = $"""
+            ---
+            name: {_form.Name}
+            description: {_form.Description ?? "自定义技能"}
+            ---
+
+            # {_form.Name}
+
+            {_form.Description ?? "在此编写技能说明。"}
+            """;
+
+        File.WriteAllText(skillPath, content);
+        MessageService.Success("技能文件已创建，请刷新技能列表");
+        NavigationManager.NavigateTo("/skills");
+    }
+
+    private sealed class CreateForm
+    {
+        public string Name { get; set; } = "";
+        public string Directory { get; set; } = "";
+        public string? Description { get; set; }
+    }
+}

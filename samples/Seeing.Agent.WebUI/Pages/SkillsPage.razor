@@ -8,18 +8,18 @@
 @inject IMessageService MessageService
 @inject NavigationManager NavigationManager
 
-<PageTitle>Skills - Seeing.Agent</PageTitle>
+<PageTitle>技能 - Seeing.Agent</PageTitle>
 
 <div class="workspace-page">
     <div class="page-header">
         <Breadcrumb>
-            <BreadcrumbItem>Workspace</BreadcrumbItem>
-            <BreadcrumbItem>Skills</BreadcrumbItem>
+            <BreadcrumbItem>工作区</BreadcrumbItem>
+            <BreadcrumbItem>技能</BreadcrumbItem>
         </Breadcrumb>
         <div class="header-actions">
             <Space>
-                <SpaceItem><Button Icon="@IconType.Outline.Sync" OnClick="RefreshSkills">Refresh</Button></SpaceItem>
-                <SpaceItem><Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateSkill">Create Skill</Button></SpaceItem>
+                <SpaceItem><Button Icon="@IconType.Outline.Sync" OnClick="RefreshSkills">刷新</Button></SpaceItem>
+                <SpaceItem><Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateSkill">创建技能</Button></SpaceItem>
             </Space>
         </div>
     </div>
@@ -30,28 +30,28 @@
             <div class="stat-icon"><Icon Type="@IconType.Outline.Appstore" /></div>
             <div class="stat-content">
                 <span class="stat-value">@_totalCount</span>
-                <span class="stat-label">Total Skills</span>
+                <span class="stat-label">技能总数</span>
             </div>
         </div>
         <div class="stat-item">
             <div class="stat-icon" style="background: var(--color-success-bg); color: var(--color-success);"><Icon Type="@IconType.Outline.CheckCircle" /></div>
             <div class="stat-content">
                 <span class="stat-value">@_enabledCount</span>
-                <span class="stat-label">Enabled</span>
+                <span class="stat-label">已启用</span>
             </div>
         </div>
         <div class="stat-item">
             <div class="stat-icon" style="background: var(--color-bg-tertiary); color: var(--color-text-tertiary);"><Icon Type="@IconType.Outline.Stop" /></div>
             <div class="stat-content">
                 <span class="stat-value">@_disabledCount</span>
-                <span class="stat-label">Disabled</span>
+                <span class="stat-label">已禁用</span>
             </div>
         </div>
     </div>
     
     <div class="page-filters">
         <div class="filter-search">
-            <Input @bind-Value="_searchText" Placeholder="Search skills by name..." AllowClear="true" DebounceMilliseconds="300">
+            <Input @bind-Value="_searchText" Placeholder="搜索技能..." AllowClear="true" DebounceMilliseconds="300">
                 <Prefix><Icon Type="@IconType.Outline.Search" /></Prefix>
             </Input>
         </div>
@@ -222,8 +222,8 @@
         StateHasChanged();
     }
     
-    string GetSkillType(SkillInfo? s) => s?.Location?.Contains(".agents") == true ? "Built-in" : "Custom";
-    string GetDescriptionPreview(string? d) => string.IsNullOrEmpty(d) ? "No description" : (d.Length > 100 ? d[..100] + "..." : d);
+    string GetSkillType(SkillInfo? s) => s?.Location?.Contains(".agents") == true ? "内置" : "自定义";
+    string GetDescriptionPreview(string? d) => string.IsNullOrEmpty(d) ? "无描述" : (d.Length > 100 ? d[..100] + "..." : d);
     string GetLocationPreview(string? loc) => loc?.Length > 40 ? "..." + loc[^Math.Min(40, loc.Length)..] : loc ?? "";
     void ViewSkill(string name) => NavigationManager.NavigateTo($"/skills/{name}");
     void CreateSkill() => NavigationManager.NavigateTo("/skills/create");

@@ -1,0 +1,79 @@
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.WebUI.State
+@inject AppState AppState
+@implements IDisposable
+
+<Form Layout="@FormLayout.Vertical" Model="@Gateway" RequiredMark="FormRequiredMark.Required" Context="formContext">
+    <FormItem Label="启用">
+        <Switch Checked="@Enabled" CheckedChanged="@(v => EnabledChanged.InvokeAsync(v))" />
+    </FormItem>
+    <Divider>Agent 与连接</Divider>
+    <FormItem Label="默认 Agent">
+        <Select TItemValue="string" TItem="string"
+                Style="width: 100%;"
+                AllowClear="true"
+                Placeholder="留空则使用全局 DefaultAgent"
+                Value="@Agent"
+                ValueChanged="@(v => AgentChanged.InvokeAsync(v))"
+                DataSource="@_agentNames" />
+    </FormItem>
+    <FormItem Label="默认 Model">
+        <Input @bind-Value="@ModelId"
+               Placeholder="留空则按 Agent / 全局 DefaultModel 解析" />
+    </FormItem>
+    <Divider>Gateway 连接</Divider>
+    <FormItem Label="服务地址" Required="true">
+        <Input @bind-Value="@Gateway.BaseUrl" />
+    </FormItem>
+    <FormItem Label="传输方式">
+        <Select TItemValue="string" TItem="string"
+                @bind-Value="@Gateway.Transport"
+                Style="width: 100%;">
+            <SelectOptions>
+                <SelectOption TItemValue="string" TItem="string" Value="@("WebSocket")" Label="WebSocket" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("HttpSse")" Label="HTTP SSE" />
+            </SelectOptions>
+        </Select>
+    </FormItem>
+    <FormItem Label="WebSocket 路径">
+        <Input @bind-Value="@Gateway.WebSocketPath" />
+    </FormItem>
+    <FormItem Label="API Key">
+        <Input @bind-Value="@Gateway.ApiKey" Type="InputType.Password" />
+    </FormItem>
+</Form>
+
+@code {
+    [Parameter] public bool Enabled { get; set; }
+    [Parameter] public EventCallback<bool> EnabledChanged { get; set; }
+    [Parameter] public GatewayClientConnectionOptions Gateway { get; set; } = new();
+    [Parameter] public string? Agent { get; set; }
+    [Parameter] public EventCallback<string?> AgentChanged { get; set; }
+    [Parameter] public string? ModelId { get; set; }
+    [Parameter] public EventCallback<string?> ModelIdChanged { get; set; }
+
+    private List<string> _agentNames = new();
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnAppStateChange;
+        RefreshAgentNames();
+    }
+
+    private void OnAppStateChange()
+    {
+        RefreshAgentNames();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshAgentNames()
+    {
+        _agentNames = AppState.AvailableAgents
+            .Where(a => !string.IsNullOrEmpty(a.Name))
+            .Select(a => a.Name!)
+            .ToList();
+    }
+
+    public void Dispose() => AppState.OnChange -= OnAppStateChange;
+}

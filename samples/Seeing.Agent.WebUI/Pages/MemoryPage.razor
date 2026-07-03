@@ -1,0 +1,163 @@
+@page "/memory"
+@using AntDesign
+@using Seeing.Agent.Memory.Abstractions
+@using Seeing.Agent.Memory.Core
+@inject IMemoryManager MemoryManager
+@inject IMessageService MessageService
+
+<PageTitle>记忆 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(!_rows.Any())"
+                    EmptyTitle="暂无记忆" EmptyDescription="对话过程中会自动捕获记忆，也可手动搜索">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem>记忆</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Button Icon="@IconType.Outline.Reload" OnClick="SearchAsync">刷新</Button>
+    </Extra>
+    <Stats>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Database" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_totalCount</span>
+                <span class="stat-label">记忆总数</span>
+            </div>
+        </div>
+    </Stats>
+    <Filters>
+        <div class="filter-search" style="flex: 1;">
+            <Search Placeholder="搜索记忆..." @bind-Value="@_query" OnSearch="SearchAsync" AllowClear="true" EnterButton="true" />
+        </div>
+        <Select TItemValue="string" TItem="string" @bind-Value="@_typeFilter" Style="width: 160px;" AllowClear Placeholder="类型" OnSelectedItemChanged="@(_ => SearchAsync())">
+            @foreach (var t in Enum.GetNames<MemoryType>())
+            {
+                <SelectOption TItemValue="string" TItem="string" Value="@t" Label="@t">@t</SelectOption>
+            }
+        </Select>
+    </Filters>
+    <ChildContent>
+        <Table TItem="MemoryRow" DataSource="@_rows" RowKey="@(m => m.Id)">
+            <PropertyColumn Property="c => c.IdShort" Title="ID" />
+            <PropertyColumn Property="c => c.Type" Title="类型" />
+            <PropertyColumn Property="c => c.ContentPreview" Title="内容" />
+            <PropertyColumn Property="c => c.CreatedAtText" Title="创建时间" />
+            <ActionColumn Title="操作">
+                <Space>
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => ViewMemory(context.Id))">查看</Button>
+                    <Popconfirm Title="确定删除此记忆？" OnConfirm="@(() => DeleteMemory(context.Id))">
+                        <Button Size="@ButtonSize.Small" Danger="true">删除</Button>
+                    </Popconfirm>
+                </Space>
+            </ActionColumn>
+        </Table>
+    </ChildContent>
+</WorkspacePageShell>
+
+<Drawer Title="@("记忆详情")" Visible="@_drawerVisible" Width="560" OnClose="@(() => _drawerVisible = false)">
+    @if (_selected != null)
+    {
+        <Descriptions Column="1" Bordered Size="@DescriptionsSize.Small" Style="margin-bottom: 16px;">
+            <DescriptionsItem Title="ID">@_selected.Id</DescriptionsItem>
+            <DescriptionsItem Title="类型">@_selected.Type</DescriptionsItem>
+            <DescriptionsItem Title="创建时间">@_selected.CreatedAt.ToString("yyyy-MM-dd HH:mm")</DescriptionsItem>
+        </Descriptions>
+        <Form Layout="@FormLayout.Vertical" Model="@_memoryEditForm">
+            <FormItem Label="内容"><TextArea Rows="12" @bind-Value="@_editContent" /></FormItem>
+            <Button Type="@ButtonType.Primary" OnClick="SaveMemory">保存</Button>
+        </Form>
+    }
+</Drawer>
+
+@code {
+    private List<MemoryRow> _rows = new();
+    private MemoryEntry? _selected;
+    private string _query = "";
+    private string? _typeFilter;
+    private string _editContent = "";
+    private int _totalCount;
+    private bool _loading;
+    private bool _drawerVisible;
+    private readonly MemoryEditForm _memoryEditForm = new();
+
+    protected override async Task OnInitializedAsync() => await SearchAsync();
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        try
+        {
+            MemoryType? type = string.IsNullOrEmpty(_typeFilter) ? null : Enum.Parse<MemoryType>(_typeFilter);
+            var filter = type.HasValue ? new MemoryFilter(Type: type) : null;
+
+            IReadOnlyList<MemoryEntry> entries;
+            int totalCount;
+            if (string.IsNullOrWhiteSpace(_query))
+            {
+                var all = (await MemoryManager.ListMemoriesAsync()).OfType<MemoryEntry>();
+                if (type.HasValue)
+                    all = all.Where(e => e.Type == type.Value);
+                var list = all.ToList();
+                entries = list;
+                totalCount = list.Count;
+            }
+            else
+            {
+                var result = await MemoryManager.SearchMemoriesAsync(_query, filter);
+                entries = result.Entries;
+                totalCount = result.TotalCount;
+            }
+
+            _rows = entries.Select(e => new MemoryRow
+            {
+                Id = e.Id,
+                IdShort = e.Id.Length > 10 ? e.Id[..10] + "..." : e.Id,
+                Type = e.Type.ToString(),
+                ContentPreview = e.Content.Length > 80 ? e.Content[..80] + "..." : e.Content,
+                CreatedAtText = e.CreatedAt.ToString("yyyy-MM-dd HH:mm")
+            }).ToList();
+            _totalCount = totalCount;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task ViewMemory(string id)
+    {
+        _selected = await MemoryManager.GetMemoryAsync(id);
+        if (_selected != null)
+        {
+            _editContent = _selected.Content;
+            _drawerVisible = true;
+        }
+    }
+
+    private async Task SaveMemory()
+    {
+        if (_selected == null) return;
+        await MemoryManager.UpdateMemoryAsync(_selected.Id, new MemoryUpdate { Content = _editContent });
+        MessageService.Success("记忆已更新");
+        _drawerVisible = false;
+        await SearchAsync();
+    }
+
+    private async Task DeleteMemory(string id)
+    {
+        await MemoryManager.DeleteMemoryAsync(id);
+        MessageService.Success("记忆已删除");
+        await SearchAsync();
+    }
+
+    private sealed class MemoryRow
+    {
+        public string Id { get; set; } = "";
+        public string IdShort { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string ContentPreview { get; set; } = "";
+        public string CreatedAtText { get; set; } = "";
+    }
+
+    private sealed class MemoryEditForm
+    {
+        public string Content { get; set; } = "";
+    }
+}

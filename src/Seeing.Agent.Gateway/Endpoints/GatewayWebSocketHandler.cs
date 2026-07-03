@@ -57,9 +57,17 @@ public sealed class GatewayWebSocketHandler
 
             await ReadLoopAsync(connection, context.RequestAborted);
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogDebug("WebSocket 连接已关闭: {ConnectionId}", connection.ConnectionId);
+        }
         catch (WebSocketException ex)
         {
             _logger.LogDebug(ex, "WebSocket 连接异常: {ConnectionId}", connection.ConnectionId);
+        }
+        catch (IOException ex)
+        {
+            _logger.LogDebug(ex, "WebSocket 连接已断开: {ConnectionId}", connection.ConnectionId);
         }
         finally
         {

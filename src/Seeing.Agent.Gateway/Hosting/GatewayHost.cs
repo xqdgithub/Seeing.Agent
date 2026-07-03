@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
+using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Endpoints;
 using Seeing.Agent.Gateway.Permission;
@@ -61,10 +62,13 @@ public sealed class GatewayHost : IAsyncDisposable
         var permissionChannel = new GatewayPermissionChannel(_options);
         var runTracker = new GatewayRunTracker();
         var executionQueue = new SessionExecutionQueue();
-        var connectionManager = new GatewayConnectionManager();
+        var connectionManager = _rootServices.GetService<GatewayConnectionManager>()
+            ?? new GatewayConnectionManager();
         var sessionManager = _rootServices.GetRequiredService<SessionManager>();
         var selectionResolver = _rootServices.GetRequiredService<AgentSelectionResolver>();
         var sessionResolver = new GatewaySessionResolver(sessionManager, selectionResolver);
+        var agentRegistry = _rootServices.GetRequiredService<IAgentRegistry>();
+        var sessionService = new GatewaySessionService(sessionManager, agentRegistry);
         var loggerFactory = _rootServices.GetRequiredService<ILoggerFactory>();
         var orchestratorLogger = loggerFactory.CreateLogger<GatewayOrchestrator>();
 
@@ -85,6 +89,7 @@ public sealed class GatewayHost : IAsyncDisposable
         builder.Services.AddSingleton(executionQueue);
         builder.Services.AddSingleton(connectionManager);
         builder.Services.AddSingleton(orchestrator);
+        builder.Services.AddSingleton(sessionService);
         builder.Services.AddSingleton(sp => new GatewayWebSocketHandler(
             orchestrator,
             permissionChannel,

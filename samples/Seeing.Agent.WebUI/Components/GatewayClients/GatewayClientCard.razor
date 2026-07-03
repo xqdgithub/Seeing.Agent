@@ -1,0 +1,91 @@
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.WebUI.Services
+
+<div class="item-card @GetStateClass()">
+    <div class="item-card-header">
+        <div class="card-icon">
+            <Icon Type="@IconType.Outline.Api" />
+        </div>
+        <div class="card-title-section">
+            <h3 class="card-title">@Client.DisplayName</h3>
+            <div class="card-subtitle">@Client.ChannelId</div>
+        </div>
+        <Tag Color="@GetStatusColor()">@GetStatusText()</Tag>
+    </div>
+    <div class="item-card-body">
+        <p class="card-description">@Client.Description</p>
+        @if (!string.IsNullOrWhiteSpace(Client.LastError))
+        {
+            <Alert Type="@AlertType.Error" Message="@Client.LastError" ShowIcon="true" />
+        }
+        <div class="card-meta">
+            <span>@(Client.IsBuiltin ? "内置" : "自定义")</span>
+            <span class="enable-toggle">
+                启用
+                <Switch Checked="@Client.Enabled"
+                        CheckedChanged="@OnEnabledChanged" />
+            </span>
+            @if (Client.ProcessId is int pid)
+            {
+                <span>PID: @pid</span>
+            }
+        </div>
+    </div>
+    <div class="item-card-footer">
+        <Space>
+            <Button Size="@ButtonSize.Small" OnClick="@(() => OnConfigure.InvokeAsync(Client))">配置</Button>
+            @if (!Client.Enabled)
+            {
+                <span style="font-size: 12px; opacity: 0.7;">开启上方开关后可启动</span>
+            }
+            else if (Client.Status == GatewayClientStatuses.Running)
+            {
+                <Button Size="@ButtonSize.Small" OnClick="@(() => OnStop.InvokeAsync(Client.ChannelId))">停止</Button>
+                <Button Size="@ButtonSize.Small" OnClick="@(() => OnRestart.InvokeAsync(Client.ChannelId))">重启</Button>
+            }
+            else if (Client.Enabled)
+            {
+                <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="@(() => OnStart.InvokeAsync(Client.ChannelId))">启动</Button>
+            }
+        </Space>
+    </div>
+</div>
+
+@code {
+    [Parameter] public GatewayClientViewModel Client { get; set; } = new();
+    [Parameter] public EventCallback<GatewayClientViewModel> OnConfigure { get; set; }
+    [Parameter] public EventCallback<string> OnStart { get; set; }
+    [Parameter] public EventCallback<string> OnStop { get; set; }
+    [Parameter] public EventCallback<string> OnRestart { get; set; }
+    [Parameter] public EventCallback<(string ChannelId, bool Enabled)> OnToggleEnabled { get; set; }
+
+    private Task OnEnabledChanged(bool enabled) =>
+        OnToggleEnabled.InvokeAsync((Client.ChannelId, enabled));
+
+    private string GetStateClass() => Client.Status switch
+    {
+        GatewayClientStatuses.Running => "state-connected",
+        GatewayClientStatuses.Error => "state-error",
+        GatewayClientStatuses.Disabled => "state-disabled",
+        _ => "state-pending"
+    };
+
+    private string GetStatusColor() => Client.Status switch
+    {
+        GatewayClientStatuses.Running => "green",
+        GatewayClientStatuses.Starting => "processing",
+        GatewayClientStatuses.Error => "red",
+        GatewayClientStatuses.Disabled => "default",
+        _ => "orange"
+    };
+
+    private string GetStatusText() => Client.Status switch
+    {
+        GatewayClientStatuses.Running => "运行中",
+        GatewayClientStatuses.Starting => "启动中",
+        GatewayClientStatuses.Error => "错误",
+        GatewayClientStatuses.Disabled => "已禁用",
+        _ => "已停止"
+    };
+}

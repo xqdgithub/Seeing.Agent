@@ -23,6 +23,7 @@
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     
     <!-- 测试相关 -->
+    <PackageVersion Include="Cronos" Version="0.9.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.0" />
     <PackageVersion Include="FluentAssertions" Version="6.12.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />

@@ -14,11 +14,14 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 {
     private const string LoopCompleteSourceType = "LoopComplete";
     private readonly WeComOptions _options;
+    private readonly GatewayClientCommonOptions _commonOptions;
     private readonly WeComAibotWsClient _weComClient;
     private readonly WebSocketGatewayClient _gatewayClient;
     private readonly WeComMediaFetcher _mediaFetcher;
     private readonly WeComPermissionPolicy _permissionPolicy;
     private readonly WeComPermissionState _permissionState;
+    private readonly WeComSessionTracker _sessionTracker;
+    private readonly WeComCommandInterceptor _commandInterceptor;
     private readonly ILogger<WeComChannelBridge> _logger;
 
     private readonly ConcurrentDictionary<string, byte> _processedMessageIds = new();
@@ -27,19 +30,25 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
     public WeComChannelBridge(
         IOptions<WeComOptions> options,
+        IOptions<GatewayClientCommonOptions> commonOptions,
         WeComAibotWsClient weComClient,
         WebSocketGatewayClient gatewayClient,
         WeComMediaFetcher mediaFetcher,
         WeComPermissionPolicy permissionPolicy,
         WeComPermissionState permissionState,
+        WeComSessionTracker sessionTracker,
+        WeComCommandInterceptor commandInterceptor,
         ILogger<WeComChannelBridge> logger)
     {
         _options = options.Value;
+        _commonOptions = commonOptions.Value;
         _weComClient = weComClient;
         _gatewayClient = gatewayClient;
         _mediaFetcher = mediaFetcher;
         _permissionPolicy = permissionPolicy;
         _permissionState = permissionState;
+        _sessionTracker = sessionTracker;
+        _commandInterceptor = commandInterceptor;
         _gatewayAdapter = new WebSocketGatewayClientAdapter(gatewayClient);
         _logger = logger;
     }
@@ -106,12 +115,18 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         if (IsDuplicate(parsed.MessageId))
             return;
 
-        var sessionId = WeComSessionResolver.ResolveSessionId(parsed, _options);
+        var sessionId = _sessionTracker.ResolveSessionId(parsed);
         _logger.LogInformation(
             "WeCom 收到消息: UserId={UserId}, SessionId={SessionId}, Parts={PartCount}",
             parsed.UserId,
             sessionId,
             parsed.InputParts.Count);
+
+        if (await _commandInterceptor.TryHandleAsync(parsed, sessionId, cancellationToken).ConfigureAwait(false))
+        {
+            _sessionTracker.Touch(parsed);
+            return;
+        }
 
         _ = ProcessMessageAsync(parsed, sessionId, cancellationToken);
     }
@@ -136,7 +151,16 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
     private async Task HandleEnterChatAsync(ParsedWeComEnterChat enterChat, CancellationToken cancellationToken)
     {
-        var welcomeText = _options.WelcomeText ?? "你好！我是 Seeing Agent，有什么可以帮你的？";
+        if (_options.ResetOnEnterChatWhenIdle && _sessionTracker.IsIdle(enterChat))
+        {
+            var newSessionId = _sessionTracker.RotateSession(enterChat, reason: "enter_chat_idle");
+            _logger.LogInformation(
+                "WeCom enter_chat 超时重置: UserId={UserId}, SessionId={SessionId}",
+                enterChat.UserId,
+                newSessionId);
+        }
+
+        var welcomeText = _options.GetEffectiveWelcomeText();
         _logger.LogInformation("WeCom enter_chat: UserId={UserId}", enterChat.UserId);
 
         try
@@ -218,7 +242,11 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         {
             await streamState.StartProcessingIndicatorAsync(cancellationToken).ConfigureAwait(false);
 
-            var request = WeComMessageParser.ToGatewayRequest(parsed, sessionId);
+            var request = WeComMessageParser.ToGatewayRequest(
+                parsed,
+                sessionId,
+                _commonOptions.Agent,
+                _commonOptions.Model);
             var accumulated = string.Empty;
             var finished = false;
 
@@ -268,6 +296,8 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
             if (!finished)
                 await streamState.FinishAsync(accumulated, cancellationToken).ConfigureAwait(false);
+
+            _sessionTracker.Touch(parsed);
         }
         catch (Exception ex)
         {

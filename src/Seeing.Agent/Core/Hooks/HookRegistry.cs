@@ -205,4 +205,20 @@ public static class HookRegistry
     public static readonly HookSpec McpShutdown = new(HookPolicy.FireAndForget, "mcp.shutdown");
 
     #endregion
+
+    #region Scheduler 生命周期
+
+    /// <summary>调度任务执行前 - 阻塞策略</summary>
+    public static readonly HookSpec SchedulerJobBeforeExecute = new(HookPolicy.Blocking, "scheduler.job.before_execute");
+
+    /// <summary>调度任务执行后 - 非阻塞策略</summary>
+    public static readonly HookSpec SchedulerJobAfterExecute = new(HookPolicy.FireAndForget, "scheduler.job.after_execute");
+
+    /// <summary>心跳执行前 - 阻塞策略</summary>
+    public static readonly HookSpec SchedulerHeartbeatBefore = new(HookPolicy.Blocking, "scheduler.heartbeat.before");
+
+    /// <summary>心跳执行后 - 非阻塞策略</summary>
+    public static readonly HookSpec SchedulerHeartbeatAfter = new(HookPolicy.FireAndForget, "scheduler.heartbeat.after");
+
+    #endregion
 }

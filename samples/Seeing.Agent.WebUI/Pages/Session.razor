@@ -52,30 +52,30 @@
         <div Class="session-header-right">
             <Space>
                 <SpaceItem>
-                    <Select Value="@_selectedAgent"
-                            ValueExpression="@(() => _selectedAgent)"
-                            ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
-                            DataSource="@_agentOptions"
-                            ValueName="@nameof(AgentOption.Value)"
-                            LabelName="@nameof(AgentOption.Label)"
-                            Style="min-width: 120px;"
-                            Size="@InputSize.Small"
-                            Placeholder="智能体">
-                        <ItemTemplate>
-                            <span>@context.Label</span>
-                        </ItemTemplate>
-                    </Select>
+                    @if (_optionsReady)
+                    {
+                        <Select TItemValue="string" TItem="string"
+                                Value="@_selectedAgent"
+                                ValueExpression="@(() => _selectedAgent)"
+                                ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
+                                DataSource="@_agentNames"
+                                Style="min-width: 120px;"
+                                Size="@InputSize.Small"
+                                Placeholder="智能体" />
+                    }
                 </SpaceItem>
                 <SpaceItem>
-                    <Select Value="@_selectedModel"
-                            ValueExpression="@(() => _selectedModel)"
-                            ValueChanged="EventCallback.Factory.Create<string>(this, OnModelChanged)"
-                            DataSource="@_modelOptions"
-                            ValueName="@nameof(ModelOption.Value)"
-                            LabelName="@nameof(ModelOption.Label)"
-                            Style="min-width: 160px;"
-                            Size="@InputSize.Small"
-                            Placeholder="模型" />
+                    @if (_optionsReady)
+                    {
+                        <Select TItemValue="string" TItem="string"
+                                Value="@_selectedModel"
+                                ValueExpression="@(() => _selectedModel)"
+                                ValueChanged="EventCallback.Factory.Create<string>(this, OnModelChanged)"
+                                DataSource="@_modelNames"
+                                Style="min-width: 160px;"
+                                Size="@InputSize.Small"
+                                Placeholder="模型" />
+                    }
                 </SpaceItem>
                 <SpaceItem>
                     <Tooltip Title="重命名会话">
@@ -189,20 +189,23 @@
                Class="session-error-alert" />
     }
     
-    <!-- 重命名对话框 -->
-    <Modal Title="重命名会话"
-           Visible="@RenameModalVisible"
-           OnOk="@OnRenameConfirm"
-           OnCancel="@OnRenameCancel"
-           OkText="@OkText"
-           CancelText="@CancelText">
-        <Form Model="@RenameForm" Layout="@FormLayout.Horizontal">
-            <FormItem Label="会话标题">
-                <Input @bind-Value="@RenameForm.Title"
-                       Placeholder="输入新的会话标题" />
-            </FormItem>
-        </Form>
-    </Modal>
+    <!-- 重命名对话框（仅在打开时渲染，避免隐藏 Modal 内 FormItem 初始化失败） -->
+    @if (RenameModalVisible)
+    {
+        <Modal Title="重命名会话"
+               Visible="true"
+               OnOk="@OnRenameConfirm"
+               OnCancel="@OnRenameCancel"
+               OkText="@OkText"
+               CancelText="@CancelText">
+            <Form Model="@RenameForm" Layout="@FormLayout.Horizontal">
+                <FormItem Label="会话标题">
+                    <Input @bind-Value="@RenameForm.Title"
+                           Placeholder="输入新的会话标题" />
+                </FormItem>
+            </Form>
+        </Modal>
+    }
 </div>
 
 @code {
@@ -217,9 +220,10 @@
     /// Agent/模型选择器相关
     /// </summary>
     private string _selectedAgent = "";
-    private List<AgentOption> _agentOptions = new();
+    private List<string> _agentNames = new();
     private string _selectedModel = "";
-    private List<ModelOption> _modelOptions = new();
+    private List<string> _modelNames = new();
+    private bool _optionsReady;
     
     /// <summary>
     /// 可用工具列表（用于快速命令）
@@ -277,6 +281,9 @@
     /// </summary>
     private ToolCallViewModel? SelectedToolCall { get; set; }
 
+    private bool _hasRendered;
+    private string? _loadedSessionId;
+
     /// <summary>
     /// 组件初始化
     /// </summary>
@@ -291,11 +298,30 @@
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
         
-        // 加载会话
-        await LoadSessionAsync();
-        
-        // 会话加载完成后，同步选择器值
-        SyncSelectorValues();
+        // 加载会话（选项就绪后再加载，避免 Select 在 DataSource 为空时渲染）
+        if (!string.IsNullOrEmpty(SessionId))
+        {
+            await LoadSessionByIdAsync(SessionId);
+            _loadedSessionId = SessionId;
+        }
+        else
+        {
+            await LoadSessionAsync();
+            _loadedSessionId = SessionState.CurrentSession?.Id;
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+            _hasRendered = true;
+    }
+
+    private void RequestRender()
+    {
+        if (!_hasRendered)
+            return;
+        _ = InvokeAsync(StateHasChanged);
     }
     
     /// <summary>
@@ -303,9 +329,11 @@
     /// </summary>
     private void SyncSelectorValues()
     {
-        _selectedAgent = SessionState.SelectedAgent ?? "";
-        _selectedModel = SessionState.SelectedModel ?? "";
-        _ = InvokeAsync(StateHasChanged);
+        var agent = SessionState.SelectedAgent ?? "";
+        var model = SessionState.SelectedModel ?? "";
+        _selectedAgent = _agentNames.Contains(agent) ? agent : (_agentNames.FirstOrDefault() ?? agent);
+        _selectedModel = _modelNames.Contains(model) ? model : (_modelNames.FirstOrDefault() ?? model);
+        RequestRender();
     }
     
     /// <summary>
@@ -313,19 +341,20 @@
     /// </summary>
     private async Task LoadOptionsAsync()
     {
+        _optionsReady = false;
         // 加载 Agent 选项
         try
         {
-            var agents = await AgentRegistry.GetAgentsAsync();
-            _agentOptions = agents
-                .Where(a => !a.IsHidden)
-                .Select(a => new AgentOption { Value = a.Name, Label = a.Name })
+            var agents = await AgentRegistry.GetPrimaryAgentsAsync();
+            _agentNames = agents
+                .Where(a => !string.IsNullOrEmpty(a.Name))
+                .Select(a => a.Name)
                 .ToList();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"加载Agent列表失败: {ex.Message}");
-            _agentOptions = new List<AgentOption>();
+            _agentNames = new List<string>();
         }
         
         // 加载模型选项
@@ -335,23 +364,19 @@
             if (availableModels != null)
             {
                 AppState.AvailableModels = availableModels;
-                _modelOptions = availableModels
-                    .Select(m => new ModelOption { Value = m.Key, Label = GetModelShortName(m.Key) })
+                _modelNames = availableModels
+                    .Where(m => !string.IsNullOrEmpty(m.Key))
+                    .Select(m => m.Key)
                     .ToList();
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"加载模型列表失败: {ex.Message}");
-            _modelOptions = new List<ModelOption>();
+            _modelNames = new List<string>();
         }
-    }
-    
-    private static string GetModelShortName(string modelId)
-    {
-        if (string.IsNullOrEmpty(modelId)) return modelId;
-        var parts = modelId.Split('/');
-        return parts.Length > 1 ? parts[1] : modelId;
+
+        _optionsReady = _agentNames.Count > 0 || _modelNames.Count > 0;
     }
     
     /// <summary>
@@ -390,27 +415,27 @@
     /// <summary>
     /// 会话变更事件处理
     /// </summary>
-    private async void OnSessionProviderChanged()
+    private void OnSessionProviderChanged()
     {
-        // 当 SessionProvider 的会话变化时，同步更新 SessionState 并刷新 UI
-        if (SessionProvider.CurrentSession != null)
+        if (SessionProvider.CurrentSession == null)
+            return;
+
+        if (SessionState.CurrentSession?.Id == SessionProvider.CurrentSession.Id)
+            return;
+
+        _ = InvokeAsync(async () =>
         {
-            // 检查是否是不同的会话
-            if (SessionState.CurrentSession?.Id != SessionProvider.CurrentSession.Id)
-            {
-                SessionState.SetSession(SessionProvider.CurrentSession);
-                RefreshMessageViewModels();
-                
-                // 同步 AppState
-                AppState.SelectedAgent = SessionState.SelectedAgent;
-                AppState.SelectedModel = SessionState.SelectedModel;
-                AppState.SelectedModelProvider = SessionState.SelectedModelProvider;
-                AppState.CurrentSessionId = SessionProvider.CurrentSession.Id;
-                AppState.NotifyChange();
-                
-                await InvokeAsync(StateHasChanged);
-            }
-        }
+            SessionState.SetSession(SessionProvider.CurrentSession!);
+            RefreshMessageViewModels();
+            _loadedSessionId = SessionProvider.CurrentSession!.Id;
+
+            AppState.SelectedAgent = SessionState.SelectedAgent;
+            AppState.SelectedModel = SessionState.SelectedModel;
+            AppState.SelectedModelProvider = SessionState.SelectedModelProvider;
+            AppState.CurrentSessionId = SessionProvider.CurrentSession!.Id;
+            SyncSelectorValues();
+            AppState.NotifyChange();
+        });
     }
     
     /// <summary>
@@ -479,16 +504,18 @@
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
-        // 如果路由参数变更，重新加载会话
-        var currentLoadedId = SessionState.CurrentSession?.Id;
-        
-        // 有新的 SessionId 且与当前不同时，重新加载
-        if (!string.IsNullOrEmpty(SessionId) && SessionId != currentLoadedId)
+        if (!_optionsReady)
+            return;
+
+        if (!string.IsNullOrEmpty(SessionId) && SessionId != _loadedSessionId)
         {
             await LoadSessionByIdAsync(SessionId);
+            _loadedSessionId = SessionId;
+            return;
         }
+
         // SessionId 相同但需要刷新 UI（比如外部切换会话后）
-        else if (!string.IsNullOrEmpty(SessionId) && SessionId == currentLoadedId)
+        if (!string.IsNullOrEmpty(SessionId) && SessionId == _loadedSessionId)
         {
             // 确保 SessionState 与 SessionProvider 同步
             if (SessionProvider.CurrentSession != null && 
@@ -500,7 +527,7 @@
             
             // 刷新消息列表 UI
             RefreshMessageViewModels();
-            await InvokeAsync(StateHasChanged);
+            RequestRender();
         }
     }
 
@@ -557,7 +584,7 @@
         finally
         {
             IsLoadingSession = false;
-            await InvokeAsync(StateHasChanged);
+            RequestRender();
         }
     }
 
@@ -1257,23 +1284,5 @@
     private class RenameSessionForm
     {
         public string Title { get; set; } = "";
-    }
-    
-    /// <summary>
-    /// 模型选项
-    /// </summary>
-    public class ModelOption
-    {
-        public string Value { get; set; } = "";
-        public string Label { get; set; } = "";
-    }
-    
-    /// <summary>
-    /// Agent选项
-    /// </summary>
-    public class AgentOption
-    {
-        public string Value { get; set; } = "";
-        public string Label { get; set; } = "";
     }
 }

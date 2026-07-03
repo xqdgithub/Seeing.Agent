@@ -97,6 +97,7 @@ await foreach (var inbound in wsClient.ReceiveAsync())
 | POST | `/api/gateway/chat` | `HttpGatewayClient.ChatAsync`（SSE） |
 | WS | `/api/gateway/ws` | `WebSocketGatewayClient` |
 | POST | `/api/gateway/chat/stop?sessionId=` | `StopChatAsync` |
+| POST | `/api/gateway/sessions/{sessionId}/reset` | `ResetSessionAsync` |
 | GET | `/api/gateway/permissions/pending?sessionId=` | `GetPendingPermissionsAsync` |
 | POST | `/api/gateway/permissions/{id}/respond` | `RespondPermissionAsync` |
 | GET | `/api/gateway/health` | 健康检查 |

@@ -78,6 +78,14 @@ curl -N -X POST http://127.0.0.1:8765/api/gateway/chat \
 
 取消指定会话的活跃执行。
 
+### POST `/api/gateway/sessions/{sessionId}/reset`
+
+清空指定会话的消息历史，并将 `SelectedAgent` 重置为 registry 默认 Agent。Channel Bridge 的 `/clear` 命令会调用此接口。
+
+```bash
+curl -X POST http://127.0.0.1:8765/api/gateway/sessions/wecom_user_001/reset
+```
+
 ### 权限（interactive 模式）
 
 | 方法 | 路径 | 说明 |

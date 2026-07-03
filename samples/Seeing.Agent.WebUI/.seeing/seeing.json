@@ -1,35 +1,210 @@
 {
   "SeeingAgent": {
-    "DefaultAgent": "sisyphus",
-    "DefaultModel": "openai/gpt-4",
+    "DefaultModel": "anthropic/GLM-5",
+    "DefaultProvider": "anthropic",
+    "DefaultAgent": "build",
+    "Models": {
+      "glm-5": {
+        "id": "GLM-5",
+        "name": "GLM-5",
+        "provider": "anthropic",
+        "modalities": {
+          "input": [],
+          "output": []
+        },
+        "limit": {
+          "context": 4096,
+          "output": 4096
+        }
+      }
+    },
+    "Providers": {
+      "anthropic": {
+        "id": "anthropic",
+        "type": "Anthropic",
+        "baseURL": "https://www.seeingyou.top/llm/router/anthropic",
+        "apiKey": "${SEEING_API_KEY}",
+        "timeout": 600000,
+        "max_retries": 3,
+        "models": {
+          "DeepSeek-V3.2": {
+            "id": "DeepSeek-V3.2",
+            "name": "DeepSeek-V3.2",
+            "provider": "anthropic",
+            "modalities": {
+              "input": [],
+              "output": []
+            },
+            "limit": {
+              "context": 128000,
+              "output": 64000
+            }
+          },
+          "GLM-5": {
+            "id": "GLM-5",
+            "name": "GLM-5",
+            "provider": "anthropic",
+            "modalities": {
+              "input": [],
+              "output": []
+            },
+            "limit": {
+              "context": 200000,
+              "output": 32000
+            }
+          },
+          "GLM-4.7": {
+            "id": "GLM-4.7",
+            "name": "GLM-4.7",
+            "provider": "anthropic",
+            "modalities": {
+              "input": [],
+              "output": []
+            },
+            "limit": {
+              "context": 200000,
+              "output": 128000
+            }
+          },
+          "MiniMax-M2.5": {
+            "id": "MiniMax-M2.5",
+            "name": "MiniMax-M2.5",
+            "provider": "anthropic",
+            "modalities": {
+              "input": [],
+              "output": []
+            },
+            "limit": {
+              "context": 200000,
+              "output": 128000
+            }
+          },
+          "Kimi-K2.5": {
+            "id": "Kimi-K2.5",
+            "name": "Kimi-K2.5",
+            "provider": "anthropic",
+            "modalities": {
+              "input": [],
+              "output": []
+            },
+            "limit": {
+              "context": 256000,
+              "output": 32000
+            }
+          },
+          "Kimi-K2-Turbo": {
+            "id": "Kimi-K2-Turbo",
+            "name": "Kimi-K2-Turbo",
+            "provider": "anthropic",
+            "modalities": {
+              "input": [],
+              "output": []
+            },
+            "limit": {
+              "context": 256000,
+              "output": 32000
+            }
+          },
+          "Qwen3-Coder": {
+            "id": "Qwen3-Coder",
+            "name": "Qwen3-Coder",
+            "provider": "anthropic",
+            "modalities": {
+              "input": [],
+              "output": []
+            },
+            "limit": {
+              "context": 64000,
+              "output": 8000
+            }
+          }
+        }
+      }
+    },
+    "Agents": {
+      "build": {
+        "Disable": false
+      },
+      "plan": {
+        "Disable": false
+      },
+      "sisyphus": {
+        "Disable": true,
+        "IsHidden": true
+      },
+      "default": {
+        "Disable": true,
+        "IsHidden": true
+      },
+      "explore": {
+        "Disable": false,
+        "IsHidden": true
+      },
+      "general": {
+        "Disable": false,
+        "IsHidden": true
+      }
+    },
+    "Skills": {
+      "Paths": [],
+      "Urls": []
+    },
+    "Permission": {
+      "AutoApproveAll": false
+    },
     "Gateway": {
       "Enabled": true,
       "AutoStart": true,
       "Port": 8765,
       "BindAddress": "127.0.0.1",
+      "PermissionTimeoutSeconds": 120,
       "PermissionMode": "auto_approve",
       "EnableWebSocket": true,
-      "WebSocketPath": "/api/gateway/ws"
+      "WebSocketPath": "/api/gateway/ws",
+      "WebSocketKeepAliveSeconds": 30,
+      "FilterThinking": true
     },
-    "Agents": {
-      "default": {
-        "Runtime": "Native",
-        "Description": "默认 Agent（Native 模式，可使用 acp 工具委派）",
-        "AllowedTools": ["read", "write", "grep", "glob", "bash", "acp"]
+    "GatewayClients": {
+      "Defaults": {
+        "Gateway": {
+          "BaseUrl": "http://127.0.0.1:8765",
+          "Transport": "WebSocket",
+          "WebSocketPath": "/api/gateway/ws"
+        }
       },
-      "sisyphus": {
-        "Runtime": "Native"
+      "Plugins": [],
+      "Channels": {
+        "wecom": {
+          "Enabled": true,
+          "PluginSpec": "builtin:wecom"
+        }
       }
     },
     "Acp": {
       "Enabled": true,
-      "DefaultBackend": "opencode",
+      "DefaultBackend": "cursor",
+      "RequestTimeout": "00:05:00",
+      "IdleTimeout": "00:30:00",
       "Backends": {
         "opencode": {
-          "Command": "C:/Users/<user>/AppData/Roaming/npm/opencode.cmd",
-          "Args": ["acp"]
+          "Command": "C:/Users/quand/AppData/Roaming/npm/opencode.cmd",
+          "Args": [
+            "acp"
+          ]
+        },
+        "cursor": {
+          "Command": "C:\\Users\\quand\\AppData\\Local\\cursor-agent\\agent.cmd",
+          "Args": [
+            "acp"
+          ]
         }
       }
-    }
+    },
+    "Plugins": [
+      {
+        "Spec": "./Seeing.Agent.Acp.dll"
+      }
+    ],
+    "PluginEnabled": {}
   }
 }

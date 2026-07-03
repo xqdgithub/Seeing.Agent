@@ -10,14 +10,18 @@ namespace Seeing.Agent.Acp.Backends;
 /// </summary>
 public sealed class AcpBackendRegistry : IAcpBackendRegistry
 {
-    private readonly CoreAcpOptions _options;
+    private readonly SeeingAgentConfigurationProvider _configProvider;
     private readonly ILogger<AcpBackendRegistry> _logger;
 
-    public AcpBackendRegistry(IOptions<SeeingAgentOptions> options, ILogger<AcpBackendRegistry> logger)
+    public AcpBackendRegistry(
+        SeeingAgentConfigurationProvider configProvider,
+        ILogger<AcpBackendRegistry> logger)
     {
-        _options = options.Value.Acp;
+        _configProvider = configProvider;
         _logger = logger;
     }
+
+    private CoreAcpOptions Acp => _configProvider.Options.Acp;
 
     /// <inheritdoc />
     public AcpBackendDescriptor GetBackend(string backendId)
@@ -33,10 +37,10 @@ public sealed class AcpBackendRegistry : IAcpBackendRegistry
     /// <inheritdoc />
     public IReadOnlyList<AcpBackendDescriptor> GetEnabledBackends()
     {
-        if (!_options.Enabled)
+        if (!Acp.Enabled)
             return Array.Empty<AcpBackendDescriptor>();
 
-        return _options.Backends
+        return Acp.Backends
             .Select(kvp => TryCreateDescriptor(kvp.Key, kvp.Value))
             .Where(d => d is { Enabled: true })
             .Cast<AcpBackendDescriptor>()
@@ -49,8 +53,8 @@ public sealed class AcpBackendRegistry : IAcpBackendRegistry
         if (!string.IsNullOrWhiteSpace(preferredBackend))
             return GetBackend(preferredBackend).Id;
 
-        if (!string.IsNullOrWhiteSpace(_options.DefaultBackend))
-            return GetBackend(_options.DefaultBackend).Id;
+        if (!string.IsNullOrWhiteSpace(Acp.DefaultBackend))
+            return GetBackend(Acp.DefaultBackend).Id;
 
         var enabled = GetEnabledBackends();
         if (enabled.Count == 0)
@@ -64,10 +68,10 @@ public sealed class AcpBackendRegistry : IAcpBackendRegistry
     {
         descriptor = null;
 
-        if (!_options.Enabled)
+        if (!Acp.Enabled)
             return false;
 
-        if (!_options.Backends.TryGetValue(backendId, out var config))
+        if (!Acp.Backends.TryGetValue(backendId, out var config))
             return false;
 
         descriptor = TryCreateDescriptor(backendId, config);

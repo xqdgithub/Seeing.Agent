@@ -1,0 +1,102 @@
+@page "/agents"
+@using AntDesign
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Core.Models
+@inject IAgentRegistry AgentRegistry
+@inject NavigationManager NavigationManager
+@inject IMessageService MessageService
+
+<PageTitle>智能体管理 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(!_rows.Any())"
+                    EmptyTitle="暂无智能体" EmptyDescription="请检查 seeing.json 中的 Agents 配置">
+    <Breadcrumb>
+        <BreadcrumbItem>设置</BreadcrumbItem>
+        <BreadcrumbItem>智能体管理</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+    </Extra>
+    <Stats>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Robot" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_rows.Count</span>
+                <span class="stat-label">智能体总数</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Star" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_defaultAgent</span>
+                <span class="stat-label">默认智能体</span>
+            </div>
+        </div>
+    </Stats>
+    <ChildContent>
+        <Table TItem="AgentRow" DataSource="@_rows" RowKey="@(a => a.Name)" Size="@TableSize.Middle">
+            <PropertyColumn Property="c => c.Name" Title="名称" />
+            <PropertyColumn Property="c => c.DefaultLabel" Title="默认" />
+            <PropertyColumn Property="c => c.Description" Title="描述" />
+            <PropertyColumn Property="c => c.RuntimeText" Title="运行时" />
+            <PropertyColumn Property="c => c.TypeText" Title="类型" />
+            <ActionColumn Title="操作">
+                <Space>
+                    @if (!context.IsDefault)
+                    {
+                        <Button Size="@ButtonSize.Small" OnClick="@(() => SetDefault(context.Name))">设为默认</Button>
+                    }
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => GoConfig(context.Name))">查看配置</Button>
+                </Space>
+            </ActionColumn>
+        </Table>
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private List<AgentRow> _rows = new();
+    private string _defaultAgent = "";
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _defaultAgent = await AgentRegistry.GetDefaultAgentNameAsync();
+            var agents = await AgentRegistry.GetPrimaryAgentsAsync();
+            _rows = agents.Select(a => new AgentRow
+            {
+                Name = a.Name,
+                Description = a.Description ?? "",
+                RuntimeText = a.Runtime.ToString(),
+                TypeText = a.IsNative ? "内置" : "配置",
+                IsDefault = a.Name == _defaultAgent,
+                DefaultLabel = a.Name == _defaultAgent ? "是" : ""
+            }).ToList();
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task SetDefault(string name)
+    {
+        await AgentRegistry.SetDefaultAgentAsync(name);
+        await LoadAsync();
+        MessageService.Success($"已将 {name} 设为默认智能体");
+    }
+
+    private void GoConfig(string name) =>
+        NavigationManager.NavigateTo($"/agent-config?agent={Uri.EscapeDataString(name)}");
+
+    private sealed class AgentRow
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string RuntimeText { get; set; } = "";
+        public string TypeText { get; set; } = "";
+        public string DefaultLabel { get; set; } = "";
+        public bool IsDefault { get; set; }
+    }
+}

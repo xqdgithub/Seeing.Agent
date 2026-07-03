@@ -26,6 +26,7 @@ public static class GatewayEndpoints
     {
         app.MapPost("/api/gateway/chat", ChatAsync);
         app.MapPost("/api/gateway/chat/stop", StopChatAsync);
+        app.MapPost("/api/gateway/sessions/{sessionId}/reset", ResetSessionAsync);
         app.MapGet("/api/gateway/permissions/pending", GetPendingPermissionsAsync);
         app.MapPost("/api/gateway/permissions/{id}/respond", RespondPermissionAsync);
         app.MapGet("/api/gateway/health", HealthAsync);
@@ -60,6 +61,20 @@ public static class GatewayEndpoints
 
         var stopped = orchestrator.StopChat(sessionId);
         return Results.Ok(new { sessionId, stopped });
+    }
+
+    private static async Task<IResult> ResetSessionAsync(
+        string sessionId,
+        GatewaySessionService sessionService,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return Results.BadRequest(new { error = "sessionId is required" });
+
+        var result = await sessionService.ResetAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        return result == null
+            ? Results.NotFound(new { error = "session not found", sessionId })
+            : Results.Ok(result);
     }
 
     private static IResult GetPendingPermissionsAsync(

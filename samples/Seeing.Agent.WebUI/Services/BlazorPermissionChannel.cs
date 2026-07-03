@@ -18,6 +18,9 @@ namespace Seeing.Agent.WebUI.Services
         // 待处理的权限请求集合：requestId -> TaskCompletionSource<PermissionDecision>
         private readonly ConcurrentDictionary<string, TaskCompletionSource<PermissionDecision>> _pendingRequests = new();
 
+        /// <summary>待处理权限请求数量</summary>
+        public int PendingCount => _pendingRequests.Count;
+
         public BlazorPermissionChannel(EventStreamHandler eventStreamHandler, Seeing.Agent.WebUI.State.SessionState sessionState)
         {
             _eventStreamHandler = eventStreamHandler ?? throw new ArgumentNullException(nameof(eventStreamHandler));

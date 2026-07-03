@@ -105,6 +105,28 @@ public sealed class HttpGatewayClient : IGatewayClient
         return permissions ?? [];
     }
 
+    public async Task<GatewaySessionResetResult> ResetSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var encodedSessionId = Uri.EscapeDataString(sessionId);
+        using var response = await _httpClient.PostAsync(
+            $"api/gateway/sessions/{encodedSessionId}/reset",
+            content: null,
+            cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new InvalidOperationException($"Session not found: {sessionId}");
+
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<GatewaySessionResetResult>(
+            GatewayJsonOptions.Default,
+            cancellationToken).ConfigureAwait(false);
+
+        return result ?? throw new InvalidOperationException("Empty reset response body");
+    }
+
     private static void ApplyOptions(HttpClient httpClient, GatewayClientOptions options)
     {
         if (string.IsNullOrWhiteSpace(options.BaseUrl))

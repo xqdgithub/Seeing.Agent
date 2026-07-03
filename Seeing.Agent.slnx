@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
+    <Project Path="samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" />
     <Project Path="samples/Seeing.Gateway.Console.Demo/Seeing.Gateway.Console.Demo.csproj" />
     <Project Path="samples/Seeing.Gateway.Server/Seeing.Gateway.Server.csproj" />
     <Project Path="samples/Seeing.Gateway.WeCom.Demo/Seeing.Gateway.WeCom.Demo.csproj" />
@@ -12,6 +13,7 @@
     <Project Path="src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
     <Project Path="src/Seeing.Agent.Gateway/Seeing.Agent.Gateway.csproj" />
     <Project Path="src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
+    <Project Path="src/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
     <Project Path="src/Seeing.Agent.Plugins/Seeing.Agent.Plugins.csproj" />
     <Project Path="src/Seeing.Agent/Seeing.Agent.csproj" />
     <Project Path="src/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
@@ -22,6 +24,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Seeing.Agent.Acp.Tests/Seeing.Agent.Acp.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
+    <Project Path="tests/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Plugins.Tests/Seeing.Agent.Plugins.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
     <Project Path="tests/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />

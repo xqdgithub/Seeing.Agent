@@ -1,0 +1,152 @@
+@using AntDesign
+@using Seeing.Gateway.Configuration
+@using System.Text.Json
+
+@switch (Field.Type)
+{
+    case ConfigFieldType.Boolean:
+        <Switch @bind-Checked="BoolValue" />
+        break;
+
+    case ConfigFieldType.Number:
+        <InputNumber TValue="double?" @bind-Value="NumberValue" Style="width: 100%;" />
+        break;
+
+    case ConfigFieldType.Enum:
+        <Select TItemValue="string" TItem="string"
+                @bind-Value="TextValue"
+                DataSource="@(Field.EnumValues?.ToList() ?? [])"
+                Style="width: 100%;" />
+        break;
+
+    case ConfigFieldType.StringList:
+        <Select TItemValue="string" TItem="string"
+                Mode="SelectMode.Tags"
+                @bind-Values="StringListValue"
+                Style="width: 100%;" />
+        break;
+
+    case ConfigFieldType.TextArea:
+        <TextArea @bind-Value="TextValue" Rows="3" />
+        break;
+
+    case ConfigFieldType.Secret:
+        <Input TValue="string" Type="InputType.Password" @bind-Value="TextValue" />
+        break;
+
+    case ConfigFieldType.Url:
+        <Input TValue="string" @bind-Value="TextValue" />
+        break;
+
+    default:
+        <Input TValue="string" @bind-Value="TextValue" />
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired] public ConfigFieldSchema Field { get; set; } = default!;
+    [Parameter, EditorRequired] public Dictionary<string, object?> Options { get; set; } = default!;
+
+    private string TextValue
+    {
+        get => ReadString(Field.Name);
+        set => Options[Field.Name] = value;
+    }
+
+    private bool BoolValue
+    {
+        get => ReadBool(Field.Name);
+        set => Options[Field.Name] = value;
+    }
+
+    private double? NumberValue
+    {
+        get => ReadNumber(Field.Name);
+        set => Options[Field.Name] = CoerceNumber(value);
+    }
+
+    private IEnumerable<string> StringListValue
+    {
+        get => ReadStringList(Field.Name);
+        set => Options[Field.Name] = value?
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
+    }
+
+    private static string ReadString(string name, Dictionary<string, object?> options) =>
+        options.TryGetValue(name, out var value) ? ConvertJsonValue(value)?.ToString() ?? "" : "";
+
+    private string ReadString(string name) => ReadString(name, Options);
+
+    private static bool ReadBool(string name, Dictionary<string, object?> options) =>
+        options.TryGetValue(name, out var value) && value is bool b && b;
+
+    private bool ReadBool(string name) => ReadBool(name, Options);
+
+    private static double? ReadNumber(string name, Dictionary<string, object?> options)
+    {
+        if (!options.TryGetValue(name, out var value) || value is null)
+            return null;
+
+        value = ConvertJsonValue(value);
+        return value switch
+        {
+            double d => d,
+            int i => i,
+            long l => l,
+            float f => f,
+            decimal m => (double)m,
+            _ => double.TryParse(Convert.ToString(value), out var parsed) ? parsed : null
+        };
+    }
+
+    private double? ReadNumber(string name) => ReadNumber(name, Options);
+
+    private static IEnumerable<string> ReadStringList(string name, Dictionary<string, object?> options)
+    {
+        if (!options.TryGetValue(name, out var value) || value is null)
+            return Array.Empty<string>();
+
+        value = ConvertJsonValue(value);
+        return value switch
+        {
+            IEnumerable<string> strings => strings.ToList(),
+            JsonElement json when json.ValueKind == JsonValueKind.Array =>
+                json.EnumerateArray()
+                    .Select(e => e.GetString() ?? "")
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .ToList(),
+            _ => Array.Empty<string>()
+        };
+    }
+
+    private IEnumerable<string> ReadStringList(string name) => ReadStringList(name, Options);
+
+    private static object? CoerceNumber(double? value)
+    {
+        if (value is null)
+            return null;
+
+        if (value.Value == Math.Floor(value.Value) && value.Value is >= int.MinValue and <= int.MaxValue)
+            return (int)value.Value;
+
+        return value.Value;
+    }
+
+    private static object? ConvertJsonValue(object? value) =>
+        value is JsonElement json
+            ? json.ValueKind switch
+            {
+                JsonValueKind.String => json.GetString(),
+                JsonValueKind.Number => json.TryGetInt64(out var l) ? l : json.GetDouble(),
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                JsonValueKind.Array => json,
+                JsonValueKind.Object => json,
+                _ => json.GetRawText()
+            }
+            : value;
+}

@@ -1,0 +1,82 @@
+@page "/skills/{SkillName}"
+@using AntDesign
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Skills
+@using Seeing.Agent.WebUI.Services
+@inject SkillManager SkillManager
+@inject SkillStateService SkillStateService
+@inject NavigationManager NavigationManager
+@inject IMessageService MessageService
+
+<PageTitle>@SkillName - 技能详情</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(_skill == null)" EmptyTitle="技能不存在">
+    <Breadcrumb>
+        <BreadcrumbItem><a @onclick="@(() => NavigationManager.NavigateTo("/skills"))" style="cursor:pointer;">技能</a></BreadcrumbItem>
+        <BreadcrumbItem>@SkillName</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <span>启用</span>
+            <Switch Checked="@_enabled" OnChange="ToggleEnabled" />
+            <Button OnClick="@(() => NavigationManager.NavigateTo("/skills"))">返回列表</Button>
+        </Space>
+    </Extra>
+    <ChildContent>
+        @if (_skill != null)
+        {
+            <Descriptions Bordered Column="2" Style="margin-bottom: 16px;">
+                <DescriptionsItem Title="名称">@SkillName</DescriptionsItem>
+                <DescriptionsItem Title="类型">@(_skill.Location?.Contains(".agents") == true ? "内置" : "自定义")</DescriptionsItem>
+                <DescriptionsItem Title="路径" Span="2">@_skill.Location</DescriptionsItem>
+                <DescriptionsItem Title="描述" Span="2">@(_skill.Description ?? "无")</DescriptionsItem>
+            </Descriptions>
+            <Tabs>
+                <TabPane Key="content" Tab="说明">
+                    <div style="white-space: pre-wrap; line-height: 1.6;">@(_skill.Content ?? "无内容")</div>
+                </TabPane>
+                <TabPane Key="raw" Tab="原始文件">
+                    <pre style="white-space: pre-wrap; max-height: 500px; overflow: auto;">@_rawContent</pre>
+                </TabPane>
+                @if (_files.Any())
+                {
+                    <TabPane Key="files" Tab="相关文件">
+                        <ul>
+                            @foreach (var f in _files)
+                            {
+                                <li>@f</li>
+                            }
+                        </ul>
+                    </TabPane>
+                }
+            </Tabs>
+        }
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    [Parameter] public string SkillName { get; set; } = "";
+    private SkillInfo? _skill;
+    private string _rawContent = "";
+    private List<string> _files = new();
+    private bool _enabled = true;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        _skill = SkillManager.GetSkillInfo(SkillName);
+        _enabled = SkillStateService.IsEnabled(SkillName);
+        if (_skill != null && !string.IsNullOrEmpty(_skill.Location) && File.Exists(_skill.Location))
+            _rawContent = await File.ReadAllTextAsync(_skill.Location);
+        _files = SkillManager.GetSkillFiles(SkillName);
+        _loading = false;
+    }
+
+    private void ToggleEnabled(bool enabled)
+    {
+        SkillStateService.SetEnabled(SkillName, enabled);
+        _enabled = enabled;
+        MessageService.Success(enabled ? "已启用" : "已禁用");
+    }
+}

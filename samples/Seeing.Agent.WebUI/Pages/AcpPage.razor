@@ -1,0 +1,335 @@
+@page "/acp"
+@using System.Text.Json
+@using AntDesign
+@using Seeing.Agent.Acp.Hosting
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Core.Models
+@using Seeing.Agent.WebUI.Services
+@inject SeeingConfigService ConfigService
+@inject IAcpConfigurationReloader AcpReloader
+@inject IAgentRegistry AgentRegistry
+@inject IMessageService MessageService
+
+<PageTitle>ACP - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(!_backends.Any())"
+                    EmptyTitle="暂无 ACP 后端" EmptyDescription="添加 ACP 后端以委派外部 Agent（如 OpenCode）">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem>ACP</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button Icon="@IconType.Outline.Plus" OnClick="ShowAdd">添加后端</Button>
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" Loading="@_saving" OnClick="SaveAsync">保存</Button>
+        </Space>
+    </Extra>
+    <ChildContent>
+        <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;"
+               Message="页面展示的是合并后的生效配置（项目级覆盖用户级）。后端编辑/添加/删除后会自动保存到下方所选级别。" />
+        @if (_sourceInfo.HasUserSection && _saveLevel == ConfigLevel.Project)
+        {
+            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 12px;"
+                   Message="@($"用户级配置也存在：{_sourceInfo.UserConfigPath}。保存到项目级后，项目文件中的同名字段会覆盖用户级。")" />
+        }
+        <div class="config-path-info" style="margin-bottom: 16px;">
+            <span>保存到：</span>
+            <Select TItemValue="ConfigLevel" TItem="ConfigLevel" @bind-Value="_saveLevel" Style="width: 160px;">
+                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
+                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
+            </Select>
+            <Text Type="@TextElementType.Secondary">@ConfigService.GetConfigPath(_saveLevel)</Text>
+        </div>
+        <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
+               Message="Passthrough Agent 命名规则：acp-{backendId}。启用 ACP 后可通过 acp 工具委派执行。" />
+        <Form Layout="@FormLayout.Vertical" Model="@_acp" Context="formContext">
+        <div>
+            <FormItem Label="启用 ACP"><Switch @bind-Checked="@_acp.Enabled" /></FormItem>
+            <FormItem Label="默认后端">
+                <Select TItemValue="string" TItem="string" @bind-Value="@_acp.DefaultBackend" Style="width: 240px;" AllowClear>
+                    @foreach (var b in _backends)
+                    {
+                        <SelectOption Value="@b.Key">@b.Key</SelectOption>
+                    }
+                </Select>
+            </FormItem>
+        </div>
+        </Form>
+        <Table TItem="BackendRow" DataSource="@_backends" RowKey="@(b => b.Key)" Style="margin-top: 16px;">
+            <PropertyColumn Property="c => c.Key" Title="后端 ID" />
+            <PropertyColumn Property="c => c.Command" Title="命令" />
+            <PropertyColumn Property="c => c.ArgsText" Title="参数" />
+            <PropertyColumn Property="c => c.EnvCount" Title="环境变量" />
+            <PropertyColumn Property="c => c.LinkedAgents" Title="关联 Agent" />
+            <PropertyColumn Property="c => c.Source" Title="来源" />
+            <ActionColumn Title="操作">
+                <Space>
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => EditBackend(context.Key))">编辑</Button>
+                    <Popconfirm Title="确定删除？" OnConfirm="@(() => RemoveBackend(context.Key))">
+                        <Button Size="@ButtonSize.Small" Danger="true">删除</Button>
+                    </Popconfirm>
+                </Space>
+            </ActionColumn>
+        </Table>
+    </ChildContent>
+    <EmptyAction>
+        <Button Type="@ButtonType.Primary" OnClick="ShowAdd">添加后端</Button>
+    </EmptyAction>
+</WorkspacePageShell>
+
+<Modal Title="@_modalTitle" Visible="@_modalVisible" Footer="@null" OnCancel="@CloseModal" Width="640">
+    @if (_modalVisible)
+    {
+        <Form Layout="@FormLayout.Vertical" Model="@_editBackendForm">
+        <div>
+            <FormItem Label="后端 ID"><Input @bind-Value="@_editBackendForm.Id" Disabled="@_isEdit" /></FormItem>
+            <FormItem Label="命令"><Input @bind-Value="@_editBackendForm.Command" /></FormItem>
+            <FormItem Label="参数（空格分隔）"><Input @bind-Value="@_editBackendForm.ArgsText" /></FormItem>
+            <FormItem Label="环境变量（每行 key=value）"><TextArea Rows="4" @bind-Value="@_editBackendForm.EnvText" /></FormItem>
+        </div>
+        </Form>
+    }
+    <FooterTemplate>
+        <Button OnClick="@CloseModal">取消</Button>
+        <Button Type="@ButtonType.Primary" Loading="@_saving" OnClick="@ConfirmBackend">确定并保存</Button>
+    </FooterTemplate>
+</Modal>
+
+@code {
+    private AcpOptions _acp = new();
+    private List<BackendRow> _backends = new();
+    private AcpConfigSourceInfo _sourceInfo = new();
+    private ConfigLevel _saveLevel = ConfigLevel.Project;
+    private bool _loading;
+    private bool _saving;
+    private bool _modalVisible;
+    private bool _isEdit;
+    private string _modalTitle = "";
+    private AcpBackendEditForm _editBackendForm = new();
+
+    private static readonly JsonSerializerOptions CloneJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = false
+    };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _acp = await ConfigService.LoadEffectiveAcpAsync();
+            _sourceInfo = ConfigService.GetAcpConfigSourceInfo();
+            await RefreshBackendRowsAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshBackendRowsAsync()
+    {
+        var userBackends = (await ConfigService.LoadLevelSectionAsync<AcpOptions>(ConfigLevel.User, "Acp"))?.Backends
+            ?? new Dictionary<string, AcpBackendConfig>();
+        var projectBackends = (await ConfigService.LoadLevelSectionAsync<AcpOptions>(ConfigLevel.Project, "Acp"))?.Backends
+            ?? new Dictionary<string, AcpBackendConfig>();
+
+        var agents = await AgentRegistry.GetAgentsAsync();
+        _backends = _acp.Backends.Select(kv => new BackendRow
+        {
+            Key = kv.Key,
+            Command = kv.Value.Command ?? "",
+            Args = kv.Value.Args ?? new List<string>(),
+            ArgsText = string.Join(" ", kv.Value.Args ?? new List<string>()),
+            EnvCount = kv.Value.Environment?.Count ?? 0,
+            LinkedAgents = agents.Count(a => a.AcpBackend == kv.Key || a.Name == $"acp-{kv.Key}"),
+            Source = GetBackendSource(kv.Key, userBackends, projectBackends)
+        }).ToList();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+            return;
+
+        _saving = true;
+        _loading = true;
+        try
+        {
+            var payload = BuildSavePayload();
+            await ConfigService.SaveAcpSectionAsync(_saveLevel, payload);
+            await AcpReloader.ReloadAsync();
+            MessageService.Success($"ACP 配置已保存到{GetLevelLabel(_saveLevel)}");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _loading = false;
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private AcpOptions BuildSavePayload()
+    {
+        var edited = CloneAcp(_acp);
+        return new AcpOptions
+        {
+            Enabled = edited.Enabled,
+            DefaultBackend = edited.DefaultBackend,
+            RequestTimeout = edited.RequestTimeout,
+            IdleTimeout = edited.IdleTimeout,
+            Backends = new Dictionary<string, AcpBackendConfig>(
+                edited.Backends.ToDictionary(
+                    kv => kv.Key,
+                    kv => CloneBackend(kv.Value),
+                    StringComparer.OrdinalIgnoreCase),
+                StringComparer.OrdinalIgnoreCase)
+        };
+    }
+
+    private static AcpBackendConfig CloneBackend(AcpBackendConfig source) =>
+        JsonSerializer.Deserialize<AcpBackendConfig>(
+            JsonSerializer.Serialize(source, CloneJsonOptions),
+            CloneJsonOptions) ?? new AcpBackendConfig();
+
+    private void ShowAdd()
+    {
+        _isEdit = false;
+        _modalTitle = "添加 ACP 后端";
+        _editBackendForm = new AcpBackendEditForm();
+        _modalVisible = true;
+    }
+
+    private void EditBackend(string key)
+    {
+        if (!_acp.Backends.TryGetValue(key, out var cfg)) return;
+        _isEdit = true;
+        _modalTitle = $"编辑: {key}";
+        _editBackendForm = new AcpBackendEditForm
+        {
+            Id = key,
+            Command = cfg.Command ?? "",
+            ArgsText = string.Join(" ", cfg.Args ?? new List<string>()),
+            EnvText = cfg.Environment != null
+                ? string.Join("\n", cfg.Environment.Select(kv => $"{kv.Key}={kv.Value}"))
+                : ""
+        };
+        _modalVisible = true;
+    }
+
+    private async Task ConfirmBackend()
+    {
+        // 等待 Blazor 将 Modal 内 Input 的 bind 值刷入模型
+        await Task.Yield();
+
+        var id = _editBackendForm.Id.Trim();
+        var command = _editBackendForm.Command.Trim();
+
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            MessageService.Error("后端 ID 不能为空");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            MessageService.Error("命令不能为空");
+            return;
+        }
+
+        if (!_isEdit && _acp.Backends.Keys.Any(k => string.Equals(k, id, StringComparison.OrdinalIgnoreCase)))
+        {
+            MessageService.Error($"后端 ID 已存在: {id}");
+            return;
+        }
+
+        _acp.Backends[id] = new AcpBackendConfig
+        {
+            Command = command,
+            Args = _editBackendForm.ArgsText.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList(),
+            Environment = ParseEnv(_editBackendForm.EnvText)
+        };
+
+        if (_acp.DefaultBackend is null && _acp.Backends.Count == 1)
+            _acp.DefaultBackend = id;
+
+        CloseModal();
+        await RefreshBackendRowsAsync();
+        await SaveAsync();
+    }
+
+    private async Task RemoveBackend(string key)
+    {
+        _acp.Backends.Remove(key);
+        if (string.Equals(_acp.DefaultBackend, key, StringComparison.OrdinalIgnoreCase))
+            _acp.DefaultBackend = _acp.Backends.Keys.FirstOrDefault();
+
+        await RefreshBackendRowsAsync();
+        await SaveAsync();
+    }
+
+    private void CloseModal() => _modalVisible = false;
+
+    private static AcpOptions CloneAcp(AcpOptions source) =>
+        JsonSerializer.Deserialize<AcpOptions>(JsonSerializer.Serialize(source, CloneJsonOptions), CloneJsonOptions)
+        ?? new AcpOptions();
+
+    private static Dictionary<string, string>? ParseEnv(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var dict = new Dictionary<string, string>();
+        foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var idx = line.IndexOf('=');
+            if (idx > 0) dict[line[..idx].Trim()] = line[(idx + 1)..].Trim();
+        }
+        return dict;
+    }
+
+    private static string GetBackendSource(
+        string backendId,
+        IReadOnlyDictionary<string, AcpBackendConfig> userBackends,
+        IReadOnlyDictionary<string, AcpBackendConfig> projectBackends)
+    {
+        var inUser = userBackends.ContainsKey(backendId);
+        var inProject = projectBackends.ContainsKey(backendId);
+
+        return (inUser, inProject) switch
+        {
+            (true, true) => "项目覆盖",
+            (false, true) => "项目",
+            (true, false) => "用户",
+            _ => "生效"
+        };
+    }
+
+    private static string GetLevelLabel(ConfigLevel level) =>
+        level == ConfigLevel.User ? "用户级" : "项目级";
+
+    private sealed class BackendRow
+    {
+        public string Key { get; set; } = "";
+        public string Command { get; set; } = "";
+        public List<string> Args { get; set; } = new();
+        public string ArgsText { get; set; } = "";
+        public int EnvCount { get; set; }
+        public int LinkedAgents { get; set; }
+        public string Source { get; set; } = "";
+    }
+
+    private sealed class AcpBackendEditForm
+    {
+        public string Id { get; set; } = "";
+        public string Command { get; set; } = "";
+        public string ArgsText { get; set; } = "";
+        public string EnvText { get; set; } = "";
+    }
+}

@@ -1,0 +1,122 @@
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Models
+
+<div>
+    <Form Layout="@FormLayout.Vertical" Model="@AgentConfig" Context="formContext">
+    <FormItem Label="描述"><TextArea Rows="2" @bind-Value="@AgentConfig.Description" /></FormItem>
+    <Row Gutter="16">
+        <Col Span="8">
+            <FormItem Label="模式">
+                <Select TItemValue="string" TItem="string"
+                        Value="@_modeName"
+                        ValueExpression="@(() => _modeName)"
+                        ValueChanged="OnModeNameChanged"
+                        DataSource="@_modeNames"
+                        AllowClear
+                        Placeholder="默认" />
+            </FormItem>
+        </Col>
+        <Col Span="8">
+            <FormItem Label="运行时">
+                <Select TItemValue="string" TItem="string"
+                        Value="@_runtimeName"
+                        ValueExpression="@(() => _runtimeName)"
+                        ValueChanged="OnRuntimeNameChanged"
+                        DataSource="@_runtimeNames"
+                        AllowClear
+                        Placeholder="默认" />
+            </FormItem>
+        </Col>
+        <Col Span="8">
+            <FormItem Label="模型">
+                <Select TItemValue="string" TItem="string"
+                        Value="@_modelKey"
+                        ValueExpression="@(() => _modelKey)"
+                        ValueChanged="OnModelKeyChanged"
+                        DataSource="@_modelKeys"
+                        AllowClear
+                        Placeholder="默认" />
+            </FormItem>
+        </Col>
+    </Row>
+    <Row Gutter="16">
+        <Col Span="8"><FormItem Label="温度"><InputNumber @bind-Value="@AgentConfig.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%;" /></FormItem></Col>
+        <Col Span="8"><FormItem Label="TopP"><InputNumber @bind-Value="@AgentConfig.TopP" Min="0" Max="1" Step="0.05" Style="width: 100%;" /></FormItem></Col>
+        <Col Span="8"><FormItem Label="最大步骤"><InputNumber @bind-Value="@AgentConfig.MaxSteps" Min="1" Style="width: 100%;" /></FormItem></Col>
+    </Row>
+    <FormItem Label="ACP 后端"><Input @bind-Value="@AgentConfig.AcpBackend" /></FormItem>
+    <FormItem Label="系统提示词"><TextArea Rows="8" @bind-Value="@AgentConfig.SystemPrompt" /></FormItem>
+    </Form>
+</div>
+
+@code {
+    [Parameter] public AgentConfig AgentConfig { get; set; } = new();
+    [Parameter] public IEnumerable<string> ModelKeys { get; set; } = Array.Empty<string>();
+
+    private static readonly List<string> _modeNames = new() { "Primary", "SubAgent", "All" };
+    private static readonly List<string> _runtimeNames = new() { "Native", "AcpPassthrough" };
+
+    private string _modeName = "";
+    private string _runtimeName = "";
+    private string _modelKey = "";
+    private List<string> _modelKeys = new();
+
+    protected override void OnParametersSet()
+    {
+        _modelKeys = ModelKeys.Where(k => !string.IsNullOrEmpty(k)).ToList();
+        _modelKey = !string.IsNullOrEmpty(AgentConfig.Model)
+            ? (string.IsNullOrEmpty(AgentConfig.Provider) ? AgentConfig.Model : $"{AgentConfig.Provider}/{AgentConfig.Model}")
+            : "";
+        if (!string.IsNullOrEmpty(_modelKey) && !_modelKeys.Contains(_modelKey))
+            _modelKey = "";
+
+        _modeName = AgentConfig.Mode?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(_modeName) && !_modeNames.Contains(_modeName))
+            _modeName = "";
+
+        _runtimeName = AgentConfig.Runtime?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(_runtimeName) && !_runtimeNames.Contains(_runtimeName))
+            _runtimeName = "";
+    }
+
+    private void OnModeNameChanged(string value)
+    {
+        _modeName = value ?? "";
+        AgentConfig.Mode = string.IsNullOrEmpty(_modeName)
+            ? null
+            : Enum.Parse<AgentMode>(_modeName);
+    }
+
+    private void OnRuntimeNameChanged(string value)
+    {
+        _runtimeName = value ?? "";
+        AgentConfig.Runtime = string.IsNullOrEmpty(_runtimeName)
+            ? null
+            : Enum.Parse<AgentRuntime>(_runtimeName);
+    }
+
+    private void OnModelKeyChanged(string value) => _modelKey = value ?? "";
+
+    public void ApplyToConfig()
+    {
+        if (string.IsNullOrEmpty(_modelKey))
+        {
+            AgentConfig.Provider = null;
+            AgentConfig.Model = null;
+            return;
+        }
+
+        var parts = _modelKey.Split('/', 2);
+        if (parts.Length == 2)
+        {
+            AgentConfig.Provider = parts[0];
+            AgentConfig.Model = parts[1];
+        }
+        else
+        {
+            AgentConfig.Provider = null;
+            AgentConfig.Model = _modelKey;
+        }
+    }
+}

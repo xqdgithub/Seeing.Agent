@@ -1,0 +1,115 @@
+@page "/heartbeat"
+@using AntDesign
+@using Seeing.Agent.Scheduler.Abstractions
+@using Seeing.Agent.Scheduler
+@using Seeing.Agent.Scheduler.Models
+@using Seeing.Agent.WebUI.Services
+@inject SeeingConfigService ConfigService
+@inject IHeartbeatRunner HeartbeatRunner
+@inject IScheduleManager ScheduleManager
+@inject IMessageService MessageService
+
+<PageTitle>心跳 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell>
+    <Breadcrumb>
+        <BreadcrumbItem>控制中心</BreadcrumbItem>
+        <BreadcrumbItem>心跳</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button Icon="@IconType.Outline.Thunderbolt" Loading="@_running" OnClick="RunOnce">立即执行</Button>
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存配置</Button>
+        </Space>
+    </Extra>
+    <ChildContent>
+        <Row Gutter="16">
+            <Col Span="14">
+                <Card Title="@("心跳配置")">
+                    <Form Layout="@FormLayout.Vertical" Model="@_heartbeat" Context="formContext">
+                    <div>
+                        <FormItem Label="启用心跳"><Switch @bind-Checked="@_heartbeat.Enabled" /></FormItem>
+                        <FormItem Label="执行间隔"><Input @bind-Value="@_heartbeat.Every" Placeholder="6h、30m" /></FormItem>
+                        <FormItem Label="投递目标">
+                            <Select TItemValue="string" TItem="string" @bind-Value="@_heartbeat.Target">
+                                <SelectOption Value="@HeartbeatTargets.Main">main</SelectOption>
+                                <SelectOption Value="@HeartbeatTargets.Last">last</SelectOption>
+                                <SelectOption Value="@HeartbeatTargets.Inbox">inbox</SelectOption>
+                            </Select>
+                        </FormItem>
+                        <FormItem Label="Query 文件"><Input @bind-Value="@_heartbeat.QueryFile" /></FormItem>
+                        <FormItem Label="Agent"><Input @bind-Value="@_heartbeat.Agent" Placeholder="留空使用默认" /></FormItem>
+                        <FormItem Label="Session ID"><Input @bind-Value="@_heartbeat.SessionId" /></FormItem>
+                        <FormItem Label="超时（秒）"><InputNumber @bind-Value="@_heartbeat.TimeoutSeconds" Min="10" Style="width: 100%;" /></FormItem>
+                        @if (_heartbeat.ActiveHours != null)
+                        {
+                            <FormItem Label="活跃时段开始"><Input @bind-Value="@_heartbeat.ActiveHours.Start" /></FormItem>
+                            <FormItem Label="活跃时段结束"><Input @bind-Value="@_heartbeat.ActiveHours.End" /></FormItem>
+                        }
+                    </div>
+                    </Form>
+                </Card>
+            </Col>
+            <Col Span="10">
+                <Card Title="HEARTBEAT.md 预览">
+                    @if (File.Exists(_queryFilePath))
+                    {
+                        <pre style="white-space: pre-wrap; max-height: 400px; overflow: auto; font-size: 13px;">@_queryPreview</pre>
+                    }
+                    else
+                    {
+                        <Alert Type="@AlertType.Warning" ShowIcon="true"
+                               Message="@($"文件不存在: {_heartbeat.QueryFile}")"
+                               Description="可在工作区根目录创建 HEARTBEAT.md 定义心跳查询内容。" />
+                    }
+                </Card>
+            </Col>
+        </Row>
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private SchedulerOptions _scheduler = new();
+    private HeartbeatOptions _heartbeat = new();
+    private string _queryFilePath = "";
+    private string _queryPreview = "";
+    private bool _running;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _scheduler = ConfigService.GetSchedulerOptions();
+        _heartbeat = _scheduler.Heartbeat;
+        _heartbeat.ActiveHours ??= new ActiveHoursOptions();
+        RefreshPreview();
+        await Task.CompletedTask;
+    }
+
+    private void RefreshPreview()
+    {
+        _queryFilePath = Path.Combine(Directory.GetCurrentDirectory(), _heartbeat.QueryFile);
+        _queryPreview = File.Exists(_queryFilePath) ? File.ReadAllText(_queryFilePath) : "";
+    }
+
+    private async Task SaveAsync()
+    {
+        await ConfigService.SaveSchedulerOptionsAsync(s =>
+        {
+            s.Heartbeat = _heartbeat;
+        });
+        await ScheduleManager.ReloadHeartbeatAsync();
+        RefreshPreview();
+        MessageService.Success("心跳配置已保存");
+    }
+
+    private async Task RunOnce()
+    {
+        _running = true;
+        try
+        {
+            var result = await HeartbeatRunner.RunOnceAsync();
+            if (result.Success) MessageService.Success("心跳执行成功");
+            else MessageService.Error(result.Error ?? "执行失败");
+        }
+        finally { _running = false; }
+    }
+}

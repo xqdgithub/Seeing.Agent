@@ -26,6 +26,8 @@ public static class WeComServiceCollectionExtensions
 
         services.AddHttpClient<WeComMediaFetcher>();
         services.AddSeeingGatewayClient();
+        services.AddSingleton<WeComSessionTracker>();
+        services.AddSingleton<WeComCommandInterceptor>();
         services.AddSingleton<WeComAibotWsClient>();
         services.AddSingleton<WeComPermissionPolicy>();
         services.AddSingleton<WeComPermissionState>();

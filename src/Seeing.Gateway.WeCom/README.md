@@ -47,6 +47,10 @@ services.AddHostedService<WeComBridgeHostedService>(); // 见 Demo
 | `Secret` | — | 机器人 Secret |
 | `WsUrl` | `wss://openws.work.weixin.qq.com` | 长连接地址 |
 | `ShareSessionInGroup` | `true` | 群聊共享 session |
+| `SessionIdleTimeoutMinutes` | `30` | 空闲超时（分钟）后自动轮换 sessionId；`0` 禁用 |
+| `ResetOnEnterChatWhenIdle` | `true` | 用户重新打开聊天且已超时时自动新 session |
+| `SessionStateFile` | `.seeing/gateway-clients/wecom.sessions.json` | conversationKey 映射持久化 |
+| `AppendCommandHintsToWelcome` | `true` | 欢迎语附加 `/new`、`/clear` 提示 |
 | `MaxReconnectAttempts` | `-1` | 最大重连次数（-1 无限） |
 | `StreamingEnabled` | `true` | 流式 reply_stream |
 | `BotPrefix` | — | 回复文本前缀 |
@@ -91,7 +95,20 @@ services.AddHostedService<WeComBridgeHostedService>(); // 见 Demo
 | 单聊 | `wecom_{userid}` |
 | 群聊（ShareSessionInGroup=true） | `wecom_group_{chatid}` |
 
-与 QwenPaw 策略一致，可在 WebUI 中用相同 ID 查看会话历史。
+与 QwenPaw 基础映射一致，可在 WebUI 中用相同 ID 查看会话历史。
+
+### 会话生命周期
+
+| 触发条件 | 行为 |
+|----------|------|
+| 距上次消息超过 `SessionIdleTimeoutMinutes` | 自动轮换为新 `sessionId`（旧会话文件保留） |
+| 用户发送 `/new` | 立即轮换为新 `sessionId` |
+| 用户发送 `/clear` | 保持当前 `sessionId`，调用 Gateway 清空消息历史 |
+| `enter_chat` 且已超时 | 先轮换 session，再发送欢迎语 |
+
+群聊中 `@机器人 /clear` 会自动剥离 @mention 后识别命令。
+
+与 QwenPaw 的差异：QwenPaw 无空闲自动轮换；`/new` 在同 session 内清内存，Seeing.Agent 的 `/new` 会生成新 session 文件。
 
 ## 流式行为
 

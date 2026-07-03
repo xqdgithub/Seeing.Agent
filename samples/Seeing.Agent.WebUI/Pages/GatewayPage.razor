@@ -1,0 +1,125 @@
+@page "/gateway"
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.WebUI.Services
+@inject SeeingConfigService ConfigService
+@inject IHttpClientFactory HttpClientFactory
+@inject IMessageService MessageService
+
+<PageTitle>Gateway - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading">
+    <Breadcrumb>
+        <BreadcrumbItem>设置</BreadcrumbItem>
+        <BreadcrumbItem>Gateway</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button Icon="@IconType.Outline.Reload" OnClick="CheckHealth">检查状态</Button>
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存配置</Button>
+        </Space>
+    </Extra>
+    <Stats>
+        <div class="stat-item">
+            <div class="stat-icon"><Badge Status="@(_healthy ? BadgeStatus.Success : BadgeStatus.Error)" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@(_healthy ? "在线" : "离线")</span>
+                <span class="stat-label">服务状态</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Global" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@($"{_gateway.BindAddress}:{_gateway.Port}")</span>
+                <span class="stat-label">监听地址</span>
+            </div>
+        </div>
+    </Stats>
+    <ChildContent>
+        <Row Gutter="16">
+            <Col Span="12">
+                <Card Title="Gateway 配置">
+                    <Form Layout="@FormLayout.Vertical" Model="@_gateway" Context="formContext">
+                    <div>
+                        <FormItem Label="启用"><Switch @bind-Checked="@_gateway.Enabled" /></FormItem>
+                        <FormItem Label="自动启动"><Switch @bind-Checked="@_gateway.AutoStart" /></FormItem>
+                        <FormItem Label="端口"><InputNumber @bind-Value="@_gateway.Port" Min="1" Max="65535" Style="width: 100%;" /></FormItem>
+                        <FormItem Label="绑定地址"><Input @bind-Value="@_gateway.BindAddress" /></FormItem>
+                        <FormItem Label="权限模式">
+                            <Select TItemValue="string" TItem="string" @bind-Value="@_gateway.PermissionMode">
+                                <SelectOption Value="@("interactive")">交互式审批</SelectOption>
+                                <SelectOption Value="@("auto_approve")">自动批准</SelectOption>
+                            </Select>
+                        </FormItem>
+                        <FormItem Label="启用 WebSocket"><Switch @bind-Checked="@_gateway.EnableWebSocket" /></FormItem>
+                        <FormItem Label="WebSocket 路径"><Input @bind-Value="@_gateway.WebSocketPath" /></FormItem>
+                    </div>
+                    </Form>
+                </Card>
+            </Col>
+            <Col Span="12">
+                <Card Title="API 端点">
+                    <Descriptions Column="1" Bordered Size="@DescriptionsSize.Small">
+                        <DescriptionsItem Title="健康检查">GET /api/gateway/health</DescriptionsItem>
+                        <DescriptionsItem Title="流式对话">POST /api/gateway/chat</DescriptionsItem>
+                        <DescriptionsItem Title="停止对话">POST /api/gateway/chat/stop</DescriptionsItem>
+                        <DescriptionsItem Title="待审批权限">GET /api/gateway/permissions/pending</DescriptionsItem>
+                        <DescriptionsItem Title="WebSocket">@_gateway.WebSocketPath</DescriptionsItem>
+                    </Descriptions>
+                    @if (!string.IsNullOrEmpty(_healthMessage))
+                    {
+                        <Alert Type="@AlertType.Info" Message="@_healthMessage" ShowIcon="true" Style="margin-top: 16px;" />
+                    }
+                    <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-top: 16px;"
+                           Message="修改端口或绑定地址后可能需要重启应用才能生效。" />
+                </Card>
+            </Col>
+        </Row>
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private GatewayOptions _gateway = new();
+    private bool _loading;
+    private bool _healthy;
+    private string? _healthMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        await CheckHealth();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var options = await ConfigService.LoadProjectOptionsAsync();
+        _gateway = options.Gateway;
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        await ConfigService.SaveProjectSectionAsync("Gateway", _gateway);
+        MessageService.Success("Gateway 配置已保存");
+        await CheckHealth();
+    }
+
+    private async Task CheckHealth()
+    {
+        try
+        {
+            var client = HttpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(3);
+            var url = $"http://{_gateway.BindAddress}:{_gateway.Port}/api/gateway/health";
+            var response = await client.GetAsync(url);
+            _healthy = response.IsSuccessStatusCode;
+            _healthMessage = _healthy ? $"健康检查成功: {url}" : $"健康检查失败 ({(int)response.StatusCode})";
+        }
+        catch (Exception ex)
+        {
+            _healthy = false;
+            _healthMessage = $"无法连接: {ex.Message}";
+        }
+    }
+}
