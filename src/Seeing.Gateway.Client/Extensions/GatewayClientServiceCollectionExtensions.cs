@@ -57,6 +57,7 @@ public static class GatewayClientServiceCollectionExtensions
         {
             options.Agent = configuration[nameof(GatewayClientCommonOptions.Agent)];
             options.Model = configuration[nameof(GatewayClientCommonOptions.Model)];
+            options.Mode = configuration[nameof(GatewayClientCommonOptions.Mode)];
         });
         return services;
     }

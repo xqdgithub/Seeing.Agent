@@ -200,11 +200,7 @@
         }
       }
     },
-    "Plugins": [
-      {
-        "Spec": "./Seeing.Agent.Acp.dll"
-      }
-    ],
+    "Plugins": [],
     "PluginEnabled": {}
   }
 }

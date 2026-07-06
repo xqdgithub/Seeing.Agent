@@ -11,4 +11,7 @@ public class GatewayClientCommonOptions
 
     /// <summary>本 Channel 默认使用的 Model ID；未设置时由 Gateway 侧 AgentSelectionResolver 解析。</summary>
     public string? Model { get; set; }
+
+    /// <summary>ACP 透传 Agent 的 session mode；Native Agent 不使用。</summary>
+    public string? Mode { get; set; }
 }

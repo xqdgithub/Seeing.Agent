@@ -77,6 +77,33 @@ public class AgentSelectionResolverTests
     }
 
     [Fact]
+    public void ResolveAcpModelId_ShouldNotFallBackToDefaultModel()
+    {
+        var resolver = CreateResolver(new SeeingAgentOptions
+        {
+            DefaultModel = "anthropic/GLM-5",
+            Agents = new Dictionary<string, AgentConfig>
+            {
+                ["acp-opencode"] = new() { Model = "agent/model" }
+            }
+        });
+
+        resolver.ResolveAcpModelId(null, null).Should().BeNull();
+        resolver.ResolveAcpModelId(null, "session/model").Should().Be("session/model");
+        resolver.ResolveAcpModelId("seeing-coding-plan/GLM-5", null).Should().Be("seeing-coding-plan/GLM-5");
+    }
+
+    [Fact]
+    public void ResolveAcpModeId_ShouldFollowRequestThenSession()
+    {
+        var resolver = CreateResolver(new SeeingAgentOptions());
+
+        resolver.ResolveAcpModeId("build", "ask").Should().Be("build");
+        resolver.ResolveAcpModeId(null, "ask").Should().Be("ask");
+        resolver.ResolveAcpModeId(null, null).Should().BeNull();
+    }
+
+    [Fact]
     public void MergeGatewayOptions_ProjectLevel_ShouldOverridePermissionButKeepUserPort()
     {
         var user = new GatewayOptions

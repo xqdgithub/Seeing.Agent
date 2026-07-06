@@ -127,7 +127,7 @@ public sealed class GatewayOrchestrator
 
         runState.Session = await _sessionResolver.EnsureSessionAsync(sessionId, request.AgentId, cancellationToken);
 
-        var userMessage = ConvertInputToSessionMessage(request.Input);
+        var userMessage = GatewayUserMessageComposer.Compose(request.Input, request.Quote);
         if (userMessage != null)
             runState.Session.AddMessage(userMessage);
 
@@ -142,9 +142,26 @@ public sealed class GatewayOrchestrator
         ApplyModelSelection(agentInstance, request.ModelId, runState.Session, agentId);
 
         runState.Session.SelectedAgent = agentId;
-        var resolvedModel = _selectionResolver.ResolveModelId(request.ModelId, runState.Session.SelectedModel, agentId);
-        if (!string.IsNullOrEmpty(resolvedModel))
-            runState.Session.SelectedModel = resolvedModel;
+
+        AcpExecutionOverrides? acpOverrides = null;
+        if (agentInstance.Runtime == AgentRuntime.AcpPassthrough)
+        {
+            acpOverrides = AcpExecutionContextBuilder.Resolve(
+                _selectionResolver,
+                request.ModelId,
+                request.ModeId,
+                runState.Session);
+            AcpExecutionContextBuilder.ApplyToSession(runState.Session, acpOverrides);
+        }
+        else
+        {
+            var resolvedModel = _selectionResolver.ResolveModelId(
+                request.ModelId,
+                runState.Session.SelectedModel,
+                agentId);
+            if (!string.IsNullOrEmpty(resolvedModel))
+                runState.Session.SelectedModel = resolvedModel;
+        }
 
         var history = BuildHistoryFromSession(runState.Session);
 
@@ -160,6 +177,9 @@ public sealed class GatewayOrchestrator
             WorkspaceRoot = workspaceRoot,
             Services = _services
         };
+
+        if (acpOverrides != null)
+            AcpExecutionContextBuilder.ApplyToContext(context, acpOverrides);
 
         var agentDefinition = AgentDefinition.FromAgent(agentInstance);
         var outputChannel = Channel.CreateUnbounded<GatewayEvent>(new UnboundedChannelOptions
@@ -371,96 +391,6 @@ public sealed class GatewayOrchestrator
         }
 
         return history;
-    }
-
-    private static SessionMessage? ConvertInputToSessionMessage(IReadOnlyList<GatewayContentPart>? input)
-    {
-        if (input == null || input.Count == 0)
-            return null;
-
-        var parts = new List<SessionContentPart>();
-
-        foreach (var part in input)
-        {
-            switch (part)
-            {
-                case GatewayTextContentPart text:
-                    parts.Add(SessionContentPart.CreateText(text.Text));
-                    break;
-
-                case GatewayImageContentPart image:
-                    parts.Add(ConvertImagePart(image));
-                    break;
-
-                case GatewayFileContentPart file:
-                    parts.Add(ConvertFilePart(file));
-                    break;
-
-                case GatewayAudioContentPart audio:
-                    parts.Add(ConvertAudioPart(audio));
-                    break;
-            }
-        }
-
-        if (parts.Count == 0)
-            return null;
-
-        if (parts.Count == 1 && parts[0].Type == ContentPartType.Text && !string.IsNullOrEmpty(parts[0].Text))
-            return SessionMessage.UserMessage(parts[0].Text!);
-
-        return SessionMessage.UserMessageWithParts(parts);
-    }
-
-    private static SessionContentPart ConvertImagePart(GatewayImageContentPart image)
-    {
-        if (TryParseDataUrl(image.Url, out var base64, out var mime))
-            return SessionContentPart.CreateImageFromBase64(base64, mime ?? image.MimeType ?? "image/png");
-
-        return SessionContentPart.CreateImageFromUrl(image.Url);
-    }
-
-    private static SessionContentPart ConvertFilePart(GatewayFileContentPart file)
-    {
-        if (TryParseDataUrl(file.Url, out var base64, out var mime))
-            return SessionContentPart.CreateFileFromBase64(base64, mime ?? file.MimeType ?? "application/octet-stream", file.Name);
-
-        return new SessionContentPart
-        {
-            Type = ContentPartType.File,
-            Url = file.Url,
-            MimeType = file.MimeType,
-            FileName = file.Name
-        };
-    }
-
-    private static SessionContentPart ConvertAudioPart(GatewayAudioContentPart audio)
-    {
-        if (TryParseDataUrl(audio.Url, out var base64, out var mime))
-            return SessionContentPart.CreateAudioFromBase64(base64, mime ?? audio.MimeType ?? "audio/wav");
-
-        return new SessionContentPart
-        {
-            Type = ContentPartType.Audio,
-            Url = audio.Url,
-            MimeType = audio.MimeType
-        };
-    }
-
-    private static bool TryParseDataUrl(string url, out string base64, out string? mimeType)
-    {
-        base64 = string.Empty;
-        mimeType = null;
-
-        if (!url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        var separator = url.IndexOf(";base64,", StringComparison.OrdinalIgnoreCase);
-        if (separator < 0)
-            return false;
-
-        mimeType = url["data:".Length..separator];
-        base64 = url[(separator + ";base64,".Length)..];
-        return !string.IsNullOrEmpty(base64);
     }
 
     /// <summary>将 Core 事件增量写入 SessionData（简化版 EventStreamHandler）</summary>

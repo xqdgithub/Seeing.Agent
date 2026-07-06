@@ -107,6 +107,9 @@ public sealed class WeComIncomingMessage
     [JsonPropertyName("video")]
     public WeComEncryptedMediaPayload? Video { get; set; }
 
+    [JsonPropertyName("quote")]
+    public WeComQuotePayload? Quote { get; set; }
+
     [JsonPropertyName("event")]
     public WeComEventPayload? Event { get; set; }
 }
@@ -148,6 +151,57 @@ public sealed class WeComTextPayload
 {
     [JsonPropertyName("content")]
     public string? Content { get; set; }
+}
+
+public sealed class WeComQuotePayload
+{
+    [JsonPropertyName("msgtype")]
+    public string? MsgType { get; set; }
+
+    [JsonPropertyName("text")]
+    public WeComTextPayload? Text { get; set; }
+
+    [JsonPropertyName("image")]
+    public WeComEncryptedMediaPayload? Image { get; set; }
+
+    [JsonPropertyName("voice")]
+    public WeComVoicePayload? Voice { get; set; }
+
+    [JsonPropertyName("file")]
+    public WeComEncryptedMediaPayload? File { get; set; }
+
+    [JsonPropertyName("video")]
+    public WeComEncryptedMediaPayload? Video { get; set; }
+
+    [JsonPropertyName("mixed")]
+    public WeComMixedPayload? Mixed { get; set; }
+}
+
+public sealed class WeComMixedPayload
+{
+    [JsonPropertyName("msg_item")]
+    public List<WeComMixedMessageItem>? MsgItem { get; set; }
+}
+
+public sealed class WeComMixedMessageItem
+{
+    [JsonPropertyName("msgtype")]
+    public string? MsgType { get; set; }
+
+    [JsonPropertyName("text")]
+    public WeComTextPayload? Text { get; set; }
+
+    [JsonPropertyName("image")]
+    public WeComEncryptedMediaPayload? Image { get; set; }
+
+    [JsonPropertyName("voice")]
+    public WeComVoicePayload? Voice { get; set; }
+
+    [JsonPropertyName("file")]
+    public WeComEncryptedMediaPayload? File { get; set; }
+
+    [JsonPropertyName("video")]
+    public WeComEncryptedMediaPayload? Video { get; set; }
 }
 
 public sealed class WeComEventPayload

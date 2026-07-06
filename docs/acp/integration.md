@@ -113,6 +113,39 @@ flowchart TB
 
 `Acp.DefaultBackend` 仅用于 Native Agent 调用内置 `acp` **工具**时的默认后端，不参与 Gateway 默认 Agent 解析。
 
+### Gateway Client Model / Mode（ACP 透传）
+
+Channel 配置文件（`.seeing/gateway-clients/{channelId}.json`）根节可设置：
+
+| 字段 | 说明 |
+|------|------|
+| `Agent` | 默认 Agent ID（如 `acp-opencode`） |
+| `Model` | ACP 后端模型 ID（如 `seeing-coding-plan/GLM-5`） |
+| `Mode` | ACP session mode（如 `build` / `ask`） |
+
+示例：
+
+```json
+{
+  "WeCom": { "Enabled": true, "BotId": "...", "Secret": "..." },
+  "Gateway": { "BaseUrl": "http://127.0.0.1:8765", "Transport": "WebSocket" },
+  "Agent": "acp-opencode",
+  "Model": "seeing-coding-plan/GLM-5",
+  "Mode": "build"
+}
+```
+
+**重要：两套 Model 命名空间**
+
+| 配置位置 | 示例 | 用途 |
+|----------|------|------|
+| `gateway-clients/*.json` → `Model` | `seeing-coding-plan/GLM-5` | OpenCode / Cursor 等 **ACP 后端** 的 model id |
+| `seeing.json` → `DefaultModel` | `anthropic/GLM-5` | **Native Agent** 的 LLM 路由（`ILlmService`） |
+
+ACP 透传路径**不会**回退到 `SeeingAgent.DefaultModel`。未配置 Channel `Model` 时，由 ACP 后端使用其 session 默认模型。
+
+Gateway 收到请求后会通过 `session/set_config_option` 或 `session/set_model` 将 Model/Mode 应用到 ACP session。
+
 ### Agent 配置（`SeeingAgent:Agents`）
 
 Passthrough Agent **无需手动配置**，会由 `AcpDynamicAgentRegistrar` 根据 `Backends` 自动生成（例如 `opencode` → `acp-opencode`）。
@@ -232,10 +265,14 @@ where.exe agent
 2. 在 Agent 选择器切换 `acp-opencode`，发送消息验证 Passthrough 流式输出
 3. 切换 `default` Agent，验证 LLM 可调用 `acp` 工具委派
 
-### 开发模式插件加载
+### 集成方式（二选一）
 
-- **ProjectReference 足够**：`AddSeeingAcp()` 在 `Program.cs` 中直接注册 DI 服务；`ProjectReference` 会将 `Seeing.Agent.Acp.dll` 复制到输出目录。
-- **Plugins 配置**：`"Plugins": ["./Seeing.Agent.Acp.dll"]` 用于 `InitializeSeeingAgentAsync` 加载 `AcpExtension`（Hook 与工具二次注册）。开发时两者并存无害。
+| 方式 | 适用场景 | 做法 |
+|------|----------|------|
+| **库集成（推荐）** | WebUI、Gateway.Server 等同进程宿主 | `Program.cs` 调用 `AddSeeingAcp()`；**不要**再在 `Plugins` 里加载 `Seeing.Agent.Acp.dll` |
+| **扩展插件** | 仅 DLL、无法改宿主 `Program.cs` 时 | `Plugins: ["./Seeing.Agent.Acp.dll"]`，且宿主须在启动时调用 `AddSeeingAcp()`（或扩展的 `ConfigureServices`） |
+
+WebUI / Gateway.Server 已使用 `AddSeeingAcp()`，Agent/Hook/路由/工具注册均由 HostedService 完成；`AcpExtension` 仅负责扩展生命周期（连接清理、可选工具导出）。**两者同时配置会导致 `IAcpBackendRegistry` 类型隔离报错。**
 
 ## 相关文件
 
@@ -243,7 +280,7 @@ where.exe agent
 |------|------|
 | `src/Seeing.Agent/Core/Interfaces/IAgentExecutionRouter.cs` | 执行路由接口 |
 | `src/Seeing.Agent/Core/NativeAgentExecutionRouter.cs` | Native 默认实现 |
-| `src/Seeing.Agent.Acp/AcpExtension.cs` | 插件入口，装饰路由 |
+| `src/Seeing.Agent.Acp/AcpExtension.cs` | 可选插件入口（库集成时不必加载） |
 | `src/Seeing.Agent.Acp/Routing/AcpAgentExecutionRouter.cs` | ACP 路由装饰器 |
 | `samples/Seeing.Agent.WebUI/.seeing/seeing.json` | WebUI 示例配置 |
 | `samples/Seeing.Agent.WebUI/.seeing/mcp.json.example` | MCP 配置模板（复制为 `mcp.json` 后填入密钥） |

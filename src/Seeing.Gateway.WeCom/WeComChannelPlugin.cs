@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
 using Seeing.Gateway.Configuration;
 using Seeing.Gateway.Plugins;
@@ -30,6 +31,7 @@ public sealed class WeComChannelPlugin : IGatewayChannelPlugin
     {
         services.Configure<WeComOptions>(configuration.GetSection(WeComOptions.SectionName));
         services.AddSeeingWeComChannel();
+        services.Configure<GatewayClientOptions>(configuration.GetSection(GatewayClientOptions.SectionName));
         services.ConfigureGatewayClientCommon(configuration);
     }
 }

@@ -126,10 +126,47 @@ public class WeComMessageParserTests
             InputParts = [new GatewayTextContentPart("hello")]
         };
 
-        var request = WeComMessageParser.ToGatewayRequest(parsed, "wecom_user_001", "build", "gpt-4");
+        var request = WeComMessageParser.ToGatewayRequest(
+            parsed,
+            "wecom_user_001",
+            agentId: "acp-opencode",
+            modeId: "build",
+            modelId: "gpt-4");
 
-        request.AgentId.Should().Be("build");
+        request.AgentId.Should().Be("acp-opencode");
+        request.ModeId.Should().Be("build");
         request.ModelId.Should().Be("gpt-4");
+    }
+
+    [Fact]
+    public void ToGatewayRequest_WithQuote_ShouldIncludeQuoteAndMetadata()
+    {
+        var quote = new GatewayQuoteContext
+        {
+            MsgType = "text",
+            SourceChannel = "wecom",
+            Content = [new GatewayTextContentPart("quoted text")]
+        };
+
+        var parsed = new ParsedWeComMessage
+        {
+            Frame = new WeComWsFrame(),
+            UserId = "user_001",
+            ChatId = "chat_1",
+            ChatType = "group",
+            MessageId = "msg_1",
+            InputParts = [new GatewayTextContentPart("数据来源是什么")],
+            Quote = quote
+        };
+
+        var request = WeComMessageParser.ToGatewayRequest(parsed, "wecom_group_chat_1");
+
+        request.Quote.Should().BeSameAs(quote);
+        request.Input.Should().ContainSingle()
+            .Which.Should().BeOfType<GatewayTextContentPart>()
+            .Which.Text.Should().Be("数据来源是什么");
+        request.Metadata.Should().ContainKey("wecom_has_quote");
+        request.Metadata!["wecom_has_quote"].Should().Be(true);
     }
 
     [Fact]

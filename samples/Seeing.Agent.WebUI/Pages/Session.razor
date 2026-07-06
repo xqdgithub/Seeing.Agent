@@ -67,14 +67,30 @@
                 <SpaceItem>
                     @if (_optionsReady)
                     {
-                        <Select TItemValue="string" TItem="string"
-                                Value="@_selectedModel"
-                                ValueExpression="@(() => _selectedModel)"
-                                ValueChanged="EventCallback.Factory.Create<string>(this, OnModelChanged)"
-                                DataSource="@_modelNames"
-                                Style="min-width: 160px;"
-                                Size="@InputSize.Small"
-                                Placeholder="模型" />
+                        @if (_isAcpPassthrough)
+                        {
+                            <Input Value="@_selectedAcpMode"
+                                   ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
+                                   Placeholder="ACP Mode"
+                                   Style="min-width: 100px;"
+                                   Size="@InputSize.Small" />
+                            <Input Value="@_selectedModel"
+                                   ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
+                                   Placeholder="ACP Model"
+                                   Style="min-width: 180px;"
+                                   Size="@InputSize.Small" />
+                        }
+                        else
+                        {
+                            <Select TItemValue="string" TItem="string"
+                                    Value="@_selectedModel"
+                                    ValueExpression="@(() => _selectedModel)"
+                                    ValueChanged="EventCallback.Factory.Create<string>(this, OnModelChanged)"
+                                    DataSource="@_modelNames"
+                                    Style="min-width: 160px;"
+                                    Size="@InputSize.Small"
+                                    Placeholder="模型" />
+                        }
                     }
                 </SpaceItem>
                 <SpaceItem>
@@ -223,6 +239,8 @@
     private List<string> _agentNames = new();
     private string _selectedModel = "";
     private List<string> _modelNames = new();
+    private string _selectedAcpMode = "";
+    private bool _isAcpPassthrough;
     private bool _optionsReady;
     
     /// <summary>
@@ -332,8 +350,25 @@
         var agent = SessionState.SelectedAgent ?? "";
         var model = SessionState.SelectedModel ?? "";
         _selectedAgent = _agentNames.Contains(agent) ? agent : (_agentNames.FirstOrDefault() ?? agent);
-        _selectedModel = _modelNames.Contains(model) ? model : (_modelNames.FirstOrDefault() ?? model);
+        _selectedModel = _isAcpPassthrough
+            ? model
+            : (_modelNames.Contains(model) ? model : (_modelNames.FirstOrDefault() ?? model));
+        _selectedAcpMode = SessionState.SelectedAcpMode ?? "";
+        RefreshAgentRuntime();
         RequestRender();
+    }
+
+    private void RefreshAgentRuntime()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedAgent))
+        {
+            _isAcpPassthrough = false;
+            return;
+        }
+
+        var info = AppState.AvailableAgents.FirstOrDefault(a =>
+            string.Equals(a.Name, _selectedAgent, StringComparison.OrdinalIgnoreCase));
+        _isAcpPassthrough = info?.Runtime == Seeing.Agent.Core.Models.AgentRuntime.AcpPassthrough;
     }
     
     /// <summary>
@@ -377,6 +412,8 @@
         }
 
         _optionsReady = _agentNames.Count > 0 || _modelNames.Count > 0;
+        RefreshAgentRuntime();
+        SyncSelectorValues();
     }
     
     /// <summary>
@@ -387,17 +424,33 @@
         _selectedAgent = value ?? "";
         SessionState.SelectedAgent = _selectedAgent;
         AppState.SelectedAgent = _selectedAgent;
+        RefreshAgentRuntime();
         await SaveSessionAsync();
     }
-    
+
     /// <summary>
-    /// 模型选择变更
+    /// Native 模型选择变更
     /// </summary>
     private async Task OnModelChanged(string value)
     {
         _selectedModel = value ?? "";
         SessionState.SelectedModel = _selectedModel;
         AppState.SelectedModel = _selectedModel;
+        await SaveSessionAsync();
+    }
+
+    private async Task OnAcpModelChanged(string? value)
+    {
+        _selectedModel = value ?? "";
+        SessionState.SelectedModel = _selectedModel;
+        AppState.SelectedModel = _selectedModel;
+        await SaveSessionAsync();
+    }
+
+    private async Task OnAcpModeChanged(string? value)
+    {
+        _selectedAcpMode = value ?? "";
+        SessionState.SelectedAcpMode = _selectedAcpMode;
         await SaveSessionAsync();
     }
     
@@ -646,10 +699,20 @@
 
         if (string.IsNullOrWhiteSpace(SessionState.CurrentSession.SelectedModel))
         {
-            var modelId = AgentSelectionResolver.ResolveModelId(
-                null,
-                null,
-                SessionState.SelectedAgent);
+            RefreshAgentRuntime();
+            string? modelId;
+            if (_isAcpPassthrough)
+            {
+                modelId = AgentSelectionResolver.ResolveAcpModelId(null, null);
+            }
+            else
+            {
+                modelId = AgentSelectionResolver.ResolveModelId(
+                    null,
+                    null,
+                    SessionState.SelectedAgent);
+            }
+
             if (!string.IsNullOrEmpty(modelId))
             {
                 SessionState.SelectedModel = modelId;
@@ -971,6 +1034,20 @@
                 WorkingDirectory = workingDirectory,
                 WorkspaceRoot = workspaceRoot
             };
+
+            if (agentInstance.Runtime == Seeing.Agent.Core.Models.AgentRuntime.AcpPassthrough
+                && SessionState.CurrentSession != null)
+            {
+                SessionState.CurrentSession.SelectedModel = _selectedModel;
+                SessionState.CurrentSession.SelectedAcpMode = _selectedAcpMode;
+                var acpOverrides = Core.AcpExecutionContextBuilder.Resolve(
+                    AgentSelectionResolver,
+                    string.IsNullOrWhiteSpace(_selectedModel) ? null : _selectedModel,
+                    string.IsNullOrWhiteSpace(_selectedAcpMode) ? null : _selectedAcpMode,
+                    SessionState.CurrentSession);
+                Core.AcpExecutionContextBuilder.ApplyToSession(SessionState.CurrentSession, acpOverrides);
+                Core.AcpExecutionContextBuilder.ApplyToContext(context, acpOverrides);
+            }
 
             // 4. 获取 Agent 定义
             var agentDefinition = Seeing.Agent.Core.Models.AgentDefinition.FromAgent(agentInstance);

@@ -24,20 +24,18 @@ public class AcpDynamicAgentRegistrarTests
             .Callback<AgentInfo>(registered.Add)
             .Returns(Task.CompletedTask);
 
-        var backendRegistry = new AcpBackendRegistry(
-            Options.Create(new SeeingAgentOptions
+        var backendRegistry = CreateBackendRegistry(new SeeingAgentOptions
+        {
+            Acp = new AcpOptions
             {
-                Acp = new AcpOptions
+                Enabled = true,
+                Backends = new Dictionary<string, AcpBackendConfig>
                 {
-                    Enabled = true,
-                    Backends = new Dictionary<string, AcpBackendConfig>
-                    {
-                        ["opencode"] = new() { Command = "opencode", Args = new List<string> { "acp" } },
-                        ["codex"] = new() { Command = "codex", Args = new List<string> { "acp" } }
-                    }
+                    ["opencode"] = new() { Command = "opencode", Args = new List<string> { "acp" } },
+                    ["codex"] = new() { Command = "codex", Args = new List<string> { "acp" } }
                 }
-            }),
-            NullLogger<AcpBackendRegistry>.Instance);
+            }
+        });
 
         await AcpDynamicAgentRegistrar.RegisterAsync(
             registry.Object,
@@ -57,5 +55,12 @@ public class AcpDynamicAgentRegistrarTests
     public void GetAgentName_ShouldUseBackendId()
     {
         AcpDynamicAgentRegistrar.GetAgentName("opencode").Should().Be("acp-opencode");
+    }
+
+    private static AcpBackendRegistry CreateBackendRegistry(SeeingAgentOptions options)
+    {
+        var provider = new SeeingAgentConfigurationProvider();
+        provider.Options.Acp = options.Acp;
+        return new AcpBackendRegistry(provider, NullLogger<AcpBackendRegistry>.Instance);
     }
 }

@@ -79,6 +79,7 @@ public sealed class GatewayClientConfigService
                 Gateway = snapshot.Gateway,
                 Agent = snapshot.Agent,
                 Model = snapshot.Model,
+                Mode = snapshot.Mode,
                 Options = snapshot.Options,
                 Fields = typeInfo.Fields,
                 ConfigFormComponentType = typeInfo.ConfigFormComponentType,
@@ -231,6 +232,7 @@ public sealed class GatewayClientConfigService
                 Gateway = snapshot.Gateway,
                 Agent = snapshot.Agent,
                 Model = snapshot.Model,
+                Mode = snapshot.Mode,
                 Options = snapshot.Options
             }, ct);
 
@@ -266,10 +268,7 @@ public sealed class GatewayClientConfigService
             ["Gateway"] = JsonSerializer.SerializeToNode(model.Gateway, JsonOptions)
         };
 
-        if (!string.IsNullOrWhiteSpace(model.Agent))
-            root["Agent"] = model.Agent;
-        if (!string.IsNullOrWhiteSpace(model.Model))
-            root["Model"] = model.Model;
+        WriteCommonOptions(root, model.Agent, model.Model, model.Mode);
 
         var path = GetRuntimeConfigPath(model.ChannelId);
         await File.WriteAllTextAsync(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), ct);
@@ -340,7 +339,8 @@ public sealed class GatewayClientConfigService
         var merged = new GatewayClientCommonOptions
         {
             Agent = defaults.Agent,
-            Model = defaults.Model
+            Model = defaults.Model,
+            Mode = defaults.Mode
         };
 
         if (channelOverride == null)
@@ -350,8 +350,28 @@ public sealed class GatewayClientConfigService
             merged.Agent = channelOverride.Agent;
         if (!string.IsNullOrWhiteSpace(channelOverride.Model))
             merged.Model = channelOverride.Model;
+        if (!string.IsNullOrWhiteSpace(channelOverride.Mode))
+            merged.Mode = channelOverride.Mode;
 
         return merged;
+    }
+
+    private static void WriteCommonOptions(JsonObject root, string? agent, string? model, string? mode)
+    {
+        if (string.IsNullOrWhiteSpace(agent))
+            root.Remove("Agent");
+        else
+            root["Agent"] = agent;
+
+        if (string.IsNullOrWhiteSpace(model))
+            root.Remove("Model");
+        else
+            root["Model"] = model;
+
+        if (string.IsNullOrWhiteSpace(mode))
+            root.Remove("Mode");
+        else
+            root["Mode"] = mode;
     }
 
     private static Dictionary<string, object?> DeserializeOptionsFromSection(
@@ -436,6 +456,7 @@ public sealed class GatewayClientConfigService
     {
         public string? Agent => Common.Agent;
         public string? Model => Common.Model;
+        public string? Mode => Common.Mode;
     }
 }
 
@@ -451,6 +472,7 @@ public sealed class GatewayClientViewModel
     public GatewayClientConnectionOptions Gateway { get; set; } = new();
     public string? Agent { get; set; }
     public string? Model { get; set; }
+    public string? Mode { get; set; }
     public Dictionary<string, object?> Options { get; set; } = new();
     public IReadOnlyList<Seeing.Gateway.Configuration.ConfigFieldSchema> Fields { get; set; } = Array.Empty<Seeing.Gateway.Configuration.ConfigFieldSchema>();
     public Type? ConfigFormComponentType { get; set; }

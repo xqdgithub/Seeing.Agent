@@ -1,4 +1,5 @@
-using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Gateway.Models;
 
 namespace Seeing.Gateway.WeCom;
@@ -24,17 +25,22 @@ public static class WeComMessageParser
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
-        parsed = CreateParsed(context, BuildTextParts(text.Trim()));
+        var chatType = message.ChatType ?? "single";
+        var normalized = WeComGroupMentionNormalizer.NormalizeUserText(text, chatType);
+        parsed = CreateParsed(context, BuildTextParts(normalized));
         return true;
     }
 
     public static async Task<(bool Ok, ParsedWeComMessage? Parsed)> TryParseAsync(
         WeComIncomingContext context,
         WeComMediaFetcher mediaFetcher,
+        ILogger? logger = null,
         CancellationToken cancellationToken = default)
     {
+        logger ??= NullLogger.Instance;
         var message = context.Message;
         var msgType = message.MsgType?.ToLowerInvariant();
+        var chatType = message.ChatType ?? "single";
 
         if (msgType == "event")
             return (false, null);
@@ -48,7 +54,8 @@ public static class WeComMessageParser
                 var text = message.Text?.Content;
                 if (string.IsNullOrWhiteSpace(text))
                     return (false, null);
-                parts.Add(new GatewayTextContentPart(text.Trim()));
+                var normalized = WeComGroupMentionNormalizer.NormalizeUserText(text, chatType);
+                parts.Add(new GatewayTextContentPart(normalized));
                 break;
             }
 
@@ -141,30 +148,41 @@ public static class WeComMessageParser
         if (parts.Count == 0)
             return (false, null);
 
-        return (true, CreateParsed(context, parts));
+        var quote = await WeComQuoteParser.ParseAsync(message.Quote, mediaFetcher, logger, cancellationToken)
+            .ConfigureAwait(false);
+
+        return (true, CreateParsed(context, parts, quote: quote));
     }
 
     public static GatewayRequest ToGatewayRequest(
         ParsedWeComMessage parsed,
         string sessionId,
         string? agentId = null,
+        string? modeId = null,
         string? modelId = null)
     {
+        var metadata = new Dictionary<string, object?>
+        {
+            ["wecom_msg_id"] = parsed.MessageId,
+            ["wecom_chat_id"] = parsed.ChatId,
+            ["wecom_chat_type"] = parsed.ChatType
+        };
+
+        if (parsed.Quote != null)
+            metadata["wecom_has_quote"] = true;
+
         return new GatewayRequest
         {
             SessionId = sessionId,
             UserId = parsed.UserId,
             ChannelId = "wecom",
             AgentId = agentId,
+            ModeId = modeId,
             ModelId = modelId,
             Input = parsed.InputParts,
+            Quote = parsed.Quote,
             Stream = true,
-            Metadata = new Dictionary<string, object?>
-            {
-                ["wecom_msg_id"] = parsed.MessageId,
-                ["wecom_chat_id"] = parsed.ChatId,
-                ["wecom_chat_type"] = parsed.ChatType
-            }
+            Metadata = metadata
         };
     }
 
@@ -188,7 +206,8 @@ public static class WeComMessageParser
     private static ParsedWeComMessage CreateParsed(
         WeComIncomingContext context,
         IReadOnlyList<GatewayContentPart> parts,
-        string? unsupportedReply = null)
+        string? unsupportedReply = null,
+        GatewayQuoteContext? quote = null)
     {
         var message = context.Message;
         var userId = message.From?.UserId ?? string.Empty;
@@ -205,7 +224,8 @@ public static class WeComMessageParser
             ChatType = chatType,
             MessageId = msgId,
             InputParts = parts,
-            UnsupportedReply = unsupportedReply
+            UnsupportedReply = unsupportedReply,
+            Quote = quote
         };
     }
 }
@@ -223,6 +243,8 @@ public sealed class ParsedWeComMessage
     public required string MessageId { get; init; }
 
     public IReadOnlyList<GatewayContentPart> InputParts { get; init; } = [];
+
+    public GatewayQuoteContext? Quote { get; init; }
 
     public string? UnsupportedReply { get; init; }
 

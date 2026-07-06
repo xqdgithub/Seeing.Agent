@@ -114,6 +114,30 @@ WebUI 提供 **Gateway 客户端** 页面（`/gateway-clients`），用于：
 
 配置写入各 Channel 独立文件 `.seeing/gateway-clients/{channelId}.json`；`seeing.json` 仅保留启用状态与插件引用。
 
+**Channel 配置文件结构**（根节字段与 Channel 专有节并列）：
+
+```json
+{
+  "WeCom": { "Enabled": true, "BotId": "...", "Secret": "..." },
+  "Gateway": {
+    "BaseUrl": "http://127.0.0.1:8765",
+    "Transport": "WebSocket",
+    "WebSocketPath": "/api/gateway/ws"
+  },
+  "Agent": "acp-opencode",
+  "Model": "seeing-coding-plan/GLM-5",
+  "Mode": "build"
+}
+```
+
+| 根节字段 | 说明 |
+|----------|------|
+| `Agent` | 本 Channel 默认 Agent；留空则使用 `seeing.json` 的 `DefaultAgent` |
+| `Model` | 默认 Model；ACP 透传 Agent 使用 ACP 后端 model id（见 [ACP 集成](../acp/integration.md)） |
+| `Mode` | ACP 透传 session mode（Native Agent 忽略） |
+
+**修改 `Agent` / `Model` / `Mode` / `Gateway` 后需重启 Channel Bridge 进程**（WebUI 保存运行中的客户端时会自动重启）。
+
 **新增 Channel 插件**：实现 `IGatewayChannelPlugin` + `XxxOptions`，将 DLL 放入 `.seeing/gateway-channels/` 或在 UI 中安装。
 
 ```bash
@@ -142,7 +166,8 @@ dotnet run --project samples/Seeing.Gateway.WeCom.Demo
 
 ## 协议要点
 
-- **入站**：`GatewayRequest`（sessionId、input、agentId…）
+- **入站**：`GatewayRequest`（sessionId、input、quote、agentId…）
+- **引用消息**：`GatewayRequest.Quote` 承载被引用内容快照（与 `Input` 并列）；Gateway Server 合成 XML 边界 user turn 供 Agent 区分引用与提问
 - **出站**：`GatewayEvent` 流（Content / Message / Response / Permission / Error）
 - **完成信号**：渠道侧「结束回复」应对齐 `LoopComplete` 或 WS `chat.complete`，而非单轮 `StreamComplete`
 - **会话 ID**：Client 传入；企微映射为 `wecom_{userid}` 或 `wecom_group_{chatid}`（文件系统安全格式）

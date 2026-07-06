@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Gateway;
+using Seeing.Gateway.Channels;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Client;
 
@@ -12,7 +13,6 @@ namespace Seeing.Gateway.WeCom;
 /// </summary>
 public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 {
-    private const string LoopCompleteSourceType = "LoopComplete";
     private readonly WeComOptions _options;
     private readonly GatewayClientCommonOptions _commonOptions;
     private readonly WeComAibotWsClient _weComClient;
@@ -107,7 +107,11 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         WeComIncomingContext context,
         CancellationToken cancellationToken)
     {
-        var (ok, parsed) = await WeComMessageParser.TryParseAsync(context, _mediaFetcher, cancellationToken)
+        var (ok, parsed) = await WeComMessageParser.TryParseAsync(
+                context,
+                _mediaFetcher,
+                _logger,
+                cancellationToken)
             .ConfigureAwait(false);
         if (!ok || parsed == null)
             return;
@@ -225,7 +229,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
         if (parsed.HasUnsupportedReply)
         {
-            await streamState.FinishAsync(parsed.UnsupportedReply, cancellationToken).ConfigureAwait(false);
+            await streamState.CompleteAsync(parsed.UnsupportedReply, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -240,69 +244,79 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
     {
         try
         {
-            await streamState.StartProcessingIndicatorAsync(cancellationToken).ConfigureAwait(false);
+            await streamState.BeginAsync(cancellationToken).ConfigureAwait(false);
 
             var request = WeComMessageParser.ToGatewayRequest(
                 parsed,
                 sessionId,
                 _commonOptions.Agent,
+                _commonOptions.Mode,
                 _commonOptions.Model);
-            var accumulated = string.Empty;
-            var finished = false;
 
-            await foreach (var gatewayEvent in _gatewayAdapter.ChatAsync(request, cancellationToken)
-                               .ConfigureAwait(false))
+            var reply = new GatewayAssistantReplyCollector();
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(_options.EffectiveProcessingMaxDurationSeconds));
+
+            try
             {
-                switch (gatewayEvent.Object)
+                await foreach (var gatewayEvent in _gatewayAdapter.ChatAsync(request, timeoutCts.Token)
+                                   .ConfigureAwait(false))
                 {
-                    case GatewayEventObject.Content when gatewayEvent.Data?.Delta == true:
-                        if (!string.IsNullOrEmpty(gatewayEvent.Data.Text))
-                            accumulated += gatewayEvent.Data.Text;
-                        await streamState.UpdateContentDeltaAsync(accumulated, cancellationToken)
-                            .ConfigureAwait(false);
-                        break;
+                    var disposition = reply.Apply(gatewayEvent);
 
-                    case GatewayEventObject.Message when gatewayEvent.Status == GatewayEventStatus.Completed:
-                        if (!string.IsNullOrEmpty(gatewayEvent.Data?.Text))
-                            accumulated = gatewayEvent.Data.Text;
-                        break;
+                    switch (disposition)
+                    {
+                        case GatewayReplyDisposition.StreamUpdated:
+                            await streamState.PublishAsync(reply.Text, cancellationToken).ConfigureAwait(false);
+                            break;
 
-                    case GatewayEventObject.Response when gatewayEvent.Status == GatewayEventStatus.Completed
-                        && IsLoopComplete(gatewayEvent):
-                        finished = true;
-                        await streamState.FinishAsync(
-                            string.IsNullOrWhiteSpace(accumulated) ? gatewayEvent.Data?.Text : accumulated,
-                            cancellationToken).ConfigureAwait(false);
-                        break;
+                        case GatewayReplyDisposition.Permission:
+                            await HandlePermissionAsync(gatewayEvent, sessionId, parsed.Frame, cancellationToken)
+                                .ConfigureAwait(false);
+                            break;
 
-                    case GatewayEventObject.Response when gatewayEvent.Status == GatewayEventStatus.Cancelled:
-                        finished = true;
-                        await streamState.FinishAsync("⚠️ 已取消", cancellationToken).ConfigureAwait(false);
-                        break;
+                        case GatewayReplyDisposition.RunCompleted:
+                            _logger.LogInformation(
+                                "WeCom 回复完成: SessionId={SessionId}, TextLength={TextLength}",
+                                sessionId,
+                                reply.Text.Length);
+                            await streamState.CompleteAsync(reply.Text, cancellationToken).ConfigureAwait(false);
+                            _sessionTracker.Touch(parsed);
+                            return;
 
-                    case GatewayEventObject.Error:
-                        finished = true;
-                        await streamState.SendErrorAsync(
-                            gatewayEvent.Data?.Error ?? "Agent 执行失败",
-                            cancellationToken).ConfigureAwait(false);
-                        break;
+                        case GatewayReplyDisposition.RunCancelled:
+                            await streamState.CompleteAsync($"⚠️ {reply.TerminalMessage}", cancellationToken)
+                                .ConfigureAwait(false);
+                            _sessionTracker.Touch(parsed);
+                            return;
 
-                    case GatewayEventObject.Permission:
-                        await HandlePermissionAsync(gatewayEvent, sessionId, parsed.Frame, cancellationToken)
-                            .ConfigureAwait(false);
-                        break;
+                        case GatewayReplyDisposition.RunFailed:
+                            await streamState.FailAsync(reply.TerminalMessage ?? "Agent 执行失败", cancellationToken)
+                                .ConfigureAwait(false);
+                            _sessionTracker.Touch(parsed);
+                            return;
+                    }
                 }
+
+                if (!reply.IsTerminal)
+                {
+                    await streamState.CompleteAsync(reply.Text, cancellationToken).ConfigureAwait(false);
+                }
+
+                _sessionTracker.Touch(parsed);
             }
-
-            if (!finished)
-                await streamState.FinishAsync(accumulated, cancellationToken).ConfigureAwait(false);
-
-            _sessionTracker.Touch(parsed);
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning("WeCom 消息处理超时: SessionId={SessionId}", sessionId);
+                await _gatewayClient.StopChatAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
+                await streamState.FailAsync("处理超时，请稍后重试", CancellationToken.None).ConfigureAwait(false);
+                _sessionTracker.Touch(parsed);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "WeCom 消息处理失败: SessionId={SessionId}", sessionId);
-            await streamState.SendErrorAsync(ex.Message, cancellationToken).ConfigureAwait(false);
+            await streamState.FailAsync(ex.Message, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -359,9 +373,6 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
         await _weComClient.ReplyTemplateCardAsync(requestFrame, card, cancellationToken).ConfigureAwait(false);
     }
-
-    private static bool IsLoopComplete(GatewayEvent gatewayEvent) =>
-        string.Equals(gatewayEvent.SourceType, LoopCompleteSourceType, StringComparison.Ordinal);
 
     private bool IsDuplicate(string messageId)
     {

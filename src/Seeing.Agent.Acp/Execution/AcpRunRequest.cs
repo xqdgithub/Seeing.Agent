@@ -22,5 +22,9 @@ public sealed record AcpRunRequest
 
     public required string WorkingDirectory { get; init; }
 
+    public string? ModeId { get; init; }
+
+    public string? ModelId { get; init; }
+
     public AgentContext? ParentContext { get; init; }
 }

@@ -39,6 +39,7 @@ public static class AcpServiceCollectionExtensions
         services.AddSingleton<AcpLifecycleService>();
         services.AddSingleton<AcpSessionStore>();
         services.AddSingleton<AcpTaskStore>();
+        services.AddSingleton<AcpSessionConfigApplier>();
         services.AddSingleton<AcpEventMapper>();
         services.AddSingleton<ContentBlockMapper>();
         services.AddSingleton<AcpMcpServerMapper>();

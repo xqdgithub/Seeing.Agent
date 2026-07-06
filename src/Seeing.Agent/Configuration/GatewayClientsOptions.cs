@@ -24,6 +24,9 @@ public class GatewayClientDefaults
 
     /// <summary>所有 Channel 的默认 Model；可被各 Channel 配置文件覆盖。</summary>
     public string? Model { get; set; }
+
+    /// <summary>所有 Channel 的默认 ACP Mode；可被各 Channel 配置文件覆盖。</summary>
+    public string? Mode { get; set; }
 }
 
 /// <summary>

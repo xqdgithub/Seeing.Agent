@@ -69,11 +69,23 @@ public sealed class WeComOptions
     [Display(Name = "增量节流（毫秒）", GroupName = "消息")]
     public int DeltaThrottleMilliseconds { get; set; } = 150;
 
-    [Display(Name = "处理中刷新（秒）", GroupName = "消息")]
-    public int ProcessingRefreshSeconds { get; set; } = 20;
+    public const int DefaultProcessingRefreshSeconds = 20;
 
-    [Display(Name = "处理超时（秒）", GroupName = "消息")]
-    public int ProcessingMaxDurationSeconds { get; set; } = 180;
+    public const int DefaultProcessingMaxDurationSeconds = 180;
+
+    [Display(Name = "处理中刷新（秒）", GroupName = "消息", Description = "0 表示使用默认值 20")]
+    public int ProcessingRefreshSeconds { get; set; } = DefaultProcessingRefreshSeconds;
+
+    [Display(Name = "处理超时（秒）", GroupName = "消息", Description = "0 表示使用默认值 180；超时后 Bridge 取消 Gateway 请求")]
+    public int ProcessingMaxDurationSeconds { get; set; } = DefaultProcessingMaxDurationSeconds;
+
+    /// <summary>处理中占位刷新间隔（秒）。</summary>
+    public int EffectiveProcessingRefreshSeconds =>
+        ProcessingRefreshSeconds > 0 ? ProcessingRefreshSeconds : DefaultProcessingRefreshSeconds;
+
+    /// <summary>单条消息最长等待 Agent 回复（秒）。</summary>
+    public int EffectiveProcessingMaxDurationSeconds =>
+        ProcessingMaxDurationSeconds > 0 ? ProcessingMaxDurationSeconds : DefaultProcessingMaxDurationSeconds;
 
     /// <summary>低风险权限是否自动批准</summary>
     [Display(Name = "自动批准低风险", GroupName = "权限")]

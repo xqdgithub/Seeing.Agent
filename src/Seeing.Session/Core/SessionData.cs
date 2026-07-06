@@ -38,6 +38,9 @@ namespace Seeing.Session.Core
         /// <summary>Model 所属 Provider ID（如 openai, anthropic 等）</summary>
         public string SelectedModelProvider { get; set; } = string.Empty;
 
+        /// <summary>ACP 透传 session mode（如 build / ask）</summary>
+        public string SelectedAcpMode { get; set; } = string.Empty;
+
         // === 工作目录 ===
         public string? WorkingDirectory { get; set; }
 
@@ -158,6 +161,7 @@ namespace Seeing.Session.Core
                 SelectedAgent = SelectedAgent,
                 SelectedModel = SelectedModel,
                 SelectedModelProvider = SelectedModelProvider,
+                SelectedAcpMode = SelectedAcpMode,
                 WorkingDirectory = WorkingDirectory,
                 Status = Status,
                 Messages = new List<SessionMessage>(Messages),

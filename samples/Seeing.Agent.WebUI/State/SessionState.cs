@@ -89,6 +89,17 @@ namespace Seeing.Agent.WebUI.State
             }
         }
 
+        /// <summary>ACP 透传 session mode（如 build / ask）</summary>
+        public string SelectedAcpMode
+        {
+            get => CurrentSession?.SelectedAcpMode ?? string.Empty;
+            set
+            {
+                if (CurrentSession != null)
+                    CurrentSession.SelectedAcpMode = value;
+            }
+        }
+
         /// <summary>
         /// 消息列表（从 CurrentSession.Messages 获取）
         /// </summary>

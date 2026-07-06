@@ -1,3 +1,5 @@
+using Seeing.Agent.Core.Models;
+
 namespace Seeing.Agent.Acp.Configuration;
 
 /// <summary>
@@ -7,6 +9,12 @@ public static class AcpMetadataKeys
 {
     public const string PassthroughPrefix = "acp:passthrough:";
     public const string TaskPrefix = "acp:task:";
+
+    /// <summary>AgentContext.Metadata：ACP session mode id（见 <see cref="AgentContextKeys.AcpModeId"/>）</summary>
+    public const string ContextModeId = AgentContextKeys.AcpModeId;
+
+    /// <summary>AgentContext.Metadata：ACP session model id（见 <see cref="AgentContextKeys.AcpModelId"/>）</summary>
+    public const string ContextModelId = AgentContextKeys.AcpModelId;
 
     public static string Passthrough(string seeingSessionId) => PassthroughPrefix + seeingSessionId;
 

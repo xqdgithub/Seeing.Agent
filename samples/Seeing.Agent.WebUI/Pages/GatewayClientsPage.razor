@@ -120,14 +120,45 @@
         _saving = true;
         try
         {
+            var existing = _clients.FirstOrDefault(c =>
+                c.ChannelId.Equals(model.ChannelId, StringComparison.OrdinalIgnoreCase));
+            var wasRunning = existing?.Status == GatewayClientStatuses.Running;
+            var runtimeConfigChanged = existing != null && HasRuntimeConfigChanged(existing, model);
+
             await ConfigService.SaveClientAsync(model);
-            MessageService.Success($"{model.DisplayName} 配置已保存");
+
+            if (wasRunning && runtimeConfigChanged)
+            {
+                await Supervisor.RestartAsync(model.ChannelId);
+                MessageService.Success($"{model.DisplayName} 配置已保存并已重启客户端");
+            }
+            else
+            {
+                MessageService.Success($"{model.DisplayName} 配置已保存");
+            }
+
             await LoadAsync();
         }
         finally
         {
             _saving = false;
         }
+    }
+
+    private static bool HasRuntimeConfigChanged(GatewayClientViewModel before, GatewayClientViewModel after)
+    {
+        if (!string.Equals(before.Agent, after.Agent, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!string.Equals(before.Model, after.Model, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!string.Equals(before.Mode, after.Mode, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return !string.Equals(before.Gateway.BaseUrl, after.Gateway.BaseUrl, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(before.Gateway.Transport, after.Gateway.Transport, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(before.Gateway.WebSocketPath, after.Gateway.WebSocketPath, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(before.Gateway.ApiKey, after.Gateway.ApiKey, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(before.Gateway.Timeout, after.Gateway.Timeout, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task ToggleEnabled((string ChannelId, bool Enabled) args)
@@ -239,6 +270,9 @@
             ApiKey = source.Gateway.ApiKey,
             Timeout = source.Gateway.Timeout
         },
+        Agent = source.Agent,
+        Model = source.Model,
+        Mode = source.Mode,
         Options = source.Options.ToDictionary(kv => kv.Key, kv => kv.Value),
         Fields = source.Fields,
         ConfigFormComponentType = source.ConfigFormComponentType,

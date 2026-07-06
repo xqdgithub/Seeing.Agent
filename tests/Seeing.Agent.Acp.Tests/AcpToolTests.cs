@@ -65,19 +65,17 @@ public class AcpToolTests
         runner ??= Mock.Of<IAcpSessionRunner>();
         sessionManager ??= new FakeSessionManager();
 
-        var registry = new AcpBackendRegistry(
-            Options.Create(new SeeingAgentOptions
+        var registry = CreateBackendRegistry(new SeeingAgentOptions
+        {
+            Acp = new AcpOptions
             {
-                Acp = new AcpOptions
+                Enabled = true,
+                Backends = new Dictionary<string, AcpBackendConfig>
                 {
-                    Enabled = true,
-                    Backends = new Dictionary<string, AcpBackendConfig>
-                    {
-                        ["opencode"] = new() { Command = "opencode" }
-                    }
+                    ["opencode"] = new() { Command = "opencode" }
                 }
-            }),
-            NullLogger<AcpBackendRegistry>.Instance);
+            }
+        });
 
         return new AcpTool(
             NullLogger<AcpTool>.Instance,
@@ -86,6 +84,13 @@ public class AcpToolTests
             new ContentBlockMapper(),
             Options.Create(new SeeingAgentOptions { Acp = new AcpOptions { Enabled = true } }),
             sessionManager ?? new FakeSessionManager());
+    }
+
+    private static AcpBackendRegistry CreateBackendRegistry(SeeingAgentOptions options)
+    {
+        var provider = new SeeingAgentConfigurationProvider();
+        provider.Options.Acp = options.Acp;
+        return new AcpBackendRegistry(provider, NullLogger<AcpBackendRegistry>.Instance);
     }
 }
 

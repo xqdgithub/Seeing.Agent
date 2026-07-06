@@ -1,7 +1,11 @@
 namespace Seeing.Gateway.WeCom;
 
 /// <summary>
-/// 单条入站消息的流式回复状态（stream_id / keepalive / delta 节流）
+/// 单条入站消息的企微流式回复。
+/// <para>
+/// 协议约束：每条用户消息仅一条 <c>stream_id</c>，且仅 <see cref="CompleteAsync"/> /
+/// <see cref="FailAsync"/> 可发送 <c>finish=true</c>。处理中占位与正文共用同一 stream。
+/// </para>
 /// </summary>
 public sealed class WeComStreamState : IAsyncDisposable
 {
@@ -12,11 +16,11 @@ public sealed class WeComStreamState : IAsyncDisposable
     private readonly WeComOptions _options;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
-    private string? _contentStreamId;
-    private string? _processingStreamId;
-    private string _accumulatedText = string.Empty;
+    private string? _streamId;
+    private string _visibleText = ProcessingText;
     private DateTime _lastDeltaSentUtc = DateTime.MinValue;
-    private bool _contentPhaseStarted;
+    private bool _hasContent;
+    private bool _completed;
     private CancellationTokenSource? _keepaliveCts;
     private Task? _keepaliveTask;
 
@@ -38,88 +42,98 @@ public sealed class WeComStreamState : IAsyncDisposable
         _options = options;
     }
 
-    public async Task StartProcessingIndicatorAsync(CancellationToken cancellationToken)
+    /// <summary>直接发送最终回复，不显示 Thinking 占位（用于斜杠命令等即时反馈）。</summary>
+    public async Task SendInstantAsync(string text, CancellationToken cancellationToken)
     {
-        _processingStreamId = WeComAibotWsClient.GenerateStreamId();
-        await _sender.SendProcessingIndicatorAsync(_requestFrame, _processingStreamId, cancellationToken)
-            .ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(_completed, this);
 
-        _keepaliveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _keepaliveTask = KeepaliveProcessingAsync(_processingStreamId, _keepaliveCts.Token);
+        _streamId = WeComAibotWsClient.GenerateStreamId();
+        _visibleText = FormatFinalText(text);
+        await SendAsync(finish: true, cancellationToken).ConfigureAwait(false);
+        _completed = true;
     }
 
-    public async Task UpdateContentDeltaAsync(string accumulatedText, CancellationToken cancellationToken)
+    /// <summary>开启回复流并显示处理中占位（finish=false）。</summary>
+    public async Task BeginAsync(CancellationToken cancellationToken)
     {
-        if (!_options.StreamingEnabled)
+        ObjectDisposedException.ThrowIf(_completed, this);
+
+        _streamId = WeComAibotWsClient.GenerateStreamId();
+        _visibleText = ProcessingText;
+        await SendAsync(finish: false, cancellationToken).ConfigureAwait(false);
+
+        _keepaliveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _keepaliveTask = RunProcessingKeepaliveAsync(_keepaliveCts.Token);
+    }
+
+    /// <summary>推送正文增量（finish=false）。</summary>
+    public async Task PublishAsync(string text, CancellationToken cancellationToken)
+    {
+        if (!_options.StreamingEnabled || string.IsNullOrEmpty(text))
             return;
 
-        _accumulatedText = accumulatedText;
-        await EnterContentPhaseAsync(cancellationToken).ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(_completed, this);
+
+        _hasContent = true;
+        _visibleText = text;
+        await StopKeepaliveAsync().ConfigureAwait(false);
 
         var throttleMs = Math.Max(0, _options.DeltaThrottleMilliseconds);
         var now = DateTime.UtcNow;
         if ((now - _lastDeltaSentUtc).TotalMilliseconds < throttleMs)
             return;
 
-        await SendContentAsync(finish: false, cancellationToken).ConfigureAwait(false);
+        await SendAsync(finish: false, cancellationToken).ConfigureAwait(false);
         _lastDeltaSentUtc = now;
     }
 
-    public async Task FinishAsync(string? finalText, CancellationToken cancellationToken)
+    /// <summary>发送最终正文并结束流（finish=true）。</summary>
+    public async Task CompleteAsync(string? finalText, CancellationToken cancellationToken)
     {
-        await CancelKeepaliveAsync().ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(_completed, this);
 
-        var text = finalText ?? _accumulatedText;
+        await StopKeepaliveAsync().ConfigureAwait(false);
+
+        _visibleText = FormatFinalText(finalText);
+        await SendAsync(finish: true, cancellationToken).ConfigureAwait(false);
+        _completed = true;
+    }
+
+    /// <summary>发送错误并结束流（finish=true）。</summary>
+    public async Task FailAsync(string error, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_completed, this);
+
+        await StopKeepaliveAsync().ConfigureAwait(false);
+        _visibleText = $"❌ {error}";
+        await SendAsync(finish: true, cancellationToken).ConfigureAwait(false);
+        _completed = true;
+    }
+
+    private string FormatFinalText(string? finalText)
+    {
+        var text = string.IsNullOrWhiteSpace(finalText)
+            ? (_hasContent ? _visibleText : "✅")
+            : finalText;
+
         if (!string.IsNullOrWhiteSpace(_options.BotPrefix))
             text = $"{_options.BotPrefix}  {text}";
 
-        if (string.IsNullOrWhiteSpace(text))
-            text = "✅";
-
-        _accumulatedText = text;
-        await SendContentAsync(finish: true, cancellationToken).ConfigureAwait(false);
+        return text;
     }
 
-    public async Task SendErrorAsync(string error, CancellationToken cancellationToken)
+    private async Task SendAsync(bool finish, CancellationToken cancellationToken)
     {
-        await CancelKeepaliveAsync().ConfigureAwait(false);
-        _accumulatedText = $"❌ {error}";
-        await SendContentAsync(finish: true, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task EnterContentPhaseAsync(CancellationToken cancellationToken)
-    {
-        if (_contentPhaseStarted)
-            return;
-
-        _contentPhaseStarted = true;
-        await CancelKeepaliveAsync().ConfigureAwait(false);
-    }
-
-    private async Task SendContentAsync(bool finish, CancellationToken cancellationToken)
-    {
-        await EnterContentPhaseAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(_streamId))
+            throw new InvalidOperationException("WeCom reply stream has not been started.");
 
         await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (string.IsNullOrEmpty(_contentStreamId))
-            {
-                if (!string.IsNullOrEmpty(_processingStreamId))
-                {
-                    _contentStreamId = _processingStreamId;
-                    _processingStreamId = null;
-                }
-                else
-                {
-                    _contentStreamId = WeComAibotWsClient.GenerateStreamId();
-                }
-            }
-
             await _sender.ReplyStreamAsync(
                 _requestFrame,
-                _contentStreamId,
-                _accumulatedText,
+                _streamId,
+                _visibleText,
                 finish,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -129,60 +143,44 @@ public sealed class WeComStreamState : IAsyncDisposable
         }
     }
 
-    private async Task SendProcessingRefreshAsync(
-        string streamId,
-        bool finish,
-        CancellationToken cancellationToken)
+    private async Task RunProcessingKeepaliveAsync(CancellationToken cancellationToken)
     {
-        await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            if (_contentPhaseStarted)
-                return;
-
-            await _sender.ReplyStreamAsync(
-                _requestFrame,
-                streamId,
-                ProcessingText,
-                finish,
-                cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _sendLock.Release();
-        }
-    }
-
-    private async Task KeepaliveProcessingAsync(string streamId, CancellationToken cancellationToken)
-    {
-        var refreshInterval = TimeSpan.FromSeconds(Math.Max(5, _options.ProcessingRefreshSeconds));
-        var maxDuration = TimeSpan.FromSeconds(Math.Max(refreshInterval.TotalSeconds, _options.ProcessingMaxDurationSeconds));
-        var elapsed = TimeSpan.Zero;
+        var refreshInterval = TimeSpan.FromSeconds(_options.EffectiveProcessingRefreshSeconds);
 
         try
         {
-            while (elapsed + refreshInterval <= maxDuration && !cancellationToken.IsCancellationRequested)
+            using var timer = new PeriodicTimer(refreshInterval);
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                await Task.Delay(refreshInterval, cancellationToken).ConfigureAwait(false);
-                elapsed += refreshInterval;
+                if (_hasContent)
+                    return;
 
-                await SendProcessingRefreshAsync(streamId, finish: false, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+                await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    if (_hasContent || string.IsNullOrEmpty(_streamId))
+                        return;
 
-            if (!cancellationToken.IsCancellationRequested)
-            {
-                await SendProcessingRefreshAsync(streamId, finish: true, cancellationToken)
-                    .ConfigureAwait(false);
+                    await _sender.ReplyStreamAsync(
+                        _requestFrame,
+                        _streamId,
+                        ProcessingText,
+                        finish: false,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _sendLock.Release();
+                }
             }
         }
         catch (OperationCanceledException)
         {
-            // expected when real content arrives
+            // content arrived or stream completed
         }
     }
 
-    private async Task CancelKeepaliveAsync()
+    private async Task StopKeepaliveAsync()
     {
         if (_keepaliveCts == null)
             return;
@@ -207,7 +205,7 @@ public sealed class WeComStreamState : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await CancelKeepaliveAsync().ConfigureAwait(false);
+        await StopKeepaliveAsync().ConfigureAwait(false);
         _sendLock.Dispose();
     }
 }

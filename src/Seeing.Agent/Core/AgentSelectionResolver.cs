@@ -57,4 +57,30 @@ public sealed class AgentSelectionResolver
 
         return null;
     }
+
+    /// <summary>
+    /// 解析 ACP 透传使用的模型 ID（不回退 <see cref="SeeingAgentOptions.DefaultModel"/> 或 Agent.Model）。
+    /// </summary>
+    public string? ResolveAcpModelId(string? requestModelId, string? sessionSelectedModel)
+    {
+        if (!string.IsNullOrEmpty(requestModelId))
+            return requestModelId;
+
+        if (!string.IsNullOrEmpty(sessionSelectedModel))
+            return sessionSelectedModel;
+
+        return null;
+    }
+
+    /// <summary>解析 ACP 透传 session mode（request &gt; session &gt; null）。</summary>
+    public string? ResolveAcpModeId(string? requestModeId, string? sessionSelectedAcpMode)
+    {
+        if (!string.IsNullOrWhiteSpace(requestModeId))
+            return requestModeId.Trim();
+
+        if (!string.IsNullOrWhiteSpace(sessionSelectedAcpMode))
+            return sessionSelectedAcpMode.Trim();
+
+        return null;
+    }
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Client;
 using Seeing.Agent.Acp.Permission;
+using Seeing.Agent.Acp.Session;
 using Seeing.Agent.Acp.Transport;
 
 namespace Seeing.Agent.Acp.Execution;
@@ -21,6 +22,7 @@ public sealed class AcpSessionRunner : IAcpSessionRunner
 {
     private readonly AcpConnectionManager _connectionManager;
     private readonly AcpLifecycleService _lifecycleService;
+    private readonly AcpSessionConfigApplier _configApplier;
     private readonly IAcpBackendRegistry _backendRegistry;
     private readonly AcpCancellationCoordinator _cancellationCoordinator;
     private readonly ILogger<AcpSessionRunner> _logger;
@@ -29,12 +31,14 @@ public sealed class AcpSessionRunner : IAcpSessionRunner
     public AcpSessionRunner(
         AcpConnectionManager connectionManager,
         AcpLifecycleService lifecycleService,
+        AcpSessionConfigApplier configApplier,
         IAcpBackendRegistry backendRegistry,
         AcpCancellationCoordinator cancellationCoordinator,
         ILogger<AcpSessionRunner> logger)
     {
         _connectionManager = connectionManager;
         _lifecycleService = lifecycleService;
+        _configApplier = configApplier;
         _backendRegistry = backendRegistry;
         _cancellationCoordinator = cancellationCoordinator;
         _logger = logger;
@@ -57,13 +61,15 @@ public sealed class AcpSessionRunner : IAcpSessionRunner
 
         await EnsureInitializedAsync(lease.Client, backend, cancellationToken).ConfigureAwait(false);
 
-        var acpSessionId = await _lifecycleService.EnsureSessionAsync(
+        var sessionEnsure = await _lifecycleService.EnsureSessionAsync(
             request.Scope,
             request.ScopeKey,
             request.BackendId,
             lease.Client,
             request.WorkingDirectory,
             cancellationToken).ConfigureAwait(false);
+
+        var acpSessionId = sessionEnsure.SessionId;
 
         var permissionContext = new AcpPermissionContext
         {
@@ -75,6 +81,14 @@ public sealed class AcpSessionRunner : IAcpSessionRunner
         };
 
         lease.Client.ConfigureForRequest(sink, permissionContext, request.WorkingDirectory);
+
+        await _configApplier.ApplyAsync(
+            new SeeingAcpClientSessionConfigurator(lease.Client),
+            acpSessionId,
+            sessionEnsure.ConfigOptions,
+            request.ModeId,
+            request.ModelId,
+            cancellationToken).ConfigureAwait(false);
 
         using var cancelRegistration = _cancellationCoordinator.Register(
             request.SeeingSessionId,
@@ -106,9 +120,7 @@ public sealed class AcpSessionRunner : IAcpSessionRunner
                 .SessionPromptAsync(acpSessionId, promptBlocks, cancellationToken)
                 .ConfigureAwait(false);
 
-            var text = string.Join(
-                "\n",
-                response.Content?.OfType<TextContentBlock>().Select(t => t.Text) ?? Array.Empty<string>());
+            var text = ResolveAssistantText(response.Content, sink);
 
             _logger.LogInformation(
                 "ACP session/prompt complete session={SessionId} acpSession={AcpSessionId} stopReason={StopReason} textLength={TextLength}",
@@ -119,7 +131,7 @@ public sealed class AcpSessionRunner : IAcpSessionRunner
 
             return new AcpRunResult
             {
-                Text = text.Trim(),
+                Text = text,
                 StopReason = response.StopReason,
                 Success = true
             };
@@ -145,6 +157,21 @@ public sealed class AcpSessionRunner : IAcpSessionRunner
                 Error = ex.Message
             };
         }
+    }
+
+    private static string ResolveAssistantText(IEnumerable<ContentBlock>? content, IAcpUpdateSink sink)
+    {
+        var promptText = string.Join(
+            "\n",
+            content?.OfType<TextContentBlock>().Select(t => t.Text) ?? Array.Empty<string>()).Trim();
+
+        if (!string.IsNullOrWhiteSpace(promptText))
+            return promptText;
+
+        if (sink is IAcpAssistantTextAccumulator accumulator)
+            return accumulator.AccumulatedAssistantText.Trim();
+
+        return string.Empty;
     }
 
     private async Task EnsureInitializedAsync(

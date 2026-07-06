@@ -223,4 +223,11 @@ namespace Seeing.Agent.Core.Models
         /// </summary>
         All
     }
+
+    /// <summary>AgentContext.Metadata 键名（Gateway / ACP 透传共享）</summary>
+    public static class AgentContextKeys
+    {
+        public const string AcpModeId = "acp:modeId";
+        public const string AcpModelId = "acp:modelId";
+    }
 }

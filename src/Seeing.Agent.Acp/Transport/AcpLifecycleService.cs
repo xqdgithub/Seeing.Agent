@@ -74,7 +74,7 @@ public sealed class AcpLifecycleService
         return client;
     }
 
-    public async Task<string> EnsureSessionAsync(
+    public async Task<AcpSessionEnsureResult> EnsureSessionAsync(
         string scope,
         string scopeKey,
         string backendId,
@@ -107,7 +107,12 @@ public sealed class AcpLifecycleService
                     : mapping.AcpSessionId;
 
                 if (!string.IsNullOrWhiteSpace(sessionId))
-                    return sessionId;
+                {
+                    return new AcpSessionEnsureResult(
+                        sessionId,
+                        (IReadOnlyList<SessionConfigOption>?)loaded?.ConfigOptions
+                        ?? Array.Empty<SessionConfigOption>());
+                }
 
                 _logger.LogWarning(
                     "ACP session/load returned empty session id for scope={Scope} key={ScopeKey}, creating new session",
@@ -155,7 +160,10 @@ public sealed class AcpLifecycleService
             scopeKey,
             created.SessionId);
 
-        return created.SessionId;
+        return new AcpSessionEnsureResult(
+            created.SessionId,
+            (IReadOnlyList<SessionConfigOption>?)created.ConfigOptions
+            ?? Array.Empty<SessionConfigOption>());
     }
 
     private static ClientCapabilities BuildClientCapabilities() => new()

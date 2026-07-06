@@ -285,7 +285,8 @@ public sealed class WebSocketGatewayClientAdapter : IGatewayClient, IAsyncDispos
         {
             switch (inbound.Type)
             {
-                case GatewayWsFrameType.ChatEvent when inbound.Event != null:
+                case GatewayWsFrameType.ChatEvent when inbound.Event != null
+                    && (string.IsNullOrEmpty(inbound.Id) || inbound.Id == requestId):
                     yield return inbound.Event;
                     break;
 

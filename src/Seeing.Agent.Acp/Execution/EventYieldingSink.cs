@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading.Channels;
 using Acp.Types;
 using Microsoft.Extensions.Logging;
@@ -11,9 +12,10 @@ namespace Seeing.Agent.Acp.Execution;
 /// <summary>
 /// 将 SessionUpdate 映射为 <see cref="IMessageEvent"/> 并通过 Channel 产出。
 /// </summary>
-public sealed class EventYieldingSink : IAcpUpdateSink
+public sealed class EventYieldingSink : IAcpUpdateSink, IAcpAssistantTextAccumulator
 {
     private readonly AcpEventMapper _mapper;
+    private readonly StringBuilder _assistantText = new();
     private readonly string _seeingSessionId;
     private readonly string? _loopId;
     private readonly ILogger _logger;
@@ -37,6 +39,8 @@ public sealed class EventYieldingSink : IAcpUpdateSink
         });
     }
 
+    public string AccumulatedAssistantText => _assistantText.ToString();
+
     public Task OnSessionUpdateAsync(string acpSessionId, SessionUpdate update, CancellationToken cancellationToken = default)
     {
         var kind = AcpSessionUpdateLogging.Describe(update);
@@ -52,6 +56,7 @@ public sealed class EventYieldingSink : IAcpUpdateSink
         var mappedCount = 0;
         foreach (var evt in _mapper.Map(update, _seeingSessionId, _loopId))
         {
+            TrackAssistantText(evt);
             _channel.Writer.TryWrite(evt);
             mappedCount++;
             _logger.LogDebug(
@@ -70,6 +75,7 @@ public sealed class EventYieldingSink : IAcpUpdateSink
 
     public Task PublishAsync(IMessageEvent messageEvent, CancellationToken cancellationToken = default)
     {
+        TrackAssistantText(messageEvent);
         _channel.Writer.TryWrite(messageEvent);
         _logger.LogDebug(
             "ACP published event={EventType} session={SessionId} loop={LoopId}",
@@ -93,10 +99,17 @@ public sealed class EventYieldingSink : IAcpUpdateSink
         if (_channel.Writer.TryComplete())
         {
             _logger.LogInformation(
-                "ACP event channel completed session={SessionId} loop={LoopId} updates={UpdateCount}",
+                "ACP event channel completed session={SessionId} loop={LoopId} updates={UpdateCount} assistantTextLength={AssistantTextLength}",
                 _seeingSessionId,
                 _loopId,
-                _updateCount);
+                _updateCount,
+                _assistantText.Length);
         }
+    }
+
+    private void TrackAssistantText(IMessageEvent messageEvent)
+    {
+        if (messageEvent is StreamDeltaEvent { ContentDelta: { } delta })
+            _assistantText.Append(delta);
     }
 }

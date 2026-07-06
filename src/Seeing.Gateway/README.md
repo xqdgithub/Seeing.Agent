@@ -21,12 +21,38 @@ public record GatewayRequest
     public string? AgentId { get; init; }
     public string? ModelId { get; init; }
     public IReadOnlyList<GatewayContentPart>? Input { get; init; }
+    public GatewayQuoteContext? Quote { get; init; }
     public bool Stream { get; init; } = true;
     public Dictionary<string, object?>? Metadata { get; init; }
 }
 ```
 
 `GatewayContentPart` 支持 `text` / `image` / `file` / `audio`（JSON discriminated union）。
+
+`GatewayQuoteContext` 承载用户引用的消息快照（与 `Input` 并列，Channel Bridge 填充，Gateway Server 合成 XML 边界 user turn）：
+
+```csharp
+public record GatewayQuoteContext
+{
+    public string? MsgType { get; init; }           // text / image / mixed / voice / file / video
+    public IReadOnlyList<GatewayContentPart>? Content { get; init; }
+    public string? SourceChannel { get; init; }     // 如 wecom
+}
+```
+
+示例（企微引用 + 追问）：
+
+```json
+{
+  "sessionId": "wecom_group_xxx",
+  "input": [{ "type": "text", "text": "数据来源是什么" }],
+  "quote": {
+    "msgType": "text",
+    "sourceChannel": "wecom",
+    "content": [{ "type": "text", "text": "被引用的原始内容" }]
+  }
+}
+```
 
 ### GatewayEvent（出站）
 
@@ -99,6 +125,10 @@ public interface IChannelBridge
 | `Error` | `Error` / Failed |
 
 选项 `GatewayEventMapperOptions.FilterThinking`（默认 `true`）可过滤 reasoning 增量。
+
+## Channel 消费助手回复
+
+IM Bridge 应使用 `GatewayAssistantReplyCollector` 累积 assistant 可见文本，并仅在 `LoopComplete` 时结束渠道侧 UI 流。参见 `Channels/GatewayAssistantReplyCollector.cs`。
 
 ## WebSocket 帧协议
 

@@ -2,9 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Extensions;
-using Seeing.Agent.Acp.Hosting;
 using Seeing.Agent.Acp.Tools;
 using Seeing.Agent.Acp.Transport;
 using Seeing.Agent.Configuration;
@@ -14,6 +12,10 @@ namespace Seeing.Agent.Acp;
 
 /// <summary>
 /// ACP 插件入口。
+/// <para>
+/// 服务注册与运行时初始化由 <see cref="AcpServiceCollectionExtensions.AddSeeingAcp"/> 负责；
+/// 本扩展仅提供 <see cref="IExtension"/> 生命周期（工具导出、连接清理）。
+/// </para>
 /// </summary>
 public sealed class AcpExtension : IExtension
 {
@@ -41,50 +43,38 @@ public sealed class AcpExtension : IExtension
     public void ConfigureServices(IServiceCollection services) => services.AddSeeingAcp();
 
     /// <inheritdoc />
-    public async Task InitializeAsync(ExtensionContext context, ExtensionMeta meta)
+    public Task InitializeAsync(ExtensionContext context, ExtensionMeta meta)
     {
         var loggerFactory = context.Services.GetRequiredService<ILoggerFactory>();
         _logger = loggerFactory.CreateLogger<AcpExtension>();
 
         var options = context.Services.GetRequiredService<IOptions<SeeingAgentOptions>>().Value;
-        if (!options.Acp.Enabled)
-        {
-            _logger.LogInformation("{Name} loaded but ACP is disabled in configuration", Name);
-        }
-        else if (options.Acp.Backends.Count == 0)
-        {
-            _logger.LogWarning("{Name} enabled but no ACP backends configured", Name);
-        }
-        else
-        {
-            _logger.LogInformation(
-                "{Name} initialized with {Count} backend(s), default={Default}",
-                Name,
-                options.Acp.Backends.Count,
-                options.Acp.DefaultBackend ?? "(first enabled)");
-
-            await AcpDynamicAgentRegistrar.RegisterAsync(
-                context.AgentRegistry,
-                context.Services.GetRequiredService<IAcpBackendRegistry>(),
-                context.Services.GetRequiredService<IOptions<SeeingAgentOptions>>(),
-                _logger);
-        }
-
         _connectionManager = context.Services.GetService<AcpConnectionManager>();
         _acpTool = context.Services.GetService<AcpTool>();
         _acpStatusTool = context.Services.GetService<AcpStatusTool>();
 
+        if (!options.Acp.Enabled)
+        {
+            _logger.LogInformation("{Name} loaded; ACP is disabled in configuration", Name);
+            return Task.CompletedTask;
+        }
+
         if (_connectionManager == null || _acpTool == null)
         {
             _logger.LogWarning(
-                "ACP services not registered in DI. Call services.AddSeeingAcp() before building the host.");
+                "{Name} plugin loaded without AddSeeingAcp() DI integration. " +
+                "Call services.AddSeeingAcp() during host startup.",
+                Name);
+            return Task.CompletedTask;
         }
-        else
-        {
-            var lifecycleHook = context.Services.GetService<AcpSessionLifecycleHook>();
-            if (lifecycleHook != null)
-                context.HookManager.RegisterMulti(lifecycleHook);
-        }
+
+        _logger.LogInformation(
+            "{Name} extension active ({BackendCount} backend(s)); " +
+            "agent/hook/router registration is handled by AddSeeingAcp hosted services",
+            Name,
+            options.Acp.Backends.Count);
+
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />

@@ -1,5 +1,6 @@
 @using AntDesign
 @using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Models
 @using Seeing.Agent.WebUI.State
 @inject AppState AppState
 @implements IDisposable
@@ -15,12 +16,21 @@
                 AllowClear="true"
                 Placeholder="留空则使用全局 DefaultAgent"
                 Value="@Agent"
-                ValueChanged="@(v => AgentChanged.InvokeAsync(v))"
+                ValueChanged="@OnAgentChangedAsync"
                 DataSource="@_agentNames" />
     </FormItem>
+    @if (_isAcpPassthrough)
+    {
+        <FormItem Label="ACP Mode">
+            <Input Value="@Mode"
+                   ValueChanged="@ModeChanged"
+                   Placeholder="留空则使用 ACP 后端默认 mode" />
+        </FormItem>
+    }
     <FormItem Label="默认 Model">
-        <Input @bind-Value="@ModelId"
-               Placeholder="留空则按 Agent / 全局 DefaultModel 解析" />
+        <Input Value="@ModelId"
+               ValueChanged="@ModelIdChanged"
+               Placeholder="@(_isAcpPassthrough ? "留空则使用 ACP 后端默认 model" : "留空则按 Agent / 全局 DefaultModel 解析")" />
     </FormItem>
     <Divider>Gateway 连接</Divider>
     <FormItem Label="服务地址" Required="true">
@@ -50,21 +60,37 @@
     [Parameter] public GatewayClientConnectionOptions Gateway { get; set; } = new();
     [Parameter] public string? Agent { get; set; }
     [Parameter] public EventCallback<string?> AgentChanged { get; set; }
+    [Parameter] public string? Mode { get; set; }
+    [Parameter] public EventCallback<string?> ModeChanged { get; set; }
     [Parameter] public string? ModelId { get; set; }
     [Parameter] public EventCallback<string?> ModelIdChanged { get; set; }
 
     private List<string> _agentNames = new();
+    private bool _isAcpPassthrough;
 
     protected override void OnInitialized()
     {
         AppState.OnChange += OnAppStateChange;
         RefreshAgentNames();
+        RefreshAgentRuntime();
+    }
+
+    protected override void OnParametersSet()
+    {
+        RefreshAgentRuntime();
     }
 
     private void OnAppStateChange()
     {
         RefreshAgentNames();
+        RefreshAgentRuntime();
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnAgentChangedAsync(string? value)
+    {
+        await AgentChanged.InvokeAsync(value);
+        RefreshAgentRuntime();
     }
 
     private void RefreshAgentNames()
@@ -73,6 +99,19 @@
             .Where(a => !string.IsNullOrEmpty(a.Name))
             .Select(a => a.Name!)
             .ToList();
+    }
+
+    private void RefreshAgentRuntime()
+    {
+        if (string.IsNullOrWhiteSpace(Agent))
+        {
+            _isAcpPassthrough = false;
+            return;
+        }
+
+        var info = AppState.AvailableAgents.FirstOrDefault(a =>
+            string.Equals(a.Name, Agent, StringComparison.OrdinalIgnoreCase));
+        _isAcpPassthrough = info?.Runtime == AgentRuntime.AcpPassthrough;
     }
 
     public void Dispose() => AppState.OnChange -= OnAppStateChange;

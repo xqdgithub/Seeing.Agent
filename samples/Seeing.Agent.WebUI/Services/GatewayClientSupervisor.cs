@@ -12,6 +12,7 @@ public sealed class GatewayClientSupervisor
     private readonly GatewayClientConfigService _configService;
     private readonly GatewayChannelRegistry _registry;
     private readonly ILogger<GatewayClientSupervisor> _logger;
+    private readonly SemaphoreSlim _startLock = new(1, 1);
 
     public GatewayClientSupervisor(
         GatewayClientConfigService configService,
@@ -62,6 +63,19 @@ public sealed class GatewayClientSupervisor
     }
 
     public async Task StartAsync(string channelId, CancellationToken ct = default)
+    {
+        await _startLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await StartCoreAsync(channelId, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _startLock.Release();
+        }
+    }
+
+    private async Task StartCoreAsync(string channelId, CancellationToken ct = default)
     {
         var clients = await _configService.GetClientsAsync(ct);
         var client = clients.FirstOrDefault(c => c.ChannelId.Equals(channelId, StringComparison.OrdinalIgnoreCase))

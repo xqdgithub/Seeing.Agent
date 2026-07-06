@@ -119,10 +119,10 @@ public class WeComCommandInterceptorTests
     }
 
     [Fact]
-    public void ExtractCommandText_GroupChat_ShouldPreserveNormalAtMention()
+    public void ExtractCommandText_GroupChat_ShouldStripLeadingMentionFromNormalText()
     {
         var message = CreateMessage("user", "@Bot 你好", chatType: "group");
-        WeComCommandInterceptor.ExtractCommandText(message).Should().Be("@Bot 你好");
+        WeComCommandInterceptor.ExtractCommandText(message).Should().Be("你好");
     }
 
     private static ParsedWeComMessage CreateMessage(string userId, string text, string chatType = "single") =>

@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Gateway.Client;
@@ -9,7 +8,7 @@ namespace Seeing.Gateway.WeCom;
 /// <summary>
 /// 拦截企微斜杠命令（/clear、/new），不转发 Agent。
 /// </summary>
-public sealed partial class WeComCommandInterceptor
+public sealed class WeComCommandInterceptor
 {
     private readonly WeComOptions _options;
     private readonly WeComSessionTracker _sessionTracker;
@@ -46,13 +45,22 @@ public sealed partial class WeComCommandInterceptor
             currentSessionId,
             parsed.UserId);
 
-        var reply = command switch
+        string reply;
+        try
         {
-            WeComConversationCommand.Clear => await HandleClearAsync(currentSessionId, cancellationToken)
-                .ConfigureAwait(false),
-            WeComConversationCommand.New => HandleNew(parsed),
-            _ => string.Empty
-        };
+            reply = command switch
+            {
+                WeComConversationCommand.Clear => await HandleClearAsync(currentSessionId, cancellationToken)
+                    .ConfigureAwait(false),
+                WeComConversationCommand.New => HandleNew(parsed),
+                _ => string.Empty
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WeCom 命令处理失败: {Command}, SessionId={SessionId}", command, currentSessionId);
+            reply = "❌ 命令执行失败，请稍后重试。";
+        }
 
         await ReplyTextAsync(parsed.Frame, reply, cancellationToken).ConfigureAwait(false);
         return true;
@@ -93,20 +101,26 @@ public sealed partial class WeComCommandInterceptor
         }
 
         text = text.Trim();
-        if (string.Equals(parsed.ChatType, "group", StringComparison.OrdinalIgnoreCase))
-        {
-            text = GroupMentionBeforeSlash().Replace(text, string.Empty).Trim();
-            if (text.StartsWith('/'))
-                text = GroupMentionAfterSlash().Replace(text, string.Empty).Trim();
-        }
-
-        return text;
+        return WeComGroupMentionNormalizer.NormalizeUserText(text, parsed.ChatType);
     }
 
     private async Task<string> HandleClearAsync(string sessionId, CancellationToken cancellationToken)
     {
-        await _gatewayClient.ResetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        return "✅ 上下文已清空，可以继续对话。";
+        try
+        {
+            await _gatewayClient.ResetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            return "✅ 上下文已清空，可以继续对话。";
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Session not found", StringComparison.Ordinal))
+        {
+            // 用户尚未与 Agent 对话时 Gateway 侧无会话文件，视为已清空。
+            return "✅ 上下文已清空，可以继续对话。";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "WeCom /clear: Gateway 重置失败: SessionId={SessionId}", sessionId);
+            return "⚠️ 清空请求失败，请确认 Gateway 已连接后重试。";
+        }
     }
 
     private string HandleNew(ParsedWeComMessage parsed)
@@ -118,7 +132,7 @@ public sealed partial class WeComCommandInterceptor
     private async Task ReplyTextAsync(WeComWsFrame frame, string text, CancellationToken cancellationToken)
     {
         await using var streamState = new WeComStreamState(_weComClient, frame, _options);
-        await streamState.FinishAsync(text, cancellationToken).ConfigureAwait(false);
+        await streamState.SendInstantAsync(text, cancellationToken).ConfigureAwait(false);
     }
 
     private static bool Assign(WeComConversationCommand value, out WeComConversationCommand command)
@@ -126,12 +140,6 @@ public sealed partial class WeComCommandInterceptor
         command = value;
         return true;
     }
-
-    [GeneratedRegex(@"^@\S+\s+(?=/)", RegexOptions.CultureInvariant)]
-    private static partial Regex GroupMentionBeforeSlash();
-
-    [GeneratedRegex(@"@\S+$", RegexOptions.CultureInvariant)]
-    private static partial Regex GroupMentionAfterSlash();
 }
 
 internal enum WeComConversationCommand

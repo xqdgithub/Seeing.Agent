@@ -91,6 +91,8 @@ public sealed class AcpPassthroughExecutor
             LoopId = loopId,
             Prompt = prompt,
             WorkingDirectory = workingDirectory,
+            ModeId = TryGetMetadataString(context, AgentContextKeys.AcpModeId),
+            ModelId = TryGetMetadataString(context, AgentContextKeys.AcpModelId),
             ParentContext = context
         };
 
@@ -181,17 +183,19 @@ public sealed class AcpPassthroughExecutor
             yield break;
         }
 
+        var finalText = result.Text?.Trim() ?? string.Empty;
+
         _logger.LogInformation(
             "ACP passthrough prompt complete session={SessionId} loop={LoopId} stopReason={StopReason} textLength={TextLength}",
             context.SessionId,
             loopId,
             result.StopReason ?? "(none)",
-            result.Text?.Length ?? 0);
+            finalText.Length);
 
         var assistantMessage = new ChatMessage
         {
             Role = "assistant",
-            Content = string.IsNullOrWhiteSpace(result.Text) ? "(no output)" : result.Text
+            Content = finalText
         };
 
         yield return new StreamCompleteEvent
@@ -216,5 +220,19 @@ public sealed class AcpPassthroughExecutor
             context.SessionId,
             loopId,
             (DateTime.Now - loopStart).TotalMilliseconds);
+    }
+
+    private static string? TryGetMetadataString(AgentContext context, string key)
+    {
+        if (!context.Metadata.TryGetValue(key, out var value))
+            return null;
+
+        return value switch
+        {
+            null => null,
+            string s when string.IsNullOrWhiteSpace(s) => null,
+            string s => s,
+            _ => value.ToString()
+        };
     }
 }

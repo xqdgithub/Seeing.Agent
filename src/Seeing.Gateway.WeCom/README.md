@@ -106,16 +106,44 @@ services.AddHostedService<WeComBridgeHostedService>(); // 见 Demo
 | 用户发送 `/clear` | 保持当前 `sessionId`，调用 Gateway 清空消息历史 |
 | `enter_chat` 且已超时 | 先轮换 session，再发送欢迎语 |
 
-群聊中 `@机器人 /clear` 会自动剥离 @mention 后识别命令。
+群聊中 `@机器人 /clear` 会自动剥离 @mention 后识别命令。普通群聊消息也会剥离 leading `@机器人`，避免污染 Agent 上下文。
+
+### 引用消息
+
+用户引用某条消息再提问时，企微 `aibot_msg_callback` 会同时下发 `text`（用户提问）与 `quote`（被引用内容）。Bridge 解析后写入 `GatewayRequest.Quote`，Gateway Server 合成为 XML 边界 user turn：
+
+```xml
+<quoted_message type="text" source="wecom">
+被引用的正文
+</quoted_message>
+
+<user_message>
+数据来源是什么
+</user_message>
+```
+
+| quote.msgtype | Bridge 行为 |
+|---------------|-------------|
+| text | 转发引用文本 |
+| voice | 优先语音转写文本；否则下载解密为 audio part |
+| image / file / video | 下载解密为对应 GatewayContentPart |
+| mixed | 遍历 `msg_item` 递归解析 |
+
+引用解析失败时降级为仅转发用户提问，不阻断主消息。
 
 与 QwenPaw 的差异：QwenPaw 无空闲自动轮换；`/new` 在同 session 内清内存，Seeing.Agent 的 `/new` 会生成新 session 文件。
 
 ## 流式行为
 
-1. 收到文本消息 → 发送 `🤔 Thinking...` 占位流（`finish=false`）
-2. Agent 有内容增量 → `reply_stream` 覆盖气泡（150ms 节流）
-3. `LoopComplete` → `reply_stream(finish=true)` 结束
-4. Keepalive：每 20s 刷新占位，180s 强制 `finish=true` 防止企微丢流
+企微协议约束：**每条用户消息仅一条 `stream_id`**，且只有最终 `Complete` 可发送 `finish=true`。
+
+1. `WeComStreamState.BeginAsync` → 分配 `stream_id`，发送 `🤔 Thinking...`（`finish=false`）
+2. Gateway `Content`+Delta → `PublishAsync` 在同一 stream 上更新正文（节流）
+3. Gateway `LoopComplete` → `CompleteAsync` 发送 `finish=true`
+4. Keepalive 仅刷新 Thinking（`finish=false`），**不会**提前结束 stream
+5. `ProcessingMaxDurationSeconds` 由 Bridge 用于取消 Gateway 请求，而非关闭 stream
+
+Channel Bridge 通过 `GatewayAssistantReplyCollector` 按 Gateway 完成信号契约消费事件流。
 
 ## 企微 WebSocket 协议（本包实现子集）
 

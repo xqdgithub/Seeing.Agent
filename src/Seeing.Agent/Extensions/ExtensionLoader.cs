@@ -365,19 +365,20 @@ namespace Seeing.Agent.Extensions
 
         protected override Assembly? Load(AssemblyName assemblyName)
         {
-            // 共享核心程序集（避免类型身份问题）
-            var sharedAssemblies = new[]
-            {
-                "Seeing.Agent",
-                "Microsoft.Extensions.DependencyInjection",
-                "Microsoft.Extensions.Configuration",
-                "Microsoft.Extensions.Logging",
-                "Microsoft.Extensions.Options"
-            };
+            if (string.IsNullOrEmpty(assemblyName.Name))
+                return null;
 
-            if (sharedAssemblies.Contains(assemblyName.Name))
+            // 优先复用宿主已加载的程序集，避免 first-party 扩展与 DI 注册类型身份不一致。
+            var hostAssembly = AssemblyLoadContext.Default.Assemblies
+                .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.Ordinal));
+            if (hostAssembly != null)
+                return hostAssembly;
+
+            // 回退到默认上下文（共享框架与 Seeing.* 包）
+            if (assemblyName.Name.StartsWith("Seeing.", StringComparison.Ordinal) ||
+                assemblyName.Name.StartsWith("Microsoft.Extensions.", StringComparison.Ordinal))
             {
-                return null; // 使用默认上下文的程序集
+                return null;
             }
 
             var assemblyPath = _resolver?.ResolveAssemblyToPath(assemblyName);

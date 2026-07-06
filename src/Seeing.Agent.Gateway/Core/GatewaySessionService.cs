@@ -35,6 +35,7 @@ public sealed class GatewaySessionService
         session.Context.Clear();
         session.SelectedModel = string.Empty;
         session.SelectedModelProvider = string.Empty;
+        session.SelectedAcpMode = string.Empty;
         session.SelectedAgent = await _agentRegistry.GetDefaultAgentNameAsync().ConfigureAwait(false);
         session.LastActiveAt = DateTime.Now;
         session.UpdatedAt = DateTime.Now;
