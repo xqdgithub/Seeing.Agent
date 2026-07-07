@@ -35,12 +35,12 @@ public class McpConfigPersistence : IMcpConfigPersistence
     /// <summary>
     /// 获取指定级别配置文件的路径
     /// </summary>
-    public string GetConfigPath(McpConfigLevel level)
+    public string GetConfigPath(ConfigLevel level)
     {
         return level switch
         {
-            McpConfigLevel.User => Path.Combine(_workspaceProvider.UserSeeingDirectory, "mcp.json"),
-            McpConfigLevel.Project => Path.Combine(_workspaceProvider.ProjectSeeingDirectory, "mcp.json"),
+            ConfigLevel.User => Path.Combine(_workspaceProvider.UserSeeingDirectory, "mcp.json"),
+            ConfigLevel.Project => Path.Combine(_workspaceProvider.ProjectSeeingDirectory, "mcp.json"),
             _ => throw new ArgumentOutOfRangeException(nameof(level))
         };
     }
@@ -48,13 +48,13 @@ public class McpConfigPersistence : IMcpConfigPersistence
     /// <summary>
     /// 检查指定级别的配置文件是否存在
     /// </summary>
-    public bool ConfigExists(McpConfigLevel level) => File.Exists(GetConfigPath(level));
+    public bool ConfigExists(ConfigLevel level) => File.Exists(GetConfigPath(level));
 
     /// <summary>
     /// 加载指定级别的配置
     /// </summary>
     public async Task<IReadOnlyDictionary<string, McpServerConfig>> LoadAsync(
-        McpConfigLevel level, CancellationToken cancellationToken = default)
+        ConfigLevel level, CancellationToken cancellationToken = default)
     {
         var path = GetConfigPath(level);
         if (!File.Exists(path))
@@ -97,7 +97,7 @@ public class McpConfigPersistence : IMcpConfigPersistence
     /// 保存指定级别的配置
     /// </summary>
     public async Task SaveAsync(
-        McpConfigLevel level,
+        ConfigLevel level,
         IReadOnlyDictionary<string, McpServerConfig> configs,
         CancellationToken cancellationToken = default)
     {

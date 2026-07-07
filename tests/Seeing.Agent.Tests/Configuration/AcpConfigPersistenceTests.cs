@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Seeing.Agent.Configuration;
 using Xunit;
 
@@ -18,7 +20,7 @@ public class AcpConfigPersistenceTests
     };
 
     [Fact]
-    public void PatchProjectAcpSection_RoundTripsThroughConfigurationProvider()
+    public async Task PatchProjectAcpSection_RoundTripsThroughUnifiedConfigManager()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "acp-persist-" + Guid.NewGuid().ToString("N"));
         var projectSeeing = Path.Combine(tempDir, ".seeing");
@@ -59,15 +61,24 @@ public class AcpConfigPersistenceTests
         var saved = File.ReadAllText(projectPath);
         saved.Should().Contain("C:/saved.cmd");
 
-        var provider = new SeeingAgentConfigurationProvider();
-        provider.ReloadForWorkspace(tempDir);
-        provider.Options.Acp.Backends["cursor"].Command.Should().Be("C:/saved.cmd");
+        var workspaceMock = new Mock<IWorkspaceProvider>();
+        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(tempDir);
+        workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
+        workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
+
+        var configManager = new UnifiedConfigManager(
+            workspaceMock.Object,
+            NullLogger<UnifiedConfigManager>.Instance);
+
+        await configManager.LoadAsync();
+
+        configManager.GetSeeingAgentOptions().Acp.Backends["cursor"].Command.Should().Be("C:/saved.cmd");
 
         Directory.Delete(tempDir, recursive: true);
     }
 
     [Fact]
-    public void Merge_UserAndProjectBackends_ProjectCommandOverridesUser()
+    public async Task Merge_UserAndProjectBackends_ProjectCommandOverridesUser()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "acp-merge-" + Guid.NewGuid().ToString("N"));
         var userSeeing = Path.Combine(tempDir, "user", ".seeing");
@@ -103,13 +114,18 @@ public class AcpConfigPersistenceTests
             }
             """);
 
-        var options = new SeeingAgentOptions();
-        SeeingAgentConfigurationProvider.LoadFromFile(
-            Path.Combine(userSeeing, "seeing.json"), options, "user");
-        SeeingAgentConfigurationProvider.LoadFromFile(
-            Path.Combine(projectSeeing, "seeing.json"), options, "project");
+        var workspaceMock = new Mock<IWorkspaceProvider>();
+        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(tempDir);
+        workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
+        workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
 
-        options.Acp.Backends["cursor"].Command.Should().Be("C:/project.cmd");
+        var configManager = new UnifiedConfigManager(
+            workspaceMock.Object,
+            NullLogger<UnifiedConfigManager>.Instance);
+
+        await configManager.LoadAsync();
+
+        configManager.GetSeeingAgentOptions().Acp.Backends["cursor"].Command.Should().Be("C:/project.cmd");
 
         Directory.Delete(tempDir, recursive: true);
     }

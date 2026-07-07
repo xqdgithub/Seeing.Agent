@@ -21,7 +21,6 @@
     <ProjectReference Include="../../src/Seeing.Agent.Gateway/Seeing.Agent.Gateway.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
     <ProjectReference Include="../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\acp.net\Acp.NetCore\src\Acp\Acp.NetCore.csproj" />
   </ItemGroup>
   <Target Name="CopyChannelHost" AfterTargets="Build">
     <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />

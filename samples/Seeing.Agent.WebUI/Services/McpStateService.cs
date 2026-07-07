@@ -1,6 +1,7 @@
 namespace Seeing.Agent.WebUI.Services;
 
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.MCP.Core;
 using System.Collections.Concurrent;
 
@@ -95,13 +96,13 @@ public sealed class McpStateService : IDisposable
     }
 
     /// <summary>获取配置文件路径</summary>
-    public string GetConfigFilePath(McpConfigLevel level)
+    public string GetConfigFilePath(ConfigLevel level)
     {
         return _manager.GetConfigFilePath(level);
     }
 
     /// <summary>获取指定级别的配置 JSON 字符串</summary>
-    public string GetConfigsAsJsonString(McpConfigLevel level = McpConfigLevel.Project)
+    public string GetConfigsAsJsonString(ConfigLevel level = ConfigLevel.Project)
     {
         return _manager.GetConfigsAsJson(level, indented: true);
     }

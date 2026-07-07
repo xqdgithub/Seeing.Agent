@@ -10,18 +10,18 @@ namespace Seeing.Agent.Acp.Backends;
 /// </summary>
 public sealed class AcpBackendRegistry : IAcpBackendRegistry
 {
-    private readonly SeeingAgentConfigurationProvider _configProvider;
+    private readonly UnifiedConfigManager _configManager;
     private readonly ILogger<AcpBackendRegistry> _logger;
 
     public AcpBackendRegistry(
-        SeeingAgentConfigurationProvider configProvider,
+        UnifiedConfigManager configManager,
         ILogger<AcpBackendRegistry> logger)
     {
-        _configProvider = configProvider;
+        _configManager = configManager;
         _logger = logger;
     }
 
-    private CoreAcpOptions Acp => _configProvider.Options.Acp;
+    private AcpOptions Acp => _configManager.GetSeeingAgentOptions().Acp;
 
     /// <inheritdoc />
     public AcpBackendDescriptor GetBackend(string backendId)

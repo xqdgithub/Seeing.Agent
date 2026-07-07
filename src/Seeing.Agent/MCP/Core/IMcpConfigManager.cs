@@ -1,3 +1,5 @@
+using Seeing.Agent.Configuration;
+
 namespace Seeing.Agent.MCP.Core;
 
 /// <summary>
@@ -19,7 +21,7 @@ public interface IMcpConfigManager
     Task<McpOperationResult> AddServerAsync(
         string name,
         McpServerConfig config,
-        McpConfigLevel? level = null,
+        ConfigLevel? level = null,
         bool persist = true,
         CancellationToken cancellationToken = default);
 
@@ -84,7 +86,7 @@ public interface IMcpConfigManager
     /// <returns>导入的服务器数量</returns>
     Task<int> ImportFromJsonAsync(
         string json,
-        McpConfigLevel level,
+        ConfigLevel level,
         bool overwrite = false,
         bool persist = true,
         CancellationToken cancellationToken = default);
@@ -126,7 +128,7 @@ public interface IMcpConfigManager
     /// </summary>
     /// <param name="name">服务器名称</param>
     /// <returns>配置级别，不存在则返回 null</returns>
-    McpConfigLevel? GetConfigLevel(string name);
+    ConfigLevel? GetConfigLevel(string name);
 
     #endregion
 
@@ -138,14 +140,14 @@ public interface IMcpConfigManager
     /// <param name="level">配置级别</param>
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>异步任务</returns>
-    Task SaveConfigAsync(McpConfigLevel level, CancellationToken cancellationToken = default);
+    Task SaveConfigAsync(ConfigLevel level, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 获取指定级别的配置文件路径
     /// </summary>
     /// <param name="level">配置级别</param>
     /// <returns>配置文件完整路径</returns>
-    string GetConfigFilePath(McpConfigLevel level);
+    string GetConfigFilePath(ConfigLevel level);
 
     /// <summary>
     /// 获取指定级别的所有配置作为 JSON 字符串
@@ -153,7 +155,7 @@ public interface IMcpConfigManager
     /// <param name="level">配置级别</param>
     /// <param name="indented">是否格式化输出</param>
     /// <returns>JSON 字符串</returns>
-    string GetConfigsAsJson(McpConfigLevel level, bool indented = true);
+    string GetConfigsAsJson(ConfigLevel level, bool indented = true);
 
     /// <summary>
     /// 获取单个服务器配置作为 JSON 字符串

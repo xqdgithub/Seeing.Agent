@@ -16,6 +16,10 @@
     </Breadcrumb>
     <Extra>
         <Space>
+            <Select TItemValue="ConfigLevel" TItem="ConfigLevel" @bind-Value="_saveLevel" Style="width: 160px;">
+                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
+                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
+            </Select>
             <Button Icon="@IconType.Outline.Plus" OnClick="ShowAddProvider">添加 Provider</Button>
             <Button Icon="@IconType.Outline.Save" Type="@ButtonType.Primary" OnClick="SaveOptions">保存</Button>
         </Space>
@@ -104,6 +108,7 @@
     private string _selectedProviderId = "";
     private string[] _selectedProviderKeys = Array.Empty<string>();
     private List<ModelRow> _modelRows = new();
+    private ConfigLevel _saveLevel = ConfigLevel.Project;
     private bool _loading;
     private bool _testing;
     private bool _addModalVisible;
@@ -151,7 +156,7 @@
 
     private async Task SaveOptions()
     {
-        await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+        await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>
         {
             ["DefaultProvider"] = _options.DefaultProvider,
             ["DefaultModel"] = _options.DefaultModel,

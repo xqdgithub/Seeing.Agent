@@ -59,8 +59,18 @@ public class AcpDynamicAgentRegistrarTests
 
     private static AcpBackendRegistry CreateBackendRegistry(SeeingAgentOptions options)
     {
-        var provider = new SeeingAgentConfigurationProvider();
-        provider.Options.Acp = options.Acp;
-        return new AcpBackendRegistry(provider, NullLogger<AcpBackendRegistry>.Instance);
+        var workspaceMock = new Mock<IWorkspaceProvider>();
+        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(".");
+        workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
+        workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());
+
+        var configManager = new UnifiedConfigManager(
+            workspaceMock.Object,
+            NullLogger<UnifiedConfigManager>.Instance);
+
+        // Set the Acp options
+        configManager.GetSeeingAgentOptions().Acp = options.Acp;
+
+        return new AcpBackendRegistry(configManager, NullLogger<AcpBackendRegistry>.Instance);
     }
 }

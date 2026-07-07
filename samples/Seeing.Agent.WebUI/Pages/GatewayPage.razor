@@ -100,7 +100,7 @@
 
     private async Task SaveAsync()
     {
-        await ConfigService.SaveProjectSectionAsync("Gateway", _gateway);
+        await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?> { ["Gateway"] = _gateway });
         MessageService.Success("Gateway 配置已保存");
         await CheckHealth();
     }

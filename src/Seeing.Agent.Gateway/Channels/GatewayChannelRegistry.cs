@@ -19,17 +19,17 @@ public sealed class GatewayChannelRegistry
 
     private readonly ILogger<GatewayChannelRegistry> _logger;
     private readonly ExtensionLoader _extensionLoader;
-    private readonly SeeingAgentConfigurationProvider _configProvider;
+    private readonly UnifiedConfigManager _configManager;
     private IReadOnlyList<GatewayChannelTypeInfo> _types = Array.Empty<GatewayChannelTypeInfo>();
 
     public GatewayChannelRegistry(
         ILogger<GatewayChannelRegistry> logger,
         ExtensionLoader extensionLoader,
-        SeeingAgentConfigurationProvider configProvider)
+        UnifiedConfigManager configManager)
     {
         _logger = logger;
         _extensionLoader = extensionLoader;
-        _configProvider = configProvider;
+        _configManager = configManager;
     }
 
     public IReadOnlyList<GatewayChannelTypeInfo> Types => _types;
@@ -37,7 +37,7 @@ public sealed class GatewayChannelRegistry
     public void Reload(string workspaceRoot)
     {
         var discovered = new Dictionary<string, GatewayChannelTypeInfo>(StringComparer.OrdinalIgnoreCase);
-        var options = _configProvider.Options.GatewayClients;
+        var options = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
 
         RegisterBuiltinPlugins(discovered);
         RegisterConfiguredPlugins(discovered, options, workspaceRoot);

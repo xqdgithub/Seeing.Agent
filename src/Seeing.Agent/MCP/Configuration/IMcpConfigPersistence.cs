@@ -1,3 +1,4 @@
+using Seeing.Agent.Configuration;
 using Seeing.Agent.MCP.Core;
 using System.Text.Json;
 
@@ -15,7 +16,7 @@ public interface IMcpConfigPersistence
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>服务器名称到配置的只读字典</returns>
     Task<IReadOnlyDictionary<string, McpServerConfig>> LoadAsync(
-        McpConfigLevel level,
+        ConfigLevel level,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -26,7 +27,7 @@ public interface IMcpConfigPersistence
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>异步任务</returns>
     Task SaveAsync(
-        McpConfigLevel level,
+        ConfigLevel level,
         IReadOnlyDictionary<string, McpServerConfig> configs,
         CancellationToken cancellationToken = default);
 
@@ -50,12 +51,12 @@ public interface IMcpConfigPersistence
     /// </summary>
     /// <param name="level">配置级别</param>
     /// <returns>配置文件的完整路径</returns>
-    string GetConfigPath(McpConfigLevel level);
+    string GetConfigPath(ConfigLevel level);
 
     /// <summary>
     /// 检查指定级别的配置文件是否存在
     /// </summary>
     /// <param name="level">配置级别</param>
     /// <returns>文件是否存在</returns>
-    bool ConfigExists(McpConfigLevel level);
+    bool ConfigExists(ConfigLevel level);
 }

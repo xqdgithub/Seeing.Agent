@@ -25,6 +25,10 @@
     </Breadcrumb>
     <Extra>
         <Space>
+            <Select TItemValue="ConfigLevel" TItem="ConfigLevel" @bind-Value="_saveLevel" Style="width: 160px;">
+                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
+                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
+            </Select>
             @if (_agentNames.Count > 0)
             {
                 <Select TItemValue="string" TItem="string"
@@ -79,6 +83,7 @@
     private AgentConfig _agentConfig = new();
     private List<EditableRule> _rules = new();
     private List<string> _modelKeys = new();
+    private ConfigLevel _saveLevel = ConfigLevel.Project;
     private bool _loading;
 
     protected override async Task OnInitializedAsync()
@@ -199,10 +204,10 @@
             Priority = r.Priority
         }).ToList();
 
-        var projectAgents = await ConfigService.LoadLevelSectionAsync<Dictionary<string, AgentConfig>>(ConfigLevel.Project, "Agents")
+        var agents = await ConfigService.LoadLevelSectionAsync<Dictionary<string, AgentConfig>>(_saveLevel, "Agents")
             ?? new Dictionary<string, AgentConfig>(StringComparer.OrdinalIgnoreCase);
-        projectAgents[_agentName] = _agentConfig;
-        await ConfigService.SaveProjectSectionAsync("Agents", projectAgents);
+        agents[_agentName] = _agentConfig;
+        await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?> { ["Agents"] = agents });
         MessageService.Success($"智能体 {_agentName} 配置已保存");
     }
 

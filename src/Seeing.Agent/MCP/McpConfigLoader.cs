@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.MCP.Configuration;
-using Seeing.Agent.MCP.Core;
 
 namespace Seeing.Agent.MCP;
 
@@ -38,17 +37,17 @@ public static class McpConfigLoader
         var configs = new Dictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
 
         // 先加载用户级（作为基础）
-        if (persistence.ConfigExists(McpConfigLevel.User))
+        if (persistence.ConfigExists(ConfigLevel.User))
         {
-            var userConfigs = persistence.LoadAsync(McpConfigLevel.User).GetAwaiter().GetResult();
+            var userConfigs = persistence.LoadAsync(ConfigLevel.User).GetAwaiter().GetResult();
             foreach (var kvp in userConfigs)
                 configs[kvp.Key] = kvp.Value;
         }
 
         // 后加载项目级（覆盖同名服务）
-        if (persistence.ConfigExists(McpConfigLevel.Project))
+        if (persistence.ConfigExists(ConfigLevel.Project))
         {
-            var projectConfigs = persistence.LoadAsync(McpConfigLevel.Project).GetAwaiter().GetResult();
+            var projectConfigs = persistence.LoadAsync(ConfigLevel.Project).GetAwaiter().GetResult();
             foreach (var kvp in projectConfigs)
                 configs[kvp.Key] = kvp.Value;
         }
@@ -83,17 +82,17 @@ public static class McpConfigLoader
         var configs = new Dictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
 
         // 先加载用户级
-        if (persistence.ConfigExists(McpConfigLevel.User))
+        if (persistence.ConfigExists(ConfigLevel.User))
         {
-            var userConfigs = await persistence.LoadAsync(McpConfigLevel.User, cancellationToken);
+            var userConfigs = await persistence.LoadAsync(ConfigLevel.User, cancellationToken);
             foreach (var kvp in userConfigs)
                 configs[kvp.Key] = kvp.Value;
         }
 
         // 后加载项目级
-        if (persistence.ConfigExists(McpConfigLevel.Project))
+        if (persistence.ConfigExists(ConfigLevel.Project))
         {
-            var projectConfigs = await persistence.LoadAsync(McpConfigLevel.Project, cancellationToken);
+            var projectConfigs = await persistence.LoadAsync(ConfigLevel.Project, cancellationToken);
             foreach (var kvp in projectConfigs)
                 configs[kvp.Key] = kvp.Value;
         }

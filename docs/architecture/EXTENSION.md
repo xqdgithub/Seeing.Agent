@@ -335,9 +335,12 @@ var context = new ExtensionContext
     McpClientManager = provider.GetRequiredService<McpClientManager>()
 };
 
-// 4. 加载扩展配置
-var pluginSpecs = ExtensionConfigLoader.LoadDefault(workspaceRoot, logger);
-var enabledOverrides = ExtensionConfigLoader.LoadDefaultEnabledOverrides(workspaceRoot, logger);
+// 4. 加载扩展配置（通过 UnifiedConfigManager）
+var configManager = provider.GetRequiredService<UnifiedConfigManager>();
+await configManager.LoadAsync();
+var options = configManager.GetSeeingAgentOptions();
+var pluginSpecs = options.Plugins;
+var enabledOverrides = options.PluginEnabled;
 
 // 5. 初始化扩展系统
 var extensionManager = provider.GetRequiredService<ExtensionManager>();
@@ -371,12 +374,14 @@ await extensionManager.InitializeAsync(pluginSpecs, enabledOverrides, context);
 | `LoadFromAssembly(path)` | 从程序集加载扩展实例 |
 | `LoadExternal(specs, context)` | 加载外部插件 |
 
-### ExtensionConfigLoader
+### UnifiedConfigManager（扩展配置相关）
 
-| 方法 | 说明 |
+| 方法/属性 | 说明 |
 |------|------|
-| `Load(userPath, projectPath, logger)` | 加载配置（合并） |
-| `LoadDefault(workspaceRoot, logger)` | 加载默认配置 |
+| `GetSeeingAgentOptions().Plugins` | 获取插件列表 |
+| `GetSeeingAgentOptions().PluginEnabled` | 获取插件启用状态字典 |
+| `SaveSectionAsync("Plugins", value, level)` | 保存插件配置 |
+| `SaveSectionAsync("PluginEnabled", value, level)` | 保存启用状态 |
 | `LoadEnabledOverrides(userPath, projectPath, logger)` | 加载启用状态覆盖 |
 | `GetDefaultPaths(workspaceRoot)` | 获取默认配置路径 |
 

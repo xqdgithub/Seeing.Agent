@@ -361,7 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/.playwright-cli
+.playwright-cli/
 /screenshots
 /samples/Seeing.Agent.WebUI/nul
 /nul
@@ -372,15 +372,12 @@ FodyWeavers.xsd
 .sisyphus/
 .sisyphusevidence/
 
-# Repo-root local Seeing config (sample templates live under samples/)
-/.seeing/
-
-# MCP config may contain API tokens; use mcp.json.example as template
-**/.seeing/mcp.json
+# Local Seeing config (all levels: repo-root and samples/)
+# Sample templates should use .seeing.template/ or document inline
+.seeing/
 
 # Local build logs
 build_output.txt
 
 # Dev screenshots (not referenced by docs)
 /*.png
-/samples/Seeing.Agent.WebUI/alert_report

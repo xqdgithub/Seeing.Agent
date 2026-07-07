@@ -25,29 +25,31 @@ public sealed class GatewayClientConfigService
         Converters = { new JsonStringEnumConverter() }
     };
 
-    private readonly SeeingConfigService _configService;
+    private readonly UnifiedConfigManager _configManager;
+    private readonly IWorkspaceProvider _workspaceProvider;
     private readonly GatewayChannelRegistry _registry;
     private readonly ILogger<GatewayClientConfigService> _logger;
     private readonly string _clientsDirectory;
 
     public GatewayClientConfigService(
-        SeeingConfigService configService,
+        UnifiedConfigManager configManager,
+        IWorkspaceProvider workspaceProvider,
         GatewayChannelRegistry registry,
         ILogger<GatewayClientConfigService> logger)
     {
-        _configService = configService;
+        _configManager = configManager;
+        _workspaceProvider = workspaceProvider;
         _registry = registry;
         _logger = logger;
-        var workspaceRoot = Directory.GetCurrentDirectory();
-        _clientsDirectory = Path.Combine(workspaceRoot, ".seeing", "gateway-clients");
+        _clientsDirectory = Path.Combine(_workspaceProvider.ProjectSeeingDirectory, "gateway-clients");
     }
 
     public string ClientsDirectory => _clientsDirectory;
 
     public async Task<IReadOnlyList<GatewayClientViewModel>> GetClientsAsync(CancellationToken ct = default)
     {
-        var options = await _configService.LoadProjectOptionsAsync();
-        var gatewayClients = options.GatewayClients;
+        var gatewayClients = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
+        var serverGateway = _configManager.GetGatewayOptions();
         var result = new List<GatewayClientViewModel>();
 
         foreach (var typeInfo in _registry.Types)
@@ -62,7 +64,7 @@ public sealed class GatewayClientConfigService
                 typeInfo,
                 entry,
                 gatewayClients.Defaults,
-                options.Gateway,
+                serverGateway,
                 ct);
 
             if (entry.Options is { Count: > 0 })
@@ -100,10 +102,9 @@ public sealed class GatewayClientConfigService
 
         await WriteChannelConfigAsync(typeInfo, model, ct);
 
-        await _configService.SaveGatewayClientsSectionAsync(options =>
-        {
-            options.GatewayClients.Channels[model.ChannelId] = CreateRegistryEntry(model, typeInfo);
-        }, ct);
+        var gatewayClients = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
+        gatewayClients.Channels[model.ChannelId] = CreateRegistryEntry(model, typeInfo);
+        await _configManager.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
 
         _logger.LogInformation(
             "已保存 Gateway Client 配置: {ChannelId} -> {ConfigPath}",
@@ -150,26 +151,23 @@ public sealed class GatewayClientConfigService
     }
 
     public void ReloadRegistry() =>
-        _registry.Reload(Directory.GetCurrentDirectory());
+        _registry.Reload(_workspaceProvider.WorkspaceRoot);
 
     public async Task InstallPluginAsync(string sourceDllPath, CancellationToken ct = default)
     {
-        Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), ".seeing", "gateway-channels"));
-        var targetDir = Path.Combine(Directory.GetCurrentDirectory(), ".seeing", "gateway-channels");
+        var targetDir = Path.Combine(_workspaceProvider.ProjectSeeingDirectory, "gateway-channels");
+        Directory.CreateDirectory(targetDir);
         var fileName = Path.GetFileName(sourceDllPath);
         var targetPath = Path.Combine(targetDir, fileName);
         File.Copy(sourceDllPath, targetPath, overwrite: true);
         ReloadRegistry();
 
-        var options = await _configService.LoadProjectOptionsAsync();
+        var gatewayClients = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
         var spec = $"file://{targetPath.Replace('\\', '/')}";
-        if (!options.GatewayClients.Plugins.Any(p => p.Spec.Equals(spec, StringComparison.OrdinalIgnoreCase)))
+        if (!gatewayClients.Plugins.Any(p => p.Spec.Equals(spec, StringComparison.OrdinalIgnoreCase)))
         {
-            await _configService.SaveGatewayClientsSectionAsync(options =>
-            {
-                if (!options.GatewayClients.Plugins.Any(p => p.Spec.Equals(spec, StringComparison.OrdinalIgnoreCase)))
-                    options.GatewayClients.Plugins.Add(new PluginSpec { Spec = spec });
-            }, ct);
+            gatewayClients.Plugins.Add(new PluginSpec { Spec = spec });
+            await _configManager.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
         }
     }
 
@@ -239,17 +237,16 @@ public sealed class GatewayClientConfigService
             _logger.LogInformation("已将 legacy Gateway Client 配置迁移到 {Path}", configPath);
         }
 
-        await _configService.SaveGatewayClientsSectionAsync(options =>
+        var gatewayClients = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
+        if (gatewayClients.Channels.TryGetValue(typeInfo.ChannelId, out var existing))
         {
-            if (!options.GatewayClients.Channels.TryGetValue(typeInfo.ChannelId, out var existing))
-                return;
-
-            options.GatewayClients.Channels[typeInfo.ChannelId] = new GatewayChannelEntry
+            gatewayClients.Channels[typeInfo.ChannelId] = new GatewayChannelEntry
             {
                 Enabled = existing.Enabled,
                 PluginSpec = existing.PluginSpec
             };
-        }, ct);
+            await _configManager.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
+        }
     }
 
     private async Task WriteChannelConfigAsync(

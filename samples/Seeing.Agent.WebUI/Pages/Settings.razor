@@ -4,10 +4,7 @@
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Components
 @using Seeing.Agent.WebUI.Services
-@using Seeing.Agent.WebUI.State
 @inject SeeingConfigService ConfigService
-@inject IWorkspaceProvider WorkspaceProvider
-@inject AppState AppState
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 
@@ -19,7 +16,16 @@
         <BreadcrumbItem>系统设置</BreadcrumbItem>
     </Breadcrumb>
     <Extra>
-        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveCurrentTab">保存</Button>
+        <Space>
+            @if (_activeTab == "general" || _activeTab == "plugins")
+            {
+                <Select TItemValue="ConfigLevel" TItem="ConfigLevel" @bind-Value="_saveLevel" Style="width: 160px;">
+                    <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
+                    <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
+                </Select>
+            }
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveCurrentTab">保存</Button>
+        </Space>
     </Extra>
     <ChildContent>
         <Tabs @bind-ActiveKey="_activeTab">
@@ -28,9 +34,6 @@
                     <FormItem Label="默认智能体"><Input @bind-Value="@_options.DefaultAgent" /></FormItem>
                     <FormItem Label="默认模型"><Input @bind-Value="@_options.DefaultModel" /></FormItem>
                     <FormItem Label="工作区路径"><Input Value="@_workspacePath" Disabled="true" /></FormItem>
-                    <FormItem Label="深色主题">
-                        <Switch Checked="@(_theme == "dark")" OnChange="@OnThemeChanged" />
-                    </FormItem>
                 </Form>
             </TabPane>
             <TabPane Key="scheduler" Tab="调度器">
@@ -71,16 +74,15 @@
 
 @code {
     private string _activeTab = "general";
+    private ConfigLevel _saveLevel = ConfigLevel.Project;
     private SeeingAgentOptions _options = new();
     private SchedulerOptions _scheduler = new();
     private string _rawJson = "";
     private string _workspacePath = "";
-    private string _theme = "light";
     private List<PluginRow> _pluginRows = new();
 
     protected override async Task OnInitializedAsync()
     {
-        _theme = AppState.Theme;
         _workspacePath = WorkspaceProvider.WorkspaceRoot;
         _options = await ConfigService.LoadProjectOptionsAsync();
         _scheduler = ConfigService.GetSchedulerOptions();
@@ -111,7 +113,7 @@
             switch (_activeTab)
             {
                 case "general":
-                    await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+                    await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>
                     {
                         ["DefaultAgent"] = _options.DefaultAgent,
                         ["DefaultModel"] = _options.DefaultModel
@@ -127,7 +129,10 @@
                     });
                     break;
                 case "plugins":
-                    await ConfigService.SaveProjectSectionAsync("PluginEnabled", _options.PluginEnabled);
+                    await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>
+                    {
+                        ["PluginEnabled"] = _options.PluginEnabled
+                    });
                     break;
                 case "advanced":
                     await ConfigService.SaveRawProjectJsonAsync(_rawJson);
@@ -140,13 +145,6 @@
         {
             MessageService.Error($"保存失败: {ex.Message}");
         }
-    }
-
-    private void OnThemeChanged(bool dark)
-    {
-        _theme = dark ? "dark" : "light";
-        AppState.Theme = _theme;
-        AppState.NotifyChange();
     }
 
     private sealed class PluginRow

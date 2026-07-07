@@ -1,5 +1,6 @@
 ﻿@page "/mcp"
 @using AntDesign
+@using Seeing.Agent.Configuration
 @using Seeing.Agent.MCP
 @using Seeing.Agent.MCP.Core
 @using Seeing.Agent.WebUI.Services
@@ -244,9 +245,9 @@
     
     <div class="config-path-info">
         <span>Save to:</span>
-        <Select TItem="McpConfigLevel" TItemValue="McpConfigLevel" @bind-Value="_saveLevel" Style="width: 200px;">
-            <SelectOption TItem="McpConfigLevel" TItemValue="McpConfigLevel" Value="@McpConfigLevel.Project">Project Level</SelectOption>
-            <SelectOption TItem="McpConfigLevel" TItemValue="McpConfigLevel" Value="@McpConfigLevel.User">User Level</SelectOption>
+        <Select TItem="ConfigLevel" TItemValue="ConfigLevel" @bind-Value="_saveLevel" Style="width: 200px;">
+            <SelectOption TItem="ConfigLevel" TItemValue="ConfigLevel" Value="@ConfigLevel.Project">Project Level</SelectOption>
+            <SelectOption TItem="ConfigLevel" TItemValue="ConfigLevel" Value="@ConfigLevel.User">User Level</SelectOption>
         </Select>
         <Text Type="@TextElementType.Secondary">@McpStateService.GetConfigFilePath(_saveLevel)</Text>
     </div>
@@ -267,7 +268,7 @@
     private string _editMode = "";  // "add" or "edit"
     private string _editingJson = "";
     private string _editingServerName = "";
-    private McpConfigLevel _saveLevel = McpConfigLevel.Project;
+    private ConfigLevel _saveLevel = ConfigLevel.Project;
     private bool _saving = false;
     
     private readonly string _jsonPlaceholder = @"{
@@ -332,7 +333,7 @@
         _editMode = "add";
         _editingServerName = "";
         _editingJson = _jsonAddTemplate;
-        _saveLevel = McpConfigLevel.Project;
+        _saveLevel = ConfigLevel.Project;
         _jsonEditorVisible = true;
     }
     

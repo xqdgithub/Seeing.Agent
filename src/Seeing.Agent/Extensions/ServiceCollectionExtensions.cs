@@ -51,15 +51,17 @@ namespace Seeing.Agent.Extensions
         {
             _ = configuration;
 
-            var loggerFactory = services.BuildServiceProvider().GetService<ILoggerFactory>();
-            var logger = loggerFactory?.CreateLogger(typeof(ServiceCollectionExtensions));
-
-            services.AddSingleton<SeeingAgentConfigurationProvider>(sp =>
+            // 注册 UnifiedConfigManager
+            services.AddSingleton<UnifiedConfigManager>(sp =>
             {
-                var provider = new SeeingAgentConfigurationProvider();
-                provider.Load(workspaceRoot: null, logger);
-                return provider;
+                var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
+                var manager = new UnifiedConfigManager(workspace, logger);
+                manager.LoadAsync().GetAwaiter().GetResult();
+                return manager;
             });
+            
+            // IOptions 兼容
             services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
             services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
 
@@ -79,12 +81,17 @@ namespace Seeing.Agent.Extensions
             this IServiceCollection services,
             Action<SeeingAgentOptions> configure)
         {
-            services.AddSingleton<SeeingAgentConfigurationProvider>(sp =>
+            // 注册 UnifiedConfigManager
+            services.AddSingleton<UnifiedConfigManager>(sp =>
             {
-                var provider = new SeeingAgentConfigurationProvider();
-                configure(provider.Options);
-                return provider;
+                var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
+                var manager = new UnifiedConfigManager(workspace, logger);
+                configure(manager.GetSeeingAgentOptions());
+                return manager;
             });
+            
+            // IOptions 兼容
             services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
             services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
 
@@ -220,10 +227,18 @@ namespace Seeing.Agent.Extensions
         {
             _ = configuration;
 
-            if (!services.Any(d => d.ServiceType == typeof(SeeingAgentConfigurationProvider)))
+            if (!services.Any(d => d.ServiceType == typeof(UnifiedConfigManager)))
             {
-                services.AddSingleton<SeeingAgentConfigurationProvider>();
+                services.AddSingleton<UnifiedConfigManager>(sp =>
+                {
+                    var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                    var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
+                    var manager = new UnifiedConfigManager(workspace, logger);
+                    manager.LoadAsync().GetAwaiter().GetResult();
+                    return manager;
+                });
                 services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
+                services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
             }
 
             RegisterLlmServices(services);
@@ -602,14 +617,17 @@ namespace Seeing.Agent.Extensions
             if (services.GetService<IWorkspaceProvider>() is WorkspaceProvider workspaceProvider)
                 workspaceProvider.SetWorkspaceRoot(workspaceRoot);
 
-            if (services.GetService<SeeingAgentConfigurationProvider>() is { } configProvider)
+            if (services.GetService<UnifiedConfigManager>() is { } configManager)
             {
-                configProvider.ReloadForWorkspace(workspaceRoot, logger);
+                await configManager.ReloadAsync(cancellationToken);
 
-                if (services.GetService<AgentRegistry>() is { } registry &&
-                    configProvider.Options.Agents.Count > 0)
+                if (services.GetService<AgentRegistry>() is { } registry)
                 {
-                    registry.ExtendFromConfig(configProvider.Options.Agents);
+                    var agents = configManager.GetSection<Dictionary<string, AgentConfig>>("Agents");
+                    if (agents.Count > 0)
+                    {
+                        registry.ExtendFromConfig(agents);
+                    }
                 }
             }
 

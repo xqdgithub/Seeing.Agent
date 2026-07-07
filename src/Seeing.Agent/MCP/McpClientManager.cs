@@ -278,10 +278,10 @@ namespace Seeing.Agent.MCP
 
         #region IMcpConfigManager 实现
 
-        public async Task<McpOperationResult> AddServerAsync(string name, McpServerConfig config, McpConfigLevel? level = null, bool persist = true, CancellationToken cancellationToken = default)
+        public async Task<McpOperationResult> AddServerAsync(string name, McpServerConfig config, ConfigLevel? level = null, bool persist = true, CancellationToken cancellationToken = default)
         {
             config.Name = name;
-            config.ConfigLevel = level ?? McpConfigLevel.Project;
+            config.ConfigLevel = level ?? ConfigLevel.Project;
             var validation = McpConfigValidator.Validate(config);
             if (!validation.IsValid)
                 return McpOperationResult.Failed(name, McpOperationType.Add, validation.Error!);
@@ -321,7 +321,7 @@ namespace Seeing.Agent.MCP
             if (config == null)
                 return McpOperationResult.NoChange(name, McpOperationType.Remove, CoreMcpConnectionState.Removed);
 
-            var configLevel = config.ConfigLevel ?? McpConfigLevel.Project;
+            var configLevel = config.ConfigLevel ?? ConfigLevel.Project;
             var disconnectResult = await DisconnectServerAsync(name, cancellationToken);
 
             lock (_stateLock)
@@ -378,7 +378,7 @@ namespace Seeing.Agent.MCP
 
             // 保留原有的 ConfigLevel
             var existingConfig = GetConfig(name);
-            config.ConfigLevel = existingConfig?.ConfigLevel ?? McpConfigLevel.Project;
+            config.ConfigLevel = existingConfig?.ConfigLevel ?? ConfigLevel.Project;
 
             lock (_stateLock)
             {
@@ -453,7 +453,7 @@ namespace Seeing.Agent.MCP
             }
         }
 
-        public async Task SaveConfigAsync(McpConfigLevel level, CancellationToken cancellationToken = default)
+        public async Task SaveConfigAsync(ConfigLevel level, CancellationToken cancellationToken = default)
         {
             // 加锁获取配置快照，避免迭代期间被修改
             Dictionary<string, McpServerConfig> configsToSave;
@@ -478,24 +478,24 @@ namespace Seeing.Agent.MCP
         }
 
         /// <inheritdoc />
-        public McpConfigLevel? GetConfigLevel(string name)
+        public ConfigLevel? GetConfigLevel(string name)
         {
             lock (_stateLock)
             {
                 if (_configs.TryGetValue(name, out var config))
-                    return config.ConfigLevel ?? McpConfigLevel.Project;
+                    return config.ConfigLevel ?? ConfigLevel.Project;
                 return null;
             }
         }
 
         /// <inheritdoc />
-        public string GetConfigFilePath(McpConfigLevel level)
+        public string GetConfigFilePath(ConfigLevel level)
         {
             return _configPersistence.GetConfigPath(level);
         }
 
         /// <inheritdoc />
-        public string GetConfigsAsJson(McpConfigLevel level, bool indented = true)
+        public string GetConfigsAsJson(ConfigLevel level, bool indented = true)
         {
             var options = new JsonSerializerOptions
             {
@@ -543,7 +543,7 @@ namespace Seeing.Agent.MCP
                 {
                     try
                     {
-                        var configLevel = config.ConfigLevel ?? McpConfigLevel.Project;
+                        var configLevel = config.ConfigLevel ?? ConfigLevel.Project;
                         await SaveConfigAsync(configLevel, cancellationToken);
                     }
                     catch (Exception ex)
@@ -588,7 +588,7 @@ namespace Seeing.Agent.MCP
                 {
                     try
                     {
-                        var configLevel = config.ConfigLevel ?? McpConfigLevel.Project;
+                        var configLevel = config.ConfigLevel ?? ConfigLevel.Project;
                         await SaveConfigAsync(configLevel, cancellationToken);
                     }
                     catch (Exception ex)
@@ -621,7 +621,7 @@ namespace Seeing.Agent.MCP
         }
 
         /// <inheritdoc />
-        public async Task<int> ImportFromJsonAsync(string json, McpConfigLevel level, bool overwrite = false, bool persist = true, CancellationToken cancellationToken = default)
+        public async Task<int> ImportFromJsonAsync(string json, ConfigLevel level, bool overwrite = false, bool persist = true, CancellationToken cancellationToken = default)
         {
             var count = 0;
             using var doc = JsonDocument.Parse(json, new JsonDocumentOptions

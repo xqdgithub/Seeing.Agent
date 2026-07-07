@@ -1,3 +1,4 @@
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Helpers;
@@ -118,7 +119,7 @@ namespace Seeing.Agent.MCP
 
         /// <summary>配置来源级别（运行时设置，不序列化）</summary>
         [JsonIgnore]
-        public McpConfigLevel? ConfigLevel { get; set; }
+        public ConfigLevel? ConfigLevel { get; set; }
 
         // —— OAuth 配置 ——
 

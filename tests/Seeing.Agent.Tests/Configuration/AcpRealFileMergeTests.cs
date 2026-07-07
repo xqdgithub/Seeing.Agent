@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Seeing.Agent.Configuration;
 using Xunit;
 
@@ -7,7 +9,7 @@ namespace Seeing.Agent.Tests.Configuration;
 public class AcpRealFileMergeTests
 {
     [Fact]
-    public void ReloadWithRealUserAndProjectFiles_ProjectBackendOverridesUser()
+    public async Task ReloadWithRealUserAndProjectFiles_ProjectBackendOverridesUser()
     {
         var userPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -39,10 +41,23 @@ public class AcpRealFileMergeTests
             StringComparison.Ordinal);
         File.WriteAllText(projectFile, json);
 
-        var options = new SeeingAgentOptions();
-        SeeingAgentConfigurationProvider.LoadFromFile(userPath, options, "user");
-        SeeingAgentConfigurationProvider.LoadFromFile(projectFile, options, "project");
+        // Use UnifiedConfigManager to load and merge
+        var userSeeingDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".seeing");
 
+        var workspaceMock = new Mock<IWorkspaceProvider>();
+        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(tempDir);
+        workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeingDir);
+        workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(tempProjectSeeing);
+
+        var configManager = new UnifiedConfigManager(
+            workspaceMock.Object,
+            NullLogger<UnifiedConfigManager>.Instance);
+
+        await configManager.LoadAsync();
+
+        var options = configManager.GetSeeingAgentOptions();
         options.Acp.Backends.Should().ContainKey("cursor");
         options.Acp.Backends["cursor"].Command.Should().Be(@"C:\TEMP\project-override.cmd");
 
