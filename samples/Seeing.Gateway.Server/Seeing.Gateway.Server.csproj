@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\acp.net\Acp.NetCore\src\Acp\Acp.NetCore.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent\Seeing.Agent.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />

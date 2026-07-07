@@ -1,6 +1,6 @@
 <Solution>
   <Folder Name="/acp.net/">
-    <Project Path="../dotnet-acp/src/Acp/Acp.NetCore.csproj" />
+    <Project Path="acp.net/Acp.NetCore/src/Acp/Acp.NetCore.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />

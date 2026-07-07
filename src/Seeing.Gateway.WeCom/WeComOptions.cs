@@ -51,7 +51,7 @@ public sealed class WeComOptions
         return $"{baseText}\n\n{DefaultCommandHints}";
     }
 
-    [Display(Name = "最大重连次数", GroupName = "连接")]
+    [Display(Name = "最大重连次数", GroupName = "连接", Description = "-1 表示无限重连；0 同 -1；>0 为最多重试次数")]
     public int MaxReconnectAttempts { get; set; } = -1;
 
     [Display(Name = "流式回复", GroupName = "消息")]
@@ -63,11 +63,19 @@ public sealed class WeComOptions
     [Display(Name = "欢迎语", GroupName = "消息")]
     public string? WelcomeText { get; set; } = DefaultWelcomeText;
 
-    [Display(Name = "心跳间隔（秒）", GroupName = "连接")]
+    [Display(Name = "心跳间隔（秒）", GroupName = "连接", Description = "0 表示使用默认值 30")]
     public int HeartbeatIntervalSeconds { get; set; } = 30;
 
-    [Display(Name = "增量节流（毫秒）", GroupName = "消息")]
+    /// <summary>有效心跳间隔（秒）。</summary>
+    public int EffectiveHeartbeatIntervalSeconds =>
+        HeartbeatIntervalSeconds > 0 ? HeartbeatIntervalSeconds : 30;
+
+    [Display(Name = "增量节流（毫秒）", GroupName = "消息", Description = "0 表示使用默认值 150")]
     public int DeltaThrottleMilliseconds { get; set; } = 150;
+
+    /// <summary>有效增量节流（毫秒）。</summary>
+    public int EffectiveDeltaThrottleMilliseconds =>
+        DeltaThrottleMilliseconds > 0 ? DeltaThrottleMilliseconds : 150;
 
     public const int DefaultProcessingRefreshSeconds = 20;
 
@@ -118,4 +126,8 @@ public sealed class WeComOptions
     /// <summary>权限卡片映射 TTL（秒）</summary>
     [Display(Name = "权限卡片 TTL（秒）", GroupName = "权限")]
     public int PermissionCardTtlSeconds { get; set; } = 600;
+
+    /// <summary>有效权限卡片 TTL（秒）。0 或未配置时使用默认 600。</summary>
+    public int EffectivePermissionCardTtlSeconds =>
+        PermissionCardTtlSeconds > 0 ? PermissionCardTtlSeconds : 600;
 }

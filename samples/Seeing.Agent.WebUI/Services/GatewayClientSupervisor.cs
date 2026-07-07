@@ -141,21 +141,7 @@ public sealed class GatewayClientSupervisor
             state.LastError = null;
             await _configService.SaveRuntimeStateAsync(channelId, state, ct);
 
-            _ = Task.Run(async () =>
-            {
-                var error = await process.StandardError.ReadToEndAsync(CancellationToken.None);
-                await process.WaitForExitAsync(CancellationToken.None);
-                if (process.ExitCode != 0)
-                {
-                    var failed = await _configService.LoadRuntimeStateAsync(channelId, CancellationToken.None);
-                    failed.Status = GatewayClientStatuses.Error;
-                    failed.ProcessId = null;
-                    failed.LastError = string.IsNullOrWhiteSpace(error)
-                        ? $"进程退出，代码 {process.ExitCode}"
-                        : error.Trim();
-                    await _configService.SaveRuntimeStateAsync(channelId, failed, CancellationToken.None);
-                }
-            }, CancellationToken.None);
+            _ = Task.Run(() => PumpProcessOutputAsync(process, channelId), CancellationToken.None);
 
             _logger.LogInformation(
                 "已启动 Gateway Client {ChannelId}, PID={Pid}, Host={HostDir}",
@@ -245,6 +231,57 @@ public sealed class GatewayClientSupervisor
             {
                 _logger.LogWarning(ex, "停止 Gateway Client {ChannelId} 时出现异常", client.ChannelId);
             }
+        }
+    }
+
+    private async Task PumpProcessOutputAsync(Process process, string channelId)
+    {
+        try
+        {
+            var stdoutTask = PumpStreamAsync(
+                process.StandardOutput,
+                line => _logger.LogInformation("[{ChannelId}] {Line}", channelId, line));
+
+            var stderrTask = PumpStreamAsync(
+                process.StandardError,
+                line => _logger.LogWarning("[{ChannelId}] {Line}", channelId, line));
+
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+
+            var runtime = await _configService.LoadRuntimeStateAsync(channelId, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (runtime.ProcessId != process.Id)
+                return;
+
+            runtime.ProcessId = null;
+            runtime.Status = process.ExitCode == 0
+                ? GatewayClientStatuses.Stopped
+                : GatewayClientStatuses.Error;
+            if (process.ExitCode != 0 && string.IsNullOrWhiteSpace(runtime.LastError))
+                runtime.LastError = $"进程退出，代码 {process.ExitCode}";
+
+            await _configService.SaveRuntimeStateAsync(channelId, runtime, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "读取 Channel {ChannelId} 输出时出现异常", channelId);
+        }
+    }
+
+    private static async Task PumpStreamAsync(
+        StreamReader reader,
+        Action<string> onLine)
+    {
+        while (true)
+        {
+            var line = await reader.ReadLineAsync().ConfigureAwait(false);
+            if (line is null)
+                break;
+
+            if (!string.IsNullOrWhiteSpace(line))
+                onLine(line);
         }
     }
 

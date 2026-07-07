@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
+using Seeing.Gateway.WeCom.Connection;
 
 namespace Seeing.Gateway.WeCom.Extensions;
 
@@ -28,9 +29,15 @@ public static class WeComServiceCollectionExtensions
         services.AddSeeingGatewayClient();
         services.AddSingleton<WeComSessionTracker>();
         services.AddSingleton<WeComCommandInterceptor>();
+        services.AddSingleton<WeComAibotSession>();
+        services.AddSingleton<WeComOutboundGovernor>();
+        services.AddSingleton<WeComOutboundChannel>();
+        services.AddSingleton<WeComConnectionManager>();
         services.AddSingleton<WeComAibotWsClient>();
         services.AddSingleton<WeComPermissionPolicy>();
         services.AddSingleton<WeComPermissionState>();
+        services.AddSingleton<WeComPermissionResponder>();
+        services.AddSingleton<WeComActiveStreamRegistry>();
         services.AddSingleton<WeComChannelBridge>();
         services.AddSingleton<IChannelBridge>(sp => sp.GetRequiredService<WeComChannelBridge>());
 

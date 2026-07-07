@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Gateway;
 using Seeing.Gateway.Channels;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Client;
+using Seeing.Gateway.WeCom.Connection;
 
 namespace Seeing.Gateway.WeCom;
 
@@ -22,6 +24,9 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
     private readonly WeComPermissionState _permissionState;
     private readonly WeComSessionTracker _sessionTracker;
     private readonly WeComCommandInterceptor _commandInterceptor;
+    private readonly WeComPermissionResponder _permissionResponder;
+    private readonly WeComActiveStreamRegistry _activeStreams;
+    private readonly IHostApplicationLifetime? _hostLifetime;
     private readonly ILogger<WeComChannelBridge> _logger;
 
     private readonly ConcurrentDictionary<string, byte> _processedMessageIds = new();
@@ -38,7 +43,10 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         WeComPermissionState permissionState,
         WeComSessionTracker sessionTracker,
         WeComCommandInterceptor commandInterceptor,
-        ILogger<WeComChannelBridge> logger)
+        WeComPermissionResponder permissionResponder,
+        WeComActiveStreamRegistry activeStreams,
+        ILogger<WeComChannelBridge> logger,
+        IHostApplicationLifetime? hostLifetime = null)
     {
         _options = options.Value;
         _commonOptions = commonOptions.Value;
@@ -49,7 +57,10 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _permissionState = permissionState;
         _sessionTracker = sessionTracker;
         _commandInterceptor = commandInterceptor;
+        _permissionResponder = permissionResponder;
+        _activeStreams = activeStreams;
         _gatewayAdapter = new WebSocketGatewayClientAdapter(gatewayClient);
+        _hostLifetime = hostLifetime;
         _logger = logger;
     }
 
@@ -69,6 +80,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _weComClient.OnMessage += HandleWeComMessageAsync;
         _weComClient.OnEvent += HandleWeComEventAsync;
+        _weComClient.ConnectionChanged += HandleConnectionChanged;
 
         await _gatewayClient.ConnectAsync(_cts.Token).ConfigureAwait(false);
 
@@ -77,7 +89,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
             BotId = _options.BotId,
             Secret = _options.Secret,
             WsUrl = _options.WsUrl,
-            HeartbeatIntervalSeconds = _options.HeartbeatIntervalSeconds,
+            HeartbeatIntervalSeconds = _options.EffectiveHeartbeatIntervalSeconds,
             MaxReconnectAttempts = _options.MaxReconnectAttempts
         }, _cts.Token).ConfigureAwait(false);
 
@@ -88,6 +100,9 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
     {
         _weComClient.OnMessage -= HandleWeComMessageAsync;
         _weComClient.OnEvent -= HandleWeComEventAsync;
+        _weComClient.ConnectionChanged -= HandleConnectionChanged;
+
+        await _activeStreams.AbortAllAsync("Bridge 正在停止", CancellationToken.None).ConfigureAwait(false);
         _cts?.Cancel();
 
         await _weComClient.DisposeAsync().ConfigureAwait(false);
@@ -96,6 +111,52 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _cts?.Dispose();
         _cts = null;
     }
+
+    private void HandleConnectionChanged(object? sender, WeComConnectionChangedEventArgs e)
+    {
+        if (IsTransientDisconnect(e))
+        {
+            _logger.LogWarning(
+                "WeCom 连接 transient 断开: {Previous} → {Current}, epoch={Epoch}, reason={Reason}, connected={ConnectedSeconds:F1}s",
+                e.PreviousState,
+                e.CurrentState,
+                e.Epoch,
+                e.Reason,
+                e.ConnectedDuration?.TotalSeconds);
+
+            _ = _activeStreams.PauseAllAsync(CancellationToken.None);
+        }
+        else if (e.CurrentState == WeComConnectionState.Superseded)
+        {
+            _logger.LogWarning(
+                "WeCom 连接被取代: epoch={Epoch}, reason={Reason}",
+                e.Epoch,
+                e.Reason);
+
+            _ = _activeStreams.AbortAllAsync("连接已被其他实例取代", CancellationToken.None);
+        }
+        else if (e.CurrentState == WeComConnectionState.Active)
+        {
+            _logger.LogInformation("WeCom 连接已恢复 (epoch={Epoch})", e.Epoch);
+            _ = _activeStreams.FlushAllAsync(CancellationToken.None);
+        }
+        else if (e.CurrentState == WeComConnectionState.Failed)
+        {
+            _logger.LogCritical(
+                "WeCom 连接无法恢复 (epoch={Epoch}, reason={Reason})，Channel 即将停止",
+                e.Epoch,
+                e.Reason);
+
+            _ = _activeStreams.AbortAllAsync("连接无法恢复", CancellationToken.None);
+            _hostLifetime?.StopApplication();
+        }
+    }
+
+    private static bool IsTransientDisconnect(WeComConnectionChangedEventArgs e) =>
+        e.PreviousState is WeComConnectionState.Subscribed or WeComConnectionState.Active
+        && e.CurrentState is WeComConnectionState.Stopping
+            or WeComConnectionState.Disconnected
+            or WeComConnectionState.Backoff;
 
     private Task HandleWeComMessageAsync(WeComIncomingContext context, CancellationToken cancellationToken)
     {
@@ -107,6 +168,15 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         WeComIncomingContext context,
         CancellationToken cancellationToken)
     {
+        if (WeComMessageParser.TryParseStreamRefresh(context, out var streamId) && streamId != null)
+        {
+            if (_activeStreams.TryHandleRefresh(context.Frame, streamId, cancellationToken))
+                return;
+
+            _logger.LogDebug("WeCom 流式刷新无匹配 stream: {StreamId}", streamId);
+            return;
+        }
+
         var (ok, parsed) = await WeComMessageParser.TryParseAsync(
                 context,
                 _mediaFetcher,
@@ -126,13 +196,19 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
             sessionId,
             parsed.InputParts.Count);
 
+        if (await _permissionResponder.TryHandleTextReplyAsync(parsed, sessionId, cancellationToken).ConfigureAwait(false))
+        {
+            _sessionTracker.Touch(parsed);
+            return;
+        }
+
         if (await _commandInterceptor.TryHandleAsync(parsed, sessionId, cancellationToken).ConfigureAwait(false))
         {
             _sessionTracker.Touch(parsed);
             return;
         }
 
-        _ = ProcessMessageAsync(parsed, sessionId, cancellationToken);
+        _ = ProcessMessageAsync(parsed, sessionId);
     }
 
     private Task HandleWeComEventAsync(WeComWsFrame frame, CancellationToken cancellationToken)
@@ -143,6 +219,15 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
     private async Task HandleWeComEventCoreAsync(WeComWsFrame frame, CancellationToken cancellationToken)
     {
+        if (WeComEventParser.TryParseDisconnectedEvent(frame, out var disconnected) && disconnected != null)
+        {
+            _logger.LogInformation(
+                "WeCom Bridge 收到 disconnected_event: MessageId={MessageId}, AiBotId={AiBotId}",
+                disconnected.MessageId,
+                disconnected.AiBotId);
+            return;
+        }
+
         if (WeComEventParser.TryParseEnterChat(frame, out var enterChat) && enterChat != null)
         {
             await HandleEnterChatAsync(enterChat, cancellationToken).ConfigureAwait(false);
@@ -178,62 +263,48 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         }
     }
 
-    private async Task HandleTemplateCardEventAsync(
+    private Task HandleTemplateCardEventAsync(
         ParsedWeComTemplateCardEvent cardEvent,
         CancellationToken cancellationToken)
     {
-        if (!_permissionState.TryGetByTaskId(cardEvent.TaskId, out var pending))
-        {
-            _logger.LogWarning("WeCom 模板卡片事件无匹配权限: TaskId={TaskId}", cardEvent.TaskId);
-            return;
-        }
+        _ = HandleTemplateCardEventCoreAsync(cardEvent, cancellationToken);
+        return Task.CompletedTask;
+    }
 
-        bool? allow = null;
-        if (_permissionPolicy.IsAllowEventKey(cardEvent.EventKey))
-            allow = true;
-        else if (_permissionPolicy.IsDenyEventKey(cardEvent.EventKey))
-            allow = false;
-
-        if (allow == null)
-        {
-            _logger.LogWarning("WeCom 未知模板卡片 event_key: {EventKey}", cardEvent.EventKey);
-            return;
-        }
-
+    private async Task HandleTemplateCardEventCoreAsync(
+        ParsedWeComTemplateCardEvent cardEvent,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            await _gatewayClient.RespondPermissionAsync(
-                pending.SessionId,
-                pending.PermissionId,
-                allow.Value,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _permissionState.TryRemoveByTaskId(cardEvent.TaskId, out _);
-
-            var updateBody = WeComPermissionCardBuilder.BuildResultCard(cardEvent.TaskId, allow.Value);
-            await _weComClient.ReplyUpdateTemplateCardAsync(cardEvent.Frame, updateBody, cancellationToken)
-                .ConfigureAwait(false);
+            await _permissionResponder.TryHandleTemplateCardAsync(cardEvent, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "WeCom 权限卡片响应失败: PermissionId={PermissionId}", pending.PermissionId);
+            _logger.LogError(ex, "WeCom 模板卡片权限处理失败: TaskId={TaskId}", cardEvent.TaskId);
         }
     }
 
     private async Task ProcessMessageAsync(
         ParsedWeComMessage parsed,
-        string sessionId,
-        CancellationToken cancellationToken)
+        string sessionId)
     {
-        await using var streamState = new WeComStreamState(_weComClient, parsed.Frame, _options);
+        if (_cts == null)
+            return;
+
+        using var jobCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        jobCts.CancelAfter(TimeSpan.FromSeconds(_options.EffectiveProcessingMaxDurationSeconds));
+        var jobToken = jobCts.Token;
+
+        await using var streamState = new WeComStreamState(_weComClient, parsed.Frame, _options, _activeStreams);
 
         if (parsed.HasUnsupportedReply)
         {
-            await streamState.CompleteAsync(parsed.UnsupportedReply, cancellationToken).ConfigureAwait(false);
+            await streamState.CompleteAsync(parsed.UnsupportedReply, jobToken).ConfigureAwait(false);
             return;
         }
 
-        await ProcessMessageCoreAsync(parsed, sessionId, streamState, cancellationToken).ConfigureAwait(false);
+        await ProcessMessageCoreAsync(parsed, sessionId, streamState, jobToken).ConfigureAwait(false);
     }
 
     private async Task ProcessMessageCoreAsync(
@@ -254,12 +325,10 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
                 _commonOptions.Model);
 
             var reply = new GatewayAssistantReplyCollector();
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(_options.EffectiveProcessingMaxDurationSeconds));
 
             try
             {
-                await foreach (var gatewayEvent in _gatewayAdapter.ChatAsync(request, timeoutCts.Token)
+                await foreach (var gatewayEvent in _gatewayAdapter.ChatAsync(request, cancellationToken)
                                    .ConfigureAwait(false))
                 {
                     var disposition = reply.Apply(gatewayEvent);
@@ -267,20 +336,28 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
                     switch (disposition)
                     {
                         case GatewayReplyDisposition.StreamUpdated:
+                        case GatewayReplyDisposition.MessageSnapshot:
                             await streamState.PublishAsync(reply.Text, cancellationToken).ConfigureAwait(false);
                             break;
 
                         case GatewayReplyDisposition.Permission:
-                            await HandlePermissionAsync(gatewayEvent, sessionId, parsed.Frame, cancellationToken)
+                            await HandlePermissionAsync(
+                                    gatewayEvent,
+                                    sessionId,
+                                    parsed.Frame,
+                                    streamState,
+                                    cancellationToken)
                                 .ConfigureAwait(false);
                             break;
 
                         case GatewayReplyDisposition.RunCompleted:
-                            _logger.LogInformation(
-                                "WeCom 回复完成: SessionId={SessionId}, TextLength={TextLength}",
-                                sessionId,
-                                reply.Text.Length);
                             await streamState.CompleteAsync(reply.Text, cancellationToken).ConfigureAwait(false);
+                            _logger.LogInformation(
+                                "WeCom 回复完成: SessionId={SessionId}, TextLength={TextLength}, ReconnectWaits={ReconnectWaits}, Epoch={Epoch}",
+                                sessionId,
+                                reply.Text.Length,
+                                streamState.ReconnectWaits,
+                                _weComClient.ConnectionEpoch);
                             _sessionTracker.Touch(parsed);
                             return;
 
@@ -305,7 +382,11 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
                 _sessionTracker.Touch(parsed);
             }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (_cts?.IsCancellationRequested == true)
+            {
+                _logger.LogDebug("WeCom 消息处理已取消 (Bridge 停止): SessionId={SessionId}", sessionId);
+            }
+            catch (OperationCanceledException)
             {
                 _logger.LogWarning("WeCom 消息处理超时: SessionId={SessionId}", sessionId);
                 await _gatewayClient.StopChatAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
@@ -313,10 +394,21 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
                 _sessionTracker.Touch(parsed);
             }
         }
+        catch (OperationCanceledException) when (_cts?.IsCancellationRequested == true)
+        {
+            _logger.LogDebug("WeCom 消息处理已取消 (Bridge 停止): SessionId={SessionId}", sessionId);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "WeCom 消息处理失败: SessionId={SessionId}", sessionId);
-            await streamState.FailAsync(ex.Message, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await streamState.FailAsync(ex.Message, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception failEx)
+            {
+                _logger.LogWarning(failEx, "WeCom 失败回复发送失败: SessionId={SessionId}", sessionId);
+            }
         }
     }
 
@@ -324,11 +416,18 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         GatewayEvent gatewayEvent,
         string sessionId,
         WeComWsFrame requestFrame,
+        WeComStreamState streamState,
         CancellationToken cancellationToken)
     {
         var permissionId = gatewayEvent.Data?.PermissionId;
         if (string.IsNullOrWhiteSpace(permissionId))
             return;
+
+        if (gatewayEvent.Status != GatewayEventStatus.InProgress
+            || !string.IsNullOrWhiteSpace(gatewayEvent.Data?.PermissionDecision))
+        {
+            return;
+        }
 
         _logger.LogInformation(
             "WeCom 权限请求: {PermissionId} {Kind} {Resource} Risk={Risk}",
@@ -348,17 +447,37 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         }
 
         _permissionState.CleanupExpired();
+        _permissionState.TryRemoveByPermissionId(permissionId, out _);
 
-        var taskId = $"perm_{Guid.NewGuid():N}";
-        var expiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, _options.PermissionCardTtlSeconds));
-        _permissionState.Register(taskId, new PendingPermissionCard
+        var expiresAt = DateTimeOffset.UtcNow.AddSeconds(_options.EffectivePermissionCardTtlSeconds);
+        var pending = new PendingPermissionCard
         {
             SessionId = sessionId,
             PermissionId = permissionId,
             Resource = gatewayEvent.Data?.Resource ?? string.Empty,
             PermissionKind = gatewayEvent.Data?.PermissionKind ?? string.Empty,
             ExpiresAt = expiresAt
-        });
+        };
+
+        // 流式回复进行中：同一 req_id 只能走 stream，发 template_card 会占用被动回复槽导致最终正文无法展示。
+        if (streamState.IsStreamOpen)
+        {
+            _permissionState.Register(pending);
+            var notice = WeComPermissionResponder.BuildStreamPrompt(gatewayEvent.Data);
+            await streamState.PublishPermissionNoticeAsync(notice, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var taskId = $"perm_{Guid.NewGuid():N}";
+        _permissionState.Register(new PendingPermissionCard
+        {
+            SessionId = sessionId,
+            PermissionId = permissionId,
+            Resource = gatewayEvent.Data?.Resource ?? string.Empty,
+            PermissionKind = gatewayEvent.Data?.PermissionKind ?? string.Empty,
+            ExpiresAt = expiresAt,
+            TaskId = taskId
+        }, taskId);
 
         var title = $"权限确认：{gatewayEvent.Data?.PermissionKind ?? "操作"}";
         var description = gatewayEvent.Data?.PermissionMessage

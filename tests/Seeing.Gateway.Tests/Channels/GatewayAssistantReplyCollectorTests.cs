@@ -52,6 +52,26 @@ public class GatewayAssistantReplyCollectorTests
         collector.Terminal.Should().Be(GatewayRunTerminal.Completed);
     }
 
+    [Fact]
+    public void Apply_PermissionCompleted_ShouldIgnore()
+    {
+        var collector = new GatewayAssistantReplyCollector();
+
+        var disposition = collector.Apply(new GatewayEvent
+        {
+            Object = GatewayEventObject.Permission,
+            Status = GatewayEventStatus.Completed,
+            SessionId = "sess",
+            Data = new GatewayEventData
+            {
+                PermissionId = "perm_1",
+                PermissionDecision = "allow"
+            }
+        });
+
+        disposition.Should().Be(GatewayReplyDisposition.Ignored);
+    }
+
     private static GatewayEvent CreateDelta(string text) => new()
     {
         Object = GatewayEventObject.Content,

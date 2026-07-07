@@ -8,6 +8,7 @@ internal interface IWeComStreamSender
     Task SendProcessingIndicatorAsync(
         WeComWsFrame requestFrame,
         string streamId,
+        long connectionEpoch,
         CancellationToken cancellationToken);
 
     Task ReplyStreamAsync(
@@ -15,7 +16,9 @@ internal interface IWeComStreamSender
         string streamId,
         string content,
         bool finish,
-        CancellationToken cancellationToken);
+        long connectionEpoch,
+        CancellationToken cancellationToken,
+        Connection.WeComOutboundPriority priority = Connection.WeComOutboundPriority.ContentDelta);
 }
 
 internal sealed class WeComAibotStreamSender(WeComAibotWsClient client) : IWeComStreamSender
@@ -23,14 +26,28 @@ internal sealed class WeComAibotStreamSender(WeComAibotWsClient client) : IWeCom
     public Task SendProcessingIndicatorAsync(
         WeComWsFrame requestFrame,
         string streamId,
+        long connectionEpoch,
         CancellationToken cancellationToken) =>
-        client.SendProcessingIndicatorAsync(requestFrame, streamId, cancellationToken);
+        client.Connection.Outbound.SendProcessingIndicatorAsync(
+            requestFrame,
+            streamId,
+            client.ConnectionEpoch,
+            cancellationToken);
 
     public Task ReplyStreamAsync(
         WeComWsFrame requestFrame,
         string streamId,
         string content,
         bool finish,
-        CancellationToken cancellationToken) =>
-        client.ReplyStreamAsync(requestFrame, streamId, content, finish, cancellationToken);
+        long connectionEpoch,
+        CancellationToken cancellationToken,
+        Connection.WeComOutboundPriority priority = Connection.WeComOutboundPriority.ContentDelta) =>
+        client.Connection.Outbound.ReplyStreamAsync(
+            requestFrame,
+            streamId,
+            content,
+            finish,
+            client.ConnectionEpoch,
+            cancellationToken,
+            priority);
 }

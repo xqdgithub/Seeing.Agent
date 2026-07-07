@@ -97,7 +97,7 @@ StyleCopReport.xml
 *.pidb
 *.svclog
 *.scc
-
+.*/
 # Chutzpah Test files
 _Chutzpah*
 
@@ -383,3 +383,4 @@ build_output.txt
 
 # Dev screenshots (not referenced by docs)
 /*.png
+/samples/Seeing.Agent.WebUI/alert_report

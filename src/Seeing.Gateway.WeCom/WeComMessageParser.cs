@@ -9,6 +9,18 @@ namespace Seeing.Gateway.WeCom;
 /// </summary>
 public static class WeComMessageParser
 {
+    /// <summary>企微流式消息刷新（msgtype=stream），非用户新消息。</summary>
+    public static bool TryParseStreamRefresh(WeComIncomingContext context, out string? streamId)
+    {
+        streamId = null;
+        var msgType = context.Message.MsgType?.ToLowerInvariant();
+        if (msgType != "stream")
+            return false;
+
+        streamId = context.Message.Stream?.Id;
+        return !string.IsNullOrWhiteSpace(streamId);
+    }
+
     public static bool TryParseText(WeComIncomingContext context, out ParsedWeComMessage? parsed)
     {
         parsed = null;
@@ -43,6 +55,9 @@ public static class WeComMessageParser
         var chatType = message.ChatType ?? "single";
 
         if (msgType == "event")
+            return (false, null);
+
+        if (msgType == "stream")
             return (false, null);
 
         var parts = new List<GatewayContentPart>();

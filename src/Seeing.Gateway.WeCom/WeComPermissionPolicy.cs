@@ -20,6 +20,12 @@ public sealed class WeComPermissionPolicy
         if (gatewayEvent.Object != GatewayEventObject.Permission)
             return false;
 
+        if (gatewayEvent.Status != GatewayEventStatus.InProgress)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(gatewayEvent.Data?.PermissionDecision))
+            return false;
+
         if (!_options.AutoApproveLowRisk)
             return true;
 

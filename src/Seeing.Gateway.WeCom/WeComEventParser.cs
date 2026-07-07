@@ -9,6 +9,7 @@ public static class WeComEventParser
 {
     public const string EnterChatEventType = "enter_chat";
     public const string TemplateCardEventType = "template_card_event";
+    public const string DisconnectedEventType = "disconnected_event";
 
     public static bool TryParseEnterChat(WeComWsFrame frame, out ParsedWeComEnterChat? parsed)
     {
@@ -55,6 +56,25 @@ public static class WeComEventParser
             TaskId = cardEvent.TaskId,
             EventKey = cardEvent.EventKey ?? string.Empty,
             CardType = cardEvent.CardType ?? string.Empty
+        };
+        return true;
+    }
+
+    public static bool TryParseDisconnectedEvent(WeComWsFrame frame, out ParsedWeComDisconnectedEvent? parsed)
+    {
+        parsed = null;
+        if (!TryParseEventBody(frame, out var message))
+            return false;
+
+        var eventType = message.Event?.EventType?.ToLowerInvariant();
+        if (!string.Equals(eventType, DisconnectedEventType, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        parsed = new ParsedWeComDisconnectedEvent
+        {
+            Frame = frame,
+            MessageId = message.MsgId ?? string.Empty,
+            AiBotId = message.AiBotId ?? string.Empty
         };
         return true;
     }
@@ -110,4 +130,13 @@ public sealed class ParsedWeComTemplateCardEvent
     public required string EventKey { get; init; }
 
     public required string CardType { get; init; }
+}
+
+public sealed class ParsedWeComDisconnectedEvent
+{
+    public required WeComWsFrame Frame { get; init; }
+
+    public required string MessageId { get; init; }
+
+    public required string AiBotId { get; init; }
 }

@@ -355,6 +355,19 @@ public class WeComPermissionPolicyTests
     }
 
     [Fact]
+    public void ShouldPromptUser_CompletedPermission_ShouldReturnFalse()
+    {
+        var policy = CreatePolicy(new WeComOptions { AutoApproveLowRisk = false });
+        var evt = CreatePermissionEvent(riskLevel: "high") with
+        {
+            Status = GatewayEventStatus.Completed,
+            Data = CreatePermissionEvent(riskLevel: "high").Data! with { PermissionDecision = "allow" }
+        };
+
+        policy.ShouldPromptUser(evt).Should().BeFalse();
+    }
+
+    [Fact]
     public void EventKeyMapping_ShouldRecognizeAllowAndDeny()
     {
         var policy = CreatePolicy(new WeComOptions());

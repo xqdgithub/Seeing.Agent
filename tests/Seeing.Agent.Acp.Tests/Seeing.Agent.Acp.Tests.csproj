@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
+    <ProjectReference Include="..\..\acp.net\Acp.NetCore\src\Acp\Acp.NetCore.csproj" />
   </ItemGroup>
 
 </Project>

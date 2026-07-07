@@ -21,6 +21,7 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
     private Task? _receiveTask;
     private readonly ConcurrentQueue<GatewayInbound> _inboundQueue = new();
     private readonly SemaphoreSlim _inboundSignal = new(0);
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<GatewayPermissionRespondResult>> _permissionAckWaiters = new();
 
     public WebSocketGatewayClient(IOptions<GatewayClientOptions> options)
     {
@@ -115,19 +116,25 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
 
         await SendFrameAsync(frame, cancellationToken).ConfigureAwait(false);
 
+        var tcs = new TaskCompletionSource<GatewayPermissionRespondResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_permissionAckWaiters.TryAdd(requestId, tcs))
+            return GatewayPermissionRespondResult.Fail("Duplicate permission respond request");
+
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-        await foreach (var inbound in ReceiveAsync(timeoutCts.Token).ConfigureAwait(false))
+        try
         {
-            if (inbound.Type == GatewayWsFrameType.PermissionAck && inbound.Id == requestId)
-                return inbound.PermissionAck ?? GatewayPermissionRespondResult.Fail("Empty permission ack");
-
-            if (inbound.Type is GatewayWsFrameType.Error or GatewayWsFrameType.ChatError)
-                return GatewayPermissionRespondResult.Fail(inbound.Error?.Message ?? "Permission respond failed");
+            return await tcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
         }
-
-        return GatewayPermissionRespondResult.Fail("Permission respond timed out");
+        catch (TimeoutException)
+        {
+            return GatewayPermissionRespondResult.Fail("Permission respond timed out");
+        }
+        finally
+        {
+            _permissionAckWaiters.TryRemove(requestId, out _);
+        }
     }
 
     public async Task<GatewaySessionResetResult> ResetSessionAsync(
@@ -240,6 +247,9 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
                                .ConfigureAwait(false))
             {
                 var inbound = GatewayInboundParser.Parse(frame);
+                if (TryCompletePermissionAckWaiter(inbound))
+                    continue;
+
                 _inboundQueue.Enqueue(inbound);
                 _inboundSignal.Release();
             }
@@ -252,6 +262,19 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         {
             // connection closed
         }
+    }
+
+    private bool TryCompletePermissionAckWaiter(GatewayInbound inbound)
+    {
+        if (inbound.Type != GatewayWsFrameType.PermissionAck || string.IsNullOrEmpty(inbound.Id))
+            return false;
+
+        if (!_permissionAckWaiters.TryRemove(inbound.Id, out var tcs))
+            return false;
+
+        var result = inbound.PermissionAck ?? GatewayPermissionRespondResult.Fail("Empty permission ack");
+        tcs.TrySetResult(result);
+        return true;
     }
 
     private static Uri BuildWebSocketUri(string baseUrl, string webSocketPath)
@@ -269,6 +292,7 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
 public sealed class WebSocketGatewayClientAdapter : IGatewayClient, IAsyncDisposable
 {
     private readonly WebSocketGatewayClient _connection;
+    private readonly SemaphoreSlim _chatLock = new(1, 1);
 
     public WebSocketGatewayClientAdapter(WebSocketGatewayClient connection)
     {
@@ -279,23 +303,31 @@ public sealed class WebSocketGatewayClientAdapter : IGatewayClient, IAsyncDispos
         GatewayRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        await _chatLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         var requestId = await _connection.SendChatAsync(request, cancellationToken).ConfigureAwait(false);
 
-        await foreach (var inbound in _connection.ReceiveAsync(cancellationToken).ConfigureAwait(false))
+        try
         {
-            switch (inbound.Type)
+            await foreach (var inbound in _connection.ReceiveAsync(cancellationToken).ConfigureAwait(false))
             {
-                case GatewayWsFrameType.ChatEvent when inbound.Event != null
-                    && (string.IsNullOrEmpty(inbound.Id) || inbound.Id == requestId):
-                    yield return inbound.Event;
-                    break;
+                switch (inbound.Type)
+                {
+                    case GatewayWsFrameType.ChatEvent when inbound.Event != null
+                        && (string.IsNullOrEmpty(inbound.Id) || inbound.Id == requestId):
+                        yield return inbound.Event;
+                        break;
 
-                case GatewayWsFrameType.ChatComplete when inbound.Id == requestId:
-                    yield break;
+                    case GatewayWsFrameType.ChatComplete when inbound.Id == requestId:
+                        yield break;
 
-                case GatewayWsFrameType.ChatError when inbound.Id == requestId:
-                    throw new InvalidOperationException(inbound.Error?.Message ?? "Chat failed");
+                    case GatewayWsFrameType.ChatError when inbound.Id == requestId:
+                        throw new InvalidOperationException(inbound.Error?.Message ?? "Chat failed");
+                }
             }
+        }
+        finally
+        {
+            _chatLock.Release();
         }
     }
 

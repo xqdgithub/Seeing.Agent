@@ -3,7 +3,6 @@ using Acp.Messages;
 using Acp.Types;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Execution;
-using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 
@@ -35,46 +34,19 @@ public sealed class AcpPermissionBridge
             ?? throw new InvalidOperationException("ACP permission context is not available.");
 
         var optionList = options.ToList();
-        var permissionId = Guid.NewGuid().ToString("N");
         var toolName = string.IsNullOrWhiteSpace(toolCall.ToolName) ? "acp_tool" : toolCall.ToolName;
 
-        if (ctx.UpdateSink is EventYieldingSink yieldingSink)
-        {
-            await yieldingSink.PublishAsync(new PermissionRequestEvent
-            {
-                SessionId = ctx.SeeingSessionId,
-                LoopId = ctx.LoopId,
-                PermissionId = permissionId,
-                PermissionKind = "tool",
-                Resource = toolName,
-                Arguments = toolCall.Input,
-                Message = optionList.FirstOrDefault()?.Label ?? $"ACP tool permission: {toolName}"
-            }, cancellationToken).ConfigureAwait(false);
-        }
-
         var channel = ctx.PermissionChannel ?? DefaultPermissionChannel.Instance;
-        var approved = await channel.RequestConfirmationAsync(new PermissionRequest
-        {
-            Permission = "tool",
-            Patterns = new List<string> { toolName },
-            Metadata = new Dictionary<string, object>
-            {
-                ["acpSessionId"] = acpSessionId,
-                ["toolCallId"] = toolCall.ToolCallId,
-                ["toolName"] = toolName
-            }
-        }).ConfigureAwait(false);
-
-        if (ctx.UpdateSink is EventYieldingSink sinkAfter)
-        {
-            await sinkAfter.PublishAsync(new PermissionResponseEvent
+        var decision = await channel.RequestToolPermissionAsync(
+            toolName,
+            toolCall.Input,
+            new AgentContext
             {
                 SessionId = ctx.SeeingSessionId,
-                LoopId = ctx.LoopId,
-                PermissionId = permissionId,
-                Decision = approved ? "allow" : "deny"
-            }, cancellationToken).ConfigureAwait(false);
-        }
+                CancellationToken = cancellationToken
+            }).ConfigureAwait(false);
+
+        var approved = decision.Action == PermissionAction.Allow;
 
         if (!approved)
         {

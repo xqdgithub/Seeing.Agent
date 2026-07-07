@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Seeing.Gateway.WeCom.Connection;
 using Xunit;
 
 namespace Seeing.Gateway.WeCom.Tests;
@@ -17,7 +18,7 @@ public class WeComStreamStateTests
             ProcessingRefreshSeconds = 5
         };
 
-        await using var state = new WeComStreamState(sender, new WeComWsFrame(), options);
+        await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
         await state.PublishAsync("hello", CancellationToken.None);
 
@@ -43,7 +44,7 @@ public class WeComStreamStateTests
             ProcessingRefreshSeconds = 5
         };
 
-        await using var state = new WeComStreamState(sender, new WeComWsFrame(), options);
+        await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
         await state.PublishAsync("hello", CancellationToken.None);
         await state.PublishAsync("hello world", CancellationToken.None);
@@ -64,7 +65,7 @@ public class WeComStreamStateTests
         var sender = new RecordingStreamSender();
         var options = new WeComOptions { StreamingEnabled = true };
 
-        await using var state = new WeComStreamState(sender, new WeComWsFrame(), options);
+        await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
         await state.PublishAsync("partial", CancellationToken.None);
         await state.CompleteAsync("final answer", CancellationToken.None);
@@ -87,7 +88,7 @@ public class WeComStreamStateTests
             ProcessingMaxDurationSeconds = 5
         };
 
-        await using var state = new WeComStreamState(sender, new WeComWsFrame(), options);
+        await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
 
         await Task.Delay(TimeSpan.FromSeconds(6));
@@ -106,7 +107,7 @@ public class WeComStreamStateTests
             ProcessingMaxDurationSeconds = 5
         };
 
-        await using var state = new WeComStreamState(sender, new WeComWsFrame(), options);
+        await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
 
         await Task.Delay(TimeSpan.FromSeconds(6));
@@ -123,7 +124,7 @@ public class WeComStreamStateTests
         var sender = new RecordingStreamSender();
         var options = new WeComOptions();
 
-        await using var state = new WeComStreamState(sender, new WeComWsFrame(), options);
+        await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.SendInstantAsync("✅ 已开启新对话。", CancellationToken.None);
 
         sender.Records.Should().ContainSingle();
@@ -142,12 +143,31 @@ public class WeComStreamStateTests
             ProcessingRefreshSeconds = 0
         };
 
-        await using var state = new WeComStreamState(sender, new WeComWsFrame(), options);
+        await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
 
         await Task.Delay(TimeSpan.FromSeconds(6));
 
         sender.Records.Should().ContainSingle(r => r.Content == ProcessingText && !r.Finish);
+    }
+
+    [Fact]
+    public async Task PublishAsync_WithZeroThrottleConfig_ShouldUseEffectiveDefault()
+    {
+        var sender = new RecordingStreamSender();
+        var options = new WeComOptions
+        {
+            StreamingEnabled = true,
+            DeltaThrottleMilliseconds = 0
+        };
+
+        await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
+        await state.BeginAsync(CancellationToken.None);
+        await state.PublishAsync("hello", CancellationToken.None);
+        await state.PublishAsync("hello world", CancellationToken.None);
+
+        sender.Records.Count(r => r.Content == "hello world").Should().Be(0,
+            "zero config should fall back to 150ms effective throttle");
     }
 
     private sealed class RecordingStreamSender : IWeComStreamSender
@@ -157,6 +177,7 @@ public class WeComStreamStateTests
         public Task SendProcessingIndicatorAsync(
             WeComWsFrame requestFrame,
             string streamId,
+            long connectionEpoch,
             CancellationToken cancellationToken)
         {
             Records.Add(new StreamRecord(streamId, ProcessingText, Finish: false));
@@ -168,7 +189,9 @@ public class WeComStreamStateTests
             string streamId,
             string content,
             bool finish,
-            CancellationToken cancellationToken)
+            long connectionEpoch,
+            CancellationToken cancellationToken,
+            Connection.WeComOutboundPriority priority = Connection.WeComOutboundPriority.ContentDelta)
         {
             Records.Add(new StreamRecord(streamId, content, Finish: finish));
             return Task.CompletedTask;

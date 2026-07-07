@@ -110,6 +110,9 @@ public sealed class WeComIncomingMessage
     [JsonPropertyName("quote")]
     public WeComQuotePayload? Quote { get; set; }
 
+    [JsonPropertyName("stream")]
+    public WeComStreamPayload? Stream { get; set; }
+
     [JsonPropertyName("event")]
     public WeComEventPayload? Event { get; set; }
 }

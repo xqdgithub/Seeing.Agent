@@ -49,7 +49,7 @@ public sealed class GatewayAssistantReplyCollector
                 TerminalMessage = gatewayEvent.Data?.Error ?? "Agent 执行失败";
                 return GatewayReplyDisposition.RunFailed;
 
-            case GatewayEventObject.Permission:
+            case GatewayEventObject.Permission when gatewayEvent.Status == GatewayEventStatus.InProgress:
                 return GatewayReplyDisposition.Permission;
 
             default:
