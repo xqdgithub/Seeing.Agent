@@ -1,0 +1,236 @@
+src/Seeing.Gateway.WeCom/WeComEventParser.cs
+  s_ad7ae14c2152d9::t_a8aece70ab2836 134-142
+  s_ad7ae14c2152d9::t_ce2282556cd6d3 12
+  s_ad7ae14c2152d9::t_e98362709d03ef 63-81
+src/Seeing.Gateway.WeCom/Connection/WeComOutboundChannel.cs
+  s_8817dbeb275747::t_e166bdc2f48e88 161
+  s_ad7ae14c2152d9::t_5cfae9f68a27de 1-11,13-17,21,23-47,50-59,62-67,70-87,90-101,104-114,117-122,131-136,139-143,146-160,162-175
+  s_ad7ae14c2152d9::t_03485e0a5d8ad2 12,18-20,22,48-49,60-61,68-69,88-89,102-103,115-116,123-130,137-138,144-145
+tests/Seeing.Gateway.WeCom.Tests/WeComStreamStateTests.cs
+  s_ad7ae14c2152d9::t_a20a765113424d 193-194
+  s_ad7ae14c2152d9::t_bc2f1c1a7211eb 180,192
+  s_ad7ae14c2152d9::t_27568dbedffe10 2
+  s_ad7ae14c2152d9::t_4026ee16c28e38 21,47,68,91,110,127,146
+  s_ad7ae14c2152d9::t_0feede333ea827 154-172
+src/Seeing.Gateway.WeCom/Connection/WeComOutboundGovernor.cs
+  s_8817dbeb275747::t_f75ad71bbaff94 16,23,27-29,38,41,51,53-55,58,65-66
+  s_ad7ae14c2152d9::t_4a7d05d1ecf6c0 1-15,17-22,24-26,30-37,39-40,42-50,52,56-57,59-64,67-68
+tests/Seeing.Gateway.WeCom.Tests/WeComConnectionChangedTests.cs
+  s_ad7ae14c2152d9::t_cfa0662fed0f02 1-75
+tests/Seeing.Gateway.WeCom.Tests/WeComOutboundGovernorTests.cs
+  s_8817dbeb275747::t_97f573f466fb50 17,33
+  s_8817dbeb275747::t_668b572c2f7c6a 57,68
+  s_ad7ae14c2152d9::t_1ad8bb0f567187 1-16,18-32,34-39,70
+  s_8817dbeb275747::t_5559fce3ed59d2 40-56,58-67,69
+tests/Seeing.Gateway.WeCom.Tests/WeComReconnectTests.cs
+  s_ad7ae14c2152d9::t_dcb7e15e0e02df 2,15-33
+  s_8d85d2120ede07::t_2e9f537ee43aaf 1,3-14,34-35
+src/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj
+  s_ad7ae14c2152d9::t_7258b11aa9d26b 19
+src/Seeing.Gateway/Channels/GatewayAssistantReplyCollector.cs
+  s_8817dbeb275747::t_0278e3c4809523 52
+tests/Seeing.Gateway.Tests/Channels/GatewayAssistantReplyCollectorTests.cs
+  s_8817dbeb275747::t_eb50416223cee6 55-74
+tests/Seeing.Gateway.WeCom.Tests/WeComPermissionResponderTests.cs
+  s_8817dbeb275747::t_8be3ba574c4343 1-57
+src/Seeing.Gateway.WeCom/Extensions/WeComServiceCollectionExtensions.cs
+  s_ad7ae14c2152d9::t_84c414d5ee4571 33
+  s_8817dbeb275747::t_4a35d16e4862b7 39
+  s_8d85d2120ede07::t_bdcc483c36e430 40
+  s_ad7ae14c2152d9::t_c63da0e03cff88 5
+  s_ad7ae14c2152d9::t_63927a7f67b612 32,34-35
+src/Seeing.Gateway.WeCom/WeComActiveStreamRegistry.cs
+  s_8d85d2120ede07::t_ac225eaea45fda 1-5,8-29,77-81,88
+  s_ad7ae14c2152d9::t_0868c711dcc216 31,37,44-59,61-74,82-85,87
+  s_ad7ae14c2152d9::t_2f46b435cc834d 6-7,30,32-36,38-43,60,75-76,86
+tests/Seeing.Gateway.WeCom.Tests/WeComStreamReconnectTests.cs
+  s_ad7ae14c2152d9::t_d067ea3e4f35c3 65
+tests/Seeing.Gateway.WeCom.Tests/WeComBridgeTests.cs
+  s_8817dbeb275747::t_1c3b3485f90345 357-369
+.gitignore
+  h_2674648465396e 100
+src/Seeing.Gateway.WeCom/WeComChannelBridge.cs
+  s_8817dbeb275747::t_0d0ab47afe01f4 27
+  s_8d85d2120ede07::t_b29689e8b579fa 171-179
+  s_8817dbeb275747::t_6b5aed6a12a04b 344-349
+  s_8817dbeb275747::t_2d5555712296fc 472-480
+  s_8817dbeb275747::t_276feff6ed4845 419,453,460-471
+  s_ad7ae14c2152d9::t_4604fafa6a3f4e 83,92
+  s_ad7ae14c2152d9::t_1d6a7bc33fb376 385,387-389,397-399,404-411
+  s_8d85d2120ede07::t_d832d6fed9625d 339
+  s_ad7ae14c2152d9::t_945cb260b5d382 104-105,117,123,126-132,136,141,149-150,155,159
+  s_ad7ae14c2152d9::t_cb877595d4cb90 63
+  s_8817dbeb275747::t_128f4d9d8a8120 452
+  s_ad7ae14c2152d9::t_e9f5568091b21a 211
+  s_ad7ae14c2152d9::t_0dfbf80c50ab69 48-49
+  s_8817dbeb275747::t_70548f1a93fd02 120,124-125
+  s_8817dbeb275747::t_f60e3f74e86a86 46
+  s_8d85d2120ede07::t_58573689ca910b 47,61
+  s_8817dbeb275747::t_3899e7869ee573 426-431,450
+  s_ad7ae14c2152d9::t_3445974e25ba14 115-116,118-119,121-122,133-135,137-140,142-148,151-154,156-158,160
+  s_ad7ae14c2152d9::t_f44416bbb708e7 29
+  s_8817dbeb275747::t_40dbf13cfa245c 354
+  s_8d85d2120ede07::t_30c9c54636c798 299
+  s_ad7ae14c2152d9::t_a88a5d8ff6a8f8 331
+  s_ad7ae14c2152d9::t_72d8fd9fd825c8 2,9
+  s_ad7ae14c2152d9::t_4029b7b4ee1ee1 356,358-360
+  s_ad7ae14c2152d9::t_b90730f92eba3e 290,292-298,303,307
+  s_8817dbeb275747::t_c5c1574a414e5a 199-204
+  s_ad7ae14c2152d9::t_d6cd8b01071bb1 222-230
+  s_8d85d2120ede07::t_62f9dff4f333f2 28,386,400
+  s_ad7ae14c2152d9::t_a51bec1abc47ef 103
+  s_8817dbeb275747::t_cc587b29a06c43 60
+  s_8817dbeb275747::t_a1e5911c2e0065 266,270-272,274-277,280,284
+src/Seeing.Agent.Acp/Permission/AcpPermissionBridge.cs
+  s_8817dbeb275747::t_6a2c36d984a86b 40-43,46-49
+src/Seeing.Gateway.WeCom/WeComOptions.cs
+  s_8817dbeb275747::t_a338af8579ce47 129-132
+  s_8d85d2120ede07::t_8c0d56452d624e 54,72,79
+  s_ad7ae14c2152d9::t_884d8e4071bb49 73,76-78
+  s_ad7ae14c2152d9::t_15a2344de0e745 66,69-71
+tests/Seeing.Gateway.WeCom.Tests/WeComOutboundChannelTests.cs
+  s_ad7ae14c2152d9::t_e924c8c893c9c3 13-15
+  s_ad7ae14c2152d9::t_20a0bc8152324a 1-12,16-28
+src/Seeing.Gateway.WeCom/WeComMessageParser.cs
+  s_8d85d2120ede07::t_869683524cfd13 60-62
+  s_8d85d2120ede07::t_4a7fd1fbf5b9b2 12-23
+src/Seeing.Gateway.WeCom/WeComWsFrame.cs
+  s_8d85d2120ede07::t_72b73000fc5198 113-115
+tests/Seeing.Gateway.WeCom.Tests/WeComDisconnectedEventTests.cs
+  s_ad7ae14c2152d9::t_48f52cbfecce4f 1-51
+tests/Seeing.Gateway.WeCom.Tests/WeComStreamPublishPipelineTests.cs
+  s_8817dbeb275747::t_e796b297f44038 1-145
+src/Seeing.Gateway.WeCom/WeComAibotWsClient.cs
+  s_ad7ae14c2152d9::t_f9885572f7dd98 7,11,13,15,18,20,22,24-28,30-34,36,38-39,42-44,50-56,62-66,73-74,76,83-84,86,93-97,101-102,104
+  s_ad7ae14c2152d9::t_b88cc48c3e3c48 2
+  s_8d85d2120ede07::t_b4b8d325349e29 19,23
+src/Seeing.Gateway.WeCom/WeComPermissionPolicy.cs
+  s_8817dbeb275747::t_bf823f6d4eeca6 23-28
+src/Seeing.Gateway.WeCom/Connection/WeComConnectionState.cs
+  s_ad7ae14c2152d9::t_3e94beb95eac2e 1-29,33-60
+  s_8817dbeb275747::t_4f1f76e3785759 30-32
+src/Seeing.Gateway.WeCom/WeComPermissionResponder.cs
+  s_8817dbeb275747::t_7f57528268e9e2 1,3-12,15-20,23-27,30-74,76,78-122,124-191,193-196,199-200
+  s_8817dbeb275747::t_ac2c6c89abe7b8 2,13-14,21-22,28-29,75,77,123,192,197-198
+tests/Seeing.Gateway.WeCom.Tests/WeComMessageJobLifecycleTests.cs
+  s_ad7ae14c2152d9::t_4ef1f0d67a256f 1-23
+src/Seeing.Gateway.WeCom/WeComStreamState.cs
+  s_ad7ae14c2152d9::t_55b7a412505282 2-3
+  s_8d85d2120ede07::t_3b9c79e53cf9bc 88
+  s_8817dbeb275747::t_279fed711f4504 152,154-155,160,164-168
+  s_ad7ae14c2152d9::t_94cdc4bd262c9c 201,203,230
+  s_8817dbeb275747::t_dd5f370d98e680 67-68
+  s_8d85d2120ede07::t_1dfcfee096d7b3 499,504-518
+  s_8d85d2120ede07::t_2d2947bcbfc22b 78
+  s_8d85d2120ede07::t_b56f6e69de1dda 180,193
+  s_8d85d2120ede07::t_22647354e5fe41 381
+  s_ad7ae14c2152d9::t_813a196f3ba5a7 212
+  s_ad7ae14c2152d9::t_50ca489ac266de 196-200
+  s_ad7ae14c2152d9::t_b6eae19c38fc8c 342-344
+  s_ad7ae14c2152d9::t_6afd8ce25cbe2d 16,31-34,65-66,76,141,178,191,202,204-211,217-223,226-229,326,331,339,348-352,355,367-368,372-376,378-379,386,388-390,395-397,401-404,413-428,438,444,447-452,458-460
+  s_ad7ae14c2152d9::t_18578daa3d3299 393-394,399
+  s_8d85d2120ede07::t_ff89eb92dc423f 13,22,26,102-103,194-195,324-325,392,519
+  s_8d85d2120ede07::t_72b9c61374ab86 44-45,54-55,60,62
+  s_8d85d2120ede07::t_6ea6e4fb05c626 454
+  s_8817dbeb275747::t_e8f14b9494f10b 150-151,153,156-159,161-163
+  s_ad7ae14c2152d9::t_4371f8a4c40ce1 332-338,340-341,345-347,353-354,356-366,377,382,385,387,391,398,400,405
+  s_ad7ae14c2152d9::t_f16492cde14670 46,52,58
+  s_ad7ae14c2152d9::t_d94478291df361 19
+  s_8d85d2120ede07::t_3ad12b8e4513d1 104-111
+  s_8817dbeb275747::t_8eb59dd5862e88 1,37-39,93-101,112-126,129,174,188,213-216,243-323,500
+samples/Seeing.Agent.WebUI/Services/GatewayClientSupervisor.cs
+  s_8d85d2120ede07::t_ec2167b5933908 144
+  s_8d85d2120ede07::t_fb5a4856d05e4a 237-287
+samples/Seeing.Agent.WebUI/.seeing/gateway-clients/wecom.json
+  s_8817dbeb275747::t_6bf79cab68f3f1 24
+  s_ad7ae14c2152d9::t_8bbfd371b81044 16
+  s_ad7ae14c2152d9::t_568ff663ff8bf0 14
+  s_8d85d2120ede07::t_edb65f4bd08e64 11
+src/Seeing.Gateway.WeCom/Connection/WeComWebSocketTransport.cs
+  s_8817dbeb275747::t_b47ff5c59821e9 16,20,23
+  s_ad7ae14c2152d9::t_b751cfd625eaa8 1-15,17-19,21-22,24-100
+src/Seeing.Gateway.WeCom/Connection/WeComAibotSession.cs
+  s_ad7ae14c2152d9::t_f3e96ddd23854b 2
+  s_ad7ae14c2152d9::t_8d500a1b2820ad 1,3-46
+src/Seeing.Gateway.WeCom/IWeComStreamSender.cs
+  s_ad7ae14c2152d9::t_dd4d2148e9ddbd 20-21,34,43-44,50-52
+  s_ad7ae14c2152d9::t_a2cadb29b47b69 11,19,29,31-33,35,42,45-49
+tests/Seeing.Gateway.WeCom.Tests/WeComOptionsTests.cs
+  s_ad7ae14c2152d9::t_9fa238eef87277 1-16,18,30-31
+src/Seeing.Gateway.WeCom/Connection/WeComConnectionManager.cs
+  s_8817dbeb275747::t_6d4c58c3a86534 194-197,199,203
+  s_8817dbeb275747::t_8be3d5be5dc606 152,158
+  s_ad7ae14c2152d9::t_cb5b0acc3114cf 1
+  s_8817dbeb275747::t_a99305248cd42e 163-168,171
+  s_ad7ae14c2152d9::t_60bc8fac6cb0b2 2-22,24-101,103-118,120-151,153-157,159-162,169-170,172-193,198,200-202,204-242,244-247,249-250,252-254,256-262,264-272,296,298,309-310,315-318,333-339,342-371
+  s_8817dbeb275747::t_b31270a3cf6045 23
+  s_8817dbeb275747::t_f410327fb9705a 102
+  s_ad7ae14c2152d9::t_f2a7de471dcce5 243
+  s_8817dbeb275747::t_c4b79b21f7c130 273-295,297,299-308,311-314,319-332,340-341
+  s_8817dbeb275747::t_a5487b700a059f 119
+  s_ad7ae14c2152d9::t_8948842a8b2117 248,251,255,263
+src/Seeing.Gateway.WeCom/README.md
+  s_ad7ae14c2152d9::t_df43d189d11aa7 220
+  s_ad7ae14c2152d9::t_27e47f37a9576c 83
+  s_ad7ae14c2152d9::t_6e0a3f047f68d9 13,16,20-23,29-39
+  s_ad7ae14c2152d9::t_dcf3e6cb323501 84,86
+  s_8d85d2120ede07::t_ee59e31f8b7308 14-15,40,162-164
+  s_ad7ae14c2152d9::t_8f7262f144c4c3 165
+  s_ad7ae14c2152d9::t_5ddff6fce059a8 169-178
+src/Seeing.Gateway.WeCom/WeComPermissionState.cs
+  s_8817dbeb275747::t_5f91567832d38f 104-107
+  s_8817dbeb275747::t_b0c8ff4305daa6 46-78
+  s_8817dbeb275747::t_b270cfecceb177 19,21-27
+  s_8817dbeb275747::t_ffdb2c0dfff09e 13,15-18,20,28-31
+src/Seeing.Gateway.Client/WebSocketGatewayClient.cs
+  s_8817dbeb275747::t_4d22480c9ec426 119-122,126,128,130-136
+  s_8817dbeb275747::t_7361ddcfe351ce 24
+  s_8d85d2120ede07::t_c95638ea5d8557 129,295,306,309,311,313-318,320-321,323-325,328-331
+  s_8817dbeb275747::t_256ebaff4c9201 267-279
+  s_8817dbeb275747::t_943a3e99864ac5 250-252
+tests/Seeing.Gateway.WeCom.Tests/WeComConnectionStateTests.cs
+  s_ad7ae14c2152d9::t_eaf202a17eed23 1-19
+tests/Seeing.Gateway.WeCom.Tests/WeComStreamRefreshTests.cs
+  s_ad7ae14c2152d9::t_3c72e543eb8277 109-110
+  s_8d85d2120ede07::t_b8a4a418e37165 1-42,44-80,87-95,97-107,111-118
+  s_ad7ae14c2152d9::t_b613b2699e3a27 43
+  s_ad7ae14c2152d9::t_eab319577d0322 81,96,108
+  s_ad7ae14c2152d9::t_7190660a83acca 82-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.28-trip",
+  "base_commit_sha": "9d5f556fa94a3513cce763ddc57c1811817b8014",
+  "prompts": {},
+  "humans": {
+    "h_2674648465396e": {
+      "author": "qd.xu <qd.xu@trip.com>"
+    }
+  },
+  "sessions": {
+    "s_8817dbeb275747": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5a74e202-ae6c-4905-bea0-916103d487bf",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_8d85d2120ede07": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "edd8ea9c-5835-492c-bdba-3a36316a2096",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_ad7ae14c2152d9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9d428bc3-4c2d-475a-afe0-59f063a554ec",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
