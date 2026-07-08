@@ -36,10 +36,23 @@ aside.app-sider.ant-layout-sider {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+    overflow: hidden;
 }
 
-.logo-icon {
-    font-size: 24px;
+.app-logo {
+    width: 24px;
+    height: 24px;
+    max-width: 24px;
+    max-height: 24px;
+    display: block;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
+.app-logo-collapsed {
+    margin: 0 auto;
+    display: block;
 }
 
 .logo-text {
@@ -47,10 +60,6 @@ aside.app-sider.ant-layout-sider {
     font-weight: 600;
     color: #1890ff;
     white-space: nowrap;
-}
-
-.logo-icon-only {
-    font-size: 24px;
 }
 
 /* ========== Agent Selector ========== */

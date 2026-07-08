@@ -381,3 +381,4 @@ build_output.txt
 
 # Dev screenshots (not referenced by docs)
 /*.png
+/samples/Seeing.Agent.WebUI/alert_report
