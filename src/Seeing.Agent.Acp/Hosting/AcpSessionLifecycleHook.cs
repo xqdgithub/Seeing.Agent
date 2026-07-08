@@ -61,9 +61,14 @@ public sealed class AcpSessionLifecycleHook : IMultiHookHandler
         if (mapping != null)
         {
             var leaseKey = AcpConnectionManager.BuildPassthroughKey(mapping.BackendId, sessionId);
-            await _connectionManager.ReleaseByKeyAsync(leaseKey).ConfigureAwait(false);
+            
+            // 调度宽限期释放（而非立即释放）
+            // 宽限期内同一 session 返回可复用进程和 ACP Session
+            _connectionManager.ScheduleGracefulRelease(leaseKey, sessionId, mapping);
         }
 
+        // 清除 session 元数据中的 mapping（session 即将删除）
+        // 但 mapping 已缓存到 AcpSessionStore，宽限期内仍可恢复
         _sessionStore.ClearOnDestroy(sessionId);
         _logger.LogDebug("Cleared ACP passthrough mapping for destroyed session {SessionId}", sessionId);
     }

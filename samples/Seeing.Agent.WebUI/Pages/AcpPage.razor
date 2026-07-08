@@ -54,6 +54,20 @@
                     }
                 </Select>
             </FormItem>
+            
+            <Divider>超时配置</Divider>
+            <FormItem Label="请求超时" Tooltip="单个请求的最长等待时间">
+                <InputNumber TValue="int" @bind-Value="@_requestTimeoutMinutes" Min="1" Max="60" Style="width: 120px;" />
+                <Text Type="@TextElementType.Secondary" Style="margin-left: 8px;">分钟</Text>
+            </FormItem>
+            <FormItem Label="空闲超时" Tooltip="子进程无使用后多久终止">
+                <InputNumber TValue="int" @bind-Value="@_idleTimeoutMinutes" Min="1" Max="120" Style="width: 120px;" />
+                <Text Type="@TextElementType.Secondary" Style="margin-left: 8px;">分钟</Text>
+            </FormItem>
+            <FormItem Label="会话宽限期" Tooltip="Session 销毁后保留进程的时间，便于快速恢复对话。设置为 0 则立即终止。">
+                <InputNumber TValue="int" @bind-Value="@_gracePeriodMinutes" Min="0" Max="60" Style="width: 120px;" />
+                <Text Type="@TextElementType.Secondary" Style="margin-left: 8px;">分钟（0 = 禁用）</Text>
+            </FormItem>
         </div>
         </Form>
         <Table TItem="BackendRow" DataSource="@_backends" RowKey="@(b => b.Key)" Style="margin-top: 16px;">
@@ -108,6 +122,11 @@
     private string _modalTitle = "";
     private AcpBackendEditForm _editBackendForm = new();
 
+    // 超时配置字段
+    private int _requestTimeoutMinutes = 5;
+    private int _idleTimeoutMinutes = 30;
+    private int _gracePeriodMinutes = 5;
+
     private static readonly JsonSerializerOptions CloneJsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -123,6 +142,12 @@
         {
             _acp = await ConfigService.LoadEffectiveAcpAsync();
             _sourceInfo = ConfigService.GetAcpConfigSourceInfo();
+            
+            // 初始化超时配置
+            _requestTimeoutMinutes = (int)_acp.RequestTimeout.TotalMinutes;
+            _idleTimeoutMinutes = (int)_acp.IdleTimeout.TotalMinutes;
+            _gracePeriodMinutes = (int)_acp.SessionGracePeriod.TotalMinutes;
+            
             await RefreshBackendRowsAsync();
         }
         finally
@@ -184,8 +209,9 @@
         {
             Enabled = edited.Enabled,
             DefaultBackend = edited.DefaultBackend,
-            RequestTimeout = edited.RequestTimeout,
-            IdleTimeout = edited.IdleTimeout,
+            RequestTimeout = TimeSpan.FromMinutes(_requestTimeoutMinutes),
+            IdleTimeout = TimeSpan.FromMinutes(_idleTimeoutMinutes),
+            SessionGracePeriod = TimeSpan.FromMinutes(_gracePeriodMinutes),
             Backends = new Dictionary<string, AcpBackendConfig>(
                 edited.Backends.ToDictionary(
                     kv => kv.Key,

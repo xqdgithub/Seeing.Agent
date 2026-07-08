@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Configuration;
 using Seeing.Session.Core;
@@ -12,6 +13,11 @@ public sealed class AcpSessionStore
     private readonly ISessionManager _sessionManager;
     private readonly ILogger<AcpSessionStore> _logger;
 
+    /// <summary>
+    /// Mapping 缓存，支持宽限期内恢复 ACP Session。
+    /// </summary>
+    private readonly ConcurrentDictionary<string, AcpSessionMapping> _mappingCache = new();
+
     public AcpSessionStore(ISessionManager sessionManager, ILogger<AcpSessionStore> logger)
     {
         _sessionManager = sessionManager;
@@ -20,6 +26,10 @@ public sealed class AcpSessionStore
 
     public AcpSessionMapping? GetMapping(string seeingSessionId)
     {
+        // 优先从缓存获取（宽限期场景）
+        if (_mappingCache.TryGetValue(seeingSessionId, out var cached))
+            return cached;
+
         var session = GetSession(seeingSessionId);
         if (session == null)
             return null;
@@ -59,6 +69,37 @@ public sealed class AcpSessionStore
 
         session.Metadata.Remove(AcpMetadataKeys.Passthrough(seeingSessionId));
         Persist(session);
+    }
+
+    /// <summary>
+    /// 缓存 mapping 以便宽限期内恢复 ACP Session。
+    /// </summary>
+    /// <param name="seeingSessionId">Seeing Session ID</param>
+    /// <param name="mapping">ACP Session 映射</param>
+    public void CacheMapping(string seeingSessionId, AcpSessionMapping mapping)
+    {
+        _mappingCache[seeingSessionId] = mapping;
+        _logger.LogDebug("Cached ACP mapping for session {SessionId}", seeingSessionId);
+    }
+
+    /// <summary>
+    /// 清除缓存的 mapping。
+    /// </summary>
+    /// <param name="seeingSessionId">Seeing Session ID</param>
+    public void ClearCachedMapping(string seeingSessionId)
+    {
+        _mappingCache.TryRemove(seeingSessionId, out _);
+        _logger.LogDebug("Cleared cached ACP mapping for session {SessionId}", seeingSessionId);
+    }
+
+    /// <summary>
+    /// 检查是否存在缓存的 mapping。
+    /// </summary>
+    /// <param name="seeingSessionId">Seeing Session ID</param>
+    /// <returns>是否存在缓存</returns>
+    public bool HasCachedMapping(string seeingSessionId)
+    {
+        return _mappingCache.ContainsKey(seeingSessionId);
     }
 
     private SessionData? GetSession(string sessionId)

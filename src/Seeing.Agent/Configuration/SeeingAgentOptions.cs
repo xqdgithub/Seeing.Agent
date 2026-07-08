@@ -179,8 +179,16 @@ namespace Seeing.Agent.Configuration
         /// <summary>请求超时</summary>
         public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromMinutes(5);
 
-        /// <summary>空闲超时</summary>
+        /// <summary>空闲超时（子进程无使用后多久终止）</summary>
         public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(30);
+
+        /// <summary>
+        /// Session 销毁后的宽限期。
+        /// <para>在此期间，同一 session 再次请求可复用 ACP 客户端进程和 ACP Session，提高响应速度。</para>
+        /// <para>设置为 TimeSpan.Zero 可禁用宽限期（立即终止进程）。</para>
+        /// <para>默认值：5 分钟</para>
+        /// </summary>
+        public TimeSpan SessionGracePeriod { get; set; } = TimeSpan.FromMinutes(5);
 
         /// <summary>ACP 后端配置（key 为后端标识）</summary>
         public Dictionary<string, AcpBackendConfig> Backends { get; set; } = new();
