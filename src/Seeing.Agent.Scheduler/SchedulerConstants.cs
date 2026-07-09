@@ -15,8 +15,16 @@ public static class SchedulerConstants
     /// <summary>默认 misfire grace（秒）</summary>
     public const int DefaultMisfireGraceSeconds = 300;
 
-    /// <summary>默认调度 tick 间隔</summary>
-    public static readonly TimeSpan DefaultTickInterval = TimeSpan.FromSeconds(1);
+    // ===== Quartz 相关常量 =====
+
+    /// <summary>默认 Job 组名</summary>
+    public const string DefaultJobGroup = "DEFAULT";
+
+    /// <summary>默认 Trigger 组名</summary>
+    public const string DefaultTriggerGroup = "DEFAULT";
+
+    /// <summary>Quartz 表名前缀</summary>
+    public const string QuartzTablePrefix = "QRTZ_";
 }
 
 /// <summary>任务来源</summary>

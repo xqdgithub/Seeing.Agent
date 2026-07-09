@@ -139,7 +139,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
         await StopKeepaliveAsync().ConfigureAwait(false);
 
         var throttleMs = _options.EffectiveDeltaThrottleMilliseconds;
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
         if ((now - _lastDeltaSentUtc).TotalMilliseconds < throttleMs)
             return;
 
@@ -163,7 +163,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
             : $"{_visibleText.TrimEnd()}\n\n{trimmed}";
         await StopKeepaliveAsync().ConfigureAwait(false);
         await SendAsync(finish: false, cancellationToken).ConfigureAwait(false);
-        _lastDeltaSentUtc = DateTime.UtcNow;
+        _lastDeltaSentUtc = DateTime.Now;
     }
 
     /// <summary>发送最终正文并结束流（finish=true）。</summary>
@@ -270,7 +270,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
                 if (_completed || !_hasContent)
                     continue;
 
-                var now = DateTime.UtcNow;
+                var now = DateTime.Now;
                 if ((now - _lastDeltaSentUtc).TotalMilliseconds < throttle.TotalMilliseconds)
                     continue;
 

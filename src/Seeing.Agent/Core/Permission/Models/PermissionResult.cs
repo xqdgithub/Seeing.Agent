@@ -26,7 +26,7 @@ public sealed class PermissionResult
     public string ContextHash { get; init; } = string.Empty;
 
     /// <summary>评估时间</summary>
-    public DateTimeOffset EvaluatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset EvaluatedAt { get; init; } = DateTimeOffset.Now;
 
     /// <summary>缓存 TTL</summary>
     public TimeSpan? CacheTtl { get; init; }

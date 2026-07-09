@@ -50,7 +50,7 @@
                 <Select TItemValue="string" TItem="string" @bind-Value="@_acp.DefaultBackend" Style="width: 240px;" AllowClear>
                     @foreach (var b in _backends)
                     {
-                        <SelectOption Value="@b.Key">@b.Key</SelectOption>
+                        <SelectOption TItemValue="string" TItem="string" Value="@b.Key">@b.Key</SelectOption>
                     }
                 </Select>
             </FormItem>

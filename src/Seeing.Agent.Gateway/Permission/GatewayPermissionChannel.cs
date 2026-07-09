@@ -138,7 +138,7 @@ public sealed class GatewayPermissionChannel : IPermissionChannel
             Arguments = arguments,
             Message = BuildMessage(kind, resource),
             RiskLevel = kind is "write" or "tool" ? "medium" : "low",
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.Now,
             Completion = tcs
         };
 

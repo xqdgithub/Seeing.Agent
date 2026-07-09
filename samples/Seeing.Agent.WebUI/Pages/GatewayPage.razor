@@ -47,8 +47,8 @@
                         <FormItem Label="绑定地址"><Input @bind-Value="@_gateway.BindAddress" /></FormItem>
                         <FormItem Label="权限模式">
                             <Select TItemValue="string" TItem="string" @bind-Value="@_gateway.PermissionMode">
-                                <SelectOption Value="@("interactive")">交互式审批</SelectOption>
-                                <SelectOption Value="@("auto_approve")">自动批准</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@("interactive")">交互式审批</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@("auto_approve")">自动批准</SelectOption>
                             </Select>
                         </FormItem>
                         <FormItem Label="启用 WebSocket"><Switch @bind-Checked="@_gateway.EnableWebSocket" /></FormItem>

@@ -73,7 +73,7 @@ namespace Seeing.Agent.Memory.Core
                         Metadata = memory.Metadata,
                         CreatedAt = memory.CreatedAt,
                         ValidAt = memory.ValidAt,
-                        InvalidAt = memory.InvalidAt ?? DateTimeOffset.UtcNow
+                        InvalidAt = memory.InvalidAt ?? DateTimeOffset.Now
                     };
 
                     // 保存归档记忆
@@ -108,7 +108,7 @@ namespace Seeing.Agent.Memory.Core
                 .ToList();
 
             var decayedCount = 0;
-            var now = DateTimeOffset.UtcNow;
+            var now = DateTimeOffset.Now;
 
             foreach (var memory in memoryEntries)
             {

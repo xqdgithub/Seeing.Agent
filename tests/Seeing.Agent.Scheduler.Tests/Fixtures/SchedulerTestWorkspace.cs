@@ -11,6 +11,7 @@ public sealed class SchedulerTestWorkspace : IDisposable
     public string Root { get; }
     public string SeeingDirectory { get; }
     public WorkspaceProvider Workspace { get; }
+    public SchedulerOptions Options { get; set; }
 
     public SchedulerTestWorkspace()
     {
@@ -18,11 +19,13 @@ public sealed class SchedulerTestWorkspace : IDisposable
         SeeingDirectory = Path.Combine(Root, ".seeing");
         Directory.CreateDirectory(SeeingDirectory);
         Workspace = new WorkspaceProvider(Root);
+        Options = CreateDefaultSchedulerOptions();
     }
 
     public void WriteSeeingJson(SchedulerOptions? scheduler = null, string? defaultAgent = "test-agent")
     {
         scheduler ??= CreateDefaultSchedulerOptions();
+        Options = scheduler;
         var json = $$"""
         {
           "SeeingAgent": {
@@ -30,7 +33,6 @@ public sealed class SchedulerTestWorkspace : IDisposable
             "Scheduler": {
               "Enabled": {{scheduler.Enabled.ToString().ToLower()}},
               "Timezone": "{{scheduler.Timezone}}",
-              "TickIntervalSeconds": {{scheduler.TickIntervalSeconds}},
               "MaxConcurrentJobs": {{scheduler.MaxConcurrentJobs}},
               "Heartbeat": {
                 "Enabled": {{scheduler.Heartbeat.Enabled.ToString().ToLower()}},
@@ -53,18 +55,16 @@ public sealed class SchedulerTestWorkspace : IDisposable
         File.WriteAllText(Path.Combine(Root, "HEARTBEAT.md"), content);
     }
 
-    public SchedulerOptionsProvider CreateOptionsProvider()
+    /// <summary>创建测试用的 SchedulerOptionsProvider（简化版本，不依赖 UnifiedConfigManager）</summary>
+    public TestSchedulerOptionsProvider CreateOptionsProvider()
     {
-        var provider = new SchedulerOptionsProvider(Workspace, NullLogger<SchedulerOptionsProvider>.Instance);
-        provider.Reload();
-        return provider;
+        return new TestSchedulerOptionsProvider(Options);
     }
 
     public static SchedulerOptions CreateDefaultSchedulerOptions() => new()
     {
         Enabled = true,
         Timezone = "UTC",
-        TickIntervalSeconds = 1,
         MaxConcurrentJobs = 2,
         Heartbeat = new HeartbeatOptions
         {
@@ -89,4 +89,21 @@ public sealed class SchedulerTestWorkspace : IDisposable
             // best effort cleanup
         }
     }
+}
+
+/// <summary>测试用的 SchedulerOptionsProvider 简化实现</summary>
+public sealed class TestSchedulerOptionsProvider : ISchedulerOptionsProvider
+{
+    private SchedulerOptions _options;
+
+    public TestSchedulerOptionsProvider(SchedulerOptions options)
+    {
+        _options = options;
+    }
+
+    public SchedulerOptions Current => _options;
+
+    public void Reload() { }
+
+    public void SetOptions(SchedulerOptions options) => _options = options;
 }

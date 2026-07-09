@@ -95,7 +95,7 @@ namespace Seeing.Agent.Skills.Pulling
                     Metadata = new Dictionary<string, string>
                     {
                         ["source"] = "http",
-                        ["pulled_at"] = DateTimeOffset.UtcNow.ToString("O")
+                        ["pulled_at"] = DateTimeOffset.Now.ToString("O")
                     }
                 };
             }

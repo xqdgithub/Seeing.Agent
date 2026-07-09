@@ -1,6 +1,6 @@
 using FluentAssertions;
-using Seeing.Agent.Scheduler;
 using Seeing.Agent.Scheduler.Engine;
+using Seeing.Agent.Scheduler.Models;
 using Xunit;
 
 namespace Seeing.Agent.Scheduler.Tests;
@@ -19,17 +19,17 @@ public class ScheduleExpressionParserTests
     }
 
     [Fact]
-    public void NormalizeCron_AddsMissingMinuteField()
+    public void NormalizeCron_AddsMissingSecondField()
     {
-        ScheduleExpressionParser.NormalizeCron("0 9 * * *").Should().Be("0 9 * * *");
-        ScheduleExpressionParser.NormalizeCron("9 * * *").Should().Be("0 9 * * *");
+        ScheduleExpressionParser.NormalizeCron("0 9 * * *").Should().Be("0 0 9 * * *");
+        ScheduleExpressionParser.NormalizeCron("9 * * *").Should().Be("0 0 9 * *");
     }
 
     [Fact]
     public void GetNextOccurrence_Interval_ReturnsFutureTime()
     {
-        var from = DateTimeOffset.UtcNow;
-        var schedule = new Models.ScheduleSpec
+        var from = DateTime.UtcNow;
+        var schedule = new ScheduleSpec
         {
             Type = ScheduleTypes.Interval,
             Every = "1h"
@@ -46,6 +46,6 @@ public class ActiveHoursCheckerTests
     [Fact]
     public void IsInActiveHours_NullOptions_ReturnsTrue()
     {
-        Heartbeat.ActiveHoursChecker.IsInActiveHours(null).Should().BeTrue();
+        ActiveHoursChecker.IsInActiveHours(null).Should().BeTrue();
     }
 }

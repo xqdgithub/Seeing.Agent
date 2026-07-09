@@ -23,7 +23,7 @@ public sealed class WeComPermissionState
             Resource = entry.Resource,
             PermissionKind = entry.PermissionKind,
             ExpiresAt = entry.ExpiresAt,
-            RegisteredAt = entry.RegisteredAt == default ? DateTimeOffset.UtcNow : entry.RegisteredAt,
+            RegisteredAt = entry.RegisteredAt == default ? DateTimeOffset.Now : entry.RegisteredAt,
             TaskId = taskId
         };
 
@@ -62,7 +62,7 @@ public sealed class WeComPermissionState
             if (!string.Equals(pending.SessionId, sessionId, StringComparison.Ordinal))
                 continue;
 
-            if (pending.ExpiresAt <= DateTimeOffset.UtcNow)
+            if (pending.ExpiresAt <= DateTimeOffset.Now)
                 continue;
 
             if (latest == null || pending.RegisteredAt > latest.RegisteredAt)
@@ -78,7 +78,7 @@ public sealed class WeComPermissionState
 
     public void CleanupExpired()
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.Now;
         foreach (var (taskId, entry) in _byTaskId)
         {
             if (entry.ExpiresAt <= now)
@@ -102,7 +102,7 @@ public sealed class PendingPermissionCard
 
     public required DateTimeOffset ExpiresAt { get; init; }
 
-    public DateTimeOffset RegisteredAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset RegisteredAt { get; init; } = DateTimeOffset.Now;
 
     public string? TaskId { get; init; }
 }

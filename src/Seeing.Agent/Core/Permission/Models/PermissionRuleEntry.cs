@@ -38,7 +38,7 @@ public sealed class PermissionRuleEntry
     public TimeSpan? TimeToLive { get; init; }
 
     /// <summary>创建时间</summary>
-    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
 
     /// <summary>描述</summary>
     public string? Description { get; init; }

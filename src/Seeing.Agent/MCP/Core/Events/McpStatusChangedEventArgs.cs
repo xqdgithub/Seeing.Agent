@@ -24,6 +24,6 @@ public sealed class McpStatusChangedEventArgs : EventArgs
         Status = status;
         TriggerOperation = triggerOperation;
         Error = error;
-        Timestamp = DateTimeOffset.UtcNow;
+        Timestamp = DateTimeOffset.Now;
     }
 }

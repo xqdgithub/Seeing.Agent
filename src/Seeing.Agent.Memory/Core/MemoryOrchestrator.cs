@@ -130,7 +130,7 @@ public class MemoryOrchestrator
             sessionId, type, importance);
 
         var memoryId = Guid.NewGuid().ToString("N");
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.Now;
 
         var metadata = new MemoryMetadata(
             SessionId: sessionId,
@@ -175,8 +175,8 @@ public class MemoryOrchestrator
         // 添加到队列（如果已存在则更新时间）
         _consolidationQueue.AddOrUpdate(
             sessionId,
-            DateTimeOffset.UtcNow,
-            (_, _) => DateTimeOffset.UtcNow);
+            DateTimeOffset.Now,
+            (_, _) => DateTimeOffset.Now);
 
         var queueSize = _consolidationQueue.Count;
 

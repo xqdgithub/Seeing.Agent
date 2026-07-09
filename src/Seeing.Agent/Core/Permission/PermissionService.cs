@@ -496,7 +496,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
             MatchedRule = matchedRule,
             EvaluationPath = evaluationPath,
             ContextHash = contextHash,
-            EvaluatedAt = DateTimeOffset.UtcNow,
+            EvaluatedAt = DateTimeOffset.Now,
             CacheTtl = TimeSpan.FromMinutes(5),
             FromCache = fromCache
         };

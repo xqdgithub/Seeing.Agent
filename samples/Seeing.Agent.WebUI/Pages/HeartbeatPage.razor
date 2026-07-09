@@ -5,7 +5,6 @@
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
-@inject IHeartbeatRunner HeartbeatRunner
 @inject IScheduleManager ScheduleManager
 @inject IMessageService MessageService
 
@@ -32,9 +31,9 @@
                         <FormItem Label="执行间隔"><Input @bind-Value="@_heartbeat.Every" Placeholder="6h、30m" /></FormItem>
                         <FormItem Label="投递目标">
                             <Select TItemValue="string" TItem="string" @bind-Value="@_heartbeat.Target">
-                                <SelectOption Value="@HeartbeatTargets.Main">main</SelectOption>
-                                <SelectOption Value="@HeartbeatTargets.Last">last</SelectOption>
-                                <SelectOption Value="@HeartbeatTargets.Inbox">inbox</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Main">main</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Last">last</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Inbox">inbox</SelectOption>
                             </Select>
                         </FormItem>
                         <FormItem Label="Query 文件"><Input @bind-Value="@_heartbeat.QueryFile" /></FormItem>
@@ -106,8 +105,8 @@
         _running = true;
         try
         {
-            var result = await HeartbeatRunner.RunOnceAsync();
-            if (result.Success) MessageService.Success("心跳执行成功");
+            var result = await ScheduleManager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId);
+            if (result.Success) MessageService.Success("心跳已触发");
             else MessageService.Error(result.Error ?? "执行失败");
         }
         finally { _running = false; }

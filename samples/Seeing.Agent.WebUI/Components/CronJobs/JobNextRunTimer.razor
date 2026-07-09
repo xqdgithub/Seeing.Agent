@@ -1,0 +1,66 @@
+@using AntDesign
+@using System.Timers
+
+@code {
+    [Parameter] public DateTime? NextRun { get; set; }
+    [Parameter] public bool ShowIcon { get; set; } = true;
+    
+    private TimeSpan _remaining;
+    private string _displayText = "-";
+    private Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        UpdateRemaining();
+        _timer = new Timer(1000);
+        _timer.Elapsed += (_, _) =>
+        {
+            UpdateRemaining();
+            InvokeAsync(StateHasChanged);
+        };
+        _timer.Start();
+    }
+
+    protected override void OnParametersSet()
+    {
+        UpdateRemaining();
+    }
+
+    private void UpdateRemaining()
+    {
+        if (NextRun.HasValue)
+        {
+            _remaining = NextRun.Value - DateTime.Now;
+            if (_remaining.TotalSeconds <= 0)
+            {
+                _displayText = "即将执行";
+            }
+            else if (_remaining.TotalDays >= 1)
+            {
+                _displayText = $"{(int)_remaining.TotalDays}天 {_remaining.Hours:D2}:{_remaining.Minutes:D2}:{_remaining.Seconds:D2}";
+            }
+            else
+            {
+                _displayText = $"{_remaining.Hours:D2}:{_remaining.Minutes:D2}:{_remaining.Seconds:D2}";
+            }
+        }
+        else
+        {
+            _displayText = "-";
+        }
+    }
+
+    public void Dispose()
+    {
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+}
+
+<span class="next-run-timer">
+    @if (ShowIcon)
+    {
+        <Icon Type="@IconType.Outline.ClockCircle" />
+    }
+    @_displayText
+</span>

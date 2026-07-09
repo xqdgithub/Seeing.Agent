@@ -117,7 +117,7 @@ public class MemoryTools
     private MemoryEntry CreateEntry(string content, MemoryType type, string sessionId)
     {
         var memoryId = Guid.NewGuid().ToString("N");
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.Now;
 
         var metadata = new MemoryMetadata(
             SessionId: sessionId,

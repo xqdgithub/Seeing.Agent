@@ -4,10 +4,20 @@ using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.Scheduler.Configuration;
 
+/// <summary>Scheduler 配置提供者接口</summary>
+public interface ISchedulerOptionsProvider
+{
+    /// <summary>当前配置</summary>
+    SchedulerOptions Current { get; }
+    
+    /// <summary>重载配置</summary>
+    void Reload();
+}
+
 /// <summary>
 /// Scheduler 配置提供者 - 从 UnifiedConfigManager 获取配置
 /// </summary>
-public sealed class SchedulerOptionsProvider
+public sealed class SchedulerOptionsProvider : ISchedulerOptionsProvider
 {
     private readonly UnifiedConfigManager _configManager;
     private readonly ILogger<SchedulerOptionsProvider> _logger;

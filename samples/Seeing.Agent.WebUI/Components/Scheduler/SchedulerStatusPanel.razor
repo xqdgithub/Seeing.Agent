@@ -1,0 +1,56 @@
+@using AntDesign
+@using Seeing.Agent.Scheduler.Models
+
+@code {
+    [Parameter] public SchedulerStatus Status { get; set; } = new();
+    [Parameter] public bool ShowControls { get; set; } = false;
+    [Parameter] public EventCallback OnStart { get; set; }
+    [Parameter] public EventCallback OnStop { get; set; }
+    [Parameter] public EventCallback OnReload { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+}
+
+<Card Title="调度器状态" Size="@CardSize.Small">
+    <Body>
+        <Row Gutter="16">
+            <Col Span="6">
+                <Statistic Title="状态" 
+                           Value="@(Status.IsRunning ? "运行中" : Status.IsStandby ? "待机" : "已停止")"
+                           ValueStyle="@(Status.IsRunning ? "color: #52c41a;" : "color: #faad14;")" />
+            </Col>
+            <Col Span="6">
+                <Statistic Title="任务总数" Value="@Status.TotalJobs" />
+            </Col>
+            <Col Span="6">
+                <Statistic Title="运行中" Value="@Status.RunningJobs" ValueStyle="color: #1890ff;" />
+            </Col>
+            <Col Span="6">
+                <Statistic Title="已暂停" Value="@Status.PausedJobs" ValueStyle="color: #faad14;" />
+            </Col>
+        </Row>
+
+        @if (ShowControls)
+        {
+            <Divider />
+            <Space>
+                @if (Status.IsRunning)
+                {
+                    <Popconfirm Title="确定停止调度器？" OnConfirm="@(() => OnStop.InvokeAsync())">
+                        <Button Type="@ButtonType.Primary" Danger="true" Loading="@IsLoading">
+                            停止
+                        </Button>
+                    </Popconfirm>
+                }
+                else
+                {
+                    <Button Type="@ButtonType.Primary" Loading="@IsLoading" OnClick="@(() => OnStart.InvokeAsync())">
+                        启动
+                    </Button>
+                }
+                <Button Loading="@IsLoading" OnClick="@(() => OnReload.InvokeAsync())">
+                    重载配置
+                </Button>
+            </Space>
+        }
+    </Body>
+</Card>

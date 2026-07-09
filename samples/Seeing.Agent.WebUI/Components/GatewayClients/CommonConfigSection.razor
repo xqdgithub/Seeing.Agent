@@ -39,7 +39,8 @@
     <FormItem Label="传输方式">
         <Select TItemValue="string" TItem="string"
                 @bind-Value="@Gateway.Transport"
-                Style="width: 100%;">
+                Style="width: 100%;"
+                Context="transportSelect">
             <SelectOptions>
                 <SelectOption TItemValue="string" TItem="string" Value="@("WebSocket")" Label="WebSocket" />
                 <SelectOption TItemValue="string" TItem="string" Value="@("HttpSse")" Label="HTTP SSE" />

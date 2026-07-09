@@ -6,19 +6,39 @@ namespace Seeing.Agent.Scheduler.Models;
 public class SchedulerOptions
 {
     /// <summary>是否启用调度器</summary>
-    public bool Enabled { get; set; }
+    public bool Enabled { get; set; } = true;
 
-    /// <summary>时区 ID（如 Asia/Shanghai）</summary>
-    public string Timezone { get; set; } = "UTC";
+    /// <summary>时区 ID（如 Asia/Shanghai），默认本地时区</summary>
+    public string Timezone { get; set; } = TimeZoneInfo.Local.Id;
 
-    /// <summary>调度 tick 间隔（秒）</summary>
+    /// <summary>调度 tick 间隔（秒）- 已弃用，Quartz 使用自己的调度机制</summary>
+    [Obsolete("Quartz 使用自己的调度机制，此配置项已弃用")]
     public int TickIntervalSeconds { get; set; } = 1;
 
     /// <summary>全局最大并发任务数</summary>
     public int MaxConcurrentJobs { get; set; } = 3;
 
+    /// <summary>持久化配置</summary>
+    public PersistenceOptions Persistence { get; set; } = new();
+
     /// <summary>心跳配置</summary>
     public HeartbeatOptions Heartbeat { get; set; } = new();
+}
+
+/// <summary>持久化配置</summary>
+public class PersistenceOptions
+{
+    /// <summary>是否启用持久化</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>持久化提供程序：sqlite / memory</summary>
+    public string Provider { get; set; } = "sqlite";
+
+    /// <summary>数据库连接字符串</summary>
+    public string? ConnectionString { get; set; }
+
+    /// <summary>表名前缀</summary>
+    public string TablePrefix { get; set; } = "QRTZ_";
 }
 
 /// <summary>心跳配置</summary>
@@ -69,10 +89,10 @@ public class ScheduleSpec
     /// <summary>间隔字符串（如 6h、30m）</summary>
     public string? Every { get; set; }
 
-    /// <summary>一次性执行时间（ISO8601）</summary>
-    public DateTimeOffset? RunAt { get; set; }
+    /// <summary>一次性执行时间（本地时间）</summary>
+    public DateTime? RunAt { get; set; }
 
-    public string Timezone { get; set; } = "UTC";
+    public string Timezone { get; set; } = TimeZoneInfo.Local.Id;
 }
 
 /// <summary>投递目标</summary>
@@ -117,8 +137,8 @@ public class ScheduledJobSpec
     public DispatchSpec Dispatch { get; set; } = new();
     public JobRuntimeSpec Runtime { get; set; } = new();
 
-    public DateTimeOffset? LastRunAt { get; set; }
-    public DateTimeOffset? NextRunAt { get; set; }
+    public DateTime? LastRunAt { get; set; }
+    // NextRunAt 不存储，由 Quartz 实时计算
 }
 
 /// <summary>jobs.json 根对象</summary>
@@ -131,8 +151,8 @@ public class JobsFile
 public class JobExecutionRecord
 {
     public string RunId { get; set; } = Guid.NewGuid().ToString("N");
-    public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? CompletedAt { get; set; }
+    public DateTime StartedAt { get; set; } = DateTime.Now;
+    public DateTime? CompletedAt { get; set; }
     public string Status { get; set; } = "running";
     public string? Error { get; set; }
     public string? Output { get; set; }

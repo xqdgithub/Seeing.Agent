@@ -52,7 +52,7 @@ public sealed class McpServerStatus
         McpServerConfig? config = null,
         McpServerPriority priority = McpServerPriority.Normal)
         => new(name, McpConnectionState.Pending, config, priority,
-            0, Array.Empty<string>(), DateTimeOffset.UtcNow,
+            0, Array.Empty<string>(), DateTimeOffset.Now,
             null, null, null, 0, null);
 
     public McpServerStatus Clone() => new(

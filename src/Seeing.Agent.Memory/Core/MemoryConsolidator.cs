@@ -157,7 +157,7 @@ public class MemoryConsolidator
             Type: DetermineConsolidatedType(sortedMemories),
             Content: consolidatedContent,
             Metadata: mergedMetadata,
-            CreatedAt: DateTimeOffset.UtcNow,
+            CreatedAt: DateTimeOffset.Now,
             ValidAt: earliest, // 使用最早的有效时间
             InvalidAt: latest  // 使用最晚的有效时间作为失效时间
         );
@@ -230,7 +230,7 @@ public class MemoryConsolidator
             sb.AppendLine($"**来源记忆**: {string.Join(", ", sortedMemories.Select(m => m.Id))}");
         }
 
-        sb.AppendLine($"**合并时间**: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"**合并时间**: {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine($"**合并策略**: ADD-only（原始记忆已保留）");
 
         var content = sb.ToString();

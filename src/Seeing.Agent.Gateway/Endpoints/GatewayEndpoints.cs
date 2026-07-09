@@ -106,7 +106,7 @@ public static class GatewayEndpoints
         Results.Ok(new
         {
             status = "healthy",
-            timestamp = DateTime.UtcNow
+            timestamp = DateTime.Now
         });
 }
 

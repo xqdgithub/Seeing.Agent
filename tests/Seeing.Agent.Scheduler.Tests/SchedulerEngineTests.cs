@@ -2,6 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Quartz;
+using Quartz.Impl;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Abstractions;
@@ -13,8 +15,6 @@ using Seeing.Agent.Llm;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
-using Seeing.Agent.Scheduler.Execution;
-using Seeing.Agent.Scheduler.Heartbeat;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Persistence;
@@ -27,57 +27,99 @@ namespace Seeing.Agent.Scheduler.Tests;
 public class SchedulerEngineTests
 {
     [Fact]
-    public async Task Engine_FiresDueJobAfterInterval()
+    public async Task QuartzSchedulerEngine_StartAndStop_UpdatesStatus()
     {
         using var ws = new SchedulerTestWorkspace();
-        ws.WriteSeeingJson(new SchedulerOptions
+        ws.WriteSeeingJson();
+
+        var engine = CreateEngine();
+
+        (await engine.GetStatusAsync()).IsStarted.Should().BeFalse();
+
+        await engine.StartAsync();
+        (await engine.GetStatusAsync()).IsStarted.Should().BeTrue();
+        engine.IsStarted.Should().BeTrue();
+
+        await engine.StopAsync();
+        (await engine.GetStatusAsync()).IsStarted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task QuartzSchedulerEngine_UpsertJob_CreatesJob()
+    {
+        var engine = CreateEngine();
+        await engine.StartAsync();
+
+        var schedule = new ScheduleSpec
         {
-            Enabled = true,
-            TickIntervalSeconds = 1
-        });
-
-        var fired = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var engine = new InProcessSchedulerEngine(NullLogger<InProcessSchedulerEngine>.Instance);
-        engine.Configure(TimeSpan.FromMilliseconds(200), "UTC");
-
-        await engine.StartAsync(async (jobId, _) =>
-        {
-            fired.TrySetResult(jobId);
-        });
-
-        // 注册一个已到期 job（nextRun = now - 1s）
-        var schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" };
-        await engine.UpsertJobAsync("due-job", schedule, enabled: true);
-
-        // 手动将 next run 设为过去 — 通过 Upsert 后立即 tick
-        // UpsertJobAsync sets next from now, so we need a trick: use once with past runAt won't work in engine
-        // Instead register with interval and wait - first tick should fire since next is ~now from upsert at start
-
-        // Re-upsert with schedule that makes it due immediately by using past once... 
-        // Simpler: use RunJobOnce via manager path is already tested.
-        // For engine: set job with interval 0 not allowed. Use cron every minute and set clock... can't.
-
-        // Alternative: register job, then the engine compares NextRunAt <= now. Upsert sets next to GetNextOccurrence from now which is future.
-        // Fix: add internal test hook OR use very short wait with reschedule trick.
-
-        // Actually after UpsertJobAsync, next run is in the future (1h). Won't fire on tick.
-        // Test engine tick by manually invoking callback is not possible without reflection.
-
-        // Better approach: test that engine calls callback when we use once schedule with RunAt in past
-        // But UpsertJobAsync always computes next from GetNextOccurrence - once with past runAt returns null and uses `now` fallback in RegisterUserJobAsync:
-        // `var next = ScheduleExpressionParser.GetNextOccurrence(...) ?? now;`
-        // For once with past runAt, GetNextOccurrence returns null, so next = now which is due immediately!
-
-        var onceSchedule = new ScheduleSpec
-        {
-            Type = ScheduleTypes.Once,
-            RunAt = DateTimeOffset.UtcNow.AddSeconds(-10)
+            Type = ScheduleTypes.Interval,
+            Every = "1h"
         };
-        await engine.UpsertJobAsync("once-due", onceSchedule, enabled: true);
 
-        var completed = await Task.WhenAny(fired.Task, Task.Delay(3000));
-        completed.Should().Be(fired.Task);
-        (await fired.Task).Should().Be("once-due");
+        await engine.UpsertJobAsync("test-job", schedule, enabled: true);
+
+        var status = await engine.GetJobStatusAsync("test-job");
+        status.JobId.Should().Be("test-job");
+        status.State.Should().Be(JobState.Normal);
+
+        await engine.StopAsync();
+    }
+
+    [Fact]
+    public async Task QuartzSchedulerEngine_PauseAndResume_UpdatesState()
+    {
+        var engine = CreateEngine();
+        await engine.StartAsync();
+
+        var schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" };
+        await engine.UpsertJobAsync("pause-job", schedule, enabled: true);
+
+        await engine.PauseJobAsync("pause-job");
+        var pausedStatus = await engine.GetJobStatusAsync("pause-job");
+        pausedStatus.State.Should().Be(JobState.Paused);
+
+        await engine.ResumeJobAsync("pause-job");
+        var resumedStatus = await engine.GetJobStatusAsync("pause-job");
+        resumedStatus.State.Should().Be(JobState.Normal);
+
+        await engine.StopAsync();
+    }
+
+    [Fact]
+    public async Task QuartzSchedulerEngine_RemoveJob_DeletesJob()
+    {
+        var engine = CreateEngine();
+        await engine.StartAsync();
+
+        var schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" };
+        await engine.UpsertJobAsync("remove-job", schedule, enabled: true);
+
+        (await engine.GetJobStatusAsync("remove-job")).JobId.Should().Be("remove-job");
+
+        await engine.RemoveJobAsync("remove-job");
+
+        var status = await engine.GetJobStatusAsync("remove-job");
+        status.State.Should().Be(JobState.Completed); // Non-existent = completed
+    }
+
+    [Fact]
+    public async Task QuartzSchedulerEngine_CronSchedule_SetsNextFireTime()
+    {
+        var engine = CreateEngine();
+        await engine.StartAsync();
+
+        var schedule = new ScheduleSpec
+        {
+            Type = ScheduleTypes.Cron,
+            Cron = "0 9 * * *",
+            Timezone = "UTC"
+        };
+
+        await engine.UpsertJobAsync("cron-job", schedule, enabled: true);
+
+        var status = await engine.GetJobStatusAsync("cron-job");
+        status.NextFireTime.Should().NotBeNull();
+        status.CronExpression.Should().Be("0 9 * * *");
 
         await engine.StopAsync();
     }
@@ -113,7 +155,29 @@ public class SchedulerEngineTests
         await manager.StopAsync();
     }
 
-    private static (ScheduleManager Manager, HeartbeatRunner Heartbeat) CreateManager(
+    [Fact]
+    public async Task QuartzSchedulerEngine_GetAllJobStatuses_ReturnsAllJobs()
+    {
+        var engine = CreateEngine();
+        await engine.StartAsync();
+
+        await engine.UpsertJobAsync("job1", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" }, true);
+        await engine.UpsertJobAsync("job2", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "2h" }, true);
+
+        var statuses = await engine.GetAllJobStatusesAsync();
+        statuses.Count.Should().Be(2);
+        statuses.Select(s => s.JobId).Should().Contain("job1", "job2");
+
+        await engine.StopAsync();
+    }
+
+    private static QuartzSchedulerEngine CreateEngine()
+    {
+        var factory = new StdSchedulerFactory();
+        return new QuartzSchedulerEngine(factory, NullLogger<QuartzSchedulerEngine>.Instance);
+    }
+
+    private static (ScheduleManager Manager, QuartzSchedulerEngine Engine) CreateManager(
         SchedulerTestWorkspace ws,
         List<string> executedPrompts)
     {
@@ -143,30 +207,17 @@ public class SchedulerEngineTests
                 registry.Object))
             .BuildServiceProvider();
 
-        var agentRunner = new ScheduledAgentRunner(
-            router.Object,
-            registry.Object,
-            services.GetRequiredService<AgentSelectionResolver>(),
-            ws.Workspace,
-            services,
-            new HookManager(NullLogger<HookManager>.Instance),
-            NullLogger<ScheduledAgentRunner>.Instance);
-
+        var engine = CreateEngine();
         var dispatcher = Mock.Of<IScheduledJobDispatcher>(d =>
             d.DispatchAsync(It.IsAny<DispatchRequest>(), It.IsAny<CancellationToken>()) == Task.FromResult(DispatchResult.Ok()));
 
-        var executor = new AgentScheduledJobExecutor(agentRunner, dispatcher, NullLogger<AgentScheduledJobExecutor>.Instance);
-        var heartbeat = new HeartbeatRunner(
-            optionsProvider, agentRunner, dispatcher, ws.Workspace,
-            new SessionManager(), NullLogger<HeartbeatRunner>.Instance);
-
         var manager = new ScheduleManager(
             new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance),
-            executor, heartbeat,
-            new InProcessSchedulerEngine(NullLogger<InProcessSchedulerEngine>.Instance),
-            optionsProvider, NullLogger<ScheduleManager>.Instance);
+            engine,
+            optionsProvider,
+            NullLogger<ScheduleManager>.Instance);
 
-        return (manager, heartbeat);
+        return (manager, engine);
     }
 
     private static async IAsyncEnumerable<IMessageEvent> ToAsyncEnumerable(params IMessageEvent[] events)

@@ -303,7 +303,7 @@ public sealed class WeComConnectionManager : IAsyncDisposable
         if (_activeSince == null)
             return null;
 
-        var duration = DateTimeOffset.UtcNow - _activeSince.Value;
+        var duration = DateTimeOffset.Now - _activeSince.Value;
         _activeSince = null;
         return duration;
     }
@@ -318,7 +318,7 @@ public sealed class WeComConnectionManager : IAsyncDisposable
             return;
 
         if (newState == WeComConnectionState.Active)
-            _activeSince = DateTimeOffset.UtcNow;
+            _activeSince = DateTimeOffset.Now;
 
         var duration = connectedDuration;
         if (duration == null
@@ -327,7 +327,7 @@ public sealed class WeComConnectionManager : IAsyncDisposable
                 or WeComConnectionState.Failed
             && _activeSince != null)
         {
-            duration = DateTimeOffset.UtcNow - _activeSince.Value;
+            duration = DateTimeOffset.Now - _activeSince.Value;
             _activeSince = null;
         }
 

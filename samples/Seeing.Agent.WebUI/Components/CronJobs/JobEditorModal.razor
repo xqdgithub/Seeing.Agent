@@ -24,8 +24,8 @@
         <FormItem Label="启用"><Switch @bind-Checked="@Job.Enabled" /></FormItem>
         <FormItem Label="任务类型">
             <Select TItemValue="string" TItem="string" @bind-Value="@Job.TaskType">
-                <SelectOption Value="@ScheduleTaskTypes.Agent">Agent 任务</SelectOption>
-                <SelectOption Value="@ScheduleTaskTypes.Text">文本消息</SelectOption>
+                <SelectOption TItemValue="string" TItem="string" Value="@ScheduleTaskTypes.Agent">Agent 任务</SelectOption>
+                <SelectOption TItemValue="string" TItem="string" Value="@ScheduleTaskTypes.Text">文本消息</SelectOption>
             </Select>
         </FormItem>
         @if (Job.TaskType == ScheduleTaskTypes.Agent)
@@ -39,9 +39,9 @@
         }
         <FormItem Label="调度类型">
             <Select TItemValue="string" TItem="string" @bind-Value="@Job.Schedule.Type">
-                <SelectOption Value="@ScheduleTypes.Cron">Cron</SelectOption>
-                <SelectOption Value="@ScheduleTypes.Interval">间隔</SelectOption>
-                <SelectOption Value="@ScheduleTypes.Once">一次性</SelectOption>
+                <SelectOption TItemValue="string" TItem="string" Value="@ScheduleTypes.Cron">Cron</SelectOption>
+                <SelectOption TItemValue="string" TItem="string" Value="@ScheduleTypes.Interval">间隔</SelectOption>
+                <SelectOption TItemValue="string" TItem="string" Value="@ScheduleTypes.Once">一次性</SelectOption>
             </Select>
         </FormItem>
         @if (Job.Schedule.Type == ScheduleTypes.Cron)
@@ -55,7 +55,8 @@
         else
         {
             <FormItem Label="执行时间">
-                <DatePicker TValue="DateTime?" ShowTime="true" @bind-Value="@_runAtLocal" Style="width: 100%;" />
+                <Input @bind-Value="@_runAtText" Placeholder="2026-07-09 00:30" Style="width: 100%;" />
+                <small style="color: #999;">格式：yyyy-MM-dd HH:mm（本地时间）</small>
             </FormItem>
         }
         <FormItem Label="时区"><Input @bind-Value="@Job.Schedule.Timezone" /></FormItem>
@@ -72,17 +73,24 @@
     [Parameter] public bool Saving { get; set; }
     [Parameter] public EventCallback<ScheduledJobSpec> OnSave { get; set; }
 
-    private DateTime? _runAtLocal;
+    private string _runAtText = string.Empty;
 
     protected override void OnParametersSet()
     {
-        _runAtLocal = Job.Schedule.RunAt?.LocalDateTime;
+        // RunAt 转为显示字符串
+        _runAtText = Job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? string.Empty;
     }
 
     private async Task HandleOk()
     {
-        if (Job.Schedule.Type == ScheduleTypes.Once && _runAtLocal.HasValue)
-            Job.Schedule.RunAt = new DateTimeOffset(_runAtLocal.Value);
+        if (Job.Schedule.Type == ScheduleTypes.Once && !string.IsNullOrWhiteSpace(_runAtText))
+        {
+            // 解析用户输入的本地时间字符串
+            if (DateTime.TryParse(_runAtText, out var dt))
+            {
+                Job.Schedule.RunAt = DateTime.SpecifyKind(dt, DateTimeKind.Local);
+            }
+        }
         await OnSave.InvokeAsync(Job);
         await VisibleChanged.InvokeAsync(false);
     }

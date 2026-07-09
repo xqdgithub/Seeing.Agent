@@ -2,6 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Quartz;
+using Quartz.Impl;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Abstractions;
@@ -13,9 +15,8 @@ using Seeing.Agent.Llm;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
-using Seeing.Agent.Scheduler.Execution;
 using Seeing.Agent.Scheduler.Extensions;
-using Seeing.Agent.Scheduler.Heartbeat;
+using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Persistence;
@@ -99,7 +100,7 @@ public class SchedulerIntegrationTests
     }
 
     [Fact]
-    public async Task HeartbeatRunner_ExecutesQueryFromFile()
+    public async Task Heartbeat_TriggeredViaJobId()
     {
         using var ws = new SchedulerTestWorkspace();
         ws.WriteSeeingJson(new SchedulerOptions
@@ -116,51 +117,14 @@ public class SchedulerIntegrationTests
         ws.WriteHeartbeatFile("检查系统状态并汇报");
 
         var executedPrompts = new List<string>();
-        var (_, heartbeat) = CreateScheduleManager(ws, executedPrompts);
+        var (manager, _) = CreateScheduleManager(ws, executedPrompts);
+        await manager.StartAsync();
 
-        var result = await heartbeat.RunOnceAsync();
+        var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId);
         result.Success.Should().BeTrue();
-        result.Output.Should().Be("agent-response");
         executedPrompts.Should().ContainSingle(p => p == "检查系统状态并汇报");
-    }
 
-    [Fact]
-    public async Task HeartbeatRunner_SkipsWhenDisabled()
-    {
-        using var ws = new SchedulerTestWorkspace();
-        ws.WriteSeeingJson(new SchedulerOptions
-        {
-            Enabled = true,
-            Heartbeat = new HeartbeatOptions { Enabled = false }
-        });
-        ws.WriteHeartbeatFile("should not run");
-
-        var executedPrompts = new List<string>();
-        var (_, heartbeat) = CreateScheduleManager(ws, executedPrompts);
-
-        var result = await heartbeat.RunOnceAsync();
-        result.Success.Should().BeTrue();
-        result.Output.Should().Be("Heartbeat disabled");
-        executedPrompts.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task HeartbeatRunner_SkipsWhenQueryFileEmpty()
-    {
-        using var ws = new SchedulerTestWorkspace();
-        ws.WriteSeeingJson(new SchedulerOptions
-        {
-            Enabled = true,
-            Heartbeat = new HeartbeatOptions { Enabled = true }
-        });
-        ws.WriteHeartbeatFile("   ");
-
-        var executedPrompts = new List<string>();
-        var (_, heartbeat) = CreateScheduleManager(ws, executedPrompts);
-
-        var result = await heartbeat.RunOnceAsync();
-        result.Output.Should().Be("Skipped: empty query file");
-        executedPrompts.Should().BeEmpty();
+        await manager.StopAsync();
     }
 
     [Fact]
@@ -186,8 +150,8 @@ public class SchedulerIntegrationTests
 
         var provider = services.BuildServiceProvider();
         provider.GetService<IScheduleManager>().Should().NotBeNull();
-        provider.GetService<IHeartbeatRunner>().Should().NotBeNull();
         provider.GetService<IScheduledJobDispatcher>().Should().NotBeNull();
+        provider.GetService<QuartzSchedulerEngine>().Should().NotBeNull();
     }
 
     [Fact]
@@ -212,7 +176,57 @@ public class SchedulerIntegrationTests
         await manager.StopAsync();
     }
 
-    private static (ScheduleManager Manager, HeartbeatRunner Heartbeat) CreateScheduleManager(
+    [Fact]
+    public async Task QuartzSchedulerEngine_GetStatus_ReturnsCorrectState()
+    {
+        using var ws = new SchedulerTestWorkspace();
+        ws.WriteSeeingJson();
+
+        var (manager, engine) = CreateScheduleManager(ws, []);
+        await manager.StartAsync();
+
+        var status = await engine.GetStatusAsync();
+        status.IsRunning.Should().BeTrue();
+        status.IsStarted.Should().BeTrue();
+
+        await manager.StopAsync();
+
+        status = await engine.GetStatusAsync();
+        status.IsRunning.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ScheduleManager_PauseAndResumeJob()
+    {
+        using var ws = new SchedulerTestWorkspace();
+        ws.WriteSeeingJson();
+
+        var (manager, _) = CreateScheduleManager(ws, []);
+        await manager.StartAsync();
+
+        await manager.CreateOrReplaceJobAsync(new ScheduledJobSpec
+        {
+            Id = "pause-test",
+            TaskType = ScheduleTaskTypes.Text,
+            Text = "test",
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" }
+        });
+
+        var statusBefore = await manager.GetJobStatusAsync("pause-test");
+        statusBefore.State.Should().Be(JobState.Normal);
+
+        await manager.PauseJobAsync("pause-test");
+        var statusPaused = await manager.GetJobStatusAsync("pause-test");
+        statusPaused.State.Should().Be(JobState.Paused);
+
+        await manager.ResumeJobAsync("pause-test");
+        var statusResumed = await manager.GetJobStatusAsync("pause-test");
+        statusResumed.State.Should().Be(JobState.Normal);
+
+        await manager.StopAsync();
+    }
+
+    private static (ScheduleManager Manager, QuartzSchedulerEngine Engine) CreateScheduleManager(
         SchedulerTestWorkspace ws,
         List<string> executedPrompts,
         IScheduledJobDispatcher? dispatcher = null)
@@ -222,6 +236,7 @@ public class SchedulerIntegrationTests
         var registry = CreateMockRegistry();
         var sessionManager = new SessionManager();
         var hooks = new HookManager(NullLogger<HookManager>.Instance);
+
         var services = new ServiceCollection()
             .AddSingleton<IAgentExecutionRouter>(router)
             .AddSingleton(registry)
@@ -229,42 +244,27 @@ public class SchedulerIntegrationTests
                 new AgentSelectionResolver(
                     Microsoft.Extensions.Options.Options.Create(new SeeingAgentOptions { DefaultAgent = "test-agent" }),
                     registry))
+            .AddSingleton<IWorkspaceProvider>(ws.Workspace)
+            .AddSingleton<ISessionManager>(sessionManager)
+            .AddSingleton<HookManager>(hooks)
             .BuildServiceProvider();
 
-        var agentRunner = new ScheduledAgentRunner(
-            router,
-            registry,
-            services.GetRequiredService<AgentSelectionResolver>(),
-            ws.Workspace,
-            services,
-            hooks,
-            NullLogger<ScheduledAgentRunner>.Instance);
+        // Build Quartz scheduler
+        var schedulerFactory = new StdSchedulerFactory();
+        var scheduler = schedulerFactory.GetScheduler().GetAwaiter().GetResult();
+
+        var engine = new QuartzSchedulerEngine(schedulerFactory, NullLogger<QuartzSchedulerEngine>.Instance);
 
         dispatcher ??= Mock.Of<IScheduledJobDispatcher>(d =>
             d.DispatchAsync(It.IsAny<DispatchRequest>(), It.IsAny<CancellationToken>()) == Task.FromResult(DispatchResult.Ok()));
 
-        var executor = new AgentScheduledJobExecutor(
-            agentRunner,
-            dispatcher,
-            NullLogger<AgentScheduledJobExecutor>.Instance);
-
-        var heartbeat = new HeartbeatRunner(
-            optionsProvider,
-            agentRunner,
-            dispatcher,
-            ws.Workspace,
-            sessionManager,
-            NullLogger<HeartbeatRunner>.Instance);
-
         var manager = new ScheduleManager(
             new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance),
-            executor,
-            heartbeat,
-            new InProcessSchedulerEngine(NullLogger<InProcessSchedulerEngine>.Instance),
+            engine,
             optionsProvider,
             NullLogger<ScheduleManager>.Instance);
 
-        return (manager, heartbeat);
+        return (manager, engine);
     }
 
     private static IAgentExecutionRouter CreateMockRouter(List<string> executedPrompts)

@@ -15,7 +15,7 @@ namespace Seeing.Agent.Core.Background
         public string? Message { get; init; }
 
         /// <summary>时间戳</summary>
-        public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
 
         /// <summary>进度类型</summary>
         public ProgressType Type { get; init; } = ProgressType.Update;

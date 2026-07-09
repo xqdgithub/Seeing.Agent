@@ -41,8 +41,8 @@ namespace Seeing.Session.Management
             var removedCount = session.Messages.Count - messagesToKeep;
 
             session.Messages = session.Messages.Take(messagesToKeep).ToList();
-            session.UpdatedAt = DateTime.UtcNow;
-            session.LastActiveAt = DateTime.UtcNow;
+            session.UpdatedAt = DateTime.Now;
+            session.LastActiveAt = DateTime.Now;
 
             // 保存
             await _sessionManager.SaveAsync(sessionId);
@@ -75,7 +75,7 @@ namespace Seeing.Session.Management
             if (actualCount == 0) return 0;
 
             session.Messages = session.Messages.Take(session.Messages.Count - actualCount).ToList();
-            session.UpdatedAt = DateTime.UtcNow;
+            session.UpdatedAt = DateTime.Now;
 
             await _sessionManager.SaveAsync(sessionId);
 

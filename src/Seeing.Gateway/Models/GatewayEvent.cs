@@ -40,7 +40,7 @@ public record GatewayEvent
     public GatewayEventData? Data { get; init; }
 
     /// <summary>事件时间戳（对齐 <see cref="Seeing.Agent.Core.Events.IMessageEvent.Timestamp"/>）</summary>
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; init; } = DateTime.Now;
 
     /// <summary>原始 MessageEventType 字符串，便于 Client 精确分支</summary>
     public string? SourceType { get; init; }

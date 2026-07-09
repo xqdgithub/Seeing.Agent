@@ -19,7 +19,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
     {
         public required AcpConnectionLease Lease { get; init; }
 
-        public DateTime LastUsedUtc { get; set; } = DateTime.UtcNow;
+        public DateTime LastUsedUtc { get; set; } = DateTime.Now;
 
         public int ActiveUsers;
 
@@ -69,7 +69,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
                 // 检查是否有宽限期可以取消
                 if (TryCancelGracefulRelease(leaseKey, existing))
                 {
-                    existing.LastUsedUtc = DateTime.UtcNow;
+                    existing.LastUsedUtc = DateTime.Now;
                     Interlocked.Increment(ref existing.ActiveUsers);
                     _logger.LogDebug("Reusing ACP lease {LeaseKey} from grace period", leaseKey);
                     return existing.Lease;
@@ -78,7 +78,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
                 // 正常复用检查
                 if (existing.Lease.Client.State == SubprocessClientState.Running)
                 {
-                    existing.LastUsedUtc = DateTime.UtcNow;
+                    existing.LastUsedUtc = DateTime.Now;
                     Interlocked.Increment(ref existing.ActiveUsers);
                     _logger.LogDebug("Reusing ACP lease {LeaseKey}", leaseKey);
                     return existing.Lease;
@@ -108,7 +108,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
             var entry = new LeaseEntry
             {
                 Lease = lease,
-                LastUsedUtc = DateTime.UtcNow,
+                LastUsedUtc = DateTime.Now,
                 ActiveUsers = 1
             };
 
@@ -127,7 +127,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
         if (!_leases.TryGetValue(leaseKey, out var entry) || !ReferenceEquals(entry.Lease, lease))
             return;
 
-        entry.LastUsedUtc = DateTime.UtcNow;
+        entry.LastUsedUtc = DateTime.Now;
         var remaining = Interlocked.Decrement(ref entry.ActiveUsers);
         if (remaining < 0)
             Interlocked.Exchange(ref entry.ActiveUsers, 0);
@@ -242,7 +242,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
         if (idleTimeout <= TimeSpan.Zero)
             return;
 
-        var cutoff = DateTime.UtcNow - idleTimeout;
+        var cutoff = DateTime.Now - idleTimeout;
 
         foreach (var leaseKey in _leases.Keys.ToList())
         {

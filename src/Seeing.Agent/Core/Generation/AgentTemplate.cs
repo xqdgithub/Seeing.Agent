@@ -51,10 +51,10 @@ namespace Seeing.Agent.Core.Generation
         public bool IsBuiltin { get; set; }
 
         /// <summary>创建时间</summary>
-        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
         /// <summary>更新时间</summary>
-        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
     }
 
     /// <summary>模板变量定义</summary>
@@ -113,7 +113,7 @@ namespace Seeing.Agent.Core.Generation
         public List<string> Tags { get; set; } = new();
 
         /// <summary>创建时间</summary>
-        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
         /// <summary>是否有效</summary>
         public bool IsActive { get; set; } = true;

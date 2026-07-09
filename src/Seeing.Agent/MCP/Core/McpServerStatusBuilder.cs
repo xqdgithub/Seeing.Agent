@@ -42,7 +42,7 @@ public sealed class McpServerStatusBuilder
             Priority ?? McpServerPriority.Normal,
             ToolCount ?? 0,
             ToolNames ?? Array.Empty<string>(),
-            CreatedAt ?? DateTimeOffset.UtcNow,
+            CreatedAt ?? DateTimeOffset.Now,
             LastConnectedAt,
             LastErrorAt,
             LastError,
@@ -58,14 +58,14 @@ public sealed class McpServerStatusBuilder
     public McpServerStatusBuilder WithError(McpErrorInfo? error)
     {
         LastError = error;
-        LastErrorAt = error is not null ? DateTimeOffset.UtcNow : null;
+        LastErrorAt = error is not null ? DateTimeOffset.Now : null;
         return this;
     }
 
     public McpServerStatusBuilder WithConnected()
     {
         State = McpConnectionState.Connected;
-        LastConnectedAt = DateTimeOffset.UtcNow;
+        LastConnectedAt = DateTimeOffset.Now;
         ReconnectAttempts = 0;
         LastError = null;
         LastErrorAt = null;

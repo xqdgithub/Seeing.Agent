@@ -28,7 +28,7 @@ namespace Seeing.Session.Management
             {
                 // 标记为归档
                 session.IsArchived = true;
-                session.ArchivedAt = DateTimeOffset.UtcNow;
+                session.ArchivedAt = DateTimeOffset.Now;
                 session.Status = SessionStatus.Archived;
 
                 // 序列化
@@ -39,7 +39,7 @@ namespace Seeing.Session.Management
 
                 // 压缩并保存
                 Directory.CreateDirectory(_archivePath);
-                var fileName = $"{session.Id}_{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.json.gz";
+                var fileName = $"{session.Id}_{DateTimeOffset.Now:yyyyMMddHHmmss}.json.gz";
                 var filePath = Path.Combine(_archivePath, fileName);
 
                 using var fileStream = File.Create(filePath);

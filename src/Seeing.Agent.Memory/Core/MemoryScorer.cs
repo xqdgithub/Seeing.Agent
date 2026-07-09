@@ -126,7 +126,7 @@ public class MemoryScorer : IMemoryScorer
 
         DateTime now = options.TryGetValue("now", out var nowObj) && nowObj is DateTime dt
             ? dt
-            : DateTime.UtcNow;
+            : DateTime.Now;
 
         return Task.FromResult(CalculateScore(entry, now));
     }

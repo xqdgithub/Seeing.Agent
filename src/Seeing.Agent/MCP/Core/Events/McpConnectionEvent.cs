@@ -19,7 +19,7 @@ public sealed class McpConnectionEvent
             ServerName = serverName,
             State = McpConnectionState.Connected,
             OperationType = McpOperationType.Connect,
-            Timestamp = DateTimeOffset.UtcNow,
+            Timestamp = DateTimeOffset.Now,
             Duration = duration,
             Policy = policy
         };
@@ -32,7 +32,7 @@ public sealed class McpConnectionEvent
             ServerName = serverName,
             State = McpConnectionState.Pending,
             OperationType = McpOperationType.Disconnect,
-            Timestamp = DateTimeOffset.UtcNow,
+            Timestamp = DateTimeOffset.Now,
             Duration = duration
         };
 
@@ -47,7 +47,7 @@ public sealed class McpConnectionEvent
             State = McpConnectionState.Error,
             OperationType = operationType,
             Error = error,
-            Timestamp = DateTimeOffset.UtcNow,
+            Timestamp = DateTimeOffset.Now,
             Duration = duration
         };
 
@@ -60,7 +60,7 @@ public sealed class McpConnectionEvent
             ServerName = serverName,
             State = McpConnectionState.Reconnecting,
             OperationType = McpOperationType.Reconnect,
-            Timestamp = DateTimeOffset.UtcNow,
+            Timestamp = DateTimeOffset.Now,
             Policy = policy
         };
 
@@ -71,7 +71,7 @@ public sealed class McpConnectionEvent
             ServerName = serverName,
             State = McpConnectionState.Paused,
             OperationType = McpOperationType.Pause,
-            Timestamp = DateTimeOffset.UtcNow
+            Timestamp = DateTimeOffset.Now
         };
 
     public static McpConnectionEvent Resumed(
@@ -82,7 +82,7 @@ public sealed class McpConnectionEvent
             ServerName = serverName,
             State = McpConnectionState.Connected,
             OperationType = McpOperationType.Resume,
-            Timestamp = DateTimeOffset.UtcNow,
+            Timestamp = DateTimeOffset.Now,
             Duration = duration
         };
 }

@@ -33,8 +33,8 @@
                         </FormItem>
                         <FormItem Label="Gateway 权限模式">
                             <Select TItemValue="string" TItem="string" @bind-Value="@_gateway.PermissionMode">
-                                <SelectOption Value="@("interactive")">交互式审批</SelectOption>
-                                <SelectOption Value="@("auto_approve")">自动批准</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@("interactive")">交互式审批</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@("auto_approve")">自动批准</SelectOption>
                             </Select>
                         </FormItem>
                     </div>

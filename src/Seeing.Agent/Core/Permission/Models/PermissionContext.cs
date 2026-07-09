@@ -31,7 +31,7 @@ public sealed class PermissionContext
     public string WorkingDirectory { get; init; } = Directory.GetCurrentDirectory();
 
     /// <summary>时间戳</summary>
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
 
     /// <summary>随机数（防重放）</summary>
     public string Nonce { get; init; } = Guid.NewGuid().ToString("N");

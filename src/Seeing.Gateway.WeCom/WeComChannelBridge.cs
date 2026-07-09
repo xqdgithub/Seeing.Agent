@@ -449,7 +449,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _permissionState.CleanupExpired();
         _permissionState.TryRemoveByPermissionId(permissionId, out _);
 
-        var expiresAt = DateTimeOffset.UtcNow.AddSeconds(_options.EffectivePermissionCardTtlSeconds);
+        var expiresAt = DateTimeOffset.Now.AddSeconds(_options.EffectivePermissionCardTtlSeconds);
         var pending = new PendingPermissionCard
         {
             SessionId = sessionId,

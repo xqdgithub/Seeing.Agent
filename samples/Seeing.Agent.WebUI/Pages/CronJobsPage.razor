@@ -4,9 +4,13 @@
 @using Seeing.Agent.Scheduler.Abstractions
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Components.CronJobs
+@using Seeing.Agent.WebUI.Services
 @inject IScheduleManager ScheduleManager
 @inject IScheduleRepository ScheduleRepository
+@inject SchedulerStatusService StatusService
+@inject JobNotificationService NotificationService
 @inject IMessageService MessageService
+@implements IDisposable
 
 <PageTitle>定时任务 - Seeing.Agent</PageTitle>
 
@@ -26,15 +30,29 @@
         <div class="stat-item">
             <div class="stat-icon"><Icon Type="@IconType.Outline.ClockCircle" /></div>
             <div class="stat-content">
-                <span class="stat-value">@_rows.Count</span>
+                <span class="stat-value">@_status.TotalJobs</span>
                 <span class="stat-label">任务总数</span>
             </div>
         </div>
         <div class="stat-item">
-            <div class="stat-icon"><Icon Type="@IconType.Outline.CheckCircle" /></div>
+            <div class="stat-icon" style="color: #52c41a;"><Icon Type="@IconType.Outline.CheckCircle" /></div>
             <div class="stat-content">
                 <span class="stat-value">@_rows.Count(r => r.Enabled)</span>
                 <span class="stat-label">已启用</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon" style="color: #1890ff;"><Icon Type="@IconType.Outline.Sync" Spin="@(_status.RunningJobs > 0)" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_status.RunningJobs</span>
+                <span class="stat-label">运行中</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon" style="color: #faad14;"><Icon Type="@IconType.Outline.PauseCircle" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_status.PausedJobs</span>
+                <span class="stat-label">已暂停</span>
             </div>
         </div>
     </Stats>
@@ -45,11 +63,23 @@
             <PropertyColumn Property="c => c.TaskType" Title="类型" />
             <PropertyColumn Property="c => c.ScheduleText" Title="调度" />
             <PropertyColumn Property="c => c.Agent" Title="Agent" />
-            <PropertyColumn Property="c => c.EnabledText" Title="启用" />
-            <PropertyColumn Property="c => c.NextRunText" Title="下次运行" />
+            <PropertyColumn Property="c => c.Enabled" Title="状态">
+                <JobStatusBadge State="@context.State" />
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.NextRunText" Title="下次运行">
+                <JobNextRunTimer NextRun="@context.NextFireTime" />
+            </PropertyColumn>
             <ActionColumn Title="操作">
                 <Space>
                     <Button Size="@ButtonSize.Small" OnClick="@(() => RunOnce(context.Id))">运行</Button>
+                    @if (context.Enabled)
+                    {
+                        <Button Size="@ButtonSize.Small" OnClick="@(() => PauseJob(context.Id))">暂停</Button>
+                    }
+                    else
+                    {
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="@(() => ResumeJob(context.Id))">恢复</Button>
+                    }
                     <Button Size="@ButtonSize.Small" OnClick="@(() => EditJob(context.Id))">编辑</Button>
                     <Button Size="@ButtonSize.Small" OnClick="@(() => ShowHistory(context.Id))">历史</Button>
                     <Popconfirm Title="确定删除此任务？" OnConfirm="@(() => DeleteJob(context.Id))">
@@ -102,30 +132,78 @@
     private List<JobRow> _rows = new();
     private List<JobExecutionRecord> _history = new();
     private ScheduledJobSpec _editingJob = new();
+    private SchedulerStatus _status = new();
     private bool _loading;
     private bool _editorVisible;
     private bool _historyVisible;
     private bool _isEdit;
     private bool _saving;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        
+        // 订阅通知
+        NotificationService.JobError += OnJobError;
+        NotificationService.JobSuccess += OnJobSuccess;
+    }
+
+    public void Dispose()
+    {
+        NotificationService.JobError -= OnJobError;
+        NotificationService.JobSuccess -= OnJobSuccess;
+    }
 
     private async Task LoadAsync()
     {
         _loading = true;
-        _jobs = (await ScheduleManager.ListJobsAsync()).ToList();
-        _rows = _jobs.Select(j => new JobRow
+        try
         {
-            Id = j.Id,
-            Name = j.Name ?? j.Id,
-            TaskType = j.TaskType,
-            ScheduleText = GetScheduleText(j),
-            Agent = j.Agent ?? "",
-            Enabled = j.Enabled,
-            EnabledText = j.Enabled ? "是" : "否",
-            NextRunText = j.NextRunAt?.ToString("yyyy-MM-dd HH:mm") ?? "-"
-        }).ToList();
-        _loading = false;
+            _jobs = (await ScheduleManager.ListJobsAsync()).ToList();
+            _status = await StatusService.GetStatusAsync();
+            
+            var jobStatuses = await StatusService.GetAllJobStatusesAsync();
+            var statusDict = jobStatuses.ToDictionary(s => s.JobId, s => s);
+
+            _rows = _jobs.Select(j =>
+            {
+                var status = statusDict.GetValueOrDefault(j.Id);
+                return new JobRow
+                {
+                    Id = j.Id,
+                    Name = j.Name ?? j.Id,
+                    TaskType = j.TaskType,
+                    ScheduleText = GetScheduleText(j),
+                    Agent = j.Agent ?? "",
+                    Enabled = j.Enabled,
+                    State = status?.State ?? (j.Enabled ? JobState.Normal : JobState.Paused),
+                    NextFireTime = status?.NextFireTime,
+                    NextRunText = status?.NextFireTime?.ToString("yyyy-MM-dd HH:mm") ?? "-"
+                };
+            }).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnJobError(object? sender, JobErrorEventArgs args)
+    {
+        _ = InvokeAsync(() =>
+        {
+            MessageService.Error($"任务 {args.JobId} 执行失败: {args.Error}");
+            return LoadAsync();
+        });
+    }
+
+    private void OnJobSuccess(object? sender, JobSuccessEventArgs args)
+    {
+        _ = InvokeAsync(() =>
+        {
+            MessageService.Success($"任务 {args.JobId} 执行成功");
+            return LoadAsync();
+        });
     }
 
     private void ShowCreate()
@@ -176,8 +254,21 @@
     private async Task RunOnce(string id)
     {
         var result = await ScheduleManager.RunJobOnceAsync(id);
-        if (result.Success) MessageService.Success("任务执行成功");
-        else MessageService.Error(result.Error ?? "执行失败");
+        await NotificationService.HandleResultAsync(id, result);
+        await LoadAsync();
+    }
+
+    private async Task PauseJob(string id)
+    {
+        await StatusService.PauseJobAsync(id);
+        MessageService.Info("任务已暂停");
+        await LoadAsync();
+    }
+
+    private async Task ResumeJob(string id)
+    {
+        await StatusService.ResumeJobAsync(id);
+        MessageService.Success("任务已恢复");
         await LoadAsync();
     }
 
@@ -203,7 +294,8 @@
         public string ScheduleText { get; set; } = "";
         public string Agent { get; set; } = "";
         public bool Enabled { get; set; }
-        public string EnabledText { get; set; } = "";
+        public JobState State { get; set; }
+        public DateTime? NextFireTime { get; set; }
         public string NextRunText { get; set; } = "";
     }
 }

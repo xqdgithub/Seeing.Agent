@@ -10,7 +10,7 @@ public class HookPayload
     private static readonly IReadOnlyDictionary<string, object?> EmptyResult = EmptyInput;
 
     public HookSpec Spec { get; init; } = HookSpec.Default;
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
     public string? TraceId { get; init; }
     public string SessionId { get; init; } = "";
     public string? MessageId { get; init; }

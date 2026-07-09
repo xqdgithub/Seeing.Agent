@@ -1,43 +1,37 @@
 using Microsoft.Extensions.Logging;
+using Quartz;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
+using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.Scheduler.Management;
 
-/// <summary>调度管理器 — CRUD、引擎生命周期、心跳注册</summary>
-public sealed class ScheduleManager : IScheduleManager
+/// <summary>调度管理器 — Quartz 包装，提供 CRUD、状态查询、生命周期管理</summary>
+public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 {
     private readonly IScheduleRepository _repository;
-    private readonly IScheduledJobExecutor _executor;
-    private readonly IHeartbeatRunner _heartbeatRunner;
-    private readonly InProcessSchedulerEngine _engine;
-    private readonly SchedulerOptionsProvider _optionsProvider;
+    private readonly QuartzSchedulerEngine _engine;
+    private readonly ISchedulerOptionsProvider _optionsProvider;
     private readonly ILogger<ScheduleManager> _logger;
-    private readonly SemaphoreSlim _runLock;
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
 
     private JobsFile _jobsFile = new();
     private bool _started;
 
+    public event EventHandler<JobStatusChangedEventArgs>? JobStatusChanged;
+
     public ScheduleManager(
         IScheduleRepository repository,
-        IScheduledJobExecutor executor,
-        IHeartbeatRunner heartbeatRunner,
-        InProcessSchedulerEngine engine,
-        SchedulerOptionsProvider optionsProvider,
+        QuartzSchedulerEngine engine,
+        ISchedulerOptionsProvider optionsProvider,
         ILogger<ScheduleManager> logger)
     {
         _repository = repository;
-        _executor = executor;
-        _heartbeatRunner = heartbeatRunner;
         _engine = engine;
         _optionsProvider = optionsProvider;
         _logger = logger;
-
-        var maxConcurrent = Math.Max(1, optionsProvider.Current.MaxConcurrentJobs);
-        _runLock = new SemaphoreSlim(maxConcurrent, maxConcurrent);
     }
 
     /// <inheritdoc/>
@@ -46,7 +40,7 @@ public sealed class ScheduleManager : IScheduleManager
     /// <inheritdoc/>
     public async Task StartAsync(CancellationToken ct = default)
     {
-        await _lifecycleLock.WaitAsync(ct).ConfigureAwait(false);
+        await _lifecycleLock.WaitAsync(ct);
         try
         {
             if (_started)
@@ -60,17 +54,18 @@ public sealed class ScheduleManager : IScheduleManager
                 return;
             }
 
-            _jobsFile = await _repository.LoadAsync(ct).ConfigureAwait(false);
-            _engine.Configure(
-                TimeSpan.FromSeconds(Math.Max(1, options.TickIntervalSeconds)),
-                options.Timezone);
+            // 加载任务文件
+            _jobsFile = await _repository.LoadAsync(ct);
 
-            await _engine.StartAsync(OnJobDueAsync, ct).ConfigureAwait(false);
+            // 启动 Quartz 调度器
+            await _engine.StartAsync(ct);
 
+            // 注册用户任务
             foreach (var job in _jobsFile.Jobs.Where(j => j.Enabled))
-                await RegisterUserJobAsync(job, ct).ConfigureAwait(false);
+                await RegisterUserJobAsync(job, ct);
 
-            await RegisterHeartbeatAsync(ct).ConfigureAwait(false);
+            // 注册心跳
+            await RegisterHeartbeatAsync(ct);
 
             _started = true;
             _logger.LogInformation("ScheduleManager started with {Count} user jobs", _jobsFile.Jobs.Count);
@@ -84,13 +79,13 @@ public sealed class ScheduleManager : IScheduleManager
     /// <inheritdoc/>
     public async Task StopAsync(CancellationToken ct = default)
     {
-        await _lifecycleLock.WaitAsync(ct).ConfigureAwait(false);
+        await _lifecycleLock.WaitAsync(ct);
         try
         {
             if (!_started)
                 return;
 
-            await _engine.StopAsync().ConfigureAwait(false);
+            await _engine.StopAsync(ct);
             _started = false;
             _logger.LogInformation("ScheduleManager stopped");
         }
@@ -98,6 +93,24 @@ public sealed class ScheduleManager : IScheduleManager
         {
             _lifecycleLock.Release();
         }
+    }
+
+    /// <inheritdoc/>
+    public async Task<SchedulerStatus> GetStatusAsync(CancellationToken ct = default)
+    {
+        return await _engine.GetStatusAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<JobStatus> GetJobStatusAsync(string jobId, CancellationToken ct = default)
+    {
+        return await _engine.GetJobStatusAsync(jobId, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<JobStatus>> GetAllJobStatusesAsync(CancellationToken ct = default)
+    {
+        return await _engine.GetAllJobStatusesAsync(ct);
     }
 
     /// <inheritdoc/>
@@ -126,10 +139,10 @@ public sealed class ScheduleManager : IScheduleManager
         else
             _jobsFile.Jobs.Add(job);
 
-        await _repository.SaveAsync(_jobsFile, ct).ConfigureAwait(false);
-
         if (_started)
-            await RegisterUserJobAsync(job, ct).ConfigureAwait(false);
+            await RegisterUserJobAsync(job, ct);
+
+        await _repository.SaveAsync(_jobsFile, ct);
 
         return job;
     }
@@ -141,8 +154,8 @@ public sealed class ScheduleManager : IScheduleManager
         if (!removed)
             return false;
 
-        await _repository.SaveAsync(_jobsFile, ct).ConfigureAwait(false);
-        await _engine.RemoveJobAsync(jobId, ct).ConfigureAwait(false);
+        await _repository.SaveAsync(_jobsFile, ct);
+        await _engine.RemoveJobAsync(jobId, ct);
         return true;
     }
 
@@ -150,12 +163,56 @@ public sealed class ScheduleManager : IScheduleManager
     public async Task<JobExecutionResult> RunJobOnceAsync(string jobId, CancellationToken ct = default)
     {
         if (jobId == SchedulerConstants.HeartbeatJobId)
-            return await _heartbeatRunner.RunOnceAsync(ct).ConfigureAwait(false);
+        {
+            // 心跳通过触发器执行
+            await _engine.TriggerJobAsync(jobId, ct);
+            return new JobExecutionResult
+            {
+                Success = true,
+                Output = "Heartbeat triggered",
+                Source = ScheduleSources.Heartbeat
+            };
+        }
 
         var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId)
             ?? throw new InvalidOperationException($"Job '{jobId}' not found");
 
-        return await ExecuteJobInternalAsync(job, ct).ConfigureAwait(false);
+        // 手动触发
+        await _engine.TriggerJobAsync(jobId, ct);
+
+        return new JobExecutionResult
+        {
+            Success = true,
+            Output = "Job triggered",
+            Source = ScheduleSources.Cron,
+            SessionId = job.Dispatch.Target.SessionId ?? "main"
+        };
+    }
+
+    /// <inheritdoc/>
+    public async Task PauseJobAsync(string jobId, CancellationToken ct = default)
+    {
+        await _engine.PauseJobAsync(jobId, ct);
+        
+        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job != null)
+        {
+            job.Enabled = false;
+            await _repository.SaveAsync(_jobsFile, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task ResumeJobAsync(string jobId, CancellationToken ct = default)
+    {
+        await _engine.ResumeJobAsync(jobId, ct);
+        
+        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job != null)
+        {
+            job.Enabled = true;
+            await _repository.SaveAsync(_jobsFile, ct);
+        }
     }
 
     /// <inheritdoc/>
@@ -165,19 +222,80 @@ public sealed class ScheduleManager : IScheduleManager
         if (!_started)
             return;
 
-        await _engine.RemoveJobAsync(SchedulerConstants.HeartbeatJobId, ct).ConfigureAwait(false);
-        await RegisterHeartbeatAsync(ct).ConfigureAwait(false);
+        await _engine.RemoveJobAsync(SchedulerConstants.HeartbeatJobId, ct);
+        await RegisterHeartbeatAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task OnJobExecutedAsync(string jobId, JobExecutionResult result, CancellationToken ct = default)
+    {
+        // 记录历史
+        var record = new JobExecutionRecord
+        {
+            Source = result.Source,
+            StartedAt = DateTime.Now,
+            CompletedAt = DateTime.Now,
+            Status = result.Success ? "success" : "failed",
+            Output = result.Output,
+            Error = result.Error
+        };
+
+        if (!jobId.StartsWith('_'))
+            await _repository.AppendHistoryAsync(jobId, record, ct);
+
+        // 更新任务最后运行时间
+        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job != null)
+        {
+            job.LastRunAt = record.StartedAt;
+            await _repository.SaveAsync(_jobsFile, ct);
+        }
+
+        // 触发状态变更事件
+        var oldState = result.Success ? JobState.Normal : JobState.Error;
+        var newState = result.Success ? JobState.Normal : JobState.Error;
+        
+        JobStatusChanged?.Invoke(this, new JobStatusChangedEventArgs
+        {
+            JobId = jobId,
+            OldState = oldState,
+            NewState = newState,
+            Error = result.Error
+        });
+
+        _logger.LogDebug("Job {JobId} executed: {Status}", jobId, record.Status);
     }
 
     private async Task RegisterUserJobAsync(ScheduledJobSpec job, CancellationToken ct)
     {
-        var schedule = job.Schedule;
-        schedule.Every ??= schedule.Type == ScheduleTypes.Interval ? "1h" : null;
+        var jobData = new JobDataMap
+        {
+            [JobDataKeys.JobId] = job.Id,
+            [JobDataKeys.JobName] = job.Name ?? job.Id,
+            [JobDataKeys.TaskType] = job.TaskType,
+            [JobDataKeys.SessionId] = job.Dispatch.Target.SessionId ?? "main",
+            [JobDataKeys.TimeoutSeconds] = job.Runtime.TimeoutSeconds
+        };
 
-        var next = ScheduleExpressionParser.GetNextOccurrence(schedule, DateTimeOffset.UtcNow, _optionsProvider.Current.Timezone);
-        job.NextRunAt = next;
+        if (job.TaskType == ScheduleTaskTypes.Text)
+        {
+            jobData[JobDataKeys.Text] = job.Text ?? string.Empty;
+        }
+        else
+        {
+            jobData[JobDataKeys.AgentId] = job.Agent ?? string.Empty;
+            jobData[JobDataKeys.Prompt] = job.Prompt ?? string.Empty;
+        }
 
-        await _engine.UpsertJobAsync(job.Id, schedule, job.Enabled, ct).ConfigureAwait(false);
+        // 投递配置
+        if (!string.IsNullOrEmpty(job.Dispatch.Target.Channel))
+            jobData[JobDataKeys.DispatchChannel] = job.Dispatch.Target.Channel;
+        if (!string.IsNullOrEmpty(job.Dispatch.Target.UserId))
+            jobData[JobDataKeys.DispatchUserId] = job.Dispatch.Target.UserId;
+        if (!string.IsNullOrEmpty(job.Dispatch.Target.SessionId))
+            jobData[JobDataKeys.DispatchSessionId] = job.Dispatch.Target.SessionId;
+
+        await _engine.UpsertJobAsync(job.Id, job.Schedule, job.Enabled, jobData, ct);
     }
 
     private async Task RegisterHeartbeatAsync(CancellationToken ct)
@@ -193,74 +311,22 @@ public sealed class ScheduleManager : IScheduleManager
             Timezone = _optionsProvider.Current.Timezone
         };
 
-        await _engine.UpsertJobAsync(SchedulerConstants.HeartbeatJobId, schedule, true, ct).ConfigureAwait(false);
-    }
-
-    private async Task OnJobDueAsync(string jobId, CancellationToken ct)
-    {
-        if (!await _runLock.WaitAsync(0, ct).ConfigureAwait(false))
+        var jobData = new JobDataMap
         {
-            _logger.LogWarning("Skipping job {JobId}: max concurrent jobs reached", jobId);
-            return;
-        }
-
-        try
-        {
-            if (jobId == SchedulerConstants.HeartbeatJobId)
-            {
-                await _heartbeatRunner.RunOnceAsync(ct).ConfigureAwait(false);
-            }
-            else
-            {
-                var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
-                if (job == null || !job.Enabled)
-                    return;
-
-                await ExecuteJobInternalAsync(job, ct).ConfigureAwait(false);
-            }
-        }
-        finally
-        {
-            await _engine.RescheduleAfterRunAsync(jobId, ct).ConfigureAwait(false);
-            _runLock.Release();
-        }
-    }
-
-    private async Task<JobExecutionResult> ExecuteJobInternalAsync(ScheduledJobSpec job, CancellationToken ct)
-    {
-        var record = new JobExecutionRecord
-        {
-            Source = ScheduleSources.Cron,
-            StartedAt = DateTimeOffset.UtcNow
+            [JobDataKeys.JobId] = SchedulerConstants.HeartbeatJobId,
+            [JobDataKeys.SessionId] = hb.SessionId,
+            [JobDataKeys.TimeoutSeconds] = hb.TimeoutSeconds,
+            [JobDataKeys.AgentId] = hb.Agent ?? string.Empty,
+            [JobDataKeys.QueryFile] = hb.QueryFile,
+            [JobDataKeys.HeartbeatTarget] = hb.Target,
+            [JobDataKeys.Source] = ScheduleSources.Heartbeat
         };
 
-        JobExecutionResult result;
-        try
+        if (hb.ActiveHours != null)
         {
-            result = await _executor.ExecuteAsync(job, ct).ConfigureAwait(false);
-            record.Status = result.Success ? "success" : "failed";
-            record.Output = result.Output;
-            record.Error = result.Error;
-        }
-        catch (Exception ex)
-        {
-            result = new JobExecutionResult
-            {
-                Success = false,
-                Error = ex.Message,
-                Source = ScheduleSources.Cron
-            };
-            record.Status = "failed";
-            record.Error = ex.Message;
+            jobData[JobDataKeys.ActiveHours] = System.Text.Json.JsonSerializer.Serialize(hb.ActiveHours);
         }
 
-        record.CompletedAt = DateTimeOffset.UtcNow;
-        job.LastRunAt = record.StartedAt;
-
-        if (!job.Id.StartsWith('_'))
-            await _repository.AppendHistoryAsync(job.Id, record, ct).ConfigureAwait(false);
-
-        await _repository.SaveAsync(_jobsFile, ct).ConfigureAwait(false);
-        return result;
+        await _engine.UpsertJobAsync(SchedulerConstants.HeartbeatJobId, schedule, true, jobData, ct);
     }
 }

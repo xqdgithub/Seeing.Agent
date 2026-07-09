@@ -106,7 +106,7 @@ public sealed class GatewayClientSupervisor
         var state = new GatewayClientRuntimeState
         {
             Status = GatewayClientStatuses.Starting,
-            StartedAt = DateTimeOffset.UtcNow
+            StartedAt = DateTimeOffset.Now
         };
         await _configService.SaveRuntimeStateAsync(channelId, state, ct);
 

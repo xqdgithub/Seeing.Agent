@@ -46,7 +46,7 @@ public static class WeComSessionResolver
     }
 
     internal static string GenerateRotatedSessionId(string conversationKey) =>
-        $"{conversationKey}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+        $"{conversationKey}_{DateTime.Now:yyyyMMddHHmmss}";
 
     private static string SanitizeSegment(string value)
     {

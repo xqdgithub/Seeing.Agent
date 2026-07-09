@@ -53,9 +53,14 @@ builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SkillStateService>();
 builder.Services.AddSingleton<ToolStateService>();
-        builder.Services.AddSingleton<SeeingConfigService>();
-        builder.Services.AddSingleton<GatewayClientConfigService>();
+builder.Services.AddSingleton<SeeingConfigService>();
+builder.Services.AddSingleton<GatewayClientConfigService>();
 builder.Services.AddSingleton<GatewayClientSupervisor>();
+
+// === 调度器状态服务 ===
+builder.Services.AddSingleton<SchedulerStatusService>();
+builder.Services.AddSingleton<JobNotificationService>();
+
 builder.Services.AddHostedService<GatewayClientHostedService>();
 builder.Services.AddHttpClient();
 

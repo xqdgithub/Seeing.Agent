@@ -76,8 +76,8 @@ public sealed class GatewayClientHostedService : IHostedService
         if (!_gatewayOptions.Enabled)
             return;
 
-        var deadline = DateTime.UtcNow.AddSeconds(30);
-        while (!_gatewayServer.IsRunning && DateTime.UtcNow < deadline)
+        var deadline = DateTime.Now.AddSeconds(30);
+        while (!_gatewayServer.IsRunning && DateTime.Now < deadline)
             await Task.Delay(200).ConfigureAwait(false);
 
         if (!_gatewayServer.IsRunning)

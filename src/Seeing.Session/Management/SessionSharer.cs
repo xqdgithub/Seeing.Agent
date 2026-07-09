@@ -31,8 +31,8 @@ namespace Seeing.Session.Management
                 ShareId = shareId,
                 SessionId = session.Id,
                 SessionData = session.Clone(),
-                CreatedAt = DateTimeOffset.UtcNow,
-                ExpiresAt = DateTimeOffset.UtcNow.AddDays(7)
+                CreatedAt = DateTimeOffset.Now,
+                ExpiresAt = DateTimeOffset.Now.AddDays(7)
             };
 
             _shares[shareId] = shareRecord;
@@ -54,7 +54,7 @@ namespace Seeing.Session.Management
             // 先从内存查找
             if (_shares.TryGetValue(shareId, out var record))
             {
-                if (record.ExpiresAt.HasValue && record.ExpiresAt.Value < DateTimeOffset.UtcNow)
+                if (record.ExpiresAt.HasValue && record.ExpiresAt.Value < DateTimeOffset.Now)
                 {
                     _shares.TryRemove(shareId, out _);
                     _logger.LogWarning("Share {ShareId} has expired", shareId);
@@ -77,7 +77,7 @@ namespace Seeing.Session.Management
                 if (record == null) return null;
 
                 // 检查过期
-                if (record.ExpiresAt.HasValue && record.ExpiresAt.Value < DateTimeOffset.UtcNow)
+                if (record.ExpiresAt.HasValue && record.ExpiresAt.Value < DateTimeOffset.Now)
                 {
                     File.Delete(filePath);
                     _logger.LogWarning("Share {ShareId} has expired", shareId);

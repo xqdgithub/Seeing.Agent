@@ -132,7 +132,7 @@ namespace Seeing.Agent.Core.Generation
             if (!validation.IsValid)
                 throw new InvalidOperationException($"Template syntax errors: {string.Join("; ", validation.Errors)}");
 
-            template.UpdatedAt = DateTimeOffset.UtcNow;
+            template.UpdatedAt = DateTimeOffset.Now;
             _templates[template.Id] = template;
 
             _logger.LogInformation("Registered template {TemplateId} ({Name})", template.Id, template.Name);

@@ -93,7 +93,7 @@ internal sealed class McpBackgroundReconnector
 
                 if (_cancellationToken.IsCancellationRequested) break;
 
-                var now = DateTime.UtcNow;
+                var now = DateTime.Now;
                 var lastReconnect = _lastReconnectTime.TryGetValue(serverName, out var last)
                     ? last
                     : DateTime.MinValue;

@@ -48,8 +48,8 @@
                             <FormItem Label="ID"><Input @bind-Value="@_currentProvider.Id" Disabled="true" /></FormItem>
                             <FormItem Label="类型">
                                 <Select TItemValue="ProviderType" TItem="ProviderType" @bind-Value="@_currentProvider.Type">
-                                    <SelectOption Value="ProviderType.OpenAI">OpenAI</SelectOption>
-                                    <SelectOption Value="ProviderType.Anthropic">Anthropic</SelectOption>
+                                    <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.OpenAI">OpenAI</SelectOption>
+                                    <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.Anthropic">Anthropic</SelectOption>
                                 </Select>
                             </FormItem>
                             <FormItem Label="名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
@@ -93,8 +93,8 @@
             <FormItem Label="Provider ID"><Input @bind-Value="@_newProviderId" Placeholder="如 openai" /></FormItem>
             <FormItem Label="类型">
                 <Select TItemValue="ProviderType" TItem="ProviderType" @bind-Value="@_newProviderType">
-                    <SelectOption Value="ProviderType.OpenAI">OpenAI</SelectOption>
-                    <SelectOption Value="ProviderType.Anthropic">Anthropic</SelectOption>
+                    <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.OpenAI">OpenAI</SelectOption>
+                    <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.Anthropic">Anthropic</SelectOption>
                 </Select>
             </FormItem>
         </div>

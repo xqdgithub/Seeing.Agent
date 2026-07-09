@@ -2,6 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Scheduler.Abstractions;
+using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.Scheduler.Commands;
 
@@ -10,18 +11,15 @@ internal sealed class SchedulerCommandRegistrationHostedService : IHostedService
 {
     private readonly ICommandRegistry _registry;
     private readonly IScheduleManager _manager;
-    private readonly IHeartbeatRunner _heartbeatRunner;
     private readonly ILogger<SchedulerCommandRegistrationHostedService> _logger;
 
     public SchedulerCommandRegistrationHostedService(
         ICommandRegistry registry,
         IScheduleManager manager,
-        IHeartbeatRunner heartbeatRunner,
         ILogger<SchedulerCommandRegistrationHostedService> logger)
     {
         _registry = registry;
         _manager = manager;
-        _heartbeatRunner = heartbeatRunner;
         _logger = logger;
     }
 
@@ -29,7 +27,7 @@ internal sealed class SchedulerCommandRegistrationHostedService : IHostedService
     {
         _registry.Register(new CronListCommand(_manager));
         _registry.Register(new CronRunCommand(_manager));
-        _registry.Register(new HeartbeatRunCommand(_heartbeatRunner));
+        _registry.Register(new HeartbeatRunCommand(_manager));
         _logger.LogDebug("Scheduler commands registered");
         return Task.CompletedTask;
     }
@@ -55,8 +53,14 @@ internal sealed class CronListCommand : ICommand
         if (jobs.Count == 0)
             return CommandResult.Ok("No scheduled jobs.");
 
-        var lines = jobs.Select(j =>
-            $"- {j.Id} [{j.TaskType}] enabled={j.Enabled} agent={j.Agent ?? "-"} next={j.NextRunAt?.ToString("u") ?? "-"}");
+        var lines = new List<string>();
+        foreach (var j in jobs)
+        {
+            var status = await _manager.GetJobStatusAsync(j.Id, cancellationToken).ConfigureAwait(false);
+            // 使用本地时间格式显示（不含 Z 后缀）
+            var nextText = status.NextFireTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+            lines.Add($"- {j.Id} [{j.TaskType}] enabled={j.Enabled} agent={j.Agent ?? "-"} next={nextText}");
+        }
         return CommandResult.Ok(string.Join(Environment.NewLine, lines));
     }
 }
@@ -88,9 +92,9 @@ internal sealed class CronRunCommand : ICommand
 
 internal sealed class HeartbeatRunCommand : ICommand
 {
-    private readonly IHeartbeatRunner _heartbeatRunner;
+    private readonly IScheduleManager _manager;
 
-    public HeartbeatRunCommand(IHeartbeatRunner heartbeatRunner) => _heartbeatRunner = heartbeatRunner;
+    public HeartbeatRunCommand(IScheduleManager manager) => _manager = manager;
 
     public CommandMetadata Metadata => CommandMetadata.Simple(
         "heartbeat-run",
@@ -100,9 +104,9 @@ internal sealed class HeartbeatRunCommand : ICommand
 
     public async Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
     {
-        var result = await _heartbeatRunner.RunOnceAsync(cancellationToken).ConfigureAwait(false);
+        var result = await _manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, cancellationToken).ConfigureAwait(false);
         return result.Success
-            ? CommandResult.Ok(result.Output ?? "Heartbeat completed.")
+            ? CommandResult.Ok(result.Output ?? "Heartbeat triggered.")
             : CommandResult.Fail(result.Error ?? "Heartbeat failed.");
     }
 }

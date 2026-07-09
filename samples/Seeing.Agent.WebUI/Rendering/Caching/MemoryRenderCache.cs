@@ -65,7 +65,7 @@ public class MemoryRenderCache : IRenderCache
         if (string.IsNullOrEmpty(content))
             return string.Empty;
 
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
 
         // 使用 AddOrUpdate 保证原子性
         var entry = _cache.AddOrUpdate(
@@ -122,7 +122,7 @@ public class MemoryRenderCache : IRenderCache
 
     public void Set(string cacheKey, string content, string rendered)
     {
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
         TrimIfNeeded();
 
         _cache[cacheKey] = new CacheEntry(content, rendered, now, now);

@@ -1,11 +1,16 @@
 @page "/settings"
 @using AntDesign
 @using Seeing.Agent.Configuration
+@using Seeing.Agent.Scheduler
+@using Seeing.Agent.Scheduler.Abstractions
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Components
+@using Seeing.Agent.WebUI.Components.Scheduler
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
 @inject IWorkspaceProvider WorkspaceProvider
+@inject IScheduleManager ScheduleManager
+@inject SchedulerStatusService StatusService
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 
@@ -38,10 +43,95 @@
                 </Form>
             </TabPane>
             <TabPane Key="scheduler" Tab="调度器">
-                <Form Layout="@FormLayout.Vertical" Model="@_scheduler">
-                    <FormItem Label="时区"><Input @bind-Value="@_scheduler.Timezone" /></FormItem>
-                    <FormItem Label="Tick 间隔（秒）"><InputNumber @bind-Value="@_scheduler.TickIntervalSeconds" Min="1" Style="width: 100%;" /></FormItem>
-                    <FormItem Label="最大并发任务"><InputNumber @bind-Value="@_scheduler.MaxConcurrentJobs" Min="1" Style="width: 100%;" /></FormItem>
+                <SchedulerStatusPanel Status="@_schedulerStatus" 
+                                      ShowControls="true"
+                                      OnStart="StartScheduler"
+                                      OnStop="StopScheduler"
+                                      OnReload="ReloadScheduler"
+                                      IsLoading="@_schedulerLoading" />
+                
+                <Divider />
+                
+                <Alert Type="@AlertType.Info" ShowIcon="true" 
+                       Message="调度器使用 Quartz.NET 框架，支持持久化和任务恢复"
+                       Style="margin-bottom: 16px;" />
+                
+                <Form Layout="@FormLayout.Vertical" Model="@_scheduler" Context="schedulerForm">
+                    <FormItem Label="启用调度器">
+                        <Switch @bind-Checked="@_scheduler.Enabled" />
+                    </FormItem>
+                    <FormItem Label="时区">
+                        <Input @bind-Value="@_scheduler.Timezone" Placeholder="Asia/Shanghai" />
+                    </FormItem>
+                    <FormItem Label="最大并发任务">
+                        <InputNumber @bind-Value="@_scheduler.MaxConcurrentJobs" Min="1" Max="20" Style="width: 100%;" />
+                    </FormItem>
+                    
+                    <Divider Orientation="@DividerOrientation.Left">持久化配置</Divider>
+                    
+                    <FormItem Label="启用持久化">
+                        <Switch @bind-Checked="@_scheduler.Persistence.Enabled" />
+                        <span style="margin-left: 8px; color: #888;">启用后任务状态将保存到数据库，应用重启后自动恢复</span>
+                    </FormItem>
+                    @if (_scheduler.Persistence.Enabled)
+                    {
+                        <FormItem Label="存储类型">
+                            <Select TItemValue="string" TItem="string" @bind-Value="@_scheduler.Persistence.Provider" Context="providerSelect">
+                                <SelectOption TItemValue="string" TItem="string" Value="@("sqlite")">SQLite（推荐）</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@("memory")">内存（仅测试）</SelectOption>
+                            </Select>
+                        </FormItem>
+                        @if (_scheduler.Persistence.Provider == "sqlite")
+                        {
+                            <FormItem Label="数据库路径">
+                                <Input @bind-Value="@_scheduler.Persistence.ConnectionString" 
+                                       Placeholder="Data Source=.seeing/quartz.db" />
+                            </FormItem>
+                        }
+                    }
+                </Form>
+                
+                <Divider Orientation="@DividerOrientation.Left">心跳配置</Divider>
+                
+                <Form Layout="@FormLayout.Vertical" Model="@_heartbeat" Context="heartbeatForm">
+                    <FormItem Label="启用心跳">
+                        <Switch @bind-Checked="@_heartbeat.Enabled" />
+                    </FormItem>
+                    @if (_heartbeat.Enabled)
+                    {
+                        <FormItem Label="执行间隔">
+                            <Input @bind-Value="@_heartbeat.Every" Placeholder="6h、30m" />
+                        </FormItem>
+                        <FormItem Label="投递目标">
+                            <Select TItemValue="string" TItem="string" @bind-Value="@_heartbeat.Target" Context="targetSelect">
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Main">main（主会话）</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Last">last（最后活跃会话）</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Inbox">inbox（收件箱）</SelectOption>
+                            </Select>
+                        </FormItem>
+                        <FormItem Label="Query 文件">
+                            <Input @bind-Value="@_heartbeat.QueryFile" Placeholder="HEARTBEAT.md" />
+                        </FormItem>
+                        <FormItem Label="指定 Agent">
+                            <Input @bind-Value="@_heartbeat.Agent" Placeholder="留空使用默认 Agent" />
+                        </FormItem>
+                        <FormItem Label="Session ID">
+                            <Input @bind-Value="@_heartbeat.SessionId" />
+                        </FormItem>
+                        <FormItem Label="超时（秒）">
+                            <InputNumber @bind-Value="@_heartbeat.TimeoutSeconds" Min="10" Max="600" Style="width: 100%;" />
+                        </FormItem>
+                        @if (_heartbeat.ActiveHours != null)
+                        {
+                            <FormItem Label="活跃时段">
+                                <Space>
+                                    <TimePicker TValue="DateTime?" @bind-Value="@_activeHoursStart" Format="HH:mm" />
+                                    <span>至</span>
+                                    <TimePicker TValue="DateTime?" @bind-Value="@_activeHoursEnd" Format="HH:mm" />
+                                </Space>
+                            </FormItem>
+                        }
+                    }
                 </Form>
             </TabPane>
             <TabPane Key="plugins" Tab="插件">
@@ -78,17 +168,102 @@
     private ConfigLevel _saveLevel = ConfigLevel.Project;
     private SeeingAgentOptions _options = new();
     private SchedulerOptions _scheduler = new();
+    private HeartbeatOptions _heartbeat = new();
+    private SchedulerStatus _schedulerStatus = new();
     private string _rawJson = "";
     private string _workspacePath = "";
     private List<PluginRow> _pluginRows = new();
+    private bool _schedulerLoading;
+    private DateTime? _activeHoursStart;
+    private DateTime? _activeHoursEnd;
 
     protected override async Task OnInitializedAsync()
     {
         _workspacePath = WorkspaceProvider.WorkspaceRoot;
         _options = await ConfigService.LoadProjectOptionsAsync();
         _scheduler = ConfigService.GetSchedulerOptions();
+        _heartbeat = _scheduler.Heartbeat;
+        
+        if (_heartbeat.ActiveHours != null)
+        {
+            _activeHoursStart = DateTime.Parse(_heartbeat.ActiveHours.Start);
+            _activeHoursEnd = DateTime.Parse(_heartbeat.ActiveHours.End);
+        }
+        
         _rawJson = await ConfigService.GetRawProjectJsonAsync();
         BuildPluginRows();
+        
+        // 加载调度器状态
+        await LoadSchedulerStatusAsync();
+    }
+
+    private async Task LoadSchedulerStatusAsync()
+    {
+        try
+        {
+            _schedulerStatus = await StatusService.GetStatusAsync();
+        }
+        catch
+        {
+            _schedulerStatus = new SchedulerStatus { IsRunning = false };
+        }
+    }
+
+    private async Task StartScheduler()
+    {
+        _schedulerLoading = true;
+        try
+        {
+            await StatusService.StartAsync();
+            await LoadSchedulerStatusAsync();
+            MessageService.Success("调度器已启动");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"启动失败: {ex.Message}");
+        }
+        finally
+        {
+            _schedulerLoading = false;
+        }
+    }
+
+    private async Task StopScheduler()
+    {
+        _schedulerLoading = true;
+        try
+        {
+            await StatusService.StopAsync();
+            await LoadSchedulerStatusAsync();
+            MessageService.Info("调度器已停止");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"停止失败: {ex.Message}");
+        }
+        finally
+        {
+            _schedulerLoading = false;
+        }
+    }
+
+    private async Task ReloadScheduler()
+    {
+        _schedulerLoading = true;
+        try
+        {
+            await ScheduleManager.ReloadHeartbeatAsync();
+            await LoadSchedulerStatusAsync();
+            MessageService.Success("配置已重载");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"重载失败: {ex.Message}");
+        }
+        finally
+        {
+            _schedulerLoading = false;
+        }
     }
 
     private void BuildPluginRows()
@@ -121,13 +296,24 @@
                     });
                     break;
                 case "scheduler":
+                    // 更新心跳活跃时段
+                    if (_heartbeat.ActiveHours != null && _activeHoursStart.HasValue && _activeHoursEnd.HasValue)
+                    {
+                        _heartbeat.ActiveHours.Start = _activeHoursStart.Value.ToString("HH:mm");
+                        _heartbeat.ActiveHours.End = _activeHoursEnd.Value.ToString("HH:mm");
+                    }
+                    
                     await ConfigService.SaveSchedulerOptionsAsync(s =>
                     {
                         s.Enabled = _scheduler.Enabled;
                         s.Timezone = _scheduler.Timezone;
-                        s.TickIntervalSeconds = _scheduler.TickIntervalSeconds;
                         s.MaxConcurrentJobs = _scheduler.MaxConcurrentJobs;
+                        s.Persistence = _scheduler.Persistence;
+                        s.Heartbeat = _heartbeat;
                     });
+                    
+                    // 重载调度器
+                    await ScheduleManager.ReloadHeartbeatAsync();
                     break;
                 case "plugins":
                     await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>

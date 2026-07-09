@@ -79,7 +79,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
 
     private async Task<McpOperationResult> ExecuteConnectAsync(McpServerConfig config, CancellationToken ct)
     {
-        var startTime = DateTime.UtcNow;
+        var startTime = DateTime.Now;
         var currentStatus = _getStatusFunc(_serverName);
 
         if (currentStatus == null)
@@ -181,21 +181,21 @@ internal sealed class McpConnectionCoordinator : IDisposable
                 _serverName, tools.Count);
 
             return McpOperationResult.Succeeded(_serverName, McpOperationType.Connect,
-                CoreMcpConnectionState.Connected, DateTime.UtcNow - startTime);
+                CoreMcpConnectionState.Connected, DateTime.Now - startTime);
         }
         catch (OperationCanceledException)
         {
             var error = McpErrorInfo.ConnectionTimeout(_serverName, config.ConnectionTimeout);
             UpdateStateWithError(error);
             return McpOperationResult.Failed(_serverName, McpOperationType.Connect, error,
-                CoreMcpConnectionState.Error, DateTime.UtcNow - startTime);
+                CoreMcpConnectionState.Error, DateTime.Now - startTime);
         }
         catch (Exception ex)
         {
             var error = ClassifyError(ex, config);
             UpdateStateWithError(error);
             return McpOperationResult.Failed(_serverName, McpOperationType.Connect, error,
-                CoreMcpConnectionState.Error, DateTime.UtcNow - startTime);
+                CoreMcpConnectionState.Error, DateTime.Now - startTime);
         }
     }
 
@@ -248,7 +248,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
 
     private async Task<McpOperationResult> ExecuteDisconnectAsync(CancellationToken ct)
     {
-        var startTime = DateTime.UtcNow;
+        var startTime = DateTime.Now;
         var currentStatus = _getStatusFunc(_serverName);
 
         if (currentStatus == null || currentStatus.State == CoreMcpConnectionState.Pending)
@@ -295,7 +295,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
         _logger.LogInformation("MCP Server {Server} 已断开连接", _serverName);
 
         return McpOperationResult.Succeeded(_serverName, McpOperationType.Disconnect,
-            CoreMcpConnectionState.Pending, DateTime.UtcNow - startTime);
+            CoreMcpConnectionState.Pending, DateTime.Now - startTime);
     }
 
     public async Task<McpOperationResult> ReconnectAsync(CancellationToken ct = default)
@@ -334,7 +334,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.Failed(_serverName, McpOperationType.Reconnect, error);
         }
 
-        var startTime = DateTime.UtcNow;
+        var startTime = DateTime.Now;
 
         // 增加重连计数并更新状态为 Reconnecting
         var reconnectingStatus = McpServerStatusBuilder.From(currentStatus)
@@ -357,13 +357,13 @@ internal sealed class McpConnectionCoordinator : IDisposable
         if (connectResult.Success)
         {
             return McpOperationResult.Succeeded(_serverName, McpOperationType.Reconnect,
-                connectResult.Status, DateTime.UtcNow - startTime);
+                connectResult.Status, DateTime.Now - startTime);
         }
         else
         {
             return McpOperationResult.Failed(_serverName, McpOperationType.Reconnect,
                 connectResult.Error ?? McpErrorInfo.ProcessCrashed(_serverName),
-                connectResult.Status, DateTime.UtcNow - startTime);
+                connectResult.Status, DateTime.Now - startTime);
         }
     }
 
@@ -385,7 +385,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.NoChange(_serverName, McpOperationType.Pause, currentStatus.State);
         }
 
-        var startTime = DateTime.UtcNow;
+        var startTime = DateTime.Now;
 
         // 先断开连接
         await ExecuteDisconnectAsync(ct);
@@ -402,7 +402,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
         _logger.LogInformation("MCP Server {Server} 已暂停", _serverName);
 
         return McpOperationResult.Succeeded(_serverName, McpOperationType.Pause,
-            CoreMcpConnectionState.Paused, DateTime.UtcNow - startTime);
+            CoreMcpConnectionState.Paused, DateTime.Now - startTime);
     }
 
     public async Task<McpOperationResult> ResumeAsync(CancellationToken ct = default)
@@ -436,7 +436,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.Failed(_serverName, McpOperationType.Resume, disabledError);
         }
 
-        var startTime = DateTime.UtcNow;
+        var startTime = DateTime.Now;
 
         // 设置为 Pending 状态
         var pendingStatus = McpServerStatusBuilder.From(currentStatus)
@@ -452,7 +452,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
         _logger.LogInformation("MCP Server {Server} 已恢复，正在后台连接", _serverName);
 
         return McpOperationResult.Succeeded(_serverName, McpOperationType.Resume,
-            CoreMcpConnectionState.Pending, DateTime.UtcNow - startTime);
+            CoreMcpConnectionState.Pending, DateTime.Now - startTime);
     }
 
     public async Task<bool> WaitForReadyAsync(TimeSpan timeout, CancellationToken ct = default)

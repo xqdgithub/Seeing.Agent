@@ -75,7 +75,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Plan
         /// <summary>更新计划</summary>
         public async Task<bool> UpdatePlanAsync(PlanModel plan, CancellationToken ct = default)
         {
-            plan.UpdatedAt = DateTimeOffset.UtcNow;
+            plan.UpdatedAt = DateTimeOffset.Now;
             _plans[plan.Id] = plan;
             await SavePlanAsync(plan, ct);
             return true;
@@ -156,7 +156,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Plan
             task.Status = status;
             if (status == PlanTaskStatus.Completed)
             {
-                task.CompletedAt = DateTimeOffset.UtcNow;
+                task.CompletedAt = DateTimeOffset.Now;
             }
             if (result != null)
             {

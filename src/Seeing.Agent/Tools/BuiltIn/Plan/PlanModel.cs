@@ -21,10 +21,10 @@ namespace Seeing.Agent.Tools.BuiltIn.Plan
         public PlanStatus Status { get; set; } = PlanStatus.Draft;
 
         /// <summary>创建时间</summary>
-        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
         /// <summary>更新时间</summary>
-        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
 
         /// <summary>会话 ID</summary>
         public string? SessionId { get; set; }

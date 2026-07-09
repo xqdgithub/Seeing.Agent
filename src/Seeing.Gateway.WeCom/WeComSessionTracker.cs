@@ -52,7 +52,7 @@ public sealed class WeComSessionTracker
         lock (_lock)
         {
             var entry = GetOrCreateEntry(conversationKey);
-            entry.LastActiveAtUtc = DateTime.UtcNow;
+            entry.LastActiveAtUtc = DateTime.Now;
             PersistLocked();
         }
     }
@@ -100,7 +100,7 @@ public sealed class WeComSessionTracker
         {
             ConversationKey = conversationKey,
             CurrentSessionId = conversationKey,
-            LastActiveAtUtc = DateTime.UtcNow
+            LastActiveAtUtc = DateTime.Now
         };
         _entries[conversationKey] = existing;
         PersistLocked();
@@ -112,7 +112,7 @@ public sealed class WeComSessionTracker
         if (_options.SessionIdleTimeoutMinutes <= 0)
             return false;
 
-        var idle = DateTime.UtcNow - entry.LastActiveAtUtc;
+        var idle = DateTime.Now - entry.LastActiveAtUtc;
         return idle >= TimeSpan.FromMinutes(_options.SessionIdleTimeoutMinutes);
     }
 
@@ -120,7 +120,7 @@ public sealed class WeComSessionTracker
     {
         var newSessionId = WeComSessionResolver.GenerateRotatedSessionId(conversationKey);
         entry.CurrentSessionId = newSessionId;
-        entry.LastActiveAtUtc = DateTime.UtcNow;
+        entry.LastActiveAtUtc = DateTime.Now;
         PersistLocked();
         _logger.LogInformation(
             "WeCom 会话轮换: Key={ConversationKey}, SessionId={SessionId}, Reason={Reason}",

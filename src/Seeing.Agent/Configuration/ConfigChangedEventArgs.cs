@@ -12,7 +12,7 @@ public sealed class ConfigChangedEventArgs : EventArgs
     public string[] ChangedSections { get; init; } = Array.Empty<string>();
     
     /// <summary>变更时间</summary>
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
     
     /// <summary>
     /// 是否涉及指定配置节

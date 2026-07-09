@@ -39,7 +39,7 @@ public sealed class AgentPermissionPolicy
     public string? Signature { get; private set; }
 
     /// <summary>创建时间</summary>
-    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
 
     /// <summary>内容哈希</summary>
     public string ContentHash { get; private set; } = string.Empty;

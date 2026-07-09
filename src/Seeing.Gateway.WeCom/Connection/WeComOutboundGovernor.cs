@@ -34,11 +34,11 @@ public sealed class WeComOutboundGovernor
             TimeSpan? wait = null;
             lock (_lock)
             {
-                Prune(DateTime.UtcNow);
+                Prune(DateTime.Now);
                 if (_contentTimestamps.Count < MaxMessagesPerMinute)
                     return;
 
-                wait = _contentTimestamps.Peek().AddMinutes(1) - DateTime.UtcNow;
+                wait = _contentTimestamps.Peek().AddMinutes(1) - DateTime.Now;
             }
 
             if (wait is { } delay && delay > TimeSpan.Zero)
@@ -55,8 +55,8 @@ public sealed class WeComOutboundGovernor
 
         lock (_lock)
         {
-            _contentTimestamps.Enqueue(DateTime.UtcNow);
-            Prune(DateTime.UtcNow);
+            _contentTimestamps.Enqueue(DateTime.Now);
+            Prune(DateTime.Now);
         }
     }
 

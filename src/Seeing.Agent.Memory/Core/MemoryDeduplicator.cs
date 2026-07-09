@@ -244,8 +244,8 @@ public class MemoryDeduplicator
                     Confidence: maxConfidence,
                     Importance: maxImportance
                 ),
-                CreatedAt: DateTimeOffset.UtcNow,
-                ValidAt: DateTimeOffset.UtcNow,
+                CreatedAt: DateTimeOffset.Now,
+                ValidAt: DateTimeOffset.Now,
                 InvalidAt: null
             );
 
@@ -290,7 +290,7 @@ public class MemoryDeduplicator
                       $"{primary.Content}\n\n" +
                       $"---\n" +
                       $"合并来源: {string.Join(", ", otherIds)}\n" +
-                      $"合并时间: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss}";
+                      $"合并时间: {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}";
 
         return summary;
     }

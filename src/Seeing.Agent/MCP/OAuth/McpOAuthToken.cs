@@ -21,15 +21,15 @@ namespace Seeing.Agent.MCP.OAuth
         public string? Scope { get; set; }
 
         /// <summary>创建时间</summary>
-        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
         /// <summary>过期时间</summary>
         public DateTimeOffset ExpiresAt => CreatedAt.AddSeconds(ExpiresIn);
 
         /// <summary>是否已过期</summary>
-        public bool IsExpired => DateTimeOffset.UtcNow >= ExpiresAt;
+        public bool IsExpired => DateTimeOffset.Now >= ExpiresAt;
 
         /// <summary>是否即将过期（5分钟内）</summary>
-        public bool IsExpiringSoon => DateTimeOffset.UtcNow >= ExpiresAt.AddMinutes(-5);
+        public bool IsExpiringSoon => DateTimeOffset.Now >= ExpiresAt.AddMinutes(-5);
     }
 }

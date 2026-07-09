@@ -1,4 +1,4 @@
-using Cronos;
+using Quartz;
 using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.Scheduler.Engine;
@@ -49,7 +49,7 @@ public static class ScheduleExpressionParser
     }
 
     /// <summary>计算下次执行时间</summary>
-    public static DateTimeOffset? GetNextOccurrence(ScheduleSpec schedule, DateTimeOffset from, string? fallbackTimezone = null)
+    public static DateTime? GetNextOccurrence(ScheduleSpec schedule, DateTime from, string? fallbackTimezone = null)
     {
         var tz = ResolveTimeZone(schedule.Timezone ?? fallbackTimezone);
 
@@ -61,29 +61,67 @@ public static class ScheduleExpressionParser
         };
     }
 
-    private static DateTimeOffset? GetNextCronOccurrence(string cron, DateTimeOffset from, TimeZoneInfo tz)
+    private static DateTime? GetNextCronOccurrence(string cron, DateTime from, TimeZoneInfo tz)
     {
-        var expression = CronExpression.Parse(NormalizeCron(cron), CronFormat.Standard);
-        return expression.GetNextOccurrence(from, tz, inclusive: false);
+        try
+        {
+            var expression = new CronExpression(NormalizeCron(cron));
+            expression.TimeZone = tz;
+            // Quartz 返回 UTC 时间，转为本地 DateTime
+            return expression.GetTimeAfter(from.ToUniversalTime())?.LocalDateTime;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
-    /// <summary>将常见 4/5 字段 cron 规范化为 Cronos 5 字段</summary>
+    /// <summary>将常见 4/5 字段 cron 规范化为 Quartz 6 字段格式（秒 分 时 日 月 周）</summary>
+    /// <remarks>
+    /// Quartz cron 格式：秒 分 时 日 月 周 [年]
+    /// 注意：Quartz 要求日和周字段中必须有一个是 `?`
+    /// </remarks>
     public static string NormalizeCron(string cron)
     {
         var parts = cron.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length switch
         {
-            5 => cron,
-            4 => $"0 {cron}",
-            3 => $"0 0 {cron}",
-            _ => throw new FormatException($"Cron must have 3-5 fields, got {parts.Length}: '{cron}'")
+            6 => FixQuartzCron(cron),  // Quartz 6 字段（秒 分 时 日 月 周）
+            7 => cron,  // Quartz 7 字段（带年）
+            5 => FixQuartzCron($"0 {cron}"),  // 标准 5 字段（分 时 日 月 周）-> 添加秒
+            4 => FixQuartzCron($"0 0 {cron}"),  // 4 字段 -> 添加秒和分
+            3 => FixQuartzCron($"0 0 0 {cron}"),  // 3 字段 -> 添加秒、分、时
+            _ => throw new FormatException($"Cron must have 3-7 fields, got {parts.Length}: '{cron}'")
         };
+    }
+
+    /// <summary>修复 Quartz cron：确保日或周字段有一个是 `?`</summary>
+    private static string FixQuartzCron(string cron)
+    {
+        var parts = cron.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 6)
+        {
+            // Quartz 要求：日(第4个)和周(第6个)字段必须有一个是 `?`
+            var dayOfMonth = parts[3];
+            var dayOfWeek = parts[5];
+            
+            if (dayOfMonth != "?" && dayOfWeek != "?")
+            {
+                // 将周字段改为 `?`
+                parts[5] = "?";
+            }
+        }
+        return string.Join(" ", parts);
     }
 
     /// <summary>解析时区</summary>
     public static TimeZoneInfo ResolveTimeZone(string? timezoneId)
     {
-        if (string.IsNullOrWhiteSpace(timezoneId) || timezoneId.Equals("UTC", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(timezoneId) ||
+            timezoneId.Equals("Local", StringComparison.OrdinalIgnoreCase))
+            return TimeZoneInfo.Local;
+
+        if (timezoneId.Equals("UTC", StringComparison.OrdinalIgnoreCase))
             return TimeZoneInfo.Utc;
 
         try
@@ -92,7 +130,7 @@ public static class ScheduleExpressionParser
         }
         catch (TimeZoneNotFoundException)
         {
-            return TimeZoneInfo.Utc;
+            return TimeZoneInfo.Local;
         }
     }
 }

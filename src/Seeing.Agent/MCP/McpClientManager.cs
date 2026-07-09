@@ -827,7 +827,7 @@ namespace Seeing.Agent.MCP
             }
 
             _hookManager.TriggerFireAndForget(HookRegistry.McpShutdown, "",
-                new Dictionary<string, object?> { ["timestamp"] = DateTimeOffset.UtcNow });
+                new Dictionary<string, object?> { ["timestamp"] = DateTimeOffset.Now });
 
             _logger.LogInformation("MCP Manager 已关闭");
         }

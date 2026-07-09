@@ -21,5 +21,5 @@ public record GatewayPendingPermission
 
     public string RiskLevel { get; init; } = "medium";
 
-    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; init; } = DateTime.Now;
 }

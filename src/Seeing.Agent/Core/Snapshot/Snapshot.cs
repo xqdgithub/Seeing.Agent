@@ -21,7 +21,7 @@ namespace Seeing.Agent.Core.Snapshot
         public string ContentHash { get; init; } = "";
 
         /// <summary>创建时间</summary>
-        public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
 
         /// <summary>文件大小</summary>
         public long FileSize { get; init; }

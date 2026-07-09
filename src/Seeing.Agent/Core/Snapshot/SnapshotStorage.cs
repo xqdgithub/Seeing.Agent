@@ -107,7 +107,7 @@ namespace Seeing.Agent.Core.Snapshot
         public async Task<int> CleanupAsync(TimeSpan maxAge, CancellationToken ct = default)
         {
             var count = 0;
-            var cutoff = DateTimeOffset.UtcNow - maxAge;
+            var cutoff = DateTimeOffset.Now - maxAge;
 
             foreach (var sessionDir in Directory.GetDirectories(_options.StoragePath))
             {

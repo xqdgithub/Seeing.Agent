@@ -58,7 +58,7 @@ public sealed class ChatMemoryHandler : IHookHandler
         string source)
     {
         var memoryId = Guid.NewGuid().ToString("N");
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.Now;
 
         var metadata = new MemoryMetadata(
             SessionId: sessionId,
@@ -143,7 +143,7 @@ public sealed class ToolMemoryHandler : IHookHandler
         string source)
     {
         var memoryId = Guid.NewGuid().ToString("N");
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.Now;
 
         var metadata = new MemoryMetadata(
             SessionId: sessionId,
