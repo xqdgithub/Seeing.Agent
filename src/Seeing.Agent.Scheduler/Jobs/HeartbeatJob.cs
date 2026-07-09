@@ -56,48 +56,38 @@ public class HeartbeatJob : IJob
 
     public async Task Execute(IJobExecutionContext context)
     {
-        var data = context.JobDetail.JobDataMap;
+        var data = context.MergedJobDataMap;
         var jobId = SchedulerConstants.HeartbeatJobId;
-        var sessionId = data.GetString(JobDataKeys.SessionId) ?? "main";
-        var timeoutSeconds = data.GetInt(JobDataKeys.TimeoutSeconds);
-        if (timeoutSeconds <= 0) timeoutSeconds = SchedulerConstants.DefaultTimeoutSeconds;
+        var sessionId = data.GetStringValue(JobDataKeys.SessionId) ?? "main";
+        
+        // 使用类型安全的扩展方法读取（自动从字符串转换）
+        var timeoutSeconds = data.GetIntValue(JobDataKeys.TimeoutSeconds, SchedulerConstants.DefaultTimeoutSeconds);
 
         var ct = context.CancellationToken;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
         // 检查活跃时段
-        var activeHoursJson = data.GetString(JobDataKeys.ActiveHours);
-        if (!string.IsNullOrEmpty(activeHoursJson))
+        var activeHours = data.GetJsonValue<ActiveHoursOptions>(JobDataKeys.ActiveHours);
+        if (activeHours != null && !ActiveHoursChecker.IsInActiveHours(activeHours))
         {
-            try
+            _logger.LogDebug("Heartbeat skipped: outside active hours");
+            context.Result = new JobExecutionResult
             {
-                var activeHours = System.Text.Json.JsonSerializer.Deserialize<ActiveHoursOptions>(activeHoursJson);
-                if (activeHours != null && !ActiveHoursChecker.IsInActiveHours(activeHours))
-                {
-                    _logger.LogDebug("Heartbeat skipped: outside active hours");
-                    context.Result = new JobExecutionResult
-                    {
-                        Success = true,
-                        Output = "Skipped: outside active hours",
-                        Source = ScheduleSources.Heartbeat,
-                        SessionId = sessionId
-                    };
+                Success = true,
+                Output = "Skipped: outside active hours",
+                Source = ScheduleSources.Heartbeat,
+                SessionId = sessionId
+            };
 
-                    _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
-                    {
-                        ["source"] = ScheduleSources.Heartbeat,
-                        ["sessionId"] = sessionId,
-                        ["success"] = true,
-                        ["error"] = "Outside active hours"
-                    });
-                    return;
-                }
-            }
-            catch (Exception ex)
+            _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
             {
-                _logger.LogWarning(ex, "Failed to parse active hours config");
-            }
+                ["source"] = ScheduleSources.Heartbeat,
+                ["sessionId"] = sessionId,
+                ["success"] = true,
+                ["error"] = "Outside active hours"
+            });
+            return;
         }
 
         // 触发心跳前 Hook
@@ -134,38 +124,16 @@ public class HeartbeatJob : IJob
 
         try
         {
-            // 检查 Query 文件
-            var queryFile = data.GetString(JobDataKeys.QueryFile) ?? "HEARTBEAT.md";
-            var queryPath = Path.Combine(_workspace.WorkspaceRoot, queryFile);
-
-            if (!File.Exists(queryPath))
-            {
-                _logger.LogDebug("Heartbeat skipped: query file not found at {Path}", queryPath);
-                context.Result = new JobExecutionResult
-                {
-                    Success = true,
-                    Output = "Skipped: query file not found",
-                    Source = ScheduleSources.Heartbeat,
-                    SessionId = sessionId
-                };
-
-                _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
-                {
-                    ["source"] = ScheduleSources.Heartbeat,
-                    ["sessionId"] = sessionId,
-                    ["success"] = true
-                });
-                return;
-            }
-
-            var queryText = (await File.ReadAllTextAsync(queryPath, timeoutCts.Token)).Trim();
+            // 获取 Prompt（必填）
+            var queryText = data.GetStringValue(JobDataKeys.Prompt)?.Trim();
+            
             if (string.IsNullOrEmpty(queryText))
             {
-                _logger.LogDebug("Heartbeat skipped: empty query file");
+                _logger.LogWarning("Heartbeat skipped: prompt is empty or not configured");
                 context.Result = new JobExecutionResult
                 {
-                    Success = true,
-                    Output = "Skipped: empty query file",
+                    Success = false,
+                    Error = "Heartbeat prompt is required but not configured",
                     Source = ScheduleSources.Heartbeat,
                     SessionId = sessionId
                 };
@@ -174,17 +142,23 @@ public class HeartbeatJob : IJob
                 {
                     ["source"] = ScheduleSources.Heartbeat,
                     ["sessionId"] = sessionId,
-                    ["success"] = true
+                    ["success"] = false,
+                    ["error"] = "Prompt not configured"
                 });
+                
+                if (_listener != null)
+                {
+                    await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
+                }
                 return;
             }
 
             // 解析目标 Session
-            var target = data.GetString(JobDataKeys.HeartbeatTarget) ?? HeartbeatTargets.Main;
+            var target = data.GetStringValue(JobDataKeys.HeartbeatTarget) ?? HeartbeatTargets.Main;
             sessionId = await ResolveTargetSessionIdAsync(target, sessionId, timeoutCts.Token);
 
             // 执行 Agent
-            var agentId = data.GetString(JobDataKeys.AgentId);
+            var agentId = data.GetStringValue(JobDataKeys.AgentId);
             var result = await ExecuteAgentAsync(queryText, agentId, sessionId, timeoutCts.Token);
 
             // 投递结果（非 main 目标）
@@ -245,11 +219,11 @@ public class HeartbeatJob : IJob
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Heartbeat execution failed");
+            _logger.LogError(ex, "Heartbeat execution failed: {Message}", ex.Message);
             context.Result = new JobExecutionResult
             {
                 Success = false,
-                Error = ex.Message,
+                Error = $"{ex.GetType().Name}: {ex.Message}",
                 Source = ScheduleSources.Heartbeat,
                 SessionId = sessionId
             };
@@ -263,10 +237,17 @@ public class HeartbeatJob : IJob
                 ["error"] = ex.Message
             });
 
-            // 通知监听器
+            // 通知监听器 - 确保在异常时也调用
             if (_listener != null)
             {
-                await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
+                try
+                {
+                    await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
+                }
+                catch (Exception listenerEx)
+                {
+                    _logger.LogError(listenerEx, "Error in job execution listener");
+                }
             }
         }
     }
@@ -343,7 +324,7 @@ public class HeartbeatJob : IJob
             Error = errorMessage,
             TaskType = ScheduleTaskTypes.Agent,
             Source = ScheduleSources.Heartbeat,
-            AgentName = resolvedAgentId,
+            Agent = resolvedAgentId,
             SessionId = sessionId
         };
     }

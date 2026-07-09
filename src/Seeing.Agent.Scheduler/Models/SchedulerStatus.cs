@@ -1,20 +1,27 @@
 namespace Seeing.Agent.Scheduler.Models;
 
-/// <summary>任务状态枚举</summary>
+/// <summary>调度意图（用户配置，持久化存储）</summary>
+public enum ScheduleIntent
+{
+    /// <summary>已禁用（用户明确关闭）</summary>
+    Disabled,
+    /// <summary>已暂停（用户临时暂停）</summary>
+    Paused,
+    /// <summary>正常调度</summary>
+    Active
+}
+
+/// <summary>任务运行时状态（实时计算）</summary>
 public enum JobState
 {
-    /// <summary>正常调度中</summary>
-    Normal,
-    /// <summary>已暂停</summary>
+    /// <summary>已禁用（Intent = Disabled）</summary>
+    Disabled,
+    /// <summary>已暂停（Intent = Paused）</summary>
     Paused,
-    /// <summary>正在执行</summary>
-    Running,
-    /// <summary>已完成（一次性任务）</summary>
-    Completed,
-    /// <summary>错误状态</summary>
-    Error,
-    /// <summary>阻塞中</summary>
-    Blocked
+    /// <summary>已调度（Intent = Active，未在执行）</summary>
+    Scheduled,
+    /// <summary>运行中（Intent = Active，正在执行）</summary>
+    Running
 }
 
 /// <summary>调度器运行状态</summary>
@@ -63,7 +70,7 @@ public sealed class JobStatus
     /// <summary>任务分组</summary>
     public string? JobGroup { get; init; }
 
-    /// <summary>任务状态</summary>
+    /// <summary>任务状态（运行时）</summary>
     public JobState State { get; init; }
 
     /// <summary>上次执行时间（本地时间）</summary>
@@ -77,20 +84,23 @@ public sealed class JobStatus
         ? NextFireTime.Value - DateTime.Now
         : null;
 
-    /// <summary>最后错误信息</summary>
-    public string? LastError { get; init; }
-
-    /// <summary>最后错误时间（本地时间）</summary>
-    public DateTime? LastErrorTime { get; init; }
-
     /// <summary>触发器类型</summary>
     public string? TriggerType { get; init; }
 
     /// <summary>Cron 表达式（如果是 Cron 触发器）</summary>
     public string? CronExpression { get; init; }
 
-    /// <summary>间隔（如果是 Simple 触发器）</summary>
-    public TimeSpan? Interval { get; init; }
+    /// <summary>最后执行 ID</summary>
+    public string? LastRunId { get; init; }
+    
+    /// <summary>最后执行时间</summary>
+    public DateTime? LastExecutionTime { get; init; }
+    
+    /// <summary>最后执行是否成功</summary>
+    public bool? LastExecutionSuccess { get; init; }
+
+    /// <summary>最后错误信息</summary>
+    public string? LastError { get; init; }
 }
 
 /// <summary>任务状态变更事件参数</summary>
@@ -110,4 +120,68 @@ public sealed class JobStatusChangedEventArgs : EventArgs
     
     /// <summary>错误信息（如果有）</summary>
     public string? Error { get; init; }
+}
+
+/// <summary>触发结果（discriminated union）</summary>
+public abstract record TriggerResult
+{
+    /// <summary>已接受，返回执行 ID</summary>
+    public sealed record Accepted(string RunId) : TriggerResult;
+    
+    /// <summary>任务不存在</summary>
+    public sealed record NotFound : TriggerResult;
+    
+    /// <summary>任务已禁用</summary>
+    public sealed record Disabled : TriggerResult;
+    
+    /// <summary>冲突（如正在执行）</summary>
+    public sealed record Conflict(string Reason) : TriggerResult;
+}
+
+/// <summary>运行时信息</summary>
+public sealed class RunInfo
+{
+    /// <summary>执行 ID</summary>
+    public string RunId { get; }
+    
+    /// <summary>开始时间（UTC）</summary>
+    public DateTime StartTime { get; }
+    
+    public RunInfo(string runId, DateTime startTime)
+    {
+        RunId = runId;
+        StartTime = startTime;
+    }
+}
+
+/// <summary>任务进度阶段</summary>
+public enum JobProgressStage
+{
+    /// <summary>已触发</summary>
+    Triggered,
+    /// <summary>执行完成</summary>
+    Completed,
+    /// <summary>执行失败</summary>
+    Failed,
+    /// <summary>已取消</summary>
+    Cancelled
+}
+
+/// <summary>任务进度事件参数</summary>
+public sealed class JobProgressEventArgs : EventArgs
+{
+    /// <summary>任务 ID</summary>
+    public string JobId { get; init; } = string.Empty;
+    
+    /// <summary>执行 ID</summary>
+    public string? RunId { get; init; }
+    
+    /// <summary>进度阶段</summary>
+    public JobProgressStage Stage { get; init; }
+    
+    /// <summary>执行结果（Completed/Failed 时）</summary>
+    public JobExecutionResult? Result { get; init; }
+    
+    /// <summary>时间戳</summary>
+    public DateTime Timestamp { get; init; } = DateTime.Now;
 }

@@ -8,7 +8,7 @@ public static class JobDataKeys
     /// <summary>任务 ID</summary>
     public const string JobId = "jobId";
     
-    /// <summary>任务类型（agent / text）</summary>
+    /// <summary>任务类型：agent / text</summary>
     public const string TaskType = "taskType";
     
     /// <summary>任务名称</summary>
@@ -25,7 +25,7 @@ public static class JobDataKeys
     /// <summary>文本内容（Text 类型任务）</summary>
     public const string Text = "text";
     
-    // ===== 执行配置 =====
+    // ===== 执行参数 =====
     
     /// <summary>Session ID</summary>
     public const string SessionId = "sessionId";
@@ -35,6 +35,12 @@ public static class JobDataKeys
     
     /// <summary>是否后台运行</summary>
     public const string RunInBackground = "runInBackground";
+    
+    /// <summary>Misfire 宽限期（秒）</summary>
+    public const string MisfireGraceSeconds = "misfireGraceSeconds";
+    
+    /// <summary>是否共享 Session</summary>
+    public const string ShareSession = "shareSession";
     
     // ===== 投递配置 =====
     
@@ -52,17 +58,17 @@ public static class JobDataKeys
     
     // ===== 任务来源 =====
     
-    /// <summary>任务来源（cron / heartbeat）</summary>
+    /// <summary>任务来源：cron / heartbeat / manual</summary>
     public const string Source = "source";
+    
+    /// <summary>执行 ID（每次执行唯一）</summary>
+    public const string RunId = "runId";
     
     // ===== 心跳特有 =====
     
-    /// <summary>Query 文件路径</summary>
-    public const string QueryFile = "queryFile";
-    
-    /// <summary>投递目标（main / last / inbox）</summary>
+    /// <summary>投递目标：main / last / inbox</summary>
     public const string HeartbeatTarget = "heartbeatTarget";
     
-    /// <summary>活跃时段配置（JSON）</summary>
+    /// <summary>活跃时段（JSON）</summary>
     public const string ActiveHours = "activeHours";
 }

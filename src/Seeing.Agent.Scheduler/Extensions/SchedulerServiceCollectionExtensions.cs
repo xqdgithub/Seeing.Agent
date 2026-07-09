@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Quartz;
-using Seeing.Agent.Commands;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Commands;
 using Seeing.Agent.Scheduler.Configuration;
@@ -21,7 +20,7 @@ public static class SchedulerServiceCollectionExtensions
     /// <summary>注册 Seeing.Agent.Scheduler 全部服务</summary>
     public static IServiceCollection AddSeeingScheduler(this IServiceCollection services)
     {
-        // 配置提供者
+        // 配置提供者（需要在 Quartz 配置之前注册）
         services.AddSingleton<SchedulerOptionsProvider>();
         services.AddSingleton<ISchedulerOptionsProvider>(sp => sp.GetRequiredService<SchedulerOptionsProvider>());
 
@@ -32,14 +31,18 @@ public static class SchedulerServiceCollectionExtensions
         services.AddTransient<AgentJob>();
         services.AddTransient<HeartbeatJob>();
 
-        // Quartz 配置（AddQuartz 会自动配置 Microsoft DI JobFactory）
+        // Quartz 配置 - 使用 AddQuartz 进行 DI 集成
+        // 注意：AddQuartz 会自动使用 Microsoft DI JobFactory
         services.AddQuartz(q =>
         {
-            q.UseDefaultThreadPool(tp => tp.MaxConcurrency = 3);
-            q.UseInMemoryStore();
             q.SchedulerId = "SeeingAgentScheduler";
             q.SchedulerName = "Seeing.Agent Scheduler";
-            // Quartz.Extensions.Hosting 自动使用 Microsoft DI JobFactory
+            
+            // 使用默认线程池
+            q.UseDefaultThreadPool(tp => tp.MaxConcurrency = 10);
+            
+            // 默认使用内存存储
+            q.UseInMemoryStore();
         });
 
         // 调度引擎（管理 Quartz 生命周期）
@@ -87,7 +90,77 @@ public static class SchedulerServiceCollectionExtensions
         });
         services.AddSingleton<ISchedulerOptionsProvider>(sp => sp.GetRequiredService<SchedulerOptionsProvider>());
 
-        // 其余注册
-        return services.AddSeeingScheduler();
+        // 持久化
+        services.AddSingleton<IScheduleRepository, JsonScheduleRepository>();
+
+        // Quartz Jobs - 注册为 transient 以支持每次执行创建新实例
+        services.AddTransient<AgentJob>();
+        services.AddTransient<HeartbeatJob>();
+
+        // Quartz 配置 - 使用 AddQuartz 进行 DI 集成
+        // 使用委托工厂方法，在运行时获取配置
+        services.AddQuartz((q, sp) =>
+        {
+            var optionsProvider = sp.GetRequiredService<ISchedulerOptionsProvider>();
+            var schedulerOptions = optionsProvider.Current;
+            var workspaceProvider = sp.GetRequiredService<Seeing.Agent.Configuration.IWorkspaceProvider>();
+            var loggerFactory = sp.GetService<Microsoft.Extensions.Logging.ILoggerFactory>();
+            var logger = loggerFactory?.CreateLogger("QuartzSqliteInitializer");
+            
+            q.SchedulerId = "SeeingAgentScheduler";
+            q.SchedulerName = "Seeing.Agent Scheduler";
+            
+            // 使用默认线程池
+            q.UseDefaultThreadPool(tp => tp.MaxConcurrency = schedulerOptions.MaxConcurrentJobs);
+            
+            // 根据配置选择存储方式
+            if (schedulerOptions.Persistence.Enabled && 
+                schedulerOptions.Persistence.Provider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))
+            {
+                var dbPath = schedulerOptions.Persistence.ConnectionString;
+                if (string.IsNullOrEmpty(dbPath))
+                {
+                    dbPath = $"Data Source={workspaceProvider.ProjectSeeingDirectory}/quartz.db";
+                }
+
+                // 自动初始化 SQLite 数据库表结构
+                QuartzSqliteInitializer.InitializeAsync(dbPath, logger).GetAwaiter().GetResult();
+
+                q.UsePersistentStore(store =>
+                {
+                    store.UseGenericDatabase("SQLite-Microsoft", db => db.ConnectionString = dbPath);
+                    store.UseSystemTextJsonSerializer();
+                    store.UseProperties = true;
+                    store.PerformSchemaValidation = false;
+                });
+            }
+            else
+            {
+                q.UseInMemoryStore();
+            }
+        });
+
+        // 调度引擎（管理 Quartz 生命周期）
+        services.AddSingleton<QuartzSchedulerEngine>();
+
+        // 调度管理器
+        services.AddSingleton<ScheduleManager>();
+        services.AddSingleton<IScheduleManager>(sp => sp.GetRequiredService<ScheduleManager>());
+        services.AddSingleton<IJobExecutionListener>(sp => sp.GetRequiredService<ScheduleManager>());
+
+        // 投递器
+        services.AddSingleton<LogScheduleDispatcher>();
+        services.AddSingleton<SessionScheduleDispatcher>();
+        services.AddSingleton<IScheduledJobDispatcher>(sp => new CompositeScheduleDispatcher(new IScheduledJobDispatcher[]
+        {
+            sp.GetRequiredService<SessionScheduleDispatcher>(),
+            sp.GetRequiredService<LogScheduleDispatcher>()
+        }));
+
+        // Hosted Service（管理调度器生命周期）
+        services.AddHostedService<ScheduleHostedService>();
+        services.AddHostedService<SchedulerCommandRegistrationHostedService>();
+
+        return services;
     }
 }

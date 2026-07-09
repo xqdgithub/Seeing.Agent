@@ -19,8 +19,12 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 
     private JobsFile _jobsFile = new();
     private bool _started;
+    
+    // 追踪正在执行的任务
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RunInfo> _runningJobs = new();
 
     public event EventHandler<JobStatusChangedEventArgs>? JobStatusChanged;
+    public event EventHandler<JobProgressEventArgs>? JobProgress;
 
     public ScheduleManager(
         IScheduleRepository repository,
@@ -56,16 +60,31 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 
             // 加载任务文件
             _jobsFile = await _repository.LoadAsync(ct);
+            
+            // 迁移旧版本数据
+            _jobsFile.MigrateIfNeeded();
 
             // 启动 Quartz 调度器
             await _engine.StartAsync(ct);
 
-            // 注册用户任务
-            foreach (var job in _jobsFile.Jobs.Where(j => j.Enabled))
+            // 注册用户任务（只注册 Active 状态的）
+            foreach (var job in _jobsFile.Jobs.Where(j => j.Intent == ScheduleIntent.Active))
                 await RegisterUserJobAsync(job, ct);
 
             // 注册心跳
             await RegisterHeartbeatAsync(ct);
+            
+            // 恢复 Running 状态（从 Quartz 获取正在执行的任务）
+            if (_engine.Scheduler != null)
+            {
+                var executingJobs = await _engine.Scheduler.GetCurrentlyExecutingJobs(ct);
+                foreach (var ctx in executingJobs)
+                {
+                    var jobId = ctx.JobDetail.Key.Name;
+                    var runId = ctx.MergedJobDataMap.GetStringValue(JobDataKeys.RunId) ?? Guid.NewGuid().ToString("N");
+                    _runningJobs.TryAdd(jobId, new RunInfo(runId, ctx.FireTimeUtc.UtcDateTime));
+                }
+            }
 
             _started = true;
             _logger.LogInformation("ScheduleManager started with {Count} user jobs", _jobsFile.Jobs.Count);
@@ -86,6 +105,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
                 return;
 
             await _engine.StopAsync(ct);
+            _runningJobs.Clear();
             _started = false;
             _logger.LogInformation("ScheduleManager stopped");
         }
@@ -104,13 +124,47 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     public async Task<JobStatus> GetJobStatusAsync(string jobId, CancellationToken ct = default)
     {
-        return await _engine.GetJobStatusAsync(jobId, ct);
+        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job == null)
+        {
+            return new JobStatus { JobId = jobId, State = JobState.Disabled };
+        }
+        
+        // 计算状态：Intent + Running
+        var state = ComputeState(job);
+        
+        // 从 Quartz 获取调度信息
+        var engineStatus = await _engine.GetJobStatusAsync(jobId, ct);
+        
+        // 从执行记录获取最后执行信息
+        var lastRecord = await _repository.GetHistoryAsync(jobId, 1, 0, ct);
+        var last = lastRecord.FirstOrDefault();
+        
+        return new JobStatus
+        {
+            JobId = jobId,
+            JobName = job.Name,
+            State = state,
+            PreviousFireTime = engineStatus.PreviousFireTime,
+            NextFireTime = engineStatus.NextFireTime,
+            TriggerType = engineStatus.TriggerType,
+            CronExpression = engineStatus.CronExpression,
+            LastRunId = last?.RunId,
+            LastExecutionTime = last?.StartedAt,
+            LastExecutionSuccess = last?.Status == "success",
+            LastError = last?.Status == "failed" ? last.Error : null
+        };
     }
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<JobStatus>> GetAllJobStatusesAsync(CancellationToken ct = default)
     {
-        return await _engine.GetAllJobStatusesAsync(ct);
+        var result = new List<JobStatus>();
+        foreach (var job in _jobsFile.Jobs)
+        {
+            result.Add(await GetJobStatusAsync(job.Id, ct));
+        }
+        return result;
     }
 
     /// <inheritdoc/>
@@ -139,7 +193,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         else
             _jobsFile.Jobs.Add(job);
 
-        if (_started)
+        if (_started && job.Intent == ScheduleIntent.Active)
             await RegisterUserJobAsync(job, ct);
 
         await _repository.SaveAsync(_jobsFile, ct);
@@ -160,77 +214,159 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     }
 
     /// <inheritdoc/>
-    public async Task<JobExecutionResult> RunJobOnceAsync(string jobId, CancellationToken ct = default)
+    public async Task<TriggerResult> RunJobOnceAsync(string jobId, CancellationToken ct = default)
     {
-        // 检查 Job 是否已注册到 Quartz（可能因应用重启或 Job 被禁用而丢失）
-        var jobStatus = await _engine.GetJobStatusAsync(jobId, ct);
-        if (jobStatus.State == JobState.Completed)
-        {
-            // Job 不存在于 Quartz，需要先注册
-            _logger.LogDebug("Job {JobId} not found in Quartz, registering before trigger", jobId);
-            
-            if (jobId == SchedulerConstants.HeartbeatJobId)
-            {
-                await RegisterHeartbeatAsync(ct);
-            }
-            else
-            {
-                var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId)
-                    ?? throw new InvalidOperationException($"Job '{jobId}' not found");
-                await RegisterUserJobAsync(job, ct);
-            }
-        }
-
-        // 手动触发
-        await _engine.TriggerJobAsync(jobId, ct);
-
-        // 返回结果
+        // Heartbeat 是特殊任务，不在 _jobsFile.Jobs 中
         if (jobId == SchedulerConstants.HeartbeatJobId)
         {
-            return new JobExecutionResult
+            var runId = Guid.NewGuid().ToString("N");
+            if (!_runningJobs.TryAdd(jobId, new RunInfo(runId, DateTime.UtcNow)))
+                return new TriggerResult.Conflict("任务正在执行中");
+            
+            try
             {
-                Success = true,
-                Output = "Heartbeat triggered",
-                Source = ScheduleSources.Heartbeat
-            };
+                // 确保 Heartbeat 已注册
+                var engineStatus = await _engine.GetJobStatusAsync(jobId, ct);
+                if (engineStatus.State == JobState.Disabled)
+                {
+                    await RegisterHeartbeatAsync(ct);
+                }
+                
+                var additionalData = new JobDataMap { [JobDataKeys.Source] = ScheduleSources.Manual };
+                await _engine.TriggerJobAsync(jobId, runId, additionalData, ct);
+                
+                _logger.LogInformation("Heartbeat triggered with RunId={RunId}", runId);
+                return new TriggerResult.Accepted(runId);
+            }
+            catch
+            {
+                _runningJobs.TryRemove(jobId, out _);
+                throw;
+            }
         }
-        else
+        
+        // 普通任务
+        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job == null) return new TriggerResult.NotFound();
+        if (job.Intent == ScheduleIntent.Disabled) return new TriggerResult.Disabled();
+        
+        // 检查是否正在执行
+        var runId2 = Guid.NewGuid().ToString("N");
+        if (!_runningJobs.TryAdd(jobId, new RunInfo(runId2, DateTime.UtcNow)))
+            return new TriggerResult.Conflict("任务正在执行中");
+        
+        try
         {
-            var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
-            return new JobExecutionResult
+            // 确保 Job 已注册到 Quartz
+            var engineStatus = await _engine.GetJobStatusAsync(jobId, ct);
+            if (engineStatus.State == JobState.Disabled)
             {
-                Success = true,
-                Output = "Job triggered",
-                Source = ScheduleSources.Cron,
-                SessionId = job?.Dispatch.Target.SessionId ?? "main"
-            };
+                // Job 不存在于 Quartz，需要先注册
+                _logger.LogDebug("Job {JobId} not found in Quartz, registering before trigger", jobId);
+                await RegisterUserJobAsync(job, ct);
+            }
+            
+            // 使用原生 TriggerJob
+            var additionalData = new JobDataMap { [JobDataKeys.Source] = ScheduleSources.Manual };
+            await _engine.TriggerJobAsync(jobId, runId2, additionalData, ct);
+            
+            _logger.LogInformation("Job {JobId} triggered with RunId={RunId}", jobId, runId2);
+            return new TriggerResult.Accepted(runId2);
         }
+        catch
+        {
+            _runningJobs.TryRemove(jobId, out _);
+            throw;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task SetJobIntentAsync(string jobId, ScheduleIntent intent, CancellationToken ct = default)
+    {
+        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job == null)
+        {
+            _logger.LogWarning("Attempted to set intent for non-existent job: {JobId}", jobId);
+            return;
+        }
+        
+        var oldIntent = job.Intent;
+        job.Intent = intent;
+        
+        // 同步到 Quartz
+        switch (intent)
+        {
+            case ScheduleIntent.Disabled:
+                await _engine.RemoveJobAsync(jobId, ct);
+                break;
+            case ScheduleIntent.Paused:
+                // 先确保任务存在，然后暂停
+                if (oldIntent == ScheduleIntent.Disabled)
+                    await RegisterUserJobAsync(job, ct);
+                await _engine.PauseJobAsync(jobId, ct);
+                break;
+            case ScheduleIntent.Active:
+                if (oldIntent == ScheduleIntent.Disabled)
+                    await RegisterUserJobAsync(job, ct);
+                else
+                    await _engine.ResumeJobAsync(jobId, ct);
+                break;
+        }
+        
+        await _repository.SaveAsync(_jobsFile, ct);
+        
+        // 触发状态变更事件
+        JobStatusChanged?.Invoke(this, new JobStatusChangedEventArgs
+        {
+            JobId = jobId,
+            OldState = ComputeStateFromIntent(oldIntent),
+            NewState = ComputeStateFromIntent(intent)
+        });
+        
+        _logger.LogDebug("Job {JobId} intent changed: {OldIntent} -> {NewIntent}", jobId, oldIntent, intent);
     }
 
     /// <inheritdoc/>
     public async Task PauseJobAsync(string jobId, CancellationToken ct = default)
     {
-        await _engine.PauseJobAsync(jobId, ct);
-        
-        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
-        if (job != null)
-        {
-            job.Enabled = false;
-            await _repository.SaveAsync(_jobsFile, ct);
-        }
+        await SetJobIntentAsync(jobId, ScheduleIntent.Paused, ct);
     }
 
     /// <inheritdoc/>
     public async Task ResumeJobAsync(string jobId, CancellationToken ct = default)
     {
-        await _engine.ResumeJobAsync(jobId, ct);
+        await SetJobIntentAsync(jobId, ScheduleIntent.Active, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task DisableJobAsync(string jobId, CancellationToken ct = default)
+    {
+        await SetJobIntentAsync(jobId, ScheduleIntent.Disabled, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> CancelJobAsync(string jobId, CancellationToken ct = default)
+    {
+        var result = await _engine.CancelJobAsync(jobId, ct);
         
+        // 无论 Quartz 中断是否成功，都清理本地运行状态
+        // 因为任务可能已经完成但状态未更新
+        _runningJobs.TryRemove(jobId, out _);
+        
+        // 触发状态变更事件
         var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
         if (job != null)
         {
-            job.Enabled = true;
-            await _repository.SaveAsync(_jobsFile, ct);
+            var jobState = ComputeState(job);
+            JobStatusChanged?.Invoke(this, new JobStatusChangedEventArgs
+            {
+                JobId = jobId,
+                OldState = JobState.Running,
+                NewState = jobState
+            });
         }
+        
+        return result;
     }
 
     /// <inheritdoc/>
@@ -244,18 +380,49 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         await RegisterHeartbeatAsync(ct);
     }
 
+    // ===== IJobExecutionListener =====
+
+    /// <inheritdoc/>
+    void IJobExecutionListener.OnJobStart(string jobId, string runId)
+    {
+        _runningJobs.AddOrUpdate(jobId, new RunInfo(runId, DateTime.UtcNow), (_, _) => new RunInfo(runId, DateTime.UtcNow));
+        _logger.LogDebug("Job {JobId} started with RunId={RunId}", jobId, runId);
+        
+        // 触发进度事件
+        JobProgress?.Invoke(this, new JobProgressEventArgs
+        {
+            JobId = jobId,
+            RunId = runId,
+            Stage = JobProgressStage.Triggered
+        });
+    }
+
     /// <inheritdoc/>
     public async Task OnJobExecutedAsync(string jobId, JobExecutionResult result, CancellationToken ct = default)
     {
-        // 记录历史
+        // 移除 Running 状态
+        _runningJobs.TryRemove(jobId, out var runInfo);
+        
+        // 记录历史（包含执行快照）
         var record = new JobExecutionRecord
         {
+            JobId = jobId,
+            RunId = result.RunId ?? runInfo?.RunId ?? Guid.NewGuid().ToString("N"),
             Source = result.Source,
-            StartedAt = DateTime.Now,
+            StartedAt = runInfo?.StartTime ?? DateTime.Now,
             CompletedAt = DateTime.Now,
             Status = result.Success ? "success" : "failed",
             Output = result.Output,
-            Error = result.Error
+            Error = result.Error,
+            // 执行快照参数
+            TaskType = result.TaskType,
+            Agent = result.Agent,
+            Prompt = result.Prompt,
+            Text = result.Text,
+            SessionId = result.SessionId,
+            DispatchChannel = result.DispatchChannel,
+            DispatchUserId = result.DispatchUserId,
+            DispatchSessionId = result.DispatchSessionId
         };
 
         if (!jobId.StartsWith('_'))
@@ -270,19 +437,51 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         }
 
         // 触发状态变更事件
-        var oldState = result.Success ? JobState.Normal : JobState.Error;
-        var newState = result.Success ? JobState.Normal : JobState.Error;
-        
+        var jobState = job != null ? ComputeState(job) : JobState.Disabled;
         JobStatusChanged?.Invoke(this, new JobStatusChangedEventArgs
         {
             JobId = jobId,
-            OldState = oldState,
-            NewState = newState,
+            NewState = jobState,
             Error = result.Error
+        });
+
+        // 触发进度事件
+        JobProgress?.Invoke(this, new JobProgressEventArgs
+        {
+            JobId = jobId,
+            RunId = record.RunId,
+            Stage = result.Success ? JobProgressStage.Completed : JobProgressStage.Failed,
+            Result = result
         });
 
         _logger.LogDebug("Job {JobId} executed: {Status}", jobId, record.Status);
     }
+
+    // ===== Private Methods =====
+
+    private JobState ComputeState(ScheduledJobSpec job)
+    {
+        // 如果正在执行，返回 Running
+        if (_runningJobs.ContainsKey(job.Id))
+            return JobState.Running;
+        
+        // 否则根据 Intent 返回状态
+        return job.Intent switch
+        {
+            ScheduleIntent.Disabled => JobState.Disabled,
+            ScheduleIntent.Paused => JobState.Paused,
+            ScheduleIntent.Active => JobState.Scheduled,
+            _ => JobState.Disabled
+        };
+    }
+    
+    private static JobState ComputeStateFromIntent(ScheduleIntent intent) => intent switch
+    {
+        ScheduleIntent.Disabled => JobState.Disabled,
+        ScheduleIntent.Paused => JobState.Paused,
+        ScheduleIntent.Active => JobState.Scheduled,
+        _ => JobState.Disabled
+    };
 
     private async Task RegisterUserJobAsync(ScheduledJobSpec job, CancellationToken ct)
     {
@@ -292,7 +491,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             [JobDataKeys.JobName] = job.Name ?? job.Id,
             [JobDataKeys.TaskType] = job.TaskType,
             [JobDataKeys.SessionId] = job.Dispatch.Target.SessionId ?? "main",
-            [JobDataKeys.TimeoutSeconds] = job.Runtime.TimeoutSeconds
+            [JobDataKeys.TimeoutSeconds] = job.Runtime.TimeoutSeconds.ToString()
         };
 
         if (job.TaskType == ScheduleTaskTypes.Text)
@@ -313,7 +512,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         if (!string.IsNullOrEmpty(job.Dispatch.Target.SessionId))
             jobData[JobDataKeys.DispatchSessionId] = job.Dispatch.Target.SessionId;
 
-        await _engine.UpsertJobAsync(job.Id, job.Schedule, job.Enabled, jobData, ct);
+        await _engine.UpsertJobAsync(job.Id, job.Schedule, job.Intent, jobData, ct);
     }
 
     private async Task RegisterHeartbeatAsync(CancellationToken ct)
@@ -333,9 +532,9 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         {
             [JobDataKeys.JobId] = SchedulerConstants.HeartbeatJobId,
             [JobDataKeys.SessionId] = hb.SessionId,
-            [JobDataKeys.TimeoutSeconds] = hb.TimeoutSeconds,
+            [JobDataKeys.TimeoutSeconds] = hb.TimeoutSeconds.ToString(),
             [JobDataKeys.AgentId] = hb.Agent ?? string.Empty,
-            [JobDataKeys.QueryFile] = hb.QueryFile,
+            [JobDataKeys.Prompt] = hb.Prompt ?? string.Empty,
             [JobDataKeys.HeartbeatTarget] = hb.Target,
             [JobDataKeys.Source] = ScheduleSources.Heartbeat
         };
@@ -345,6 +544,6 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             jobData[JobDataKeys.ActiveHours] = System.Text.Json.JsonSerializer.Serialize(hb.ActiveHours);
         }
 
-        await _engine.UpsertJobAsync(SchedulerConstants.HeartbeatJobId, schedule, true, jobData, ct);
+        await _engine.UpsertJobAsync(SchedulerConstants.HeartbeatJobId, schedule, ScheduleIntent.Active, jobData, ct);
     }
 }

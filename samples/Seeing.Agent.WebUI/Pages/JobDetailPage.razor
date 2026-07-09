@@ -1,0 +1,261 @@
+@page "/cron-jobs/{JobId}"
+@using AntDesign
+@using Seeing.Agent.Scheduler
+@using Seeing.Agent.Scheduler.Abstractions
+@using Seeing.Agent.Scheduler.Models
+@using Seeing.Agent.WebUI.Components.CronJobs
+@inject IScheduleManager ScheduleManager
+@inject IScheduleRepository ScheduleRepository
+@inject NavigationManager Navigation
+@inject IMessageService MessageService
+@implements IDisposable
+
+<PageTitle>任务详情 - Seeing.Agent</PageTitle>
+
+@if (_notFound)
+{
+    <Alert Type="@AlertType.Error" ShowIcon="true" Message="任务不存在" Description="指定的任务不存在或已被删除" Style="margin: 24px 0;">
+        <ExtraAction>
+            <Button Type="@ButtonType.Primary" OnClick="NavigateBack">返回列表</Button>
+        </ExtraAction>
+    </Alert>
+}
+else if (_job != null)
+{
+    <WorkspacePageShell Loading="@_loading">
+        <Breadcrumb>
+            <BreadcrumbItem Href="/cron-jobs">定时任务</BreadcrumbItem>
+            <BreadcrumbItem>@_job.Name</BreadcrumbItem>
+        </Breadcrumb>
+        <Extra>
+            <Space>
+                <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+                <Button Icon="@IconType.Outline.Edit" OnClick="EditJob">编辑</Button>
+                <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.PlayCircle" OnClick="RunOnce" Disabled="@(_status == JobState.Running)">运行</Button>
+            </Space>
+        </Extra>
+        <ChildContent>
+            <Card Title="任务信息" Style="margin-bottom: 16px;">
+                <Descriptions Column="3">
+                    <DescriptionsItem Title="ID">@_job.Id</DescriptionsItem>
+                    <DescriptionsItem Title="名称">@_job.Name</DescriptionsItem>
+                    <DescriptionsItem Title="状态">
+                        <JobStatusBadge State="@_status" />
+                    </DescriptionsItem>
+                    <DescriptionsItem Title="类型">
+                        <Tag Color="@GetTaskTypeColor(_job.TaskType)">@_job.TaskType</Tag>
+                    </DescriptionsItem>
+                    <DescriptionsItem Title="Agent">@(_job.Agent ?? "默认")</DescriptionsItem>
+                    <DescriptionsItem Title="调度">@GetScheduleText(_job)</DescriptionsItem>
+                    <DescriptionsItem Title="创建时间">@(_createdAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</DescriptionsItem>
+                    <DescriptionsItem Title="最后运行">@(_job.LastRunAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</DescriptionsItem>
+                    <DescriptionsItem Title="Session">@(_job.Dispatch?.Target?.SessionId ?? "main")</DescriptionsItem>
+                </Descriptions>
+            </Card>
+
+            <Card Title="执行历史">
+                @if (_history.Count == 0)
+                {
+                    <Empty />
+                }
+                else
+                {
+                    <Table TItem="JobExecutionRecord" DataSource="@_history" RowKey="@(r => r.RunId)">
+                        <PropertyColumn Property="r => r.StartedAt" Title="执行时间">
+                            @context.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                        </PropertyColumn>
+                        <PropertyColumn Property="r => r.Source" Title="来源">
+                            <Tag Color="@GetSourceColor(context.Source)">@context.Source</Tag>
+                        </PropertyColumn>
+                        <PropertyColumn Property="r => r.TaskType" Title="类型">
+                            @if (!string.IsNullOrEmpty(context.TaskType))
+                            {
+                                <Tag Color="@GetTaskTypeColor(context.TaskType)">@context.TaskType</Tag>
+                            }
+                        </PropertyColumn>
+                        <PropertyColumn Property="r => r.Prompt" Title="内容预览">
+                            @if (!string.IsNullOrEmpty(context.Prompt))
+                            {
+                                <span>@Truncate(context.Prompt, 50)</span>
+                            }
+                            else if (!string.IsNullOrEmpty(context.Text))
+                            {
+                                <span>@Truncate(context.Text, 50)</span>
+                            }
+                        </PropertyColumn>
+                        <PropertyColumn Property="r => r.Status" Title="状态">
+                            <Tag Color="@(context.Status == "success" ? "green" : context.Status == "failed" ? "red" : "blue")">
+                                @(context.Status == "success" ? "成功" : context.Status == "failed" ? "失败" : "运行中")
+                            </Tag>
+                        </PropertyColumn>
+                        <PropertyColumn Property="r => r.Duration" Title="耗时">
+                            @if (context.Duration.HasValue)
+                            {
+                                @FormatDuration(context.Duration.Value)
+                            }
+                        </PropertyColumn>
+                        <ActionColumn Title="操作">
+                            <Button Size="@ButtonSize.Small" OnClick="@(() => ShowDetail(context))">查看详情</Button>
+                        </ActionColumn>
+                    </Table>
+                    
+                    @if (_hasMoreHistory)
+                    {
+                        <div Style="text-align: center; margin-top: 16px;">
+                            <Button OnClick="LoadMoreHistory" Loading="@_loadingMore">加载更多</Button>
+                        </div>
+                    }
+                }
+            </Card>
+        </ChildContent>
+    </WorkspacePageShell>
+}
+
+<ExecutionResultModal Visible="@_detailVisible"
+                      VisibleChanged="@(_ => _detailVisible = false)"
+                      Record="@_selectedRecord" />
+
+@code {
+    [Parameter] public string JobId { get; set; } = "";
+
+    private ScheduledJobSpec? _job;
+    private JobState _status = JobState.Disabled;
+    private DateTime? _createdAt;
+    private bool _loading = true;
+    private bool _notFound;
+    
+    private List<JobExecutionRecord> _history = new();
+    private bool _hasMoreHistory;
+    private bool _loadingMore;
+    private int _historyOffset;
+    
+    private bool _detailVisible;
+    private JobExecutionRecord? _selectedRecord;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _job = await ScheduleManager.GetJobAsync(JobId);
+            if (_job == null)
+            {
+                _notFound = true;
+                return;
+            }
+
+            var status = await ScheduleManager.GetJobStatusAsync(JobId);
+            _status = status.State;
+            _createdAt = status.PreviousFireTime; // Use last run as approximate creation time
+            
+            _historyOffset = 0;
+            await LoadHistoryAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        const int pageSize = 20;
+        var records = await ScheduleRepository.GetHistoryAsync(JobId, pageSize, _historyOffset);
+        _history = records.ToList();
+        _hasMoreHistory = records.Count == pageSize;
+    }
+
+    private async Task LoadMoreHistory()
+    {
+        _loadingMore = true;
+        try
+        {
+            const int pageSize = 20;
+            _historyOffset += pageSize;
+            var moreRecords = await ScheduleRepository.GetHistoryAsync(JobId, pageSize, _historyOffset);
+            _history.AddRange(moreRecords);
+            _hasMoreHistory = moreRecords.Count == pageSize;
+        }
+        finally
+        {
+            _loadingMore = false;
+        }
+    }
+
+    private void ShowDetail(JobExecutionRecord record)
+    {
+        _selectedRecord = record;
+        _detailVisible = true;
+    }
+
+    private async Task RunOnce()
+    {
+        var result = await ScheduleManager.RunJobOnceAsync(JobId);
+        switch (result)
+        {
+            case TriggerResult.Accepted accepted:
+                MessageService.Info($"任务已触发，RunId={accepted.RunId}");
+                await LoadAsync();
+                break;
+            case TriggerResult.NotFound:
+                MessageService.Error("任务未找到");
+                break;
+            case TriggerResult.Disabled:
+                MessageService.Warning("任务已禁用");
+                break;
+            case TriggerResult.Conflict conflict:
+                MessageService.Warning($"触发冲突: {conflict.Reason}");
+                break;
+        }
+    }
+
+    private void EditJob()
+    {
+        Navigation.NavigateTo($"/cron-jobs/{JobId}/edit");
+    }
+
+    private void NavigateBack()
+    {
+        Navigation.NavigateTo("/cron-jobs");
+    }
+
+    private static string GetScheduleText(ScheduledJobSpec job) => job.Schedule.Type switch
+    {
+        ScheduleTypes.Cron => job.Schedule.Cron ?? "cron",
+        ScheduleTypes.Interval => job.Schedule.Every ?? "interval",
+        ScheduleTypes.Once => job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? "once",
+        _ => job.Schedule.Type
+    };
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength] + "...";
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalMinutes >= 1)
+            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
+        return $"{duration.Seconds}s";
+    }
+
+    private static string GetSourceColor(string? source) => source switch
+    {
+        ScheduleSources.Cron => "blue",
+        ScheduleSources.Manual => "green",
+        ScheduleSources.Heartbeat => "orange",
+        _ => "default"
+    };
+
+    private static string GetTaskTypeColor(string? taskType) => taskType switch
+    {
+        ScheduleTaskTypes.Agent => "purple",
+        ScheduleTaskTypes.Text => "cyan",
+        _ => "default"
+    };
+
+    public void Dispose() { }
+}

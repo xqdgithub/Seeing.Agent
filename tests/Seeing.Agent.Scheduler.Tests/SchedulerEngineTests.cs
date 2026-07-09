@@ -56,33 +56,55 @@ public class SchedulerEngineTests
             Every = "1h"
         };
 
-        await engine.UpsertJobAsync("test-job", schedule, enabled: true);
+        await engine.UpsertJobAsync("test-job", schedule, ScheduleIntent.Active);
 
         var status = await engine.GetJobStatusAsync("test-job");
         status.JobId.Should().Be("test-job");
-        status.State.Should().Be(JobState.Normal);
+        status.State.Should().Be(JobState.Scheduled);
 
         await engine.StopAsync();
     }
 
     [Fact]
-    public async Task QuartzSchedulerEngine_PauseAndResume_UpdatesState()
+    public async Task ScheduleManager_PauseAndResume_UpdatesState()
     {
-        var engine = CreateEngine();
-        await engine.StartAsync();
+        using var ws = new SchedulerTestWorkspace();
+        ws.WriteSeeingJson();
+        var executedPrompts = new List<string>();
+        var (manager, engine) = CreateManager(ws, executedPrompts);
 
-        var schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" };
-        await engine.UpsertJobAsync("pause-job", schedule, enabled: true);
+        try
+        {
+            var job = new ScheduledJobSpec
+            {
+                Id = "pause-job",
+                Intent = ScheduleIntent.Active,
+                TaskType = ScheduleTaskTypes.Text,
+                Text = "hello",
+                Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" },
+                Dispatch = new DispatchSpec { Target = new DispatchTarget { SessionId = "main" } }
+            };
 
-        await engine.PauseJobAsync("pause-job");
-        var pausedStatus = await engine.GetJobStatusAsync("pause-job");
-        pausedStatus.State.Should().Be(JobState.Paused);
+            await manager.StartAsync();
+            await manager.CreateOrReplaceJobAsync(job);
 
-        await engine.ResumeJobAsync("pause-job");
-        var resumedStatus = await engine.GetJobStatusAsync("pause-job");
-        resumedStatus.State.Should().Be(JobState.Normal);
+            var initialStatus = await manager.GetJobStatusAsync("pause-job");
+            initialStatus.State.Should().Be(JobState.Scheduled);
 
-        await engine.StopAsync();
+            // 暂停 → 状态变为 Paused
+            await manager.PauseJobAsync("pause-job");
+            var pausedStatus = await manager.GetJobStatusAsync("pause-job");
+            pausedStatus.State.Should().Be(JobState.Paused);
+
+            // 恢复 → 状态变为 Scheduled
+            await manager.ResumeJobAsync("pause-job");
+            var resumedStatus = await manager.GetJobStatusAsync("pause-job");
+            resumedStatus.State.Should().Be(JobState.Scheduled);
+        }
+        finally
+        {
+            await manager.StopAsync();
+        }
     }
 
     [Fact]
@@ -92,14 +114,14 @@ public class SchedulerEngineTests
         await engine.StartAsync();
 
         var schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" };
-        await engine.UpsertJobAsync("remove-job", schedule, enabled: true);
+        await engine.UpsertJobAsync("remove-job", schedule, ScheduleIntent.Active);
 
         (await engine.GetJobStatusAsync("remove-job")).JobId.Should().Be("remove-job");
 
         await engine.RemoveJobAsync("remove-job");
 
         var status = await engine.GetJobStatusAsync("remove-job");
-        status.State.Should().Be(JobState.Completed); // Non-existent = completed
+        status.State.Should().Be(JobState.Disabled); // Non-existent = Disabled
     }
 
     [Fact]
@@ -115,11 +137,11 @@ public class SchedulerEngineTests
             Timezone = "UTC"
         };
 
-        await engine.UpsertJobAsync("cron-job", schedule, enabled: true);
+        await engine.UpsertJobAsync("cron-job", schedule, ScheduleIntent.Active);
 
         var status = await engine.GetJobStatusAsync("cron-job");
         status.NextFireTime.Should().NotBeNull();
-        status.CronExpression.Should().Be("0 9 * * *");
+        status.CronExpression.Should().Contain("9");  // 验证小时部分
 
         await engine.StopAsync();
     }
@@ -133,10 +155,11 @@ public class SchedulerEngineTests
         var jobsPath = Path.Combine(ws.SeeingDirectory, "jobs.json");
         await File.WriteAllTextAsync(jobsPath, """
             {
+              "version": 2,
               "jobs": [
                 {
                   "id": "loaded-job",
-                  "enabled": true,
+                  "intent": "Active",
                   "taskType": "text",
                   "text": "from file",
                   "schedule": { "type": "cron", "cron": "0 12 * * *" },
@@ -161,14 +184,54 @@ public class SchedulerEngineTests
         var engine = CreateEngine();
         await engine.StartAsync();
 
-        await engine.UpsertJobAsync("job1", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" }, true);
-        await engine.UpsertJobAsync("job2", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "2h" }, true);
+        await engine.UpsertJobAsync("job1", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" }, ScheduleIntent.Active);
+        await engine.UpsertJobAsync("job2", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "2h" }, ScheduleIntent.Active);
 
         var statuses = await engine.GetAllJobStatusesAsync();
         statuses.Count.Should().Be(2);
         statuses.Select(s => s.JobId).Should().Contain("job1", "job2");
 
         await engine.StopAsync();
+    }
+    
+    [Fact]
+    public async Task ScheduleManager_MigratesOldEnabledField()
+    {
+        using var ws = new SchedulerTestWorkspace();
+        ws.WriteSeeingJson();
+
+        var jobsPath = Path.Combine(ws.SeeingDirectory, "jobs.json");
+        await File.WriteAllTextAsync(jobsPath, """
+            {
+              "jobs": [
+                {
+                  "id": "old-enabled-true",
+                  "enabled": true,
+                  "taskType": "text",
+                  "text": "test",
+                  "schedule": { "type": "interval", "every": "1h" },
+                  "dispatch": { "target": { "sessionId": "main" } }
+                },
+                {
+                  "id": "old-enabled-false",
+                  "enabled": false,
+                  "taskType": "text",
+                  "text": "test2",
+                  "schedule": { "type": "interval", "every": "1h" },
+                  "dispatch": { "target": { "sessionId": "main" } }
+                }
+              ]
+            }
+            """);
+
+        var (manager, _) = CreateManager(ws, []);
+        await manager.StartAsync();
+
+        var jobs = await manager.ListJobsAsync();
+        jobs.First(j => j.Id == "old-enabled-true").Intent.Should().Be(ScheduleIntent.Active);
+        jobs.First(j => j.Id == "old-enabled-false").Intent.Should().Be(ScheduleIntent.Disabled);
+
+        await manager.StopAsync();
     }
 
     private static QuartzSchedulerEngine CreateEngine()

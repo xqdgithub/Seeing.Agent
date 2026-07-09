@@ -4,7 +4,7 @@
 
 <Modal Title="@(IsEdit ? "编辑任务" : "新建任务")"
        Visible="@Visible"
-       Width="720"
+       Width="800"
        OnOk="HandleOk"
        OnCancel="HandleCancel"
        ConfirmLoading="@Saving">
@@ -21,7 +21,13 @@
                 </FormItem>
             </Col>
         </Row>
-        <FormItem Label="启用"><Switch @bind-Checked="@Job.Enabled" /></FormItem>
+        <FormItem Label="状态">
+            <Select TItemValue="ScheduleIntent" TItem="ScheduleIntent" @bind-Value="@Job.Intent">
+                <SelectOption TItemValue="ScheduleIntent" TItem="ScheduleIntent" Value="@ScheduleIntent.Active">启用</SelectOption>
+                <SelectOption TItemValue="ScheduleIntent" TItem="ScheduleIntent" Value="@ScheduleIntent.Paused">暂停</SelectOption>
+                <SelectOption TItemValue="ScheduleIntent" TItem="ScheduleIntent" Value="@ScheduleIntent.Disabled">禁用</SelectOption>
+            </Select>
+        </FormItem>
         <FormItem Label="任务类型">
             <Select TItemValue="string" TItem="string" @bind-Value="@Job.TaskType">
                 <SelectOption TItemValue="string" TItem="string" Value="@ScheduleTaskTypes.Agent">Agent 任务</SelectOption>
@@ -30,13 +36,16 @@
         </FormItem>
         @if (Job.TaskType == ScheduleTaskTypes.Agent)
         {
-            <FormItem Label="Agent"><Input @bind-Value="@Job.Agent" /></FormItem>
+            <FormItem Label="Agent"><Input @bind-Value="@Job.Agent" Placeholder="留空使用默认 Agent" /></FormItem>
             <FormItem Label="Prompt"><TextArea Rows="4" @bind-Value="@Job.Prompt" /></FormItem>
         }
         else
         {
             <FormItem Label="文本内容"><TextArea Rows="3" @bind-Value="@Job.Text" /></FormItem>
         }
+        
+        @* 调度配置 *@
+        <Divider Orientation="@DividerOrientation.Left">调度配置</Divider>
         <FormItem Label="调度类型">
             <Select TItemValue="string" TItem="string" @bind-Value="@Job.Schedule.Type">
                 <SelectOption TItemValue="string" TItem="string" Value="@ScheduleTypes.Cron">Cron</SelectOption>
@@ -68,9 +77,50 @@
         {
             <Alert Type="@AlertType.Error" Message="@_validationError" ShowIcon="true" />
         }
-        <FormItem Label="时区"><Input @bind-Value="@Job.Schedule.Timezone" /></FormItem>
-        <FormItem Label="目标 Session"><Input @bind-Value="@Job.Dispatch.Target.SessionId" /></FormItem>
-        <FormItem Label="超时（秒）"><InputNumber @bind-Value="@Job.Runtime.TimeoutSeconds" Min="10" Style="width: 100%;" /></FormItem>
+        <FormItem Label="时区"><Input @bind-Value="@Job.Schedule.Timezone" Placeholder="Asia/Shanghai" /></FormItem>
+        
+        @* 投递配置 *@
+        <Divider Orientation="@DividerOrientation.Left">投递配置</Divider>
+        <Row Gutter="16">
+            <Col Span="8">
+                <FormItem Label="目标 Session">
+                    <Input @bind-Value="@Job.Dispatch.Target.SessionId" Placeholder="main" />
+                </FormItem>
+            </Col>
+            <Col Span="8">
+                <FormItem Label="Channel">
+                    <Input @bind-Value="@Job.Dispatch.Target.Channel" Placeholder="可选" />
+                </FormItem>
+            </Col>
+            <Col Span="8">
+                <FormItem Label="UserId">
+                    <Input @bind-Value="@Job.Dispatch.Target.UserId" Placeholder="可选" />
+                </FormItem>
+            </Col>
+        </Row>
+        
+        @* 高级配置 *@
+        <Divider Orientation="@DividerOrientation.Left">高级配置</Divider>
+        <Row Gutter="16">
+            <Col Span="8">
+                <FormItem Label="超时（秒）">
+                    <InputNumber @bind-Value="@Job.Runtime.TimeoutSeconds" Min="10" Max="3600" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+            <Col Span="8">
+                <FormItem Label="Misfire 宽限（秒）">
+                    <InputNumber @bind-Value="@Job.Runtime.MisfireGraceSeconds" Min="0" Max="3600" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+            <Col Span="8">
+                <FormItem Label="选项">
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <Checkbox @bind-Checked="@Job.Runtime.RunInBackground">后台运行</Checkbox>
+                        <Checkbox @bind-Checked="@Job.Runtime.ShareSession">共享 Session</Checkbox>
+                    </div>
+                </FormItem>
+            </Col>
+        </Row>
     </Form>
 </Modal>
 

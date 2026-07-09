@@ -109,8 +109,8 @@
                                 <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Inbox">inbox（收件箱）</SelectOption>
                             </Select>
                         </FormItem>
-                        <FormItem Label="Query 文件">
-                            <Input @bind-Value="@_heartbeat.QueryFile" Placeholder="HEARTBEAT.md" />
+                        <FormItem Label="心跳 Prompt">
+                            <TextArea @bind-Value="@_heartbeat.Prompt" Placeholder="输入心跳提示内容" Rows="3" />
                         </FormItem>
                         <FormItem Label="指定 Agent">
                             <Input @bind-Value="@_heartbeat.Agent" Placeholder="留空使用默认 Agent" />

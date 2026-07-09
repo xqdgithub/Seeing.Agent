@@ -13,10 +13,18 @@ public sealed class JobNotificationService
     
     /// <summary>任务成功事件</summary>
     public event EventHandler<JobSuccessEventArgs>? JobSuccess;
+    
+    /// <summary>任务进度事件</summary>
+    public event EventHandler<JobProgressEventArgs>? JobProgress;
 
-    public JobNotificationService(ILogger<JobNotificationService> logger)
+    public JobNotificationService(
+        ILogger<JobNotificationService> logger,
+        SchedulerStatusService statusService)
     {
         _logger = logger;
+        
+        // 订阅 SchedulerStatusService 的进度事件，建立事件链路
+        statusService.JobProgress += (_, args) => HandleProgress(args);
     }
 
     /// <summary>通知任务错误</summary>
@@ -45,6 +53,13 @@ public sealed class JobNotificationService
             Timestamp = DateTime.Now
         });
     }
+    
+    /// <summary>通知任务进度</summary>
+    public void NotifyProgress(JobProgressEventArgs args)
+    {
+        _logger.LogDebug("Job {JobId} progress: {Stage}", args.JobId, args.Stage);
+        JobProgress?.Invoke(this, args);
+    }
 
     /// <summary>处理任务执行结果</summary>
     public Task HandleResultAsync(string jobId, JobExecutionResult result)
@@ -58,6 +73,22 @@ public sealed class JobNotificationService
             NotifyError(jobId, result.Error ?? "Unknown error", result.Output);
         }
         return Task.CompletedTask;
+    }
+    
+    /// <summary>处理进度事件</summary>
+    public void HandleProgress(JobProgressEventArgs args)
+    {
+        NotifyProgress(args);
+        
+        // 兼容旧的事件系统
+        if (args.Stage == JobProgressStage.Completed && args.Result != null)
+        {
+            _ = HandleResultAsync(args.JobId, args.Result);
+        }
+        else if (args.Stage == JobProgressStage.Failed && args.Result != null)
+        {
+            _ = HandleResultAsync(args.JobId, args.Result);
+        }
     }
 }
 

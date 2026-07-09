@@ -14,8 +14,9 @@
     <ProjectReference Include="../../src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="AntDesign" Version="1.6.1" />
-    <PackageReference Include="Markdig" Version="1.2.0" />
+    <PackageReference Include="AntDesign" Version="1.6.2" />
+    <PackageReference Include="Markdig" Version="1.3.2" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Seeing.Agent.Gateway/Seeing.Agent.Gateway.csproj" />

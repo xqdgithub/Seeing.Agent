@@ -1,0 +1,80 @@
+@using AntDesign
+@using Seeing.Agent.Scheduler.Models
+
+<Modal Title="@("执行详情")" Visible="@Visible" OnCancel="@OnCancel" Width="800" Footer="@null">
+    @if (Record != null)
+    {
+        <Descriptions Column="2" Bordered="true">
+            <DescriptionsItem Title="RunId">@Record.RunId</DescriptionsItem>
+            <DescriptionsItem Title="状态">
+                <Tag Color="@(Record.Status == "success" ? "green" : Record.Status == "failed" ? "red" : "blue")">
+                    @(Record.Status == "success" ? "成功" : Record.Status == "failed" ? "失败" : "运行中")
+                </Tag>
+            </DescriptionsItem>
+            <DescriptionsItem Title="来源">@Record.Source</DescriptionsItem>
+            <DescriptionsItem Title="类型">@Record.TaskType</DescriptionsItem>
+            <DescriptionsItem Title="开始时间">@Record.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</DescriptionsItem>
+            <DescriptionsItem Title="完成时间">@Record.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-"</DescriptionsItem>
+            @if (Record.Duration.HasValue)
+            {
+                <DescriptionsItem Title="耗时">@FormatDuration(Record.Duration.Value)</DescriptionsItem>
+            }
+            <DescriptionsItem Title="Agent">@Record.Agent</DescriptionsItem>
+            <DescriptionsItem Title="Session">@Record.SessionId</DescriptionsItem>
+            @if (!string.IsNullOrEmpty(Record.DispatchChannel))
+            {
+                <DescriptionsItem Title="Channel">@Record.DispatchChannel</DescriptionsItem>
+            }
+            @if (!string.IsNullOrEmpty(Record.DispatchUserId))
+            {
+                <DescriptionsItem Title="UserId">@Record.DispatchUserId</DescriptionsItem>
+            }
+        </Descriptions>
+
+        @if (!string.IsNullOrEmpty(Record.Prompt))
+        {
+            <Card Title="Prompt" Style="margin-top: 16px;">
+                <pre Style="white-space: pre-wrap; word-break: break-word; margin: 0; background: #f5f5f5; padding: 12px; border-radius: 4px;">@Record.Prompt</pre>
+            </Card>
+        }
+
+        @if (!string.IsNullOrEmpty(Record.Text))
+        {
+            <Card Title="Text" Style="margin-top: 16px;">
+                <pre Style="white-space: pre-wrap; word-break: break-word; margin: 0; background: #f5f5f5; padding: 12px; border-radius: 4px;">@Record.Text</pre>
+            </Card>
+        }
+
+        @if (!string.IsNullOrEmpty(Record.Output))
+        {
+            <Card Title="输出结果" Style="margin-top: 16px;">
+                <pre Style="white-space: pre-wrap; word-break: break-word; margin: 0; max-height: 300px; overflow-y: auto; background: #f5f5f5; padding: 12px; border-radius: 4px;">@Record.Output</pre>
+            </Card>
+        }
+
+        @if (!string.IsNullOrEmpty(Record.Error))
+        {
+            <Alert Type="@AlertType.Error" Style="margin-top: 16px;" Message="错误信息" Description="@Record.Error" />
+        }
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public JobExecutionRecord? Record { get; set; }
+
+    private void OnCancel()
+    {
+        _ = VisibleChanged.InvokeAsync(false);
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalMinutes >= 1)
+            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
+        if (duration.TotalSeconds >= 1)
+            return $"{(int)duration.TotalSeconds}s";
+        return $"{duration.TotalMilliseconds:F0}ms";
+    }
+}

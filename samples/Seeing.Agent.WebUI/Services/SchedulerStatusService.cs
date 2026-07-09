@@ -13,6 +13,9 @@ public sealed class SchedulerStatusService
     
     /// <summary>任务状态变更事件</summary>
     public event EventHandler<JobStatusChangedEventArgs>? JobStatusChanged;
+    
+    /// <summary>任务进度事件</summary>
+    public event EventHandler<JobProgressEventArgs>? JobProgress;
 
     public SchedulerStatusService(
         IScheduleManager scheduleManager,
@@ -25,6 +28,7 @@ public sealed class SchedulerStatusService
         if (_scheduleManager is ScheduleManager manager)
         {
             manager.JobStatusChanged += (_, args) => JobStatusChanged?.Invoke(this, args);
+            manager.JobProgress += (_, args) => JobProgress?.Invoke(this, args);
         }
     }
 
@@ -66,7 +70,7 @@ public sealed class SchedulerStatusService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get job status for {JobId}", jobId);
-            return new JobStatus { JobId = jobId, State = JobState.Error };
+            return new JobStatus { JobId = jobId, State = JobState.Disabled };
         }
     }
 
@@ -92,5 +96,17 @@ public sealed class SchedulerStatusService
     public async Task ResumeJobAsync(string jobId, CancellationToken ct = default)
     {
         await _scheduleManager.ResumeJobAsync(jobId, ct);
+    }
+
+    /// <summary>禁用任务</summary>
+    public async Task DisableJobAsync(string jobId, CancellationToken ct = default)
+    {
+        await _scheduleManager.DisableJobAsync(jobId, ct);
+    }
+
+    /// <summary>取消正在运行的任务</summary>
+    public async Task<bool> CancelJobAsync(string jobId, CancellationToken ct = default)
+    {
+        return await _scheduleManager.CancelJobAsync(jobId, ct);
     }
 }

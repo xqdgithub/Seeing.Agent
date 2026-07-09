@@ -52,12 +52,27 @@ public class AgentJob : IJob
 
     public async Task Execute(IJobExecutionContext context)
     {
-        var data = context.JobDetail.JobDataMap;
-        var jobId = data.GetString(JobDataKeys.JobId) ?? context.JobDetail.Key.Name;
-        var taskType = data.GetString(JobDataKeys.TaskType) ?? ScheduleTaskTypes.Agent;
-        var sessionId = data.GetString(JobDataKeys.SessionId) ?? "main";
-        var timeoutSeconds = data.GetInt(JobDataKeys.TimeoutSeconds);
-        if (timeoutSeconds <= 0) timeoutSeconds = SchedulerConstants.DefaultTimeoutSeconds;
+        var data = context.MergedJobDataMap;
+        var jobId = data.GetStringValue(JobDataKeys.JobId) ?? context.JobDetail.Key.Name;
+        var runId = data.GetStringValue(JobDataKeys.RunId) ?? Guid.NewGuid().ToString("N");
+        
+        // 通知监听器任务开始
+        _listener?.OnJobStart(jobId, runId);
+        
+        _logger.LogInformation("===== AgentJob.Execute started for {JobId} =====", jobId);
+        _logger.LogInformation("AgentJob: FireTime = {Time}, ScheduledFireTime = {Scheduled}", 
+            context.FireTimeUtc.LocalDateTime, context.ScheduledFireTimeUtc?.LocalDateTime);
+        var taskType = data.GetStringValue(JobDataKeys.TaskType) ?? ScheduleTaskTypes.Agent;
+        var sessionId = data.GetStringValue(JobDataKeys.SessionId) ?? "main";
+        var agentId = data.GetStringValue(JobDataKeys.AgentId);
+        var prompt = data.GetStringValue(JobDataKeys.Prompt);
+        var text = data.GetStringValue(JobDataKeys.Text);
+        var dispatchChannel = data.GetStringValue(JobDataKeys.DispatchChannel);
+        var dispatchUserId = data.GetStringValue(JobDataKeys.DispatchUserId);
+        var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId);
+        
+        // 使用类型安全的扩展方法读取（自动从字符串转换）
+        var timeoutSeconds = data.GetIntValue(JobDataKeys.TimeoutSeconds, SchedulerConstants.DefaultTimeoutSeconds);
 
         var ct = context.CancellationToken;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -82,8 +97,15 @@ public class AgentJob : IJob
             {
                 Success = false,
                 Error = hookResult.Error?.Message ?? "Blocked by hook",
+                TaskType = taskType,
                 Source = ScheduleSources.Cron,
-                SessionId = sessionId
+                SessionId = sessionId,
+                Agent = agentId,
+                Prompt = prompt,
+                Text = text,
+                DispatchChannel = dispatchChannel,
+                DispatchUserId = dispatchUserId,
+                DispatchSessionId = dispatchSessionId
             };
 
             // 触发执行后 Hook
@@ -112,12 +134,12 @@ public class AgentJob : IJob
             if (taskType == ScheduleTaskTypes.Text)
             {
                 result = await ExecuteTextJobAsync(data, sessionId, timeoutCts.Token);
-                userInput = data.GetString(JobDataKeys.Text);  // Text 任务的用户输入
+                userInput = data.GetStringValue(JobDataKeys.Text);  // Text 任务的用户输入
             }
             else
             {
                 result = await ExecuteAgentJobAsync(data, sessionId, timeoutCts.Token);
-                userInput = data.GetString(JobDataKeys.Prompt);  // Agent 任务的用户输入
+                userInput = data.GetStringValue(JobDataKeys.Prompt);  // Agent 任务的用户输入
             }
 
             // 始终投递结果到 Session（确保执行结果可查询）
@@ -152,8 +174,15 @@ public class AgentJob : IJob
             {
                 Success = false,
                 Error = $"Execution timed out after {timeoutSeconds}s",
+                TaskType = taskType,
                 Source = ScheduleSources.Cron,
-                SessionId = sessionId
+                SessionId = sessionId,
+                Agent = agentId,
+                Prompt = prompt,
+                Text = text,
+                DispatchChannel = dispatchChannel,
+                DispatchUserId = dispatchUserId,
+                DispatchSessionId = dispatchSessionId
             };
 
             // 触发执行后 Hook
@@ -179,8 +208,15 @@ public class AgentJob : IJob
             {
                 Success = false,
                 Error = ex.Message,
+                TaskType = taskType,
                 Source = ScheduleSources.Cron,
-                SessionId = sessionId
+                SessionId = sessionId,
+                Agent = agentId,
+                Prompt = prompt,
+                Text = text,
+                DispatchChannel = dispatchChannel,
+                DispatchUserId = dispatchUserId,
+                DispatchSessionId = dispatchSessionId
             };
 
             // 触发执行后 Hook
@@ -206,7 +242,11 @@ public class AgentJob : IJob
         string sessionId,
         CancellationToken ct)
     {
-        var text = data.GetString(JobDataKeys.Text) ?? string.Empty;
+        var text = data.GetStringValue(JobDataKeys.Text) ?? string.Empty;
+        var dispatchChannel = data.GetStringValue(JobDataKeys.DispatchChannel);
+        var dispatchUserId = data.GetStringValue(JobDataKeys.DispatchUserId);
+        var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId);
+        
         if (string.IsNullOrWhiteSpace(text))
         {
             return new JobExecutionResult
@@ -215,7 +255,11 @@ public class AgentJob : IJob
                 Error = "Text task has empty content",
                 TaskType = ScheduleTaskTypes.Text,
                 Source = ScheduleSources.Cron,
-                SessionId = sessionId
+                SessionId = sessionId,
+                Text = text,
+                DispatchChannel = dispatchChannel,
+                DispatchUserId = dispatchUserId,
+                DispatchSessionId = dispatchSessionId
             };
         }
 
@@ -225,7 +269,11 @@ public class AgentJob : IJob
             Output = text,
             TaskType = ScheduleTaskTypes.Text,
             Source = ScheduleSources.Cron,
-            SessionId = sessionId
+            SessionId = sessionId,
+            Text = text,
+            DispatchChannel = dispatchChannel,
+            DispatchUserId = dispatchUserId,
+            DispatchSessionId = dispatchSessionId
         };
     }
 
@@ -234,8 +282,11 @@ public class AgentJob : IJob
         string sessionId,
         CancellationToken ct)
     {
-        var agentId = data.GetString(JobDataKeys.AgentId);
-        var prompt = data.GetString(JobDataKeys.Prompt) ?? string.Empty;
+        var agentId = data.GetStringValue(JobDataKeys.AgentId);
+        var prompt = data.GetStringValue(JobDataKeys.Prompt) ?? string.Empty;
+        var dispatchChannel = data.GetStringValue(JobDataKeys.DispatchChannel);
+        var dispatchUserId = data.GetStringValue(JobDataKeys.DispatchUserId);
+        var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId);
 
         if (string.IsNullOrWhiteSpace(prompt))
         {
@@ -245,7 +296,12 @@ public class AgentJob : IJob
                 Error = "Agent task has empty prompt",
                 TaskType = ScheduleTaskTypes.Agent,
                 Source = ScheduleSources.Cron,
-                SessionId = sessionId
+                SessionId = sessionId,
+                Agent = agentId,
+                Prompt = prompt,
+                DispatchChannel = dispatchChannel,
+                DispatchUserId = dispatchUserId,
+                DispatchSessionId = dispatchSessionId
             };
         }
 
@@ -299,24 +355,21 @@ public class AgentJob : IJob
             Error = errorMessage,
             TaskType = ScheduleTaskTypes.Agent,
             Source = ScheduleSources.Cron,
-            AgentName = resolvedAgentId,
-            SessionId = sessionId
+            Agent = resolvedAgentId,
+            SessionId = sessionId,
+            Prompt = prompt,
+            DispatchChannel = dispatchChannel,
+            DispatchUserId = dispatchUserId,
+            DispatchSessionId = dispatchSessionId
         };
     }
 
     private async Task DispatchAsync(JobDataMap data, string content, string defaultSessionId, string? userInput, CancellationToken ct)
     {
         // 安全获取可选的投递配置
-        string? dispatchChannel = null;
-        string? dispatchUserId = null;
-        string? dispatchSessionId = defaultSessionId;
-
-        if (data.ContainsKey(JobDataKeys.DispatchChannel))
-            dispatchChannel = data.GetString(JobDataKeys.DispatchChannel);
-        if (data.ContainsKey(JobDataKeys.DispatchUserId))
-            dispatchUserId = data.GetString(JobDataKeys.DispatchUserId);
-        if (data.ContainsKey(JobDataKeys.DispatchSessionId))
-            dispatchSessionId = data.GetString(JobDataKeys.DispatchSessionId) ?? defaultSessionId;
+        var dispatchChannel = data.GetStringValue(JobDataKeys.DispatchChannel);
+        var dispatchUserId = data.GetStringValue(JobDataKeys.DispatchUserId);
+        var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId) ?? defaultSessionId;
 
         var dispatchResult = await _dispatcher.DispatchAsync(new DispatchRequest
         {

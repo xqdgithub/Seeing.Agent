@@ -71,7 +71,7 @@ public class MemoryIntegrationTests : IDisposable
 
         // Assert
         result.Should().NotBeNull();
-        result.TotalCount.Should().BeGreaterOrEqualTo(1);
+        result.TotalCount.Should().BeGreaterThanOrEqualTo(1);
     }
 
     [Fact(DisplayName = "列表查询应返回所有记忆")]

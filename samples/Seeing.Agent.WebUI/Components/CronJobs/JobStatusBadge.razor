@@ -25,12 +25,10 @@
 @code {
     private static (string color, string icon, string text) GetStateDisplay(JobState state) => state switch
     {
-        JobState.Normal => ("green", IconType.Outline.CheckCircle, "正常"),
+        JobState.Scheduled => ("green", IconType.Outline.CheckCircle, "已调度"),
         JobState.Running => ("blue", IconType.Outline.Sync, "运行中"),
         JobState.Paused => ("orange", IconType.Outline.PauseCircle, "已暂停"),
-        JobState.Completed => ("default", IconType.Outline.CheckCircle, "已完成"),
-        JobState.Error => ("red", IconType.Outline.CloseCircle, "错误"),
-        JobState.Blocked => ("purple", IconType.Outline.Lock, "阻塞"),
+        JobState.Disabled => ("default", IconType.Outline.Stop, "已禁用"),
         _ => ("default", IconType.Outline.QuestionCircle, "未知")
     };
 }

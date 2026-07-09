@@ -111,7 +111,7 @@ public class MemoryForgettingTests
         var count = await _forgetManager.ApplyDecayAsync();
 
         // Assert
-        count.Should().BeGreaterOrEqualTo(1);
+        count.Should().BeGreaterThanOrEqualTo(1);
         _repositoryMock.Verify(r => r.SaveMemoryAsync(It.IsAny<MemoryEntry>()), Times.Once);
     }
 

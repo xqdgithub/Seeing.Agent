@@ -32,6 +32,7 @@ public static class ScheduleSources
 {
     public const string Cron = "cron";
     public const string Heartbeat = "heartbeat";
+    public const string Manual = "manual";
 }
 
 /// <summary>任务类型</summary>

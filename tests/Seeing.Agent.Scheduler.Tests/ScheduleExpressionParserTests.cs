@@ -21,8 +21,10 @@ public class ScheduleExpressionParserTests
     [Fact]
     public void NormalizeCron_AddsMissingSecondField()
     {
-        ScheduleExpressionParser.NormalizeCron("0 9 * * *").Should().Be("0 0 9 * * *");
-        ScheduleExpressionParser.NormalizeCron("9 * * *").Should().Be("0 0 9 * *");
+        // 5 字段 -> 6 字段 + Quartz ? 修正
+        ScheduleExpressionParser.NormalizeCron("0 9 * * *").Should().Be("0 0 9 * * ?");
+        // 4 字段 -> 6 字段
+        ScheduleExpressionParser.NormalizeCron("9 * * *").Should().Be("0 0 9 * * ?");
     }
 
     [Fact]

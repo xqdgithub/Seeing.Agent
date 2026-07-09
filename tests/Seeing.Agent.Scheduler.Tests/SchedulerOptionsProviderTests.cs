@@ -20,7 +20,7 @@ public class SchedulerOptionsProviderTests
                 Enabled = true,
                 Every = "30m",
                 Target = HeartbeatTargets.Last,
-                QueryFile = "HEARTBEAT.md"
+                Prompt = "检查系统状态"
             }
         });
 
@@ -31,6 +31,7 @@ public class SchedulerOptionsProviderTests
         provider.Current.Heartbeat.Enabled.Should().BeTrue();
         provider.Current.Heartbeat.Every.Should().Be("30m");
         provider.Current.Heartbeat.Target.Should().Be(HeartbeatTargets.Last);
+        provider.Current.Heartbeat.Prompt.Should().Be("检查系统状态");
     }
 
     [Fact]

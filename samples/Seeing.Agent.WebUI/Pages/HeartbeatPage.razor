@@ -4,6 +4,7 @@
 @using Seeing.Agent.Scheduler
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.Configuration
 @inject SeeingConfigService ConfigService
 @inject IScheduleManager ScheduleManager
 @inject IMessageService MessageService
@@ -31,36 +32,53 @@
                         <FormItem Label="执行间隔"><Input @bind-Value="@_heartbeat.Every" Placeholder="6h、30m" /></FormItem>
                         <FormItem Label="投递目标">
                             <Select TItemValue="string" TItem="string" @bind-Value="@_heartbeat.Target">
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Main">main</SelectOption>
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Last">last</SelectOption>
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Inbox">inbox</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Main">main（主会话）</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Last">last（最后活跃会话）</SelectOption>
+                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Inbox">inbox（收件箱）</SelectOption>
                             </Select>
                         </FormItem>
-                        <FormItem Label="Query 文件"><Input @bind-Value="@_heartbeat.QueryFile" /></FormItem>
-                        <FormItem Label="Agent"><Input @bind-Value="@_heartbeat.Agent" Placeholder="留空使用默认" /></FormItem>
+                        <FormItem Label="心跳 Prompt">
+                            <TextArea @bind-Value="@_heartbeat.Prompt" 
+                                      Placeholder="输入心跳执行时的提示内容（支持 Markdown 格式）" 
+                                      Rows="6" 
+                                      AutoSize="true" />
+                            <br /><small style="color: #999;">必填。每次心跳执行时将发送此内容给 Agent。</small>
+                        </FormItem>
+                        <FormItem Label="Agent"><Input @bind-Value="@_heartbeat.Agent" Placeholder="留空使用默认 Agent" /></FormItem>
                         <FormItem Label="Session ID"><Input @bind-Value="@_heartbeat.SessionId" /></FormItem>
-                        <FormItem Label="超时（秒）"><InputNumber @bind-Value="@_heartbeat.TimeoutSeconds" Min="10" Style="width: 100%;" /></FormItem>
-                        @if (_heartbeat.ActiveHours != null)
-                        {
-                            <FormItem Label="活跃时段开始"><Input @bind-Value="@_heartbeat.ActiveHours.Start" /></FormItem>
-                            <FormItem Label="活跃时段结束"><Input @bind-Value="@_heartbeat.ActiveHours.End" /></FormItem>
-                        }
+                        <FormItem Label="超时（秒）"><InputNumber @bind-Value="@_heartbeat.TimeoutSeconds" Min="10" Max="600" Style="width: 100%;" /></FormItem>
+                        <FormItem Label="活跃时段">
+                            <Space>
+                                <TimePicker TValue="DateTime?" @bind-Value="@_activeHoursStart" Format="HH:mm" />
+                                <span>-</span>
+                                <TimePicker TValue="DateTime?" @bind-Value="@_activeHoursEnd" Format="HH:mm" />
+                            </Space>
+                            <br /><small style="color: #999;">仅在指定时段内执行心跳</small>
+                        </FormItem>
                     </div>
                     </Form>
                 </Card>
             </Col>
             <Col Span="10">
-                <Card Title="HEARTBEAT.md 预览">
-                    @if (File.Exists(_queryFilePath))
-                    {
-                        <pre style="white-space: pre-wrap; max-height: 400px; overflow: auto; font-size: 13px;">@_queryPreview</pre>
-                    }
-                    else
-                    {
-                        <Alert Type="@AlertType.Warning" ShowIcon="true"
-                               Message="@($"文件不存在: {_heartbeat.QueryFile}")"
-                               Description="可在工作区根目录创建 HEARTBEAT.md 定义心跳查询内容。" />
-                    }
+                <Card Title="配置说明">
+                    <div style="color: #666;">
+                        <h4>心跳功能说明</h4>
+                        <p>心跳是定时执行的 Agent 任务，用于：</p>
+                        <ul>
+                            <li>定期检查系统状态</li>
+                            <li>执行定时提醒</li>
+                            <li>自动化例行任务</li>
+                        </ul>
+                        
+                        <h4 style="margin-top: 16px;">Prompt 示例</h4>
+                        <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 12px;">
+## 系统状态检查
+
+请检查以下内容并汇报：
+1. 检查是否有未读消息
+2. 检查当前工作进度
+3. 提醒即将到来的日程</pre>
+                    </div>
                 </Card>
             </Col>
         </Row>
@@ -70,33 +88,49 @@
 @code {
     private SchedulerOptions _scheduler = new();
     private HeartbeatOptions _heartbeat = new();
-    private string _queryFilePath = "";
-    private string _queryPreview = "";
     private bool _running;
+    private DateTime? _activeHoursStart;
+    private DateTime? _activeHoursEnd;
 
     protected override async Task OnInitializedAsync()
     {
         _scheduler = ConfigService.GetSchedulerOptions();
         _heartbeat = _scheduler.Heartbeat;
         _heartbeat.ActiveHours ??= new ActiveHoursOptions();
-        RefreshPreview();
+        
+        // 解析活跃时段
+        if (_heartbeat.ActiveHours != null)
+        {
+            if (TimeSpan.TryParse(_heartbeat.ActiveHours.Start, out var startTime))
+                _activeHoursStart = DateTime.Today.Add(startTime);
+            if (TimeSpan.TryParse(_heartbeat.ActiveHours.End, out var endTime))
+                _activeHoursEnd = DateTime.Today.Add(endTime);
+        }
+        
         await Task.CompletedTask;
-    }
-
-    private void RefreshPreview()
-    {
-        _queryFilePath = Path.Combine(Directory.GetCurrentDirectory(), _heartbeat.QueryFile);
-        _queryPreview = File.Exists(_queryFilePath) ? File.ReadAllText(_queryFilePath) : "";
     }
 
     private async Task SaveAsync()
     {
+        // 验证 Prompt
+        if (string.IsNullOrWhiteSpace(_heartbeat.Prompt))
+        {
+            MessageService.Warning("心跳 Prompt 为必填项");
+            return;
+        }
+        
+        // 更新活跃时段配置
+        if (_heartbeat.ActiveHours != null)
+        {
+            _heartbeat.ActiveHours.Start = _activeHoursStart?.ToString("HH:mm") ?? "08:00";
+            _heartbeat.ActiveHours.End = _activeHoursEnd?.ToString("HH:mm") ?? "22:00";
+        }
+        
         await ConfigService.SaveSchedulerOptionsAsync(s =>
         {
             s.Heartbeat = _heartbeat;
         });
         await ScheduleManager.ReloadHeartbeatAsync();
-        RefreshPreview();
         MessageService.Success("心跳配置已保存");
     }
 
@@ -106,8 +140,21 @@
         try
         {
             var result = await ScheduleManager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId);
-            if (result.Success) MessageService.Success("心跳已触发");
-            else MessageService.Error(result.Error ?? "执行失败");
+            switch (result)
+            {
+                case TriggerResult.Accepted accepted:
+                    MessageService.Success($"心跳已触发，RunId={accepted.RunId}");
+                    break;
+                case TriggerResult.NotFound:
+                    MessageService.Error("心跳任务未找到");
+                    break;
+                case TriggerResult.Disabled:
+                    MessageService.Warning("心跳任务已禁用");
+                    break;
+                case TriggerResult.Conflict conflict:
+                    MessageService.Warning($"触发冲突: {conflict.Reason}");
+                    break;
+            }
         }
         finally { _running = false; }
     }

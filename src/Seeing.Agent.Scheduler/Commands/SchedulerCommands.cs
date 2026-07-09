@@ -59,7 +59,7 @@ internal sealed class CronListCommand : ICommand
             var status = await _manager.GetJobStatusAsync(j.Id, cancellationToken).ConfigureAwait(false);
             // 使用本地时间格式显示（不含 Z 后缀）
             var nextText = status.NextFireTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
-            lines.Add($"- {j.Id} [{j.TaskType}] enabled={j.Enabled} agent={j.Agent ?? "-"} next={nextText}");
+            lines.Add($"- {j.Id} [{j.TaskType}] intent={j.Intent} agent={j.Agent ?? "-"} next={nextText}");
         }
         return CommandResult.Ok(string.Join(Environment.NewLine, lines));
     }
@@ -84,9 +84,14 @@ internal sealed class CronRunCommand : ICommand
             return CommandResult.Fail("Usage: /cron-run <jobId>");
 
         var result = await _manager.RunJobOnceAsync(jobId, cancellationToken).ConfigureAwait(false);
-        return result.Success
-            ? CommandResult.Ok(result.Output ?? "Job completed.")
-            : CommandResult.Fail(result.Error ?? "Job failed.");
+        return result switch
+        {
+            TriggerResult.Accepted a => CommandResult.Ok($"Job triggered with RunId: {a.RunId}"),
+            TriggerResult.NotFound => CommandResult.Fail("Job not found."),
+            TriggerResult.Disabled => CommandResult.Fail("Job is disabled."),
+            TriggerResult.Conflict c => CommandResult.Fail(c.Reason),
+            _ => CommandResult.Fail("Unknown result.")
+        };
     }
 }
 
@@ -105,8 +110,13 @@ internal sealed class HeartbeatRunCommand : ICommand
     public async Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
     {
         var result = await _manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, cancellationToken).ConfigureAwait(false);
-        return result.Success
-            ? CommandResult.Ok(result.Output ?? "Heartbeat triggered.")
-            : CommandResult.Fail(result.Error ?? "Heartbeat failed.");
+        return result switch
+        {
+            TriggerResult.Accepted a => CommandResult.Ok($"Heartbeat triggered with RunId: {a.RunId}"),
+            TriggerResult.NotFound => CommandResult.Fail("Heartbeat job not found."),
+            TriggerResult.Disabled => CommandResult.Fail("Heartbeat is disabled."),
+            TriggerResult.Conflict c => CommandResult.Fail(c.Reason),
+            _ => CommandResult.Fail("Unknown result.")
+        };
     }
 }

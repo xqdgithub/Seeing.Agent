@@ -38,7 +38,7 @@ public sealed class SchedulerTestWorkspace : IDisposable
                 "Enabled": {{scheduler.Heartbeat.Enabled.ToString().ToLower()}},
                 "Every": "{{scheduler.Heartbeat.Every}}",
                 "Target": "{{scheduler.Heartbeat.Target}}",
-                "QueryFile": "{{scheduler.Heartbeat.QueryFile}}",
+                "Prompt": "{{scheduler.Heartbeat.Prompt.Replace("\"", "\\\"").Replace("\n", "\\n")}}",
                 "Agent": {{(scheduler.Heartbeat.Agent == null ? "null" : $"\"{scheduler.Heartbeat.Agent}\"")}},
                 "SessionId": "{{scheduler.Heartbeat.SessionId}}",
                 "TimeoutSeconds": {{scheduler.Heartbeat.TimeoutSeconds}}
@@ -48,11 +48,6 @@ public sealed class SchedulerTestWorkspace : IDisposable
         }
         """;
         File.WriteAllText(Path.Combine(SeeingDirectory, "seeing.json"), json);
-    }
-
-    public void WriteHeartbeatFile(string content)
-    {
-        File.WriteAllText(Path.Combine(Root, "HEARTBEAT.md"), content);
     }
 
     /// <summary>创建测试用的 SchedulerOptionsProvider（简化版本，不依赖 UnifiedConfigManager）</summary>
@@ -71,7 +66,7 @@ public sealed class SchedulerTestWorkspace : IDisposable
             Enabled = true,
             Every = "6h",
             Target = HeartbeatTargets.Main,
-            QueryFile = "HEARTBEAT.md",
+            Prompt = "检查系统状态并汇报",
             SessionId = "main",
             TimeoutSeconds = 30
         }

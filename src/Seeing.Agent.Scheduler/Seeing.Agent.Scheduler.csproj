@@ -11,12 +11,18 @@
   <ItemGroup>
     <!-- Quartz.NET 调度框架 -->
     <PackageReference Include="Quartz" />
+    <PackageReference Include="Quartz.Extensions.DependencyInjection" />
     <PackageReference Include="Quartz.Extensions.Hosting" />
+    <PackageReference Include="Quartz.Plugins" />
     <PackageReference Include="Quartz.Serialization.Json" />
+    <!-- SQLite for persistence -->
+    <PackageReference Include="Microsoft.Data.Sqlite" />
     <!-- Microsoft Extensions -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Quartz.Serialization.SystemTextJson" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
   </ItemGroup>
 
   <ItemGroup>

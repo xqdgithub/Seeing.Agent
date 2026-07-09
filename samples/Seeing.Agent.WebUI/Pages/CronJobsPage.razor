@@ -10,6 +10,7 @@
 @inject SchedulerStatusService StatusService
 @inject JobNotificationService NotificationService
 @inject IMessageService MessageService
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <PageTitle>定时任务 - Seeing.Agent</PageTitle>
@@ -37,8 +38,8 @@
         <div class="stat-item">
             <div class="stat-icon" style="color: #52c41a;"><Icon Type="@IconType.Outline.CheckCircle" /></div>
             <div class="stat-content">
-                <span class="stat-value">@_rows.Count(r => r.Enabled)</span>
-                <span class="stat-label">已启用</span>
+                <span class="stat-value">@_rows.Count(r => r.State == JobState.Scheduled)</span>
+                <span class="stat-label">已调度</span>
             </div>
         </div>
         <div class="stat-item">
@@ -51,19 +52,35 @@
         <div class="stat-item">
             <div class="stat-icon" style="color: #faad14;"><Icon Type="@IconType.Outline.PauseCircle" /></div>
             <div class="stat-content">
-                <span class="stat-value">@_status.PausedJobs</span>
+                <span class="stat-value">@_rows.Count(r => r.State == JobState.Paused)</span>
                 <span class="stat-label">已暂停</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon" style="color: #8c8c8c;"><Icon Type="@IconType.Outline.Stop" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_rows.Count(r => r.State == JobState.Disabled)</span>
+                <span class="stat-label">已禁用</span>
             </div>
         </div>
     </Stats>
     <ChildContent>
-        <Table TItem="JobRow" DataSource="@_rows" RowKey="@(j => j.Id)">
+        @* 状态筛选标签页 *@
+        <Tabs @bind-ActiveKey="_activeTab" OnChange="OnTabChange" Style="margin-bottom: 16px;">
+            <TabPane Key="all" Tab="@($"全部 ({_rows.Count})")" />
+            <TabPane Key="scheduled" Tab="@($"已调度 ({_rows.Count(r => r.State == JobState.Scheduled)})")" />
+            <TabPane Key="running" Tab="@($"运行中 ({_rows.Count(r => r.State == JobState.Running)})")" />
+            <TabPane Key="paused" Tab="@($"已暂停 ({_rows.Count(r => r.State == JobState.Paused)})")" />
+            <TabPane Key="disabled" Tab="@($"已禁用 ({_rows.Count(r => r.State == JobState.Disabled)})")" />
+        </Tabs>
+        
+        <Table TItem="JobRow" DataSource="@_filteredRows" RowKey="@(j => j.Id)" @key="_rowsVersion">
             <PropertyColumn Property="c => c.Name" Title="名称" />
             <PropertyColumn Property="c => c.Id" Title="ID" />
             <PropertyColumn Property="c => c.TaskType" Title="类型" />
             <PropertyColumn Property="c => c.ScheduleText" Title="调度" />
             <PropertyColumn Property="c => c.Agent" Title="Agent" />
-            <PropertyColumn Property="c => c.Enabled" Title="状态">
+            <PropertyColumn Property="c => c.State" Title="状态">
                 <JobStatusBadge State="@context.State" />
             </PropertyColumn>
             <PropertyColumn Property="c => c.NextRunText" Title="下次运行">
@@ -71,20 +88,52 @@
             </PropertyColumn>
             <ActionColumn Title="操作">
                 <Space>
-                    <Button Size="@ButtonSize.Small" OnClick="@(() => RunOnce(context.Id))">运行</Button>
-                    @if (context.Enabled)
+                    @if (CanRun(context.State))
+                    {
+                        <Button Size="@ButtonSize.Small" 
+                                Loading="@_runningJobs.Contains(context.Id)" 
+                                OnClick="@(() => RunOnce(context.Id))">
+                            @if (_runningJobs.Contains(context.Id))
+                            {
+                                <Text>执行中</Text>
+                            }
+                            else
+                            {
+                                <Text>运行</Text>
+                            }
+                        </Button>
+                    }
+                    @if (CanPause(context.State))
                     {
                         <Button Size="@ButtonSize.Small" OnClick="@(() => PauseJob(context.Id))">暂停</Button>
                     }
-                    else
+                    @if (CanResume(context.State))
                     {
                         <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="@(() => ResumeJob(context.Id))">恢复</Button>
                     }
-                    <Button Size="@ButtonSize.Small" OnClick="@(() => EditJob(context.Id))">编辑</Button>
-                    <Button Size="@ButtonSize.Small" OnClick="@(() => ShowHistory(context.Id))">历史</Button>
-                    <Popconfirm Title="确定删除此任务？" OnConfirm="@(() => DeleteJob(context.Id))">
-                        <Button Size="@ButtonSize.Small" Danger="true">删除</Button>
-                    </Popconfirm>
+                    @if (CanDisable(context.State))
+                    {
+                        <Popconfirm Title="确定要禁用此任务吗？" OnConfirm="@(() => DisableJob(context.Id))">
+                            <Button Size="@ButtonSize.Small">禁用</Button>
+                        </Popconfirm>
+                    }
+                    @if (CanCancel(context.State))
+                    {
+                        <Popconfirm Title="确定要取消正在运行的任务吗？当前操作将被中断。" OnConfirm="@(() => CancelJob(context.Id))">
+                            <Button Size="@ButtonSize.Small" Danger="true">取消</Button>
+                        </Popconfirm>
+                    }
+                    @if (CanEdit(context.State))
+                    {
+                        <Button Size="@ButtonSize.Small" OnClick="@(() => EditJob(context.Id))">编辑</Button>
+                    }
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => NavigateToDetail(context.Id))">详情</Button>
+                    @if (CanDelete(context.State))
+                    {
+                        <Popconfirm Title="确定删除此任务？" OnConfirm="@(() => DeleteJob(context.Id))">
+                            <Button Size="@ButtonSize.Small" Danger="true">删除</Button>
+                        </Popconfirm>
+                    }
                 </Space>
             </ActionColumn>
         </Table>
@@ -101,43 +150,19 @@
                 Saving="@_saving"
                 OnSave="SaveJob" />
 
-<Drawer Title="@("执行历史")" Visible="@_historyVisible" Width="480" OnClose="@(() => _historyVisible = false)">
-  @if (_history.Count == 0)
-  {
-    <Empty Description="@("暂无执行记录")" />
-  }
-  else
-  {
-    <Timeline>
-      @foreach (var record in _history)
-      {
-        <TimelineItem Color="@(record.Status == "success" ? "green" : record.Status == "failed" ? "red" : "blue")">
-          <p><strong>@record.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</strong> — @record.Status</p>
-          @if (!string.IsNullOrEmpty(record.Error))
-          {
-            <p style="color: var(--color-error);">@record.Error</p>
-          }
-          @if (!string.IsNullOrEmpty(record.Output))
-          {
-            <p style="white-space: pre-wrap; font-size: 12px;">@(record.Output.Length > 200 ? record.Output[..200] + "..." : record.Output)</p>
-          }
-        </TimelineItem>
-      }
-    </Timeline>
-  }
-</Drawer>
-
 @code {
     private List<ScheduledJobSpec> _jobs = new();
     private List<JobRow> _rows = new();
-    private List<JobExecutionRecord> _history = new();
+    private List<JobRow> _filteredRows = new();
     private ScheduledJobSpec _editingJob = new();
     private SchedulerStatus _status = new();
     private bool _loading;
     private bool _editorVisible;
-    private bool _historyVisible;
     private bool _isEdit;
     private bool _saving;
+    private string _activeTab = "all";
+    private HashSet<string> _runningJobs = new();  // 追踪正在执行的任务
+    private int _rowsVersion;  // 用于强制 Table 刷新
 
     protected override async Task OnInitializedAsync()
     {
@@ -146,12 +171,16 @@
         // 订阅通知
         NotificationService.JobError += OnJobError;
         NotificationService.JobSuccess += OnJobSuccess;
+        NotificationService.JobProgress += OnJobProgress;
+        StatusService.JobStatusChanged += OnJobStatusChanged;
     }
 
     public void Dispose()
     {
         NotificationService.JobError -= OnJobError;
         NotificationService.JobSuccess -= OnJobSuccess;
+        NotificationService.JobProgress -= OnJobProgress;
+        StatusService.JobStatusChanged -= OnJobStatusChanged;
     }
 
     private async Task LoadAsync()
@@ -175,18 +204,55 @@
                     TaskType = j.TaskType,
                     ScheduleText = GetScheduleText(j),
                     Agent = j.Agent ?? "",
-                    Enabled = j.Enabled,
-                    State = status?.State ?? (j.Enabled ? JobState.Normal : JobState.Paused),
+                    Intent = j.Intent,
+                    State = status?.State ?? JobState.Disabled,
                     NextFireTime = status?.NextFireTime,
                     NextRunText = status?.NextFireTime?.ToString("yyyy-MM-dd HH:mm") ?? "-"
                 };
             }).ToList();
+            
+            ApplyTabFilter();
+            _rowsVersion++;
         }
         finally
         {
             _loading = false;
         }
     }
+
+    private void OnTabChange(string key)
+    {
+        _activeTab = key;
+        ApplyTabFilter();
+    }
+
+    private void ApplyTabFilter()
+    {
+        _filteredRows = _activeTab switch
+        {
+            "scheduled" => _rows.Where(r => r.State == JobState.Scheduled).ToList(),
+            "running" => _rows.Where(r => r.State == JobState.Running).ToList(),
+            "paused" => _rows.Where(r => r.State == JobState.Paused).ToList(),
+            "disabled" => _rows.Where(r => r.State == JobState.Disabled).ToList(),
+            _ => _rows.ToList()
+        };
+    }
+
+    // ===== 操作权限控制 =====
+    
+    private static bool CanRun(JobState state) => state == JobState.Scheduled || state == JobState.Paused;
+    
+    private static bool CanPause(JobState state) => state == JobState.Scheduled;
+    
+    private static bool CanResume(JobState state) => state == JobState.Paused;
+    
+    private static bool CanDisable(JobState state) => state == JobState.Scheduled || state == JobState.Paused;
+    
+    private static bool CanCancel(JobState state) => state == JobState.Running;
+    
+    private static bool CanEdit(JobState state) => state != JobState.Running;
+    
+    private static bool CanDelete(JobState state) => state != JobState.Running;
 
     private void OnJobError(object? sender, JobErrorEventArgs args)
     {
@@ -202,7 +268,46 @@
         _ = InvokeAsync(() =>
         {
             MessageService.Success($"任务 {args.JobId} 执行成功");
+            _runningJobs.Remove(args.JobId);
             return LoadAsync();
+        });
+    }
+    
+    private void OnJobProgress(object? sender, JobProgressEventArgs args)
+    {
+        _ = InvokeAsync(() =>
+        {
+            switch (args.Stage)
+            {
+                case JobProgressStage.Triggered:
+                    _runningJobs.Add(args.JobId);
+                    MessageService.Info($"任务 {args.JobId} 已触发");
+                    break;
+                case JobProgressStage.Completed:
+                    _runningJobs.Remove(args.JobId);
+                    break;
+                case JobProgressStage.Failed:
+                    _runningJobs.Remove(args.JobId);
+                    break;
+                case JobProgressStage.Cancelled:
+                    _runningJobs.Remove(args.JobId);
+                    MessageService.Warning($"任务 {args.JobId} 已取消");
+                    break;
+            }
+            StateHasChanged();
+            return Task.CompletedTask;
+        });
+    }
+    
+    private void OnJobStatusChanged(object? sender, JobStatusChangedEventArgs args)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            // 状态变化时刷新列表
+            if (args.NewState != args.OldState)
+            {
+                await LoadAsync();
+            }
         });
     }
 
@@ -211,7 +316,7 @@
         _editingJob = new ScheduledJobSpec
         {
             Id = $"job-{Guid.NewGuid():N}"[..12],
-            Enabled = true,
+            Intent = ScheduleIntent.Active,
             Schedule = new ScheduleSpec { Type = ScheduleTypes.Cron, Timezone = "Asia/Shanghai" },
             Dispatch = new DispatchSpec { Target = new DispatchTarget { SessionId = "main" } }
         };
@@ -254,7 +359,21 @@
     private async Task RunOnce(string id)
     {
         var result = await ScheduleManager.RunJobOnceAsync(id);
-        await NotificationService.HandleResultAsync(id, result);
+        switch (result)
+        {
+            case TriggerResult.Accepted accepted:
+                MessageService.Info($"任务已触发，RunId={accepted.RunId}");
+                break;
+            case TriggerResult.NotFound:
+                MessageService.Error("任务未找到");
+                break;
+            case TriggerResult.Disabled:
+                MessageService.Warning("任务已禁用");
+                break;
+            case TriggerResult.Conflict conflict:
+                MessageService.Warning($"触发冲突: {conflict.Reason}");
+                break;
+        }
         await LoadAsync();
     }
 
@@ -272,10 +391,30 @@
         await LoadAsync();
     }
 
-    private async Task ShowHistory(string jobId)
+    private async Task DisableJob(string id)
     {
-        _history = (await ScheduleRepository.GetHistoryAsync(jobId, 20)).ToList();
-        _historyVisible = true;
+        await StatusService.DisableJobAsync(id);
+        MessageService.Warning("任务已禁用");
+        await LoadAsync();
+    }
+
+    private async Task CancelJob(string id)
+    {
+        var success = await StatusService.CancelJobAsync(id);
+        if (success)
+        {
+            MessageService.Success("任务已取消");
+        }
+        else
+        {
+            MessageService.Warning("取消任务失败，任务可能已完成");
+        }
+        await LoadAsync();
+    }
+
+    private void NavigateToDetail(string jobId)
+    {
+        Navigation.NavigateTo($"/cron-jobs/{jobId}");
     }
 
     private static string GetScheduleText(ScheduledJobSpec job) => job.Schedule.Type switch
@@ -293,7 +432,7 @@
         public string TaskType { get; set; } = "";
         public string ScheduleText { get; set; } = "";
         public string Agent { get; set; } = "";
-        public bool Enabled { get; set; }
+        public ScheduleIntent Intent { get; set; }
         public JobState State { get; set; }
         public DateTime? NextFireTime { get; set; }
         public string NextRunText { get; set; } = "";

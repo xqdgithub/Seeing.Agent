@@ -14,7 +14,8 @@ public sealed class JsonScheduleRepository : IScheduleRepository
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     private readonly IWorkspaceProvider _workspace;
@@ -102,7 +103,7 @@ public sealed class JsonScheduleRepository : IScheduleRepository
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<JobExecutionRecord>> GetHistoryAsync(string jobId, int limit, CancellationToken ct = default)
+    public async Task<IReadOnlyList<JobExecutionRecord>> GetHistoryAsync(string jobId, int limit, int offset = 0, CancellationToken ct = default)
     {
         var path = Path.Combine(HistoryDirectory, $"{SanitizeFileName(jobId)}.json");
         if (!File.Exists(path))
@@ -110,7 +111,7 @@ public sealed class JsonScheduleRepository : IScheduleRepository
 
         var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
         var history = JsonSerializer.Deserialize<List<JobExecutionRecord>>(json, JsonOptions) ?? new();
-        return history.Take(Math.Max(1, limit)).ToList();
+        return history.Skip(Math.Max(0, offset)).Take(Math.Max(1, limit)).ToList();
     }
 
     private static string SanitizeFileName(string jobId) =>

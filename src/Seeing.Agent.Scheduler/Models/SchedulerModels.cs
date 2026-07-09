@@ -11,10 +11,6 @@ public class SchedulerOptions
     /// <summary>时区 ID（如 Asia/Shanghai），默认本地时区</summary>
     public string Timezone { get; set; } = TimeZoneInfo.Local.Id;
 
-    /// <summary>调度 tick 间隔（秒）- 已弃用，Quartz 使用自己的调度机制</summary>
-    [Obsolete("Quartz 使用自己的调度机制，此配置项已弃用")]
-    public int TickIntervalSeconds { get; set; } = 1;
-
     /// <summary>全局最大并发任务数</summary>
     public int MaxConcurrentJobs { get; set; } = 3;
 
@@ -53,8 +49,8 @@ public class HeartbeatOptions
     /// <summary>投递目标：main / last / inbox</summary>
     public string Target { get; set; } = HeartbeatTargets.Main;
 
-    /// <summary>Query 文件路径（相对工作区根目录）</summary>
-    public string QueryFile { get; set; } = "HEARTBEAT.md";
+    /// <summary>心跳 Prompt（必填，支持 Markdown 格式）</summary>
+    public string Prompt { get; set; } = "";
 
     /// <summary>使用的 Agent ID</summary>
     public string? Agent { get; set; }
@@ -124,7 +120,32 @@ public class ScheduledJobSpec
 {
     public string Id { get; set; } = string.Empty;
     public string? Name { get; set; }
-    public bool Enabled { get; set; } = true;
+    
+    /// <summary>调度意图（用户配置）</summary>
+    [JsonPropertyName("intent")]
+    public ScheduleIntent Intent { get; set; } = ScheduleIntent.Active;
+
+    /// <summary>向后兼容：旧版 Enabled 字段</summary>
+    [JsonPropertyName("enabled"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWriting)]
+    [Obsolete("Use Intent instead")]
+    public bool? LegacyEnabled 
+    { 
+        get => null;
+        set => _legacyEnabled = value;
+    }
+    
+    [JsonIgnore]
+    private bool? _legacyEnabled;
+    
+    /// <summary>迁移意图（从旧版 Enabled 字段）</summary>
+    internal void MigrateIntent()
+    {
+        if (_legacyEnabled.HasValue)
+        {
+            Intent = _legacyEnabled.Value ? ScheduleIntent.Active : ScheduleIntent.Disabled;
+            _legacyEnabled = null;
+        }
+    }
 
     [JsonPropertyName("taskType")]
     public string TaskType { get; set; } = ScheduleTaskTypes.Agent;
@@ -138,37 +159,94 @@ public class ScheduledJobSpec
     public JobRuntimeSpec Runtime { get; set; } = new();
 
     public DateTime? LastRunAt { get; set; }
-    // NextRunAt 不存储，由 Quartz 实时计算
 }
 
 /// <summary>jobs.json 根对象</summary>
 public class JobsFile
 {
+    /// <summary>版本号（用于迁移，默认 0 表示需要迁移）</summary>
+    public int Version { get; set; } = 0;
+    
     public List<ScheduledJobSpec> Jobs { get; set; } = new();
+    
+    /// <summary>迁移旧版本数据</summary>
+    internal void MigrateIfNeeded()
+    {
+        if (Version < 2)
+        {
+            foreach (var job in Jobs)
+                job.MigrateIntent();
+            Version = 2;
+        }
+    }
 }
 
 /// <summary>执行历史记录</summary>
 public class JobExecutionRecord
 {
     public string RunId { get; set; } = Guid.NewGuid().ToString("N");
+    public string JobId { get; set; } = string.Empty;
     public DateTime StartedAt { get; set; } = DateTime.Now;
     public DateTime? CompletedAt { get; set; }
+    public TimeSpan? Duration => CompletedAt - StartedAt;
     public string Status { get; set; } = "running";
     public string? Error { get; set; }
     public string? Output { get; set; }
     public string Source { get; set; } = ScheduleSources.Cron;
+    
+    // === 执行快照参数 ===
+    
+    /// <summary>任务类型 (agent/text)</summary>
+    public string? TaskType { get; set; }
+    
+    /// <summary>执行时的 Agent ID</summary>
+    public string? Agent { get; set; }
+    
+    /// <summary>执行时的 Prompt 内容</summary>
+    public string? Prompt { get; set; }
+    
+    /// <summary>执行时的 Text 内容</summary>
+    public string? Text { get; set; }
+    
+    /// <summary>执行时的 Session ID</summary>
+    public string? SessionId { get; set; }
+    
+    /// <summary>投递渠道</summary>
+    public string? DispatchChannel { get; set; }
+    
+    /// <summary>投递用户 ID</summary>
+    public string? DispatchUserId { get; set; }
+    
+    /// <summary>投递会话 ID</summary>
+    public string? DispatchSessionId { get; set; }
 }
 
 /// <summary>任务执行结果</summary>
 public class JobExecutionResult
 {
     public bool Success { get; init; }
+    public string? RunId { get; init; }
     public string? Output { get; init; }
     public string? Error { get; init; }
     public string TaskType { get; init; } = ScheduleTaskTypes.Agent;
     public string Source { get; init; } = ScheduleSources.Cron;
-    public string? AgentName { get; init; }
+    public string? Agent { get; init; }
     public string? SessionId { get; init; }
+    
+    /// <summary>执行时的 Prompt 内容</summary>
+    public string? Prompt { get; init; }
+    
+    /// <summary>执行时的 Text 内容</summary>
+    public string? Text { get; init; }
+    
+    /// <summary>投递渠道</summary>
+    public string? DispatchChannel { get; init; }
+    
+    /// <summary>投递用户 ID</summary>
+    public string? DispatchUserId { get; init; }
+    
+    /// <summary>投递会话 ID</summary>
+    public string? DispatchSessionId { get; init; }
 }
 
 /// <summary>投递请求</summary>

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Quartz;
 using Quartz.Impl.Matchers;
+using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.Scheduler.Engine;
@@ -36,7 +37,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            if (_scheduler == null)
+            if (_scheduler == null || _scheduler.IsShutdown)
             {
                 return new SchedulerStatus { IsRunning = false, IsStarted = false };
             }
@@ -73,6 +74,11 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 ThreadPoolSize = metaData.ThreadPoolSize
             };
         }
+        catch (SchedulerException)
+        {
+            // Scheduler 已关闭或不可用
+            return new SchedulerStatus { IsRunning = false, IsStarted = false };
+        }
         finally
         {
             _lock.Release();
@@ -87,7 +93,8 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         {
             if (_scheduler == null)
             {
-                return new JobStatus { JobId = jobId, State = JobState.Paused };
+                _logger.LogDebug("GetJobStatus({JobId}): scheduler is null, returning Disabled", jobId);
+                return new JobStatus { JobId = jobId, State = JobState.Disabled };
             }
 
             var jobKey = new JobKey(jobId, SchedulerConstants.DefaultJobGroup);
@@ -95,25 +102,37 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             
             if (jobDetail == null)
             {
-                return new JobStatus { JobId = jobId, State = JobState.Completed };
+                _logger.LogDebug("GetJobStatus({JobId}): jobDetail is null, returning Disabled", jobId);
+                return new JobStatus { JobId = jobId, State = JobState.Disabled };
             }
 
             var triggers = await _scheduler.GetTriggersOfJob(jobKey, ct);
-            var trigger = triggers.FirstOrDefault();
+            
+            // 只看主 trigger，忽略临时 trigger（MT_xxx, fire_xxx）
+            var primaryTrigger = GetPrimaryTrigger(triggers, jobId);
+            var triggerState = primaryTrigger != null 
+                ? await _scheduler.GetTriggerState(primaryTrigger.Key, ct) 
+                : TriggerState.None;
 
-            var state = DetermineJobState(trigger, await _scheduler.GetTriggerState(trigger?.Key!, ct));
+            // 检查是否正在执行
+            var executingJobs = await _scheduler.GetCurrentlyExecutingJobs(ct);
+            var isExecuting = executingJobs.Any(j => j.JobDetail.Key.Equals(jobKey));
+            
+            var state = isExecuting ? JobState.Running : DetermineJobState(primaryTrigger, triggerState);
 
-            // Quartz 返回 UTC，转为本地 DateTime
+            _logger.LogDebug("GetJobStatus({JobId}): trigger={T}, triggerState={S}, state={State}", 
+                jobId, primaryTrigger?.Key?.Name ?? "null", triggerState, state);
+
             return new JobStatus
             {
                 JobId = jobId,
                 JobName = jobDetail.Description ?? jobId,
                 JobGroup = jobKey.Group,
                 State = state,
-                PreviousFireTime = trigger?.GetPreviousFireTimeUtc()?.LocalDateTime,
-                NextFireTime = trigger?.GetNextFireTimeUtc()?.LocalDateTime,
-                TriggerType = trigger?.GetType().Name,
-                CronExpression = trigger is ICronTrigger cronTrigger ? cronTrigger.CronExpressionString : null
+                PreviousFireTime = primaryTrigger?.GetPreviousFireTimeUtc()?.LocalDateTime,
+                NextFireTime = primaryTrigger?.GetNextFireTimeUtc()?.LocalDateTime,
+                TriggerType = primaryTrigger?.GetType().Name,
+                CronExpression = primaryTrigger is ICronTrigger cronTrigger ? cronTrigger.CronExpressionString : null
             };
         }
         finally
@@ -132,11 +151,16 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 return Array.Empty<JobStatus>();
 
             var jobKeys = await _scheduler.GetJobKeys(GroupMatcher<JobKey>.AnyGroup(), ct);
+            
+            // 批量获取正在执行的任务，避免每个 job 单独查询
+            var executingJobs = await _scheduler.GetCurrentlyExecutingJobs(ct);
+            var executingJobKeys = new HashSet<JobKey>(executingJobs.Select(j => j.JobDetail.Key));
+            
             var statuses = new List<JobStatus>();
 
             foreach (var jobKey in jobKeys)
             {
-                var status = await GetJobStatusAsyncInternal(jobKey.Name, ct);
+                var status = await GetJobStatusAsyncInternal(jobKey, executingJobKeys, ct);
                 if (status != null)
                     statuses.Add(status);
             }
@@ -149,32 +173,43 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         }
     }
 
-    private async Task<JobStatus?> GetJobStatusAsyncInternal(string jobId, CancellationToken ct)
+    private async Task<JobStatus?> GetJobStatusAsyncInternal(JobKey jobKey, HashSet<JobKey>? executingJobKeys = null, CancellationToken ct = default)
     {
         if (_scheduler == null) return null;
 
-        var jobKey = new JobKey(jobId, SchedulerConstants.DefaultJobGroup);
         var jobDetail = await _scheduler.GetJobDetail(jobKey, ct);
 
         if (jobDetail == null) return null;
 
+        // 使用传入的执行中任务集合，或重新查询
+        var isExecuting = executingJobKeys?.Contains(jobKey) ?? 
+            (await _scheduler.GetCurrentlyExecutingJobs(ct)).Any(j => j.JobDetail.Key.Equals(jobKey));
+
         var triggers = await _scheduler.GetTriggersOfJob(jobKey, ct);
-        var trigger = triggers.FirstOrDefault();
-        var triggerState = trigger != null 
-            ? await _scheduler.GetTriggerState(trigger.Key, ct) 
+        
+        // 使用统一的 GetPrimaryTrigger 方法
+        var primaryTrigger = GetPrimaryTrigger(triggers, jobKey.Name);
+        
+        var triggerState = primaryTrigger != null 
+            ? await _scheduler.GetTriggerState(primaryTrigger.Key, ct) 
             : TriggerState.None;
+
+        // 如果正在执行，状态为 Running
+        var state = isExecuting 
+            ? JobState.Running 
+            : DetermineJobState(primaryTrigger, triggerState);
 
         // Quartz 返回 UTC，转为本地 DateTime
         return new JobStatus
         {
-            JobId = jobId,
-            JobName = jobDetail.Description ?? jobId,
+            JobId = jobKey.Name,
+            JobName = jobDetail.Description ?? jobKey.Name,
             JobGroup = jobKey.Group,
-            State = DetermineJobState(trigger, triggerState),
-            PreviousFireTime = trigger?.GetPreviousFireTimeUtc()?.LocalDateTime,
-            NextFireTime = trigger?.GetNextFireTimeUtc()?.LocalDateTime,
-            TriggerType = trigger?.GetType().Name,
-            CronExpression = trigger is ICronTrigger cronTrigger ? cronTrigger.CronExpressionString : null
+            State = state,
+            PreviousFireTime = primaryTrigger?.GetPreviousFireTimeUtc()?.LocalDateTime,
+            NextFireTime = primaryTrigger?.GetNextFireTimeUtc()?.LocalDateTime,
+            TriggerType = primaryTrigger?.GetType().Name,
+            CronExpression = primaryTrigger is ICronTrigger cronTrigger ? cronTrigger.CronExpressionString : null
         };
     }
 
@@ -182,13 +217,24 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
     {
         return triggerState switch
         {
-            TriggerState.Normal => JobState.Normal,
+            TriggerState.Normal => JobState.Scheduled,
             TriggerState.Paused => JobState.Paused,
-            TriggerState.Complete => JobState.Completed,
-            TriggerState.Error => JobState.Error,
-            TriggerState.Blocked => JobState.Blocked,
-            _ => JobState.Normal
+            TriggerState.Complete => JobState.Disabled,
+            _ => JobState.Scheduled
         };
+    }
+    
+    /// <summary>获取主 trigger（忽略临时 trigger）</summary>
+    private static ITrigger? GetPrimaryTrigger(IReadOnlyCollection<ITrigger> triggers, string jobId)
+    {
+        // 优先匹配标准命名的主 trigger
+        var primaryTrigger = triggers.FirstOrDefault(t => t.Key.Name == $"{jobId}_trigger");
+        if (primaryTrigger != null) return primaryTrigger;
+        
+        // 否则返回第一个非临时 trigger
+        return triggers.FirstOrDefault(t => 
+            !t.Key.Name.StartsWith("MT_") && 
+            !t.Key.Name.StartsWith("fire_"));
     }
 
     /// <summary>启动调度器</summary>
@@ -254,7 +300,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
     public async Task UpsertJobAsync(
         string jobId,
         ScheduleSpec schedule,
-        bool enabled,
+        ScheduleIntent intent,
         JobDataMap? jobData = null,
         CancellationToken ct = default)
     {
@@ -274,9 +320,10 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 await _scheduler.DeleteJob(jobKey, ct);
             }
 
-            if (!enabled)
+            // 如果不是 Active 状态，不创建任务
+            if (intent != ScheduleIntent.Active)
             {
-                _logger.LogDebug("Job {JobId} disabled, skipping creation", jobId);
+                _logger.LogDebug("Job {JobId} intent={Intent}, skipping creation", jobId, intent);
                 return;
             }
 
@@ -367,8 +414,8 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         }
     }
 
-    /// <summary>立即触发任务</summary>
-    public async Task TriggerJobAsync(string jobId, CancellationToken ct = default)
+    /// <summary>立即触发任务（使用原生 TriggerJob，传递 RunId）</summary>
+    public async Task TriggerJobAsync(string jobId, string runId, JobDataMap? additionalData = null, CancellationToken ct = default)
     {
         await _lock.WaitAsync(ct);
         try
@@ -376,8 +423,49 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             if (_scheduler == null) return;
 
             var jobKey = new JobKey(jobId, SchedulerConstants.DefaultJobGroup);
-            await _scheduler.TriggerJob(jobKey, ct);
-            _logger.LogDebug("Job {JobId} triggered manually", jobId);
+            
+            // 使用原生 TriggerJob，不创建新的 trigger
+            var jobDataMap = new JobDataMap { [JobDataKeys.RunId] = runId };
+            if (additionalData != null)
+            {
+                foreach (var key in additionalData.Keys)
+                {
+                    jobDataMap[key] = additionalData[key];
+                }
+            }
+            
+            await _scheduler.TriggerJob(jobKey, jobDataMap, ct);
+            _logger.LogDebug("Job {JobId} triggered directly with RunId={RunId}", jobId, runId);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>取消正在执行的任务</summary>
+    /// <returns>如果任务正在运行且成功中断返回 true，否则返回 false</returns>
+    public async Task<bool> CancelJobAsync(string jobId, CancellationToken ct = default)
+    {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            if (_scheduler == null) return false;
+
+            var jobKey = new JobKey(jobId, SchedulerConstants.DefaultJobGroup);
+            
+            // 使用 Quartz 的 Interrupt 方法，会触发 CancellationToken
+            var result = await _scheduler.Interrupt(jobKey, ct);
+            if (result)
+            {
+                _logger.LogInformation("Job {JobId} cancellation requested successfully", jobId);
+            }
+            else
+            {
+                _logger.LogDebug("Job {JobId} was not running or could not be interrupted", jobId);
+            }
+            
+            return result;
         }
         finally
         {
@@ -391,10 +479,16 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         var triggerKey = new TriggerKey(jobId + "_trigger", SchedulerConstants.DefaultTriggerGroup);
         var timezone = ScheduleExpressionParser.ResolveTimeZone(schedule.Timezone);
 
+        // Cron 和 Once 从当前时间开始，Interval 从下一个整周期开始避免立即触发
+        var startNow = schedule.Type != ScheduleTypes.Interval;
         var triggerBuilder = TriggerBuilder.Create()
             .WithIdentity(triggerKey)
-            .ForJob(jobId, SchedulerConstants.DefaultJobGroup)
-            .StartNow();
+            .ForJob(jobId, SchedulerConstants.DefaultJobGroup);
+
+        if (startNow)
+            triggerBuilder.StartNow();
+        else
+            triggerBuilder.StartAt(DateBuilder.FutureDate(5, IntervalUnit.Second));
 
         switch (schedule.Type)
         {
@@ -404,7 +498,11 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
 
                 // 使用统一的 NormalizeCron
                 var cron = ScheduleExpressionParser.NormalizeCron(schedule.Cron);
-                triggerBuilder.WithCronSchedule(cron, x => x.InTimeZone(timezone));
+                triggerBuilder.WithCronSchedule(cron, x =>
+                {
+                    x.InTimeZone(timezone);
+                    x.WithMisfireHandlingInstructionDoNothing();
+                });
                 break;
 
             case ScheduleTypes.Interval:
@@ -415,7 +513,8 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 var interval = ScheduleExpressionParser.ParseInterval(schedule.Every);
                 triggerBuilder.WithSimpleSchedule(x => x
                     .WithInterval(interval)
-                    .RepeatForever());
+                    .RepeatForever()
+                    .WithMisfireHandlingInstructionNextWithExistingCount());
                 break;
 
             case ScheduleTypes.Once:
@@ -424,7 +523,9 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
 
                 // RunAt 是本地 DateTime，转为 UTC 给 Quartz
                 triggerBuilder.StartAt(schedule.RunAt.Value.ToUniversalTime());
-                triggerBuilder.WithSimpleSchedule(x => x.WithRepeatCount(0));
+                triggerBuilder.WithSimpleSchedule(x => x
+                    .WithRepeatCount(0)
+                    .WithMisfireHandlingInstructionNextWithExistingCount());
                 break;
 
             default:

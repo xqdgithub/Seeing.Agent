@@ -24,4 +24,8 @@
     <InternalsVisibleTo Include="Seeing.Agent.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+  </ItemGroup>
+
 </Project>
