@@ -180,9 +180,13 @@
     private int _activeCount;
     private bool _hasRendered;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         SessionProvider.OnSessionListChanged += OnSessionListChanged;
+        
+        // 确保会话列表已初始化（刷新页面时可能需要重新加载）
+        await SessionProvider.InitializeSessionListAsync();
+        
         RefreshSessions();
     }
 

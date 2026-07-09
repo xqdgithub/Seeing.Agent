@@ -14,6 +14,7 @@ namespace Seeing.Session.Management
     /// 新架构设计：
     /// - 使用 SessionData + 可选组件注入 + SaveAsync/LoadAsync/Compress
     /// - 使用 IHookManager 触发生命周期钩子
+    /// - 使用 ISessionEventPublisher 发布事件（供 UI 订阅）
     /// - 保持内存管理模式（ConcurrentDictionary）
     /// </remarks>
     public class SessionManager : ISessionManager
@@ -21,6 +22,7 @@ namespace Seeing.Session.Management
         private readonly ISessionStore? _store;
         private readonly ICompressionStrategy? _compressor;
         private readonly IHookManager? _hookManager;
+        private readonly ISessionEventPublisher? _eventPublisher;
         private readonly ILogger<SessionManager>? _logger;
         private readonly ConcurrentDictionary<string, SessionData> _sessionDataCache = new();
 
@@ -37,6 +39,7 @@ namespace Seeing.Session.Management
         /// <param name="store">会话存储（可选）</param>
         /// <param name="compressor">压缩策略（可选，默认 SlidingWindowCompression）</param>
         /// <param name="hookManager">Hook 管理器（可选）</param>
+        /// <param name="eventPublisher">事件发布器（可选，用于 UI 更新）</param>
         /// <param name="logger">日志（可选）</param>
         /// <param name="forker">Session 分支器（可选）</param>
         /// <param name="archiver">Session 归档器（可选）</param>
@@ -47,6 +50,7 @@ namespace Seeing.Session.Management
             ISessionStore? store = null,
             ICompressionStrategy? compressor = null,
             IHookManager? hookManager = null,
+            ISessionEventPublisher? eventPublisher = null,
             ILogger<SessionManager>? logger = null,
             SessionForker? forker = null,
             SessionArchiver? archiver = null,
@@ -57,6 +61,7 @@ namespace Seeing.Session.Management
             _store = store;
             _compressor = compressor ?? new SlidingWindowCompression();
             _hookManager = hookManager;
+            _eventPublisher = eventPublisher;
             _logger = logger;
             _forker = forker;
             _archiver = archiver;
@@ -123,10 +128,19 @@ namespace Seeing.Session.Management
             };
             _sessionDataCache[session.Id] = session;
 
+            // 触发 Hook（内部事件）
             _hookManager?.TriggerFireAndForget(
                 HookPoints.Created,
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
+
+            // 发布 SessionEvent（通知 SessionProvider 等 UI 组件）
+            _eventPublisher?.Publish(new SessionEvent
+            {
+                SessionId = session.Id,
+                Type = SessionEventType.Created,
+                Data = session
+            });
 
             _logger?.LogInformation("创建会话: {SessionId}, Partition: {PartitionId}, Agent: {Agent}",
                 session.Id, session.PartitionId, session.SelectedAgent);
@@ -342,6 +356,14 @@ namespace Seeing.Session.Management
                 HookPoints.Updated,
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session, ["message"] = message });
+
+            // 发布 SessionEvent（通知 SessionProvider 等 UI 组件）
+            _eventPublisher?.Publish(new SessionEvent
+            {
+                SessionId = session.Id,
+                Type = SessionEventType.Updated,
+                Data = session
+            });
 
             // 自动保存
             if (_store != null)

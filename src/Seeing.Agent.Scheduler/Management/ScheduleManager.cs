@@ -162,10 +162,31 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     public async Task<JobExecutionResult> RunJobOnceAsync(string jobId, CancellationToken ct = default)
     {
+        // 检查 Job 是否已注册到 Quartz（可能因应用重启或 Job 被禁用而丢失）
+        var jobStatus = await _engine.GetJobStatusAsync(jobId, ct);
+        if (jobStatus.State == JobState.Completed)
+        {
+            // Job 不存在于 Quartz，需要先注册
+            _logger.LogDebug("Job {JobId} not found in Quartz, registering before trigger", jobId);
+            
+            if (jobId == SchedulerConstants.HeartbeatJobId)
+            {
+                await RegisterHeartbeatAsync(ct);
+            }
+            else
+            {
+                var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId)
+                    ?? throw new InvalidOperationException($"Job '{jobId}' not found");
+                await RegisterUserJobAsync(job, ct);
+            }
+        }
+
+        // 手动触发
+        await _engine.TriggerJobAsync(jobId, ct);
+
+        // 返回结果
         if (jobId == SchedulerConstants.HeartbeatJobId)
         {
-            // 心跳通过触发器执行
-            await _engine.TriggerJobAsync(jobId, ct);
             return new JobExecutionResult
             {
                 Success = true,
@@ -173,20 +194,17 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
                 Source = ScheduleSources.Heartbeat
             };
         }
-
-        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId)
-            ?? throw new InvalidOperationException($"Job '{jobId}' not found");
-
-        // 手动触发
-        await _engine.TriggerJobAsync(jobId, ct);
-
-        return new JobExecutionResult
+        else
         {
-            Success = true,
-            Output = "Job triggered",
-            Source = ScheduleSources.Cron,
-            SessionId = job.Dispatch.Target.SessionId ?? "main"
-        };
+            var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+            return new JobExecutionResult
+            {
+                Success = true,
+                Output = "Job triggered",
+                Source = ScheduleSources.Cron,
+                SessionId = job?.Dispatch.Target.SessionId ?? "main"
+            };
+        }
     }
 
     /// <inheritdoc/>

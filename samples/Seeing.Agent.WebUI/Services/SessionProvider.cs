@@ -25,6 +25,16 @@ namespace Seeing.Agent.WebUI.Services
         private List<SessionData> _sessionList = new();
 
         /// <summary>
+        /// 初始化状态标志（防止重复初始化）
+        /// </summary>
+        private bool _initialized;
+
+        /// <summary>
+        /// 初始化锁（确保线程安全）
+        /// </summary>
+        private readonly SemaphoreSlim _initLock = new(1, 1);
+
+        /// <summary>
         /// 当前活动会话
         /// </summary>
         public SessionData? CurrentSession { get; private set; }
@@ -76,20 +86,35 @@ namespace Seeing.Agent.WebUI.Services
 
         /// <summary>
         /// 初始化会话列表（从持久化存储加载历史会话）
+        /// <para>
+        /// 此方法是线程安全的，多次调用只会初始化一次。
+        /// </para>
         /// </summary>
         public async Task InitializeSessionListAsync()
         {
+            // 快速检查：如果已初始化，直接返回
+            if (_initialized) return;
+
+            await _initLock.WaitAsync();
             try
             {
+                // 双重检查：防止多个线程同时通过第一道检查
+                if (_initialized) return;
+
                 // 从存储加载所有历史会话并注册到 SessionManager
                 var sessions = await _store.ListAsync();
                 await foreach (var session in sessions)
                 {
-                    _sessionManager.Register(session);
+                    // 只注册不存在的会话，避免重复注册
+                    if (_sessionManager.Get(session.Id) == null)
+                    {
+                        _sessionManager.Register(session);
+                    }
                 }
 
                 // 从内存缓存获取列表
                 _sessionList = _sessionManager.List().ToList();
+                _initialized = true;
                 _logger?.LogInformation("初始化会话列表完成，共加载 {Count} 个历史会话", _sessionList.Count);
                 OnSessionListChanged?.Invoke();
             }
@@ -98,6 +123,10 @@ namespace Seeing.Agent.WebUI.Services
                 _logger?.LogError(ex, "初始化会话列表失败");
                 _sessionList = new List<SessionData>();
                 OnSessionListChanged?.Invoke();
+            }
+            finally
+            {
+                _initLock.Release();
             }
         }
 

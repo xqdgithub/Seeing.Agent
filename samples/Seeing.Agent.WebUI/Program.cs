@@ -38,8 +38,8 @@ builder.Services.AddSeeingAgentMemory(options =>
 
 // === Session 管理服务（统一使用 Seeing.Session）===
 builder.Services.AddSingleton<ISessionStore, FileSessionStore>();
-builder.Services.AddSingleton<SessionManager>();
 builder.Services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
+builder.Services.AddSingleton<SessionManager>();  // 需要在 ISessionEventPublisher 之后注册
 builder.Services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 builder.Services.AddScoped<SessionProvider>();
 
