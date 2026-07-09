@@ -50,8 +50,17 @@ public sealed class SessionScheduleDispatcher : IScheduledJobDispatcher
             await _sessionManager.EnsureSessionAsync(request.SessionId)
                 .ConfigureAwait(false);
 
-            var message = SessionMessage.AssistantMessage(request.Content);
-            await _sessionManager.AddMessageAsync(request.SessionId, message, ct).ConfigureAwait(false);
+            // 先保存用户输入（如果有）
+            if (!string.IsNullOrEmpty(request.UserInput))
+            {
+                var userMessage = SessionMessage.UserMessage(request.UserInput);
+                await _sessionManager.AddMessageAsync(request.SessionId, userMessage, ct).ConfigureAwait(false);
+            }
+
+            // 再保存助手响应
+            var assistantMessage = SessionMessage.AssistantMessage(request.Content);
+            await _sessionManager.AddMessageAsync(request.SessionId, assistantMessage, ct).ConfigureAwait(false);
+
             return DispatchResult.Ok();
         }
         catch (Exception ex)

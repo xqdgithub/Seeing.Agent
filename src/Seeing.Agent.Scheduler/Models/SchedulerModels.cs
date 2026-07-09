@@ -177,6 +177,7 @@ public class DispatchRequest
     public required string Source { get; init; }
     public required string TaskType { get; init; }
     public required string Content { get; init; }
+    public string? UserInput { get; init; }
     public string? Channel { get; init; }
     public string? UserId { get; init; }
     public string? SessionId { get; init; }

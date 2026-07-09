@@ -107,20 +107,24 @@ public class AgentJob : IJob
         try
         {
             JobExecutionResult result;
+            string? userInput = null;
 
             if (taskType == ScheduleTaskTypes.Text)
             {
                 result = await ExecuteTextJobAsync(data, sessionId, timeoutCts.Token);
+                userInput = data.GetString(JobDataKeys.Text);  // Text 任务的用户输入
             }
             else
             {
                 result = await ExecuteAgentJobAsync(data, sessionId, timeoutCts.Token);
+                userInput = data.GetString(JobDataKeys.Prompt);  // Agent 任务的用户输入
             }
 
-            // 投递结果（仅在配置了 dispatch channel 时执行）
-            if (result.Success && !string.IsNullOrEmpty(result.Output) && data.ContainsKey(JobDataKeys.DispatchChannel))
+            // 始终投递结果到 Session（确保执行结果可查询）
+            // 优先使用 DispatchSessionId，否则使用执行上下文的 sessionId
+            if (result.Success && !string.IsNullOrEmpty(result.Output))
             {
-                await DispatchAsync(data, result.Output, timeoutCts.Token);
+                await DispatchAsync(data, result.Output, sessionId, userInput, timeoutCts.Token);
             }
 
             context.Result = result;
@@ -300,17 +304,18 @@ public class AgentJob : IJob
         };
     }
 
-    private async Task DispatchAsync(JobDataMap data, string content, CancellationToken ct)
+    private async Task DispatchAsync(JobDataMap data, string content, string defaultSessionId, string? userInput, CancellationToken ct)
     {
         var dispatchChannel = data.GetString(JobDataKeys.DispatchChannel);
         var dispatchUserId = data.GetString(JobDataKeys.DispatchUserId);
-        var dispatchSessionId = data.GetString(JobDataKeys.DispatchSessionId);
+        var dispatchSessionId = data.GetString(JobDataKeys.DispatchSessionId) ?? defaultSessionId;
 
         var dispatchResult = await _dispatcher.DispatchAsync(new DispatchRequest
         {
             Source = ScheduleSources.Cron,
             TaskType = ScheduleTaskTypes.Agent,
             Content = content,
+            UserInput = userInput,
             Channel = dispatchChannel,
             UserId = dispatchUserId,
             SessionId = dispatchSessionId

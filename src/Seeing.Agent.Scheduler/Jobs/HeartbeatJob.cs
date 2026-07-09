@@ -196,6 +196,7 @@ public class HeartbeatJob : IJob
                     Source = ScheduleSources.Heartbeat,
                     TaskType = ScheduleTaskTypes.Agent,
                     Content = result.Output,
+                    UserInput = queryText,  // 保存用户查询作为输入
                     SessionId = sessionId
                 }, timeoutCts.Token);
             }
