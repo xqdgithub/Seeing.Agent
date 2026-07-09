@@ -46,18 +46,27 @@
         </FormItem>
         @if (Job.Schedule.Type == ScheduleTypes.Cron)
         {
-            <FormItem Label="Cron 表达式"><Input @bind-Value="@Job.Schedule.Cron" Placeholder="0 9 * * *" /></FormItem>
+            <FormItem Label="Cron 表达式" Required>
+                <Input @bind-Value="@Job.Schedule.Cron" Placeholder="0 9 * * *" />
+                <small style="color: #999;">格式：秒 分 时 日 月（5字段）</small>
+            </FormItem>
         }
         else if (Job.Schedule.Type == ScheduleTypes.Interval)
         {
-            <FormItem Label="间隔"><Input @bind-Value="@Job.Schedule.Every" Placeholder="1h、30m" /></FormItem>
+            <FormItem Label="间隔" Required>
+                <Input @bind-Value="@Job.Schedule.Every" Placeholder="1h、30m" />
+            </FormItem>
         }
         else
         {
-            <FormItem Label="执行时间">
+            <FormItem Label="执行时间" Required>
                 <Input @bind-Value="@_runAtText" Placeholder="2026-07-09 00:30" Style="width: 100%;" />
                 <small style="color: #999;">格式：yyyy-MM-dd HH:mm（本地时间）</small>
             </FormItem>
+        }
+        @if (_validationError != null)
+        {
+            <Alert Type="@AlertType.Error" Message="@_validationError" ShowIcon="true" />
         }
         <FormItem Label="时区"><Input @bind-Value="@Job.Schedule.Timezone" /></FormItem>
         <FormItem Label="目标 Session"><Input @bind-Value="@Job.Dispatch.Target.SessionId" /></FormItem>
@@ -72,17 +81,29 @@
     [Parameter] public bool IsEdit { get; set; }
     [Parameter] public bool Saving { get; set; }
     [Parameter] public EventCallback<ScheduledJobSpec> OnSave { get; set; }
+    [Parameter] public EventCallback<string> OnError { get; set; }
 
     private string _runAtText = string.Empty;
+    private string? _validationError;
 
     protected override void OnParametersSet()
     {
         // RunAt 转为显示字符串
         _runAtText = Job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? string.Empty;
+        _validationError = null;
     }
 
     private async Task HandleOk()
     {
+        // 验证调度配置
+        _validationError = ValidateSchedule();
+        if (_validationError != null)
+        {
+            if (OnError.HasDelegate)
+                await OnError.InvokeAsync(_validationError);
+            return;
+        }
+
         if (Job.Schedule.Type == ScheduleTypes.Once && !string.IsNullOrWhiteSpace(_runAtText))
         {
             // 解析用户输入的本地时间字符串
@@ -93,6 +114,20 @@
         }
         await OnSave.InvokeAsync(Job);
         await VisibleChanged.InvokeAsync(false);
+    }
+
+    private string? ValidateSchedule()
+    {
+        return Job.Schedule.Type switch
+        {
+            ScheduleTypes.Cron when string.IsNullOrWhiteSpace(Job.Schedule.Cron)
+                => "Cron 表达式不能为空",
+            ScheduleTypes.Interval when string.IsNullOrWhiteSpace(Job.Schedule.Every)
+                => "间隔时间不能为空",
+            ScheduleTypes.Once when string.IsNullOrWhiteSpace(_runAtText) || !DateTime.TryParse(_runAtText, out _)
+                => "执行时间格式不正确",
+            _ => null
+        };
     }
 
     private async Task HandleCancel() => await VisibleChanged.InvokeAsync(false);

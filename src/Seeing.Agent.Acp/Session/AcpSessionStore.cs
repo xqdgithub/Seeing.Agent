@@ -40,9 +40,11 @@ public sealed class AcpSessionStore
 
     public void SaveMapping(string seeingSessionId, AcpSessionMapping mapping)
     {
-        var session = RequireSession(seeingSessionId);
+        // 使用 EnsureSessionAsync 确保 session 存在（如果不存在则创建）
+        var session = _sessionManager.EnsureSessionAsync(seeingSessionId).GetAwaiter().GetResult();
         session.Metadata[AcpMetadataKeys.Passthrough(seeingSessionId)] = mapping.Serialize();
         Persist(session);
+        _logger.LogDebug("Saved ACP mapping for session {SessionId}", seeingSessionId);
     }
 
     public void CopyForFork(string parentSessionId, string childSessionId)
