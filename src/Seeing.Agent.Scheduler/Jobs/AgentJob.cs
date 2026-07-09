@@ -306,9 +306,17 @@ public class AgentJob : IJob
 
     private async Task DispatchAsync(JobDataMap data, string content, string defaultSessionId, string? userInput, CancellationToken ct)
     {
-        var dispatchChannel = data.GetString(JobDataKeys.DispatchChannel);
-        var dispatchUserId = data.GetString(JobDataKeys.DispatchUserId);
-        var dispatchSessionId = data.GetString(JobDataKeys.DispatchSessionId) ?? defaultSessionId;
+        // 安全获取可选的投递配置
+        string? dispatchChannel = null;
+        string? dispatchUserId = null;
+        string? dispatchSessionId = defaultSessionId;
+
+        if (data.ContainsKey(JobDataKeys.DispatchChannel))
+            dispatchChannel = data.GetString(JobDataKeys.DispatchChannel);
+        if (data.ContainsKey(JobDataKeys.DispatchUserId))
+            dispatchUserId = data.GetString(JobDataKeys.DispatchUserId);
+        if (data.ContainsKey(JobDataKeys.DispatchSessionId))
+            dispatchSessionId = data.GetString(JobDataKeys.DispatchSessionId) ?? defaultSessionId;
 
         var dispatchResult = await _dispatcher.DispatchAsync(new DispatchRequest
         {
