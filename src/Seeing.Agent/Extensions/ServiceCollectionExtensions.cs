@@ -254,7 +254,10 @@ namespace Seeing.Agent.Extensions
         private static void RegisterCoreServices(IServiceCollection services)
         {
             // 配置持久化服务
-            services.AddSingleton<IConfigurationPersistence, ConfigurationPersistence>();
+            services.AddSingleton<IConfigurationPersistence>(sp =>
+                new ConfigurationPersistence(
+                    sp.GetRequiredService<ILogger<ConfigurationPersistence>>(),
+                    sp.GetRequiredService<IWorkspaceProvider>()));
 
             // 权限服务（新系统 - 统一权限检查入口）
             services.AddPermissionService();
@@ -443,7 +446,18 @@ namespace Seeing.Agent.Extensions
             });
 
             // 5. 工作区路径提供者（统一管理配置目录）
-            services.AddSingleton<WorkspaceProvider>();
+            // 配置优先级：环境变量 SEEING_WORKSPACE_ROOT > 配置文件 Workspace:Root > 当前工作目录
+            services.AddSingleton<WorkspaceProvider>(sp =>
+            {
+                var config = sp.GetService<IConfiguration>();
+
+                // 优先级：环境变量 > 配置文件 > CWD
+                var workspaceRoot = Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT")
+                    ?? config?.GetValue<string>("Workspace:Root")
+                    ?? Directory.GetCurrentDirectory();
+
+                return new WorkspaceProvider(workspaceRoot);
+            });
             services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
 
             // 6. Agent / Model 默认解析
@@ -547,7 +561,10 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         public static IServiceCollection AddPromptBuilder(this IServiceCollection services)
         {
-            services.AddSingleton<IInstructionLoader, InstructionLoader>();
+            services.AddSingleton<IInstructionLoader>(sp =>
+                new InstructionLoader(
+                    sp.GetRequiredService<ILogger<InstructionLoader>>(),
+                    sp.GetRequiredService<IWorkspaceProvider>()));
             services.AddSingleton<SystemPromptProvider>();
             services.AddSingleton<PromptBuilder>();
 

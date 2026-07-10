@@ -25,6 +25,7 @@ public sealed class AcpTool : ToolBase
     private readonly ContentBlockMapper _contentMapper;
     private readonly IOptions<SeeingAgentOptions> _options;
     private readonly ISessionManager _sessionManager;
+    private readonly IWorkspaceProvider _workspace;
     private readonly ConcurrentDictionary<string, BackgroundTaskState> _backgroundTasks = new();
 
     public AcpTool(
@@ -33,13 +34,15 @@ public sealed class AcpTool : ToolBase
         IAcpBackendRegistry backendRegistry,
         ContentBlockMapper contentMapper,
         IOptions<SeeingAgentOptions> options,
-        ISessionManager sessionManager) : base(logger)
+        ISessionManager sessionManager,
+        IWorkspaceProvider workspace) : base(logger)
     {
         _sessionRunner = sessionRunner;
         _backendRegistry = backendRegistry;
         _contentMapper = contentMapper;
         _options = options;
         _sessionManager = sessionManager;
+        _workspace = workspace;
     }
 
     public override string Id => "acp";
@@ -100,7 +103,7 @@ public sealed class AcpTool : ToolBase
         }
 
         var session = await ResolveTaskSessionAsync(context.SessionId, taskId, description, backend);
-        var workingDirectory = cwd ?? session.WorkingDirectory ?? Environment.CurrentDirectory;
+        var workingDirectory = cwd ?? session.WorkingDirectory ?? _workspace.WorkspaceRoot;
 
         if (runInBackground)
         {

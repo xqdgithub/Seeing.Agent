@@ -1,8 +1,10 @@
 @page "/skills/create"
 @using AntDesign
+@using Seeing.Agent.Configuration
 @using Seeing.Agent.WebUI.Services
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
+@inject IWorkspaceProvider WorkspaceProvider
 
 <PageTitle>创建技能 - Seeing.Agent</PageTitle>
 
@@ -47,7 +49,7 @@
         }
 
         var dir = string.IsNullOrWhiteSpace(_form.Directory)
-            ? Path.Combine(Directory.GetCurrentDirectory(), ".seeing", "skills", _form.Name)
+            ? Path.Combine(WorkspaceProvider.ProjectSeeingDirectory, "skills", _form.Name)
             : _form.Directory;
 
         Directory.CreateDirectory(dir);

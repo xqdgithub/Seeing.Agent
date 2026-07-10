@@ -35,6 +35,28 @@
     margin-left: var(--space-2);
 }
 
+.session-workspace-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-secondary);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    margin-left: var(--space-2);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.session-workspace-badge .anticon {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
 .session-header-right {
     display: flex;
     align-items: center;

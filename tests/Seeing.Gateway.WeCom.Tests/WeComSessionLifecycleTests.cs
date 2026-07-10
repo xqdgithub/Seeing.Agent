@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
+using Seeing.Agent.Configuration;
 using Seeing.Gateway.Models;
 using Xunit;
 
@@ -10,11 +12,15 @@ public class WeComSessionTrackerTests : IDisposable
 {
     private readonly string _stateFile;
     private readonly List<string> _cleanupPaths = [];
+    private readonly Mock<IWorkspaceProvider> _workspaceMock;
 
     public WeComSessionTrackerTests()
     {
         _stateFile = Path.Combine(Path.GetTempPath(), $"wecom-sessions-{Guid.NewGuid():N}.json");
         _cleanupPaths.Add(_stateFile);
+        
+        _workspaceMock = new Mock<IWorkspaceProvider>();
+        _workspaceMock.Setup(x => x.UserSeeingDirectory).Returns(Path.GetTempPath());
     }
 
     [Fact]
@@ -82,6 +88,7 @@ public class WeComSessionTrackerTests : IDisposable
         options.SessionStateFile = _stateFile;
         return new WeComSessionTracker(
             Options.Create(options),
+            _workspaceMock.Object,
             NullLogger<WeComSessionTracker>.Instance);
     }
 

@@ -56,6 +56,7 @@ builder.Services.AddSingleton<ToolStateService>();
 builder.Services.AddSingleton<SeeingConfigService>();
 builder.Services.AddSingleton<GatewayClientConfigService>();
 builder.Services.AddSingleton<GatewayClientSupervisor>();
+builder.Services.AddSingleton<WorkspaceSwitchService>();
 
 // === 调度器状态服务 ===
 builder.Services.AddSingleton<SchedulerStatusService>();

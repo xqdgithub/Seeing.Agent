@@ -15,6 +15,7 @@ namespace Seeing.Agent.Tests.Configuration
     public class ConfigurationPersistenceTests : IDisposable
     {
         private readonly Mock<ILogger<ConfigurationPersistence>> _loggerMock;
+        private readonly Mock<IWorkspaceProvider> _workspaceMock;
         private readonly string _testDirectory;
 
         public ConfigurationPersistenceTests()
@@ -22,6 +23,9 @@ namespace Seeing.Agent.Tests.Configuration
             _loggerMock = new Mock<ILogger<ConfigurationPersistence>>();
             _testDirectory = Path.Combine(Path.GetTempPath(), $"seeing_test_{Guid.NewGuid():N}");
             Directory.CreateDirectory(_testDirectory);
+            
+            _workspaceMock = new Mock<IWorkspaceProvider>();
+            _workspaceMock.Setup(x => x.ProjectSeeingDirectory).Returns(_testDirectory);
         }
 
         public void Dispose()
@@ -36,7 +40,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task LoadAsync_WhenFileNotExists_ReturnsDefaultSettings()
         {
             // Arrange
-            var persistence = new ConfigurationPersistence(_loggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_loggerMock.Object, _workspaceMock.Object);
 
             // Act
             var result = await persistence.LoadAsync();
@@ -52,7 +56,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task SaveAsync_CreatesFileAndSavesSettings()
         {
             // Arrange
-            var persistence = new ConfigurationPersistence(_loggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_loggerMock.Object, _workspaceMock.Object);
             var settings = new RuntimeSettings
             {
                 DefaultAgent = "build",
@@ -70,7 +74,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task LoadAsync_AfterSave_ReturnsSavedSettings()
         {
             // Arrange
-            var persistence = new ConfigurationPersistence(_loggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_loggerMock.Object, _workspaceMock.Object);
             var settings = new RuntimeSettings
             {
                 DefaultAgent = "plan",
@@ -96,7 +100,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task ResetAsync_DeletesFileAndCreatesDefault()
         {
             // Arrange
-            var persistence = new ConfigurationPersistence(_loggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_loggerMock.Object, _workspaceMock.Object);
             var settings = new RuntimeSettings { DefaultAgent = "test" };
             await persistence.SaveAsync(settings);
 
@@ -147,6 +151,7 @@ namespace Seeing.Agent.Tests.Configuration
         private readonly Mock<ILogger<ConfigurationPersistence>> _persistenceLoggerMock;
         private readonly Mock<ILogger<AgentStore>> _storeLoggerMock;
         private readonly Mock<ILogger<AgentRuntimeManager>> _runtimeManagerLoggerMock;
+        private readonly Mock<IWorkspaceProvider> _workspaceMock;
         private readonly string _testDirectory;
 
         public AgentRegistryPersistenceTests()
@@ -157,6 +162,9 @@ namespace Seeing.Agent.Tests.Configuration
             _runtimeManagerLoggerMock = new Mock<ILogger<AgentRuntimeManager>>();
             _testDirectory = Path.Combine(Path.GetTempPath(), $"seeing_registry_test_{Guid.NewGuid():N}");
             Directory.CreateDirectory(_testDirectory);
+            
+            _workspaceMock = new Mock<IWorkspaceProvider>();
+            _workspaceMock.Setup(x => x.ProjectSeeingDirectory).Returns(_testDirectory);
         }
 
         public void Dispose()
@@ -194,7 +202,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task SetDefaultAgentAsync_UpdatesAndPersistsSettings()
         {
             // Arrange
-            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _workspaceMock.Object);
             var agents = new List<AgentInfo>
             {
                 new AgentInfo { Name = "build", Mode = AgentMode.Primary, IsHidden = false },
@@ -220,7 +228,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task SetDefaultAgentAsync_ThrowsForNonExistentAgent()
         {
             // Arrange
-            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _workspaceMock.Object);
             var agents = new List<AgentInfo>
             {
                 new AgentInfo { Name = "build", Mode = AgentMode.Primary }
@@ -237,7 +245,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task UpdateAgentModelAsync_UpdatesAndPersistsSettings()
         {
             // Arrange
-            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _workspaceMock.Object);
             var agents = new List<AgentInfo>
             {
                 new AgentInfo { Name = "build", Mode = AgentMode.Primary }
@@ -269,7 +277,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task GetDefaultAgentNameAsync_PrioritizesRuntimeSettings()
         {
             // Arrange - 创建持久化设置
-            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _workspaceMock.Object);
             var settings = new RuntimeSettings { DefaultAgent = "plan" };
             await persistence.SaveAsync(settings);
 
@@ -294,7 +302,7 @@ namespace Seeing.Agent.Tests.Configuration
         public async Task InitializeAsync_AppliesPersistedAgentModels()
         {
             // Arrange - 创建持久化设置
-            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _testDirectory);
+            var persistence = new ConfigurationPersistence(_persistenceLoggerMock.Object, _workspaceMock.Object);
             var settings = new RuntimeSettings();
             settings.SetAgentModel("explore", "anthropic/claude-3");
             await persistence.SaveAsync(settings);

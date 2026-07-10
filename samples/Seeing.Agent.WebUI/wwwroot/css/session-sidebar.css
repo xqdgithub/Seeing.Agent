@@ -40,87 +40,87 @@
 .session-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-2);
 }
 
+/* ========== 会话卡片样式 ========== */
 .session-item {
     position: relative;
-    padding: 10px 12px;
-    border-radius: var(--radius-md);
     cursor: pointer;
-    transition: background-color var(--transition-fast);
-    min-height: 44px;
-    margin-left: 0;
+    transition: all 0.2s ease;
 }
 
 .session-item:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+    transform: translateX(2px);
 }
 
-.session-item.selected {
-    background: var(--color-primary-bg);
+.session-card {
+    margin-bottom: 8px !important;
+    border-radius: 8px !important;
+    transition: all 0.2s ease;
 }
 
-.session-item-content {
+.session-card.selected {
+    border: 1px solid #1890ff !important;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+}
+
+.session-card .ant-card-body {
+    padding: 12px !important;
+}
+
+.session-card-body {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
+    flex-direction: column;
+    gap: 8px;
 }
 
-.session-icon {
-    font-size: var(--font-size-lg);
-    color: var(--color-text-secondary);
-}
-
-.session-info {
+.session-card-header {
     display: flex;
-    flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2);
-    flex: 1;
-    overflow: hidden;
+    gap: 8px;
 }
 
-.session-title {
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
+.session-title-text {
+    font-weight: 500;
+    font-size: 14px;
     color: var(--color-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
-    min-width: 0;
+}
+
+.session-tag {
+    flex-shrink: 0;
+}
+
+.session-card-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .session-meta {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    flex-shrink: 0;
-    margin-left: auto;
+    gap: 4px;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.45);
 }
 
-.session-time {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-tertiary);
-}
-
-.session-selected-indicator {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 2px;
-    height: 60%;
-    background: var(--color-primary);
-    border-radius: var(--radius-full);
+.session-workspace {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* ========== SessionContextMenu 样式 ========== */
 .session-context-menu {
     position: fixed;
-    z-index: var(--z-popover);
+    z-index: 1000;
     background: var(--color-bg);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
@@ -157,7 +157,7 @@
     gap: var(--space-2);
     padding: var(--space-2) 0;
     font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-semibold);
+    font-weight: 600;
     color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -200,7 +200,7 @@
 
 .session-group-count {
     font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-normal);
+    font-weight: 400;
     color: var(--color-text-tertiary);
     background: var(--color-bg-tertiary);
     padding: 1px 6px;
@@ -213,21 +213,9 @@
 .session-group-content {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    padding-left: var(--space-3);
+    gap: 4px;
+    padding-left: var(--space-2);
     margin-top: var(--space-1);
-    overflow: hidden;
-    max-height: 2000px;
-    transition: max-height var(--transition-base), opacity var(--transition-fast), padding var(--transition-fast);
-    opacity: 1;
-}
-
-.session-group-content.collapsed {
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    opacity: 0;
-    visibility: hidden;
 }
 
 /* ========== 响应式调整 ========== */
@@ -236,8 +224,8 @@
         padding: var(--space-3);
     }
 
-    .session-item {
-        padding: var(--space-2) var(--space-3);
+    .session-card .ant-card-body {
+        padding: 8px !important;
     }
 
     .session-group-content {

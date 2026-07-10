@@ -103,6 +103,8 @@ public class SQLitePersistenceTests
         public string ProjectSeeingDirectory => _workspaceRoot;
         public string UserSeeingDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".seeing");
         
+        public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged;
+
         public void SetWorkspaceRoot(string workspaceRoot)
         {
             _workspaceRoot = workspaceRoot;

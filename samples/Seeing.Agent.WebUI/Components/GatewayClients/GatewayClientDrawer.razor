@@ -1,5 +1,7 @@
 @using AntDesign
+@using Seeing.Agent.Configuration
 @using Seeing.Agent.WebUI.Services
+@inject IWorkspaceProvider WorkspaceProvider
 
 <Drawer Title="@($"配置 - {Model.DisplayName}")"
         Visible="@Visible"
@@ -79,12 +81,11 @@
         await VisibleChanged.InvokeAsync(false);
     }
 
-    private static string ToRelativeConfigPath(string path)
+    private string ToRelativeConfigPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
             return ".seeing/gateway-clients/{channelId}.json";
 
-        var cwd = Directory.GetCurrentDirectory();
-        return Path.GetRelativePath(cwd, path).Replace('\\', '/');
+        return Path.GetRelativePath(WorkspaceProvider.WorkspaceRoot, path).Replace('\\', '/');
     }
 }

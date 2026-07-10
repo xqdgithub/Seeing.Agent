@@ -1,10 +1,12 @@
 @page "/"
 @using AntDesign
+@using Seeing.Agent.Configuration
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @inject SessionState SessionState
 @inject SessionProvider SessionProvider
 @inject AppState AppState
+@inject IWorkspaceProvider WorkspaceProvider
 @inject NavigationManager NavigationManager
 
 <div class="home-page">
@@ -262,7 +264,10 @@
     
     private async Task CreateNewSession()
     {
-        var newSession = await SessionProvider.CreateSessionAsync("新会话", AppState.SelectedAgent);
+        var newSession = await SessionProvider.CreateSessionAsync(
+            "新会话", 
+            AppState.SelectedAgent,
+            WorkspaceProvider.WorkspaceRoot);
         newSession.SelectedModel = AppState.SelectedModel;
         await SessionProvider.SaveCurrentSessionAsync();
         NavigationManager.NavigateTo($"/session/{newSession.Id}");

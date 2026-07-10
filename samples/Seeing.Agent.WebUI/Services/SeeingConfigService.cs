@@ -133,6 +133,14 @@ public sealed class SeeingConfigService
             ? Path.Combine(_workspaceProvider.UserSeeingDirectory, "seeing.json")
             : Path.Combine(_workspaceProvider.ProjectSeeingDirectory, "seeing.json");
     }
+
+    // ===== 重载 =====
+
+    /// <summary>重新加载所有配置</summary>
+    public async Task ReloadAsync(CancellationToken ct = default)
+    {
+        await _configManager.ReloadAsync(ct);
+    }
 }
 
 /// <summary>ACP 配置来源信息</summary>

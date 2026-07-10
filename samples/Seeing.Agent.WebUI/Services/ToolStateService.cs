@@ -49,7 +49,7 @@ public sealed class ToolStateService
     public IReadOnlySet<string> GetDisabledTools() => _disabledTools.Keys.ToHashSet();
 
     /// <summary>从配置文件加载状态</summary>
-    public async Task LoadAsync()
+    public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -59,7 +59,7 @@ public sealed class ToolStateService
                 return;
             }
 
-            var json = await File.ReadAllTextAsync(_filePath);
+            var json = await File.ReadAllTextAsync(_filePath, cancellationToken);
             var disabledIds = JsonSerializer.Deserialize<HashSet<string>>(json);
 
             if (disabledIds is not null)

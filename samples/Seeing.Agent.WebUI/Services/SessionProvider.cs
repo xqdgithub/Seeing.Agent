@@ -143,10 +143,17 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         /// <param name="title">可选标题</param>
         /// <param name="agentId">可选 Agent ID</param>
+        /// <param name="workingDirectory">可选工作目录</param>
         /// <returns>创建的 SessionData</returns>
-        public async Task<SessionData> CreateSessionAsync(string? title = null, string? agentId = null)
+        public async Task<SessionData> CreateSessionAsync(string? title = null, string? agentId = null, string? workingDirectory = null)
         {
             var session = await _sessionLifecycle.BeginSessionAsync(title, agentId);
+
+            // 设置工作目录
+            if (!string.IsNullOrEmpty(workingDirectory))
+            {
+                session.WorkingDirectory = workingDirectory;
+            }
 
             // 注册到 SessionManager（确保可以被 LoadAsync 加载）
             _sessionManager.Register(session);
@@ -162,7 +169,8 @@ namespace Seeing.Agent.WebUI.Services
             OnCurrentSessionChanged?.Invoke();
             OnSessionListChanged?.Invoke();
 
-            _logger?.LogInformation("创建新会话: {SessionId}, Title: {Title}", session.Id, session.Title);
+            _logger?.LogInformation("创建新会话: {SessionId}, Title: {Title}, WorkingDirectory: {WorkingDirectory}", 
+                session.Id, session.Title, session.WorkingDirectory);
             return session;
         }
 

@@ -48,6 +48,17 @@
             {
                 <Badge Status="@BadgeStatus.Processing" Text="执行中" />
             }
+            @{
+                var currentWorkspace = !string.IsNullOrEmpty(SessionState.CurrentSession?.WorkingDirectory) 
+                    ? SessionState.CurrentSession.WorkingDirectory 
+                    : WorkspaceProvider.WorkspaceRoot;
+            }
+            <Tooltip Title="@currentWorkspace">
+                <span Class="session-workspace-badge">
+                    <Icon Type="@IconType.Outline.Folder" />
+                    @TruncateWorkspacePath(currentWorkspace)
+                </span>
+            </Tooltip>
         </div>
         <div Class="session-header-right">
             <Space>
@@ -1266,6 +1277,21 @@
     private void GoToHome()
     {
         NavigationManager.NavigateTo("/home");
+    }
+    
+    /// <summary>
+    /// 截断工作区路径显示
+    /// </summary>
+    private static string TruncateWorkspacePath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+        if (path.Length <= 30) return path;
+        
+        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Length <= 2) return path;
+        
+        // 显示最后两级目录
+        return ".../" + string.Join("/", parts.TakeLast(2));
     }
     
     /// <summary>

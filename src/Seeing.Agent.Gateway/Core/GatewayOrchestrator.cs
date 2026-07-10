@@ -120,8 +120,7 @@ public sealed class GatewayOrchestrator
         var sessionManager = _services.GetRequiredService<SessionManager>();
         var agentRegistry = _services.GetRequiredService<IAgentRegistry>();
         var executionRouter = _services.GetRequiredService<IAgentExecutionRouter>();
-        var workspaceRoot = _services.GetService<IWorkspaceProvider>()?.WorkspaceRoot
-            ?? Directory.GetCurrentDirectory();
+        var workspaceRoot = _services.GetRequiredService<IWorkspaceProvider>().WorkspaceRoot;
         var sessionTracker = new SessionEventTracker();
         var mapperOptions = new GatewayEventMapperOptions { FilterThinking = _options.FilterThinking };
 

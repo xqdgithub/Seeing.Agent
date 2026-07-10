@@ -17,14 +17,13 @@ namespace Seeing.Agent.Configuration
         /// 创建配置持久化实例
         /// </summary>
         /// <param name="logger">日志器</param>
-        /// <param name="basePath">配置目录路径，默认为当前工作目录下的 .seeing</param>
+        /// <param name="workspace">工作区提供者</param>
         public ConfigurationPersistence(
             ILogger<ConfigurationPersistence> logger,
-            string? basePath = null)
+            IWorkspaceProvider workspace)
         {
             _logger = logger;
-            var baseDir = basePath ?? Path.Combine(Directory.GetCurrentDirectory(), ".seeing");
-            _settingsFilePath = Path.Combine(baseDir, "settings.json");
+            _settingsFilePath = Path.Combine(workspace.ProjectSeeingDirectory, "settings.json");
 
             _jsonOptions = new JsonSerializerOptions
             {

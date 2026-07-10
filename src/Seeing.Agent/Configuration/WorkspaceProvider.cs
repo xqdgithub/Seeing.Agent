@@ -1,6 +1,18 @@
 namespace Seeing.Agent.Configuration;
 
 /// <summary>
+/// 工作区变更事件参数
+/// </summary>
+public class WorkspaceChangedEventArgs : EventArgs
+{
+    /// <summary>旧工作区路径</summary>
+    public string OldWorkspace { get; init; } = "";
+    
+    /// <summary>新工作区路径</summary>
+    public string NewWorkspace { get; init; } = "";
+}
+
+/// <summary>
 /// 工作区路径提供者 - 统一管理所有配置目录的获取逻辑
 /// <para>
 /// 目录层级：
@@ -34,6 +46,11 @@ public interface IWorkspaceProvider
     /// <param name="level">配置级别</param>
     /// <returns>配置目录路径</returns>
     string GetSeeingDirectory(ConfigLevel level);
+    
+    /// <summary>
+    /// 工作区变更事件
+    /// </summary>
+    event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged;
 }
 
 /// <summary>
@@ -53,7 +70,8 @@ public enum ConfigLevel
 /// </summary>
 public class WorkspaceProvider : IWorkspaceProvider
 {
-    private string _workspaceRoot;
+    private volatile string _workspaceRoot;
+    private readonly object _lock = new();
 
     /// <summary>
     /// 创建工作区路径提供者
@@ -66,13 +84,34 @@ public class WorkspaceProvider : IWorkspaceProvider
 
     /// <inheritdoc/>
     public string WorkspaceRoot => _workspaceRoot;
+    
+    /// <inheritdoc/>
+    public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged;
 
     /// <summary>更新工作区根目录（InitializeSeeingAgentAsync 时调用）</summary>
     public void SetWorkspaceRoot(string workspaceRoot)
     {
         if (string.IsNullOrWhiteSpace(workspaceRoot))
             throw new ArgumentException("Workspace root cannot be empty.", nameof(workspaceRoot));
-        _workspaceRoot = workspaceRoot;
+        if (!Directory.Exists(workspaceRoot))
+            throw new DirectoryNotFoundException($"Workspace directory does not exist: {workspaceRoot}");
+        
+        string oldWorkspace;
+        lock (_lock)
+        {
+            oldWorkspace = _workspaceRoot;
+            _workspaceRoot = workspaceRoot;
+        }
+        
+        // 触发事件（在锁外执行，避免死锁）
+        if (!string.Equals(oldWorkspace, workspaceRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            WorkspaceRootChanged?.Invoke(this, new WorkspaceChangedEventArgs
+            {
+                OldWorkspace = oldWorkspace,
+                NewWorkspace = workspaceRoot
+            });
+        }
     }
 
     /// <inheritdoc/>

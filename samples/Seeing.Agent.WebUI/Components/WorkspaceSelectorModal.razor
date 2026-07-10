@@ -1,0 +1,201 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Services
+@inject WorkspaceSwitchService WorkspaceSwitchService
+@inject IMessageService MessageService
+
+<Modal @bind-Visible="_visible"
+       Title="切换工作区"
+       Centered="true"
+       Width="600"
+       OnOk="HandleOk"
+       OnCancel="HandleCancel">
+    <Form Layout="@FormLayout.Vertical" Model="@_newWorkspacePath">
+        <FormItem Label="当前工作区">
+            <Input Value="@WorkspaceSwitchService.CurrentWorkspace" Disabled="true" />
+        </FormItem>
+        <FormItem Label="新工作区路径">
+            <InputGroup Compact>
+                <Input @bind-Value="@_newWorkspacePath" 
+                       Style="width: calc(100% - 80px)" 
+                       Placeholder="输入新工作区的完整路径" 
+                       AllowClear="true" />
+                <Button Type="@ButtonType.Default" OnClick="PasteFromClipboard">粘贴</Button>
+            </InputGroup>
+            <div style="margin-top: 8px; color: #888; font-size: 12px;">
+                <div>建议输入包含 .seeing 目录或项目文件（.csproj/.sln）的目录路径</div>
+            </div>
+        </FormItem>
+        
+        @if (_recentWorkspaces.Count > 0)
+        {
+            <FormItem Label="最近使用">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    @foreach (var recent in _recentWorkspaces.Take(5))
+                    {
+                        <Button Size="@ButtonSize.Small" 
+                                Type="@(_newWorkspacePath == recent ? ButtonType.Primary : ButtonType.Default)"
+                                OnClick="@(() => _newWorkspacePath = recent)">
+                            @TruncatePath(recent)
+                        </Button>
+                    }
+                </div>
+            </FormItem>
+        }
+        
+        @if (_validationError != null)
+        {
+            <Alert Type="@AlertType.Error" Message="@_validationError" ShowIcon="true" />
+        }
+        @if (_isLoading)
+        {
+            <Spin />
+        }
+    </Form>
+</Modal>
+
+@code {
+    private bool _visible;
+    private string _newWorkspacePath = "";
+    private string? _validationError;
+    private bool _isLoading;
+    private List<string> _recentWorkspaces = new();
+
+    /// <summary>
+    /// 显示 Modal
+    /// </summary>
+    public void Show()
+    {
+        _visible = true;
+        _newWorkspacePath = "";
+        _validationError = null;
+        LoadRecentWorkspaces();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 隐藏 Modal
+    /// </summary>
+    public void Hide()
+    {
+        _visible = false;
+        StateHasChanged();
+    }
+
+    private void LoadRecentWorkspaces()
+    {
+        // 从配置文件加载最近使用的工作区
+        try
+        {
+            var historyFile = GetHistoryFilePath();
+            if (File.Exists(historyFile))
+            {
+                var json = File.ReadAllText(historyFile);
+                var history = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
+                if (history != null)
+                {
+                    _recentWorkspaces = history.Where(Directory.Exists).ToList();
+                }
+            }
+        }
+        catch
+        {
+            _recentWorkspaces = new List<string>();
+        }
+    }
+
+    private void SaveToHistory(string path)
+    {
+        try
+        {
+            var history = new List<string> { path };
+            history.AddRange(_recentWorkspaces.Where(p => p != path));
+            _recentWorkspaces = history.Take(10).ToList();
+
+            var historyFile = GetHistoryFilePath();
+            Directory.CreateDirectory(Path.GetDirectoryName(historyFile)!);
+            var json = System.Text.Json.JsonSerializer.Serialize(_recentWorkspaces);
+            File.WriteAllText(historyFile, json);
+        }
+        catch
+        {
+            // 忽略保存错误
+        }
+    }
+
+    private string GetHistoryFilePath()
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), 
+                           ".seeing", "workspace_history.json");
+    }
+
+    private string TruncatePath(string path)
+    {
+        if (path.Length <= 40) return path;
+        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Length <= 2) return path;
+        return ".../" + string.Join("/", parts.TakeLast(2));
+    }
+
+    private async Task PasteFromClipboard()
+    {
+        // 在 Blazor Server 中，无法直接访问剪贴板
+        // 提示用户手动粘贴
+        MessageService.Info("请使用 Ctrl+V 粘贴路径");
+    }
+
+    private async Task HandleOk()
+    {
+        if (_isLoading) return;
+
+        // 验证路径
+        var (valid, error) = WorkspaceSwitchService.ValidateWorkspacePath(_newWorkspacePath);
+        if (!valid)
+        {
+            _validationError = error;
+            StateHasChanged();
+            return;
+        }
+
+        _validationError = null;
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var success = await WorkspaceSwitchService.SwitchWorkspaceAsync(_newWorkspacePath);
+            if (success)
+            {
+                SaveToHistory(_newWorkspacePath);
+                MessageService.Success($"工作区已切换到: {_newWorkspacePath}");
+                _visible = false;
+                OnWorkspaceChanged?.InvokeAsync(_newWorkspacePath);
+            }
+            else
+            {
+                _validationError = "切换失败，请检查路径是否正确";
+            }
+        }
+        catch (Exception ex)
+        {
+            _validationError = $"切换失败: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleCancel()
+    {
+        _visible = false;
+        _newWorkspacePath = "";
+        _validationError = null;
+    }
+
+    /// <summary>
+    /// 工作区变更回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<string>? OnWorkspaceChanged { get; set; }
+}

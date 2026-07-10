@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Configuration;
 
 namespace Seeing.Gateway.WeCom;
 
@@ -13,6 +14,7 @@ public sealed class WeComSessionTracker
     private readonly object _lock = new();
     private readonly WeComOptions _options;
     private readonly ILogger<WeComSessionTracker> _logger;
+    private readonly IWorkspaceProvider _workspace;
     private readonly string _stateFilePath;
     private readonly Dictionary<string, WeComSessionEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
 
@@ -23,10 +25,14 @@ public sealed class WeComSessionTracker
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public WeComSessionTracker(IOptions<WeComOptions> options, ILogger<WeComSessionTracker> logger)
+    public WeComSessionTracker(
+        IOptions<WeComOptions> options,
+        IWorkspaceProvider workspace,
+        ILogger<WeComSessionTracker> logger)
     {
         _options = options.Value;
         _logger = logger;
+        _workspace = workspace;
         _stateFilePath = ResolveStateFilePath(_options.SessionStateFile);
         LoadFromDisk();
     }
@@ -181,14 +187,13 @@ public sealed class WeComSessionTracker
         }
     }
 
-    private static string ResolveStateFilePath(string? configuredPath)
+    private string ResolveStateFilePath(string? configuredPath)
     {
         if (!string.IsNullOrWhiteSpace(configuredPath))
             return Path.GetFullPath(configuredPath);
 
         return Path.Combine(
-            Directory.GetCurrentDirectory(),
-            ".seeing",
+            _workspace.ProjectSeeingDirectory,
             "gateway-clients",
             "wecom.sessions.json");
     }

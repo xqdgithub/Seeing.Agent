@@ -21,10 +21,12 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Moq" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Seeing.Gateway.WeCom\Seeing.Gateway.WeCom.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent\Seeing.Agent.csproj" />
   </ItemGroup>
 
 </Project>

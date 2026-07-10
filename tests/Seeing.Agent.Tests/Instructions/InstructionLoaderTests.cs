@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Instructions;
 using Xunit;
 
@@ -12,15 +13,19 @@ namespace Seeing.Agent.Tests.Instructions
     public class InstructionLoaderTests : IDisposable
     {
         private readonly Mock<ILogger<InstructionLoader>> _loggerMock;
+        private readonly Mock<IWorkspaceProvider> _workspaceMock;
         private readonly InstructionLoader _loader;
         private readonly string _testDirectory;
 
         public InstructionLoaderTests()
         {
             _loggerMock = new Mock<ILogger<InstructionLoader>>();
-            _loader = new InstructionLoader(_loggerMock.Object);
             _testDirectory = Path.Combine(Path.GetTempPath(), $"instructions_test_{Guid.NewGuid():N}");
             Directory.CreateDirectory(_testDirectory);
+            
+            _workspaceMock = new Mock<IWorkspaceProvider>();
+            _workspaceMock.Setup(x => x.WorkspaceRoot).Returns(_testDirectory);
+            _loader = new InstructionLoader(_loggerMock.Object, _workspaceMock.Object);
         }
 
         public void Dispose()

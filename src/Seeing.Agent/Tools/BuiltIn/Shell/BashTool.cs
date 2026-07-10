@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
@@ -23,6 +24,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
 
         private readonly IShellService _shellService;
         private readonly IShellEnvironmentService _shellEnvService;
+        private readonly IWorkspaceProvider _workspace;
 
         /// <summary>工具 ID</summary>
         public override string Id => "bash";
@@ -77,11 +79,13 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         public BashTool(
             ILogger<BashTool> logger,
             IShellService shellService,
-            IShellEnvironmentService shellEnvService)
+            IShellEnvironmentService shellEnvService,
+            IWorkspaceProvider workspace)
             : base(logger)
         {
             _shellService = shellService;
             _shellEnvService = shellEnvService;
+            _workspace = workspace;
         }
 
         /// <summary>
@@ -93,7 +97,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
             var command = GetStringArgument(arguments, "command");
             var description = GetStringArgument(arguments, "description");
             var timeout = GetIntArgument(arguments, "timeout") ?? DefaultTimeoutMs;
-            var workdir = GetStringArgument(arguments, "workdir") ?? Environment.CurrentDirectory;
+            var workdir = GetStringArgument(arguments, "workdir") ?? _workspace.WorkspaceRoot;
 
             if (string.IsNullOrEmpty(command))
             {

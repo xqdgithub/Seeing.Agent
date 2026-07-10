@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
@@ -15,12 +16,14 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
     {
         private const int MaxLineLength = 2000;
         private const int DefaultLimit = 100;
+        private readonly IWorkspaceProvider _workspace;
 
         /// <summary>
         /// 创建 GrepTool 实例
         /// </summary>
-        public GrepTool(ILogger<GrepTool> logger) : base(logger)
+        public GrepTool(ILogger<GrepTool> logger, IWorkspaceProvider workspace) : base(logger)
         {
+            _workspace = workspace;
         }
 
         public override string Id => "grep";
@@ -60,7 +63,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         {
             // 获取参数
             var pattern = GetStringArgument(arguments, "pattern");
-            var searchPath = GetStringArgument(arguments, "path") ?? Directory.GetCurrentDirectory();
+            var searchPath = GetStringArgument(arguments, "path") ?? _workspace.WorkspaceRoot;
             var includePattern = GetStringArgument(arguments, "include");
 
             if (string.IsNullOrEmpty(pattern))

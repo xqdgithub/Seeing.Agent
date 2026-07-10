@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
@@ -19,12 +20,14 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         /// 默认结果限制
         /// </summary>
         private const int DefaultLimit = 100;
+        private readonly IWorkspaceProvider _workspace;
 
         /// <summary>
         /// 创建 GlobTool 实例
         /// </summary>
-        public GlobTool(ILogger<GlobTool> logger) : base(logger)
+        public GlobTool(ILogger<GlobTool> logger, IWorkspaceProvider workspace) : base(logger)
         {
+            _workspace = workspace;
         }
 
         public override string Id => "glob";
@@ -76,8 +79,8 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             var searchPath = GetStringArgument(arguments, "path");
             if (string.IsNullOrEmpty(searchPath))
             {
-                // 使用当前工作目录
-                searchPath = Directory.GetCurrentDirectory();
+                // 使用工作区根目录
+                searchPath = _workspace.WorkspaceRoot;
             }
 
             // 确保路径是绝对路径

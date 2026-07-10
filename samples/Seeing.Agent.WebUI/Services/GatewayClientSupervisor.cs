@@ -11,16 +11,19 @@ public sealed class GatewayClientSupervisor
 {
     private readonly GatewayClientConfigService _configService;
     private readonly GatewayChannelRegistry _registry;
+    private readonly IWorkspaceProvider _workspace;
     private readonly ILogger<GatewayClientSupervisor> _logger;
     private readonly SemaphoreSlim _startLock = new(1, 1);
 
     public GatewayClientSupervisor(
         GatewayClientConfigService configService,
         GatewayChannelRegistry registry,
+        IWorkspaceProvider workspace,
         ILogger<GatewayClientSupervisor> logger)
     {
         _configService = configService;
         _registry = registry;
+        _workspace = workspace;
         _logger = logger;
     }
 
@@ -307,7 +310,7 @@ public sealed class GatewayClientSupervisor
         return fullPath;
     }
 
-    private static ChannelHostLocation? ResolveChannelHost()
+    private ChannelHostLocation? ResolveChannelHost()
     {
         const string tfm = "net10.0";
         const string dllName = "Seeing.Gateway.ChannelHost.dll";
@@ -331,7 +334,7 @@ public sealed class GatewayClientSupervisor
         File.Exists(dllPath)
         && File.Exists(Path.Combine(workingDirectory, "Microsoft.Extensions.Hosting.Abstractions.dll"));
 
-    private static IEnumerable<string> GetChannelHostProjectOutputDirs(string tfm)
+    private IEnumerable<string> GetChannelHostProjectOutputDirs(string tfm)
     {
         foreach (var root in GetSearchRoots())
         {
@@ -343,9 +346,9 @@ public sealed class GatewayClientSupervisor
         }
     }
 
-    private static IEnumerable<string> GetSearchRoots()
+    private IEnumerable<string> GetSearchRoots()
     {
-        yield return Directory.GetCurrentDirectory();
+        yield return _workspace.WorkspaceRoot;
 
         var dir = AppContext.BaseDirectory;
         for (var i = 0; i < 6 && !string.IsNullOrEmpty(dir); i++)

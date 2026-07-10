@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Core.Instructions;
 
@@ -10,13 +11,15 @@ public class InstructionLoader : IInstructionLoader
 {
     private const string InstructionFileName = "AGENTS.md";
     private readonly ILogger<InstructionLoader> _logger;
+    private readonly IWorkspaceProvider _workspace;
 
     /// <summary>
     /// 创建指令加载器实例
     /// </summary>
-    public InstructionLoader(ILogger<InstructionLoader> logger)
+    public InstructionLoader(ILogger<InstructionLoader> logger, IWorkspaceProvider workspace)
     {
         _logger = logger;
+        _workspace = workspace;
     }
 
     /// <inheritdoc />
@@ -55,7 +58,7 @@ public class InstructionLoader : IInstructionLoader
         CancellationToken cancellationToken = default)
     {
         var results = new List<InstructionFile>();
-        var searchDirectory = baseDirectory ?? Directory.GetCurrentDirectory();
+        var searchDirectory = baseDirectory ?? _workspace.WorkspaceRoot;
 
         // 1. 当前目录 ./AGENTS.md
         var currentPath = Path.Combine(searchDirectory, InstructionFileName);

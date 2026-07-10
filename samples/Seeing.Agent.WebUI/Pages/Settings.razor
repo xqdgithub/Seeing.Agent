@@ -9,6 +9,7 @@
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
 @inject IWorkspaceProvider WorkspaceProvider
+@inject WorkspaceSwitchService WorkspaceSwitchService
 @inject IScheduleManager ScheduleManager
 @inject SchedulerStatusService StatusService
 @inject NavigationManager NavigationManager
@@ -39,7 +40,15 @@
                 <Form Layout="@FormLayout.Vertical" Model="@_options">
                     <FormItem Label="默认智能体"><Input @bind-Value="@_options.DefaultAgent" /></FormItem>
                     <FormItem Label="默认模型"><Input @bind-Value="@_options.DefaultModel" /></FormItem>
-                    <FormItem Label="工作区路径"><Input Value="@_workspacePath" Disabled="true" /></FormItem>
+                    <FormItem Label="工作区路径">
+                        <InputGroup Compact>
+                            <Input Value="@_workspacePath" Style="width: calc(100% - 100px)" Disabled="true" />
+                            <Button Type="@ButtonType.Default" OnClick="ShowWorkspaceSelector">切换目录</Button>
+                        </InputGroup>
+                        <div style="margin-top: 8px; color: #888; font-size: 12px;">
+                            切换工作区将重新加载所有配置和组件
+                        </div>
+                    </FormItem>
                 </Form>
             </TabPane>
             <TabPane Key="scheduler" Tab="调度器">
@@ -163,6 +172,9 @@
     </ChildContent>
 </WorkspacePageShell>
 
+<WorkspaceSelectorModal @ref="_workspaceSelectorModal" 
+                        OnWorkspaceChanged="EventCallback.Factory.Create<string>(this, HandleWorkspaceChanged)" />
+
 @code {
     private string _activeTab = "general";
     private ConfigLevel _saveLevel = ConfigLevel.Project;
@@ -176,6 +188,7 @@
     private bool _schedulerLoading;
     private DateTime? _activeHoursStart;
     private DateTime? _activeHoursEnd;
+    private WorkspaceSelectorModal? _workspaceSelectorModal;
 
     protected override async Task OnInitializedAsync()
     {
@@ -207,6 +220,23 @@
         {
             _schedulerStatus = new SchedulerStatus { IsRunning = false };
         }
+    }
+
+    private void ShowWorkspaceSelector()
+    {
+        _workspaceSelectorModal?.Show();
+    }
+
+    private async Task HandleWorkspaceChanged(string newWorkspace)
+    {
+        // 重新加载设置页面数据
+        _workspacePath = WorkspaceProvider.WorkspaceRoot;
+        _options = await ConfigService.LoadProjectOptionsAsync();
+        _rawJson = await ConfigService.GetRawProjectJsonAsync();
+        BuildPluginRows();
+        
+        // 刷新页面状态
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task StartScheduler()

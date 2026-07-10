@@ -109,7 +109,7 @@ public sealed class SkillStateService
     }
 
     /// <summary>从文件加载状态</summary>
-    public async Task LoadAsync()
+    public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -119,7 +119,7 @@ public sealed class SkillStateService
                 return;
             }
 
-            var json = await File.ReadAllTextAsync(_configFilePath);
+            var json = await File.ReadAllTextAsync(_configFilePath, cancellationToken);
 
             if (string.IsNullOrWhiteSpace(json))
             {

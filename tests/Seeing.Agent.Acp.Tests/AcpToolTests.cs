@@ -76,6 +76,11 @@ public class AcpToolTests
                 }
             }
         });
+        
+        var workspaceMock = new Mock<IWorkspaceProvider>();
+        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(".");
+        workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
+        workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());
 
         return new AcpTool(
             NullLogger<AcpTool>.Instance,
@@ -83,7 +88,8 @@ public class AcpToolTests
             registry,
             new ContentBlockMapper(),
             Options.Create(new SeeingAgentOptions { Acp = new AcpOptions { Enabled = true } }),
-            sessionManager ?? new FakeSessionManager());
+            sessionManager ?? new FakeSessionManager(),
+            workspaceMock.Object);
     }
 
     private static AcpBackendRegistry CreateBackendRegistry(SeeingAgentOptions options)
