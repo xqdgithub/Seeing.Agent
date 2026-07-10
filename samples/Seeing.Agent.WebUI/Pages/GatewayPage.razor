@@ -1,10 +1,12 @@
 @page "/gateway"
 @using AntDesign
 @using Seeing.Agent.Configuration
+@using Seeing.Agent.Gateway.Hosting
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
 @inject IHttpClientFactory HttpClientFactory
 @inject IMessageService MessageService
+@inject IGatewayServer GatewayServer
 
 <PageTitle>Gateway - Seeing.Agent</PageTitle>
 
@@ -80,6 +82,7 @@
 
 @code {
     private GatewayOptions _gateway = new();
+    private GatewayOptions _originalGateway = new();
     private bool _loading;
     private bool _healthy;
     private string? _healthMessage;
@@ -95,12 +98,63 @@
         _loading = true;
         var options = await ConfigService.LoadProjectOptionsAsync();
         _gateway = options.Gateway;
+        _originalGateway = new GatewayOptions
+        {
+            Enabled = _gateway.Enabled,
+            AutoStart = _gateway.AutoStart,
+            Port = _gateway.Port,
+            BindAddress = _gateway.BindAddress,
+            PermissionMode = _gateway.PermissionMode,
+            EnableWebSocket = _gateway.EnableWebSocket,
+            WebSocketPath = _gateway.WebSocketPath
+        };
         _loading = false;
     }
 
     private async Task SaveAsync()
     {
         await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?> { ["Gateway"] = _gateway });
+        
+        // 根据 Enabled 状态变化启动或停止 Gateway Server
+        if (_gateway.Enabled && !_originalGateway.Enabled)
+        {
+            // 从禁用变为启用，启动服务
+            try
+            {
+                await GatewayServer.StartAsync();
+                MessageService.Success("Gateway 服务已启动");
+            }
+            catch (Exception ex)
+            {
+                MessageService.Error($"启动 Gateway 服务失败: {ex.Message}");
+            }
+        }
+        else if (!_gateway.Enabled && _originalGateway.Enabled)
+        {
+            // 从启用变为禁用，停止服务
+            try
+            {
+                await GatewayServer.StopAsync();
+                MessageService.Info("Gateway 服务已停止");
+            }
+            catch (Exception ex)
+            {
+                MessageService.Error($"停止 Gateway 服务失败: {ex.Message}");
+            }
+        }
+        
+        // 更新原始配置
+        _originalGateway = new GatewayOptions
+        {
+            Enabled = _gateway.Enabled,
+            AutoStart = _gateway.AutoStart,
+            Port = _gateway.Port,
+            BindAddress = _gateway.BindAddress,
+            PermissionMode = _gateway.PermissionMode,
+            EnableWebSocket = _gateway.EnableWebSocket,
+            WebSocketPath = _gateway.WebSocketPath
+        };
+        
         MessageService.Success("Gateway 配置已保存");
         await CheckHealth();
     }

@@ -99,49 +99,6 @@
                         }
                     }
                 </Form>
-                
-                <Divider Orientation="@DividerOrientation.Left">心跳配置</Divider>
-                
-                <Form Layout="@FormLayout.Vertical" Model="@_heartbeat" Context="heartbeatForm">
-                    <FormItem Label="启用心跳">
-                        <Switch @bind-Checked="@_heartbeat.Enabled" />
-                    </FormItem>
-                    @if (_heartbeat.Enabled)
-                    {
-                        <FormItem Label="执行间隔">
-                            <Input @bind-Value="@_heartbeat.Every" Placeholder="6h、30m" />
-                        </FormItem>
-                        <FormItem Label="投递目标">
-                            <Select TItemValue="string" TItem="string" @bind-Value="@_heartbeat.Target" Context="targetSelect">
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Main">main（主会话）</SelectOption>
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Last">last（最后活跃会话）</SelectOption>
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Inbox">inbox（收件箱）</SelectOption>
-                            </Select>
-                        </FormItem>
-                        <FormItem Label="心跳 Prompt">
-                            <TextArea @bind-Value="@_heartbeat.Prompt" Placeholder="输入心跳提示内容" Rows="3" />
-                        </FormItem>
-                        <FormItem Label="指定 Agent">
-                            <Input @bind-Value="@_heartbeat.Agent" Placeholder="留空使用默认 Agent" />
-                        </FormItem>
-                        <FormItem Label="Session ID">
-                            <Input @bind-Value="@_heartbeat.SessionId" />
-                        </FormItem>
-                        <FormItem Label="超时（秒）">
-                            <InputNumber @bind-Value="@_heartbeat.TimeoutSeconds" Min="10" Max="600" Style="width: 100%;" />
-                        </FormItem>
-                        @if (_heartbeat.ActiveHours != null)
-                        {
-                            <FormItem Label="活跃时段">
-                                <Space>
-                                    <TimePicker TValue="DateTime?" @bind-Value="@_activeHoursStart" Format="HH:mm" />
-                                    <span>至</span>
-                                    <TimePicker TValue="DateTime?" @bind-Value="@_activeHoursEnd" Format="HH:mm" />
-                                </Space>
-                            </FormItem>
-                        }
-                    }
-                </Form>
             </TabPane>
             <TabPane Key="plugins" Tab="插件">
                 @if (_options.Plugins.Count == 0 && _options.PluginEnabled.Count == 0)
@@ -180,14 +137,11 @@
     private ConfigLevel _saveLevel = ConfigLevel.Project;
     private SeeingAgentOptions _options = new();
     private SchedulerOptions _scheduler = new();
-    private HeartbeatOptions _heartbeat = new();
     private SchedulerStatus _schedulerStatus = new();
     private string _rawJson = "";
     private string _workspacePath = "";
     private List<PluginRow> _pluginRows = new();
     private bool _schedulerLoading;
-    private DateTime? _activeHoursStart;
-    private DateTime? _activeHoursEnd;
     private WorkspaceSelectorModal? _workspaceSelectorModal;
 
     protected override async Task OnInitializedAsync()
@@ -195,13 +149,6 @@
         _workspacePath = WorkspaceProvider.WorkspaceRoot;
         _options = await ConfigService.LoadProjectOptionsAsync();
         _scheduler = ConfigService.GetSchedulerOptions();
-        _heartbeat = _scheduler.Heartbeat;
-        
-        if (_heartbeat.ActiveHours != null)
-        {
-            _activeHoursStart = DateTime.Parse(_heartbeat.ActiveHours.Start);
-            _activeHoursEnd = DateTime.Parse(_heartbeat.ActiveHours.End);
-        }
         
         _rawJson = await ConfigService.GetRawProjectJsonAsync();
         BuildPluginRows();
@@ -326,20 +273,12 @@
                     });
                     break;
                 case "scheduler":
-                    // 更新心跳活跃时段
-                    if (_heartbeat.ActiveHours != null && _activeHoursStart.HasValue && _activeHoursEnd.HasValue)
-                    {
-                        _heartbeat.ActiveHours.Start = _activeHoursStart.Value.ToString("HH:mm");
-                        _heartbeat.ActiveHours.End = _activeHoursEnd.Value.ToString("HH:mm");
-                    }
-                    
                     await ConfigService.SaveSchedulerOptionsAsync(s =>
                     {
                         s.Enabled = _scheduler.Enabled;
                         s.Timezone = _scheduler.Timezone;
                         s.MaxConcurrentJobs = _scheduler.MaxConcurrentJobs;
                         s.Persistence = _scheduler.Persistence;
-                        s.Heartbeat = _heartbeat;
                     });
                     
                     // 重载调度器
