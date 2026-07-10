@@ -8,6 +8,9 @@ namespace Seeing.Agent.WebUI.State
     /// <para>
     /// 会话列表由 SessionProvider 统一管理，不再在此缓存
     /// </para>
+    /// <para>
+    /// 当前会话的 Agent/Model 由 SessionState 管理
+    /// </para>
     /// </summary>
     public class AppState
     {
@@ -31,15 +34,6 @@ namespace Seeing.Agent.WebUI.State
 
         /// <summary>当前主题</summary>
         public string Theme { get; set; } = "light";
-
-        /// <summary>当前选中的 Agent</summary>
-        public string SelectedAgent { get; set; } = "";
-
-        /// <summary>当前选中的 Model</summary>
-        public string SelectedModel { get; set; } = "";
-
-        /// <summary>当前选中的 Model Provider</summary>
-        public string SelectedModelProvider { get; set; } = "";
 
         /// <summary>可用的 Agent 列表（从注册中心获取）</summary>
         public List<AgentInfo> AvailableAgents { get; set; } = new();

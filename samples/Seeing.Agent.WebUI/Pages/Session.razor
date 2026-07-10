@@ -434,7 +434,6 @@
     {
         _selectedAgent = value ?? "";
         SessionState.SelectedAgent = _selectedAgent;
-        AppState.SelectedAgent = _selectedAgent;
         RefreshAgentRuntime();
         await SaveSessionAsync();
     }
@@ -446,7 +445,6 @@
     {
         _selectedModel = value ?? "";
         SessionState.SelectedModel = _selectedModel;
-        AppState.SelectedModel = _selectedModel;
         await SaveSessionAsync();
     }
 
@@ -454,7 +452,6 @@
     {
         _selectedModel = value ?? "";
         SessionState.SelectedModel = _selectedModel;
-        AppState.SelectedModel = _selectedModel;
         await SaveSessionAsync();
     }
 
@@ -493,9 +490,6 @@
             RefreshMessageViewModels();
             _loadedSessionId = SessionProvider.CurrentSession!.Id;
 
-            AppState.SelectedAgent = SessionState.SelectedAgent;
-            AppState.SelectedModel = SessionState.SelectedModel;
-            AppState.SelectedModelProvider = SessionState.SelectedModelProvider;
             AppState.CurrentSessionId = SessionProvider.CurrentSession!.Id;
             SyncSelectorValues();
             AppState.NotifyChange();
@@ -668,9 +662,7 @@
             // 转换消息为 UI 显示用的 MessageViewModel
             RefreshMessageViewModels();
             
-            // 同步更新 AppState（用于 AgentSelector/ModelSelector 显示）
-            AppState.SelectedAgent = SessionState.SelectedAgent;
-            AppState.SelectedModel = SessionState.SelectedModel;
+            // 更新当前会话 ID
             AppState.CurrentSessionId = sessionId;
             
             // 同步选择器显示值
@@ -705,7 +697,6 @@
                 SessionState.CancellationToken);
             SessionState.SelectedAgent = agentId;
             _selectedAgent = agentId;
-            AppState.SelectedAgent = agentId;
         }
 
         if (string.IsNullOrWhiteSpace(SessionState.CurrentSession.SelectedModel))
@@ -728,7 +719,6 @@
             {
                 SessionState.SelectedModel = modelId;
                 _selectedModel = modelId;
-                AppState.SelectedModel = modelId;
             }
         }
     }
@@ -991,7 +981,6 @@
                 SessionState.CancellationToken);
             SessionState.SelectedAgent = agentId;
             _selectedAgent = agentId;
-            AppState.SelectedAgent = agentId;
 
             var agentInstance = AgentRegistry.GetOrCreateAgentInstance(agentId);
             if (agentInstance == null)
@@ -1009,7 +998,6 @@
                 {
                     SessionState.SelectedModel = useModel;
                     _selectedModel = useModel;
-                    AppState.SelectedModel = useModel;
 
                     var modelRef = Seeing.Agent.Core.Models.ModelReference.Parse(useModel);
                     if (modelRef != null)

@@ -8,7 +8,7 @@
 @inject SeeingConfigService ConfigService
 @inject IAgentRegistry AgentRegistry
 @inject BlazorPermissionChannel PermissionChannel
-@inject AppState AppState
+@inject SessionState SessionState
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 
@@ -60,13 +60,13 @@
                 }
                 else
                 {
-                    <Empty Description="@("当前智能体无自定义权限规则")" Style="margin-top: 24px;" />
+                    <Empty Description="@("当前会话无自定义权限规则")" Style="margin-top: 24px;" />
                 }
             </TabPane>
             <TabPane Key="approval" Tab="审批流程">
                 <Descriptions Column="1" Bordered>
                     <DescriptionsItem Title="待处理权限请求">@PermissionChannel.PendingCount</DescriptionsItem>
-                    <DescriptionsItem Title="当前智能体">@AppState.SelectedAgent</DescriptionsItem>
+                    <DescriptionsItem Title="当前会话智能体">@SessionState.SelectedAgent</DescriptionsItem>
                     <DescriptionsItem Title="审批通道">Blazor UI 内嵌权限弹窗</DescriptionsItem>
                 </Descriptions>
                 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-top: 16px;"
@@ -92,7 +92,7 @@
 
     private async Task LoadAgentRulesAsync()
     {
-        var agent = await AgentRegistry.GetAgentAsync(AppState.SelectedAgent);
+        var agent = await AgentRegistry.GetAgentAsync(SessionState.SelectedAgent);
         _agentRules = agent?.PermissionRules ?? new List<PermissionRuleEntry>();
         _ruleRows = _agentRules.Select(r => new RuleRow
         {

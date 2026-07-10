@@ -51,9 +51,6 @@
             await SessionProvider.LoadSessionAsync(recentSession.Id);
             AppState.CurrentSessionId = recentSession.Id;
         }
-
-        SessionState.SelectedAgent = AppState.SelectedAgent;
-        SessionState.SelectedModel = AppState.SelectedModel;
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -91,19 +88,7 @@
             var primaryAgents = await AgentRegistry.GetPrimaryAgentsAsync();
             AppState.AvailableAgents = primaryAgents.Where(a => !string.IsNullOrEmpty(a.Name)).ToList();
             
-            if (string.IsNullOrEmpty(AppState.SelectedAgent) && AppState.AvailableAgents.Count > 0)
-            {
-                var defaultAgent = await AgentRegistry.GetDefaultAgentNameAsync();
-                AppState.SelectedAgent = defaultAgent ?? AppState.AvailableAgents[0].Name;
-            }
-            
             AppState.AvailableModels = LlmService.GetAvailableModels();
-            
-            if (string.IsNullOrEmpty(AppState.SelectedModel) && AppState.AvailableModels.Count > 0)
-            {
-                var firstWithProvider = AppState.AvailableModels.FirstOrDefault(m => !string.IsNullOrEmpty(m.Value.Provider));
-                AppState.SelectedModel = firstWithProvider.Key ?? AppState.AvailableModels.Keys.First();
-            }
 
             AppState.NotifyChange();
         }

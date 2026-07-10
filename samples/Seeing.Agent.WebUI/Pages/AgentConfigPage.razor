@@ -12,7 +12,6 @@
 @inject IAgentRegistry AgentRegistry
 @inject ILlmService LlmService
 @inject ToolInvoker ToolInvoker
-@inject AppState AppState
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 
@@ -96,7 +95,7 @@
 
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        _agentName = query["agent"] ?? AppState.SelectedAgent;
+        _agentName = query["agent"];
         if (string.IsNullOrEmpty(_agentName) && _agentNames.Count > 0)
             _agentName = await AgentRegistry.GetDefaultAgentNameAsync() ?? _agentNames[0];
         if (!string.IsNullOrEmpty(_agentName) && !_agentNames.Contains(_agentName))
@@ -179,8 +178,6 @@
         if (string.IsNullOrEmpty(_agentName))
             return;
 
-        AppState.SelectedAgent = _agentName;
-        AppState.NotifyChange();
         await LoadAgentAsync();
     }
 

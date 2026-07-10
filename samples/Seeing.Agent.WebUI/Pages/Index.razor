@@ -1,12 +1,16 @@
 @page "/"
 @using AntDesign
 @using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Llm
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @inject SessionState SessionState
 @inject SessionProvider SessionProvider
 @inject AppState AppState
 @inject IWorkspaceProvider WorkspaceProvider
+@inject IAgentRegistry AgentRegistry
+@inject ILlmService LlmService
 @inject NavigationManager NavigationManager
 
 <div class="home-page">
@@ -48,8 +52,8 @@
                 <Icon Type="@IconType.Outline.Robot" />
             </div>
             <div class="stat-info">
-                <div class="stat-value">@AppState.SelectedAgent</div>
-                <div class="stat-label">当前智能体</div>
+                <div class="stat-value">@_agentCount</div>
+                <div class="stat-label">智能体</div>
             </div>
         </div>
         <div class="stat-card">
@@ -57,8 +61,8 @@
                 <Icon Type="@IconType.Outline.CloudServer" />
             </div>
             <div class="stat-info">
-                <div class="stat-value">@GetModelShortName()</div>
-                <div class="stat-label">当前模型</div>
+                <div class="stat-value">@_modelCount</div>
+                <div class="stat-label">模型</div>
             </div>
         </div>
     </div>
@@ -236,11 +240,19 @@
 
 @code {
     private int _sessionCount = 0;
+    private int _agentCount = 0;
+    private int _modelCount = 0;
     
     protected override async Task OnInitializedAsync()
     {
         await SessionProvider.InitializeSessionListAsync();
         _sessionCount = SessionProvider.GetSessionList().Count;
+        
+        var agents = await AgentRegistry.GetPrimaryAgentsAsync();
+        _agentCount = agents.Count;
+        
+        var models = LlmService.GetAvailableModels();
+        _modelCount = models.Count;
         
         if (_sessionCount > 0)
         {
@@ -264,21 +276,15 @@
     
     private async Task CreateNewSession()
     {
+        // 使用配置中的默认智能体
+        var defaultAgent = await AgentRegistry.GetDefaultAgentNameAsync();
+        
         var newSession = await SessionProvider.CreateSessionAsync(
             "新会话", 
-            AppState.SelectedAgent,
+            defaultAgent,
             WorkspaceProvider.WorkspaceRoot);
-        newSession.SelectedModel = AppState.SelectedModel;
         await SessionProvider.SaveCurrentSessionAsync();
         NavigationManager.NavigateTo($"/session/{newSession.Id}");
-    }
-    
-    private string GetModelShortName()
-    {
-        if (string.IsNullOrEmpty(AppState.SelectedModel))
-            return "-";
-        var parts = AppState.SelectedModel.Split('/');
-        return parts.Length > 1 ? parts[1] : AppState.SelectedModel;
     }
     
     private string GetMessageClass(string role) => role.ToLowerInvariant() switch
