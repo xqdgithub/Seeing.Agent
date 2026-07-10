@@ -50,16 +50,9 @@
             </div>
         </div>
         <div class="stat-item">
-            <div class="stat-icon" style="color: #faad14;"><Icon Type="@IconType.Outline.PauseCircle" /></div>
-            <div class="stat-content">
-                <span class="stat-value">@_rows.Count(r => r.State == JobState.Paused)</span>
-                <span class="stat-label">已暂停</span>
-            </div>
-        </div>
-        <div class="stat-item">
             <div class="stat-icon" style="color: #8c8c8c;"><Icon Type="@IconType.Outline.Stop" /></div>
             <div class="stat-content">
-                <span class="stat-value">@_rows.Count(r => r.State == JobState.Disabled)</span>
+                <span class="stat-value">@_rows.Count(r => r.State == JobState.Paused || r.State == JobState.Disabled)</span>
                 <span class="stat-label">已禁用</span>
             </div>
         </div>
@@ -70,8 +63,7 @@
             <TabPane Key="all" Tab="@($"全部 ({_rows.Count})")" />
             <TabPane Key="scheduled" Tab="@($"已调度 ({_rows.Count(r => r.State == JobState.Scheduled)})")" />
             <TabPane Key="running" Tab="@($"运行中 ({_rows.Count(r => r.State == JobState.Running)})")" />
-            <TabPane Key="paused" Tab="@($"已暂停 ({_rows.Count(r => r.State == JobState.Paused)})")" />
-            <TabPane Key="disabled" Tab="@($"已禁用 ({_rows.Count(r => r.State == JobState.Disabled)})")" />
+            <TabPane Key="disabled" Tab="@($"已禁用 ({_rows.Count(r => r.State == JobState.Paused || r.State == JobState.Disabled)})")" />
         </Tabs>
         
         <Table TItem="JobRow" DataSource="@_filteredRows" RowKey="@(j => j.Id)" @key="_rowsVersion">
@@ -84,7 +76,7 @@
                 <JobStatusBadge State="@context.State" />
             </PropertyColumn>
             <PropertyColumn Property="c => c.NextRunText" Title="下次运行">
-                <JobNextRunTimer NextRun="@context.NextFireTime" />
+                <JobNextRunTimer NextRun="@context.NextFireTime" State="@context.State" />
             </PropertyColumn>
             <ActionColumn Title="操作">
                 <Space>
@@ -103,19 +95,15 @@
                             }
                         </Button>
                     }
-                    @if (CanPause(context.State))
-                    {
-                        <Button Size="@ButtonSize.Small" OnClick="@(() => PauseJob(context.Id))">暂停</Button>
-                    }
-                    @if (CanResume(context.State))
-                    {
-                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="@(() => ResumeJob(context.Id))">恢复</Button>
-                    }
                     @if (CanDisable(context.State))
                     {
                         <Popconfirm Title="确定要禁用此任务吗？" OnConfirm="@(() => DisableJob(context.Id))">
                             <Button Size="@ButtonSize.Small">禁用</Button>
                         </Popconfirm>
+                    }
+                    @if (CanEnable(context.State))
+                    {
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="@(() => EnableJob(context.Id))">启用</Button>
                     }
                     @if (CanCancel(context.State))
                     {
@@ -232,21 +220,18 @@
         {
             "scheduled" => _rows.Where(r => r.State == JobState.Scheduled).ToList(),
             "running" => _rows.Where(r => r.State == JobState.Running).ToList(),
-            "paused" => _rows.Where(r => r.State == JobState.Paused).ToList(),
-            "disabled" => _rows.Where(r => r.State == JobState.Disabled).ToList(),
+            "disabled" => _rows.Where(r => r.State == JobState.Paused || r.State == JobState.Disabled).ToList(),
             _ => _rows.ToList()
         };
     }
 
     // ===== 操作权限控制 =====
     
-    private static bool CanRun(JobState state) => state == JobState.Scheduled || state == JobState.Paused;
-    
-    private static bool CanPause(JobState state) => state == JobState.Scheduled;
-    
-    private static bool CanResume(JobState state) => state == JobState.Paused;
+    private static bool CanRun(JobState state) => state == JobState.Scheduled;
     
     private static bool CanDisable(JobState state) => state == JobState.Scheduled || state == JobState.Paused;
+    
+    private static bool CanEnable(JobState state) => state == JobState.Paused || state == JobState.Disabled;
     
     private static bool CanCancel(JobState state) => state == JobState.Running;
     
@@ -377,24 +362,17 @@
         await LoadAsync();
     }
 
-    private async Task PauseJob(string id)
-    {
-        await StatusService.PauseJobAsync(id);
-        MessageService.Info("任务已暂停");
-        await LoadAsync();
-    }
-
-    private async Task ResumeJob(string id)
-    {
-        await StatusService.ResumeJobAsync(id);
-        MessageService.Success("任务已恢复");
-        await LoadAsync();
-    }
-
     private async Task DisableJob(string id)
     {
         await StatusService.DisableJobAsync(id);
-        MessageService.Warning("任务已禁用");
+        MessageService.Info("任务已禁用");
+        await LoadAsync();
+    }
+
+    private async Task EnableJob(string id)
+    {
+        await StatusService.EnableJobAsync(id);
+        MessageService.Success("任务已启用");
         await LoadAsync();
     }
 

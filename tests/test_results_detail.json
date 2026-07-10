@@ -1,0 +1,579 @@
+{
+  "test_time": "2026-07-10T17:22:06.285500",
+  "base_url": "http://localhost:5000",
+  "modules": [
+    {
+      "module_name": "首页",
+      "tests": [
+        {
+          "test_id": "TC-HOME-001",
+          "test_name": "Logo显示",
+          "status": "PASS",
+          "duration_ms": 16,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-HOME-002",
+          "test_name": "标题显示",
+          "status": "PASS",
+          "duration_ms": 11,
+          "message": "Seeing.Agent",
+          "details": {}
+        },
+        {
+          "test_id": "TC-HOME-003",
+          "test_name": "统计卡片",
+          "status": "PASS",
+          "duration_ms": 25,
+          "message": "发现3个统计卡片",
+          "details": {
+            "stat_count": 3,
+            "stat_会话": "2",
+            "stat_智能体": "4",
+            "stat_模型": "15"
+          }
+        },
+        {
+          "test_id": "TC-HOME-004",
+          "test_name": "开始对话按钮",
+          "status": "PASS",
+          "duration_ms": 5,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 4,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "会话管理",
+      "tests": [
+        {
+          "test_id": "TC-SESSIONS-001",
+          "test_name": "页面标题",
+          "status": "PASS",
+          "duration_ms": 2,
+          "message": "Seeing.Agent WebUI",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SESSIONS-002",
+          "test_name": "统计信息",
+          "status": "PASS",
+          "duration_ms": 33,
+          "message": "统计项数: 3",
+          "details": {
+            "总会话": "2",
+            "今日创建": "2",
+            "活跃 (24h)": "2"
+          }
+        },
+        {
+          "test_id": "TC-SESSIONS-003",
+          "test_name": "会话列表",
+          "status": "PASS",
+          "duration_ms": 3,
+          "message": "会话数: 4",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SESSIONS-004",
+          "test_name": "新建会话按钮",
+          "status": "PASS",
+          "duration_ms": 4,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SESSIONS-005",
+          "test_name": "搜索功能",
+          "status": "PASS",
+          "duration_ms": 516,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 5,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "工具管理",
+      "tests": [
+        {
+          "test_id": "TC-TOOLS-001",
+          "test_name": "工具列表",
+          "status": "PASS",
+          "duration_ms": 15,
+          "message": "工具数: 18",
+          "details": {}
+        },
+        {
+          "test_id": "TC-TOOLS-002",
+          "test_name": "分类统计",
+          "status": "PASS",
+          "duration_ms": 5,
+          "message": "统计项: 5",
+          "details": {}
+        },
+        {
+          "test_id": "TC-TOOLS-003",
+          "test_name": "筛选器",
+          "status": "PASS",
+          "duration_ms": 1,
+          "message": "筛选器数: 2",
+          "details": {}
+        },
+        {
+          "test_id": "TC-TOOLS-004",
+          "test_name": "搜索过滤",
+          "status": "PASS",
+          "duration_ms": 542,
+          "message": "过滤后: 18",
+          "details": {}
+        },
+        {
+          "test_id": "TC-TOOLS-005",
+          "test_name": "启用开关",
+          "status": "PASS",
+          "duration_ms": 4,
+          "message": "开关数: 18",
+          "details": {}
+        }
+      ],
+      "passed": 5,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "技能管理",
+      "tests": [
+        {
+          "test_id": "TC-SKILLS-001",
+          "test_name": "技能列表",
+          "status": "PASS",
+          "duration_ms": 12,
+          "message": "技能数: 9",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SKILLS-002",
+          "test_name": "创建按钮",
+          "status": "PASS",
+          "duration_ms": 4,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SKILLS-003",
+          "test_name": "视图切换",
+          "status": "PASS",
+          "duration_ms": 2,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 3,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "MCP管理",
+      "tests": [
+        {
+          "test_id": "TC-MCP-001",
+          "test_name": "服务器列表",
+          "status": "PASS",
+          "duration_ms": 13,
+          "message": "服务器数: 4",
+          "details": {}
+        },
+        {
+          "test_id": "TC-MCP-002",
+          "test_name": "添加按钮",
+          "status": "PASS",
+          "duration_ms": 4,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-MCP-003",
+          "test_name": "统计信息",
+          "status": "PASS",
+          "duration_ms": 1,
+          "message": "统计项: 5",
+          "details": {}
+        }
+      ],
+      "passed": 3,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "智能体管理",
+      "tests": [
+        {
+          "test_id": "TC-AGENTS-001",
+          "test_name": "智能体列表",
+          "status": "PASS",
+          "duration_ms": 18,
+          "message": "智能体数: 4",
+          "details": {}
+        },
+        {
+          "test_id": "TC-AGENTS-002",
+          "test_name": "刷新按钮",
+          "status": "PASS",
+          "duration_ms": 3,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "模型管理",
+      "tests": [
+        {
+          "test_id": "TC-MODELS-001",
+          "test_name": "Provider列表",
+          "status": "PASS",
+          "duration_ms": 14,
+          "message": "Provider数: 18",
+          "details": {}
+        },
+        {
+          "test_id": "TC-MODELS-002",
+          "test_name": "保存按钮",
+          "status": "PASS",
+          "duration_ms": 5,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "Gateway",
+      "tests": [
+        {
+          "test_id": "TC-GATEWAY-001",
+          "test_name": "配置表单",
+          "status": "FAIL",
+          "duration_ms": 12,
+          "message": "表单项: 0",
+          "details": {}
+        },
+        {
+          "test_id": "TC-GATEWAY-002",
+          "test_name": "状态显示",
+          "status": "PASS",
+          "duration_ms": 2,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 1,
+      "failed": 1,
+      "blocked": 0
+    },
+    {
+      "module_name": "定时任务",
+      "tests": [
+        {
+          "test_id": "TC-CRON-001",
+          "test_name": "任务列表",
+          "status": "PASS",
+          "duration_ms": 13,
+          "message": "任务数: 1",
+          "details": {}
+        },
+        {
+          "test_id": "TC-CRON-002",
+          "test_name": "新建按钮",
+          "status": "PASS",
+          "duration_ms": 1,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-CRON-003",
+          "test_name": "状态标签页",
+          "status": "PASS",
+          "duration_ms": 2,
+          "message": "标签页: 5",
+          "details": {}
+        }
+      ],
+      "passed": 3,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "心跳",
+      "tests": [
+        {
+          "test_id": "TC-HB-001",
+          "test_name": "配置项",
+          "status": "PASS",
+          "duration_ms": 15,
+          "message": "配置项: 8",
+          "details": {}
+        },
+        {
+          "test_id": "TC-HB-002",
+          "test_name": "立即执行按钮",
+          "status": "PASS",
+          "duration_ms": 6,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "记忆",
+      "tests": [
+        {
+          "test_id": "TC-MEM-001",
+          "test_name": "记忆列表",
+          "status": "PASS",
+          "duration_ms": 19,
+          "message": "记忆数: 10",
+          "details": {}
+        },
+        {
+          "test_id": "TC-MEM-002",
+          "test_name": "搜索功能",
+          "status": "PASS",
+          "duration_ms": 2,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "ACP",
+      "tests": [
+        {
+          "test_id": "TC-ACP-001",
+          "test_name": "后端列表",
+          "status": "PASS",
+          "duration_ms": 13,
+          "message": "后端数: 2",
+          "details": {}
+        },
+        {
+          "test_id": "TC-ACP-002",
+          "test_name": "添加按钮",
+          "status": "PASS",
+          "duration_ms": 3,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "安全",
+      "tests": [
+        {
+          "test_id": "TC-SEC-001",
+          "test_name": "标签页",
+          "status": "PASS",
+          "duration_ms": 8,
+          "message": "标签页: 3",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SEC-002",
+          "test_name": "保存按钮",
+          "status": "PASS",
+          "duration_ms": 4,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "系统设置",
+      "tests": [
+        {
+          "test_id": "TC-SET-001",
+          "test_name": "设置标签页",
+          "status": "PASS",
+          "duration_ms": 21,
+          "message": "['常规', '调度器', '插件', 'MCP 概览', '高级']",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SET-002",
+          "test_name": "保存按钮",
+          "status": "PASS",
+          "duration_ms": 2,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "Gateway客户端",
+      "tests": [
+        {
+          "test_id": "TC-CLIENTS-001",
+          "test_name": "客户端列表",
+          "status": "PASS",
+          "duration_ms": 8,
+          "message": "客户端数: 1",
+          "details": {}
+        },
+        {
+          "test_id": "TC-CLIENTS-002",
+          "test_name": "扫描插件按钮",
+          "status": "PASS",
+          "duration_ms": 4,
+          "message": "",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "会话聊天",
+      "tests": [
+        {
+          "test_id": "TC-SESS-001",
+          "test_name": "进入会话",
+          "status": "PASS",
+          "duration_ms": 1056,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SESS-002",
+          "test_name": "消息输入区域",
+          "status": "PASS",
+          "duration_ms": 3,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SESS-003",
+          "test_name": "Agent选择器",
+          "status": "PASS",
+          "duration_ms": 2,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SESS-004",
+          "test_name": "模型选择器",
+          "status": "PASS",
+          "duration_ms": 4,
+          "message": "选择器数: 2",
+          "details": {}
+        },
+        {
+          "test_id": "TC-SESS-005",
+          "test_name": "操作按钮",
+          "status": "PASS",
+          "duration_ms": 2,
+          "message": "按钮数: 4",
+          "details": {}
+        }
+      ],
+      "passed": 5,
+      "failed": 0,
+      "blocked": 0
+    },
+    {
+      "module_name": "导航",
+      "tests": [
+        {
+          "test_id": "TC-NAV-001",
+          "test_name": "侧边栏",
+          "status": "PASS",
+          "duration_ms": 3,
+          "message": "",
+          "details": {}
+        },
+        {
+          "test_id": "TC-NAV-002",
+          "test_name": "菜单项",
+          "status": "PASS",
+          "duration_ms": 6,
+          "message": "菜单项: 19",
+          "details": {}
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    }
+  ],
+  "summary": {
+    "total": 48,
+    "passed": 47,
+    "failed": 1,
+    "blocked": 0
+  },
+  "issues": [],
+  "recommendations": [
+    {
+      "area": "首页",
+      "current_state": "功能正常",
+      "recommendation": "可以添加快捷键支持，提升用户体验"
+    },
+    {
+      "area": "会话管理",
+      "current_state": "功能正常",
+      "recommendation": "可以添加批量操作功能，如批量删除、批量导出"
+    },
+    {
+      "area": "工具管理",
+      "current_state": "功能正常",
+      "recommendation": "可以添加工具使用统计和历史记录"
+    },
+    {
+      "area": "技能管理",
+      "current_state": "功能正常",
+      "recommendation": "可以添加技能版本管理和回滚功能"
+    },
+    {
+      "area": "MCP管理",
+      "current_state": "功能正常",
+      "recommendation": "可以添加连接健康监控和自动重连配置"
+    },
+    {
+      "area": "定时任务",
+      "current_state": "功能正常",
+      "recommendation": "可以添加任务执行历史图表展示"
+    },
+    {
+      "area": "会话聊天",
+      "current_state": "功能正常",
+      "recommendation": "可以添加消息搜索、导出和分享功能"
+    }
+  ]
+}

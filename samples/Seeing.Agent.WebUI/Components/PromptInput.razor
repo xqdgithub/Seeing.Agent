@@ -173,6 +173,12 @@
     public CancellationTokenSource? CancellationTokenSource { get; set; }
 
     /// <summary>
+    /// 是否自动聚焦输入框
+    /// </summary>
+    [Parameter]
+    public bool AutoFocus { get; set; } = true;
+
+    /// <summary>
     /// 附件列表
     /// </summary>
     private List<AttachmentViewModel> Attachments { get; set; } = new();
@@ -480,6 +486,12 @@
                 await JSRuntime.InvokeVoidAsync("setupDropZone", ContainerRef.Id, DotNetObjectReference.Create(this));
                 await JSRuntime.InvokeVoidAsync("setupPasteHandler", ContainerRef.Id, DotNetObjectReference.Create(this));
                 await JSRuntime.InvokeVoidAsync("setupTextareaAutoResize", TextareaId);
+                
+                // 自动聚焦输入框
+                if (AutoFocus)
+                {
+                    await TextareaRef.FocusAsync();
+                }
             }
             catch
             {

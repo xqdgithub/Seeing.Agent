@@ -104,6 +104,12 @@ public sealed class SchedulerStatusService
         await _scheduleManager.DisableJobAsync(jobId, ct);
     }
 
+    /// <summary>启用任务</summary>
+    public async Task EnableJobAsync(string jobId, CancellationToken ct = default)
+    {
+        await _scheduleManager.ResumeJobAsync(jobId, ct);
+    }
+
     /// <summary>取消正在运行的任务</summary>
     public async Task<bool> CancelJobAsync(string jobId, CancellationToken ct = default)
     {

@@ -1,8 +1,10 @@
 @using AntDesign
+@using Seeing.Agent.Scheduler.Models
 @using System.Timers
 
 @code {
     [Parameter] public DateTime? NextRun { get; set; }
+    [Parameter] public JobState State { get; set; } = JobState.Scheduled;
     [Parameter] public bool ShowIcon { get; set; } = true;
     
     private TimeSpan _remaining;
@@ -28,6 +30,13 @@
 
     private void UpdateRemaining()
     {
+        // 暂停或禁用状态不显示倒计时
+        if (State == JobState.Paused || State == JobState.Disabled)
+        {
+            _displayText = "-";
+            return;
+        }
+
         if (NextRun.HasValue)
         {
             _remaining = NextRun.Value - DateTime.Now;

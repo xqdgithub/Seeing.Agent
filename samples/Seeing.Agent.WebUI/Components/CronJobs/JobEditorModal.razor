@@ -9,18 +9,21 @@
        OnCancel="HandleCancel"
        ConfirmLoading="@Saving">
     <Form Layout="@FormLayout.Vertical" Model="@Job" Context="formContext">
-        <Row Gutter="16">
-            <Col Span="12">
-                <FormItem Label="任务 ID" Required>
-                    <Input @bind-Value="@Job.Id" Disabled="@IsEdit" />
-                </FormItem>
-            </Col>
-            <Col Span="12">
-                <FormItem Label="名称">
-                    <Input @bind-Value="@Job.Name" />
-                </FormItem>
-            </Col>
-        </Row>
+         <Alert Type="@AlertType.Info" Message="带有 * 的为必填项" ShowIcon="true" Style="margin-bottom: 16px;" />
+         
+         <Row Gutter="16">
+             <Col Span="12">
+                 <FormItem Label="任务 ID" Required>
+                     <Input @bind-Value="@Job.Id" Disabled="@IsEdit" Placeholder="例如: my-daily-report" />
+                     <small style="color: #999;">唯一标识符，只能包含字母、数字、下划线和横线</small>
+                 </FormItem>
+             </Col>
+             <Col Span="12">
+                 <FormItem Label="名称">
+                     <Input @bind-Value="@Job.Name" Placeholder="任务的显示名称（可选）" />
+                 </FormItem>
+             </Col>
+         </Row>
         <FormItem Label="状态">
             <Select TItemValue="ScheduleIntent" TItem="ScheduleIntent" @bind-Value="@Job.Intent">
                 <SelectOption TItemValue="ScheduleIntent" TItem="ScheduleIntent" Value="@ScheduleIntent.Active">启用</SelectOption>
@@ -37,11 +40,17 @@
         @if (Job.TaskType == ScheduleTaskTypes.Agent)
         {
             <FormItem Label="Agent"><Input @bind-Value="@Job.Agent" Placeholder="留空使用默认 Agent" /></FormItem>
-            <FormItem Label="Prompt"><TextArea Rows="4" @bind-Value="@Job.Prompt" /></FormItem>
+            <FormItem Label="Prompt" Required>
+                <TextArea Rows="4" @bind-Value="@Job.Prompt" Placeholder="输入要发送给 Agent 的提示内容..." />
+                <small style="color: #999;">Agent 执行时的提示内容（必填）</small>
+            </FormItem>
         }
         else
         {
-            <FormItem Label="文本内容"><TextArea Rows="3" @bind-Value="@Job.Text" /></FormItem>
+            <FormItem Label="文本内容" Required>
+                <TextArea Rows="3" @bind-Value="@Job.Text" Placeholder="输入要发送的文本消息..." />
+                <small style="color: #999;">定时发送的文本内容（必填）</small>
+            </FormItem>
         }
         
         @* 调度配置 *@
@@ -57,20 +66,21 @@
         {
             <FormItem Label="Cron 表达式" Required>
                 <Input @bind-Value="@Job.Schedule.Cron" Placeholder="0 9 * * *" />
-                <small style="color: #999;">格式：秒 分 时 日 月（5字段）</small>
+                <small style="color: #999;">格式：秒 分 时 日 月（5字段），例如 "0 9 * * *" 表示每天9点执行</small>
             </FormItem>
         }
         else if (Job.Schedule.Type == ScheduleTypes.Interval)
         {
             <FormItem Label="间隔" Required>
-                <Input @bind-Value="@Job.Schedule.Every" Placeholder="1h、30m" />
+                <Input @bind-Value="@Job.Schedule.Every" Placeholder="1h、30m、15s" />
+                <small style="color: #999;">格式：数字+单位(s/m/h/d)，例如 "30m" 表示每30分钟</small>
             </FormItem>
         }
         else
         {
             <FormItem Label="执行时间" Required>
                 <Input @bind-Value="@_runAtText" Placeholder="2026-07-09 00:30" Style="width: 100%;" />
-                <small style="color: #999;">格式：yyyy-MM-dd HH:mm（本地时间）</small>
+                <small style="color: #999;">格式：yyyy-MM-dd HH:mm（本地时间），必须是将来的时间</small>
             </FormItem>
         }
         @if (_validationError != null)
@@ -83,8 +93,9 @@
         <Divider Orientation="@DividerOrientation.Left">投递配置</Divider>
         <Row Gutter="16">
             <Col Span="8">
-                <FormItem Label="目标 Session">
+                <FormItem Label="目标 Session" Required>
                     <Input @bind-Value="@Job.Dispatch.Target.SessionId" Placeholder="main" />
+                    <small style="color: #999;">必填，通常为 "main"</small>
                 </FormItem>
             </Col>
             <Col Span="8">
@@ -145,10 +156,68 @@
 
     private async Task HandleOk()
     {
+        // 清除之前的验证错误
+        _validationError = null;
+        
+        // 验证任务 ID
+        if (string.IsNullOrWhiteSpace(Job.Id))
+        {
+            _validationError = "任务 ID 不能为空";
+            StateHasChanged();
+            if (OnError.HasDelegate)
+                await OnError.InvokeAsync(_validationError);
+            return;
+        }
+        
+        // 验证任务 ID 格式（只允许字母、数字、下划线、横线）
+        if (!System.Text.RegularExpressions.Regex.IsMatch(Job.Id, @"^[a-zA-Z0-9_-]+$"))
+        {
+            _validationError = "任务 ID 只能包含字母、数字、下划线和横线";
+            StateHasChanged();
+            if (OnError.HasDelegate)
+                await OnError.InvokeAsync(_validationError);
+            return;
+        }
+        
         // 验证调度配置
         _validationError = ValidateSchedule();
         if (_validationError != null)
         {
+            StateHasChanged();
+            if (OnError.HasDelegate)
+                await OnError.InvokeAsync(_validationError);
+            return;
+        }
+        
+        // 验证任务类型相关字段
+        if (Job.TaskType == ScheduleTaskTypes.Agent)
+        {
+            if (string.IsNullOrWhiteSpace(Job.Prompt))
+            {
+                _validationError = "Agent 任务必须填写 Prompt";
+                StateHasChanged();
+                if (OnError.HasDelegate)
+                    await OnError.InvokeAsync(_validationError);
+                return;
+            }
+        }
+        else if (Job.TaskType == ScheduleTaskTypes.Text)
+        {
+            if (string.IsNullOrWhiteSpace(Job.Text))
+            {
+                _validationError = "文本消息任务必须填写文本内容";
+                StateHasChanged();
+                if (OnError.HasDelegate)
+                    await OnError.InvokeAsync(_validationError);
+                return;
+            }
+        }
+        
+        // 验证投递目标
+        if (string.IsNullOrWhiteSpace(Job.Dispatch?.Target?.SessionId))
+        {
+            _validationError = "目标 Session 不能为空";
+            StateHasChanged();
             if (OnError.HasDelegate)
                 await OnError.InvokeAsync(_validationError);
             return;
@@ -162,6 +231,8 @@
                 Job.Schedule.RunAt = DateTime.SpecifyKind(dt, DateTimeKind.Local);
             }
         }
+        
+        // 所有验证通过，保存并关闭
         await OnSave.InvokeAsync(Job);
         await VisibleChanged.InvokeAsync(false);
     }
@@ -172,12 +243,74 @@
         {
             ScheduleTypes.Cron when string.IsNullOrWhiteSpace(Job.Schedule.Cron)
                 => "Cron 表达式不能为空",
+            ScheduleTypes.Cron when !IsValidCronExpression(Job.Schedule.Cron)
+                => "Cron 表达式格式不正确，应为5字段格式（秒 分 时 日 月）",
             ScheduleTypes.Interval when string.IsNullOrWhiteSpace(Job.Schedule.Every)
                 => "间隔时间不能为空",
-            ScheduleTypes.Once when string.IsNullOrWhiteSpace(_runAtText) || !DateTime.TryParse(_runAtText, out _)
-                => "执行时间格式不正确",
+            ScheduleTypes.Interval when !IsValidInterval(Job.Schedule.Every)
+                => "间隔时间格式不正确，例如：30s、5m、1h、2d",
+            ScheduleTypes.Once when string.IsNullOrWhiteSpace(_runAtText)
+                => "执行时间不能为空",
+            ScheduleTypes.Once when !DateTime.TryParse(_runAtText, out var dt)
+                => "执行时间格式不正确，请使用 yyyy-MM-dd HH:mm 格式",
+            ScheduleTypes.Once when DateTime.TryParse(_runAtText, out var dt) && dt <= DateTime.Now
+                => "执行时间必须是将来的时间",
             _ => null
         };
+    }
+    
+    /// <summary>
+    /// 验证 Cron 表达式格式（5字段：秒 分 时 日 月）
+    /// </summary>
+    private static bool IsValidCronExpression(string? cron)
+    {
+        if (string.IsNullOrWhiteSpace(cron))
+            return false;
+        
+        var parts = cron.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5)
+            return false;
+        
+        // 简单验证每个字段的合法性
+        foreach (var part in parts)
+        {
+            // 允许 *, 数字, 范围(1-5), 列表(1,2,3), 步长(*/5)
+            if (part == "*")
+                continue;
+            
+            // 检查是否包含非法字符（- 放在字符类末尾避免被解析为范围）
+            if (!System.Text.RegularExpressions.Regex.IsMatch(part, @"^[\d*/,]+$"))
+                return false;
+            
+            // 验证范围格式（如 1-5）
+            if (part.Contains('-'))
+            {
+                var rangeParts = part.Split('-');
+                if (rangeParts.Length != 2)
+                    return false;
+                // 范围的两边都应该是数字或 *
+                foreach (var rp in rangeParts)
+                {
+                    if (rp != "*" && !System.Text.RegularExpressions.Regex.IsMatch(rp, @"^\d+$"))
+                        return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// 验证间隔时间格式（如：30s, 5m, 1h, 2d）
+    /// </summary>
+    private static bool IsValidInterval(string? interval)
+    {
+        if (string.IsNullOrWhiteSpace(interval))
+            return false;
+        
+        // 支持格式：数字 + 单位(s/m/h/d)
+        return System.Text.RegularExpressions.Regex.IsMatch(interval.Trim(), @"^\d+[smhd]$", 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
     private async Task HandleCancel() => await VisibleChanged.InvokeAsync(false);
