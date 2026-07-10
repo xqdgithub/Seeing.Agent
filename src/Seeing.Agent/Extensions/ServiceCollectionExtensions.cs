@@ -23,6 +23,7 @@ using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.MCP.Core;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
+using System.Net.Http;
 using Seeing.Agent.MCP.Policy;
 using Seeing.Agent.Middlewares;
 using Seeing.Agent.Shell;
@@ -69,6 +70,16 @@ namespace Seeing.Agent.Extensions
 
             RegisterLlmServices(services);
 
+            // 配置 LLM 专用的 HttpClient，解决 SSL 连接池陈旧连接问题
+            services.AddHttpClient("LlmClient")
+                .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+                {
+                    // 连接空闲超时：超过此时间的空闲连接将被关闭
+                    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                    // 连接最大存活时间：强制刷新连接，防止服务器端关闭导致的解密失败
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+                });
+
             services.AddHttpClient();
 
             return services;
@@ -98,6 +109,16 @@ namespace Seeing.Agent.Extensions
             RegisterCoreServices(services);
 
             RegisterLlmServices(services);
+
+            // 配置 LLM 专用的 HttpClient，解决 SSL 连接池陈旧连接问题
+            services.AddHttpClient("LlmClient")
+                .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+                {
+                    // 连接空闲超时：超过此时间的空闲连接将被关闭
+                    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                    // 连接最大存活时间：强制刷新连接，防止服务器端关闭导致的解密失败
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+                });
 
             services.AddHttpClient();
 
@@ -242,6 +263,16 @@ namespace Seeing.Agent.Extensions
             }
 
             RegisterLlmServices(services);
+
+            // 配置 LLM 专用的 HttpClient，解决 SSL 连接池陈旧连接问题
+            services.AddHttpClient("LlmClient")
+                .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+                {
+                    // 连接空闲超时：超过此时间的空闲连接将被关闭
+                    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                    // 连接最大存活时间：强制刷新连接，防止服务器端关闭导致的解密失败
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+                });
 
             services.AddHttpClient();
 
@@ -572,41 +603,44 @@ namespace Seeing.Agent.Extensions
         }
     }
 
-    /// <summary>
-    /// 默认 LLM 客户端工厂
-    /// </summary>
-    internal class DefaultLlmClientFactory : ILlmClientFactory
-    {
-        private readonly IHttpClientFactory _httpClientFactory;
-        private readonly ILoggerFactory _loggerFactory;
-
-        public DefaultLlmClientFactory(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
+        /// <summary>
+        /// 默认 LLM 客户端工厂
+        /// </summary>
+        internal class DefaultLlmClientFactory : ILlmClientFactory
         {
-            _httpClientFactory = httpClientFactory;
-            _loggerFactory = loggerFactory;
-        }
+            private readonly IHttpClientFactory _httpClientFactory;
+            private readonly ILoggerFactory _loggerFactory;
 
-        public IReadOnlyList<ProviderType> SupportedTypes { get; } = new[]
-        {
-            ProviderType.OpenAI,
-            ProviderType.Anthropic
-        };
-
-        public bool SupportsType(ProviderType type) => SupportedTypes.Contains(type);
-
-        public ILlmClient Create(ProviderConfig config)
-        {
-            return config.Type switch
+            public DefaultLlmClientFactory(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
             {
-                ProviderType.OpenAI => new OpenAiClient(config, _loggerFactory.CreateLogger<OpenAiClient>()),
-                ProviderType.Anthropic => new AnthropicClient(
-                    config,
-                    _httpClientFactory.CreateClient(),
-                    _loggerFactory.CreateLogger<AnthropicClient>()),
-                _ => throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}")
+                _httpClientFactory = httpClientFactory;
+                _loggerFactory = loggerFactory;
+            }
+
+            public IReadOnlyList<ProviderType> SupportedTypes { get; } = new[]
+            {
+                ProviderType.OpenAI,
+                ProviderType.Anthropic
             };
+
+            public bool SupportsType(ProviderType type) => SupportedTypes.Contains(type);
+
+            public ILlmClient Create(ProviderConfig config)
+            {
+                // 使用命名 HttpClient 以支持连接池配置
+                var httpClient = _httpClientFactory.CreateClient("LlmClient");
+
+                return config.Type switch
+                {
+                    ProviderType.OpenAI => new OpenAiClient(config, _loggerFactory.CreateLogger<OpenAiClient>()),
+                    ProviderType.Anthropic => new AnthropicClient(
+                        config,
+                        httpClient,
+                        _loggerFactory.CreateLogger<AnthropicClient>()),
+                    _ => throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}")
+                };
+            }
         }
-    }
 }
 
 namespace Seeing.Agent.Extensions
