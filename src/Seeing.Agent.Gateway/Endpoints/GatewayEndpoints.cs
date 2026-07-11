@@ -36,7 +36,7 @@ public static class GatewayEndpoints
 
     private static async Task ChatAsync(
         HttpContext httpContext,
-        GatewayOrchestrator orchestrator,
+        GatewayOrchestratorV2 orchestrator,
         [FromBody] GatewayRequest request,
         CancellationToken cancellationToken)
     {
@@ -54,7 +54,7 @@ public static class GatewayEndpoints
 
     private static IResult StopChatAsync(
         [FromQuery] string sessionId,
-        GatewayOrchestrator orchestrator)
+        GatewayOrchestratorV2 orchestrator)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
             return Results.BadRequest(new { error = "sessionId is required" });

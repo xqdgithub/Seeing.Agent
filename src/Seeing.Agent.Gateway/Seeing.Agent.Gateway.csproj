@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Seeing.Gateway.WeCom\Seeing.Gateway.WeCom.csproj" />
     <ProjectReference Include="..\Seeing.Agent\Seeing.Agent.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.App\Seeing.Agent.App.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\Seeing.Gateway\Seeing.Gateway.csproj" />

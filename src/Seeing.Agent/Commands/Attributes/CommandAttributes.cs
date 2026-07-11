@@ -33,6 +33,9 @@ namespace Seeing.Agent.Commands.Attributes
         /// <summary>排序权重</summary>
         public int SortOrder { get; set; } = 100;
 
+        /// <summary>命令类型（决定执行后行为）</summary>
+        public CommandType Type { get; set; } = CommandType.Default;
+
         /// <summary>创建命令注解</summary>
         public CommandAttribute(string description)
         {

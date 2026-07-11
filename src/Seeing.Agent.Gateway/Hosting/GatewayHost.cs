@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.App;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Interfaces;
@@ -70,16 +71,16 @@ public sealed class GatewayHost : IAsyncDisposable
         var agentRegistry = _rootServices.GetRequiredService<IAgentRegistry>();
         var sessionService = new GatewaySessionService(sessionManager, agentRegistry);
         var loggerFactory = _rootServices.GetRequiredService<ILoggerFactory>();
-        var orchestratorLogger = loggerFactory.CreateLogger<GatewayOrchestrator>();
+        var chatOrchestrator = _rootServices.GetRequiredService<IChatOrchestrator>();
+        var orchestratorLogger = loggerFactory.CreateLogger<GatewayOrchestratorV2>();
 
-        var orchestrator = new GatewayOrchestrator(
+        var orchestrator = new GatewayOrchestratorV2(
             _rootServices,
+            chatOrchestrator,
             _options,
-            selectionResolver,
             permissionChannel,
             runTracker,
             executionQueue,
-            sessionResolver,
             orchestratorLogger,
             connectionManager);
 

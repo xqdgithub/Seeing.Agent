@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Seeing.Agent.App</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Seeing.Agent\Seeing.Agent.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
+    <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
+  </ItemGroup>
+</Project>

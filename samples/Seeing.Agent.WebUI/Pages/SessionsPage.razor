@@ -3,11 +3,11 @@
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
-@inject SessionProvider SessionProvider
+@using Seeing.Agent.App
+@inject IChatOrchestrator ChatOrchestrator
 @inject IWorkspaceProvider WorkspaceProvider
 @inject IMessageService MessageService
 @inject NavigationManager NavigationManager
-@implements IDisposable
 
 <PageTitle>会话管理 - Seeing.Agent</PageTitle>
 
@@ -24,7 +24,7 @@
             <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateSession">
                 新建会话
             </Button>
-            <Button Icon="@IconType.Outline.Reload" OnClick="RefreshSessions">
+            <Button Icon="@IconType.Outline.Reload" OnClick="@RefreshSessionsAsync">
                 刷新
             </Button>
         </div>
@@ -190,45 +190,17 @@
     private int _totalCount;
     private int _todayCount;
     private int _activeCount;
-    private bool _hasRendered;
 
     protected override async Task OnInitializedAsync()
     {
-        SessionProvider.OnSessionListChanged += OnSessionListChanged;
-        
-        // 确保会话列表已初始化（刷新页面时可能需要重新加载）
-        await SessionProvider.InitializeSessionListAsync();
-        
-        RefreshSessions();
+        await RefreshSessionsAsync();
     }
 
-    protected override void OnAfterRender(bool firstRender)
-    {
-        if (firstRender)
-            _hasRendered = true;
-    }
-
-    public void Dispose()
-    {
-        SessionProvider.OnSessionListChanged -= OnSessionListChanged;
-    }
-
-    private void OnSessionListChanged()
-    {
-        if (!_hasRendered)
-            return;
-        _ = InvokeAsync(() =>
-        {
-            RefreshSessions();
-            StateHasChanged();
-        });
-    }
-    
-    void RefreshSessions()
+    async Task RefreshSessionsAsync()
     {
         try
         {
-            var sessions = SessionProvider.GetSessionList() ?? new List<SessionData>();
+            var sessions = await ChatOrchestrator.ListSessionsAsync();
             
             _filteredSessions = sessions
                 .Where(s => string.IsNullOrEmpty(_searchText) || 
@@ -245,7 +217,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error refreshing sessions: {ex.Message}");
+            Console.WriteLine(string.Format("Error refreshing sessions: {0}", ex.Message));
             _filteredSessions = new List<SessionData>();
         }
     }
@@ -254,14 +226,14 @@
     {
         try
         {
-            var session = await SessionProvider.CreateSessionAsync(
+            var session = await ChatOrchestrator.CreateSessionAsync(
                 workingDirectory: WorkspaceProvider.WorkspaceRoot);
             MessageService.Success("会话已创建");
-            NavigationManager.NavigateTo($"/session/{session.Id}");
+            NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
         }
         catch (Exception ex)
         {
-            MessageService.Error($"创建失败: {ex.Message}");
+            MessageService.Error(string.Format("创建失败: {0}", ex.Message));
         }
     }
     
@@ -269,30 +241,30 @@
     {
         try
         {
-            await SessionProvider.DeleteSessionAsync(id);
+            await ChatOrchestrator.DeleteSessionAsync(id);
             MessageService.Success("会话已删除");
-            RefreshSessions();
+            await RefreshSessionsAsync();
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除失败: {ex.Message}");
+            MessageService.Error(string.Format("删除失败: {0}", ex.Message));
         }
     }
     
-    void ViewSession(string id) => NavigationManager.NavigateTo($"/session/{id}");
+    void ViewSession(string id) => NavigationManager.NavigateTo(string.Format("/session/{0}", id));
     
     async Task BranchSession(string id)
     {
         try
         {
-            var session = await SessionProvider.BranchSessionAsync(id);
+            var session = await ChatOrchestrator.BranchSessionAsync(id);
             MessageService.Success("会话已分支");
-            NavigationManager.NavigateTo($"/session/{session.Id}");
+            NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
         }
         catch (Exception ex)
         {
-            MessageService.Error($"分支失败: {ex.Message}");
+            MessageService.Error(string.Format("分支失败: {0}", ex.Message));
         }
     }
     

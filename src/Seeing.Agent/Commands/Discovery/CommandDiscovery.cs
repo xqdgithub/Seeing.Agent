@@ -158,6 +158,7 @@ namespace Seeing.Agent.Commands.Discovery
                     RequiresConfirmation = cmdAttr.RequiresConfirmation,
                     IsHidden = cmdAttr.IsHidden,
                     SortOrder = cmdAttr.SortOrder,
+                    Type = cmdAttr.Type,
                     Source = type.FullName ?? type.Name
                 };
 

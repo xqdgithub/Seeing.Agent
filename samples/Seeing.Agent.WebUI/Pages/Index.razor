@@ -5,8 +5,9 @@
 @using Seeing.Agent.Llm
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
+@using Seeing.Agent.App
 @inject SessionState SessionState
-@inject SessionProvider SessionProvider
+@inject IChatOrchestrator ChatOrchestrator
 @inject AppState AppState
 @inject IWorkspaceProvider WorkspaceProvider
 @inject IAgentRegistry AgentRegistry
@@ -245,8 +246,8 @@
     
     protected override async Task OnInitializedAsync()
     {
-        await SessionProvider.InitializeSessionListAsync();
-        _sessionCount = SessionProvider.GetSessionList().Count;
+        var sessions = await ChatOrchestrator.ListSessionsAsync();
+        _sessionCount = sessions.Count;
         
         var agents = await AgentRegistry.GetPrimaryAgentsAsync();
         _agentCount = agents.Count;
@@ -256,8 +257,7 @@
         
         if (_sessionCount > 0)
         {
-            var recentSession = SessionProvider.GetSessionList().First();
-            await SessionProvider.LoadSessionAsync(recentSession.Id);
+            var recentSession = sessions.First();
             AppState.CurrentSessionId = recentSession.Id;
         }
     }
@@ -266,7 +266,7 @@
     {
         if (!string.IsNullOrEmpty(AppState.CurrentSessionId))
         {
-            NavigationManager.NavigateTo($"/session/{AppState.CurrentSessionId}");
+            NavigationManager.NavigateTo(string.Format("/session/{0}", AppState.CurrentSessionId));
         }
         else
         {
@@ -279,12 +279,11 @@
         // 使用配置中的默认智能体
         var defaultAgent = await AgentRegistry.GetDefaultAgentNameAsync();
         
-        var newSession = await SessionProvider.CreateSessionAsync(
+        var newSession = await ChatOrchestrator.CreateSessionAsync(
             "新会话", 
             defaultAgent,
             WorkspaceProvider.WorkspaceRoot);
-        await SessionProvider.SaveCurrentSessionAsync();
-        NavigationManager.NavigateTo($"/session/{newSession.Id}");
+        NavigationManager.NavigateTo(string.Format("/session/{0}", newSession.Id));
     }
     
     private string GetMessageClass(string role) => role.ToLowerInvariant() switch

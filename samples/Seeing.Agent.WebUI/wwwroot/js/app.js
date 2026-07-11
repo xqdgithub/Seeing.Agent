@@ -469,3 +469,72 @@ function toggleToolCall(toolCallId) {
         detail.style.display = 'block';
     }
 }
+
+// ========== 命令自动完成辅助函数 ==========
+
+/**
+ * 获取光标前的文本
+ * @param {string} textareaId - Textarea 元素 ID
+ * @returns {string} 光标前的文本
+ */
+function getTextBeforeCursor(textareaId) {
+    const textarea = document.getElementById(textareaId);
+    if (!textarea) return '';
+    const cursorPos = textarea.selectionStart;
+    return textarea.value.substring(0, cursorPos);
+}
+
+/**
+ * 验证 `/` 触发是否有效（仅在行首或空白后触发）
+ * @param {string} textareaId - Textarea 元素 ID
+ * @returns {boolean} 是否有效触发
+ */
+function isSlashTriggerValid(textareaId) {
+    const textBeforeCursor = getTextBeforeCursor(textareaId);
+    if (textBeforeCursor.length === 0) return true; // 在开头
+    const lastChar = textBeforeCursor[textBeforeCursor.length - 1];
+    return lastChar === ' ' || lastChar === '\n'; // 在空格或换行后
+}
+
+/**
+ * 设置命令自动完成的键盘事件处理
+ * @param {string} textareaId - Textarea 元素 ID
+ * @param {any} dotNetRef - .NET 引用
+ */
+function setupCommandAutocomplete(textareaId, dotNetRef) {
+    const textarea = document.getElementById(textareaId);
+    if (!textarea) return;
+
+    // 存储引用以便后续清理
+    textarea._commandAutocompleteRef = dotNetRef;
+
+    textarea.addEventListener('keydown', function(e) {
+        // 检查是否显示下拉框（通过 data 属性）
+        const isOpen = textarea.dataset.commandDropdownOpen === 'true';
+        if (!isOpen) return;
+
+        // 只阻止导航键的默认行为
+        switch (e.key) {
+            case 'ArrowDown':
+            case 'ArrowUp':
+            case 'Enter':
+                e.preventDefault();
+                break;
+            case 'Escape':
+                // Escape 不阻止默认，让输入框保持焦点
+                break;
+        }
+    });
+}
+
+/**
+ * 更新命令下拉框状态
+ * @param {string} textareaId - Textarea 元素 ID
+ * @param {boolean} isOpen - 是否打开
+ */
+function setCommandDropdownState(textareaId, isOpen) {
+    const textarea = document.getElementById(textareaId);
+    if (textarea) {
+        textarea.dataset.commandDropdownOpen = isOpen ? 'true' : 'false';
+    }
+}

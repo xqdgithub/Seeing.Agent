@@ -4,7 +4,16 @@
 @using Microsoft.JSInterop
 @using Seeing.Agent.WebUI.Shared
 @using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Commands
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.State
+@using Seeing.Agent.Skills
+@using Seeing.Agent.Core.Interfaces
+@using System.Threading
+@using System.Text
 @inject IJSRuntime JSRuntime
+@inject CommandAvailabilityChecker AvailabilityChecker
+@inject SkillManager SkillManager
 
 <div Class="prompt-input-container" @ref="@ContainerRef">
     <!-- 附件预览 -->
@@ -24,16 +33,65 @@
                    Style="display: none;"
                    @ref="@FileInputRef" />
 
-        <textarea Id="@TextareaId"
-                  Class="prompt-textarea"
-                  @bind="@InputText"
-                  @bind:event="oninput"
-                  placeholder="@Placeholder"
-                  disabled="@IsProcessing"
-                  onkeydown="@HandleKeyDown"
-                  @ref="@TextareaRef"
-                  rows="1"
-                  style="resize: none; overflow-y: auto; min-height: 40px; max-height: 200px;"></textarea>
+        <!-- Command autocomplete dropdown -->
+        <div class="command-autocomplete-wrapper" style="position: relative; flex: 1; display: flex; flex-direction: column;">
+            <textarea Id="@TextareaId"
+                      Class="prompt-textarea"
+                      @bind="@InputText"
+                      @bind:event="oninput"
+                      @bind:after="@HandleInputChange"
+                      placeholder="@Placeholder"
+                      disabled="@IsProcessing"
+                      @onkeydown="@HandleKeyDown"
+                      @onkeydown:preventDefault="@_preventDefaultKeydown"
+                      @ref="@TextareaRef"
+                      rows="1"
+                      style="resize: none; overflow-y: auto; min-height: 40px; max-height: 200px;"></textarea>
+            
+            @if (_showCommandDropdown && FilteredCommands.Count > 0)
+            {
+                <div class="command-dropdown" style="position: absolute; bottom: 100%; left: 0; right: 0; background: var(--color-bg-container); border: 1px solid var(--color-border); border-radius: 8px; box-shadow: 0 6px 16px 0 rgba(0,0,0,0.08); max-height: 300px; overflow-y: auto; margin-bottom: 8px; z-index: 1000;">
+                    <ul class="command-list" style="list-style: none; padding: 4px 0; margin: 0;">
+                        @foreach (var cmd in FilteredCommands)
+                        {
+                            var isSelected = cmd.Value == _selectedCommand;
+                            var disabledStyle = cmd.IsDisabled ? "opacity: 0.5; cursor: not-allowed;" : "";
+                            <li class="command-item @(isSelected ? "selected" : "") @(cmd.IsDisabled ? "disabled" : "")" 
+                                style="padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; @(isSelected ? "background: var(--color-primary-bg);" : "") @disabledStyle"
+                                @onclick="() => SelectCommand(cmd)"
+                                @onmouseenter="() => _selectedCommand = cmd.Value"
+                                title="@(cmd.IsDisabled ? cmd.DisabledReason : "")">
+                                <Icon Type="@cmd.IconType" style="color: var(--color-text-secondary); flex-shrink: 0;" />
+                                <span style="font-weight: 500; white-space: nowrap;">@cmd.Name</span>
+                                <span style="color: var(--color-text-tertiary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;">@cmd.Description</span>
+                                @if (!string.IsNullOrEmpty(cmd.Keybind))
+                                {
+                                    <span class="cmd-keybind" style="color: var(--color-text-quaternary); font-size: 10px; padding: 1px 4px; background: var(--color-fill-tertiary); border-radius: 3px; flex-shrink: 0;">@cmd.Keybind</span>
+                                }
+                                <span class="cmd-category" style="color: var(--color-text-quaternary); font-size: 11px; flex-shrink: 0; padding: 1px 4px; background: var(--color-fill-secondary); border-radius: 4px;">
+                                    @if (cmd.IsCustom)
+                                    {
+                                        <text>自定义</text>
+                                    }
+                                    else if (cmd.IsBuiltIn)
+                                    {
+                                        <text>@cmd.Category</text>
+                                    }
+                                    else if (cmd.IsTool)
+                                    {
+                                        <text>工具</text>
+                                    }
+                                    else if (cmd.IsSkill)
+                                    {
+                                        <text>技能</text>
+                                    }
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
         
         <div Class="prompt-actions">
             <Space>
@@ -41,7 +99,8 @@
                     <QuickCommandPopover Tools="@AvailableTools"
                                          Skills="@AvailableSkills"
                                          OnSelect="@OnQuickCommandSelect"
-                                         IsDisabled="@IsProcessing" />
+                                         IsDisabled="@IsProcessing"
+                                         ForceClose="@_isDropdownOpen" />
                 </SpaceItem>
                 <SpaceItem>
                     <Tooltip Title="上传文件">
@@ -125,6 +184,24 @@
     public List<QuickSkillViewModel> AvailableSkills { get; set; } = new();
 
     /// <summary>
+    /// 可用自定义命令列表
+    /// </summary>
+    [Parameter]
+    public List<CommandItemViewModel> AvailableCustomCommands { get; set; } = new();
+
+    /// <summary>
+    /// 会话状态（用于命令可用性检查）
+    /// </summary>
+    [Parameter]
+    public SessionState? SessionState { get; set; }
+
+    /// <summary>
+    /// Skill 命令回调（参数: skillName, arguments）
+    /// </summary>
+    [Parameter]
+    public EventCallback<(string SkillName, string Arguments)> OnSkillCommand { get; set; }
+
+    /// <summary>
     /// 占位符文本
     /// </summary>
     [Parameter]
@@ -134,7 +211,7 @@
     /// 帮助提示文本
     /// </summary>
     [Parameter]
-    public string HelpText { get; set; } = "Enter 发送，Shift+Enter 换行，支持粘贴图片";
+    public string HelpText { get; set; } = "Enter 发送，Shift+Enter 换行，/ 触发命令";
 
     /// <summary>
     /// 提交事件回调
@@ -192,13 +269,216 @@
     /// 元素引用
     /// </summary>
     private ElementReference ContainerRef { get; set; }
-    private InputFile? FileInputRef { get; set; }
     private ElementReference TextareaRef { get; set; }
+    private InputFile? FileInputRef { get; set; }
 
     /// <summary>
     /// 是否正在拖拽
     /// </summary>
     private bool IsDragging { get; set; }
+
+    /// <summary>
+    /// 所有可用命令（工具 + 技能）
+    /// </summary>
+    private List<CommandItemViewModel> _allCommands = new();
+
+    /// <summary>
+    /// 过滤后的命令列表（用于显示）
+    /// </summary>
+    private List<CommandItemViewModel> FilteredCommands { get; set; } = new();
+
+    /// <summary>
+    /// 下拉框是否打开
+    /// </summary>
+    private bool _isDropdownOpen = false;
+
+    /// <summary>
+    /// 是否显示命令下拉框
+    /// </summary>
+    private bool _showCommandDropdown = false;
+
+    /// <summary>
+    /// 当前选中的命令
+    /// </summary>
+    private string _selectedCommand = "";
+
+    /// <summary>
+    /// 是否阻止 keydown 默认行为
+    /// </summary>
+    private bool _preventDefaultKeydown = false;
+
+    /// <summary>
+    /// 加载所有命令（自定义 + 内置 + 工具 + 技能）
+    /// </summary>
+    private void LoadCommands()
+    {
+        _allCommands = new List<CommandItemViewModel>();
+
+        // 1. 添加自定义命令（已处理冲突）
+        foreach (var custom in AvailableCustomCommands)
+        {
+            _allCommands.Add(custom);
+        }
+
+        // 2. 添加内置命令（检查可用性）
+        foreach (var builtin in BuiltInCommands.GetAll())
+        {
+            var isDisabled = !AvailabilityChecker.CanExecute(builtin.Name, SessionState);
+            var disabledReason = AvailabilityChecker.GetDisabledReason(builtin.Name, SessionState);
+            
+            _allCommands.Add(new CommandItemViewModel
+            {
+                Value = builtin.Value,
+                Name = builtin.Name,
+                Description = builtin.Description,
+                IconType = builtin.IconType,
+                IsBuiltIn = true,
+                Category = builtin.Category,
+                Priority = builtin.Priority,
+                Keybind = builtin.Keybind,
+                Source = builtin.Source,
+                IsDisabled = isDisabled,
+                DisabledReason = disabledReason
+            });
+        }
+
+        // 3. 添加工具
+        foreach (var tool in AvailableTools)
+        {
+            _allCommands.Add(new CommandItemViewModel
+            {
+                Value = $"/{tool.Name}",
+                Name = tool.Name,
+                Description = tool.Description,
+                IconType = IconType.Outline.Tool,
+                IsTool = true,
+                Category = "Tools",
+                Priority = 3
+            });
+        }
+
+        // 4. 添加技能
+        foreach (var skill in AvailableSkills)
+        {
+            _allCommands.Add(new CommandItemViewModel
+            {
+                Value = $"/{skill.Name}",
+                Name = skill.Name,
+                Description = skill.Description,
+                IconType = IconType.Outline.Book,
+                IsSkill = true,
+                Category = "Skills",
+                Priority = 4
+            });
+        }
+
+        // 按优先级和名称排序
+        _allCommands = _allCommands
+            .OrderBy(c => c.Priority)
+            .ThenBy(c => c.Name)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 处理命令搜索（Mentions OnSearch 回调）
+    /// </summary>
+    private async Task HandleCommandSearch((string searchValue, string prefix) args)
+    {
+        Console.WriteLine($"[HandleCommandSearch] Called with searchValue: {args.searchValue}, prefix: {args.prefix}");
+        // 标记下拉框打开
+        _isDropdownOpen = true;
+
+        // 暂时跳过验证测试
+        // try
+        // {
+        //     var isValid = await JSRuntime.InvokeAsync<bool>("isSlashTriggerValid", TextareaId);
+        //     Console.WriteLine($"[HandleCommandSearch] isSlashTriggerValid: {isValid}");
+        //     if (!isValid)
+        //     {
+        //         FilteredCommands = new List<CommandItemViewModel>();
+        //         StateHasChanged();
+        //         return;
+        //     }
+        // }
+        // catch (Exception ex)
+        // {
+        //     Console.WriteLine($"[HandleCommandSearch] JSInterop error: {ex.Message}");
+        // }
+
+        Console.WriteLine($"[HandleCommandSearch] AvailableTools: {AvailableTools.Count}, AvailableSkills: {AvailableSkills.Count}, CustomCommands: {AvailableCustomCommands.Count}");
+        
+        // 确保命令已加载
+        if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCustomCommands.Count > 0))
+        {
+            LoadCommands();
+        }
+        
+        Console.WriteLine($"[HandleCommandSearch] _allCommands count: {_allCommands.Count}");
+
+        // 过滤命令
+        var searchLower = args.searchValue?.ToLowerInvariant() ?? "";
+        if (string.IsNullOrEmpty(searchLower))
+        {
+            // 无搜索词，显示所有命令
+            FilteredCommands = _allCommands.ToList();
+        }
+        else
+        {
+            // 按名称或描述过滤（大小写不敏感）
+            FilteredCommands = _allCommands
+                .Where(c => c.Name.ToLowerInvariant().Contains(searchLower) ||
+                           c.Description.ToLowerInvariant().Contains(searchLower))
+                .ToList();
+        }
+
+        Console.WriteLine($"[HandleCommandSearch] FilteredCommands count: {FilteredCommands.Count}");
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 加载命令选项（Mentions LoadOptions 回调）
+    /// </summary>
+    private async Task<IEnumerable<MentionsDynamicOption>> LoadCommandOptions(string search, CancellationToken cancellationToken)
+    {
+        Console.WriteLine($"[LoadCommandOptions] Called with search: {search}");
+        _isDropdownOpen = true;
+
+        try
+        {
+            var isValid = await JSRuntime.InvokeAsync<bool>("isSlashTriggerValid", TextareaId);
+            Console.WriteLine($"[LoadCommandOptions] isSlashTriggerValid: {isValid}");
+            if (!isValid) return Enumerable.Empty<MentionsDynamicOption>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LoadCommandOptions] JSInterop error: {ex.Message}");
+        }
+
+        Console.WriteLine($"[LoadCommandOptions] AvailableTools: {AvailableTools.Count}, AvailableSkills: {AvailableSkills.Count}, CustomCommands: {AvailableCustomCommands.Count}");
+        Console.WriteLine($"[LoadCommandOptions] _allCommands before load: {_allCommands.Count}");
+        
+        if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCustomCommands.Count > 0))
+        {
+            LoadCommands();
+        }
+        
+        Console.WriteLine($"[LoadCommandOptions] _allCommands after load: {_allCommands.Count}");
+
+        var searchLower = search?.ToLowerInvariant() ?? "";
+        var filtered = string.IsNullOrEmpty(searchLower)
+            ? _allCommands.ToList()
+            : _allCommands.Where(c => c.Name.ToLowerInvariant().Contains(searchLower) || c.Description.ToLowerInvariant().Contains(searchLower)).ToList();
+
+        Console.WriteLine($"[LoadCommandOptions] Filtered count: {filtered.Count}");
+
+        return filtered.Select(cmd => new MentionsDynamicOption
+        {
+            Value = cmd.Value,
+            Display = _optionDisplay(cmd.Name)
+        });
+    }
+
+    private RenderFragment<string> _optionDisplay => name => builder => builder.AddContent(0, name);
 
     /// <summary>
     /// 获取拖拽区域 CSS 类
@@ -209,18 +489,232 @@
     }
 
     /// <summary>
+    /// 选择命令（点击或回车）
+    /// </summary>
+    private async Task SelectCommand(CommandItemViewModel cmd)
+    {
+        // 处理禁用命令
+        if (cmd.IsDisabled)
+        {
+            _showCommandDropdown = false;
+            _selectedCommand = "";
+            StateHasChanged();
+            // 禁用命令不执行任何操作
+            return;
+        }
+
+        // 关闭下拉框
+        _showCommandDropdown = false;
+        _selectedCommand = "";
+        await SetDropdownStateAsync(false);
+
+        // 所有命令（包括内置命令）都插入到输入框，由 ChatOrchestrator 处理
+        var lastSlashIndex = InputText.LastIndexOf('/');
+        if (lastSlashIndex >= 0)
+        {
+            // 替换从 / 开始到光标位置的内容为命令
+            InputText = InputText.Substring(0, lastSlashIndex) + cmd.Value + " ";
+        }
+        else
+        {
+            InputText = cmd.Value + " ";
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
     /// 键盘事件处理
     /// </summary>
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        // Enter 发送，Shift+Enter 换行
-        if (e.Key == "Enter" && !e.ShiftKey)
+        // 如果命令下拉框打开
+        if (_showCommandDropdown && FilteredCommands.Count > 0)
         {
-            // 阻止默认换行行为并发送消息
+            switch (e.Key)
+            {
+                case "ArrowDown":
+                    // 向下选择
+                    {
+                        _preventDefaultKeydown = true;
+                        var currentIndex = FilteredCommands.FindIndex(c => c.Value == _selectedCommand);
+                        var nextIndex = currentIndex < FilteredCommands.Count - 1 ? currentIndex + 1 : 0;
+                        _selectedCommand = FilteredCommands[nextIndex].Value;
+                        StateHasChanged();
+                    }
+                    return;
+                    
+                case "ArrowUp":
+                    // 向上选择
+                    {
+                        _preventDefaultKeydown = true;
+                        var currentIndex = FilteredCommands.FindIndex(c => c.Value == _selectedCommand);
+                        var prevIndex = currentIndex > 0 ? currentIndex - 1 : FilteredCommands.Count - 1;
+                        _selectedCommand = FilteredCommands[prevIndex].Value;
+                        StateHasChanged();
+                    }
+                    return;
+                    
+                case "Enter":
+                    // 如果有选中的命令且与当前输入完全匹配，则直接提交而不是选择
+                    {
+                        _preventDefaultKeydown = true;
+                        var selected = FilteredCommands.FirstOrDefault(c => c.Value == _selectedCommand);
+                        if (selected != null && _selectedCommand == InputText.Trim())
+                        {
+                            // 输入内容与选中命令完全匹配，直接提交
+                            _showCommandDropdown = false;
+                            _selectedCommand = "";
+                            // 继续到下面的提交逻辑
+                            break;
+                        }
+                        if (selected != null)
+                        {
+                            await SelectCommand(selected);
+                            return;
+                        }
+                        // 没有选中的命令，关闭下拉框并继续提交
+                        _showCommandDropdown = false;
+                        _selectedCommand = "";
+                    }
+                    break;
+                    
+                case "Escape":
+                    // 关闭下拉框
+                    _preventDefaultKeydown = true;
+                    _showCommandDropdown = false;
+                    _selectedCommand = "";
+                    await SetDropdownStateAsync(false);
+                    StateHasChanged();
+                    return;
+            }
+        }
+        
+        // Enter 键处理
+        if (e.Key == "Enter")
+        {
+            // Shift+Enter 或 Ctrl+Enter 换行（允许默认行为）
+            if (e.ShiftKey || e.CtrlKey)
+            {
+                _preventDefaultKeydown = false;
+                return;
+            }
+            
+            // 单独 Enter 发送消息（阻止默认换行）
+            _preventDefaultKeydown = true;
+            
             if (!string.IsNullOrWhiteSpace(InputText) || Attachments.Count > 0)
             {
                 await OnSubmit();
             }
+        }
+        else
+        {
+            _preventDefaultKeydown = false;
+        }
+    }
+
+    /// <summary>
+    /// 处理 TextArea 值变更
+    /// </summary>
+    private void HandleTextAreaValueChanged(string value)
+    {
+        // 检测是否选择了命令（值突然包含完整的 /command 格式）
+        // 如果输入值变化且下拉框打开，可能是选择了命令
+        if (_isDropdownOpen && !string.IsNullOrEmpty(value))
+        {
+            var lastSlashIndex = value.LastIndexOf('/');
+            if (lastSlashIndex >= 0)
+            {
+                // 检查是否是完整命令（后面有空格或结束）
+                var afterSlash = value.Substring(lastSlashIndex);
+                var hasCompleteCommand = afterSlash.Contains(' ') || 
+                    _allCommands.Any(c => c.Value == afterSlash);
+                
+                // 如果检测到完整命令，关闭下拉框
+                if (hasCompleteCommand)
+                {
+                    _isDropdownOpen = false;
+                }
+            }
+        }
+        
+        InputText = value;
+    }
+
+    /// <summary>
+    /// 输入变更后处理（检测 / 触发命令下拉框）
+    /// </summary>
+    private void HandleInputChange()
+    {
+        // 确保命令已加载
+        if (_allCommands.Count == 0 && 
+            (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCustomCommands.Count > 0))
+        {
+            LoadCommands();
+        }
+
+        // 检测是否输入了 /
+        if (string.IsNullOrEmpty(InputText))
+        {
+            _showCommandDropdown = false;
+            _selectedCommand = "";
+            return;
+        }
+
+        var lastSlashIndex = InputText.LastIndexOf('/');
+        if (lastSlashIndex < 0)
+        {
+            _showCommandDropdown = false;
+            _selectedCommand = "";
+            return;
+        }
+
+        // 检查 / 后面是否有空格（完整命令）
+        var afterSlash = InputText.Substring(lastSlashIndex);
+        if (afterSlash.Contains(' '))
+        {
+            _showCommandDropdown = false;
+            _selectedCommand = "";
+            return;
+        }
+
+        // 获取搜索词（/ 后面的内容）
+        var search = afterSlash.Length > 1 ? afterSlash.Substring(1) : "";
+
+        // 过滤命令
+        var searchLower = search.ToLowerInvariant();
+        FilteredCommands = string.IsNullOrEmpty(searchLower)
+            ? _allCommands.ToList()
+            : _allCommands.Where(c => c.Name.ToLowerInvariant().Contains(searchLower) ||
+                                      c.Description.ToLowerInvariant().Contains(searchLower)).ToList();
+
+        if (FilteredCommands.Count > 0)
+        {
+            _showCommandDropdown = true;
+            _selectedCommand = FilteredCommands[0].Value;
+            _ = SetDropdownStateAsync(true);
+        }
+        else
+        {
+            _showCommandDropdown = false;
+            _selectedCommand = "";
+            _ = SetDropdownStateAsync(false);
+        }
+    }
+
+    /// <summary>
+    /// 设置下拉框状态（JS）
+    /// </summary>
+    private async Task SetDropdownStateAsync(bool isOpen)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("setCommandDropdownState", TextareaId, isOpen);
+        }
+        catch
+        {
+            // 忽略 JS 错误
         }
     }
 
@@ -232,9 +726,12 @@
         if ((string.IsNullOrWhiteSpace(InputText) && Attachments.Count == 0) || IsProcessing)
             return;
 
+        var trimmedInput = InputText.Trim();
+
+        // 所有输入（包括命令）都发送给 ChatOrchestrator 处理
         var submitArgs = new PromptSubmitEventArgs
         {
-            Text = InputText.Trim(),
+            Text = trimmedInput,
             Attachments = Attachments.ToList()
         };
 
@@ -276,6 +773,37 @@
         InputText = "";
         Attachments.Clear();
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// 构建 Skill 调用模板
+    /// </summary>
+    private static string BuildSkillTemplate(SkillInfo skill, string arguments)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("<skill-invoke>");
+        sb.AppendLine($"<skill-name>{skill.Name}</skill-name>");
+
+        if (!string.IsNullOrEmpty(skill.Description))
+        {
+            sb.AppendLine($"<skill-description>{skill.Description}</skill-description>");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine(skill.Content);
+
+        if (!string.IsNullOrEmpty(arguments))
+        {
+            sb.AppendLine();
+            sb.AppendLine("<user-request>");
+            sb.AppendLine(arguments);
+            sb.AppendLine("</user-request>");
+        }
+
+        sb.AppendLine("</skill-invoke>");
+
+        return sb.ToString();
     }
 
     /// <summary>
@@ -490,7 +1018,8 @@
                 // 自动聚焦输入框
                 if (AutoFocus)
                 {
-                    await TextareaRef.FocusAsync();
+                    // 使用 JS 聚焦，因为 TextArea 组件没有直接的 FocusAsync
+                    await JSRuntime.InvokeVoidAsync("focusElement", TextareaId);
                 }
             }
             catch

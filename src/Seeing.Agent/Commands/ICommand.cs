@@ -1,7 +1,23 @@
 using System.Text.Json;
+using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.Commands
 {
+    /// <summary>
+    /// 命令类型 - 决定命令执行后的行为
+    /// </summary>
+    public enum CommandType
+    {
+        /// <summary>默认：透传给 Agent 处理</summary>
+        Default = 0,
+        
+        /// <summary>系统命令：立即执行，返回结果，不进入 Agent</summary>
+        System = 1,
+        
+        /// <summary>Skill 命令：替换 History 后继续执行 Agent</summary>
+        Skill = 2
+    }
+
     /// <summary>
     /// 命令分类
     /// </summary>
@@ -67,6 +83,9 @@ namespace Seeing.Agent.Commands
         /// <summary>执行时切换的目标 Agent</summary>
         public string? Agent { get; init; }
 
+        /// <summary>命令执行类型（决定执行后行为）</summary>
+        public CommandType Type { get; init; } = CommandType.Default;
+
         /// <summary>创建简单元数据</summary>
         public static CommandMetadata Simple(string name, string description, string usage = "", CommandCategory category = CommandCategory.Other)
             => new() { Name = name, Description = description, Usage = usage, Category = category };
@@ -103,6 +122,9 @@ namespace Seeing.Agent.Commands
 
         /// <summary>目标 Agent（从命令元数据传递）</summary>
         public string? TargetAgent { get; init; }
+
+        /// <summary>消息历史（用于 Skill 命令修改）</summary>
+        public List<ChatMessage>? History { get; init; }
 
         /// <summary>附加数据（用于扩展）</summary>
         public Dictionary<string, object> Data { get; } = new();

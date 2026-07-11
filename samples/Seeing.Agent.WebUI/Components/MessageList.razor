@@ -49,9 +49,20 @@
                 <!-- 系统消息和其他消息：传统布局 -->
                 else
                 {
-                    <ChatMessageItem @key="message.Id"
-                                     Message="@message" 
-                                     OnToolClick="@OnToolClickHandler" />
+                    <!-- 压缩摘要消息：特殊样式 -->
+                    @if (message.IsCompactionSummary)
+                    {
+                        <div class="compaction-summary-message" style="margin: 8px 0; padding: 12px; background: var(--ant-info-bg); border-radius: 6px;">
+                            <Icon Type="@IconType.Outline.FileText" Style="margin-right: 8px;" />
+                            @((MarkupString)message.Content.Replace("\n", "<br/>"))
+                        </div>
+                    }
+                    else
+                    {
+                        <ChatMessageItem @key="message.Id"
+                                         Message="@message" 
+                                         OnToolClick="@OnToolClickHandler" />
+                    }
                 }
             }
             

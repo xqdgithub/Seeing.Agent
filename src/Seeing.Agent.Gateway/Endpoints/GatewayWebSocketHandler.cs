@@ -16,14 +16,14 @@ namespace Seeing.Agent.Gateway.Endpoints;
 /// </summary>
 public sealed class GatewayWebSocketHandler
 {
-    private readonly GatewayOrchestrator _orchestrator;
+    private readonly GatewayOrchestratorV2 _orchestrator;
     private readonly GatewayPermissionChannel _permissionChannel;
     private readonly GatewayConnectionManager _connectionManager;
     private readonly GatewayOptions _options;
     private readonly ILogger<GatewayWebSocketHandler> _logger;
 
     public GatewayWebSocketHandler(
-        GatewayOrchestrator orchestrator,
+        GatewayOrchestratorV2 orchestrator,
         GatewayPermissionChannel permissionChannel,
         GatewayConnectionManager connectionManager,
         GatewayOptions options,

@@ -72,6 +72,11 @@ public class MessageViewModel
     public bool IsComplete { get; set; }
 
     /// <summary>
+    /// 是否是压缩摘要消息
+    /// </summary>
+    public bool IsCompactionSummary { get; set; }
+
+    /// <summary>
     /// 是否包含附件
     /// </summary>
     public bool HasAttachments => Parts != null && Parts.Count > 0;

@@ -1,4 +1,5 @@
 using Seeing.Agent.Acp.Extensions;
+using Seeing.Agent.App;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
@@ -41,7 +42,6 @@ builder.Services.AddSingleton<ISessionStore, FileSessionStore>();
 builder.Services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
 builder.Services.AddSingleton<SessionManager>();  // 需要在 ISessionEventPublisher 之后注册
 builder.Services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
-builder.Services.AddScoped<SessionProvider>();
 
 // === WebUI 服务 ===
 builder.Services.AddScoped<BlazorPermissionChannel>();
@@ -50,6 +50,7 @@ builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<EventStreamHandler>();
 builder.Services.AddScoped<ErrorHandlingService>();
+builder.Services.AddScoped<SessionCompactionService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SkillStateService>();
 builder.Services.AddSingleton<ToolStateService>();
@@ -57,6 +58,12 @@ builder.Services.AddSingleton<SeeingConfigService>();
 builder.Services.AddSingleton<GatewayClientConfigService>();
 builder.Services.AddSingleton<GatewayClientSupervisor>();
 builder.Services.AddSingleton<WorkspaceSwitchService>();
+
+// === ChatOrchestrator 统一入口 ===
+builder.Services.AddChatOrchestrator();
+
+// === 命令服务 ===
+builder.Services.AddScoped<CommandAvailabilityChecker>();
 
 // === 调度器状态服务 ===
 builder.Services.AddSingleton<SchedulerStatusService>();
@@ -82,6 +89,9 @@ using (var scope = app.Services.CreateScope())
 
     // 初始化核心组件（不包括 Memory 插件）
     await sp.InitializeSeeingAgentAsync(workspaceRoot);
+
+    // 初始化命令发现
+    sp.InitializeCommands();
 
     // === Memory 手动初始化（直接注入方式）===
     var memoryManager = sp.GetRequiredService<IMemoryManager>();

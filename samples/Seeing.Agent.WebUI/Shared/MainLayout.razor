@@ -8,14 +8,14 @@
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @using Seeing.Session.Management
+@using Seeing.Agent.App
 @inject AppState AppState
 @inject SessionState SessionState
-@inject SessionProvider SessionProvider
+@inject IChatOrchestrator ChatOrchestrator
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 @inject IAgentRegistry AgentRegistry
 @inject ILlmService LlmService
-@implements IDisposable
 
 <Layout Class="app-layout" Style="min-height: 100vh;">
     <!-- 左侧边栏 -->
@@ -38,18 +38,20 @@
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChange;
-        SessionProvider.OnCurrentSessionChanged += OnCurrentSessionChanged;
 
         await LoadAgentsAndModelsAsync();
 
-        await SessionProvider.InitializeSessionListAsync();
-        var sessionList = SessionProvider.GetSessionList();
+        var sessionList = await ChatOrchestrator.ListSessionsAsync();
 
         if (sessionList.Count > 0)
         {
             var recentSession = sessionList.First();
-            await SessionProvider.LoadSessionAsync(recentSession.Id);
-            AppState.CurrentSessionId = recentSession.Id;
+            var session = await ChatOrchestrator.GetSessionAsync(recentSession.Id);
+            if (session != null)
+            {
+                SessionState.SetSession(session);
+                AppState.CurrentSessionId = session.Id;
+            }
         }
     }
 
@@ -62,16 +64,6 @@
     private void OnAppStateChange()
     {
         RequestRender();
-    }
-
-    private void OnCurrentSessionChanged()
-    {
-        if (SessionProvider.CurrentSession != null)
-        {
-            SessionState.SetSession(SessionProvider.CurrentSession);
-            AppState.CurrentSessionId = SessionProvider.CurrentSession.Id;
-            AppState.NotifyChange();
-        }
     }
 
     private void RequestRender()
@@ -94,18 +86,12 @@
         }
         catch (Exception ex)
         {
-            AppState.ErrorMessage = $"加载失败: {ex.Message}";
+            AppState.ErrorMessage = string.Format("加载失败: {0}", ex.Message);
         }
     }
     
     private void OnSiderCollapse(bool collapsed)
     {
         AppState.SidebarCollapsed = collapsed;
-    }
-    
-    public void Dispose()
-    {
-        AppState.OnChange -= OnAppStateChange;
-        SessionProvider.OnCurrentSessionChanged -= OnCurrentSessionChanged;
     }
 }

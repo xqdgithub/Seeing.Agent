@@ -111,6 +111,11 @@ namespace Seeing.Agent.WebUI.State
         public bool IsExecuting { get; private set; }
 
         /// <summary>
+        /// 是否正在压缩会话
+        /// </summary>
+        public bool IsCompacting { get; set; }
+
+        /// <summary>
         /// 是否已完成
         /// </summary>
         public bool IsCompleted { get; private set; }

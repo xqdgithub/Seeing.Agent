@@ -95,3 +95,47 @@
     color: var(--color-text-tertiary);
     border-top: 1px solid var(--color-border-secondary);
 }
+
+/* === Command Dropdown Styles === */
+
+.command-item {
+    transition: background-color 0.15s ease;
+}
+
+.command-item:hover:not(.disabled) {
+    background: var(--color-primary-bg);
+}
+
+.command-item.selected {
+    background: var(--color-primary-bg);
+}
+
+.command-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.command-item.disabled:hover {
+    background: transparent;
+}
+
+.cmd-keybind {
+    font-family: var(--font-family-mono, monospace);
+    background: var(--color-fill-tertiary);
+    border-radius: 3px;
+}
+
+.cmd-category {
+    text-transform: capitalize;
+}
+
+/* Category badge colors */
+.command-item .cmd-category {
+    background: var(--color-fill-secondary);
+}
+
+/* Custom command badge */
+.command-item:has(.cmd-category:contains("自定义")) .cmd-category {
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+}

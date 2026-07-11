@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Seeing.Agent/Seeing.Agent.csproj" />
+    <ProjectReference Include="../../src/Seeing.Agent.App/Seeing.Agent.App.csproj" />
     <ProjectReference Include="../../src/Seeing.Session/Seeing.Session.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />

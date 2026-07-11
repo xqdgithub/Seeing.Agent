@@ -104,7 +104,7 @@ curl -X POST http://127.0.0.1:8765/api/gateway/sessions/wecom_user_001/reset
 | `GatewayServer` | `IGatewayServer` 实现，封装 Kestrel 启停 |
 | `GatewayHostedService` | 随 Generic Host 自动启动 |
 | `GatewayHost` | 独立 WebApplication 宿主 |
-| `GatewayOrchestrator` | 镜像 WebUI 执行流 |
+| `GatewayOrchestratorV2` | 使用 IChatOrchestrator 统一入口 |
 | `AgentSelectionResolver` | 统一默认 Agent / Model 解析 |
 | `SessionExecutionQueue` | 同 `(channelId, sessionId)` 串行 |
 | `GatewayPermissionChannel` | Gateway 专用权限通道 |

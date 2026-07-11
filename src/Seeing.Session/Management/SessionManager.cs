@@ -134,7 +134,7 @@ namespace Seeing.Session.Management
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
 
-            // 发布 SessionEvent（通知 SessionProvider 等 UI 组件）
+            // 发布 SessionEvent（通知 UI 组件）
             _eventPublisher?.Publish(new SessionEvent
             {
                 SessionId = session.Id,
@@ -357,7 +357,7 @@ namespace Seeing.Session.Management
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session, ["message"] = message });
 
-            // 发布 SessionEvent（通知 SessionProvider 等 UI 组件）
+            // 发布 SessionEvent（通知 UI 组件）
             _eventPublisher?.Publish(new SessionEvent
             {
                 SessionId = session.Id,

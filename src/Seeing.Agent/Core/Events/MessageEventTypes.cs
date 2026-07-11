@@ -41,11 +41,17 @@ public enum MessageEventType
     /// <summary>权限响应（用户确认/拒绝）</summary>
     PermissionResponse,
 
-    /// <summary>Loop 被取消（用户主动取消）</summary>
+    /// <summary>Loop 被取消</summary>
     LoopCancelled,
-
+    
     /// <summary>错误</summary>
-    Error
+    Error,
+
+    /// <summary>命令执行结果</summary>
+    CommandResult,
+
+    /// <summary>导航请求</summary>
+    Navigate
 }
 
 /// <summary>
