@@ -82,7 +82,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
                 {
                     var jobId = ctx.JobDetail.Key.Name;
                     var runId = ctx.MergedJobDataMap.GetStringValue(JobDataKeys.RunId) ?? Guid.NewGuid().ToString("N");
-                    _runningJobs.TryAdd(jobId, new RunInfo(runId, ctx.FireTimeUtc.UtcDateTime));
+                    _runningJobs.TryAdd(jobId, new RunInfo(runId, ctx.FireTimeUtc.LocalDateTime));
                 }
             }
 
@@ -220,7 +220,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         if (jobId == SchedulerConstants.HeartbeatJobId)
         {
             var runId = Guid.NewGuid().ToString("N");
-            if (!_runningJobs.TryAdd(jobId, new RunInfo(runId, DateTime.UtcNow)))
+            if (!_runningJobs.TryAdd(jobId, new RunInfo(runId, DateTime.Now)))
                 return new TriggerResult.Conflict("任务正在执行中");
             
             try
@@ -252,7 +252,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         
         // 检查是否正在执行
         var runId2 = Guid.NewGuid().ToString("N");
-        if (!_runningJobs.TryAdd(jobId, new RunInfo(runId2, DateTime.UtcNow)))
+        if (!_runningJobs.TryAdd(jobId, new RunInfo(runId2, DateTime.Now)))
             return new TriggerResult.Conflict("任务正在执行中");
         
         try
@@ -385,7 +385,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     void IJobExecutionListener.OnJobStart(string jobId, string runId)
     {
-        _runningJobs.AddOrUpdate(jobId, new RunInfo(runId, DateTime.UtcNow), (_, _) => new RunInfo(runId, DateTime.UtcNow));
+        _runningJobs.AddOrUpdate(jobId, new RunInfo(runId, DateTime.Now), (_, _) => new RunInfo(runId, DateTime.Now));
         _logger.LogDebug("Job {JobId} started with RunId={RunId}", jobId, runId);
         
         // 触发进度事件

@@ -144,7 +144,7 @@ public sealed class RunInfo
     /// <summary>执行 ID</summary>
     public string RunId { get; }
     
-    /// <summary>开始时间（UTC）</summary>
+    /// <summary>开始时间（本地时间）</summary>
     public DateTime StartTime { get; }
     
     public RunInfo(string runId, DateTime startTime)
