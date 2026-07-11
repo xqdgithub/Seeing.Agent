@@ -61,6 +61,12 @@ namespace Seeing.Agent.Commands
         /// <summary>排序权重（用于帮助显示顺序）</summary>
         public int SortOrder { get; init; } = 100;
 
+        /// <summary>命令模板（用于 Markdown 命令）</summary>
+        public string? Template { get; init; }
+
+        /// <summary>执行时切换的目标 Agent</summary>
+        public string? Agent { get; init; }
+
         /// <summary>创建简单元数据</summary>
         public static CommandMetadata Simple(string name, string description, string usage = "", CommandCategory category = CommandCategory.Other)
             => new() { Name = name, Description = description, Usage = usage, Category = category };
@@ -94,6 +100,9 @@ namespace Seeing.Agent.Commands
 
         /// <summary>工作区根目录</summary>
         public string? WorkspaceRoot { get; init; }
+
+        /// <summary>目标 Agent（从命令元数据传递）</summary>
+        public string? TargetAgent { get; init; }
 
         /// <summary>附加数据（用于扩展）</summary>
         public Dictionary<string, object> Data { get; } = new();

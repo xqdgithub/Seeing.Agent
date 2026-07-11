@@ -56,7 +56,8 @@ namespace Seeing.Agent.Commands
                 MessageId = context.MessageId,
                 Services = context.Services,
                 CancellationToken = ct,
-                WorkspaceRoot = context.WorkspaceRoot
+                WorkspaceRoot = context.WorkspaceRoot,
+                TargetAgent = command.Metadata.Agent
             };
 
             try

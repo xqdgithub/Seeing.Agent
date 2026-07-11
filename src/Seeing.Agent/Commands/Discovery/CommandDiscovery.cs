@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Commands.Attributes;
 using System.Reflection;
+using System.Text.RegularExpressions;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace Seeing.Agent.Commands.Discovery
 {
@@ -220,5 +223,170 @@ namespace Seeing.Agent.Commands.Discovery
         {
             return assemblies.SelectMany(a => DiscoverFromAssembly(a, services));
         }
+
+        #region Markdown 命令发现
+
+        private static readonly Regex FrontmatterRegex = new(
+            @"^---\s*[\r]?\n(.*?)[\r]?\n---\s*[\r]?\n?",
+            RegexOptions.Singleline | RegexOptions.Compiled);
+
+        private readonly IDeserializer _yamlDeserializer = new DeserializerBuilder()
+            .WithNamingConvention(UnderscoredNamingConvention.Instance)
+            .IgnoreUnmatchedProperties()
+            .Build();
+
+        /// <summary>
+        /// 从目录发现 Markdown 命令
+        /// </summary>
+        /// <param name="directory">搜索目录</param>
+        /// <param name="ct">取消令牌</param>
+        /// <returns>发现的命令列表</returns>
+        public async Task<IEnumerable<ICommand>> DiscoverFromMarkdownAsync(
+            string directory,
+            CancellationToken ct = default)
+        {
+            var commands = new List<ICommand>();
+
+            if (!Directory.Exists(directory))
+            {
+                _logger?.LogDebug("Markdown 命令目录不存在: {Directory}", directory);
+                return commands;
+            }
+
+            var files = Directory.GetFiles(directory, "*.md", SearchOption.AllDirectories);
+            _logger?.LogInformation("开始发现 Markdown 命令，目录: {Directory}, 文件数: {Count}", directory, files.Length);
+
+            foreach (var file in files)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var command = await ParseMarkdownCommandAsync(file, ct);
+                    if (command != null)
+                    {
+                        commands.Add(command);
+                        _logger?.LogDebug("发现 Markdown 命令: {Name} (来自 {File})", command.Metadata.Name, file);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "解析 Markdown 命令失败: {File}", file);
+                }
+            }
+
+            _logger?.LogInformation("Markdown 命令发现完成，共 {Count} 个", commands.Count);
+            return commands;
+        }
+
+        private async Task<ICommand?> ParseMarkdownCommandAsync(string filePath, CancellationToken ct)
+        {
+            var content = await File.ReadAllTextAsync(filePath, ct);
+            var match = FrontmatterRegex.Match(content);
+
+            if (!match.Success)
+            {
+                _logger?.LogDebug("Markdown 文件缺少 frontmatter: {File}", filePath);
+                return null;
+            }
+
+            var frontmatter = _yamlDeserializer.Deserialize<CommandFrontmatter>(match.Groups[1].Value);
+            var body = content.Substring(match.Length).Trim();
+
+            if (string.IsNullOrEmpty(frontmatter.Name))
+            {
+                _logger?.LogDebug("Markdown 命令缺少 name 字段: {File}", filePath);
+                return null;
+            }
+
+            var metadata = new CommandMetadata
+            {
+                Name = frontmatter.Name,
+                Description = frontmatter.Description ?? "",
+                Aliases = frontmatter.Aliases ?? Array.Empty<string>(),
+                Category = ParseCategory(frontmatter.Category),
+                Template = !string.IsNullOrEmpty(body) ? body : frontmatter.Template,
+                Agent = frontmatter.Agent,
+                Source = filePath
+            };
+
+            return new MarkdownCommand(metadata, _loggerFactory?.CreateLogger<MarkdownCommand>());
+        }
+
+        private static CommandCategory ParseCategory(string? category) => category?.ToLowerInvariant() switch
+        {
+            "basic" => CommandCategory.Basic,
+            "navigation" => CommandCategory.Navigation,
+            "agent" => CommandCategory.Agent,
+            "tools" => CommandCategory.Tools,
+            "system" => CommandCategory.System,
+            "extension" => CommandCategory.Extension,
+            _ => CommandCategory.Other
+        };
+
+        #endregion
+
+        #region 内部类
+
+        /// <summary>
+        /// Markdown 文件命令
+        /// </summary>
+        private class MarkdownCommand : ICommand
+        {
+            public CommandMetadata Metadata { get; }
+            private readonly string? _template;
+            private readonly ILogger? _logger;
+
+            public MarkdownCommand(CommandMetadata metadata, ILogger? logger = null)
+            {
+                Metadata = metadata;
+                _template = metadata.Template;
+                _logger = logger;
+            }
+
+            public Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
+            {
+                if (string.IsNullOrEmpty(_template))
+                {
+                    return Task.FromResult(CommandResult.Fail("命令模板为空"));
+                }
+
+                try
+                {
+                    var output = RenderTemplate(_template, context.Arguments);
+                    return Task.FromResult(CommandResult.Ok(output));
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Markdown 命令执行失败: {Name}", Metadata.Name);
+                    return Task.FromResult(CommandResult.Fail(ex.Message));
+                }
+            }
+
+            private static string RenderTemplate(string template, string args)
+            {
+                var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                return template
+                    .Replace("{{1}}", parts.ElementAtOrDefault(0) ?? "")
+                    .Replace("{{2}}", parts.ElementAtOrDefault(1) ?? "")
+                    .Replace("{{arguments}}", args)
+                    .Replace("{{args}}", args);
+            }
+        }
+
+        /// <summary>
+        /// YAML frontmatter 数据结构
+        /// </summary>
+        private class CommandFrontmatter
+        {
+            public string? Name { get; set; }
+            public string? Description { get; set; }
+            public string? Template { get; set; }
+            public string[]? Aliases { get; set; }
+            public string? Category { get; set; }
+            public string? Agent { get; set; }
+        }
+
+        #endregion
     }
 }
