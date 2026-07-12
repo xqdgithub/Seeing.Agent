@@ -1,5 +1,6 @@
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.App.Models;
+using Seeing.Agent.App.Execution;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.App;
@@ -13,6 +14,58 @@ namespace Seeing.Agent.App;
 /// </summary>
 public interface IChatOrchestrator
 {
+    #region 执行管理（新接口）
+
+    /// <summary>
+    /// 提交执行请求（非阻塞）。
+    /// 用户消息会立即保存，执行在后台进行。
+    /// </summary>
+    /// <param name="sessionId">会话 ID</param>
+    /// <param name="input">用户输入（文本 + 附件）</param>
+    /// <param name="options">可选配置（agent、model、mode 等）</param>
+    /// <returns>提交结果，包含执行 ID 和状态</returns>
+    Task<ExecutionSubmitResult> SubmitAsync(string sessionId, ChatInput input, ChatOptions? options = null);
+
+    /// <summary>
+    /// 取消执行
+    /// </summary>
+    /// <param name="executionId">执行 ID</param>
+    /// <returns>是否成功取消</returns>
+    bool Cancel(string executionId);
+
+    /// <summary>
+    /// 获取会话执行状态概览
+    /// </summary>
+    /// <param name="sessionId">会话 ID</param>
+    /// <returns>执行状态概览</returns>
+    SessionExecutionOverview GetOverview(string sessionId);
+
+    /// <summary>
+    /// 获取单个执行记录
+    /// </summary>
+    /// <param name="executionId">执行 ID</param>
+    /// <returns>执行记录，如果不存在则返回 null</returns>
+    ExecutionRecord? GetExecution(string executionId);
+
+    /// <summary>
+    /// 获取缓冲的事件（用于断线重连）
+    /// </summary>
+    /// <param name="sessionId">会话 ID</param>
+    /// <returns>缓冲的事件列表</returns>
+    IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId);
+
+    /// <summary>
+    /// 订阅执行事件流（实时更新）
+    /// </summary>
+    /// <param name="sessionId">会话 ID</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>消息事件流</returns>
+    IAsyncEnumerable<IMessageEvent> SubscribeEvents(string sessionId, CancellationToken cancellationToken = default);
+
+    #endregion
+
+    #region 旧接口（已弃用）
+
     /// <summary>
     /// 执行聊天并返回事件流
     /// </summary>
@@ -21,6 +74,7 @@ public interface IChatOrchestrator
     /// <param name="options">可选配置（agent、model、mode 等）</param>
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>消息事件流（包含 Core 层事件和 App 层扩展事件）</returns>
+    [Obsolete("Use SubmitAsync + SubscribeEvents instead. This method will be removed in a future version.")]
     IAsyncEnumerable<IMessageEvent> ExecuteAsync(
         string sessionId,
         ChatInput input,
@@ -32,7 +86,10 @@ public interface IChatOrchestrator
     /// </summary>
     /// <param name="sessionId">会话 ID</param>
     /// <returns>是否成功停止</returns>
+    [Obsolete("Use Cancel(executionId) instead. This method will be removed in a future version.")]
     bool Stop(string sessionId);
+
+    #endregion
 
     #region Session 读取方法（供 WebUI 只读访问）
 

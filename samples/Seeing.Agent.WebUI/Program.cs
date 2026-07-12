@@ -62,8 +62,19 @@ builder.Services.AddSingleton<WorkspaceSwitchService>();
 // === ChatOrchestrator 统一入口 ===
 builder.Services.AddChatOrchestrator();
 
+// === 执行引擎（后台执行服务）===
+builder.Services.AddExecutionEngine(options =>
+{
+    options.MaxConcurrentExecutions = -1;  // -1 = 无限制
+    options.EventBufferSize = 100;
+    options.ExecutionHistoryLimit = 100;
+    options.PermissionTimeout = TimeSpan.FromSeconds(30);
+    options.SessionIdleTimeout = TimeSpan.FromMinutes(30);
+    options.CleanupInterval = TimeSpan.FromMinutes(5);
+});
+
 // === 命令服务 ===
-builder.Services.AddScoped<CommandAvailabilityChecker>();
+builder.Services.AddScoped<CommandListService>();
 
 // === 调度器状态服务 ===
 builder.Services.AddSingleton<SchedulerStatusService>();

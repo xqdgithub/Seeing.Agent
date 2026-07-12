@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App.Events;
+using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Internal;
 using Seeing.Agent.App.Models;
 using Seeing.Agent.Commands;
@@ -23,6 +24,7 @@ namespace Seeing.Agent.App;
 /// </summary>
 public class ChatOrchestrator : IChatOrchestrator
 {
+    private readonly ExecutionJobService _executionJobService;
     private readonly ISessionManager _sessionManager;
     private readonly ISessionStore _sessionStore;
     private readonly IAgentRegistry _agentRegistry;
@@ -37,6 +39,7 @@ public class ChatOrchestrator : IChatOrchestrator
     private readonly ILogger<ChatOrchestrator> _logger;
 
     public ChatOrchestrator(
+        ExecutionJobService executionJobService,
         ISessionManager sessionManager,
         ISessionStore sessionStore,
         IAgentRegistry agentRegistry,
@@ -50,6 +53,7 @@ public class ChatOrchestrator : IChatOrchestrator
         ChatRunTracker runTracker,
         ILogger<ChatOrchestrator> logger)
     {
+        _executionJobService = executionJobService;
         _sessionManager = sessionManager;
         _sessionStore = sessionStore;
         _agentRegistry = agentRegistry;
@@ -64,75 +68,96 @@ public class ChatOrchestrator : IChatOrchestrator
         _logger = logger;
     }
 
+    #region 新接口实现
+
     /// <inheritdoc/>
+    public Task<ExecutionSubmitResult> SubmitAsync(string sessionId, ChatInput input, ChatOptions? options = null)
+    {
+        return _executionJobService.SubmitAsync(sessionId, input, options);
+    }
+
+    /// <inheritdoc/>
+    public bool Cancel(string executionId)
+    {
+        return _executionJobService.Cancel(executionId);
+    }
+
+    /// <inheritdoc/>
+    public SessionExecutionOverview GetOverview(string sessionId)
+    {
+        return _executionJobService.GetOverview(sessionId);
+    }
+
+    /// <inheritdoc/>
+    public ExecutionRecord? GetExecution(string executionId)
+    {
+        return _executionJobService.GetExecution(executionId);
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId)
+    {
+        return _executionJobService.GetBufferedEvents(sessionId);
+    }
+
+    /// <inheritdoc/>
+    public IAsyncEnumerable<IMessageEvent> SubscribeEvents(string sessionId, CancellationToken cancellationToken = default)
+    {
+        return _executionJobService.SubscribeEvents(sessionId, cancellationToken);
+    }
+
+    #endregion
+
+    #region 旧接口实现（已弃用）
+
+    /// <inheritdoc/>
+    [Obsolete("Use SubmitAsync + SubscribeEvents instead.")]
     public async IAsyncEnumerable<IMessageEvent> ExecuteAsync(
         string sessionId,
         ChatInput input,
         ChatOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // 1. 确保会话存在
-        var session = await _sessionManager.EnsureSessionAsync(sessionId);
+        // 1. 提交执行
+        var result = await SubmitAsync(sessionId, input, options);
         
-        // 2. 构建执行上下文
-        var context = await BuildExecutionContextAsync(sessionId, input, options, cancellationToken);
-        
-        // 3. 添加用户消息到 Session
-        var userMessage = BuildUserMessage(input);
-        session.Messages.Add(userMessage);
-        
-        // 4. 发送 Session 更新事件
-        yield return new SessionUpdatedEvent
+        if (!result.Success)
         {
-            SessionId = sessionId,
-            Session = session
-        };
-        
-        // 5. 命令预处理
-        if (input.Text != null && CommandDispatcher.IsCommand(input.Text))
-        {
-            IMessageEvent? lastCmdEvent = null;
-            await foreach (var cmdEvent in ProcessCommandAsync(sessionId, input.Text, session, context, cancellationToken))
+            yield return new ErrorEvent
             {
-                if (cmdEvent != null)
-                {
-                    lastCmdEvent = cmdEvent;
-                    yield return cmdEvent;
-                }
-            }
-            
-            // 系统命令执行完毕，不继续 Agent 流程
-            if (lastCmdEvent is CommandResultEvent)
+                SessionId = sessionId,
+                Message = result.Error ?? "Failed to submit execution"
+            };
+            yield break;
+        }
+
+        // 2. 订阅事件流
+        await foreach (var evt in SubscribeEvents(sessionId, cancellationToken))
+        {
+            yield return evt;
+
+            // 3. 执行完成时退出
+            if (evt is ExecutionCompleteEvent completeEvt && 
+                completeEvt.ExecutionId == result.ExecutionId)
             {
                 yield break;
             }
         }
-        
-        // 6. 更新 History
-        context.History = BuildHistoryFromSession(session);
-        
-        // 7. 执行 Agent（直接返回 IMessageEvent）
-        await foreach (var evt in _executionRouter.ExecuteAsync(context.Agent, BuildAgentContext(context, cancellationToken), cancellationToken))
-        {
-            yield return evt;
-        }
-        
-        // 8. 保存 Session
-        await _sessionManager.SaveAsync(sessionId);
-        
-        // 9. 发送最终 Session 更新
-        yield return new SessionUpdatedEvent
-        {
-            SessionId = sessionId,
-            Session = session
-        };
     }
 
     /// <inheritdoc/>
+    [Obsolete("Use Cancel(executionId) instead.")]
     public bool Stop(string sessionId)
     {
-        return _runTracker.TryCancel(sessionId);
+        var overview = GetOverview(sessionId);
+        if (overview.CurrentExecution != null)
+        {
+            return Cancel(overview.CurrentExecution.ExecutionId);
+        }
+        return false;
     }
+
+    #endregion
 
     #region Session 读取方法
 
@@ -224,260 +249,6 @@ public class ChatOrchestrator : IChatOrchestrator
         
         _logger.LogInformation("Branched session: {SourceId} -> {NewId}", sessionId, newSession.Id);
         return newSession;
-    }
-
-    #endregion
-
-    #region Private Methods
-
-    /// <summary>
-    /// 构建执行上下文
-    /// </summary>
-    private async Task<ChatExecutionContext> BuildExecutionContextAsync(
-        string sessionId,
-        ChatInput input,
-        ChatOptions? options,
-        CancellationToken cancellationToken)
-    {
-        // 解析 Agent
-        var agentId = options?.AgentId 
-            ?? await _agentSelectionResolver.ResolveAgentIdAsync(null, null, cancellationToken);
-        var agent = _agentRegistry.GetOrCreateAgentInstance(agentId);
-        
-        if (agent == null)
-        {
-            throw new InvalidOperationException($"Agent '{agentId}' not found");
-        }
-        
-        var agentDef = AgentDefinition.FromAgent(agent);
-        
-        // 构建上下文
-        return new ChatExecutionContext
-        {
-            SessionId = sessionId,
-            Agent = agentDef,
-            History = new List<ChatMessage>(),
-            WorkingDirectory = options?.WorkingDirectory ?? _workspaceProvider.WorkspaceRoot,
-            WorkspaceRoot = _workspaceProvider.WorkspaceRoot,
-            PermissionChannel = _permissionChannel,
-            ChannelId = options?.ChannelId,
-            UserId = options?.UserId,
-            AcpModeId = options?.ModeId,
-            AcpModelId = options?.ModelId
-        };
-    }
-
-    /// <summary>
-    /// 构建用户消息
-    /// </summary>
-    private SessionMessage BuildUserMessage(ChatInput input)
-    {
-        var parts = new List<SessionContentPart>();
-        
-        if (!string.IsNullOrWhiteSpace(input.Text))
-        {
-            parts.Add(SessionContentPart.CreateText(input.Text));
-        }
-        
-        if (input.Attachments != null && input.Attachments.Count > 0)
-        {
-            foreach (var att in input.Attachments)
-            {
-                if (att.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                {
-                    parts.Add(SessionContentPart.CreateImageFromBase64(att.Base64Data, att.MimeType));
-                }
-                else
-                {
-                    parts.Add(SessionContentPart.CreateFileFromBase64(att.Base64Data, att.MimeType, att.FileName));
-                }
-            }
-        }
-        
-        return parts.Count > 1 || (input.Attachments != null && input.Attachments.Count > 0)
-            ? SessionMessage.UserMessageWithParts(parts)
-            : SessionMessage.UserMessage(input.Text ?? "");
-    }
-
-    /// <summary>
-    /// 从 Session 构建 History
-    /// </summary>
-    private List<ChatMessage> BuildHistoryFromSession(SessionData session)
-    {
-        var history = new List<ChatMessage>();
-        
-        foreach (var msg in session.Messages)
-        {
-            var chatMessage = new ChatMessage
-            {
-                Role = msg.Role,
-                Content = msg.Content,
-                ReasoningContent = msg.ReasoningContent
-            };
-            
-            if (msg.Parts != null && msg.Parts.Count > 0)
-            {
-                chatMessage.Parts = msg.Parts.Select(p => new ChatContentPart
-                {
-                    Type = p.Type,
-                    Text = p.Text,
-                    Url = p.Url,
-                    DataBase64 = p.DataBase64,
-                    MimeType = p.MimeType,
-                    FileName = p.FileName
-                }).ToList();
-            }
-            
-            if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
-            {
-                chatMessage.ToolCalls = msg.ToolCalls.Select(tc => new ToolCall
-                {
-                    Id = tc.Id,
-                    Type = tc.Type,
-                    Function = new FunctionCall
-                    {
-                        Name = tc.Name,
-                        Arguments = tc.Arguments
-                    }
-                }).ToList();
-            }
-            
-            history.Add(chatMessage);
-        }
-        
-        return history;
-    }
-
-    /// <summary>
-    /// 处理命令
-    /// </summary>
-    private async IAsyncEnumerable<IMessageEvent?> ProcessCommandAsync(
-        string sessionId,
-        string input,
-        SessionData session,
-        ChatExecutionContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var cmdName = ParseCommandName(input);
-        var command = _commandRegistry.GetCommand(cmdName);
-        
-        _logger.LogInformation("ProcessCommandAsync: cmdName={CmdName}, command={Command}, allCommands={AllCommands}", 
-            cmdName, 
-            command?.Metadata.Name ?? "null",
-            string.Join(", ", _commandRegistry.GetAllCommands().Select(c => c.Metadata.Name)));
-        
-        if (command == null)
-        {
-            // 未知命令，透传给 Agent
-            _logger.LogDebug("Unknown command, passing through: {CommandName}", cmdName);
-            yield return null;
-            yield break;
-        }
-        
-        var cmdType = command.Metadata.Type;
-        var args = ExtractArguments(input, cmdName);
-        
-        var cmdContext = new CommandContext
-        {
-            CommandName = cmdName,
-            RawInput = input,
-            Arguments = args,
-            SessionId = sessionId,
-            WorkspaceRoot = context.WorkspaceRoot,
-            History = context.History,
-            CancellationToken = cancellationToken
-        };
-        
-        var result = await _commandDispatcher.HandleAsync(input, cmdContext, cancellationToken);
-        
-        // 系统命令 → 返回结果
-        if (cmdType == CommandType.System)
-        {
-            yield return new CommandResultEvent
-            {
-                SessionId = sessionId,
-                CommandName = cmdName,
-                Success = result.Success,
-                Message = result.Success ? result.Message : result.ErrorMessage
-            };
-            
-            if (result.GetNavigationTarget() is string target)
-            {
-                yield return new NavigateEvent
-                {
-                    SessionId = sessionId,
-                    Target = target
-                };
-            }
-            
-            yield break;
-        }
-        
-        // Skill 命令 → 展开 History
-        if (cmdType == CommandType.Skill)
-        {
-            if (!result.Success)
-            {
-                yield return new CommandResultEvent
-                {
-                    SessionId = sessionId,
-                    CommandName = cmdName,
-                    Success = false,
-                    Message = result.ErrorMessage ?? "Skill command failed"
-                };
-                yield break;
-            }
-            
-            var expandedContent = result.GetExpandedContent();
-            if (expandedContent != null)
-            {
-                // 更新 Session 中的用户消息
-                if (session.Messages.Count > 0)
-                {
-                    session.Messages[^1].Content = expandedContent;
-                }
-                
-                // 发送 Skill 内容展开事件
-                yield return new SkillContentEvent
-                {
-                    SessionId = sessionId,
-                    OriginalContent = result.GetOriginalContent() ?? input,
-                    ExpandedContent = expandedContent
-                };
-            }
-            
-            // 继续执行 Agent
-            yield return null;
-        }
-    }
-
-    /// <summary>
-    /// 构建 AgentContext
-    /// </summary>
-    private AgentContext BuildAgentContext(ChatExecutionContext context, CancellationToken cancellationToken)
-    {
-        return new AgentContext
-        {
-            SessionId = context.SessionId,
-            History = context.History,
-            WorkingDirectory = context.WorkingDirectory ?? context.WorkspaceRoot ?? "",
-            WorkspaceRoot = context.WorkspaceRoot ?? "",
-            PermissionChannel = context.PermissionChannel,
-            CancellationToken = cancellationToken
-        };
-    }
-
-    private static string ParseCommandName(string input)
-    {
-        var parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length > 0 ? parts[0].TrimStart('/') : "";
-    }
-
-    private static string ExtractArguments(string input, string cmdName)
-    {
-        var prefix = "/" + cmdName;
-        var idx = input.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
-        return idx >= 0 ? input.Substring(idx + prefix.Length).Trim() : "";
     }
 
     #endregion

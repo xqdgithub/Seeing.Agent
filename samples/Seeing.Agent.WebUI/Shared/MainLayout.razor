@@ -39,20 +39,9 @@
     {
         AppState.OnChange += OnAppStateChange;
 
+        // 只加载 Agent 和 Model 列表，不自动加载会话
+        // 会话加载由 Session.razor 根据 URL 参数决定
         await LoadAgentsAndModelsAsync();
-
-        var sessionList = await ChatOrchestrator.ListSessionsAsync();
-
-        if (sessionList.Count > 0)
-        {
-            var recentSession = sessionList.First();
-            var session = await ChatOrchestrator.GetSessionAsync(recentSession.Id);
-            if (session != null)
-            {
-                SessionState.SetSession(session);
-                AppState.CurrentSessionId = session.Id;
-            }
-        }
     }
 
     protected override void OnAfterRender(bool firstRender)

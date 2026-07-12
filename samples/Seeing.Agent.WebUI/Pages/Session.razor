@@ -17,6 +17,7 @@
 @using Seeing.Agent.App
 @using Seeing.Agent.App.Events
 @using Seeing.Agent.App.Models
+@using Seeing.Agent.App.Execution
 @using Seeing.Agent.Core.Events
 @inject SessionState SessionState
 @inject AppState AppState
@@ -34,6 +35,7 @@
 @inject SkillManager SkillManager
 @inject ILlmService LlmService
 @inject Services.SessionCompactionService CompactionService
+@inject Services.CommandListService CommandListService
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -51,7 +53,11 @@
             </Button>
             <Divider Type="@DividerType.Vertical" />
             <span Class="session-title">@SessionState.Title</span>
-            @if (SessionState.IsExecuting)
+            @if (SessionState.IsQueued)
+            {
+                <Badge Status="@BadgeStatus.Default" Text="@($"排队中 ({SessionState.QueuePosition})" )" />
+            }
+            else if (SessionState.HasActiveExecution)
             {
                 <Badge Status="@BadgeStatus.Processing" Text="执行中" />
             }
@@ -201,12 +207,12 @@
             <!-- Slot 扩展点: session_prompt -->
             <SlotHost SlotName="session_prompt" />
             
-            <PromptInput IsProcessing="@SessionState.IsExecuting"
+            <PromptInput IsProcessing="@SessionState.HasActiveExecution"
                          Placeholder="@GetPlaceholderText()"
                          HelpText="@GetHelpText()"
                          AvailableTools="_availableTools"
                          AvailableSkills="_availableSkills"
-                         AvailableCustomCommands="_customCommands"
+                         AvailableCommands="_availableCommands"
                          SessionState="SessionState"
                          CancellationTokenSource="@SessionState.CancellationTokenSource"
                          OnSubmitCallback="@OnSubmitMessage"
@@ -274,14 +280,9 @@
     private List<QuickSkillViewModel> _availableSkills = new();
 
     /// <summary>
-    /// 可用自定义命令列表
+    /// 可用命令列表（从后端获取）
     /// </summary>
-    private List<CommandItemViewModel> _customCommands = new();
-
-    /// <summary>
-    /// 自定义命令加载器
-    /// </summary>
-    private readonly CustomCommandLoader _customCommandLoader = new();
+    private List<CommandItemViewModel> _availableCommands = new();
 
     /// <summary>
     /// UI 显示用的消息视图模型列表（从 SessionData.Messages 转换）
@@ -348,14 +349,30 @@
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
         
-        // 加载自定义命令
-        await LoadCustomCommandsAsync();
+        // 加载命令列表（从后端）
+        LoadCommandsFromBackend();
         
         // 加载会话（选项就绪后再加载，避免 Select 在 DataSource 为空时渲染）
         if (!string.IsNullOrEmpty(SessionId))
         {
             await LoadSessionByIdAsync(SessionId);
             _loadedSessionId = SessionId;
+            
+            // 检查是否有正在进行的执行（页面刷新恢复）
+            var overview = ChatOrchestrator.GetOverview(SessionId);
+            if (overview?.CurrentExecution != null)
+            {
+                // 恢复执行状态
+                SessionState.ExecutionStatus = overview.CurrentExecution.Status;
+                SessionState.QueuePosition = overview.CurrentExecution.QueuePosition;
+                SessionState.CurrentExecutionId = overview.CurrentExecution.ExecutionId;
+                
+                // 如果有活跃执行，恢复订阅事件流
+                if (overview.HasActiveExecution)
+                {
+                    _ = ConsumeEventStreamAsync(overview.CurrentExecution.ExecutionId);
+                }
+            }
         }
         else
         {
@@ -423,7 +440,6 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"加载Agent列表失败: {ex.Message}");
             _agentNames = new List<string>();
         }
         
@@ -442,7 +458,6 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"加载模型列表失败: {ex.Message}");
             _modelNames = new List<string>();
         }
 
@@ -513,23 +528,21 @@
         catch (Exception ex)
         {
             // 静默处理，不影响主流程
-            Console.WriteLine($"加载工具/技能失败: {ex.Message}");
         }
     }
     
     /// <summary>
-    /// 加载自定义命令
+    /// 从后端加载命令列表
     /// </summary>
-    private async Task LoadCustomCommandsAsync()
+    private void LoadCommandsFromBackend()
     {
         try
         {
-            _customCommands = await _customCommandLoader.LoadAsync(WorkspaceProvider.WorkspaceRoot);
+            _availableCommands = CommandListService.GetAvailableCommands(SessionState);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"加载自定义命令失败: {ex.Message}");
-            _customCommands = new List<CommandItemViewModel>();
+            _availableCommands = new List<CommandItemViewModel>();
         }
     }
     
@@ -909,23 +922,14 @@
     }
 
     /// <summary>
-    /// 提交消息处理
+    /// 提交消息处理（使用 Submit + SubscribeEvents 模式）
     /// </summary>
     private async Task OnSubmitMessage(PromptSubmitEventArgs args)
     {
-        // 尝试开始执行（如果已有任务执行则返回 false）
-        if (!SessionState.TryStartExecution())
-        {
-            ErrorMessage = "请等待当前任务完成后再发送新消息";
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
         // 验证输入
         if (string.IsNullOrWhiteSpace(args.Text) && args.Attachments.Count == 0)
         {
             ErrorMessage = "请输入消息内容";
-            SessionState.CancelExecution();
             return;
         }
 
@@ -933,96 +937,91 @@
         if (SessionState.CurrentSession == null)
         {
             ErrorMessage = "请先创建或选择一个会话";
-            SessionState.CancelExecution();
             return;
         }
 
         // 清除错误消息
         ErrorMessage = null;
 
-        // UI 已更新为执行状态（TryStartExecution 已设置 IsExecuting = true）
-        await InvokeAsync(StateHasChanged);
+        // 构建输入
+        var input = new ChatInput { Text = args.Text };
+        
+        if (args.Attachments != null && args.Attachments.Count > 0)
+        {
+            input = new ChatInput
+            {
+                Text = args.Text,
+                Attachments = args.Attachments
+                    .Where(a => a.Status == AttachmentUploadStatus.Completed)
+                    .Select(a => new ChatAttachment
+                    {
+                        Base64Data = ExtractBase64Data(a.Base64Content),
+                        MimeType = a.FileType,
+                        FileName = a.FileName
+                    }).ToList()
+            };
+        }
+
+        // 构建选项
+        var options = new ChatOptions
+        {
+            AgentId = SessionState.SelectedAgent,
+            ModelId = SessionState.SelectedModel,
+            ModeId = SessionState.SelectedAcpMode,
+            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot
+        };
 
         try
         {
-            // 执行 Agent 响应（使用 IChatOrchestrator）
-            // ChatOrchestrator 会管理消息添加和 Session 更新
-            await ExecuteAgentResponseAsync(args.Text, args.Attachments);
-
-            SessionState.CompleteExecution();
-        }
-        catch (OperationCanceledException)
-        {
-            // 执行被取消
-            var cancelMessage = SessionMessage.SystemMessage("执行已被取消");
-            SessionState.CurrentSession.AddMessage(cancelMessage);
-            _messageViewModels.Add(ConvertToMessageViewModel(cancelMessage));
+            // 提交执行（用户消息会立即保存）
+            var result = await ChatOrchestrator.SubmitAsync(SessionState.SessionId, input, options);
             
-            SessionState.CancelExecution();
+            if (!result.Success)
+            {
+                ErrorMessage = result.Error ?? "提交失败";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            // 更新 UI 状态
+            SessionState.ExecutionStatus = result.Status;
+            SessionState.QueuePosition = result.QueuePosition;
+            SessionState.CurrentExecutionId = result.ExecutionId;
+            
+            await InvokeAsync(StateHasChanged);
+
+            // 订阅事件流
+            _ = ConsumeEventStreamAsync(result.ExecutionId!);
         }
         catch (Exception ex)
         {
-            // 执行出错
-            ErrorMessage = string.Format("执行失败: {0}", ex.Message);
-            var errorMessage = SessionMessage.SystemMessage(string.Format("执行出错: {0}", ex.Message));
-            SessionState.CurrentSession.AddMessage(errorMessage);
-            _messageViewModels.Add(ConvertToMessageViewModel(errorMessage));
-            
-            SessionState.CancelExecution();
+            ErrorMessage = $"执行失败: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
         }
-
-        await InvokeAsync(StateHasChanged);
     }
 
-/// <summary>
-    /// 执行 Agent 响应（通过 IChatOrchestrator 统一入口）
+    /// <summary>
+    /// 消费事件流（后台任务）
     /// </summary>
-    private async Task ExecuteAgentResponseAsync(string userInput, List<AttachmentViewModel>? attachments = null)
+    private async Task ConsumeEventStreamAsync(string executionId)
     {
-        // 清空 EventStreamHandler 缓存，准备接收新消息
-        EventStreamHandler.ClearCache();
+        var charCount = 0;
+        var _currentCodeBlockDepth = 0;
 
         try
         {
-            // 构建输入
-            var input = new ChatInput { Text = userInput };
-            
-            if (attachments != null && attachments.Count > 0)
+            await foreach (var evt in ChatOrchestrator.SubscribeEvents(SessionState.SessionId, SessionState.CancellationToken))
             {
-                input = new ChatInput
+                // 检查是否是当前执行的事件
+                if (evt is ExecutionCompleteEvent completeEvt && completeEvt.ExecutionId == executionId)
                 {
-                    Text = userInput,
-                    Attachments = attachments
-                        .Where(a => a.Status == AttachmentUploadStatus.Completed)
-                        .Select(a => new ChatAttachment
-                        {
-                            Base64Data = ExtractBase64Data(a.Base64Content),
-                            MimeType = a.FileType,
-                            FileName = a.FileName
-                        }).ToList()
-                };
-            }
-
-            // 构建选项
-            var options = new ChatOptions
-            {
-                AgentId = SessionState.SelectedAgent,
-                ModelId = SessionState.SelectedModel,
-                ModeId = SessionState.SelectedAcpMode,
-                WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot
-            };
-
-            var charCount = 0;
-            var _currentCodeBlockDepth = 0;
-
-            // 使用 ChatOrchestrator 执行
-            await foreach (var evt in ChatOrchestrator.ExecuteAsync(
-                SessionState.SessionId, 
-                input, 
-                options, 
-                SessionState.CancellationToken))
-            {
-                SessionState.CancellationToken.ThrowIfCancellationRequested();
+                    // 执行完成，更新状态
+                    SessionState.ExecutionStatus = completeEvt.Status;
+                    SessionState.CurrentExecutionId = null;
+                    RefreshMessageViewModels();
+                    await InvokeAsync(StateHasChanged);
+                    break;
+                }
 
                 // 处理事件
                 HandleMessageEvent(evt);
@@ -1060,7 +1059,6 @@
                 }
                 else if (evt is SessionUpdatedEvent)
                 {
-                    // Session 已更新，刷新消息列表
                     RefreshMessageViewModels();
                 }
                 else if (evt is NavigateEvent navEvt)
@@ -1087,19 +1085,23 @@
         }
         catch (Exception ex)
         {
-            ErrorMessage = string.Format("执行失败: {0}", ex.Message);
+            ErrorMessage = $"执行失败: {ex.Message}";
             if (SessionState.CurrentSession != null)
             {
-                SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage(string.Format("执行出错: {0}", ex.Message)));
+                SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage($"执行出错: {ex.Message}"));
             }
             RefreshMessageViewModels();
         }
         finally
         {
+            SessionState.ExecutionStatus = null;
+            SessionState.CurrentExecutionId = null;
             RefreshMessageViewModels();
             await InvokeAsync(StateHasChanged);
         }
     }
+
+
 
     /// <summary>
     /// 处理 IMessageEvent
@@ -1204,22 +1206,26 @@
     }
 
     /// <summary>
-    /// 取消执行处理
+    /// 取消执行处理（使用新的 Cancel API）
     /// </summary>
     private async Task OnCancelExecution()
     {
-        if (SessionState.CancellationTokenSource != null &&
-            !SessionState.CancellationTokenSource.IsCancellationRequested)
+        // 取消当前执行
+        if (!string.IsNullOrEmpty(SessionState.CurrentExecutionId))
         {
-            SessionState.CancellationTokenSource.Cancel();
-        }
-        
-        SessionState.CancelExecution();
-        
-        // 添加取消提示
-        if (SessionState.CurrentSession != null)
-        {
-            SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("用户取消了当前执行"));
+            var cancelled = ChatOrchestrator.Cancel(SessionState.CurrentExecutionId);
+            
+            if (cancelled)
+            {
+                SessionState.ExecutionStatus = ExecutionStatus.Cancelled;
+                SessionState.CurrentExecutionId = null;
+                
+                // 添加取消提示
+                if (SessionState.CurrentSession != null)
+                {
+                    SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("用户取消了当前执行"));
+                }
+            }
         }
         
         await InvokeAsync(StateHasChanged);

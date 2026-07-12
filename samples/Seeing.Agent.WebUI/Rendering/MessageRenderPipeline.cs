@@ -80,40 +80,20 @@ public class MessageRenderPipeline : IMessageRenderPipeline
 
         return builder =>
         {
-            var seq = 0;
-
             // 渲染消息容器
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", GetMessageClass(message));
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", GetMessageClass(message));
 
             // 渲染消息头部
-            builder.OpenComponent<MessageHeader>(seq++);
-            builder.AddAttribute(seq++, "Role", message.Role);
-            builder.AddAttribute(seq++, "Timestamp", message.Timestamp);
-            builder.AddAttribute(seq++, "Status", DetermineStatus(message));
-            builder.AddAttribute(seq++, "ShowStatusIndicator", !message.IsComplete);
+            builder.OpenComponent<MessageHeader>(2);
+            builder.AddAttribute(3, "Role", message.Role);
+            builder.AddAttribute(4, "Timestamp", message.Timestamp);
+            builder.AddAttribute(5, "Status", DetermineStatus(message));
+            builder.AddAttribute(6, "ShowStatusIndicator", !message.IsComplete);
             builder.CloseComponent();
 
-            // 渲染内容块（优先使用组件，回退到渲染器）
-            foreach (var block in blocks.OrderBy(b => b.SortIndex))
-            {
-                if (_componentRegistry.TryGetComponent(block, out var component))
-                {
-                    // 使用组件渲染
-                    builder.OpenComponent(seq++, component.GetComponentType());
-                    var parameters = component.GetComponentParameters(block, context);
-                    foreach (var param in parameters)
-                    {
-                        builder.AddAttribute(seq++, param.Key, param.Value);
-                    }
-                    builder.CloseComponent();
-                }
-                else if (_registry.TryRender(block, context, out var fragment))
-                {
-                    // 回退到渲染器
-                    builder.AddContent(seq++, fragment);
-                }
-            }
+            // 渲染内容块
+            builder.AddContent(10, RenderContentBlocks(blocks, context));
 
             builder.CloseElement();
         };
@@ -144,54 +124,34 @@ public class MessageRenderPipeline : IMessageRenderPipeline
 
         return builder =>
         {
-            var seq = 0;
-
             // 渲染消息容器
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", GetLoopClass(loop));
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", GetLoopClass(loop));
 
             // 渲染 Loop 头部
-            builder.OpenComponent<MessageHeader>(seq++);
-            builder.AddAttribute(seq++, "Role", "assistant");
-            builder.AddAttribute(seq++, "Timestamp", loop.StartTime ?? DateTime.Now);
-            builder.AddAttribute(seq++, "Status", DetermineLoopStatus(loop));
-            builder.AddAttribute(seq++, "ShowStatusIndicator", loop.IsExecuting);
-            builder.AddAttribute(seq++, "Tags", BuildLoopTags(loop));
-            builder.AddAttribute(seq++, "MetaItems", BuildLoopMetaItems(loop));
-            builder.AddAttribute(seq++, "CustomRoleName", "助手");
+            builder.OpenComponent<MessageHeader>(2);
+            builder.AddAttribute(3, "Role", "assistant");
+            builder.AddAttribute(4, "Timestamp", loop.StartTime ?? DateTime.Now);
+            builder.AddAttribute(5, "Status", DetermineLoopStatus(loop));
+            builder.AddAttribute(6, "ShowStatusIndicator", loop.IsExecuting);
+            builder.AddAttribute(7, "Tags", BuildLoopTags(loop));
+            builder.AddAttribute(8, "MetaItems", BuildLoopMetaItems(loop));
+            builder.AddAttribute(9, "CustomRoleName", "助手");
             builder.CloseComponent();
 
-            // 渲染内容块（优先使用组件，回退到渲染器）
-            foreach (var block in blocks.OrderBy(b => b.SortIndex))
-            {
-                if (_componentRegistry.TryGetComponent(block, out var component))
-                {
-                    // 使用组件渲染
-                    builder.OpenComponent(seq++, component.GetComponentType());
-                    var parameters = component.GetComponentParameters(block, context);
-                    foreach (var param in parameters)
-                    {
-                        builder.AddAttribute(seq++, param.Key, param.Value);
-                    }
-                    builder.CloseComponent();
-                }
-                else if (_registry.TryRender(block, context, out var fragment))
-                {
-                    // 回退到渲染器
-                    builder.AddContent(seq++, fragment);
-                }
-            }
+            // 渲染内容块
+            builder.AddContent(10, RenderContentBlocks(blocks, context));
 
             // 渲染错误信息
             if (!string.IsNullOrEmpty(loop.Error))
             {
-                builder.OpenElement(seq++, "div");
-                builder.AddAttribute(seq++, "class", "loop-error");
-                builder.AddAttribute(seq++, "style",
+                builder.OpenElement(20, "div");
+                builder.AddAttribute(21, "class", "loop-error");
+                builder.AddAttribute(22, "style",
                     "padding: var(--space-2) var(--space-3); background: var(--color-error-bg); " +
                     "border: 1px solid var(--color-error-border); border-radius: var(--radius-sm); " +
                     "margin-top: var(--space-2); color: var(--color-error);");
-                builder.AddContent(seq++, loop.Error);
+                builder.AddContent(23, loop.Error);
                 builder.CloseElement();
             }
 
@@ -227,14 +187,55 @@ public class MessageRenderPipeline : IMessageRenderPipeline
 
         return builder =>
         {
-            var seq = 0;
-
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "message-list-container");
-            builder.AddAttribute(seq++, "style",
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "message-list-container");
+            builder.AddAttribute(2, "style",
                 $"flex: 1; overflow-y: auto; padding: var(--space-4); " +
                 $"display: flex; flex-direction: column; gap: {options.MessageGap};");
 
+            // 渲染消息列表
+            builder.AddContent(10, RenderMessagesInternal(messages, options));
+
+            builder.CloseElement();
+        };
+    }
+
+    /// <summary>
+    /// 渲染内容块列表（内部方法，用于封装循环）
+    /// </summary>
+    private RenderFragment RenderContentBlocks(IEnumerable<ContentBlock> blocks, RenderContext context)
+    {
+        return builder =>
+        {
+            foreach (var block in blocks.OrderBy(b => b.SortIndex))
+            {
+                if (_componentRegistry.TryGetComponent(block, out var component))
+                {
+                    // 使用组件渲染
+                    builder.OpenComponent(0, component.GetComponentType());
+                    var parameters = component.GetComponentParameters(block, context);
+                    foreach (var param in parameters)
+                    {
+                        builder.AddAttribute(1, param.Key, param.Value);
+                    }
+                    builder.CloseComponent();
+                }
+                else if (_registry.TryRender(block, context, out var fragment))
+                {
+                    // 回退到渲染器
+                    builder.AddContent(0, fragment);
+                }
+            }
+        };
+    }
+
+    /// <summary>
+    /// 渲染消息列表内部实现（封装循环）
+    /// </summary>
+    private RenderFragment RenderMessagesInternal(IReadOnlyList<MessageViewModel> messages, MessageListOptions options)
+    {
+        return builder =>
+        {
             // 已处理的 LoopId 集合
             var processedLoopIds = new HashSet<string>();
 
@@ -248,18 +249,10 @@ public class MessageRenderPipeline : IMessageRenderPipeline
                         continue;
                     }
                     processedLoopIds.Add(message.LoopId);
+                }
 
-                    // 需要 LoopGroupViewModel，这里简化处理
-                    // 实际实现中应该注入 ILoopGroupBuilder
-                    builder.AddContent(seq++, RenderMessage(message, options.RenderOptions));
-                }
-                else
-                {
-                    builder.AddContent(seq++, RenderMessage(message, options.RenderOptions));
-                }
+                builder.AddContent(0, RenderMessage(message, options.RenderOptions));
             }
-
-            builder.CloseElement();
         };
     }
 

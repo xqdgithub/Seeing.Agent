@@ -68,6 +68,9 @@ namespace Seeing.Agent.WebUI.Models
         /// <summary>命令分类 (Basic, Session, Agent, Tools, System, View, Custom)</summary>
         public string Category { get; set; } = "";
 
+        /// <summary>命令别名</summary>
+        public string[] Aliases { get; set; } = Array.Empty<string>();
+
         /// <summary>排序优先级（数值越小优先级越高）</summary>
         public int Priority { get; set; } = 100;
 

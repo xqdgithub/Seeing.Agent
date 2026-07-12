@@ -1,4 +1,5 @@
 using Seeing.Agent.Core.Events;
+using Seeing.Agent.App.Events;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
@@ -183,6 +184,11 @@ namespace Seeing.Agent.WebUI.Services
                 case MessageEventType.Error:
                     HandleError((ErrorEvent)evt);
                     await SaveToSessionAsync();
+                    break;
+
+                // App 层扩展事件类型
+                case (MessageEventType)AppEventType.SkillContent:
+                    HandleSkillContent((SkillContentEvent)evt);
                     break;
 
                 default:
@@ -489,6 +495,16 @@ namespace Seeing.Agent.WebUI.Services
 
                 _sessionState.CurrentSession.AddMessage(errorMessage);
             }
+        }
+
+        /// <summary>
+        /// 处理 Skill 内容展开事件
+        /// </summary>
+        private void HandleSkillContent(SkillContentEvent evt)
+        {
+            // 更新当前用户消息的内容为展开后的 Skill 内容
+            // ChatOrchestrator 已经更新了 Session 中的消息，这里只需要触发 UI 刷新
+            // OnStateChanged 会在 ProcessEventAsync 末尾调用
         }
 
         /// <summary>

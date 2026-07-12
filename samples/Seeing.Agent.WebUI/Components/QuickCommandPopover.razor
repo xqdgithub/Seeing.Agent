@@ -73,19 +73,9 @@
     /// 强制关闭 popover 的外部触发器（当自动完成打开时使用）
     /// </summary>
     [Parameter]
-    public bool ForceClose
-    {
-        get => _forceClose;
-        set
-        {
-            if (value && !_forceClose)
-            {
-                PopoverVisible = false;
-            }
-            _forceClose = value;
-        }
-    }
-    private bool _forceClose = false;
+    public bool ForceClose { get; set; }
+
+    private bool _previousForceClose = false;
 
     private string SearchText { get; set; } = "";
     private bool PopoverVisible { get; set; } = false;
@@ -115,6 +105,21 @@
     }
     
     private string GetPopoverClass() => IsDisabled ? "quick-cmd-container disabled" : "quick-cmd-container";
+    
+    /// <summary>
+    /// 参数设置后的处理
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        // 当 ForceClose 从 false 变为 true 时，关闭 Popover
+        if (ForceClose && !_previousForceClose)
+        {
+            PopoverVisible = false;
+        }
+        _previousForceClose = ForceClose;
+        
+        base.OnParametersSet();
+    }
     
     /// <summary>
     /// 触发按钮点击

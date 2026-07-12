@@ -2,9 +2,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App.Commands;
 using Seeing.Agent.App.Commands.BuiltIn;
+using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Internal;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
+using Seeing.Agent.Skills;
 
 namespace Seeing.Agent.App;
 
@@ -34,12 +36,36 @@ public static class ChatOrchestratorServiceExtensions
         // 注册命令发现
         services.AddSingleton<CommandDiscovery>();
 
-        // 注册内置命令
+        // 注册命令提供者
         services.AddSingleton<BuiltInCommands>();
         services.AddSingleton<SkillCommands>();
+        services.AddSingleton<SessionCommands>();
+        services.AddSingleton<AgentCommands>();
+        services.AddSingleton<ToolsCommands>();
 
         // 注册 ChatOrchestrator (Scoped because it depends on IPermissionChannel which is Scoped)
         services.AddScoped<IChatOrchestrator, ChatOrchestrator>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// 注册执行引擎（后台执行服务）
+    /// </summary>
+    /// <param name="services">服务集合</param>
+    /// <param name="configure">可选配置</param>
+    public static IServiceCollection AddExecutionEngine(this IServiceCollection services, Action<ExecutionOptions>? configure = null)
+    {
+        // 注册配置选项
+        var options = new ExecutionOptions();
+        configure?.Invoke(options);
+        services.AddSingleton(options);
+
+        // 注册事件发布器
+        services.AddSingleton<IExecutionEventPublisher, ExecutionEventPublisher>();
+
+        // 注册执行任务服务（Singleton，后台执行）
+        services.AddSingleton<ExecutionJobService>();
 
         return services;
     }
@@ -52,37 +78,33 @@ public static class ChatOrchestratorServiceExtensions
         var registry = services.GetRequiredService<ICommandRegistry>();
         var discovery = services.GetRequiredService<CommandDiscovery>();
         
-        // 发现 BuiltInCommands 中的命令
-        var builtIn = services.GetService<BuiltInCommands>();
-        if (builtIn != null)
+        // 发现所有命令提供者（通过 DI 获取实例）
+        var commandProviders = new object?[]
         {
-            var commands = discovery.DiscoverFromType(builtIn);
-            registry.RegisterAll(commands);
-        }
+            services.GetService<BuiltInCommands>(),
+            services.GetService<SkillCommands>(),
+            services.GetService<SessionCommands>(),
+            services.GetService<AgentCommands>(),
+            services.GetService<ToolsCommands>()
+        };
 
-        // 发现 SkillCommands 中的命令
-        var skillCommands = services.GetService<SkillCommands>();
-        if (skillCommands != null)
+        foreach (var provider in commandProviders)
         {
-            var commands = discovery.DiscoverFromType(skillCommands);
-            registry.RegisterAll(commands);
-        }
-
-        // 发现其他程序集中的命令
-        var assemblies = AppDomain.CurrentDomain.GetAssemblies()
-            .Where(a => a.FullName?.StartsWith("Seeing.Agent") == true || 
-                        a.FullName?.StartsWith("Seeing.Session") == true);
-
-        foreach (var assembly in assemblies)
-        {
-            try
+            if (provider != null)
             {
-                var commands = discovery.DiscoverFromAssembly(assembly, services);
+                var commands = discovery.DiscoverFromType(provider.GetType(), provider);
                 registry.RegisterAll(commands);
             }
-            catch
+        }
+
+        // 动态注册所有 skill 命令
+        var skillManager = services.GetService<SkillManager>();
+        if (skillManager != null)
+        {
+            foreach (var skillInfo in skillManager.GetAllSkillInfos().Values)
             {
-                // 忽略加载错误
+                var skillCommand = new DynamicSkillCommand(skillManager, skillInfo);
+                registry.Register(skillCommand);
             }
         }
 

@@ -1,3 +1,4 @@
+using Seeing.Agent.App.Execution;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
 
@@ -124,6 +125,36 @@ namespace Seeing.Agent.WebUI.State
         /// 最后更新时间
         /// </summary>
         public DateTime LastUpdated => CurrentSession?.UpdatedAt ?? DateTime.Now;
+
+        #region 执行状态（来自 ExecutionJobService）
+
+        /// <summary>
+        /// 当前执行状态（来自 ExecutionJobService）
+        /// </summary>
+        public ExecutionStatus? ExecutionStatus { get; set; }
+
+        /// <summary>
+        /// 当前队列位置（0 = 正在执行，>0 = 排队中）
+        /// </summary>
+        public int QueuePosition { get; set; }
+
+        /// <summary>
+        /// 当前执行 ID
+        /// </summary>
+        public string? CurrentExecutionId { get; set; }
+
+        /// <summary>
+        /// 是否有活跃执行（Running 或 Pending）
+        /// </summary>
+        public bool HasActiveExecution => ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Running ||
+                                          ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Pending;
+
+        /// <summary>
+        /// 是否在排队中
+        /// </summary>
+        public bool IsQueued => ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Queued;
+
+        #endregion
 
         private CancellationTokenSource? _cancellationTokenSource;
 

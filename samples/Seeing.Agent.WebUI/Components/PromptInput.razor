@@ -4,7 +4,6 @@
 @using Microsoft.JSInterop
 @using Seeing.Agent.WebUI.Shared
 @using Seeing.Agent.WebUI.Models
-@using Seeing.Agent.WebUI.Commands
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Agent.WebUI.State
 @using Seeing.Agent.Skills
@@ -12,7 +11,6 @@
 @using System.Threading
 @using System.Text
 @inject IJSRuntime JSRuntime
-@inject CommandAvailabilityChecker AvailabilityChecker
 @inject SkillManager SkillManager
 
 <div Class="prompt-input-container" @ref="@ContainerRef">
@@ -184,10 +182,10 @@
     public List<QuickSkillViewModel> AvailableSkills { get; set; } = new();
 
     /// <summary>
-    /// 可用自定义命令列表
+    /// 可用命令列表（从后端获取）
     /// </summary>
     [Parameter]
-    public List<CommandItemViewModel> AvailableCustomCommands { get; set; } = new();
+    public List<CommandItemViewModel> AvailableCommands { get; set; } = new();
 
     /// <summary>
     /// 会话状态（用于命令可用性检查）
@@ -308,41 +306,19 @@
     private bool _preventDefaultKeydown = false;
 
     /// <summary>
-    /// 加载所有命令（自定义 + 内置 + 工具 + 技能）
+    /// 加载所有命令（从后端获取的命令 + 工具 + 技能）
     /// </summary>
     private void LoadCommands()
     {
         _allCommands = new List<CommandItemViewModel>();
 
-        // 1. 添加自定义命令（已处理冲突）
-        foreach (var custom in AvailableCustomCommands)
+        // 1. 添加后端命令（已包含可用性检查和禁用原因）
+        foreach (var cmd in AvailableCommands)
         {
-            _allCommands.Add(custom);
+            _allCommands.Add(cmd);
         }
 
-        // 2. 添加内置命令（检查可用性）
-        foreach (var builtin in BuiltInCommands.GetAll())
-        {
-            var isDisabled = !AvailabilityChecker.CanExecute(builtin.Name, SessionState);
-            var disabledReason = AvailabilityChecker.GetDisabledReason(builtin.Name, SessionState);
-            
-            _allCommands.Add(new CommandItemViewModel
-            {
-                Value = builtin.Value,
-                Name = builtin.Name,
-                Description = builtin.Description,
-                IconType = builtin.IconType,
-                IsBuiltIn = true,
-                Category = builtin.Category,
-                Priority = builtin.Priority,
-                Keybind = builtin.Keybind,
-                Source = builtin.Source,
-                IsDisabled = isDisabled,
-                DisabledReason = disabledReason
-            });
-        }
-
-        // 3. 添加工具
+        // 2. 添加工具
         foreach (var tool in AvailableTools)
         {
             _allCommands.Add(new CommandItemViewModel
@@ -357,7 +333,7 @@
             });
         }
 
-        // 4. 添加技能
+        // 3. 添加技能
         foreach (var skill in AvailableSkills)
         {
             _allCommands.Add(new CommandItemViewModel
@@ -405,10 +381,10 @@
         //     Console.WriteLine($"[HandleCommandSearch] JSInterop error: {ex.Message}");
         // }
 
-        Console.WriteLine($"[HandleCommandSearch] AvailableTools: {AvailableTools.Count}, AvailableSkills: {AvailableSkills.Count}, CustomCommands: {AvailableCustomCommands.Count}");
+        Console.WriteLine($"[HandleCommandSearch] AvailableTools: {AvailableTools.Count}, AvailableSkills: {AvailableSkills.Count}, AvailableCommands: {AvailableCommands.Count}");
         
         // 确保命令已加载
-        if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCustomCommands.Count > 0))
+        if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCommands.Count > 0))
         {
             LoadCommands();
         }
@@ -454,10 +430,10 @@
             Console.WriteLine($"[LoadCommandOptions] JSInterop error: {ex.Message}");
         }
 
-        Console.WriteLine($"[LoadCommandOptions] AvailableTools: {AvailableTools.Count}, AvailableSkills: {AvailableSkills.Count}, CustomCommands: {AvailableCustomCommands.Count}");
+        Console.WriteLine($"[LoadCommandOptions] AvailableTools: {AvailableTools.Count}, AvailableSkills: {AvailableSkills.Count}, AvailableCommands: {AvailableCommands.Count}");
         Console.WriteLine($"[LoadCommandOptions] _allCommands before load: {_allCommands.Count}");
         
-        if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCustomCommands.Count > 0))
+        if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCommands.Count > 0))
         {
             LoadCommands();
         }
@@ -649,7 +625,7 @@
     {
         // 确保命令已加载
         if (_allCommands.Count == 0 && 
-            (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCustomCommands.Count > 0))
+            (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCommands.Count > 0))
         {
             LoadCommands();
         }
