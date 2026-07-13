@@ -3,6 +3,8 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Skills.Pulling;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace Seeing.Agent.Skills
 {
@@ -237,89 +239,100 @@ namespace Seeing.Agent.Skills
                 @"^---[\r]?[\n](.*?)[\r]?[\n]---[\r]?[\n]?",
                 RegexOptions.Multiline | RegexOptions.Singleline);
 
+            var info = new SkillInfo { Location = filePath };
+
             if (!frontmatterMatch.Success)
             {
-                _logger.LogWarning("技能文件缺少 YAML frontmatter: {File}", filePath);
+                // 如果缺少 YAML frontmatter，尝试从文件名推断技能名称
+                _logger.LogWarning("技能文件缺少 YAML frontmatter，尝试从文件名推断: {File}", filePath);
+
+                var skillDirName = Path.GetFileName(Path.GetDirectoryName(filePath));
+                if (string.IsNullOrEmpty(skillDirName))
+                {
+                    _logger.LogWarning("无法从路径推断技能名称: {File}", filePath);
+                    return null;
+                }
+
+                // 使用目录名作为技能名称
+                info.Name = skillDirName;
+                info.Description = $"技能: {skillDirName}（从目录名自动生成）";
+                info.Content = content.Trim();
+
+                // 验证名称格式
+                if (!NamePattern.IsMatch(info.Name))
+                {
+                    _logger.LogWarning("推断的技能名称格式无效 (必须是小写字母数字+连字符): {Name}", info.Name);
+                    return null;
+                }
+
+                return info;
+            }
+
+            info.Content = content.Substring(frontmatterMatch.Length).Trim();
+            var frontmatter = frontmatterMatch.Groups[1].Value;
+
+            // 使用 YamlDotNet 正确解析 YAML（支持块标量等所有 YAML 语法）
+            try
+            {
+                var deserializer = new DeserializerBuilder()
+                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                    .IgnoreUnmatchedProperties()
+                    .Build();
+
+                var yamlData = deserializer.Deserialize<Dictionary<string, object?>>(frontmatter);
+                if (yamlData == null)
+                {
+                    _logger.LogWarning("YAML frontmatter 解析结果为空: {File}", filePath);
+                    return null;
+                }
+
+                // 解析各个字段
+                if (yamlData.TryGetValue("name", out var nameObj) && nameObj is string name)
+                    info.Name = name;
+
+                if (yamlData.TryGetValue("description", out var descObj) && descObj is string description)
+                    info.Description = description;
+
+                if (yamlData.TryGetValue("version", out var versionObj) && versionObj is string version)
+                    info.Version = version;
+
+                if (yamlData.TryGetValue("author", out var authorObj) && authorObj is string author)
+                    info.Author = author;
+
+                if (yamlData.TryGetValue("license", out var licenseObj) && licenseObj is string license)
+                    info.License = license;
+
+                if (yamlData.TryGetValue("compatibility", out var compatObj) && compatObj is string compatibility)
+                    info.Compatibility = compatibility;
+
+                if (yamlData.TryGetValue("tags", out var tagsObj) && tagsObj is string tagsStr)
+                {
+                    info.Tags = tagsStr.Split(',')
+                        .Select(t => t.Trim())
+                        .Where(t => !string.IsNullOrEmpty(t))
+                        .ToList();
+                }
+
+                if (yamlData.TryGetValue("requires", out var requiresObj) && requiresObj is string requiresStr)
+                {
+                    info.Requires = requiresStr.Split(',')
+                        .Select(r => r.Trim())
+                        .Where(r => !string.IsNullOrEmpty(r))
+                        .ToList();
+                }
+
+                if (yamlData.TryGetValue("metadata", out var metadataObj) && metadataObj is Dictionary<object, object> metadata)
+                {
+                    info.Metadata = metadata.ToDictionary(
+                        kvp => kvp.Key?.ToString() ?? "",
+                        kvp => kvp.Value?.ToString() ?? "");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "YAML frontmatter 解析失败: {File}", filePath);
                 return null;
             }
-
-            var info = new SkillInfo { Location = filePath, Content = content.Substring(frontmatterMatch.Length).Trim() };
-            var frontmatter = frontmatterMatch.Groups[1].Value;
-            var currentKey = string.Empty;
-            var metadataBuilder = new Dictionary<string, string>();
-
-            foreach (var line in frontmatter.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                var trimmed = line.Trim();
-                if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#')) continue;
-
-                // 处理缩进的 metadata 子字段
-                if (line.StartsWith("  ") || line.StartsWith("\t"))
-                {
-                    if (!string.IsNullOrEmpty(currentKey) && currentKey == "metadata")
-                    {
-                        var metaColonIndex = trimmed.IndexOf(':');
-                        if (metaColonIndex > 0)
-                        {
-                            var metaKey = trimmed.Substring(0, metaColonIndex).Trim();
-                            var metaValue = trimmed.Substring(metaColonIndex + 1).Trim();
-                            if (!string.IsNullOrEmpty(metaKey) && !string.IsNullOrEmpty(metaValue))
-                            {
-                                metadataBuilder[metaKey] = metaValue;
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                var colonIndex = trimmed.IndexOf(':');
-                if (colonIndex < 0) continue;
-
-                var key = trimmed.Substring(0, colonIndex).Trim().ToLowerInvariant();
-                var value = trimmed.Substring(colonIndex + 1).Trim();
-                currentKey = key;
-
-                // 解析所有 Frontmatter 字段
-                switch (key)
-                {
-                    case "name":
-                        info.Name = value;
-                        break;
-                    case "description":
-                        info.Description = value;
-                        break;
-                    case "version":
-                        info.Version = value;
-                        break;
-                    case "author":
-                        info.Author = value;
-                        break;
-                    case "license":
-                        info.License = value;
-                        break;
-                    case "compatibility":
-                        info.Compatibility = value;
-                        break;
-                    case "tags":
-                        info.Tags = value.Split(',')
-                            .Select(t => t.Trim())
-                            .Where(t => !string.IsNullOrEmpty(t))
-                            .ToList();
-                        break;
-                    case "requires":
-                        info.Requires = value.Split(',')
-                            .Select(r => r.Trim())
-                            .Where(r => !string.IsNullOrEmpty(r))
-                            .ToList();
-                        break;
-                    case "metadata":
-                        // metadata 是一个字典，后续行处理
-                        break;
-                }
-            }
-
-            // 应用 metadata
-            info.Metadata = metadataBuilder;
 
             // === 验证 ===
 
@@ -344,12 +357,12 @@ namespace Seeing.Agent.Skills
                 return null;
             }
 
-            // 名称与目录名匹配验证
+            // 名称与目录名匹配验证（改为警告，允许加载）
             var dirName = Path.GetFileName(Path.GetDirectoryName(filePath));
             if (!string.IsNullOrEmpty(dirName) && info.Name != dirName)
             {
-                _logger.LogWarning("技能名称 '{Name}' 与目录名 '{DirName}' 不匹配: {File}", info.Name, dirName, filePath);
-                return null;
+                _logger.LogWarning("技能名称 '{Name}' 与目录名 '{DirName}' 不匹配，建议保持一致: {File}", info.Name, dirName, filePath);
+                // 不再拒绝加载，只是警告
             }
 
             // 验证描述
