@@ -414,23 +414,31 @@
                     ? $"Successfully added {imported} MCP server(s)" 
                     : "Configuration saved and persisted successfully");
                 RefreshStatus();
-                // Modal 会自动关闭
+                // Modal 会自动关闭（@bind-Visible 会处理）
             }
             else
             {
-                MessageService.Error("Failed to import configuration");
-                throw new InvalidOperationException("No servers imported"); // 阻止 Modal 关闭
+                MessageService.Warning("No servers imported. Please check your JSON configuration.");
+                // 保持 Modal 打开，让用户修正
+                await Task.Delay(100); // 等待 UI 更新
+                _jsonEditorVisible = true;
+                StateHasChanged();
             }
         }
         catch (JsonException ex)
         {
             MessageService.Error($"JSON format error: {ex.Message}");
-            throw; // 阻止 Modal 关闭
+            // 保持 Modal 打开
+            await Task.Delay(100);
+            _jsonEditorVisible = true;
+            StateHasChanged();
         }
         catch (Exception ex)
         {
             MessageService.Error($"Save failed: {ex.Message}");
-            throw; // 阻止 Modal 关闭
+            await Task.Delay(100);
+            _jsonEditorVisible = true;
+            StateHasChanged();
         }
         finally
         {

@@ -623,19 +623,39 @@ namespace Seeing.Agent.MCP
         /// <inheritdoc />
         public async Task<int> ImportFromJsonAsync(string json, ConfigLevel level, bool overwrite = false, bool persist = true, CancellationToken cancellationToken = default)
         {
-            var count = 0;
-            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions
+            // 输入验证：空值检查
+            if (string.IsNullOrWhiteSpace(json))
             {
-                CommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true
-            });
+                _logger.LogWarning("导入 MCP 配置失败：JSON 为空");
+                return 0;
+            }
+
+            // JSON 格式验证
+            JsonDocument doc;
+            try
+            {
+                doc = JsonDocument.Parse(json, new JsonDocumentOptions
+                {
+                    CommentHandling = JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true
+                });
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "导入 MCP 配置失败：JSON 格式无效 - {Error}", ex.Message);
+                throw new JsonException($"JSON 格式错误: {ex.Message}", ex);
+            }
+
+            using var _ = doc;
 
             if (!doc.RootElement.TryGetProperty("mcpServers", out var servers) ||
                 servers.ValueKind != JsonValueKind.Object)
             {
+                _logger.LogWarning("导入 MCP 配置失败：缺少 mcpServers 对象");
                 return 0;
             }
 
+            var count = 0;
             foreach (var prop in servers.EnumerateObject())
             {
                 var name = prop.Name;
