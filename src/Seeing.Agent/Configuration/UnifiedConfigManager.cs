@@ -114,6 +114,8 @@ public sealed class UnifiedConfigManager
             ["Memory"] = new("Memory", "memory.json", ConfigScope.Both, 
                 typeof(object),  // Memory 在独立模块中定义
                 displayName: "Memory 配置", displayOrder: 15),
+            ["TokenBudget"] = new("TokenBudget", "seeing.json", ConfigScope.Both, 
+                typeof(TokenBudgetOptions), displayName: "Token 预算配置", displayOrder: 16),
         };
     }
     
@@ -591,6 +593,7 @@ public sealed class UnifiedConfigManager
             "Skills" => SeeingAgent.Skills as T,
             "Permission" => SeeingAgent.Permission as T,
             "Workspace" => SeeingAgent.Workspace as T,
+            "TokenBudget" => SeeingAgent.TokenBudget as T,
             _ => null
         };
     }
@@ -669,6 +672,10 @@ public sealed class UnifiedConfigManager
             case "Workspace":
                 if (value is WorkspaceOptions workspace)
                     SeeingAgent.Workspace = workspace;
+                break;
+            case "TokenBudget":
+                if (value is TokenBudgetOptions tokenBudget)
+                    SeeingAgent.TokenBudget = tokenBudget;
                 break;
         }
     }
