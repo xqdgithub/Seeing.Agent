@@ -4,7 +4,7 @@
 @inject IMessageService MessageService
 
 <Modal @bind-Visible="_visible"
-       Title="切换工作区"
+       Title="@ModalTitle"
        Centered="true"
        Width="600"
        OnOk="HandleOk"
@@ -59,6 +59,20 @@
     private string? _validationError;
     private bool _isLoading;
     private List<string> _recentWorkspaces = new();
+
+    /// <summary>
+    /// Modal 标题
+    /// </summary>
+    [Parameter]
+    public string Title { get; set; } = "切换工作区";
+
+    /// <summary>
+    /// 工作区变更回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<string>? OnWorkspaceChanged { get; set; }
+
+    private string ModalTitle => Title;
 
     /// <summary>
     /// 显示 Modal
@@ -192,10 +206,4 @@
         _newWorkspacePath = "";
         _validationError = null;
     }
-
-    /// <summary>
-    /// 工作区变更回调
-    /// </summary>
-    [Parameter]
-    public EventCallback<string>? OnWorkspaceChanged { get; set; }
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 using Seeing.Gateway;
 using Seeing.Gateway.Plugins;
 
@@ -42,6 +43,9 @@ internal static class Program
             })
             .ConfigureServices((context, services) =>
             {
+                var workspaceRoot = ChannelHostWorkspace.InferFromConfigPath(arguments.ConfigPath)
+                    ?? Directory.GetCurrentDirectory();
+                services.AddSingleton<IWorkspaceProvider>(_ => new WorkspaceProvider(workspaceRoot));
                 plugin.ConfigureServices(services, context.Configuration);
                 services.AddHostedService<ChannelBridgeHostedService>();
             })
@@ -124,6 +128,28 @@ internal sealed class ChannelHostArguments
             ConfigPath = config,
             ShowHelp = showHelp
         };
+    }
+}
+
+internal static class ChannelHostWorkspace
+{
+    /// <summary>
+    /// 从 <c>{workspace}/.seeing/gateway-clients/{channel}.json</c> 推断工作区根目录。
+    /// </summary>
+    internal static string? InferFromConfigPath(string configPath)
+    {
+        var clientsDir = Path.GetDirectoryName(Path.GetFullPath(configPath));
+        if (string.IsNullOrEmpty(clientsDir))
+            return null;
+
+        var seeingDir = Path.GetDirectoryName(clientsDir);
+        if (string.IsNullOrEmpty(seeingDir)
+            || !".seeing".Equals(Path.GetFileName(seeingDir), StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Path.GetDirectoryName(seeingDir);
     }
 }
 

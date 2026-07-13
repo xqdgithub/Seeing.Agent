@@ -229,5 +229,8 @@ namespace Seeing.Agent.Core.Models
     {
         public const string AcpModeId = "acp:modeId";
         public const string AcpModelId = "acp:modelId";
+
+        /// <summary>Native Agent 会话级模型选择（用户在界面上选择的模型）</summary>
+        public const string SessionModelId = "session:modelId";
     }
 }

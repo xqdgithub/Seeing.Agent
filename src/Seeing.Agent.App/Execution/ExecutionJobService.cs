@@ -490,7 +490,7 @@ public class ExecutionJobService : IDisposable
     /// </summary>
     private static AgentContext BuildAgentContext(ChatExecutionContext context, CancellationToken cancellationToken)
     {
-        return new AgentContext
+        var agentContext = new AgentContext
         {
             SessionId = context.SessionId,
             History = context.History,
@@ -499,6 +499,20 @@ public class ExecutionJobService : IDisposable
             PermissionChannel = context.PermissionChannel,
             CancellationToken = cancellationToken
         };
+
+        // 传递 ACP 相关的模型和模式信息到 Metadata
+        if (!string.IsNullOrEmpty(context.AcpModelId))
+            agentContext.Metadata[AgentContextKeys.AcpModelId] = context.AcpModelId;
+
+        if (!string.IsNullOrEmpty(context.AcpModeId))
+            agentContext.Metadata[AgentContextKeys.AcpModeId] = context.AcpModeId;
+
+        // 传递 Native Agent 会话级模型选择（用户在界面上选择的模型）
+        // 优先级：用户选择 > Agent 配置 > 全局默认
+        if (!string.IsNullOrEmpty(context.AcpModelId))
+            agentContext.Metadata[AgentContextKeys.SessionModelId] = context.AcpModelId;
+
+        return agentContext;
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.App;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
@@ -92,14 +93,13 @@ builder.Services.AddAntDesign();
 var app = builder.Build();
 
 // 初始化 Seeing.Agent 组件（Skills/MCP/Plugins）
-// 使用 ContentRootPath（项目目录），避免 dotnet run --project 时 CWD 落在解决方案根目录
-var workspaceRoot = app.Environment.ContentRootPath;
+// 工作区自动根据配置解析：环境变量 > 项目自定义路径 > 全局默认 > 启动目录
 using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
 
-    // 初始化核心组件（不包括 Memory 插件）
-    await sp.InitializeSeeingAgentAsync(workspaceRoot);
+    // 初始化核心组件（自动解析工作区）
+    await sp.InitializeSeeingAgentAsync();
 
     // 初始化命令发现
     sp.InitializeCommands();
@@ -128,7 +128,8 @@ using (var scope = app.Services.CreateScope())
     await skillState.LoadAsync();
     await toolState.LoadAsync();
 
-    sp.ReloadGatewayChannelRegistry(workspaceRoot);
+    var workspaceProvider = sp.GetRequiredService<IWorkspaceProvider>();
+    sp.ReloadGatewayChannelRegistry(workspaceProvider.WorkspaceRoot);
 }
 
 // Configure the HTTP request pipeline.

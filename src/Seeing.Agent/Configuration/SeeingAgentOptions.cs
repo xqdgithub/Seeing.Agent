@@ -64,6 +64,9 @@ namespace Seeing.Agent.Configuration
         /// </para>
         /// </summary>
         public Dictionary<string, bool> PluginEnabled { get; set; } = new();
+
+        /// <summary>工作区配置</summary>
+        public WorkspaceOptions Workspace { get; set; } = new();
     }
 
     /// <summary>
@@ -207,5 +210,24 @@ namespace Seeing.Agent.Configuration
 
         /// <summary>环境变量</summary>
         public Dictionary<string, string>? Environment { get; set; }
+    }
+
+    /// <summary>
+    /// 工作区配置选项（项目级）
+    /// </summary>
+    public class WorkspaceOptions
+    {
+        /// <summary>
+        /// 是否使用全局默认工作区
+        /// <para>true: 使用用户级 GlobalWorkspaceRoot</para>
+        /// <para>false 或未设置: 使用启动目录（默认）</para>
+        /// </summary>
+        public bool UseGlobal { get; set; } = false;
+
+        /// <summary>
+        /// 项目特定的自定义工作区路径
+        /// <para>设置后忽略 UseGlobal，直接使用此路径</para>
+        /// </summary>
+        public string? CustomPath { get; set; }
     }
 }

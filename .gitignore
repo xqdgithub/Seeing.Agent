@@ -385,3 +385,9 @@ build_output.txt
 /docs/plans
 /openspec
 /current-state.yml
+/tests/test_results.json
+/tests/test_screenshot_final.png
+/tests/debug_screenshot.png
+/tests/playwright_test.py
+/tests/playwright_test.py
+/tests/test_results.json

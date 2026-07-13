@@ -15,11 +15,10 @@ builder.Services.AddSeeingGatewayServer(builder.Configuration);
 
 var host = builder.Build();
 
-var workspaceRoot = Directory.GetCurrentDirectory();
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Seeing.Gateway.Server");
 
-logger.LogInformation("初始化 Seeing Agent 组件，工作区: {WorkspaceRoot}", workspaceRoot);
-await host.Services.InitializeSeeingAgentAsync(workspaceRoot);
+// 初始化（自动解析工作区）
+await host.Services.InitializeSeeingAgentAsync();
 
 logger.LogInformation("Gateway Server 就绪，按 Ctrl+C 退出。");
 

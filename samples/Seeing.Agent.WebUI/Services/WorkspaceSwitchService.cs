@@ -37,7 +37,7 @@ public class WorkspaceSwitchService
     }
 
     /// <summary>
-    /// 切换工作区
+    /// 切换工作区（运行时临时切换，不持久化）
     /// </summary>
     /// <param name="newWorkspaceRoot">新工作区路径</param>
     /// <param name="cancellationToken">取消令牌</param>
@@ -106,9 +106,58 @@ public class WorkspaceSwitchService
     }
 
     /// <summary>
+    /// 设置全局默认工作区（持久化到用户级设置）
+    /// </summary>
+    public async Task SetGlobalWorkspaceRootAsync(string? path, CancellationToken cancellationToken = default)
+    {
+        await _workspace.SetGlobalWorkspaceRootAsync(path, cancellationToken);
+    }
+
+    /// <summary>
+    /// 设置项目级工作区配置（持久化到项目级配置）
+    /// </summary>
+    public async Task SetWorkspaceOptionsAsync(WorkspaceOptions options, CancellationToken cancellationToken = default)
+    {
+        await _workspace.SetWorkspaceOptionsAsync(options, cancellationToken);
+        
+        // 重新加载配置
+        await _configService.ReloadAsync(cancellationToken);
+        await _skillState.LoadAsync(cancellationToken);
+        await _toolState.LoadAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// 获取当前工作区路径
     /// </summary>
     public string CurrentWorkspace => _workspace.WorkspaceRoot;
+
+    /// <summary>
+    /// 获取启动目录
+    /// </summary>
+    public string StartupDirectory => _workspace.StartupDirectory;
+
+    /// <summary>
+    /// 获取当前工作区来源
+    /// </summary>
+    public WorkspaceResolutionSource ResolutionSource => _workspace.ResolutionSource;
+
+    /// <summary>
+    /// 获取全局默认工作区
+    /// </summary>
+    public string? GlobalWorkspaceRoot => _workspace.GlobalWorkspaceRoot;
+
+    /// <summary>
+    /// 获取工作区来源描述
+    /// </summary>
+    public string ResolutionSourceDescription => _workspace.ResolutionSource switch
+    {
+        WorkspaceResolutionSource.EnvironmentVariable => "环境变量",
+        WorkspaceResolutionSource.ProjectCustomPath => "项目自定义路径",
+        WorkspaceResolutionSource.GlobalDefault => "全局默认",
+        WorkspaceResolutionSource.StartupDirectory => "启动目录",
+        WorkspaceResolutionSource.ManualSwitch => "手动切换",
+        _ => "未知"
+    };
 
     /// <summary>
     /// 验证工作区路径是否有效

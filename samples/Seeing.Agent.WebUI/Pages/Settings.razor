@@ -40,13 +40,54 @@
                 <Form Layout="@FormLayout.Vertical" Model="@_options">
                     <FormItem Label="默认智能体"><Input @bind-Value="@_options.DefaultAgent" /></FormItem>
                     <FormItem Label="默认模型"><Input @bind-Value="@_options.DefaultModel" /></FormItem>
-                    <FormItem Label="工作区路径">
+                    
+                    <Divider Orientation="@DividerOrientation.Left">工作区设置</Divider>
+                    
+                    <FormItem Label="当前工作区">
                         <InputGroup Compact>
                             <Input Value="@_workspacePath" Style="width: calc(100% - 100px)" Disabled="true" />
-                            <Button Type="@ButtonType.Default" OnClick="ShowWorkspaceSelector">切换目录</Button>
+                            <Button Type="@ButtonType.Default" OnClick="ShowWorkspaceSelector">切换</Button>
                         </InputGroup>
-                        <div style="margin-top: 8px; color: #888; font-size: 12px;">
-                            切换工作区将重新加载所有配置和组件
+                        <div style="margin-top: 4px; font-size: 12px; color: #888;">
+                            来源: @WorkspaceSwitchService.ResolutionSourceDescription
+                        </div>
+                    </FormItem>
+                    
+                    <FormItem Label="启动目录">
+                        <Input Value="@WorkspaceSwitchService.StartupDirectory" Disabled="true" />
+                        <div style="margin-top: 4px; font-size: 12px; color: #888;">
+                            程序启动时的当前目录，作为默认工作区
+                        </div>
+                    </FormItem>
+                    
+                    <FormItem Label="工作区模式">
+                        <RadioGroup @bind-Value="@_workspaceUseGlobal">
+                            <Radio Value="false">使用启动目录（默认）</Radio>
+                            <Radio Value="true">使用全局默认工作区</Radio>
+                        </RadioGroup>
+                    </FormItem>
+                    
+                    @if (_workspaceUseGlobal)
+                    {
+                        <FormItem Label="全局默认工作区">
+                            <InputGroup Compact>
+                                <Input Value="@_globalWorkspacePath" Style="width: calc(100% - 100px)" Disabled="true" />
+                                <Button Type="@ButtonType.Default" OnClick="ShowGlobalWorkspaceSelector">选择</Button>
+                            </InputGroup>
+                            <div style="margin-top: 4px; font-size: 12px; color: #888;">
+                                全局默认工作区在所有启用"使用全局"的项目中生效
+                            </div>
+                        </FormItem>
+                    }
+                    
+                    <FormItem Label="自定义路径（可选）">
+                        <InputGroup Compact>
+                            <Input @bind-Value="@_customWorkspacePath" Style="width: calc(100% - 140px)" 
+                                   Placeholder="留空则使用上述模式" AllowClear="true" />
+                            <Button Type="@ButtonType.Default" OnClick="ShowCustomWorkspaceSelector">选择</Button>
+                        </InputGroup>
+                        <div style="margin-top: 4px; font-size: 12px; color: #faad14;">
+                            设置后将忽略工作区模式，直接使用此路径
                         </div>
                     </FormItem>
                 </Form>
@@ -132,6 +173,14 @@
 <WorkspaceSelectorModal @ref="_workspaceSelectorModal" 
                         OnWorkspaceChanged="EventCallback.Factory.Create<string>(this, HandleWorkspaceChanged)" />
 
+<WorkspaceSelectorModal @ref="_globalWorkspaceSelectorModal"
+                        Title="选择全局默认工作区"
+                        OnWorkspaceChanged="EventCallback.Factory.Create<string>(this, HandleGlobalWorkspaceChanged)" />
+
+<WorkspaceSelectorModal @ref="_customWorkspaceSelectorModal"
+                        Title="选择自定义工作区路径"
+                        OnWorkspaceChanged="EventCallback.Factory.Create<string>(this, HandleCustomWorkspaceChanged)" />
+
 @code {
     private string _activeTab = "general";
     private ConfigLevel _saveLevel = ConfigLevel.Project;
@@ -143,6 +192,13 @@
     private List<PluginRow> _pluginRows = new();
     private bool _schedulerLoading;
     private WorkspaceSelectorModal? _workspaceSelectorModal;
+    private WorkspaceSelectorModal? _globalWorkspaceSelectorModal;
+    private WorkspaceSelectorModal? _customWorkspaceSelectorModal;
+    
+    // 工作区配置
+    private bool _workspaceUseGlobal;
+    private string _globalWorkspacePath = "";
+    private string _customWorkspacePath = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -153,8 +209,19 @@
         _rawJson = await ConfigService.GetRawProjectJsonAsync();
         BuildPluginRows();
         
+        // 加载工作区配置
+        LoadWorkspaceSettings();
+        
         // 加载调度器状态
         await LoadSchedulerStatusAsync();
+    }
+
+    private void LoadWorkspaceSettings()
+    {
+        _workspacePath = WorkspaceProvider.WorkspaceRoot;
+        _globalWorkspacePath = WorkspaceSwitchService.GlobalWorkspaceRoot ?? "";
+        _customWorkspacePath = _options.Workspace?.CustomPath ?? "";
+        _workspaceUseGlobal = _options.Workspace?.UseGlobal ?? false;
     }
 
     private async Task LoadSchedulerStatusAsync()
@@ -174,6 +241,16 @@
         _workspaceSelectorModal?.Show();
     }
 
+    private void ShowGlobalWorkspaceSelector()
+    {
+        _globalWorkspaceSelectorModal?.Show();
+    }
+
+    private void ShowCustomWorkspaceSelector()
+    {
+        _customWorkspaceSelectorModal?.Show();
+    }
+
     private async Task HandleWorkspaceChanged(string newWorkspace)
     {
         // 重新加载设置页面数据
@@ -181,9 +258,23 @@
         _options = await ConfigService.LoadProjectOptionsAsync();
         _rawJson = await ConfigService.GetRawProjectJsonAsync();
         BuildPluginRows();
+        LoadWorkspaceSettings();
         
         // 刷新页面状态
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleGlobalWorkspaceChanged(string newWorkspace)
+    {
+        _globalWorkspacePath = newWorkspace;
+        await WorkspaceSwitchService.SetGlobalWorkspaceRootAsync(newWorkspace);
+        MessageService.Success($"全局默认工作区已设置: {newWorkspace}");
+    }
+
+    private async Task HandleCustomWorkspaceChanged(string newWorkspace)
+    {
+        _customWorkspacePath = newWorkspace;
+        StateHasChanged();
     }
 
     private async Task StartScheduler()
@@ -266,11 +357,23 @@
             switch (_activeTab)
             {
                 case "general":
+                    // 保存基本配置
                     await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>
                     {
                         ["DefaultAgent"] = _options.DefaultAgent,
                         ["DefaultModel"] = _options.DefaultModel
                     });
+                    
+                    // 保存工作区配置
+                    var workspaceOptions = new WorkspaceOptions
+                    {
+                        UseGlobal = _workspaceUseGlobal,
+                        CustomPath = string.IsNullOrWhiteSpace(_customWorkspacePath) ? null : _customWorkspacePath
+                    };
+                    await WorkspaceSwitchService.SetWorkspaceOptionsAsync(workspaceOptions);
+                    
+                    // 更新显示
+                    _workspacePath = WorkspaceProvider.WorkspaceRoot;
                     break;
                 case "scheduler":
                     await ConfigService.SaveSchedulerOptionsAsync(s =>

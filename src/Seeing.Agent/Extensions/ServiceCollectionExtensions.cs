@@ -15,6 +15,7 @@ using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Prompts;
+using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Llm.Clients;
@@ -477,19 +478,12 @@ namespace Seeing.Agent.Extensions
             });
 
             // 5. 工作区路径提供者（统一管理配置目录）
-            // 配置优先级：环境变量 SEEING_WORKSPACE_ROOT > 配置文件 Workspace:Root > 当前工作目录
-            services.AddSingleton<WorkspaceProvider>(sp =>
-            {
-                var config = sp.GetService<IConfiguration>();
-
-                // 优先级：环境变量 > 配置文件 > CWD
-                var workspaceRoot = Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT")
-                    ?? config?.GetValue<string>("Workspace:Root")
-                    ?? Directory.GetCurrentDirectory();
-
-                return new WorkspaceProvider(workspaceRoot);
-            });
+            // 初始化时根据配置自动解析工作区
+            services.AddSingleton<WorkspaceProvider>();
             services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
+
+            // 5.1 Todo 管理器（依赖 IWorkspaceProvider）
+            services.AddSingleton<ITodoManager, TodoManager>();
 
             // 6. Agent / Model 默认解析
             services.AddSingleton<AgentSelectionResolver>();
@@ -654,27 +648,36 @@ namespace Seeing.Agent.Extensions
         /// 初始化 Seeing.Agent - 通过 ComponentManager 加载 Skills/MCP/Plugins/Rules
         /// </summary>
         /// <param name="services">服务提供者</param>
-        /// <param name="workspaceRoot">工作区根目录</param>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>各组件加载结果</returns>
         public static async Task<IReadOnlyList<ComponentLoadResult>> InitializeSeeingAgentAsync(
             this IServiceProvider services,
-            string workspaceRoot,
             CancellationToken cancellationToken = default)
         {
             var loggerFactory = services.GetService<ILoggerFactory>();
             var logger = loggerFactory?.CreateLogger(typeof(SeeingAgentInitializationExtensions));
 
-            if (services.GetService<IWorkspaceProvider>() is WorkspaceProvider workspaceProvider)
-                workspaceProvider.SetWorkspaceRoot(workspaceRoot);
-
-            if (services.GetService<UnifiedConfigManager>() is { } configManager)
+            // 初始化工作区（自动根据配置解析）
+            if (services.GetService<WorkspaceProvider>() is { } workspaceProvider)
             {
-                await configManager.ReloadAsync(cancellationToken);
+                var persistence = services.GetService<IConfigurationPersistence>();
+                var configManager = services.GetService<UnifiedConfigManager>();
+                var workspaceLogger = services.GetService<ILogger<WorkspaceProvider>>();
+                
+                if (persistence != null && configManager != null)
+                {
+                    workspaceProvider.SetDependencies(persistence, configManager, workspaceLogger);
+                    await workspaceProvider.InitializeAsync(cancellationToken);
+                }
+            }
+
+            if (services.GetService<UnifiedConfigManager>() is { } configManager2)
+            {
+                await configManager2.ReloadAsync(cancellationToken);
 
                 if (services.GetService<AgentRegistry>() is { } registry)
                 {
-                    var agents = configManager.GetSection<Dictionary<string, AgentConfig>>("Agents");
+                    var agents = configManager2.GetSection<Dictionary<string, AgentConfig>>("Agents");
                     if (agents.Count > 0)
                     {
                         registry.ExtendFromConfig(agents);
@@ -683,6 +686,7 @@ namespace Seeing.Agent.Extensions
             }
 
             var componentManager = services.GetRequiredService<IComponentManager>();
+            var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().WorkspaceRoot;
             return await componentManager.LoadAllAsync(workspaceRoot, cancellationToken);
         }
 

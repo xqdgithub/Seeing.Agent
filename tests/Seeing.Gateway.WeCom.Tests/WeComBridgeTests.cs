@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Seeing.Gateway.Models;
+using Seeing.Gateway.WeCom;
 using Xunit;
 
 namespace Seeing.Gateway.WeCom.Tests;
@@ -239,9 +241,11 @@ public class WeComMessageParserTests
 
     private static WeComMediaFetcher CreateMediaFetcher()
     {
-        var httpClient = new HttpClient();
+        var services = new ServiceCollection();
+        services.AddHttpClient(WeComMediaFetcher.HttpClientName);
+        var factory = services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>();
         return new WeComMediaFetcher(
-            httpClient,
+            factory,
             Options.Create(new WeComOptions()),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<WeComMediaFetcher>.Instance);
     }

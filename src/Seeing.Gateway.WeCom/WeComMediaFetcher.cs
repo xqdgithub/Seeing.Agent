@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Gateway.WeCom;
 
 namespace Seeing.Gateway.WeCom;
 
@@ -8,16 +9,18 @@ namespace Seeing.Gateway.WeCom;
 /// </summary>
 public sealed class WeComMediaFetcher
 {
-    private readonly HttpClient _httpClient;
+    public const string HttpClientName = "WeComMedia";
+
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly WeComOptions _options;
     private readonly ILogger<WeComMediaFetcher> _logger;
 
     public WeComMediaFetcher(
-        HttpClient httpClient,
+        IHttpClientFactory httpClientFactory,
         IOptions<WeComOptions> options,
         ILogger<WeComMediaFetcher> logger)
     {
-        _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
         _options = options.Value;
         _logger = logger;
     }
@@ -33,7 +36,8 @@ public sealed class WeComMediaFetcher
 
         try
         {
-            var encrypted = await _httpClient.GetByteArrayAsync(url, cancellationToken).ConfigureAwait(false);
+            var httpClient = _httpClientFactory.CreateClient(HttpClientName);
+            var encrypted = await httpClient.GetByteArrayAsync(url, cancellationToken).ConfigureAwait(false);
             if (encrypted.Length > _options.MaxMediaBytes)
             {
                 _logger.LogWarning("媒体文件过大: {Bytes} > {Max}", encrypted.Length, _options.MaxMediaBytes);

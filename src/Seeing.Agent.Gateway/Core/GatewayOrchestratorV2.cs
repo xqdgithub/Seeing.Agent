@@ -27,7 +27,6 @@ namespace Seeing.Agent.Gateway.Core;
 public sealed class GatewayOrchestratorV2
 {
     private readonly IServiceProvider _services;
-    private readonly IChatOrchestrator _chatOrchestrator;
     private readonly GatewayOptions _options;
     private readonly GatewayPermissionChannel _permissionChannel;
     private readonly GatewayRunTracker _runTracker;
@@ -37,7 +36,6 @@ public sealed class GatewayOrchestratorV2
 
     public GatewayOrchestratorV2(
         IServiceProvider services,
-        IChatOrchestrator chatOrchestrator,
         GatewayOptions options,
         GatewayPermissionChannel permissionChannel,
         GatewayRunTracker runTracker,
@@ -46,7 +44,6 @@ public sealed class GatewayOrchestratorV2
         GatewayConnectionManager? connectionManager = null)
     {
         _services = services;
-        _chatOrchestrator = chatOrchestrator;
         _options = options;
         _permissionChannel = permissionChannel;
         _runTracker = runTracker;
@@ -178,9 +175,12 @@ public sealed class GatewayOrchestratorV2
         ChannelWriter<GatewayEvent> outputWriter,
         CancellationToken cancellationToken)
     {
+        using var scope = _services.CreateScope();
+        var chatOrchestrator = scope.ServiceProvider.GetRequiredService<IChatOrchestrator>();
+
         try
         {
-            await foreach (var chatEvent in _chatOrchestrator.ExecuteAsync(sessionId, input, options, cancellationToken))
+            await foreach (var chatEvent in chatOrchestrator.ExecuteAsync(sessionId, input, options, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 

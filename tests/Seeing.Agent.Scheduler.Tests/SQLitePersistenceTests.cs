@@ -100,8 +100,11 @@ public class SQLitePersistenceTests
         }
 
         public string WorkspaceRoot => _workspaceRoot;
+        public string StartupDirectory => _workspaceRoot;
         public string ProjectSeeingDirectory => _workspaceRoot;
         public string UserSeeingDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".seeing");
+        public WorkspaceResolutionSource ResolutionSource => WorkspaceResolutionSource.StartupDirectory;
+        public string? GlobalWorkspaceRoot => null;
         
         public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged;
 
@@ -116,6 +119,10 @@ public class SQLitePersistenceTests
             ConfigLevel.Project => ProjectSeeingDirectory,
             _ => throw new ArgumentOutOfRangeException(nameof(level))
         };
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SetGlobalWorkspaceRootAsync(string? path, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SetWorkspaceOptionsAsync(WorkspaceOptions options, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private class TestSchedulerOptionsProvider : ISchedulerOptionsProvider

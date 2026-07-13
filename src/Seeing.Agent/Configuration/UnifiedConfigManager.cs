@@ -97,6 +97,10 @@ public sealed class UnifiedConfigManager
                 typeof(PermissionOptions), 
                 scopeReason: "权限策略与项目安全上下文绑定", 
                 displayName: "权限配置", displayOrder: 13),
+            ["Workspace"] = new("Workspace", "seeing.json", ConfigScope.ProjectOnly, 
+                typeof(WorkspaceOptions), 
+                scopeReason: "工作区配置与项目运行环境绑定", 
+                displayName: "工作区配置", displayOrder: 14),
             
             // 独立配置文件（仅项目级）
             ["Scheduler"] = new("Scheduler", "scheduler.json", ConfigScope.ProjectOnly, 
@@ -586,6 +590,7 @@ public sealed class UnifiedConfigManager
             "PluginEnabled" => SeeingAgent.PluginEnabled as T,
             "Skills" => SeeingAgent.Skills as T,
             "Permission" => SeeingAgent.Permission as T,
+            "Workspace" => SeeingAgent.Workspace as T,
             _ => null
         };
     }
@@ -660,6 +665,10 @@ public sealed class UnifiedConfigManager
             case "Permission":
                 if (value is PermissionOptions permission)
                     SeeingAgent.Permission = permission;
+                break;
+            case "Workspace":
+                if (value is WorkspaceOptions workspace)
+                    SeeingAgent.Workspace = workspace;
                 break;
         }
     }

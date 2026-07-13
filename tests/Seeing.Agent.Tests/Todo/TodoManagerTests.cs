@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Todo;
 using Xunit;
 
@@ -12,6 +13,7 @@ namespace Seeing.Agent.Tests.Todo
     public class TodoManagerTests : IDisposable
     {
         private readonly Mock<ILogger<TodoManager>> _loggerMock;
+        private readonly Mock<IWorkspaceProvider> _workspaceMock;
         private readonly string _testDirectory;
 
         public TodoManagerTests()
@@ -19,6 +21,9 @@ namespace Seeing.Agent.Tests.Todo
             _loggerMock = new Mock<ILogger<TodoManager>>();
             _testDirectory = Path.Combine(Path.GetTempPath(), $"todo_test_{Guid.NewGuid():N}");
             Directory.CreateDirectory(_testDirectory);
+
+            _workspaceMock = new Mock<IWorkspaceProvider>();
+            _workspaceMock.Setup(x => x.WorkspaceRoot).Returns(_testDirectory);
         }
 
         public void Dispose()
@@ -33,7 +38,7 @@ namespace Seeing.Agent.Tests.Todo
         public async Task LoadAsync_WhenFileNotExists_ReturnsEmptyTodoList()
         {
             // Arrange
-            var manager = new TodoManager(_loggerMock.Object, _testDirectory);
+            var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_001";
 
             // Act
@@ -49,7 +54,7 @@ namespace Seeing.Agent.Tests.Todo
         public async Task SaveAsync_CreatesFileAndSavesTodoList()
         {
             // Arrange
-            var manager = new TodoManager(_loggerMock.Object, _testDirectory);
+            var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_002";
             var todoList = new TodoList
             {
@@ -64,7 +69,7 @@ namespace Seeing.Agent.Tests.Todo
             await manager.SaveAsync(todoList);
 
             // Assert
-            var filePath = Path.Combine(_testDirectory, $"{sessionId}.json");
+            var filePath = Path.Combine(_testDirectory, ".seeing", "todos", $"{sessionId}.json");
             File.Exists(filePath).Should().BeTrue();
         }
 
@@ -72,7 +77,7 @@ namespace Seeing.Agent.Tests.Todo
         public async Task AddAsync_CreatesNewTodoItem()
         {
             // Arrange
-            var manager = new TodoManager(_loggerMock.Object, _testDirectory);
+            var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_003";
             var content = "完成代码审查";
             var priority = "high";
@@ -99,7 +104,7 @@ namespace Seeing.Agent.Tests.Todo
         public async Task UpdateStatusAsync_UpdatesTodoItemStatus()
         {
             // Arrange
-            var manager = new TodoManager(_loggerMock.Object, _testDirectory);
+            var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_004";
             var addedItem = await manager.AddAsync(sessionId, "待完成任务", "medium");
 
@@ -124,7 +129,7 @@ namespace Seeing.Agent.Tests.Todo
         public async Task LoadAsync_AfterSave_ReturnsSavedTodoList()
         {
             // Arrange
-            var manager = new TodoManager(_loggerMock.Object, _testDirectory);
+            var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_005";
 
             await manager.AddAsync(sessionId, "任务一", "high");
@@ -150,12 +155,12 @@ namespace Seeing.Agent.Tests.Todo
         public async Task DeleteAsync_RemovesTodoFile()
         {
             // Arrange
-            var manager = new TodoManager(_loggerMock.Object, _testDirectory);
+            var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_006";
             await manager.AddAsync(sessionId, "待删除任务", "low");
 
             // 验证文件已创建
-            var filePath = Path.Combine(_testDirectory, $"{sessionId}.json");
+            var filePath = Path.Combine(_testDirectory, ".seeing", "todos", $"{sessionId}.json");
             File.Exists(filePath).Should().BeTrue();
 
             // Act

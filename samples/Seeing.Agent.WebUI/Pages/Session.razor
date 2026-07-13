@@ -585,8 +585,15 @@
             }
             else
             {
-                await FallbackCompactAsync();
-                MessageService.Warning(result.Error ?? result.Message ?? "压缩失败");
+                if (!CompactionService.IsAiCompactionAvailable)
+                {
+                    MessageService.Warning(result.Message ?? "未配置 LLM 模型，无法使用 AI 压缩");
+                }
+                else
+                {
+                    await FallbackCompactAsync();
+                    MessageService.Warning(result.Error ?? result.Message ?? "压缩失败");
+                }
             }
         }
         catch (Exception ex)

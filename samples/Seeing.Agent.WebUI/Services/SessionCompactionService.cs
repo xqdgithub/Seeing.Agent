@@ -11,8 +11,13 @@ public class SessionCompactionService
 {
     private readonly ILlmService _llmService;
     private readonly ILogger<SessionCompactionService>? _logger;
-    private readonly string _compactionModel;
+    private readonly string? _compactionModel;
     private readonly int _keepLastN;
+
+    /// <summary>
+    /// 是否已配置可用于 AI 压缩的模型
+    /// </summary>
+    public bool IsAiCompactionAvailable => !string.IsNullOrEmpty(_compactionModel);
 
     private const string SummaryPromptTemplate = """
         请将以下会话历史压缩为简洁的摘要，保留关键信息：
@@ -33,7 +38,7 @@ public class SessionCompactionService
     {
         _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
         _logger = logger;
-        _compactionModel = compactionModel ?? GetDefaultCompactionModel(llmService);
+        _compactionModel = compactionModel ?? TryGetDefaultCompactionModel(llmService);
         _keepLastN = keepLastN;
     }
 
@@ -45,6 +50,11 @@ public class SessionCompactionService
         string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
+        if (!IsAiCompactionAvailable)
+            return new CompactionResult(
+                Success: false,
+                Message: "未配置 LLM 模型，无法使用 AI 压缩。请先在「模型设置」页面配置 Provider 和模型。");
+
         // 空列表保护
         if (messages == null || messages.Count == 0)
             return new CompactionResult(Success: false, Message: "消息列表为空");
@@ -67,7 +77,7 @@ public class SessionCompactionService
                 MaxTokens = 1000,
                 Temperature = 0.3
             };
-            var response = await _llmService.CompleteAsync(_compactionModel, request, sessionId, cancellationToken);
+            var response = await _llmService.CompleteAsync(_compactionModel!, request, sessionId, cancellationToken);
             summary = response.Message?.Content ?? "(摘要生成失败)";
         }
         catch (Exception ex)
@@ -99,13 +109,13 @@ public class SessionCompactionService
     }
 
     /// <summary>
-    /// 获取默认压缩模型（优先使用低成本模型）
+    /// 尝试获取默认压缩模型（优先使用低成本模型）；未配置时返回 null
     /// </summary>
-    private static string GetDefaultCompactionModel(ILlmService llmService)
+    private static string? TryGetDefaultCompactionModel(ILlmService llmService)
     {
         var models = llmService.GetAvailableModels();
         if (models.Count == 0)
-            throw new InvalidOperationException("LLM 服务没有配置任何可用模型");
+            return null;
 
         // 优先选择低成本模型
         var preferred = new[] { "gpt-4o-mini", "gpt-3.5-turbo", "claude-3-haiku", "deepseek-chat" };

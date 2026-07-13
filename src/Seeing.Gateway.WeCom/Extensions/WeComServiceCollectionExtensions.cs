@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Configuration;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
 using Seeing.Gateway.WeCom.Connection;
@@ -25,7 +27,9 @@ public static class WeComServiceCollectionExtensions
             configureGateway?.Invoke(options);
         });
 
-        services.AddHttpClient<WeComMediaFetcher>();
+        services.TryAddSingleton<IWorkspaceProvider>(_ => new WorkspaceProvider());
+        services.AddHttpClient(WeComMediaFetcher.HttpClientName);
+        services.AddSingleton<WeComMediaFetcher>();
         services.AddSeeingGatewayClient();
         services.AddSingleton<WeComSessionTracker>();
         services.AddSingleton<WeComCommandInterceptor>();

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -11,7 +12,7 @@ namespace Seeing.Agent.Core.Todo;
 public class TodoManager : ITodoManager
 {
     private readonly ILogger<TodoManager> _logger;
-    private readonly string _storagePath;
+    private readonly IWorkspaceProvider _workspaceProvider;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new();
 
@@ -19,13 +20,13 @@ public class TodoManager : ITodoManager
     /// 创建 TodoManager 实例
     /// </summary>
     /// <param name="logger">日志器</param>
-    /// <param name="storagePath">存储目录路径，默认为当前工作目录下的 .seeing/todos</param>
+    /// <param name="workspaceProvider">工作区提供器</param>
     public TodoManager(
         ILogger<TodoManager> logger,
-        string? storagePath = null)
+        IWorkspaceProvider workspaceProvider)
     {
         _logger = logger;
-        _storagePath = storagePath ?? Path.Combine(Directory.GetCurrentDirectory(), ".seeing", "todos");
+        _workspaceProvider = workspaceProvider;
 
         _jsonOptions = new JsonSerializerOptions
         {
@@ -101,11 +102,12 @@ public class TodoManager : ITodoManager
         await fileLock.WaitAsync();
         try
         {
+            var storagePath = GetStoragePath();
             // 确保目录存在
-            if (!Directory.Exists(_storagePath))
+            if (!Directory.Exists(storagePath))
             {
-                Directory.CreateDirectory(_storagePath);
-                _logger.LogDebug("已创建 Todo 存储目录: {Directory}", _storagePath);
+                Directory.CreateDirectory(storagePath);
+                _logger.LogDebug("已创建 Todo 存储目录: {Directory}", storagePath);
             }
 
             todoList.UpdatedAt = DateTimeOffset.Now;
@@ -244,13 +246,21 @@ public class TodoManager : ITodoManager
     }
 
     /// <summary>
+    /// 获取存储路径
+    /// </summary>
+    private string GetStoragePath()
+    {
+        return Path.Combine(_workspaceProvider.WorkspaceRoot, ".seeing", "todos");
+    }
+
+    /// <summary>
     /// 获取文件路径
     /// </summary>
     private string GetFilePath(string sessionId)
     {
         // 使用安全的文件名（替换可能不安全的字符）
         var safeSessionId = sessionId.Replace("/", "_").Replace("\\", "_").Replace("..", "_");
-        return Path.Combine(_storagePath, $"{safeSessionId}.json");
+        return Path.Combine(GetStoragePath(), $"{safeSessionId}.json");
     }
 
     /// <summary>

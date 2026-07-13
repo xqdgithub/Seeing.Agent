@@ -128,7 +128,7 @@ public class AgentExecutor
                 try
                 {
                     await foreach (var update in _llm.CompleteStreamAsync(
-                        ResolveModelId(agent),
+                        ResolveModelId(agent, context),
                         request,
                         context.SessionId,
                         effectiveToken))
@@ -268,7 +268,7 @@ public class AgentExecutor
                     context.SessionId,
                     new Dictionary<string, object?>
                     {
-                        ["modelId"] = ResolveModelId(agent),
+                        ["modelId"] = ResolveModelId(agent, context),
                         ["error"] = llmException,
                         ["source"] = llmException is LlmException lle ? lle.Source : "unknown"
                     });
@@ -418,7 +418,7 @@ public class AgentExecutor
                 SessionId = context.SessionId,
                 WorkingDirectory = context.WorkingDirectory,
                 WorkspaceRoot = context.WorkspaceRoot,
-                ModelName = ResolveModelId(agent),
+                ModelName = ResolveModelId(agent, context),
                 Timestamp = DateTime.Now,
                 Platform = Environment.OSVersion.Platform.ToString(),
                 Tools = toolSchemas.Select(ts => ts.Function).ToList(),
@@ -789,9 +789,19 @@ public class AgentExecutor
     /// <summary>
     /// 解析模型 ID
     /// </summary>
-    private string ResolveModelId(AgentDefinition agent)
+    private string ResolveModelId(AgentDefinition agent, AgentContext? context = null)
     {
-        // 1. 优先使用 Agent 定义的模型
+        // 0. 优先使用用户在界面上选择的模型（会话级覆盖）
+        if (context?.Metadata != null &&
+            context.Metadata.TryGetValue(AgentContextKeys.SessionModelId, out var sessionModelObj) &&
+            sessionModelObj is string sessionModel &&
+            !string.IsNullOrEmpty(sessionModel))
+        {
+            _logger.LogDebug("[AgentExecutor] 使用会话级模型选择: {SessionModel}", sessionModel);
+            return sessionModel;
+        }
+
+        // 1. 使用 Agent 定义的模型
         if (agent.Model != null)
         {
             return agent.Model.ToString();

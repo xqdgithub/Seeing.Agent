@@ -34,6 +34,9 @@ namespace Seeing.Agent.Configuration
         /// <summary>Agent 特定的模型配置（Agent 名称 → 模型 ID）</summary>
         public Dictionary<string, string> AgentModels { get; set; } = new();
 
+        /// <summary>全局默认工作区路径（用户级设置）</summary>
+        public string? GlobalWorkspaceRoot { get; set; }
+
         /// <summary>最后更新时间</summary>
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
