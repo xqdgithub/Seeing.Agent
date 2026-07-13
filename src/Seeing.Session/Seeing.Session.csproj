@@ -21,4 +21,8 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Seeing.TokenEstimation\Seeing.TokenEstimation.csproj" />
+  </ItemGroup>
+
 </Project>

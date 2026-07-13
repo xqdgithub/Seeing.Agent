@@ -1,4 +1,5 @@
 using Seeing.Session.Core;
+using Seeing.TokenEstimation;
 
 namespace Seeing.Session.Compression
 {
@@ -98,6 +99,64 @@ namespace Seeing.Session.Compression
         public int GetDiscardedCount(int messageCount)
         {
             return messageCount - GetRetainedCount(messageCount);
+        }
+
+        /// <summary>
+        /// 基于Token预算压缩消息（委托给默认压缩实现）
+        /// </summary>
+        /// <param name="messages">原始消息列表</param>
+        /// <param name="config">Token预算配置</param>
+        /// <param name="tokenCounter">Token计数器</param>
+        /// <returns>压缩结果</returns>
+        public CompressionResult CompressByTokenBudget(
+            IReadOnlyList<SessionMessage> messages,
+            TokenBudgetConfig config,
+            ITokenCounter tokenCounter)
+        {
+            if (messages.Count == 0)
+            {
+                return CompressionResult.Succeeded(0, 0, 0, Array.Empty<SessionMessage>());
+            }
+
+            // 计算压缩前的token数
+            var tokensBefore = CountTokens(messages, tokenCounter);
+
+            // 使用默认压缩逻辑
+            var compressed = Compress(messages);
+
+            // 计算压缩后的token数
+            var tokensAfter = CountTokens(compressed, tokenCounter);
+
+            return CompressionResult.Succeeded(
+                tokensBefore,
+                tokensAfter,
+                messages.Count - compressed.Count,
+                compressed);
+        }
+
+        /// <summary>
+        /// 计算消息列表的总token数
+        /// </summary>
+        private int CountTokens(IReadOnlyList<SessionMessage> messages, ITokenCounter tokenCounter)
+        {
+            var total = 0;
+            foreach (var message in messages)
+            {
+                total += tokenCounter.Estimate(message.Content);
+                if (!string.IsNullOrEmpty(message.ReasoningContent))
+                {
+                    total += tokenCounter.Estimate(message.ReasoningContent);
+                }
+                if (message.ToolCalls != null)
+                {
+                    foreach (var toolCall in message.ToolCalls)
+                    {
+                        total += tokenCounter.Estimate(toolCall.Name);
+                        total += tokenCounter.Estimate(toolCall.Arguments);
+                    }
+                }
+            }
+            return total;
         }
     }
 }
