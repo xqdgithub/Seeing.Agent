@@ -1,0 +1,86 @@
+@using AntDesign
+@using Seeing.TokenBudget.Api.Responses
+
+<div class="token-status-bar @GetStatusClass()">
+    <div class="progress-container">
+        <Progress Percent="@GetProgressValue()" 
+                  StrokeColor="@GetProgressColor()"
+                  ShowInfo="false"
+                  Size="@ProgressSize.Small" />
+    </div>
+    <div class="status-info">
+        <span class="usage-text">@FormatTokens(Status.CurrentTokens)/@FormatTokens(Status.MaxTokens) (@Status.UsagePercentage.ToString("F0")%)</span>
+        @if (Status.Level != "normal")
+        {
+            <span class="warning-icon">@GetWarningIcon()</span>
+            <span class="warning-text">@Status.Message</span>
+        }
+        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="ToggleDetails">📊</Button>
+        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="OpenSettings">⚙️</Button>
+    </div>
+    
+    @if (ShowDetails)
+    {
+        <div class="details-panel">
+            <div class="available">
+                <span>Available: @FormatTokens(Status.AvailableTokens)</span>
+            </div>
+            @if (Status.NeedsCompaction)
+            {
+                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" OnClick="TriggerCompaction">Compact Now</Button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public BudgetStatusResponse Status { get; set; } = new();
+    
+    [Parameter]
+    public EventCallback OnCompactRequested { get; set; }
+    
+    [Parameter]
+    public EventCallback OnSettingsRequested { get; set; }
+    
+    private bool ShowDetails { get; set; }
+    
+    private string GetStatusClass() => Status.Level switch
+    {
+        "warning" => "status-warning",
+        "critical" => "status-critical",
+        "overflow" => "status-overflow",
+        _ => "status-normal"
+    };
+    
+    private double GetProgressValue() => Math.Min(100, Status.UsagePercentage);
+    
+    private string GetProgressColor() => Status.Level switch
+    {
+        "warning" => "#faad14",
+        "critical" => "#ff4d4f",
+        "overflow" => "#a8071a",
+        _ => "#52c41a"
+    };
+    
+    private string GetWarningIcon() => Status.Level switch
+    {
+        "warning" => "⚠",
+        "critical" => "⚠",
+        "overflow" => "✕",
+        _ => ""
+    };
+    
+    private string FormatTokens(int tokens)
+    {
+        if (tokens >= 1000000) return $"{tokens / 1000000.0:F1}M";
+        if (tokens >= 1000) return $"{tokens / 1000}K";
+        return tokens.ToString();
+    }
+    
+    private void ToggleDetails() => ShowDetails = !ShowDetails;
+    
+    private void OpenSettings() => OnSettingsRequested.InvokeAsync();
+    
+    private async Task TriggerCompaction() => await OnCompactRequested.InvokeAsync();
+}

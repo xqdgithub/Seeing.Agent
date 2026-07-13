@@ -1,0 +1,54 @@
+.token-status-bar {
+    padding: 8px 12px;
+    background: #fafafa;
+    border-top: 1px solid #f0f0f0;
+}
+
+.progress-container {
+    margin-bottom: 4px;
+}
+
+.status-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #666;
+}
+
+.usage-text {
+    font-weight: 500;
+}
+
+.warning-icon {
+    color: #faad14;
+}
+
+.status-critical .warning-icon,
+.status-overflow .warning-icon {
+    color: #ff4d4f;
+}
+
+.warning-text {
+    flex: 1;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.details-panel {
+    margin-top: 8px;
+    padding: 8px;
+    background: #fff;
+    border-radius: 4px;
+    border: 1px solid #f0f0f0;
+}
+
+.available {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #f0f0f0;
+    font-weight: 500;
+    color: #52c41a;
+}
