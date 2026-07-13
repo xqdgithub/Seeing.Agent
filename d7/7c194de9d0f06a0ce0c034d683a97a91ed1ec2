@@ -1,0 +1,23 @@
+src/Seeing.Agent/MCP/McpClientManager.cs
+  s_28346d7d74df41::t_0a641dda4ebc96 658
+  s_28346d7d74df41::t_62f589f5f22cbc 626-635,637-649,654
+samples/Seeing.Agent.WebUI/Pages/McpPage.razor
+  s_28346d7d74df41::t_92bc43ff9f4441 421
+  s_28346d7d74df41::t_858c417bc36563 417,422-425,431-434,439-441
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.33-trip",
+  "base_commit_sha": "d77c194de9d0f06a0ce0c034d683a97a91ed1ec2",
+  "prompts": {},
+  "sessions": {
+    "s_28346d7d74df41": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a4f4510effeqyHfdUHnsJYIJt",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
