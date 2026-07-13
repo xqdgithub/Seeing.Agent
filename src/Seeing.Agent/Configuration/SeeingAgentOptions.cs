@@ -1,6 +1,7 @@
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Configuration
 {
@@ -67,6 +68,9 @@ namespace Seeing.Agent.Configuration
 
         /// <summary>工作区配置</summary>
         public WorkspaceOptions Workspace { get; set; } = new();
+
+        /// <summary>Token 预算全局配置</summary>
+        public TokenBudgetOptions TokenBudget { get; set; } = new();
     }
 
     /// <summary>
@@ -229,5 +233,50 @@ namespace Seeing.Agent.Configuration
         /// <para>设置后忽略 UseGlobal，直接使用此路径</para>
         /// </summary>
         public string? CustomPath { get; set; }
+    }
+
+    /// <summary>
+    /// Token 预算配置选项
+    /// </summary>
+    public class TokenBudgetOptions
+    {
+        /// <summary>默认最大上下文 Token 数</summary>
+        public int? MaxContextTokens { get; set; }
+
+        /// <summary>警告阈值</summary>
+        public ThresholdOptions WarningThreshold { get; set; } = new() { Percentage = 80 };
+
+        /// <summary>压缩阈值</summary>
+        public ThresholdOptions CompactionThreshold { get; set; } = new() { Percentage = 90 };
+
+        /// <summary>压缩策略类型</summary>
+        public CompactionStrategyType CompactionStrategy { get; set; } = CompactionStrategyType.SlidingWindow;
+
+        /// <summary>滑动窗口保留 Token 数</summary>
+        public int SlidingWindowKeepTokens { get; set; } = 20000;
+
+        /// <summary>摘要目标 Token 数</summary>
+        public int SummaryTargetTokens { get; set; } = 4000;
+
+        /// <summary>是否启用自动压缩</summary>
+        public bool AutoCompactionEnabled { get; set; } = true;
+    }
+
+    /// <summary>
+    /// 阈值配置选项
+    /// </summary>
+    public class ThresholdOptions
+    {
+        /// <summary>
+        /// Threshold as percentage of max tokens (0-100).
+        /// Takes precedence over AbsoluteTokens if both are set.
+        /// </summary>
+        public int? Percentage { get; set; }
+
+        /// <summary>
+        /// Threshold as absolute token count.
+        /// Ignored if Percentage is also set.
+        /// </summary>
+        public int? AbsoluteTokens { get; set; }
     }
 }
