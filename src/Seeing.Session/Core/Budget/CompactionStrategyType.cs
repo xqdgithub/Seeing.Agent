@@ -1,4 +1,4 @@
-namespace Seeing.TokenBudget;
+namespace Seeing.Session.Core;
 
 /// <summary>
 /// Defines the strategy type for context compaction.

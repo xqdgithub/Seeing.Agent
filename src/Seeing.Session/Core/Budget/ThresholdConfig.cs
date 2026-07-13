@@ -1,4 +1,4 @@
-namespace Seeing.TokenBudget;
+namespace Seeing.Session.Core;
 
 /// <summary>
 /// Configuration for a token budget threshold.

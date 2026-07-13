@@ -1,3 +1,4 @@
+using Seeing.Session.Core;
 using Seeing.TokenEstimation;
 
 namespace Seeing.TokenBudget;

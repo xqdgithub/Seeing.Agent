@@ -1,4 +1,4 @@
-namespace Seeing.TokenBudget;
+namespace Seeing.Session.Core;
 
 /// <summary>
 /// Represents the budget level based on token usage.

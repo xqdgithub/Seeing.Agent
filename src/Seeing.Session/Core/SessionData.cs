@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Seeing.Session.Core
 {
     public enum SessionStatus
@@ -68,6 +70,18 @@ namespace Seeing.Session.Core
 
         /// <summary>归档时间</summary>
         public DateTimeOffset? ArchivedAt { get; set; }
+
+        // === Token 预算配置 ===
+        /// <summary>
+        /// Token 预算配置（覆盖 Agent 和全局配置）
+        /// </summary>
+        public TokenBudgetConfig? BudgetConfig { get; set; }
+
+        /// <summary>
+        /// 是否待压缩（下次请求前执行）
+        /// </summary>
+        [JsonIgnore]
+        public bool PendingCompaction { get; set; }
 
         // === 向后兼容字段（Deprecated） ===
         [Obsolete("使用 SelectedAgent 替代")]
@@ -172,7 +186,9 @@ namespace Seeing.Session.Core
                 ParentSessionId = ParentSessionId,
                 ForkLabel = ForkLabel,
                 IsArchived = IsArchived,
-                ArchivedAt = ArchivedAt
+                ArchivedAt = ArchivedAt,
+                // Token 预算配置
+                BudgetConfig = BudgetConfig
             };
         }
     }

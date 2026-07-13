@@ -1,4 +1,5 @@
 using Seeing.Agent.Core.Permission;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Models
 {
@@ -67,6 +68,11 @@ namespace Seeing.Agent.Core.Models
 
         /// <summary>允许的子代理</summary>
         public IReadOnlyList<string> AllowedAgents { get; init; } = Array.Empty<string>();
+
+        /// <summary>
+        /// Token 预算配置（覆盖全局配置）
+        /// </summary>
+        public TokenBudgetConfig? BudgetConfig { get; init; }
 
         /// <summary>执行运行时类型</summary>
         public AgentRuntime Runtime { get; init; } = AgentRuntime.Native;

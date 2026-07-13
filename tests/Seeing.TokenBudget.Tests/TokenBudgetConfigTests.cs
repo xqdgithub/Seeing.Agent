@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Seeing.Session.Core;
 using Seeing.TokenBudget;
 using Xunit;
 
