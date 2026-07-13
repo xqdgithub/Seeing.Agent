@@ -1,0 +1,23 @@
+src/Seeing.Agent/Skills/SkillManager.cs
+  s_ac085e8dba1bba::t_fa1ee899686d67 274-275,277-280,282-283,285-286,289-291,293-294,296-297,299-300,302-308,310-313,315-321,324-335
+  s_ac085e8dba1bba::t_0b07c9d3a3f9eb 6-7
+  s_ac085e8dba1bba::t_e43fd7fccded6a 242-243,246-248,251-256,259-268,271
+  s_ac085e8dba1bba::t_56ab4943bc1983 298,301,314,360,364-365
+  s_ac085e8dba1bba::t_bac6761002d746 249-250,257-258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.33-trip",
+  "base_commit_sha": "90863dfc2866a7437b43b9ccefb4d11aef0b05a1",
+  "prompts": {},
+  "sessions": {
+    "s_ac085e8dba1bba": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a5a0ffd1ffeNVl1oM0jpYvVpw",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
