@@ -1,0 +1,106 @@
+src/Seeing.Agent.App/Execution/ExecutionJobService.cs
+  s_ac085e8dba1bba::t_d8786aecddfba4 493,502-509,515
+  s_ac085e8dba1bba::t_b9c0bf93de176f 510-514
+src/Seeing.Agent/Core/AgentExecutor.cs
+  s_ac085e8dba1bba::t_b7b9027e1acdb3 792,794-804
+  s_ac085e8dba1bba::t_f0fe81f13eab0d 131,271,421
+src/Seeing.Gateway.WeCom/WeComMediaFetcher.cs
+  s_e764f649aa8347::t_c64814c1407c6f 12-14,19,23
+  s_e764f649aa8347::t_4bfefcc37ea482 3
+  s_e764f649aa8347::t_a7aa49249163fe 39-40
+samples/Seeing.Agent.WebUI/Services/WorkspaceSwitchService.cs
+  s_a3b7dc8b9bd69b::t_fc243317b2ca7a 40,108-128,134-160
+src/Seeing.Gateway.WeCom/Extensions/WeComServiceCollectionExtensions.cs
+  s_e764f649aa8347::t_0e308393f3915c 2,4,30-32
+samples/Seeing.Agent.WebUI/Program.cs
+  s_a3b7dc8b9bd69b::t_4917772ce322c9 96,101-102,131-132
+  s_a3b7dc8b9bd69b::t_f5723b85ffb412 3
+tests/Seeing.Agent.Scheduler.Tests/SQLitePersistenceTests.cs
+  s_a3b7dc8b9bd69b::t_6fa13161036e50 103,106-107,122-125
+src/Seeing.Agent/Configuration/UnifiedConfigManager.cs
+  s_a3b7dc8b9bd69b::t_e445c7d0916c15 100-103
+  s_a3b7dc8b9bd69b::t_0a24bb37ece7a0 669-672
+  s_a3b7dc8b9bd69b::t_9018fdf3025c95 593
+src/Seeing.Agent/Core/Todo/TodoManager.cs
+  s_a3b7dc8b9bd69b::t_2b6fe09499a2e8 15,23,26,29,248
+  s_a3b7dc8b9bd69b::t_507dd904552a67 105,107,109-110
+  s_a3b7dc8b9bd69b::t_c2f8151bc2da96 249-255,263
+  s_a3b7dc8b9bd69b::t_253c323ba981d9 2
+tests/Seeing.Gateway.WeCom.Tests/WeComQuoteParserTests.cs
+  s_e764f649aa8347::t_4fd58a4d316cd7 94-96,98
+  s_e764f649aa8347::t_4bd2f19df2811a 2,6
+src/Seeing.Agent/Configuration/IConfigurationPersistence.cs
+  s_a3b7dc8b9bd69b::t_cddf7cdddf8146 37-39
+samples/Seeing.Gateway.Server/Program.cs
+  s_a3b7dc8b9bd69b::t_2caab6b4e5e783 20-21
+samples/Seeing.Gateway.ChannelHost/Program.cs
+  s_e764f649aa8347::t_cdff2cc0479920 46-48
+  s_e764f649aa8347::t_e2f7220ac915b3 7
+  s_e764f649aa8347::t_e748c8af2067fa 134-155
+src/Seeing.Agent/Configuration/SeeingAgentOptions.cs
+  s_a3b7dc8b9bd69b::t_10d35eec5a20be 214-232
+  s_a3b7dc8b9bd69b::t_6398519fa6e91a 67-69
+samples/Seeing.Agent.WebUI/Components/WorkspaceSelectorModal.razor
+  s_a3b7dc8b9bd69b::t_7c7f67141deedb 7,63-76
+src/Seeing.Agent/Core/Models/AgentModels.cs
+  s_ac085e8dba1bba::t_0adc0e455f394a 232-234
+samples/Seeing.Agent.WebUI/Services/SessionCompactionService.cs
+  s_e764f649aa8347::t_a71d8c51407570 80
+  s_e764f649aa8347::t_9b74ee27a4f183 112,114,118
+  s_e764f649aa8347::t_31639fa3039f1f 14,17-21
+  s_e764f649aa8347::t_fa5c65a94d936c 41
+  s_e764f649aa8347::t_06da5eb2e0cff1 53-57
+samples/Seeing.Agent.WebUI/Pages/Settings.razor
+  s_a3b7dc8b9bd69b::t_72cf99b0ff4e65 43-46,49,51-90,176-183,195-201,212-214,219-226,244-253,261,267-279,360,366-376
+samples/Seeing.Agent.WebUI/Pages/Session.razor
+  s_e764f649aa8347::t_226151d248f7af 588-596
+tests/Seeing.Gateway.WeCom.Tests/WeComBridgeTests.cs
+  s_e764f649aa8347::t_d2655c7bc708c2 244-246,248
+  s_e764f649aa8347::t_08c671ad398da5 4,7
+src/Seeing.Agent/Configuration/WorkspaceProvider.cs
+  s_a3b7dc8b9bd69b::t_19022321aa90eb 1-2
+  s_a3b7dc8b9bd69b::t_710b62adf769c3 18-37,49,53,77-96,117-120,122-126,131,133-135,150-158,164-172,176,184,202-344
+  s_a3b7dc8b9bd69b::t_b0fd9b83ce46df 138-149
+src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs
+  s_a3b7dc8b9bd69b::t_e34b4dbecd7715 18
+  s_a3b7dc8b9bd69b::t_cee828eb0fe50b 481-482
+  s_a3b7dc8b9bd69b::t_953fc845cf0c0d 485-487
+  s_a3b7dc8b9bd69b::t_34c37fb9b3d801 660-672,674,676,680,689
+tests/Seeing.Agent.Tests/Todo/TodoManagerTests.cs
+  s_a3b7dc8b9bd69b::t_74aeeb320e33f7 4
+  s_a3b7dc8b9bd69b::t_c520cd0a464eec 16,24-26,41,57,72,80,107,132,158,163
+src/Seeing.Agent.Gateway/Core/GatewayOrchestratorV2.cs
+  s_e764f649aa8347::t_eea33d4910f484 178-180,183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.33-trip",
+  "base_commit_sha": "43ae97fa89c78502ceb99cfe8ff2929fb59fa22f",
+  "prompts": {},
+  "sessions": {
+    "s_a3b7dc8b9bd69b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a6661308ffe7ll3pLYsZtJ06J",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_ac085e8dba1bba": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a5a0ffd1ffeNVl1oM0jpYvVpw",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_e764f649aa8347": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d6d022d8-0b4a-4741-8b36-c9a4f7ac2a3c",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
