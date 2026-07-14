@@ -17,5 +17,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Seeing.TokenBudget\Seeing.TokenBudget.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent\Seeing.Agent.csproj" />
   </ItemGroup>
 </Project>
