@@ -42,4 +42,30 @@ public static class TokenBudgetServiceExtensions
         
         return services;
     }
+
+    /// <summary>
+    /// Adds token budget integration services including compression strategies and services.
+    /// This includes all services from AddTokenBudgetManagement plus compression infrastructure.
+    /// </summary>
+    /// <param name="services">The service collection to add services to.</param>
+    /// <param name="configuration">The configuration containing token budget settings.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddTokenBudgetIntegration(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register base token budget services
+        services.AddTokenBudgetManagement(configuration);
+
+        // Register compression strategies (singletons for stateless strategies)
+        services.AddSingleton<SlidingWindowTokenStrategy>();
+        services.AddSingleton<SummarizingStrategy>();
+        services.AddSingleton<HybridStrategy>();
+
+        // Register compression infrastructure
+        services.AddSingleton<ICompressionStrategyFactory, CompressionStrategyFactory>();
+        services.AddScoped<ICompressionService, CompressionService>();
+
+        return services;
+    }
 }
