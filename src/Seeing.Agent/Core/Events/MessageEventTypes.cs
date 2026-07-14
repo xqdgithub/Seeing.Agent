@@ -50,6 +50,15 @@ public enum MessageEventType
     /// <summary>命令执行结果</summary>
     CommandResult,
 
+    /// <summary>预算状态更新</summary>
+    BudgetStatus,
+
+    /// <summary>压缩执行</summary>
+    Compaction,
+
+    /// <summary>预算警告</summary>
+    BudgetWarning,
+
     /// <summary>导航请求</summary>
     Navigate
 }
