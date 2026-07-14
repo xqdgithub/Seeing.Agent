@@ -1,12 +1,12 @@
 @using AntDesign
-@using Seeing.TokenBudget.Api.Responses
+@using Seeing.Agent.TokenBudget.Api.Responses
 
 <div class="token-budget-inline @GetStatusClass()">
     <div class="progress-mini">
         <div class="progress-fill" style="width: @GetProgressValue()%;"></div>
     </div>
     <span class="token-text">@FormatTokens(Status.CurrentTokens)/@FormatTokens(Status.MaxTokens)</span>
-    <span class="token-percent">@Status.UsagePercentage.ToString("F0")%</span>
+    <span class="token-percent">@Status.UsagePercentage.ToString("F1")%</span>
     @if (Status.Level != "normal")
     {
         <span class="status-indicator @Status.Level">⚠</span>
@@ -74,7 +74,7 @@
     private string FormatTokens(int tokens)
     {
         if (tokens >= 1000000) return $"{tokens / 1000000.0:F1}M";
-        if (tokens >= 1000) return $"{tokens / 1000}K";
+        if (tokens >= 1000) return $"{tokens / 1000.0:F1}K";
         return tokens.ToString();
     }
 

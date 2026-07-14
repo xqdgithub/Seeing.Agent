@@ -34,6 +34,11 @@ namespace Seeing.Session.Management
         private readonly GlobalSessionStore? _globalStore;
 
         /// <summary>
+        /// 内部存储实例（供内部组件使用，不暴露到外部）
+        /// </summary>
+        internal ISessionStore? Store => _store;
+
+        /// <summary>
         /// 创建 SessionManager 实例
         /// </summary>
         /// <param name="store">会话存储（可选）</param>
@@ -556,6 +561,186 @@ namespace Seeing.Session.Management
             }
 
             _logger?.LogInformation("设置会话标题: SessionId={SessionId}, Title={Title}", sessionId, title);
+        }
+
+        /// <summary>
+        /// 设置会话的模型
+        /// </summary>
+        public async Task SetModelAsync(string sessionId, string modelId, string? providerId = null, CancellationToken ct = default)
+        {
+            var session = Get(sessionId);
+            if (session == null)
+            {
+                _logger?.LogWarning("会话不存在，无法设置模型: {SessionId}", sessionId);
+                return;
+            }
+
+            // 解析 provider（如果未提供）
+            if (string.IsNullOrEmpty(providerId) && modelId.Contains('/'))
+            {
+                var parts = modelId.Split('/');
+                providerId = parts[0];
+                modelId = parts[1];
+            }
+
+            // 更新会话的模型选择
+            session.SelectedModel = modelId;
+            if (!string.IsNullOrEmpty(providerId))
+            {
+                session.SelectedModelProvider = providerId;
+            }
+            session.UpdatedAt = DateTime.Now;
+
+            // 触发 ModelChanged Hook（让 Budget 服务响应）
+            var fullModelId = string.IsNullOrEmpty(providerId) ? modelId : $"{providerId}/{modelId}";
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.ModelChanged,
+                session.Id,
+                input: new Dictionary<string, object?>
+                {
+                    ["modelId"] = fullModelId,
+                    ["session"] = session
+                });
+
+            // 触发 Updated Hook（兼容现有逻辑）
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.Updated,
+                session.Id,
+                result: new Dictionary<string, object?> { ["session"] = session });
+
+            // 自动保存
+            if (_store != null)
+            {
+                await SaveAsync(sessionId);
+            }
+
+            _logger?.LogInformation("设置会话模型: SessionId={SessionId}, Model={Model}, Provider={Provider}",
+                sessionId, modelId, providerId ?? "(auto)");
+        }
+
+        // === 原子操作方法（确保缓存一致性） ===
+
+        /// <summary>
+        /// 获取或加载会话（原子操作）
+        /// <para>优先从内存缓存获取，若不存在则从存储加载。</para>
+        /// <para>这是获取 Session 的推荐方法，确保所有组件使用同一实例。</para>
+        /// </summary>
+        public async Task<SessionData> GetOrLoadAsync(string sessionId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+                throw new ArgumentException("Session ID cannot be null or empty.", nameof(sessionId));
+
+            // 1. 先查缓存
+            var cached = Get(sessionId);
+            if (cached != null)
+                return cached;
+
+            // 2. 再从存储加载
+            var loaded = await LoadAsync(sessionId);
+            if (loaded != null)
+                return loaded;
+
+            // 3. 不存在则抛出异常（不自动创建）
+            throw new InvalidOperationException($"Session not found: {sessionId}");
+        }
+
+        /// <summary>
+        /// 原子更新会话（确保缓存一致性）
+        /// <para>从缓存获取 Session，执行更新操作，然后持久化。</para>
+        /// </summary>
+        public async Task<SessionData> UpdateSessionAsync(
+            string sessionId,
+            Action<SessionData> updateAction,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+                throw new ArgumentException("Session ID cannot be null or empty.", nameof(sessionId));
+
+            if (updateAction == null)
+                throw new ArgumentNullException(nameof(updateAction));
+
+            var session = await GetOrLoadAsync(sessionId, ct);
+
+            // 执行更新操作
+            updateAction(session);
+            session.UpdatedAt = DateTime.Now;
+
+            // 持久化
+            if (_store != null)
+            {
+                await SaveAsync(sessionId);
+                _logger?.LogDebug("Session updated and saved: {SessionId}", sessionId);
+            }
+
+            return session;
+        }
+
+        /// <summary>
+        /// 保存并通知更新（可选持久化）
+        /// </summary>
+        public async Task SaveAndNotifyAsync(string sessionId, bool persist = true, CancellationToken ct = default)
+        {
+            var session = Get(sessionId);
+            if (session == null)
+            {
+                _logger?.LogWarning("会话不存在，无法保存: {SessionId}", sessionId);
+                return;
+            }
+
+            session.UpdatedAt = DateTime.Now;
+
+            // 触发 Updated Hook
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.Updated,
+                session.Id,
+                result: new Dictionary<string, object?> { ["session"] = session });
+
+            // 发布 SessionEvent
+            _eventPublisher?.Publish(new SessionEvent
+            {
+                SessionId = session.Id,
+                Type = SessionEventType.Updated,
+                Data = session
+            });
+
+            // 持久化
+            if (persist && _store != null)
+            {
+                await SaveAsync(sessionId);
+            }
+
+            _logger?.LogDebug("Session saved and notified: {SessionId}", sessionId);
+        }
+
+        /// <summary>
+        /// 从存储加载所有会话并注册到缓存
+        /// <para>用于启动时恢复会话列表。</para>
+        /// </summary>
+        /// <param name="ct">取消令牌</param>
+        /// <returns>会话列表（已按更新时间降序排列）</returns>
+        public async Task<IReadOnlyList<SessionData>> LoadAllFromStorageAsync(CancellationToken ct = default)
+        {
+            if (_store == null)
+            {
+                _logger?.LogDebug("未配置存储，返回内存缓存中的会话");
+                return List();
+            }
+
+            var sessions = new List<SessionData>();
+            var asyncEnumerable = await _store.ListAsync();
+
+            await foreach (var session in asyncEnumerable.WithCancellation(ct))
+            {
+                // 注册到内存缓存（如果不存在）
+                if (!_sessionDataCache.ContainsKey(session.Id))
+                {
+                    _sessionDataCache[session.Id] = session;
+                }
+                sessions.Add(_sessionDataCache[session.Id]);
+            }
+
+            _logger?.LogInformation("从存储加载 {Count} 个会话", sessions.Count);
+            return sessions.OrderByDescending(s => s.UpdatedAt).ToList();
         }
     }
 }

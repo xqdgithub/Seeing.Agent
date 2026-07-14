@@ -67,8 +67,59 @@ namespace Seeing.Session.Core
         Task<IReadOnlyList<SessionMetadata>> ListAllAsync(
             string? partitionId = null, CancellationToken ct = default);
 
+        /// <summary>
+        /// 从存储加载所有会话并注册到缓存
+        /// <para>用于启动时恢复会话列表。</para>
+        /// </summary>
+        /// <param name="ct">取消令牌</param>
+        /// <returns>会话列表（已按更新时间降序排列）</returns>
+        Task<IReadOnlyList<SessionData>> LoadAllFromStorageAsync(CancellationToken ct = default);
+
         /// <summary>设置会话标题</summary>
         Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default);
+
+        /// <summary>
+        /// 设置会话的模型
+        /// </summary>
+        /// <param name="sessionId">会话 ID</param>
+        /// <param name="modelId">模型 ID（可以是 "model" 或 "provider/model" 格式）</param>
+        /// <param name="providerId">Provider ID（可选，可从 modelId 解析）</param>
+        /// <param name="ct">取消令牌</param>
+        Task SetModelAsync(string sessionId, string modelId, string? providerId = null, CancellationToken ct = default);
+
+        // === 原子操作方法（确保缓存一致性） ===
+
+        /// <summary>
+        /// 获取或加载会话（原子操作）
+        /// <para>优先从内存缓存获取，若不存在则从存储加载。</para>
+        /// <para>这是获取 Session 的推荐方法，确保所有组件使用同一实例。</para>
+        /// </summary>
+        /// <param name="sessionId">会话 ID</param>
+        /// <param name="ct">取消令牌</param>
+        /// <returns>SessionData 实例</returns>
+        /// <exception cref="InvalidOperationException">会话不存在</exception>
+        Task<SessionData> GetOrLoadAsync(string sessionId, CancellationToken ct = default);
+
+        /// <summary>
+        /// 原子更新会话（确保缓存一致性）
+        /// <para>从缓存获取 Session，执行更新操作，然后持久化。</para>
+        /// <para>此方法确保更新操作在正确的实例上执行，并自动保存。</para>
+        /// </summary>
+        /// <param name="sessionId">会话 ID</param>
+        /// <param name="updateAction">更新操作</param>
+        /// <param name="ct">取消令牌</param>
+        /// <returns>更新后的 SessionData</returns>
+        /// <exception cref="InvalidOperationException">会话不存在</exception>
+        Task<SessionData> UpdateSessionAsync(string sessionId, Action<SessionData> updateAction, CancellationToken ct = default);
+
+        /// <summary>
+        /// 保存并通知更新（可选持久化）
+        /// <para>更新会话的 UpdatedAt 时间戳，触发 Updated Hook，并可选保存到存储。</para>
+        /// </summary>
+        /// <param name="sessionId">会话 ID</param>
+        /// <param name="persist">是否持久化到存储</param>
+        /// <param name="ct">取消令牌</param>
+        Task SaveAndNotifyAsync(string sessionId, bool persist = true, CancellationToken ct = default);
     }
 
     /// <summary>Session 元数据（用于列表显示）</summary>

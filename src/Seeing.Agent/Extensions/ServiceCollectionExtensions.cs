@@ -36,6 +36,8 @@ using Seeing.Agent.Tools.BuiltIn.SubTask;
 using Seeing.Agent.Tools.BuiltIn.Todo;
 using Seeing.Agent.Tools.BuiltIn.Web;
 using Seeing.Session.Core;
+using Seeing.Session.Management;
+using Seeing.Session.Storage;
 
 namespace Seeing.Agent.Extensions
 {

@@ -12,10 +12,8 @@
 @using Seeing.Agent.Skills
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Llm
-@using Seeing.Session.Core
 @using Seeing.Session.Management
 @using Seeing.Session.Compression
-@using Seeing.Session.Storage
 @using Seeing.Agent.App
 @using Seeing.Agent.App.Events
 @using Seeing.Agent.App.Models
@@ -39,8 +37,8 @@
 @inject Services.SessionCompactionService CompactionService
 @inject Services.CommandListService CommandListService
 @inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
-@inject Seeing.TokenBudget.ITokenBudgetManager TokenBudgetManager
-@inject ISessionStore SessionStore
+@inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
+@inject ISessionManager SessionManager
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -417,34 +415,19 @@
 
         try
         {
-            int maxTokens = session.BudgetConfig?.MaxContextTokens ?? 128000;
-            int currentTokens;
+            // 使用 TokenBudgetManager 计算预算状态
+            var status = TokenBudgetManager.GetBudgetStatus(session, session.SelectedModel);
 
-            // 优先使用缓存
-            if (session.CachedInputTokens.HasValue)
-            {
-                currentTokens = session.CachedInputTokens.Value;
-            }
-            else
-            {
-                // 估算消息 tokens
-                var breakdown = TokenBudgetManager.CalculateBreakdown(session);
-                currentTokens = breakdown.Total;
-            }
-
-            var availableTokens = Math.Max(0, maxTokens - currentTokens);
-            var usagePercentage = maxTokens > 0 ? 100.0 * currentTokens / maxTokens : 0;
-
-            var response = new Seeing.TokenBudget.Api.Responses.BudgetStatusResponse
+            var response = new Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse
             {
                 SessionId = session.Id,
-                CurrentTokens = currentTokens,
-                MaxTokens = maxTokens,
-                AvailableTokens = availableTokens,
-                UsagePercentage = usagePercentage,
-                Level = DetermineLevel(currentTokens, maxTokens),
-                NeedsCompaction = usagePercentage >= 90,
-                Breakdown = null  // 简化：不显示分布
+                CurrentTokens = status.CurrentTokens,
+                MaxTokens = status.MaxTokens,
+                AvailableTokens = status.AvailableTokens,
+                UsagePercentage = status.UsagePercentage,
+                Level = status.Level.ToString().ToLowerInvariant(),
+                NeedsCompaction = status.Level >= BudgetLevel.Critical,
+                Breakdown = null
             };
 
             SessionState.UpdateBudgetStatus(response);
@@ -556,26 +539,38 @@
     /// <summary>
     /// Agent 选择变更
     /// </summary>
-    private void OnAgentChanged(string value)
+    private async Task OnAgentChanged(string value)
     {
         _selectedAgent = value ?? "";
         SessionState.SelectedAgent = _selectedAgent;
         RefreshAgentRuntime();
+        
+        // Agent 变更时也需要更新 session（通过 session.updated hook）
+        if (SessionState.CurrentSession != null)
+        {
+            SessionState.CurrentSession.SelectedAgent = _selectedAgent;
+            SessionState.CurrentSession.UpdatedAt = DateTime.Now;
+            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+        }
     }
 
     /// <summary>
     /// Native 模型选择变更
     /// </summary>
-    private void OnModelChanged(string value)
+    private async Task OnModelChanged(string value)
     {
         _selectedModel = value ?? "";
-        SessionState.SelectedModel = _selectedModel;
+        
+        // 统一由 SessionManager 处理模型切换，Budget 会自动更新
+        await SessionManager.SetModelAsync(SessionState.SessionId, _selectedModel);
     }
 
-    private void OnAcpModelChanged(string? value)
+    private async Task OnAcpModelChanged(string? value)
     {
         _selectedModel = value ?? "";
-        SessionState.SelectedModel = _selectedModel;
+        
+        // 统一由 SessionManager 处理模型切换，Budget 会自动更新
+        await SessionManager.SetModelAsync(SessionState.SessionId, _selectedModel);
     }
 
     private void OnAcpModeChanged(string? value)
@@ -1070,12 +1065,16 @@
 
         try
         {
+            // 初始化取消令牌源
+            SessionState.StartExecution();
+            
             // 提交执行（用户消息会立即保存）
             var result = await ChatOrchestrator.SubmitAsync(SessionState.SessionId, input, options);
             
             if (!result.Success)
             {
                 ErrorMessage = result.Error ?? "提交失败";
+                SessionState.CompleteExecution();
                 await InvokeAsync(StateHasChanged);
                 return;
             }
@@ -1193,6 +1192,7 @@
         {
             SessionState.ExecutionStatus = null;
             SessionState.CurrentExecutionId = null;
+            SessionState.CompleteExecution();
             RefreshMessageViewModels();
             await InvokeAsync(StateHasChanged);
         }
@@ -1307,6 +1307,9 @@
     /// </summary>
     private async Task OnCancelExecution()
     {
+        // 取消本地 CancellationToken
+        SessionState.CancelExecution();
+        
         // 取消当前执行
         if (!string.IsNullOrEmpty(SessionState.CurrentExecutionId))
         {
@@ -1418,7 +1421,7 @@
             SessionState.CurrentSession.Title = "新会话";
 
             // 保存 Session
-            await SessionStore.SaveAsync(SessionState.CurrentSession);
+            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
 
             // 更新 Token 预算状态
             UpdateBudgetStatus();
@@ -1470,7 +1473,7 @@
                 SessionState.CurrentSession.ClearUsageCache();
 
                 // 保存 Session
-                await SessionStore.SaveAsync(SessionState.CurrentSession);
+                await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
 
                 // 更新 Token 预算状态
                 UpdateBudgetStatus();

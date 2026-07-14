@@ -1,5 +1,5 @@
 using Seeing.Agent.TokenBudget;
-using Seeing.TokenBudget.Api.Responses;
+using Seeing.Agent.TokenBudget.Api.Responses;
 
 namespace Seeing.Agent.WebUI.Services;
 

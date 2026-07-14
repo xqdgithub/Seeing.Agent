@@ -1,7 +1,7 @@
 using Seeing.Agent.App.Execution;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
-using Seeing.TokenBudget.Api.Responses;
+using Seeing.Agent.TokenBudget.Api.Responses;
 
 namespace Seeing.Agent.WebUI.State
 {
@@ -49,9 +49,9 @@ namespace Seeing.Agent.WebUI.State
         /// </summary>
         public BudgetStatusResponse BudgetStatus { get; set; } = new()
         {
-            MaxTokens = 128000,  // Default max context tokens
+            MaxTokens = 0,  // 初始为 0，等待模型选择后更新
             CurrentTokens = 0,
-            AvailableTokens = 128000,
+            AvailableTokens = 0,
             UsagePercentage = 0,
             Level = "normal",
             Message = null,

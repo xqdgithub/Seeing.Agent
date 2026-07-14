@@ -160,4 +160,37 @@ public sealed class FakeSessionManager : ISessionManager
 
     public Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default) =>
         Task.CompletedTask;
+
+    public Task SetModelAsync(string sessionId, string modelId, string? providerId = null, CancellationToken ct = default)
+    {
+        var session = Get(sessionId);
+        if (session != null)
+        {
+            session.SelectedModel = modelId;
+            if (!string.IsNullOrEmpty(providerId))
+                session.SelectedModelProvider = providerId;
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<SessionData> GetOrLoadAsync(string sessionId, CancellationToken ct = default)
+    {
+        var session = Get(sessionId);
+        if (session != null) return Task.FromResult(session);
+        throw new InvalidOperationException($"Session not found: {sessionId}");
+    }
+
+    public Task<SessionData> UpdateSessionAsync(string sessionId, Action<SessionData> updateAction, CancellationToken ct = default)
+    {
+        var session = Get(sessionId);
+        if (session == null) throw new InvalidOperationException($"Session not found: {sessionId}");
+        updateAction(session);
+        return Task.FromResult(session);
+    }
+
+    public Task SaveAndNotifyAsync(string sessionId, bool persist = true, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    public Task<IReadOnlyList<SessionData>> LoadAllFromStorageAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<SessionData>>(List());
 }

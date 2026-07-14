@@ -60,7 +60,6 @@
     <!-- DPAPI support for secure token storage -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <ProjectReference Include="..\\Seeing.Session\\Seeing.Session.csproj" />
-    <ProjectReference Include="..\\Seeing.TokenBudget\\Seeing.TokenBudget.csproj" />
   </ItemGroup>
 
   <ItemGroup>

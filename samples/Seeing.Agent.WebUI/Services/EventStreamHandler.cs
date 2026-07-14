@@ -4,7 +4,8 @@ using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
-using Seeing.TokenBudget.Api.Responses;
+using Seeing.Agent.TokenBudget.Api.Responses;
+using Seeing.Agent.TokenBudget;
 using System.Text;
 
 namespace Seeing.Agent.WebUI.Services

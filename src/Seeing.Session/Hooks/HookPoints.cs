@@ -28,4 +28,7 @@ public static class HookPoints
 
     /// <summary>Session 压缩后 - 非阻塞</summary>
     public const string Compressed = "session.compressed";
+
+    /// <summary>Session 模型变更 - 非阻塞</summary>
+    public const string ModelChanged = "session.model_changed";
 }

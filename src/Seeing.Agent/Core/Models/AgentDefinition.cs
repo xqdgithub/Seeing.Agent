@@ -45,7 +45,28 @@ namespace Seeing.Agent.Core.Models
         /// <summary>TopP 参数</summary>
         public double? TopP { get; init; }
 
-        /// <summary>最大 Token</summary>
+        /// <summary>
+        /// 最大输出 Token 数（可选覆盖）
+        /// <para>
+        /// <b>注意：</b>这是可选的覆盖值，用于在特定场景下手动限制输出长度。
+        /// </para>
+        /// <para>
+        /// <b>默认行为：</b>如果未设置（null），系统会自动使用模型的 output limit
+        /// （即 <see cref="Llm.ModelConfig.Limit.Output"/>）。例如：
+        /// <list type="bullet">
+        ///   <item><description>Kimi-K2.5: 32000 tokens</description></item>
+        ///   <item><description>GLM-4.7: 128000 tokens</description></item>
+        ///   <item><description>Claude Sonnet 4: 16000 tokens</description></item>
+        /// </list>
+        /// </para>
+        /// <para>
+        /// <b>使用场景：</b>仅在需要强制使用比模型限制更小的输出时设置此值。
+        /// 例如：快速响应 Agent 只需要 2000 tokens。
+        /// </para>
+        /// <para>
+        /// <b>注意：</b>设置超过模型限制的值会被自动约束到模型限制。
+        /// </para>
+        /// </summary>
         public int? MaxTokens { get; init; }
 
         /// <summary>是否隐藏（不在 UI 显示）</summary>

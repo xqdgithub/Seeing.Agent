@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
-using Seeing.Session.Storage;
 
 namespace Seeing.Session.Management
 {
@@ -10,13 +9,16 @@ namespace Seeing.Session.Management
     public class SessionForker
     {
         private readonly ILogger<SessionForker> _logger;
-        private readonly ISessionStore _store;
         private readonly SessionManager _sessionManager;
 
-        public SessionForker(ILogger<SessionForker> logger, ISessionStore store, SessionManager sessionManager)
+        /// <summary>
+        /// 创建 SessionForker 实例
+        /// </summary>
+        /// <param name="logger">日志器</param>
+        /// <param name="sessionManager">Session 管理器</param>
+        public SessionForker(ILogger<SessionForker> logger, SessionManager sessionManager)
         {
             _logger = logger;
-            _store = store;
             _sessionManager = sessionManager;
         }
 

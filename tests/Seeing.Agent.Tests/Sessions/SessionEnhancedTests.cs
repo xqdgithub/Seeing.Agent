@@ -103,7 +103,7 @@ public class SessionForkerTests
         var forkerLogger = new Mock<ILogger<SessionForker>>();
         var store = new InMemorySessionStore();
         var manager = new SessionManager(store, logger: logger.Object);
-        var forker = new SessionForker(forkerLogger.Object, store, manager);
+        var forker = new SessionForker(forkerLogger.Object, manager);
         return (manager, forker);
     }
 }

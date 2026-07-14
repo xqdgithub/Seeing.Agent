@@ -145,6 +145,13 @@ public class LlmService : ILlmService
         if (modelConfig == null)
             throw new InvalidOperationException($"未找到模型配置: {modelId}");
 
+        // 应用模型输出限制
+        if (request.MaxTokens == null && modelConfig.Limit?.Output > 0)
+        {
+            request.MaxTokens = modelConfig.Limit.Output;
+            _logger.LogDebug("应用模型输出限制: Model={Model}, MaxTokens={MaxTokens}", modelId, modelConfig.Limit.Output);
+        }
+
         var client = GetClient(modelConfig.Provider);
         if (client == null)
             throw new InvalidOperationException($"未找到模型 {modelId} 的客户端");
@@ -298,6 +305,13 @@ public class LlmService : ILlmService
         var modelConfig = GetModelConfig(modelId);
         if (modelConfig == null)
             throw new InvalidOperationException($"未找到模型配置: {modelId}");
+
+        // 应用模型输出限制
+        if (request.MaxTokens == null && modelConfig.Limit?.Output > 0)
+        {
+            request.MaxTokens = modelConfig.Limit.Output;
+            _logger.LogDebug("应用模型输出限制: Model={Model}, MaxTokens={MaxTokens}", modelId, modelConfig.Limit.Output);
+        }
 
         var client = GetClient(modelConfig.Provider);
         if (client == null)

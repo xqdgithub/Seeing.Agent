@@ -13,7 +13,7 @@
     <ProjectReference Include="../../src/Seeing.Session/Seeing.Session.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
-    <ProjectReference Include="../../src/Seeing.TokenBudget/Seeing.TokenBudget.csproj" />
+    <ProjectReference Include="../../src/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="AntDesign" Version="1.6.2" />

@@ -13,12 +13,12 @@ using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
+using Seeing.Session;
 using Seeing.Session.Compression;
 using Seeing.Session.Compression.Strategies;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
-using Seeing.Session.Storage;
-using Seeing.TokenBudget.Extensions;
+using Seeing.Agent.TokenBudget.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,7 +36,6 @@ builder.Services.AddSingleton<ISummarizer, LlmSummarizer>();
 builder.Services.AddSingleton<SummarizingStrategy>();
 builder.Services.AddSingleton<HybridStrategy>();
 
-builder.Services.AddTokenBudgetHooks();
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();
 
@@ -50,9 +49,8 @@ builder.Services.AddSeeingAgentMemory(options =>
 });
 
 // === Session 管理服务（统一使用 Seeing.Session）===
-builder.Services.AddSingleton<ISessionStore, FileSessionStore>();
 builder.Services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
-builder.Services.AddSingleton<SessionManager>();  // 需要在 ISessionEventPublisher 之后注册
+builder.Services.AddSessionManager();  // 注册 ISessionManager（内部创建 ISessionStore）
 builder.Services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 
 // === WebUI 服务 ===
@@ -70,7 +68,12 @@ builder.Services.AddSingleton<SeeingConfigService>();
 builder.Services.AddSingleton<GatewayClientConfigService>();
 builder.Services.AddSingleton<GatewayClientSupervisor>();
 builder.Services.AddSingleton<WorkspaceSwitchService>();
+
+// TokenBudget Notifier (必须在 AddTokenBudgetHooks 之前注册)
 builder.Services.AddSingleton<Seeing.Agent.TokenBudget.IBudgetStatusNotifier, BudgetStatusNotifier>();
+
+// TokenBudget Hooks (依赖 IBudgetStatusNotifier)
+builder.Services.AddTokenBudgetHooks();
 
 // === ChatOrchestrator 统一入口 ===
 builder.Services.AddChatOrchestrator();

@@ -12,7 +12,6 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
-using Seeing.Session.Storage;
 
 namespace Seeing.Agent.App;
 
@@ -26,7 +25,6 @@ public class ChatOrchestrator : IChatOrchestrator
 {
     private readonly ExecutionJobService _executionJobService;
     private readonly ISessionManager _sessionManager;
-    private readonly ISessionStore _sessionStore;
     private readonly IAgentRegistry _agentRegistry;
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly IAgentExecutionRouter _executionRouter;
@@ -41,7 +39,6 @@ public class ChatOrchestrator : IChatOrchestrator
     public ChatOrchestrator(
         ExecutionJobService executionJobService,
         ISessionManager sessionManager,
-        ISessionStore sessionStore,
         IAgentRegistry agentRegistry,
         IWorkspaceProvider workspaceProvider,
         IAgentExecutionRouter executionRouter,
@@ -55,7 +52,6 @@ public class ChatOrchestrator : IChatOrchestrator
     {
         _executionJobService = executionJobService;
         _sessionManager = sessionManager;
-        _sessionStore = sessionStore;
         _agentRegistry = agentRegistry;
         _workspaceProvider = workspaceProvider;
         _executionRouter = executionRouter;
@@ -176,18 +172,8 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task<IReadOnlyList<SessionData>> ListSessionsAsync(CancellationToken cancellationToken = default)
     {
-        // 从存储加载所有会话
-        var sessions = new List<SessionData>();
-        var asyncEnumerable = await _sessionStore.ListAsync();
-        
-        await foreach (var session in asyncEnumerable.WithCancellation(cancellationToken))
-        {
-            sessions.Add(session);
-            // 注册到内存缓存
-            _sessionManager.Register(session);
-        }
-        
-        return sessions.OrderByDescending(s => s.UpdatedAt).ToList();
+        // 通过 SessionManager 加载所有会话（确保缓存一致性）
+        return await _sessionManager.LoadAllFromStorageAsync(cancellationToken);
     }
 
     /// <inheritdoc/>
