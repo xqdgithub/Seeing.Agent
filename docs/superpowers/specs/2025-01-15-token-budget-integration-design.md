@@ -576,9 +576,88 @@ agent.BudgetConfig = new TokenBudgetConfig
 
 ## 里程碑
 
-1. **M1: 压缩策略实现** - SummarizingStrategy + HybridStrategy
-2. **M2: Hook 集成** - BudgetCheckHook + BudgetUpdateHook
-3. **M3: 事件类型** - BudgetStatusEvent + CompactionEvent + BudgetWarningEvent
+1. **M1: 压缩策略实现** - SummarizingStrategy + HybridStrategy ✅
+2. **M2: Hook 集成** - BudgetCheckHook + BudgetUpdateHook ✅
+3. **M3: 事件类型** - BudgetStatusEvent + CompactionEvent + BudgetWarningEvent ✅
 4. **M4: 配置集成** - TokenBudgetOptions + UnifiedConfigManager 注册
 5. **M5: UI 扩展** - ChatTokenStatusBar 事件订阅
-6. **M6: 集成测试** - 端到端流程验证
+6. **M6: 集成测试** - 端到端流程验证 ✅
+
+---
+
+## 实现总结
+
+### 已实现组件
+
+#### 1. 压缩策略 (Seeing.Session/Compression/Strategies/)
+
+- **SlidingWindowTokenStrategy**: 基于Token的滑动窗口压缩策略，保留第一条消息（系统提示）和最近的N条消息
+- **SummarizingStrategy**: LLM摘要压缩策略，需要`ISummarizer`依赖
+- **HybridStrategy**: 混合策略，先尝试SlidingWindow，若仍超限则调用Summarizing
+
+#### 2. Hook 实现 (Seeing.Agent/TokenBudget/)
+
+- **BudgetCheckHook**: 在`chat.before_start`执行，检查`PendingCompaction`标记并触发压缩
+- **BudgetUpdateHook**: 在`chat.after_complete`执行，计算预算状态、设置标记、发送事件
+
+#### 3. 事件类型 (Seeing.Agent/Core/Events/)
+
+- **BudgetStatusEvent**: 预算状态更新事件，包含当前Token数、最大Token数、使用百分比、详细分布
+- **BudgetWarningEvent**: 预算警告事件，在Warning/Critical/Overflow级别时触发
+- **CompactionEvent**: 压缩执行事件，包含压缩策略、前后Token数、移除的消息数
+
+#### 4. DI 扩展 (Seeing.TokenBudget/Extensions/)
+
+- `AddTokenBudgetManagement()`: 注册基础Token预算服务
+- `AddTokenBudgetIntegration()`: 注册完整集成服务（包含压缩策略）
+- `AddTokenBudgetHooks()`: 注册Hook处理器
+- `UseTokenBudgetHooks()`: 将Hook注册到HookManager
+
+### 端到端测试覆盖
+
+测试文件: `tests/Seeing.TokenBudget.Tests/Integration/EndToEndIntegrationTests.cs`
+
+| 测试场景 | 验证点 |
+|---------|--------|
+| FullFlow_AddMessagesAndTriggerCompression | 完整流程：添加消息→超限→压缩 |
+| WarningThreshold_CalculatesCorrectly | 警告阈值计算正确性 |
+| CriticalThreshold_CalculatedCorrectly | 临界阈值计算正确性 |
+| BudgetCheckHook_TriggersCompression_WhenPendingCompactionSet | Hook正确触发压缩 |
+| Compression_ReducesTokenCount_BelowTarget | 压缩后Token数低于目标 |
+| AutoCompactionDisabled_DoesNotCompress | 禁用自动压缩时不执行压缩 |
+| CompactionEvent_CreatedCorrectly_WhenCompressionOccurs | 压缩事件正确创建 |
+| EmptySession_DoesNotCauseErrors | 空会话不导致错误 |
+| ConfigResolver_UsesCorrectPriority | 配置优先级正确（Session>Agent>Global） |
+| BudgetStatusEvent_CreatedCorrectly | 预算状态事件正确创建 |
+| WarningEvent_CreatedWhenOverWarningThreshold | 超过警告阈值时创建警告事件 |
+| PendingCompaction_SetWhenOverCriticalThreshold | 超过临界阈值时设置PendingCompaction |
+
+### 使用示例
+
+```csharp
+// 在 Startup.cs 或 Program.cs 中配置服务
+services.AddTokenBudgetIntegration(configuration);
+services.AddTokenBudgetHooks();
+
+// 构建服务提供者后注册Hooks
+services.UseTokenBudgetHooks();
+```
+
+### 配置示例
+
+```json
+// .seeing/seeing.json
+{
+  "SeeingAgent": {
+    "TokenBudget": {
+      "MaxContextTokens": 128000,
+      "WarningThreshold": { "Percentage": 80 },
+      "CompactionThreshold": { "Percentage": 90 },
+      "CompactionStrategy": "Hybrid",
+      "SlidingWindowKeepTokens": 20000,
+      "SummaryTargetTokens": 4000,
+      "AutoCompactionEnabled": true
+    }
+  }
+}
+```
