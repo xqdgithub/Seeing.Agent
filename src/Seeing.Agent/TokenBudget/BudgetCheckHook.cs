@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
@@ -10,7 +11,7 @@ namespace Seeing.Agent.TokenBudget;
 /// </summary>
 public class BudgetCheckHook : IHookHandler
 {
-    private readonly ICompressionService _compressionService;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ITokenBudgetConfigResolver _configResolver;
 
     /// <summary>
@@ -24,10 +25,10 @@ public class BudgetCheckHook : IHookHandler
     public int Priority => 100;
 
     public BudgetCheckHook(
-        ICompressionService compressionService,
+        IServiceProvider serviceProvider,
         ITokenBudgetConfigResolver configResolver)
     {
-        _compressionService = compressionService;
+        _serviceProvider = serviceProvider;
         _configResolver = configResolver;
     }
 
@@ -61,8 +62,12 @@ public class BudgetCheckHook : IHookHandler
 
         try
         {
+            // Resolve scoped service
+            using var scope = _serviceProvider.CreateScope();
+            var compressionService = scope.ServiceProvider.GetRequiredService<ICompressionService>();
+
             // 执行压缩
-            var result = await _compressionService.CompressAsync(
+            var result = await compressionService.CompressAsync(
                 session,
                 session.BudgetConfig,
                 agent.BudgetConfig,

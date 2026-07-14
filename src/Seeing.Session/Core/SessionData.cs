@@ -83,6 +83,22 @@ namespace Seeing.Session.Core
         [JsonIgnore]
         public bool PendingCompaction { get; set; }
 
+        // === Token Usage 缓存（来自 LLM Provider） ===
+        /// <summary>
+        /// 缓存的总输入 Token 数（来自 LLM Provider Usage）
+        /// </summary>
+        public int? CachedInputTokens { get; set; }
+
+        /// <summary>
+        /// 缓存的总输出 Token 数（来自 LLM Provider Usage）
+        /// </summary>
+        public int? CachedOutputTokens { get; set; }
+
+        /// <summary>
+        /// 缓存更新时间
+        /// </summary>
+        public DateTime? CachedUsageUpdatedAt { get; set; }
+
         // === 向后兼容字段（Deprecated） ===
         [Obsolete("使用 SelectedAgent 替代")]
         public AgentMetadata? Agent { get; set; }
@@ -152,7 +168,20 @@ namespace Seeing.Session.Core
         public void ClearMessages()
         {
             Messages.Clear();
+            CachedInputTokens = null;
+            CachedOutputTokens = null;
+            CachedUsageUpdatedAt = null;
             UpdatedAt = DateTime.Now;
+        }
+
+        /// <summary>
+        /// 清除 Token Usage 缓存
+        /// </summary>
+        public void ClearUsageCache()
+        {
+            CachedInputTokens = null;
+            CachedOutputTokens = null;
+            CachedUsageUpdatedAt = null;
         }
 
         public void RemoveContext(string key)
@@ -188,7 +217,11 @@ namespace Seeing.Session.Core
                 IsArchived = IsArchived,
                 ArchivedAt = ArchivedAt,
                 // Token 预算配置
-                BudgetConfig = BudgetConfig
+                BudgetConfig = BudgetConfig,
+                // Token Usage 缓存
+                CachedInputTokens = CachedInputTokens,
+                CachedOutputTokens = CachedOutputTokens,
+                CachedUsageUpdatedAt = CachedUsageUpdatedAt
             };
         }
     }

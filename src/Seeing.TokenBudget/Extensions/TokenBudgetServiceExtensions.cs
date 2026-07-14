@@ -61,11 +61,12 @@ public static class TokenBudgetServiceExtensions
         // Register base token budget services
         services.AddTokenBudgetManagement(configuration);
 
-        // Note: SummarizingStrategy and HybridStrategy require ISummarizer
-        // which depends on LLM service. Register these only if needed.
-        // For basic token budget management, SlidingWindowStrategy is sufficient.
-
         // Register compression infrastructure
+        // Note: SummarizingStrategy and HybridStrategy should be registered separately
+        // if LLM-based compression is needed. Register them with:
+        //   services.AddSingleton<ISummarizer, YourSummarizerImplementation>();
+        //   services.AddSingleton<SummarizingStrategy>();
+        //   services.AddSingleton<HybridStrategy>();
         services.AddSingleton<ICompressionStrategyFactory, CompressionStrategyFactory>();
         services.AddScoped<ICompressionService, CompressionService>();
 

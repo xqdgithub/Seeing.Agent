@@ -1,54 +1,181 @@
-.token-status-bar {
-    padding: 8px 12px;
-    background: #fafafa;
-    border-top: 1px solid #f0f0f0;
-}
-
-.progress-container {
-    margin-bottom: 4px;
-}
-
-.status-info {
-    display: flex;
+/* Token Budget 内联样式 - 透明背景 */
+.token-budget-inline {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: #666;
+    gap: 6px;
+    padding: 0;
+    background: transparent;
+    font-size: 11px;
+    position: relative;
 }
 
-.usage-text {
-    font-weight: 500;
-}
-
-.warning-icon {
-    color: #faad14;
-}
-
-.status-critical .warning-icon,
-.status-overflow .warning-icon {
-    color: #ff4d4f;
-}
-
-.warning-text {
-    flex: 1;
-    color: #666;
+/* 小进度条 */
+.progress-mini {
+    width: 32px;
+    height: 3px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 2px;
     overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.progress-fill {
+    height: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+/* 状态颜色 */
+.status-warning .progress-fill {
+    background: #faad14;
+}
+
+.status-critical .progress-fill,
+.status-overflow .progress-fill {
+    background: #ff4d4f;
+}
+
+/* 文字 */
+.token-text {
+    color: var(--color-text-tertiary, #999);
     white-space: nowrap;
 }
 
-.details-panel {
-    margin-top: 8px;
-    padding: 8px;
-    background: #fff;
-    border-radius: 4px;
-    border: 1px solid #f0f0f0;
+.token-percent {
+    color: var(--color-text-quaternary, #bbb);
+    font-size: 10px;
 }
 
-.available {
+/* 状态指示 */
+.status-indicator {
+    font-size: 10px;
+}
+
+.status-indicator.warning {
+    color: #faad14;
+}
+
+.status-indicator.critical,
+.status-indicator.overflow {
+    color: #ff4d4f;
+}
+
+/* 展开按钮 */
+.expand-btn {
+    padding: 0 2px !important;
+    height: auto !important;
+    font-size: 11px !important;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.expand-btn:hover {
+    opacity: 1;
+}
+
+/* Modal 内详情样式 */
+.token-details {
+    padding: 8px 0;
+}
+
+/* 使用情况概览 */
+.usage-overview {
+    margin-bottom: 20px;
+}
+
+.usage-bar {
+    height: 8px;
+    background: #e8e8e8;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.usage-bar .used-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #1890ff, #52c41a);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.usage-labels {
+    display: flex;
+    justify-content: space-between;
     margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid #f0f0f0;
+    font-size: 12px;
+    color: var(--color-text-secondary, #666);
+}
+
+/* 分布柱状图 */
+.distribution-chart {
+    background: var(--color-fill-quaternary, #fafafa);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.chart-title {
+    font-size: 13px;
     font-weight: 500;
-    color: #52c41a;
+    color: var(--color-text, #333);
+    margin-bottom: 12px;
+}
+
+.bar-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.bar-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 50px;
+    align-items: center;
+    gap: 12px;
+}
+
+.bar-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-text-secondary, #666);
+}
+
+.bar-label .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.bar-track {
+    height: 12px;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.3s ease;
+    min-width: 2px;
+}
+
+.bar-value {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text, #333);
+    text-align: right;
+}
+
+/* 各类型颜色 */
+.dot.system, .bar-fill.system { background: #1890ff; }
+.dot.user, .bar-fill.user { background: #52c41a; }
+.dot.assistant, .bar-fill.assistant { background: #722ed1; }
+.dot.tool, .bar-fill.tool { background: #fa8c16; }
+.dot.tools-def, .bar-fill.tools-def { background: #13c2c2; }
+.dot.free, .bar-fill.free { background: #bfbfbf; }
+
+.bar-fill.free {
+    background: linear-gradient(90deg, #e8e8e8, #d9d9d9);
 }

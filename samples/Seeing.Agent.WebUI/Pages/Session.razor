@@ -6,8 +6,8 @@
 @using Seeing.Agent.WebUI.Commands
 @using Services = Seeing.Agent.WebUI.Services
 @using Core = Seeing.Agent.Core
+@using Seeing.Session.Core
 @using Seeing.Agent.WebUI.State
-@using Seeing.Agent.WebUI.Components.Token
 @using Seeing.Agent.Tools
 @using Seeing.Agent.Skills
 @using Seeing.Agent.Configuration
@@ -15,6 +15,7 @@
 @using Seeing.Session.Core
 @using Seeing.Session.Management
 @using Seeing.Session.Compression
+@using Seeing.Session.Storage
 @using Seeing.Agent.App
 @using Seeing.Agent.App.Events
 @using Seeing.Agent.App.Models
@@ -37,6 +38,9 @@
 @inject ILlmService LlmService
 @inject Services.SessionCompactionService CompactionService
 @inject Services.CommandListService CommandListService
+@inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
+@inject Seeing.TokenBudget.ITokenBudgetManager TokenBudgetManager
+@inject ISessionStore SessionStore
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -143,15 +147,7 @@
                                 Disabled="@SessionState.IsExecuting" />
                     </Tooltip>
                 </SpaceItem>
-            </Space>
-            <!-- Token Budget 状态栏 -->
-            @if (SessionState.BudgetStatus.MaxTokens > 0)
-            {
-                <div class="token-budget-container">
-                    <ChatTokenStatusBar Status="SessionState.BudgetStatus" 
-                                        OnCompactRequested="OnCompactRequested" />
-                </div>
-            }
+             </Space>
         </div>
     </div>
 
@@ -216,16 +212,18 @@
             <!-- Slot 扩展点: session_prompt -->
             <SlotHost SlotName="session_prompt" />
             
-            <PromptInput IsProcessing="@SessionState.HasActiveExecution"
-                         Placeholder="@GetPlaceholderText()"
-                         HelpText="@GetHelpText()"
-                         AvailableTools="_availableTools"
-                         AvailableSkills="_availableSkills"
-                         AvailableCommands="_availableCommands"
-                         SessionState="SessionState"
-                         CancellationTokenSource="@SessionState.CancellationTokenSource"
-                         OnSubmitCallback="@OnSubmitMessage"
-                         OnCancelCallback="@OnCancelExecution" />
+             <PromptInput IsProcessing="@SessionState.HasActiveExecution"
+                          Placeholder="@GetPlaceholderText()"
+                          HelpText="@GetHelpText()"
+                          AvailableTools="_availableTools"
+                          AvailableSkills="_availableSkills"
+                          AvailableCommands="_availableCommands"
+                          SessionState="SessionState"
+                          CancellationTokenSource="@SessionState.CancellationTokenSource"
+                          BudgetStatus="SessionState.BudgetStatus"
+                          OnCompactRequested="OnCompactRequested"
+                          OnSubmitCallback="@OnSubmitMessage"
+                          OnCancelCallback="@OnCancelExecution" />
         </div>
     }
     
@@ -346,6 +344,7 @@
 
     private bool _hasRendered;
     private string? _loadedSessionId;
+    private IDisposable? _budgetSubscription;
 
     /// <summary>
     /// 组件初始化
@@ -388,6 +387,85 @@
             await LoadSessionAsync();
             _loadedSessionId = SessionState.CurrentSession?.Id;
         }
+        
+        // Subscribe to Budget status updates
+        SubscribeToBudgetUpdates();
+    }
+
+    private void SubscribeToBudgetUpdates()
+    {
+        // Dispose previous subscription
+        _budgetSubscription?.Dispose();
+        
+        if (!string.IsNullOrEmpty(SessionState.SessionId))
+        {
+            _budgetSubscription = BudgetNotifier.Subscribe(SessionState.SessionId, status =>
+            {
+                SessionState.UpdateBudgetStatus(status);
+                _ = InvokeAsync(StateHasChanged);
+            });
+        }
+    }
+
+    /// <summary>
+    /// 计算并更新当前会话的 Token 预算状态
+    /// </summary>
+    private void UpdateBudgetStatus()
+    {
+        var session = SessionState.CurrentSession;
+        if (session == null) return;
+
+        try
+        {
+            int maxTokens = session.BudgetConfig?.MaxContextTokens ?? 128000;
+            int currentTokens;
+
+            // 优先使用缓存
+            if (session.CachedInputTokens.HasValue)
+            {
+                currentTokens = session.CachedInputTokens.Value;
+            }
+            else
+            {
+                // 估算消息 tokens
+                var breakdown = TokenBudgetManager.CalculateBreakdown(session);
+                currentTokens = breakdown.Total;
+            }
+
+            var availableTokens = Math.Max(0, maxTokens - currentTokens);
+            var usagePercentage = maxTokens > 0 ? 100.0 * currentTokens / maxTokens : 0;
+
+            var response = new Seeing.TokenBudget.Api.Responses.BudgetStatusResponse
+            {
+                SessionId = session.Id,
+                CurrentTokens = currentTokens,
+                MaxTokens = maxTokens,
+                AvailableTokens = availableTokens,
+                UsagePercentage = usagePercentage,
+                Level = DetermineLevel(currentTokens, maxTokens),
+                NeedsCompaction = usagePercentage >= 90,
+                Breakdown = null  // 简化：不显示分布
+            };
+
+            SessionState.UpdateBudgetStatus(response);
+        }
+        catch (Exception)
+        {
+            // 忽略计算错误
+        }
+    }
+
+    /// <summary>
+    /// 根据当前 tokens 确定预算级别
+    /// </summary>
+    private static string DetermineLevel(int currentTokens, int maxTokens)
+    {
+        if (maxTokens <= 0) return "normal";
+        var percentage = 100.0 * currentTokens / maxTokens;
+        if (percentage >= 100) return "overflow";
+        if (percentage >= 90) return "critical";
+        if (percentage >= 80) return "warning";
+        return "normal";
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -811,8 +889,11 @@
             // 通知 UI 更新
             AppState.NotifyChange();
             
-            // 隐藏空状态
+            // 显示空状态
             ShowEmptyState = false;
+            
+            // 计算并更新 Token 预算状态
+            UpdateBudgetStatus();
         }
         else
         {
@@ -1333,15 +1414,21 @@
     {
         if (SessionState.CurrentSession != null)
         {
-            SessionState.CurrentSession.ClearMessages();
+            SessionState.CurrentSession.ClearMessages();  // 已清除缓存
             SessionState.CurrentSession.Title = "新会话";
-            
+
+            // 保存 Session
+            await SessionStore.SaveAsync(SessionState.CurrentSession);
+
+            // 更新 Token 预算状态
+            UpdateBudgetStatus();
+
             MessageService.Info("会话已清空");
-            
+
             // 刷新 UI
             RefreshMessageViewModels();
         }
-        
+
         await InvokeAsync(StateHasChanged);
     }
     
@@ -1359,16 +1446,16 @@
     private async Task OnCompactRequested()
     {
         if (SessionState.CurrentSession == null) return;
-        
+
         try
         {
             SessionState.IsCompacting = true;
             await InvokeAsync(StateHasChanged);
-            
+
             var result = await CompactionService.CompactAsync(
                 SessionState.CurrentSession.Messages,
                 SessionState.CurrentSession.Id);
-            
+
             if (result.Success && result.SummaryMessage != null && result.TailMessages != null)
             {
                 // 替换消息列表
@@ -1378,7 +1465,16 @@
                 {
                     SessionState.CurrentSession.Messages.Add(msg);
                 }
-                
+
+                // 清除缓存
+                SessionState.CurrentSession.ClearUsageCache();
+
+                // 保存 Session
+                await SessionStore.SaveAsync(SessionState.CurrentSession);
+
+                // 更新 Token 预算状态
+                UpdateBudgetStatus();
+
                 MessageService.Success(string.Format("已压缩 {0} 条消息", result.CompressedCount));
                 RefreshMessageViewModels();
             }
@@ -1407,8 +1503,9 @@
     /// </summary>
     public void Dispose()
     {
-        // 清理资源
+        // 释放资源
         SessionState.CancelExecution();
+        _budgetSubscription?.Dispose();
     }
     
     /// <summary>

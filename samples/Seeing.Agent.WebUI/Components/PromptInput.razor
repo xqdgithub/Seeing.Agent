@@ -6,10 +6,12 @@
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Agent.WebUI.State
+@using Seeing.Agent.WebUI.Components.Token
 @using Seeing.Agent.Skills
 @using Seeing.Agent.Core.Interfaces
 @using System.Threading
 @using System.Text
+@using Seeing.TokenBudget.Api.Responses
 @inject IJSRuntime JSRuntime
 @inject SkillManager SkillManager
 
@@ -146,15 +148,22 @@
     <!-- Slot 扩展点 -->
     <SlotHost SlotName="message_toolbar" />
     
-    <!-- 提示文字 -->
-    @if (!string.IsNullOrEmpty(HelpText))
-    {
-        <div Class="prompt-help">
-            <span Style="font-size: var(--font-size-xs); color: var(--color-text-tertiary);">
+    <!-- 底部提示栏：帮助文字 + Token Budget -->
+    <div class="prompt-footer">
+        @if (!string.IsNullOrEmpty(HelpText))
+        {
+            <span class="prompt-help-text">
                 @HelpText
             </span>
-        </div>
-    }
+        }
+        @if (BudgetStatus != null && BudgetStatus.MaxTokens > 0)
+        {
+            <div class="prompt-token-budget">
+                <ChatTokenStatusBar Status="BudgetStatus" 
+                                    OnCompactRequested="OnCompactRequested" />
+            </div>
+        }
+    </div>
 </div>
 
 @code {
@@ -246,6 +255,18 @@
     /// </summary>
     [Parameter]
     public CancellationTokenSource? CancellationTokenSource { get; set; }
+
+    /// <summary>
+    /// Token Budget 状态
+    /// </summary>
+    [Parameter]
+    public BudgetStatusResponse? BudgetStatus { get; set; }
+
+    /// <summary>
+    /// 压缩请求回调
+    /// </summary>
+    [Parameter]
+    public EventCallback OnCompactRequested { get; set; }
 
     /// <summary>
     /// 是否自动聚焦输入框

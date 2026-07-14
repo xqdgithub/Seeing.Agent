@@ -47,7 +47,16 @@ namespace Seeing.Agent.WebUI.State
         /// <summary>
         /// 当前 Token Budget 状态
         /// </summary>
-        public BudgetStatusResponse BudgetStatus { get; set; } = new();
+        public BudgetStatusResponse BudgetStatus { get; set; } = new()
+        {
+            MaxTokens = 128000,  // Default max context tokens
+            CurrentTokens = 0,
+            AvailableTokens = 128000,
+            UsagePercentage = 0,
+            Level = "normal",
+            Message = null,
+            NeedsCompaction = false
+        };
 
         /// <summary>
         /// Budget 状态更新事件

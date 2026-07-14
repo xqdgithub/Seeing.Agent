@@ -1,7 +1,12 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Llm;
 using Seeing.Session.Core;
+using Seeing.Session.Storage;
 using Seeing.TokenBudget;
 using Seeing.TokenBudget.Api.Responses;
 using Seeing.TokenEstimation;
@@ -16,9 +21,11 @@ namespace Seeing.Agent.TokenBudget;
 /// </summary>
 public class BudgetUpdateHook : IHookHandler
 {
-    private readonly ITokenBudgetManager _budgetManager;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ITokenBudgetConfigResolver _configResolver;
     private readonly ITokenCounter _tokenCounter;
+    private readonly IBudgetStatusNotifier? _notifier;
+    private readonly ILogger<BudgetUpdateHook>? _logger;
 
     /// <summary>
     /// Hook 规格 - Chat 完成后
@@ -31,45 +38,117 @@ public class BudgetUpdateHook : IHookHandler
     public int Priority => 100;
 
     public BudgetUpdateHook(
-        ITokenBudgetManager budgetManager,
+        IServiceProvider serviceProvider,
         ITokenBudgetConfigResolver configResolver,
-        ITokenCounter tokenCounter)
+        ITokenCounter tokenCounter,
+        IBudgetStatusNotifier? notifier = null,
+        ILogger<BudgetUpdateHook>? logger = null)
     {
-        _budgetManager = budgetManager;
+        _serviceProvider = serviceProvider;
         _configResolver = configResolver;
         _tokenCounter = tokenCounter;
+        _notifier = notifier;
+        _logger = logger;
     }
 
     public async Task<HookResult> ExecuteAsync(HookPayload payload)
     {
+        // 如果没有传入 session，从存储加载
         var session = payload.GetInput<SessionData>("session");
-        var agent = payload.GetInput<AgentDefinition>("agent");
-        var systemPrompt = payload.GetInput<string>("systemPrompt");
-        var toolTokens = payload.GetInput<int?>("toolTokens");
-
-        if (session == null || agent == null)
+        if (session == null && !string.IsNullOrEmpty(payload.SessionId))
         {
+            using var scope = _serviceProvider.CreateScope();
+            var sessionStore = scope.ServiceProvider.GetRequiredService<ISessionStore>();
+            session = await sessionStore.LoadAsync(payload.SessionId);
+        }
+
+        if (session == null)
+        {
+            _logger?.LogDebug("BudgetUpdateHook: No session available, skipping");
             return HookResult.Success;
         }
 
         try
         {
-            // 计算当前 token 分布
-            var breakdown = _budgetManager.CalculateBreakdown(session, systemPrompt, toolTokens);
+            using var innerScope = _serviceProvider.CreateScope();
+            var budgetManager = innerScope.ServiceProvider.GetRequiredService<ITokenBudgetManager>();
+            var sessionStore = innerScope.ServiceProvider.GetRequiredService<ISessionStore>();
+
+            // 获取 Provider Usage（优先使用 Provider 准确统计）
+            var providerUsage = GetProviderUsage(payload);
+
+            // 计算/获取 totalInputTokens
+            int totalInputTokens;
+            bool shouldSaveSession = false;
+
+            if (providerUsage != null && providerUsage.InputTokens > 0)
+            {
+                // 使用 Provider 准确统计
+                totalInputTokens = providerUsage.InputTokens;
+
+                // 缓存到 Session
+                session.CachedInputTokens = providerUsage.InputTokens;
+                session.CachedOutputTokens = providerUsage.OutputTokens;
+                session.CachedUsageUpdatedAt = DateTime.Now;
+                shouldSaveSession = true;
+
+                _logger?.LogDebug("BudgetUpdateHook: Using Provider Usage - Input={InputTokens}, Output={OutputTokens}",
+                    providerUsage.InputTokens, providerUsage.OutputTokens);
+            }
+            else if (session.CachedInputTokens.HasValue)
+            {
+                // 使用缓存值
+                totalInputTokens = session.CachedInputTokens.Value;
+                _logger?.LogDebug("BudgetUpdateHook: Using cached Usage - Input={InputTokens}", totalInputTokens);
+            }
+            else
+            {
+                // 降级：估算消息 tokens
+                var breakdown = budgetManager.CalculateBreakdown(session);
+                totalInputTokens = breakdown.Total;
+                _logger?.LogDebug("BudgetUpdateHook: Using estimated tokens={TotalTokens}", totalInputTokens);
+            }
 
             // 获取有效配置
             var config = _configResolver.Resolve(
                 session.BudgetConfig,
-                agent.BudgetConfig,
-                null);
+                null,  // agent budget config
+                null); // global budget config
 
             // 检查预算状态
-            var status = _budgetManager.CheckBudget(session, config, breakdown.Total);
+            var status = budgetManager.CheckBudget(session, config, totalInputTokens);
 
             // 根据状态设置 PendingCompaction（Critical 或 Overflow 时设置）
             if (status.Level >= BudgetLevel.Critical)
             {
                 session.PendingCompaction = true;
+            }
+
+            // 构建 Budget 状态响应（简化：不显示分布）
+            var budgetStatusResponse = new BudgetStatusResponse
+            {
+                SessionId = payload.SessionId,
+                CurrentTokens = status.CurrentTokens,
+                MaxTokens = status.MaxTokens,
+                AvailableTokens = status.AvailableTokens,
+                UsagePercentage = status.UsagePercentage,
+                Level = status.Level.ToString().ToLowerInvariant(),
+                Message = GetBudgetMessage(status),
+                NeedsCompaction = status.Level is BudgetLevel.Critical or BudgetLevel.Overflow,
+                Breakdown = null  // 简化：不显示分布
+            };
+
+            // 通过通知器发布状态更新（单例模式，通知所有订阅者）
+            _notifier?.Publish(payload.SessionId, budgetStatusResponse);
+
+            _logger?.LogInformation("Budget updated: {CurrentTokens}/{MaxTokens} tokens ({Percentage:F1}%)",
+                status.CurrentTokens, status.MaxTokens, status.UsagePercentage);
+
+            // 保存 Session（如果有更新）
+            if (shouldSaveSession)
+            {
+                await sessionStore.SaveAsync(session);
+                _logger?.LogDebug("BudgetUpdateHook: Session saved with cached usage");
             }
 
             // 构建事件并存入 Mutable，供外部事件发射器使用
@@ -80,7 +159,7 @@ public class BudgetUpdateHook : IHookHandler
                 MaxTokens = status.MaxTokens,
                 UsagePercentage = status.UsagePercentage,
                 Level = status.Level,
-                Breakdown = MapToResponse(breakdown)
+                Breakdown = null
             };
 
             payload.SetMutable("budgetStatusEvent", budgetEvent);
@@ -117,35 +196,41 @@ public class BudgetUpdateHook : IHookHandler
 
             return HookResult.Success;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger?.LogError(ex, "Budget update failed");
             // 预算检查失败不阻止执行
             return HookResult.Success;
         }
     }
 
-    private static TokenBreakdownResponse? MapToResponse(TokenBreakdown? breakdown)
+    /// <summary>
+    /// 从 Hook payload 获取 Provider Usage
+    /// </summary>
+    private TokenUsage? GetProviderUsage(HookPayload payload)
     {
-        if (breakdown == null) return null;
+        // 非流式：response.Usage
+        var response = payload.GetResult<ChatResponse>("response");
+        if (response?.Usage != null && response.Usage.InputTokens > 0)
+            return response.Usage;
 
-        return new TokenBreakdownResponse
+        // 流式：usage 直接在 result 中
+        var usage = payload.GetResult<TokenUsage>("usage");
+        if (usage != null && usage.InputTokens > 0)
+            return usage;
+
+        return null;
+    }
+
+    private static string? GetBudgetMessage(BudgetStatus status)
+    {
+        return status.Level switch
         {
-            TotalTokens = breakdown.Total,
-            BySource = new SourceBreakdownData
-            {
-                SystemPrompt = new CategoryInfo { Tokens = breakdown.BySource.SystemPrompt },
-                ToolDefinitions = new CategoryInfo { Tokens = breakdown.BySource.ToolDefinitions },
-                UserMessages = new CategoryInfo { Tokens = breakdown.BySource.UserMessages },
-                AssistantMessages = new CategoryInfo { Tokens = breakdown.BySource.AssistantMessages },
-                ToolResults = new CategoryInfo { Tokens = breakdown.BySource.ToolResults }
-            },
-            ByRole = new RoleBreakdownData
-            {
-                System = new CategoryInfo { Tokens = breakdown.ByRole.System },
-                User = new CategoryInfo { Tokens = breakdown.ByRole.User },
-                Assistant = new CategoryInfo { Tokens = breakdown.ByRole.Assistant },
-                Tool = new CategoryInfo { Tokens = breakdown.ByRole.Tool }
-            }
+            BudgetLevel.Normal => null,
+            BudgetLevel.Warning => $"Approaching token limit: {status.UsagePercentage:F0}% used",
+            BudgetLevel.Critical => $"Critical token usage: {status.UsagePercentage:F0}% used. Compression recommended.",
+            BudgetLevel.Overflow => $"Token budget exceeded: {status.CurrentTokens}/{status.MaxTokens} tokens. Immediate compression required.",
+            _ => null
         };
     }
 }

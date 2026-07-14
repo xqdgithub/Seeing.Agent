@@ -49,6 +49,27 @@
     gap: var(--space-2);
 }
 
+/* ========== 底部提示栏 ========== */
+.prompt-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--space-2);
+    padding: 0 var(--space-1);
+    gap: var(--space-3);
+}
+
+.prompt-help-text {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+}
+
+.prompt-token-budget {
+    flex-shrink: 0;
+}
+
+/* ========== 旧样式兼容 ========== */
 .prompt-help {
     margin-top: var(--space-2);
     padding: var(--space-1) var(--space-2);

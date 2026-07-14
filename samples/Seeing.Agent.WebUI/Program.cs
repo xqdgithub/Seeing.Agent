@@ -13,6 +13,8 @@ using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
+using Seeing.Session.Compression;
+using Seeing.Session.Compression.Strategies;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
@@ -28,6 +30,12 @@ builder.Services.AddSeeingAgent(builder.Configuration);
 builder.Services.AddSeeingAcp();
 builder.Services.AddSeeingScheduler();
 builder.Services.AddTokenBudgetIntegration(builder.Configuration);
+
+// === ISummarizer for LLM-based compression ===
+builder.Services.AddSingleton<ISummarizer, LlmSummarizer>();
+builder.Services.AddSingleton<SummarizingStrategy>();
+builder.Services.AddSingleton<HybridStrategy>();
+
 builder.Services.AddTokenBudgetHooks();
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();
@@ -62,6 +70,7 @@ builder.Services.AddSingleton<SeeingConfigService>();
 builder.Services.AddSingleton<GatewayClientConfigService>();
 builder.Services.AddSingleton<GatewayClientSupervisor>();
 builder.Services.AddSingleton<WorkspaceSwitchService>();
+builder.Services.AddSingleton<Seeing.Agent.TokenBudget.IBudgetStatusNotifier, BudgetStatusNotifier>();
 
 // === ChatOrchestrator 统一入口 ===
 builder.Services.AddChatOrchestrator();

@@ -1,50 +1,66 @@
 @using AntDesign
 @using Seeing.TokenBudget.Api.Responses
 
-<div class="token-status-bar @GetStatusClass()">
-    <div class="progress-container">
-        <Progress Percent="@GetProgressValue()" 
-                  StrokeColor="@GetProgressColor()"
-                  ShowInfo="false"
-                  Size="@ProgressSize.Small" />
+<div class="token-budget-inline @GetStatusClass()">
+    <div class="progress-mini">
+        <div class="progress-fill" style="width: @GetProgressValue()%;"></div>
     </div>
-    <div class="status-info">
-        <span class="usage-text">@FormatTokens(Status.CurrentTokens)/@FormatTokens(Status.MaxTokens) (@Status.UsagePercentage.ToString("F0")%)</span>
-        @if (Status.Level != "normal")
-        {
-            <span class="warning-icon">@GetWarningIcon()</span>
-            <span class="warning-text">@Status.Message</span>
-        }
-        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="ToggleDetails">📊</Button>
-        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="OpenSettings">⚙️</Button>
-    </div>
-    
-    @if (ShowDetails)
+    <span class="token-text">@FormatTokens(Status.CurrentTokens)/@FormatTokens(Status.MaxTokens)</span>
+    <span class="token-percent">@Status.UsagePercentage.ToString("F0")%</span>
+    @if (Status.Level != "normal")
     {
-        <div class="details-panel">
-            <div class="available">
-                <span>Available: @FormatTokens(Status.AvailableTokens)</span>
-            </div>
-            @if (Status.NeedsCompaction)
-            {
-                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" OnClick="TriggerCompaction">Compact Now</Button>
-            }
-        </div>
+        <span class="status-indicator @Status.Level">⚠</span>
     }
+@*     <Tooltip Title="查看详情">
+        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" Class="expand-btn" OnClick="ToggleDetails">📊</Button>
+    </Tooltip> *@
 </div>
+
+<Modal Visible="@ShowDetails"
+       Title="Token 预算"
+       Footer="null"
+       Width="360"
+       Centered="true"
+       OnCancel="HandleCancel"
+       OnOk="HandleCancel">
+    <div class="token-details">
+        <!-- 使用情况概览 -->
+        <div class="usage-overview">
+            <div class="usage-bar">
+                <div class="used-bar" style="width: @Math.Min(100, Status.UsagePercentage)%;"></div>
+            </div>
+            <div class="usage-labels">
+                <span>已使用 @FormatTokens(Status.CurrentTokens)</span>
+                <span>@Status.UsagePercentage.ToString("F1")%</span>
+                <span>可用 @FormatTokens(Status.AvailableTokens)</span>
+            </div>
+        </div>
+
+        @if (Status.NeedsCompaction)
+        {
+            <Alert Type="@AlertType.Warning"
+                   Message="Token 使用率较高，建议压缩会话以释放空间"
+                   ShowIcon="true"
+                   Style="margin-top: 16px;" />
+            <div style="margin-top: 12px; text-align: center;">
+                <Button Type="@ButtonType.Primary" OnClick="TriggerCompaction">压缩会话</Button>
+            </div>
+        }
+    </div>
+</Modal>
 
 @code {
     [Parameter]
     public BudgetStatusResponse Status { get; set; } = new();
-    
+
     [Parameter]
     public EventCallback OnCompactRequested { get; set; }
-    
+
     [Parameter]
     public EventCallback OnSettingsRequested { get; set; }
-    
+
     private bool ShowDetails { get; set; }
-    
+
     private string GetStatusClass() => Status.Level switch
     {
         "warning" => "status-warning",
@@ -52,35 +68,23 @@
         "overflow" => "status-overflow",
         _ => "status-normal"
     };
-    
+
     private double GetProgressValue() => Math.Min(100, Status.UsagePercentage);
-    
-    private string GetProgressColor() => Status.Level switch
-    {
-        "warning" => "#faad14",
-        "critical" => "#ff4d4f",
-        "overflow" => "#a8071a",
-        _ => "#52c41a"
-    };
-    
-    private string GetWarningIcon() => Status.Level switch
-    {
-        "warning" => "⚠",
-        "critical" => "⚠",
-        "overflow" => "✕",
-        _ => ""
-    };
-    
+
     private string FormatTokens(int tokens)
     {
         if (tokens >= 1000000) return $"{tokens / 1000000.0:F1}M";
         if (tokens >= 1000) return $"{tokens / 1000}K";
         return tokens.ToString();
     }
-    
+
     private void ToggleDetails() => ShowDetails = !ShowDetails;
-    
-    private void OpenSettings() => OnSettingsRequested.InvokeAsync();
-    
-    private async Task TriggerCompaction() => await OnCompactRequested.InvokeAsync();
+
+    private void HandleCancel() => ShowDetails = false;
+
+    private async Task TriggerCompaction()
+    {
+        ShowDetails = false;
+        await OnCompactRequested.InvokeAsync();
+    }
 }
