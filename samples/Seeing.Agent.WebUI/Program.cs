@@ -16,6 +16,7 @@ using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
+using Seeing.TokenBudget.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +27,8 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddSeeingAgent(builder.Configuration);
 builder.Services.AddSeeingAcp();
 builder.Services.AddSeeingScheduler();
+builder.Services.AddTokenBudgetIntegration(builder.Configuration);
+builder.Services.AddTokenBudgetHooks();
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();
 
@@ -114,6 +117,9 @@ using (var scope = app.Services.CreateScope())
     var toolHandler = sp.GetRequiredService<ToolMemoryHandler>();
     hookManager.Register(chatHandler);
     hookManager.Register(toolHandler);
+    
+    // 注册 TokenBudget Hook Handler（自动管理 token 预算）
+    sp.UseTokenBudgetHooks();
 
     // 启动后台写入队列
     var writeQueue = sp.GetRequiredService<MemoryWriteQueue>();

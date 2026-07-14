@@ -7,6 +7,7 @@
 @using Services = Seeing.Agent.WebUI.Services
 @using Core = Seeing.Agent.Core
 @using Seeing.Agent.WebUI.State
+@using Seeing.Agent.WebUI.Components.Token
 @using Seeing.Agent.Tools
 @using Seeing.Agent.Skills
 @using Seeing.Agent.Configuration
@@ -143,6 +144,14 @@
                     </Tooltip>
                 </SpaceItem>
             </Space>
+            <!-- Token Budget 状态栏 -->
+            @if (SessionState.BudgetStatus.MaxTokens > 0)
+            {
+                <div class="token-budget-container">
+                    <ChatTokenStatusBar Status="SessionState.BudgetStatus" 
+                                        OnCompactRequested="OnCompactRequested" />
+                </div>
+            }
         </div>
     </div>
 
@@ -1342,6 +1351,55 @@
     private void OnClearError()
     {
         ErrorMessage = null;
+    }
+    
+    /// <summary>
+    /// 手动触发压缩
+    /// </summary>
+    private async Task OnCompactRequested()
+    {
+        if (SessionState.CurrentSession == null) return;
+        
+        try
+        {
+            SessionState.IsCompacting = true;
+            await InvokeAsync(StateHasChanged);
+            
+            var result = await CompactionService.CompactAsync(
+                SessionState.CurrentSession.Messages,
+                SessionState.CurrentSession.Id);
+            
+            if (result.Success && result.SummaryMessage != null && result.TailMessages != null)
+            {
+                // 替换消息列表
+                SessionState.CurrentSession.Messages.Clear();
+                SessionState.CurrentSession.Messages.Add(result.SummaryMessage);
+                foreach (var msg in result.TailMessages)
+                {
+                    SessionState.CurrentSession.Messages.Add(msg);
+                }
+                
+                MessageService.Success(string.Format("已压缩 {0} 条消息", result.CompressedCount));
+                RefreshMessageViewModels();
+            }
+            else if (!string.IsNullOrEmpty(result.Message))
+            {
+                MessageService.Info(result.Message);
+            }
+            else if (!string.IsNullOrEmpty(result.Error))
+            {
+                MessageService.Error(string.Format("压缩失败: {0}", result.Error));
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error(string.Format("压缩失败: {0}", ex.Message));
+        }
+        finally
+        {
+            SessionState.IsCompacting = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
     
     /// <summary>

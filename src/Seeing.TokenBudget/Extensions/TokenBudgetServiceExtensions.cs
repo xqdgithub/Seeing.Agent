@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Session.Compression;
 using Seeing.Session.Compression.Strategies;
 using Seeing.TokenBudget.Api;
 using Seeing.TokenBudget.Configuration;
@@ -33,9 +34,12 @@ public static class TokenBudgetServiceExtensions
         services.AddSingleton<ITokenBudgetConfigResolver, TokenBudgetConfigResolver>();
         services.AddScoped<ITokenBudgetManager, TokenBudgetManager>();
         
-        // Compression
+        // Compression - register SlidingWindowTokenStrategy as both itself and ICompressionStrategy
+        var slidingWindowDescriptor = ServiceDescriptor.Singleton<SlidingWindowTokenStrategy, SlidingWindowTokenStrategy>();
+        services.Add(slidingWindowDescriptor);
+        services.AddSingleton<ICompressionStrategy>(sp => sp.GetRequiredService<SlidingWindowTokenStrategy>());
+        
         services.AddScoped<ICompressionTrigger, DefaultCompressionTrigger>();
-        services.AddScoped<SlidingWindowTokenStrategy>();
         
         // API
         services.AddScoped<ITokenBudgetApi, TokenBudgetApi>();
@@ -57,10 +61,9 @@ public static class TokenBudgetServiceExtensions
         // Register base token budget services
         services.AddTokenBudgetManagement(configuration);
 
-        // Register compression strategies (singletons for stateless strategies)
-        services.AddSingleton<SlidingWindowTokenStrategy>();
-        services.AddSingleton<SummarizingStrategy>();
-        services.AddSingleton<HybridStrategy>();
+        // Note: SummarizingStrategy and HybridStrategy require ISummarizer
+        // which depends on LLM service. Register these only if needed.
+        // For basic token budget management, SlidingWindowStrategy is sufficient.
 
         // Register compression infrastructure
         services.AddSingleton<ICompressionStrategyFactory, CompressionStrategyFactory>();

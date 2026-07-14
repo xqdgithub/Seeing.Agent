@@ -10,13 +10,13 @@ namespace Seeing.TokenBudget;
 public class CompressionStrategyFactory : ICompressionStrategyFactory
 {
     private readonly SlidingWindowTokenStrategy _slidingWindowStrategy;
-    private readonly SummarizingStrategy _summarizingStrategy;
-    private readonly HybridStrategy _hybridStrategy;
+    private readonly SummarizingStrategy? _summarizingStrategy;
+    private readonly HybridStrategy? _hybridStrategy;
 
     public CompressionStrategyFactory(
         SlidingWindowTokenStrategy slidingWindowStrategy,
-        SummarizingStrategy summarizingStrategy,
-        HybridStrategy hybridStrategy)
+        SummarizingStrategy? summarizingStrategy = null,
+        HybridStrategy? hybridStrategy = null)
     {
         _slidingWindowStrategy = slidingWindowStrategy;
         _summarizingStrategy = summarizingStrategy;
@@ -28,8 +28,10 @@ public class CompressionStrategyFactory : ICompressionStrategyFactory
         return type switch
         {
             CompactionStrategyType.SlidingWindow => _slidingWindowStrategy,
-            CompactionStrategyType.Summarizing => _summarizingStrategy,
-            CompactionStrategyType.Hybrid => _hybridStrategy,
+            CompactionStrategyType.Summarizing => _summarizingStrategy 
+                ?? throw new InvalidOperationException("SummarizingStrategy not registered. Register ISummarizer to enable LLM-based compression."),
+            CompactionStrategyType.Hybrid => _hybridStrategy 
+                ?? throw new InvalidOperationException("HybridStrategy not registered. Register ISummarizer to enable hybrid compression."),
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown compression strategy type")
         };
     }

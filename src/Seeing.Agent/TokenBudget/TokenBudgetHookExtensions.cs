@@ -19,26 +19,29 @@ public static class TokenBudgetHookExtensions
     public static IServiceCollection AddTokenBudgetHooks(
         this IServiceCollection services)
     {
-        // Register hooks as singletons
-        services.AddSingleton<BudgetCheckHook>();
-        services.AddSingleton<BudgetUpdateHook>();
+        // Register hooks as scoped since they depend on scoped services
+        services.AddScoped<BudgetCheckHook>();
+        services.AddScoped<BudgetUpdateHook>();
 
         return services;
     }
 
     /// <summary>
     /// Registers token budget hooks with the hook manager.
-    /// Call this after building the service provider.
+    /// Call this after building the service provider, within a scope.
+    /// Note: Since hooks are scoped, they will be resolved per-request.
     /// </summary>
     /// <param name="services">The service provider.</param>
     /// <returns>The service provider for chaining.</returns>
     public static IServiceProvider UseTokenBudgetHooks(
         this IServiceProvider services)
     {
+        // Create a scope to resolve scoped hooks
+        using var scope = services.CreateScope();
         var hookManager = services.GetRequiredService<IHookManager>();
 
-        var checkHook = services.GetRequiredService<BudgetCheckHook>();
-        var updateHook = services.GetRequiredService<BudgetUpdateHook>();
+        var checkHook = scope.ServiceProvider.GetRequiredService<BudgetCheckHook>();
+        var updateHook = scope.ServiceProvider.GetRequiredService<BudgetUpdateHook>();
 
         hookManager.Register(checkHook);
         hookManager.Register(updateHook);

@@ -4,6 +4,7 @@ using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
+using Seeing.TokenBudget.Api.Responses;
 using System.Text;
 
 namespace Seeing.Agent.WebUI.Services
@@ -184,6 +185,18 @@ namespace Seeing.Agent.WebUI.Services
                 case MessageEventType.Error:
                     HandleError((ErrorEvent)evt);
                     await SaveToSessionAsync();
+                    break;
+
+                case MessageEventType.BudgetStatus:
+                    HandleBudgetStatus((BudgetStatusEvent)evt);
+                    break;
+
+                case MessageEventType.BudgetWarning:
+                    HandleBudgetWarning((BudgetWarningEvent)evt);
+                    break;
+
+                case MessageEventType.Compaction:
+                    HandleCompaction((CompactionEvent)evt);
                     break;
 
                 // App 层扩展事件类型
@@ -505,6 +518,42 @@ namespace Seeing.Agent.WebUI.Services
             // 更新当前用户消息的内容为展开后的 Skill 内容
             // ChatOrchestrator 已经更新了 Session 中的消息，这里只需要触发 UI 刷新
             // OnStateChanged 会在 ProcessEventAsync 末尾调用
+        }
+
+        /// <summary>
+        /// 处理 Budget 状态事件
+        /// </summary>
+        private void HandleBudgetStatus(BudgetStatusEvent evt)
+        {
+            var status = new BudgetStatusResponse
+            {
+                CurrentTokens = evt.CurrentTokens,
+                MaxTokens = evt.MaxTokens,
+                AvailableTokens = evt.MaxTokens - evt.CurrentTokens,
+                UsagePercentage = evt.UsagePercentage,
+                Level = evt.Level.ToString().ToLowerInvariant(),
+                Message = $"Token usage: {evt.CurrentTokens}/{evt.MaxTokens}",
+                NeedsCompaction = evt.Level == BudgetLevel.Critical || evt.Level == BudgetLevel.Overflow
+            };
+            _sessionState.UpdateBudgetStatus(status);
+        }
+
+        /// <summary>
+        /// 处理 Budget 警告事件
+        /// </summary>
+        private void HandleBudgetWarning(BudgetWarningEvent evt)
+        {
+            // 警告事件可以显示通知，但不需要更新状态（状态由 BudgetStatusEvent 更新）
+            // OnStateChanged 会触发 UI 刷新
+        }
+
+        /// <summary>
+        /// 处理压缩事件
+        /// </summary>
+        private void HandleCompaction(CompactionEvent evt)
+        {
+            // 压缩完成，状态已由 BudgetStatusEvent 更新
+            // OnStateChanged 会触发 UI 刷新
         }
 
         /// <summary>

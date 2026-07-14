@@ -1,0 +1,95 @@
+/* Token Budget Status Bar Styles */
+
+.token-budget-container {
+    margin-left: 16px;
+    display: flex;
+    align-items: center;
+}
+
+.token-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    background: #f5f5f5;
+    min-width: 200px;
+    max-width: 400px;
+}
+
+.token-status-bar.status-normal {
+    background: #f6ffed;
+    border: 1px solid #b7eb8f;
+}
+
+.token-status-bar.status-warning {
+    background: #fffbe6;
+    border: 1px solid #ffe58f;
+}
+
+.token-status-bar.status-critical {
+    background: #fff2f0;
+    border: 1px solid #ffccc7;
+}
+
+.token-status-bar.status-overflow {
+    background: #fff1f0;
+    border: 1px solid #ffa39e;
+}
+
+.token-status-bar .progress-container {
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.token-status-bar .status-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.token-status-bar .usage-text {
+    font-weight: 500;
+    color: #333;
+}
+
+.token-status-bar .warning-icon {
+    font-size: 14px;
+}
+
+.token-status-bar .warning-text {
+    color: #d4380d;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+.token-status-bar .details-panel {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid #e8e8e8;
+}
+
+.token-status-bar .available {
+    font-size: 11px;
+    color: #666;
+}
+
+/* Ant Design Progress override for token bar */
+.token-status-bar .ant-progress {
+    line-height: 1;
+}
+
+.token-status-bar .ant-progress-inner {
+    height: 6px !important;
+}
+
+.token-status-bar .ant-progress-bg {
+    height: 6px !important;
+}

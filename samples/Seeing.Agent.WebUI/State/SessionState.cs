@@ -1,6 +1,7 @@
 using Seeing.Agent.App.Execution;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
+using Seeing.TokenBudget.Api.Responses;
 
 namespace Seeing.Agent.WebUI.State
 {
@@ -40,6 +41,29 @@ namespace Seeing.Agent.WebUI.State
             CurrentTodoList = todoList;
             OnTodoListChanged?.Invoke();
         }
+
+        #region Token Budget 状态
+
+        /// <summary>
+        /// 当前 Token Budget 状态
+        /// </summary>
+        public BudgetStatusResponse BudgetStatus { get; set; } = new();
+
+        /// <summary>
+        /// Budget 状态更新事件
+        /// </summary>
+        public event Action? OnBudgetStatusChanged;
+
+        /// <summary>
+        /// 更新 Budget 状态
+        /// </summary>
+        public void UpdateBudgetStatus(BudgetStatusResponse status)
+        {
+            BudgetStatus = status;
+            OnBudgetStatusChanged?.Invoke();
+        }
+
+        #endregion
 
         /// <summary>
         /// 会话 ID（从 CurrentSession 获取）
