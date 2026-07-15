@@ -1,0 +1,19 @@
+docs/superpowers/specs/2025-01-15-agent-config-system-design.md
+  s_d24524d36b8510::t_85f026b7c80b1b 1-748
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.33-trip",
+  "base_commit_sha": "849c449636f35d5404b6018d5f6ae4feed349495",
+  "prompts": {},
+  "sessions": {
+    "s_d24524d36b8510": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09b42d14bffe7pfCFoTeDQEb4E",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
