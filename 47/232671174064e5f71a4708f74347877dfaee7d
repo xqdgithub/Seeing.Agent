@@ -1,0 +1,23 @@
+docs/superpowers/specs/2025-01-16-webui-agent-md-config-design.md
+  s_d24524d36b8510::t_06c4027172f47f 284-285,287-288,294-295
+  s_d24524d36b8510::t_f127179c104dbd 150-168,170
+  s_d24524d36b8510::t_5fd8b56897e40f 81-106
+  s_d24524d36b8510::t_fc2a45316e80d4 111-112,125-127
+  s_d24524d36b8510::t_3aaad37d4f808a 1-80,107-110,113-124,128-149,169,171-283,286,289-293,296-379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.34-trip",
+  "base_commit_sha": "47232671174064e5f71a4708f74347877dfaee7d",
+  "prompts": {},
+  "sessions": {
+    "s_d24524d36b8510": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09b42d14bffe7pfCFoTeDQEb4E",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
