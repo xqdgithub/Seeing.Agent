@@ -1,0 +1,44 @@
+samples/Seeing.Agent.WebUI/Pages/Session.razor
+  s_1db3d19b682877::t_052217384015bd 1058-1064,1068
+src/Seeing.Agent.Acp/Configuration/AcpMetadataKeys.cs
+  s_1db3d19b682877::t_c7067a68b40282 16
+  s_1db3d19b682877::t_716bb77a323bb9 1,17
+src/Seeing.Agent/Core/AgentExecutor.cs
+  s_1db3d19b682877::t_049f79ea32a7ae 1
+  s_1db3d19b682877::t_44a75e3be49a0e 796
+src/Seeing.Agent.App/Execution/ExecutionJobService.cs
+  s_1db3d19b682877::t_95d428013ae592 1
+  s_1db3d19b682877::t_5e212cdd0371c9 503-506
+  s_1db3d19b682877::t_2f0026ae112e49 403
+src/Seeing.Agent.Acp/Execution/AcpPassthroughExecutor.cs
+  s_1db3d19b682877::t_a52a7ef6ceb117 1
+  s_1db3d19b682877::t_83749db03b4c0c 95
+src/Seeing.Agent/Core/Models/AgentModels.cs
+  s_1db3d19b682877::t_26a73ab8421a42 240
+  s_1db3d19b682877::t_bbb5835c26e12c 235-237
+  s_1db3d19b682877::t_5e4ed80f9f4d07 1,230-234
+tests/Seeing.Agent.Tests/Gateway/AcpExecutionContextBuilderTests.cs
+  s_1db3d19b682877::t_6470379fc9c0d7 43
+tests/Seeing.Agent.Acp.Tests/AcpPassthroughExecutorMetadataTests.cs
+  s_1db3d19b682877::t_8a8d6c3d5c8a98 48
+src/Seeing.Agent.App/Internal/ChatExecutionContext.cs
+  s_1db3d19b682877::t_98d9b355043d6a 1,65,67-74,76-77
+src/Seeing.Agent/Core/AcpExecutionOverrides.cs
+  s_1db3d19b682877::t_7a9aa5a08d2963 1,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.33-trip",
+  "base_commit_sha": "f801d5f07ae55b0ca11d98cfc82388f25fc65d27",
+  "prompts": {},
+  "sessions": {
+    "s_1db3d19b682877": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09c2a8819ffeGL7lZXHMR9Ilnu",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
