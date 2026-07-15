@@ -317,6 +317,9 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<AgentRuntimeManager>();
             services.AddSingleton<IAgentRuntimeManager>(sp => sp.GetRequiredService<AgentRuntimeManager>());
 
+            // Agent 配置加载器（MD 文件）
+            services.AddSingleton<IAgentConfigLoader, AgentConfigLoader>();
+
             // Agent 注册表（协调者）
             services.AddSingleton<AgentRegistry>(sp =>
             {
@@ -325,6 +328,7 @@ namespace Seeing.Agent.Extensions
                 var runtimeManager = sp.GetRequiredService<IAgentRuntimeManager>();
                 var discovery = sp.GetRequiredService<AgentDiscovery>();
                 var options = sp.GetService<IOptions<SeeingAgentOptions>>();
+                var configLoader = sp.GetService<IAgentConfigLoader>();
 
                 // 获取内置代理
                 var builtInAgents = BuiltInAgents.GetBuiltInAgents();
@@ -339,7 +343,8 @@ namespace Seeing.Agent.Extensions
                     runtimeManager,
                     allAgents,
                     defaultAgent: options?.Value?.DefaultAgent,
-                    options: options);
+                    options: options,
+                    configLoader: configLoader);
 
                 // 从配置扩展代理
                 if (options?.Value?.Agents != null)

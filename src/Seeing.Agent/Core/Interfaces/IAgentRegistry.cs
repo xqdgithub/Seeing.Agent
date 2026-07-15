@@ -23,6 +23,18 @@ namespace Seeing.Agent.Core.Interfaces
         /// <returns>Agent 信息，不存在则返回 null</returns>
         Task<AgentInfo?> GetAgentAsync(string name);
 
+        /// <summary>
+        /// 获取 Agent 并合并 MD 配置
+        /// </summary>
+        /// <param name="name">Agent 名称</param>
+        /// <param name="provider">可选的 provider 覆盖</param>
+        /// <param name="model">可选的 model 覆盖</param>
+        /// <returns>合并配置后的 Agent 信息，不存在则返回 null</returns>
+        Task<AgentInfo?> GetAgentWithMergedConfigAsync(
+            string name,
+            string? provider = null,
+            string? model = null);
+
         /// <summary>获取所有子 Agent（mode != Primary）</summary>
         /// <returns>子 Agent 信息列表</returns>
         Task<IReadOnlyList<AgentInfo>> GetSubAgentsAsync();

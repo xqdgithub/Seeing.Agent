@@ -1,3 +1,4 @@
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Permission;
 using Seeing.Session.Core;
 
@@ -103,6 +104,15 @@ namespace Seeing.Agent.Core.Models
 
         /// <summary>权限默认效果（当没有匹配规则时，默认询问用户）</summary>
         public PermissionEffect PermissionDefaultEffect { get; init; } = PermissionEffect.Ask;
+
+        /// <summary>
+        /// Provider/Model 变体配置
+        /// <para>
+        /// 键格式：{provider} 或 {provider}.{model}
+        /// 例如："openai"、"anthropic"、"openai.gpt-4o-mini"
+        /// </para>
+        /// </summary>
+        public IReadOnlyDictionary<string, AgentVariant>? Variants { get; init; }
 
         /// <summary>
         /// 构建权限策略

@@ -2,9 +2,14 @@
 @using AntDesign
 @using Seeing.Agent.Core.Interfaces
 @using Seeing.Agent.Core.Models
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.Components.Agents
 @inject IAgentRegistry AgentRegistry
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
+@inject AgentMdConfigService MdConfigService
+@inject IWorkspaceProvider WorkspaceProvider
 
 <PageTitle>智能体管理 - Seeing.Agent</PageTitle>
 
@@ -15,7 +20,14 @@
         <BreadcrumbItem>智能体管理</BreadcrumbItem>
     </Breadcrumb>
     <Extra>
-        <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+        <Space>
+            <Select TItemValue="ConfigLevel" TItem="ConfigLevel" @bind-Value="_selectedLevel" Style="width: 120px;">
+                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
+                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
+            </Select>
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="OpenCreateDialog">新增 MD 配置</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+        </Space>
     </Extra>
     <Stats>
         <div class="stat-item">
@@ -32,6 +44,13 @@
                 <span class="stat-label">默认智能体</span>
             </div>
         </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.FileText" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_mdConfigs.Count</span>
+                <span class="stat-label">MD 配置</span>
+            </div>
+        </div>
     </Stats>
     <ChildContent>
         <Table TItem="AgentRow" DataSource="@_rows" RowKey="@(a => a.Name)" Size="@TableSize.Middle">
@@ -39,7 +58,19 @@
             <PropertyColumn Property="c => c.DefaultLabel" Title="默认" />
             <PropertyColumn Property="c => c.Description" Title="描述" />
             <PropertyColumn Property="c => c.RuntimeText" Title="运行时" />
-            <PropertyColumn Property="c => c.TypeText" Title="类型" />
+            <PropertyColumn Property="c => c.Source" Title="来源">
+                <Tag Color="@GetSourceColor(context)">@GetSourceText(context)</Tag>
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.VariantCount" Title="变体数">
+                @if (context.VariantCount > 0)
+                {
+                    <Badge Count="@context.VariantCount" />
+                }
+                else
+                {
+                    <span>-</span>
+                }
+            </PropertyColumn>
             <ActionColumn Title="操作">
                 <Space>
                     @if (!context.IsDefault)
@@ -47,16 +78,71 @@
                         <Button Size="@ButtonSize.Small" OnClick="@(() => SetDefault(context.Name))">设为默认</Button>
                     }
                     <Button Size="@ButtonSize.Small" OnClick="@(() => GoConfig(context.Name))">查看配置</Button>
+                    @if (context.IsMdConfig)
+                    {
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" 
+                                OnClick="@(() => OpenEditDrawer(context.Name, context.Level))">编辑MD</Button>
+                        <Popconfirm Title="确定要删除此 MD 配置吗？"
+                                    OnConfirm="@(() => DeleteMdConfig(context.Name, context.Level))">
+                            <Button Size="@ButtonSize.Small" Danger>删除</Button>
+                        </Popconfirm>
+                    }
                 </Space>
             </ActionColumn>
         </Table>
     </ChildContent>
 </WorkspacePageShell>
 
+<AgentMdEditorDrawer @bind-Visible="_drawerVisible"
+                      AgentName="@_currentAgentName"
+                      Level="@_currentLevel"
+                      OnSaved="HandleMdSaved" />
+
+@if (_createModalVisible)
+{
+    <Modal Title="新建 MD 配置"
+           Visible="true"
+           OnOk="HandleCreate"
+           OnCancel="@(() => _createModalVisible = false)"
+           ConfirmLoading="_creating"
+           OkText="@OkText"
+           CancelText="@CancelText">
+        <Form Model="_createForm" LabelColSpan="6">
+            <FormItem Label="名称">
+                <Input @bind-Value="_createForm.Name" Placeholder="请输入智能体名称" />
+            </FormItem>
+            <FormItem Label="层级">
+                <RadioGroup @bind-Value="_createForm.Level">
+                    <Radio Value="@ConfigLevel.Project">项目级</Radio>
+                    <Radio Value="@ConfigLevel.User">用户级</Radio>
+                </RadioGroup>
+            </FormItem>
+        </Form>
+    </Modal>
+}
+
 @code {
+    /// <summary>
+    /// 常量文本（避免编码问题）
+    /// </summary>
+    private const string OkText = "创建";
+    private const string CancelText = "取消";
+    
     private List<AgentRow> _rows = new();
     private string _defaultAgent = "";
     private bool _loading;
+    
+    // MD 配置相关
+    private ConfigLevel _selectedLevel = ConfigLevel.Project;
+    private bool _drawerVisible;
+    private string? _currentAgentName;
+    private ConfigLevel _currentLevel = ConfigLevel.Project;
+    private List<AgentMdInfo> _mdConfigs = new();
+    
+    // 创建配置相关
+    private bool _createModalVisible;
+    private bool _creating;
+    private CreateForm _createForm = new();
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -67,14 +153,25 @@
         {
             _defaultAgent = await AgentRegistry.GetDefaultAgentNameAsync();
             var agents = await AgentRegistry.GetPrimaryAgentsAsync();
-            _rows = agents.Select(a => new AgentRow
+            
+            // 加载 MD 配置信息
+            _mdConfigs = (await MdConfigService.GetAllAsync()).ToList();
+            
+            _rows = agents.Select(a => 
             {
-                Name = a.Name,
-                Description = a.Description ?? "",
-                RuntimeText = a.Runtime.ToString(),
-                TypeText = a.IsNative ? "内置" : "配置",
-                IsDefault = a.Name == _defaultAgent,
-                DefaultLabel = a.Name == _defaultAgent ? "是" : ""
+                var mdInfo = _mdConfigs.FirstOrDefault(m => m.Name == a.Name);
+                return new AgentRow
+                {
+                    Name = a.Name,
+                    Description = a.Description ?? "",
+                    RuntimeText = a.Runtime.ToString(),
+                    IsMdConfig = mdInfo != null,
+                    Level = mdInfo?.Level ?? ConfigLevel.Project,
+                    VariantCount = mdInfo?.VariantCount ?? 0,
+                    IsDefault = a.Name == _defaultAgent,
+                    DefaultLabel = a.Name == _defaultAgent ? "是" : "",
+                    IsNative = a.IsNative
+                };
             }).ToList();
         }
         finally { _loading = false; }
@@ -90,13 +187,105 @@
     private void GoConfig(string name) =>
         NavigationManager.NavigateTo($"/agent-config?agent={Uri.EscapeDataString(name)}");
 
+    private void OpenCreateDialog()
+    {
+        _createForm = new CreateForm { Level = _selectedLevel };
+        _createModalVisible = true;
+    }
+
+    private async Task HandleCreate()
+    {
+        if (string.IsNullOrWhiteSpace(_createForm.Name))
+        {
+            MessageService.Warning("请输入智能体名称");
+            return;
+        }
+
+        _creating = true;
+        try
+        {
+            await MdConfigService.CreateAsync(_createForm.Name, _createForm.Level);
+            MessageService.Success($"已创建 MD 配置: {_createForm.Name}");
+            _createModalVisible = false;
+            await LoadAsync();
+            
+            // 打开编辑器
+            OpenEditDrawer(_createForm.Name, _createForm.Level);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"创建失败: {ex.Message}");
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private void OpenEditDrawer(string name, ConfigLevel level)
+    {
+        _currentAgentName = name;
+        _currentLevel = level;
+        _drawerVisible = true;
+    }
+
+    private async Task DeleteMdConfig(string name, ConfigLevel level)
+    {
+        try
+        {
+            var success = await MdConfigService.DeleteAsync(name, level);
+            if (success)
+            {
+                MessageService.Success($"已删除 MD 配置: {name}");
+                await LoadAsync();
+            }
+            else
+            {
+                MessageService.Error("删除失败");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败: {ex.Message}");
+        }
+    }
+
+    private async Task HandleMdSaved()
+    {
+        await LoadAsync();
+    }
+
+    private string GetSourceText(AgentRow row)
+    {
+        if (row.IsNative) return "内置";
+        if (row.IsMdConfig) return row.Level == ConfigLevel.Project ? "MD(项目)" : "MD(用户)";
+        return "JSON";
+    }
+
+    private string GetSourceColor(AgentRow row)
+    {
+        if (row.IsNative) return "blue";
+        if (row.IsMdConfig) return row.Level == ConfigLevel.Project ? "green" : "cyan";
+        return "default";
+    }
+
     private sealed class AgentRow
     {
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
         public string RuntimeText { get; set; } = "";
-        public string TypeText { get; set; } = "";
         public string DefaultLabel { get; set; } = "";
         public bool IsDefault { get; set; }
+        public bool IsMdConfig { get; set; }
+        public bool IsNative { get; set; }
+        public ConfigLevel Level { get; set; }
+        public int VariantCount { get; set; }
+        public string Source => IsNative ? "内置" : (IsMdConfig ? "MD" : "JSON");
+    }
+
+    private sealed class CreateForm
+    {
+        public string Name { get; set; } = "";
+        public ConfigLevel Level { get; set; } = ConfigLevel.Project;
     }
 }

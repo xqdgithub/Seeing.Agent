@@ -30,6 +30,7 @@ namespace Seeing.Agent.Core
         private readonly IAgentRuntimeManager _runtimeManager;
         private readonly IOptions<SeeingAgentOptions>? _options;
         private readonly string? _fallbackDefaultAgentName;
+        private readonly IAgentConfigLoader? _configLoader;
 
         /// <summary>
         /// 创建 Agent 注册表实例（协调者模式）
@@ -40,13 +41,15 @@ namespace Seeing.Agent.Core
             IAgentRuntimeManager runtimeManager,
             IEnumerable<AgentInfo>? builtInAgents = null,
             string? defaultAgent = null,
-            IOptions<SeeingAgentOptions>? options = null)
+            IOptions<SeeingAgentOptions>? options = null,
+            IAgentConfigLoader? configLoader = null)
         {
             _logger = logger;
             _agentStore = agentStore;
             _runtimeManager = runtimeManager;
             _options = options;
             _fallbackDefaultAgentName = defaultAgent;
+            _configLoader = configLoader;
 
             // 注册内置代理（委托给 Store）
             if (builtInAgents != null)
@@ -57,8 +60,42 @@ namespace Seeing.Agent.Core
                 }
             }
 
+            // 订阅 MD 配置变更事件
+            if (_configLoader != null)
+            {
+                _configLoader.ConfigChanged += OnAgentConfigChanged;
+            }
+
             _logger.LogInformation("AgentRegistry 初始化完成，已注册 {Count} 个代理",
                 _agentStore.GetAllAsync().Result.Count);
+        }
+
+        /// <summary>
+        /// 处理 MD 配置变更事件
+        /// </summary>
+        private void OnAgentConfigChanged(object? sender, AgentConfigChangedEventArgs e)
+        {
+            try
+            {
+                _logger.LogDebug("收到 MD 配置变更通知: {Name}, {Action}, {Level}", e.Name, e.Action, e.Level);
+
+                switch (e.Action)
+                {
+                    case ConfigChangeAction.Created:
+                    case ConfigChangeAction.Updated:
+                        // 重新加载 Agent 配置（下次获取时自动刷新）
+                        _agentStore.Unregister(e.Name);
+                        break;
+                    case ConfigChangeAction.Deleted:
+                        // 移除 Agent 配置
+                        _agentStore.Unregister(e.Name);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "处理 Agent 配置变更失败: {Name}, {Action}", e.Name, e.Action);
+            }
         }
 
         /// <summary>
@@ -262,6 +299,156 @@ namespace Seeing.Agent.Core
 
             // 返回一个基于信息的简单代理包装
             return new AgentInfoWrapper(info);
+        }
+
+        /// <summary>
+        /// 获取 Agent 并合并 MD 配置
+        /// </summary>
+        /// <param name="name">Agent 名称</param>
+        /// <param name="provider">Provider ID（用于变体选择）</param>
+        /// <param name="model">Model ID（用于精确变体匹配）</param>
+        /// <returns>合并配置后的 Agent 信息</returns>
+        public async Task<AgentInfo?> GetAgentWithMergedConfigAsync(
+            string name,
+            string? provider = null,
+            string? model = null)
+        {
+            var agentInfo = await GetAgentAsync(name);
+            if (agentInfo == null)
+                return null;
+
+            // 加载 MD 配置
+            if (_configLoader != null)
+            {
+                var mdConfig = await _configLoader.LoadAsync(name, provider, model);
+                if (mdConfig != null)
+                {
+                    agentInfo = ApplyMdConfig(agentInfo, mdConfig);
+                }
+            }
+
+            // 应用 seeing.json 配置
+            var jsonConfig = _options?.Value?.Agents?.GetValueOrDefault(name);
+            if (jsonConfig != null)
+            {
+                agentInfo = ApplyJsonConfigToAgentInfo(agentInfo, jsonConfig);
+            }
+
+            return agentInfo;
+        }
+
+        /// <summary>
+        /// 应用 MD 配置到 AgentInfo
+        /// </summary>
+        private static AgentInfo ApplyMdConfig(AgentInfo baseInfo, AgentDefinition mdConfig)
+        {
+            var result = new AgentInfo
+            {
+                Name = baseInfo.Name,
+                Description = !string.IsNullOrEmpty(mdConfig.Description) ? mdConfig.Description : baseInfo.Description,
+                Mode = mdConfig.Mode != AgentMode.All ? mdConfig.Mode : baseInfo.Mode,
+                Category = mdConfig.Category ?? baseInfo.Category,
+                SystemPrompt = mdConfig.SystemPrompt ?? baseInfo.SystemPrompt,
+                Model = mdConfig.Model ?? baseInfo.Model,
+                MaxSteps = mdConfig.MaxSteps ?? baseInfo.MaxSteps,
+                Temperature = mdConfig.Temperature ?? baseInfo.Temperature,
+                TopP = mdConfig.TopP ?? baseInfo.TopP,
+                IsHidden = mdConfig.IsHidden, // MD config always overrides
+                Color = mdConfig.Color ?? baseInfo.Color,
+                Runtime = mdConfig.Runtime != AgentRuntime.Native ? mdConfig.Runtime : baseInfo.Runtime,
+                AcpBackend = mdConfig.AcpBackend ?? baseInfo.AcpBackend,
+                PermissionDefaultEffect = mdConfig.PermissionDefaultEffect,
+                IsNative = baseInfo.IsNative,
+                AgentFactory = baseInfo.AgentFactory,
+                Variant = baseInfo.Variant,
+                Tags = new List<string>(baseInfo.Tags),
+                Options = new Dictionary<string, object>(baseInfo.Options)
+            };
+
+            // 合并权限规则
+            if (mdConfig.PermissionRules.Count > 0)
+            {
+                result.PermissionRules = new List<PermissionRuleEntry>(baseInfo.PermissionRules);
+                result.PermissionRules.AddRange(mdConfig.PermissionRules);
+            }
+            else
+            {
+                result.PermissionRules = new List<PermissionRuleEntry>(baseInfo.PermissionRules);
+            }
+
+            // 合并工具列表
+            result.AllowedTools = mdConfig.AllowedTools.Count > 0
+                ? new List<string>(mdConfig.AllowedTools)
+                : new List<string>(baseInfo.AllowedTools);
+            result.DeniedTools = mdConfig.DeniedTools.Count > 0
+                ? new List<string>(mdConfig.DeniedTools)
+                : new List<string>(baseInfo.DeniedTools);
+
+            return result;
+        }
+
+        /// <summary>
+        /// 应用 seeing.json AgentConfig 到 AgentInfo
+        /// </summary>
+        private static AgentInfo ApplyJsonConfigToAgentInfo(AgentInfo baseInfo, AgentConfig jsonConfig)
+        {
+            var result = new AgentInfo
+            {
+                Name = baseInfo.Name,
+                Description = jsonConfig.Description ?? baseInfo.Description,
+                Mode = jsonConfig.Mode ?? baseInfo.Mode,
+                Category = baseInfo.Category,
+                SystemPrompt = jsonConfig.SystemPrompt ?? baseInfo.SystemPrompt,
+                MaxSteps = jsonConfig.MaxSteps ?? baseInfo.MaxSteps,
+                Temperature = jsonConfig.Temperature ?? baseInfo.Temperature,
+                TopP = jsonConfig.TopP ?? baseInfo.TopP,
+                IsHidden = jsonConfig.IsHidden ?? baseInfo.IsHidden,
+                Color = jsonConfig.Color ?? baseInfo.Color,
+                Runtime = jsonConfig.Runtime ?? baseInfo.Runtime,
+                AcpBackend = jsonConfig.AcpBackend ?? baseInfo.AcpBackend,
+                PermissionDefaultEffect = baseInfo.PermissionDefaultEffect,
+                IsNative = baseInfo.IsNative,
+                AgentFactory = baseInfo.AgentFactory,
+                Variant = jsonConfig.Variant ?? baseInfo.Variant,
+                Tags = new List<string>(baseInfo.Tags),
+                Options = new Dictionary<string, object>(baseInfo.Options)
+            };
+
+            // 应用模型配置
+            if (!string.IsNullOrEmpty(jsonConfig.Model))
+            {
+                result.Model = new ModelReference
+                {
+                    ProviderId = jsonConfig.Provider ?? baseInfo.Model?.ProviderId ?? string.Empty,
+                    ModelId = jsonConfig.Model
+                };
+            }
+            else
+            {
+                result.Model = baseInfo.Model;
+            }
+
+            // 合并权限规则
+            if (jsonConfig.PermissionRules != null && jsonConfig.PermissionRules.Count > 0)
+            {
+                result.PermissionRules = new List<PermissionRuleEntry>(baseInfo.PermissionRules);
+                result.PermissionRules.AddRange(jsonConfig.PermissionRules);
+            }
+            else
+            {
+                result.PermissionRules = new List<PermissionRuleEntry>(baseInfo.PermissionRules);
+            }
+
+            // 合并选项
+            if (jsonConfig.Options != null)
+            {
+                foreach (var (key, value) in jsonConfig.Options)
+                {
+                    result.Options[key] = value;
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
