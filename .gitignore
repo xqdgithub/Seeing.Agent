@@ -392,3 +392,4 @@ build_output.txt
 /tests/playwright_test.py
 /tests/test_results.json
 /docs/superpowers/plans
+/chat-page.yml
