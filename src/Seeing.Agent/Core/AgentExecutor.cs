@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Events;
@@ -793,7 +793,7 @@ public class AgentExecutor
     {
         // 0. 优先使用用户在界面上选择的模型（会话级覆盖）
         if (context?.Metadata != null &&
-            context.Metadata.TryGetValue(AgentContextKeys.SessionModelId, out var sessionModelObj) &&
+            context.Metadata.TryGetValue(AgentContextKeys.RequestModelId, out var sessionModelObj) &&
             sessionModelObj is string sessionModel &&
             !string.IsNullOrEmpty(sessionModel))
         {

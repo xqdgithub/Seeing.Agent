@@ -45,7 +45,7 @@ public class AcpPassthroughExecutorMetadataTests
             SessionId = "sess-1",
             History = [new ChatMessage { Role = "user", Content = "hello" }]
         };
-        context.Metadata[AgentContextKeys.AcpModelId] = "seeing-coding-plan/GLM-5";
+        context.Metadata[AgentContextKeys.RequestModelId] = "seeing-coding-plan/GLM-5";
         context.Metadata[AgentContextKeys.AcpModeId] = "build";
 
         var agent = new AgentDefinition

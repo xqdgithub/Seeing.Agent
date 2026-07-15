@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -400,7 +400,7 @@ public class ExecutionJobService : IDisposable
             ChannelId = record.Options?.ChannelId,
             UserId = record.Options?.UserId,
             AcpModeId = record.Options?.ModeId,
-            AcpModelId = record.Options?.ModelId
+            RequestModelId = record.Options?.ModelId
         };
     }
 
@@ -500,17 +500,13 @@ public class ExecutionJobService : IDisposable
             CancellationToken = cancellationToken
         };
 
-        // 传递 ACP 相关的模型和模式信息到 Metadata
-        if (!string.IsNullOrEmpty(context.AcpModelId))
-            agentContext.Metadata[AgentContextKeys.AcpModelId] = context.AcpModelId;
+        // 传递请求级模型选择到 Metadata（适用于 Native Agent 和 ACP Passthrough）
+        // 优先级：用户选择 > Agent 配置 > 全局默认
+        if (!string.IsNullOrEmpty(context.RequestModelId))
+            agentContext.Metadata[AgentContextKeys.RequestModelId] = context.RequestModelId;
 
         if (!string.IsNullOrEmpty(context.AcpModeId))
             agentContext.Metadata[AgentContextKeys.AcpModeId] = context.AcpModeId;
-
-        // 传递 Native Agent 会话级模型选择（用户在界面上选择的模型）
-        // 优先级：用户选择 > Agent 配置 > 全局默认
-        if (!string.IsNullOrEmpty(context.AcpModelId))
-            agentContext.Metadata[AgentContextKeys.SessionModelId] = context.AcpModelId;
 
         return agentContext;
     }

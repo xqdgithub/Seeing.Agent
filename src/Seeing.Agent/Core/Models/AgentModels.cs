@@ -1,4 +1,4 @@
-using Seeing.Agent.Core.Permission;
+﻿using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Core.Models
 {
@@ -227,10 +227,14 @@ namespace Seeing.Agent.Core.Models
     /// <summary>AgentContext.Metadata 键名（Gateway / ACP 透传共享）</summary>
     public static class AgentContextKeys
     {
-        public const string AcpModeId = "acp:modeId";
-        public const string AcpModelId = "acp:modelId";
+        /// <summary>请求级 Model ID（用户在界面选择的模型，优先级最高）</summary>
+        /// <remarks>
+        /// 适用于 Native Agent 和 ACP Passthrough。
+        /// 优先级：RequestModelId &gt; Agent.Model &gt; DefaultModel
+        /// </remarks>
+        public const string RequestModelId = "request:modelId";
 
-        /// <summary>Native Agent 会话级模型选择（用户在界面上选择的模型）</summary>
-        public const string SessionModelId = "session:modelId";
+        /// <summary>ACP 透传 session mode（如 build / ask）</summary>
+        public const string AcpModeId = "acp:modeId";
     }
 }

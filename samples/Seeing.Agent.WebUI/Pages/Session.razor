@@ -1055,10 +1055,17 @@
         }
 
         // 构建选项
+        // 组装完整的 ModelId 格式: provider/model（Native Agent 需要）
+        var modelId = SessionState.SelectedModel;
+        var providerId = SessionState.SelectedModelProvider;
+        var fullModelId = !string.IsNullOrEmpty(providerId) && !modelId.Contains('/')
+            ? $"{providerId}/{modelId}"
+            : modelId;
+
         var options = new ChatOptions
         {
             AgentId = SessionState.SelectedAgent,
-            ModelId = SessionState.SelectedModel,
+            ModelId = fullModelId,
             ModeId = SessionState.SelectedAcpMode,
             WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot
         };

@@ -1,4 +1,4 @@
-using Seeing.Agent.Core.Models;
+﻿using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core;
@@ -48,6 +48,6 @@ public static class AcpExecutionContextBuilder
             context.Metadata[AgentContextKeys.AcpModeId] = overrides.ModeId;
 
         if (!string.IsNullOrEmpty(overrides.ModelId))
-            context.Metadata[AgentContextKeys.AcpModelId] = overrides.ModelId;
+            context.Metadata[AgentContextKeys.RequestModelId] = overrides.ModelId;
     }
 }

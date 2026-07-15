@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Mapping;
@@ -92,7 +92,7 @@ public sealed class AcpPassthroughExecutor
             Prompt = prompt,
             WorkingDirectory = workingDirectory,
             ModeId = TryGetMetadataString(context, AgentContextKeys.AcpModeId),
-            ModelId = TryGetMetadataString(context, AgentContextKeys.AcpModelId),
+            ModelId = TryGetMetadataString(context, AgentContextKeys.RequestModelId),
             ParentContext = context
         };
 

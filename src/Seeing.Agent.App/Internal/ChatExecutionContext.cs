@@ -1,4 +1,4 @@
-using Seeing.Agent.Core.Interfaces;
+﻿using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
@@ -62,13 +62,19 @@ internal class ChatExecutionContext
     /// <summary>用户 ID</summary>
     public string? UserId { get; init; }
     
-    // ========== ACP 相关 ==========
+    // ========== 请求级参数 ==========
     
-    /// <summary>ACP Mode ID</summary>
+    /// <summary>
+    /// 请求级 Model ID（用户在界面选择的模型）
+    /// <para>
+    /// 适用于 Native Agent 和 ACP Passthrough。
+    /// 优先级：RequestModelId &gt; Agent.Model &gt; DefaultModel
+    /// </para>
+    /// </summary>
+    public string? RequestModelId { get; init; }
+    
+    /// <summary>ACP 透传 session mode（如 build / ask）</summary>
     public string? AcpModeId { get; init; }
-    
-    /// <summary>ACP Model ID</summary>
-    public string? AcpModelId { get; init; }
     
     // ========== 元数据 ==========
     

@@ -1,4 +1,4 @@
-using Seeing.Agent.Core.Models;
+﻿using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Acp.Configuration;
 
@@ -13,8 +13,8 @@ public static class AcpMetadataKeys
     /// <summary>AgentContext.Metadata：ACP session mode id（见 <see cref="AgentContextKeys.AcpModeId"/>）</summary>
     public const string ContextModeId = AgentContextKeys.AcpModeId;
 
-    /// <summary>AgentContext.Metadata：ACP session model id（见 <see cref="AgentContextKeys.AcpModelId"/>）</summary>
-    public const string ContextModelId = AgentContextKeys.AcpModelId;
+    /// <summary>AgentContext.Metadata：ACP session model id（见 <see cref="AgentContextKeys.RequestModelId"/>）</summary>
+    public const string ContextModelId = AgentContextKeys.RequestModelId;
 
     public static string Passthrough(string seeingSessionId) => PassthroughPrefix + seeingSessionId;
 

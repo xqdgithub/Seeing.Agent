@@ -40,7 +40,7 @@ public class AcpExecutionContextBuilderTests
 
         AcpExecutionContextBuilder.ApplyToContext(context, overrides);
 
-        context.Metadata[AgentContextKeys.AcpModelId].Should().Be("seeing-coding-plan/GLM-5");
+        context.Metadata[AgentContextKeys.RequestModelId].Should().Be("seeing-coding-plan/GLM-5");
         context.Metadata[AgentContextKeys.AcpModeId].Should().Be("build");
     }
 
