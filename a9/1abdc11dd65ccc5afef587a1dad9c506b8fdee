@@ -1,0 +1,286 @@
+samples/Seeing.Agent.WebUI/Components/Agents/AgentMdEditorDrawer.razor
+  s_57d2cfbb7eb076::t_15096d2ed6ac37 10
+  s_57d2cfbb7eb076::t_810860f4b96813 3
+  s_57d2cfbb7eb076::t_9441c26b985c04 137,143,148
+  s_57d2cfbb7eb076::t_c967ac8d0a5a4b 1-2,4-9,11-76,79-136,138-142,144-147,149-163
+  s_d24524d36b8510::t_fbeba4e102ad43 77-78
+src/Seeing.Agent/Configuration/AgentVariant.cs
+  s_408897f1291d8d::t_20774cc8b3c1c6 1-43
+tests/Seeing.Agent.Tests/Configuration/AgentConfigIntegrationTests.cs
+  s_34666dcb51cb5e::t_3030f90b9226e7 71-75,79-81,87
+  s_34666dcb51cb5e::t_c489c707ee0439 1-70,76-78,82-86,88-335
+src/Seeing.Agent/Configuration/AgentConfigLoader.cs
+  s_30cd77784c2a09::t_43b4cae2d5bdfa 2-26,62-71,76-83,85-118,121-171,173-181,183-188,190-192,194-201,203-206,402-407
+  s_4fe175559a7b86::t_e3d0577b9c55f8 73-75
+  s_30cd77784c2a09::t_2d80be343aa552 84
+  s_79711cf00ef33d::t_9240b0d548b2f3 1,280-281,306-307,329-330
+  s_98fbc87b49c5f3::t_0abaa206aacbc5 119-120
+  s_98fbc87b49c5f3::t_a9581e8e6d4bf4 172,182,189,193,202
+  s_4fe175559a7b86::t_562429b7977e3d 207-279,282-305,308-328,331-401
+  s_334f56aeeb3acb::t_a5a3e43103c076 54-58
+  s_9c2c6c2ebdd4da::t_595f8016fccf42 27-53,59-61
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_1587eec97603b4::t_6e05a63db4153e 20
+src/Seeing.Agent/Configuration/AgentDefinitionExtensions.cs
+  s_740392f2c52d92::t_be1b4e69800459 1-15,17,19-23,42-136,142-213
+  s_740392f2c52d92::t_b0765bc95b702e 16,18,24-41
+  s_7576b967227939::t_02560007d59c42 137-141
+src/Seeing.Agent/Configuration/AgentConfigFile.cs
+  s_408897f1291d8d::t_d632824411d4d5 1-81
+tests/Seeing.Agent.Tests/Configuration/AgentConfigLoaderTests.cs
+  s_98fbc87b49c5f3::t_d46e466d411037 81
+  s_5117209974ce01::t_18dbc975c7bd0e 174-248
+  s_98fbc87b49c5f3::t_5eb0d63b41974d 117
+  s_98fbc87b49c5f3::t_d2dbc318b95154 172
+  s_98fbc87b49c5f3::t_626cbbbb79b35c 5-6,15-17,27-33
+  s_98fbc87b49c5f3::t_abb2db0f58079b 55
+  s_98fbc87b49c5f3::t_a80ddbc1a67ef4 164,166-171
+  s_98fbc87b49c5f3::t_d18e134aeca710 128,131-163,165
+  s_30cd77784c2a09::t_748daedaf2c542 1-4,7-14,18-26,34-54,56-80,82-100,102-116,118-127,129-130,173,249-250
+  s_98fbc87b49c5f3::t_5c4691602d8786 101
+samples/Seeing.Agent.WebUI/Pages/_Host.cshtml
+  s_d24524d36b8510::t_ec8a85b6b70ff0 53-57
+src/Seeing.Agent/Core/AgentRegistry.cs
+  s_34666dcb51cb5e::t_5847b3fb455b97 356
+  s_34666dcb51cb5e::t_a098e5e9b2a5b8 52
+  s_23c8a6c3598a83::t_6d986eee0e3bd6 78-80,82-95,97
+  s_34666dcb51cb5e::t_119557db129b99 305-347,349-355,357-453
+  s_34666dcb51cb5e::t_a714d3f9993e73 348
+  s_34666dcb51cb5e::t_a8f8bc19658d74 33,44-45,73,304
+  s_1ded2a640d0f87::t_a08ecd12c77f65 63-68
+  s_1ded2a640d0f87::t_7869fafd497f76 74-77,81,96,98-100
+samples/Seeing.Agent.WebUI/Pages/AgentsPage.razor
+  s_cccf686144e3b3::t_85034a39ef5609 99,101-122
+  s_cccf686144e3b3::t_e9526915f183fb 24-26
+  s_cccf686144e3b3::t_bac08b5dd25f17 5-6,11-12,23,27-30,47-53,61-73,81-89,100,123,134-145,156-160,162-174,190-271,279-289
+  s_d24524d36b8510::t_c2e354aa86929f 98
+  s_cccf686144e3b3::t_5cce87d38880fe 125-130
+  s_d24524d36b8510::t_b24c04ab6e59c6 96-97
+  s_cccf686144e3b3::t_aa62c6112313bd 7
+tests/Seeing.Agent.Tests/Configuration/AgentDefinitionExtensionsTests.cs
+  s_7576b967227939::t_aa17285d2e3a33 189-228
+  s_740392f2c52d92::t_81613fef86002d 4
+  s_7576b967227939::t_34cf60e9d43761 164-165
+  s_7576b967227939::t_8b79e3f4950465 188,229-393
+src/Seeing.Agent/Configuration/AgentMdInfo.cs
+  s_eed703e1dd9e44::t_12f6e2a06610fc 1-37
+samples/Seeing.Agent.WebUI/Components/MonacoEditor.razor
+  s_15593a618796d3::t_c8218741c731a6 1-28,30-33,35-43,45-52,59-63,68-70
+  s_d16dae13bc1488::t_a2cf722e2073be 29,64-67
+  s_15593a618796d3::t_2428b21192145b 44
+  s_d16dae13bc1488::t_9c5c9c758033cc 34
+src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs
+  s_38f3ac42998c2f::t_199a55f326db56 331,346-347
+  s_80dacb72923f25::t_d3ea39947ce07a 320-321
+src/Seeing.Agent/Core/Interfaces/IAgentRegistry.cs
+  s_5ad5e941c8e967::t_540b719d86a524 26-36
+samples/Seeing.Agent.WebUI/Services/AgentMdConfigService.cs
+  s_334f56aeeb3acb::t_e88b2d7f33810b 1-107
+src/Seeing.Agent/Core/Models/AgentDefinition.cs
+  s_408897f1291d8d::t_8f95de6f2a2c80 109-115
+samples/Seeing.Agent.WebUI/Program.cs
+  s_334f56aeeb3acb::t_be1ee1b923a9d5 71
+src/Seeing.Agent/Configuration/AgentConfigChangedEventArgs.cs
+  s_eed703e1dd9e44::t_e47fc48df3b01b 1-5,7-28,30,33,36-37
+  s_f6ee2a16fe9cba::t_922416a6532869 29,31-32,34-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.34-trip",
+  "base_commit_sha": "a91abdc11dd65ccc5afef587a1dad9c506b8fdee",
+  "prompts": {},
+  "sessions": {
+    "s_15593a618796d3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a21f060ffeaFdhWGQG7ZVk8P",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_1587eec97603b4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a249af9ffeXA1Axl30p5HO9t",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_1ded2a640d0f87": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a2f9caaffeWFkmhO5iSGPhIE",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_23c8a6c3598a83": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a2b8af8ffe5iQPfkEeGR0yk7",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_30cd77784c2a09": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09aafbf21ffe4sref07M0Nefm0",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_334f56aeeb3acb": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a29637fffeAR1lhfyrUNsPrX",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_34666dcb51cb5e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a9de219ffeDfiy3fkKw1uhq7",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_38f3ac42998c2f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a8cc04effeBTzi48IFmGkwJi",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_408897f1291d8d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09ac7575dfferqtKB5CpruCSz4",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_4fe175559a7b86": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a3784e1ffe13MLD6lVX3aQRO",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_5117209974ce01": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a0cf53effe6vnqLOCc0IfZwv",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_57d2cfbb7eb076": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a19882cffeGi7GxncPD8MTqz",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_5ad5e941c8e967": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a902debffeL5bfODrD6eQAhv",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_740392f2c52d92": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09abeba7cffeW0iv4jGDg37hOT",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_7576b967227939": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09ab6228fffecvlP83oyoBus12",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_79711cf00ef33d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a319c96ffeRLNlvh0B7EzFwn",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_80dacb72923f25": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09aa0a0a0ffewPs9xDGIm1yHsV",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_98fbc87b49c5f3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09aa7244affep2HonF2swARW8F",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_9c2c6c2ebdd4da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a3a5fd0ffemGmi9Z4z4HFcYQ",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_cccf686144e3b3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a146950ffezAIFjgzQT76fvo",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_d16dae13bc1488": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a1dd961ffe3wPXiI1TAMNohq",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_d24524d36b8510": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09b42d14bffe7pfCFoTeDQEb4E",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_eed703e1dd9e44": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a4165f3ffewI59TnTzFOXl0f",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_f6ee2a16fe9cba": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09a3d63efffeKi4EXDss3EThUH",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
