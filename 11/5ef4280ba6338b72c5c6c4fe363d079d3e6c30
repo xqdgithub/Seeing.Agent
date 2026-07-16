@@ -1,0 +1,19 @@
+src/Seeing.Agent/Llm/ModelConfigManager.cs
+  s_7c731169696656::t_e00e751179a21b 235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.34-trip",
+  "base_commit_sha": "115ef4280ba6338b72c5c6c4fe363d079d3e6c30",
+  "prompts": {},
+  "sessions": {
+    "s_7c731169696656": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_095fad8d1ffe6FJq3YBQdRkAbz",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
