@@ -28,7 +28,6 @@ public class ChatOrchestrator : IChatOrchestrator
     private readonly IAgentRegistry _agentRegistry;
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly IAgentExecutionRouter _executionRouter;
-    private readonly CommandDispatcher _commandDispatcher;
     private readonly ICommandRegistry _commandRegistry;
     private readonly IPermissionChannel _permissionChannel;
     private readonly AgentSelectionResolver _agentSelectionResolver;
@@ -42,7 +41,6 @@ public class ChatOrchestrator : IChatOrchestrator
         IAgentRegistry agentRegistry,
         IWorkspaceProvider workspaceProvider,
         IAgentExecutionRouter executionRouter,
-        CommandDispatcher commandDispatcher,
         ICommandRegistry commandRegistry,
         IPermissionChannel permissionChannel,
         AgentSelectionResolver agentSelectionResolver,
@@ -55,7 +53,6 @@ public class ChatOrchestrator : IChatOrchestrator
         _agentRegistry = agentRegistry;
         _workspaceProvider = workspaceProvider;
         _executionRouter = executionRouter;
-        _commandDispatcher = commandDispatcher;
         _commandRegistry = commandRegistry;
         _permissionChannel = permissionChannel;
         _agentSelectionResolver = agentSelectionResolver;

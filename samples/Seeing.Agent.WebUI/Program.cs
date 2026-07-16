@@ -118,6 +118,7 @@ using (var scope = app.Services.CreateScope())
 
     // 初始化命令发现
     sp.InitializeCommands();
+    sp.InitializeAcpCommands();  // 注册 ACP 专属命令
 
     // === Memory 手动初始化（直接注入方式）===
     var memoryManager = sp.GetRequiredService<IMemoryManager>();

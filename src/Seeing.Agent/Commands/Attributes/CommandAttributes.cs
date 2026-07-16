@@ -1,3 +1,5 @@
+using Seeing.Agent.Core.Models;
+
 namespace Seeing.Agent.Commands.Attributes
 {
     /// <summary>
@@ -35,6 +37,9 @@ namespace Seeing.Agent.Commands.Attributes
 
         /// <summary>命令类型（决定执行后行为）</summary>
         public CommandType Type { get; set; } = CommandType.Default;
+
+        /// <summary>支持的 Runtime（空数组表示所有 Runtime）</summary>
+        public AgentRuntime[] SupportedRuntimes { get; set; } = Array.Empty<AgentRuntime>();
 
         /// <summary>创建命令注解</summary>
         public CommandAttribute(string description)

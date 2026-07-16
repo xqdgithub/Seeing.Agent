@@ -225,8 +225,6 @@
              <PromptInput IsProcessing="@SessionState.HasActiveExecution"
                           Placeholder="@GetPlaceholderText()"
                           HelpText="@GetHelpText()"
-                          AvailableTools="_availableTools"
-                          AvailableSkills="_availableSkills"
                           AvailableCommands="_availableCommands"
                           SessionState="SessionState"
                           CancellationTokenSource="@SessionState.CancellationTokenSource"
@@ -300,16 +298,6 @@
         /// <summary>Provider 名称</summary>
         public string ProviderName { get; init; } = "";
     }
-    
-    /// <summary>
-    /// 可用工具列表（用于快速命令）
-    /// </summary>
-    private List<QuickToolViewModel> _availableTools = new();
-    
-    /// <summary>
-    /// 可用技能列表（用于快速命令）
-    /// </summary>
-    private List<QuickSkillViewModel> _availableSkills = new();
 
     /// <summary>
     /// 可用命令列表（从后端获取）
@@ -611,6 +599,9 @@
         var wasAcpPassthrough = _isAcpPassthrough;
         RefreshAgentRuntime();
         
+        // 切换 Agent 后重新加载命令列表（按 Runtime 过滤）
+        LoadCommandsFromBackend();
+        
         // 切换到 ACP Agent 时，清空 Provider 和 Model，让用户重新输入
         if (!wasAcpPassthrough && _isAcpPassthrough)
         {
@@ -681,26 +672,9 @@
     {
         try
         {
-            // 加载工具
-            var toolSchemas = await ToolInvoker.GetToolSchemasAsync();
-            _availableTools = toolSchemas.Select(t => new QuickToolViewModel
-            {
-                Name = t.Function.Name,
-                Id = t.Function.Name,
-                Description = t.Function.Description ?? "",
-                ParametersHint = GetParametersHint(t.Function.Parameters)
-            }).ToList();
-            
-            // 加载技能
+            // 加载工具和技能信息（用于其他用途）
+            await ToolInvoker.GetToolSchemasAsync();
             await SkillManager.DiscoverSkillsAsync();
-            var skillInfos = SkillManager.GetAllSkillInfos();
-            _availableSkills = skillInfos.Values.Select(s => new QuickSkillViewModel
-            {
-                Name = s.Name,
-                Description = s.Description ?? "",
-                Version = s.Version,
-                Author = s.Author
-            }).ToList();
         }
         catch (Exception ex)
         {
@@ -853,31 +827,6 @@
         }
     }
     
-    /// <summary>
-    /// 获取参数提示（简要描述）
-    /// </summary>
-    private string? GetParametersHint(object? parameters)
-    {
-        if (parameters == null) return null;
-        
-        try
-        {
-            // 尝试解析为 JsonElement
-            if (parameters is System.Text.Json.JsonElement element)
-            {
-                if (element.TryGetProperty("properties", out var props))
-                {
-                    var names = props.EnumerateObject().Select(p => p.Name).Take(3);
-                    return $"参数: {string.Join(", ", names)}";
-                }
-            }
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
 
     /// <summary>
     /// 参数变更时重新加载会话

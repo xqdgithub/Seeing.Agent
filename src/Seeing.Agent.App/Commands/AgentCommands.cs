@@ -1,6 +1,7 @@
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.App.Commands;
@@ -31,7 +32,8 @@ public class AgentCommands
         Usage = "/agent [name]",
         Category = CommandCategory.Agent,
         Aliases = new[] { "ag" },
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public async Task<CommandResult> SwitchAgent(CommandContext context, CancellationToken ct = default)
     {
         var agents = await _agentRegistry.GetPrimaryAgentsAsync();
@@ -75,7 +77,8 @@ public class AgentCommands
         Usage = "/model [name]",
         Category = CommandCategory.Agent,
         Aliases = new[] { "mdl" },
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public CommandResult SwitchModel(CommandContext context)
     {
         var models = _llmService.GetAvailableModels();

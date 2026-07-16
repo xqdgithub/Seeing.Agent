@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Client;
+using Seeing.Agent.Acp.Commands;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Filesystem;
 using Seeing.Agent.Acp.Hosting;
@@ -12,6 +13,8 @@ using Seeing.Agent.Acp.Session;
 using Seeing.Agent.Acp.Terminal;
 using Seeing.Agent.Acp.Transport;
 using Seeing.Agent.Acp.Tools;
+using Seeing.Agent.Commands;
+using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Interfaces;
@@ -52,11 +55,33 @@ public static class AcpServiceCollectionExtensions
         services.AddSingleton<ITool>(sp => sp.GetRequiredService<AcpTool>());
         services.AddSingleton<ITool>(sp => sp.GetRequiredService<AcpStatusTool>());
 
+        // 注册 ACP 专属命令
+        services.AddSingleton<AcpCommands>();
+
         services.AddHostedService<AcpHookRegistrationHostedService>();
         services.AddHostedService<AcpAgentRegistrationHostedService>();
         services.AddHostedService<AcpConnectionIdleCleanupHostedService>();
 
         ReplaceExecutionRouter(services);
+        return services;
+    }
+
+    /// <summary>
+    /// 初始化 ACP 命令注册（在服务提供者构建后调用）
+    /// </summary>
+    public static IServiceProvider InitializeAcpCommands(this IServiceProvider services)
+    {
+        var registry = services.GetRequiredService<ICommandRegistry>();
+        var discovery = services.GetRequiredService<CommandDiscovery>();
+
+        // 发现 ACP 命令
+        var acpCommands = services.GetService<AcpCommands>();
+        if (acpCommands != null)
+        {
+            var commands = discovery.DiscoverFromType(acpCommands.GetType(), acpCommands);
+            registry.RegisterAll(commands);
+        }
+
         return services;
     }
 

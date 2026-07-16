@@ -24,15 +24,6 @@ public static class ChatOrchestratorServiceExtensions
         services.AddSingleton<ChatExecutionQueue>();
         services.AddSingleton<ChatRunTracker>();
 
-        // 注册命令分发器
-        services.AddSingleton<CommandDispatcher>(sp =>
-        {
-            var registry = sp.GetRequiredService<ICommandRegistry>();
-            var commandService = sp.GetService<ICommandService>();
-            var logger = sp.GetService<ILogger<CommandDispatcher>>();
-            return new CommandDispatcher(registry, commandService, logger);
-        });
-
         // 注册命令发现
         services.AddSingleton<CommandDiscovery>();
 
@@ -97,14 +88,19 @@ public static class ChatOrchestratorServiceExtensions
             }
         }
 
-        // 动态注册所有 skill 命令
+        // 动态注册所有 skill 命令（Native 和 ACP 两个版本）
         var skillManager = services.GetService<SkillManager>();
         if (skillManager != null)
         {
             foreach (var skillInfo in skillManager.GetAllSkillInfos().Values)
             {
-                var skillCommand = new DynamicSkillCommand(skillManager, skillInfo);
-                registry.Register(skillCommand);
+                // Native 版本 - 扩展为详情
+                var nativeCommand = new DynamicSkillCommand(skillManager, skillInfo);
+                registry.Register(nativeCommand);
+
+                // ACP 版本 - 透传给 ACP 后端
+                var acpCommand = new AcpDynamicSkillCommand(skillInfo.Name, skillInfo.Description);
+                registry.Register(acpCommand);
             }
         }
 

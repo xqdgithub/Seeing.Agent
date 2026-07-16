@@ -249,7 +249,6 @@ public class ExecutionJobService : IDisposable
         var executionRouter = scope.ServiceProvider.GetRequiredService<IAgentExecutionRouter>();
         var agentSelectionResolver = scope.ServiceProvider.GetRequiredService<AgentSelectionResolver>();
         var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
-        var commandDispatcher = scope.ServiceProvider.GetRequiredService<CommandDispatcher>();
         var commandRegistry = scope.ServiceProvider.GetRequiredService<ICommandRegistry>();
 
         var queue = _sessionQueues[record.SessionId];
@@ -276,10 +275,11 @@ public class ExecutionJobService : IDisposable
                 session, record, agentRegistry, agentSelectionResolver, workspaceProvider);
 
             // Process command if applicable
-            if (record.Input?.Text != null && CommandDispatcher.IsCommand(record.Input.Text))
+            var inputText = record.Input?.Text;
+            if (inputText != null && inputText.StartsWith('/') && inputText.Length > 1 && !inputText.StartsWith("//"))
             {
                 await foreach (var cmdEvent in ProcessCommandAsync(
-                    record.SessionId, record.Input.Text, session, context, commandRegistry, commandDispatcher, queue.CurrentCancellationToken))
+                    record.SessionId, record.Input.Text, session, context, commandRegistry, queue.CurrentCancellationToken))
                 {
                     if (cmdEvent != null)
                     {
@@ -523,35 +523,43 @@ public class ExecutionJobService : IDisposable
         SessionData session,
         ChatExecutionContext context,
         ICommandRegistry commandRegistry,
-        CommandDispatcher commandDispatcher,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var cmdName = input.Split(' ').FirstOrDefault()?.TrimStart('/') ?? "";
-        var command = commandRegistry.GetCommand(cmdName);
+        var currentRuntime = context.Agent.Runtime;
 
+        // 按 Runtime 查找命令
+        var command = commandRegistry.GetCommand(cmdName, currentRuntime);
         if (command == null)
         {
+            // 没有匹配的命令，透传给 Agent
             yield return null;
             yield break;
         }
 
-        var cmdType = command.Metadata.Type;
-        var args = input.Contains(' ') ? input.Substring(input.IndexOf(' ') + 1) : "";
-
+        // 直接执行命令
         var cmdContext = new CommandContext
         {
             CommandName = cmdName,
             RawInput = input,
-            Arguments = args,
+            Input = input,
+            Arguments = input.Contains(' ') ? input.Substring(input.IndexOf(' ') + 1) : "",
             SessionId = sessionId,
             WorkspaceRoot = context.WorkspaceRoot,
             History = context.History,
             CancellationToken = cancellationToken
         };
 
-        var result = await commandDispatcher.HandleAsync(input, cmdContext, cancellationToken);
+        var result = await command.ExecuteAsync(cmdContext, cancellationToken);
 
-        if (cmdType == CommandType.System)
+        // 如果 Input 被修改，更新消息内容
+        if (result.Success && cmdContext.Input != cmdContext.RawInput && session.Messages.Count > 0)
+        {
+            session.Messages[^1].Content = cmdContext.Input;
+        }
+
+        // 根据 CommandResult 决定是否继续
+        if (!result.ShouldContinue || result.ShouldExit)
         {
             yield return new CommandResultEvent
             {
@@ -563,15 +571,7 @@ public class ExecutionJobService : IDisposable
             yield break;
         }
 
-        if (cmdType == CommandType.Skill && result.Success)
-        {
-            var expandedContent = result.GetExpandedContent();
-            if (expandedContent != null && session.Messages.Count > 0)
-            {
-                session.Messages[^1].Content = expandedContent;
-            }
-        }
-
+        // 继续执行 Agent
         yield return null;
     }
 

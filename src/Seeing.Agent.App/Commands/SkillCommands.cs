@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Skills;
 
 namespace Seeing.Agent.App.Commands;
@@ -28,7 +29,8 @@ public class SkillCommands
         Name = "skill",
         Usage = "/skill <skill-name> [args]",
         Category = CommandCategory.Tools,
-        Type = CommandType.Skill)]
+        Type = CommandType.Skill,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public Task<CommandResult> LoadSkill(CommandContext context, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(context.Arguments))
@@ -55,7 +57,24 @@ public class SkillCommands
         var skillName = parts[0];
         var skillArgs = parts.Length > 1 ? parts[1] : "";
 
-        return LoadSkillByName(skillName, skillArgs);
+        // 获取技能信息
+        var skillInfo = _skillManager.GetSkillInfo(skillName);
+        if (skillInfo == null)
+        {
+            return Task.FromResult(CommandResult.Fail($"Skill not found: {skillName}"));
+        }
+
+        // 获取技能内容
+        var content = skillInfo.Content;
+        if (string.IsNullOrEmpty(content))
+        {
+            return Task.FromResult(CommandResult.Fail($"Skill content is empty: {skillName}"));
+        }
+
+        // 处理模板并修改 Input
+        context.Input = SkillTemplateProcessor.Process(content, skillArgs, skillName);
+
+        return Task.FromResult(CommandResult.Ok($"Loaded skill: {skillName}"));
     }
 
     /// <summary>
@@ -67,7 +86,8 @@ public class SkillCommands
         Usage = "/skills",
         Category = CommandCategory.Tools,
         Aliases = new[] { "ls-skills" },
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public CommandResult ListSkills()
     {
         var skills = _skillManager.GetAllSkillInfos().Values.ToList();
@@ -83,33 +103,6 @@ public class SkillCommands
         }
 
         return CommandResult.Ok(list);
-    }
-
-    /// <summary>
-    /// 通用技能加载方法
-    /// </summary>
-    private Task<CommandResult> LoadSkillByName(string skillName, string skillArgs)
-    {
-        // 加载技能
-        var skillInfo = _skillManager.GetSkillInfo(skillName);
-        if (skillInfo == null)
-        {
-            return Task.FromResult(CommandResult.Fail($"Skill not found: {skillName}"));
-        }
-
-        // 获取技能内容
-        var content = skillInfo.Content;
-        if (string.IsNullOrEmpty(content))
-        {
-            return Task.FromResult(CommandResult.Fail($"Skill content is empty: {skillName}"));
-        }
-
-        // 使用模板处理器处理内容
-        var expandedContent = SkillTemplateProcessor.Process(content, skillArgs, skillName);
-
-        // 返回展开后的内容，继续 Agent 执行
-        return Task.FromResult(CommandResult.Ok($"Loaded skill: {skillName}")
-            .WithExpandedContent(expandedContent, $"/{skillName}"));
     }
 }
 
@@ -304,7 +297,7 @@ public static class SkillTemplateProcessor
 }
 
 /// <summary>
-/// 动态 Skill 命令 - 为每个已注册的 skill 自动创建命令
+/// 动态 Skill 命令 - 为每个已注册的 skill 自动创建命令（Native 版本）
 /// </summary>
 public class DynamicSkillCommand : ICommand
 {
@@ -328,7 +321,8 @@ public class DynamicSkillCommand : ICommand
             Category = CommandCategory.Tools,
             Type = CommandType.Skill,
             IsHidden = false,
-            SortOrder = 50
+            SortOrder = 50,
+            SupportedRuntimes = new[] { AgentRuntime.Native }
         };
     }
 
@@ -340,10 +334,36 @@ public class DynamicSkillCommand : ICommand
             return CommandResult.Fail($"Skill content is empty: {_skillName}");
         }
 
-        // 使用模板处理器处理内容
-        var expandedContent = SkillTemplateProcessor.Process(content, context.Arguments ?? "", _skillName);
+        // 使用模板处理器处理内容，修改 Input
+        context.Input = SkillTemplateProcessor.Process(content, context.Arguments ?? "", _skillName);
 
-        return CommandResult.Ok($"Loaded skill: {_skillName}")
-            .WithExpandedContent(expandedContent, $"/{_skillName}");
+        return CommandResult.Ok($"Loaded skill: {_skillName}");
+    }
+}
+
+/// <summary>
+/// ACP 动态 Skill 命令 - 透传给 ACP 后端
+/// </summary>
+public class AcpDynamicSkillCommand : ICommand
+{
+    public CommandMetadata Metadata { get; }
+
+    public AcpDynamicSkillCommand(string skillName, string? description = null)
+    {
+        Metadata = new CommandMetadata
+        {
+            Name = skillName,
+            Description = description ?? $"ACP 透传: {skillName}",
+            Usage = $"/{skillName} [args]",
+            Category = CommandCategory.Tools,
+            Type = CommandType.Skill,
+            SupportedRuntimes = new[] { AgentRuntime.AcpPassthrough }
+        };
+    }
+
+    public Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
+    {
+        // 透传，不修改历史，继续执行 Agent
+        return Task.FromResult(CommandResult.Ok(shouldContinue: true));
     }
 }

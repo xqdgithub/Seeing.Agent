@@ -1,5 +1,6 @@
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Tools;
 
 namespace Seeing.Agent.App.Commands;
@@ -25,7 +26,8 @@ public class ToolsCommands
         Name = "mcp",
         Usage = "/mcp [list]",
         Category = CommandCategory.Tools,
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public async Task<CommandResult> ManageMcp(CommandContext context, CancellationToken ct = default)
     {
         var args = context.Arguments.Trim().ToLowerInvariant();
@@ -65,7 +67,8 @@ public class ToolsCommands
         Name = "tools",
         Usage = "/tools",
         Category = CommandCategory.Tools,
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public async Task<CommandResult> ListTools(CommandContext context, CancellationToken ct = default)
     {
         var schemas = await _toolInvoker.GetToolSchemasAsync();

@@ -1,5 +1,6 @@
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
+using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.App.Commands.BuiltIn;
@@ -30,7 +31,8 @@ public class BuiltInCommands
         Usage = "/new [title]",
         Category = CommandCategory.Basic,
         Aliases = new[] { "n" },
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public CommandResult NewSession(CommandContext context, string args = "")
     {
         var title = args.Trim();
@@ -53,7 +55,8 @@ public class BuiltInCommands
         Usage = "/clear",
         Category = CommandCategory.Basic,
         Aliases = new[] { "cls" },
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public async Task<CommandResult> ClearSession(CommandContext context, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(context.SessionId))
@@ -83,7 +86,8 @@ public class BuiltInCommands
         Usage = "/help [command]",
         Category = CommandCategory.Basic,
         Aliases = new[] { "h", "?" },
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public CommandResult ShowHelp(string args = "")
     {
         var commands = _commandRegistry.GetAllMetadata()
@@ -160,7 +164,8 @@ public class BuiltInCommands
         Name = "compact",
         Usage = "/compact [count]",
         Category = CommandCategory.Basic,
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public async Task<CommandResult> CompactHistory(CommandContext context, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(context.SessionId))
@@ -207,7 +212,8 @@ public class BuiltInCommands
         Usage = "/exit",
         Category = CommandCategory.System,
         Aliases = new[] { "quit", "q" },
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public CommandResult Exit()
     {
         return CommandResult.Exit("Goodbye!");

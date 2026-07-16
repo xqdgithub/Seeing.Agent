@@ -1,5 +1,6 @@
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
+using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.App.Commands;
@@ -26,7 +27,8 @@ public class SessionCommands
         Usage = "/fork [title]",
         Category = CommandCategory.Navigation,
         Aliases = new[] { "branch" },
-        Type = CommandType.System)]
+        Type = CommandType.System,
+        SupportedRuntimes = new[] { AgentRuntime.Native })]
     public async Task<CommandResult> ForkSession(CommandContext context, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(context.SessionId))

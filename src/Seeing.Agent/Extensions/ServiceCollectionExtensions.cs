@@ -176,15 +176,6 @@ namespace Seeing.Agent.Extensions
             // 注册命令发现器
             services.AddSingleton<CommandDiscovery>();
 
-            // 注册命令分发器（需要 CommandService 用于 Hook）
-            services.AddSingleton<CommandDispatcher>(sp =>
-            {
-                var registry = sp.GetRequiredService<ICommandRegistry>();
-                var commandService = sp.GetService<ICommandService>();
-                var logger = sp.GetService<ILogger<CommandDispatcher>>();
-                return new CommandDispatcher(registry, commandService, logger);
-            });
-
             // 如果配置了自动发现，从指定程序集发现命令
             if (options.DiscoveryAssemblies != null && options.DiscoveryAssemblies.Count > 0)
             {

@@ -159,7 +159,8 @@ namespace Seeing.Agent.Commands.Discovery
                     IsHidden = cmdAttr.IsHidden,
                     SortOrder = cmdAttr.SortOrder,
                     Type = cmdAttr.Type,
-                    Source = type.FullName ?? type.Name
+                    Source = type.FullName ?? type.Name,
+                    SupportedRuntimes = cmdAttr.SupportedRuntimes
                 };
 
                 var cmdLogger = _loggerFactory?.CreateLogger($"{type.Name}.{method.Name}");

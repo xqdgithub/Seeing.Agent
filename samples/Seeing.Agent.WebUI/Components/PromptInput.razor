@@ -96,13 +96,6 @@
         <div Class="prompt-actions">
             <Space>
                 <SpaceItem>
-                    <QuickCommandPopover Tools="@AvailableTools"
-                                         Skills="@AvailableSkills"
-                                         OnSelect="@OnQuickCommandSelect"
-                                         IsDisabled="@IsProcessing"
-                                         ForceClose="@_isDropdownOpen" />
-                </SpaceItem>
-                <SpaceItem>
                     <Tooltip Title="上传文件">
                         <Button Type="@ButtonType.Text"
                                 Size="@ButtonSize.Small"
@@ -177,18 +170,6 @@
     /// </summary>
     [Parameter]
     public bool IsProcessing { get; set; }
-    
-    /// <summary>
-    /// 可用工具列表（用于快速命令）
-    /// </summary>
-    [Parameter]
-    public List<QuickToolViewModel> AvailableTools { get; set; } = new();
-    
-    /// <summary>
-    /// 可用技能列表（用于快速命令）
-    /// </summary>
-    [Parameter]
-    public List<QuickSkillViewModel> AvailableSkills { get; set; } = new();
 
     /// <summary>
     /// 可用命令列表（从后端获取）
@@ -327,46 +308,16 @@
     private bool _preventDefaultKeydown = false;
 
     /// <summary>
-    /// 加载所有命令（从后端获取的命令 + 工具 + 技能）
+    /// 加载所有命令（仅从后端获取的命令，已按 Runtime 过滤）
     /// </summary>
     private void LoadCommands()
     {
         _allCommands = new List<CommandItemViewModel>();
 
-        // 1. 添加后端命令（已包含可用性检查和禁用原因）
+        // 仅添加后端命令（已按 Runtime 过滤，包含可用性检查和禁用原因）
         foreach (var cmd in AvailableCommands)
         {
             _allCommands.Add(cmd);
-        }
-
-        // 2. 添加工具
-        foreach (var tool in AvailableTools)
-        {
-            _allCommands.Add(new CommandItemViewModel
-            {
-                Value = $"/{tool.Name}",
-                Name = tool.Name,
-                Description = tool.Description,
-                IconType = IconType.Outline.Tool,
-                IsTool = true,
-                Category = "Tools",
-                Priority = 3
-            });
-        }
-
-        // 3. 添加技能
-        foreach (var skill in AvailableSkills)
-        {
-            _allCommands.Add(new CommandItemViewModel
-            {
-                Value = $"/{skill.Name}",
-                Name = skill.Name,
-                Description = skill.Description,
-                IconType = IconType.Outline.Book,
-                IsSkill = true,
-                Category = "Skills",
-                Priority = 4
-            });
         }
 
         // 按优先级和名称排序
@@ -385,7 +336,7 @@
         _isDropdownOpen = true;
 
         // 确保命令已加载
-        if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCommands.Count > 0))
+        if (_allCommands.Count == 0 && AvailableCommands.Count > 0)
         {
             LoadCommands();
         }
@@ -426,7 +377,7 @@
             // JSInterop error, return empty
         }
 
-        if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCommands.Count > 0))
+        if (_allCommands.Count == 0 && AvailableCommands.Count > 0)
         {
             LoadCommands();
         }
@@ -613,8 +564,7 @@
     private void HandleInputChange()
     {
         // 确保命令已加载
-        if (_allCommands.Count == 0 && 
-            (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCommands.Count > 0))
+        if (_allCommands.Count == 0 && AvailableCommands.Count > 0)
         {
             LoadCommands();
         }
