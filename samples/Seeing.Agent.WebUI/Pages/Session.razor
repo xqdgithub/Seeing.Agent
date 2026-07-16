@@ -91,46 +91,47 @@
                                 Placeholder="智能体" />
                     }
                 </SpaceItem>
-                <SpaceItem>
-                    @if (_optionsReady)
-                    {
-                        @if (_isAcpPassthrough)
-                        {
-                            <Input Value="@_selectedAcpMode"
-                                   ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
-                                   Placeholder="ACP Mode"
-                                   Style="min-width: 100px;"
-                                   Size="@InputSize.Small" />
-                            <Input Value="@_selectedModel"
-                                   ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
-                                   Placeholder="ACP Model"
-                                   Style="min-width: 180px;"
-                                   Size="@InputSize.Small" />
-                        }
-                        else
-                        {
-                            <Select TItemValue="string" TItem="ModelViewModel"
-                                    Value="@_selectedModel"
-                                    ValueExpression="@(() => _selectedModel)"
-                                    ValueChanged="@OnModelChanged"
-                                    DataSource="@_models"
-                                    ValueName="Id"
-                                    LabelName="ModelName"
-                                    Style="min-width: 160px;"
-                                    Size="@InputSize.Small"
-                                    Placeholder="模型"
-                                    EnableSearch="true">
-                                <ItemTemplate Context="model">
-                                    <span>@model.ModelName</span>
-                                    @if (!string.IsNullOrEmpty(model.ProviderName))
-                                    {
-                                        <span style="color: #999; font-size: 12px; margin-left: 4px;">(@model.ProviderName)</span>
-                                    }
-                                </ItemTemplate>
-                            </Select>
-                        }
-                    }
-                </SpaceItem>
+                @if (_optionsReady && _isAcpPassthrough)
+                {
+                    <SpaceItem>
+                        <Input Value="@_selectedAcpMode"
+                               ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
+                               Placeholder="Mode"
+                               Style="width: 80px;"
+                               Size="@InputSize.Small" />
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Input Value="@_selectedModel"
+                               ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
+                               Placeholder="Provider/Model"
+                               Style="width: 160px;"
+                               Size="@InputSize.Small" />
+                    </SpaceItem>
+                }
+                else if (_optionsReady)
+                {
+                    <SpaceItem>
+                        <Select TItemValue="string" TItem="ModelViewModel"
+                                Value="@_selectedModel"
+                                ValueExpression="@(() => _selectedModel)"
+                                ValueChanged="@OnModelChanged"
+                                DataSource="@_models"
+                                ValueName="Id"
+                                LabelName="ModelName"
+                                Style="min-width: 160px;"
+                                Size="@InputSize.Small"
+                                Placeholder="模型"
+                                EnableSearch="true">
+                            <ItemTemplate Context="model">
+                                <span>@model.ModelName</span>
+                                @if (!string.IsNullOrEmpty(model.ProviderName))
+                                {
+                                    <span style="color: #999; font-size: 12px; margin-left: 4px;">(@model.ProviderName)</span>
+                                }
+                            </ItemTemplate>
+                        </Select>
+                    </SpaceItem>
+                }
                 <SpaceItem>
                     <Tooltip Title="重命名会话">
                         <Button Type="@ButtonType.Text"
@@ -606,7 +607,38 @@
     {
         _selectedAgent = value ?? "";
         SessionState.SelectedAgent = _selectedAgent;
+        
+        var wasAcpPassthrough = _isAcpPassthrough;
         RefreshAgentRuntime();
+        
+        // 切换到 ACP Agent 时，清空 Provider 和 Model，让用户重新输入
+        if (!wasAcpPassthrough && _isAcpPassthrough)
+        {
+            _selectedModel = "";
+            _selectedAcpMode = "";
+            SessionState.SelectedModel = "";
+            SessionState.SelectedModelProvider = "";
+            SessionState.SelectedAcpMode = "";
+            
+            if (SessionState.CurrentSession != null)
+            {
+                SessionState.CurrentSession.SelectedModel = "";
+                SessionState.CurrentSession.SelectedModelProvider = "";
+                SessionState.CurrentSession.SelectedAcpMode = "";
+            }
+        }
+        // 切换到 Native Agent 时，尝试恢复默认模型
+        else if (wasAcpPassthrough && !_isAcpPassthrough)
+        {
+            var defaultModel = _models.FirstOrDefault()?.Id ?? "";
+            _selectedModel = defaultModel;
+            SessionState.SelectedModel = defaultModel;
+            
+            if (SessionState.CurrentSession != null)
+            {
+                SessionState.CurrentSession.SelectedModel = defaultModel;
+            }
+        }
         
         // Agent 变更时也需要更新 session（通过 session.updated hook）
         if (SessionState.CurrentSession != null)
