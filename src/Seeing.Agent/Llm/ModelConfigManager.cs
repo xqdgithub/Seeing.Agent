@@ -232,13 +232,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
             {
                 EnsureModelDefaults(id, config, providerId);
 
-                // 使用 provider/modelId 格式存储
+                // 只使用 provider/modelId 格式存储，避免重复
                 var fullKey = $"{providerId}/{id}";
                 models[fullKey] = config;
-
-                // 如果短 ID 未被占用，也注册短 ID
-                if (!models.ContainsKey(id))
-                    models[id] = config;
             }
         }
 
