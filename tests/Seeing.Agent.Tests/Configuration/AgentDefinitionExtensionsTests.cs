@@ -88,210 +88,20 @@ namespace Seeing.Agent.Tests.Configuration
         }
 
         [Fact]
-        public void ApplyVariant_ExactMatch_TakesPrecedence()
+        public void Merge_ModelReference_SetsCorrectly()
         {
             var baseDef = new AgentDefinition
             {
-                Name = "test",
-                Temperature = 0.5,
-                Variants = new Dictionary<string, AgentVariant>
-                {
-                    ["openai"] = new() { Temperature = 0.7 },
-                    ["openai.gpt-4o-mini"] = new() { Temperature = 0.3 }
-                }
+                Name = "test"
             };
 
-            var result = AgentDefinitionExtensions.ApplyVariant(baseDef, "openai", "gpt-4o-mini");
-
-            Assert.Equal(0.3, result.Temperature);
-        }
-
-        [Fact]
-        public void ApplyVariant_ProviderOnlyMatch_Works()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                Temperature = 0.5,
-                Variants = new Dictionary<string, AgentVariant>
-                {
-                    ["anthropic"] = new() { Temperature = 0.2 }
-                }
-            };
-
-            var result = AgentDefinitionExtensions.ApplyVariant(baseDef, "anthropic", "claude-sonnet-4");
-
-            Assert.Equal(0.2, result.Temperature);
-        }
-
-        [Fact]
-        public void ApplyVariant_NoMatch_ReturnsBase()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                Temperature = 0.5,
-                Variants = new Dictionary<string, AgentVariant>
-                {
-                    ["openai"] = new() { Temperature = 0.7 }
-                }
-            };
-
-            var result = AgentDefinitionExtensions.ApplyVariant(baseDef, "anthropic", "claude-sonnet-4");
-
-            Assert.Equal(0.5, result.Temperature);
-        }
-
-        [Fact]
-        public void ApplyVariant_SystemPromptAppend_Works()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                SystemPrompt = "Base content",
-                Variants = new Dictionary<string, AgentVariant>
-                {
-                    ["openai"] = new()
-                    {
-                        SystemPromptPrepend = "Prepend",
-                        SystemPromptAppend = "Append"
-                    }
-                }
-            };
-
-            var result = AgentDefinitionExtensions.ApplyVariant(baseDef, "openai", null);
-
-            // Verify the exact format and order: "Prepend\n\nBase content\n\nAppend"
-            Assert.Equal("Prepend\n\nBase content\n\nAppend", result.SystemPrompt);
-        }
-
-        [Fact]
-        public void ApplyVariant_SystemPromptFullReplace_Works()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                SystemPrompt = "Base content",
-                Variants = new Dictionary<string, AgentVariant>
-                {
-                    ["openai"] = new()
-                    {
-                        SystemPrompt = "Full replacement"
-                    }
-                }
-            };
-
-            var result = AgentDefinitionExtensions.ApplyVariant(baseDef, "openai", null);
-
-            Assert.Equal("Full replacement", result.SystemPrompt);
-        }
-
-        [Fact]
-        public void ApplyVariant_ModelOverride_PreservesProviderId()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                Model = new ModelReference { ProviderId = "openai", ModelId = "gpt-4o" },
-                Variants = new Dictionary<string, AgentVariant>
-                {
-                    ["openai"] = new() { Model = "gpt-4o-mini" }
-                }
-            };
-
-            var result = AgentDefinitionExtensions.ApplyVariant(baseDef, "openai", null);
-
-            Assert.NotNull(result.Model);
-            Assert.Equal("openai", result.Model.ProviderId);
-            Assert.Equal("gpt-4o-mini", result.Model.ModelId);
-        }
-
-        [Fact]
-        public void ApplyVariant_ModelOverride_NoBaseModel_UsesEmptyProviderId()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                Model = null,
-                Variants = new Dictionary<string, AgentVariant>
-                {
-                    ["anthropic"] = new() { Model = "claude-sonnet-4" }
-                }
-            };
-
-            var result = AgentDefinitionExtensions.ApplyVariant(baseDef, "anthropic", null);
-
-            Assert.NotNull(result.Model);
-            Assert.Equal(string.Empty, result.Model.ProviderId);
-            Assert.Equal("claude-sonnet-4", result.Model.ModelId);
-        }
-
-        #region ApplyJsonConfig Tests
-
-        [Fact]
-        public void ApplyJsonConfig_WithNoOverrides_ReturnsBase()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                Description = "Base description",
-                MaxSteps = 10
-            };
-
-            var jsonConfig = new AgentConfig();
-
-            var result = AgentDefinitionExtensions.ApplyJsonConfig(baseDef, jsonConfig);
-
-            Assert.Equal("test", result.Name);
-            Assert.Equal("Base description", result.Description);
-            Assert.Equal(10, result.MaxSteps);
-        }
-
-        [Fact]
-        public void ApplyJsonConfig_OverridesProperties()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                Description = "Base description",
-                SystemPrompt = "Base prompt",
-                MaxSteps = 10,
-                Temperature = 0.5
-            };
-
-            var jsonConfig = new AgentConfig
-            {
-                Description = "Override description",
-                SystemPrompt = "Override prompt",
-                MaxSteps = 20,
-                Temperature = 0.7
-            };
-
-            var result = AgentDefinitionExtensions.ApplyJsonConfig(baseDef, jsonConfig);
-
-            Assert.Equal("test", result.Name);
-            Assert.Equal("Override description", result.Description);
-            Assert.Equal("Override prompt", result.SystemPrompt);
-            Assert.Equal(20, result.MaxSteps);
-            Assert.Equal(0.7, result.Temperature);
-        }
-
-        [Fact]
-        public void ApplyJsonConfig_ModelProviderConfiguration_SetsModelReference()
-        {
-            var baseDef = new AgentDefinition
-            {
-                Name = "test",
-                Model = new ModelReference { ProviderId = "base-provider", ModelId = "base-model" }
-            };
-
-            var jsonConfig = new AgentConfig
+            var overrideConfig = new AgentConfigFile
             {
                 Provider = "openai",
                 Model = "gpt-4o"
             };
 
-            var result = AgentDefinitionExtensions.ApplyJsonConfig(baseDef, jsonConfig);
+            var result = AgentDefinitionExtensions.Merge(baseDef, overrideConfig);
 
             Assert.NotNull(result.Model);
             Assert.Equal("openai", result.Model.ProviderId);
@@ -299,97 +109,79 @@ namespace Seeing.Agent.Tests.Configuration
         }
 
         [Fact]
-        public void ApplyJsonConfig_ModelOnly_UsesEmptyProvider()
+        public void Merge_Temperature_Overrides()
         {
             var baseDef = new AgentDefinition
             {
                 Name = "test",
-                Model = new ModelReference { ProviderId = "base-provider", ModelId = "base-model" }
+                Temperature = 0.5
             };
 
-            var jsonConfig = new AgentConfig
+            var overrideConfig = new AgentConfigFile
             {
-                Model = "gpt-4o"
+                Temperature = 0.7
             };
 
-            var result = AgentDefinitionExtensions.ApplyJsonConfig(baseDef, jsonConfig);
+            var result = AgentDefinitionExtensions.Merge(baseDef, overrideConfig);
 
-            Assert.NotNull(result.Model);
-            Assert.Equal(string.Empty, result.Model.ProviderId);
-            Assert.Equal("gpt-4o", result.Model.ModelId);
+            Assert.Equal(0.7, result.Temperature);
         }
 
         [Fact]
-        public void ApplyJsonConfig_NoModelChange_KeepsBaseModel()
+        public void Merge_Category_Overrides()
         {
             var baseDef = new AgentDefinition
             {
                 Name = "test",
-                Model = new ModelReference { ProviderId = "base-provider", ModelId = "base-model" }
+                Category = "base-category"
             };
 
-            var jsonConfig = new AgentConfig
+            var overrideConfig = new AgentConfigFile
             {
-                MaxSteps = 20
+                Category = "override-category"
             };
 
-            var result = AgentDefinitionExtensions.ApplyJsonConfig(baseDef, jsonConfig);
+            var result = AgentDefinitionExtensions.Merge(baseDef, overrideConfig);
 
-            Assert.NotNull(result.Model);
-            Assert.Equal("base-provider", result.Model.ProviderId);
-            Assert.Equal("base-model", result.Model.ModelId);
+            Assert.Equal("override-category", result.Category);
         }
 
         [Fact]
-        public void ApplyJsonConfig_PermissionRules_MergesWithBase()
+        public void Merge_Description_Overrides()
         {
             var baseDef = new AgentDefinition
             {
                 Name = "test",
-                PermissionRules = new List<PermissionRuleEntry>
-                {
-                    PermissionRuleEntry.Allow(PermissionKind.Tool, "tool1")
-                }
+                Description = "Base description"
             };
 
-            var jsonConfig = new AgentConfig
+            var overrideConfig = new AgentConfigFile
             {
-                PermissionRules = new List<PermissionRuleEntry>
-                {
-                    PermissionRuleEntry.Deny(PermissionKind.Tool, "tool2")
-                }
+                Description = "Override description"
             };
 
-            var result = AgentDefinitionExtensions.ApplyJsonConfig(baseDef, jsonConfig);
+            var result = AgentDefinitionExtensions.Merge(baseDef, overrideConfig);
 
-            Assert.Equal(2, result.PermissionRules.Count);
-            Assert.Equal(PermissionEffect.Allow, result.PermissionRules[0].Effect);
-            Assert.Equal(PermissionEffect.Deny, result.PermissionRules[1].Effect);
+            Assert.Equal("Override description", result.Description);
         }
 
         [Fact]
-        public void ApplyJsonConfig_NoAdditionalPermissionRules_KeepsBaseRules()
+        public void Merge_IsHidden_Overrides()
         {
             var baseDef = new AgentDefinition
             {
                 Name = "test",
-                PermissionRules = new List<PermissionRuleEntry>
-                {
-                    PermissionRuleEntry.Allow(PermissionKind.Tool, "tool1")
-                }
+                IsHidden = false
             };
 
-            var jsonConfig = new AgentConfig
+            var overrideConfig = new AgentConfigFile
             {
-                MaxSteps = 20
+                IsHidden = true
             };
 
-            var result = AgentDefinitionExtensions.ApplyJsonConfig(baseDef, jsonConfig);
+            var result = AgentDefinitionExtensions.Merge(baseDef, overrideConfig);
 
-            Assert.Single(result.PermissionRules);
-            Assert.Equal(PermissionEffect.Allow, result.PermissionRules[0].Effect);
+            Assert.True(result.IsHidden);
         }
-
-        #endregion
     }
 }

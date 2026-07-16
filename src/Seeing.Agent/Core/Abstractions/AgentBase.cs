@@ -76,8 +76,20 @@ namespace Seeing.Agent.Core.Abstractions
         /// <summary>最大迭代步骤</summary>
         public virtual int? MaxSteps { get; set; }
 
+        /// <summary>温度参数</summary>
+        public virtual double? Temperature { get; set; }
+
+        /// <summary>TopP 参数</summary>
+        public virtual double? TopP { get; set; }
+
+        /// <summary>最大输出 Token 数</summary>
+        public virtual int? MaxTokens { get; set; }
+
         /// <summary>Agent 状态</summary>
         public virtual AgentStatus Status { get; set; } = AgentStatus.Ready;
+
+        /// <summary>是否禁用</summary>
+        public virtual bool Disabled { get; set; }
 
         /// <summary>
         /// 允许的工具列表 - 子 Agent 可限制使用的工具

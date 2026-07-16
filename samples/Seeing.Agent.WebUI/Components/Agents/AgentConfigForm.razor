@@ -1,122 +1,286 @@
 @using AntDesign
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Models
+@using Seeing.Agent.Core.Permission
 
-<div>
-    <Form Layout="@FormLayout.Vertical" Model="@AgentConfig" Context="formContext">
-    <FormItem Label="描述"><TextArea Rows="2" @bind-Value="@AgentConfig.Description" /></FormItem>
-    <Row Gutter="16">
-        <Col Span="8">
-            <FormItem Label="模式">
-                <Select TItemValue="string" TItem="string"
-                        Value="@_modeName"
-                        ValueExpression="@(() => _modeName)"
-                        ValueChanged="OnModeNameChanged"
-                        DataSource="@_modeNames"
-                        AllowClear
-                        Placeholder="默认" />
-            </FormItem>
-        </Col>
-        <Col Span="8">
-            <FormItem Label="运行时">
-                <Select TItemValue="string" TItem="string"
-                        Value="@_runtimeName"
-                        ValueExpression="@(() => _runtimeName)"
-                        ValueChanged="OnRuntimeNameChanged"
-                        DataSource="@_runtimeNames"
-                        AllowClear
-                        Placeholder="默认" />
-            </FormItem>
-        </Col>
-        <Col Span="8">
-            <FormItem Label="模型">
-                <Select TItemValue="string" TItem="string"
-                        Value="@_modelKey"
-                        ValueExpression="@(() => _modelKey)"
-                        ValueChanged="OnModelKeyChanged"
-                        DataSource="@_modelKeys"
-                        AllowClear
-                        Placeholder="默认" />
-            </FormItem>
-        </Col>
-    </Row>
-    <Row Gutter="16">
-        <Col Span="8"><FormItem Label="温度"><InputNumber @bind-Value="@AgentConfig.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%;" /></FormItem></Col>
-        <Col Span="8"><FormItem Label="TopP"><InputNumber @bind-Value="@AgentConfig.TopP" Min="0" Max="1" Step="0.05" Style="width: 100%;" /></FormItem></Col>
-        <Col Span="8"><FormItem Label="最大步骤"><InputNumber @bind-Value="@AgentConfig.MaxSteps" Min="1" Style="width: 100%;" /></FormItem></Col>
-    </Row>
-    <FormItem Label="ACP 后端"><Input @bind-Value="@AgentConfig.AcpBackend" /></FormItem>
-    <FormItem Label="系统提示词"><TextArea Rows="8" @bind-Value="@AgentConfig.SystemPrompt" /></FormItem>
-    </Form>
+<div class="agent-config-form">
+    <Tabs Class="full-height-tabs">
+        <TabPane Key="basic" Tab="基础配置">
+            <div class="form-container">
+                <Form Layout="@FormLayout.Vertical" Model="@EditModel" Context="formContext" Class="basic-form">
+                    <FormItem Label="描述"><TextArea Rows="2" @bind-Value="@EditModel.Description" /></FormItem>
+                    <Row Gutter="16">
+                        <Col Span="8">
+                            <FormItem Label="模式">
+                                <Select TItemValue="string" TItem="string"
+                                        Value="@_modeName"
+                                        ValueExpression="@(() => _modeName)"
+                                        ValueChanged="OnModeNameChanged"
+                                        DataSource="@_modeNames"
+                                        AllowClear
+                                        Placeholder="默认" />
+                            </FormItem>
+                        </Col>
+                        <Col Span="8">
+                            <FormItem Label="分类">
+                                <Input @bind-Value="@EditModel.Category" Placeholder="分类标签" />
+                            </FormItem>
+                        </Col>
+                        <Col Span="8">
+                            <FormItem Label="模型">
+                                <Select TItemValue="string" TItem="string"
+                                        Value="@_modelKey"
+                                        ValueExpression="@(() => _modelKey)"
+                                        ValueChanged="OnModelKeyChanged"
+                                        DataSource="@_modelKeys"
+                                        AllowClear
+                                        Placeholder="默认" />
+                            </FormItem>
+                        </Col>
+                    </Row>
+                    <Row Gutter="16">
+                        <Col Span="8"><FormItem Label="温度"><InputNumber @bind-Value="@EditModel.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%;" /></FormItem></Col>
+                        <Col Span="8"><FormItem Label="TopP"><InputNumber @bind-Value="@EditModel.TopP" Min="0" Max="1" Step="0.05" Style="width: 100%;" /></FormItem></Col>
+                        <Col Span="8"><FormItem Label="最大步骤"><InputNumber @bind-Value="@EditModel.MaxSteps" Min="1" Style="width: 100%;" /></FormItem></Col>
+                    </Row>
+                    <Row Gutter="16">
+                        <Col Span="8">
+                            <FormItem Label="隐藏">
+                                <Switch @bind-Value="@EditModel.IsHidden" CheckedChildren="是" UnCheckedChildren="否" />
+                                <span style="color: #999; font-size: 12px; margin-left: 8px;">不在选择列表显示，仍可作子智能体</span>
+                            </FormItem>
+                        </Col>
+                        <Col Span="8">
+                            <FormItem Label="禁用">
+                                <Switch @bind-Value="@EditModel.Disabled" CheckedChildren="是" UnCheckedChildren="否" />
+                                <span style="color: #999; font-size: 12px; margin-left: 8px;">完全不可用</span>
+                            </FormItem>
+                        </Col>
+                    </Row>
+                </Form>
+                <div class="system-prompt-section">
+                    <label class="system-prompt-label">系统提示词</label>
+                    <TextArea @bind-Value="@EditModel.SystemPrompt"
+                              Class="system-prompt-textarea"
+                              AutoSize="false" />
+                </div>
+            </div>
+        </TabPane>
+        <TabPane Key="permissions" Tab="权限规则">
+            <div class="permissions-container">
+                <div class="rule-add-section">
+                    <Space>
+                        <Select TItemValue="string" TItem="string" @bind-Value="_newRuleKind" Style="width: 120px;">
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Tool")">Tool</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("File")">File</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Shell")">Shell</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("McpTool")">McpTool</SelectOption>
+                        </Select>
+                        <Input @bind-Value="_newRulePattern" Placeholder="模式 (如: read, *.md)" Style="width: 200px;" />
+                        <Select TItemValue="string" TItem="string" @bind-Value="_newRuleEffect" Style="width: 100px;">
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Allow")">Allow</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Deny")">Deny</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Ask")">Ask</SelectOption>
+                        </Select>
+                        <InputNumber @bind-Value="_newRulePriority" Min="0" Max="1000" Style="width: 100px;" Placeholder="优先级" />
+                        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="AddRule">添加</Button>
+                    </Space>
+                </div>
+                <div class="default-effect-section">
+                    <label Style="display: inline-block; margin-right: 12px; font-weight: 500;">默认效果：</label>
+                    <RadioGroup @bind-Value="@EditModel.PermissionDefaultEffect">
+                        <Radio Value="@PermissionEffect.Allow">Allow</Radio>
+                        <Radio Value="@PermissionEffect.Deny">Deny</Radio>
+                        <Radio Value="@PermissionEffect.Ask">Ask</Radio>
+                    </RadioGroup>
+                </div>
+                <div class="rules-table-section">
+                    <Table TItem="PermissionRuleEntry" DataSource="@EditModel.PermissionRules" RowKey="@(r => r.Id)" Size="@TableSize.Small" ScrollY="100%">
+                        <PropertyColumn Property="c => c.Kind" Title="类型" Style="width: 100px;" />
+                        <PropertyColumn Property="c => c.Pattern" Title="模式" />
+                        <PropertyColumn Property="c => c.Effect" Title="效果" Style="width: 80px;">
+                            <Tag Color="@GetEffectColor(context.Effect)">@context.Effect</Tag>
+                        </PropertyColumn>
+                        <PropertyColumn Property="c => c.Priority" Title="优先级" Style="width: 80px;" />
+                        <ActionColumn Title="" Style="width: 60px;">
+                            <Button Size="@ButtonSize.Small" Danger Icon="@IconType.Outline.Delete" OnClick="@(() => RemoveRule(context.Id))" />
+                        </ActionColumn>
+                    </Table>
+                </div>
+            </div>
+        </TabPane>
+    </Tabs>
 </div>
 
+<style>
+    .agent-config-form {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .full-height-tabs {
+        height: 100%;
+    }
+    
+    .full-height-tabs .ant-tabs-content {
+        height: 100%;
+    }
+    
+    .full-height-tabs .ant-tabs-tabpane {
+        height: 100%;
+    }
+    
+    .form-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: 16px 0;
+    }
+    
+    .basic-form {
+        flex-shrink: 0;
+    }
+    
+    .system-prompt-section {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        margin-top: 16px;
+        min-height: 0;
+    }
+    
+    .system-prompt-label {
+        font-weight: 500;
+        margin-bottom: 8px;
+        display: block;
+    }
+    
+    .system-prompt-textarea {
+        flex: 1;
+        width: 100%;
+        min-height: 200px;
+        resize: none;
+        font-family: inherit;
+    }
+    
+    .permissions-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: 16px 0;
+    }
+    
+    .rule-add-section {
+        flex-shrink: 0;
+        margin-bottom: 16px;
+    }
+    
+    .default-effect-section {
+        flex-shrink: 0;
+        margin-bottom: 16px;
+    }
+    
+    .rules-table-section {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+    }
+</style>
+
 @code {
-    [Parameter] public AgentConfig AgentConfig { get; set; } = new();
+    [Parameter] public AgentEditModel EditModel { get; set; } = new();
     [Parameter] public IEnumerable<string> ModelKeys { get; set; } = Array.Empty<string>();
 
     private static readonly List<string> _modeNames = new() { "Primary", "SubAgent", "All" };
-    private static readonly List<string> _runtimeNames = new() { "Native", "AcpPassthrough" };
 
     private string _modeName = "";
-    private string _runtimeName = "";
     private string _modelKey = "";
     private List<string> _modelKeys = new();
+
+    // 新规则输入
+    private string _newRuleKind = "Tool";
+    private string _newRulePattern = "";
+    private string _newRuleEffect = "Allow";
+    private int _newRulePriority = 0;
 
     protected override void OnParametersSet()
     {
         _modelKeys = ModelKeys.Where(k => !string.IsNullOrEmpty(k)).ToList();
-        _modelKey = !string.IsNullOrEmpty(AgentConfig.Model)
-            ? (string.IsNullOrEmpty(AgentConfig.Provider) ? AgentConfig.Model : $"{AgentConfig.Provider}/{AgentConfig.Model}")
+        _modelKey = !string.IsNullOrEmpty(EditModel.Model)
+            ? (string.IsNullOrEmpty(EditModel.Provider) ? EditModel.Model : $"{EditModel.Provider}/{EditModel.Model}")
             : "";
         if (!string.IsNullOrEmpty(_modelKey) && !_modelKeys.Contains(_modelKey))
             _modelKey = "";
 
-        _modeName = AgentConfig.Mode?.ToString() ?? "";
+        _modeName = EditModel.Mode.ToString();
         if (!string.IsNullOrEmpty(_modeName) && !_modeNames.Contains(_modeName))
             _modeName = "";
-
-        _runtimeName = AgentConfig.Runtime?.ToString() ?? "";
-        if (!string.IsNullOrEmpty(_runtimeName) && !_runtimeNames.Contains(_runtimeName))
-            _runtimeName = "";
     }
 
     private void OnModeNameChanged(string value)
     {
         _modeName = value ?? "";
-        AgentConfig.Mode = string.IsNullOrEmpty(_modeName)
-            ? null
+        EditModel.Mode = string.IsNullOrEmpty(_modeName)
+            ? AgentMode.All
             : Enum.Parse<AgentMode>(_modeName);
     }
 
-    private void OnRuntimeNameChanged(string value)
+    private void OnModelKeyChanged(string value)
     {
-        _runtimeName = value ?? "";
-        AgentConfig.Runtime = string.IsNullOrEmpty(_runtimeName)
-            ? null
-            : Enum.Parse<AgentRuntime>(_runtimeName);
+        _modelKey = value ?? "";
+        ApplyToModel();
     }
 
-    private void OnModelKeyChanged(string value) => _modelKey = value ?? "";
-
-    public void ApplyToConfig()
+    public void ApplyToModel()
     {
         if (string.IsNullOrEmpty(_modelKey))
         {
-            AgentConfig.Provider = null;
-            AgentConfig.Model = null;
+            EditModel.Provider = null;
+            EditModel.Model = null;
             return;
         }
 
         var parts = _modelKey.Split('/', 2);
         if (parts.Length == 2)
         {
-            AgentConfig.Provider = parts[0];
-            AgentConfig.Model = parts[1];
+            EditModel.Provider = parts[0];
+            EditModel.Model = parts[1];
         }
         else
         {
-            AgentConfig.Provider = null;
-            AgentConfig.Model = _modelKey;
+            EditModel.Provider = null;
+            EditModel.Model = _modelKey;
         }
     }
+
+    private void AddRule()
+    {
+        if (string.IsNullOrWhiteSpace(_newRulePattern))
+            return;
+
+        EditModel.PermissionRules.Add(new PermissionRuleEntry
+        {
+            Id = Guid.NewGuid().ToString("N")[..8],
+            Kind = Enum.Parse<PermissionKind>(_newRuleKind),
+            Pattern = _newRulePattern,
+            Effect = Enum.Parse<PermissionEffect>(_newRuleEffect),
+            Priority = _newRulePriority
+        });
+
+        _newRulePattern = "";
+    }
+
+    private void RemoveRule(string id)
+    {
+        EditModel.PermissionRules.RemoveAll(r => r.Id == id);
+    }
+
+    private string GetEffectColor(PermissionEffect effect) => effect switch
+    {
+        PermissionEffect.Allow => "green",
+        PermissionEffect.Deny => "red",
+        PermissionEffect.Ask => "orange",
+        _ => "default"
+    };
 }

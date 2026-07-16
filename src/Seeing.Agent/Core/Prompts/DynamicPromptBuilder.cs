@@ -3,7 +3,7 @@ using Seeing.Agent.Core.Models;
 using System.Text;
 using System.Text.Json;
 // 使用别名解决命名冲突
-using PromptAgentInfo = Seeing.Agent.Core.Interfaces.AgentInfo;
+using PromptAgentInfo = Seeing.Agent.Core.Models.AgentDefinition;
 
 namespace Seeing.Agent.Core.Prompts;
 

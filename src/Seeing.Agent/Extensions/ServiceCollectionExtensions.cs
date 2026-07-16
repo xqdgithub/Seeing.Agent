@@ -317,18 +317,15 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<AgentRuntimeManager>();
             services.AddSingleton<IAgentRuntimeManager>(sp => sp.GetRequiredService<AgentRuntimeManager>());
 
-            // Agent 配置加载器（MD 文件）
-            services.AddSingleton<IAgentConfigLoader, AgentConfigLoader>();
-
-            // Agent 注册表（协调者）
-            services.AddSingleton<AgentRegistry>(sp =>
+            // Agent 管理器（统一管理注册、发现、配置）
+            services.AddSingleton<AgentManager>(sp =>
             {
-                var logger = sp.GetRequiredService<ILogger<AgentRegistry>>();
+                var logger = sp.GetRequiredService<ILogger<AgentManager>>();
                 var agentStore = sp.GetRequiredService<IAgentStore>();
                 var runtimeManager = sp.GetRequiredService<IAgentRuntimeManager>();
+                var workspaceProvider = sp.GetRequiredService<IWorkspaceProvider>();
                 var discovery = sp.GetRequiredService<AgentDiscovery>();
                 var options = sp.GetService<IOptions<SeeingAgentOptions>>();
-                var configLoader = sp.GetService<IAgentConfigLoader>();
 
                 // 获取内置代理
                 var builtInAgents = BuiltInAgents.GetBuiltInAgents();
@@ -337,27 +334,26 @@ namespace Seeing.Agent.Extensions
                 var discoveredAgents = discovery.DiscoverAgentsAsync().GetAwaiter().GetResult();
                 var allAgents = builtInAgents.Concat(discoveredAgents);
 
-                var registry = new AgentRegistry(
+                var manager = new AgentManager(
                     logger,
                     agentStore,
                     runtimeManager,
+                    workspaceProvider,
                     allAgents,
                     defaultAgent: options?.Value?.DefaultAgent,
-                    options: options,
-                    configLoader: configLoader);
+                    options: options);
 
-                // 从配置扩展代理
-                if (options?.Value?.Agents != null)
-                {
-                    registry.ExtendFromConfig(options.Value.Agents);
-                }
-
-                return registry;
+                return manager;
             });
-            services.AddSingleton<IAgentRegistry>(sp => sp.GetRequiredService<AgentRegistry>());
+            services.AddSingleton<IAgentManager>(sp => sp.GetRequiredService<AgentManager>());
+            // 兼容旧接口
+            services.AddSingleton<IAgentRegistry>(sp => sp.GetRequiredService<AgentManager>());
 
-            // Agent 初始化服务（IHostedService）- 异步初始化运行时设置
-            services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, AgentInitializationService>();
+            // AgentManager 自身实现 IHostedService，启动时自动加载 MD 配置
+            services.AddHostedService<AgentManager>(sp => sp.GetRequiredService<AgentManager>());
+
+            // Agent 运行时初始化服务（IHostedService）
+            services.AddHostedService<AgentInitializationService>();
 
             // 会话管理器 - 使用 Seeing.Session 包的实现
             services.AddSingleton<Seeing.Session.Management.SessionManager>();
@@ -597,7 +593,6 @@ namespace Seeing.Agent.Extensions
                 new InstructionLoader(
                     sp.GetRequiredService<ILogger<InstructionLoader>>(),
                     sp.GetRequiredService<IWorkspaceProvider>()));
-            services.AddSingleton<SystemPromptProvider>();
             services.AddSingleton<PromptBuilder>();
 
             return services;
@@ -681,15 +676,6 @@ namespace Seeing.Agent.Extensions
             if (services.GetService<UnifiedConfigManager>() is { } configManager2)
             {
                 await configManager2.ReloadAsync(cancellationToken);
-
-                if (services.GetService<AgentRegistry>() is { } registry)
-                {
-                    var agents = configManager2.GetSection<Dictionary<string, AgentConfig>>("Agents");
-                    if (agents.Count > 0)
-                    {
-                        registry.ExtendFromConfig(agents);
-                    }
-                }
             }
 
             var componentManager = services.GetRequiredService<IComponentManager>();

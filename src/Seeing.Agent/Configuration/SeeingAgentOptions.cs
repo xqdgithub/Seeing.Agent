@@ -28,9 +28,6 @@ namespace Seeing.Agent.Configuration
         /// <summary>Provider 配置列表</summary>
         public Dictionary<string, ProviderConfig> Providers { get; set; } = new();
 
-        /// <summary>Agent 配置</summary>
-        public Dictionary<string, AgentConfig> Agents { get; set; } = new();
-
         /// <summary>技能配置</summary>
         public SkillsConfig Skills { get; set; } = new();
 
@@ -110,87 +107,6 @@ namespace Seeing.Agent.Configuration
     {
         /// <summary>模型 ID → 模型定义（与 Provider.models 条目相同）</summary>
         public Dictionary<string, ModelConfig>? Models { get; set; }
-    }
-
-    /// <summary>
-    /// Agent 配置（seeing.json 格式）
-    /// </summary>
-    public class AgentConfig
-    {
-        /// <summary>是否禁用</summary>
-        public bool Disable { get; set; }
-
-        /// <summary>使用的提供商 ID</summary>
-        public string? Provider { get; set; }
-
-        /// <summary>使用的模型 ID</summary>
-        public string? Model { get; set; }
-
-        /// <summary>变体标识</summary>
-        public string? Variant { get; set; }
-
-        /// <summary>系统提示词</summary>
-        public string? SystemPrompt { get; set; }
-
-        /// <summary>描述</summary>
-        public string? Description { get; set; }
-
-        /// <summary>最大执行步骤</summary>
-        public int? MaxSteps { get; set; }
-
-        /// <summary>温度参数</summary>
-        public double? Temperature { get; set; }
-
-        /// <summary>TopP 参数</summary>
-        public double? TopP { get; set; }
-
-        /// <summary>
-        /// 最大输出 Token 数（可选覆盖）
-        /// <para>
-        /// <b>注意：</b>这是可选的覆盖值，用于在特定场景下手动限制输出长度。
-        /// </para>
-        /// <para>
-        /// <b>默认行为：</b>如果未设置（null），系统会自动使用模型的 output limit
-        /// （即 <see cref="Llm.ModelConfig.Limit.Output"/>）。例如：
-        /// <list type="bullet">
-        ///   <item><description>Kimi-K2.5: 32000 tokens</description></item>
-        ///   <item><description>GLM-4.7: 128000 tokens</description></item>
-        ///   <item><description>Claude Sonnet 4: 16000 tokens</description></item>
-        /// </list>
-        /// </para>
-        /// <para>
-        /// <b>使用场景：</b>仅在需要强制使用比模型限制更小的输出时设置此值。
-        /// 例如：快速响应 Agent 只需要 2000 tokens。
-        /// </para>
-        /// <para>
-        /// <b>注意：</b>设置超过模型限制的值会被自动约束到模型限制。
-        /// </para>
-        /// </summary>
-        public int? MaxTokens { get; set; }
-
-        /// <summary>Agent 模式</summary>
-        public AgentMode? Mode { get; set; }
-
-        /// <summary>颜色标识（UI 显示）</summary>
-        public string? Color { get; set; }
-
-        /// <summary>是否隐藏（不在 UI 中显示）</summary>
-        public bool? IsHidden { get; set; }
-
-        /// <summary>权限配置（旧格式，保留兼容）</summary>
-        public Dictionary<string, object>? Permissions { get; set; }
-
-        /// <summary>权限规则（新格式）</summary>
-        public List<PermissionRuleEntry>? PermissionRules { get; set; }
-
-        /// <summary>额外设置</summary>
-        public Dictionary<string, object>? Options { get; set; }
-
-        /// <summary>执行运行时类型</summary>
-        public AgentRuntime? Runtime { get; set; }
-
-        /// <summary>ACP 后端标识（Runtime 为 AcpPassthrough 时使用）</summary>
-        public string? AcpBackend { get; set; }
     }
 
     /// <summary>

@@ -1,50 +1,70 @@
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Permission;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Models
 {
     /// <summary>
-    /// Agent 定义 - 纯配置，参考 oh-my-openagent 设计
+    /// Agent 定义 - 代理的完整元数据定义
     /// <para>
     /// Agent 只需定义元数据，执行逻辑由 AgentExecutor 统一处理。
     /// 这使得 Agent 成为"Prompt Engineering"而非代码实现。
     /// </para>
+    /// <para>
+    /// 此类合并了原 AgentInfo 和 AgentDefinition 的职责，统一 Agent 配置模型。
+    /// </para>
     /// </summary>
     public class AgentDefinition
     {
+        // === 基础标识 ===
+        
         /// <summary>Agent 名称（唯一标识）</summary>
-        public string Name { get; init; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>Agent 描述</summary>
-        public string Description { get; init; } = string.Empty;
+        public string? Description { get; set; }
 
         /// <summary>Agent 模式</summary>
-        public AgentMode Mode { get; init; } = AgentMode.All;
+        public AgentMode Mode { get; set; } = AgentMode.All;
 
         /// <summary>Agent 类别（用于委托分类，如 deep、quick、visual-engineering）</summary>
-        public string? Category { get; init; }
+        public string? Category { get; set; }
+        
+        /// <summary>Agent 标签</summary>
+        public List<string> Tags { get; set; } = new();
 
+        // === 运行时标识 ===
+        
+        /// <summary>是否为内置 Agent</summary>
+        public bool IsNative { get; set; }
+        
+        /// <summary>是否隐藏（不在用户选择列表显示，但仍可作为 SubAgent 使用）</summary>
+        public bool IsHidden { get; set; }
+        
+        /// <summary>是否禁用（完全不可用，任何地方都无法使用）</summary>
+        public bool Disabled { get; set; }
+        
+        /// <summary>是否为后台 Agent（异步执行）</summary>
+        public bool IsBackground { get; set; }
+        
+        // === 核心配置 ===
+        
         /// <summary>系统提示词（核心配置）</summary>
-        public string? SystemPrompt { get; init; }
+        public string? SystemPrompt { get; set; }
 
         /// <summary>模型引用</summary>
-        public ModelReference? Model { get; init; }
+        public ModelReference? Model { get; set; }
 
         /// <summary>最大迭代步骤</summary>
-        public int? MaxSteps { get; init; }
+        public int? MaxSteps { get; set; }
 
-        /// <summary>允许的工具（白名单，空表示允许所有）</summary>
-        public IReadOnlyList<string> AllowedTools { get; init; } = Array.Empty<string>();
-
-        /// <summary>禁止的工具（黑名单）</summary>
-        public IReadOnlyList<string> DeniedTools { get; init; } = Array.Empty<string>();
-
+        // === LLM 参数 ===
+        
         /// <summary>温度参数</summary>
-        public double? Temperature { get; init; }
+        public double? Temperature { get; set; }
 
         /// <summary>TopP 参数</summary>
-        public double? TopP { get; init; }
+        public double? TopP { get; set; }
 
         /// <summary>
         /// 最大输出 Token 数（可选覆盖）
@@ -68,51 +88,49 @@ namespace Seeing.Agent.Core.Models
         /// <b>注意：</b>设置超过模型限制的值会被自动约束到模型限制。
         /// </para>
         /// </summary>
-        public int? MaxTokens { get; init; }
+        public int? MaxTokens { get; set; }
 
-        /// <summary>是否隐藏（不在 UI 显示）</summary>
-        public bool IsHidden { get; init; }
+        // === 权限配置 ===
+        
+        /// <summary>权限规则</summary>
+        public List<PermissionRuleEntry> PermissionRules { get; set; } = new();
 
-        /// <summary>UI 显示颜色</summary>
-        public string? Color { get; init; }
+        /// <summary>权限默认效果（当没有匹配规则时，默认询问用户）</summary>
+        public PermissionEffect PermissionDefaultEffect { get; set; } = PermissionEffect.Ask;
 
-        /// <summary>是否为后台 Agent（异步执行）</summary>
-        public bool IsBackground { get; init; }
+        // === 工具限制 ===
+        
+        /// <summary>允许的工具（白名单，空表示允许所有）</summary>
+        public List<string> AllowedTools { get; set; } = new();
 
-        /// <summary>权限策略引用（策略文件路径或策略 ID）</summary>
-        public string? PermissionPolicy { get; init; }
-
-        /// <summary>权限规则（新格式）</summary>
-        public IReadOnlyList<PermissionRuleEntry> PermissionRules { get; init; } = Array.Empty<PermissionRuleEntry>();
+        /// <summary>禁止的工具（黑名单）</summary>
+        public List<string> DeniedTools { get; set; } = new();
 
         /// <summary>允许的 MCP 服务器</summary>
-        public IReadOnlyList<string> AllowedMcpServers { get; init; } = Array.Empty<string>();
+        public List<string> AllowedMcpServers { get; set; } = new();
 
         /// <summary>允许的子代理</summary>
-        public IReadOnlyList<string> AllowedAgents { get; init; } = Array.Empty<string>();
+        public List<string> AllowedAgents { get; set; } = new();
+
+        // === 执行配置 ===
+        
+        /// <summary>执行运行时类型</summary>
+        public AgentRuntime Runtime { get; set; } = AgentRuntime.Native;
+
+        /// <summary>ACP 后端标识</summary>
+        public string? AcpBackend { get; set; }
 
         /// <summary>
         /// Token 预算配置（覆盖全局配置）
         /// </summary>
-        public TokenBudgetConfig? BudgetConfig { get; init; }
+        public TokenBudgetConfig? BudgetConfig { get; set; }
 
-        /// <summary>执行运行时类型</summary>
-        public AgentRuntime Runtime { get; init; } = AgentRuntime.Native;
-
-        /// <summary>ACP 后端标识</summary>
-        public string? AcpBackend { get; init; }
-
-        /// <summary>权限默认效果（当没有匹配规则时，默认询问用户）</summary>
-        public PermissionEffect PermissionDefaultEffect { get; init; } = PermissionEffect.Ask;
-
+        // === 扩展 ===
+        
         /// <summary>
-        /// Provider/Model 变体配置
-        /// <para>
-        /// 键格式：{provider} 或 {provider}.{model}
-        /// 例如："openai"、"anthropic"、"openai.gpt-4o-mini"
-        /// </para>
+        /// 创建 IAgent 实例（延迟创建，用于执行）
         /// </summary>
-        public IReadOnlyDictionary<string, AgentVariant>? Variants { get; init; }
+        public Func<IAgent>? AgentFactory { get; set; }
 
         /// <summary>
         /// 构建权限策略
@@ -134,7 +152,7 @@ namespace Seeing.Agent.Core.Models
         /// <summary>
         /// 从 IAgent 实例创建定义
         /// </summary>
-        public static AgentDefinition FromAgent(Interfaces.IAgent agent)
+        public static AgentDefinition FromAgent(IAgent agent)
         {
             return new AgentDefinition
             {
@@ -144,11 +162,15 @@ namespace Seeing.Agent.Core.Models
                 SystemPrompt = agent.SystemPrompt,
                 Model = agent.Model,
                 MaxSteps = agent.MaxSteps,
-                AllowedTools = agent.AllowedTools,
-                DeniedTools = agent.DeniedTools,
-                PermissionRules = agent.PermissionRules,
+                Temperature = agent.Temperature,
+                TopP = agent.TopP,
+                MaxTokens = agent.MaxTokens,
+                AllowedTools = agent.AllowedTools.ToList(),
+                DeniedTools = agent.DeniedTools.ToList(),
+                PermissionRules = agent.PermissionRules.ToList(),
                 PermissionDefaultEffect = agent.PermissionDefaultEffect,
                 IsHidden = agent.Status == AgentStatus.Disabled,
+                Disabled = agent.Disabled,
                 Runtime = agent.Runtime,
                 AcpBackend = agent.AcpBackend
             };

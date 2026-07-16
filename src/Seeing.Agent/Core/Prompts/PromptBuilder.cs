@@ -27,18 +27,15 @@ public class PromptBuilder
     private const string EnvironmentPlaceholder = "{{environment}}";
     private const string InstructionsPlaceholder = "{{instructions}}";
 
-    private readonly SystemPromptProvider _systemPromptProvider;
     private readonly IInstructionLoader _instructionLoader;
     private readonly IAgentRegistry _agentRegistry;
     private readonly SkillManager _skillManager;
 
     public PromptBuilder(
-        SystemPromptProvider systemPromptProvider,
         IInstructionLoader instructionLoader,
         IAgentRegistry agentRegistry,
         SkillManager skillManager)
     {
-        _systemPromptProvider = systemPromptProvider;
         _instructionLoader = instructionLoader;
         _agentRegistry = agentRegistry;
         _skillManager = skillManager;
@@ -52,14 +49,7 @@ public class PromptBuilder
     /// <returns>构建后的完整提示词</returns>
     public async Task<string> BuildAsync(PromptContext context, CancellationToken cancellationToken = default)
     {
-        // 1. 获取 Provider 特定模板（如果有）
         var basePrompt = context.Agent?.SystemPrompt;
-
-        // 如果 Agent 没有定义系统提示词，使用 Provider 默认模板
-        if (string.IsNullOrEmpty(basePrompt) && !string.IsNullOrEmpty(context.ProviderId) && !string.IsNullOrEmpty(context.ModelName))
-        {
-            basePrompt = _systemPromptProvider.GetTemplate(context.ProviderId, context.ModelName);
-        }
 
         if (string.IsNullOrEmpty(basePrompt))
         {
@@ -185,7 +175,7 @@ public class PromptBuilder
         return sb.ToString();
     }
 
-    private string BuildAgentSection(IEnumerable<AgentInfo> agents, string? currentAgentName)
+    private string BuildAgentSection(IEnumerable<Models.AgentDefinition> agents, string? currentAgentName)
     {
         var agentList = agents.ToList();
         var subAgents = agentList

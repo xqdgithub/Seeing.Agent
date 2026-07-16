@@ -30,7 +30,7 @@ public class SisyphusAgent : AgentBase
     /// <summary>
     /// Agent 定义（配置驱动模式）
     /// </summary>
-    public override AgentDefinition Definition => new()
+    public override Core.Models.AgentDefinition Definition => new()
     {
         Name = "sisyphus",
         Description = Description,
@@ -129,7 +129,7 @@ public class SisyphusAgent : AgentBase
 - {{sessionId}}: 当前会话 ID
 """,
         MaxSteps = 100,
-        PermissionRules = new[]
+        PermissionRules = new List<PermissionRuleEntry>
         {
             PermissionRuleEntry.Allow(PermissionKind.Tool, "question", priority: 0),
             PermissionRuleEntry.Deny(PermissionKind.Tool, "call_omo_agent", priority: 100)

@@ -49,10 +49,11 @@ public sealed class AgentSelectionResolver
         if (!string.IsNullOrEmpty(_options.Value.DefaultModel))
             return _options.Value.DefaultModel;
 
-        if (_options.Value.Agents.TryGetValue(agentName, out var agentConfig) &&
-            !string.IsNullOrEmpty(agentConfig.Model))
+        // 从 Agent 注册表获取 Agent 的默认模型
+        var agent = _agentRegistry.GetAgentAsync(agentName).GetAwaiter().GetResult();
+        if (agent?.Model?.ModelId != null)
         {
-            return agentConfig.Model;
+            return agent.Model.ModelId;
         }
 
         return null;

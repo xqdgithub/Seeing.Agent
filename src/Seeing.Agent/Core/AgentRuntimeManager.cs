@@ -434,7 +434,7 @@ namespace Seeing.Agent.Core
         }
 
         /// <inheritdoc/>
-        public void ApplyRuntimeModel(AgentInfo agent)
+        public void ApplyRuntimeModel(Models.AgentDefinition agent)
         {
             if (_runtimeSettings?.AgentModels == null)
                 return;

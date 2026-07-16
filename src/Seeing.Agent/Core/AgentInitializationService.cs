@@ -12,24 +12,24 @@ namespace Seeing.Agent.Core
     /// - 应用持久化的模型配置
     /// - 避免在 DI 注册时阻塞
     /// </para>
+    /// <para>
+    /// 注意：AgentManager 自己实现 IHostedService 处理 MD 配置加载
+    /// </para>
     /// </summary>
     public class AgentInitializationService : IHostedService
     {
         private readonly ILogger<AgentInitializationService> _logger;
         private readonly IAgentRuntimeManager _runtimeManager;
-        private readonly IAgentRegistry _registry;
 
         /// <summary>
         /// 创建 Agent 初始化服务实例
         /// </summary>
         public AgentInitializationService(
             ILogger<AgentInitializationService> logger,
-            IAgentRuntimeManager runtimeManager,
-            IAgentRegistry registry)
+            IAgentRuntimeManager runtimeManager)
         {
             _logger = logger;
             _runtimeManager = runtimeManager;
-            _registry = registry;
         }
 
         /// <inheritdoc/>

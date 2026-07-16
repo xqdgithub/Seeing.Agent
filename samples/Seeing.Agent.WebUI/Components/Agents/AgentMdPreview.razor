@@ -1,0 +1,86 @@
+@using AntDesign
+@using Microsoft.JSInterop
+
+<div class="agent-md-preview">
+    <div class="preview-header">
+        <Space>
+            <Icon Type="@IconType.Outline.FileText" />
+            <span>MD 配置预览</span>
+            <Tag Color="@GetLevelColor()" Style="margin-left: 8px;">@GetLevelText()</Tag>
+        </Space>
+        <Button Size="@ButtonSize.Small" 
+                Icon="@IconType.Outline.Copy" 
+                OnClick="CopyToClipboard"
+                Style="margin-left: auto;">
+            复制
+        </Button>
+    </div>
+    <div class="preview-content">
+        <TextArea @bind-value="@MdContent"
+                  ReadOnly="true"
+                  Rows="20"
+                  Style="width: 100%; height: 100%; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; background: #fafafa; resize: none;" />
+    </div>
+</div>
+
+<style>
+    .agent-md-preview {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+        background: #fff;
+    }
+    
+    .preview-header {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid #f0f0f0;
+        background: #fafafa;
+    }
+    
+    .preview-content {
+        flex: 1;
+        padding: 8px;
+        overflow: hidden;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string MdContent { get; set; } = "";
+
+    [Parameter]
+    public string? Level { get; set; }
+
+    [Inject]
+    private IJSRuntime? JSRuntime { get; set; }
+
+    [Inject]
+    private IMessageService? MessageService { get; set; }
+
+    private string GetLevelText() => Level switch
+    {
+        "Project" => "项目级",
+        "User" => "用户级",
+        _ => "项目级"
+    };
+
+    private string GetLevelColor() => Level switch
+    {
+        "Project" => "green",
+        "User" => "cyan",
+        _ => "default"
+    };
+
+    private async Task CopyToClipboard()
+    {
+        if (!string.IsNullOrEmpty(MdContent) && JSRuntime != null)
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", MdContent);
+            MessageService?.Success("已复制到剪贴板");
+        }
+    }
+}

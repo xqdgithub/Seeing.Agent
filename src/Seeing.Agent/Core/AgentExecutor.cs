@@ -18,10 +18,6 @@ namespace Seeing.Agent.Core;
 /// <summary>
 /// Agent 执行器 - 统一执行引擎
 /// <para>
-/// 参考 oh-my-openagent 设计，提供统一的 LLM 循环和工具调用处理。
-/// 支持多入口（TUI/API/CLI）和子代理调用。
-/// </para>
-/// <para>
 /// 返回事件流（IMessageEvent），由调用方决定如何渲染和存储。
 /// </para>
 /// </summary>
@@ -64,10 +60,21 @@ public class AgentExecutor
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>事件流（流式增量、完整消息、工具调用、错误等）</returns>
     public async IAsyncEnumerable<IMessageEvent> ExecuteAsync(
-        AgentDefinition agent,
+        Models.AgentDefinition agent,
         AgentContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        // 检查禁用状态
+        if (agent.Disabled)
+        {
+            yield return new ErrorEvent
+            {
+                SessionId = context.SessionId,
+                Message = $"Agent '{agent.Name}' is disabled"
+            };
+            yield break;
+        }
+
         // 合并取消令牌
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             context.CancellationToken, cancellationToken);
@@ -402,7 +409,7 @@ public class AgentExecutor
     /// 构建聊天请求
     /// </summary>
     private async Task<ChatRequest> BuildRequestAsync(
-        AgentDefinition agent,
+        Models.AgentDefinition agent,
         List<ChatMessage> messages,
         AgentContext context)
     {
@@ -457,7 +464,7 @@ public class AgentExecutor
     /// </summary>
     private async IAsyncEnumerable<IMessageEvent> ExecuteToolCallsAsync(
         List<ToolCall> toolCalls,
-        AgentDefinition agent,
+        Models.AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel,
         string loopId,
@@ -517,7 +524,7 @@ public class AgentExecutor
     /// </summary>
     private async Task<ToolCallEvent> ExecuteSingleToolCallAsync(
         ToolCall tc,
-        AgentDefinition agent,
+        Models.AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel,
         string loopId,
@@ -618,7 +625,7 @@ public class AgentExecutor
     /// </summary>
     private async Task<ToolCallEvent> HandleSubAgentCallAsync(
         ToolCall tc,
-        AgentDefinition parentAgent,
+        Models.AgentDefinition parentAgent,
         AgentContext parentContext,
         string loopId,
         CancellationToken cancellationToken)
@@ -758,7 +765,7 @@ public class AgentExecutor
     private async Task<PermissionDecision> EvaluatePermissionAsync(
         string toolName,
         object? arguments,
-        AgentDefinition agent,
+        Models.AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel)
     {
@@ -789,7 +796,7 @@ public class AgentExecutor
     /// <summary>
     /// 解析模型 ID
     /// </summary>
-    private string ResolveModelId(AgentDefinition agent, AgentContext? context = null)
+    private string ResolveModelId(Models.AgentDefinition agent, AgentContext? context = null)
     {
         // 0. 优先使用用户在界面上选择的模型（会话级覆盖）
         if (context?.Metadata != null &&
@@ -824,10 +831,10 @@ public class AgentExecutor
     /// <summary>
     /// 获取工具 Schema
     /// </summary>
-    private List<FunctionToolSchema> GetToolSchemas(AgentDefinition agent)
+    private List<FunctionToolSchema> GetToolSchemas(Models.AgentDefinition agent)
     {
         // 基于 Agent 的 Mode 和 Allowed/Denied 列表过滤
-        var agentInfo = new AgentInfo
+        var agentInfo = new AgentDefinition
         {
             Name = agent.Name,
             Mode = agent.Mode,
@@ -919,7 +926,7 @@ public class AgentExecutor
     /// <summary>
     /// 解析子代理
     /// </summary>
-    private async Task<AgentDefinition?> ResolveSubAgentAsync(string agentName)
+    private async Task<Models.AgentDefinition?> ResolveSubAgentAsync(string agentName)
     {
         var agents = await _registry.GetAgentsAsync();
         var info = agents.FirstOrDefault(a =>
@@ -929,7 +936,7 @@ public class AgentExecutor
             return null;
 
         var instance = _registry.GetOrCreateAgentInstance(info.Name);
-        return instance != null ? AgentDefinition.FromAgent(instance) : null;
+        return instance != null ? Models.AgentDefinition.FromAgent(instance) : null;
     }
 
     /// <summary>

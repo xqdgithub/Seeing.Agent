@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using System.Collections.Concurrent;
 
@@ -215,9 +216,9 @@ namespace Seeing.Agent.Extensions
         /// <summary>
         /// 创建 AgentInfo
         /// </summary>
-        private static AgentInfo CreateAgentInfo(IAgent agent, string extensionId)
+        private static AgentDefinition CreateAgentInfo(IAgent agent, string extensionId)
         {
-            return new AgentInfo
+            return new AgentDefinition
             {
                 Name = agent.Name,
                 Description = agent.Description,

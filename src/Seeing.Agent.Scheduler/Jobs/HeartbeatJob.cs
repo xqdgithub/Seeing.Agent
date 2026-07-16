@@ -278,7 +278,7 @@ public class HeartbeatJob : IJob
         var agentInstance = _agentRegistry.GetOrCreateAgentInstance(resolvedAgentId)
             ?? throw new InvalidOperationException($"Agent '{resolvedAgentId}' not found");
 
-        var agentDefinition = AgentDefinition.FromAgent(agentInstance);
+        var agentDefinition = Core.Models.AgentDefinition.FromAgent(agentInstance);
         var workspaceRoot = _workspace.WorkspaceRoot;
 
         var context = new AgentContext

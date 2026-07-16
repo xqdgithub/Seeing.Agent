@@ -26,11 +26,6 @@ public class AgentMdInfo
     public string FilePath { get; set; } = "";
 
     /// <summary>
-    /// 变体数量
-    /// </summary>
-    public int VariantCount { get; set; }
-
-    /// <summary>
     /// 最后修改时间
     /// </summary>
     public DateTimeOffset LastModified { get; set; }

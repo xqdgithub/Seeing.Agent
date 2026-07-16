@@ -56,8 +56,8 @@ namespace Seeing.Agent.Tests.Prompts
             {
                 Agents = new[]
                 {
-                    new AgentInfo { Name = "build", Description = "主要构建代理", Mode = AgentMode.Primary },
-                    new AgentInfo { Name = "explore", Description = "代码库探索代理", Mode = AgentMode.SubAgent }
+                    new AgentDefinition { Name = "build", Description = "主要构建代理", Mode = AgentMode.Primary },
+                    new AgentDefinition { Name = "explore", Description = "代码库探索代理", Mode = AgentMode.SubAgent }
                 }
             };
 
@@ -139,7 +139,7 @@ namespace Seeing.Agent.Tests.Prompts
         [Fact]
         public void BuildAgentSection_WithEmptyAgents_ReturnsEmptyMessage()
         {
-            var result = _builder.BuildAgentSection(Array.Empty<AgentInfo>());
+            var result = _builder.BuildAgentSection(Array.Empty<AgentDefinition>());
             result.Should().Contain("暂无可用代理");
         }
 
@@ -148,9 +148,9 @@ namespace Seeing.Agent.Tests.Prompts
         {
             var agents = new[]
             {
-                new AgentInfo { Name = "primary", Description = "主代理描述", Mode = AgentMode.Primary },
-                new AgentInfo { Name = "sub", Description = "子代理描述", Mode = AgentMode.SubAgent },
-                new AgentInfo { Name = "all", Description = "通用代理描述", Mode = AgentMode.All }
+                new AgentDefinition { Name = "primary", Description = "主代理描述", Mode = AgentMode.Primary },
+                new AgentDefinition { Name = "sub", Description = "子代理描述", Mode = AgentMode.SubAgent },
+                new AgentDefinition { Name = "all", Description = "通用代理描述", Mode = AgentMode.All }
             };
 
             var result = _builder.BuildAgentSection(agents);
@@ -226,7 +226,7 @@ Current model: {{model}}
             var context = new PromptContext
             {
                 Tools = new[] { new FunctionSchema { Name = "tool1", Description = "desc1" } },
-                Agents = new[] { new AgentInfo { Name = "agent1", Description = "desc1", Mode = AgentMode.Primary } },
+                Agents = new[] { new AgentDefinition { Name = "agent1", Description = "desc1", Mode = AgentMode.Primary } },
                 Skills = new[] { new SkillInfo { Name = "skill1", Description = "desc1" } },
                 ModelName = "test-model"
             };

@@ -1,4 +1,5 @@
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 
 namespace Seeing.Agent.WebUI.State
@@ -36,7 +37,7 @@ namespace Seeing.Agent.WebUI.State
         public string Theme { get; set; } = "light";
 
         /// <summary>可用的 Agent 列表（从注册中心获取）</summary>
-        public List<AgentInfo> AvailableAgents { get; set; } = new();
+        public List<AgentDefinition> AvailableAgents { get; set; } = new();
 
         /// <summary>可用的 Model 列表（从 LlmService 获取）</summary>
         public IReadOnlyDictionary<string, ModelConfig> AvailableModels { get; set; } = new Dictionary<string, ModelConfig>();

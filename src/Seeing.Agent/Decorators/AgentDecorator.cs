@@ -30,6 +30,9 @@ namespace Seeing.Agent.Decorators
         public virtual AgentStatus Status { get => Inner.Status; set => Inner.Status = value; }
 
         /// <inheritdoc />
+        public virtual bool Disabled { get => Inner.Disabled; set => Inner.Disabled = value; }
+
+        /// <inheritdoc />
         public virtual string Description { get => Inner.Description; set => Inner.Description = value; }
 
         /// <inheritdoc />
@@ -40,6 +43,15 @@ namespace Seeing.Agent.Decorators
 
         /// <inheritdoc />
         public virtual int? MaxSteps { get => Inner.MaxSteps; set => Inner.MaxSteps = value; }
+
+        /// <inheritdoc />
+        public virtual double? Temperature { get => Inner.Temperature; set => Inner.Temperature = value; }
+
+        /// <inheritdoc />
+        public virtual double? TopP { get => Inner.TopP; set => Inner.TopP = value; }
+
+        /// <inheritdoc />
+        public virtual int? MaxTokens { get => Inner.MaxTokens; set => Inner.MaxTokens = value; }
 
         /// <inheritdoc />
         public virtual IReadOnlyList<PermissionRuleEntry> PermissionRules { get => Inner.PermissionRules; set => Inner.PermissionRules = value; }

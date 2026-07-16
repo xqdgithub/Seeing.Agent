@@ -91,7 +91,7 @@ namespace Seeing.Agent.Core.Generation
             // Register with agent registry if available
             if (_agentRegistry != null)
             {
-                var agentInfo = ToAgentInfo(definition);
+                var agentInfo = ToModelsAgentDefinition(definition);
                 await _agentRegistry.RegisterAgentAsync(agentInfo);
             }
 
@@ -259,9 +259,9 @@ Review criteria:
         }
 
         /// <summary>
-        /// Converts an AgentDefinition to AgentInfo for registry registration
+        /// Converts a Generation AgentDefinition to Models AgentDefinition for registry registration
         /// </summary>
-        private static AgentInfo ToAgentInfo(AgentDefinition definition)
+        private static Seeing.Agent.Core.Models.AgentDefinition ToModelsAgentDefinition(AgentDefinition definition)
         {
             // Convert ModelConfigOverride to ModelReference
             ModelReference? modelRef = null;
@@ -274,7 +274,7 @@ Review criteria:
                 };
             }
 
-            return new AgentInfo
+            return new Seeing.Agent.Core.Models.AgentDefinition
             {
                 Name = definition.Name,
                 Description = definition.Description ?? string.Empty,

@@ -387,7 +387,10 @@ public class ExecutionJobService : IDisposable
         var agent = agentRegistry.GetOrCreateAgentInstance(agentId)
             ?? throw new InvalidOperationException($"Agent '{agentId}' not found");
 
-        var agentDef = AgentDefinition.FromAgent(agent);
+        if (agent.Disabled)
+            throw new InvalidOperationException($"Agent '{agentId}' is disabled");
+
+        var agentDef = Core.Models.AgentDefinition.FromAgent(agent);
 
         return new ChatExecutionContext
         {
@@ -503,9 +506,8 @@ public class ExecutionJobService : IDisposable
         // 传递请求级模型选择到 Metadata（适用于 Native Agent 和 ACP Passthrough）
         // 优先级：用户选择 > Agent 配置 > 全局默认
         if (!string.IsNullOrEmpty(context.RequestModelId))
-            agentContext.Metadata[AgentContextKeys.RequestModelId] = context.RequestModelId;
 
-        if (!string.IsNullOrEmpty(context.AcpModeId))
+            if (!string.IsNullOrEmpty(context.AcpModeId))
             agentContext.Metadata[AgentContextKeys.AcpModeId] = context.AcpModeId;
 
         return agentContext;

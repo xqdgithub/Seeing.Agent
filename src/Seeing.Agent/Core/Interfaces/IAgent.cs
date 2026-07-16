@@ -34,8 +34,20 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>最大迭代步骤</summary>
         int? MaxSteps { get; set; }
 
+        /// <summary>温度参数</summary>
+        double? Temperature { get; set; }
+
+        /// <summary>TopP 参数</summary>
+        double? TopP { get; set; }
+
+        /// <summary>最大输出 Token 数</summary>
+        int? MaxTokens { get; set; }
+
         /// <summary>Agent 状态</summary>
         AgentStatus Status { get; set; }
+
+        /// <summary>是否禁用（完全不可用）</summary>
+        bool Disabled { get; set; }
 
         /// <summary>允许使用的工具列表（白名单）</summary>
         IReadOnlyList<string> AllowedTools { get; set; }

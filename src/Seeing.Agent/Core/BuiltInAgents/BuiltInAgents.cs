@@ -7,7 +7,6 @@ namespace Seeing.Agent.Core.BuiltInAgents
     /// <summary>
     /// 内置 Agent 定义 - 提供默认代理配置
     /// <para>
-    /// 参考 opencode 的 Agent.Service 设计，提供：
     /// - build: 默认主代理，执行工具，拥有完整权限
     /// - plan: 计划模式，禁用编辑工具
     /// - explore: 探索代理，快速代码库搜索
@@ -19,7 +18,7 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 获取所有内置 Agent 定义
         /// </summary>
-        public static IEnumerable<AgentInfo> GetBuiltInAgents()
+        public static IEnumerable<Models.AgentDefinition> GetBuiltInAgents()
         {
             yield return CreateBuildAgent();
             yield return CreatePlanAgent();
@@ -32,18 +31,20 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 build Agent - 默认主代理
         /// </summary>
-        private static AgentInfo CreateBuildAgent()
+        private static Models.AgentDefinition CreateBuildAgent()
         {
-            return new AgentInfo
+            return new Models.AgentDefinition
             {
                 Name = "build",
                 Description = "默认主代理。拥有完整权限，可执行所有工具（包括 MCP 工具、文件操作、Shell 命令）。" +
                     "适用于需要完整能力的任务，如代码编写、文件编辑、命令执行等。",
                 Mode = AgentMode.All,
+                MaxSteps=64,
+                Temperature = 0.7,
                 IsNative = true,
                 IsHidden = false,
                 SystemPrompt = """
-你是 Seeing.Agent，一个交互式 CLI 工具，帮助用户完成软件工程任务。
+你是 小See，一个只能助手，帮助用户完成任务。
 
 ## 语气和风格
 
@@ -159,9 +160,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 plan Agent - 计划模式
         /// </summary>
-        private static AgentInfo CreatePlanAgent()
+        private static Models.AgentDefinition CreatePlanAgent()
         {
-            return new AgentInfo
+            return new Models.AgentDefinition
             {
                 Name = "plan",
                 Description = "计划模式代理。专注于分析和规划，只允许读取操作和计划文件管理。" +
@@ -170,10 +171,12 @@ namespace Seeing.Agent.Core.BuiltInAgents
                     "禁用 Shell 命令、代码编辑和 MCP 工具。",
                 Mode = AgentMode.All,
                 IsNative = true,
+                MaxSteps = 64,
+                Temperature = 0.7,
                 IsHidden = false,
                 SystemPrompt = """
-<system-reminder>
-# 计划模式 - 系统提醒
+
+# 计划模式
 
 **关键**：计划模式已激活 - 你处于只读阶段。严格禁止：
 
@@ -277,9 +280,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 explore Agent - 代码库探索
         /// </summary>
-        private static AgentInfo CreateExploreAgent()
+        private static Models.AgentDefinition CreateExploreAgent()
         {
-            return new AgentInfo
+            return new Models.AgentDefinition
             {
                 Name = "explore",
                 Description = "代码库探索专家。专注于快速、准确地查找代码模式和结构。" +
@@ -348,9 +351,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 general Agent - 通用代理
         /// </summary>
-        private static AgentInfo CreateGeneralAgent()
+        private static Models.AgentDefinition CreateGeneralAgent()
         {
-            return new AgentInfo
+            return new Models.AgentDefinition
             {
                 Name = "general",
                 Description = "通用代理。用于研究复杂问题和执行多步骤任务。" +
@@ -427,9 +430,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 title Agent - 标题生成（隐藏）
         /// </summary>
-        private static AgentInfo CreateTitleAgent()
+        private static Models.AgentDefinition CreateTitleAgent()
         {
-            return new AgentInfo
+            return new Models.AgentDefinition
             {
                 Name = "title",
                 Description = "标题生成代理。为对话生成简洁、准确的标题。",
@@ -475,9 +478,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 summary Agent - 摘要生成（隐藏）
         /// </summary>
-        private static AgentInfo CreateSummaryAgent()
+        private static Models.AgentDefinition CreateSummaryAgent()
         {
-            return new AgentInfo
+            return new Models.AgentDefinition
             {
                 Name = "summary",
                 Description = "摘要生成代理。为对话生成简洁摘要，保留关键信息。",

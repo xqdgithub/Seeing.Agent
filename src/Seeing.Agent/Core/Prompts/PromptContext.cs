@@ -12,7 +12,7 @@ public class PromptContext
     public IEnumerable<FunctionSchema>? Tools { get; set; }
 
     /// <summary>可用代理列表</summary>
-    public IEnumerable<Seeing.Agent.Core.Interfaces.AgentInfo>? Agents { get; set; }
+    public IEnumerable<Seeing.Agent.Core.Models.AgentDefinition>? Agents { get; set; }
 
     /// <summary>可用技能列表</summary>
     public IEnumerable<SkillInfo>? Skills { get; set; }

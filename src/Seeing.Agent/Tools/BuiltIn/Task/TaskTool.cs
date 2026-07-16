@@ -288,7 +288,7 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask
         /// <summary>
         /// 创建子 Session
         /// </summary>
-        private async Task<Seeing.Session.Core.SessionData> CreateSubSession(string parentSessionId, string description, AgentInfo agentInfo)
+        private async Task<Seeing.Session.Core.SessionData> CreateSubSession(string parentSessionId, string description, Core.Models.AgentDefinition agentInfo)
         {
             var agent = _agentRegistry.GetOrCreateAgentInstance(agentInfo.Name);
             var session = await _sessionManager.CreateSessionAsync(agent?.Name, agent?.Name);

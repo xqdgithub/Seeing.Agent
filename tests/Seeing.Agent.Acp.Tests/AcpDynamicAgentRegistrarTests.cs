@@ -17,11 +17,11 @@ public class AcpDynamicAgentRegistrarTests
     public async Task RegisterAsync_ShouldCreateAgentPerBackend()
     {
         var registry = new Mock<IAgentRegistry>();
-        var registered = new List<AgentInfo>();
+        var registered = new List<AgentDefinition>();
         registry.Setup(r => r.HasAgent(It.IsAny<string>())).Returns(false);
-        registry.Setup(r => r.GetAgentsAsync()).ReturnsAsync(Array.Empty<AgentInfo>());
-        registry.Setup(r => r.RegisterAgentAsync(It.IsAny<AgentInfo>()))
-            .Callback<AgentInfo>(registered.Add)
+        registry.Setup(r => r.GetAgentsAsync()).ReturnsAsync(Array.Empty<AgentDefinition>());
+        registry.Setup(r => r.RegisterAgentAsync(It.IsAny<AgentDefinition>()))
+            .Callback<AgentDefinition>(registered.Add)
             .Returns(Task.CompletedTask);
 
         var backendRegistry = CreateBackendRegistry(new SeeingAgentOptions

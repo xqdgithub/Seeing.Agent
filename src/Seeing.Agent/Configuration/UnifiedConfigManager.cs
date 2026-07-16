@@ -73,8 +73,6 @@ public sealed class UnifiedConfigManager
                 typeof(Dictionary<string, ModelConfig>), displayName: "模型配置", displayOrder: 5),
             ["ModelScope"] = new("ModelScope", "seeing.json", ConfigScope.Both, 
                 typeof(ModelScopeSection), displayName: "ModelScope 配置", displayOrder: 6),
-            ["Agents"] = new("Agents", "seeing.json", ConfigScope.Both, 
-                typeof(Dictionary<string, AgentConfig>), displayName: "智能体配置", displayOrder: 7),
             ["Acp"] = new("Acp", "seeing.json", ConfigScope.Both, 
                 typeof(AcpOptions), displayName: "ACP 配置", displayOrder: 7),
             ["Plugins"] = new("Plugins", "seeing.json", ConfigScope.Both, 
@@ -584,7 +582,6 @@ public sealed class UnifiedConfigManager
             "Providers" => SeeingAgent.Providers as T,
             "Models" => SeeingAgent.Models as T,
             "ModelScope" => SeeingAgent.ModelScope as T,
-            "Agents" => SeeingAgent.Agents as T,
             "Gateway" => SeeingAgent.Gateway as T,
             "GatewayClients" => SeeingAgent.GatewayClients as T,
             "Acp" => SeeingAgent.Acp as T,
@@ -636,10 +633,6 @@ public sealed class UnifiedConfigManager
             case "ModelScope":
                 if (value is ModelScopeSection modelScope)
                     SeeingAgent.ModelScope = modelScope;
-                break;
-            case "Agents":
-                if (value is Dictionary<string, AgentConfig> agents)
-                    SeeingAgent.Agents = agents;
                 break;
             case "Gateway":
                 if (value is GatewayOptions gateway)

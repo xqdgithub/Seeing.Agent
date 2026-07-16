@@ -122,7 +122,7 @@ namespace Seeing.Agent.Tests.Tools
             // Arrange
             var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(TestToolClass));
-            var agent = new AgentInfo
+            var agent = new AgentDefinition
             {
                 Name = "test",
                 Mode = AgentMode.All,
@@ -143,7 +143,7 @@ namespace Seeing.Agent.Tests.Tools
             // Arrange
             var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(TestToolClass));
-            var agent = new AgentInfo
+            var agent = new AgentDefinition
             {
                 Name = "test",
                 Mode = AgentMode.All,

@@ -68,7 +68,6 @@ builder.Services.AddSingleton<SeeingConfigService>();
 builder.Services.AddSingleton<GatewayClientConfigService>();
 builder.Services.AddSingleton<GatewayClientSupervisor>();
 builder.Services.AddSingleton<WorkspaceSwitchService>();
-builder.Services.AddScoped<AgentMdConfigService>();
 
 // TokenBudget Notifier (必须在 AddTokenBudgetHooks 之前注册)
 builder.Services.AddSingleton<Seeing.Agent.TokenBudget.IBudgetStatusNotifier, BudgetStatusNotifier>();

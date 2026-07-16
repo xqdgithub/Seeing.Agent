@@ -16,12 +16,12 @@ namespace Seeing.Agent.Core.Interfaces
     {
         /// <summary>获取所有已注册的 Agent</summary>
         /// <returns>Agent 信息列表</returns>
-        Task<IReadOnlyList<AgentInfo>> GetAgentsAsync();
+        Task<IReadOnlyList<AgentDefinition>> GetAgentsAsync();
 
         /// <summary>获取指定名称的 Agent</summary>
         /// <param name="name">Agent 名称</param>
         /// <returns>Agent 信息，不存在则返回 null</returns>
-        Task<AgentInfo?> GetAgentAsync(string name);
+        Task<AgentDefinition?> GetAgentAsync(string name);
 
         /// <summary>
         /// 获取 Agent 并合并 MD 配置
@@ -30,14 +30,14 @@ namespace Seeing.Agent.Core.Interfaces
         /// <param name="provider">可选的 provider 覆盖</param>
         /// <param name="model">可选的 model 覆盖</param>
         /// <returns>合并配置后的 Agent 信息，不存在则返回 null</returns>
-        Task<AgentInfo?> GetAgentWithMergedConfigAsync(
+        Task<AgentDefinition?> GetAgentWithMergedConfigAsync(
             string name,
             string? provider = null,
             string? model = null);
 
         /// <summary>获取所有子 Agent（mode != Primary）</summary>
         /// <returns>子 Agent 信息列表</returns>
-        Task<IReadOnlyList<AgentInfo>> GetSubAgentsAsync();
+        Task<IReadOnlyList<AgentDefinition>> GetSubAgentsAsync();
 
         /// <summary>获取所有主 Agent（mode == Primary 或 mode == All 且 hidden != true）</summary>
         /// <returns>主 Agent 信息列表</returns>
@@ -45,7 +45,7 @@ namespace Seeing.Agent.Core.Interfaces
         /// AgentMode.All 模式的代理可同时作为主代理和子代理，
         /// 因此也会包含在此列表中。这允许通用代理出现在 UI 选择列表中。
         /// </remarks>
-        Task<IReadOnlyList<AgentInfo>> GetPrimaryAgentsAsync();
+        Task<IReadOnlyList<AgentDefinition>> GetPrimaryAgentsAsync();
 
         /// <summary>获取默认 Agent 名称</summary>
         /// <returns>默认 Agent 名称</returns>
@@ -69,7 +69,7 @@ namespace Seeing.Agent.Core.Interfaces
 
         /// <summary>注册新的 Agent</summary>
         /// <param name="agentInfo">Agent 信息</param>
-        Task RegisterAgentAsync(AgentInfo agentInfo);
+        Task RegisterAgentAsync(AgentDefinition agentInfo);
 
         /// <summary>注销 Agent</summary>
         /// <param name="name">Agent 名称</param>
@@ -84,85 +84,11 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>根据权限筛选可访问的子 Agent</summary>
         /// <param name="callerPermissions">调用者的权限规则</param>
         /// <returns>可访问的子 Agent 列表</returns>
-        Task<IReadOnlyList<AgentInfo>> GetAccessibleSubAgentsAsync(IReadOnlyList<PermissionRuleEntry> callerPermissions);
+        Task<IReadOnlyList<AgentDefinition>> GetAccessibleSubAgentsAsync(IReadOnlyList<PermissionRuleEntry> callerPermissions);
 
         /// <summary>获取或创建 Agent 实例（用于执行）</summary>
         /// <param name="name">Agent 名称</param>
         /// <returns>Agent 实例，不存在则返回 null</returns>
         IAgent? GetOrCreateAgentInstance(string name);
-    }
-
-    /// <summary>
-    /// Agent 信息 - 代理的完整元数据定义
-    /// </summary>
-    public class AgentInfo
-    {
-        /// <summary>Agent 名称（唯一标识）</summary>
-        public string Name { get; set; } = string.Empty;
-
-        /// <summary>Agent 描述</summary>
-        public string? Description { get; set; }
-
-        /// <summary>Agent 模式：Primary（主代理）、SubAgent（子代理）、All（通用）</summary>
-        public AgentMode Mode { get; set; } = AgentMode.All;
-
-        /// <summary>是否为内置 Agent</summary>
-        public bool IsNative { get; set; }
-
-        /// <summary>是否隐藏（不在 UI 中显示）</summary>
-        public bool IsHidden { get; set; }
-
-        /// <summary>温度参数（LLM 调用）</summary>
-        public double? Temperature { get; set; }
-
-        /// <summary>TopP 参数（LLM 调用）</summary>
-        public double? TopP { get; set; }
-
-        /// <summary>颜色标识（UI 显示）</summary>
-        public string? Color { get; set; }
-
-        /// <summary>权限规则集（新格式）</summary>
-        public List<PermissionRuleEntry> PermissionRules { get; set; } = new();
-
-        /// <summary>允许的工具列表（Tool Ids）</summary>
-        public List<string> AllowedTools { get; set; } = new();
-
-        /// <summary>禁止的工具列表（Tool Ids）</summary>
-        public List<string> DeniedTools { get; set; } = new();
-
-        /// <summary>权限默认效果（当没有匹配规则时）</summary>
-        public PermissionEffect PermissionDefaultEffect { get; set; } = PermissionEffect.Ask;
-
-        /// <summary>模型配置（可选，默认使用系统配置）</summary>
-        public ModelReference? Model { get; set; }
-
-        /// <summary>变体标识</summary>
-        public string? Variant { get; set; }
-
-        /// <summary>系统提示词（可选，覆盖默认）</summary>
-        public string? SystemPrompt { get; set; }
-
-        /// <summary>扩展选项</summary>
-        public Dictionary<string, object> Options { get; set; } = new();
-
-        /// <summary>最大迭代步骤</summary>
-        public int? MaxSteps { get; set; }
-
-        /// <summary>Agent 类型标识（用于分类）</summary>
-        public string? Category { get; set; }
-
-        /// <summary>Agent 标签</summary>
-        public List<string> Tags { get; set; } = new();
-
-        /// <summary>执行运行时类型</summary>
-        public AgentRuntime Runtime { get; set; } = AgentRuntime.Native;
-
-        /// <summary>ACP 后端标识</summary>
-        public string? AcpBackend { get; set; }
-
-        /// <summary>
-        /// 创建 IAgent 实例（延迟创建，用于执行）
-        /// </summary>
-        public Func<IAgent>? AgentFactory { get; set; }
     }
 }

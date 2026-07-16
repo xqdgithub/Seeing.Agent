@@ -104,9 +104,9 @@ namespace Seeing.Agent.Core
         /// <summary>
         /// 发现所有 Agent
         /// </summary>
-        public async Task<List<AgentInfo>> DiscoverAgentsAsync(CancellationToken cancellationToken = default)
+        public async Task<List<Models.AgentDefinition>> DiscoverAgentsAsync(CancellationToken cancellationToken = default)
         {
-            var agents = new List<AgentInfo>();
+            var agents = new List<Models.AgentDefinition>();
 
             foreach (var directory in _searchDirectories)
             {
@@ -145,7 +145,7 @@ namespace Seeing.Agent.Core
         /// <summary>
         /// 解析 Agent 文件
         /// </summary>
-        private async Task<AgentInfo?> ParseAgentFileAsync(string filePath, CancellationToken cancellationToken)
+        private async Task<Models.AgentDefinition?> ParseAgentFileAsync(string filePath, CancellationToken cancellationToken)
         {
             var content = await File.ReadAllTextAsync(filePath, cancellationToken);
 
@@ -187,7 +187,7 @@ namespace Seeing.Agent.Core
             }
 
             // 构建 AgentInfo
-            var agentInfo = new AgentInfo
+            var agentInfo = new Models.AgentDefinition
             {
                 Name = data.Name,
                 Description = data.Description,
@@ -196,10 +196,8 @@ namespace Seeing.Agent.Core
                 IsHidden = data.Hidden,
                 Temperature = data.Temperature,
                 TopP = data.TopP,
-                Color = data.Color,
                 SystemPrompt = string.IsNullOrEmpty(promptContent) ? data.Prompt : promptContent,
                 MaxSteps = data.Steps ?? data.MaxSteps,
-                Variant = data.Variant,
                 Tags = data.Tags?.Split(',', ';').Select(t => t.Trim()).Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>(),
                 Category = data.Category,
                 PermissionRules = ParsePermissionRules(data.Permission, data.Tools),
@@ -384,9 +382,7 @@ namespace Seeing.Agent.Core
         public bool Hidden { get; set; }
         public double? Temperature { get; set; }
         public double? TopP { get; set; }
-        public string? Color { get; set; }
         public string? Model { get; set; }
-        public string? Variant { get; set; }
         public string? Prompt { get; set; }
         public int? Steps { get; set; }
         public int? MaxSteps { get; set; }

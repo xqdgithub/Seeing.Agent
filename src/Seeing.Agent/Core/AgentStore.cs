@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core
@@ -14,7 +15,7 @@ namespace Seeing.Agent.Core
     public class AgentStore : IAgentStore
     {
         private readonly ILogger<AgentStore> _logger;
-        private readonly ConcurrentDictionary<string, AgentInfo> _agents = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, AgentDefinition> _agents = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// 创建 Agent 存储实例
@@ -25,7 +26,7 @@ namespace Seeing.Agent.Core
         }
 
         /// <inheritdoc/>
-        public async Task RegisterAsync(AgentInfo agentInfo)
+        public async Task RegisterAsync(AgentDefinition agentInfo)
         {
             if (agentInfo == null || string.IsNullOrEmpty(agentInfo.Name))
             {
@@ -57,7 +58,7 @@ namespace Seeing.Agent.Core
         }
 
         /// <inheritdoc/>
-        public async Task<AgentInfo?> GetAsync(string name)
+        public async Task<AgentDefinition?> GetAsync(string name)
         {
             if (string.IsNullOrEmpty(name))
                 return null;
@@ -66,7 +67,7 @@ namespace Seeing.Agent.Core
         }
 
         /// <inheritdoc/>
-        public async Task<IReadOnlyList<AgentInfo>> GetAllAsync()
+        public async Task<IReadOnlyList<AgentDefinition>> GetAllAsync()
         {
             var agents = _agents.Values
                 .OrderBy(a => a.Name)

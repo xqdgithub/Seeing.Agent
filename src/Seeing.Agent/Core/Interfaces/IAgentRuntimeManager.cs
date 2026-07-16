@@ -53,7 +53,7 @@ namespace Seeing.Agent.Core.Interfaces
 
         /// <summary>应用运行时模型配置到 Agent</summary>
         /// <param name="agent">Agent 信息实例</param>
-        void ApplyRuntimeModel(AgentInfo agent);
+        void ApplyRuntimeModel(AgentDefinition agent);
 
         /// <summary>
         /// 设置会话级模型（仅当前会话有效，不持久化）

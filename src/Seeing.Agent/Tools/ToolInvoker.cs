@@ -101,9 +101,9 @@ namespace Seeing.Agent.Tools
         }
 
         /// <summary>
-        /// 按 Agent 的 <see cref="AgentInfo.Mode"/> 与 Allowed/Denied 工具列表筛选 Schema（异步）
+        /// 按 Agent 的 <see cref="AgentDefinition.Mode"/> 与 Allowed/Denied 工具列表筛选 Schema（异步）
         /// </summary>
-        public async Task<List<FunctionToolSchema>> GetToolSchemasForAgentAsync(AgentInfo agent)
+        public async Task<List<FunctionToolSchema>> GetToolSchemasForAgentAsync(AgentDefinition agent)
         {
             if (agent == null)
                 throw new ArgumentNullException(nameof(agent));
@@ -115,7 +115,7 @@ namespace Seeing.Agent.Tools
         /// <summary>
         /// 按 Agent 的 Mode 与 Allowed/Denied 工具列表筛选 Schema（同步）
         /// </summary>
-        public List<FunctionToolSchema> GetToolSchemasForAgent(AgentInfo agent)
+        public List<FunctionToolSchema> GetToolSchemasForAgent(AgentDefinition agent)
         {
             return GetToolSchemasForAgentAsync(agent).GetAwaiter().GetResult();
         }

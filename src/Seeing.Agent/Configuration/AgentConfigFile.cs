@@ -25,14 +25,16 @@ namespace Seeing.Agent.Configuration
         /// <summary>最大执行步骤</summary>
         public int? MaxSteps { get; set; }
         
-        /// <summary>运行时类型：Native / AcpPassthrough</summary>
-        public string? Runtime { get; set; }
+
         
         /// <summary>ACP 后端标识</summary>
         public string? AcpBackend { get; set; }
         
-        /// <summary>是否隐藏</summary>
+        /// <summary>是否隐藏（不在用户选择列表显示，但仍可作为 SubAgent 使用）</summary>
         public bool? IsHidden { get; set; }
+
+        /// <summary>是否禁用（完全不可用）</summary>
+        public bool? Disabled { get; set; }
         
         // === 权限配置 ===
         
@@ -64,13 +66,19 @@ namespace Seeing.Agent.Configuration
         /// <summary>TopP 参数</summary>
         public double? TopP { get; set; }
         
-        /// <summary>最大输出 Token 数</summary>
+        /// <summary>
+        /// 最大输出 Token 数（可选覆盖）
+        /// <para>
+        /// <b>注意：</b>这是可选的覆盖值，用于在特定场景下手动限制输出长度。
+        /// </para>
+        /// <para>
+        /// <b>默认行为：</b>如果未设置（null），系统会自动使用模型的 output limit。
+        /// </para>
+        /// <para>
+        /// <b>使用场景：</b>仅在需要强制使用比模型限制更小的输出时设置此值。
+        /// </para>
+        /// </summary>
         public int? MaxTokens { get; set; }
-        
-        // === 变体定义 ===
-        
-        /// <summary>Provider/Model 变体映射</summary>
-        public Dictionary<string, AgentVariant>? Variants { get; set; }
         
         // === SystemPrompt（从 Markdown Body 解析）===
         

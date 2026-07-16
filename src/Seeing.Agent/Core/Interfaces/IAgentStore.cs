@@ -1,3 +1,7 @@
+using Seeing.Agent.Core.Models;
+
+using Seeing.Agent.Core.Models;
+
 namespace Seeing.Agent.Core.Interfaces
 {
     /// <summary>
@@ -11,7 +15,7 @@ namespace Seeing.Agent.Core.Interfaces
     {
         /// <summary>注册 Agent</summary>
         /// <param name="agentInfo">Agent 信息</param>
-        Task RegisterAsync(AgentInfo agentInfo);
+        Task RegisterAsync(AgentDefinition agentInfo);
 
         /// <summary>注销 Agent</summary>
         /// <param name="name">Agent 名称</param>
@@ -21,11 +25,11 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>获取指定 Agent</summary>
         /// <param name="name">Agent 名称</param>
         /// <returns>Agent 信息，不存在则返回 null</returns>
-        Task<AgentInfo?> GetAsync(string name);
+        Task<AgentDefinition?> GetAsync(string name);
 
         /// <summary>获取所有 Agent</summary>
         /// <returns>Agent 信息列表</returns>
-        Task<IReadOnlyList<AgentInfo>> GetAllAsync();
+        Task<IReadOnlyList<AgentDefinition>> GetAllAsync();
 
         /// <summary>检查 Agent 是否存在</summary>
         /// <param name="name">Agent 名称</param>
