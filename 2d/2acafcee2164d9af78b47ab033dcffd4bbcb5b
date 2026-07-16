@@ -1,0 +1,59 @@
+samples/Seeing.Agent.WebUI/Components/PromptInput.razor
+  s_96f640c8828f37::t_49abd4deb98a45 114
+  s_4061d42ad51eb1::t_403c30b6da4707 424,426
+samples/Seeing.Agent.WebUI/Pages/SessionsPage.razor
+  s_4061d42ad51eb1::t_bdfbab3065239d 218
+samples/Seeing.Agent.WebUI/Components/MessageList.razor
+  s_4061d42ad51eb1::t_b19c571875fbd8 218-252
+samples/Seeing.Agent.WebUI/Pages/Session.razor
+  s_4061d42ad51eb1::t_4e2f80e1a3ec19 1327-1339,1341-1356
+  s_4061d42ad51eb1::t_d0a7a4d57b928f 1224-1225
+  s_4061d42ad51eb1::t_ce222d36ca4002 1226
+  s_96f640c8828f37::t_7a38cb5462eea3 1211
+  s_96f640c8828f37::t_2cb8f3585688a4 1323-1324,1326
+  s_96f640c8828f37::t_43d24808932c84 1279-1281,1283-1286
+  s_4061d42ad51eb1::t_28a18fcd9d9d46 1312-1313,1317-1320,1322
+src/Seeing.Agent/Core/AgentExecutor.cs
+  s_9834defafd0e0a::t_d8f643a002142d 665-666
+samples/Seeing.Agent.WebUI/Rendering/MessageRenderPipeline.cs
+  s_9834defafd0e0a::t_5e438b1dce66ca 213-215,218-219,231-232,236-239
+  s_4061d42ad51eb1::t_659d4be1f27cce 123
+samples/Seeing.Agent.WebUI/Rendering/RenderingServiceExtensions.cs
+  s_9834defafd0e0a::t_0d1897fb3c6093 115-116
+samples/Seeing.Agent.WebUI/Services/EventStreamHandler.cs
+  s_4061d42ad51eb1::t_c2d6aed5d48279 346-360
+src/Seeing.Agent.App/Execution/ExecutionEventPublisher.cs
+  s_4061d42ad51eb1::t_36ef250e99e7bd 5,19,26,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.34-trip",
+  "base_commit_sha": "2d2acafcee2164d9af78b47ab033dcffd4bbcb5b",
+  "prompts": {},
+  "sessions": {
+    "s_4061d42ad51eb1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0959d6cc2ffeC6crhzsOjeFq7b",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_96f640c8828f37": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_095dfe8f6ffeLuzYbFRW67zcn7",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_9834defafd0e0a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_095c58b57ffe1HhR7Jy50h2tfh",
+        "model": "GLM-5"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
