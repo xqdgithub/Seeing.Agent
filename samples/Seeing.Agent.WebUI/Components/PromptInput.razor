@@ -111,7 +111,7 @@
                                 Disabled="@IsProcessing" />
                     </Tooltip>
                 </SpaceItem>
-                @if (IsProcessing && CancellationTokenSource != null)
+                @if (IsProcessing)
                 {
                     <SpaceItem>
                         <Tooltip Title="取消执行">
@@ -381,36 +381,14 @@
     /// </summary>
     private async Task HandleCommandSearch((string searchValue, string prefix) args)
     {
-        Console.WriteLine($"[HandleCommandSearch] Called with searchValue: {args.searchValue}, prefix: {args.prefix}");
         // 标记下拉框打开
         _isDropdownOpen = true;
 
-        // 暂时跳过验证测试
-        // try
-        // {
-        //     var isValid = await JSRuntime.InvokeAsync<bool>("isSlashTriggerValid", TextareaId);
-        //     Console.WriteLine($"[HandleCommandSearch] isSlashTriggerValid: {isValid}");
-        //     if (!isValid)
-        //     {
-        //         FilteredCommands = new List<CommandItemViewModel>();
-        //         StateHasChanged();
-        //         return;
-        //     }
-        // }
-        // catch (Exception ex)
-        // {
-        //     Console.WriteLine($"[HandleCommandSearch] JSInterop error: {ex.Message}");
-        // }
-
-        Console.WriteLine($"[HandleCommandSearch] AvailableTools: {AvailableTools.Count}, AvailableSkills: {AvailableSkills.Count}, AvailableCommands: {AvailableCommands.Count}");
-        
         // 确保命令已加载
         if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCommands.Count > 0))
         {
             LoadCommands();
         }
-        
-        Console.WriteLine($"[HandleCommandSearch] _allCommands count: {_allCommands.Count}");
 
         // 过滤命令
         var searchLower = args.searchValue?.ToLowerInvariant() ?? "";
@@ -428,7 +406,6 @@
                 .ToList();
         }
 
-        Console.WriteLine($"[HandleCommandSearch] FilteredCommands count: {FilteredCommands.Count}");
         StateHasChanged();
     }
 
@@ -437,36 +414,27 @@
     /// </summary>
     private async Task<IEnumerable<MentionsDynamicOption>> LoadCommandOptions(string search, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"[LoadCommandOptions] Called with search: {search}");
         _isDropdownOpen = true;
 
         try
         {
             var isValid = await JSRuntime.InvokeAsync<bool>("isSlashTriggerValid", TextareaId);
-            Console.WriteLine($"[LoadCommandOptions] isSlashTriggerValid: {isValid}");
             if (!isValid) return Enumerable.Empty<MentionsDynamicOption>();
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"[LoadCommandOptions] JSInterop error: {ex.Message}");
+            // JSInterop error, return empty
         }
 
-        Console.WriteLine($"[LoadCommandOptions] AvailableTools: {AvailableTools.Count}, AvailableSkills: {AvailableSkills.Count}, AvailableCommands: {AvailableCommands.Count}");
-        Console.WriteLine($"[LoadCommandOptions] _allCommands before load: {_allCommands.Count}");
-        
         if (_allCommands.Count == 0 && (AvailableTools.Count > 0 || AvailableSkills.Count > 0 || AvailableCommands.Count > 0))
         {
             LoadCommands();
         }
-        
-        Console.WriteLine($"[LoadCommandOptions] _allCommands after load: {_allCommands.Count}");
 
         var searchLower = search?.ToLowerInvariant() ?? "";
         var filtered = string.IsNullOrEmpty(searchLower)
             ? _allCommands.ToList()
             : _allCommands.Where(c => c.Name.ToLowerInvariant().Contains(searchLower) || c.Description.ToLowerInvariant().Contains(searchLower)).ToList();
-
-        Console.WriteLine($"[LoadCommandOptions] Filtered count: {filtered.Count}");
 
         return filtered.Select(cmd => new MentionsDynamicOption
         {

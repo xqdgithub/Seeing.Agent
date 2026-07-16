@@ -1208,7 +1208,7 @@
 
         try
         {
-            await foreach (var evt in ChatOrchestrator.SubscribeEvents(SessionState.SessionId, SessionState.CancellationToken))
+            await foreach (var evt in ChatOrchestrator.SubscribeEvents(SessionState.SessionId, CancellationToken.None))
             {
                 // 检查是否是当前执行的事件
                 if (evt is ExecutionCompleteEvent completeEvt && completeEvt.ExecutionId == executionId)
@@ -1221,8 +1221,9 @@
                     break;
                 }
 
-                // 处理事件
-                HandleMessageEvent(evt);
+                // 处理事件 - 由 EventStreamHandler 统一处理
+                // HandleMessageEvent 不再创建/更新消息，只刷新 UI
+                EventStreamHandler.ProcessEvent(evt);
 
                 // UI 更新动态节流
                 if (evt is StreamDeltaEvent deltaEvt)
@@ -1275,9 +1276,14 @@
         }
         catch (OperationCanceledException)
         {
-            if (SessionState.CurrentSession != null)
+            // 只有在执行状态为 Cancelled 时才显示取消消息
+            // 避免 CancellationToken.None 导致的误判
+            if (SessionState.ExecutionStatus == ExecutionStatus.Cancelled)
             {
-                SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("执行已取消"));
+                if (SessionState.CurrentSession != null)
+                {
+                    SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("执行已取消"));
+                }
             }
             RefreshMessageViewModels();
         }
@@ -1303,82 +1309,51 @@
 
 
     /// <summary>
-    /// 处理 IMessageEvent
+    /// 处理 IMessageEvent - 仅处理 UI 相关逻辑
+    /// 消息数据由 EventStreamHandler 统一管理
     /// </summary>
     private void HandleMessageEvent(IMessageEvent evt)
     {
-        if (SessionState.CurrentSession == null) return;
-
-        switch (evt)
+        // 消息数据由 EventStreamHandler 处理
+        // 这里只处理 UI 相关的逻辑（如导航、刷新等）
+        
+        if (evt is NavigateEvent navEvt && !string.IsNullOrEmpty(navEvt.Target))
         {
-            case StreamStartEvent startEvt:
-                // 创建新的 Assistant 消息
-                var newMessage = new SessionMessage
-                {
-                    Id = Guid.NewGuid().ToString("N").Substring(0, 8),
-                    Role = "assistant",
-                    LoopId = startEvt.LoopId,
-                    Step = startEvt.Step,
-                    Content = "",
-                    CreatedAt = DateTime.UtcNow
-                };
-                SessionState.CurrentSession.AddMessage(newMessage);
-                _currentStreamingMessageId = newMessage.Id;
-                break;
-
-            case StreamDeltaEvent deltaEvt:
-                // 追加内容到当前消息
-                if (_currentStreamingMessageId != null)
-                {
-                    var msg = SessionState.CurrentSession.Messages.FirstOrDefault(m => m.Id == _currentStreamingMessageId);
-                    if (msg != null)
-                    {
-                        if (!string.IsNullOrEmpty(deltaEvt.ContentDelta))
-                            msg.Content += deltaEvt.ContentDelta;
-                        if (!string.IsNullOrEmpty(deltaEvt.ReasoningDelta))
-                            msg.ReasoningContent = (msg.ReasoningContent ?? "") + deltaEvt.ReasoningDelta;
-                    }
-                }
-                break;
-
-            case StreamCompleteEvent:
-                // 完成当前消息
-                _currentStreamingMessageId = null;
-                break;
-
-            case ToolCallEvent toolEvt:
-                // 工具调用事件
-                if (_currentStreamingMessageId != null)
-                {
-                    var msg = SessionState.CurrentSession.Messages.FirstOrDefault(m => m.Id == _currentStreamingMessageId);
-                    if (msg != null)
-                    {
-                        msg.ToolCalls ??= new List<SessionToolCall>();
-                        var existingCall = msg.ToolCalls.FirstOrDefault(tc => tc.Id == toolEvt.ToolCallId);
-                        if (existingCall == null && !string.IsNullOrEmpty(toolEvt.ToolCallId))
-                        {
-                            msg.ToolCalls.Add(new SessionToolCall
-                            {
-                                Id = toolEvt.ToolCallId,
-                                Type = "function",
-                                Name = toolEvt.ToolName ?? "",
-                                Status = toolEvt.Status.ToString()
-                            });
-                        }
-                    }
-                }
-                break;
-
-            case LoopCompleteEvent:
-                // Loop 完成，确保消息状态正确
-                _currentStreamingMessageId = null;
-                break;
-
-            case ErrorEvent errorEvt:
-                SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage(string.Format("错误: {0}", errorEvt.Message)));
-                _currentStreamingMessageId = null;
-                break;
+            NavigationManager.NavigateTo(navEvt.Target);
         }
+    }
+
+    /// <summary>
+    /// 查找工具调用的目标消息
+    /// </summary>
+    private SessionMessage? FindTargetMessageForToolCall(ToolCallEvent toolEvt)
+    {
+        if (SessionState.CurrentSession?.Messages == null)
+            return null;
+        
+        // 1. 优先使用 _currentStreamingMessageId
+        if (!string.IsNullOrEmpty(_currentStreamingMessageId))
+        {
+            var msg = SessionState.CurrentSession.Messages.FirstOrDefault(m => m.Id == _currentStreamingMessageId);
+            if (msg != null)
+                return msg;
+        }
+        
+        // 2. 使用 LoopId 查找
+        if (!string.IsNullOrEmpty(toolEvt.LoopId))
+        {
+            var msg = SessionState.CurrentSession.Messages
+                .Where(m => m.LoopId == toolEvt.LoopId && m.Role == "assistant")
+                .OrderByDescending(m => m.Step)
+                .FirstOrDefault();
+            if (msg != null)
+                return msg;
+        }
+        
+        // 3. 使用最后一条助手消息
+        return SessionState.CurrentSession.Messages
+            .Where(m => m.Role == "assistant")
+            .LastOrDefault();
     }
 
     /// <summary>

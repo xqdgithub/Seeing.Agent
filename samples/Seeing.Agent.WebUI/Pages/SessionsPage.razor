@@ -215,9 +215,8 @@
             var yesterday = DateTime.Now.AddHours(-24);
             _activeCount = sessions.Count(s => s.UpdatedAt >= yesterday);
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine(string.Format("Error refreshing sessions: {0}", ex.Message));
             _filteredSessions = new List<SessionData>();
         }
     }

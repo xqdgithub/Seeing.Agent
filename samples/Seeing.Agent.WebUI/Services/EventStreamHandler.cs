@@ -343,7 +343,21 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         private void HandleToolCall(ToolCallEvent evt)
         {
-            if (_currentAssistantMessage == null) return;
+            if (_currentAssistantMessage == null)
+            {
+                // 如果没有当前消息，尝试从 SessionState 获取最后一条助手消息
+                if (_sessionState.CurrentSession?.Messages != null)
+                {
+                    _currentAssistantMessage = _sessionState.CurrentSession.Messages
+                        .Where(m => m.Role == "assistant")
+                        .LastOrDefault();
+                }
+                
+                if (_currentAssistantMessage == null)
+                {
+                    return;
+                }
+            }
 
             // 设置 LoopId
             if (!string.IsNullOrEmpty(evt.LoopId))

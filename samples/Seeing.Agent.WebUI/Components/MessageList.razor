@@ -215,6 +215,41 @@
         {
             UpdateCacheIncremental();
         }
+        else if (Messages.Count > 0)
+        {
+            // 消息数量没变但内容可能变化（如 ToolCalls 更新）
+            // 需要刷新 _loopMessages 中的消息引用
+            RefreshLoopMessagesReferences();
+        }
+    }
+
+    /// <summary>
+    /// 刷新 Loop 消息引用（当消息数量不变但内容变化时）
+    /// </summary>
+    private void RefreshLoopMessagesReferences()
+    {
+        // 构建 ID -> Message 的映射
+        var messageById = Messages.ToDictionary(m => m.Id, m => m);
+        
+        // 遍历所有 Loop，更新消息引用
+        foreach (var kvp in _loopMessages.ToList())
+        {
+            var loopId = kvp.Key;
+            var oldMessages = kvp.Value;
+            
+            // 更新每条消息的引用
+            for (var i = 0; i < oldMessages.Count; i++)
+            {
+                var oldMsg = oldMessages[i];
+                if (messageById.TryGetValue(oldMsg.Id, out var newMsg))
+                {
+                    oldMessages[i] = newMsg;
+                }
+            }
+            
+            // 使缓存失效，强制重新构建 LoopGroupViewModel
+            _loopCache.Remove(loopId);
+        }
     }
 
     /// <summary>

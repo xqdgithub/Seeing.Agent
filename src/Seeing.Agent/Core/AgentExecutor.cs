@@ -662,8 +662,8 @@ public class AgentExecutor
             };
         }
 
-        // 创建子会话
-        var subSessionId = $"{parentContext.SessionId}:{targetAgentName}:{Guid.NewGuid():N}";
+        // 创建子会话（使用 @ 作为分隔符，避免 Windows 文件系统非法字符）
+        var subSessionId = $"{parentContext.SessionId}@{targetAgentName}@{Guid.NewGuid():N}";
 
         // ========== Hook: SubAgentStarted（子代理开始前）==========
         _hooks.TriggerFireAndForget(

@@ -112,7 +112,8 @@ public static class RenderingServiceExtensions
                 {
                     ["ToolCall"] = block.ToolCall!,
                     ["Block"] = block,
-                    ["Context"] = context
+                    ["Context"] = context,
+                    ["OnToolClick"] = context.OnToolClick
                 }));
 
         // 优先级 100: 文本消息组件

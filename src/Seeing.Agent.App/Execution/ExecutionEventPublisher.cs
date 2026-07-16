@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Seeing.Agent.Core.Events;
+using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.App.Execution;
 
@@ -15,15 +16,17 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
     private readonly ConcurrentDictionary<string, CircularBuffer<IMessageEvent>> _buffers = new();
     private readonly ConcurrentDictionary<string, List<ChannelWriter<IMessageEvent>>> _subscribers = new();
     private readonly ExecutionOptions _options;
+    private readonly ILogger<ExecutionEventPublisher> _logger;
     private readonly object _lock = new();
     private bool _disposed;
 
     /// <summary>
     /// Creates a new ExecutionEventPublisher with the specified options.
     /// </summary>
-    public ExecutionEventPublisher(ExecutionOptions options)
+    public ExecutionEventPublisher(ExecutionOptions options, ILogger<ExecutionEventPublisher> logger)
     {
         _options = options ?? new ExecutionOptions();
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc/>
