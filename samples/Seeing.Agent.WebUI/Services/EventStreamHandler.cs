@@ -314,6 +314,12 @@ namespace Seeing.Agent.WebUI.Services
 
         private void HandleStreamComplete(StreamCompleteEvent evt)
         {
+            // 忽略 Tool 角色的消息（工具结果通过 ToolCallEvent 处理）
+            if (evt.Message?.Role == "tool")
+            {
+                return;
+            }
+
             if (_currentAssistantMessage != null && evt.Message != null)
             {
                 // 设置 LoopId

@@ -49,8 +49,8 @@ else
     @if (ToolCall.IsExpanded)
     {
         <div style="padding: 8px 12px; background: var(--color-bg-tertiary); border-radius: var(--radius-sm); margin-top: 2px;">
-            @* 参数 *@
-            @if (!string.IsNullOrEmpty(ToolCall.Parameters) && ToolCall.Parameters != "{}")
+            @* 参数 - todowrite 工具不显示（参数是JSON数组，已有TodoCard显示） *@
+            @if (!string.IsNullOrEmpty(ToolCall.Parameters) && ToolCall.Parameters != "{}" && !ToolCall.IsTodoTool)
             {
                 <div style="margin-bottom: 4px;">
                     <span style="font-size: 11px; color: var(--color-text-secondary);">参数: </span>
@@ -58,8 +58,8 @@ else
                 </div>
             }
 
-            @* 结果 *@
-            @if (!string.IsNullOrEmpty(ToolCall.Result))
+            @* 结果 - todowrite 工具不显示原始JSON（已有TodoCard显示） *@
+            @if (!string.IsNullOrEmpty(ToolCall.Result) && !ToolCall.IsTodoTool)
             {
                 <div>
                     <span style="font-size: 11px; color: var(--color-success);">结果: </span>

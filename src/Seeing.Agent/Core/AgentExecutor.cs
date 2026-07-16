@@ -503,19 +503,6 @@ public class AgentExecutor
 
             // 发布 Complete 事件
             yield return result;
-
-            // 发布结果消息
-            yield return new StreamCompleteEvent
-            {
-                SessionId = context.SessionId,
-                LoopId = loopId,
-                Message = new ChatMessage
-                {
-                    Role = ChatRole.Tool,
-                    ToolCallId = tc.Id,
-                    Content = result.Output ?? result.Error ?? ""
-                }
-            };
         }
     }
 

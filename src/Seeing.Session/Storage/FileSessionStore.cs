@@ -149,14 +149,97 @@ namespace Seeing.Session.Storage
                 var tempPath = filePath + ".tmp";
                 await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8);
 
-                // 原子替换
-                File.Move(tempPath, filePath, overwrite: true);
+                // 原子替换（带重试机制处理 Windows Defender/OS 缓存导致的瞬时访问失败）
+                await AtomicMoveWithRetryAsync(tempPath, filePath, data.Id);
 
                 _logger?.LogDebug("保存会话成功: {SessionId}", data.Id);
             }
             finally
             {
                 fileLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// 原子文件替换（带重试机制）
+        /// </summary>
+        /// <remarks>
+        /// Windows 上 File.Move 可能因以下原因失败：
+        /// 1. Windows Defender 扫描新写入的文件
+        /// 2. 操作系统文件系统缓存未完全刷新
+        /// 3. 其他进程短暂持有文件句柄
+        /// 重试机制可处理这些瞬时故障。
+        /// </remarks>
+        private async Task AtomicMoveWithRetryAsync(string sourcePath, string destPath, string sessionId)
+        {
+            const int maxRetries = 5;
+            const int initialDelayMs = 50;
+            var delay = initialDelayMs;
+
+            for (var attempt = 0; attempt < maxRetries; attempt++)
+            {
+                try
+                {
+                    // 确保源文件存在
+                    if (!File.Exists(sourcePath))
+                    {
+                        throw new FileNotFoundException($"临时文件不存在: {sourcePath}");
+                    }
+
+                    // 尝试原子替换
+                    File.Move(sourcePath, destPath, overwrite: true);
+                    return; // 成功则返回
+                }
+                catch (UnauthorizedAccessException ex) when (attempt < maxRetries - 1)
+                {
+                    _logger?.LogWarning(
+                        "文件移动失败 (尝试 {Attempt}/{MaxRetries}): {SessionId}, 错误: {Error}",
+                        attempt + 1, maxRetries, sessionId, ex.Message);
+
+                    // 等待后重试（指数退避）
+                    await Task.Delay(delay);
+                    delay *= 2;
+                }
+                catch (IOException ex) when (attempt < maxRetries - 1)
+                {
+                    // 处理 IO 异常（如文件被锁定）
+                    _logger?.LogWarning(
+                        "文件移动失败 (尝试 {Attempt}/{MaxRetries}): {SessionId}, 错误: {Error}",
+                        attempt + 1, maxRetries, sessionId, ex.Message);
+
+                    await Task.Delay(delay);
+                    delay *= 2;
+                }
+            }
+
+            // 所有重试都失败，尝试最后的安全备份策略
+            try
+            {
+                // 尝试删除目标文件后重新移动
+                if (File.Exists(destPath))
+                {
+                    File.Delete(destPath);
+                }
+                File.Move(sourcePath, destPath);
+                _logger?.LogWarning("使用备用策略成功保存会话: {SessionId}", sessionId);
+            }
+            catch (Exception ex)
+            {
+                // 清理临时文件
+                try
+                {
+                    if (File.Exists(sourcePath))
+                    {
+                        File.Delete(sourcePath);
+                    }
+                }
+                catch
+                {
+                    // 忽略清理失败
+                }
+
+                _logger?.LogError(ex, "保存会话失败（所有重试耗尽）: {SessionId}", sessionId);
+                throw new IOException($"保存会话失败: {sessionId}", ex);
             }
         }
 
