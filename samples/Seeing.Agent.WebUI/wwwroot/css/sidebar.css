@@ -32,6 +32,10 @@ aside.app-sider.ant-layout-sider {
     flex-shrink: 0;
 }
 
+    .sider-header:hover {
+        background-color: #f5f5f5;
+    }
+
 .logo-section {
     display: flex;
     align-items: center;

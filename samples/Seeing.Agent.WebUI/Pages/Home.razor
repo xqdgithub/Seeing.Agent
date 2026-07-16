@@ -2,5 +2,9 @@
 @inject NavigationManager NavigationManager
 
 @code {
-    protected override void OnInitialized() => NavigationManager.NavigateTo("/", replace: true);
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Yield();
+        NavigationManager.NavigateTo("/", replace: true);
+    }
 }

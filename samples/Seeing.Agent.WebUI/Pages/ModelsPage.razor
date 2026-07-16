@@ -3,9 +3,11 @@
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Llm
 @using Seeing.Agent.WebUI.Services
-@inject ILlmService LlmService
+@inject IProviderManager ProviderManager
+@inject IModelConfigManager ModelManager
 @inject SeeingConfigService ConfigService
 @inject IMessageService MessageService
+@implements IDisposable
 
 <PageTitle>模型 - Seeing.Agent</PageTitle>
 
@@ -26,13 +28,13 @@
     </Extra>
     <ChildContent>
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
-               Message="@($"默认 Provider: {_options.DefaultProvider ?? "未设置"} | 默认模型: {_options.DefaultModel ?? "未设置"}")" />
+               Message="@($"默认 Provider: {ProviderManager.GetDefaultProvider() ?? "未设置"} | 默认模型: {ModelManager.GetDefaultModel() ?? "未设置"}")" />
 
         <Row Gutter="16">
             <Col Span="6">
                 <Card Title="Provider 列表" Size="@CardSize.Small">
                     <Menu Mode="@MenuMode.Inline" SelectedKeys="@_selectedProviderKeys" OnMenuItemClicked="OnProviderSelected">
-                        @foreach (var p in _options.Providers.Keys.OrderBy(k => k))
+                        @foreach (var p in ProviderManager.GetProviders().Keys.OrderBy(k => k))
                         {
                             <MenuItem Key="@p">@p</MenuItem>
                         }
@@ -103,7 +105,6 @@
 </Modal>
 
 @code {
-    private SeeingAgentOptions _options = new();
     private ProviderConfig? _currentProvider;
     private string _selectedProviderId = "";
     private string[] _selectedProviderKeys = Array.Empty<string>();
@@ -116,15 +117,32 @@
     private ProviderType _newProviderType = ProviderType.OpenAI;
     private readonly AddProviderForm _addProviderForm = new();
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        // 监听配置变更
+        ModelManager.ModelConfigChanged += OnModelConfigChanged;
+
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
         _loading = true;
-        _options = await ConfigService.LoadProjectOptionsAsync();
-        if (_options.Providers.Count > 0 && string.IsNullOrEmpty(_selectedProviderId))
-            SelectProvider(_options.Providers.Keys.First());
+
+        var providers = ProviderManager.GetProviders();
+        if (providers.Count > 0 && string.IsNullOrEmpty(_selectedProviderId))
+            SelectProvider(providers.Keys.First());
+
         _loading = false;
+    }
+
+    private void OnModelConfigChanged(object? sender, ModelConfigChangedEventArgs e)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
     }
 
     private void OnProviderSelected(MenuItem item) => SelectProvider(item.Key);
@@ -133,16 +151,14 @@
     {
         _selectedProviderId = id;
         _selectedProviderKeys = new[] { id };
-        _options.Providers.TryGetValue(id, out var provider);
-        _currentProvider = provider;
+        _currentProvider = ProviderManager.GetProvider(id);
         RefreshModelRows();
     }
 
     private void RefreshModelRows()
     {
-        var models = LlmService.GetAvailableModels();
+        var models = ModelManager.GetModelsByProvider(_selectedProviderId);
         _modelRows = models
-            .Where(m => m.Value.Provider == _selectedProviderId || m.Key.StartsWith(_selectedProviderId + "/"))
             .Select(m => new ModelRow
             {
                 Key = m.Key,
@@ -156,13 +172,24 @@
 
     private async Task SaveOptions()
     {
-        await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>
+        if (_currentProvider != null)
         {
-            ["DefaultProvider"] = _options.DefaultProvider,
-            ["DefaultModel"] = _options.DefaultModel,
-            ["Providers"] = _options.Providers,
-            ["Models"] = _options.Models
-        });
+            await ProviderManager.SaveProviderAsync(_selectedProviderId, _currentProvider, _saveLevel);
+        }
+
+        var defaultProvider = ProviderManager.GetDefaultProvider();
+        var defaultModel = ModelManager.GetDefaultModel();
+
+        if (defaultProvider != null)
+        {
+            await ProviderManager.SetDefaultProviderAsync(defaultProvider, _saveLevel);
+        }
+
+        if (defaultModel != null)
+        {
+            await ModelManager.SetDefaultModelAsync(defaultModel, _saveLevel);
+        }
+
         MessageService.Success("模型配置已保存");
         await LoadAsync();
     }
@@ -173,22 +200,22 @@
         _testing = true;
         try
         {
-            var ok = await LlmService.TestConnectionAsync(_selectedProviderId);
+            var ok = await ProviderManager.TestConnectionAsync(_selectedProviderId);
             if (ok) MessageService.Success("连接成功");
             else MessageService.Error("连接失败");
         }
         finally { _testing = false; }
     }
 
-    private void SetAsDefaultProvider()
+    private async Task SetAsDefaultProvider()
     {
-        _options.DefaultProvider = _selectedProviderId;
+        await ProviderManager.SetDefaultProviderAsync(_selectedProviderId, _saveLevel);
         MessageService.Info($"已选择 {_selectedProviderId} 为默认 Provider，请保存");
     }
 
-    private void SetDefaultModel(string key)
+    private async Task SetDefaultModel(string key)
     {
-        _options.DefaultModel = key;
+        await ModelManager.SetDefaultModelAsync(key, _saveLevel);
         MessageService.Info($"已选择 {key} 为默认模型，请保存");
     }
 
@@ -198,11 +225,14 @@
         _addModalVisible = true;
     }
 
-    private void ConfirmAddProvider()
+    private async Task ConfirmAddProvider()
     {
         if (string.IsNullOrWhiteSpace(_newProviderId)) return;
         var id = _newProviderId.Trim();
-        _options.Providers[id] = new ProviderConfig { Id = id, Type = _newProviderType, Name = id };
+
+        var config = new ProviderConfig { Id = id, Type = _newProviderType, Name = id };
+        await ProviderManager.SaveProviderAsync(id, config, _saveLevel);
+
         _addModalVisible = false;
         SelectProvider(id);
     }
@@ -217,4 +247,9 @@
     }
 
     private sealed class AddProviderForm { }
+
+    public void Dispose()
+    {
+        ModelManager.ModelConfigChanged -= OnModelConfigChanged;
+    }
 }

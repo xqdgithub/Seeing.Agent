@@ -123,8 +123,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var primaryAgents = await AgentManager.GetPrimaryAgentsAsync();
-        _agentNames = primaryAgents
+        var allAgents = await AgentManager.GetAgentsAsync();
+        _agentNames = allAgents
             .Where(a => !string.IsNullOrEmpty(a.Name))
             .Select(a => a.Name)
             .ToList();

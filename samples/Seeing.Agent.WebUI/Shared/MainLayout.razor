@@ -15,7 +15,8 @@
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 @inject IAgentRegistry AgentRegistry
-@inject ILlmService LlmService
+@inject IModelConfigManager ModelManager
+@implements IDisposable
 
 <Layout Class="app-layout" Style="min-height: 100vh;">
     <!-- 左侧边栏 -->
@@ -39,6 +40,9 @@
     {
         AppState.OnChange += OnAppStateChange;
 
+        // 监听模型配置变更
+        ModelManager.ModelConfigChanged += OnModelConfigChanged;
+
         // 只加载 Agent 和 Model 列表，不自动加载会话
         // 会话加载由 Session.razor 根据 URL 参数决定
         await LoadAgentsAndModelsAsync();
@@ -55,6 +59,15 @@
         RequestRender();
     }
 
+    private void OnModelConfigChanged(object? sender, ModelConfigChangedEventArgs e)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAgentsAndModelsAsync();
+            StateHasChanged();
+        });
+    }
+
     private void RequestRender()
     {
         if (!_hasRendered)
@@ -69,7 +82,8 @@
             var primaryAgents = await AgentRegistry.GetPrimaryAgentsAsync();
             AppState.AvailableAgents = primaryAgents.Where(a => !string.IsNullOrEmpty(a.Name)).ToList();
             
-            AppState.AvailableModels = LlmService.GetAvailableModels();
+            // 从 ModelConfigManager 获取模型列表
+            AppState.AvailableModels = ModelManager.GetModels();
 
             AppState.NotifyChange();
         }
@@ -82,5 +96,11 @@
     private void OnSiderCollapse(bool collapsed)
     {
         AppState.SidebarCollapsed = collapsed;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= OnAppStateChange;
+        ModelManager.ModelConfigChanged -= OnModelConfigChanged;
     }
 }

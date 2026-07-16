@@ -68,7 +68,7 @@
         </div>
     </div>
     
-    @if (SessionState.Messages.Count > 0)
+    @if (_recentMessages.Count > 0)
     {
         <div class="home-recent">
             <div class="recent-header">
@@ -78,7 +78,7 @@
                 </Button>
             </div>
             <div class="recent-messages">
-                @foreach (var msg in SessionState.Messages.TakeLast(4))
+                @foreach (var msg in _recentMessages)
                 {
                     <div class="@GetMessageClass(msg.Role)">
                         <span class="msg-role">@GetRoleIcon(msg.Role)</span>
@@ -243,6 +243,7 @@
     private int _sessionCount = 0;
     private int _agentCount = 0;
     private int _modelCount = 0;
+    private List<SessionMessage> _recentMessages = new();
     
     protected override async Task OnInitializedAsync()
     {
@@ -259,6 +260,16 @@
         {
             var recentSession = sessions.First();
             AppState.CurrentSessionId = recentSession.Id;
+
+            // 加载最近会话的消息
+            var sessionData = await ChatOrchestrator.GetSessionAsync(recentSession.Id);
+            if (sessionData?.Messages != null && sessionData.Messages.Count > 0)
+            {
+                _recentMessages = sessionData.Messages
+                    .Where(m => m.Role is "user" or "assistant")
+                    .TakeLast(4)
+                    .ToList();
+            }
         }
     }
     

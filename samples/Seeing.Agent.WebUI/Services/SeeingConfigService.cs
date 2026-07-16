@@ -25,13 +25,13 @@ public sealed class SeeingConfigService
     public async Task<SeeingAgentOptions> LoadProjectOptionsAsync(CancellationToken ct = default)
     {
         var project = await _configManager.GetSeeingAgentOptionsAtLevelAsync(ConfigLevel.Project, ct);
-        return project ?? _configManager.GetSection<SeeingAgentOptions>("SeeingAgent");
+        return project ?? _configManager.SeeingAgent;
     }
 
     /// <summary>加载合并后的有效配置</summary>
     public Task<SeeingAgentOptions> LoadEffectiveOptionsAsync(CancellationToken ct = default)
     {
-        return Task.FromResult(_configManager.GetSection<SeeingAgentOptions>("SeeingAgent"));
+        return Task.FromResult(_configManager.SeeingAgent);
     }
 
     // ===== Scheduler =====

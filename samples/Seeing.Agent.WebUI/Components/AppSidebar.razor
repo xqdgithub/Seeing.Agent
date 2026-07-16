@@ -11,7 +11,7 @@
        CollapsedChanged="@OnCollapsedChanged"
        Theme="@SiderTheme.Light"
        Style="overflow: auto; height: 100vh; position: fixed; left: 0; top: 0; z-index: 100;">
-    <div class="sider-header">
+    <a href="/" class="sider-header" style="cursor: pointer; text-decoration: none;">
         @if (!Collapsed)
         {
             <div class="logo-section">
@@ -25,7 +25,7 @@
                 <img src="ai.svg" alt="Seeing.Agent" class="app-logo app-logo-collapsed" width="24" height="24" />
             </Tooltip>
         }
-    </div>
+    </a>
 
     <Menu Mode="@MenuMode.Inline"
           Theme="@MenuTheme.Light"
@@ -85,10 +85,6 @@
                     <Icon Type="@IconType.Outline.Database" />
                     <span>记忆</span>
                 </MenuItem>
-                <MenuItem Key="agent-config" OnClick="@(() => NavigateTo("/agent-config"))">
-                    <Icon Type="@IconType.Outline.Setting" />
-                    <span>智能体配置</span>
-                </MenuItem>
             </ChildContent>
         </SubMenu>
 
@@ -101,6 +97,10 @@
                 <MenuItem Key="agents" OnClick="@(() => NavigateTo("/agents"))">
                     <Icon Type="@IconType.Outline.UsergroupAdd" />
                     <span>智能体管理</span>
+                </MenuItem>
+                <MenuItem Key="agent-config" OnClick="@(() => NavigateTo("/agent-config"))">
+                    <Icon Type="@IconType.Outline.Edit" />
+                    <span>智能体配置</span>
                 </MenuItem>
                 <MenuItem Key="models" OnClick="@(() => NavigateTo("/models"))">
                     <Icon Type="@IconType.Outline.CloudServer" />
@@ -134,6 +134,26 @@
     private string[] _selectedKeys = Array.Empty<string>();
     private string[] _openKeys = new[] { "control", "workspace", "settings" };
 
+    /// <summary>菜单项到所属 SubMenu 的映射</summary>
+    private static readonly Dictionary<string, string> KeyToSubMenu = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["sessions"] = "control",
+        ["cron-jobs"] = "control",
+        ["heartbeat"] = "control",
+        ["skills"] = "workspace",
+        ["tools"] = "workspace",
+        ["mcp"] = "workspace",
+        ["acp"] = "workspace",
+        ["memory"] = "workspace",
+        ["agents"] = "settings",
+        ["agent-config"] = "settings",
+        ["models"] = "settings",
+        ["gateway"] = "settings",
+        ["gateway-clients"] = "settings",
+        ["security"] = "settings",
+        ["settings-page"] = "settings",
+    };
+
     protected override void OnInitialized()
     {
         AppState.OnChange += OnAppStateChange;
@@ -161,6 +181,15 @@
             "settings" => new[] { "settings-page" },
             _ => new[] { segment }
         };
+
+        // 确保当前菜单项所属的 SubMenu 展开
+        if (!string.IsNullOrEmpty(segment) && KeyToSubMenu.TryGetValue(segment, out var subMenuKey))
+        {
+            if (!_openKeys.Contains(subMenuKey))
+            {
+                _openKeys = _openKeys.Concat(new[] { subMenuKey }).ToArray();
+            }
+        }
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)

@@ -580,7 +580,13 @@ namespace Seeing.Agent.Extensions
             // LLM 客户端工厂
             services.AddSingleton<ILlmClientFactory, DefaultLlmClientFactory>();
 
-            // LLM 服务
+            // 模型配置管理器（先注册，ProviderManager 依赖它）
+            services.AddSingleton<IModelConfigManager, ModelConfigManager>();
+
+            // Provider 管理器
+            services.AddSingleton<IProviderManager, ProviderManager>();
+
+            // LLM 服务（调用层）
             services.AddSingleton<ILlmService, LlmService>();
         }
 
