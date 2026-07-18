@@ -14,4 +14,8 @@
     <ProjectReference Include="..\\Seeing.Agent\\Seeing.Agent.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
 </Project>

@@ -1,0 +1,164 @@
+@page "/memory/browse"
+@using AntDesign
+@using Seeing.Agent.Memory.Abstractions
+@using Seeing.Agent.Memory.Core.Models
+@inject IFileStore FileStore
+@inject IMemoryService MemoryService
+@inject NavigationManager Navigation
+@inject IMessageService MessageService
+
+<PageTitle>目录浏览 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(!_files.Any())"
+                    EmptyTitle="暂无记忆文件" EmptyDescription="记忆文件按类型存放在不同目录下">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem Href="/memory">记忆</BreadcrumbItem>
+        <BreadcrumbItem>目录浏览</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory"))">记忆搜索</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/graph"))">知识图谱</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/stats"))">统计</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="LoadFilesAsync">刷新</Button>
+        </Space>
+    </Extra>
+    <Stats>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.File" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_totalCount</span>
+                <span class="stat-label">文件总数</span>
+            </div>
+        </div>
+    </Stats>
+    <Filters>
+        <Space>
+            <SpaceItem>
+                <RadioGroup @bind-Value="@_typeFilter">
+                    <RadioButton Value="@("")">全部</RadioButton>
+                    <RadioButton Value="@("session")">会话</RadioButton>
+                    <RadioButton Value="@("daily")">每日</RadioButton>
+                    <RadioButton Value="@("digest")">整合</RadioButton>
+                </RadioGroup>
+            </SpaceItem>
+            <SpaceItem>
+                <Search Placeholder="搜索文件名..." @bind-Value="@_searchQuery" OnSearch="FilterFiles" AllowClear="true" />
+            </SpaceItem>
+        </Space>
+    </Filters>
+    <ChildContent>
+        <Table TItem="FileNodeDisplay" DataSource="@_filteredFiles" RowKey="@(f => f.Path)">
+            <PropertyColumn Property="c => c.TypeLabel" Title="类型" Width="100">
+                @switch (context.Type)
+                {
+                    case MemoryType.Session:
+                        <Tag Color="@("blue")">会话</Tag>
+                        break;
+                    case MemoryType.Daily:
+                        <Tag Color="@("green")">每日</Tag>
+                        break;
+                    case MemoryType.Digest:
+                        <Tag Color="@("orange")">整合</Tag>
+                        break;
+                    default:
+                        <Tag>@context.Type</Tag>
+                        break;
+                }
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.FileName" Title="文件名">
+                <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">@context.FileName</a>
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.Path" Title="路径" Ellipsis="true" />
+            <PropertyColumn Property="c => c.SizeText" Title="大小" Width="100" />
+            <PropertyColumn Property="c => c.ModifiedTimeText" Title="修改时间" Width="160" />
+            <ActionColumn Title="操作" Width="80">
+                <Button Size="@ButtonSize.Small" OnClick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">查看</Button>
+            </ActionColumn>
+        </Table>
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private IReadOnlyList<FileNode> _files = Array.Empty<FileNode>();
+    private List<FileNodeDisplay> _filteredFiles = new();
+    private string _typeFilter = "";
+    private string _searchQuery = "";
+    private int _totalCount;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadFilesAsync();
+
+    private async Task LoadFilesAsync()
+    {
+        _loading = true;
+        try
+        {
+            _files = await FileStore.ListAsync();
+            _totalCount = _files.Count;
+            FilterFiles();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"加载文件列表失败: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void FilterFiles()
+    {
+        IEnumerable<FileNode> query = _files;
+
+        // 按类型筛选
+        if (!string.IsNullOrEmpty(_typeFilter) && Enum.TryParse<MemoryType>(_typeFilter, true, out var memoryType))
+        {
+            query = query.Where(f => f.Metadata.Type == memoryType);
+        }
+
+        // 按关键词筛选
+        var search = _searchQuery?.Trim() ?? "";
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(f =>
+                f.Path.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                (f.Metadata.Title?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        _filteredFiles = query
+            .OrderByDescending(f => f.ModifiedTime)
+            .Select(f => new FileNodeDisplay
+            {
+                Path = f.Path,
+                FileName = System.IO.Path.GetFileNameWithoutExtension(f.Path),
+                Type = f.Metadata.Type,
+                TypeLabel = f.Metadata.Type.ToString(),
+                Size = System.Text.Encoding.UTF8.GetByteCount(f.Content),
+                SizeText = FormatSize(System.Text.Encoding.UTF8.GetByteCount(f.Content)),
+                ModifiedTime = f.ModifiedTime,
+                ModifiedTimeText = f.ModifiedTime.ToString("yyyy-MM-dd HH:mm:ss")
+            }).ToList();
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private sealed class FileNodeDisplay
+    {
+        public string Path { get; set; } = "";
+        public string FileName { get; set; } = "";
+        public MemoryType Type { get; set; }
+        public string TypeLabel { get; set; } = "";
+        public long Size { get; set; }
+        public string SizeText { get; set; } = "";
+        public DateTimeOffset ModifiedTime { get; set; }
+        public string ModifiedTimeText { get; set; } = "";
+    }
+}

@@ -368,6 +368,9 @@ FodyWeavers.xsd
 
 # --- Seeing.Agent project-specific ---
 
+# SQLite databases (runtime generated)
+*.db
+
 # Local agent orchestration artifacts (Sisyphus / internal plans)
 .sisyphus/
 .sisyphusevidence/

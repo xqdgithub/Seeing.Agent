@@ -3,14 +3,11 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Configuration;
-using Seeing.Agent.Memory.Core;
 
 namespace Seeing.Agent.Memory.Integration;
 
 /// <summary>
 /// Memory 插件入口，实现 IExtension 接口。
-/// 参考 PluginsExtension.cs 的实现模式。
 /// </summary>
 public class MemoryExtension : IExtension
 {
@@ -18,34 +15,26 @@ public class MemoryExtension : IExtension
     public string? Id => "seeing.agent.memory";
 
     /// <summary>版本号</summary>
-    public string Version => "1.0.0";
+    public string Version => "2.0.0";
 
     /// <summary>显示名称</summary>
     public string Name => "Seeing.Agent Memory";
 
     /// <summary>描述</summary>
-    public string Description => "长期记忆存储与检索系统，支持语义/情景/程序三种记忆类型";
+    public string Description => "基于文件的记忆系统，支持混合检索和知识图谱";
 
     /// <summary>目标运行时</summary>
     public string Target => "server";
 
     private readonly List<IHookHandler> _hookHandlers = new();
     private ILogger? _logger;
-    private MemoryWriteQueue? _writeQueue;
 
     /// <summary>
     /// 注册服务到 DI 容器
     /// </summary>
     public void ConfigureServices(IServiceCollection services)
     {
-        services.AddSingleton<IMemoryManager, MemoryManager>();
-        services.AddSingleton<MemoryOrchestrator>();
-        services.AddSingleton<MemoryWriteQueue>();
-
-        services.AddTransient<MemoryTools>();
-
-        services.AddTransient<ChatMemoryHandler>();
-        services.AddTransient<ToolMemoryHandler>();
+        // 服务已通过 AddMemoryServices() 注册
     }
 
     /// <summary>
@@ -58,66 +47,6 @@ public class MemoryExtension : IExtension
 
         _logger?.LogInformation("初始化 {Name} v{Version} (state: {State})",
             Name, Version, meta.State);
-
-        var memoryOptions = MemoryConfigLoader.LoadDefault(context.WorkspaceRoot, _logger);
-
-        try
-        {
-            var userRel = MemoryConfigLoader.UserMemoryJsonPath;
-            var userPath = MemoryConfigLoader.ExpandPath(userRel, context.WorkspaceRoot);
-            if (File.Exists(userPath))
-            {
-                _logger?.LogInformation("MemoryConfigLoader loaded from {Path}", userPath);
-            }
-            else
-            {
-                var projRel = MemoryConfigLoader.ProjectMemoryJsonPath(context.WorkspaceRoot);
-                var projPath = MemoryConfigLoader.ExpandPath(projRel, context.WorkspaceRoot);
-                if (File.Exists(projPath))
-                {
-                    _logger?.LogInformation("MemoryConfigLoader loaded from {Path}", projPath);
-                }
-                else
-                {
-                    _logger?.LogInformation("MemoryConfigLoader loaded default memory config (no memory.json found)");
-                }
-            }
-        }
-        catch
-        {
-            _logger?.LogWarning("MemoryConfigLoader could not determine config load path");
-        }
-
-        _logger?.LogInformation("MemoryStore.Directory = {Dir}", memoryOptions.MemoryStore.MemoryDirectory);
-
-        var hookManager = context.Services.GetService<IHookManager>();
-        _writeQueue = context.Services.GetRequiredService<MemoryWriteQueue>();
-        var orchestrator = context.Services.GetRequiredService<MemoryOrchestrator>();
-
-        var chatHandlerLogger = loggerFactory.CreateLogger<ChatMemoryHandler>();
-        var toolHandlerLogger = loggerFactory.CreateLogger<ToolMemoryHandler>();
-
-        var chatHandler = new ChatMemoryHandler(_writeQueue, chatHandlerLogger);
-        var toolHandler = new ToolMemoryHandler(_writeQueue, orchestrator, toolHandlerLogger);
-
-        _hookHandlers.Add(chatHandler);
-        _hookHandlers.Add(toolHandler);
-
-        if (hookManager != null)
-        {
-            foreach (var handler in _hookHandlers)
-            {
-                hookManager.Register(handler);
-            }
-
-            _logger?.LogInformation("已注册 {Count} 个 Hook Handler", _hookHandlers.Count);
-        }
-
-        if (_writeQueue != null)
-        {
-            _ = _writeQueue.StartProcessingAsync();
-            _logger?.LogInformation("MemoryWriteQueue 已启动");
-        }
 
         await Task.CompletedTask;
     }
@@ -138,15 +67,7 @@ public class MemoryExtension : IExtension
     public async Task DisposeAsync()
     {
         _logger?.LogInformation("清理 {Name}", Name);
-
-        if (_writeQueue != null)
-        {
-            _writeQueue.StopProcessing();
-            _writeQueue.Dispose();
-        }
-
         _hookHandlers.Clear();
-
         await Task.CompletedTask;
     }
 }

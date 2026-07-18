@@ -1,0 +1,182 @@
+@page "/memory/graph"
+@using AntDesign
+@using Seeing.Agent.Memory.Abstractions
+@using Seeing.Agent.Memory.Core.Graph
+@inject IMemoryGraph MemoryGraph
+@inject NavigationManager Navigation
+@inject IMessageService MessageService
+
+<PageTitle>知识图谱 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(!_nodes.Any())"
+                    EmptyTitle="暂无图谱数据" EmptyDescription="记忆文件之间通过 Wikilink 建立关联关系">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem Href="/memory">记忆</BreadcrumbItem>
+        <BreadcrumbItem>知识图谱</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory"))">记忆搜索</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="LoadGraphAsync">刷新</Button>
+        </Space>
+    </Extra>
+    <Stats>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.NodeIndex" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_stats.NodeCount</span>
+                <span class="stat-label">节点数</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Link" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_stats.EdgeCount</span>
+                <span class="stat-label">边数</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Disconnect" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_stats.IsolatedNodes</span>
+                <span class="stat-label">孤立节点</span>
+            </div>
+        </div>
+    </Stats>
+    <Filters>
+        <div class="filter-search" style="flex: 1;">
+            <Search Placeholder="搜索节点路径或标题..." @bind-Value="@_searchQuery" OnSearch="FilterNodes" AllowClear="true" EnterButton="true" />
+        </div>
+    </Filters>
+    <ChildContent>
+        <Tabs DefaultActiveKey="nodes">
+            <TabPane Key="nodes" Tab="节点列表">
+                <Table TItem="GraphNodeDisplay" DataSource="@_filteredNodes" RowKey="@(n => n.Path)">
+                    <PropertyColumn Property="c => c.Title" Title="标题" />
+                    <PropertyColumn Property="c => c.Path" Title="路径">
+                        <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">@context.Path</a>
+                    </PropertyColumn>
+                    <PropertyColumn Property="c => c.Degree" Title="度数" Width="100" />
+                    <PropertyColumn Property="c => c.NeighborPreview" Title="关联节点" />
+                </Table>
+            </TabPane>
+            <TabPane Key="edges" Tab="边列表">
+                <Table TItem="GraphEdgeDisplay" DataSource="@_filteredEdges" RowKey="@(e => $"{e.SourcePath}->{e.TargetPath}:{e.Type}")">
+                    <PropertyColumn Property="c => c.SourcePath" Title="源节点">
+                        <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.SourcePath}"))">@context.SourcePath</a>
+                    </PropertyColumn>
+                    <PropertyColumn Property="c => c.TargetPath" Title="目标节点">
+                        <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.TargetPath}"))">@context.TargetPath</a>
+                    </PropertyColumn>
+                    <PropertyColumn Property="c => c.Type" Title="类型" Width="100" />
+                    <PropertyColumn Property="c => c.Weight" Title="权重" Width="80" />
+                    <PropertyColumn Property="c => c.Context" Title="上下文" Ellipsis="true" />
+                </Table>
+            </TabPane>
+        </Tabs>
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private IReadOnlyList<GraphNode> _nodes = Array.Empty<GraphNode>();
+    private IReadOnlyList<GraphEdge> _edges = Array.Empty<GraphEdge>();
+    private List<GraphNodeDisplay> _filteredNodes = new();
+    private List<GraphEdgeDisplay> _filteredEdges = new();
+    private GraphStats _stats = new(0, 0, 0);
+    private string _searchQuery = "";
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadGraphAsync();
+
+    private async Task LoadGraphAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await MemoryGraph.QueryAsync();
+            _nodes = result.Nodes;
+            _edges = result.Edges;
+            _stats = await MemoryGraph.GetStatsAsync();
+            FilterNodes();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"加载图谱失败: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void FilterNodes()
+    {
+        // 过滤节点
+        var query = _searchQuery?.Trim() ?? "";
+        var filtered = string.IsNullOrEmpty(query)
+            ? _nodes
+            : _nodes.Where(n =>
+                n.Path.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                n.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+        _filteredNodes = filtered
+            .OrderByDescending(n => n.Degree)
+            .Select(n => new GraphNodeDisplay
+            {
+                Path = n.Path,
+                Title = n.Title,
+                Degree = n.Degree,
+                NeighborPreview = GetNeighborPreview(n.Path)
+            }).ToList();
+
+        // 过滤边
+        _filteredEdges = _edges
+            .OrderByDescending(e => e.Weight)
+            .Select(e => new GraphEdgeDisplay
+            {
+                SourcePath = e.SourcePath,
+                TargetPath = e.TargetPath,
+                Type = e.Type.ToString(),
+                Weight = e.Weight,
+                Context = e.Context
+            }).ToList();
+    }
+
+    private string GetNeighborPreview(string path)
+    {
+        var neighbors = _edges
+            .Where(e => e.SourcePath == path || e.TargetPath == path)
+            .Select(e => e.SourcePath == path ? e.TargetPath : e.SourcePath)
+            .Distinct()
+            .Take(3)
+            .ToList();
+
+        if (neighbors.Count == 0) return "无";
+
+        var preview = string.Join(", ", neighbors.Select(n =>
+            n.Length > 30 ? "..." + n[^27..] : n));
+
+        var totalCount = _edges
+            .Count(e => e.SourcePath == path || e.TargetPath == path);
+
+        return totalCount > 3 ? $"{preview} 等{totalCount}个" : preview;
+    }
+
+    private sealed class GraphNodeDisplay
+    {
+        public string Path { get; set; } = "";
+        public string Title { get; set; } = "";
+        public int Degree { get; set; }
+        public string NeighborPreview { get; set; } = "";
+    }
+
+    private sealed class GraphEdgeDisplay
+    {
+        public string SourcePath { get; set; } = "";
+        public string TargetPath { get; set; } = "";
+        public string Type { get; set; } = "";
+        public double Weight { get; set; }
+        public string? Context { get; set; }
+    }
+}

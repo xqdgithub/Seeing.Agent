@@ -1,0 +1,229 @@
+@page "/memory/detail/{*FilePath}"
+@using AntDesign
+@using Seeing.Agent.Memory.Abstractions
+@using Seeing.Agent.Memory.Core.Models
+@using Seeing.Agent.Memory.Core.Graph
+@inject IMemoryService MemoryService
+@inject IMemoryGraph MemoryGraph
+@inject NavigationManager Navigation
+@inject IMessageService MessageService
+
+<PageTitle>记忆详情 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(_file == null && !_loading)"
+                    EmptyTitle="文件不存在" EmptyDescription="无法找到指定的记忆文件">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem Href="/memory">记忆</BreadcrumbItem>
+        <BreadcrumbItem Href="/memory/browse">目录浏览</BreadcrumbItem>
+        <BreadcrumbItem>@_displayTitle</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/browse"))">返回列表</Button>
+            <Button OnClick="ToggleEditMode">
+                @(_editMode ? "取消编辑" : "编辑")
+            </Button>
+            @if (_editMode)
+            {
+                <Button Type="@ButtonType.Primary" OnClick="SaveAsync">保存</Button>
+            }
+            <Popconfirm Title="确定删除此文件？" OnConfirm="DeleteAsync">
+                <Button Danger="true">删除</Button>
+            </Popconfirm>
+        </Space>
+    </Extra>
+    <ChildContent>
+        @if (_file != null)
+        {
+            <Descriptions Column="2" Bordered Size="@DescriptionsSize.Small" Style="margin-bottom: 16px;">
+                <DescriptionsItem Title="路径" Span="2">@_file.Path</DescriptionsItem>
+                <DescriptionsItem Title="类型">
+                    @switch (_file.Metadata.Type)
+                    {
+                        case MemoryType.Session:
+                            <Tag Color="@("blue")">会话</Tag>
+                            break;
+                        case MemoryType.Daily:
+                            <Tag Color="@("green")">每日</Tag>
+                            break;
+                        case MemoryType.Digest:
+                            <Tag Color="@("orange")">整合</Tag>
+                            break;
+                        default:
+                            <Tag>@_file.Metadata.Type</Tag>
+                            break;
+                    }
+                </DescriptionsItem>
+                <DescriptionsItem Title="大小">@FormatSize(_contentSize)</DescriptionsItem>
+                <DescriptionsItem Title="修改时间">@_file.ModifiedTime.ToString("yyyy-MM-dd HH:mm:ss")</DescriptionsItem>
+                <DescriptionsItem Title="内容长度">@(_fileContent?.Length ?? 0) 字符</DescriptionsItem>
+            </Descriptions>
+
+            @if (_editMode)
+            {
+                <div style="margin-bottom: 16px;">
+                    <Form Layout="@FormLayout.Vertical" Model="@_editModel">
+                        <FormItem Label="内容">
+                            <TextArea Rows="20" @bind-Value="@_editContent" Style="font-family: monospace;" />
+                        </FormItem>
+                    </Form>
+                </div>
+            }
+            else
+            {
+                <Card Title="文件内容" Style="margin-bottom: 16px;">
+                    <div class="markdown-body">
+                        @((MarkupString)RenderMarkdown(_fileContent ?? ""))
+                    </div>
+                </Card>
+            }
+
+            @if (_relatedNodes.Any())
+            {
+                <Card Title="@($"关联记忆 ({_relatedNodes.Count})")">
+                    <Table TItem="GraphNode" DataSource="@_relatedNodes" RowKey="@(n => n.Path)" Size="@TableSize.Small">
+                        <PropertyColumn Property="c => c.Title" Title="标题" />
+                        <PropertyColumn Property="c => c.Path" Title="路径">
+                            <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">@context.Path</a>
+                        </PropertyColumn>
+                        <PropertyColumn Property="c => c.Degree" Title="度数" Width="80" />
+                    </Table>
+                </Card>
+            }
+        }
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    [Parameter] public string? FilePath { get; set; }
+
+    private FileNode? _file;
+    private string? _fileContent;
+    private string _editContent = "";
+    private long _contentSize;
+    private List<GraphNode> _relatedNodes = new();
+    private bool _loading;
+    private bool _editMode;
+    private string _displayTitle = "";
+    private EditModel _editModel = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(FilePath))
+        {
+            await LoadDetailAsync();
+        }
+    }
+
+    private async Task LoadDetailAsync()
+    {
+        if (string.IsNullOrEmpty(FilePath)) return;
+
+        _loading = true;
+        try
+        {
+            _file = await MemoryService.GetAsync(FilePath);
+            if (_file != null)
+            {
+                _fileContent = _file.Content;
+                _editContent = _fileContent ?? "";
+                _contentSize = System.Text.Encoding.UTF8.GetByteCount(_fileContent ?? "");
+                _displayTitle = _file.Metadata.Title ?? System.IO.Path.GetFileNameWithoutExtension(_file.Path);
+
+                // 加载关联记忆
+                try
+                {
+                    var related = await MemoryService.GetRelatedAsync(FilePath);
+                    _relatedNodes = related.ToList();
+                }
+                catch
+                {
+                    // 图谱查询失败时忽略关联
+                    _relatedNodes = new();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"加载记忆详情失败: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ToggleEditMode()
+    {
+        _editMode = !_editMode;
+        if (_editMode)
+        {
+            _editContent = _fileContent ?? "";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrEmpty(FilePath)) return;
+
+        try
+        {
+            await MemoryService.SaveAsync(FilePath, _editContent);
+            _fileContent = _editContent;
+            _editMode = false;
+            MessageService.Success("保存成功");
+            await LoadDetailAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (string.IsNullOrEmpty(FilePath)) return;
+
+        try
+        {
+            await MemoryService.DeleteAsync(FilePath);
+            MessageService.Success("已删除");
+            Navigation.NavigateTo("/memory/browse");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败: {ex.Message}");
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private static string RenderMarkdown(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return "<p>（空内容）</p>";
+
+        // 简单的 Markdown 渲染：使用 Markdig
+        try
+        {
+            var pipeline = new Markdig.MarkdownPipelineBuilder().Build();
+            var html = Markdig.Markdown.ToHtml(content, pipeline);
+            return html;
+        }
+        catch
+        {
+            // 降级为纯文本显示（HTML 转义）
+            return "<pre>" + System.Net.WebUtility.HtmlEncode(content) + "</pre>";
+        }
+    }
+
+    private sealed class EditModel
+    {
+        public string Content { get; set; } = "";
+    }
+}

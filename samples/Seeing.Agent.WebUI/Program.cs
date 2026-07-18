@@ -39,14 +39,8 @@ builder.Services.AddSingleton<HybridStrategy>();
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();
 
-// === Memory 模块（直接 DI 注入，便于调试）===
-builder.Services.AddSeeingAgentMemory(options =>
-{
-    // 配置 Memory 存储目录
-    options.MemoryStore.MemoryDirectory = "~/.seeing/memories";
-    options.MemoryStore.MaxFileSizeKB = 1024;
-    options.MemoryStore.EnableChunking = true;
-});
+// === Memory 服务（混合检索、图谱、成本控制）===
+builder.Services.AddMemoryServices();
 
 // === Session 管理服务（统一使用 Seeing.Session）===
 builder.Services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
@@ -120,10 +114,6 @@ using (var scope = app.Services.CreateScope())
     sp.InitializeCommands();
     sp.InitializeAcpCommands();  // 注册 ACP 专属命令
 
-    // === Memory 手动初始化（直接注入方式）===
-    var memoryManager = sp.GetRequiredService<IMemoryManager>();
-    await memoryManager.InitializeAsync();
-
     // 注册 Memory Hook Handler（自动捕获对话）
     var hookManager = sp.GetRequiredService<IHookManager>();
     var chatHandler = sp.GetRequiredService<ChatMemoryHandler>();
@@ -133,14 +123,6 @@ using (var scope = app.Services.CreateScope())
     
     // 注册 TokenBudget Hook Handler（自动管理 token 预算）
     sp.UseTokenBudgetHooks();
-
-    // 启动后台写入队列
-    var writeQueue = sp.GetRequiredService<MemoryWriteQueue>();
-    _ = writeQueue.StartProcessingAsync();
-
-    // 记录日志
-    var logger = sp.GetRequiredService<ILogger<MemoryWriteQueue>>();
-    logger.LogInformation("Memory 模块已通过 DI 直接注入并初始化");
 
     var skillState = sp.GetRequiredService<SkillStateService>();
     var toolState = sp.GetRequiredService<ToolStateService>();

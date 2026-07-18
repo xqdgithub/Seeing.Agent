@@ -1,0 +1,116 @@
+@page "/memory/stats"
+@using AntDesign
+@using Seeing.Agent.Memory.Abstractions
+@using Seeing.Agent.Memory.Core.Models
+@using Seeing.Agent.Memory.Core.Graph
+@inject IMemoryService MemoryService
+@inject NavigationManager Navigation
+@inject IMessageService MessageService
+
+<PageTitle>统计信息 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@false">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem Href="/memory">记忆</BreadcrumbItem>
+        <BreadcrumbItem>统计信息</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory"))">记忆搜索</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/browse"))">目录浏览</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/graph"))">知识图谱</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="LoadStatsAsync">刷新</Button>
+        </Space>
+    </Extra>
+    <ChildContent>
+        @if (_stats != null)
+        {
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                <Card Title="文件统计">
+                    <Statistic Title="记忆文件总数" Value="@_stats.FileCount" Suffix="个" />
+                </Card>
+                <Card Title="索引统计">
+                    <Statistic Title="向量索引" Value="@_stats.Index.TotalVectors" Suffix="条" />
+                    <Statistic Title="文档数" Value="@_stats.Index.TotalDocuments" Suffix="篇" />
+                    <Divider />
+                    <Statistic Title="索引大小" Value="@FormatBytes(_stats.Index.IndexSizeBytes)" />
+                    <div style="font-size: 12px; color: #999; margin-top: 8px;">最后更新: @_stats.Index.LastUpdated.ToString("MM-dd HH:mm")</div>
+                </Card>
+                <Card Title="图谱统计">
+                    <Statistic Title="节点数" Value="@_stats.Graph.NodeCount" Suffix="个" />
+                    <Statistic Title="边数" Value="@_stats.Graph.EdgeCount" Suffix="条" />
+                    <Divider />
+                    <Statistic Title="孤立节点" Value="@_stats.Graph.IsolatedNodes" Suffix="个" />
+                    <div style="font-size: 12px; color: #999; margin-top: 8px;">连接率: @GetConnectivityRate()</div>
+                </Card>
+            </div>
+
+            <Card Title="类型分布" Style="margin-bottom: 24px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                    <Statistic Title="会话记忆 (session)" Value="@_sessionCount" Suffix="个" />
+                    <Statistic Title="每日记忆 (daily)" Value="@_dailyCount" Suffix="个" />
+                    <Statistic Title="整合记忆 (digest)" Value="@_digestCount" Suffix="个" />
+                </div>
+            </Card>
+        }
+        else if (!_loading)
+        {
+            <div class="empty-state">
+                <h3 class="empty-state-title">暂无统计数据</h3>
+                <p class="empty-state-description">请先初始化记忆系统</p>
+            </div>
+        }
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private MemoryStats? _stats;
+    private IReadOnlyList<FileNode> _files = Array.Empty<FileNode>();
+    private int _sessionCount;
+    private int _dailyCount;
+    private int _digestCount;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadStatsAsync();
+
+    private async Task LoadStatsAsync()
+    {
+        _loading = true;
+        try
+        {
+            _stats = await MemoryService.GetStatsAsync();
+
+            // 加载文件列表以统计类型分布
+            _files = await MemoryService.ListAsync();
+            _sessionCount = _files.Count(f => f.Metadata.Type == MemoryType.Session);
+            _dailyCount = _files.Count(f => f.Metadata.Type == MemoryType.Daily);
+            _digestCount = _files.Count(f => f.Metadata.Type == MemoryType.Digest);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"加载统计数据失败: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string GetConnectivityRate()
+    {
+        if (_stats == null || _stats.Graph.NodeCount == 0) return "N/A";
+
+        var connected = _stats.Graph.NodeCount - _stats.Graph.IsolatedNodes;
+        var rate = (double)connected / _stats.Graph.NodeCount * 100;
+        return $"{rate:F1}%";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
+    }
+}

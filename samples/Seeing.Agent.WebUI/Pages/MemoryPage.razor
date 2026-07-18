@@ -1,27 +1,55 @@
 @page "/memory"
 @using AntDesign
 @using Seeing.Agent.Memory.Abstractions
-@using Seeing.Agent.Memory.Core
-@inject IMemoryManager MemoryManager
+@using Seeing.Agent.Memory.Core.Models
+@using Seeing.Agent.Memory.Core.Graph
+@inject IMemoryService MemoryService
 @inject IMessageService MessageService
+@inject NavigationManager Navigation
 
 <PageTitle>记忆 - Seeing.Agent</PageTitle>
 
-<WorkspacePageShell Loading="@_loading" IsEmpty="@(!_rows.Any())"
-                    EmptyTitle="暂无记忆" EmptyDescription="对话过程中会自动捕获记忆，也可手动搜索">
+<WorkspacePageShell Loading="@_loading" IsEmpty="@false"
+                    EmptyTitle="记忆模块" EmptyDescription="基于文件的记忆系统，支持混合检索和知识图谱">
     <Breadcrumb>
         <BreadcrumbItem>工作区</BreadcrumbItem>
         <BreadcrumbItem>记忆</BreadcrumbItem>
     </Breadcrumb>
     <Extra>
-        <Button Icon="@IconType.Outline.Reload" OnClick="SearchAsync">刷新</Button>
+        <Space>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/browse"))">目录浏览</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/graph"))">知识图谱</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/stats"))">统计</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="LoadStatsAsync">刷新</Button>
+        </Space>
     </Extra>
     <Stats>
         <div class="stat-item">
             <div class="stat-icon"><Icon Type="@IconType.Outline.Database" /></div>
             <div class="stat-content">
-                <span class="stat-value">@_totalCount</span>
-                <span class="stat-label">记忆总数</span>
+                <span class="stat-value">@_fileCount</span>
+                <span class="stat-label">记忆文件</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Search" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_vectorCount</span>
+                <span class="stat-label">向量索引</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Apartment" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_nodeCount</span>
+                <span class="stat-label">图谱节点</span>
+            </div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Link" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_edgeCount</span>
+                <span class="stat-label">图谱边</span>
             </div>
         </div>
     </Stats>
@@ -29,135 +57,92 @@
         <div class="filter-search" style="flex: 1;">
             <Search Placeholder="搜索记忆..." @bind-Value="@_query" OnSearch="SearchAsync" AllowClear="true" EnterButton="true" />
         </div>
-        <Select TItemValue="string" TItem="string" @bind-Value="@_typeFilter" Style="width: 160px;" AllowClear Placeholder="类型" OnSelectedItemChanged="@(_ => SearchAsync())">
-            @foreach (var t in Enum.GetNames<MemoryType>())
-            {
-                <SelectOption TItemValue="string" TItem="string" Value="@t" Label="@t">@t</SelectOption>
-            }
-        </Select>
     </Filters>
     <ChildContent>
-        <Table TItem="MemoryRow" DataSource="@_rows" RowKey="@(m => m.Id)">
-            <PropertyColumn Property="c => c.IdShort" Title="ID" />
-            <PropertyColumn Property="c => c.Type" Title="类型" />
-            <PropertyColumn Property="c => c.ContentPreview" Title="内容" />
-            <PropertyColumn Property="c => c.CreatedAtText" Title="创建时间" />
-            <ActionColumn Title="操作">
-                <Space>
-                    <Button Size="@ButtonSize.Small" OnClick="@(() => ViewMemory(context.Id))">查看</Button>
-                    <Popconfirm Title="确定删除此记忆？" OnConfirm="@(() => DeleteMemory(context.Id))">
-                        <Button Size="@ButtonSize.Small" Danger="true">删除</Button>
-                    </Popconfirm>
-                </Space>
-            </ActionColumn>
-        </Table>
+        @if (_hits.Any())
+        {
+            <Table TItem="SearchHitRow" DataSource="@_hits" RowKey="@(m => m.Path)">
+                <PropertyColumn Property="c => c.Id" Title="ID" />
+                <PropertyColumn Property="c => c.Type" Title="类型" />
+                <PropertyColumn Property="c => c.Title" Title="标题" />
+                <PropertyColumn Property="c => c.ScoreText" Title="相关度" />
+                <PropertyColumn Property="c => c.Highlight" Title="摘要" />
+                <ActionColumn Title="操作">
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => Navigation.NavigateTo($"/memory/detail/{context.EncodedPath}"))">查看</Button>
+                </ActionColumn>
+            </Table>
+        }
+        else if (!string.IsNullOrWhiteSpace(_query))
+        {
+            <div style="text-align: center; padding: 40px; color: #999;">
+                未找到匹配的记忆
+            </div>
+        }
+        else
+        {
+            <div style="text-align: center; padding: 40px; color: #999;">
+                输入关键词搜索记忆，或点击上方按钮浏览目录、查看图谱
+            </div>
+        }
     </ChildContent>
 </WorkspacePageShell>
 
-<Drawer Title="@("记忆详情")" Visible="@_drawerVisible" Width="560" OnClose="@(() => _drawerVisible = false)">
-    @if (_selected != null)
-    {
-        <Descriptions Column="1" Bordered Size="@DescriptionsSize.Small" Style="margin-bottom: 16px;">
-            <DescriptionsItem Title="ID">@_selected.Id</DescriptionsItem>
-            <DescriptionsItem Title="类型">@_selected.Type</DescriptionsItem>
-            <DescriptionsItem Title="创建时间">@_selected.CreatedAt.ToString("yyyy-MM-dd HH:mm")</DescriptionsItem>
-        </Descriptions>
-        <Form Layout="@FormLayout.Vertical" Model="@_memoryEditForm">
-            <FormItem Label="内容"><TextArea Rows="12" @bind-Value="@_editContent" /></FormItem>
-            <Button Type="@ButtonType.Primary" OnClick="SaveMemory">保存</Button>
-        </Form>
-    }
-</Drawer>
-
 @code {
-    private List<MemoryRow> _rows = new();
-    private MemoryEntry? _selected;
     private string _query = "";
-    private string? _typeFilter;
-    private string _editContent = "";
-    private int _totalCount;
     private bool _loading;
-    private bool _drawerVisible;
-    private readonly MemoryEditForm _memoryEditForm = new();
+    private int _fileCount;
+    private int _vectorCount;
+    private int _nodeCount;
+    private int _edgeCount;
+    private List<SearchHitRow> _hits = new();
 
-    protected override async Task OnInitializedAsync() => await SearchAsync();
+    protected override async Task OnInitializedAsync() => await LoadStatsAsync();
 
-    private async Task SearchAsync()
+    private async Task LoadStatsAsync()
     {
         _loading = true;
         try
         {
-            MemoryType? type = string.IsNullOrEmpty(_typeFilter) ? null : Enum.Parse<MemoryType>(_typeFilter);
-            var filter = type.HasValue ? new MemoryFilter(Type: type) : null;
-
-            IReadOnlyList<MemoryEntry> entries;
-            int totalCount;
-            if (string.IsNullOrWhiteSpace(_query))
-            {
-                var all = (await MemoryManager.ListMemoriesAsync()).OfType<MemoryEntry>();
-                if (type.HasValue)
-                    all = all.Where(e => e.Type == type.Value);
-                var list = all.ToList();
-                entries = list;
-                totalCount = list.Count;
-            }
-            else
-            {
-                var result = await MemoryManager.SearchMemoriesAsync(_query, filter);
-                entries = result.Entries;
-                totalCount = result.TotalCount;
-            }
-
-            _rows = entries.Select(e => new MemoryRow
-            {
-                Id = e.Id,
-                IdShort = e.Id.Length > 10 ? e.Id[..10] + "..." : e.Id,
-                Type = e.Type.ToString(),
-                ContentPreview = e.Content.Length > 80 ? e.Content[..80] + "..." : e.Content,
-                CreatedAtText = e.CreatedAt.ToString("yyyy-MM-dd HH:mm")
-            }).ToList();
-            _totalCount = totalCount;
+            var stats = await MemoryService.GetStatsAsync();
+            _fileCount = stats.FileCount;
+            _vectorCount = stats.Index.TotalVectors;
+            _nodeCount = stats.Graph.NodeCount;
+            _edgeCount = stats.Graph.EdgeCount;
         }
         finally { _loading = false; }
     }
 
-    private async Task ViewMemory(string id)
+    private async Task SearchAsync()
     {
-        _selected = await MemoryManager.GetMemoryAsync(id);
-        if (_selected != null)
+        if (string.IsNullOrWhiteSpace(_query)) return;
+
+        _loading = true;
+        try
         {
-            _editContent = _selected.Content;
-            _drawerVisible = true;
+            var query = new SearchQuery(Text: _query, Mode: SearchMode.Hybrid, Limit: 20);
+            var results = await MemoryService.SearchAsync(query);
+            _hits = results.Select(h => new SearchHitRow
+            {
+                Path = h.Node.Path,
+                EncodedPath = Uri.EscapeDataString(h.Node.Path),
+                Id = h.Node.Metadata.Id,
+                Type = h.Node.Metadata.Type.ToString(),
+                Title = h.Node.Metadata.Title ?? Path.GetFileName(h.Node.Path),
+                ScoreText = $"{h.Score:P0}",
+                Highlight = h.Highlight?.Length > 100 ? h.Highlight[..100] + "..." : h.Highlight ?? ""
+            }).ToList();
         }
+        finally { _loading = false; }
     }
 
-    private async Task SaveMemory()
+    private sealed class SearchHitRow
     {
-        if (_selected == null) return;
-        await MemoryManager.UpdateMemoryAsync(_selected.Id, new MemoryUpdate { Content = _editContent });
-        MessageService.Success("记忆已更新");
-        _drawerVisible = false;
-        await SearchAsync();
-    }
-
-    private async Task DeleteMemory(string id)
-    {
-        await MemoryManager.DeleteMemoryAsync(id);
-        MessageService.Success("记忆已删除");
-        await SearchAsync();
-    }
-
-    private sealed class MemoryRow
-    {
+        public string Path { get; set; } = "";
+        public string EncodedPath { get; set; } = "";
         public string Id { get; set; } = "";
-        public string IdShort { get; set; } = "";
         public string Type { get; set; } = "";
-        public string ContentPreview { get; set; } = "";
-        public string CreatedAtText { get; set; } = "";
-    }
-
-    private sealed class MemoryEditForm
-    {
-        public string Content { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string ScoreText { get; set; } = "";
+        public string Highlight { get; set; } = "";
     }
 }
