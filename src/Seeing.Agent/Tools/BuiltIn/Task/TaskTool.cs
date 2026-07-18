@@ -336,9 +336,7 @@ public class TaskTool : ToolBase
         {
             var modelId = session.SelectedModel;
             var provider = session.SelectedModelProvider;
-            var fullModelId = !string.IsNullOrEmpty(provider) && !modelId.Contains('/')
-                ? $"{provider}/{modelId}"
-                : modelId;
+            var fullModelId = Seeing.Agent.Llm.ModelRef.Format(provider, modelId);
             agentContext.Metadata[AgentContextKeys.RequestModelId] = fullModelId;
         }
 

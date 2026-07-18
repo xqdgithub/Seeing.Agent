@@ -18,6 +18,15 @@ public interface IMemoryService
     
     /// <summary>删除记忆文件</summary>
     Task DeleteAsync(string path, CancellationToken ct = default);
+
+    /// <summary>
+    /// 清空全部记忆（文件 + 索引 + 图谱）。
+    /// </summary>
+    /// <returns>删除的文件数</returns>
+    Task<int> ClearAllAsync(CancellationToken ct = default);
+
+    /// <summary>仅清空知识图谱（不删文件与索引）</summary>
+    Task ClearGraphAsync(CancellationToken ct = default);
     
     /// <summary>列出所有记忆文件</summary>
     Task<IReadOnlyList<FileNode>> ListAsync(string? pattern = null, CancellationToken ct = default);

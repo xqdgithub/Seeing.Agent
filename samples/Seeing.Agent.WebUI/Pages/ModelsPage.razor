@@ -67,13 +67,23 @@
                     </Card>
 
                     <Card Title="模型列表" Style="margin-top: 16px;">
+                        <div style="margin-bottom: 12px;">
+                            <Button Icon="@IconType.Outline.Plus" Size="@ButtonSize.Small"
+                                    OnClick="ShowAddModel" Disabled="@(string.IsNullOrEmpty(_selectedProviderId))">
+                                添加模型
+                            </Button>
+                        </div>
                         <Table TItem="ModelRow" DataSource="@_modelRows" RowKey="@(m => m.Key)" Size="@TableSize.Small">
                             <PropertyColumn Property="c => c.Id" Title="模型 ID" />
                             <PropertyColumn Property="c => c.Name" Title="名称" />
                             <PropertyColumn Property="c => c.Provider" Title="Provider" />
+                            <PropertyColumn Property="c => c.TypesDisplay" Title="类型" />
                             <PropertyColumn Property="c => c.Context" Title="上下文" />
                             <ActionColumn Title="操作">
-                                <Button Size="@ButtonSize.Small" OnClick="@(() => SetDefaultModel(context.Key))">设为默认</Button>
+                                <Space>
+                                    <Button Size="@ButtonSize.Small" OnClick="@(() => ShowEditTypes(context))">编辑类型</Button>
+                                    <Button Size="@ButtonSize.Small" OnClick="@(() => SetDefaultModel(context.Key))">设为默认</Button>
+                                </Space>
                             </ActionColumn>
                         </Table>
                     </Card>
@@ -104,6 +114,63 @@
     }
 </Modal>
 
+<Modal Title="添加模型" Visible="@_addModelVisible"
+       OnOk="ConfirmAddModelAsync" OnCancel="@(() => _addModelVisible = false)" ConfirmLoading="@_addingModel">
+    @if (_addModelVisible)
+    {
+        <Form Layout="@FormLayout.Vertical" Model="@_addModelForm">
+            <FormItem Label="Provider">
+                <Input Value="@_selectedProviderId" Disabled="true" />
+            </FormItem>
+            <FormItem Label="模型 ID" Required>
+                <Input @bind-Value="@_addModelForm.Id" Placeholder="如 gpt-4o-mini 或 Qwen/Qwen3-VL-Embedding-8B" />
+            </FormItem>
+            <FormItem Label="显示名称">
+                <Input @bind-Value="@_addModelForm.Name" Placeholder="可选，默认等于模型 ID" />
+            </FormItem>
+            <FormItem Label="用途类型">
+                <Select Mode="@SelectMode.Multiple"
+                        TItemValue="ModelType"
+                        TItem="ModelType"
+                        Values="@_addModelTypes"
+                        ValuesChanged="OnAddModelTypesChanged"
+                        Style="width: 100%;"
+                        Placeholder="默认 Text">
+                    @foreach (var t in Enum.GetValues<ModelType>())
+                    {
+                        <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@t.ToString()" />
+                    }
+                </Select>
+            </FormItem>
+            <FormItem Label="上下文长度">
+                <AntDesign.InputNumber @bind-Value="@_addModelForm.Context" Min="1" Max="2000000" Style="width: 100%;" />
+            </FormItem>
+        </Form>
+    }
+</Modal>
+
+<Modal Title="编辑模型类型" Visible="@_editTypesVisible"
+       OnOk="SaveEditTypesAsync" OnCancel="@(() => _editTypesVisible = false)">
+    @if (_editTypesVisible)
+    {
+        <div>
+            <div style="margin-bottom: 8px;">模型: @_editKey</div>
+            <Select Mode="@SelectMode.Multiple"
+                    TItemValue="ModelType"
+                    TItem="ModelType"
+                    Values="@_editTypes"
+                    ValuesChanged="OnEditTypesChanged"
+                    Style="width: 100%;"
+                    Placeholder="选择用途类型（空=Text）">
+                @foreach (var t in Enum.GetValues<ModelType>())
+                {
+                    <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@t.ToString()" />
+                }
+            </Select>
+        </div>
+    }
+</Modal>
+
 @code {
     private ProviderConfig? _currentProvider;
     private string _selectedProviderId = "";
@@ -116,6 +183,13 @@
     private string _newProviderId = "";
     private ProviderType _newProviderType = ProviderType.OpenAI;
     private readonly AddProviderForm _addProviderForm = new();
+    private bool _editTypesVisible;
+    private string _editKey = "";
+    private IEnumerable<ModelType> _editTypes = Array.Empty<ModelType>();
+    private bool _addModelVisible;
+    private bool _addingModel;
+    private readonly AddModelForm _addModelForm = new();
+    private IEnumerable<ModelType> _addModelTypes = new[] { ModelType.Text };
 
     protected override async Task OnInitializedAsync()
     {
@@ -138,10 +212,12 @@
 
     private void OnModelConfigChanged(object? sender, ModelConfigChangedEventArgs e)
     {
-        _ = InvokeAsync(async () =>
+        _ = InvokeAsync(() =>
         {
-            await LoadAsync();
+            if (!string.IsNullOrEmpty(_selectedProviderId))
+                RefreshModelRows();
             StateHasChanged();
+            return Task.CompletedTask;
         });
     }
 
@@ -159,13 +235,18 @@
     {
         var models = ModelManager.GetModelsByProvider(_selectedProviderId);
         _modelRows = models
-            .Select(m => new ModelRow
+            .Select(m =>
             {
-                Key = m.Key,
-                Id = m.Value.Id,
-                Name = m.Value.Name ?? m.Value.Id,
-                Provider = m.Value.Provider,
-                Context = m.Value.Limit.Context
+                var effective = ModelManager.GetEffectiveTypes(m.Value);
+                return new ModelRow
+                {
+                    Key = m.Key,
+                    Id = m.Value.Id,
+                    Name = m.Value.Name ?? m.Value.Id,
+                    Provider = m.Value.Provider,
+                    Context = m.Value.Limit.Context,
+                    TypesDisplay = string.Join(", ", effective)
+                };
             })
             .ToList();
     }
@@ -187,7 +268,10 @@
 
         if (defaultModel != null)
         {
-            await ModelManager.SetDefaultModelAsync(defaultModel, _saveLevel);
+            if (ModelManager.CanSetAsDefaultModel(defaultModel))
+                await ModelManager.SetDefaultModelAsync(defaultModel, _saveLevel);
+            else
+                MessageService.Warning($"当前默认模型 '{defaultModel}' 不是 Text 类型，未写入 DefaultModel");
         }
 
         MessageService.Success("模型配置已保存");
@@ -215,14 +299,124 @@
 
     private async Task SetDefaultModel(string key)
     {
+        if (!ModelManager.CanSetAsDefaultModel(key))
+        {
+            MessageService.Warning("仅 Text 类型模型可设为默认对话模型");
+            return;
+        }
+
         await ModelManager.SetDefaultModelAsync(key, _saveLevel);
         MessageService.Info($"已选择 {key} 为默认模型，请保存");
+    }
+
+    private void ShowEditTypes(ModelRow row)
+    {
+        _editKey = row.Key;
+        var config = ModelManager.GetModel(row.Key);
+        _editTypes = config is null
+            ? new[] { ModelType.Text }
+            : ModelManager.GetEffectiveTypes(config).ToArray();
+        _editTypesVisible = true;
+    }
+
+    private void OnEditTypesChanged(IEnumerable<ModelType> values)
+        => _editTypes = values?.ToArray() ?? Array.Empty<ModelType>();
+
+    private async Task SaveEditTypesAsync()
+    {
+        var config = ModelManager.GetModel(_editKey);
+        if (config is null)
+        {
+            MessageService.Error("模型不存在");
+            return;
+        }
+
+        config.Types = _editTypes?.ToList() ?? new List<ModelType>();
+        await ModelManager.UpdateModelAsync(_editKey, config, _saveLevel);
+        _editTypesVisible = false;
+        RefreshModelRows();
+        MessageService.Success("模型类型已保存");
     }
 
     private void ShowAddProvider()
     {
         _newProviderId = "";
         _addModalVisible = true;
+    }
+
+    private void ShowAddModel()
+    {
+        if (string.IsNullOrEmpty(_selectedProviderId))
+        {
+            MessageService.Warning("请先选择 Provider");
+            return;
+        }
+
+        _addModelForm.Id = "";
+        _addModelForm.Name = "";
+        _addModelForm.Context = 4096;
+        _addModelTypes = new[] { ModelType.Text };
+        _addModelVisible = true;
+    }
+
+    private void OnAddModelTypesChanged(IEnumerable<ModelType> values)
+        => _addModelTypes = values?.ToArray() ?? Array.Empty<ModelType>();
+
+    private async Task ConfirmAddModelAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedProviderId))
+        {
+            MessageService.Warning("请先选择 Provider");
+            return;
+        }
+
+        var modelId = (_addModelForm.Id ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            MessageService.Warning("请填写模型 ID");
+            return;
+        }
+
+        var key = ModelRef.Format(_selectedProviderId, modelId);
+        if (ModelManager.GetModel(key) is not null)
+        {
+            MessageService.Warning($"模型已存在: {key}");
+            return;
+        }
+
+        _addingModel = true;
+        try
+        {
+            var types = _addModelTypes?.ToList() ?? new List<ModelType>();
+            if (types.Count == 0)
+                types.Add(ModelType.Text);
+
+            var config = new ModelConfig
+            {
+                Id = modelId,
+                Name = string.IsNullOrWhiteSpace(_addModelForm.Name) ? modelId : _addModelForm.Name.Trim(),
+                Provider = _selectedProviderId,
+                Types = types,
+                Limit = new ModelLimits
+                {
+                    Context = _addModelForm.Context > 0 ? _addModelForm.Context : 4096,
+                    Output = 4096
+                }
+            };
+
+            await ModelManager.AddModelAsync(key, config, _saveLevel);
+            _addModelVisible = false;
+            RefreshModelRows();
+            MessageService.Success($"已添加模型 {key}");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"添加失败: {ex.Message}");
+        }
+        finally
+        {
+            _addingModel = false;
+        }
     }
 
     private async Task ConfirmAddProvider()
@@ -244,9 +438,17 @@
         public string Name { get; set; } = "";
         public string Provider { get; set; } = "";
         public int Context { get; set; }
+        public string TypesDisplay { get; set; } = "Text";
     }
 
     private sealed class AddProviderForm { }
+
+    private sealed class AddModelForm
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public int Context { get; set; } = 4096;
+    }
 
     public void Dispose()
     {

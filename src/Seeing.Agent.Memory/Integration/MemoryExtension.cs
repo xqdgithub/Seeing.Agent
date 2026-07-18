@@ -2,72 +2,76 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Memory.Abstractions;
+using Seeing.Agent.Memory.Extensions;
+using Seeing.Agent.Memory.Integration.Tools;
 
 namespace Seeing.Agent.Memory.Integration;
 
 /// <summary>
-/// Memory 插件入口，实现 IExtension 接口。
+/// Memory 插件入口。服务由 <see cref="MemoryServiceExtensions.AddMemoryServices"/> 注册；
+/// 本扩展导出 Tools/Hooks，供 Plugins 加载路径使用。
 /// </summary>
 public class MemoryExtension : IExtension
 {
-    /// <summary>插件 ID</summary>
     public string? Id => "seeing.agent.memory";
-
-    /// <summary>版本号</summary>
-    public string Version => "2.0.0";
-
-    /// <summary>显示名称</summary>
+    public string Version => "2.1.0";
     public string Name => "Seeing.Agent Memory";
-
-    /// <summary>描述</summary>
     public string Description => "基于文件的记忆系统，支持混合检索和知识图谱";
-
-    /// <summary>目标运行时</summary>
     public string Target => "server";
 
-    private readonly List<IHookHandler> _hookHandlers = new();
+    private MemorySearchTool? _searchTool;
+    private MemoryWriteTool? _writeTool;
+    private MemoryReadTool? _readTool;
+    private ChatMemoryHandler? _chat;
+    private ToolMemoryHandler? _tool;
+    private MemoryRecallHandler? _recall;
     private ILogger? _logger;
 
-    /// <summary>
-    /// 注册服务到 DI 容器
-    /// </summary>
-    public void ConfigureServices(IServiceCollection services)
-    {
-        // 服务已通过 AddMemoryServices() 注册
-    }
+    public void ConfigureServices(IServiceCollection services) => services.AddMemoryServices();
 
-    /// <summary>
-    /// 初始化插件
-    /// </summary>
-    public async Task InitializeAsync(ExtensionContext context, ExtensionMeta meta)
+    public Task InitializeAsync(ExtensionContext context, ExtensionMeta meta)
     {
         var loggerFactory = context.Services.GetRequiredService<ILoggerFactory>();
         _logger = loggerFactory.CreateLogger<MemoryExtension>();
 
-        _logger?.LogInformation("初始化 {Name} v{Version} (state: {State})",
-            Name, Version, meta.State);
+        _searchTool = context.Services.GetService<MemorySearchTool>();
+        _writeTool = context.Services.GetService<MemoryWriteTool>();
+        _readTool = context.Services.GetService<MemoryReadTool>();
+        _chat = context.Services.GetService<ChatMemoryHandler>();
+        _tool = context.Services.GetService<ToolMemoryHandler>();
+        _recall = context.Services.GetService<MemoryRecallHandler>();
 
-        await Task.CompletedTask;
+        _logger.LogInformation("初始化 {Name} v{Version} (state: {State})", Name, Version, meta.State);
+        return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// 获取提供的 Hook Handler
-    /// </summary>
-    public IEnumerable<IHookHandler> GetHookHandlers() => _hookHandlers;
+    public IEnumerable<IHookHandler> GetHookHandlers()
+    {
+        var handlers = new List<IHookHandler>(3);
+        if (_chat != null) handlers.Add(_chat);
+        if (_tool != null) handlers.Add(_tool);
+        if (_recall != null) handlers.Add(_recall);
 
-    /// <summary>
-    /// 获取提供的工具（通过注解发现，无需在此返回）
-    /// </summary>
-    public IEnumerable<ITool> GetTools() => Enumerable.Empty<ITool>();
+        // 与 Bootstrap 共用闸门：先到先注册，避免双重触发
+        if (handlers.Count == 0 || !MemoryHookRegistrationGate.TryClaim())
+            return Array.Empty<IHookHandler>();
 
-    /// <summary>
-    /// 清理资源
-    /// </summary>
-    public async Task DisposeAsync()
+        return handlers;
+    }
+
+    public IEnumerable<ITool> GetTools()
+    {
+        if (_searchTool != null)
+            yield return _searchTool;
+        if (_writeTool != null)
+            yield return _writeTool;
+        if (_readTool != null)
+            yield return _readTool;
+    }
+
+    public Task DisposeAsync()
     {
         _logger?.LogInformation("清理 {Name}", Name);
-        _hookHandlers.Clear();
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 }

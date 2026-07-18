@@ -278,6 +278,27 @@ public class LocalFileStore : IFileStore, IDisposable
     /// </summary>
     public Task<IReadOnlyList<FileNode>> ListAsync(string? pattern = null, CancellationToken ct = default)
     {
+        // Directory.GetFiles 不支持 **/ 路径通配；含路径分隔符时按类型前缀列举
+        if (!string.IsNullOrWhiteSpace(pattern)
+            && (pattern.Contains('/') || pattern.Contains('\\') || pattern.Contains("**")))
+        {
+            var prefix = pattern
+                .Replace("**/", "/", StringComparison.Ordinal)
+                .Replace("**", "", StringComparison.Ordinal)
+                .Trim()
+                .Trim('/', '\\')
+                .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault();
+
+            if (!string.IsNullOrEmpty(prefix)
+                && prefix is "session" or "daily" or "digest")
+            {
+                return ListByPrefixAsync(prefix, ct);
+            }
+
+            pattern = "*.md";
+        }
+
         var result = new List<FileNode>();
         var types = new[] { "session", "daily", "digest" };
 
@@ -287,8 +308,25 @@ public class LocalFileStore : IFileStore, IDisposable
             if (!Directory.Exists(typeDir))
                 continue;
 
-            var searchPattern = pattern ?? "*.md";
-            var files = Directory.GetFiles(typeDir, searchPattern, SearchOption.AllDirectories);
+            var searchPattern = string.IsNullOrWhiteSpace(pattern) ? "*.md" : pattern;
+            // 仅允许文件名通配（禁止路径片段进入 GetFiles pattern）
+            if (searchPattern.Contains('/') || searchPattern.Contains('\\') || searchPattern.Contains("**"))
+                searchPattern = "*.md";
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(typeDir, searchPattern, SearchOption.AllDirectories);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                continue;
+            }
+            catch (IOException ex)
+            {
+                _logger?.LogWarning(ex, "列举目录失败: {Dir} pattern={Pattern}", typeDir, searchPattern);
+                continue;
+            }
 
             foreach (var filePath in files)
             {

@@ -45,15 +45,43 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
         if (string.IsNullOrEmpty(modelId))
             return null;
 
-        // 1. 直接匹配
+        // 1. 直接匹配目录键
         if (_modelCache.TryGetValue(modelId, out var config))
             return config;
 
-        // 2. 带 Provider 前缀匹配 (如 openai/gpt-4o)
-        foreach (var providerId in _configManager.SeeingAgent.Providers.Keys)
+        var providers = _configManager.SeeingAgent.Providers.Keys;
+        var (providerId, apiModelId) = ModelRef.Parse(modelId, providers);
+
+        // 2. 已知 Provider 前缀：provider/apiModelId
+        if (!string.IsNullOrEmpty(providerId))
         {
-            if (_modelCache.TryGetValue($"{providerId}/{modelId}", out config))
+            var key = ModelRef.Format(providerId, apiModelId);
+            if (_modelCache.TryGetValue(key, out config))
                 return config;
+        }
+
+        // 3. 按 ModelConfig.Id（可含 /）+ 可选 Provider 匹配
+        foreach (var (key, cfg) in _modelCache)
+        {
+            if (!string.Equals(cfg.Id, apiModelId, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(cfg.Id, modelId, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!string.IsNullOrEmpty(providerId)
+                && !string.Equals(cfg.Provider, providerId, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return cfg;
+        }
+
+        // 4. 兼容：裸 modelId 拼到各 Provider 下
+        if (string.IsNullOrEmpty(providerId))
+        {
+            foreach (var pid in providers)
+            {
+                if (_modelCache.TryGetValue(ModelRef.Format(pid, modelId), out config))
+                    return config;
+            }
         }
 
         return null;
@@ -72,6 +100,23 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
         return _providerIndex.TryGetValue(providerId, out var models)
             ? models
             : new Dictionary<string, ModelConfig>();
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ModelType> GetEffectiveTypes(ModelConfig config)
+        => ModelTypeRules.GetEffectiveTypes(config);
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<string, ModelConfig> GetModelsByType(
+        ModelType type = ModelType.Text,
+        string? providerId = null)
+        => ModelTypeRules.FilterByType(GetModels(), type, providerId);
+
+    /// <inheritdoc />
+    public bool CanSetAsDefaultModel(string modelId)
+    {
+        var config = GetModel(modelId);
+        return config is not null && GetEffectiveTypes(config).Contains(ModelType.Text);
     }
 
     #endregion
@@ -169,6 +214,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
         ConfigLevel level = ConfigLevel.Project,
         CancellationToken ct = default)
     {
+        if (!string.IsNullOrEmpty(modelId) && !CanSetAsDefaultModel(modelId))
+            throw new InvalidOperationException($"模型 '{modelId}' 不是 Text 类型，不能设为默认对话模型。");
+
         await _configManager.SaveSectionAsync("DefaultModel", modelId, level, ct);
 
         _logger.LogInformation("已设置默认模型: {ModelId}", modelId ?? "(空)");
@@ -206,7 +254,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
         {
             foreach (var (id, config) in options.Models)
             {
-                EnsureModelDefaults(id, config, options.DefaultProvider);
+                EnsureModelDefaults(id, config, options.DefaultProvider, options.Providers.Keys);
                 models[id] = config;
             }
         }
@@ -216,7 +264,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
         {
             foreach (var (id, config) in options.ModelScope.Models)
             {
-                EnsureModelDefaults(id, config, options.DefaultProvider);
+                EnsureModelDefaults(id, config, options.DefaultProvider, options.Providers.Keys);
                 // 不覆盖已存在的模型
                 if (!models.ContainsKey(id))
                     models[id] = config;
@@ -230,10 +278,10 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
 
             foreach (var (id, config) in providerConfig.Models)
             {
-                EnsureModelDefaults(id, config, providerId);
+                EnsureModelDefaults(id, config, providerId, options.Providers.Keys);
 
-                // 只使用 provider/modelId 格式存储，避免重复
-                var fullKey = $"{providerId}/{id}";
+                // 目录键：provider/apiModelId（apiModelId 可含 /）
+                var fullKey = ModelRef.Format(providerId, id);
                 models[fullKey] = config;
             }
         }
@@ -245,13 +293,19 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
     }
 
     /// <summary>确保模型配置的默认值</summary>
-    private static void EnsureModelDefaults(string modelId, ModelConfig config, string? defaultProvider)
+    private static void EnsureModelDefaults(
+        string keyOrId,
+        ModelConfig config,
+        string? defaultProvider,
+        IEnumerable<string> knownProviders)
     {
-        if (string.IsNullOrEmpty(config.Id))
-            config.Id = modelId;
+        var (providerFromKey, apiIdFromKey) = ModelRef.Parse(keyOrId, knownProviders);
 
-        if (string.IsNullOrEmpty(config.Provider) && !string.IsNullOrEmpty(defaultProvider))
-            config.Provider = defaultProvider;
+        if (string.IsNullOrEmpty(config.Id))
+            config.Id = !string.IsNullOrEmpty(apiIdFromKey) ? apiIdFromKey : keyOrId;
+
+        if (string.IsNullOrEmpty(config.Provider))
+            config.Provider = providerFromKey ?? defaultProvider ?? string.Empty;
     }
 
     /// <summary>构建 Provider 索引</summary>

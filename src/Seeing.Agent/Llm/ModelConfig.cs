@@ -19,6 +19,10 @@ public class ModelConfig
     [JsonPropertyName("provider")]
     public string Provider { get; set; } = string.Empty;
 
+    /// <summary>用途类型（多标签）。空/缺失时有效类型为 [Text]。</summary>
+    [JsonPropertyName("types")]
+    public List<ModelType> Types { get; set; } = new();
+
     /// <summary>输入/输出模态（字符串列表，如 text、image）</summary>
     [JsonPropertyName("modalities")]
     public ModelModalities Modalities { get; set; } = new();

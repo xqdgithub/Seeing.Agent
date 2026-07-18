@@ -118,17 +118,15 @@
         if (keys.Contains(value))
             return value;
         
-        // 2. 去掉 provider 前缀匹配（如 "anthropic/qwen3-coder-next" → "qwen3-coder-next"）
+        // 2. 若含 '/'：仅当首段为已知场景不在此组件处理；保留完整值做精确/后缀匹配
         if (value.Contains('/'))
         {
-            var withoutProvider = value.Split('/').Last();
-            if (keys.Contains(withoutProvider))
-                return withoutProvider;
-            
-            // 也尝试查找另一个带前缀的版本
+            // 去掉「已知 provider」前缀后再匹配（由目录键精确匹配优先）
             foreach (var key in keys)
             {
-                if (key.EndsWith($"/{withoutProvider}"))
+                if (key.Equals(value, StringComparison.OrdinalIgnoreCase))
+                    return key;
+                if (key.EndsWith("/" + value, StringComparison.OrdinalIgnoreCase))
                     return key;
             }
         }
@@ -136,12 +134,12 @@
         // 3. 添加 provider 前缀匹配（如 "qwen3-coder-next" → "anthropic/qwen3-coder-next"）
         foreach (var key in keys)
         {
-            if (key.EndsWith($"/{value}"))
+            if (key.EndsWith($"/{value}", StringComparison.OrdinalIgnoreCase))
                 return key;
         }
-        
-        // 4. 返回第一个选项作为保底
-        return keys.FirstOrDefault();
+
+        // 4. 保留当前值（可能已非 Text / 未在列表中）
+        return value;
     }
     
     private List<ModelOption> GetModelOptions()
@@ -156,6 +154,23 @@
                 Label = config.Name ?? modelId,
                 Provider = config.Provider
             });
+        }
+
+        if (!string.IsNullOrEmpty(SelectedModel)
+            && options.All(o => o.Value != SelectedModel && o.Value != _displayValue))
+        {
+            var orphan = _displayValue;
+            if (string.IsNullOrEmpty(orphan))
+                orphan = SelectedModel;
+            if (options.All(o => o.Value != orphan))
+            {
+                options.Insert(0, new ModelOption
+                {
+                    Value = orphan,
+                    Label = $"{orphan} (非 Text 或已变更类型)",
+                    Provider = ""
+                });
+            }
         }
         
         return options;

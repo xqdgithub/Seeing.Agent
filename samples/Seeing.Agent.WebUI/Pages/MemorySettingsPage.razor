@@ -1,0 +1,256 @@
+@page "/memory/settings"
+@using AntDesign
+@using Seeing.Agent.Llm
+@using Seeing.Agent.Memory.Abstractions
+@using Seeing.Agent.Memory.Configuration
+@inject IMemoryOptionsStore OptionsStore
+@inject IModelConfigManager ModelManager
+@inject IEmbeddingStatus EmbeddingStatus
+@inject IEmbeddingConnectionTester EmbeddingTester
+@inject IMessageService MessageService
+@inject NavigationManager Navigation
+
+<PageTitle>记忆设置 - Seeing.Agent</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@false"
+                    EmptyTitle="记忆设置" EmptyDescription="配置捕获、抽取、Embedding 与召回">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem Href="/memory">记忆</BreadcrumbItem>
+        <BreadcrumbItem>设置</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory"))">返回</Button>
+            <Button Type="@ButtonType.Primary" OnClick="SaveAsync" Loading="@_saving">保存</Button>
+        </Space>
+    </Extra>
+    <ChildContent>
+        @if (_options is not null)
+        {
+            <Alert Type="@AlertType.Info"
+                   Message="@($"向量状态: {(EmbeddingStatus.IsAvailable ? "已启用" : EmbeddingStatus.Reason)}")"
+                   ShowIcon="true" Style="margin-bottom: 16px;" />
+
+            <Form Model="@_options" Layout="@FormLayout.Vertical">
+                <Card Title="总开关" Style="margin-bottom: 16px;">
+                    <FormItem Label="启用记忆"><Switch @bind-Value="@_options.Enabled" /></FormItem>
+                </Card>
+                <Card Title="捕获" Style="margin-bottom: 16px;">
+                    <FormItem Label="自动捕获"><Switch @bind-Value="@_options.Capture.AutoCapture" /></FormItem>
+                    <FormItem Label="捕获对话"><Switch @bind-Value="@_options.Capture.CaptureChat" /></FormItem>
+                    <FormItem Label="捕获工具"><Switch @bind-Value="@_options.Capture.CaptureTools" /></FormItem>
+                    <FormItem Label="Snippet 上限"><AntDesign.InputNumber @bind-Value="@_options.Capture.MaxSnippetChars" Min="256" Max="32000" /></FormItem>
+                    <FormItem Label="队列容量"><AntDesign.InputNumber @bind-Value="@_options.Capture.QueueCapacity" Min="8" Max="4096" /></FormItem>
+                </Card>
+                <Card Title="抽取" Style="margin-bottom: 16px;">
+                    <FormItem Label="启用 LLM 抽取"><Switch @bind-Value="@_options.Extraction.Enabled" /></FormItem>
+                    <FormItem Label="最低重要性"><AntDesign.InputNumber @bind-Value="@_options.Extraction.MinImportance" Min="0" Max="1" Step="0.1" /></FormItem>
+                    <FormItem Label="抽取模型">
+                        <Select TItemValue="string"
+                                TItem="string"
+                                AllowClear
+                                @bind-Value="@_options.Extraction.Model"
+                                Placeholder="空则使用 DefaultModel"
+                                Style="width: 100%;"
+                                DataSource="@_textModelIds" />
+                    </FormItem>
+                </Card>
+                <Card Title="演化" Style="margin-bottom: 16px;">
+                    <FormItem Label="启用演化"><Switch @bind-Value="@_options.Evolution.Enabled" /></FormItem>
+                    <FormItem Label="会话结束时演化"><Switch @bind-Value="@_options.Evolution.OnSessionEnd" /></FormItem>
+                    <FormItem Label="空闲分钟"><AntDesign.InputNumber @bind-Value="@_options.Evolution.IdleMinutes" Min="1" Max="1440" /></FormItem>
+                    <FormItem Label="Digest 重要性阈值"><AntDesign.InputNumber @bind-Value="@_options.Evolution.PromoteToDigestMinImportance" Min="0" Max="1" Step="0.1" /></FormItem>
+                </Card>
+                <Card Title="Embedding" Style="margin-bottom: 16px;">
+                    <FormItem Label="Embedding 模型">
+                        <Select TItemValue="string"
+                                TItem="ModelPickOption"
+                                Value="@_embeddingKey"
+                                ValueChanged="OnEmbeddingKeyChanged"
+                                Placeholder="选择 Embedding 模型"
+                                Style="width: 100%;"
+                                DataSource="@_embeddingOptions"
+                                ValueName="@nameof(ModelPickOption.Key)"
+                                LabelName="@nameof(ModelPickOption.Label)"
+                                AllowClear />
+                    </FormItem>
+                    @if (_embeddingOptions.Count == 0)
+                    {
+                        <Alert Type="@AlertType.Warning"
+                               Message="请先在模型管理中为模型勾选 Embedding 类型"
+                               ShowIcon="true"
+                               Style="margin-bottom: 12px;" />
+                    }
+                    else if (!string.IsNullOrEmpty(_options.Embedding.Provider))
+                    {
+                        <div style="margin-bottom: 12px; color: #888; font-size: 12px;">
+                            当前: @_options.Embedding.Provider / @_options.Embedding.Model
+                        </div>
+                    }
+                    <FormItem Label="连接测试">
+                        <Space>
+                            <Button Loading="@_testingEmbedding" OnClick="TestEmbeddingAsync">测试连接</Button>
+                            @if (!string.IsNullOrEmpty(_embeddingTestMessage))
+                            {
+                                <span style="@(_embeddingTestOk ? "color: #389e0d;" : "color: #cf1322;")">@_embeddingTestMessage</span>
+                            }
+                        </Space>
+                    </FormItem>
+                </Card>
+                <Card Title="召回">
+                    <FormItem Label="模式">
+                        <Select TItem="MemoryRetrievalMode"
+                                TItemValue="MemoryRetrievalMode"
+                                @bind-Value="@_options.Retrieval.Mode"
+                                Style="width: 240px;">
+                            <SelectOptions>
+                                <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.Both" Label="Both" />
+                                <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.AutoInject" Label="AutoInject" />
+                                <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.ToolsOnly" Label="ToolsOnly" />
+                            </SelectOptions>
+                        </Select>
+                    </FormItem>
+                    <FormItem Label="TopK"><AntDesign.InputNumber @bind-Value="@_options.Retrieval.TopK" Min="1" Max="50" /></FormItem>
+                    <FormItem Label="注入超时(ms)"><AntDesign.InputNumber @bind-Value="@_options.Retrieval.InjectTimeoutMs" Min="50" Max="5000" /></FormItem>
+                </Card>
+            </Form>
+        }
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private MemoryOptions? _options;
+    private bool _loading = true;
+    private bool _saving;
+    private bool _testingEmbedding;
+    private bool _embeddingTestOk;
+    private string? _embeddingTestMessage;
+    private string? _embeddingKey;
+    private List<ModelPickOption> _embeddingOptions = new();
+    private List<string> _textModelIds = new();
+
+    protected override void OnInitialized()
+    {
+        _options = Clone(OptionsStore.Get());
+        RefreshModelPickers();
+        _loading = false;
+    }
+
+    private void RefreshModelPickers()
+    {
+        _embeddingOptions = ModelManager.GetModelsByType(ModelType.Embedding)
+            .Select(kv => new ModelPickOption(
+                kv.Key,
+                $"{kv.Value.Provider} / {kv.Value.Name ?? kv.Value.Id}"))
+            .ToList();
+
+        _textModelIds = ModelManager.GetModelsByType(ModelType.Text)
+            .Select(kv => kv.Value.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+
+        if (_options is null) return;
+
+        _embeddingKey = ResolveEmbeddingKey(
+            _options.Embedding.Provider,
+            _options.Embedding.Model);
+
+        if (!string.IsNullOrEmpty(_options.Extraction.Model)
+            && !_textModelIds.Contains(_options.Extraction.Model, StringComparer.OrdinalIgnoreCase))
+        {
+            _textModelIds.Insert(0, _options.Extraction.Model);
+        }
+    }
+
+    private string? ResolveEmbeddingKey(string? provider, string? model)
+    {
+        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(model))
+            return null;
+
+        var exact = $"{provider}/{model}";
+        if (_embeddingOptions.Any(o => o.Key.Equals(exact, StringComparison.OrdinalIgnoreCase)))
+            return exact;
+
+        return _embeddingOptions
+            .FirstOrDefault(o =>
+            {
+                var cfg = ModelManager.GetModel(o.Key);
+                return cfg is not null
+                       && cfg.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase)
+                       && cfg.Id.Equals(model, StringComparison.OrdinalIgnoreCase);
+            })?.Key;
+    }
+
+    private void OnEmbeddingKeyChanged(string value)
+    {
+        _embeddingKey = value;
+        if (_options is null) return;
+
+        if (string.IsNullOrEmpty(value))
+        {
+            _options.Embedding.Provider = null;
+            _options.Embedding.Model = null;
+            return;
+        }
+
+        var cfg = ModelManager.GetModel(value);
+        if (cfg is null) return;
+        _options.Embedding.Provider = cfg.Provider;
+        _options.Embedding.Model = cfg.Id;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_options is null) return;
+        _saving = true;
+        try
+        {
+            await OptionsStore.SaveAsync(_options);
+            MessageService.Success("记忆设置已保存");
+            _options = Clone(OptionsStore.Get());
+            RefreshModelPickers();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task TestEmbeddingAsync()
+    {
+        if (_options is null) return;
+        _testingEmbedding = true;
+        _embeddingTestMessage = null;
+        try
+        {
+            var result = await EmbeddingTester.TestAsync(
+                _options.Embedding.Provider,
+                _options.Embedding.Model);
+            _embeddingTestOk = result.Success;
+            _embeddingTestMessage = result.Message;
+            if (result.Success && result.Dimensions is int dims)
+                _options.Embedding.Dimensions = dims;
+        }
+        catch (Exception ex)
+        {
+            _embeddingTestOk = false;
+            _embeddingTestMessage = ex.Message;
+        }
+        finally
+        {
+            _testingEmbedding = false;
+        }
+    }
+
+    private static MemoryOptions Clone(MemoryOptions src) =>
+        System.Text.Json.JsonSerializer.Deserialize<MemoryOptions>(
+            System.Text.Json.JsonSerializer.Serialize(src)) ?? new MemoryOptions();
+
+    private sealed record ModelPickOption(string Key, string Label);
+}

@@ -12,7 +12,7 @@ namespace Seeing.Agent.Llm;
 /// </summary>
 public interface ILlmService
 {
-    /// <summary>获取所有可用模型</summary>
+    /// <summary>获取可用于文本对话的模型（默认 Text）</summary>
     IReadOnlyDictionary<string, ModelConfig> GetAvailableModels();
 
     /// <summary>获取指定模型配置</summary>
@@ -68,9 +68,9 @@ public class LlmService : ILlmService
         _logger = logger;
     }
 
-    /// <summary>获取所有可用模型</summary>
+    /// <summary>获取可用于文本对话的模型（默认 Text）</summary>
     public IReadOnlyDictionary<string, ModelConfig> GetAvailableModels()
-        => _modelManager.GetModels();
+        => _modelManager.GetModelsByType(ModelType.Text);
 
     /// <summary>获取指定模型配置</summary>
     public ModelConfig? GetModelConfig(string modelId)

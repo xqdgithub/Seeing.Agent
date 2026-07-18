@@ -66,6 +66,7 @@ namespace Seeing.Agent.Extensions
                 manager.LoadAsync().GetAwaiter().GetResult();
                 return manager;
             });
+            services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
             
             // IOptions 兼容
             services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
@@ -106,6 +107,7 @@ namespace Seeing.Agent.Extensions
                 configure(manager.GetSeeingAgentOptions());
                 return manager;
             });
+            services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
             
             // IOptions 兼容
             services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
@@ -254,8 +256,13 @@ namespace Seeing.Agent.Extensions
                     manager.LoadAsync().GetAwaiter().GetResult();
                     return manager;
                 });
+                services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
                 services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
                 services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
+            }
+            else if (!services.Any(d => d.ServiceType == typeof(IConfigSectionStore)))
+            {
+                services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
             }
 
             RegisterLlmServices(services);
@@ -590,6 +597,8 @@ namespace Seeing.Agent.Extensions
 
             // LLM 服务（调用层）
             services.AddSingleton<ILlmService, LlmService>();
+            services.AddSingleton<ITextCompletion, TextCompletionService>();
+            services.AddSingleton<IProviderEndpointLookup, OptionsProviderEndpointLookup>();
         }
 
         /// <summary>

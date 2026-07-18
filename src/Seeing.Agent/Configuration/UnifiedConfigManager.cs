@@ -17,7 +17,7 @@ namespace Seeing.Agent.Configuration;
 /// - 项目级：{WorkspaceRoot}/.seeing/
 /// </para>
 /// </summary>
-public sealed class UnifiedConfigManager
+public sealed class UnifiedConfigManager : IConfigSectionStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

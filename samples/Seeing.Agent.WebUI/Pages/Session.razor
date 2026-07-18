@@ -34,6 +34,8 @@
 @inject ToolInvoker ToolInvoker
 @inject SkillManager SkillManager
 @inject ILlmService LlmService
+@inject IProviderManager ProviderManager
+@inject IModelConfigManager ModelManager
 @inject Services.SessionCompactionService CompactionService
 @inject Services.CommandListService CommandListService
 @inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
@@ -556,6 +558,16 @@
     }
     
     /// <summary>
+    /// 组合目录键：provider/apiModelId（apiModelId 可含 /）。
+    /// </summary>
+    private static string ResolveCatalogKey(string? provider, string? model)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+            return provider ?? "";
+        return ModelRef.Format(provider, model);
+    }
+
+    /// <summary>
     /// 同步选择器值（从 SessionState 获取）
     /// </summary>
     private void SyncSelectorValues()
@@ -578,9 +590,7 @@
         if (IsSubAgentView)
         {
             // 子会话只读：存什么展示什么，不做下拉匹配回退
-            _selectedModel = !string.IsNullOrEmpty(provider) && !string.IsNullOrEmpty(model) && !model.Contains('/')
-                ? $"{provider}/{model}"
-                : model;
+            _selectedModel = ResolveCatalogKey(provider, model);
         }
         else if (_isAcpPassthrough)
         {
@@ -592,9 +602,7 @@
         }
         else
         {
-            var fullModelId = !string.IsNullOrEmpty(provider) && !model.Contains('/')
-                ? $"{provider}/{model}"
-                : model;
+            var fullModelId = ResolveCatalogKey(provider, model);
 
             _selectedModel = _models.Any(m => m.Id == fullModelId)
                 ? fullModelId
@@ -664,10 +672,13 @@
                     .Where(m => !string.IsNullOrEmpty(m.Key))
                     .Select(m =>
                     {
-                        // 解析 provider 和 model 名称
-                        var parts = m.Key.Split('/', 2);
-                        var providerName = parts.Length > 1 ? parts[0] : "";
-                        var modelName = parts.Length > 1 ? parts[1] : parts[0];
+                        // 使用配置字段，避免盲拆 Key 中的 '/'
+                        var providerName = m.Value.Provider
+                            ?? ModelRef.Parse(m.Key, ProviderManager.GetProviders().Keys).ProviderId
+                            ?? "";
+                        var modelName = !string.IsNullOrEmpty(m.Value.Id)
+                            ? m.Value.Id
+                            : ModelRef.Parse(m.Key, ProviderManager.GetProviders().Keys).ModelId;
                         return new ModelViewModel
                         {
                             Id = m.Key,
@@ -747,9 +758,22 @@
     private async Task OnModelChanged(string value)
     {
         _selectedModel = value ?? "";
-        
-        // 统一由 SessionManager 处理模型切换，Budget 会自动更新
-        await SessionManager.SetModelAsync(SessionState.SessionId, _selectedModel);
+
+        var providers = ProviderManager.GetProviders().Keys;
+        var (providerId, apiModelId) = ModelRef.Parse(_selectedModel, providers);
+
+        // 优先用目录配置中的 Provider / Id
+        var cfg = ModelManager.GetModel(_selectedModel);
+        if (cfg is not null)
+        {
+            providerId = string.IsNullOrEmpty(cfg.Provider) ? providerId : cfg.Provider;
+            apiModelId = string.IsNullOrEmpty(cfg.Id) ? apiModelId : cfg.Id;
+        }
+
+        await SessionManager.SetModelAsync(
+            SessionState.SessionId,
+            apiModelId,
+            providerId);
     }
 
     private async Task OnAcpModelChanged(string? value)
@@ -1220,12 +1244,10 @@
         }
 
         // 构建选项
-        // 组装完整的 ModelId 格式: provider/model（Native Agent 需要）
+        // 组装完整引用：仅用已知 Provider 前缀，API modelId 可含 '/'
         var modelId = SessionState.SelectedModel;
         var providerId = SessionState.SelectedModelProvider;
-        var fullModelId = !string.IsNullOrEmpty(providerId) && !modelId.Contains('/')
-            ? $"{providerId}/{modelId}"
-            : modelId;
+        var fullModelId = ResolveCatalogKey(providerId, modelId);
 
         var options = new ChatOptions
         {

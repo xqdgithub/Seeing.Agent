@@ -83,7 +83,7 @@
             AppState.AvailableAgents = primaryAgents.Where(a => !string.IsNullOrEmpty(a.Name)).ToList();
             
             // 从 ModelConfigManager 获取模型列表
-            AppState.AvailableModels = ModelManager.GetModels();
+            AppState.AvailableModels = ModelManager.GetModelsByType();
 
             AppState.NotifyChange();
         }

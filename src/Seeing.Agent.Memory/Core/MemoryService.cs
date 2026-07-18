@@ -65,6 +65,27 @@ public class MemoryService : IMemoryService
     }
 
     /// <inheritdoc />
+    public async Task<int> ClearAllAsync(CancellationToken ct = default)
+    {
+        var files = await _fileStore.ListAsync(ct: ct);
+        foreach (var file in files)
+            await _fileStore.DeleteAsync(file.Path, ct);
+
+        await _index.ClearAsync(ct);
+        await _graph.ClearAsync(ct);
+
+        _logger?.LogInformation("已清空全部记忆: Files={Count}", files.Count);
+        return files.Count;
+    }
+
+    /// <inheritdoc />
+    public async Task ClearGraphAsync(CancellationToken ct = default)
+    {
+        await _graph.ClearAsync(ct);
+        _logger?.LogInformation("已清空知识图谱");
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<FileNode>> ListAsync(string? pattern = null, CancellationToken ct = default)
     {
         return await _fileStore.ListAsync(pattern, ct);

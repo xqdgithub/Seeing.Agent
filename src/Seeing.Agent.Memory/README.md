@@ -18,12 +18,11 @@
 
 ## 功能特性
 
-- **文件存储**：Markdown + YAML frontmatter，支持分块存储
-- **混合检索**：向量 (sqlite-vec) + 关键词 (FTS5) + RRF 融合排序
-- **知识图谱**：SQLite 实现，支持邻居查询和路径查找
-- **Embedding 缓存**：SQLite 持久化，避免重复计算
-- **成本控制**：Token Bucket 限流 + 配额管理
-- **后台索引**：文件变更自动索引
+- **异步管道**：Hook 只入队；后台过滤 → LLM 抽取 → 轻量 session 索引 + daily 落盘
+- **文件存储**：Markdown + YAML frontmatter
+- **混合检索**：未配置 Embedding 时仅 BM25；配置后启用向量 + RRF
+- **知识图谱**：Wikilink 关联
+- **配置**：`.seeing/memory.json` + WebUI `/memory/settings`
 
 ## 目录结构
 

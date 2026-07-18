@@ -52,6 +52,20 @@ public interface IModelConfigManager
     /// <summary>获取指定 Provider 下的模型列表</summary>
     IReadOnlyDictionary<string, ModelConfig> GetModelsByProvider(string providerId);
 
+    /// <summary>解析有效类型：Types 空/null → [Text]</summary>
+    IReadOnlyList<ModelType> GetEffectiveTypes(ModelConfig config);
+
+    /// <summary>
+    /// 按类型过滤。默认 type = Text。
+    /// 多标签：EffectiveTypes 包含该类型即命中。
+    /// </summary>
+    IReadOnlyDictionary<string, ModelConfig> GetModelsByType(
+        ModelType type = ModelType.Text,
+        string? providerId = null);
+
+    /// <summary>是否可作为默认对话模型（有效类型含 Text）</summary>
+    bool CanSetAsDefaultModel(string modelId);
+
     #endregion
 
     #region 持久化

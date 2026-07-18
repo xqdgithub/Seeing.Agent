@@ -3,6 +3,7 @@
 @using Seeing.Agent.Memory.Abstractions
 @using Seeing.Agent.Memory.Core.Graph
 @inject IMemoryGraph MemoryGraph
+@inject IMemoryService MemoryService
 @inject NavigationManager Navigation
 @inject IMessageService MessageService
 
@@ -19,6 +20,12 @@
         <Space>
             <Button OnClick="@(() => Navigation.NavigateTo("/memory"))">记忆搜索</Button>
             <Button Icon="@IconType.Outline.Reload" OnClick="LoadGraphAsync">刷新</Button>
+            <Popconfirm Title="确定清空全部图谱节点与边？此操作不可恢复。"
+                        OnConfirm="ClearGraphAsync"
+                        OkText="清空"
+                        OkButtonProps="@(new ButtonProps { Danger = true })">
+                <Button Danger Disabled="@(!_nodes.Any())" Loading="@_clearing">清空图谱</Button>
+            </Popconfirm>
         </Space>
     </Extra>
     <Stats>
@@ -59,6 +66,18 @@
                     </PropertyColumn>
                     <PropertyColumn Property="c => c.Degree" Title="度数" Width="100" />
                     <PropertyColumn Property="c => c.NeighborPreview" Title="关联节点" />
+                    <ActionColumn Title="操作" Width="160">
+                        <Space>
+                            <Button Size="@ButtonSize.Small"
+                                    OnClick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">
+                                查看
+                            </Button>
+                            <Popconfirm Title="删除该节点及其关联边？不会删除记忆文件。"
+                                        OnConfirm="@(() => DeleteNodeAsync(context.Path))">
+                                <Button Size="@ButtonSize.Small" Danger>删除</Button>
+                            </Popconfirm>
+                        </Space>
+                    </ActionColumn>
                 </Table>
             </TabPane>
             <TabPane Key="edges" Tab="边列表">
@@ -72,6 +91,12 @@
                     <PropertyColumn Property="c => c.Type" Title="类型" Width="100" />
                     <PropertyColumn Property="c => c.Weight" Title="权重" Width="80" />
                     <PropertyColumn Property="c => c.Context" Title="上下文" Ellipsis="true" />
+                    <ActionColumn Title="操作" Width="80">
+                        <Popconfirm Title="确定删除此边？"
+                                    OnConfirm="@(() => DeleteEdgeAsync(context))">
+                            <Button Size="@ButtonSize.Small" Danger>删除</Button>
+                        </Popconfirm>
+                    </ActionColumn>
                 </Table>
             </TabPane>
         </Tabs>
@@ -86,6 +111,7 @@
     private GraphStats _stats = new(0, 0, 0);
     private string _searchQuery = "";
     private bool _loading;
+    private bool _clearing;
 
     protected override async Task OnInitializedAsync() => await LoadGraphAsync();
 
@@ -107,6 +133,59 @@
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task DeleteNodeAsync(string path)
+    {
+        try
+        {
+            await MemoryGraph.RemoveNodeAsync(path);
+            MessageService.Success($"已删除节点: {path}");
+            await LoadGraphAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除节点失败: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteEdgeAsync(GraphEdgeDisplay edge)
+    {
+        try
+        {
+            if (!Enum.TryParse<EdgeType>(edge.Type, out var type))
+            {
+                MessageService.Error($"未知边类型: {edge.Type}");
+                return;
+            }
+
+            await MemoryGraph.RemoveEdgeAsync(edge.SourcePath, edge.TargetPath, type);
+            MessageService.Success("已删除边");
+            await LoadGraphAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除边失败: {ex.Message}");
+        }
+    }
+
+    private async Task ClearGraphAsync()
+    {
+        _clearing = true;
+        try
+        {
+            await MemoryService.ClearGraphAsync();
+            MessageService.Success("图谱已清空");
+            await LoadGraphAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"清空图谱失败: {ex.Message}");
+        }
+        finally
+        {
+            _clearing = false;
         }
     }
 

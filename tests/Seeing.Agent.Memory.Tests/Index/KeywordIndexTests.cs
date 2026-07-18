@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
+using Seeing.Agent.Memory.Core;
 using Seeing.Agent.Memory.Core.Index;
 using Seeing.Agent.Memory.Core.Models;
 using Xunit;
@@ -16,7 +17,7 @@ public class KeywordIndexTests : IDisposable
         // 使用内存数据库进行测试
         _connection = new SqliteConnection("Data Source=:memory:");
         _connection.Open();
-        _index = new KeywordIndex(_connection);
+        _index = new KeywordIndex(_connection, new SqliteConnectionGate());
     }
 
     public void Dispose()
@@ -33,7 +34,7 @@ public class KeywordIndexTests : IDisposable
     {
         var metadata = new FileMetadata(
             Id: Guid.NewGuid().ToString("N")[..8],
-            Type: MemoryType.Daily,
+            Type: Seeing.Agent.Memory.Core.Models.MemoryType.Daily,
             Title: title,
             Tags: tags ?? Array.Empty<string>(),
             Importance: 0.5,

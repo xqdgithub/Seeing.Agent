@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Seeing.Agent.Memory.Abstractions;
+using Seeing.Agent.Memory.Core;
 using Seeing.Agent.Memory.Core.Index;
 using Seeing.Agent.Memory.Core.Models;
 using Xunit;
@@ -19,7 +20,7 @@ public class VectorIndexTests : IDisposable
         _connection = new SqliteConnection("Data Source=:memory:");
         _connection.Open();
         _embeddingService = new MockEmbeddingService(dimensions: 128);
-        _index = new VectorIndex(_connection, _embeddingService);
+        _index = new VectorIndex(_connection, new SqliteConnectionGate(), _embeddingService);
     }
 
     public void Dispose()
@@ -36,7 +37,7 @@ public class VectorIndexTests : IDisposable
     {
         var metadata = new FileMetadata(
             Id: Guid.NewGuid().ToString("N")[..8],
-            Type: MemoryType.Daily,
+            Type: Seeing.Agent.Memory.Core.Models.MemoryType.Daily,
             Title: title,
             Tags: tags ?? Array.Empty<string>(),
             Importance: 0.5,

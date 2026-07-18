@@ -17,6 +17,9 @@ public interface IMemoryIndex
     
     /// <summary>移除索引</summary>
     Task RemoveAsync(string path, CancellationToken ct = default);
+
+    /// <summary>清空全部索引</summary>
+    Task ClearAsync(CancellationToken ct = default);
     
     /// <summary>重建所有索引</summary>
     Task RebuildAsync(CancellationToken ct = default);

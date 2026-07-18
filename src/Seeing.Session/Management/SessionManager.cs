@@ -703,13 +703,8 @@ namespace Seeing.Session.Management
                 return;
             }
 
-            // 解析 provider（如果未提供）
-            if (string.IsNullOrEmpty(providerId) && modelId.Contains('/'))
-            {
-                var parts = modelId.Split('/');
-                providerId = parts[0];
-                modelId = parts[1];
-            }
+            // 不可盲拆 '/'：API 模型 ID 本身可含 '/'（如 Qwen/Qwen3-...）。
+            // 未显式传入 providerId 时，整段视为 modelId。
 
             // 更新会话的模型选择
             session.SelectedModel = modelId;

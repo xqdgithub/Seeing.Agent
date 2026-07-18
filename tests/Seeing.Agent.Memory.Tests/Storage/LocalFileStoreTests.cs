@@ -236,6 +236,18 @@ Best practices for REST API design.
     }
 
     [Fact]
+    public async Task ListAsync_WithPathGlob_ShouldListByTypePrefix()
+    {
+        await _store.WriteAsync("daily/2025-01-10/note1.md", "# Note 1");
+        await _store.WriteAsync("session/2025-01-10/session.md", "# Session");
+
+        var result = await _store.ListAsync("daily/**/*.md");
+
+        result.Should().HaveCount(1);
+        result[0].Path.Should().Be("daily/2025-01-10/note1.md");
+    }
+
+    [Fact]
     public async Task ListByPrefixAsync_ReturnsMatchingFiles()
     {
         // Arrange

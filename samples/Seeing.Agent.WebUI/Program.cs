@@ -1,14 +1,11 @@
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.App;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Channels;
 using Seeing.Agent.Gateway.Extensions;
-using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Extensions;
-using Seeing.Agent.Memory.Integration;
 using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Services;
@@ -116,12 +113,7 @@ using (var scope = app.Services.CreateScope())
     sp.InitializeCommands();
     sp.InitializeAcpCommands();  // 注册 ACP 专属命令
 
-    // 注册 Memory Hook Handler（自动捕获对话）
-    var hookManager = sp.GetRequiredService<IHookManager>();
-    var chatHandler = sp.GetRequiredService<ChatMemoryHandler>();
-    var toolHandler = sp.GetRequiredService<ToolMemoryHandler>();
-    hookManager.Register(chatHandler);
-    hookManager.Register(toolHandler);
+    // 注册 Memory Hook / Tools 由 AddMemoryServices 内 Bootstrap + ITool 自注册
     
     // 注册 TokenBudget Hook Handler（自动管理 token 预算）
     sp.UseTokenBudgetHooks();

@@ -64,6 +64,9 @@ public interface IMemoryGraph
     /// <summary>移除指定边</summary>
     Task RemoveEdgeAsync(string sourcePath, string targetPath, EdgeType type, CancellationToken ct = default);
 
+    /// <summary>清空全部节点与边</summary>
+    Task ClearAsync(CancellationToken ct = default);
+
     /// <summary>获取邻居节点</summary>
     Task<IReadOnlyList<GraphNode>> GetNeighborsAsync(string path, int depth = 1, CancellationToken ct = default);
 

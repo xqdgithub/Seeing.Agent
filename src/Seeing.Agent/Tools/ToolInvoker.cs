@@ -53,7 +53,8 @@ namespace Seeing.Agent.Tools
         // Primary tools that are allowed in Primary mode
         private static readonly HashSet<string> PrimaryTools = new HashSet<string>(new[]
         {
-            "write", "edit", "bash", "question", "plan_enter", "acp", "acp_status", "task", "task_status"
+            "write", "edit", "bash", "question", "plan_enter", "acp", "acp_status", "task", "task_status",
+            "memory_search", "memory_write", "memory_read"
         }, System.StringComparer.OrdinalIgnoreCase);
 
         // SubAgent specific tools

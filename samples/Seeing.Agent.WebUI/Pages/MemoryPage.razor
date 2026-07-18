@@ -17,10 +17,17 @@
     </Breadcrumb>
     <Extra>
         <Space>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory/settings"))">设置</Button>
             <Button OnClick="@(() => Navigation.NavigateTo("/memory/browse"))">目录浏览</Button>
             <Button OnClick="@(() => Navigation.NavigateTo("/memory/graph"))">知识图谱</Button>
             <Button OnClick="@(() => Navigation.NavigateTo("/memory/stats"))">统计</Button>
             <Button Icon="@IconType.Outline.Reload" OnClick="LoadStatsAsync">刷新</Button>
+            <Popconfirm Title="确定清空全部记忆文件、索引与图谱？此操作不可恢复。"
+                        OnConfirm="ClearAllAsync"
+                        OkText="清空全部"
+                        OkButtonProps="@(new ButtonProps { Danger = true })">
+                <Button Danger Loading="@_clearing">清空全部</Button>
+            </Popconfirm>
         </Space>
     </Extra>
     <Stats>
@@ -90,6 +97,7 @@
 @code {
     private string _query = "";
     private bool _loading;
+    private bool _clearing;
     private int _fileCount;
     private int _vectorCount;
     private int _nodeCount;
@@ -110,6 +118,26 @@
             _edgeCount = stats.Graph.EdgeCount;
         }
         finally { _loading = false; }
+    }
+
+    private async Task ClearAllAsync()
+    {
+        _clearing = true;
+        try
+        {
+            var count = await MemoryService.ClearAllAsync();
+            MessageService.Success($"已清空全部记忆（{count} 个文件）");
+            _hits.Clear();
+            await LoadStatsAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"清空失败: {ex.Message}");
+        }
+        finally
+        {
+            _clearing = false;
+        }
     }
 
     private async Task SearchAsync()

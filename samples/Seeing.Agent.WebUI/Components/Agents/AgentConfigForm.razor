@@ -2,6 +2,9 @@
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Models
 @using Seeing.Agent.Core.Permission
+@using Seeing.Agent.Llm
+@inject IModelConfigManager ModelManager
+@inject IProviderManager ProviderManager
 
 <div class="agent-config-form">
     <Tabs Class="full-height-tabs">
@@ -208,7 +211,7 @@
     {
         _modelKeys = ModelKeys.Where(k => !string.IsNullOrEmpty(k)).ToList();
         _modelKey = !string.IsNullOrEmpty(EditModel.Model)
-            ? (string.IsNullOrEmpty(EditModel.Provider) ? EditModel.Model : $"{EditModel.Provider}/{EditModel.Model}")
+            ? ModelRef.Format(EditModel.Provider, EditModel.Model)
             : "";
         if (!string.IsNullOrEmpty(_modelKey) && !_modelKeys.Contains(_modelKey))
             _modelKey = "";
@@ -241,17 +244,17 @@
             return;
         }
 
-        var parts = _modelKey.Split('/', 2);
-        if (parts.Length == 2)
+        var cfg = ModelManager.GetModel(_modelKey);
+        if (cfg is not null)
         {
-            EditModel.Provider = parts[0];
-            EditModel.Model = parts[1];
+            EditModel.Provider = cfg.Provider;
+            EditModel.Model = cfg.Id;
+            return;
         }
-        else
-        {
-            EditModel.Provider = null;
-            EditModel.Model = _modelKey;
-        }
+
+        var (provider, modelId) = ModelRef.Parse(_modelKey, ProviderManager.GetProviders().Keys);
+        EditModel.Provider = provider;
+        EditModel.Model = modelId;
     }
 
     private void AddRule()

@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Moq;
+using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Graph;
 using Seeing.Agent.Memory.Core.Index;
 using Seeing.Agent.Memory.Core.Models;
@@ -13,6 +14,7 @@ public class HybridMemoryIndexTests : IDisposable
     private readonly SqliteConnection _keywordConnection;
     private readonly Mock<IVectorIndex> _vectorIndexMock;
     private readonly Mock<IKeywordIndex> _keywordIndexMock;
+    private readonly Mock<IEmbeddingStatus> _embeddingStatusMock;
     private readonly HybridMemoryIndex _index;
 
     public HybridMemoryIndexTests()
@@ -24,10 +26,20 @@ public class HybridMemoryIndexTests : IDisposable
 
         _vectorIndexMock = new Mock<IVectorIndex>();
         _keywordIndexMock = new Mock<IKeywordIndex>();
+        _embeddingStatusMock = new Mock<IEmbeddingStatus>();
+        _embeddingStatusMock.SetupGet(x => x.IsAvailable).Returns(true);
+
+        var fileStore = new Mock<IFileStore>();
+        fileStore
+            .Setup(f => f.ReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string path, CancellationToken _) =>
+                FileNode.Create(path, $"# body of {path}", FileMetadata.Create("id", MemoryType.Daily, "title")));
 
         _index = new HybridMemoryIndex(
             _vectorIndexMock.Object,
-            _keywordIndexMock.Object);
+            _keywordIndexMock.Object,
+            _embeddingStatusMock.Object,
+            fileStore.Object);
     }
 
     [Fact]
@@ -41,6 +53,23 @@ public class HybridMemoryIndexTests : IDisposable
 
         // Assert
         _vectorIndexMock.Verify(x => x.IndexAsync(node, It.IsAny<CancellationToken>()), Times.Once);
+        _keywordIndexMock.Verify(x => x.IndexAsync(node, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task IndexAsync_WhenEmbeddingUnavailable_ShouldSkipVector()
+    {
+        _embeddingStatusMock.SetupGet(x => x.IsAvailable).Returns(false);
+        var index = new HybridMemoryIndex(
+            _vectorIndexMock.Object,
+            _keywordIndexMock.Object,
+            _embeddingStatusMock.Object,
+            Mock.Of<IFileStore>());
+        var node = CreateTestNode("test.md");
+
+        await index.IndexAsync(node);
+
+        _vectorIndexMock.Verify(x => x.IndexAsync(It.IsAny<FileNode>(), It.IsAny<CancellationToken>()), Times.Never);
         _keywordIndexMock.Verify(x => x.IndexAsync(node, It.IsAny<CancellationToken>()), Times.Once);
     }
 

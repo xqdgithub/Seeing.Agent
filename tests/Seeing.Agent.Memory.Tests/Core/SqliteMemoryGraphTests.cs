@@ -210,9 +210,21 @@ public class SqliteMemoryGraphTests : IDisposable
         Assert.Equal(2, result.Edges.Count);
     }
 
+    [Fact]
+    public async Task ClearAsync_ShouldRemoveAllNodesAndEdges()
+    {
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
+        await _graph.AddNodeAsync("doc3.md", "Doc3");
+
+        await _graph.ClearAsync();
+
+        var stats = await _graph.GetStatsAsync();
+        Assert.Equal(0, stats.NodeCount);
+        Assert.Equal(0, stats.EdgeCount);
+    }
+
     public void Dispose()
     {
-        _graph?.Dispose();
         _connection?.Dispose();
     }
 }
