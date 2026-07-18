@@ -95,4 +95,44 @@ public class TaskSessionProjectorTests
         tc.TaskId = "mutated";
         session.Messages[0].ToolCalls![0].TaskId.Should().Be("child_1");
     }
+
+    [Fact]
+    public void Apply_TaskProgress_ShouldMergeSameToolCallStatusesIntoOneStep()
+    {
+        var session = SessionData.Create(selectedAgent: "build");
+        session.Messages.Add(SessionMessage.AssistantMessage(""));
+        session.Messages[0].ToolCalls = new List<SessionToolCall>
+        {
+            new() { Id = "call_task_1", Name = "task", Status = "running", TaskId = "child_1" }
+        };
+
+        void Progress(string toolCallId, string status, string? preview = null)
+        {
+            TaskSessionProjector.Apply(session, new TaskProgressEvent
+            {
+                SessionId = session.Id,
+                TaskId = "child_1",
+                OriginToolCallId = "call_task_1",
+                ToolCallId = toolCallId,
+                StepKind = "tool_" + status.ToLowerInvariant(),
+                ToolName = "websearch",
+                Status = status,
+                Preview = preview
+            });
+        }
+
+        Progress("tc_ws_1", "Pending");
+        Progress("tc_ws_1", "Running");
+        Progress("tc_ws_1", "Success", "Title: weather…");
+        Progress("tc_ws_2", "Pending");
+        Progress("tc_ws_2", "Success", "second");
+
+        var steps = session.Messages[0].ToolCalls![0].TaskSteps!;
+        steps.Should().HaveCount(2);
+        steps[0].ToolName.Should().Be("websearch");
+        steps[0].Status.Should().Be("Success");
+        steps[0].Preview.Should().Be("Title: weather…");
+        steps[1].ToolCallId.Should().Be("tc_ws_2");
+        steps[1].Preview.Should().Be("second");
+    }
 }

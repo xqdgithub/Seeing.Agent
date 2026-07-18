@@ -11,14 +11,14 @@
     <div class="task-card-header-row">
         <div class="tool-call-block task-card-header" onclick="@ToggleExpand">
             <Icon Type="@IconType.Outline.Apartment" Style="color: #1677ff;" />
-            <Tag Color="@("blue")" Style="margin-left: 6px; font-size: 11px;">子代理</Tag>
-            <span style="margin-left: 6px; font-weight: 600; font-size: 13px;">
-                @(string.IsNullOrEmpty(ToolCall.TaskDescription) ? "Task" : ToolCall.TaskDescription)
-            </span>
             @if (!string.IsNullOrEmpty(ToolCall.TaskAgent))
             {
                 <Tag Color="@("processing")" Style="margin-left: 6px; font-size: 11px;">@ToolCall.TaskAgent</Tag>
             }
+            <span style="margin-left: 6px; font-weight: 600; font-size: 13px;">
+                @(string.IsNullOrEmpty(ToolCall.TaskDescription) ? "Task" : ToolCall.TaskDescription)
+            </span>
+            
             <Tag Color="@ToolCall.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@ToolCall.StatusText</Tag>
             @if (ToolCall.TaskBackground)
             {
@@ -67,7 +67,7 @@
                         <span class="tool-call-section-title">进度</span>
                     </div>
                     <ul class="task-step-list">
-                        @foreach (var step in ToolCall.TaskSteps.TakeLast(20))
+                        @foreach (var step in GetDisplaySteps())
                         {
                             <li>
                                 <span class="task-step-kind">@FormatStepKind(step)</span>
@@ -231,6 +231,77 @@
         else if (OnToolClick.HasDelegate)
             await OnToolClick.InvokeAsync(ToolCall);
     }
+
+    private IEnumerable<SessionTaskStep> GetDisplaySteps()
+    {
+        // 兼容旧数据：同一工具 Pending/Running/Success 多行时合并为最新一条
+        return CoalesceTaskSteps(ToolCall.TaskSteps).TakeLast(20);
+    }
+
+    /// <summary>
+    /// 将同一 ToolCallId（或同名连续进行中）的步骤合并为最终状态。
+    /// </summary>
+    internal static IReadOnlyList<SessionTaskStep> CoalesceTaskSteps(IReadOnlyList<SessionTaskStep>? steps)
+    {
+        if (steps == null || steps.Count == 0)
+            return Array.Empty<SessionTaskStep>();
+
+        var result = new List<SessionTaskStep>(steps.Count);
+        foreach (var step in steps)
+        {
+            SessionTaskStep? existing = null;
+            if (!string.IsNullOrEmpty(step.ToolCallId))
+            {
+                existing = result.Find(s =>
+                    string.Equals(s.ToolCallId, step.ToolCallId, StringComparison.Ordinal));
+            }
+            else if (!string.IsNullOrEmpty(step.ToolName))
+            {
+                for (var i = result.Count - 1; i >= 0; i--)
+                {
+                    var s = result[i];
+                    if (!string.Equals(s.ToolName, step.ToolName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var active = string.Equals(s.Status, "Pending", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(s.Status, "Running", StringComparison.OrdinalIgnoreCase);
+                    if (active)
+                    {
+                        existing = s;
+                        break;
+                    }
+                    break; // 同名但已结束 → 视为新的一次调用
+                }
+            }
+
+            if (existing == null)
+            {
+                result.Add(CloneStep(step));
+                continue;
+            }
+
+            existing.StepKind = step.StepKind;
+            existing.Status = step.Status;
+            existing.Timestamp = step.Timestamp;
+            if (!string.IsNullOrEmpty(step.ToolCallId))
+                existing.ToolCallId = step.ToolCallId;
+            if (!string.IsNullOrEmpty(step.ToolName))
+                existing.ToolName = step.ToolName;
+            if (!string.IsNullOrEmpty(step.Preview))
+                existing.Preview = step.Preview;
+        }
+
+        return result;
+    }
+
+    private static SessionTaskStep CloneStep(SessionTaskStep s) => new()
+    {
+        StepKind = s.StepKind,
+        ToolCallId = s.ToolCallId,
+        ToolName = s.ToolName,
+        Status = s.Status,
+        Preview = s.Preview,
+        Timestamp = s.Timestamp
+    };
 
     private static string FormatStepKind(SessionTaskStep step)
     {

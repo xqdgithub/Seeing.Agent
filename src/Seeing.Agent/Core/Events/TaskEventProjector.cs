@@ -26,6 +26,7 @@ public sealed class TaskEventProjector : ITaskEventProjector
                 TaskId = ctx.TaskId,
                 ParentSessionId = ctx.ParentSessionId,
                 OriginToolCallId = ctx.OriginToolCallId,
+                ToolCallId = tool.ToolCallId,
                 StepKind = stepKind,
                 ToolName = tool.ToolName,
                 Status = tool.Status.ToString(),

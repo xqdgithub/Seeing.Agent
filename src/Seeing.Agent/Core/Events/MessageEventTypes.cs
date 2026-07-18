@@ -317,24 +317,27 @@ public record TaskStartedEvent : IMessageEvent
     public bool Background { get; init; }
 }
 
-/// <summary>子任务进度（降采样投影）</summary>
-public record TaskProgressEvent : IMessageEvent
-{
-    public required string SessionId { get; init; }
-    public string? LoopId { get; init; }
-    public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.TaskProgress;
+    /// <summary>子任务进度（降采样投影）</summary>
+    public record TaskProgressEvent : IMessageEvent
+    {
+        public required string SessionId { get; init; }
+        public string? LoopId { get; init; }
+        public DateTime Timestamp { get; init; } = DateTime.Now;
+        public MessageEventType Type => MessageEventType.TaskProgress;
 
-    public required string TaskId { get; init; }
-    public string? ParentSessionId { get; init; }
-    public string? OriginToolCallId { get; init; }
+        public required string TaskId { get; init; }
+        public string? ParentSessionId { get; init; }
+        public string? OriginToolCallId { get; init; }
 
-    /// <summary>stream | tool_pending | tool_running | tool_complete | text</summary>
-    public required string StepKind { get; init; }
-    public string? ToolName { get; init; }
-    public string? Status { get; init; }
-    public string? Preview { get; init; }
-}
+        /// <summary>子会话内工具调用 ID（用于合并 Pending/Running/Success 为一步）</summary>
+        public string? ToolCallId { get; init; }
+
+        /// <summary>stream | tool_pending | tool_running | tool_complete | text</summary>
+        public required string StepKind { get; init; }
+        public string? ToolName { get; init; }
+        public string? Status { get; init; }
+        public string? Preview { get; init; }
+    }
 
 /// <summary>子任务完成</summary>
 public record TaskCompletedEvent : IMessageEvent

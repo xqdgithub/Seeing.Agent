@@ -97,14 +97,60 @@ public static class TaskSessionProjector
         tc.TaskId ??= evt.TaskId;
         tc.Name = "task";
         tc.TaskSteps ??= new List<SessionTaskStep>();
+
+        var existing = FindStepToUpdate(tc.TaskSteps, evt);
+        if (existing != null)
+        {
+            existing.StepKind = evt.StepKind;
+            existing.Status = evt.Status;
+            existing.Timestamp = evt.Timestamp;
+            if (!string.IsNullOrEmpty(evt.ToolCallId))
+                existing.ToolCallId = evt.ToolCallId;
+            if (!string.IsNullOrEmpty(evt.ToolName))
+                existing.ToolName = evt.ToolName;
+            // Pending/Running 通常无 Preview；完成时写入，勿被空值清掉
+            if (!string.IsNullOrEmpty(evt.Preview))
+                existing.Preview = evt.Preview;
+            return;
+        }
+
         tc.TaskSteps.Add(new SessionTaskStep
         {
             StepKind = evt.StepKind,
+            ToolCallId = evt.ToolCallId,
             ToolName = evt.ToolName,
             Status = evt.Status,
             Preview = evt.Preview,
             Timestamp = evt.Timestamp
         });
+    }
+
+    private static SessionTaskStep? FindStepToUpdate(List<SessionTaskStep> steps, TaskProgressEvent evt)
+    {
+        if (!string.IsNullOrEmpty(evt.ToolCallId))
+        {
+            var byId = steps.Find(s =>
+                string.Equals(s.ToolCallId, evt.ToolCallId, StringComparison.Ordinal));
+            if (byId != null)
+                return byId;
+        }
+
+        if (string.IsNullOrEmpty(evt.ToolName))
+            return null;
+
+        // 无 ToolCallId 时：同名工具的最后一条若仍在进行中，视为状态更新
+        return steps.AsEnumerable().Reverse()
+            .FirstOrDefault(s =>
+                string.Equals(s.ToolName, evt.ToolName, StringComparison.OrdinalIgnoreCase)
+                && IsInFlightStatus(s.Status));
+    }
+
+    private static bool IsInFlightStatus(string? status)
+    {
+        if (string.IsNullOrEmpty(status))
+            return false;
+        return status.Equals("Pending", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("Running", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void ApplyTaskCompleted(SessionData session, TaskCompletedEvent evt)

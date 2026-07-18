@@ -158,6 +158,7 @@ namespace Seeing.Session.Core
                 TaskSteps = TaskSteps?.Select(s => new SessionTaskStep
                 {
                     StepKind = s.StepKind,
+                    ToolCallId = s.ToolCallId,
                     ToolName = s.ToolName,
                     Status = s.Status,
                     Preview = s.Preview,
@@ -174,6 +175,10 @@ namespace Seeing.Session.Core
     {
         [JsonPropertyName("step_kind")]
         public string StepKind { get; set; } = "";
+
+        /// <summary>子会话内工具调用 ID（合并同一工具的状态流转）</summary>
+        [JsonPropertyName("tool_call_id")]
+        public string? ToolCallId { get; set; }
 
         [JsonPropertyName("tool_name")]
         public string? ToolName { get; set; }
