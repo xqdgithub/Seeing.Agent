@@ -280,7 +280,152 @@
     font-weight: var(--font-weight-semibold);
 }
 
-/* ========== 工具调用 ========== */
+/* ========== 工具调用（消息流内兜底样式，确保展开灰底可见） ========== */
+.tool-call-shell {
+    margin: 4px 0;
+    background: var(--color-bg-tertiary, #f5f5f5);
+    border: 1px solid var(--color-border-secondary, #e8e8e8);
+    border-radius: var(--radius-sm, 4px);
+    overflow: hidden;
+}
+
+.tool-call-shell .tool-call-block {
+    margin: 0;
+    background: transparent;
+    border: none;
+}
+
+.tool-call-shell .tool-call-details {
+    padding: 8px 12px;
+    border-top: 1px solid var(--color-border-secondary, #e8e8e8);
+    background: transparent;
+}
+
+.tool-call-shell .tool-call-section {
+    margin-bottom: 12px;
+}
+
+.tool-call-shell .tool-call-section:last-child {
+    margin-bottom: 0;
+}
+
+.tool-call-shell .tool-call-section-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.tool-call-shell .tool-call-section-title {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-text-secondary, #8c8c8c);
+}
+
+.tool-call-shell .tool-call-section-title.is-success {
+    color: var(--color-success, #52c41a);
+}
+
+.tool-call-shell .tool-call-section-title.is-error {
+    color: var(--color-error, #ff4d4f);
+}
+
+.tool-call-shell .tool-call-view-toggle {
+    display: inline-flex;
+    gap: 2px;
+    padding: 1px;
+    background: var(--color-bg-secondary, #fafafa);
+    border-radius: 4px;
+}
+
+.tool-call-shell .tool-call-view-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary, #8c8c8c);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.tool-call-shell .tool-call-view-toggle button.active {
+    background: #fff;
+    background: var(--color-bg, #fff);
+    color: var(--color-text, #262626);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.tool-call-shell .tool-call-section-actions {
+    margin-left: auto;
+}
+
+.tool-call-shell .tool-call-kv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.message-content .tool-call-shell .tool-call-kv-table th,
+.message-content .tool-call-shell .tool-call-kv-table td,
+.tool-call-shell .tool-call-kv-table th,
+.tool-call-shell .tool-call-kv-table td {
+    text-align: left;
+    vertical-align: middle;
+    padding: 2px 6px;
+    border-bottom: 1px solid var(--color-border-secondary, #e8e8e8);
+    background: transparent;
+}
+
+.tool-call-shell .tool-call-kv-table th {
+    width: 110px;
+    color: var(--color-text-secondary, #8c8c8c);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.tool-call-shell .tool-call-kv-value,
+.tool-call-shell .tool-call-pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.35;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.tool-call-shell .tool-call-kv-value {
+    padding: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    overflow: visible;
+}
+
+.tool-call-shell .tool-call-pre {
+    padding: 8px;
+    background: var(--color-bg-secondary, #fafafa);
+    border-radius: 4px;
+    overflow: auto;
+}
+
+.tool-call-shell .tool-call-pre.is-collapsed {
+    max-height: 240px;
+}
+
+.tool-call-shell .tool-call-kv-value.is-long {
+    max-height: 120px;
+    overflow: auto;
+    padding: 2px 4px !important;
+    background: var(--color-bg-secondary, #fafafa) !important;
+    border-radius: 4px !important;
+}
+
+.tool-call-shell .tool-call-kv-table tr:has(.tool-call-kv-value.is-long) th,
+.tool-call-shell .tool-call-kv-table tr:has(.tool-call-kv-value.is-long) td {
+    vertical-align: top;
+}
+
 .message-toolcalls {
     margin-top: var(--space-3);
     display: flex;

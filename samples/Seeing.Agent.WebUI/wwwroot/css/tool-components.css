@@ -194,30 +194,206 @@
     border-color: var(--color-border);
 }
 
-/* ========== ToolCall 紧凑块 ========== */
+/* ========== ToolCall 紧凑块 + 展开详情（统一灰底父容器） ========== */
+.tool-call-shell {
+    margin: 4px 0;
+    background: #f5f5f5;
+    background: var(--color-bg-tertiary, #f5f5f5);
+    border: 1px solid var(--color-border-secondary, #e8e8e8);
+    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
+    overflow: hidden;
+}
+
 .tool-call-block {
     display: flex;
     align-items: center;
-    padding: var(--space-1) var(--space-2);
-    margin: var(--space-1) 0;
-    background: var(--color-bg-tertiary);
-    border: 1px solid var(--color-border-secondary);
-    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    padding: var(--space-1, 4px) var(--space-2, 8px);
+    margin: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     cursor: pointer;
-    transition: var(--transition-fast);
+    transition: var(--transition-fast, background 0.15s ease);
     user-select: none;
 }
 
 .tool-call-block:hover {
-    background: var(--color-bg-secondary);
-    border-color: var(--color-border);
+    background: rgba(0, 0, 0, 0.04);
+    background: var(--color-bg-secondary, #fafafa);
 }
 
-[data-theme="dark"] .tool-call-block {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.1);
+[data-theme="dark"] .tool-call-shell {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
 }
 
 [data-theme="dark"] .tool-call-block:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.tool-call-details {
+    padding: 8px 12px;
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    background: transparent;
+    border-top: 1px solid var(--color-border-secondary, #e8e8e8);
+    margin-top: 0;
+    border-radius: 0;
+}
+
+.tool-call-section {
+    margin-bottom: var(--space-3);
+}
+
+.tool-call-section:last-child {
+    margin-bottom: 0;
+}
+
+.tool-call-section-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+    flex-wrap: wrap;
+}
+
+.tool-call-section-title {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+.tool-call-section-title.is-error {
+    color: var(--color-error);
+}
+
+.tool-call-section-title.is-success {
+    color: var(--color-success);
+}
+
+.tool-call-view-toggle {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    padding: 1px;
+}
+
+.tool-call-view-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+.tool-call-view-toggle button.active {
+    background: var(--color-bg);
+    color: var(--color-text);
+    box-shadow: var(--shadow-sm);
+}
+
+.tool-call-section-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.tool-call-kv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.tool-call-kv-table th,
+.tool-call-kv-table td {
+    text-align: left;
+    vertical-align: middle;
+    padding: 2px 6px;
+    border-bottom: 1px solid var(--color-border-secondary, #e8e8e8);
+}
+
+.tool-call-kv-table th {
+    width: 110px;
+    max-width: 28%;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    word-break: break-all;
+    white-space: nowrap;
+}
+
+.tool-call-kv-table td {
+    color: var(--color-text);
+}
+
+.tool-call-kv-value {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.35;
+    overflow: visible;
+}
+
+.tool-call-kv-value.is-long {
+    max-height: 120px;
+    overflow: auto;
+    padding: 2px 4px !important;
+    background: var(--color-bg-secondary, #fafafa) !important;
+    border-radius: var(--radius-sm, 4px) !important;
+    vertical-align: top;
+}
+
+.tool-call-kv-table tr:has(.tool-call-kv-value.is-long) th,
+.tool-call-kv-table tr:has(.tool-call-kv-value.is-long) td {
+    vertical-align: top;
+}
+
+.tool-call-pre {
+    margin: 0;
+    padding: 8px;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: auto;
+}
+
+.tool-call-pre.is-collapsed {
+    max-height: 240px;
+}
+
+.tool-call-pre.is-error {
+    color: var(--color-error);
+    background: var(--color-error-bg);
+    border: 1px solid rgba(255, 77, 79, 0.2);
+}
+
+[data-theme="dark"] .tool-call-details {
+    border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .tool-call-view-toggle {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .tool-call-view-toggle button.active {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .tool-call-kv-value.is-long,
+[data-theme="dark"] .tool-call-pre {
+    background: rgba(0, 0, 0, 0.25);
 }

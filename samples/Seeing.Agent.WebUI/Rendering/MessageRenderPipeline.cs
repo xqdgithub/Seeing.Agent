@@ -208,35 +208,40 @@ public class MessageRenderPipeline : IMessageRenderPipeline
     {
         return builder =>
         {
+            // 每个 block 使用独立 Region + SetKey，避免工具状态变化后事件处理器丢失
+            var regionSeq = 0;
             foreach (var block in blocks.OrderBy(b => b.SortIndex))
             {
                 _logger.LogDebug("Rendering block: Type={Type}, Id={Id}, ToolCall={ToolCallId}",
                     block.Type, block.Id, block.ToolCall?.Id ?? "null");
 
+                builder.OpenRegion(regionSeq++);
+
                 if (_componentRegistry.TryGetComponent(block, out var component))
                 {
                     _logger.LogDebug("Found component: {ComponentName} for block {BlockType}", component.Name, block.Type);
 
-                    // 使用组件渲染
                     builder.OpenComponent(0, component.GetComponentType());
+                    builder.SetKey(block.Id);
+                    var attrSeq = 1;
                     var parameters = component.GetComponentParameters(block, context);
                     foreach (var param in parameters)
                     {
-                        builder.AddAttribute(1, param.Key, param.Value);
+                        builder.AddAttribute(attrSeq++, param.Key, param.Value);
                     }
                     builder.CloseComponent();
                 }
                 else if (_registry.TryRender(block, context, out var fragment))
                 {
                     _logger.LogDebug("Using renderer fallback for block {BlockType}", block.Type);
-
-                    // 回退到渲染器
                     builder.AddContent(0, fragment);
                 }
                 else
                 {
                     _logger.LogWarning("No component or renderer found for block {BlockType}", block.Type);
                 }
+
+                builder.CloseRegion();
             }
         };
     }

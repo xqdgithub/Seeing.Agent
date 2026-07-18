@@ -1,6 +1,10 @@
 @using AntDesign
+@using Microsoft.JSInterop
+@using Seeing.Agent.WebUI.Helpers
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Rendering.Abstractions
+@inject IJSRuntime JSRuntime
+@inject MessageService MessageService
 
 @* 工具调用消息组件 - 渲染工具调用信息 *@
 
@@ -10,113 +14,218 @@
 }
 else
 {
-    <div class="tool-call-block" onclick="@ToggleExpand">
-        @* 状态图标 *@
-        <Icon Type="@ToolCall.StatusIcon" Style="@ToolCall.StatusIconStyle" />
+    <div class="tool-call-shell">
+        <div class="tool-call-block" onclick="@ToggleExpand">
+            <Icon Type="@ToolCall.StatusIcon" Style="@ToolCall.StatusIconStyle" />
+            <span style="margin-left: 6px; font-weight: 500; font-size: 13px;">@ToolCall.Name</span>
+            <Tag Color="@ToolCall.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@ToolCall.StatusText</Tag>
 
-        @* 工具名称 *@
-        <span style="margin-left: 6px; font-weight: 500; font-size: 13px;">@ToolCall.Name</span>
-
-        @* 状态标签 *@
-        <Tag Color="@ToolCall.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@ToolCall.StatusText</Tag>
-
-        @* 简要结果/错误预览 *@
-        @if (!string.IsNullOrEmpty(ToolCall.Result))
-        {
-            <span style="margin-left: 8px; color: var(--color-success); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                @GetResultPreview()
-            </span>
-        }
-        else if (!string.IsNullOrEmpty(ToolCall.Error))
-        {
-            <span style="margin-left: 8px; color: var(--color-error); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                @GetErrorPreview()
-            </span>
-        }
-
-        @* 执行中动画 *@
-        @if (ToolCall.IsRunning)
-        {
-            <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
-        }
-
-        @* 展开/收起指示 *@
-        <Icon Type="@(ToolCall.IsExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
-              Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
-    </div>
-
-    @* 详情展开区域 *@
-    @if (ToolCall.IsExpanded)
-    {
-        <div style="padding: 8px 12px; background: var(--color-bg-tertiary); border-radius: var(--radius-sm); margin-top: 2px;">
-            @* 参数 - todowrite 工具不显示（参数是JSON数组，已有TodoCard显示） *@
-            @if (!string.IsNullOrEmpty(ToolCall.Parameters) && ToolCall.Parameters != "{}" && !ToolCall.IsTodoTool)
+            @if (!string.IsNullOrEmpty(ToolCall.Result))
             {
-                <div style="margin-bottom: 4px;">
-                    <span style="font-size: 11px; color: var(--color-text-secondary);">参数: </span>
-                    <span style="font-size: 12px; color: var(--color-text);">@FormatParametersBrief()</span>
-                </div>
+                <span style="margin-left: 8px; color: var(--color-success); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    @GetResultPreview()
+                </span>
+            }
+            else if (!string.IsNullOrEmpty(ToolCall.Error))
+            {
+                <span style="margin-left: 8px; color: var(--color-error); font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    @GetErrorPreview()
+                </span>
             }
 
-            @* 结果 - todowrite 工具不显示原始JSON（已有TodoCard显示） *@
-            @if (!string.IsNullOrEmpty(ToolCall.Result) && !ToolCall.IsTodoTool)
+            @if (ToolCall.IsRunning)
             {
-                <div>
-                    <span style="font-size: 11px; color: var(--color-success);">结果: </span>
-                    <pre style="font-size: 12px; margin: 0; white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow: auto;">@TruncateResult(ToolCall.Result, 500)</pre>
-                </div>
+                <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
             }
 
-            @* 错误 *@
-            @if (!string.IsNullOrEmpty(ToolCall.Error))
-            {
-                <div>
-                    <span style="font-size: 11px; color: var(--color-error);">错误: </span>
-                    <pre style="font-size: 12px; margin: 0; color: var(--color-error); white-space: pre-wrap;">@ToolCall.Error</pre>
-                </div>
-            }
+            <Icon Type="@(_isExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+                  Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
         </div>
-    }
+
+        @if (_isExpanded)
+        {
+            <div class="tool-call-details">
+                @if (HasParametersSection)
+                {
+                    <div class="tool-call-section">
+                        <div class="tool-call-section-header">
+                            <span class="tool-call-section-title">参数</span>
+                            <RadioGroup TValue="string"
+                                        @bind-Value="_paramViewMode"
+                                        ButtonStyle="@RadioButtonStyle.Solid"
+                                        Size="@InputSize.Small">
+                                <Radio Value="@("kv")">键值表</Radio>
+                                <Radio Value="@("json")">JSON</Radio>
+                            </RadioGroup>
+                            <Space Size="@SpaceSize.Small" Class="tool-call-section-actions">
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small"
+                                            Type="@ButtonType.Link"
+                                            Icon="@IconType.Outline.Copy"
+                                            OnClick="CopyParametersAsync">复制</Button>
+                                </SpaceItem>
+                            </Space>
+                        </div>
+
+                        @if (_paramViewMode == "kv" && _paramEntries.Count > 0)
+                        {
+                            <table class="tool-call-kv-table">
+                                <tbody>
+                                @foreach (var entry in _paramEntries)
+                                {
+                                    <tr>
+                                        <th>@entry.Name</th>
+                                        <td>
+                                            <pre class="tool-call-kv-value @(entry.IsLong ? "is-long" : null)">@entry.Value</pre>
+                                        </td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <pre class="tool-call-pre">@_paramJsonDisplay</pre>
+                        }
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(ToolCall.Result) && !ToolCall.IsTodoTool)
+                {
+                    <div class="tool-call-section">
+                        <div class="tool-call-section-header">
+                            <span class="tool-call-section-title is-success">结果</span>
+                            <RadioGroup TValue="string"
+                                        @bind-Value="_resultViewMode"
+                                        ButtonStyle="@RadioButtonStyle.Solid"
+                                        Size="@InputSize.Small">
+                                <Radio Value="@("readable")">可读</Radio>
+                                <Radio Value="@("raw")">原始</Radio>
+                            </RadioGroup>
+                            <Space Size="@SpaceSize.Small" Class="tool-call-section-actions">
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small"
+                                            Type="@ButtonType.Link"
+                                            Icon="@(_resultExpanded ? IconType.Outline.Compress : IconType.Outline.Expand)"
+                                            OnClick="ToggleResultExpanded">
+                                        @(_resultExpanded ? "收起" : "展开全部")
+                                    </Button>
+                                </SpaceItem>
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small"
+                                            Type="@ButtonType.Link"
+                                            Icon="@IconType.Outline.Copy"
+                                            OnClick="CopyResultAsync">复制</Button>
+                                </SpaceItem>
+                            </Space>
+                        </div>
+                        <pre class="tool-call-pre @(_resultExpanded ? null : "is-collapsed")">@GetResultDisplayText()</pre>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(ToolCall.Error))
+                {
+                    <div class="tool-call-section">
+                        <div class="tool-call-section-header">
+                            <span class="tool-call-section-title is-error">错误</span>
+                            <RadioGroup TValue="string"
+                                        @bind-Value="_errorViewMode"
+                                        ButtonStyle="@RadioButtonStyle.Solid"
+                                        Size="@InputSize.Small">
+                                <Radio Value="@("readable")">可读</Radio>
+                                <Radio Value="@("raw")">原始</Radio>
+                            </RadioGroup>
+                            <Space Size="@SpaceSize.Small" Class="tool-call-section-actions">
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small"
+                                            Type="@ButtonType.Link"
+                                            Icon="@(_errorExpanded ? IconType.Outline.Compress : IconType.Outline.Expand)"
+                                            OnClick="ToggleErrorExpanded">
+                                        @(_errorExpanded ? "收起" : "展开全部")
+                                    </Button>
+                                </SpaceItem>
+                                <SpaceItem>
+                                    <Button Size="@ButtonSize.Small"
+                                            Type="@ButtonType.Link"
+                                            Icon="@IconType.Outline.Copy"
+                                            OnClick="CopyErrorAsync">复制</Button>
+                                </SpaceItem>
+                            </Space>
+                        </div>
+                        <pre class="tool-call-pre is-error @(_errorExpanded ? null : "is-collapsed")">@GetErrorDisplayText()</pre>
+                    </div>
+                }
+            </div>
+        }
+    </div>
 }
 
 @code {
-    /// <summary>
-    /// 工具调用数据
-    /// </summary>
     [Parameter]
     public ToolCallViewModel ToolCall { get; set; } = new();
 
-    /// <summary>
-    /// 内容块
-    /// </summary>
     [Parameter]
     public ContentBlock Block { get; set; } = default!;
 
-    /// <summary>
-    /// 渲染上下文
-    /// </summary>
     [Parameter]
     public RenderContext Context { get; set; } = default!;
 
-    /// <summary>
-    /// 工具点击事件回调
-    /// </summary>
     [Parameter]
     public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
 
-    /// <summary>
-    /// 切换展开/收起状态
-    /// </summary>
-    private void ToggleExpand()
+    private bool _isExpanded;
+    private string _paramViewMode = "kv";
+    private string _resultViewMode = "readable";
+    private string _errorViewMode = "readable";
+    private bool _resultExpanded;
+    private bool _errorExpanded;
+    private IReadOnlyList<ToolCallParameterEntry> _paramEntries = Array.Empty<ToolCallParameterEntry>();
+    private string _paramJsonDisplay = "";
+    private bool _hasParsedParams;
+    private string? _lastParametersSource;
+    private string? _lastToolCallId;
+
+    private bool HasParametersSection =>
+        !ToolCall.IsTodoTool
+        && !string.IsNullOrEmpty(ToolCall.Parameters)
+        && ToolCall.Parameters != "{}"
+        && (_hasParsedParams || !string.IsNullOrWhiteSpace(ToolCall.Parameters));
+
+    protected override void OnParametersSet()
     {
-        ToolCall.IsExpanded = !ToolCall.IsExpanded;
-        // 不调用 StateHasChanged，避免触发父组件重新渲染
-        // 状态变更会在下次自然渲染时体现
+        // 工具调用实例变化时重置本地展开状态（与 TodoCard 一致，避免绑在会被重建的 ViewModel 上）
+        if (_lastToolCallId != ToolCall.Id)
+        {
+            _lastToolCallId = ToolCall.Id;
+            _isExpanded = ToolCall.IsExpanded;
+            _resultExpanded = false;
+            _errorExpanded = false;
+            _paramViewMode = "kv";
+            _resultViewMode = "readable";
+            _errorViewMode = "readable";
+            _lastParametersSource = null;
+        }
+
+        if (_lastParametersSource == ToolCall.Parameters)
+            return;
+
+        _lastParametersSource = ToolCall.Parameters;
+        _hasParsedParams = ToolCallDisplayFormatter.TryParseParameters(ToolCall.Parameters, out _paramEntries);
+        _paramJsonDisplay = ToolCallDisplayFormatter.FormatJsonPretty(ToolCall.Parameters);
+        if (!_hasParsedParams)
+            _paramViewMode = "json";
     }
 
-    /// <summary>
-    /// 获取结果预览（第一行，最多 40 字符）
-    /// </summary>
+    private void ToggleExpand()
+    {
+        _isExpanded = !_isExpanded;
+        ToolCall.IsExpanded = _isExpanded;
+    }
+
+    private void ToggleResultExpanded() => _resultExpanded = !_resultExpanded;
+
+    private void ToggleErrorExpanded() => _errorExpanded = !_errorExpanded;
+
     private string GetResultPreview()
     {
         if (string.IsNullOrEmpty(ToolCall.Result)) return "";
@@ -133,15 +242,15 @@ else
                         return firstProp.Value.GetString() ?? firstLine[..Math.Min(40, firstLine.Length)];
                 }
             }
-            catch { }
+            catch
+            {
+                // ignore
+            }
         }
         if (firstLine.Length > 40) return firstLine[..40] + "...";
         return firstLine;
     }
 
-    /// <summary>
-    /// 获取错误预览（最多 40 字符）
-    /// </summary>
     private string GetErrorPreview()
     {
         if (string.IsNullOrEmpty(ToolCall.Error)) return "";
@@ -149,43 +258,41 @@ else
         return ToolCall.Error;
     }
 
-    /// <summary>
-    /// 格式化参数简要显示
-    /// </summary>
-    private string FormatParametersBrief()
+    private string GetResultDisplayText() =>
+        _resultViewMode == "raw"
+            ? ToolCall.Result ?? ""
+            : ToolCallDisplayFormatter.FormatReadableContent(ToolCall.Result);
+
+    private string GetErrorDisplayText() =>
+        _errorViewMode == "raw"
+            ? ToolCall.Error ?? ""
+            : ToolCallDisplayFormatter.FormatReadableContent(ToolCall.Error);
+
+    private async Task CopyParametersAsync()
     {
-        if (string.IsNullOrEmpty(ToolCall.Parameters)) return "";
+        var text = _paramViewMode == "kv" && _paramEntries.Count > 0
+            ? ToolCallDisplayFormatter.FormatKeyValueCopyText(_paramEntries)
+            : _paramJsonDisplay;
+        await CopyTextAsync(text);
+    }
+
+    private Task CopyResultAsync() => CopyTextAsync(GetResultDisplayText());
+
+    private Task CopyErrorAsync() => CopyTextAsync(GetErrorDisplayText());
+
+    private async Task CopyTextAsync(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
 
         try
         {
-            var element = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(ToolCall.Parameters);
-            if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
-            {
-                var keys = element.EnumerateObject().Select(p => p.Name).Take(5);
-                var result = string.Join(", ", keys);
-                if (element.EnumerateObject().Count() > 5)
-                    result += "...";
-                return result;
-            }
-            return ToolCall.Parameters.Length > 50
-                ? ToolCall.Parameters[..50] + "..."
-                : ToolCall.Parameters;
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            MessageService.Success("已复制到剪贴板");
         }
         catch
         {
-            return ToolCall.Parameters.Length > 50
-                ? ToolCall.Parameters[..50] + "..."
-                : ToolCall.Parameters;
+            // 剪贴板不可用时静默失败
         }
-    }
-
-    /// <summary>
-    /// 截断结果文本
-    /// </summary>
-    private string TruncateResult(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text)) return "";
-        if (text.Length <= maxLength) return text;
-        return text[..maxLength] + "...";
     }
 }
