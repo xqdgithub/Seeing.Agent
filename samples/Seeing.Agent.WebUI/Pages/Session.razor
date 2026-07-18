@@ -149,6 +149,15 @@
                     </Tooltip>
                 </SpaceItem>
                 <SpaceItem>
+                    <Tooltip Title="新建会话">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Plus"
+                                OnClick="@CreateNewSessionAsync"
+                                Disabled="@SessionState.IsExecuting" />
+                    </Tooltip>
+                </SpaceItem>
+                <SpaceItem>
                     <Tooltip Title="清空会话">
                         <Button Type="@ButtonType.Text"
                                 Size="@ButtonSize.Small"
@@ -173,7 +182,13 @@
                     <div Class="empty-content">
                         <Icon Type="@IconType.Outline.FileAdd" Class="empty-icon" Style="font-size: 48px;" />
                         <p Style="font-size: 18px; margin-top: 16px;">暂无会话</p>
-                        <p Class="empty-hint">点击左侧边栏的"新建会话"按钮开始对话</p>
+                        <p Class="empty-hint">点击下方按钮或顶部工具栏的"新建会话"开始对话</p>
+                        <Button Type="@ButtonType.Primary"
+                                Icon="@IconType.Outline.Plus"
+                                OnClick="@CreateNewSessionAsync"
+                                Style="margin-top: 16px;">
+                            新建会话
+                        </Button>
                     </div>
                 </DescriptionTemplate>
             </Empty>
