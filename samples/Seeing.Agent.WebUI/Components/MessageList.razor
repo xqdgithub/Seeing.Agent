@@ -228,8 +228,14 @@
     /// </summary>
     private void RefreshLoopMessagesReferences()
     {
-        // 构建 ID -> Message 的映射
-        var messageById = Messages.ToDictionary(m => m.Id, m => m);
+        // 构建 ID -> Message 映射；会话中可能存在重复 Id（历史 step 碰撞），取最后一条
+        var messageById = new Dictionary<string, MessageViewModel>(StringComparer.Ordinal);
+        foreach (var m in Messages)
+        {
+            if (string.IsNullOrEmpty(m.Id))
+                continue;
+            messageById[m.Id] = m;
+        }
         
         // 遍历所有 Loop，更新消息引用
         foreach (var kvp in _loopMessages.ToList())
@@ -241,7 +247,8 @@
             for (var i = 0; i < oldMessages.Count; i++)
             {
                 var oldMsg = oldMessages[i];
-                if (messageById.TryGetValue(oldMsg.Id, out var newMsg))
+                if (!string.IsNullOrEmpty(oldMsg.Id) &&
+                    messageById.TryGetValue(oldMsg.Id, out var newMsg))
                 {
                     oldMessages[i] = newMsg;
                 }
@@ -299,7 +306,7 @@
                 // 使缓存失效
                 _loopCache.Remove(loopId);
             }
-            else if (msg.Role == "user" && !_processedUserMessageIds.Contains(msg.Id))
+            else if (msg.Role == "user" && !string.IsNullOrEmpty(msg.Id) && !_processedUserMessageIds.Contains(msg.Id))
             {
                 _processedUserMessageIds.Add(msg.Id);
             }

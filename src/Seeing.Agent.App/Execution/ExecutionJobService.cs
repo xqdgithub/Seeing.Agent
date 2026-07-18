@@ -13,6 +13,8 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Background;
+using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
@@ -33,6 +35,8 @@ public class ExecutionJobService : IDisposable
     private readonly ExecutionOptions _options;
     private readonly ILogger<ExecutionJobService> _logger;
     private readonly Timer _cleanupTimer;
+    private readonly IAgentLoopScheduler? _loopScheduler;
+    private readonly IBackgroundTaskManager? _backgroundTasks;
     private bool _disposed;
 
     /// <summary>
@@ -42,12 +46,16 @@ public class ExecutionJobService : IDisposable
         IServiceProvider serviceProvider,
         IExecutionEventPublisher eventPublisher,
         ExecutionOptions options,
-        ILogger<ExecutionJobService> logger)
+        ILogger<ExecutionJobService> logger,
+        IAgentLoopScheduler? loopScheduler = null,
+        IBackgroundTaskManager? backgroundTasks = null)
     {
         _serviceProvider = serviceProvider;
         _eventPublisher = eventPublisher;
         _options = options ?? new ExecutionOptions();
         _logger = logger;
+        _loopScheduler = loopScheduler;
+        _backgroundTasks = backgroundTasks;
 
         // Setup cleanup timer
         _cleanupTimer = new Timer(
@@ -104,24 +112,27 @@ public class ExecutionJobService : IDisposable
             return ExecutionSubmitResult.Failed($"Queue is full (max {_options.MaxQueueSizePerSession} items). Please wait for current executions to complete.");
 
         // ⭐ Immediately save user message to session storage
-        try
+        if (options?.SkipUserMessagePersist != true)
         {
-            using var scope = _serviceProvider.CreateScope();
-            var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
-            var session = await sessionManager.EnsureSessionAsync(sessionId);
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+                var session = await sessionManager.EnsureSessionAsync(sessionId);
 
-            var userMessage = BuildUserMessage(input);
-            session.Messages.Add(userMessage);
+                var userMessage = BuildUserMessage(input);
+                session.Messages.Add(userMessage);
 
-            // Save immediately - this is the key fix for the persistence issue
-            await sessionManager.SaveAsync(sessionId);
+                // Save immediately - this is the key fix for the persistence issue
+                await sessionManager.SaveAsync(sessionId);
 
-            _logger.LogDebug("User message saved immediately for execution {ExecutionId}", executionId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to save user message for execution {ExecutionId}", executionId);
-            return ExecutionSubmitResult.Failed($"Failed to save message: {ex.Message}");
+                _logger.LogDebug("User message saved immediately for execution {ExecutionId}", executionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save user message for execution {ExecutionId}", executionId);
+                return ExecutionSubmitResult.Failed($"Failed to save message: {ex.Message}");
+            }
         }
 
         // Submit to queue
@@ -157,6 +168,18 @@ public class ExecutionJobService : IDisposable
             return false;
 
         var cancelled = queue.CancelAsync(executionId).GetAwaiter().GetResult();
+
+        // 无论队列取消是否成功，都级联取消该会话下未完成的后台 Task
+        try
+        {
+            var btm = _backgroundTasks
+                ?? _serviceProvider.GetService(typeof(IBackgroundTaskManager)) as IBackgroundTaskManager;
+            btm?.CancelBySessionAsync(record.SessionId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "取消会话后台任务失败: {SessionId}", record.SessionId);
+        }
 
         if (cancelled)
         {
@@ -256,6 +279,7 @@ public class ExecutionJobService : IDisposable
         // Mark as running
         await queue.StartAsync();
         record.StartedAt = DateTime.UtcNow;
+        _loopScheduler?.SetLoopBusy(record.SessionId, true);
 
         _logger.LogInformation("Execution {ExecutionId} started", record.ExecutionId);
 
@@ -291,6 +315,9 @@ public class ExecutionJobService : IDisposable
             // Build history
             context.History = BuildHistoryFromSession(session);
 
+            // 服务端负责将事件投影到 Session 并落盘；UI 只订阅展示
+            var eventTracker = new ChatEventTracker();
+
             // Execute agent
             await foreach (var evt in executionRouter.ExecuteAsync(
                 context.Agent, BuildAgentContext(context, queue.CurrentCancellationToken), queue.CurrentCancellationToken))
@@ -299,14 +326,15 @@ public class ExecutionJobService : IDisposable
                 if (queue.CurrentCancellationToken.IsCancellationRequested)
                     throw new OperationCanceledException();
 
-                // Publish event
+                var liveSession = sessionManager.Get(record.SessionId) ?? session;
+                eventTracker.ApplyEvent(liveSession, evt);
+                TaskSessionProjector.Apply(liveSession, evt);
+
+                // 先投影再发布，保证 UI 读到的是已写入的 SessionData
                 _eventPublisher.Publish(record.SessionId, evt);
 
-                // Incremental save on message complete
-                if (evt is StreamCompleteEvent or ToolCallEvent)
-                {
+                if (ShouldPersistEvent(evt))
                     await sessionManager.SaveAsync(record.SessionId);
-                }
             }
 
             // Mark as completed
@@ -317,6 +345,17 @@ public class ExecutionJobService : IDisposable
         {
             record.Status = ExecutionStatus.Cancelled;
             _logger.LogInformation("Execution {ExecutionId} was cancelled", record.ExecutionId);
+
+            try
+            {
+                var liveSession = sessionManager.Get(record.SessionId);
+                if (IncompleteTaskMarker.MarkCancelled(liveSession, "用户取消") > 0)
+                    await sessionManager.SaveAsync(record.SessionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "取消后标记未完成 Task 失败: {ExecutionId}", record.ExecutionId);
+            }
         }
         catch (Exception ex)
         {
@@ -334,6 +373,7 @@ public class ExecutionJobService : IDisposable
         finally
         {
             record.CompletedAt = DateTime.UtcNow;
+            _loopScheduler?.SetLoopBusy(record.SessionId, false);
 
             // Final save
             try
@@ -372,6 +412,20 @@ public class ExecutionJobService : IDisposable
     }
 
     /// <summary>
+    /// 等待指定执行进入终态（供 idle resume 使用）。
+    /// </summary>
+    public async Task WaitForExecutionAsync(string executionId, CancellationToken cancellationToken = default)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_executions.TryGetValue(executionId, out var record) || record.IsTerminal)
+                return;
+            await Task.Delay(50, cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Builds the execution context for an execution.
     /// </summary>
     private async Task<ChatExecutionContext> BuildExecutionContextAsync(
@@ -406,6 +460,19 @@ public class ExecutionJobService : IDisposable
             RequestModelId = record.Options?.ModelId
         };
     }
+
+    /// <summary>
+    /// 是否应在服务端落盘（UI 不负责 Save）。
+    /// </summary>
+    private static bool ShouldPersistEvent(IMessageEvent evt) => evt switch
+    {
+        StreamCompleteEvent => true,
+        ToolCallEvent { Status: ToolCallStatus.Pending or ToolCallStatus.Success
+            or ToolCallStatus.Failed or ToolCallStatus.Rejected } => true,
+        TaskStartedEvent or TaskCompletedEvent or TaskFailedEvent => true,
+        LoopCompleteEvent or LoopCancelledEvent or ErrorEvent => true,
+        _ => false
+    };
 
     /// <summary>
     /// Builds user message from input.

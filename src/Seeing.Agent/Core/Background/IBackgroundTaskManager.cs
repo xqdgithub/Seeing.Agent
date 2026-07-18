@@ -40,6 +40,13 @@ public interface IBackgroundTaskManager
     Task<int> CancelAllAsync();
 
     /// <summary>
+    /// 取消与指定会话相关的后台任务（ParentSessionId 或 SessionId / TaskId 匹配）
+    /// </summary>
+    /// <param name="sessionId">父会话或子会话 ID</param>
+    /// <returns>已请求取消的任务数量</returns>
+    Task<int> CancelBySessionAsync(string sessionId);
+
+    /// <summary>
     /// 列出所有任务
     /// </summary>
     /// <param name="status">可选的状态过滤</param>

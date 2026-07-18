@@ -39,6 +39,11 @@ namespace Seeing.Agent.Core.Interfaces
         /// <returns>子 Agent 信息列表</returns>
         Task<IReadOnlyList<AgentDefinition>> GetSubAgentsAsync();
 
+        /// <summary>
+        /// 获取 TaskTool 可委托的 Agent：Native 运行时、非 Primary、未禁用（含 Mode=SubAgent / All）。
+        /// </summary>
+        Task<IReadOnlyList<AgentDefinition>> GetTaskableAgentsAsync();
+
         /// <summary>获取所有主 Agent（mode == Primary 或 mode == All 且 hidden != true）</summary>
         /// <returns>主 Agent 信息列表</returns>
         /// <remarks>

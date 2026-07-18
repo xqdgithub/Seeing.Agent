@@ -296,7 +296,9 @@ public class MessageRenderPipeline : IMessageRenderPipeline
             Options = options ?? new RenderOptions(),
             Cache = _cache,
             ServiceProvider = serviceProvider,
-            OnToolClick = onToolClick
+            OnToolClick = onToolClick,
+            // 打开子会话走 OnToolClick（Session.OnToolClick 按 TaskId 导航）
+            OnOpenTaskSession = default
         };
     }
 

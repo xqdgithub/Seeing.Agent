@@ -1,0 +1,247 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Models.Messaging
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+@using Seeing.Session.Core
+
+@* Task 子代理卡片：进度步骤 + 打开 Child Session *@
+
+<div class="tool-call-shell task-card-shell">
+    <div class="task-card-header-row">
+        <div class="tool-call-block task-card-header" onclick="@ToggleExpand">
+            <Icon Type="@IconType.Outline.Apartment" Style="color: #1677ff;" />
+            <Tag Color="@("blue")" Style="margin-left: 6px; font-size: 11px;">子代理</Tag>
+            <span style="margin-left: 6px; font-weight: 600; font-size: 13px;">
+                @(string.IsNullOrEmpty(ToolCall.TaskDescription) ? "Task" : ToolCall.TaskDescription)
+            </span>
+            @if (!string.IsNullOrEmpty(ToolCall.TaskAgent))
+            {
+                <Tag Color="@("processing")" Style="margin-left: 6px; font-size: 11px;">@ToolCall.TaskAgent</Tag>
+            }
+            <Tag Color="@ToolCall.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@ToolCall.StatusText</Tag>
+            @if (ToolCall.TaskBackground)
+            {
+                <Tag Color="@("default")" Style="margin-left: 4px; font-size: 11px;">后台</Tag>
+            }
+            @if (ToolCall.IsRunning)
+            {
+                <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
+            }
+            <Icon Type="@(_isExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+                  Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
+        </div>
+        @if (!string.IsNullOrEmpty(ToolCall.TaskId))
+        {
+            <Button Size="@ButtonSize.Small"
+                    Type="@ButtonType.Link"
+                    Icon="@IconType.Outline.Export"
+                    Class="task-open-btn"
+                    OnClick="OpenChildSessionAsync">
+                打开子会话
+            </Button>
+        }
+    </div>
+
+    @if (_isExpanded)
+    {
+        <div class="tool-call-details">
+            @if (!string.IsNullOrEmpty(ToolCall.TaskId))
+            {
+                <div class="tool-call-section">
+                    <div class="tool-call-section-header">
+                        <span class="tool-call-section-title">子会话 ID</span>
+                        <Button Size="@ButtonSize.Small"
+                                Type="@ButtonType.Link"
+                                Icon="@IconType.Outline.Export"
+                                OnClick="OpenChildSessionAsync">打开详情</Button>
+                    </div>
+                    <pre class="tool-call-pre">@ToolCall.TaskId</pre>
+                </div>
+            }
+
+            @if (ToolCall.TaskSteps.Count > 0)
+            {
+                <div class="tool-call-section">
+                    <div class="tool-call-section-header">
+                        <span class="tool-call-section-title">进度</span>
+                    </div>
+                    <ul class="task-step-list">
+                        @foreach (var step in ToolCall.TaskSteps.TakeLast(20))
+                        {
+                            <li>
+                                <span class="task-step-kind">@FormatStepKind(step)</span>
+                                @if (!string.IsNullOrEmpty(step.Preview))
+                                {
+                                    <span class="task-step-preview">@Truncate(step.Preview, 80)</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(ToolCall.Result))
+            {
+                <div class="tool-call-section">
+                    <div class="tool-call-section-header">
+                        <span class="tool-call-section-title is-success">结果摘要</span>
+                    </div>
+                    <pre class="tool-call-pre is-collapsed">@Truncate(ToolCall.Result, 400)</pre>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(ToolCall.Error))
+            {
+                <div class="tool-call-section">
+                    <div class="tool-call-section-header">
+                        <span class="tool-call-section-title is-error">错误</span>
+                    </div>
+                    <pre class="tool-call-pre is-error">@ToolCall.Error</pre>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .task-card-shell {
+        border: 1px solid #91caff;
+        background: linear-gradient(180deg, #f0f7ff 0%, var(--color-bg-container, #fff) 48%);
+        border-radius: 8px;
+    }
+
+    .task-card-header-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .task-card-header {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 2px;
+        padding: 8px 10px;
+        user-select: none;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .task-open-btn {
+        flex-shrink: 0;
+        margin-right: 8px;
+    }
+
+    .task-step-list {
+        margin: 0;
+        padding-left: 18px;
+        font-size: 12px;
+        color: var(--color-text-secondary);
+    }
+
+    .task-step-list li {
+        margin: 4px 0;
+        display: flex;
+        gap: 8px;
+    }
+
+    .task-step-kind {
+        font-weight: 500;
+        color: var(--color-text);
+        white-space: nowrap;
+    }
+
+    .task-step-preview {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public ToolCallViewModel ToolCall { get; set; } = new();
+
+    [Parameter]
+    public ContentBlock Block { get; set; } = default!;
+
+    [Parameter]
+    public RenderContext Context { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnOpenTaskSession { get; set; }
+
+    private bool _isExpanded;
+    private string? _lastToolCallId;
+    private string? _lastStatus;
+    private bool _userToggled;
+
+    protected override void OnParametersSet()
+    {
+        var status = ToolCall.Status?.ToLowerInvariant() ?? "";
+        var isNew = _lastToolCallId != ToolCall.Id;
+
+        if (isNew)
+        {
+            _lastToolCallId = ToolCall.Id;
+            _userToggled = false;
+            // 执行中默认展开；已完成/失败/取消默认折叠
+            _isExpanded = ToolCall.IsRunning;
+        }
+        else if (!_userToggled)
+        {
+            if (ToolCall.IsRunning)
+            {
+                // ViewModel 可能被 Refresh 重建（IsExpanded 丢失），执行中应持续默认展开
+                _isExpanded = true;
+            }
+            else if (_lastStatus is "running" or "pending"
+                     && status is "success" or "failed" or "cancelled" or "rejected")
+            {
+                // 刚结束：自动折叠；之后刷新不再被重建的 VM 覆盖
+                _isExpanded = false;
+            }
+            // 已结束且非首次：保留本地 _isExpanded，勿读 ToolCall.IsExpanded（重建后恒为 false）
+        }
+
+        ToolCall.IsExpanded = _isExpanded;
+        _lastStatus = status;
+    }
+
+    private void ToggleExpand()
+    {
+        _userToggled = true;
+        _isExpanded = !_isExpanded;
+        ToolCall.IsExpanded = _isExpanded;
+    }
+
+    private async Task OpenChildSessionAsync()
+    {
+        if (string.IsNullOrEmpty(ToolCall.TaskId))
+            return;
+
+        if (OnOpenTaskSession.HasDelegate)
+            await OnOpenTaskSession.InvokeAsync(ToolCall.TaskId);
+        else if (OnToolClick.HasDelegate)
+            await OnToolClick.InvokeAsync(ToolCall);
+    }
+
+    private static string FormatStepKind(SessionTaskStep step)
+    {
+        var name = string.IsNullOrEmpty(step.ToolName) ? step.StepKind : step.ToolName;
+        return string.IsNullOrEmpty(step.Status) ? name : $"{name} · {step.Status}";
+    }
+
+    private static string Truncate(string? text, int max)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= max)
+            return text ?? string.Empty;
+        return text[..max] + "…";
+    }
+}

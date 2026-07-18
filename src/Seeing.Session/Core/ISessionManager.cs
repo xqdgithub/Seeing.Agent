@@ -53,6 +53,25 @@ namespace Seeing.Session.Core
             string? label = null,
             CancellationToken ct = default);
 
+        /// <summary>
+        /// 创建子 Agent 会话（Kind=SubAgent，空历史，写入权限快照）
+        /// </summary>
+        Task<SessionData> CreateChildAsync(
+            string parentId,
+            string agentName,
+            string title,
+            IReadOnlyList<SessionPermissionRule> permissionSnapshot,
+            CancellationToken ct = default);
+
+        /// <summary>列出根会话（Kind=Root 且未归档）</summary>
+        Task<IReadOnlyList<SessionData>> ListRootsAsync(CancellationToken ct = default);
+
+        /// <summary>列出指定父会话的子会话（可选按 Kind 过滤）</summary>
+        Task<IReadOnlyList<SessionData>> ListChildrenAsync(
+            string parentId,
+            SessionKind? kind = null,
+            CancellationToken ct = default);
+
         /// <summary>Archive Session - 归档</summary>
         Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default);
 

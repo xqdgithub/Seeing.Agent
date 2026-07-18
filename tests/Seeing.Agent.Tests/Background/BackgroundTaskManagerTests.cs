@@ -73,7 +73,7 @@ namespace Seeing.Agent.Tests.Background
 
             // Assert
             taskId.Should().NotBeNullOrEmpty();
-            taskId.Should().StartWith("bg_");
+            taskId.Should().StartWith("tmp_");
 
             var task = await _manager.GetAsync(taskId);
             task.Should().NotBeNull();
@@ -271,6 +271,57 @@ namespace Seeing.Agent.Tests.Background
 
             var tasks = await _manager.ListAsync();
             tasks.Should().AllSatisfy(t => t.Status.Should().Be(BackgroundTaskStatus.Cancelled));
+        }
+
+        [Fact]
+        public async Task CancelBySessionAsync_ShouldCancelRelatedTasks()
+        {
+            var agentMock = new Mock<IAgent>();
+            agentMock.Setup(a => a.Name).Returns("test-agent");
+            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
+                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
+                    CreateLongRunningAgentResponse(ct));
+
+            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
+                .Returns(agentMock.Object);
+
+            var parentId = "parent-session";
+            await _manager.StartAsync(new BackgroundTaskLaunchArgs
+            {
+                TaskId = "child-1",
+                AgentName = "test-agent",
+                Input = new ChatMessage { Role = ChatRole.User, Content = "A" },
+                Context = new AgentContext
+                {
+                    SessionId = "child-1",
+                    ParentSessionId = parentId,
+                    MessageId = "m1"
+                }
+            });
+
+            await _manager.StartAsync(new BackgroundTaskLaunchArgs
+            {
+                TaskId = "other-1",
+                AgentName = "test-agent",
+                Input = new ChatMessage { Role = ChatRole.User, Content = "B" },
+                Context = new AgentContext
+                {
+                    SessionId = "other-1",
+                    ParentSessionId = "other-parent",
+                    MessageId = "m2"
+                }
+            });
+
+            await Task.Delay(100);
+
+            var count = await _manager.CancelBySessionAsync(parentId);
+            count.Should().Be(1);
+
+            var child = await _manager.GetAsync("child-1");
+            child!.Status.Should().Be(BackgroundTaskStatus.Cancelled);
+
+            var other = await _manager.GetAsync("other-1");
+            other!.Status.Should().Be(BackgroundTaskStatus.Running);
         }
 
         [Fact]

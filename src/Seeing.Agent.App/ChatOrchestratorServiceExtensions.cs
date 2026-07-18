@@ -6,6 +6,8 @@ using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Internal;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
+using Seeing.Agent.Core.Events;
+using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Skills;
 
 namespace Seeing.Agent.App;
@@ -54,9 +56,13 @@ public static class ChatOrchestratorServiceExtensions
 
         // 注册事件发布器
         services.AddSingleton<IExecutionEventPublisher, ExecutionEventPublisher>();
+        services.AddSingleton<ISessionEventBus, ExecutionSessionEventBus>();
 
         // 注册执行任务服务（Singleton，后台执行）
         services.AddSingleton<ExecutionJobService>();
+
+        // idle resume + Session 事件总线接线
+        services.AddHostedService<AgentLoopSchedulerHostedService>();
 
         return services;
     }

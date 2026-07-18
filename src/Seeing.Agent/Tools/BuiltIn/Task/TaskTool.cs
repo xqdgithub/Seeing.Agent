@@ -1,367 +1,468 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core;
 using Seeing.Agent.Core.Abstractions;
+using Seeing.Agent.Core.Background;
+using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
-using System.Text;
-using System.Text.Json;
+using Seeing.Agent.Core.Scheduling;
+using Seeing.Agent.Core.Session;
+using Seeing.Agent.Llm;
+using Seeing.Session.Core;
 
-namespace Seeing.Agent.Tools.BuiltIn.SubTask
+namespace Seeing.Agent.Tools.BuiltIn.SubTask;
+
+/// <summary>
+/// 子任务工具 — Session-first：创建/续跑 Child Session 并执行专用 Agent。
+/// </summary>
+public class TaskTool : ToolBase
 {
-    /// <summary>
-    /// 子任务执行工具 - 创建子 Session 并调用 Agent 执行任务
-    /// <para>
-    /// 参考 opencode 的 TaskTool 设计，实现：
-    /// - 动态子代理发现与权限筛选
-    /// - 子会话创建与恢复
-    /// - 任务执行与结果返回
-    /// </para>
-    /// </summary>
-    public class TaskTool : ToolBase
+    private readonly ISessionManager _sessionManager;
+    private readonly IAgentRegistry _agentRegistry;
+    private readonly IBackgroundTaskManager _backgroundTasks;
+    private readonly IAgentLoopScheduler _loopScheduler;
+    private readonly ITaskEventProjector _projector;
+    private readonly ISessionEventBus? _eventBus;
+
+    public TaskTool(
+        ILogger<TaskTool> logger,
+        ISessionManager sessionManager,
+        IAgentRegistry agentRegistry,
+        IBackgroundTaskManager backgroundTasks,
+        IAgentLoopScheduler loopScheduler,
+        ITaskEventProjector projector,
+        ISessionEventBus? eventBus = null) : base(logger)
     {
-        private readonly dynamic _sessionManager;
-        private readonly IAgentRegistry _agentRegistry;
+        _sessionManager = sessionManager;
+        _agentRegistry = agentRegistry;
+        _backgroundTasks = backgroundTasks;
+        _loopScheduler = loopScheduler;
+        _projector = projector;
+        _eventBus = eventBus;
+    }
 
-        /// <summary>
-        /// 创建 TaskTool 实例
-        /// </summary>
-        public TaskTool(
-            ILogger<TaskTool> logger,
-            dynamic sessionManager,
-            IAgentRegistry agentRegistry) : base(logger)
+    public override string Id => "task";
+
+    public override string Description => BuildDescription();
+
+    public override JsonElement ParametersSchema => BuildObjectSchema(new Dictionary<string, (string, string, bool, string[]?)>
+    {
+        ["description"] = ("string", "任务简短描述（3-5 个词）", true, null),
+        ["prompt"] = ("string", "Agent 要执行的任务内容", true, null),
+        ["subagent_type"] = ("string", "专用 Agent 类型", true, null),
+        ["task_id"] = ("string", "任务 ID，用于继续之前的子任务（可选）", false, null),
+        ["command"] = ("string", "触发此任务的命令（可选）", false, null),
+        ["background"] = ("boolean", "是否在后台运行（可选，默认 false）", false, null),
+        ["run_in_background"] = ("boolean", "background 的别名（一期兼容，后续移除）", false, null)
+    });
+
+    public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+    {
+        if (arguments.TryGetProperty("session_id", out _))
+            return Failure("session_id 已废弃，请使用 task_id");
+
+        var description = GetStringArgument(arguments, "description");
+        var prompt = GetStringArgument(arguments, "prompt");
+        var subagentType = GetStringArgument(arguments, "subagent_type");
+        var taskId = GetStringArgument(arguments, "task_id");
+        var command = GetStringArgument(arguments, "command");
+        var background = GetBoolArgument(arguments, "background")
+            ?? GetBoolArgument(arguments, "run_in_background")
+            ?? false;
+
+        if (description == null) return Failure("description 参数是必需的");
+        if (prompt == null) return Failure("prompt 参数是必需的");
+        if (subagentType == null) return Failure("subagent_type 参数是必需的");
+
+        var agentInfo = await _agentRegistry.GetAgentAsync(subagentType);
+        if (agentInfo == null)
+            return Failure($"未知的 Agent 类型: {subagentType}");
+
+        if (agentInfo.Mode == AgentMode.Primary)
+            return Failure($"Agent '{subagentType}' 是主代理，不能作为子任务执行");
+
+        if (agentInfo.Runtime != AgentRuntime.Native)
+            return Failure($"Agent '{subagentType}' 不是 Native 运行时，TaskTool 仅支持 Native Agent");
+
+        if (agentInfo.Disabled)
+            return Failure($"Agent '{subagentType}' 已禁用");
+
+        TaskProjectionContext? ctxProj = null;
+        try
         {
-            _sessionManager = sessionManager;
-            _agentRegistry = agentRegistry;
-        }
-
-        /// <inheritdoc/>
-        public override string Id => "task";
-
-        /// <inheritdoc/>
-        public override string Description => BuildDescription();
-
-        /// <inheritdoc/>
-        public override JsonElement ParametersSchema => BuildObjectSchema(new Dictionary<string, (string, string, bool, string[]?)>
-        {
-            ["description"] = ("string", "任务简短描述（3-5 个词）", true, null),
-            ["prompt"] = ("string", "Agent 要执行的任务内容", true, null),
-            ["subagent_type"] = ("string", "专用 Agent 类型", true, null),
-            ["task_id"] = ("string", "任务 ID，用于继续之前的子任务（可选）", false, null),
-            ["command"] = ("string", "触发此任务的命令（可选）", false, null),
-            ["run_in_background"] = ("boolean", "是否在后台运行（可选，默认 false）", false, null),
-            ["session_id"] = ("string", "现有会话 ID，用于继续会话（可选）", false, null),
-            ["load_skills"] = ("array", "要加载的技能列表（可选）", false, null)
-        });
-
-        /// <inheritdoc/>
-        public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
-        {
-            var description = GetStringArgument(arguments, "description");
-            var prompt = GetStringArgument(arguments, "prompt");
-            var subagentType = GetStringArgument(arguments, "subagent_type");
-            var taskId = GetStringArgument(arguments, "task_id");
-            var command = GetStringArgument(arguments, "command");
-            var runInBackground = GetBoolArgument(arguments, "run_in_background") ?? false;
-            var sessionId = GetStringArgument(arguments, "session_id");
-            var loadSkills = GetStringArrayArgument(arguments, "load_skills");
-
-            if (description == null)
+            SessionData session;
+            if (!string.IsNullOrEmpty(taskId))
             {
-                return Failure("description 参数是必需的");
+                session = _sessionManager.Get(taskId)
+                    ?? await _sessionManager.LoadAsync(taskId)
+                    ?? throw new InvalidOperationException($"未找到 task_id: {taskId}");
+
+                if (session.Kind != SessionKind.SubAgent)
+                    return Failure($"task_id '{taskId}' 不是 SubAgent 会话");
+
+                if (!string.Equals(session.ParentSessionId, context.SessionId, StringComparison.Ordinal))
+                    return Failure($"task_id '{taskId}' 不属于当前父会话");
+
+                var existing = await _backgroundTasks.GetAsync(session.Id);
+                if (existing?.Status is BackgroundTaskStatus.Pending or BackgroundTaskStatus.Running)
+                    return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
+
+                if (_loopScheduler.IsLoopBusy(session.Id))
+                    return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
             }
-
-            if (prompt == null)
+            else
             {
-                return Failure("prompt 参数是必需的");
-            }
+                var parent = _sessionManager.Get(context.SessionId);
+                AgentDefinition? parentDef = null;
+                if (!string.IsNullOrEmpty(parent?.SelectedAgent))
+                    parentDef = await _agentRegistry.GetAgentAsync(parent.SelectedAgent);
 
-            if (subagentType == null)
-            {
-                return Failure("subagent_type 参数是必需的");
-            }
+                IReadOnlyList<SessionPermissionRule> parentSnapshot =
+                    parent?.PermissionSnapshot ?? new List<SessionPermissionRule>();
+                var snapshot = SubagentPermissionDeriver.Derive(
+                    parentSnapshot,
+                    parentDef,
+                    agentInfo);
 
-            // 获取子 Agent 信息
-            var agentInfo = await _agentRegistry.GetAgentAsync(subagentType);
-            if (agentInfo == null)
-            {
-                return Failure($"未知的 Agent 类型: {subagentType}");
-            }
+                session = await _sessionManager.CreateChildAsync(
+                    context.SessionId,
+                    agentInfo.Name,
+                    $"{description} (@{agentInfo.Name})",
+                    snapshot);
 
-            // 检查是否为子代理
-            if (agentInfo.Mode == AgentMode.Primary)
-            {
-                return Failure($"Agent '{subagentType}' 是主代理，不能作为子任务执行");
-            }
-
-            // 请求权限确认（如果不是用户显式调用）
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
+                // 子 Agent 配置了默认模型则覆盖；否则保留 CreateChild 继承的主会话模型
+                if (HasConfiguredModel(agentInfo))
                 {
-                    Permission = "task",
-                    Patterns = new List<string> { subagentType },
-                    Metadata = new Dictionary<string, object>
+                    session.SelectedModel = agentInfo.Model!.ModelId;
+                    session.SelectedModelProvider = agentInfo.Model.ProviderId ?? string.Empty;
+                    await _sessionManager.SaveAsync(session.Id);
+                }
+            }
+
+            ctxProj = new TaskProjectionContext(
+                context.SessionId,
+                session.Id,
+                context.CallId,
+                background,
+                agentInfo.Name,
+                description);
+
+            await EmitParentAsync(context, _projector.CreateStarted(ctxProj));
+
+            context.SetMetadata?.Invoke(description, new Dictionary<string, object>
+            {
+                ["sessionId"] = session.Id,
+                ["agent"] = agentInfo.Name,
+                ["background"] = background,
+                ["originToolCallId"] = context.CallId ?? string.Empty
+            });
+
+            var userPrompt = string.IsNullOrEmpty(command)
+                ? prompt
+                : $"[命令触发: {command}]\n\n{prompt}";
+
+            await _sessionManager.AddMessageAsync(session.Id, new SessionMessage
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Role = "user",
+                Content = userPrompt,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            if (background)
+            {
+                var parentSessionId = context.SessionId;
+                var proj = ctxProj;
+                var desc = description;
+                var childId = session.Id;
+                var agentName = agentInfo.Name;
+
+                await _backgroundTasks.StartAsync(new BackgroundTaskLaunchArgs
+                {
+                    TaskId = childId,
+                    AgentName = agentName,
+                    Description = desc,
+                    Input = new ChatMessage { Role = ChatRole.User, Content = userPrompt },
+                    Context = new AgentContext
                     {
-                        ["description"] = description,
-                        ["subagent_type"] = subagentType,
-                        ["prompt"] = prompt,
-                        ["command"] = command ?? string.Empty
+                        SessionId = childId,
+                        MessageId = context.MessageId,
+                        ParentSessionId = parentSessionId,
+                        CancellationToken = CancellationToken.None
+                    },
+                    LoopRunner = async ct =>
+                    {
+                        try
+                        {
+                            var text = await RunAgentAsync(
+                                agentName, childId, userPrompt, context, proj, ct);
+                            await _loopScheduler.InjectSyntheticAsync(
+                                parentSessionId,
+                                $"Background task completed: {desc}\ntask_id: {childId}\nstate: completed\n\n<task_result>\n{text}\n</task_result>",
+                                new Dictionary<string, string> { ["task_id"] = childId, ["state"] = "completed" },
+                                ct);
+                            await EmitParentAsync(context, _projector.CreateCompleted(proj, text));
+                            await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, ct);
+                            return text;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            await _loopScheduler.InjectSyntheticAsync(
+                                parentSessionId,
+                                $"Background task cancelled: {desc}\ntask_id: {childId}\nstate: cancelled",
+                                new Dictionary<string, string> { ["task_id"] = childId, ["state"] = "cancelled" },
+                                CancellationToken.None);
+                            await EmitParentAsync(context,
+                                _projector.CreateFailed(proj, "子任务被取消", cancelled: true));
+                            await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, CancellationToken.None);
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            await _loopScheduler.InjectSyntheticAsync(
+                                parentSessionId,
+                                $"Background task failed: {desc}\ntask_id: {childId}\nstate: error\n\n<task_error>\n{ex.Message}\n</task_error>",
+                                new Dictionary<string, string> { ["task_id"] = childId, ["state"] = "error" },
+                                CancellationToken.None);
+                            await EmitParentAsync(context,
+                                _projector.CreateFailed(proj, ex.Message));
+                            await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, CancellationToken.None);
+                            throw;
+                        }
                     }
                 });
-            }
 
-            try
-            {
-                // 获取或创建子 Session
-                Seeing.Session.Core.SessionData session;
-                if (taskId != null)
+                // 父会话取消/关闭时级联取消后台子任务
+                if (context.CancellationToken.CanBeCanceled)
                 {
-                    var existingSession = _sessionManager.GetSession(taskId);
-                    if (existingSession != null)
+                    context.CancellationToken.Register(() =>
                     {
-                        session = existingSession;
-                        _logger.LogInformation("继续子任务: {TaskId}", taskId);
-                    }
-                    else
-                    {
-                        session = await CreateSubSession(context.SessionId, description, agentInfo);
-                        _logger.LogInformation("创建新的子 Session（未找到现有）: {SessionId}", session.Id);
-                    }
-                }
-                else if (sessionId != null)
-                {
-                    var existingSession = _sessionManager.GetSession(sessionId);
-                    if (existingSession != null)
-                    {
-                        session = existingSession;
-                        _logger.LogInformation("使用现有会话: {SessionId}", sessionId);
-                    }
-                    else
-                    {
-                        session = await CreateSubSession(context.SessionId, description, agentInfo);
-                        _logger.LogInformation("创建新的子 Session（未找到指定会话）: {SessionId}", session.Id);
-                    }
-                }
-                else
-                {
-                    session = await CreateSubSession(context.SessionId, description, agentInfo);
-                    _logger.LogInformation("创建新的子 Session: {SessionId}", session.Id);
-                }
-
-                // 设置元数据
-                if (context.SetMetadata != null)
-                {
-                    context.SetMetadata(description, new Dictionary<string, object>
-                    {
-                        ["sessionId"] = session.Id,
-                        ["agent"] = agentInfo.Name,
-                        ["model"] = agentInfo.Model?.ModelId ?? "default",
-                        ["runInBackground"] = runInBackground
+                        try
+                        {
+                            _ = _backgroundTasks.CancelAsync(childId);
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
                     });
                 }
 
-                // 加载指定技能
-                if (loadSkills != null && loadSkills.Count > 0)
-                {
-                    await _sessionManager.SetContextAsync(session.Id, "loadSkills", loadSkills);
-                }
+                return Success(description, BuildOutput(session.Id, "running",
+                    "Background task started. Continue your current work and call task_status when you need the result."));
+            }
 
-                // 构建输入消息
-                var inputMessage = new ChatMessage
-                {
-                    Role = "user",
-                    Content = BuildPrompt(prompt, command)
-                };
+            var outputText = await RunAgentAsync(
+                agentInfo.Name, session.Id, userPrompt, context, ctxProj, context.CancellationToken);
 
-                // 执行 Agent
-                var agent = _agentRegistry.GetOrCreateAgentInstance(subagentType);
-                if (agent == null)
-                {
-                    return Failure($"无法创建 Agent 实例: {subagentType}");
-                }
+            await EmitParentAsync(context, _projector.CreateCompleted(ctxProj, outputText));
 
-                var agentContext = new AgentContext
-                {
-                    SessionId = session.Id,
-                    MessageId = $"msg_{Guid.NewGuid():N}",
-                    CancellationToken = context.CancellationToken,
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["parentSessionId"] = context.SessionId,
-                        ["description"] = description,
-                        ["command"] = command ?? string.Empty
-                    }
-                };
-
-                var outputBuilder = new StringBuilder();
-                var messages = new List<ChatMessage>();
-
-                await foreach (var message in agent.ExecuteAsync(inputMessage, agentContext, context.CancellationToken))
-                {
-                    messages.Add(message);
-                    if (message.Role == "assistant")
-                    {
-                        outputBuilder.AppendLine(message.Content);
-                    }
-                }
-
-                var outputText = outputBuilder.ToString().Trim();
-                if (string.IsNullOrEmpty(outputText))
-                {
-                    outputText = "子任务执行完成，无输出内容。";
-                }
-
-                // 构建返回结果
-                var output = new StringBuilder();
-                output.AppendLine($"task_id: {session.Id}（用于继续此任务）");
-                output.AppendLine();
-                output.AppendLine("<task_result>");
-                output.AppendLine(outputText);
-                output.AppendLine("</task_result>");
-
-                return Success(description, output.ToString(), new Dictionary<string, object>
+            return Success(description, BuildOutput(session.Id, "completed", outputText),
+                new Dictionary<string, object>
                 {
                     ["sessionId"] = session.Id,
-                    ["agent"] = agentInfo.Name,
-                    ["messages"] = messages.Count,
-                    ["model"] = agentInfo.Model?.ModelId ?? "default"
+                    ["agent"] = agentInfo.Name
                 });
-            }
-            catch (OperationCanceledException)
-            {
-                return Failure("子任务被取消");
-            }
-            catch (Exception ex)
-            {
-                return Failure(ex, "子任务执行失败");
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (ctxProj != null)
+                await EmitParentAsync(context, _projector.CreateFailed(ctxProj, "子任务被取消", cancelled: true));
+            return Failure("子任务被取消");
+        }
+        catch (Exception ex)
+        {
+            if (ctxProj != null)
+                await EmitParentAsync(context, _projector.CreateFailed(ctxProj, ex.Message));
+            return Failure(ex, "子任务执行失败");
+        }
+    }
+
+    private async ValueTask EmitParentAsync(ToolContext context, IMessageEvent evt)
+    {
+        try
+        {
+            if (context.EmitAsync != null)
+                await context.EmitAsync(evt);
+        }
+        catch
+        {
+            // Channel 可能已关闭（后台完成后）
         }
 
-        /// <summary>
-        /// 构建工具描述（动态包含可用子代理列表）
-        /// </summary>
-        private string BuildDescription()
+        try
         {
-            try
-            {
-                // 异步获取子代理列表，同步等待结果
-                var subAgents = _agentRegistry.GetSubAgentsAsync().GetAwaiter().GetResult();
+            var bus = _eventBus
+                ?? context.Services?.GetService(typeof(ISessionEventBus)) as ISessionEventBus;
+            bus?.Publish(evt.SessionId, evt);
+        }
+        catch
+        {
+            // 总线可选
+        }
+    }
 
-                var agentListText = subAgents.Count > 0
-                    ? string.Join("\n", subAgents.Select(a =>
-                        $"- {a.Name}: {a.Description ?? "此子代理应仅由用户手动调用"}"))
-                    : "- 无可用子代理";
+    private async Task<string> RunAgentAsync(
+        string agentName,
+        string sessionId,
+        string prompt,
+        ToolContext parentContext,
+        TaskProjectionContext projCtx,
+        CancellationToken ct)
+    {
+        var agent = _agentRegistry.GetOrCreateAgentInstance(agentName)
+            ?? throw new InvalidOperationException($"无法创建 Agent 实例: {agentName}");
 
-                return
-                    "创建子任务并使用专用 Agent 执行。" +
-                    "支持传递任务 ID 以继续之前的子任务。" +
-                    "子 Agent 可以是探索型、执行型或其他专用类型。" +
-                    "\n\n可用的子代理类型：\n" + agentListText;
-            }
-            catch
+        var session = _sessionManager.Get(sessionId);
+        var agentContext = new AgentContext
+        {
+            SessionId = sessionId,
+            MessageId = $"msg_{Guid.NewGuid():N}",
+            CancellationToken = ct,
+            ParentSessionId = parentContext.SessionId,
+            PermissionChannel = parentContext.PermissionChannel
+                ?? DefaultPermissionChannel.AutoApproveInstance,
+            Metadata = new Dictionary<string, object>
             {
-                return
-                    "创建子任务并使用专用 Agent 执行。" +
-                    "支持传递任务 ID 以继续之前的子任务。" +
-                    "子 Agent 可以是探索型、执行型或其他专用类型。";
+                ["parentSessionId"] = parentContext.SessionId
             }
+        };
+
+        if (!string.IsNullOrEmpty(session?.SelectedModel))
+        {
+            var modelId = session.SelectedModel;
+            var provider = session.SelectedModelProvider;
+            var fullModelId = !string.IsNullOrEmpty(provider) && !modelId.Contains('/')
+                ? $"{provider}/{modelId}"
+                : modelId;
+            agentContext.Metadata[AgentContextKeys.RequestModelId] = fullModelId;
         }
 
-        /// <summary>
-        /// 构建提示词
-        /// </summary>
-        private string BuildPrompt(string prompt, string? command)
+        agentContext.History.Add(new ChatMessage { Role = ChatRole.User, Content = prompt });
+
+        _loopScheduler.SetLoopBusy(sessionId, true);
+        try
         {
-            var sb = new StringBuilder();
-
-            if (!string.IsNullOrEmpty(command))
+            var executor = parentContext.Services?.GetService(typeof(AgentExecutor)) as AgentExecutor;
+            if (executor != null)
             {
-                sb.AppendLine($"[命令触发: {command}]");
-                sb.AppendLine();
-            }
-
-            sb.Append(prompt);
-
-            return sb.ToString();
-        }
-
-        /// <summary>
-        /// 创建子 Session
-        /// </summary>
-        private async Task<Seeing.Session.Core.SessionData> CreateSubSession(string parentSessionId, string description, Core.Models.AgentDefinition agentInfo)
-        {
-            var agent = _agentRegistry.GetOrCreateAgentInstance(agentInfo.Name);
-            var session = await _sessionManager.CreateSessionAsync(agent?.Name, agent?.Name);
-
-            // 设置父 Session 关系
-            await _sessionManager.SetContextAsync(session.Id, "parentSessionId", parentSessionId);
-            await _sessionManager.SetContextAsync(session.Id, "taskDescription", description);
-
-            // 根据 Agent 权限配置禁用工具
-            var disabledTools = new List<string>();
-
-            // 检查是否禁用 todowrite
-            if (agentInfo.PermissionRules.Any(p => p.Kind == PermissionKind.Tool && p.Pattern == "todowrite" && p.Effect == PermissionEffect.Deny))
-            {
-                disabledTools.Add("todowrite");
-            }
-
-            // 检查是否禁用 task
-            if (agentInfo.PermissionRules.Any(p => p.Kind == PermissionKind.Tool && p.Pattern == "task" && p.Effect == PermissionEffect.Deny))
-            {
-                disabledTools.Add("task");
-            }
-
-            if (disabledTools.Count > 0)
-            {
-                await _sessionManager.SetContextAsync(session.Id, "disabledTools", disabledTools.ToArray());
-            }
-
-            return session;
-        }
-
-        /// <summary>
-        /// 构建带属性的对象 Schema
-        /// </summary>
-        private static JsonElement BuildObjectSchema(
-            Dictionary<string, (string Type, string Description, bool Required, string[]? EnumValues)> properties)
-        {
-            var props = new Dictionary<string, object>();
-            var required = new List<string>();
-
-            foreach (var kvp in properties)
-            {
-                var prop = new Dictionary<string, object>
+                var def = AgentDefinition.FromAgent(agent);
+                var outputBuilder = new StringBuilder();
+                await foreach (var evt in executor.ExecuteAsync(def, agentContext, ct))
                 {
-                    ["type"] = kvp.Value.Type,
-                    ["description"] = kvp.Value.Description
-                };
+                    foreach (var projected in _projector.Project(evt, projCtx))
+                        await EmitParentAsync(parentContext, projected);
 
-                if (kvp.Value.EnumValues != null && kvp.Value.EnumValues.Length > 0)
-                {
-                    prop["enum"] = kvp.Value.EnumValues;
+                    // 子会话无 EventStreamHandler：在此投影并落盘助手/工具消息
+                    var childSession = _sessionManager.Get(sessionId);
+                    if (SessionStreamEventApplier.Apply(childSession, evt))
+                        await _sessionManager.SaveAsync(sessionId);
+
+                    if (evt is StreamCompleteEvent complete &&
+                        complete.Message.Role == ChatRole.Assistant &&
+                        !string.IsNullOrEmpty(complete.Message.Content))
+                    {
+                        outputBuilder.Clear();
+                        outputBuilder.Append(complete.Message.Content);
+                    }
+
+                    if (evt is ErrorEvent error)
+                        throw new InvalidOperationException(error.Message);
                 }
 
-                props[kvp.Key] = prop;
+                var text = outputBuilder.ToString().Trim();
+                return string.IsNullOrEmpty(text) ? "子任务执行完成，无输出内容。" : text;
+            }
 
-                if (kvp.Value.Required)
+            var fallback = new StringBuilder();
+            await foreach (var message in agent.ExecuteAsync(
+                new ChatMessage { Role = ChatRole.User, Content = prompt },
+                agentContext,
+                ct))
+            {
+                if (message.Role == ChatRole.Assistant && !string.IsNullOrEmpty(message.Content))
                 {
-                    required.Add(kvp.Key);
+                    fallback.Clear();
+                    fallback.Append(message.Content);
+
+                    var childSession = _sessionManager.Get(sessionId);
+                    if (childSession != null)
+                    {
+                        var assistant = SessionMessage.AssistantMessage(message.Content);
+                        if (!string.IsNullOrEmpty(message.ReasoningContent))
+                            assistant.ReasoningContent = message.ReasoningContent;
+                        childSession.AddMessage(assistant);
+                        await _sessionManager.SaveAsync(sessionId);
+                    }
                 }
             }
 
-            var schema = new Dictionary<string, object>
+            var fallbackText = fallback.ToString().Trim();
+            return string.IsNullOrEmpty(fallbackText) ? "子任务执行完成，无输出内容。" : fallbackText;
+        }
+        finally
+        {
+            _loopScheduler.SetLoopBusy(sessionId, false);
+        }
+    }
+
+    private static string BuildOutput(string taskId, string state, string body) =>
+        $"task_id: {taskId}\nstate: {state}\n\n<task_result>\n{body}\n</task_result>";
+
+    private string BuildDescription()
+    {
+        try
+        {
+            var taskable = _agentRegistry.GetTaskableAgentsAsync().GetAwaiter().GetResult();
+            var agentListText = taskable.Count > 0
+                ? string.Join("\n", taskable.Select(a =>
+                    $"- {a.Name}: {a.Description ?? "此子代理应仅由用户手动调用"}"))
+                : "- 无可用子代理（需 Native 运行时，且非 Primary）";
+
+            return
+                "创建子任务并使用专用 Native Agent 执行。" +
+                "支持传递 task_id 以继续之前的子任务。" +
+                "\n\n可用的子代理类型：\n" + agentListText;
+        }
+        catch
+        {
+            return "创建子任务并使用专用 Native Agent 执行。支持传递 task_id 以继续之前的子任务。";
+        }
+    }
+
+    private static bool HasConfiguredModel(AgentDefinition agent) =>
+        agent.Model != null && !string.IsNullOrWhiteSpace(agent.Model.ModelId);
+
+    private static JsonElement BuildObjectSchema(
+        Dictionary<string, (string Type, string Description, bool Required, string[]? EnumValues)> properties)
+    {
+        var props = new Dictionary<string, object>();
+        var required = new List<string>();
+        foreach (var kvp in properties)
+        {
+            var prop = new Dictionary<string, object>
             {
-                ["type"] = "object",
-                ["properties"] = props
+                ["type"] = kvp.Value.Type,
+                ["description"] = kvp.Value.Description
             };
-
-            if (required.Count > 0)
-            {
-                schema["required"] = required.ToArray();
-            }
-
-            return JsonSerializer.SerializeToElement(schema);
+            if (kvp.Value.EnumValues is { Length: > 0 })
+                prop["enum"] = kvp.Value.EnumValues;
+            props[kvp.Key] = prop;
+            if (kvp.Value.Required)
+                required.Add(kvp.Key);
         }
+
+        var schema = new Dictionary<string, object>
+        {
+            ["type"] = "object",
+            ["properties"] = props
+        };
+        if (required.Count > 0)
+            schema["required"] = required.ToArray();
+        return JsonSerializer.SerializeToElement(schema);
     }
 }

@@ -163,6 +163,19 @@ namespace Seeing.Agent.Configuration
         }
 
         /// <inheritdoc/>
+        public async Task<IReadOnlyList<AgentDefinition>> GetTaskableAgentsAsync()
+        {
+            var allAgents = await _agentStore.GetAllAsync();
+            var taskable = allAgents
+                .Where(a => !a.Disabled
+                    && a.Mode != AgentMode.Primary
+                    && a.Runtime == AgentRuntime.Native)
+                .OrderBy(a => a.Name, StringComparer.Ordinal)
+                .ToList();
+            return taskable.AsReadOnly();
+        }
+
+        /// <inheritdoc/>
         public async Task<IReadOnlyList<AgentDefinition>> GetPrimaryAgentsAsync()
         {
             var allAgents = await _agentStore.GetAllAsync();

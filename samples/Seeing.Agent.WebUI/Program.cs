@@ -49,7 +49,9 @@ builder.Services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 
 // === WebUI 服务 ===
 builder.Services.AddScoped<BlazorPermissionChannel>();
-builder.Services.AddScoped<IPermissionChannel>(sp => sp.GetRequiredService<BlazorPermissionChannel>());
+builder.Services.AddScoped<IPermissionChannel>(sp =>
+    new Seeing.Agent.Core.Permission.SerializingPermissionChannel(
+        sp.GetRequiredService<BlazorPermissionChannel>()));
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<EventStreamHandler>();

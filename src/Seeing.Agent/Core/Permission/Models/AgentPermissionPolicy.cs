@@ -68,6 +68,40 @@ public sealed class AgentPermissionPolicy
     }
 
     /// <summary>
+    /// 合并 Session 权限快照规则（Deny 写入 DeniedTools + Rules）。
+    /// </summary>
+    public AgentPermissionPolicy WithSessionSnapshot(IReadOnlyList<PermissionRuleEntry> snapshotRules)
+    {
+        if (snapshotRules == null || snapshotRules.Count == 0)
+            return this;
+
+        var mergedRules = Rules.Concat(snapshotRules).ToList();
+        var denied = new HashSet<string>(DeniedTools, StringComparer.OrdinalIgnoreCase);
+        foreach (var rule in snapshotRules)
+        {
+            if (rule.Effect == PermissionEffect.Deny &&
+                rule.Kind == PermissionKind.Tool &&
+                !string.IsNullOrEmpty(rule.Pattern) &&
+                rule.Pattern != "*")
+            {
+                denied.Add(rule.Pattern);
+            }
+        }
+
+        return new AgentPermissionPolicy
+        {
+            AgentName = AgentName,
+            Rules = mergedRules,
+            AllowedTools = AllowedTools,
+            DeniedTools = denied.ToList(),
+            AllowedAgents = AllowedAgents,
+            AllowedMcpServers = AllowedMcpServers,
+            DefaultEffect = DefaultEffect,
+            ContentHash = ComputeHash(mergedRules)
+        };
+    }
+
+    /// <summary>
     /// 签名策略
     /// </summary>
     /// <param name="hmacKey">HMAC 密钥</param>

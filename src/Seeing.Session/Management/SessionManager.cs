@@ -4,6 +4,7 @@ using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Storage;
 using System.Collections.Concurrent;
+using System.Linq;
 
 namespace Seeing.Session.Management
 {
@@ -386,12 +387,19 @@ namespace Seeing.Session.Management
             string? label = null,
             CancellationToken ct = default)
         {
-            if (_forker == null)
+            SessionData forkedSession;
+            if (_forker != null)
             {
-                throw new InvalidOperationException("SessionForker not configured. Inject SessionForker via constructor.");
+                forkedSession = await _forker.ForkAsync(sessionId, atMessageId, label, ct);
+            }
+            else
+            {
+                // DI 默认未注入 SessionForker 时的内联实现（与 SessionForker 对齐）
+                forkedSession = await ForkInlineAsync(sessionId, atMessageId, label, ct);
             }
 
-            var forkedSession = await _forker.ForkAsync(sessionId, atMessageId, label, ct);
+            if (forkedSession.Kind != SessionKind.Fork && forkedSession.Kind != SessionKind.Root)
+                forkedSession.Kind = SessionKind.Fork;
 
             // 触发 Hook
             _hookManager?.TriggerFireAndForget(
@@ -400,10 +408,130 @@ namespace Seeing.Session.Management
                 result: new Dictionary<string, object?>
                 {
                     ["session"] = forkedSession,
-                    ["parentSessionId"] = sessionId
+                    ["parentSessionId"] = forkedSession.ParentSessionId ?? sessionId
                 });
 
             return forkedSession;
+        }
+
+        private async Task<SessionData> ForkInlineAsync(
+            string sessionId,
+            string? atMessageId,
+            string? label,
+            CancellationToken ct)
+        {
+            var sourceSession = Get(sessionId)
+                ?? throw new InvalidOperationException($"Session not found: {sessionId}");
+
+            var forkedSession = SessionData.Create(sourceSession.PartitionId, sourceSession.SelectedAgent);
+
+            // SubAgent 分叉：产出可操作的独立 Root（无 Parent）；其它会话保持 Fork 谱系
+            if (sourceSession.Kind == SessionKind.SubAgent)
+            {
+                forkedSession.Kind = SessionKind.Root;
+                forkedSession.ParentSessionId = null;
+                forkedSession.ForkLabel = label ?? $"Detached from {sessionId}";
+                forkedSession.Title = label ?? $"{sourceSession.Title} (独立会话)";
+            }
+            else
+            {
+                forkedSession.Kind = SessionKind.Fork;
+                forkedSession.ParentSessionId = sessionId;
+                forkedSession.ForkLabel = label ?? $"Fork of {sessionId}";
+                forkedSession.Title = $"{sourceSession.Title} (Fork)";
+            }
+
+            forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
+            forkedSession.SelectedModel = sourceSession.SelectedModel;
+            forkedSession.SelectedModelProvider = sourceSession.SelectedModelProvider;
+
+            if (atMessageId != null)
+            {
+                var messageIndex = sourceSession.Messages.FindIndex(m => m.Id == atMessageId);
+                if (messageIndex >= 0)
+                {
+                    for (int i = 0; i < messageIndex; i++)
+                        forkedSession.Messages.Add(sourceSession.Messages[i]);
+                }
+            }
+            else
+            {
+                foreach (var msg in sourceSession.Messages)
+                    forkedSession.Messages.Add(msg);
+            }
+
+            Register(forkedSession);
+            await SaveAsync(forkedSession.Id);
+            return forkedSession;
+        }
+
+        /// <inheritdoc />
+        public async Task<SessionData> CreateChildAsync(
+            string parentId,
+            string agentName,
+            string title,
+            IReadOnlyList<SessionPermissionRule> permissionSnapshot,
+            CancellationToken ct = default)
+        {
+            var parent = Get(parentId)
+                ?? throw new InvalidOperationException($"Parent session not found: {parentId}");
+
+            var child = SessionData.Create(parent.PartitionId, agentName);
+            child.Kind = SessionKind.SubAgent;
+            child.ParentSessionId = parentId;
+            child.Title = title;
+            child.SelectedAgent = agentName;
+            child.WorkingDirectory = parent.WorkingDirectory;
+            child.PartitionId = parent.PartitionId;
+            // 默认继承父委派时模型；子 Agent 自带 Model 时由 TaskTool 覆盖
+            child.SelectedModel = parent.SelectedModel;
+            child.SelectedModelProvider = parent.SelectedModelProvider;
+            child.Messages = new List<SessionMessage>();
+            child.PermissionSnapshot = permissionSnapshot?
+                .Select(r => new SessionPermissionRule
+                {
+                    Kind = r.Kind,
+                    Pattern = r.Pattern,
+                    Effect = r.Effect,
+                    Priority = r.Priority
+                })
+                .ToList()
+                ?? new List<SessionPermissionRule>();
+
+            Register(child);
+            await SaveAsync(child.Id);
+
+            _logger?.LogInformation(
+                "创建子 Agent 会话: {ChildId} <- {ParentId}, Agent: {Agent}",
+                child.Id, parentId, agentName);
+
+            return child;
+        }
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SessionData>> ListRootsAsync(CancellationToken ct = default)
+        {
+            var roots = _sessionDataCache.Values
+                .Where(s => s.Kind == SessionKind.Root && !s.IsArchived)
+                .OrderByDescending(s => s.UpdatedAt)
+                .ToList()
+                .AsReadOnly();
+            return Task.FromResult<IReadOnlyList<SessionData>>(roots);
+        }
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SessionData>> ListChildrenAsync(
+            string parentId,
+            SessionKind? kind = null,
+            CancellationToken ct = default)
+        {
+            var q = _sessionDataCache.Values
+                .Where(s => s.ParentSessionId == parentId);
+            if (kind.HasValue)
+                q = q.Where(s => s.Kind == kind.Value);
+
+            var list = q.OrderByDescending(s => s.UpdatedAt).ToList().AsReadOnly();
+            return Task.FromResult<IReadOnlyList<SessionData>>(list);
         }
 
         /// <summary>

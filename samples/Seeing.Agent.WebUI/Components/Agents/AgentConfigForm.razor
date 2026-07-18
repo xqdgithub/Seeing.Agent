@@ -27,14 +27,14 @@
                             </FormItem>
                         </Col>
                         <Col Span="8">
-                            <FormItem Label="模型">
+                            <FormItem Label="默认模型">
                                 <Select TItemValue="string" TItem="string"
                                         Value="@_modelKey"
                                         ValueExpression="@(() => _modelKey)"
                                         ValueChanged="OnModelKeyChanged"
                                         DataSource="@_modelKeys"
                                         AllowClear
-                                        Placeholder="默认" />
+                                        Placeholder="空则 Task 时继承主 Agent 模型" />
                             </FormItem>
                         </Col>
                     </Row>

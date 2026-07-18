@@ -29,11 +29,25 @@ public enum MessageEventType
     /// <summary>工具执行完成</summary>
     ToolCallComplete,
 
-    /// <summary>子代理启动</summary>
+    /// <summary>子代理启动（废弃：使用 TaskStarted）</summary>
+    [Obsolete("Use TaskStarted")]
     SubAgentStarted,
 
-    /// <summary>子代理完成</summary>
+    /// <summary>子代理完成（废弃：使用 TaskCompleted）</summary>
+    [Obsolete("Use TaskCompleted")]
     SubAgentCompleted,
+
+    /// <summary>子任务启动</summary>
+    TaskStarted,
+
+    /// <summary>子任务进度投影</summary>
+    TaskProgress,
+
+    /// <summary>子任务完成</summary>
+    TaskCompleted,
+
+    /// <summary>子任务失败</summary>
+    TaskFailed,
 
     /// <summary>权限请求（需要用户确认）</summary>
     PermissionRequest,
@@ -261,8 +275,9 @@ public record ToolCallEvent : IMessageEvent
 }
 
 /// <summary>
-/// 子代理事件
+/// 子代理事件（废弃：请使用 TaskStartedEvent / TaskCompletedEvent / TaskFailedEvent）
 /// </summary>
+[Obsolete("Use Task* events")]
 public record SubAgentEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
@@ -284,6 +299,71 @@ public record SubAgentEvent : IMessageEvent
 
     /// <summary>错误信息（Failed 时有）</summary>
     public string? Error { get; init; }
+}
+
+/// <summary>子任务启动</summary>
+public record TaskStartedEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.TaskStarted;
+
+    public required string TaskId { get; init; }
+    public string? ParentSessionId { get; init; }
+    public string? OriginToolCallId { get; init; }
+    public required string AgentName { get; init; }
+    public required string Description { get; init; }
+    public bool Background { get; init; }
+}
+
+/// <summary>子任务进度（降采样投影）</summary>
+public record TaskProgressEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.TaskProgress;
+
+    public required string TaskId { get; init; }
+    public string? ParentSessionId { get; init; }
+    public string? OriginToolCallId { get; init; }
+
+    /// <summary>stream | tool_pending | tool_running | tool_complete | text</summary>
+    public required string StepKind { get; init; }
+    public string? ToolName { get; init; }
+    public string? Status { get; init; }
+    public string? Preview { get; init; }
+}
+
+/// <summary>子任务完成</summary>
+public record TaskCompletedEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.TaskCompleted;
+
+    public required string TaskId { get; init; }
+    public string? ParentSessionId { get; init; }
+    public string? OriginToolCallId { get; init; }
+    public string? ResultText { get; init; }
+    public TimeSpan? Duration { get; init; }
+}
+
+/// <summary>子任务失败</summary>
+public record TaskFailedEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.TaskFailed;
+
+    public required string TaskId { get; init; }
+    public string? ParentSessionId { get; init; }
+    public string? OriginToolCallId { get; init; }
+    public required string Error { get; init; }
+    public bool Cancelled { get; init; }
 }
 
 /// <summary>

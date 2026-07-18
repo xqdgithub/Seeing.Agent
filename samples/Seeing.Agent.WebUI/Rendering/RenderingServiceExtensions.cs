@@ -101,13 +101,33 @@ public static class RenderingServiceExtensions
                     ["Context"] = context
                 }));
 
+        // 优先级 40: Task 子代理卡片（优先于普通 ToolCall）
+        services.AddSingleton<IMessageComponent>(sp =>
+            new DefaultMessageComponent<MessagingComponents.TaskMessageComponent>(
+                ContentBlockType.ToolCall,
+                40,
+                "Task",
+                block => block.Type == ContentBlockType.ToolCall
+                         && block.ToolCall != null
+                         && block.ToolCall.IsTaskTool,
+                (block, context) => new Dictionary<string, object?>
+                {
+                    ["ToolCall"] = block.ToolCall!,
+                    ["Block"] = block,
+                    ["Context"] = context,
+                    ["OnToolClick"] = context.OnToolClick,
+                    ["OnOpenTaskSession"] = context.OnOpenTaskSession
+                }));
+
         // 优先级 50: 工具调用消息组件
         services.AddSingleton<IMessageComponent>(sp =>
             new DefaultMessageComponent<MessagingComponents.ToolCallMessageComponent>(
                 ContentBlockType.ToolCall,
                 50,
                 "ToolCall",
-                block => block.Type == ContentBlockType.ToolCall && block.ToolCall != null,
+                block => block.Type == ContentBlockType.ToolCall
+                         && block.ToolCall != null
+                         && !block.ToolCall.IsTaskTool,
                 (block, context) => new Dictionary<string, object?>
                 {
                     ["ToolCall"] = block.ToolCall!,

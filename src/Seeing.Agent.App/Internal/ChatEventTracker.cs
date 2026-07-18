@@ -54,15 +54,38 @@ internal class ChatEventTracker
                 break;
 
             case StreamCompleteEvent streamComplete:
-                if (_currentAssistantMessage != null && streamComplete.Message != null)
+                if (streamComplete.Message != null &&
+                    !string.Equals(streamComplete.Message.Role, ChatRole.Tool, StringComparison.OrdinalIgnoreCase))
                 {
-                    var content = streamComplete.Message.Content;
-                    var reasoning = streamComplete.Message.ReasoningContent;
+                    EnsureAssistantMessage(session, evt.SessionId);
+                    if (_currentAssistantMessage != null)
+                    {
+                        if (!string.IsNullOrEmpty(streamComplete.Message.Content))
+                            _currentAssistantMessage.Content = streamComplete.Message.Content;
+                        if (!string.IsNullOrEmpty(streamComplete.Message.ReasoningContent))
+                            _currentAssistantMessage.ReasoningContent = streamComplete.Message.ReasoningContent;
 
-                    if (string.IsNullOrEmpty(_currentAssistantMessage.Content) && !string.IsNullOrEmpty(content))
-                        _currentAssistantMessage.Content = content;
-                    if (string.IsNullOrEmpty(_currentAssistantMessage.ReasoningContent) && !string.IsNullOrEmpty(reasoning))
-                        _currentAssistantMessage.ReasoningContent = reasoning;
+                        if (streamComplete.Message.ToolCalls is { Count: > 0 })
+                        {
+                            _currentAssistantMessage.ToolCalls ??= new List<SessionToolCall>();
+                            foreach (var tc in streamComplete.Message.ToolCalls)
+                            {
+                                if (string.IsNullOrEmpty(tc.Id))
+                                    continue;
+                                if (_currentAssistantMessage.ToolCalls.Exists(t => t.Id == tc.Id))
+                                    continue;
+                                _currentAssistantMessage.ToolCalls.Add(new SessionToolCall
+                                {
+                                    Id = tc.Id,
+                                    Name = tc.Name,
+                                    Arguments = string.IsNullOrWhiteSpace(tc.Function?.Arguments)
+                                        ? "{}"
+                                        : tc.Function!.Arguments,
+                                    Status = "pending"
+                                });
+                            }
+                        }
+                    }
                 }
                 break;
 
@@ -86,7 +109,15 @@ internal class ChatEventTracker
                     _currentAssistantMessage.ToolCalls.Add(existing);
                 }
 
-                existing.Status = toolCall.Status.ToString().ToLowerInvariant();
+                existing.Status = toolCall.Status switch
+                {
+                    ToolCallStatus.Pending => "pending",
+                    ToolCallStatus.Running => "running",
+                    ToolCallStatus.Success => "success",
+                    ToolCallStatus.Failed => "failed",
+                    ToolCallStatus.Rejected => "rejected",
+                    _ => existing.Status
+                };
                 if (toolCall.Output != null)
                     existing.Result = toolCall.Output;
                 if (toolCall.Error != null)
@@ -94,7 +125,11 @@ internal class ChatEventTracker
                 break;
 
             case ErrorEvent error:
-                session.Messages.Add(SessionMessage.SystemMessage(string.Format("错误: {0}", error.Message)));
+                session.Messages.Add(SessionMessage.SystemMessage($"错误: {error.Message}"));
+                break;
+
+            case LoopCancelledEvent cancelled:
+                session.Messages.Add(SessionMessage.SystemMessage($"对话已取消: {cancelled.Reason}"));
                 break;
         }
     }

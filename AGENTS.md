@@ -59,6 +59,7 @@ Seeing.Agent/
 |------|------|------|
 | 新增 Agent 实现 | `src/Seeing.Agent/Core/Abstractions/AgentBase.cs` | 继承基类，支持配置驱动/代码驱动 |
 | 新增 Tool 工具 | `src/Seeing.Agent/Tools/Attributes/ToolAttributes.cs` | 使用 `[Tool]` 注解 |
+| 子 Agent / Task | `src/Seeing.Agent/Tools/BuiltIn/Task/TaskTool.cs` | Session-first：`task`/`task_status`；Child=`SessionKind.SubAgent`；Task* 投影 |
 | 扩展生命周期钩子 | `src/Seeing.Agent/Hooks/HookManager.cs` | 实现 `IHookHandler`，20+ 钩子点 |
 | 配置权限规则 | `src/Seeing.Agent/Rules/RuleEngine.cs` | `AddRule()` 方法 |
 | 连接 MCP Server | `src/Seeing.Agent/MCP/McpClientManager.cs` | `ConnectAsync()`，支持 stdio/HTTP/SSE |

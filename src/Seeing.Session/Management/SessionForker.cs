@@ -33,20 +33,33 @@ namespace Seeing.Session.Management
             if (sourceSession == null)
                 throw new InvalidOperationException($"Session not found: {sessionId}");
 
-            // 创建新 Session
             var forkedSession = SessionData.Create(sourceSession.PartitionId, sourceSession.SelectedAgent);
-            forkedSession.ParentSessionId = sessionId;
-            forkedSession.ForkLabel = label ?? $"Fork of {sessionId}";
-            forkedSession.Title = $"{sourceSession.Title} (Fork)";
-            forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
 
-            // 复制消息
+            // SubAgent 分叉：产出可操作的独立 Root（无 Parent）；其它会话保持 Fork 谱系
+            if (sourceSession.Kind == SessionKind.SubAgent)
+            {
+                forkedSession.Kind = SessionKind.Root;
+                forkedSession.ParentSessionId = null;
+                forkedSession.ForkLabel = label ?? $"Detached from {sessionId}";
+                forkedSession.Title = label ?? $"{sourceSession.Title} (独立会话)";
+            }
+            else
+            {
+                forkedSession.Kind = SessionKind.Fork;
+                forkedSession.ParentSessionId = sessionId;
+                forkedSession.ForkLabel = label ?? $"Fork of {sessionId}";
+                forkedSession.Title = $"{sourceSession.Title} (Fork)";
+            }
+
+            forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
+            forkedSession.SelectedModel = sourceSession.SelectedModel;
+            forkedSession.SelectedModelProvider = sourceSession.SelectedModelProvider;
+
             if (atMessageId != null)
             {
                 var messageIndex = sourceSession.Messages.FindIndex(m => m.Id == atMessageId);
                 if (messageIndex >= 0)
                 {
-                    // 复制到该消息之前（不含）
                     for (int i = 0; i < messageIndex; i++)
                     {
                         forkedSession.Messages.Add(CloneMessage(sourceSession.Messages[i]));
@@ -55,14 +68,12 @@ namespace Seeing.Session.Management
             }
             else
             {
-                // 复制所有消息
                 foreach (var msg in sourceSession.Messages)
                 {
                     forkedSession.Messages.Add(CloneMessage(msg));
                 }
             }
 
-            // 注册并保存
             _sessionManager.Register(forkedSession);
             await _sessionManager.SaveAsync(forkedSession.Id);
 

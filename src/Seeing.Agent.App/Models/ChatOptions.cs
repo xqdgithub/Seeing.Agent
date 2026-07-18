@@ -22,4 +22,9 @@ public record ChatOptions
     
     /// <summary>用户 ID（Gateway 用于审计）</summary>
     public string? UserId { get; init; }
+
+    /// <summary>
+    /// 跳过持久化用户消息（synthetic 已注入，idle resume 时使用）。
+    /// </summary>
+    public bool SkipUserMessagePersist { get; init; }
 }

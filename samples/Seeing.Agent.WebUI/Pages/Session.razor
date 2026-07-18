@@ -39,6 +39,7 @@
 @inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
 @inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
 @inject ISessionManager SessionManager
+@inject Seeing.Agent.Core.Background.IBackgroundTaskManager BackgroundTaskManager
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -56,7 +57,11 @@
             </Button>
             <Divider Type="@DividerType.Vertical" />
             <span Class="session-title">@SessionState.Title</span>
-            @if (SessionState.IsQueued)
+            @if (IsSubAgentView)
+            {
+                <Badge Status="@BadgeStatus.Warning" Text="子会话（只读）" />
+            }
+            else if (SessionState.IsQueued)
             {
                 <Badge Status="@BadgeStatus.Default" Text="@($"排队中 ({SessionState.QueuePosition})" )" />
             }
@@ -75,11 +80,37 @@
                     @TruncateWorkspacePath(currentWorkspace)
                 </span>
             </Tooltip>
+            @if (IsSubAgentView && !string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
+            {
+                <Button Type="@ButtonType.Link"
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.ArrowLeft"
+                        OnClick="@ReturnToParentSession"
+                        Style="margin-left: 8px;">
+                    返回主会话
+                </Button>
+            }
         </div>
         <div Class="session-header-right">
             <Space>
                 <SpaceItem>
-                    @if (_optionsReady)
+                    @if (IsSubAgentView)
+                    {
+                        <div class="subagent-meta" title="子代理（只读）">
+                            <span class="subagent-meta-chip">
+                                <span class="subagent-meta-label">Agent</span>
+                                <span class="subagent-meta-value">@(string.IsNullOrEmpty(_selectedAgent) ? "—" : _selectedAgent)</span>
+                            </span>
+                            @if (!string.IsNullOrEmpty(_selectedModel))
+                            {
+                                <span class="subagent-meta-chip">
+                                    <span class="subagent-meta-label">Model</span>
+                                    <span class="subagent-meta-value">@_selectedModel</span>
+                                </span>
+                            }
+                        </div>
+                    }
+                    else if (_optionsReady)
                     {
                         <Select TItemValue="string" TItem="string"
                                 Value="@_selectedAgent"
@@ -91,7 +122,7 @@
                                 Placeholder="智能体" />
                     }
                 </SpaceItem>
-                @if (_optionsReady && _isAcpPassthrough)
+                @if (!IsSubAgentView && _optionsReady && _isAcpPassthrough)
                 {
                     <SpaceItem>
                         <Input Value="@_selectedAcpMode"
@@ -108,7 +139,7 @@
                                Size="@InputSize.Small" />
                     </SpaceItem>
                 }
-                else if (_optionsReady)
+                else if (!IsSubAgentView && _optionsReady)
                 {
                     <SpaceItem>
                         <Select TItemValue="string" TItem="ModelViewModel"
@@ -137,11 +168,12 @@
                         <Button Type="@ButtonType.Text"
                                 Size="@ButtonSize.Small"
                                 Icon="@IconType.Outline.Edit"
-                                OnClick="@OnRenameSession" />
+                                OnClick="@OnRenameSession"
+                                Disabled="@IsSubAgentView" />
                     </Tooltip>
                 </SpaceItem>
                 <SpaceItem>
-                    <Tooltip Title="分支会话">
+                    <Tooltip Title="@(IsSubAgentView ? "分叉为独立会话（可编辑）" : "分支会话")">
                         <Button Type="@ButtonType.Text"
                                 Size="@ButtonSize.Small"
                                 Icon="@IconType.Outline.Copy"
@@ -154,7 +186,7 @@
                                 Size="@ButtonSize.Small"
                                 Icon="@IconType.Outline.Plus"
                                 OnClick="@CreateNewSessionAsync"
-                                Disabled="@SessionState.IsExecuting" />
+                                Disabled="@(SessionState.IsExecuting || IsSubAgentView)" />
                     </Tooltip>
                 </SpaceItem>
                 <SpaceItem>
@@ -163,7 +195,7 @@
                                 Size="@ButtonSize.Small"
                                 Icon="@IconType.Outline.Delete"
                                 OnClick="@OnClearSession"
-                                Disabled="@SessionState.IsExecuting" />
+                                Disabled="@(SessionState.IsExecuting || IsSubAgentView)" />
                     </Tooltip>
                 </SpaceItem>
              </Space>
@@ -230,23 +262,48 @@
         }
     </div>
 
-    <!-- 输入区域：仅在非空状态时显示 -->
+    <!-- 输入区域：仅在非空状态时显示；SubAgent 子会话只读 -->
     @if (!ShowEmptyState)
     {
         <div Class="session-input-container">
-            <!-- Slot 扩展点: session_prompt -->
-            <SlotHost SlotName="session_prompt" />
-            
-             <PromptInput IsProcessing="@SessionState.HasActiveExecution"
-                          Placeholder="@GetPlaceholderText()"
-                          HelpText="@GetHelpText()"
-                          AvailableCommands="_availableCommands"
-                          SessionState="SessionState"
-                          CancellationTokenSource="@SessionState.CancellationTokenSource"
-                          BudgetStatus="SessionState.BudgetStatus"
-                          OnCompactRequested="OnCompactRequested"
-                          OnSubmitCallback="@OnSubmitMessage"
-                          OnCancelCallback="@OnCancelExecution" />
+            @if (IsSubAgentView)
+            {
+                <div class="subagent-readonly-banner" style="padding: 12px 16px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <Icon Type="@IconType.Outline.Eye" />
+                    <span style="flex: 1;">当前为 Task 子会话（只读）。可返回主会话，或分叉为独立会话后再继续对话。</span>
+                    @if (!string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
+                    {
+                        <Button Type="@ButtonType.Default"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.ArrowLeft"
+                                OnClick="@ReturnToParentSession">
+                            返回主会话
+                        </Button>
+                    }
+                    <Button Type="@ButtonType.Primary"
+                            Size="@ButtonSize.Small"
+                            Icon="@IconType.Outline.Copy"
+                            OnClick="@OnBranchSession">
+                        分叉为独立会话
+                    </Button>
+                </div>
+            }
+            else
+            {
+                <!-- Slot 扩展点: session_prompt -->
+                <SlotHost SlotName="session_prompt" />
+                
+                 <PromptInput IsProcessing="@SessionState.HasActiveExecution"
+                              Placeholder="@GetPlaceholderText()"
+                              HelpText="@GetHelpText()"
+                              AvailableCommands="_availableCommands"
+                              SessionState="SessionState"
+                              CancellationTokenSource="@SessionState.CancellationTokenSource"
+                              BudgetStatus="SessionState.BudgetStatus"
+                              OnCompactRequested="OnCompactRequested"
+                              OnSubmitCallback="@OnSubmitMessage"
+                              OnCancelCallback="@OnCancelExecution" />
+            }
         </div>
     }
     
@@ -349,6 +406,10 @@
     /// 是否显示空状态（无会话）
     /// </summary>
     private bool ShowEmptyState { get; set; } = false;
+
+    /// <summary>Task 子会话：只读查看，不可发送/修改</summary>
+    private bool IsSubAgentView =>
+        SessionState.CurrentSession?.Kind == SessionKind.SubAgent;
 
     /// <summary>
     /// 错误消息
@@ -499,38 +560,48 @@
     /// </summary>
     private void SyncSelectorValues()
     {
-        var agent = SessionState.SelectedAgent ?? "";
+        // 以会话落盘值为准；子代理常不在 Primary 下拉里，禁止回退成首项（如 acp-cursor）
+        var agent = SessionState.CurrentSession?.SelectedAgent
+            ?? SessionState.SelectedAgent
+            ?? "";
+
+        if (!string.IsNullOrEmpty(agent))
+            _selectedAgent = agent;
+        else
+            _selectedAgent = _agentNames.FirstOrDefault() ?? "";
+
+        RefreshAgentRuntime();
+
         var model = SessionState.SelectedModel ?? "";
         var provider = SessionState.SelectedModelProvider ?? "";
-        
-        _selectedAgent = _agentNames.Contains(agent) ? agent : (_agentNames.FirstOrDefault() ?? agent);
-        
-        // 组装完整的 modelId 格式来匹配（_models 使用 provider/model 格式）
-        if (_isAcpPassthrough)
+
+        if (IsSubAgentView)
+        {
+            // 子会话只读：存什么展示什么，不做下拉匹配回退
+            _selectedModel = !string.IsNullOrEmpty(provider) && !string.IsNullOrEmpty(model) && !model.Contains('/')
+                ? $"{provider}/{model}"
+                : model;
+        }
+        else if (_isAcpPassthrough)
+        {
+            _selectedModel = model;
+        }
+        else if (_models.Count == 0)
         {
             _selectedModel = model;
         }
         else
         {
-            // 如果模型列表为空，保持当前值
-            if (_models.Count == 0)
-            {
-                _selectedModel = model;
-            }
-            else
-            {
-                var fullModelId = !string.IsNullOrEmpty(provider) && !model.Contains('/')
-                    ? $"{provider}/{model}"
-                    : model;
-                
-                _selectedModel = _models.Any(m => m.Id == fullModelId)
-                    ? fullModelId
-                    : (_models.FirstOrDefault()?.Id ?? model);
-            }
+            var fullModelId = !string.IsNullOrEmpty(provider) && !model.Contains('/')
+                ? $"{provider}/{model}"
+                : model;
+
+            _selectedModel = _models.Any(m => m.Id == fullModelId)
+                ? fullModelId
+                : (_models.FirstOrDefault()?.Id ?? model);
         }
-        
+
         _selectedAcpMode = SessionState.SelectedAcpMode ?? "";
-        RefreshAgentRuntime();
         RequestRender();
     }
 
@@ -544,6 +615,21 @@
 
         var info = AppState.AvailableAgents.FirstOrDefault(a =>
             string.Equals(a.Name, _selectedAgent, StringComparison.OrdinalIgnoreCase));
+
+        if (info == null)
+        {
+            // SubAgent / 隐藏 Agent 不在 Primary 列表：向注册表查询真实 Runtime
+            try
+            {
+                info = AgentRegistry.GetAgentAsync(_selectedAgent).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                info = null;
+            }
+        }
+
+        // TaskTool 子会话理论上只会是 Native；查不到时不要当成 ACP
         _isAcpPassthrough = info?.Runtime == Seeing.Agent.Core.Models.AgentRuntime.AcpPassthrough;
     }
     
@@ -945,6 +1031,9 @@
             
             // 显示空状态
             ShowEmptyState = false;
+
+            // 和解：进程关闭后残留的「执行中」Task 卡片
+            await ReconcileIncompleteTasksAsync();
             
             // 计算并更新 Token 预算状态
             UpdateBudgetStatus();
@@ -1005,12 +1094,23 @@
     {
         _messageViewModels.Clear();
         
-        if (SessionState.CurrentSession?.Messages != null)
+        if (SessionState.CurrentSession?.Messages == null)
+            return;
+
+        // 同 Id 消息保留最后一条，避免 MessageList 刷新时撞 key
+        var indexById = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var msg in SessionState.CurrentSession.Messages)
         {
-            foreach (var msg in SessionState.CurrentSession.Messages)
+            var vm = ConvertToMessageViewModel(msg);
+            if (!string.IsNullOrEmpty(vm.Id) && indexById.TryGetValue(vm.Id, out var existingIndex))
             {
-                _messageViewModels.Add(ConvertToMessageViewModel(msg));
+                _messageViewModels[existingIndex] = vm;
+                continue;
             }
+
+            if (!string.IsNullOrEmpty(vm.Id))
+                indexById[vm.Id] = _messageViewModels.Count;
+            _messageViewModels.Add(vm);
         }
     }
 
@@ -1077,6 +1177,12 @@
     /// </summary>
     private async Task OnSubmitMessage(PromptSubmitEventArgs args)
     {
+        if (IsSubAgentView)
+        {
+            ErrorMessage = "子会话为只读，请先分叉为独立会话后再发送消息";
+            return;
+        }
+
         // 验证输入
         if (string.IsNullOrWhiteSpace(args.Text) && args.Attachments.Count == 0)
         {
@@ -1185,9 +1291,8 @@
                     break;
                 }
 
-                // 处理事件 - 由 EventStreamHandler 统一处理
-                // HandleMessageEvent 不再创建/更新消息，只刷新 UI
-                EventStreamHandler.ProcessEvent(evt);
+                // 处理事件 - 由 EventStreamHandler 统一处理（必须 await，否则 Task 字段可能未写入就刷新）
+                await EventStreamHandler.ProcessEventAsync(evt);
 
                 // UI 更新动态节流
                 if (evt is StreamDeltaEvent deltaEvt)
@@ -1350,35 +1455,75 @@
     {
         // 取消本地 CancellationToken
         SessionState.CancelExecution();
-        
+
+        var sessionId = SessionState.SessionId;
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            try
+            {
+                await BackgroundTaskManager.CancelBySessionAsync(sessionId);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        await EventStreamHandler.MarkIncompleteTasksCancelledAsync("用户取消");
+
         // 取消当前执行
         if (!string.IsNullOrEmpty(SessionState.CurrentExecutionId))
         {
-            var cancelled = ChatOrchestrator.Cancel(SessionState.CurrentExecutionId);
-            
-            if (cancelled)
-            {
-                SessionState.ExecutionStatus = ExecutionStatus.Cancelled;
-                SessionState.CurrentExecutionId = null;
-                
-                // 添加取消提示
-                if (SessionState.CurrentSession != null)
-                {
-                    SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("用户取消了当前执行"));
-                }
-            }
+            ChatOrchestrator.Cancel(SessionState.CurrentExecutionId);
         }
-        
+
+        // 无论后端 Cancel 是否成功，都清掉「执行中」徽标，避免 UI 卡住
+        SessionState.ExecutionStatus = ExecutionStatus.Cancelled;
+        SessionState.CurrentExecutionId = null;
+        SessionState.CompleteExecution();
+
+        if (SessionState.CurrentSession != null)
+        {
+            SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("用户取消了当前执行"));
+        }
+
+        RefreshMessageViewModels();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ReconcileIncompleteTasksAsync()
+    {
+        try
+        {
+            var n = await EventStreamHandler.ReconcileOrphanTaskCardsAsync(async taskId =>
+            {
+                var info = await BackgroundTaskManager.GetAsync(taskId);
+                return info != null &&
+                       (info.Status == Seeing.Agent.Core.Background.BackgroundTaskStatus.Pending ||
+                        info.Status == Seeing.Agent.Core.Background.BackgroundTaskStatus.Running);
+            });
+
+            if (n > 0)
+                RefreshMessageViewModels();
+        }
+        catch
+        {
+            // ignore reconcile failures
+        }
     }
     
     /// <summary>
-    /// 工具点击处理
+    /// 工具点击处理（Task 卡片「打开详情」→ 导航 Child Session）
     /// </summary>
     private void OnToolClick(ToolCallViewModel tool)
     {
+        if (!string.IsNullOrEmpty(tool.TaskId))
+        {
+            NavigationManager.NavigateTo($"/session/{tool.TaskId}");
+            return;
+        }
+
         SelectedToolCall = tool;
-        // TODO: 显示工具详情面板或弹窗
     }
     
     /// <summary>
@@ -1437,18 +1582,35 @@
     }
     
     /// <summary>
-    /// 分支会话
+    /// 分支会话（从 SubAgent 分叉为无 Parent 的独立 Root）
     /// </summary>
     private async Task OnBranchSession()
     {
         if (SessionState.CurrentSession == null) return;
+
+        var title = IsSubAgentView
+            ? string.Format("{0} (独立会话)", SessionState.Title)
+            : string.Format("{0} (分支)", SessionState.Title);
         
-        var branchedSession = await ChatOrchestrator.BranchSessionAsync(SessionState.CurrentSession.Id, string.Format("{0} (分支)", SessionState.Title));
+        var branchedSession = await ChatOrchestrator.BranchSessionAsync(SessionState.CurrentSession.Id, title);
         
-        MessageService.Success("会话已分支");
+        MessageService.Success(IsSubAgentView
+            ? "已分叉为独立会话，可继续对话"
+            : "会话已分支");
         
-        // 导航到新会话
         NavigationManager.NavigateTo(string.Format("/session/{0}", branchedSession.Id));
+    }
+
+    /// <summary>
+    /// 从 Task 子会话返回主会话
+    /// </summary>
+    private void ReturnToParentSession()
+    {
+        var parentId = SessionState.CurrentSession?.ParentSessionId;
+        if (string.IsNullOrEmpty(parentId))
+            return;
+
+        NavigationManager.NavigateTo($"/session/{parentId}");
     }
     
     /// <summary>
@@ -1456,20 +1618,16 @@
     /// </summary>
     private async Task OnClearSession()
     {
+        if (IsSubAgentView) return;
+
         if (SessionState.CurrentSession != null)
         {
-            SessionState.CurrentSession.ClearMessages();  // 已清除缓存
+            SessionState.CurrentSession.ClearMessages();
             SessionState.CurrentSession.Title = "新会话";
 
-            // 保存 Session
             await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
-
-            // 更新 Token 预算状态
             UpdateBudgetStatus();
-
             MessageService.Info("会话已清空");
-
-            // 刷新 UI
             RefreshMessageViewModels();
         }
 
@@ -1543,13 +1701,35 @@
     }
     
     /// <summary>
-    /// 释放资源
+    /// 释放资源（导航离开 / 电路断开）
     /// </summary>
     public void Dispose()
     {
-        // 释放资源
         SessionState.CancelExecution();
         _budgetSubscription?.Dispose();
+
+        var sessionId = SessionState.SessionId;
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            try
+            {
+                BackgroundTaskManager.CancelBySessionAsync(sessionId).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        try
+        {
+            EventStreamHandler.MarkIncompleteTasksCancelledAsync("会话已关闭", persist: true)
+                .GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // ignore
+        }
     }
     
     /// <summary>

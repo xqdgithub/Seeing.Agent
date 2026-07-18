@@ -82,6 +82,42 @@ public class ToolCallViewModel
     /// </summary>
     public bool IsTodoTool => Name?.ToLowerInvariant() == "todowrite";
 
+    /// <summary>
+    /// 子任务 ID（≡ Child Session Id）
+    /// </summary>
+    public string? TaskId { get; set; }
+
+    /// <summary>
+    /// 子任务 Agent
+    /// </summary>
+    public string? TaskAgent { get; set; }
+
+    /// <summary>
+    /// 子任务描述
+    /// </summary>
+    public string? TaskDescription { get; set; }
+
+    /// <summary>
+    /// 是否后台任务
+    /// </summary>
+    public bool TaskBackground { get; set; }
+
+    /// <summary>
+    /// 子任务步骤
+    /// </summary>
+    public List<SessionTaskStep> TaskSteps { get; set; } = new();
+
+    /// <summary>
+    /// 是否为 Task 子代理工具卡片
+    /// </summary>
+    public bool IsTaskTool =>
+        string.Equals(Name, "task", StringComparison.OrdinalIgnoreCase)
+        || !string.IsNullOrEmpty(TaskId)
+        || (!string.IsNullOrEmpty(Result) &&
+            Result.Contains("task_id:", StringComparison.OrdinalIgnoreCase))
+        || (!string.IsNullOrEmpty(Parameters) &&
+            Parameters.Contains("\"subagent_type\"", StringComparison.OrdinalIgnoreCase));
+
     // ========== 工厂方法 ==========
 
     /// <summary>
@@ -99,8 +135,16 @@ public class ToolCallViewModel
             Parameters = tc.Arguments,
             Result = tc.Result,
             Status = tc.Status,
-            Error = tc.Error
+            Error = tc.Error,
+            TaskId = tc.TaskId,
+            TaskAgent = tc.TaskAgent,
+            TaskDescription = tc.TaskDescription,
+            TaskBackground = tc.TaskBackground,
+            TaskSteps = tc.TaskSteps?.ToList() ?? new List<SessionTaskStep>()
         };
+
+        // 持久化/刷新后可能丢失 Task* 字段：从参数与结果回填
+        RecoverTaskFields(vm);
 
         // todowrite 工具特殊处理：解析 Todo 列表
         if (vm.IsTodoTool &&
@@ -118,6 +162,73 @@ public class ToolCallViewModel
         }
 
         return vm;
+    }
+
+    private static void RecoverTaskFields(ToolCallViewModel vm)
+    {
+        var looksLikeTask =
+            string.Equals(vm.Name, "task", StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(vm.TaskId)
+            || (!string.IsNullOrEmpty(vm.Result) &&
+                vm.Result.Contains("task_id:", StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrEmpty(vm.Parameters) &&
+                vm.Parameters.Contains("\"subagent_type\"", StringComparison.OrdinalIgnoreCase));
+
+        if (!looksLikeTask)
+            return;
+
+        if (string.IsNullOrEmpty(vm.Name))
+            vm.Name = "task";
+
+        if (string.IsNullOrEmpty(vm.TaskId) && !string.IsNullOrEmpty(vm.Result))
+        {
+            const string prefix = "task_id:";
+            var idx = vm.Result.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0)
+            {
+                var start = idx + prefix.Length;
+                while (start < vm.Result.Length && char.IsWhiteSpace(vm.Result[start]))
+                    start++;
+                var end = start;
+                while (end < vm.Result.Length && !char.IsWhiteSpace(vm.Result[end]))
+                    end++;
+                if (end > start)
+                    vm.TaskId = vm.Result[start..end];
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(vm.Parameters))
+            return;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(vm.Parameters);
+            var root = doc.RootElement;
+            if (string.IsNullOrEmpty(vm.TaskDescription) &&
+                root.TryGetProperty("description", out var desc) &&
+                desc.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                vm.TaskDescription = desc.GetString();
+            }
+
+            if (string.IsNullOrEmpty(vm.TaskAgent) &&
+                root.TryGetProperty("subagent_type", out var agent) &&
+                agent.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                vm.TaskAgent = agent.GetString();
+            }
+
+            if (!vm.TaskBackground &&
+                root.TryGetProperty("background", out var bg) &&
+                bg.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                vm.TaskBackground = true;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
     }
 
     // ========== 状态计算属性 ==========
@@ -158,6 +269,7 @@ public class ToolCallViewModel
         "success" => "success",
         "failed" => "error",
         "rejected" => "default",
+        "cancelled" => "default",
         _ => "default"
     };
 
@@ -171,6 +283,7 @@ public class ToolCallViewModel
         "success" => "完成",
         "failed" => "失败",
         "rejected" => "拒绝",
+        "cancelled" => "已取消",
         _ => Status ?? "未知"
     };
 

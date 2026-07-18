@@ -118,6 +118,74 @@ namespace Seeing.Session.Core
         /// <summary>错误信息（如果调用失败）</summary>
         [JsonPropertyName("error")]
         public string? Error { get; set; }
+
+        /// <summary>子任务 ID（task 工具；≡ Child Session Id）</summary>
+        [JsonPropertyName("task_id")]
+        public string? TaskId { get; set; }
+
+        /// <summary>子任务 Agent 名称</summary>
+        [JsonPropertyName("task_agent")]
+        public string? TaskAgent { get; set; }
+
+        /// <summary>子任务描述</summary>
+        [JsonPropertyName("task_description")]
+        public string? TaskDescription { get; set; }
+
+        /// <summary>是否后台任务</summary>
+        [JsonPropertyName("task_background")]
+        public bool TaskBackground { get; set; }
+
+        /// <summary>子任务步骤（TaskProgress 投影）</summary>
+        [JsonPropertyName("task_steps")]
+        public List<SessionTaskStep>? TaskSteps { get; set; }
+
+        /// <summary>深拷贝工具调用（含 Task 卡片字段）</summary>
+        public SessionToolCall Clone()
+        {
+            return new SessionToolCall
+            {
+                Id = Id,
+                Type = Type,
+                Name = Name,
+                Arguments = Arguments,
+                Result = Result,
+                Status = Status,
+                Error = Error,
+                TaskId = TaskId,
+                TaskAgent = TaskAgent,
+                TaskDescription = TaskDescription,
+                TaskBackground = TaskBackground,
+                TaskSteps = TaskSteps?.Select(s => new SessionTaskStep
+                {
+                    StepKind = s.StepKind,
+                    ToolName = s.ToolName,
+                    Status = s.Status,
+                    Preview = s.Preview,
+                    Timestamp = s.Timestamp
+                }).ToList()
+            };
+        }
+    }
+
+    /// <summary>
+    /// 子任务进度步骤（WebUI Task 卡片）
+    /// </summary>
+    public class SessionTaskStep
+    {
+        [JsonPropertyName("step_kind")]
+        public string StepKind { get; set; } = "";
+
+        [JsonPropertyName("tool_name")]
+        public string? ToolName { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("preview")]
+        public string? Preview { get; set; }
+
+        [JsonPropertyName("timestamp")]
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 
     /// <summary>
@@ -221,6 +289,44 @@ namespace Seeing.Session.Core
         /// <summary>是否是多模态消息</summary>
         [JsonIgnore]
         public bool IsMultimodal => Parts != null && Parts.Count > 0;
+
+        /// <summary>深拷贝消息（含 ToolCalls / Task 字段）</summary>
+        public SessionMessage Clone()
+        {
+            return new SessionMessage
+            {
+                Id = Id,
+                LoopId = LoopId,
+                Step = Step,
+                Role = Role,
+                Content = Content,
+                Parts = Parts?.Select(p => new SessionContentPart
+                {
+                    Type = p.Type,
+                    Text = p.Text,
+                    Url = p.Url,
+                    DataBase64 = p.DataBase64,
+                    MimeType = p.MimeType,
+                    FileName = p.FileName,
+                    FileId = p.FileId,
+                    ImageDetail = p.ImageDetail
+                }).ToList(),
+                ReasoningContent = ReasoningContent,
+                ToolCalls = ToolCalls?.Select(t => t.Clone()).ToList(),
+                ToolCallId = ToolCallId,
+                ToolName = ToolName,
+                CreatedAt = CreatedAt,
+                TokenUsage = TokenUsage == null
+                    ? null
+                    : new SessionTokenUsage
+                    {
+                        InputTokens = TokenUsage.InputTokens,
+                        OutputTokens = TokenUsage.OutputTokens
+                    },
+                ReplyTo = ReplyTo,
+                Metadata = Metadata == null ? null : new Dictionary<string, object>(Metadata)
+            };
+        }
 
         /// <summary>获取有效内容段</summary>
         public IReadOnlyList<SessionContentPart> GetEffectiveParts()

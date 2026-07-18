@@ -68,6 +68,11 @@ public class RenderContext
     public EventCallback<ToolCallViewModel> OnToolClick { get; init; }
 
     /// <summary>
+    /// 打开 Task 子会话回调（taskId ≡ Child Session Id）
+    /// </summary>
+    public EventCallback<string> OnOpenTaskSession { get; init; }
+
+    /// <summary>
     /// 生成结构化缓存键
     /// </summary>
     /// <param name="block">内容块</param>
@@ -117,7 +122,8 @@ public class RenderContext
             Options = Options,
             ServiceProvider = ServiceProvider,
             Cache = Cache,
-            OnToolClick = OnToolClick
+            OnToolClick = OnToolClick,
+            OnOpenTaskSession = OnOpenTaskSession
         };
     }
 

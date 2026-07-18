@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Session.Core;
@@ -10,7 +11,7 @@ namespace Seeing.Agent.Core.Background;
 /// <summary>
 /// 后台任务管理器实现
 /// </summary>
-public class BackgroundTaskManager : IBackgroundTaskManager
+public class BackgroundTaskManager : IBackgroundTaskManager, IHostedService
 {
     private readonly ConcurrentDictionary<string, BackgroundTaskInfo> _tasks = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new();
@@ -39,8 +40,16 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     /// </summary>
     public async Task<string> StartAsync(BackgroundTaskLaunchArgs args)
     {
-        // 生成任务 ID
-        var taskId = $"bg_{Guid.NewGuid():N}".Substring(0, 12);
+        // Job Id ≡ task_id（Child Session Id）；未提供时仅兼容旧路径临时生成
+        var taskId = !string.IsNullOrWhiteSpace(args.TaskId)
+            ? args.TaskId!
+            : $"tmp_{Guid.NewGuid():N}"[..12];
+
+        if (_tasks.ContainsKey(taskId) &&
+            _tasks[taskId].Status is BackgroundTaskStatus.Pending or BackgroundTaskStatus.Running)
+        {
+            throw new InvalidOperationException($"Task {taskId} is already running.");
+        }
 
         // 创建取消令牌源
         var cts = new CancellationTokenSource();
@@ -55,7 +64,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
             StartedAt = DateTimeOffset.Now,
             Description = args.Description ?? args.Input.Content,
             SessionId = args.Context.SessionId,
-            ParentSessionId = args.Context.SessionId
+            ParentSessionId = args.Context.ParentSessionId ?? args.Context.SessionId
         };
         _tasks[taskId] = taskInfo;
         _outputs[taskId] = new StringBuilder();
@@ -145,11 +154,8 @@ public class BackgroundTaskManager : IBackgroundTaskManager
             _logger.LogInformation("已请求取消任务: {TaskId}", taskId);
         }
 
-        // 立即更新状态为 Cancelled（如果还没开始执行）
-        if (task.Status == BackgroundTaskStatus.Pending)
-        {
-            UpdateTaskStatus(taskId, BackgroundTaskStatus.Cancelled);
-        }
+        // 立即标记 Cancelled，避免 Loop 未及时响应 CT 时 UI 一直显示「执行中」
+        UpdateTaskStatus(taskId, BackgroundTaskStatus.Cancelled, error: "cancelled");
 
         return Task.FromResult(true);
     }
@@ -157,26 +163,62 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     /// <summary>
     /// 取消所有后台任务
     /// </summary>
-    public async Task<int> CancelAllAsync()
+    public Task<int> CancelAllAsync()
     {
         var count = 0;
-        foreach (var (taskId, cts) in _cancellationSources)
+        foreach (var (taskId, cts) in _cancellationSources.ToArray())
         {
             if (_tasks.TryGetValue(taskId, out var task) &&
                 (task.Status == BackgroundTaskStatus.Pending ||
                  task.Status == BackgroundTaskStatus.Running))
             {
                 cts.Cancel();
-                if (task.Status == BackgroundTaskStatus.Pending)
-                {
-                    UpdateTaskStatus(taskId, BackgroundTaskStatus.Cancelled);
-                }
+                UpdateTaskStatus(taskId, BackgroundTaskStatus.Cancelled, error: "cancelled");
                 count++;
             }
         }
 
         _logger.LogInformation("已请求取消所有后台任务: {Count}", count);
+        return Task.FromResult(count);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> CancelBySessionAsync(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return 0;
+
+        var count = 0;
+        foreach (var task in _tasks.Values.ToArray())
+        {
+            if (task.Status is not (BackgroundTaskStatus.Pending or BackgroundTaskStatus.Running))
+                continue;
+
+            var related = string.Equals(task.ParentSessionId, sessionId, StringComparison.Ordinal)
+                || string.Equals(task.SessionId, sessionId, StringComparison.Ordinal)
+                || string.Equals(task.Id, sessionId, StringComparison.Ordinal);
+
+            if (!related)
+                continue;
+
+            if (await CancelAsync(task.Id))
+                count++;
+        }
+
+        if (count > 0)
+            _logger.LogInformation("已取消会话相关后台任务: SessionId={SessionId}, Count={Count}", sessionId, count);
+
         return count;
+    }
+
+    /// <inheritdoc />
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <inheritdoc />
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        var count = await CancelAllAsync();
+        _logger.LogInformation("宿主停止，已取消后台任务: {Count}", count);
     }
 
     /// <summary>
@@ -243,52 +285,55 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         BackgroundTaskLaunchArgs args,
         CancellationToken cancellationToken)
     {
-        // 更新状态为 Running
         UpdateTaskStatus(taskId, BackgroundTaskStatus.Running);
         _logger.LogInformation("后台任务开始执行: {TaskId}", taskId);
 
-        // 获取 Agent 实例
-        var agent = _agentRegistry.GetOrCreateAgentInstance(args.AgentName);
-        if (agent == null)
-        {
-            throw new InvalidOperationException($"Agent '{args.AgentName}' 不存在");
-        }
-
-        // 执行 Agent
         var outputBuilder = _outputs[taskId];
         try
         {
-            await foreach (var message in agent.ExecuteAsync(args.Input, args.Context, cancellationToken))
+            if (args.LoopRunner != null)
             {
-                if (cancellationToken.IsCancellationRequested)
+                var loopResult = await args.LoopRunner(cancellationToken);
+                if (!string.IsNullOrEmpty(loopResult))
+                    outputBuilder.Append(loopResult);
+            }
+            else
+            {
+                var agent = _agentRegistry.GetOrCreateAgentInstance(args.AgentName);
+                if (agent == null)
                 {
-                    break;
+                    throw new InvalidOperationException($"Agent '{args.AgentName}' 不存在");
                 }
 
-                // 收集输出
-                if (!string.IsNullOrEmpty(message.Content))
+                await foreach (var message in agent.ExecuteAsync(args.Input, args.Context, cancellationToken))
                 {
-                    outputBuilder.AppendLine(message.Content);
-                }
+                    if (cancellationToken.IsCancellationRequested)
+                        break;
 
-                // 处理工具调用结果
-                if (message.ToolCalls?.Count > 0)
-                {
-                    foreach (var toolCall in message.ToolCalls)
+                    if (!string.IsNullOrEmpty(message.Content))
+                        outputBuilder.AppendLine(message.Content);
+
+                    if (message.ToolCalls?.Count > 0)
                     {
-                        outputBuilder.AppendLine($"[Tool: {toolCall.Name}]");
+                        foreach (var toolCall in message.ToolCalls)
+                            outputBuilder.AppendLine($"[Tool: {toolCall.Name}]");
                     }
                 }
             }
 
-            // 任务完成
+            if (cancellationToken.IsCancellationRequested)
+            {
+                UpdateTaskStatus(taskId, BackgroundTaskStatus.Cancelled, error: "cancelled");
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             var result = outputBuilder.ToString();
             UpdateTaskStatus(taskId, BackgroundTaskStatus.Completed, result: result);
             _logger.LogInformation("后台任务完成: {TaskId}, OutputLength: {Length}", taskId, result.Length);
         }
         catch (OperationCanceledException)
         {
-            UpdateTaskStatus(taskId, BackgroundTaskStatus.Cancelled);
+            UpdateTaskStatus(taskId, BackgroundTaskStatus.Cancelled, error: "cancelled");
             throw;
         }
         catch (Exception ex)
@@ -307,28 +352,35 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         string? result = null,
         string? error = null)
     {
-        if (_tasks.TryGetValue(taskId, out var task))
+        if (!_tasks.TryGetValue(taskId, out var task))
+            return;
+
+        // 已取消/失败后不允许再被 Completed 覆盖（竞态：Cancel 后 LoopRunner 仍返回）
+        if (status == BackgroundTaskStatus.Completed &&
+            task.Status is BackgroundTaskStatus.Cancelled or BackgroundTaskStatus.Failed)
         {
-            task.Status = status;
+            return;
+        }
+
+        task.Status = status;
+        if (status is BackgroundTaskStatus.Completed
+            or BackgroundTaskStatus.Failed
+            or BackgroundTaskStatus.Cancelled)
+        {
             task.CompletedAt = DateTimeOffset.Now;
+        }
 
-            if (result != null)
-            {
-                task.Result = result;
-            }
+        if (result != null)
+            task.Result = result;
 
-            if (error != null)
-            {
-                task.Error = error;
-            }
+        if (error != null)
+            task.Error = error;
 
-            // 如果任务完成（成功、失败或取消），完成 Subjects
-            if (status == BackgroundTaskStatus.Completed ||
-                status == BackgroundTaskStatus.Failed ||
-                status == BackgroundTaskStatus.Cancelled)
-            {
-                CompleteSubjects(taskId);
-            }
+        if (status is BackgroundTaskStatus.Completed
+            or BackgroundTaskStatus.Failed
+            or BackgroundTaskStatus.Cancelled)
+        {
+            CompleteSubjects(taskId);
         }
     }
 
@@ -427,8 +479,8 @@ public class BackgroundTaskManager : IBackgroundTaskManager
             // 创建工具结果消息
             var message = SessionMessage.ToolMessage(
                 task.Result ?? task.Error ?? "Task completed with no output",
-                toolCallId: $"bg_{taskId}",
-                toolName: $"background_{task.AgentName}"
+                toolCallId: taskId,
+                toolName: "task"
             );
 
             await _sessionManager.AddMessageAsync(sessionId, message, ct);

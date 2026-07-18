@@ -76,6 +76,11 @@ public class BackgroundTaskInfo
 /// </summary>
 public class BackgroundTaskLaunchArgs
 {
+    /// <summary>
+    /// 任务 ID（应等于 Child Session Id / task_id）。未提供时生成临时 Id（仅兼容旧调用）。
+    /// </summary>
+    public string? TaskId { get; set; }
+
     /// <summary>Agent 名称</summary>
     public required string AgentName { get; set; }
 
@@ -87,4 +92,10 @@ public class BackgroundTaskLaunchArgs
 
     /// <summary>任务描述（可选，用于状态显示）</summary>
     public string? Description { get; set; }
+
+    /// <summary>
+    /// 可选：统一 Loop 执行回调。提供时优先于内置 agent.ExecuteAsync 旁路。
+    /// 返回最终结果文本。
+    /// </summary>
+    public Func<CancellationToken, Task<string>>? LoopRunner { get; set; }
 }

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace Seeing.Session.Core
@@ -48,6 +49,12 @@ namespace Seeing.Session.Core
 
         // === 状态 ===
         public SessionStatus Status { get; set; } = SessionStatus.Created;
+
+        /// <summary>会话关系类型（Root / Fork / SubAgent）</summary>
+        public SessionKind Kind { get; set; } = SessionKind.Root;
+
+        /// <summary>子 Agent 会话权限快照（可序列化；续跑复用不重算）</summary>
+        public List<SessionPermissionRule> PermissionSnapshot { get; set; } = new();
 
         // === 消息历史 ===
         public List<SessionMessage> Messages { get; set; } = new();
@@ -207,7 +214,15 @@ namespace Seeing.Session.Core
                 SelectedAcpMode = SelectedAcpMode,
                 WorkingDirectory = WorkingDirectory,
                 Status = Status,
-                Messages = new List<SessionMessage>(Messages),
+                Kind = Kind,
+                PermissionSnapshot = PermissionSnapshot.Select(r => new SessionPermissionRule
+                {
+                    Kind = r.Kind,
+                    Pattern = r.Pattern,
+                    Effect = r.Effect,
+                    Priority = r.Priority
+                }).ToList(),
+                Messages = Messages.Select(m => m.Clone()).ToList(),
                 Context = new Dictionary<string, object>(Context),
                 Metadata = new Dictionary<string, string>(Metadata),
                 State = new Dictionary<string, string>(State),

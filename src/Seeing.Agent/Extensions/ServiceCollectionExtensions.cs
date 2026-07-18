@@ -10,11 +10,13 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.BuiltInAgents;
+using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Prompts;
+using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Llm;
@@ -407,7 +409,15 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ITool>(sp => new TaskTool(
                 sp.GetRequiredService<ILogger<TaskTool>>(),
                 sp.GetRequiredService<ISessionManager>(),
-                sp.GetRequiredService<IAgentRegistry>()));
+                sp.GetRequiredService<IAgentRegistry>(),
+                sp.GetRequiredService<IBackgroundTaskManager>(),
+                sp.GetRequiredService<IAgentLoopScheduler>(),
+                sp.GetRequiredService<ITaskEventProjector>(),
+                sp.GetService<ISessionEventBus>()));
+            services.AddSingleton<ITool>(sp => new TaskStatusTool(
+                sp.GetRequiredService<ILogger<TaskStatusTool>>(),
+                sp.GetRequiredService<IBackgroundTaskManager>(),
+                sp.GetRequiredService<ISessionManager>()));
             services.AddSingleton<ITool, TodoWriteTool>();
 
             // 工具调用器（自动注册所有 ITool）
@@ -504,14 +514,12 @@ namespace Seeing.Agent.Extensions
                 var options = sp.GetService<IOptions<SeeingAgentOptions>>();
                 var autoApprove = options?.Value?.Permission?.AutoApproveAll ?? false;
 
-                if (autoApprove)
-                {
-                    // 用户明确选择自动批准所有（危险模式）
-                    return Core.Interfaces.DefaultPermissionChannel.AutoApproveInstance;
-                }
+                IPermissionChannel inner = autoApprove
+                    ? Core.Interfaces.DefaultPermissionChannel.AutoApproveInstance
+                    : Core.Interfaces.DefaultPermissionChannel.Instance;
 
-                // 安全默认：拒绝所有，提示用户配置权限通道
-                return Core.Interfaces.DefaultPermissionChannel.Instance;
+                // 进程级 Ask 串行（宿主可再包一层，如 Blazor）
+                return new Core.Permission.SerializingPermissionChannel(inner);
             });
 
             // Agent 执行器（统一执行引擎）
@@ -552,9 +560,12 @@ namespace Seeing.Agent.Extensions
             // 命令执行服务（触发 command.execute.before Hook）
             services.AddSingleton<ICommandService, CommandService>();
 
-            // 后台任务管理器
+            // 后台任务管理器（HostedService：进程优雅停止时 CancelAll）
             services.AddSingleton<BackgroundTaskManager>();
             services.AddSingleton<IBackgroundTaskManager>(sp => sp.GetRequiredService<BackgroundTaskManager>());
+            services.AddHostedService(sp => sp.GetRequiredService<BackgroundTaskManager>());
+            services.AddSingleton<IAgentLoopScheduler, AgentLoopScheduler>();
+            services.AddSingleton<ITaskEventProjector, TaskEventProjector>();
 
             // 命令注册表（插件加载与扩展命令注册需要）
             services.AddSingleton<ICommandRegistry, CommandRegistry>();

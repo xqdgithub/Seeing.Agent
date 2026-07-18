@@ -92,6 +92,11 @@ namespace Seeing.Agent.WebUI.Services
         private readonly Dictionary<string, int> _toolCallPositions = new();
 
         /// <summary>
+        /// Task 卡片索引：taskId → SessionToolCall（后台完成后仍可按 taskId 更新）
+        /// </summary>
+        private readonly Dictionary<string, SessionToolCall> _taskIndex = new(StringComparer.Ordinal);
+
+        /// <summary>
         /// 待处理的权限请求
         /// </summary>
         private readonly Dictionary<string, PermissionRequestViewModel> _pendingPermissions = new();
@@ -133,18 +138,24 @@ namespace Seeing.Agent.WebUI.Services
         public AgentLoopInfo? GetCurrentLoop() => _currentLoop;
 
         /// <summary>
-        /// 处理 Core 层消息事件
+        /// 处理 Core 层消息事件（仅驱动 UI 展示；会话落盘由 ExecutionJobService 完成）
         /// </summary>
-        public async Task ProcessEventAsync(IMessageEvent evt)
+        public Task ProcessEventAsync(IMessageEvent evt)
         {
+            EnsureLiveSessionSynced();
+
             switch (evt.Type)
             {
                 case MessageEventType.LoopStart:
-                    HandleLoopStart((LoopStartEvent)evt);
+                    // ExecutionStartedEvent 也复用 LoopStart 类型，不可按 Type 强转
+                    if (evt is LoopStartEvent loopStart)
+                        HandleLoopStart(loopStart);
                     break;
 
                 case MessageEventType.LoopComplete:
-                    HandleLoopComplete((LoopCompleteEvent)evt);
+                    // ExecutionCompleteEvent 也复用 LoopComplete 类型，不可按 Type 强转
+                    if (evt is LoopCompleteEvent loopComplete)
+                        HandleLoopComplete(loopComplete);
                     break;
 
                 case MessageEventType.StreamStart:
@@ -157,7 +168,6 @@ namespace Seeing.Agent.WebUI.Services
 
                 case MessageEventType.StreamComplete:
                     HandleStreamComplete((StreamCompleteEvent)evt);
-                    await SaveToSessionAsync();
                     break;
 
                 case MessageEventType.ToolCallPending:
@@ -166,9 +176,27 @@ namespace Seeing.Agent.WebUI.Services
                     HandleToolCall((ToolCallEvent)evt);
                     break;
 
+                case MessageEventType.TaskStarted:
+                    HandleTaskStarted((TaskStartedEvent)evt);
+                    break;
+
+                case MessageEventType.TaskProgress:
+                    HandleTaskProgress((TaskProgressEvent)evt);
+                    break;
+
+                case MessageEventType.TaskCompleted:
+                    HandleTaskCompleted((TaskCompletedEvent)evt);
+                    break;
+
+                case MessageEventType.TaskFailed:
+                    HandleTaskFailed((TaskFailedEvent)evt);
+                    break;
+
                 case MessageEventType.SubAgentStarted:
                 case MessageEventType.SubAgentCompleted:
+#pragma warning disable CS0618
                     HandleSubAgent((SubAgentEvent)evt);
+#pragma warning restore CS0618
                     break;
 
                 case MessageEventType.PermissionRequest:
@@ -185,7 +213,6 @@ namespace Seeing.Agent.WebUI.Services
 
                 case MessageEventType.Error:
                     HandleError((ErrorEvent)evt);
-                    await SaveToSessionAsync();
                     break;
 
                 case MessageEventType.BudgetStatus:
@@ -206,12 +233,42 @@ namespace Seeing.Agent.WebUI.Services
                     break;
 
                 default:
-                    // 未处理的事件类型，记录日志（用于调试）
-                    // _logger.LogDebug("未处理事件类型: {EventType}", evt.Type);
                     break;
             }
 
             OnStateChanged?.Invoke();
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// 确保 UI SessionState 与 SessionManager 缓存是同一实例，避免 JobService Save 存到另一份对象
+        /// </summary>
+        private void EnsureLiveSessionSynced()
+        {
+            var uiSession = _sessionState.CurrentSession;
+            if (uiSession == null || string.IsNullOrEmpty(uiSession.Id))
+                return;
+
+            var cached = _sessionManager.Get(uiSession.Id);
+            if (cached == null)
+            {
+                _sessionManager.Register(uiSession);
+                return;
+            }
+
+            if (!ReferenceEquals(cached, uiSession))
+            {
+                // 执行路径以 SessionManager 缓存为准；把 UI 指针切回同一实例
+                _sessionState.CurrentSession = cached;
+                if (_currentAssistantMessage != null &&
+                    !string.IsNullOrEmpty(_currentAssistantMessage.Id))
+                {
+                    var same = cached.Messages.FirstOrDefault(m =>
+                        m.Id == _currentAssistantMessage.Id && m.Role == "assistant");
+                    if (same != null)
+                        _currentAssistantMessage = same;
+                }
+            }
         }
 
         /// <summary>
@@ -230,6 +287,7 @@ namespace Seeing.Agent.WebUI.Services
             // 清空当前助手消息，准备接收新的 Loop
             _currentAssistantMessage = null;
             _toolCallPositions.Clear();
+            // 不清空 _taskIndex：后台 Task 可能在 Loop 结束后仍推送 Progress/Completed
             _currentStep = 0;  // ✅ 重置 step，新 Loop 从 0 开始
 
             // 清空累积缓冲区
@@ -279,69 +337,24 @@ namespace Seeing.Agent.WebUI.Services
 
         private void HandleStreamDelta(StreamDeltaEvent evt)
         {
-            // 更新当前 LoopId（如果事件中有）
+            // 内容由服务端 ChatEventTracker 写入同一 SessionData；UI 只绑定指针用于刷新
             if (!string.IsNullOrEmpty(evt.LoopId))
-            {
                 _currentLoopId = evt.LoopId;
-            }
 
-            // 确保有当前助手消息
             EnsureCurrentAssistantMessage(evt.SessionId);
 
-            if (_currentAssistantMessage != null)
-            {
-                // 设置 LoopId
-                if (!string.IsNullOrEmpty(evt.LoopId))
-                {
-                    _currentAssistantMessage.LoopId = evt.LoopId;
-                }
-
-                if (!string.IsNullOrEmpty(evt.ContentDelta))
-                {
-                    _currentAssistantMessage.Content += evt.ContentDelta;
-                    // 同时累积到 Loop 级别
-                    _accumulatedContent.Append(evt.ContentDelta);
-                }
-                if (!string.IsNullOrEmpty(evt.ReasoningDelta))
-                {
-                    _currentAssistantMessage.ReasoningContent =
-                        (_currentAssistantMessage.ReasoningContent ?? string.Empty) + evt.ReasoningDelta;
-                    // 同时累积到 Loop 级别（支持多轮思考）
-                    _accumulatedReasoning.Append(evt.ReasoningDelta);
-                }
-            }
+            if (!string.IsNullOrEmpty(evt.ContentDelta))
+                _accumulatedContent.Append(evt.ContentDelta);
+            if (!string.IsNullOrEmpty(evt.ReasoningDelta))
+                _accumulatedReasoning.Append(evt.ReasoningDelta);
         }
 
         private void HandleStreamComplete(StreamCompleteEvent evt)
         {
-            // 忽略 Tool 角色的消息（工具结果通过 ToolCallEvent 处理）
             if (evt.Message?.Role == "tool")
-            {
                 return;
-            }
 
-            if (_currentAssistantMessage != null && evt.Message != null)
-            {
-                // 设置 LoopId
-                if (!string.IsNullOrEmpty(evt.LoopId))
-                {
-                    _currentAssistantMessage.LoopId = evt.LoopId;
-                }
-
-                // 更新完整消息内容（如果流式内容不完整）
-                if (!string.IsNullOrEmpty(evt.Message.Content) &&
-                    string.IsNullOrEmpty(_currentAssistantMessage.Content))
-                {
-                    _currentAssistantMessage.Content = evt.Message.Content;
-                }
-                if (!string.IsNullOrEmpty(evt.Message.ReasoningContent) &&
-                    string.IsNullOrEmpty(_currentAssistantMessage.ReasoningContent))
-                {
-                    _currentAssistantMessage.ReasoningContent = evt.Message.ReasoningContent;
-                }
-            }
-            // 注意：不在此处调用 CompleteExecution()
-            // 因为工具调用后可能还有后续轮次，整个 Agent 执行由 Session.razor 控制
+            EnsureCurrentAssistantMessage(evt.SessionId);
         }
 
         /// <summary>
@@ -388,13 +401,17 @@ namespace Seeing.Agent.WebUI.Services
                 toolCall = new SessionToolCall
                 {
                     Id = toolCallId,
-                    Name = evt.ToolName,
+                    Name = evt.ToolName ?? string.Empty,
                     Arguments = FormatArgumentsJson(evt.Arguments)
                 };
                 _currentAssistantMessage.ToolCalls.Add(toolCall);
 
                 // 记录该工具调用的内容位置（用于渲染）
                 _toolCallPositions[toolCallId] = contentPosition;
+            }
+            else if (string.IsNullOrEmpty(toolCall.Name) && !string.IsNullOrEmpty(evt.ToolName))
+            {
+                toolCall.Name = evt.ToolName;
             }
 
             // 根据状态更新显示
@@ -410,6 +427,9 @@ namespace Seeing.Agent.WebUI.Services
                 toolCall.Error = evt.Error;
             }
 
+            // task 工具：从参数/输出补齐 Task 卡片字段，避免完成后退化成普通工具调用
+            EnrichTaskToolCall(toolCall);
+
             // 处理 todowrite 工具：提取 Todo 列表并更新 SessionState
             if (evt.ToolName?.ToLowerInvariant() == "todowrite" &&
                 evt.Status == ToolCallStatus.Success &&
@@ -417,6 +437,96 @@ namespace Seeing.Agent.WebUI.Services
             {
                 UpdateTodoList(evt.SessionId, evt.Output);
             }
+        }
+
+        /// <summary>
+        /// 从参数/结果补齐 Task 子代理卡片字段，并写入索引
+        /// </summary>
+        private void EnrichTaskToolCall(SessionToolCall toolCall)
+        {
+            if (toolCall == null)
+                return;
+
+            var isTask = string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrEmpty(toolCall.TaskId)
+                || (!string.IsNullOrEmpty(toolCall.Result) &&
+                    toolCall.Result.Contains("task_id:", StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrEmpty(toolCall.Arguments) &&
+                    toolCall.Arguments.Contains("subagent_type", StringComparison.OrdinalIgnoreCase));
+
+            if (!isTask)
+                return;
+
+            if (string.IsNullOrEmpty(toolCall.Name))
+                toolCall.Name = "task";
+
+            TryFillTaskFieldsFromArguments(toolCall);
+            TryFillTaskIdFromResult(toolCall);
+
+            if (!string.IsNullOrEmpty(toolCall.TaskId))
+                _taskIndex[toolCall.TaskId] = toolCall;
+        }
+
+        private static void TryFillTaskFieldsFromArguments(SessionToolCall toolCall)
+        {
+            if (string.IsNullOrWhiteSpace(toolCall.Arguments))
+                return;
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(toolCall.Arguments);
+                var root = doc.RootElement;
+                if (string.IsNullOrEmpty(toolCall.TaskDescription) &&
+                    root.TryGetProperty("description", out var desc) &&
+                    desc.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    toolCall.TaskDescription = desc.GetString();
+                }
+
+                if (string.IsNullOrEmpty(toolCall.TaskAgent) &&
+                    root.TryGetProperty("subagent_type", out var agent) &&
+                    agent.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    toolCall.TaskAgent = agent.GetString();
+                }
+
+                if (root.TryGetProperty("background", out var bg) &&
+                    bg.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+                {
+                    toolCall.TaskBackground = bg.GetBoolean();
+                }
+                else if (root.TryGetProperty("run_in_background", out var bg2) &&
+                         bg2.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+                {
+                    toolCall.TaskBackground = bg2.GetBoolean();
+                }
+            }
+            catch
+            {
+                // ignore malformed args
+            }
+        }
+
+        private static void TryFillTaskIdFromResult(SessionToolCall toolCall)
+        {
+            if (!string.IsNullOrEmpty(toolCall.TaskId) || string.IsNullOrWhiteSpace(toolCall.Result))
+                return;
+
+            const string prefix = "task_id:";
+            var idx = toolCall.Result.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0)
+                return;
+
+            var start = idx + prefix.Length;
+            while (start < toolCall.Result.Length && char.IsWhiteSpace(toolCall.Result[start]))
+                start++;
+
+            var end = start;
+            while (end < toolCall.Result.Length && !char.IsWhiteSpace(toolCall.Result[end]))
+                end++;
+
+            if (end > start)
+                toolCall.TaskId = toolCall.Result[start..end];
         }
 
         /// <summary>
@@ -437,12 +547,74 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 处理子代理事件
+        /// 处理子代理事件（已废弃，保留兼容）
         /// </summary>
+#pragma warning disable CS0618
         private void HandleSubAgent(SubAgentEvent evt)
+#pragma warning restore CS0618
         {
-            // 可扩展：添加子代理状态显示
-            // 当前简化处理，仅记录日志
+            // 已由 HandleTask* 替代
+        }
+
+        private void HandleTaskStarted(TaskStartedEvent evt)
+        {
+            // 服务端 TaskSessionProjector 已写入字段；UI 只刷新卡片索引
+            var toolCall = ResolveTaskToolCall(evt.OriginToolCallId, evt.TaskId);
+            if (toolCall != null)
+                _taskIndex[evt.TaskId] = toolCall;
+        }
+
+        private void HandleTaskProgress(TaskProgressEvent evt)
+        {
+            var toolCall = ResolveTaskToolCall(evt.OriginToolCallId, evt.TaskId);
+            if (toolCall != null)
+                _taskIndex[evt.TaskId] = toolCall;
+        }
+
+        private void HandleTaskCompleted(TaskCompletedEvent evt)
+        {
+            var toolCall = ResolveTaskToolCall(evt.OriginToolCallId, evt.TaskId);
+            if (toolCall != null)
+                _taskIndex[evt.TaskId] = toolCall;
+        }
+
+        private void HandleTaskFailed(TaskFailedEvent evt)
+        {
+            var toolCall = ResolveTaskToolCall(evt.OriginToolCallId, evt.TaskId);
+            if (toolCall != null)
+                _taskIndex[evt.TaskId] = toolCall;
+        }
+
+        private SessionToolCall? ResolveTaskToolCall(string? originToolCallId, string taskId)
+        {
+            if (!string.IsNullOrEmpty(originToolCallId) &&
+                _currentAssistantMessage?.ToolCalls != null)
+            {
+                var byOrigin = _currentAssistantMessage.ToolCalls.Find(t => t.Id == originToolCallId);
+                if (byOrigin != null)
+                    return byOrigin;
+            }
+
+            if (_taskIndex.TryGetValue(taskId, out var indexed))
+                return indexed;
+
+            return FindTaskToolCallInSession(taskId);
+        }
+
+        private SessionToolCall? FindTaskToolCallInSession(string taskId)
+        {
+            var messages = _sessionState.CurrentSession?.Messages;
+            if (messages == null)
+                return null;
+
+            foreach (var msg in messages)
+            {
+                var match = msg.ToolCalls?.FirstOrDefault(t => t.TaskId == taskId);
+                if (match != null)
+                    return match;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -494,41 +666,14 @@ namespace Seeing.Agent.WebUI.Services
                 OnLoopComplete?.Invoke(_currentLoop);
             }
 
-            // 添加取消标记消息
-            if (_sessionState.CurrentSession != null)
-            {
-                _sessionState.CurrentSession.AddMessage(
-                    SessionMessage.SystemMessage($"⚠️ 对话已取消: {evt.Reason}"));
-            }
+            // 取消/错误消息由服务端 ChatEventTracker 写入 Session
         }
 
         private void HandleError(ErrorEvent evt)
         {
-            var errorDetails = FormatErrorDetails(evt);
-
-            if (_currentAssistantMessage != null)
-            {
-                _currentAssistantMessage.Content += $"\n\n⚠️ 错误: {errorDetails}";
-            }
-
-            // 添加系统错误消息
-            if (_sessionState.CurrentSession != null)
-            {
-                var errorMessage = SessionMessage.SystemMessage($"⚠️ 错误: {errorDetails}")
-                    .WithMetadata("errorSource", evt.Source ?? "unknown")
-                    .WithMetadata("errorType", evt.Exception?.GetType().Name ?? "Unknown");
-
-                if (evt.Exception is Llm.LlmException llmEx)
-                {
-                    errorMessage
-                        .WithMetadata("modelId", llmEx.ModelId ?? "")
-                        .WithMetadata("providerId", llmEx.ProviderId ?? "")
-                        .WithMetadata("isRetryable", llmEx.IsRetryable)
-                        .WithMetadata("retryCount", llmEx.RetryCount);
-                }
-
-                _sessionState.CurrentSession.AddMessage(errorMessage);
-            }
+            // 展示用：绑定到服务端已写入的消息；不在此追加以免重复落盘内容
+            EnsureCurrentAssistantMessage(evt.SessionId);
+            _ = FormatErrorDetails(evt);
         }
 
         /// <summary>
@@ -678,36 +823,25 @@ namespace Seeing.Agent.WebUI.Services
         {
             if (_currentAssistantMessage != null) return;
 
-            // 创建新的助手消息，每个 step 使用独立的 ID
-            _currentAssistantMessage = SessionMessage.AssistantMessage("");
+            // 服务端 ChatEventTracker 使用相同 ID 规则写入；UI 只绑定，不创建
+            var loopPrefix = !string.IsNullOrEmpty(_currentLoopId) ? _currentLoopId : sessionId;
+            var messageId = $"{loopPrefix}_step{_currentStep}";
 
-            // 使用 loopId + step 生成唯一 ID，确保每个 Loop 的每个 step 都是独立的消息
-            // loopId 每次对话都是唯一的，step 在 Loop 内递增
-            var loopPrefix = _currentLoopId ?? sessionId;
-            _currentAssistantMessage.Id = $"{loopPrefix}_step{_currentStep}";
-            _currentAssistantMessage.Step = _currentStep;
-
-            // 设置 LoopId
-            if (!string.IsNullOrEmpty(_currentLoopId))
+            var existing = _sessionState.CurrentSession?.Messages?
+                .LastOrDefault(m => m.Id == messageId && m.Role == "assistant");
+            if (existing == null)
             {
-                _currentAssistantMessage.LoopId = _currentLoopId;
+                existing = _sessionState.CurrentSession?.Messages?
+                    .LastOrDefault(m => m.Role == "assistant"
+                        && (string.IsNullOrEmpty(_currentLoopId) || m.LoopId == _currentLoopId));
             }
 
-            // 添加到 SessionData
-            if (_sessionState.CurrentSession != null)
+            if (existing != null)
             {
-                _sessionState.CurrentSession.AddMessage(_currentAssistantMessage);
+                _currentAssistantMessage = existing;
+                if (!string.IsNullOrEmpty(_currentLoopId))
+                    _currentAssistantMessage.LoopId = _currentLoopId;
             }
-        }
-
-        /// <summary>
-        /// 将当前助手消息保存到存储
-        /// </summary>
-        private async Task SaveToSessionAsync()
-        {
-            if (_sessionState.CurrentSession == null) return;
-
-            await _sessionManager.SaveAsync(_sessionState.CurrentSession.Id);
         }
 
         /// <summary>
@@ -722,6 +856,127 @@ namespace Seeing.Agent.WebUI.Services
             _toolCallPositions.Clear();
             _accumulatedReasoning.Clear();
             _accumulatedContent.Clear();
+            _taskIndex.Clear();
+        }
+
+        /// <summary>
+        /// 同步 UI 上未完成 Task 的展示状态。落盘由 ExecutionJobService 在取消时完成。
+        /// </summary>
+        public Task<int> MarkIncompleteTasksCancelledAsync(string reason = "用户取消", bool persist = false)
+        {
+            EnsureLiveSessionSynced();
+            var count = 0;
+
+            void Mark(SessionToolCall tc)
+            {
+                if (!IsIncompleteTaskToolCall(tc))
+                    return;
+
+                tc.Status = "cancelled";
+                tc.Error = reason;
+                count++;
+                if (!string.IsNullOrEmpty(tc.TaskId))
+                    _taskIndex[tc.TaskId] = tc;
+            }
+
+            foreach (var tc in _taskIndex.Values.ToList())
+                Mark(tc);
+
+            if (_currentAssistantMessage?.ToolCalls != null)
+            {
+                foreach (var tc in _currentAssistantMessage.ToolCalls)
+                    Mark(tc);
+            }
+
+            if (_sessionState.CurrentSession?.Messages != null)
+            {
+                foreach (var msg in _sessionState.CurrentSession.Messages)
+                {
+                    if (msg.ToolCalls == null)
+                        continue;
+                    foreach (var tc in msg.ToolCalls)
+                        Mark(tc);
+                }
+            }
+
+            // persist 参数保留兼容；执行轨迹落盘一律由服务端负责
+            _ = persist;
+            OnStateChanged?.Invoke();
+            return Task.FromResult(count);
+        }
+
+        /// <summary>
+        /// 加载会话后：若 Task 仍为 running/pending 且后台 Job 已不存在，标记为已取消
+        /// </summary>
+        public async Task<int> ReconcileOrphanTaskCardsAsync(
+            Func<string, Task<bool>> isTaskStillActiveAsync,
+            string reason = "任务已中断（进程关闭或取消）")
+        {
+            if (_sessionState.CurrentSession?.Messages == null)
+                return 0;
+
+            var count = 0;
+            foreach (var msg in _sessionState.CurrentSession.Messages)
+            {
+                if (msg.ToolCalls == null)
+                    continue;
+
+                foreach (var tc in msg.ToolCalls)
+                {
+                    if (!IsIncompleteTaskToolCall(tc))
+                        continue;
+
+                    var taskId = tc.TaskId;
+                    if (string.IsNullOrEmpty(taskId))
+                    {
+                        tc.Status = "cancelled";
+                        tc.Error = reason;
+                        count++;
+                        continue;
+                    }
+
+                    var stillActive = false;
+                    try
+                    {
+                        stillActive = await isTaskStillActiveAsync(taskId);
+                    }
+                    catch
+                    {
+                        stillActive = false;
+                    }
+
+                    if (stillActive)
+                        continue;
+
+                    tc.Status = "cancelled";
+                    tc.Error = reason;
+                    _taskIndex[taskId] = tc;
+                    count++;
+                }
+            }
+
+            if (count > 0 && _sessionState.CurrentSession != null)
+            {
+                // 加载期孤儿修复：需写回存储（非执行流路径）
+                await _sessionManager.SaveAsync(_sessionState.CurrentSession.Id);
+            }
+
+            return count;
+        }
+
+        private static bool IsIncompleteTaskToolCall(SessionToolCall tc)
+        {
+            if (tc == null)
+                return false;
+
+            var isTask = !string.IsNullOrEmpty(tc.TaskId)
+                || string.Equals(tc.Name, "task", StringComparison.OrdinalIgnoreCase);
+
+            if (!isTask)
+                return false;
+
+            var status = tc.Status?.ToLowerInvariant();
+            return status is "running" or "pending";
         }
 
         /// <summary>
@@ -771,11 +1026,11 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 同步处理事件（向后兼容）
+        /// 同步处理事件（向后兼容）——仍应优先 await ProcessEventAsync
         /// </summary>
         public void ProcessEvent(IMessageEvent evt)
         {
-            ProcessEventAsync(evt).ConfigureAwait(false);
+            ProcessEventAsync(evt).GetAwaiter().GetResult();
         }
     }
 }

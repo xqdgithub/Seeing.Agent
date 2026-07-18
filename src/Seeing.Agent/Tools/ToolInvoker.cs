@@ -53,7 +53,7 @@ namespace Seeing.Agent.Tools
         // Primary tools that are allowed in Primary mode
         private static readonly HashSet<string> PrimaryTools = new HashSet<string>(new[]
         {
-            "write", "edit", "bash", "question", "plan_enter", "acp", "acp_status"
+            "write", "edit", "bash", "question", "plan_enter", "acp", "acp_status", "task", "task_status"
         }, System.StringComparer.OrdinalIgnoreCase);
 
         // SubAgent specific tools
@@ -337,7 +337,9 @@ namespace Seeing.Agent.Tools
         public async Task<ToolResult> ExecuteAsync(
             ToolCall toolCall,
             string sessionId = "",
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            Func<Seeing.Agent.Core.Events.IMessageEvent, ValueTask>? emitAsync = null,
+            IPermissionChannel? permissionChannel = null)
         {
             var toolId = toolCall.Name;
 
@@ -391,7 +393,10 @@ namespace Seeing.Agent.Tools
                     {
                         SessionId = sessionId,
                         CallId = toolCall.Id,
-                        CancellationToken = cancellationToken
+                        CancellationToken = cancellationToken,
+                        EmitAsync = emitAsync,
+                        PermissionChannel = permissionChannel,
+                        Services = _serviceProvider
                     };
 
                     // 使用可能被 Hook 修改的参数

@@ -1,4 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Events;
@@ -9,9 +13,6 @@ using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Text.Json;
 
 namespace Seeing.Agent.Core;
 
@@ -31,6 +32,8 @@ public class AgentExecutor
     private readonly PromptBuilder _promptBuilder;
     private readonly SeeingAgentOptions _options;
     private readonly ILogger<AgentExecutor> _logger;
+    private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
+    private readonly Scheduling.IAgentLoopScheduler? _loopScheduler;
 
     public AgentExecutor(
         ILlmService llm,
@@ -40,7 +43,9 @@ public class AgentExecutor
         IAgentRegistry registry,
         PromptBuilder promptBuilder,
         IOptions<SeeingAgentOptions> options,
-        ILogger<AgentExecutor> logger)
+        ILogger<AgentExecutor> logger,
+        Seeing.Session.Core.ISessionManager? sessionManager = null,
+        Scheduling.IAgentLoopScheduler? loopScheduler = null)
     {
         _llm = llm;
         _tools = tools;
@@ -50,6 +55,8 @@ public class AgentExecutor
         _promptBuilder = promptBuilder;
         _options = options.Value;
         _logger = logger;
+        _sessionManager = sessionManager;
+        _loopScheduler = loopScheduler;
     }
 
     /// <summary>
@@ -99,9 +106,13 @@ public class AgentExecutor
         var maxSteps = agent.MaxSteps ?? 32;
         var messages = context.History.ToList();
 
-        // 获取权限通道（默认允许所有）
-        var permissionChannel = context.PermissionChannel
-            ?? Interfaces.DefaultPermissionChannel.Instance;
+        // Ask 全局串行：并行工具不得并发弹出多个 Ask
+        var permissionChannel = new SerializingPermissionChannel(
+            context.PermissionChannel ?? Interfaces.DefaultPermissionChannel.Instance);
+
+        // SubAgent：合并 Session PermissionSnapshot 作为本 Loop 权限真相源
+        context.PermissionContext = PermissionContext.FromAgentContext(
+            context, ResolvePolicy(agent, context), agent.Name);
 
         for (var step = 0; step < maxSteps; step++)
         {
@@ -470,15 +481,9 @@ public class AgentExecutor
         string loopId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // 并行执行多个工具调用，但按顺序返回事件
-        var tasks = toolCalls.Select(tc => ExecuteSingleToolCallAsync(
-            tc, agent, context, permissionChannel, loopId, cancellationToken)).ToList();
-
-        var results = await Task.WhenAll(tasks);
-
-        foreach (var (tc, result) in toolCalls.Zip(results))
+        // 先全部 Pending，再并行执行；执行中通过 Channel 交错 Running / Emit / Complete
+        foreach (var tc in toolCalls)
         {
-            // 发布 Pending 事件
             yield return new ToolCallEvent
             {
                 SessionId = context.SessionId,
@@ -489,25 +494,62 @@ public class AgentExecutor
                 Arguments = ParseArguments(tc.Function?.Arguments),
                 Status = ToolCallStatus.Pending
             };
-
-            // 发布 Running 事件
-            yield return new ToolCallEvent
-            {
-                SessionId = context.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallRunning,
-                ToolCallId = tc.Id,
-                ToolName = tc.Function?.Name ?? "",
-                Status = ToolCallStatus.Running
-            };
-
-            // 发布 Complete 事件
-            yield return result;
         }
+
+        var channel = Channel.CreateUnbounded<IMessageEvent>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+
+        var runTasks = toolCalls.Select(tc => RunToolCallWithEventsAsync(
+            tc, agent, context, permissionChannel, loopId, channel.Writer, cancellationToken)).ToList();
+
+        var allDone = Task.WhenAll(runTasks).ContinueWith(
+            t =>
+            {
+                channel.Writer.TryComplete(t.Exception?.InnerException ?? t.Exception);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        await foreach (var evt in channel.Reader.ReadAllAsync(cancellationToken))
+            yield return evt;
+
+        await allDone.ConfigureAwait(false);
+    }
+
+    private async Task RunToolCallWithEventsAsync(
+        ToolCall tc,
+        Models.AgentDefinition agent,
+        AgentContext context,
+        IPermissionChannel permissionChannel,
+        string loopId,
+        ChannelWriter<IMessageEvent> writer,
+        CancellationToken cancellationToken)
+    {
+        var name = tc.Function?.Name ?? "";
+        await writer.WriteAsync(new ToolCallEvent
+        {
+            SessionId = context.SessionId,
+            LoopId = loopId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = tc.Id,
+            ToolName = name,
+            Arguments = ParseArguments(tc.Function?.Arguments),
+            Status = ToolCallStatus.Running
+        }, cancellationToken).ConfigureAwait(false);
+
+        ValueTask EmitAsync(IMessageEvent evt) =>
+            new(writer.WriteAsync(evt, cancellationToken).AsTask());
+
+        var complete = await ExecuteSingleToolCallAsync(
+            tc, agent, context, permissionChannel, loopId, EmitAsync, cancellationToken)
+            .ConfigureAwait(false);
+
+        await writer.WriteAsync(complete, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// 执行单个工具调用
+    /// 执行单个工具调用（权限 + 执行），返回 Complete 事件。
     /// </summary>
     private async Task<ToolCallEvent> ExecuteSingleToolCallAsync(
         ToolCall tc,
@@ -515,19 +557,15 @@ public class AgentExecutor
         AgentContext context,
         IPermissionChannel permissionChannel,
         string loopId,
+        Func<IMessageEvent, ValueTask>? emitAsync,
         CancellationToken cancellationToken)
     {
         var name = tc.Function?.Name ?? "";
         var arguments = ParseArguments(tc.Function?.Arguments);
         var startTime = DateTime.Now;
 
-        // ========== 特殊处理：task 工具（子代理调用） ==========
-        if (string.Equals(name, "task", StringComparison.OrdinalIgnoreCase))
-        {
-            return await HandleSubAgentCallAsync(tc, agent, context, loopId, cancellationToken);
-        }
+        // Session-first：task 走正常 ToolInvoker 路径（TaskTool），不再旁路
 
-        // 权限检查
         var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionChannel);
 
         if (decision.Action == PermissionAction.Deny)
@@ -568,11 +606,11 @@ public class AgentExecutor
             }
         }
 
-        // 执行工具
         ToolResult result;
         try
         {
-            result = await _tools.ExecuteAsync(tc, context.SessionId, cancellationToken);
+            result = await _tools.ExecuteAsync(
+                tc, context.SessionId, cancellationToken, emitAsync, permissionChannel);
         }
         catch (Exception ex)
         {
@@ -608,145 +646,6 @@ public class AgentExecutor
     }
 
     /// <summary>
-    /// 处理子代理调用（task 工具）
-    /// </summary>
-    private async Task<ToolCallEvent> HandleSubAgentCallAsync(
-        ToolCall tc,
-        Models.AgentDefinition parentAgent,
-        AgentContext parentContext,
-        string loopId,
-        CancellationToken cancellationToken)
-    {
-        var args = ParseTaskArguments(tc.Function?.Arguments);
-        var startTime = DateTime.Now;
-
-        // 解析目标 Agent
-        var targetAgentName = args.SubAgentType ?? args.Category ?? "sisyphus-junior";
-        var targetAgent = await ResolveSubAgentAsync(targetAgentName);
-
-        if (targetAgent == null)
-        {
-            // ========== Hook: PermissionDenied（未找到目标 Agent）==========
-            _hooks.TriggerFireAndForget(
-                HookRegistry.PermissionDenied,
-                parentContext.SessionId,
-                new Dictionary<string, object?>
-                {
-                    ["resource"] = targetAgentName,
-                    ["reason"] = $"未找到 Agent: {targetAgentName}"
-                });
-
-            return new ToolCallEvent
-            {
-                SessionId = parentContext.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallComplete,
-                ToolCallId = tc.Id,
-                ToolName = "task",
-                Status = ToolCallStatus.Failed,
-                Error = $"未找到 Agent: {targetAgentName}",
-                Duration = DateTime.Now - startTime
-            };
-        }
-
-        // 创建子会话（使用 @ 作为分隔符，避免 Windows 文件系统非法字符）
-        var subSessionId = $"{parentContext.SessionId}@{targetAgentName}@{Guid.NewGuid():N}";
-
-        // ========== Hook: SubAgentStarted（子代理开始前）==========
-        _hooks.TriggerFireAndForget(
-            HookRegistry.SubagentStarted,
-            parentContext.SessionId,
-            new Dictionary<string, object?>
-            {
-                ["parentSessionId"] = parentContext.SessionId,
-                ["subSessionId"] = subSessionId,
-                ["subAgentName"] = targetAgentName,
-                ["prompt"] = args.Prompt
-            });
-
-        // 发布子代理启动事件
-        var startEvent = new SubAgentEvent
-        {
-            SessionId = parentContext.SessionId,
-            LoopId = loopId,
-            Type = MessageEventType.SubAgentStarted,
-            AgentName = targetAgentName,
-            Status = "started",
-            SubSessionId = subSessionId
-        };
-
-        // 创建子代理上下文（传入父代理名称建立权限继承链）
-        var subContext = parentContext.CreateSubAgentContext(subSessionId, targetAgent, parentAgent.Name);
-        subContext.History.Add(new ChatMessage
-        {
-            Role = ChatRole.User,
-            Content = args.Prompt ?? ""
-        });
-
-        // 执行子代理（收集事件但不转发）
-        var subResults = new List<ChatMessage>();
-        var lastAssistantContent = new StringBuilder();
-
-        try
-        {
-            await foreach (var evt in ExecuteAsync(targetAgent, subContext, cancellationToken))
-            {
-                // 收集最后一条助手消息
-                if (evt is StreamCompleteEvent complete && complete.Message.Role == ChatRole.Assistant)
-                {
-                    subResults.Add(complete.Message);
-                    lastAssistantContent.Clear();
-                    lastAssistantContent.Append(complete.Message.Content);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[AgentExecutor] 子代理执行失败: {AgentName}", targetAgentName);
-
-            return new ToolCallEvent
-            {
-                SessionId = parentContext.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallComplete,
-                ToolCallId = tc.Id,
-                ToolName = "task",
-                Status = ToolCallStatus.Failed,
-                Error = $"子代理执行失败: {ex.Message}",
-                Duration = DateTime.Now - startTime
-            };
-        }
-
-        // 构建返回结果
-        var resultContent = BuildSubAgentResult(lastAssistantContent.ToString(), subSessionId, targetAgentName);
-
-        // ========== Hook: SubAgentCompleted（子代理完成后）==========
-        _hooks.TriggerFireAndForget(
-            HookRegistry.SubagentCompleted,
-            parentContext.SessionId,
-            new Dictionary<string, object?>
-            {
-                ["parentSessionId"] = parentContext.SessionId,
-                ["subSessionId"] = subSessionId,
-                ["subAgentName"] = targetAgentName,
-                ["success"] = true
-            });
-
-        return new ToolCallEvent
-        {
-            SessionId = parentContext.SessionId,
-            LoopId = loopId,
-            Type = MessageEventType.ToolCallComplete,
-            ToolCallId = tc.Id,
-            ToolName = "task",
-            Status = ToolCallStatus.Success,
-            Output = resultContent,
-            Title = "子代理完成",
-            Duration = DateTime.Now - startTime
-        };
-    }
-
-    /// <summary>
     /// 评估权限
     /// </summary>
     private async Task<PermissionDecision> EvaluatePermissionAsync(
@@ -756,10 +655,8 @@ public class AgentExecutor
         AgentContext context,
         IPermissionChannel permissionChannel)
     {
-        // 统一使用 IPermissionService 进行权限检查
-        // AllowedTools/DeniedTools 检查已由 PermissionService.EvaluateRulesAsync 内部处理
-        var permContext = context.PermissionContext
-            ?? PermissionContext.FromAgentContext(context, agent.BuildPermissionPolicy(), agent.Name);
+        var policy = ResolvePolicy(agent, context);
+        var permContext = PermissionContext.FromAgentContext(context, policy, agent.Name);
 
         var result = await _permissions.EvaluateToolAsync(toolName, null, permContext);
 
@@ -778,6 +675,22 @@ public class AgentExecutor
         }
 
         return result.ToDecision();
+    }
+
+    /// <summary>
+    /// 解析权限策略：SubAgent Session 合并 PermissionSnapshot。
+    /// </summary>
+    private AgentPermissionPolicy ResolvePolicy(Models.AgentDefinition agent, AgentContext context)
+    {
+        var policy = agent.BuildPermissionPolicy();
+        var session = _sessionManager?.Get(context.SessionId);
+        if (session?.Kind == Seeing.Session.Core.SessionKind.SubAgent &&
+            session.PermissionSnapshot.Count > 0)
+        {
+            return SessionPermissionMapper.ApplySnapshot(policy, session.PermissionSnapshot);
+        }
+
+        return policy;
     }
 
     /// <summary>
@@ -866,87 +779,5 @@ public class AgentExecutor
         {
             return arguments;
         }
-    }
-
-    /// <summary>
-    /// 解析 task 工具参数
-    /// </summary>
-    private static TaskArguments ParseTaskArguments(string? arguments)
-    {
-        var result = new TaskArguments();
-
-        if (string.IsNullOrEmpty(arguments))
-            return result;
-
-        try
-        {
-            var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(arguments);
-            if (dict == null)
-                return result;
-
-            if (dict.TryGetValue("subagent_type", out var subagentType))
-                result.SubAgentType = subagentType?.ToString();
-
-            if (dict.TryGetValue("category", out var category))
-                result.Category = category?.ToString();
-
-            if (dict.TryGetValue("prompt", out var prompt))
-                result.Prompt = prompt?.ToString();
-
-            if (dict.TryGetValue("description", out var description))
-                result.Description = description?.ToString();
-
-            if (dict.TryGetValue("run_in_background", out var background))
-                result.RunInBackground = background is bool b && b;
-
-            if (dict.TryGetValue("session_id", out var sessionId))
-                result.SessionId = sessionId?.ToString();
-        }
-        catch (Exception ex)
-        {
-            // 记录但继续
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// 解析子代理
-    /// </summary>
-    private async Task<Models.AgentDefinition?> ResolveSubAgentAsync(string agentName)
-    {
-        var agents = await _registry.GetAgentsAsync();
-        var info = agents.FirstOrDefault(a =>
-            string.Equals(a.Name, agentName, StringComparison.OrdinalIgnoreCase));
-
-        if (info == null)
-            return null;
-
-        var instance = _registry.GetOrCreateAgentInstance(info.Name);
-        return instance != null ? Models.AgentDefinition.FromAgent(instance) : null;
-    }
-
-    /// <summary>
-    /// 构建子代理结果
-    /// </summary>
-    private static string BuildSubAgentResult(
-        string content,
-        string sessionId,
-        string agentName)
-    {
-        return $"[子代理 {agentName} 完成]\n{content}\n\nSession: {sessionId}";
-    }
-
-    /// <summary>
-    /// Task 工具参数
-    /// </summary>
-    private class TaskArguments
-    {
-        public string? SubAgentType { get; set; }
-        public string? Category { get; set; }
-        public string? Prompt { get; set; }
-        public string? Description { get; set; }
-        public bool RunInBackground { get; set; }
-        public string? SessionId { get; set; }
     }
 }

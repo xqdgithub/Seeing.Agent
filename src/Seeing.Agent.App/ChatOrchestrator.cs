@@ -157,7 +157,12 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task<SessionData?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        return _sessionManager.Get(sessionId);
+        // 优先内存缓存（执行中的 Task 字段尚未落盘时不能被磁盘旧快照覆盖）
+        var cached = _sessionManager.Get(sessionId);
+        if (cached != null)
+            return cached;
+
+        return await _sessionManager.LoadAsync(sessionId);
     }
 
     /// <inheritdoc/>
@@ -169,8 +174,9 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task<IReadOnlyList<SessionData>> ListSessionsAsync(CancellationToken cancellationToken = default)
     {
-        // 通过 SessionManager 加载所有会话（确保缓存一致性）
-        return await _sessionManager.LoadAllFromStorageAsync(cancellationToken);
+        // 装入磁盘会话后仅返回 Root（排除 Fork / SubAgent）
+        await _sessionManager.LoadAllFromStorageAsync(cancellationToken);
+        return await _sessionManager.ListRootsAsync(cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -222,15 +228,20 @@ public class ChatOrchestrator : IChatOrchestrator
             throw new InvalidOperationException($"Session '{sessionId}' not found");
         }
         
-        // 创建新会话，复制源会话的内容
+        // 创建独立 Root 会话（无 Parent），可正常操作；从 SubAgent 分叉时脱离只读
         var newSession = _sessionManager.Create(selectedAgent: sourceSession.SelectedAgent);
+        newSession.Kind = SessionKind.Root;
+        newSession.ParentSessionId = null;
+        newSession.ForkLabel = null;
         newSession.Title = title ?? string.Format("{0} (分支)", sourceSession.Title);
         newSession.WorkingDirectory = sourceSession.WorkingDirectory;
+        newSession.SelectedModel = sourceSession.SelectedModel;
+        newSession.SelectedModelProvider = sourceSession.SelectedModelProvider;
         newSession.Messages = new List<SessionMessage>(sourceSession.Messages);
         
         await _sessionManager.SaveAsync(newSession.Id);
         
-        _logger.LogInformation("Branched session: {SourceId} -> {NewId}", sessionId, newSession.Id);
+        _logger.LogInformation("Branched session: {SourceId} -> {NewId} (Root, no parent)", sessionId, newSession.Id);
         return newSession;
     }
 
