@@ -30,7 +30,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
     private readonly ILogger<WeComChannelBridge> _logger;
 
     private readonly ConcurrentDictionary<string, byte> _processedMessageIds = new();
-    private readonly WebSocketGatewayClientAdapter _gatewayAdapter;
+    private readonly WebSocketGatewayClientFacade _gatewayFacade;
     private CancellationTokenSource? _cts;
 
     public WeComChannelBridge(
@@ -59,7 +59,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _commandInterceptor = commandInterceptor;
         _permissionResponder = permissionResponder;
         _activeStreams = activeStreams;
-        _gatewayAdapter = new WebSocketGatewayClientAdapter(gatewayClient);
+        _gatewayFacade = new WebSocketGatewayClientFacade(gatewayClient);
         _hostLifetime = hostLifetime;
         _logger = logger;
     }
@@ -325,10 +325,20 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
                 _commonOptions.Model);
 
             var reply = new GatewayAssistantReplyCollector();
+            string? executionId = null;
 
             try
             {
-                await foreach (var gatewayEvent in _gatewayAdapter.ChatAsync(request, cancellationToken)
+                var submit = await _gatewayFacade.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
+                if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+                {
+                    await streamState.FailAsync(submit.Error ?? "Submit failed", cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                executionId = submit.ExecutionId;
+
+                await foreach (var gatewayEvent in _gatewayFacade.SubscribeAsync(sessionId, executionId, cancellationToken)
                                    .ConfigureAwait(false))
                 {
                     var disposition = reply.Apply(gatewayEvent);
@@ -389,7 +399,8 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
             catch (OperationCanceledException)
             {
                 _logger.LogWarning("WeCom 消息处理超时: SessionId={SessionId}", sessionId);
-                await _gatewayClient.StopChatAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(executionId))
+                    await _gatewayFacade.CancelAsync(executionId, CancellationToken.None).ConfigureAwait(false);
                 await streamState.FailAsync("处理超时，请稍后重试", CancellationToken.None).ConfigureAwait(false);
                 _sessionTracker.Touch(parsed);
             }

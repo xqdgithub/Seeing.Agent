@@ -74,10 +74,16 @@ public static class GatewayInboundParser
                     Event = frame.Payload.Value.Deserialize<GatewayEvent>(GatewayWsFrameSerializer.JsonOptions)
                 };
 
-            case GatewayWsFrameType.ChatComplete:
+            case GatewayWsFrameType.SubmitAck:
                 return inbound with
                 {
-                    ChatComplete = frame.Payload.Value.Deserialize<GatewayChatCompletePayload>(GatewayWsFrameSerializer.JsonOptions)
+                    SubmitAck = frame.Payload.Value.Deserialize<GatewaySubmitAckPayload>(GatewayWsFrameSerializer.JsonOptions)
+                };
+
+            case GatewayWsFrameType.ExecutionComplete:
+                return inbound with
+                {
+                    ExecutionComplete = frame.Payload.Value.Deserialize<GatewayExecutionCompletePayload>(GatewayWsFrameSerializer.JsonOptions)
                 };
 
             case GatewayWsFrameType.ChatError:
@@ -87,10 +93,10 @@ public static class GatewayInboundParser
                     Error = frame.Payload.Value.Deserialize<GatewayWsErrorPayload>(GatewayWsFrameSerializer.JsonOptions)
                 };
 
-            case GatewayWsFrameType.StopAck:
+            case GatewayWsFrameType.CancelAck:
                 return inbound with
                 {
-                    StopAck = frame.Payload.Value.Deserialize<GatewayStopAckPayload>(GatewayWsFrameSerializer.JsonOptions)
+                    CancelAck = frame.Payload.Value.Deserialize<GatewayCancelAckPayload>(GatewayWsFrameSerializer.JsonOptions)
                 };
 
             case GatewayWsFrameType.PermissionAck:

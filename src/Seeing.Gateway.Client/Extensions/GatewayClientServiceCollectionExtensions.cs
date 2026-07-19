@@ -27,7 +27,7 @@ public static class GatewayClientServiceCollectionExtensions
         {
             var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GatewayClientOptions>>().Value;
             return options.Transport == GatewayClientTransport.WebSocket
-                ? new WebSocketGatewayClientAdapter(sp.GetRequiredService<WebSocketGatewayClient>())
+                ? new WebSocketGatewayClientFacade(sp.GetRequiredService<WebSocketGatewayClient>())
                 : sp.GetRequiredService<HttpGatewayClient>();
         });
 

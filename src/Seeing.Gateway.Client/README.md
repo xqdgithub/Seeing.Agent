@@ -1,6 +1,6 @@
 # Seeing.Gateway.Client
 
-Gateway **客户端 SDK**：通过 HTTP+SSE 或 WebSocket 与 Gateway Server 通信。
+Gateway **客户端 SDK**：通过 HTTP+SSE 或 WebSocket 与 Gateway Server 通信（Submit / Subscribe / Cancel）。
 
 ## 安装
 
@@ -28,6 +28,9 @@ services.AddSeeingGatewayClient(options =>
 
 解析 `IGatewayClient` 即可使用；传输方式由 `GatewayClientOptions.Transport` 决定。
 
+- `HttpSse` → `HttpGatewayClient`
+- `WebSocket` → `WebSocketGatewayClientFacade`（包装 `WebSocketGatewayClient`）
+
 ## 配置项
 
 | 配置键 | 默认值 | 说明 |
@@ -53,7 +56,7 @@ services.AddSeeingGatewayClient(options =>
 
 ## 使用示例
 
-### HTTP + SSE
+### HTTP：Submit + SSE 订阅
 
 ```csharp
 var client = serviceProvider.GetRequiredService<IGatewayClient>();
@@ -65,7 +68,11 @@ var request = new GatewayRequest
     Stream = true
 };
 
-await foreach (var evt in client.ChatAsync(request))
+var submit = await client.SubmitAsync(request);
+if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+    throw new InvalidOperationException(submit.Error ?? "Submit failed");
+
+await foreach (var evt in client.SubscribeAsync(request.SessionId, submit.ExecutionId))
 {
     if (evt.Object == GatewayEventObject.Content && evt.Data?.Delta == true)
         Console.Write(evt.Data.Text);
@@ -78,25 +85,32 @@ await foreach (var evt in client.ChatAsync(request))
 var wsClient = serviceProvider.GetRequiredService<WebSocketGatewayClient>();
 await wsClient.ConnectAsync();
 
-var requestId = await wsClient.SendChatAsync(request);
+var submit = await wsClient.SubmitAsync(request);
+// SubmitAck 由客户端内部等待；随后 ReceiveAsync 消费 chat.event / execution.complete
+
 await foreach (var inbound in wsClient.ReceiveAsync())
 {
     if (inbound.Type == GatewayWsFrameType.ChatEvent)
         Console.WriteLine(inbound.Event?.Data?.Text);
-    if (inbound.Type == GatewayWsFrameType.ChatComplete && inbound.Id == requestId)
+    if (inbound.Type == GatewayWsFrameType.ExecutionComplete
+        && inbound.ExecutionComplete?.ExecutionId == submit.ExecutionId)
         break;
 }
+
+// 取消：
+await wsClient.CancelAsync(submit.ExecutionId!);
 ```
 
-`WebSocketGatewayClientAdapter` 将 WS 连接包装为 `IGatewayClient.ChatAsync`，供简单场景使用。
+`WebSocketGatewayClientFacade` 将 WS 连接包装为 `IGatewayClient`（Submit + Subscribe + Cancel）。
 
 ## 端点（Server 提供）
 
 | 方法 | 路径 | Client 用法 |
 |------|------|-------------|
-| POST | `/api/gateway/chat` | `HttpGatewayClient.ChatAsync`（SSE） |
+| POST | `/api/gateway/submit` | `SubmitAsync` |
+| GET | `/api/gateway/events?sessionId=&executionId=` | `SubscribeAsync`（SSE） |
+| POST | `/api/gateway/cancel` | `CancelAsync`（body: `{ "executionId" }`） |
 | WS | `/api/gateway/ws` | `WebSocketGatewayClient` |
-| POST | `/api/gateway/chat/stop?sessionId=` | `StopChatAsync` |
 | POST | `/api/gateway/sessions/{sessionId}/reset` | `ResetSessionAsync` |
 | GET | `/api/gateway/permissions/pending?sessionId=` | `GetPendingPermissionsAsync` |
 | POST | `/api/gateway/permissions/{id}/respond` | `RespondPermissionAsync` |

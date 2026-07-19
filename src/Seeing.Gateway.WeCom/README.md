@@ -31,7 +31,7 @@
 | 层级 | 职责 | 断线行为 |
 |------|------|----------|
 | **Connection** | WS 传输、subscribe、心跳、epoch、重连 | transient 断线：暂停出站，自动重连 |
-| **Message Job** | Gateway `ChatAsync`、权限、超时 | **不因** transient 断线取消 |
+| **Message Job** | Gateway `Submit`/`Subscribe`/`Cancel`、权限、超时 | **不因** transient 断线取消 |
 | **Stream Reply** | 单条 `stream_id` 协议合规 | 断线缓存 pending；重连后同 `stream_id` 恢复推送 |
 
 - 连接可重建；**回复义务**绑定用户消息，不绑定 TCP epoch

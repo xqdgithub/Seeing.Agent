@@ -19,13 +19,31 @@ public sealed class HttpGatewayClient : IGatewayClient
         ApplyOptions(httpClient, options.Value);
     }
 
-    public async IAsyncEnumerable<GatewayEvent> ChatAsync(
+    public async Task<GatewaySubmitResult> SubmitAsync(
         GatewayRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.PostAsJsonAsync(
+            "api/gateway/submit",
+            request,
+            GatewayJsonOptions.Default,
+            cancellationToken).ConfigureAwait(false);
+
+        var result = await response.Content.ReadFromJsonAsync<GatewaySubmitResult>(
+            GatewayJsonOptions.Default,
+            cancellationToken).ConfigureAwait(false);
+
+        return result ?? GatewaySubmitResult.Failed(request.SessionId, "Empty submit response");
+    }
+
+    public async IAsyncEnumerable<GatewayEvent> SubscribeAsync(
+        string sessionId,
+        string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/gateway/chat");
+        var query = $"sessionId={Uri.EscapeDataString(sessionId)}&executionId={Uri.EscapeDataString(executionId)}";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, $"api/gateway/events?{query}");
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        httpRequest.Content = JsonContent.Create(request, options: GatewayJsonOptions.Default);
 
         using var response = await _httpClient.SendAsync(
             httpRequest,
@@ -41,12 +59,12 @@ public sealed class HttpGatewayClient : IGatewayClient
         }
     }
 
-    public async Task StopChatAsync(string sessionId, CancellationToken cancellationToken = default)
+    public async Task CancelAsync(string executionId, CancellationToken cancellationToken = default)
     {
-        var encodedSessionId = Uri.EscapeDataString(sessionId);
-        using var response = await _httpClient.PostAsync(
-            $"api/gateway/chat/stop?sessionId={encodedSessionId}",
-            content: null,
+        using var response = await _httpClient.PostAsJsonAsync(
+            "api/gateway/cancel",
+            new { executionId },
+            GatewayJsonOptions.Default,
             cancellationToken).ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();

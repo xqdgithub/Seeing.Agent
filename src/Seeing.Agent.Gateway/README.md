@@ -55,28 +55,38 @@ curl http://127.0.0.1:8765/api/gateway/health
 
 ## HTTP API
 
-### POST `/api/gateway/chat`
+### POST `/api/gateway/submit`
 
 请求体：`GatewayRequest`  
-响应：`text/event-stream`，每行 `data: {GatewayEvent JSON}`
+响应：`GatewaySubmitResult`（含 `executionId`；失败时 400）
 
 ```bash
-curl -N -X POST http://127.0.0.1:8765/api/gateway/chat \
+curl -X POST http://127.0.0.1:8765/api/gateway/submit \
   -H "Content-Type: application/json" \
-  -H "Accept: text/event-stream" \
   -d '{"sessionId":"test","input":[{"type":"text","text":"hello"}],"stream":true}'
 ```
 
+### GET `/api/gateway/events?sessionId=&executionId=`
+
+响应：`text/event-stream`，每行 `data: {GatewayEvent JSON}`，直到匹配的 `executionId` 完成。
+
+```bash
+curl -N "http://127.0.0.1:8765/api/gateway/events?sessionId=test&executionId=EXEC_ID"
+```
+
+### POST `/api/gateway/cancel`
+
+请求体：`{ "executionId": "..." }`  
+按执行 ID 取消（对齐 `IChatOrchestrator.Cancel`）。
+
 ### WebSocket `/api/gateway/ws`
 
-1. 连接后收到 `connected` 帧
-2. 发送 `chat` 帧（payload = GatewayRequest）
-3. 接收 `chat.event` 流式事件
-4. 收到 `chat.complete` 表示本轮结束
-
-### POST `/api/gateway/chat/stop?sessionId=`
-
-取消指定会话的活跃执行。
+1. 连接后收到 `connected` 帧（capabilities: `submit` / `cancel` / `permission`）
+2. 发送 `submit` 帧（payload = GatewayRequest）
+3. 接收 `submit.ack`（含 `executionId`）
+4. 接收 `chat.event` 流式事件
+5. 收到 `execution.complete` 表示本 execution 结束
+6. 可选：发送 `cancel`（payload 含 `executionId`）→ `cancel.ack`
 
 ### POST `/api/gateway/sessions/{sessionId}/reset`
 
@@ -104,7 +114,7 @@ curl -X POST http://127.0.0.1:8765/api/gateway/sessions/wecom_user_001/reset
 | `GatewayServer` | `IGatewayServer` 实现，封装 Kestrel 启停 |
 | `GatewayHostedService` | 随 Generic Host 自动启动 |
 | `GatewayHost` | 独立 WebApplication 宿主 |
-| `GatewayOrchestratorV2` | 使用 IChatOrchestrator 统一入口 |
+| `GatewayOrchestratorV2` | `SubmitAsync` / `SubscribeExecutionEventsAsync` / `Cancel`（对齐 IChatOrchestrator） |
 | `AgentSelectionResolver` | 统一默认 Agent / Model 解析 |
 | `SessionExecutionQueue` | 同 `(channelId, sessionId)` 串行 |
 | `GatewayPermissionChannel` | Gateway 专用权限通道 |

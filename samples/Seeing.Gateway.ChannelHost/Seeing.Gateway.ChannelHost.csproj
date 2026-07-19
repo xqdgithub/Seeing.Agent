@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Seeing.Gateway/Seeing.Gateway.csproj" />
     <ProjectReference Include="../../src/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
+    <ProjectReference Include="../../src/Seeing.Gateway.QQ/Seeing.Gateway.QQ.csproj" />
   </ItemGroup>
 
 </Project>

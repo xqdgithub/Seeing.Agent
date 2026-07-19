@@ -64,33 +64,6 @@ public interface IChatOrchestrator
 
     #endregion
 
-    #region 旧接口（已弃用）
-
-    /// <summary>
-    /// 执行聊天并返回事件流
-    /// </summary>
-    /// <param name="sessionId">会话 ID</param>
-    /// <param name="input">用户输入（文本 + 附件）</param>
-    /// <param name="options">可选配置（agent、model、mode 等）</param>
-    /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>消息事件流（包含 Core 层事件和 App 层扩展事件）</returns>
-    [Obsolete("Use SubmitAsync + SubscribeEvents instead. This method will be removed in a future version.")]
-    IAsyncEnumerable<IMessageEvent> ExecuteAsync(
-        string sessionId,
-        ChatInput input,
-        ChatOptions? options = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// 停止指定会话的执行
-    /// </summary>
-    /// <param name="sessionId">会话 ID</param>
-    /// <returns>是否成功停止</returns>
-    [Obsolete("Use Cancel(executionId) instead. This method will be removed in a future version.")]
-    bool Stop(string sessionId);
-
-    #endregion
-
     #region Session 读取方法（供 WebUI 只读访问）
 
     /// <summary>

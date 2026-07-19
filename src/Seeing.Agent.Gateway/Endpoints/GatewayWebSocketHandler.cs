@@ -12,7 +12,7 @@ using Seeing.Gateway.Protocol;
 namespace Seeing.Agent.Gateway.Endpoints;
 
 /// <summary>
-/// Gateway WebSocket 处理器：chat / stop / permission / ping
+/// Gateway WebSocket 处理器：submit / cancel / permission / ping
 /// </summary>
 public sealed class GatewayWebSocketHandler
 {
@@ -136,12 +136,12 @@ public sealed class GatewayWebSocketHandler
                     cancellationToken);
                 break;
 
-            case GatewayWsFrameType.Chat:
-                _ = HandleChatAsync(connection, frame, cancellationToken);
+            case GatewayWsFrameType.Submit:
+                _ = HandleSubmitAsync(connection, frame, cancellationToken);
                 break;
 
-            case GatewayWsFrameType.Stop:
-                await HandleStopAsync(connection, frame, cancellationToken);
+            case GatewayWsFrameType.Cancel:
+                await HandleCancelAsync(connection, frame, cancellationToken);
                 break;
 
             case GatewayWsFrameType.PermissionRespond:
@@ -154,7 +154,7 @@ public sealed class GatewayWebSocketHandler
         }
     }
 
-    private async Task HandleChatAsync(
+    private async Task HandleSubmitAsync(
         GatewayWsConnection connection,
         GatewayWsFrame frame,
         CancellationToken cancellationToken)
@@ -163,15 +163,35 @@ public sealed class GatewayWebSocketHandler
         try
         {
             if (frame.Payload == null)
-                throw new InvalidOperationException("chat frame requires payload");
+                throw new InvalidOperationException("submit frame requires payload");
 
             request = frame.Payload.Value.Deserialize<GatewayRequest>(GatewayWsFrameSerializer.JsonOptions)
-                ?? throw new InvalidOperationException("chat payload is empty");
+                ?? throw new InvalidOperationException("submit payload is empty");
+
+            var submit = await _orchestrator.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
+
+            await connection.SendFrameAsync(
+                GatewayWsFrameSerializer.Create(
+                    GatewayWsFrameType.SubmitAck,
+                    frame.Id,
+                    new GatewaySubmitAckPayload
+                    {
+                        SessionId = submit.SessionId,
+                        ExecutionId = submit.ExecutionId,
+                        Success = submit.Success,
+                        Error = submit.Error,
+                        QueuePosition = submit.QueuePosition
+                    }),
+                cancellationToken).ConfigureAwait(false);
+
+            if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+                return;
 
             _connectionManager.SubscribeSession(connection.ConnectionId, request.SessionId);
 
             string? loopId = null;
-            await foreach (var gatewayEvent in _orchestrator.ExecuteChatAsync(request, cancellationToken))
+            await foreach (var gatewayEvent in _orchestrator.SubscribeExecutionEventsAsync(
+                               request.SessionId, submit.ExecutionId, cancellationToken))
             {
                 loopId = gatewayEvent.LoopId ?? loopId;
                 await connection.SendFrameAsync(
@@ -179,12 +199,13 @@ public sealed class GatewayWebSocketHandler
                     cancellationToken);
             }
 
-            await _connectionManager.SendChatCompleteAsync(
+            await _connectionManager.SendExecutionCompleteAsync(
                 connection.ConnectionId,
                 frame.Id,
-                new GatewayChatCompletePayload
+                new GatewayExecutionCompletePayload
                 {
                     SessionId = request.SessionId,
+                    ExecutionId = submit.ExecutionId,
                     LoopId = loopId
                 },
                 cancellationToken);
@@ -195,40 +216,40 @@ public sealed class GatewayWebSocketHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "WebSocket chat failed: SessionId={SessionId}", request?.SessionId);
+            _logger.LogError(ex, "WebSocket submit failed: SessionId={SessionId}", request?.SessionId);
             await connection.SendFrameAsync(
                 GatewayWsFrameSerializer.Create(
                     GatewayWsFrameType.ChatError,
                     frame.Id,
-                    new GatewayWsErrorPayload { Message = ex.Message, Code = "chat_failed" }),
+                    new GatewayWsErrorPayload { Message = ex.Message, Code = "submit_failed" }),
                 cancellationToken);
         }
     }
 
-    private async Task HandleStopAsync(
+    private async Task HandleCancelAsync(
         GatewayWsConnection connection,
         GatewayWsFrame frame,
         CancellationToken cancellationToken)
     {
         if (frame.Payload == null)
         {
-            await SendErrorAsync(connection, "stop frame requires payload", "invalid_payload");
+            await SendErrorAsync(connection, "cancel frame requires payload", "invalid_payload");
             return;
         }
 
-        var payload = frame.Payload.Value.Deserialize<GatewayStopPayload>(GatewayWsFrameSerializer.JsonOptions);
-        if (payload == null || string.IsNullOrWhiteSpace(payload.SessionId))
+        var payload = frame.Payload.Value.Deserialize<GatewayCancelPayload>(GatewayWsFrameSerializer.JsonOptions);
+        if (payload == null || string.IsNullOrWhiteSpace(payload.ExecutionId))
         {
-            await SendErrorAsync(connection, "sessionId is required", "invalid_payload");
+            await SendErrorAsync(connection, "executionId is required", "invalid_payload");
             return;
         }
 
-        var stopped = _orchestrator.StopChat(payload.SessionId);
+        var cancelled = _orchestrator.Cancel(payload.ExecutionId);
         await connection.SendFrameAsync(
             GatewayWsFrameSerializer.Create(
-                GatewayWsFrameType.StopAck,
+                GatewayWsFrameType.CancelAck,
                 frame.Id,
-                new GatewayStopAckPayload { SessionId = payload.SessionId, Stopped = stopped }),
+                new GatewayCancelAckPayload { ExecutionId = payload.ExecutionId, Cancelled = cancelled }),
             cancellationToken);
     }
 

@@ -10,7 +10,7 @@ public record GatewayWsFrame
 {
     public required GatewayWsFrameType Type { get; init; }
 
-    /// <summary>请求关联 ID（chat/stop 用）</summary>
+    /// <summary>请求关联 ID（submit/cancel 用）</summary>
     public string? Id { get; init; }
 
     /// <summary>类型相关 body</summary>
@@ -52,11 +52,29 @@ public static class GatewayWsFrameSerializer
 }
 
 /// <summary>
-/// chat.complete 帧 payload
+/// submit.ack 帧 payload
 /// </summary>
-public record GatewayChatCompletePayload
+public record GatewaySubmitAckPayload
 {
     public required string SessionId { get; init; }
+
+    public string? ExecutionId { get; init; }
+
+    public bool Success { get; init; }
+
+    public string? Error { get; init; }
+
+    public int QueuePosition { get; init; }
+}
+
+/// <summary>
+/// execution.complete 帧 payload
+/// </summary>
+public record GatewayExecutionCompletePayload
+{
+    public required string SessionId { get; init; }
+
+    public required string ExecutionId { get; init; }
 
     public string? LoopId { get; init; }
 }
@@ -68,7 +86,7 @@ public record GatewayConnectedPayload
 {
     public string ServerVersion { get; init; } = "1.0";
 
-    public IReadOnlyList<string> Capabilities { get; init; } = ["chat", "stop", "permission"];
+    public IReadOnlyList<string> Capabilities { get; init; } = ["submit", "cancel", "permission"];
 }
 
 /// <summary>
@@ -82,21 +100,21 @@ public record GatewayWsErrorPayload
 }
 
 /// <summary>
-/// stop 帧 payload
+/// cancel 帧 payload
 /// </summary>
-public record GatewayStopPayload
+public record GatewayCancelPayload
 {
-    public required string SessionId { get; init; }
+    public required string ExecutionId { get; init; }
 }
 
 /// <summary>
-/// stop.ack 帧 payload
+/// cancel.ack 帧 payload
 /// </summary>
-public record GatewayStopAckPayload
+public record GatewayCancelAckPayload
 {
-    public required string SessionId { get; init; }
+    public required string ExecutionId { get; init; }
 
-    public bool Stopped { get; init; }
+    public bool Cancelled { get; init; }
 }
 
 /// <summary>

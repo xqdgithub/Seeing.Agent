@@ -101,57 +101,6 @@ public class ChatOrchestrator : IChatOrchestrator
 
     #endregion
 
-    #region 旧接口实现（已弃用）
-
-    /// <inheritdoc/>
-    [Obsolete("Use SubmitAsync + SubscribeEvents instead.")]
-    public async IAsyncEnumerable<IMessageEvent> ExecuteAsync(
-        string sessionId,
-        ChatInput input,
-        ChatOptions? options = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        // 1. 提交执行
-        var result = await SubmitAsync(sessionId, input, options);
-        
-        if (!result.Success)
-        {
-            yield return new ErrorEvent
-            {
-                SessionId = sessionId,
-                Message = result.Error ?? "Failed to submit execution"
-            };
-            yield break;
-        }
-
-        // 2. 订阅事件流
-        await foreach (var evt in SubscribeEvents(sessionId, cancellationToken))
-        {
-            yield return evt;
-
-            // 3. 执行完成时退出
-            if (evt is ExecutionCompleteEvent completeEvt && 
-                completeEvt.ExecutionId == result.ExecutionId)
-            {
-                yield break;
-            }
-        }
-    }
-
-    /// <inheritdoc/>
-    [Obsolete("Use Cancel(executionId) instead.")]
-    public bool Stop(string sessionId)
-    {
-        var overview = GetOverview(sessionId);
-        if (overview.CurrentExecution != null)
-        {
-            return Cancel(overview.CurrentExecution.ExecutionId);
-        }
-        return false;
-    }
-
-    #endregion
-
     #region Session 读取方法
 
     /// <inheritdoc/>

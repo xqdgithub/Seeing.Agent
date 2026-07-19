@@ -24,8 +24,9 @@ public static class GatewayEndpoints
     /// <summary>注册所有 Gateway API 端点</summary>
     public static WebApplication MapGatewayEndpoints(this WebApplication app)
     {
-        app.MapPost("/api/gateway/chat", ChatAsync);
-        app.MapPost("/api/gateway/chat/stop", StopChatAsync);
+        app.MapPost("/api/gateway/submit", SubmitAsync);
+        app.MapPost("/api/gateway/cancel", CancelAsync);
+        app.MapGet("/api/gateway/events", SubscribeEventsAsync);
         app.MapPost("/api/gateway/sessions/{sessionId}/reset", ResetSessionAsync);
         app.MapGet("/api/gateway/permissions/pending", GetPendingPermissionsAsync);
         app.MapPost("/api/gateway/permissions/{id}/respond", RespondPermissionAsync);
@@ -34,33 +35,50 @@ public static class GatewayEndpoints
         return app;
     }
 
-    private static async Task ChatAsync(
-        HttpContext httpContext,
+    private static async Task<IResult> SubmitAsync(
         GatewayOrchestratorV2 orchestrator,
         [FromBody] GatewayRequest request,
         CancellationToken cancellationToken)
     {
+        var result = await orchestrator.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
+        return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+    }
+
+    private static IResult CancelAsync(
+        GatewayOrchestratorV2 orchestrator,
+        [FromBody] GatewayCancelRequest body)
+    {
+        if (string.IsNullOrWhiteSpace(body.ExecutionId))
+            return Results.BadRequest(new { error = "executionId is required" });
+
+        var cancelled = orchestrator.Cancel(body.ExecutionId);
+        return Results.Ok(new { executionId = body.ExecutionId, cancelled });
+    }
+
+    private static async Task SubscribeEventsAsync(
+        HttpContext httpContext,
+        GatewayOrchestratorV2 orchestrator,
+        [FromQuery] string sessionId,
+        [FromQuery] string executionId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(executionId))
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "sessionId and executionId are required" }, cancellationToken);
+            return;
+        }
+
         httpContext.Response.ContentType = "text/event-stream";
         httpContext.Response.Headers.CacheControl = "no-cache";
         httpContext.Response.Headers.Connection = "keep-alive";
 
-        await foreach (var gatewayEvent in orchestrator.ExecuteChatAsync(request, cancellationToken))
+        await foreach (var gatewayEvent in orchestrator.SubscribeExecutionEventsAsync(sessionId, executionId, cancellationToken))
         {
             var json = JsonSerializer.Serialize(gatewayEvent, JsonOptions);
             await httpContext.Response.WriteAsync($"data: {json}\n\n", cancellationToken);
             await httpContext.Response.Body.FlushAsync(cancellationToken);
         }
-    }
-
-    private static IResult StopChatAsync(
-        [FromQuery] string sessionId,
-        GatewayOrchestratorV2 orchestrator)
-    {
-        if (string.IsNullOrWhiteSpace(sessionId))
-            return Results.BadRequest(new { error = "sessionId is required" });
-
-        var stopped = orchestrator.StopChat(sessionId);
-        return Results.Ok(new { sessionId, stopped });
     }
 
     private static async Task<IResult> ResetSessionAsync(
@@ -108,6 +126,12 @@ public static class GatewayEndpoints
             status = "healthy",
             timestamp = DateTime.Now
         });
+}
+
+/// <summary>取消执行请求体</summary>
+public record GatewayCancelRequest
+{
+    public required string ExecutionId { get; init; }
 }
 
 /// <summary>权限响应请求体</summary>

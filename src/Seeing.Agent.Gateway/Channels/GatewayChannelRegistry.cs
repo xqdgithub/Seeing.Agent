@@ -7,6 +7,7 @@ using Seeing.Agent.Extensions;
 using Seeing.Gateway.Configuration;
 using Seeing.Gateway.Plugins;
 using Seeing.Gateway.WeCom;
+using Seeing.Gateway.QQ;
 
 namespace Seeing.Agent.Gateway.Channels;
 
@@ -16,6 +17,7 @@ namespace Seeing.Agent.Gateway.Channels;
 public sealed class GatewayChannelRegistry
 {
     public const string BuiltinWeComSpec = "builtin:wecom";
+    public const string BuiltinQQSpec = "builtin:qq";
 
     private readonly ILogger<GatewayChannelRegistry> _logger;
     private readonly ExtensionLoader _extensionLoader;
@@ -85,6 +87,7 @@ public sealed class GatewayChannelRegistry
     private void RegisterBuiltinPlugins(Dictionary<string, GatewayChannelTypeInfo> discovered)
     {
         RegisterPluginInstance(discovered, new WeComChannelPlugin(), ResolveBuiltinAssemblyPath<WeComChannelPlugin>(), BuiltinWeComSpec);
+        RegisterPluginInstance(discovered, new QQChannelPlugin(), ResolveBuiltinAssemblyPath<QQChannelPlugin>(), BuiltinQQSpec);
     }
 
     private void RegisterConfiguredPlugins(

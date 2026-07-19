@@ -60,17 +60,17 @@ public sealed class GatewayConnectionManager
         }
     }
 
-    /// <summary>向指定连接发送 chat.complete</summary>
-    public Task SendChatCompleteAsync(
+    /// <summary>向指定连接发送 execution.complete</summary>
+    public Task SendExecutionCompleteAsync(
         string connectionId,
         string? requestId,
-        GatewayChatCompletePayload payload,
+        GatewayExecutionCompletePayload payload,
         CancellationToken cancellationToken = default)
     {
         if (!_connections.TryGetValue(connectionId, out var connection))
             return Task.CompletedTask;
 
-        var frame = GatewayWsFrameSerializer.Create(GatewayWsFrameType.ChatComplete, requestId, payload);
+        var frame = GatewayWsFrameSerializer.Create(GatewayWsFrameType.ExecutionComplete, requestId, payload);
         return connection.SendFrameAsync(frame, cancellationToken);
     }
 

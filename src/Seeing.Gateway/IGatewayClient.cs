@@ -3,16 +3,21 @@ using Seeing.Gateway.Models;
 namespace Seeing.Gateway;
 
 /// <summary>
-/// 网关客户端契约
+/// 网关客户端契约（Submit / Subscribe / Cancel）
 /// </summary>
 public interface IGatewayClient
 {
-    IAsyncEnumerable<GatewayEvent> ChatAsync(
+    Task<GatewaySubmitResult> SubmitAsync(
         GatewayRequest request,
         CancellationToken cancellationToken = default);
 
-    Task StopChatAsync(
+    IAsyncEnumerable<GatewayEvent> SubscribeAsync(
         string sessionId,
+        string executionId,
+        CancellationToken cancellationToken = default);
+
+    Task CancelAsync(
+        string executionId,
         CancellationToken cancellationToken = default);
 
     Task<GatewayPermissionRespondResult> RespondPermissionAsync(

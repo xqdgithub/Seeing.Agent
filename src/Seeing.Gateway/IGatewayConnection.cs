@@ -10,11 +10,11 @@ public interface IGatewayConnection : IAsyncDisposable
 {
     Task ConnectAsync(CancellationToken cancellationToken = default);
 
-    Task<string> SendChatAsync(GatewayRequest request, CancellationToken cancellationToken = default);
+    Task<GatewaySubmitResult> SubmitAsync(GatewayRequest request, CancellationToken cancellationToken = default);
 
     IAsyncEnumerable<GatewayInbound> ReceiveAsync(CancellationToken cancellationToken = default);
 
-    Task StopChatAsync(string sessionId, CancellationToken cancellationToken = default);
+    Task<GatewayCancelAckPayload> CancelAsync(string executionId, CancellationToken cancellationToken = default);
 
     Task<GatewayPermissionRespondResult> RespondPermissionAsync(
         string sessionId,
@@ -35,11 +35,13 @@ public record GatewayInbound
 
     public GatewayEvent? Event { get; init; }
 
-    public GatewayChatCompletePayload? ChatComplete { get; init; }
+    public GatewaySubmitAckPayload? SubmitAck { get; init; }
+
+    public GatewayExecutionCompletePayload? ExecutionComplete { get; init; }
 
     public GatewayWsErrorPayload? Error { get; init; }
 
-    public GatewayStopAckPayload? StopAck { get; init; }
+    public GatewayCancelAckPayload? CancelAck { get; init; }
 
     public GatewayPermissionRespondResult? PermissionAck { get; init; }
 

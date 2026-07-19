@@ -6,12 +6,13 @@ namespace Seeing.Gateway.Protocol;
 public enum GatewayWsFrameType
 {
     Connected,
-    Chat,
+    Submit,
+    SubmitAck,
     ChatEvent,
-    ChatComplete,
+    ExecutionComplete,
     ChatError,
-    Stop,
-    StopAck,
+    Cancel,
+    CancelAck,
     PermissionRespond,
     PermissionAck,
     Error,

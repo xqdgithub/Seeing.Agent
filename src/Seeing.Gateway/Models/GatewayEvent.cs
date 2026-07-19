@@ -37,6 +37,9 @@ public record GatewayEvent
 
     public string? LoopId { get; init; }
 
+    /// <summary>关联的执行 ID（Submit 路径）</summary>
+    public string? ExecutionId { get; init; }
+
     public GatewayEventData? Data { get; init; }
 
     /// <summary>事件时间戳（对齐 <see cref="Seeing.Agent.Core.Events.IMessageEvent.Timestamp"/>）</summary>

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App;
 using Seeing.Agent.App.Events;
+using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Models;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Events;
@@ -15,14 +16,7 @@ using Seeing.Session.Management;
 namespace Seeing.Agent.Gateway.Core;
 
 /// <summary>
-/// Gateway 聊天编排器 - 使用 IChatOrchestrator 作为核心执行引擎
-/// <para>
-/// 职责：
-/// - 管理 Gateway 特有的执行队列和取消机制
-/// - 将 ChatEvent 映射为 GatewayEvent
-/// - 处理权限通道上下文
-/// - 跟踪会话事件以更新 SessionData
-/// </para>
+/// Gateway 聊天编排器 — Submit / Subscribe / Cancel，对齐 IChatOrchestrator。
 /// </summary>
 public sealed class GatewayOrchestratorV2
 {
@@ -52,24 +46,50 @@ public sealed class GatewayOrchestratorV2
         _logger = logger;
     }
 
-    /// <summary>执行聊天请求并以 Gateway 事件流返回</summary>
-    public async IAsyncEnumerable<GatewayEvent> ExecuteChatAsync(
+    /// <summary>提交执行（非阻塞）</summary>
+    public async Task<GatewaySubmitResult> SubmitAsync(
         GatewayRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var sessionId = request.SessionId;
+        var channelId = request.ChannelId ?? "default";
+
+        await _executionQueue.WaitAsync(channelId, sessionId, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var scope = _services.CreateScope();
+            var chatOrchestrator = scope.ServiceProvider.GetRequiredService<IChatOrchestrator>();
+            var input = BuildChatInput(request);
+            var options = BuildChatOptions(request);
+
+            var result = await chatOrchestrator.SubmitAsync(sessionId, input, options).ConfigureAwait(false);
+            if (!result.Success || string.IsNullOrEmpty(result.ExecutionId))
+            {
+                return GatewaySubmitResult.Failed(sessionId, result.Error ?? "Submit failed");
+            }
+
+            return GatewaySubmitResult.Succeeded(sessionId, result.ExecutionId, result.QueuePosition);
+        }
+        finally
+        {
+            _executionQueue.Release(channelId, sessionId);
+        }
+    }
+
+    /// <summary>订阅指定 execution 的 Gateway 事件，直到匹配的 ExecutionComplete。</summary>
+    public async IAsyncEnumerable<GatewayEvent> SubscribeExecutionEventsAsync(
+        string sessionId,
+        string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var channelId = request.ChannelId ?? "default";
-        var sessionId = request.SessionId;
-
-        await _executionQueue.WaitAsync(channelId, sessionId, cancellationToken);
-
-        var runCts = _runTracker.RegisterRun(sessionId);
+        var runCts = _runTracker.RegisterRun(executionId, sessionId);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, runCts.Token);
 
         var runState = new ChatRunState();
         Exception? fault = null;
         var cancelled = false;
 
-        await using var enumerator = StreamChatEventsAsync(request, linkedCts.Token, runState)
+        await using var enumerator = StreamExecutionEventsAsync(sessionId, executionId, linkedCts.Token, runState)
             .GetAsyncEnumerator(linkedCts.Token);
 
         while (true)
@@ -93,31 +113,39 @@ public sealed class GatewayOrchestratorV2
             if (!hasNext)
                 break;
 
-            yield return enumerator.Current;
+            yield return enumerator.Current with { ExecutionId = executionId };
         }
 
-        _runTracker.UnregisterRun(sessionId);
-        _executionQueue.Release(channelId, sessionId);
+        _runTracker.UnregisterRun(executionId);
 
         if (cancelled)
-            yield return await BuildCancelledEventAsync(sessionId, runState);
+            yield return await BuildCancelledEventAsync(sessionId, runState) with { ExecutionId = executionId };
         else if (fault != null)
         {
-            _logger.LogError(fault, "Gateway 聊天执行失败: SessionId={SessionId}", sessionId);
-            yield return await BuildErrorEventAsync(sessionId, runState, fault);
+            _logger.LogError(fault, "Gateway 执行订阅失败: SessionId={SessionId}, ExecutionId={ExecutionId}",
+                sessionId, executionId);
+            yield return await BuildErrorEventAsync(sessionId, runState, fault) with { ExecutionId = executionId };
         }
     }
 
-    private async IAsyncEnumerable<GatewayEvent> StreamChatEventsAsync(
-        GatewayRequest request,
+    /// <summary>取消指定执行</summary>
+    public bool Cancel(string executionId)
+    {
+        using var scope = _services.CreateScope();
+        var chatOrchestrator = scope.ServiceProvider.GetRequiredService<IChatOrchestrator>();
+        var cancelled = chatOrchestrator.Cancel(executionId);
+        _runTracker.CancelRun(executionId);
+        return cancelled;
+    }
+
+    private async IAsyncEnumerable<GatewayEvent> StreamExecutionEventsAsync(
+        string sessionId,
+        string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken,
         ChatRunState runState)
     {
-        var sessionId = request.SessionId;
         var sessionManager = _services.GetRequiredService<SessionManager>();
-        var sessionTracker = new SessionEventTracker();
 
-        // 设置权限通道上下文
         var outputChannel = Channel.CreateUnbounded<GatewayEvent>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -137,16 +165,9 @@ public sealed class GatewayOrchestratorV2
             Sink = sink
         });
 
-        // 构建输入
-        var input = BuildChatInput(request);
-        var options = BuildChatOptions(request);
-
-        // 执行并映射事件
-        var executionTask = ExecuteAndMapAsync(
+        var executionTask = MapSubscriptionAsync(
             sessionId,
-            input,
-            options,
-            sessionTracker,
+            executionId,
             runState,
             sessionManager,
             outputChannel.Writer,
@@ -165,11 +186,9 @@ public sealed class GatewayOrchestratorV2
         }
     }
 
-    private async Task ExecuteAndMapAsync(
+    private async Task MapSubscriptionAsync(
         string sessionId,
-        ChatInput input,
-        ChatOptions options,
-        SessionEventTracker sessionTracker,
+        string executionId,
         ChatRunState runState,
         SessionManager sessionManager,
         ChannelWriter<GatewayEvent> outputWriter,
@@ -180,11 +199,16 @@ public sealed class GatewayOrchestratorV2
 
         try
         {
-            await foreach (var chatEvent in chatOrchestrator.ExecuteAsync(sessionId, input, options, cancellationToken))
+            await foreach (var chatEvent in chatOrchestrator.SubscribeEvents(sessionId, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // 更新权限上下文中的 LoopId
+                if (chatEvent is ExecutionCompleteEvent complete
+                    && !string.Equals(complete.ExecutionId, executionId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
                 if (chatEvent.LoopId != null)
                 {
                     runState.CurrentLoopId = chatEvent.LoopId;
@@ -196,16 +220,20 @@ public sealed class GatewayOrchestratorV2
                     });
                 }
 
-                // 更新 Session 数据
                 if (chatEvent is SessionUpdatedEvent sessionEvt)
-                {
                     runState.Session = sessionEvt.Session;
-                }
 
-                // 映射为 Gateway 事件
                 if (ChatEventMapper.TryMap(chatEvent, out var gatewayEvent) && gatewayEvent != null)
                 {
-                    await outputWriter.WriteAsync(gatewayEvent, cancellationToken);
+                    await outputWriter.WriteAsync(
+                        gatewayEvent with { ExecutionId = executionId },
+                        cancellationToken);
+                }
+
+                if (chatEvent is ExecutionCompleteEvent done
+                    && string.Equals(done.ExecutionId, executionId, StringComparison.Ordinal))
+                {
+                    break;
                 }
             }
 
@@ -231,20 +259,16 @@ public sealed class GatewayOrchestratorV2
         string? text = null;
         List<ChatAttachment>? attachments = null;
 
-        // 从 GatewayContentPart 提取文本
         if (request.Input != null && request.Input.Count > 0)
         {
             var textParts = request.Input
                 .OfType<GatewayTextContentPart>()
                 .Select(p => p.Text)
                 .ToList();
-            
-            if (textParts.Count > 0)
-            {
-                text = string.Join("\n", textParts);
-            }
 
-            // 处理附件
+            if (textParts.Count > 0)
+                text = string.Join("\n", textParts);
+
             attachments = new List<ChatAttachment>();
             foreach (var part in request.Input)
             {
@@ -252,7 +276,7 @@ public sealed class GatewayOrchestratorV2
                 {
                     attachments.Add(new ChatAttachment
                     {
-                        Base64Data = img.Url, // URL or base64
+                        Base64Data = img.Url,
                         MimeType = img.MimeType ?? "image/png",
                         FileName = ""
                     });
@@ -267,11 +291,9 @@ public sealed class GatewayOrchestratorV2
                     });
                 }
             }
-            
+
             if (attachments.Count == 0)
-            {
                 attachments = null;
-            }
         }
 
         return new ChatInput
@@ -290,7 +312,7 @@ public sealed class GatewayOrchestratorV2
             ModeId = request.ModeId,
             ChannelId = request.ChannelId,
             UserId = request.UserId,
-            WorkingDirectory = null // Will be resolved by orchestrator
+            WorkingDirectory = null
         };
     }
 
@@ -332,120 +354,9 @@ public sealed class GatewayOrchestratorV2
         };
     }
 
-    /// <summary>停止指定会话的活跃运行</summary>
-    public bool StopChat(string sessionId) => _runTracker.StopRun(sessionId);
-
     private sealed class ChatRunState
     {
         public SessionData? Session { get; set; }
         public string? CurrentLoopId { get; set; }
-    }
-
-    /// <summary>将 Core 事件增量写入 SessionData</summary>
-    private sealed class SessionEventTracker
-    {
-        private SessionMessage? _currentAssistantMessage;
-        private string? _currentLoopId;
-        private int _currentStep;
-
-        public void ApplyEvent(SessionData session, IMessageEvent evt)
-        {
-            switch (evt)
-            {
-                case LoopStartEvent:
-                    _currentLoopId = evt.LoopId;
-                    _currentAssistantMessage = null;
-                    _currentStep = 0;
-                    break;
-
-                case StreamStartEvent startEvt:
-                    if (!string.IsNullOrEmpty(evt.LoopId))
-                        _currentLoopId = evt.LoopId;
-                    var step = startEvt.Step;
-                    if (step > 0 || _currentAssistantMessage == null)
-                    {
-                        _currentStep = step;
-                        _currentAssistantMessage = null;
-                    }
-                    break;
-
-                case StreamDeltaEvent deltaEvt:
-                    EnsureAssistantMessage(session, evt.SessionId);
-                    if (_currentAssistantMessage != null)
-                    {
-                        if (!string.IsNullOrEmpty(deltaEvt.ContentDelta))
-                            _currentAssistantMessage.Content += deltaEvt.ContentDelta;
-                        if (!string.IsNullOrEmpty(deltaEvt.ReasoningDelta))
-                            _currentAssistantMessage.ReasoningContent =
-                                (_currentAssistantMessage.ReasoningContent ?? string.Empty) + deltaEvt.ReasoningDelta;
-                    }
-                    break;
-
-                case StreamCompleteEvent completeEvt:
-                    if (_currentAssistantMessage != null && completeEvt.Message != null)
-                    {
-                        if (string.IsNullOrEmpty(_currentAssistantMessage.Content) && !string.IsNullOrEmpty(completeEvt.Message.Content))
-                            _currentAssistantMessage.Content = completeEvt.Message.Content;
-                        if (string.IsNullOrEmpty(_currentAssistantMessage.ReasoningContent) && !string.IsNullOrEmpty(completeEvt.Message.ReasoningContent))
-                            _currentAssistantMessage.ReasoningContent = completeEvt.Message.ReasoningContent;
-                    }
-                    break;
-
-                case ToolCallEvent toolEvt:
-                    EnsureAssistantMessage(session, evt.SessionId);
-                    if (_currentAssistantMessage == null)
-                        break;
-
-                    _currentAssistantMessage.ToolCalls ??= new List<SessionToolCall>();
-                    
-                    var toolCallId = toolEvt.ToolCallId ?? Guid.NewGuid().ToString("N");
-                    var existing = _currentAssistantMessage.ToolCalls.Find(t => t.Id == toolCallId);
-                    if (existing == null)
-                    {
-                        existing = new SessionToolCall
-                        {
-                            Id = toolCallId,
-                            Name = toolEvt.ToolName ?? string.Empty,
-                            Arguments = FormatArguments(toolEvt.Arguments)
-                        };
-                        _currentAssistantMessage.ToolCalls.Add(existing);
-                    }
-
-                    existing.Status = toolEvt.Status.ToString().ToLowerInvariant();
-                    if (toolEvt.Output != null)
-                        existing.Result = toolEvt.Output;
-                    if (toolEvt.Error != null)
-                        existing.Error = toolEvt.Error;
-                    break;
-
-                case ErrorEvent errorEvt:
-                    session.Messages.Add(SessionMessage.SystemMessage(string.Format("错误: {0}", errorEvt.Message)));
-                    break;
-            }
-        }
-
-        private void EnsureAssistantMessage(SessionData session, string sessionId)
-        {
-            if (_currentAssistantMessage != null)
-                return;
-
-            _currentAssistantMessage = SessionMessage.AssistantMessage(string.Empty);
-            var loopPrefix = _currentLoopId ?? sessionId;
-            _currentAssistantMessage.Id = $"{loopPrefix}_step{_currentStep}";
-            _currentAssistantMessage.Step = _currentStep;
-            _currentAssistantMessage.LoopId = _currentLoopId;
-            session.Messages.Add(_currentAssistantMessage);
-        }
-
-        private static string FormatArguments(object? arguments)
-        {
-            if (arguments == null)
-                return "{}";
-
-            if (arguments is string str)
-                return str;
-
-            return System.Text.Json.JsonSerializer.Serialize(arguments);
-        }
     }
 }

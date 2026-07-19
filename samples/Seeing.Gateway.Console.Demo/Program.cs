@@ -79,7 +79,14 @@ internal static class Program
 
             try
             {
-                await foreach (var gatewayEvent in client.ChatAsync(request))
+                var submit = await client.SubmitAsync(request);
+                if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+                {
+                    global::System.Console.WriteLine($"[error] {submit.Error ?? "Submit failed"}");
+                    continue;
+                }
+
+                await foreach (var gatewayEvent in client.SubscribeAsync(sessionId, submit.ExecutionId))
                 {
                     PrintEvent(gatewayEvent);
                 }

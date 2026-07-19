@@ -42,22 +42,24 @@ public class GatewayWsFrameSerializerTests
     }
 
     [Fact]
-    public void SerializeDeserialize_ChatCompleteFrame_ShouldRoundTrip()
+    public void SerializeDeserialize_ExecutionCompleteFrame_ShouldRoundTrip()
     {
-        var payload = new GatewayChatCompletePayload
+        var payload = new GatewayExecutionCompletePayload
         {
             SessionId = "ses_1",
+            ExecutionId = "exec_1",
             LoopId = "loop_1"
         };
 
-        var frame = GatewayWsFrameSerializer.Create(GatewayWsFrameType.ChatComplete, "req_1", payload);
+        var frame = GatewayWsFrameSerializer.Create(GatewayWsFrameType.ExecutionComplete, "req_1", payload);
         var parsed = GatewayWsFrameSerializer.Deserialize(GatewayWsFrameSerializer.Serialize(frame));
 
         parsed.Should().NotBeNull();
-        parsed!.Type.Should().Be(GatewayWsFrameType.ChatComplete);
+        parsed!.Type.Should().Be(GatewayWsFrameType.ExecutionComplete);
 
-        var roundTrip = parsed.Payload!.Value.Deserialize<GatewayChatCompletePayload>(GatewayWsFrameSerializer.JsonOptions);
+        var roundTrip = parsed.Payload!.Value.Deserialize<GatewayExecutionCompletePayload>(GatewayWsFrameSerializer.JsonOptions);
         roundTrip!.SessionId.Should().Be("ses_1");
+        roundTrip.ExecutionId.Should().Be("exec_1");
         roundTrip.LoopId.Should().Be("loop_1");
     }
 
@@ -71,7 +73,8 @@ public class GatewayWsFrameSerializerTests
         var parsed = GatewayWsFrameSerializer.Deserialize(GatewayWsFrameSerializer.Serialize(frame));
         var payload = parsed!.Payload!.Value.Deserialize<GatewayConnectedPayload>(GatewayWsFrameSerializer.JsonOptions);
 
-        payload!.Capabilities.Should().Contain("chat");
+        payload!.Capabilities.Should().Contain("submit");
+        payload.Capabilities.Should().Contain("cancel");
         payload.Capabilities.Should().Contain("permission");
     }
 }
