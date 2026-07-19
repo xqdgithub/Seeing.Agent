@@ -16,9 +16,12 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
 {
     private readonly GatewayClientOptions _options;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly SemaphoreSlim _connectLock = new(1, 1);
     private ClientWebSocket? _webSocket;
-    private CancellationTokenSource? _receiveCts;
+    private CancellationTokenSource? _lifecycleCts;
     private Task? _receiveTask;
+    private Task? _reconnectTask;
+    private string? _registeredChannelId;
     private readonly ConcurrentQueue<GatewayInbound> _inboundQueue = new();
     private readonly SemaphoreSlim _inboundSignal = new(0);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<GatewayPermissionRespondResult>> _permissionAckWaiters = new();
@@ -37,25 +40,29 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
 
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        if (IsConnected)
-            return;
+        await _connectLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (IsConnected)
+                return;
 
-        var wsUri = BuildWebSocketUri(_options.BaseUrl, _options.WebSocketPath);
-        _webSocket = new ClientWebSocket();
-        _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        await _webSocket.ConnectAsync(wsUri, cancellationToken).ConfigureAwait(false);
-        _receiveTask = ReceiveLoopAsync(_receiveCts.Token);
+            EnsureLifecycleCts(cancellationToken);
+            await OpenSocketAndStartReceiveAsync(_lifecycleCts!.Token).ConfigureAwait(false);
+            await TrySendChannelRegisterAsync(_lifecycleCts.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _connectLock.Release();
+        }
     }
 
-    /// <summary>向 Gateway 声明本连接负责的 channel（定时出站路由用）</summary>
+    /// <summary>向 Gateway 声明本连接负责的 channel（定时出站路由用）；断线重连后会自动再次注册</summary>
     public async Task RegisterChannelAsync(string channelId, CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelId);
+        _registeredChannelId = channelId.Trim();
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        var frame = GatewayWsFrameSerializer.Create(
-            GatewayWsFrameType.ChannelRegister,
-            payload: new GatewayChannelRegisterPayload { Channel = channelId });
-        await SendFrameAsync(frame, cancellationToken).ConfigureAwait(false);
+        await TrySendChannelRegisterAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<GatewaySubmitResult> SubmitAsync(GatewayRequest request, CancellationToken cancellationToken = default)
@@ -230,7 +237,19 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
 
     public async ValueTask DisposeAsync()
     {
-        _receiveCts?.Cancel();
+        _lifecycleCts?.Cancel();
+
+        if (_reconnectTask != null)
+        {
+            try
+            {
+                await _reconnectTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
 
         if (_receiveTask != null)
         {
@@ -244,33 +263,124 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
             }
         }
 
-        if (_webSocket != null)
-        {
-            if (_webSocket.State == WebSocketState.Open)
-            {
-                try
-                {
-                    await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "dispose", CancellationToken.None)
-                        .ConfigureAwait(false);
-                }
-                catch
-                {
-                    // ignore
-                }
-            }
+        await DisposeSocketAsync().ConfigureAwait(false);
 
-            _webSocket.Dispose();
-            _webSocket = null;
-        }
-
-        _receiveCts?.Dispose();
-        _receiveCts = null;
+        _lifecycleCts?.Dispose();
+        _lifecycleCts = null;
+        _registeredChannelId = null;
     }
 
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
     {
-        if (!IsConnected)
-            await ConnectAsync(cancellationToken).ConfigureAwait(false);
+        if (IsConnected)
+            return;
+
+        await ConnectAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private void EnsureLifecycleCts(CancellationToken cancellationToken)
+    {
+        if (_lifecycleCts is { IsCancellationRequested: false })
+            return;
+
+        _lifecycleCts?.Dispose();
+        _lifecycleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    }
+
+    private async Task OpenSocketAndStartReceiveAsync(CancellationToken cancellationToken)
+    {
+        await DisposeSocketAsync().ConfigureAwait(false);
+
+        var wsUri = BuildWebSocketUri(_options.BaseUrl, _options.WebSocketPath);
+        var socket = new ClientWebSocket();
+        await socket.ConnectAsync(wsUri, cancellationToken).ConfigureAwait(false);
+        _webSocket = socket;
+        _receiveTask = ReceiveLoopAsync(cancellationToken);
+    }
+
+    private async Task TrySendChannelRegisterAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_registeredChannelId) || !IsConnected)
+            return;
+
+        var frame = GatewayWsFrameSerializer.Create(
+            GatewayWsFrameType.ChannelRegister,
+            payload: new GatewayChannelRegisterPayload { Channel = _registeredChannelId });
+        await SendFrameAsync(frame, cancellationToken).ConfigureAwait(false);
+    }
+
+    private void ScheduleReconnect()
+    {
+        var lifecycle = _lifecycleCts;
+        if (lifecycle == null || lifecycle.IsCancellationRequested)
+            return;
+
+        if (_reconnectTask is { IsCompleted: false })
+            return;
+
+        _reconnectTask = MaintainConnectionAsync(lifecycle.Token);
+    }
+
+    private async Task MaintainConnectionAsync(CancellationToken cancellationToken)
+    {
+        var delayMs = 1000;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+
+                await _connectLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        return;
+
+                    if (IsConnected)
+                        return;
+
+                    await OpenSocketAndStartReceiveAsync(cancellationToken).ConfigureAwait(false);
+                    await TrySendChannelRegisterAsync(cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+                finally
+                {
+                    _connectLock.Release();
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch
+            {
+                delayMs = Math.Min(delayMs * 2, 30_000);
+            }
+        }
+    }
+
+    private async Task DisposeSocketAsync()
+    {
+        if (_webSocket == null)
+            return;
+
+        var socket = _webSocket;
+        _webSocket = null;
+
+        if (socket.State == WebSocketState.Open)
+        {
+            try
+            {
+                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "dispose", CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        socket.Dispose();
     }
 
     private async Task SendFrameAsync(GatewayWsFrame frame, CancellationToken cancellationToken)
@@ -314,11 +424,12 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
                     var handler = OnChannelOutbound;
                     if (handler != null)
                     {
+                        var payload = inbound.ChannelOutbound;
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                await handler(inbound.ChannelOutbound, cancellationToken).ConfigureAwait(false);
+                                await handler(payload, CancellationToken.None).ConfigureAwait(false);
                             }
                             catch
                             {
@@ -335,11 +446,16 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         }
         catch (OperationCanceledException)
         {
-            // expected
+            // expected on dispose / shutdown
         }
         catch (WebSocketException)
         {
             // connection closed
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+                ScheduleReconnect();
         }
     }
 
