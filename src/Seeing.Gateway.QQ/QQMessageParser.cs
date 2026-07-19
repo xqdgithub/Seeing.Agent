@@ -13,6 +13,8 @@ public sealed class ParsedQQMessage
     public string? GuildId { get; init; }
     public string Text { get; init; } = "";
     public IReadOnlyList<QQAttachmentMeta> Attachments { get; init; } = [];
+    /// <summary>作者是否为机器人（用于过滤自身回声）。</summary>
+    public bool IsBotAuthor { get; init; }
     public JsonElement Raw { get; init; }
 }
 
@@ -34,6 +36,7 @@ public static class QQMessageParser
     {
         "C2C_MESSAGE_CREATE",
         "GROUP_AT_MESSAGE_CREATE",
+        "GROUP_MESSAGE_CREATE", // 新版群聊事件（含 @）
         "AT_MESSAGE_CREATE",
         "DIRECT_MESSAGE_CREATE"
     };
@@ -55,7 +58,7 @@ public static class QQMessageParser
         var messageType = eventType.ToUpperInvariant() switch
         {
             "C2C_MESSAGE_CREATE" => "c2c",
-            "GROUP_AT_MESSAGE_CREATE" => "group",
+            "GROUP_AT_MESSAGE_CREATE" or "GROUP_MESSAGE_CREATE" => "group",
             "AT_MESSAGE_CREATE" => "guild",
             "DIRECT_MESSAGE_CREATE" => "dm",
             _ => "c2c"
@@ -82,6 +85,7 @@ public static class QQMessageParser
         if (TryFindQuotedElement(d, out var quoted) && quoted != null)
         {
             var quotedText = quoted.Value.TryGetProperty("content", out var qc) ? qc.GetString()?.Trim() : null;
+            quotedText = string.IsNullOrEmpty(quotedText) ? null : StripAtMentions(quotedText);
             var quotedAtt = ParseAttachmentsFromArray(
                 quoted.Value.TryGetProperty("attachments", out var qa) && qa.ValueKind == JsonValueKind.Array
                     ? qa
@@ -100,19 +104,32 @@ public static class QQMessageParser
             textParts.Add(text);
 
         var combinedText = string.Join("\n", textParts).Trim();
-        if (string.IsNullOrWhiteSpace(combinedText) && attachments.Count == 0)
+
+        // 群聊/频道 AT 事件：content 经常只有 <@!>，剥掉后为空；不能当空消息丢弃（私聊仍过滤纯空）
+        var isAtConversation = messageType is "group" or "guild";
+        if (string.IsNullOrWhiteSpace(combinedText) && attachments.Count == 0 && !isAtConversation)
             return false;
+
+        // 机器人自身消息（避免 Ack/回复回声死循环）
+        var isBot = false;
+        if (d.TryGetProperty("author", out var authorForBot)
+            && authorForBot.TryGetProperty("bot", out var botEl)
+            && botEl.ValueKind is JsonValueKind.True)
+        {
+            isBot = true;
+        }
 
         message = new ParsedQQMessage
         {
             MessageType = messageType,
             MsgId = msgId,
             SenderOpenId = sender,
-            GroupOpenId = FirstString(d, "group_openid"),
-            ChannelId = FirstString(d, "channel_id"),
-            GuildId = FirstString(d, "guild_id"),
+            GroupOpenId = FirstStringIgnoreCase(d, "group_openid", "group_id"),
+            ChannelId = FirstStringIgnoreCase(d, "channel_id"),
+            GuildId = FirstStringIgnoreCase(d, "guild_id"),
             Text = combinedText,
             Attachments = attachments,
+            IsBotAuthor = isBot,
             Raw = d
         };
         return true;
@@ -227,7 +244,8 @@ public static class QQMessageParser
                           || s_voiceExts.Contains(ext);
 
             var asr = FirstString(item, "asr_refer_text");
-            var url = FirstString(item, "url", "content") ?? "";
+            // 仅用 url；不要用 content 冒充下载地址（部分载荷 content 非 URL）
+            var url = FirstString(item, "url") ?? "";
 
             if (isVoice)
             {
@@ -266,7 +284,11 @@ public static class QQMessageParser
     {
         if (string.IsNullOrEmpty(text))
             return text;
-        return System.Text.RegularExpressions.Regex.Replace(text, @"<@!?\d+>", "").Trim();
+        // 频道多为数字 id；群聊 openid 为十六进制字符串，均需剥离
+        return System.Text.RegularExpressions.Regex.Replace(
+            text,
+            @"<@!?[A-Za-z0-9_]+>",
+            "").Trim();
     }
 
     private static string? FirstString(JsonElement el, params string[] names)
@@ -276,6 +298,29 @@ public static class QQMessageParser
             if (el.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String)
             {
                 var s = prop.GetString();
+                if (!string.IsNullOrWhiteSpace(s))
+                    return s;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>大小写不敏感查找字符串属性（兼容网关字段名变体）。</summary>
+    private static string? FirstStringIgnoreCase(JsonElement el, params string[] names)
+    {
+        if (el.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var name in names)
+        {
+            foreach (var prop in el.EnumerateObject())
+            {
+                if (!prop.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (prop.Value.ValueKind != JsonValueKind.String)
+                    continue;
+                var s = prop.Value.GetString();
                 if (!string.IsNullOrWhiteSpace(s))
                     return s;
             }

@@ -565,10 +565,20 @@ public sealed class QQHttpApiClient
     private string ResolveSendPath(ParsedQQMessage target) =>
         target.MessageType.ToLowerInvariant() switch
         {
-            "group" when !string.IsNullOrEmpty(target.GroupOpenId) => $"/v2/groups/{target.GroupOpenId}/messages",
-            "guild" when !string.IsNullOrEmpty(target.ChannelId) => $"/channels/{target.ChannelId}/messages",
-            "dm" when !string.IsNullOrEmpty(target.GuildId) => $"/dms/{target.GuildId}/messages",
-            _ when !string.IsNullOrEmpty(target.SenderOpenId) => $"/v2/users/{target.SenderOpenId}/messages",
+            // 禁止 group/guild/dm 静默回退到 C2C，否则群里看起来像「没收到」
+            "group" => !string.IsNullOrEmpty(target.GroupOpenId)
+                ? $"/v2/groups/{target.GroupOpenId}/messages"
+                : throw new InvalidOperationException("QQ group message missing group_openid"),
+            "guild" => !string.IsNullOrEmpty(target.ChannelId)
+                ? $"/channels/{target.ChannelId}/messages"
+                : throw new InvalidOperationException("QQ guild message missing channel_id"),
+            "dm" => !string.IsNullOrEmpty(target.GuildId)
+                ? $"/dms/{target.GuildId}/messages"
+                : throw new InvalidOperationException("QQ dm message missing guild_id"),
+            "c2c" when !string.IsNullOrEmpty(target.SenderOpenId) =>
+                $"/v2/users/{target.SenderOpenId}/messages",
+            _ when !string.IsNullOrEmpty(target.SenderOpenId) =>
+                $"/v2/users/{target.SenderOpenId}/messages",
             _ => throw new InvalidOperationException($"Cannot resolve QQ send path for {target.MessageType}")
         };
 

@@ -116,18 +116,67 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
         }
 
         if (!QQMessageParser.TryParse(eventType, d, out var parsed) || parsed == null)
+        {
+            if (eventType.Contains("MESSAGE", StringComparison.OrdinalIgnoreCase)
+                || eventType.Contains("GROUP", StringComparison.OrdinalIgnoreCase)
+                || eventType.Contains("AT_", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "QQ message event not parsed: t={EventType} payload={Payload}",
+                    eventType,
+                    Truncate(d.GetRawText(), 500));
+            }
             return;
+        }
+
+        if (string.Equals(parsed.MessageType, "group", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(parsed.GroupOpenId))
+        {
+            _logger.LogError(
+                "QQ group event missing group_openid; cannot reply in group. payload={Payload}",
+                Truncate(d.GetRawText(), 500));
+        }
+
+        if (parsed.IsBotAuthor)
+        {
+            _logger.LogInformation("QQ skip bot author message {MsgId}", parsed.MsgId);
+            return;
+        }
 
         // 忽略带 BotPrefix 的自身回显，避免环路
         if (!string.IsNullOrEmpty(_options.BotPrefix)
             && parsed.Text.StartsWith(_options.BotPrefix, StringComparison.Ordinal))
+        {
+            _logger.LogInformation("QQ skip BotPrefix echo {MsgId} text={Text}", parsed.MsgId, parsed.Text);
             return;
+        }
+
+        // 忽略状态 Ack 回声（群聊偶发把机器人回复推回）
+        var ack = _options.EffectiveAckMessage;
+        if (ack != null && string.Equals(parsed.Text.Trim(), ack, StringComparison.Ordinal))
+        {
+            _logger.LogInformation("QQ skip ack echo {MsgId}", parsed.MsgId);
+            return;
+        }
 
         if (!_processedMessageIds.TryAdd(parsed.MsgId, 0))
+        {
+            _logger.LogDebug("QQ duplicate msg skipped {MsgId}", parsed.MsgId);
             return;
+        }
+
+        _logger.LogInformation(
+            "QQ recv {Type} from={Sender} group={Group} text={Text}",
+            parsed.MessageType,
+            parsed.SenderOpenId,
+            parsed.GroupOpenId,
+            parsed.Text.Length > 80 ? parsed.Text[..80] : parsed.Text);
 
         _ = ProcessMessageAsync(parsed, cancellationToken);
     }
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s[..max] + "…";
 
     private async Task ProcessMessageAsync(ParsedQQMessage parsed, CancellationToken cancellationToken)
     {

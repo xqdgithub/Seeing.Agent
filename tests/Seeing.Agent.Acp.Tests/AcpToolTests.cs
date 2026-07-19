@@ -146,6 +146,52 @@ public sealed class FakeSessionManager : ISessionManager
     public Task<SessionData> ForkAsync(string sessionId, string? atMessageId = null, string? label = null, CancellationToken ct = default) =>
         Task.FromResult(Create());
 
+    public Task<SessionData> CreateChildAsync(
+        string parentId,
+        string agentName,
+        string title,
+        IReadOnlyList<SessionPermissionRule> permissionSnapshot,
+        CancellationToken ct = default)
+    {
+        var parent = Get(parentId)
+            ?? throw new InvalidOperationException($"Parent session not found: {parentId}");
+
+        var child = SessionData.Create(parent.PartitionId, agentName);
+        child.Kind = SessionKind.SubAgent;
+        child.ParentSessionId = parentId;
+        child.Title = title;
+        child.SelectedAgent = agentName;
+        child.WorkingDirectory = parent.WorkingDirectory;
+        child.SelectedModel = parent.SelectedModel;
+        child.SelectedModelProvider = parent.SelectedModelProvider;
+        child.Messages = new List<SessionMessage>();
+        child.PermissionSnapshot = permissionSnapshot?.ToList() ?? new List<SessionPermissionRule>();
+        Register(child);
+        return Task.FromResult(child);
+    }
+
+    public Task<IReadOnlyList<SessionData>> ListRootsAsync(CancellationToken ct = default)
+    {
+        IReadOnlyList<SessionData> roots = _sessions.Values
+            .Where(s => s.Kind == SessionKind.Root && !s.IsArchived)
+            .OrderByDescending(s => s.UpdatedAt)
+            .ToList();
+        return Task.FromResult(roots);
+    }
+
+    public Task<IReadOnlyList<SessionData>> ListChildrenAsync(
+        string parentId,
+        SessionKind? kind = null,
+        CancellationToken ct = default)
+    {
+        var q = _sessions.Values.Where(s => s.ParentSessionId == parentId);
+        if (kind.HasValue)
+            q = q.Where(s => s.Kind == kind.Value);
+
+        IReadOnlyList<SessionData> list = q.OrderByDescending(s => s.UpdatedAt).ToList();
+        return Task.FromResult(list);
+    }
+
     public Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default) =>
         Task.FromResult(true);
 

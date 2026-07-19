@@ -207,14 +207,18 @@ public sealed class QQWebSocketClient : IAsyncDisposable
             case QQOpcodes.Dispatch:
                 {
                     var t = frame.GetProperty("t").GetString() ?? "";
-                    var d = frame.GetProperty("d");
+                    var d = frame.GetProperty("d").Clone(); // 避免后续帧覆盖 / 文档释放后悬空
                     if (string.Equals(t, "READY", StringComparison.OrdinalIgnoreCase))
                     {
                         _sessionId = d.TryGetProperty("session_id", out var sid) ? sid.GetString() : null;
                         _identifyFailCount = 0;
                         _reconnectAttempts = 0;
                         _lastReadyAt = DateTimeOffset.Now;
-                        _logger.LogInformation("QQ READY session_id={SessionId}", _sessionId);
+                        _logger.LogInformation(
+                            "QQ READY session_id={SessionId} identifyFailCount={Fail} intents={Intents}",
+                            _sessionId,
+                            _identifyFailCount,
+                            ComputeIntents());
                     }
                     else if (string.Equals(t, "RESUMED", StringComparison.OrdinalIgnoreCase))
                     {
@@ -222,9 +226,12 @@ public sealed class QQWebSocketClient : IAsyncDisposable
                         _reconnectAttempts = 0;
                         _logger.LogInformation("QQ RESUMED");
                     }
-                    else if (OnDispatch != null)
+                    else
                     {
-                        await OnDispatch.Invoke(t, d, cancellationToken).ConfigureAwait(false);
+                        // 所有业务事件都打点，便于确认群聊事件是否到达
+                        _logger.LogInformation("QQ dispatch t={EventType}", t);
+                        if (OnDispatch != null)
+                            await OnDispatch.Invoke(t, d, cancellationToken).ConfigureAwait(false);
                     }
                     break;
                 }
@@ -278,12 +285,15 @@ public sealed class QQWebSocketClient : IAsyncDisposable
 
     private int ComputeIntents()
     {
-        // 对齐 QwenPaw：连续 Identify 失败后降级，去掉 Group/C2C/DM intents
-        var intents = QQIntents.PublicGuildMessages | QQIntents.GuildMembers | QQIntents.Interaction;
+        // 注意：GUILD_MEMBERS 为特权 Intent，未开通时会导致 Identify/InvalidSession，
+        // 进而触发降级并丢掉 GroupAndC2C —— 群聊与 C2C 都会受影响。默认不订阅。
+        var intents = QQIntents.PublicGuildMessages | QQIntents.Interaction;
         if (_identifyFailCount < 3)
             intents |= QQIntents.DirectMessage | QQIntents.GroupAndC2C;
         else
-            _logger.LogWarning("QQ identify fail count={Count}; degrading intents (guild-only)", _identifyFailCount);
+            _logger.LogWarning(
+                "QQ identify fail count={Count}; degrading intents (guild public + interaction only)",
+                _identifyFailCount);
         return intents;
     }
 

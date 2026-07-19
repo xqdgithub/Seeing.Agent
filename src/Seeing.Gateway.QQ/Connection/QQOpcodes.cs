@@ -21,5 +21,5 @@ public static class QQIntents
     public const int Interaction = 1 << 26;
 
     public const int Default =
-        PublicGuildMessages | GuildMembers | DirectMessage | GroupAndC2C | Interaction;
+        PublicGuildMessages | DirectMessage | GroupAndC2C | Interaction;
 }
