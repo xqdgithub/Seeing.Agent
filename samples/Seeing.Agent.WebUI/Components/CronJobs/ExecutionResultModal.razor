@@ -21,13 +21,9 @@
             }
             <DescriptionsItem Title="Agent">@Record.Agent</DescriptionsItem>
             <DescriptionsItem Title="Session">@Record.SessionId</DescriptionsItem>
-            @if (!string.IsNullOrEmpty(Record.DispatchChannel))
+            @if (!string.IsNullOrEmpty(Record.DispatchSessionId))
             {
-                <DescriptionsItem Title="Channel">@Record.DispatchChannel</DescriptionsItem>
-            }
-            @if (!string.IsNullOrEmpty(Record.DispatchUserId))
-            {
-                <DescriptionsItem Title="UserId">@Record.DispatchUserId</DescriptionsItem>
+                <DescriptionsItem Title="Dispatch Session">@Record.DispatchSessionId</DescriptionsItem>
             }
         </Descriptions>
 

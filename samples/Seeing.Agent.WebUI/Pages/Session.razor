@@ -82,6 +82,25 @@
                     @TruncateWorkspacePath(currentWorkspace)
                 </span>
             </Tooltip>
+            @if (!IsSubAgentView && _optionsReady && SessionState.CurrentSession != null)
+            {
+                <div class="subagent-meta" title="出站绑定" style="margin-left: 8px;">
+                    <span class="subagent-meta-chip">
+                        <span class="subagent-meta-label">Channel</span>
+                        <span class="subagent-meta-value">@FormatOutbound(SessionState.CurrentSession.ChannelId)</span>
+                    </span>
+                    <span class="subagent-meta-chip">
+                        <span class="subagent-meta-label">User</span>
+                        <span class="subagent-meta-value">@FormatOutbound(SessionState.CurrentSession.UserId)</span>
+                    </span>
+                </div>
+                <Tooltip Title="编辑出站绑定">
+                    <Button Type="@ButtonType.Text"
+                            Size="@ButtonSize.Small"
+                            Icon="@IconType.Outline.Api"
+                            OnClick="@OnEditOutbound" />
+                </Tooltip>
+            }
             @if (IsSubAgentView && !string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
             {
                 <Button Type="@ButtonType.Link"
@@ -337,6 +356,27 @@
             </Form>
         </Modal>
     }
+
+    @if (OutboundModalVisible)
+    {
+        <Modal Title="编辑出站绑定"
+               Visible="true"
+               OnOk="@OnOutboundConfirm"
+               OnCancel="@OnOutboundCancel"
+               OkText="@OkText"
+               CancelText="@CancelText">
+            <Form Model="@OutboundForm" Layout="@FormLayout.Horizontal">
+                <FormItem Label="ChannelId">
+                    <Input @bind-Value="@OutboundForm.ChannelId"
+                           Placeholder="如 qq / wecom，留空表示未绑定" />
+                </FormItem>
+                <FormItem Label="UserId">
+                    <Input @bind-Value="@OutboundForm.UserId"
+                           Placeholder="出站用户/对端 ID，可留空" />
+                </FormItem>
+            </Form>
+        </Modal>
+    }
 </div>
 
 @code {
@@ -427,6 +467,13 @@
     /// 重命名表单
     /// </summary>
     private RenameSessionForm RenameForm { get; set; } = new();
+
+    /// <summary>
+    /// 出站绑定编辑对话框
+    /// </summary>
+    private bool OutboundModalVisible { get; set; }
+
+    private OutboundEditForm OutboundForm { get; set; } = new();
 
     /// <summary>
     /// 当前选中的工具调用（用于详情显示）
@@ -1602,6 +1649,44 @@
     {
         RenameModalVisible = false;
     }
+
+    private static string FormatOutbound(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "未绑定" : value;
+
+    private static string? NormalizeOutbound(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private void OnEditOutbound()
+    {
+        if (SessionState.CurrentSession == null) return;
+
+        OutboundForm = new OutboundEditForm
+        {
+            ChannelId = SessionState.CurrentSession.ChannelId ?? "",
+            UserId = SessionState.CurrentSession.UserId ?? ""
+        };
+        OutboundModalVisible = true;
+    }
+
+    private async Task OnOutboundConfirm()
+    {
+        if (SessionState.CurrentSession != null)
+        {
+            SessionState.CurrentSession.ChannelId = NormalizeOutbound(OutboundForm.ChannelId);
+            SessionState.CurrentSession.UserId = NormalizeOutbound(OutboundForm.UserId);
+            SessionState.CurrentSession.UpdatedAt = DateTime.Now;
+            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+            MessageService.Success("出站绑定已保存");
+        }
+
+        OutboundModalVisible = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnOutboundCancel()
+    {
+        OutboundModalVisible = false;
+    }
     
     /// <summary>
     /// 分支会话（从 SubAgent 分叉为无 Parent 的独立 Root）
@@ -1760,5 +1845,11 @@
     private class RenameSessionForm
     {
         public string Title { get; set; } = "";
+    }
+
+    private sealed class OutboundEditForm
+    {
+        public string ChannelId { get; set; } = "";
+        public string UserId { get; set; } = "";
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Quartz;
+using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Commands;
 using Seeing.Agent.Scheduler.Configuration;
@@ -11,12 +12,37 @@ using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Persistence;
+using Seeing.Agent.Scheduler.Skills;
+using Seeing.Agent.Scheduler.Tools;
 
 namespace Seeing.Agent.Scheduler.Extensions;
 
 /// <summary>Scheduler DI 注册扩展</summary>
 public static class SchedulerServiceCollectionExtensions
 {
+    /// <summary>
+    /// 注册六个 cron ITool。
+    /// 必须用 AddSingleton&lt;ITool&gt;，不能用 TryAddSingleton&lt;ITool&gt;
+    /// （AddSeeingAgent 已注册多个 ITool 时 TryAdd 会整条跳过）。
+    /// </summary>
+    public static IServiceCollection AddSeeingSchedulerTools(this IServiceCollection services)
+    {
+        services.AddSingleton<CronListTool>();
+        services.AddSingleton<CronCreateTool>();
+        services.AddSingleton<CronDeleteTool>();
+        services.AddSingleton<CronDisableTool>();
+        services.AddSingleton<CronResumeTool>();
+        services.AddSingleton<CronRunTool>();
+
+        services.AddSingleton<ITool>(sp => sp.GetRequiredService<CronListTool>());
+        services.AddSingleton<ITool>(sp => sp.GetRequiredService<CronCreateTool>());
+        services.AddSingleton<ITool>(sp => sp.GetRequiredService<CronDeleteTool>());
+        services.AddSingleton<ITool>(sp => sp.GetRequiredService<CronDisableTool>());
+        services.AddSingleton<ITool>(sp => sp.GetRequiredService<CronResumeTool>());        services.AddSingleton<ITool>(sp => sp.GetRequiredService<CronRunTool>());
+
+        return services;
+    }
+
     /// <summary>注册 Seeing.Agent.Scheduler 全部服务</summary>
     public static IServiceCollection AddSeeingScheduler(this IServiceCollection services)
     {
@@ -62,9 +88,12 @@ public static class SchedulerServiceCollectionExtensions
             sp.GetRequiredService<LogScheduleDispatcher>()
         }));
 
+        services.AddSeeingSchedulerTools();
+
         // Hosted Service（管理调度器生命周期）
         services.AddHostedService<ScheduleHostedService>();
         services.AddHostedService<SchedulerCommandRegistrationHostedService>();
+        services.AddHostedService<SchedulerSkillRegistrationHostedService>();
 
         return services;
     }
@@ -157,9 +186,12 @@ public static class SchedulerServiceCollectionExtensions
             sp.GetRequiredService<LogScheduleDispatcher>()
         }));
 
+        services.AddSeeingSchedulerTools();
+
         // Hosted Service（管理调度器生命周期）
         services.AddHostedService<ScheduleHostedService>();
         services.AddHostedService<SchedulerCommandRegistrationHostedService>();
+        services.AddHostedService<SchedulerSkillRegistrationHostedService>();
 
         return services;
     }

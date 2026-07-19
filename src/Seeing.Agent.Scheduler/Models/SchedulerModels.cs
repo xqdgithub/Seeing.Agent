@@ -94,8 +94,6 @@ public class ScheduleSpec
 /// <summary>投递目标</summary>
 public class DispatchTarget
 {
-    public string? Channel { get; set; }
-    public string? UserId { get; set; }
     public string? SessionId { get; set; }
 }
 
@@ -211,12 +209,6 @@ public class JobExecutionRecord
     /// <summary>执行时的 Session ID</summary>
     public string? SessionId { get; set; }
     
-    /// <summary>投递渠道</summary>
-    public string? DispatchChannel { get; set; }
-    
-    /// <summary>投递用户 ID</summary>
-    public string? DispatchUserId { get; set; }
-    
     /// <summary>投递会话 ID</summary>
     public string? DispatchSessionId { get; set; }
 }
@@ -238,12 +230,6 @@ public class JobExecutionResult
     
     /// <summary>执行时的 Text 内容</summary>
     public string? Text { get; init; }
-    
-    /// <summary>投递渠道</summary>
-    public string? DispatchChannel { get; init; }
-    
-    /// <summary>投递用户 ID</summary>
-    public string? DispatchUserId { get; init; }
     
     /// <summary>投递会话 ID</summary>
     public string? DispatchSessionId { get; init; }

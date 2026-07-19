@@ -120,6 +120,8 @@ public class ExecutionJobService : IDisposable
                 var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
                 var session = await sessionManager.EnsureSessionAsync(sessionId);
 
+                TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
+
                 var userMessage = BuildUserMessage(input);
                 session.Messages.Add(userMessage);
 
@@ -473,6 +475,31 @@ public class ExecutionJobService : IDisposable
         LoopCompleteEvent or LoopCancelledEvent or ErrorEvent => true,
         _ => false
     };
+
+    /// <summary>
+    /// Fills session ChannelId/UserId from inbound values only when session fields are empty.
+    /// Never overwrites existing non-whitespace values.
+    /// </summary>
+    /// <returns>True if either field was updated.</returns>
+    public static bool TryBackfillSessionOutbound(SessionData session, string? channelId, string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var changed = false;
+        if (string.IsNullOrWhiteSpace(session.ChannelId) && !string.IsNullOrWhiteSpace(channelId))
+        {
+            session.ChannelId = channelId.Trim();
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(session.UserId) && !string.IsNullOrWhiteSpace(userId))
+        {
+            session.UserId = userId.Trim();
+            changed = true;
+        }
+
+        return changed;
+    }
 
     /// <summary>
     /// Builds user message from input.

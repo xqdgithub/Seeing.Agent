@@ -44,12 +44,6 @@ public static class JobDataKeys
     
     // ===== 投递配置 =====
     
-    /// <summary>投递目标 Channel</summary>
-    public const string DispatchChannel = "dispatchChannel";
-    
-    /// <summary>投递目标 UserId</summary>
-    public const string DispatchUserId = "dispatchUserId";
-    
     /// <summary>投递目标 SessionId</summary>
     public const string DispatchSessionId = "dispatchSessionId";
     

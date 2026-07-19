@@ -420,8 +420,6 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             Prompt = result.Prompt,
             Text = result.Text,
             SessionId = result.SessionId,
-            DispatchChannel = result.DispatchChannel,
-            DispatchUserId = result.DispatchUserId,
             DispatchSessionId = result.DispatchSessionId
         };
 
@@ -505,10 +503,6 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         }
 
         // 投递配置
-        if (!string.IsNullOrEmpty(job.Dispatch.Target.Channel))
-            jobData[JobDataKeys.DispatchChannel] = job.Dispatch.Target.Channel;
-        if (!string.IsNullOrEmpty(job.Dispatch.Target.UserId))
-            jobData[JobDataKeys.DispatchUserId] = job.Dispatch.Target.UserId;
         if (!string.IsNullOrEmpty(job.Dispatch.Target.SessionId))
             jobData[JobDataKeys.DispatchSessionId] = job.Dispatch.Target.SessionId;
 

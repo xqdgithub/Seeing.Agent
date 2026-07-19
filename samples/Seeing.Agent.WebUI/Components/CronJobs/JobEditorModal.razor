@@ -92,20 +92,10 @@
         @* 投递配置 *@
         <Divider Orientation="@DividerOrientation.Left">投递配置</Divider>
         <Row Gutter="16">
-            <Col Span="8">
+            <Col Span="24">
                 <FormItem Label="目标 Session" Required>
                     <Input @bind-Value="@Job.Dispatch.Target.SessionId" Placeholder="main" />
-                    <small style="color: #999;">必填，通常为 "main"</small>
-                </FormItem>
-            </Col>
-            <Col Span="8">
-                <FormItem Label="Channel">
-                    <Input @bind-Value="@Job.Dispatch.Target.Channel" Placeholder="可选" />
-                </FormItem>
-            </Col>
-            <Col Span="8">
-                <FormItem Label="UserId">
-                    <Input @bind-Value="@Job.Dispatch.Target.UserId" Placeholder="可选" />
+                    <small style="color: #999;">必填，通常为 "main"。出站 Channel 在 Session 上配置，无需在此填写。</small>
                 </FormItem>
             </Col>
         </Row>

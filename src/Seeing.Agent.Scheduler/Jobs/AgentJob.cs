@@ -67,8 +67,6 @@ public class AgentJob : IJob
         var agentId = data.GetStringValue(JobDataKeys.AgentId);
         var prompt = data.GetStringValue(JobDataKeys.Prompt);
         var text = data.GetStringValue(JobDataKeys.Text);
-        var dispatchChannel = data.GetStringValue(JobDataKeys.DispatchChannel);
-        var dispatchUserId = data.GetStringValue(JobDataKeys.DispatchUserId);
         var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId);
         
         // 使用类型安全的扩展方法读取（自动从字符串转换）
@@ -103,8 +101,6 @@ public class AgentJob : IJob
                 Agent = agentId,
                 Prompt = prompt,
                 Text = text,
-                DispatchChannel = dispatchChannel,
-                DispatchUserId = dispatchUserId,
                 DispatchSessionId = dispatchSessionId
             };
 
@@ -180,8 +176,6 @@ public class AgentJob : IJob
                 Agent = agentId,
                 Prompt = prompt,
                 Text = text,
-                DispatchChannel = dispatchChannel,
-                DispatchUserId = dispatchUserId,
                 DispatchSessionId = dispatchSessionId
             };
 
@@ -214,8 +208,6 @@ public class AgentJob : IJob
                 Agent = agentId,
                 Prompt = prompt,
                 Text = text,
-                DispatchChannel = dispatchChannel,
-                DispatchUserId = dispatchUserId,
                 DispatchSessionId = dispatchSessionId
             };
 
@@ -243,8 +235,6 @@ public class AgentJob : IJob
         CancellationToken ct)
     {
         var text = data.GetStringValue(JobDataKeys.Text) ?? string.Empty;
-        var dispatchChannel = data.GetStringValue(JobDataKeys.DispatchChannel);
-        var dispatchUserId = data.GetStringValue(JobDataKeys.DispatchUserId);
         var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId);
         
         if (string.IsNullOrWhiteSpace(text))
@@ -257,8 +247,6 @@ public class AgentJob : IJob
                 Source = ScheduleSources.Cron,
                 SessionId = sessionId,
                 Text = text,
-                DispatchChannel = dispatchChannel,
-                DispatchUserId = dispatchUserId,
                 DispatchSessionId = dispatchSessionId
             };
         }
@@ -271,8 +259,6 @@ public class AgentJob : IJob
             Source = ScheduleSources.Cron,
             SessionId = sessionId,
             Text = text,
-            DispatchChannel = dispatchChannel,
-            DispatchUserId = dispatchUserId,
             DispatchSessionId = dispatchSessionId
         };
     }
@@ -284,8 +270,6 @@ public class AgentJob : IJob
     {
         var agentId = data.GetStringValue(JobDataKeys.AgentId);
         var prompt = data.GetStringValue(JobDataKeys.Prompt) ?? string.Empty;
-        var dispatchChannel = data.GetStringValue(JobDataKeys.DispatchChannel);
-        var dispatchUserId = data.GetStringValue(JobDataKeys.DispatchUserId);
         var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId);
 
         if (string.IsNullOrWhiteSpace(prompt))
@@ -299,8 +283,6 @@ public class AgentJob : IJob
                 SessionId = sessionId,
                 Agent = agentId,
                 Prompt = prompt,
-                DispatchChannel = dispatchChannel,
-                DispatchUserId = dispatchUserId,
                 DispatchSessionId = dispatchSessionId
             };
         }
@@ -358,17 +340,12 @@ public class AgentJob : IJob
             Agent = resolvedAgentId,
             SessionId = sessionId,
             Prompt = prompt,
-            DispatchChannel = dispatchChannel,
-            DispatchUserId = dispatchUserId,
             DispatchSessionId = dispatchSessionId
         };
     }
 
     private async Task DispatchAsync(JobDataMap data, string content, string defaultSessionId, string? userInput, CancellationToken ct)
     {
-        // 安全获取可选的投递配置
-        var dispatchChannel = data.GetStringValue(JobDataKeys.DispatchChannel);
-        var dispatchUserId = data.GetStringValue(JobDataKeys.DispatchUserId);
         var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId) ?? defaultSessionId;
 
         var dispatchResult = await _dispatcher.DispatchAsync(new DispatchRequest
@@ -377,8 +354,6 @@ public class AgentJob : IJob
             TaskType = ScheduleTaskTypes.Agent,
             Content = content,
             UserInput = userInput,
-            Channel = dispatchChannel,
-            UserId = dispatchUserId,
             SessionId = dispatchSessionId
         }, ct);
 

@@ -82,5 +82,16 @@ namespace Seeing.Session.Tests
             clone.Context.Should().NotContainKey("extra");
             data.Messages.Should().HaveCount(2);
         }
+
+        [Fact]
+        public void Clone_CopiesChannelIdAndUserId()
+        {
+            var s = SessionData.Create();
+            s.ChannelId = "qq";
+            s.UserId = "u1";
+            var c = s.Clone();
+            c.ChannelId.Should().Be("qq");
+            c.UserId.Should().Be("u1");
+        }
     }
 }

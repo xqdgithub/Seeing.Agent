@@ -30,4 +30,8 @@
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Skills\**\SKILL.md" />
+  </ItemGroup>
+
 </Project>

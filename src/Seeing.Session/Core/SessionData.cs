@@ -50,6 +50,12 @@ namespace Seeing.Session.Core
         // === 状态 ===
         public SessionStatus Status { get; set; } = SessionStatus.Created;
 
+        /// <summary>出站渠道 ID（如 qq / wecom）；空表示仅本地 Session</summary>
+        public string? ChannelId { get; set; }
+
+        /// <summary>出站用户/对端 ID；可空</summary>
+        public string? UserId { get; set; }
+
         /// <summary>会话关系类型（Root / Fork / SubAgent）</summary>
         public SessionKind Kind { get; set; } = SessionKind.Root;
 
@@ -214,6 +220,8 @@ namespace Seeing.Session.Core
                 SelectedAcpMode = SelectedAcpMode,
                 WorkingDirectory = WorkingDirectory,
                 Status = Status,
+                ChannelId = ChannelId,
+                UserId = UserId,
                 Kind = Kind,
                 PermissionSnapshot = PermissionSnapshot.Select(r => new SessionPermissionRule
                 {

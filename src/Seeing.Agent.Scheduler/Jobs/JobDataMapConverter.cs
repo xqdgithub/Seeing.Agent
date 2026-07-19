@@ -38,12 +38,6 @@ public static class JobDataMapConverter
         }
 
         // 投递配置
-        if (!string.IsNullOrEmpty(job.Dispatch.Target.Channel))
-            map.SetStringValue(JobDataKeys.DispatchChannel, job.Dispatch.Target.Channel);
-        
-        if (!string.IsNullOrEmpty(job.Dispatch.Target.UserId))
-            map.SetStringValue(JobDataKeys.DispatchUserId, job.Dispatch.Target.UserId);
-        
         if (!string.IsNullOrEmpty(job.Dispatch.Target.SessionId))
             map.SetStringValue(JobDataKeys.DispatchSessionId, job.Dispatch.Target.SessionId);
 
@@ -91,8 +85,6 @@ public static class JobDataMapConverter
         {
             Target = new DispatchTarget
             {
-                Channel = map.GetStringValue(JobDataKeys.DispatchChannel),
-                UserId = map.GetStringValue(JobDataKeys.DispatchUserId),
                 SessionId = map.GetStringValue(JobDataKeys.DispatchSessionId)
             }
         };

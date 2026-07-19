@@ -13,15 +13,19 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
 {
     private readonly ISessionManager _sessionManager;
     private readonly GatewayConnectionManager? _connectionManager;
+    private readonly Func<GatewayChannelOutboundPayload, bool>? _pushChannelOutbound;
     private readonly ILogger<GatewayScheduleDispatcher> _logger;
 
     public GatewayScheduleDispatcher(
         ISessionManager sessionManager,
         ILogger<GatewayScheduleDispatcher> logger,
-        GatewayConnectionManager? connectionManager = null)
+        GatewayConnectionManager? connectionManager = null,
+        Func<GatewayChannelOutboundPayload, bool>? pushChannelOutbound = null)
     {
         _sessionManager = sessionManager;
         _connectionManager = connectionManager;
+        _pushChannelOutbound = pushChannelOutbound
+            ?? (connectionManager is null ? null : connectionManager.PushChannelOutbound);
         _logger = logger;
     }
 
@@ -36,8 +40,8 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
 
         try
         {
-            await _sessionManager.EnsureSessionAsync(request.SessionId)
-                .ConfigureAwait(false);
+            var session = _sessionManager.Get(request.SessionId)
+                ?? await _sessionManager.EnsureSessionAsync(request.SessionId).ConfigureAwait(false);
 
             if (!string.IsNullOrEmpty(request.UserInput))
             {
@@ -64,22 +68,30 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
                 });
             }
 
-            if (!string.IsNullOrWhiteSpace(request.Channel) && _connectionManager != null)
+            var channel = session.ChannelId;
+            var userId = session.UserId;
+            if (string.IsNullOrWhiteSpace(channel))
             {
-                var delivered = _connectionManager.PushChannelOutbound(new GatewayChannelOutboundPayload
+                _logger.LogDebug(
+                    "Skipping channel outbound (empty Session.ChannelId): session={SessionId}",
+                    request.SessionId);
+            }
+            else if (_pushChannelOutbound != null)
+            {
+                var delivered = _pushChannelOutbound(new GatewayChannelOutboundPayload
                 {
-                    Channel = request.Channel.Trim(),
+                    Channel = channel.Trim(),
                     SessionId = request.SessionId,
                     Text = request.Content,
                     Source = $"scheduler.{request.Source}",
-                    UserId = request.UserId
+                    UserId = userId
                 });
 
                 if (!delivered)
                 {
                     _logger.LogWarning(
                         "Channel outbound not delivered (no registered host): channel={Channel} session={SessionId}",
-                        request.Channel,
+                        channel,
                         request.SessionId);
                 }
             }

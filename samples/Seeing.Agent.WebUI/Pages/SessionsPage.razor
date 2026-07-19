@@ -5,6 +5,7 @@
 @using Seeing.Session.Core
 @using Seeing.Agent.App
 @inject IChatOrchestrator ChatOrchestrator
+@inject ISessionManager SessionManager
 @inject IWorkspaceProvider WorkspaceProvider
 @inject IMessageService MessageService
 @inject NavigationManager NavigationManager
@@ -104,8 +105,19 @@
                                     <span Class="meta-item">
                                         <Icon Type="@IconType.Outline.Message" /> @session.MessageCount 条消息
                                     </span>
+                                    <span Class="meta-item">
+                                        Channel: @FormatOutbound(session.ChannelId)
+                                    </span>
+                                    <span Class="meta-item">
+                                        User: @FormatOutbound(session.UserId)
+                                    </span>
                                 </div>
                                 <div Class="session-card-actions" @onclick:stopPropagation>
+                                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
+                                            Icon="@IconType.Outline.Edit"
+                                            OnClick="@(() => OpenOutboundEditor(session))">
+                                        出站
+                                    </Button>
                                     <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
                                             Icon="@IconType.Outline.Fork" 
                                             OnClick="@(() => BranchSession(session.Id))">
@@ -126,6 +138,27 @@
         }
     </div>
 </div>
+
+@if (_outboundModalVisible)
+{
+    <Modal Title="编辑出站绑定"
+           Visible="true"
+           OnOk="@SaveOutboundAsync"
+           OnCancel="@CloseOutboundEditor"
+           OkText="@("确定")"
+           CancelText="@("取消")">
+        <Form Model="@_outboundForm" Layout="@FormLayout.Horizontal">
+            <FormItem Label="ChannelId">
+                <Input @bind-Value="@_outboundForm.ChannelId"
+                       Placeholder="如 qq / wecom，留空表示未绑定" />
+            </FormItem>
+            <FormItem Label="UserId">
+                <Input @bind-Value="@_outboundForm.UserId"
+                       Placeholder="出站用户/对端 ID，可留空" />
+            </FormItem>
+        </Form>
+    </Modal>
+}
 
 <style>
 .session-list {
@@ -191,9 +224,76 @@
     private int _todayCount;
     private int _activeCount;
 
+    private bool _outboundModalVisible;
+    private string? _editingSessionId;
+    private OutboundEditForm _outboundForm = new();
+
     protected override async Task OnInitializedAsync()
     {
         await RefreshSessionsAsync();
+    }
+
+    static string FormatOutbound(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "未绑定" : value;
+
+    void OpenOutboundEditor(SessionData session)
+    {
+        _editingSessionId = session.Id;
+        _outboundForm = new OutboundEditForm
+        {
+            ChannelId = session.ChannelId ?? "",
+            UserId = session.UserId ?? ""
+        };
+        _outboundModalVisible = true;
+    }
+
+    void CloseOutboundEditor()
+    {
+        _outboundModalVisible = false;
+        _editingSessionId = null;
+    }
+
+    async Task SaveOutboundAsync()
+    {
+        if (string.IsNullOrEmpty(_editingSessionId))
+        {
+            CloseOutboundEditor();
+            return;
+        }
+
+        try
+        {
+            var session = await ChatOrchestrator.GetSessionAsync(_editingSessionId);
+            if (session == null)
+            {
+                MessageService.Error("会话不存在");
+                CloseOutboundEditor();
+                return;
+            }
+
+            session.ChannelId = NormalizeOutbound(_outboundForm.ChannelId);
+            session.UserId = NormalizeOutbound(_outboundForm.UserId);
+            session.UpdatedAt = DateTime.Now;
+            await SessionManager.SaveAsync(session.Id);
+
+            MessageService.Success("出站绑定已保存");
+            CloseOutboundEditor();
+            await RefreshSessionsAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error(string.Format("保存失败: {0}", ex.Message));
+        }
+    }
+
+    static string? NormalizeOutbound(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private sealed class OutboundEditForm
+    {
+        public string ChannelId { get; set; } = "";
+        public string UserId { get; set; } = "";
     }
 
     async Task RefreshSessionsAsync()
