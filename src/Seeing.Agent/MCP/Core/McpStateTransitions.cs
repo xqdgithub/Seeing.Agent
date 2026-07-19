@@ -13,6 +13,7 @@ internal static class McpStateTransitions
         [McpConnectionState.Connecting] = new HashSet<McpConnectionState>
         {
             McpConnectionState.Connected,
+            McpConnectionState.Pending,
             McpConnectionState.Disabled,
             McpConnectionState.Paused,
             McpConnectionState.Error,
@@ -52,6 +53,7 @@ internal static class McpStateTransitions
         },
         [McpConnectionState.Error] = new HashSet<McpConnectionState>
         {
+            McpConnectionState.Pending,
             McpConnectionState.Reconnecting,
             McpConnectionState.Connecting,
             McpConnectionState.Disabled,
