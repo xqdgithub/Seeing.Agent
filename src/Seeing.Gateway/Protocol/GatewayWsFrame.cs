@@ -86,7 +86,34 @@ public record GatewayConnectedPayload
 {
     public string ServerVersion { get; init; } = "1.0";
 
-    public IReadOnlyList<string> Capabilities { get; init; } = ["submit", "cancel", "permission"];
+    public IReadOnlyList<string> Capabilities { get; init; } =
+        ["submit", "cancel", "permission", "channelRegister", "channelOutbound"];
+}
+
+/// <summary>
+/// channel.register 帧 payload（Channel Host → Server）
+/// </summary>
+public record GatewayChannelRegisterPayload
+{
+    public required string Channel { get; init; }
+}
+
+/// <summary>
+/// channel.outbound 帧 payload（Server → Channel Host）
+/// </summary>
+public record GatewayChannelOutboundPayload
+{
+    public required string Channel { get; init; }
+
+    public required string SessionId { get; init; }
+
+    public required string Text { get; init; }
+
+    public string? Source { get; init; }
+
+    public string? JobId { get; init; }
+
+    public string? UserId { get; init; }
 }
 
 /// <summary>

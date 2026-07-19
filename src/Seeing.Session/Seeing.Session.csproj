@@ -19,6 +19,7 @@
   <ItemGroup>
     <!-- 核心依赖（使用中央包管理） -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
   <ItemGroup>

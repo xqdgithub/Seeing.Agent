@@ -1,14 +1,13 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Session.Management;
 
 namespace Seeing.Session.Core
 {
     /// <summary>
-    /// 封装 SessionManager 的生命周期方法并集成 SessionEventPublisher
+    /// 封装 ISessionManager 的生命周期方法并集成 SessionEventPublisher
     /// </summary>
     public class SessionLifecycle : ISessionLifecycle
     {
-        private readonly SessionManager _sessionManager;
+        private readonly ISessionManager _sessionManager;
         private readonly ISessionEventPublisher _eventPublisher;
         private readonly ILogger<SessionLifecycle>? _logger;
 
@@ -19,7 +18,7 @@ namespace Seeing.Session.Core
         /// <param name="eventPublisher">事件发布器</param>
         /// <param name="logger">日志（可选）</param>
         public SessionLifecycle(
-            SessionManager sessionManager,
+            ISessionManager sessionManager,
             ISessionEventPublisher eventPublisher,
             ILogger<SessionLifecycle>? logger = null)
         {
@@ -36,7 +35,7 @@ namespace Seeing.Session.Core
         /// <returns>创建的 SessionData</returns>
         public Task<SessionData> BeginSessionAsync(string? title = null, string? agentId = null)
         {
-            // 调用 SessionManager.Create()
+            // 调用 ISessionManager.Create()
             var session = _sessionManager.Create(selectedAgent: agentId);
 
             // 设置标题（如果有）
@@ -75,7 +74,7 @@ namespace Seeing.Session.Core
             // 获取会话数据用于事件发布
             var session = _sessionManager.Get(sessionId);
 
-            // 调用 SessionManager.Delete()
+            // 调用 ISessionManager.Delete()
             var deleted = _sessionManager.Delete(sessionId);
 
             if (deleted)
@@ -134,7 +133,7 @@ namespace Seeing.Session.Core
                 cloned.Title = newTitle;
             }
 
-            // 注册到 SessionManager
+            // 注册到 ISessionManager 缓存
             _sessionManager.Register(cloned);
 
             // 触发 SessionEventPublisher.Publish(Created)

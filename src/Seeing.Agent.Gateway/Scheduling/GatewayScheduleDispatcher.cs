@@ -3,11 +3,12 @@ using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Gateway.Models;
+using Seeing.Gateway.Protocol;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Gateway.Scheduling;
 
-/// <summary>Gateway 通道投递 — 写入 Session 并推送 WebSocket 事件</summary>
+/// <summary>Gateway 通道投递 — 写入 Session、推送 WebSocket 事件、按 channel 出站</summary>
 public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
 {
     private readonly ISessionManager _sessionManager;
@@ -38,14 +39,12 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
             await _sessionManager.EnsureSessionAsync(request.SessionId)
                 .ConfigureAwait(false);
 
-            // 先保存用户输入（如果有）
             if (!string.IsNullOrEmpty(request.UserInput))
             {
                 var userMessage = SessionMessage.UserMessage(request.UserInput);
                 await _sessionManager.AddMessageAsync(request.SessionId, userMessage, ct).ConfigureAwait(false);
             }
 
-            // 再保存助手响应
             var assistantMessage = SessionMessage.AssistantMessage(request.Content);
             await _sessionManager.AddMessageAsync(request.SessionId, assistantMessage, ct).ConfigureAwait(false);
 
@@ -63,6 +62,26 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
                         Text = request.Content
                     }
                 });
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Channel) && _connectionManager != null)
+            {
+                var delivered = _connectionManager.PushChannelOutbound(new GatewayChannelOutboundPayload
+                {
+                    Channel = request.Channel.Trim(),
+                    SessionId = request.SessionId,
+                    Text = request.Content,
+                    Source = $"scheduler.{request.Source}",
+                    UserId = request.UserId
+                });
+
+                if (!delivered)
+                {
+                    _logger.LogWarning(
+                        "Channel outbound not delivered (no registered host): channel={Channel} session={SessionId}",
+                        request.Channel,
+                        request.SessionId);
+                }
             }
 
             return DispatchResult.Ok();

@@ -3,7 +3,6 @@ using Seeing.Agent.App.Events;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 using Seeing.Agent.TokenBudget.Api.Responses;
 using Seeing.Agent.TokenBudget;
 using System.Text;
@@ -53,7 +52,7 @@ namespace Seeing.Agent.WebUI.Services
     public class EventStreamHandler
     {
         private readonly SessionState _sessionState;
-        private readonly SessionManager _sessionManager;
+        private readonly ISessionManager _sessionManager;
 
         /// <summary>
         /// 当前助手消息（用于流式增量）
@@ -121,7 +120,7 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public event Action<PermissionResponseEvent>? OnPermissionResponse;
 
-        public EventStreamHandler(SessionState sessionState, SessionManager sessionManager)
+        public EventStreamHandler(SessionState sessionState, ISessionManager sessionManager)
         {
             _sessionState = sessionState ?? throw new ArgumentNullException(nameof(sessionState));
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));

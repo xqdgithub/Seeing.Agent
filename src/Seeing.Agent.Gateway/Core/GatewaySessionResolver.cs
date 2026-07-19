@@ -1,18 +1,17 @@
 using Seeing.Agent.Core;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 
 namespace Seeing.Agent.Gateway.Core;
 
 /// <summary>
-/// 封装 <see cref="SessionManager.EnsureSessionAsync"/>，统一 Gateway 会话创建逻辑。
+/// 封装 <see cref="ISessionManager.EnsureSessionAsync"/>，统一 Gateway 会话创建逻辑。
 /// </summary>
 public sealed class GatewaySessionResolver
 {
-    private readonly SessionManager _sessionManager;
+    private readonly ISessionManager _sessionManager;
     private readonly AgentSelectionResolver _selectionResolver;
 
-    public GatewaySessionResolver(SessionManager sessionManager, AgentSelectionResolver selectionResolver)
+    public GatewaySessionResolver(ISessionManager sessionManager, AgentSelectionResolver selectionResolver)
     {
         _sessionManager = sessionManager;
         _selectionResolver = selectionResolver;

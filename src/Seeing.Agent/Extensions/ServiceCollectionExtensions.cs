@@ -355,9 +355,29 @@ namespace Seeing.Agent.Extensions
             // Agent 运行时初始化服务（IHostedService）
             services.AddHostedService<AgentInitializationService>();
 
-            // 会话管理器 - 使用 Seeing.Session 包的实现
-            services.AddSingleton<Seeing.Session.Management.SessionManager>();
-            services.AddSingleton<Seeing.Session.Core.ISessionManager>(sp => sp.GetRequiredService<Seeing.Session.Management.SessionManager>());
+            // 会话管理器 - 必须注入 ISessionStore，否则 SaveAsync 只会警告「未配置 SessionStore」
+            if (!services.Any(d => d.ServiceType == typeof(ISessionStore)))
+            {
+                services.AddSingleton<ISessionStore>(sp =>
+                {
+                    var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                    var path = Path.Combine(workspace.ProjectSeeingDirectory, "sessions");
+                    return new FileSessionStore(
+                        path,
+                        sp.GetService<ILogger<FileSessionStore>>());
+                });
+            }
+
+            services.AddSingleton<SessionManager>(sp =>
+                new SessionManager(
+                    store: sp.GetRequiredService<ISessionStore>(),
+                    compressor: sp.GetService<Seeing.Session.Compression.ICompressionStrategy>(),
+                    hookManager: sp.GetService<Seeing.Session.Hooks.IHookManager>(),
+                    eventPublisher: sp.GetService<ISessionEventPublisher>(),
+                    logger: sp.GetService<ILogger<SessionManager>>(),
+                    globalStore: sp.GetService<GlobalSessionStore>()));
+            services.AddSingleton<ISessionManager>(sp =>
+                sp.GetRequiredService<SessionManager>());
 
             // 新增 DI 注册：会话事件发布器与会话生命周期管理
             services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();

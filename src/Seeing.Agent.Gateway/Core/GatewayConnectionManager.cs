@@ -7,12 +7,14 @@ using Seeing.Gateway.Protocol;
 namespace Seeing.Agent.Gateway.Core;
 
 /// <summary>
-/// WebSocket 连接注册与 session 事件推送
+/// WebSocket 连接注册、session 事件推送、Channel 出站路由
 /// </summary>
 public sealed class GatewayConnectionManager
 {
     private readonly ConcurrentDictionary<string, GatewayWsConnection> _connections = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _sessionSubscriptions = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _channelRegistrations =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>注册新连接</summary>
     public GatewayWsConnection Register(WebSocket webSocket)
@@ -34,6 +36,13 @@ public sealed class GatewayConnectionManager
             if (subscribers.IsEmpty)
                 _sessionSubscriptions.TryRemove(sessionId, out _);
         }
+
+        foreach (var (channelId, registrants) in _channelRegistrations)
+        {
+            registrants.TryRemove(connectionId, out _);
+            if (registrants.IsEmpty)
+                _channelRegistrations.TryRemove(channelId, out _);
+        }
     }
 
     /// <summary>订阅 session 事件推送</summary>
@@ -41,6 +50,17 @@ public sealed class GatewayConnectionManager
     {
         var subscribers = _sessionSubscriptions.GetOrAdd(sessionId, _ => new ConcurrentDictionary<string, byte>());
         subscribers[connectionId] = 0;
+    }
+
+    /// <summary>Channel Host 声明负责的 channelId</summary>
+    public void RegisterChannel(string connectionId, string channelId)
+    {
+        if (string.IsNullOrWhiteSpace(channelId))
+            return;
+
+        var key = channelId.Trim();
+        var registrants = _channelRegistrations.GetOrAdd(key, _ => new ConcurrentDictionary<string, byte>());
+        registrants[connectionId] = 0;
     }
 
     /// <summary>向订阅了 session 的所有连接推送 GatewayEvent</summary>
@@ -58,6 +78,36 @@ public sealed class GatewayConnectionManager
             if (_connections.TryGetValue(connectionId, out var connection))
                 _ = connection.SendFrameAsync(frame);
         }
+    }
+
+    /// <summary>
+    /// 向已 RegisterChannel 的连接推送出站请求。
+    /// </summary>
+    /// <returns>是否至少投递给一个连接</returns>
+    public bool PushChannelOutbound(GatewayChannelOutboundPayload payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload.Channel))
+            return false;
+
+        if (!_channelRegistrations.TryGetValue(payload.Channel.Trim(), out var registrants)
+            || registrants.IsEmpty)
+            return false;
+
+        var frame = GatewayWsFrameSerializer.Create(
+            GatewayWsFrameType.ChannelOutbound,
+            payload: payload);
+
+        var delivered = false;
+        foreach (var connectionId in registrants.Keys)
+        {
+            if (_connections.TryGetValue(connectionId, out var connection))
+            {
+                _ = connection.SendFrameAsync(frame);
+                delivered = true;
+            }
+        }
+
+        return delivered;
     }
 
     /// <summary>向指定连接发送 execution.complete</summary>

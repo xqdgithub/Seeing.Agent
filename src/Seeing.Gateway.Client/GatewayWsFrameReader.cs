@@ -105,6 +105,12 @@ public static class GatewayInboundParser
                     PermissionAck = frame.Payload.Value.Deserialize<GatewayPermissionRespondResult>(GatewayWsFrameSerializer.JsonOptions)
                 };
 
+            case GatewayWsFrameType.ChannelOutbound:
+                return inbound with
+                {
+                    ChannelOutbound = frame.Payload.Value.Deserialize<GatewayChannelOutboundPayload>(GatewayWsFrameSerializer.JsonOptions)
+                };
+
             default:
                 return inbound;
         }

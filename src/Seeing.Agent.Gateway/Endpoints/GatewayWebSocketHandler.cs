@@ -148,10 +148,34 @@ public sealed class GatewayWebSocketHandler
                 await HandlePermissionRespondAsync(connection, frame, cancellationToken);
                 break;
 
+            case GatewayWsFrameType.ChannelRegister:
+                await HandleChannelRegisterAsync(connection, frame, cancellationToken);
+                break;
+
             default:
                 await SendErrorAsync(connection, $"Unsupported frame type: {frame.Type}", "unsupported_type");
                 break;
         }
+    }
+
+    private Task HandleChannelRegisterAsync(
+        GatewayWsConnection connection,
+        GatewayWsFrame frame,
+        CancellationToken cancellationToken)
+    {
+        if (frame.Payload == null)
+            return SendErrorAsync(connection, "channelRegister frame requires payload", "invalid_payload");
+
+        var payload = frame.Payload.Value.Deserialize<GatewayChannelRegisterPayload>(GatewayWsFrameSerializer.JsonOptions);
+        if (payload == null || string.IsNullOrWhiteSpace(payload.Channel))
+            return SendErrorAsync(connection, "channel is required", "invalid_payload");
+
+        _connectionManager.RegisterChannel(connection.ConnectionId, payload.Channel);
+        _logger.LogInformation(
+            "Channel registered: {Channel} connection={ConnectionId}",
+            payload.Channel,
+            connection.ConnectionId);
+        return Task.CompletedTask;
     }
 
     private async Task HandleSubmitAsync(

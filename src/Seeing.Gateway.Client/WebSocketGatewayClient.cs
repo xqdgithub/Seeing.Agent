@@ -25,6 +25,9 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
     private readonly ConcurrentDictionary<string, TaskCompletionSource<GatewaySubmitResult>> _submitAckWaiters = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<GatewayCancelAckPayload>> _cancelAckWaiters = new();
 
+    /// <summary>Server 主动下发的 Channel 出站（不进入 ReceiveAsync 队列）</summary>
+    public event Func<GatewayChannelOutboundPayload, CancellationToken, Task>? OnChannelOutbound;
+
     public WebSocketGatewayClient(IOptions<GatewayClientOptions> options)
     {
         _options = options.Value;
@@ -43,6 +46,16 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
 
         await _webSocket.ConnectAsync(wsUri, cancellationToken).ConfigureAwait(false);
         _receiveTask = ReceiveLoopAsync(_receiveCts.Token);
+    }
+
+    /// <summary>向 Gateway 声明本连接负责的 channel（定时出站路由用）</summary>
+    public async Task RegisterChannelAsync(string channelId, CancellationToken cancellationToken = default)
+    {
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+        var frame = GatewayWsFrameSerializer.Create(
+            GatewayWsFrameType.ChannelRegister,
+            payload: new GatewayChannelRegisterPayload { Channel = channelId });
+        await SendFrameAsync(frame, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<GatewaySubmitResult> SubmitAsync(GatewayRequest request, CancellationToken cancellationToken = default)
@@ -295,6 +308,26 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
                     || TryCompleteCancelAckWaiter(inbound)
                     || TryCompletePermissionAckWaiter(inbound))
                     continue;
+
+                if (inbound.Type == GatewayWsFrameType.ChannelOutbound && inbound.ChannelOutbound != null)
+                {
+                    var handler = OnChannelOutbound;
+                    if (handler != null)
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await handler(inbound.ChannelOutbound, cancellationToken).ConfigureAwait(false);
+                            }
+                            catch
+                            {
+                                // Channel outbound handler failures must not kill receive loop
+                            }
+                        }, CancellationToken.None);
+                    }
+                    continue;
+                }
 
                 _inboundQueue.Enqueue(inbound);
                 _inboundSignal.Release();

@@ -9,14 +9,14 @@ namespace Seeing.Session.Management
     public class SessionForker
     {
         private readonly ILogger<SessionForker> _logger;
-        private readonly SessionManager _sessionManager;
+        private readonly ISessionManager _sessionManager;
 
         /// <summary>
         /// 创建 SessionForker 实例
         /// </summary>
         /// <param name="logger">日志器</param>
         /// <param name="sessionManager">Session 管理器</param>
-        public SessionForker(ILogger<SessionForker> logger, SessionManager sessionManager)
+        public SessionForker(ILogger<SessionForker> logger, ISessionManager sessionManager)
         {
             _logger = logger;
             _sessionManager = sessionManager;

@@ -11,7 +11,6 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.Gateway.Permission;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 
 namespace Seeing.Agent.Gateway.Core;
 
@@ -144,7 +143,7 @@ public sealed class GatewayOrchestratorV2
         [EnumeratorCancellation] CancellationToken cancellationToken,
         ChatRunState runState)
     {
-        var sessionManager = _services.GetRequiredService<SessionManager>();
+        var sessionManager = _services.GetRequiredService<ISessionManager>();
 
         var outputChannel = Channel.CreateUnbounded<GatewayEvent>(new UnboundedChannelOptions
         {
@@ -190,7 +189,7 @@ public sealed class GatewayOrchestratorV2
         string sessionId,
         string executionId,
         ChatRunState runState,
-        SessionManager sessionManager,
+        ISessionManager sessionManager,
         ChannelWriter<GatewayEvent> outputWriter,
         CancellationToken cancellationToken)
     {
@@ -321,7 +320,7 @@ public sealed class GatewayOrchestratorV2
         if (runState.Session != null)
         {
             runState.Session.Messages.Add(SessionMessage.SystemMessage("⚠️ 执行已取消"));
-            await _services.GetRequiredService<SessionManager>().SaveAsync(sessionId);
+            await _services.GetRequiredService<ISessionManager>().SaveAsync(sessionId);
         }
 
         return new GatewayEvent
@@ -338,7 +337,7 @@ public sealed class GatewayOrchestratorV2
         if (runState.Session != null)
         {
             runState.Session.Messages.Add(SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}"));
-            await _services.GetRequiredService<SessionManager>().SaveAsync(sessionId);
+            await _services.GetRequiredService<ISessionManager>().SaveAsync(sessionId);
         }
 
         return new GatewayEvent

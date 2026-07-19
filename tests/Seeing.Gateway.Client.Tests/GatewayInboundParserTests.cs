@@ -42,4 +42,26 @@ public class GatewayInboundParserTests
         inbound.Error!.Message.Should().Be("bad frame");
         inbound.Error.Code.Should().Be("invalid_json");
     }
+
+    [Fact]
+    public void Parse_ChannelOutboundFrame_ShouldExtractPayload()
+    {
+        var frame = GatewayWsFrameSerializer.Create(
+            GatewayWsFrameType.ChannelOutbound,
+            "out_1",
+            new GatewayChannelOutboundPayload
+            {
+                Channel = "qq",
+                SessionId = "qq_group_ABC",
+                Text = "hello",
+                Source = "scheduler.cron"
+            });
+
+        var inbound = GatewayInboundParser.Parse(frame);
+
+        inbound.Type.Should().Be(GatewayWsFrameType.ChannelOutbound);
+        inbound.ChannelOutbound!.Channel.Should().Be("qq");
+        inbound.ChannelOutbound.SessionId.Should().Be("qq_group_ABC");
+        inbound.ChannelOutbound.Text.Should().Be("hello");
+    }
 }

@@ -46,6 +46,8 @@ public record GatewayInbound
     public GatewayPermissionRespondResult? PermissionAck { get; init; }
 
     public GatewayConnectedPayload? Connected { get; init; }
+
+    public GatewayChannelOutboundPayload? ChannelOutbound { get; init; }
 }
 
 /// <summary>

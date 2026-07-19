@@ -11,7 +11,7 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Endpoints;
 using Seeing.Agent.Gateway.Permission;
-using Seeing.Session.Management;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Gateway.Hosting;
 
@@ -64,7 +64,7 @@ public sealed class GatewayHost : IAsyncDisposable
         var executionQueue = new SessionExecutionQueue();
         var connectionManager = _rootServices.GetService<GatewayConnectionManager>()
             ?? new GatewayConnectionManager();
-        var sessionManager = _rootServices.GetRequiredService<SessionManager>();
+        var sessionManager = _rootServices.GetRequiredService<ISessionManager>();
         var selectionResolver = _rootServices.GetRequiredService<AgentSelectionResolver>();
         var sessionResolver = new GatewaySessionResolver(sessionManager, selectionResolver);
         var agentRegistry = _rootServices.GetRequiredService<IAgentRegistry>();

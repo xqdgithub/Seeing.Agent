@@ -10,11 +10,9 @@ using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
-using Seeing.Session;
 using Seeing.Session.Compression;
 using Seeing.Session.Compression.Strategies;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 using Seeing.Agent.TokenBudget.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -39,9 +37,9 @@ builder.Services.AddGatewayChannelRegistry();
 // === Memory 服务（混合检索、图谱、成本控制）===
 builder.Services.AddMemoryServices();
 
-// === Session 管理服务（统一使用 Seeing.Session）===
+// === Session 管理：由 AddSeeingAgent 统一注册 ISessionStore + SessionManager + ISessionManager ===
+// 勿再调用 AddSessionManager()，避免接口/具体类型双实例分裂
 builder.Services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
-builder.Services.AddSessionManager();  // 注册 ISessionManager（内部创建 ISessionStore）
 builder.Services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 
 // === WebUI 服务 ===

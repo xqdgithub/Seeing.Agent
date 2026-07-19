@@ -1,17 +1,16 @@
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 
 namespace Seeing.Agent.Gateway.Core;
 
 /// <summary>Gateway 会话管理（重置消息历史等）</summary>
 public sealed class GatewaySessionService
 {
-    private readonly SessionManager _sessionManager;
+    private readonly ISessionManager _sessionManager;
     private readonly IAgentRegistry _agentRegistry;
 
-    public GatewaySessionService(SessionManager sessionManager, IAgentRegistry agentRegistry)
+    public GatewaySessionService(ISessionManager sessionManager, IAgentRegistry agentRegistry)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;

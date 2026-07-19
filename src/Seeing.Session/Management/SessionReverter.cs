@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Session.Core;
 
 namespace Seeing.Session.Management
 {
@@ -8,9 +9,9 @@ namespace Seeing.Session.Management
     public class SessionReverter
     {
         private readonly ILogger<SessionReverter> _logger;
-        private readonly SessionManager _sessionManager;
+        private readonly ISessionManager _sessionManager;
 
-        public SessionReverter(ILogger<SessionReverter> logger, SessionManager sessionManager)
+        public SessionReverter(ILogger<SessionReverter> logger, ISessionManager sessionManager)
         {
             _logger = logger;
             _sessionManager = sessionManager;

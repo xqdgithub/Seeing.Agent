@@ -83,7 +83,9 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _qqWs.OnDispatch += HandleDispatchAsync;
+        _gatewayClient.OnChannelOutbound += HandleChannelOutboundAsync;
         await _gatewayClient.ConnectAsync(_cts.Token).ConfigureAwait(false);
+        await _gatewayClient.RegisterChannelAsync(ChannelId, _cts.Token).ConfigureAwait(false);
         await _qqWs.StartAsync(_cts.Token).ConfigureAwait(false);
         var snap = _health.GetSnapshot();
         _logger.LogInformation(
@@ -95,6 +97,7 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         _qqWs.OnDispatch -= HandleDispatchAsync;
+        _gatewayClient.OnChannelOutbound -= HandleChannelOutboundAsync;
         _cts?.Cancel();
         await _qqWs.StopAsync().ConfigureAwait(false);
         await _gatewayClient.DisposeAsync().ConfigureAwait(false);
@@ -103,6 +106,44 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
     }
 
     public async ValueTask DisposeAsync() => await StopAsync().ConfigureAwait(false);
+
+    private async Task HandleChannelOutboundAsync(
+        Seeing.Gateway.Protocol.GatewayChannelOutboundPayload payload,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(payload.Channel, ChannelId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (string.IsNullOrWhiteSpace(payload.Text))
+        {
+            _logger.LogWarning("QQ channel outbound ignored: empty text session={SessionId}", payload.SessionId);
+            return;
+        }
+
+        if (!QQSessionTargetParser.TryParse(payload.SessionId, out var target) || target == null)
+        {
+            _logger.LogError(
+                "QQ channel outbound: cannot parse sessionId={SessionId}",
+                payload.SessionId);
+            return;
+        }
+
+        try
+        {
+            _logger.LogInformation(
+                "QQ channel outbound → {MessageType} session={SessionId} len={Length} source={Source}",
+                target.MessageType,
+                payload.SessionId,
+                payload.Text.Length,
+                payload.Source);
+            await _qqHttp.SendTextAsync(target, payload.Text, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "QQ channel outbound send failed session={SessionId}", payload.SessionId);
+        }
+    }
 
     private async Task HandleDispatchAsync(string eventType, JsonElement d, CancellationToken cancellationToken)
     {
