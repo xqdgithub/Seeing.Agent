@@ -153,15 +153,16 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(_options.AckMessage))
+            // 非命令：先回状态，再 Submit（异步，不阻塞主路径）
+            var ackText = _options.EffectiveAckMessage;
+            if (ackText != null)
             {
                 var ackTarget = parsed;
-                var ackText = _options.AckMessage!;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await _qqHttp.SendTextAsync(ackTarget, ackText, cancellationToken: CancellationToken.None)
+                        await _qqHttp.SendStatusAsync(ackTarget, ackText, CancellationToken.None)
                             .ConfigureAwait(false);
                     }
                     catch (Exception ex)

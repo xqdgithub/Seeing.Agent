@@ -37,8 +37,12 @@ public sealed class QQOptions
     [Display(Name = "最大重连次数", GroupName = "连接", Description = "-1 表示无限重连")]
     public int MaxReconnectAttempts { get; set; } = -1;
 
-    [Display(Name = "收到消息提示", GroupName = "消息")]
-    public string? AckMessage { get; set; }
+    [Display(Name = "收到消息提示", GroupName = "消息", Description = "非命令消息先回此提示，让用户知道已收到；置空则关闭")]
+    public string? AckMessage { get; set; } = "收到，正在处理…";
+
+    /// <summary>有效 Ack 文案；空白表示关闭。</summary>
+    public string? EffectiveAckMessage =>
+        string.IsNullOrWhiteSpace(AckMessage) ? null : AckMessage.Trim();
 
     [Display(Name = "媒体缓存目录", GroupName = "媒体")]
     public string? MediaCacheDirectory { get; set; }

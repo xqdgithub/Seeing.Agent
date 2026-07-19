@@ -104,13 +104,23 @@ public sealed class QQHttpApiClient
         CancellationToken cancellationToken = default) =>
         SendTextWithFallbackAsync(target, content, keyboard, cancellationToken);
 
+    /// <summary>
+    /// 发送状态提示（强制明文，不走 Markdown），用于「已收到」等即时反馈。
+    /// </summary>
+    public Task<bool> SendStatusAsync(
+        ParsedQQMessage target,
+        string content,
+        CancellationToken cancellationToken = default) =>
+        SendTextWithFallbackAsync(target, content, keyboard: null, cancellationToken, forcePlaintext: true);
+
     public async Task<bool> SendTextWithFallbackAsync(
         ParsedQQMessage target,
         string content,
         object? keyboard = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool forcePlaintext = false)
     {
-        var useMarkdown = _options.MarkdownEnabled;
+        var useMarkdown = _options.MarkdownEnabled && !forcePlaintext;
         if (!useMarkdown)
         {
             var (sanitized, hadUrl) = QQTextSanitizer.Sanitize(content);
