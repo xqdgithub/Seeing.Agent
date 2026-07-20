@@ -1,0 +1,55 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+<div class="system-reminder @(_showRaw ? "is-raw" : null)"
+     data-source="@(Message.ReminderSource ?? "")"
+     data-kind="@(Message.ReminderKind ?? "")">
+    <div class="system-reminder__header">
+        <div class="system-reminder__identity">
+            <span class="system-reminder__icon" title="系统提醒">
+                <Icon Type="@IconType.Outline.Bell" Theme="IconThemeType.Outline" />
+            </span>
+            <span class="system-reminder__label">系统提醒</span>
+            <span class="system-reminder__tags">
+                @if (!string.IsNullOrEmpty(Message.ReminderSource))
+                {
+                    <span class="system-reminder__tag system-reminder__tag--source">@Message.ReminderSource</span>
+                }
+                @if (!string.IsNullOrEmpty(Message.ReminderKind))
+                {
+                    <span class="system-reminder__tag system-reminder__tag--kind">@Message.ReminderKind</span>
+                }
+            </span>
+        </div>
+        <button type="button"
+                class="system-reminder__toggle"
+                onclick="@Toggle"
+                title="@(_showRaw ? "显示任务摘要" : "显示发给模型的原文")">
+            <Icon Type="@(_showRaw ? IconType.Outline.EyeInvisible : IconType.Outline.Code)"
+                  Theme="IconThemeType.Outline" />
+            <span>@(_showRaw ? "摘要" : "原文")</span>
+        </button>
+    </div>
+
+    <div class="system-reminder__body">
+        @if (_showRaw)
+        {
+            <pre class="system-reminder__raw">@Message.ReminderRaw</pre>
+        }
+        else if (string.IsNullOrWhiteSpace(Message.ReminderTaskBody))
+        {
+            <div class="system-reminder__empty">（无任务正文）</div>
+        }
+        else
+        {
+            <div class="system-reminder__task">@Message.ReminderTaskBody</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public MessageViewModel Message { get; set; } = default!;
+    private bool _showRaw;
+
+    private void Toggle() => _showRaw = !_showRaw;
+}

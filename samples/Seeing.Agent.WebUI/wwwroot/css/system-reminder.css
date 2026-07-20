@@ -1,0 +1,181 @@
+/**
+ * System Reminder 消息气泡
+ * 与用户气泡（蓝）/ 助手气泡（绿）区分：暖色左边轨 + 全宽卡片
+ */
+
+.system-reminder {
+    /* 关键：必须占满列表宽度，否则 flex 子项 flex:1 会 shrink-to-fit 成只剩色条 */
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    align-self: stretch;
+    margin: var(--space-3, 12px) 0;
+    padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-3, 12px) calc(var(--space-4, 16px) + 2px);
+    border: 1px solid var(--color-system-border, #ffd591);
+    border-left: 4px solid #fa8c16;
+    border-radius: var(--radius-md, 8px);
+    background: var(--color-system-bg, #fff7e6);
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.03));
+}
+
+.system-reminder__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3, 12px);
+    margin-bottom: var(--space-2, 8px);
+}
+
+.system-reminder__identity {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+    min-width: 0;
+}
+
+.system-reminder__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(250, 140, 22, 0.12);
+    color: #d46b08;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.system-reminder__label {
+    font-size: var(--font-size-sm, 14px);
+    font-weight: 600;
+    color: #ad6800;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.system-reminder__tags {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 4px);
+    flex-wrap: wrap;
+}
+
+.system-reminder__tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: var(--font-size-xs, 12px);
+    line-height: 18px;
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    border: 1px solid transparent;
+}
+
+.system-reminder__tag--source {
+    color: #d46b08;
+    background: rgba(250, 140, 22, 0.1);
+    border-color: rgba(250, 140, 22, 0.22);
+}
+
+.system-reminder__tag--kind {
+    color: var(--color-text-secondary, rgba(0, 0, 0, 0.65));
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+.system-reminder__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 2px 10px;
+    border: 1px solid rgba(212, 107, 8, 0.28);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.75);
+    color: #d46b08;
+    font-size: var(--font-size-xs, 12px);
+    line-height: 20px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.system-reminder__toggle:hover {
+    background: #fff;
+    border-color: #fa8c16;
+    color: #ad6800;
+}
+
+.system-reminder__body {
+    color: var(--color-text, rgba(0, 0, 0, 0.88));
+    font-size: var(--font-size-sm, 14px);
+    line-height: 1.6;
+}
+
+.system-reminder__task {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.system-reminder__empty {
+    color: var(--color-text-tertiary, rgba(0, 0, 0, 0.45));
+    font-style: italic;
+}
+
+.system-reminder__raw {
+    margin: 0;
+    padding: var(--space-3, 12px);
+    border-radius: var(--radius-sm, 4px);
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    color: var(--color-text-secondary, rgba(0, 0, 0, 0.65));
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    font-size: var(--font-size-xs, 12px);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 320px;
+    overflow: auto;
+}
+
+.system-reminder[data-source="task"] {
+    border-left-color: #d48806;
+}
+
+.system-reminder[data-kind="failed"] {
+    border-color: #ffa39e;
+    border-left-color: #ff4d4f;
+    background: #fff2f0;
+}
+
+.system-reminder[data-kind="failed"] .system-reminder__label,
+.system-reminder[data-kind="failed"] .system-reminder__icon {
+    color: #cf1322;
+}
+
+.system-reminder[data-kind="failed"] .system-reminder__icon {
+    background: rgba(255, 77, 79, 0.12);
+}
+
+.system-reminder[data-kind="failed"] .system-reminder__toggle {
+    color: #cf1322;
+    border-color: rgba(207, 19, 34, 0.28);
+}
+
+.system-reminder[data-kind="cancelled"] {
+    border-color: #d9d9d9;
+    border-left-color: #8c8c8c;
+    background: #fafafa;
+}
+
+.system-reminder[data-kind="cancelled"] .system-reminder__label {
+    color: rgba(0, 0, 0, 0.45);
+}
+
+.system-reminder.is-raw .system-reminder__toggle {
+    background: #fff7e6;
+    border-color: #fa8c16;
+}

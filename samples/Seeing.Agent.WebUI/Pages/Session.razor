@@ -19,6 +19,7 @@
 @using Seeing.Agent.App.Models
 @using Seeing.Agent.App.Execution
 @using Seeing.Agent.Core.Events
+@using Seeing.Agent.Core.Reminders
 @inject SessionState SessionState
 @inject AppState AppState
 @inject EventStreamHandler EventStreamHandler
@@ -1221,6 +1222,16 @@
 
         // 读取压缩摘要标记
         viewModel.IsCompactionSummary = msg.Metadata?.TryGetValue("is_compaction_summary", out _) == true;
+
+        // 系统提醒：以 Content 解析为准；Metadata 损坏时不强制标记
+        if (SystemReminderRenderer.TryParse(msg.Content ?? "", out var reminderParts))
+        {
+            viewModel.IsSystemReminder = true;
+            viewModel.ReminderSource = reminderParts.Source;
+            viewModel.ReminderKind = reminderParts.Kind;
+            viewModel.ReminderTaskBody = reminderParts.Task;
+            viewModel.ReminderRaw = reminderParts.Raw;
+        }
 
         return viewModel;
     }

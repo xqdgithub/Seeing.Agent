@@ -77,6 +77,16 @@ public class MessageViewModel
     public bool IsCompactionSummary { get; set; }
 
     /// <summary>
+    /// 是否为系统提醒（Job / Task 回调等注入的 user 消息）
+    /// </summary>
+    public bool IsSystemReminder { get; set; }
+
+    public string? ReminderSource { get; set; }
+    public string? ReminderKind { get; set; }
+    public string ReminderTaskBody { get; set; } = "";
+    public string ReminderRaw { get; set; } = "";
+
+    /// <summary>
     /// 是否包含附件
     /// </summary>
     public bool HasAttachments => Parts != null && Parts.Count > 0;

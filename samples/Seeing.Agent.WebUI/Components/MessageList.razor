@@ -24,9 +24,16 @@
                 <!-- 用户消息：传统左右布局 -->
                 @if (message.Role == "user")
                 {
-                    <ChatMessageItem @key="message.Id"
-                                     Message="@message" 
-                                     OnToolClick="@OnToolClickHandler" />
+                    @if (message.IsSystemReminder)
+                    {
+                        <SystemReminderMessageItem @key="message.Id" Message="@message" />
+                    }
+                    else
+                    {
+                        <ChatMessageItem @key="message.Id"
+                                         Message="@message"
+                                         OnToolClick="@OnToolClickHandler" />
+                    }
                 }
                 <!-- 助手消息：按 Loop 分组显示 -->
                 else if (message.Role == "assistant")

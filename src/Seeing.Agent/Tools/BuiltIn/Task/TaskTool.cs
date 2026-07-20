@@ -9,6 +9,7 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Core.Session;
 using Seeing.Agent.Llm;
@@ -200,10 +201,16 @@ public class TaskTool : ToolBase
                         {
                             var text = await RunAgentAsync(
                                 agentName, childId, userPrompt, context, proj, ct);
+                            var completedBody =
+                                $"Background task completed: {desc}\ntask_id: {childId}\nstate: completed\n\n<task_result>\n{text}\n</task_result>";
                             await _loopScheduler.InjectSyntheticAsync(
                                 parentSessionId,
-                                $"Background task completed: {desc}\ntask_id: {childId}\nstate: completed\n\n<task_result>\n{text}\n</task_result>",
-                                new Dictionary<string, string> { ["task_id"] = childId, ["state"] = "completed" },
+                                SystemReminderRenderer.Wrap(
+                                    completedBody,
+                                    SystemReminder.Sources.Task,
+                                    SystemReminder.Kinds.Completed,
+                                    taskId: childId),
+                                BuildReminderMeta(childId, "completed", SystemReminder.Kinds.Completed),
                                 ct);
                             await EmitParentAsync(context, _projector.CreateCompleted(proj, text));
                             await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, ct);
@@ -211,10 +218,16 @@ public class TaskTool : ToolBase
                         }
                         catch (OperationCanceledException)
                         {
+                            var cancelledBody =
+                                $"Background task cancelled: {desc}\ntask_id: {childId}\nstate: cancelled";
                             await _loopScheduler.InjectSyntheticAsync(
                                 parentSessionId,
-                                $"Background task cancelled: {desc}\ntask_id: {childId}\nstate: cancelled",
-                                new Dictionary<string, string> { ["task_id"] = childId, ["state"] = "cancelled" },
+                                SystemReminderRenderer.Wrap(
+                                    cancelledBody,
+                                    SystemReminder.Sources.Task,
+                                    SystemReminder.Kinds.Cancelled,
+                                    taskId: childId),
+                                BuildReminderMeta(childId, "cancelled", SystemReminder.Kinds.Cancelled),
                                 CancellationToken.None);
                             await EmitParentAsync(context,
                                 _projector.CreateFailed(proj, "子任务被取消", cancelled: true));
@@ -223,10 +236,16 @@ public class TaskTool : ToolBase
                         }
                         catch (Exception ex)
                         {
+                            var failedBody =
+                                $"Background task failed: {desc}\ntask_id: {childId}\nstate: error\n\n<task_error>\n{ex.Message}\n</task_error>";
                             await _loopScheduler.InjectSyntheticAsync(
                                 parentSessionId,
-                                $"Background task failed: {desc}\ntask_id: {childId}\nstate: error\n\n<task_error>\n{ex.Message}\n</task_error>",
-                                new Dictionary<string, string> { ["task_id"] = childId, ["state"] = "error" },
+                                SystemReminderRenderer.Wrap(
+                                    failedBody,
+                                    SystemReminder.Sources.Task,
+                                    SystemReminder.Kinds.Failed,
+                                    taskId: childId),
+                                BuildReminderMeta(childId, "error", SystemReminder.Kinds.Failed),
                                 CancellationToken.None);
                             await EmitParentAsync(context,
                                 _projector.CreateFailed(proj, ex.Message));
@@ -407,6 +426,18 @@ public class TaskTool : ToolBase
             _loopScheduler.SetLoopBusy(sessionId, false);
         }
     }
+
+    private static Dictionary<string, string> BuildReminderMeta(
+        string childId, string state, string reminderKind) =>
+        new()
+        {
+            ["task_id"] = childId,
+            ["state"] = state,
+            [SystemReminder.MetadataKeys.Reminder] = "true",
+            [SystemReminder.MetadataKeys.Source] = SystemReminder.Sources.Task,
+            [SystemReminder.MetadataKeys.Kind] = reminderKind,
+            [SystemReminder.MetadataKeys.TaskId] = childId
+        };
 
     private static string BuildOutput(string taskId, string state, string body) =>
         $"task_id: {taskId}\nstate: {state}\n\n<task_result>\n{body}\n</task_result>";

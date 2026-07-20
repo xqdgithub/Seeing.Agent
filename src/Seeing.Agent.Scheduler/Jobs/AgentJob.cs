@@ -7,6 +7,7 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
@@ -142,7 +143,8 @@ public class AgentJob : IJob
             // 优先使用 DispatchSessionId，否则使用执行上下文的 sessionId
             if (result.Success && !string.IsNullOrEmpty(result.Output))
             {
-                await DispatchAsync(data, result.Output, sessionId, userInput, timeoutCts.Token);
+                var wrappedInput = WrapJobUserInput(userInput);
+                await DispatchAsync(data, result.Output, sessionId, wrappedInput, timeoutCts.Token);
             }
 
             context.Result = result;
@@ -304,7 +306,14 @@ public class AgentJob : IJob
             IsBackground = true,
             History = new List<ChatMessage>
             {
-                new() { Role = ChatRole.User, Content = prompt }
+                new()
+                {
+                    Role = ChatRole.User,
+                    Content = SystemReminderRenderer.Wrap(
+                        prompt,
+                        SystemReminder.Sources.Job,
+                        SystemReminder.Kinds.Cron)
+                }
             },
             Metadata = new Dictionary<string, object>
             {
@@ -342,6 +351,18 @@ public class AgentJob : IJob
             Prompt = prompt,
             DispatchSessionId = dispatchSessionId
         };
+    }
+
+    private static string? WrapJobUserInput(string? userInput)
+    {
+        if (string.IsNullOrEmpty(userInput))
+            return userInput;
+        if (SystemReminderRenderer.TryParse(userInput, out _))
+            return userInput;
+        return SystemReminderRenderer.Wrap(
+            userInput,
+            SystemReminder.Sources.Job,
+            SystemReminder.Kinds.Cron);
     }
 
     private async Task DispatchAsync(JobDataMap data, string content, string defaultSessionId, string? userInput, CancellationToken ct)

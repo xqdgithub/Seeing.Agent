@@ -7,6 +7,7 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Engine;
@@ -165,12 +166,18 @@ public class HeartbeatJob : IJob
             if (result.Success && !string.IsNullOrEmpty(result.Output) &&
                 !string.Equals(target, HeartbeatTargets.Main, StringComparison.OrdinalIgnoreCase))
             {
+                var wrappedQuery = SystemReminderRenderer.TryParse(queryText, out _)
+                    ? queryText
+                    : SystemReminderRenderer.Wrap(
+                        queryText,
+                        SystemReminder.Sources.Job,
+                        SystemReminder.Kinds.Heartbeat);
                 await _dispatcher.DispatchAsync(new DispatchRequest
                 {
                     Source = ScheduleSources.Heartbeat,
                     TaskType = ScheduleTaskTypes.Agent,
                     Content = result.Output,
-                    UserInput = queryText,  // 保存用户查询作为输入
+                    UserInput = wrappedQuery,
                     SessionId = sessionId
                 }, timeoutCts.Token);
             }
@@ -291,7 +298,14 @@ public class HeartbeatJob : IJob
             IsBackground = true,
             History = new List<ChatMessage>
             {
-                new() { Role = ChatRole.User, Content = prompt }
+                new()
+                {
+                    Role = ChatRole.User,
+                    Content = SystemReminderRenderer.Wrap(
+                        prompt,
+                        SystemReminder.Sources.Job,
+                        SystemReminder.Kinds.Heartbeat)
+                }
             },
             Metadata = new Dictionary<string, object>
             {

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Session.Core;
@@ -50,10 +51,9 @@ public sealed class SessionScheduleDispatcher : IScheduledJobDispatcher
             await _sessionManager.EnsureSessionAsync(request.SessionId)
                 .ConfigureAwait(false);
 
-            // 先保存用户输入（如果有）
             if (!string.IsNullOrEmpty(request.UserInput))
             {
-                var userMessage = SessionMessage.UserMessage(request.UserInput);
+                var userMessage = SystemReminderRenderer.ToUserMessage(request.UserInput);
                 await _sessionManager.AddMessageAsync(request.SessionId, userMessage, ct).ConfigureAwait(false);
             }
 

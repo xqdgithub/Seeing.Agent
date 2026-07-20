@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
@@ -45,7 +46,7 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
 
             if (!string.IsNullOrEmpty(request.UserInput))
             {
-                var userMessage = SessionMessage.UserMessage(request.UserInput);
+                var userMessage = SystemReminderRenderer.ToUserMessage(request.UserInput);
                 await _sessionManager.AddMessageAsync(request.SessionId, userMessage, ct).ConfigureAwait(false);
             }
 
