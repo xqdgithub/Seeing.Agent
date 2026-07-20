@@ -35,6 +35,7 @@ using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn.FileSystem;
 using Seeing.Agent.Tools.BuiltIn.Shell;
 using Seeing.Agent.Tools.BuiltIn.SubTask;
+using Seeing.Agent.Tools.BuiltIn.Time;
 using Seeing.Agent.Tools.BuiltIn.Todo;
 using Seeing.Agent.Tools.BuiltIn.Web;
 using Seeing.Session.Core;
@@ -446,6 +447,9 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<IBackgroundTaskManager>(),
                 sp.GetRequiredService<ISessionManager>()));
             services.AddSingleton<ITool, TodoWriteTool>();
+
+            // 时间工具
+            services.AddSingleton<ITool, CurrentTimeTool>();
 
             // 工具调用器（自动注册所有 ITool）
             services.AddSingleton<ToolInvoker>(sp =>
