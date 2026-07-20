@@ -65,4 +65,7 @@ public static class JobDataKeys
     
     /// <summary>活跃时段（JSON）</summary>
     public const string ActiveHours = "activeHours";
+
+    /// <summary>调度时区 ID（墙钟展示用）</summary>
+    public const string ScheduleTimezone = "scheduleTimezone";
 }

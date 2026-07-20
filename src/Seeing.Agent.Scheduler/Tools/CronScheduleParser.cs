@@ -18,6 +18,7 @@ internal static class CronScheduleParser
         示例：
         - cron: {"type":"cron","cron":"0 9 * * *","timezone":"Asia/Shanghai"}
         - interval: {"type":"interval","every":"6h"}
+        - interval+windows: {"type":"interval","every":"40m","timezone":"Asia/Shanghai","windows":[{"start":"09:00","end":"23:00"}]}
         - once: {"type":"once","runAt":"2026-07-20T10:00:00"}
         """;
 
@@ -75,6 +76,8 @@ internal static class CronScheduleParser
                     var normalized = ScheduleExpressionParser.NormalizeCron(schedule.Cron);
                     _ = new CronExpression(normalized);
                     schedule.Type = ScheduleTypes.Cron;
+                    if (!ScheduleWindowsValidator.ValidateForScheduleType(ScheduleTypes.Cron, schedule.Windows, out error))
+                        return false;
                     break;
 
                 case ScheduleTypes.Interval:
@@ -86,6 +89,8 @@ internal static class CronScheduleParser
 
                     _ = ScheduleExpressionParser.ParseInterval(schedule.Every);
                     schedule.Type = ScheduleTypes.Interval;
+                    if (!ScheduleWindowsValidator.ValidateForScheduleType(ScheduleTypes.Interval, schedule.Windows, out error))
+                        return false;
                     break;
 
                 case ScheduleTypes.Once:
@@ -96,6 +101,8 @@ internal static class CronScheduleParser
                     }
 
                     schedule.Type = ScheduleTypes.Once;
+                    if (!ScheduleWindowsValidator.ValidateForScheduleType(ScheduleTypes.Once, schedule.Windows, out error))
+                        return false;
                     break;
 
                 default:

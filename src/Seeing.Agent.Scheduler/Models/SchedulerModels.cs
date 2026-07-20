@@ -88,7 +88,20 @@ public class ScheduleSpec
     /// <summary>一次性执行时间（本地时间）</summary>
     public DateTime? RunAt { get; set; }
 
+    /// <summary>仅 interval 有效。空/null = 全天。</summary>
+    public List<ScheduleWindow>? Windows { get; set; }
+
     public string Timezone { get; set; } = TimeZoneInfo.Local.Id;
+}
+
+/// <summary>间隔调度的本地墙钟生效时段</summary>
+public class ScheduleWindow
+{
+    /// <summary>本地墙钟开始；缺省 00:00。格式 HH:mm 或 HH:mm:ss</summary>
+    public string? Start { get; set; }
+
+    /// <summary>本地墙钟结束；缺省 23:59:59。格式 HH:mm 或 HH:mm:ss</summary>
+    public string? End { get; set; }
 }
 
 /// <summary>投递目标</summary>

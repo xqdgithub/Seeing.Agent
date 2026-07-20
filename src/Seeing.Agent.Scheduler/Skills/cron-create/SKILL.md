@@ -32,7 +32,14 @@ Use tool `cron_create` to create or replace a scheduled job.
 
 - cron: `{"type":"cron","cron":"0 9 * * *","timezone":"Asia/Shanghai"}`
 - interval: `{"type":"interval","every":"6h"}`
+- interval + windows: `{"type":"interval","every":"40m","timezone":"Asia/Shanghai","windows":[{"start":"09:00","end":"23:00"}]}`
 - once: `{"type":"once","runAt":"2026-07-20T10:00:00"}`
+
+`windows`（仅 `interval`）：
+- 可选；空/省略 = 全天
+- `start` 缺省 `00:00`，`end` 缺省 `23:59:59`
+- 间隔从每个时段的起点对齐；允许跨午夜；禁止交叠（端点相触允许）
+- 所有时间均为 `timezone` 墙钟本地时间（不要用 UTC）
 
 ## Examples
 
@@ -54,6 +61,22 @@ Agent job:
   "taskType": "agent",
   "prompt": "帮我查询未读邮件.",
   "schedule": { "type": "interval", "every": "6h" }
+}
+```
+
+Interval within hours:
+
+```json
+{
+  "taskType": "text",
+  "name": "daytime-ping",
+  "prompt": "白天巡检提醒",
+  "schedule": {
+    "type": "interval",
+    "every": "40m",
+    "timezone": "Asia/Shanghai",
+    "windows": [{ "start": "09:00", "end": "23:00" }]
+  }
 }
 ```
 

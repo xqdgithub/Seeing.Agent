@@ -22,6 +22,7 @@ public sealed class CronCreateTool : ToolBase
 
     public override string Description =>
         "创建或替换定时任务。必填：taskType（text|agent）、prompt、schedule（cron/interval/once）；可选 id/name/agent。" +
+        " interval 可带 windows 生效时段（本地墙钟，空=全天，起点对齐间隔）。" +
         " text=到点投递固定文案；agent=到点运行 Agent。SessionId 自动取自当前会话。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
@@ -45,14 +46,28 @@ public sealed class CronCreateTool : ToolBase
             schedule = new
             {
                 type = "object",
-                description = "调度配置：type=cron|interval|once，配合 cron/every/runAt/timezone",
+                description = "调度配置：type=cron|interval|once；时间均为 timezone 墙钟（非 UTC）",
                 properties = new
                 {
                     type = new { type = "string", description = "cron | interval | once" },
                     cron = new { type = "string", description = "Cron 表达式（type=cron）" },
                     every = new { type = "string", description = "间隔，如 6h、30m（type=interval）" },
-                    runAt = new { type = "string", description = "一次性执行时间 ISO8601（type=once）" },
-                    timezone = new { type = "string", description = "时区 ID，默认本地" }
+                    runAt = new { type = "string", description = "一次性执行时间 ISO8601 本地墙钟（type=once）" },
+                    timezone = new { type = "string", description = "时区 ID，默认本地" },
+                    windows = new
+                    {
+                        type = "array",
+                        description = "可选生效时段（仅 interval）。空=全天。start 缺省 00:00，end 缺省 23:59:59；允许跨午夜；禁止交叠。均为 timezone 墙钟。",
+                        items = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                start = new { type = "string", description = "HH:mm 或 HH:mm:ss" },
+                                end = new { type = "string", description = "HH:mm 或 HH:mm:ss" }
+                            }
+                        }
+                    }
                 },
                 required = new[] { "type" }
             }

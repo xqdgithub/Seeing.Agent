@@ -123,14 +123,15 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             _logger.LogDebug("GetJobStatus({JobId}): trigger={T}, triggerState={S}, state={State}", 
                 jobId, primaryTrigger?.Key?.Name ?? "null", triggerState, state);
 
+            var tz = ResolveJobTimezone(jobDetail);
             return new JobStatus
             {
                 JobId = jobId,
                 JobName = jobDetail.Description ?? jobId,
                 JobGroup = jobKey.Group,
                 State = state,
-                PreviousFireTime = primaryTrigger?.GetPreviousFireTimeUtc()?.LocalDateTime,
-                NextFireTime = primaryTrigger?.GetNextFireTimeUtc()?.LocalDateTime,
+                PreviousFireTime = ToScheduleLocal(GetLatestPreviousFireUtc(triggers, jobId), tz),
+                NextFireTime = ToScheduleLocal(GetEarliestNextFireUtc(triggers, jobId), tz),
                 TriggerType = primaryTrigger?.GetType().Name,
                 CronExpression = primaryTrigger is ICronTrigger cronTrigger ? cronTrigger.CronExpressionString : null
             };
@@ -199,15 +200,15 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             ? JobState.Running 
             : DetermineJobState(primaryTrigger, triggerState);
 
-        // Quartz 返回 UTC，转为本地 DateTime
+        var tz = ResolveJobTimezone(jobDetail);
         return new JobStatus
         {
             JobId = jobKey.Name,
             JobName = jobDetail.Description ?? jobKey.Name,
             JobGroup = jobKey.Group,
             State = state,
-            PreviousFireTime = primaryTrigger?.GetPreviousFireTimeUtc()?.LocalDateTime,
-            NextFireTime = primaryTrigger?.GetNextFireTimeUtc()?.LocalDateTime,
+            PreviousFireTime = ToScheduleLocal(GetLatestPreviousFireUtc(triggers, jobKey.Name), tz),
+            NextFireTime = ToScheduleLocal(GetEarliestNextFireUtc(triggers, jobKey.Name), tz),
             TriggerType = primaryTrigger?.GetType().Name,
             CronExpression = primaryTrigger is ICronTrigger cronTrigger ? cronTrigger.CronExpressionString : null
         };
@@ -230,11 +231,62 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         // 优先匹配标准命名的主 trigger
         var primaryTrigger = triggers.FirstOrDefault(t => t.Key.Name == $"{jobId}_trigger");
         if (primaryTrigger != null) return primaryTrigger;
+
+        // 窗口 trigger：{jobId}__w*
+        var windowTrigger = triggers
+            .Where(t => t.Key.Name.StartsWith($"{jobId}__w", StringComparison.Ordinal))
+            .OrderBy(t => t.GetNextFireTimeUtc() ?? DateTimeOffset.MaxValue)
+            .FirstOrDefault();
+        if (windowTrigger != null) return windowTrigger;
         
         // 否则返回第一个非临时 trigger
         return triggers.FirstOrDefault(t => 
             !t.Key.Name.StartsWith("MT_") && 
             !t.Key.Name.StartsWith("fire_"));
+    }
+
+    private static IEnumerable<ITrigger> GetPersistentTriggers(IReadOnlyCollection<ITrigger> triggers, string jobId)
+    {
+        return triggers.Where(t =>
+            !t.Key.Name.StartsWith("MT_", StringComparison.Ordinal) &&
+            !t.Key.Name.StartsWith("fire_", StringComparison.Ordinal));
+    }
+
+    private static DateTimeOffset? GetEarliestNextFireUtc(IReadOnlyCollection<ITrigger> triggers, string jobId)
+    {
+        DateTimeOffset? best = null;
+        foreach (var fire in GetPersistentTriggers(triggers, jobId).Select(t => t.GetNextFireTimeUtc()))
+        {
+            if (!fire.HasValue) continue;
+            if (best == null || fire.Value < best.Value)
+                best = fire;
+        }
+        return best;
+    }
+
+    private static DateTimeOffset? GetLatestPreviousFireUtc(IReadOnlyCollection<ITrigger> triggers, string jobId)
+    {
+        var values = GetPersistentTriggers(triggers, jobId)
+            .Select(t => t.GetPreviousFireTimeUtc())
+            .Where(t => t.HasValue)
+            .Select(t => t!.Value)
+            .ToList();
+        return values.Count == 0 ? null : values.Max();
+    }
+
+    private static TimeZoneInfo ResolveJobTimezone(IJobDetail jobDetail)
+    {
+        var tzId = jobDetail.JobDataMap.ContainsKey(Jobs.JobDataKeys.ScheduleTimezone)
+            ? jobDetail.JobDataMap.GetString(Jobs.JobDataKeys.ScheduleTimezone)
+            : null;
+        return ScheduleExpressionParser.ResolveTimeZone(tzId);
+    }
+
+    private static DateTime? ToScheduleLocal(DateTimeOffset? utc, TimeZoneInfo tz)
+    {
+        if (utc == null) return null;
+        var local = TimeZoneInfo.ConvertTimeFromUtc(utc.Value.UtcDateTime, tz);
+        return DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
     }
 
     /// <summary>启动调度器</summary>
@@ -332,24 +384,21 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 ? typeof(Jobs.HeartbeatJob) 
                 : typeof(Jobs.AgentJob);
 
+            var mergedData = jobData ?? new JobDataMap();
+            mergedData[Jobs.JobDataKeys.ScheduleTimezone] = schedule.Timezone ?? TimeZoneInfo.Local.Id;
+
             var jobBuilder = JobBuilder.Create(jobType)
                 .WithIdentity(jobKey)
                 .WithDescription(jobId)
-                .StoreDurably();
-
-            if (jobData != null)
-            {
-                jobBuilder.UsingJobData(jobData);
-            }
+                .StoreDurably()
+                .UsingJobData(mergedData);
 
             var jobDetail = jobBuilder.Build();
 
-            // 创建触发器
-            var trigger = BuildTrigger(jobId, schedule);
-
-            // 调度任务
-            await _scheduler.ScheduleJob(jobDetail, trigger, ct);
-            _logger.LogDebug("Job {JobId} scheduled with trigger {TriggerType}", jobId, trigger.GetType().Name);
+            // 创建触发器（可能多个 windows）
+            var triggers = BuildTriggers(jobId, schedule);
+            await _scheduler.ScheduleJob(jobDetail, new HashSet<ITrigger>(triggers), replace: true, ct);
+            _logger.LogDebug("Job {JobId} scheduled with {Count} trigger(s)", jobId, triggers.Count);
         }
         finally
         {
@@ -473,11 +522,84 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         }
     }
 
-    /// <summary>构建触发器</summary>
-    private ITrigger BuildTrigger(string jobId, ScheduleSpec schedule)
+    /// <summary>构建触发器列表</summary>
+    private IReadOnlyList<ITrigger> BuildTriggers(string jobId, ScheduleSpec schedule)
+    {
+        if (!ScheduleWindowsValidator.ValidateForScheduleType(schedule.Type, schedule.Windows, out var windowsError))
+            throw new InvalidOperationException(windowsError ?? "无效的生效时段");
+
+        var timezone = ScheduleExpressionParser.ResolveTimeZone(schedule.Timezone);
+
+        if (schedule.Type == ScheduleTypes.Interval &&
+            schedule.Windows is { Count: > 0 })
+        {
+            return BuildWindowIntervalTriggers(jobId, schedule, timezone);
+        }
+
+        return new[] { BuildSingleTrigger(jobId, schedule, timezone) };
+    }
+
+    private IReadOnlyList<ITrigger> BuildWindowIntervalTriggers(string jobId, ScheduleSpec schedule, TimeZoneInfo timezone)
+    {
+        if (string.IsNullOrEmpty(schedule.Every))
+            throw new InvalidOperationException("Interval schedule requires 'every'");
+
+        if (!ScheduleWindowsValidator.TryNormalize(schedule.Windows, out var windows, out var error))
+            throw new InvalidOperationException(error ?? "无效的生效时段");
+
+        var interval = ScheduleExpressionParser.ParseInterval(schedule.Every);
+        var triggers = new List<ITrigger>();
+
+        for (var i = 0; i < windows.Count; i++)
+        {
+            var w = windows[i];
+            if (!w.CrossesMidnight)
+            {
+                triggers.Add(BuildDailyIntervalTrigger(
+                    $"{jobId}__w{i}", jobId, w.Start, w.End, interval, timezone));
+            }
+            else
+            {
+                triggers.Add(BuildDailyIntervalTrigger(
+                    $"{jobId}__w{i}_a", jobId, w.Start, ScheduleWindowsValidator.DefaultEnd, interval, timezone));
+                triggers.Add(BuildDailyIntervalTrigger(
+                    $"{jobId}__w{i}_b", jobId, TimeSpan.Zero, w.End, interval, timezone));
+            }
+        }
+
+        return triggers;
+    }
+
+    private static ITrigger BuildDailyIntervalTrigger(
+        string triggerName,
+        string jobId,
+        TimeSpan start,
+        TimeSpan end,
+        TimeSpan every,
+        TimeZoneInfo timezone)
+    {
+        var startTod = TimeOfDay.HourMinuteAndSecondOfDay(start.Hours, start.Minutes, start.Seconds);
+        var endTod = TimeOfDay.HourMinuteAndSecondOfDay(end.Hours, end.Minutes, end.Seconds);
+        var seconds = Math.Max(1, (int)Math.Round(every.TotalSeconds));
+
+        return TriggerBuilder.Create()
+            .WithIdentity(triggerName, SchedulerConstants.DefaultTriggerGroup)
+            .ForJob(jobId, SchedulerConstants.DefaultJobGroup)
+            .WithDailyTimeIntervalSchedule(x =>
+            {
+                x.StartingDailyAt(startTod);
+                x.EndingDailyAt(endTod);
+                x.WithInterval(seconds, IntervalUnit.Second);
+                x.OnEveryDay();
+                x.InTimeZone(timezone);
+                x.WithMisfireHandlingInstructionDoNothing();
+            })
+            .Build();
+    }
+
+    private ITrigger BuildSingleTrigger(string jobId, ScheduleSpec schedule, TimeZoneInfo timezone)
     {
         var triggerKey = new TriggerKey(jobId + "_trigger", SchedulerConstants.DefaultTriggerGroup);
-        var timezone = ScheduleExpressionParser.ResolveTimeZone(schedule.Timezone);
 
         // Cron 和 Once 从当前时间开始，Interval 从下一个整周期开始避免立即触发
         var startNow = schedule.Type != ScheduleTypes.Interval;
@@ -496,7 +618,6 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 if (string.IsNullOrEmpty(schedule.Cron))
                     throw new InvalidOperationException("Cron schedule requires 'cron' expression");
 
-                // 使用统一的 NormalizeCron
                 var cron = ScheduleExpressionParser.NormalizeCron(schedule.Cron);
                 triggerBuilder.WithCronSchedule(cron, x =>
                 {
@@ -509,7 +630,6 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 if (string.IsNullOrEmpty(schedule.Every))
                     throw new InvalidOperationException("Interval schedule requires 'every'");
 
-                // 使用统一的 ParseInterval
                 var interval = ScheduleExpressionParser.ParseInterval(schedule.Every);
                 triggerBuilder.WithSimpleSchedule(x => x
                     .WithInterval(interval)
@@ -521,8 +641,10 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 if (schedule.RunAt == null)
                     throw new InvalidOperationException("Once schedule requires 'runAt'");
 
-                // RunAt 是本地 DateTime，转为 UTC 给 Quartz
-                triggerBuilder.StartAt(schedule.RunAt.Value.ToUniversalTime());
+                // RunAt 是本地墙钟：按 schedule 时区解释后转 UTC
+                var runAtUnspec = DateTime.SpecifyKind(schedule.RunAt.Value, DateTimeKind.Unspecified);
+                var runAtUtc = TimeZoneInfo.ConvertTimeToUtc(runAtUnspec, timezone);
+                triggerBuilder.StartAt(runAtUtc);
                 triggerBuilder.WithSimpleSchedule(x => x
                     .WithRepeatCount(0)
                     .WithMisfireHandlingInstructionNextWithExistingCount());

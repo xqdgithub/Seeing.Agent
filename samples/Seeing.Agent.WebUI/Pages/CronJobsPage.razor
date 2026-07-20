@@ -23,7 +23,7 @@
     </Breadcrumb>
     <Extra>
         <Space>
-            <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="@(() => LoadAsync(showPageLoading: true))">刷新</Button>
             <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowCreate">新建任务</Button>
         </Space>
     </Extra>
@@ -151,10 +151,13 @@
     private string _activeTab = "all";
     private HashSet<string> _runningJobs = new();  // 追踪正在执行的任务
     private int _rowsVersion;  // 用于强制 Table 刷新
+    private readonly SemaphoreSlim _loadLock = new(1, 1);
+    private int _loadGeneration;
+    private bool _silentRefreshQueued;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadAsync();
+        await LoadAsync(showPageLoading: true);
         
         // 订阅通知
         NotificationService.JobError += OnJobError;
@@ -169,42 +172,77 @@
         NotificationService.JobSuccess -= OnJobSuccess;
         NotificationService.JobProgress -= OnJobProgress;
         StatusService.JobStatusChanged -= OnJobStatusChanged;
+        _loadLock.Dispose();
     }
 
-    private async Task LoadAsync()
+    /// <param name="showPageLoading">
+    /// 仅用户主动刷新/首屏为 true。job 触发的后台刷新必须为 false，
+    /// 否则 WorkspacePageShell 会用整页 Spin 盖住内容，且并发刷新可能卡住 loading。
+    /// </param>
+    private async Task LoadAsync(bool showPageLoading = true)
     {
-        _loading = true;
+        if (!showPageLoading)
+        {
+            // 已有刷新在跑则合并为一次后续静默刷新，避免叠 spinner / 抢锁
+            if (!await _loadLock.WaitAsync(0))
+            {
+                _silentRefreshQueued = true;
+                return;
+            }
+        }
+        else
+        {
+            await _loadLock.WaitAsync();
+        }
+
+        var generation = Interlocked.Increment(ref _loadGeneration);
+        if (showPageLoading)
+            _loading = true;
+
         try
         {
-            _jobs = (await ScheduleManager.ListJobsAsync()).ToList();
-            _status = await StatusService.GetStatusAsync();
-            
-            var jobStatuses = await StatusService.GetAllJobStatusesAsync();
-            var statusDict = jobStatuses.ToDictionary(s => s.JobId, s => s);
-
-            _rows = _jobs.Select(j =>
+            do
             {
-                var status = statusDict.GetValueOrDefault(j.Id);
-                return new JobRow
+                _silentRefreshQueued = false;
+
+                var jobs = (await ScheduleManager.ListJobsAsync()).ToList();
+                var status = await StatusService.GetStatusAsync();
+                var jobStatuses = await StatusService.GetAllJobStatusesAsync();
+                var statusDict = jobStatuses.ToDictionary(s => s.JobId, s => s);
+
+                // 被更新的请求覆盖则丢弃结果
+                if (generation != _loadGeneration)
+                    return;
+
+                _jobs = jobs;
+                _status = status;
+                _rows = _jobs.Select(j =>
                 {
-                    Id = j.Id,
-                    Name = j.Name ?? j.Id,
-                    TaskType = j.TaskType,
-                    ScheduleText = GetScheduleText(j),
-                    Agent = j.Agent ?? "",
-                    Intent = j.Intent,
-                    State = status?.State ?? JobState.Disabled,
-                    NextFireTime = status?.NextFireTime,
-                    NextRunText = status?.NextFireTime?.ToString("yyyy-MM-dd HH:mm") ?? "-"
-                };
-            }).ToList();
-            
-            ApplyTabFilter();
-            _rowsVersion++;
+                    var jobStatus = statusDict.GetValueOrDefault(j.Id);
+                    return new JobRow
+                    {
+                        Id = j.Id,
+                        Name = j.Name ?? j.Id,
+                        TaskType = j.TaskType,
+                        ScheduleText = GetScheduleText(j),
+                        Agent = j.Agent ?? "",
+                        Intent = j.Intent,
+                        State = jobStatus?.State ?? JobState.Disabled,
+                        NextFireTime = jobStatus?.NextFireTime,
+                        NextRunText = jobStatus?.NextFireTime?.ToString("yyyy-MM-dd HH:mm") ?? "-"
+                    };
+                }).ToList();
+
+                ApplyTabFilter();
+                _rowsVersion++;
+            }
+            while (_silentRefreshQueued && generation == _loadGeneration);
         }
         finally
         {
-            _loading = false;
+            if (showPageLoading && generation == _loadGeneration)
+                _loading = false;
+            _loadLock.Release();
         }
     }
 
@@ -241,20 +279,21 @@
 
     private void OnJobError(object? sender, JobErrorEventArgs args)
     {
-        _ = InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             MessageService.Error($"任务 {args.JobId} 执行失败: {args.Error}");
-            return LoadAsync();
+            _runningJobs.Remove(args.JobId);
+            await LoadAsync(showPageLoading: false);
         });
     }
 
     private void OnJobSuccess(object? sender, JobSuccessEventArgs args)
     {
-        _ = InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             MessageService.Success($"任务 {args.JobId} 执行成功");
             _runningJobs.Remove(args.JobId);
-            return LoadAsync();
+            await LoadAsync(showPageLoading: false);
         });
     }
     
@@ -266,6 +305,12 @@
             {
                 case JobProgressStage.Triggered:
                     _runningJobs.Add(args.JobId);
+                    // 仅更新行内「执行中」按钮状态，不做整页 Load（避免定时触发时闪 Spin）
+                    var row = _rows.FirstOrDefault(r => r.Id == args.JobId);
+                    if (row != null)
+                        row.State = JobState.Running;
+                    ApplyTabFilter();
+                    _rowsVersion++;
                     MessageService.Info($"任务 {args.JobId} 已触发");
                     break;
                 case JobProgressStage.Completed:
@@ -288,10 +333,10 @@
     {
         _ = InvokeAsync(async () =>
         {
-            // 状态变化时刷新列表
+            // 状态变化时静默刷新列表（不打开整页 loading）
             if (args.NewState != args.OldState)
             {
-                await LoadAsync();
+                await LoadAsync(showPageLoading: false);
             }
         });
     }
@@ -329,7 +374,7 @@
         {
             await ScheduleManager.CreateOrReplaceJobAsync(job);
             MessageService.Success("任务已保存");
-            await LoadAsync();
+            await LoadAsync(showPageLoading: false);
         }
         finally { _saving = false; }
     }
@@ -338,7 +383,7 @@
     {
         await ScheduleManager.DeleteJobAsync(id);
         MessageService.Success("任务已删除");
-        await LoadAsync();
+        await LoadAsync(showPageLoading: false);
     }
 
     private async Task RunOnce(string id)
@@ -359,21 +404,21 @@
                 MessageService.Warning($"触发冲突: {conflict.Reason}");
                 break;
         }
-        await LoadAsync();
+        await LoadAsync(showPageLoading: false);
     }
 
     private async Task DisableJob(string id)
     {
         await StatusService.DisableJobAsync(id);
         MessageService.Info("任务已禁用");
-        await LoadAsync();
+        await LoadAsync(showPageLoading: false);
     }
 
     private async Task EnableJob(string id)
     {
         await StatusService.EnableJobAsync(id);
         MessageService.Success("任务已启用");
-        await LoadAsync();
+        await LoadAsync(showPageLoading: false);
     }
 
     private async Task CancelJob(string id)
@@ -387,7 +432,7 @@
         {
             MessageService.Warning("取消任务失败，任务可能已完成");
         }
-        await LoadAsync();
+        await LoadAsync(showPageLoading: false);
     }
 
     private void NavigateToDetail(string jobId)
@@ -398,10 +443,19 @@
     private static string GetScheduleText(ScheduledJobSpec job) => job.Schedule.Type switch
     {
         ScheduleTypes.Cron => job.Schedule.Cron ?? "cron",
-        ScheduleTypes.Interval => job.Schedule.Every ?? "interval",
+        ScheduleTypes.Interval => FormatInterval(job.Schedule),
         ScheduleTypes.Once => job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? "once",
         _ => job.Schedule.Type
     };
+
+    private static string FormatInterval(ScheduleSpec s)
+    {
+        var every = s.Every ?? "interval";
+        if (s.Windows == null || s.Windows.Count == 0)
+            return every;
+        var parts = s.Windows.Select(w => $"{w.Start ?? "00:00"}–{w.End ?? "23:59:59"}");
+        return $"{every} · {string.Join(", ", parts)}";
+    }
 
     private sealed class JobRow
     {

@@ -114,15 +114,20 @@ internal sealed class McpConnectionCoordinator : IDisposable
 
         UpdateState(CoreMcpConnectionState.Connecting);
 
+        // stdio/HTTP 统一套上 connectionTimeout，避免 uvx 冷启动等场景无限挂起
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(config.ConnectionTimeout);
+        var connectCt = timeoutCts.Token;
+
         try
         {
             _client = _factoryRegistry.Create(config, _httpClientFactory, _loggerFactory);
-            await _client.ConnectAsync(ct);
+            await _client.ConnectAsync(connectCt);
 
             if (await TryAbortConnectIfDisabledAsync(currentStatus, ct) is { } abortedAfterConnect)
                 return abortedAfterConnect;
 
-            var tools = await _client.ListToolsAsync(ct);
+            var tools = await _client.ListToolsAsync(connectCt);
             var toolNames = new List<string>();
 
             foreach (var tool in tools)
@@ -140,7 +145,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
                     Description = tool.Description,
                     ParametersSchema = tool.ParametersSchema
                 };
-                await _toolRegistry.RegisterToolAsync(_serverName, toolId, toolInfo, ct);
+                await _toolRegistry.RegisterToolAsync(_serverName, toolId, toolInfo, connectCt);
                 toolNames.Add(tool.Name);
 
                 _hookManager.TriggerFireAndForget(
@@ -183,20 +188,58 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.Succeeded(_serverName, McpOperationType.Connect,
                 CoreMcpConnectionState.Connected, DateTime.Now - startTime);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
-            var error = McpErrorInfo.ConnectionTimeout(_serverName, config.ConnectionTimeout);
+            await CleanupFailedConnectAsync();
+            _logger.LogWarning(ex, "连接 MCP Server {Server} 已取消", _serverName);
+            var error = McpErrorInfo.OperationCancelled(_serverName, McpOperationType.Connect);
             UpdateStateWithError(error);
             return McpOperationResult.Failed(_serverName, McpOperationType.Connect, error,
                 CoreMcpConnectionState.Error, DateTime.Now - startTime);
+        }
+        catch (OperationCanceledException ex)
+        {
+            await CleanupFailedConnectAsync();
+            var elapsed = DateTime.Now - startTime;
+            _logger.LogWarning(ex,
+                "连接 MCP Server {Server} 超时 (Timeout={Timeout}s, Elapsed={Elapsed}ms, Command={Command}, Args={Args})",
+                _serverName,
+                config.ConnectionTimeout.TotalSeconds,
+                (int)elapsed.TotalMilliseconds,
+                config.Command,
+                config.Args is { Count: > 0 } ? string.Join(' ', config.Args) : "(none)");
+            var error = McpErrorInfo.ConnectionTimeout(_serverName, config.ConnectionTimeout, ex);
+            UpdateStateWithError(error);
+            return McpOperationResult.Failed(_serverName, McpOperationType.Connect, error,
+                CoreMcpConnectionState.Error, elapsed);
         }
         catch (Exception ex)
         {
+            await CleanupFailedConnectAsync();
             var error = ClassifyError(ex, config);
+            _logger.LogError(ex,
+                "连接 MCP Server {Server} 失败: {ErrorCode} - {UserMessage}",
+                _serverName, error.Code, error.UserMessage);
             UpdateStateWithError(error);
             return McpOperationResult.Failed(_serverName, McpOperationType.Connect, error,
                 CoreMcpConnectionState.Error, DateTime.Now - startTime);
         }
+    }
+
+    private async Task CleanupFailedConnectAsync()
+    {
+        if (_client == null) return;
+
+        try
+        {
+            await _client.DisconnectAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "清理失败连接时断开 MCP 客户端出错: {Server}", _serverName);
+        }
+
+        _client = null;
     }
 
     public Task ConnectInBackgroundAsync(McpServerConfig config, CancellationToken ct)
@@ -666,12 +709,14 @@ internal sealed class McpConnectionCoordinator : IDisposable
         }
 
         if (message.Contains("command not found", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("找不到", StringComparison.Ordinal))
+            message.Contains("找不到", StringComparison.Ordinal) ||
+            message.Contains("cannot find the file", StringComparison.OrdinalIgnoreCase) ||
+            (ex is System.ComponentModel.Win32Exception))
         {
-            return McpErrorInfo.ConfigInvalid(_serverName, "命令未找到");
+            return McpErrorInfo.ConfigInvalid(_serverName, $"命令未找到或无法启动: {ex.Message}");
         }
 
-        return McpErrorInfo.ProcessCrashed(_serverName);
+        return McpErrorInfo.ProcessCrashed(_serverName, innerException: ex);
     }
 
     public IMcpClientWrapper? GetClient() => _client;

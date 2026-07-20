@@ -97,7 +97,7 @@ public class SchedulerIntegrationTests
             }
         }
         
-        executedPrompts.Should().ContainSingle(p => p == "执行定时检查");
+        executedPrompts.Should().ContainSingle(p => p.Contains("执行定时检查", StringComparison.Ordinal));
 
         var repo = new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance);
         var history = await repo.GetHistoryAsync("test-job", 10);

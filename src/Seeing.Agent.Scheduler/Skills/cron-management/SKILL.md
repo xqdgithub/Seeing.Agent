@@ -25,4 +25,4 @@ Use these tools to manage scheduled jobs (text reminders or agent runs):
 
 Prefer `text` for pure reminders; `agent` only when work must run at fire time. See skill `cron-create`.
 
-For create details see skill `cron-create`. For list/run see `cron-list-run`. For disable/resume/delete see `cron-lifecycle`.
+For create details (including interval `windows`) see skill `cron-create`. For list/run see `cron-list-run`. For disable/resume/delete see `cron-lifecycle`.

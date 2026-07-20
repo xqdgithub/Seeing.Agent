@@ -1160,14 +1160,25 @@ namespace Seeing.Agent.MCP
             if (string.IsNullOrEmpty(_config.Command))
                 throw new InvalidOperationException("stdio 传输需要配置 command");
 
-            _logger.LogInformation("正在连接 MCP Server (stdio): {Name}, Command: {Command}", _config.Name, _config.Command);
+            _logger.LogInformation(
+                "正在连接 MCP Server (stdio): {Name}, Command: {Command}, Args: {Args}, Timeout: {Timeout}s",
+                _config.Name,
+                _config.Command,
+                _config.Args is { Count: > 0 } ? string.Join(' ', _config.Args) : "(none)",
+                _config.ConnectionTimeout.TotalSeconds);
 
             var transportOptions = new StdioClientTransportOptions
             {
                 Name = _config.Name,
                 Command = _config.Command,
                 Arguments = _config.Args?.ToArray() ?? Array.Empty<string>(),
-                ShutdownTimeout = _config.ShutdownTimeout
+                ShutdownTimeout = _config.ShutdownTimeout,
+                // 排空并记录 stderr，避免管道堵死，同时便于排查 uvx 下载/启动卡顿
+                StandardErrorLines = line =>
+                {
+                    if (!string.IsNullOrWhiteSpace(line))
+                        _logger.LogWarning("MCP Server {Name} stderr: {Line}", _config.Name, line);
+                }
             };
 
             if (!string.IsNullOrEmpty(_config.WorkingDirectory))
@@ -1180,10 +1191,22 @@ namespace Seeing.Agent.MCP
                     transportOptions.EnvironmentVariables[env.Key] = env.Value;
             }
 
-            _transport = new StdioClientTransport(transportOptions);
-            _mcpClient = await McpClient.CreateAsync(_transport, cancellationToken: cancellationToken);
+            // 协调器已套 connectionTimeout；此处再联接一次，保证直接调用 wrapper 时也生效
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(_config.ConnectionTimeout);
 
-            _logger.LogInformation("MCP Server {Name} 连接成功", _config.Name);
+            try
+            {
+                _transport = new StdioClientTransport(transportOptions);
+                _mcpClient = await McpClient.CreateAsync(_transport, cancellationToken: timeoutCts.Token);
+                _logger.LogInformation("MCP Server {Name} 连接成功", _config.Name);
+            }
+            catch
+            {
+                _mcpClient = null;
+                _transport = null;
+                throw;
+            }
         }
 
         public async Task DisconnectAsync()

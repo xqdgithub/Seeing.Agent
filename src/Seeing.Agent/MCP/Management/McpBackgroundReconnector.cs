@@ -123,8 +123,24 @@ internal sealed class McpBackgroundReconnector
                     }
                     else
                     {
-                        _logger.LogWarning("MCP Server {Server} 重连失败: {Error}",
-                            serverName, result.Error?.UserMessage);
+                        var error = result.Error;
+                        if (error?.InnerException != null)
+                        {
+                            _logger.LogWarning(error.InnerException,
+                                "MCP Server {Server} 重连失败: {Error}",
+                                serverName, error.UserMessage);
+                        }
+                        else if (!string.IsNullOrEmpty(error?.TechnicalDetail))
+                        {
+                            _logger.LogWarning(
+                                "MCP Server {Server} 重连失败: {Error}\n{Detail}",
+                                serverName, error.UserMessage, error.TechnicalDetail);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("MCP Server {Server} 重连失败: {Error}",
+                                serverName, error?.UserMessage);
+                        }
                     }
                 }
                 catch (Exception ex)

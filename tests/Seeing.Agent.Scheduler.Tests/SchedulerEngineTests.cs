@@ -66,6 +66,31 @@ public class SchedulerEngineTests
     }
 
     [Fact]
+    public async Task UpsertJob_Interval_With_Windows_Has_Multiple_Triggers()
+    {
+        var engine = CreateEngine();
+        await engine.StartAsync();
+        await engine.UpsertJobAsync("win-job", new ScheduleSpec
+        {
+            Type = ScheduleTypes.Interval,
+            Every = "40m",
+            Timezone = TimeZoneInfo.Local.Id,
+            Windows = new List<ScheduleWindow>
+            {
+                new() { Start = "09:00", End = "12:00" },
+                new() { Start = "14:00", End = "18:00" }
+            }
+        }, ScheduleIntent.Active);
+
+        var status = await engine.GetJobStatusAsync("win-job");
+        status.State.Should().Be(JobState.Scheduled);
+        status.NextFireTime.Should().NotBeNull();
+        status.NextFireTime!.Value.Kind.Should().NotBe(DateTimeKind.Utc);
+
+        await engine.StopAsync();
+    }
+
+    [Fact]
     public async Task ScheduleManager_PauseAndResume_UpdatesState()
     {
         using var ws = new SchedulerTestWorkspace();

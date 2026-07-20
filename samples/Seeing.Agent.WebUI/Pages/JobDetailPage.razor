@@ -227,10 +227,19 @@ else if (_job != null)
     private static string GetScheduleText(ScheduledJobSpec job) => job.Schedule.Type switch
     {
         ScheduleTypes.Cron => job.Schedule.Cron ?? "cron",
-        ScheduleTypes.Interval => job.Schedule.Every ?? "interval",
+        ScheduleTypes.Interval => FormatInterval(job.Schedule),
         ScheduleTypes.Once => job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? "once",
         _ => job.Schedule.Type
     };
+
+    private static string FormatInterval(ScheduleSpec s)
+    {
+        var every = s.Every ?? "interval";
+        if (s.Windows == null || s.Windows.Count == 0)
+            return every;
+        var parts = s.Windows.Select(w => $"{w.Start ?? "00:00"}–{w.End ?? "23:59:59"}");
+        return $"{every} · {string.Join(", ", parts)}";
+    }
 
     private static string Truncate(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..maxLength] + "...";

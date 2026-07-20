@@ -49,12 +49,25 @@ public sealed class McpErrorInfo
             recoveryHint: "请重新连接或更新认证令牌",
             isTransient: true);
 
-    public static McpErrorInfo ProcessCrashed(string serverName, int? exitCode = null)
-        => new(McpErrorCode.ProcessCrashed,
+    public static McpErrorInfo ProcessCrashed(
+        string serverName,
+        int? exitCode = null,
+        Exception? innerException = null)
+    {
+        var detail = exitCode.HasValue ? $"退出码: {exitCode}" : null;
+        if (innerException != null)
+        {
+            var exDetail = innerException.ToString();
+            detail = detail == null ? exDetail : $"{detail}{Environment.NewLine}{exDetail}";
+        }
+
+        return new(McpErrorCode.ProcessCrashed,
             $"服务器 '{serverName}' 进程已崩溃",
-            exitCode.HasValue ? $"退出码: {exitCode}" : null,
+            detail,
             "请检查服务器配置和日志",
+            innerException,
             isTransient: true);
+    }
 
     public static McpErrorInfo ConfigInvalid(string serverName, string reason)
         => new(McpErrorCode.ConfigInvalid,
