@@ -8,7 +8,7 @@ using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.Scheduler.Tools;
 
-/// <summary>创建或替换定时任务（仅 agent 类型；SessionId 绑定自 ToolContext）。</summary>
+/// <summary>创建或替换定时任务（text|agent；SessionId 绑定自 ToolContext）。</summary>
 public sealed class CronCreateTool : ToolBase
 {
     private readonly IScheduleManager _manager;
@@ -21,18 +21,27 @@ public sealed class CronCreateTool : ToolBase
     public override string Id => "cron_create";
 
     public override string Description =>
-        "创建或替换定时任务（agent）。参数：prompt（必填）、schedule（cron/interval/once），可选 id/name/agent。" +
-        " SessionId 自动取自当前会话。";
+        "创建或替换定时任务。必填：taskType（text|agent）、prompt、schedule（cron/interval/once）；可选 id/name/agent。" +
+        " text=到点投递固定文案；agent=到点运行 Agent。SessionId 自动取自当前会话。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {
         type = "object",
         properties = new
         {
+            taskType = new
+            {
+                type = "string",
+                description = "任务类型：text（固定文案提醒）| agent（运行 Agent）。必填。"
+            },
             id = new { type = "string", description = "任务 ID；省略则自动生成 job_ 前缀 ID" },
             name = new { type = "string", description = "任务显示名称" },
-            prompt = new { type = "string", description = "Agent 执行的提示词" },
-            agent = new { type = "string", description = "Agent ID（可选）" },
+            prompt = new
+            {
+                type = "string",
+                description = "text：用户看到的提醒正文；agent：给 Agent 的任务指令"
+            },
+            agent = new { type = "string", description = "Agent ID（仅 taskType=agent 时有效）" },
             schedule = new
             {
                 type = "object",
@@ -48,7 +57,7 @@ public sealed class CronCreateTool : ToolBase
                 required = new[] { "type" }
             }
         },
-        required = new[] { "prompt", "schedule" }
+        required = new[] { "taskType", "prompt", "schedule" }
     });
 
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
@@ -63,18 +72,29 @@ public sealed class CronCreateTool : ToolBase
         if (!CronScheduleParser.TryParse(scheduleElement, out var schedule, out var parseError) || schedule is null)
             return Failure(parseError ?? ("无效的调度配置。\n" + CronScheduleParser.ExamplesText));
 
+        var taskTypeRaw = GetStringArgument(arguments, "taskType")?.Trim();
+        if (string.IsNullOrWhiteSpace(taskTypeRaw))
+            return Failure("taskType 参数是必需的，取值：text（固定文案提醒）或 agent（运行 Agent）");
+
+        var taskType = taskTypeRaw.ToLowerInvariant();
+        if (taskType != ScheduleTaskTypes.Text && taskType != ScheduleTaskTypes.Agent)
+            return Failure("无效的 taskType，取值：text（固定文案提醒）或 agent（运行 Agent）");
+
         var id = GetStringArgument(arguments, "id")?.Trim();
         if (string.IsNullOrWhiteSpace(id))
             id = "job_" + Guid.NewGuid().ToString("N")[..8];
+
+        var isText = taskType == ScheduleTaskTypes.Text;
 
         var job = new ScheduledJobSpec
         {
             Id = id,
             Name = GetStringArgument(arguments, "name")?.Trim(),
-            Prompt = prompt,
-            Agent = GetStringArgument(arguments, "agent")?.Trim(),
-            TaskType = ScheduleTaskTypes.Agent,
+            TaskType = taskType,
             Intent = ScheduleIntent.Active,
+            Text = isText ? prompt : null,
+            Prompt = isText ? null : prompt,
+            Agent = isText ? null : GetStringArgument(arguments, "agent")?.Trim(),
             Schedule = schedule,
             Dispatch = new DispatchSpec
             {
@@ -88,7 +108,7 @@ public sealed class CronCreateTool : ToolBase
         try
         {
             var created = await _manager.CreateOrReplaceJobAsync(job, context.CancellationToken).ConfigureAwait(false);
-            return Success($"已创建定时任务: {created.Id} [{created.Schedule.Type}]");
+            return Success($"已创建定时任务: {created.Id} [{created.TaskType}/{created.Schedule.Type}]");
         }
         catch (Exception ex)
         {

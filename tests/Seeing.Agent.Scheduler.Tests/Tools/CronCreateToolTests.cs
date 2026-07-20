@@ -59,6 +59,96 @@ public class CronCreateToolTests
     }
 
     [Fact]
+    public async Task MissingTaskType_ShouldFail()
+    {
+        var tool = new CronCreateTool(NullLogger<CronCreateTool>.Instance, Mock.Of<IScheduleManager>());
+        var result = await tool.ExecuteAsync(
+            Args(new
+            {
+                prompt = "remind sleep",
+                schedule = new { type = "cron", cron = "0 23 * * *" }
+            }),
+            new ToolContext { SessionId = "sess-1" });
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().MatchRegex("(?i)taskType|text|agent");
+    }
+
+    [Fact]
+    public async Task InvalidTaskType_ShouldFail()
+    {
+        var tool = new CronCreateTool(NullLogger<CronCreateTool>.Instance, Mock.Of<IScheduleManager>());
+        var result = await tool.ExecuteAsync(
+            Args(new
+            {
+                taskType = "reminder",
+                prompt = "x",
+                schedule = new { type = "once", runAt = "2026-12-01T10:00:00" }
+            }),
+            new ToolContext { SessionId = "sess-1" });
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().MatchRegex("(?i)taskType|text|agent");
+    }
+
+    [Fact]
+    public async Task TextTaskType_ShouldMapPromptToText()
+    {
+        ScheduledJobSpec? captured = null;
+        var manager = new Mock<IScheduleManager>();
+        manager.Setup(m => m.CreateOrReplaceJobAsync(It.IsAny<ScheduledJobSpec>(), It.IsAny<CancellationToken>()))
+            .Callback<ScheduledJobSpec, CancellationToken>((job, _) => captured = job)
+            .ReturnsAsync((ScheduledJobSpec job, CancellationToken _) => job);
+
+        var tool = new CronCreateTool(NullLogger<CronCreateTool>.Instance, manager.Object);
+        var result = await tool.ExecuteAsync(
+            Args(new
+            {
+                taskType = "text",
+                name = "Sleep reminder",
+                prompt = "该睡觉了",
+                agent = "sisyphus",
+                schedule = new { type = "cron", cron = "0 23 * * *" }
+            }),
+            new ToolContext { SessionId = "sess-text" });
+
+        result.Success.Should().BeTrue();
+        captured.Should().NotBeNull();
+        captured!.TaskType.Should().Be(ScheduleTaskTypes.Text);
+        captured.Text.Should().Be("该睡觉了");
+        captured.Prompt.Should().BeNull();
+        captured.Agent.Should().BeNull();
+        captured.Dispatch.Target.SessionId.Should().Be("sess-text");
+    }
+
+    [Fact]
+    public async Task AgentTaskType_ShouldMapPromptToPrompt()
+    {
+        ScheduledJobSpec? captured = null;
+        var manager = new Mock<IScheduleManager>();
+        manager.Setup(m => m.CreateOrReplaceJobAsync(It.IsAny<ScheduledJobSpec>(), It.IsAny<CancellationToken>()))
+            .Callback<ScheduledJobSpec, CancellationToken>((job, _) => captured = job)
+            .ReturnsAsync((ScheduledJobSpec job, CancellationToken _) => job);
+
+        var tool = new CronCreateTool(NullLogger<CronCreateTool>.Instance, manager.Object);
+        var result = await tool.ExecuteAsync(
+            Args(new
+            {
+                taskType = "agent",
+                prompt = "summarize inbox",
+                agent = "sisyphus",
+                schedule = new { type = "interval", every = "6h" }
+            }),
+            new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeTrue();
+        captured!.TaskType.Should().Be(ScheduleTaskTypes.Agent);
+        captured.Prompt.Should().Be("summarize inbox");
+        captured.Text.Should().BeNull();
+        captured.Agent.Should().Be("sisyphus");
+    }
+
+    [Fact]
     public async Task ValidCron_ShouldCreateAgentJobWithSessionIdFromContext()
     {
         ScheduledJobSpec? captured = null;
@@ -71,6 +161,7 @@ public class CronCreateToolTests
         var result = await tool.ExecuteAsync(
             Args(new
             {
+                taskType = "agent",
                 id = "my-job",
                 name = "Morning",
                 prompt = "summarize inbox",
@@ -106,6 +197,7 @@ public class CronCreateToolTests
         var result = await tool.ExecuteAsync(
             Args(new
             {
+                taskType = "agent",
                 prompt = "ping",
                 schedule = new { type = "interval", every = "30m" }
             }),
@@ -130,6 +222,7 @@ public class CronCreateToolTests
         var result = await tool.ExecuteAsync(
             Args(new
             {
+                taskType = "agent",
                 prompt = "once",
                 schedule = new { type = "once", runAt = "2026-12-01T10:00:00" }
             }),

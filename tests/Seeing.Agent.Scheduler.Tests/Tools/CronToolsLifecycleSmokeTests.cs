@@ -73,6 +73,7 @@ public class CronToolsLifecycleSmokeTests
         var created = await create.ExecuteAsync(
             Args(new
             {
+                taskType = "agent",
                 id = "smoke-job",
                 prompt = "lifecycle smoke",
                 schedule = new { type = "cron", cron = "0 9 * * *" }
