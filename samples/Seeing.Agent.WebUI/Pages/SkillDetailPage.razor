@@ -25,7 +25,7 @@
         {
             <Descriptions Bordered Column="2" Style="margin-bottom: 16px;">
                 <DescriptionsItem Title="名称">@SkillName</DescriptionsItem>
-                <DescriptionsItem Title="类型">@GetSkillType(_skill)</DescriptionsItem>
+                <DescriptionsItem Title="类型"><Tag Color="@GetSkillTypeColor(_skill)">@GetSkillType(_skill)</Tag></DescriptionsItem>
                 <DescriptionsItem Title="路径" Span="2">@_skill.Location</DescriptionsItem>
                 <DescriptionsItem Title="描述" Span="2">@(_skill.Description ?? "无")</DescriptionsItem>
             </Descriptions>
@@ -80,8 +80,20 @@
 
     string GetSkillType(SkillInfo? s) {
         if (s?.Location == null) return "未知";
+        // 内置技能：embedded:// 开头
+        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return "内置";
+        // 用户级：路径包含用户目录
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "用户级";
+        // 项目级：其他路径
         return "项目级";
+    }
+
+    string GetSkillTypeColor(SkillInfo? s) {
+        if (s?.Location == null) return "default";
+        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return "orange";
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "purple";
+        return "blue";
     }
 }

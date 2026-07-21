@@ -93,7 +93,7 @@
         else if (_isCardView) {
             <div class="items-grid">
             @foreach (var skill in _filteredSkills) {
-                <div class="item-card" onclick="@(() => ViewSkill(skill.Key))">
+                <div class="item-card">
                     <div class="item-card-header">
                         <div class="card-icon @(SkillManager.IsSkillEnabled(skill.Key) ? "success" : "")">
                             <Icon Type="@IconType.Outline.Code" />
@@ -101,11 +101,14 @@
                         <div class="card-title-section">
                             <h3 class="card-title">@skill.Key</h3>
                             <div class="card-status-row">
-                                <span class="status-tag info">@GetSkillType(skill.Value)</span>
-                                <span class="status-tag @(SkillManager.IsSkillEnabled(skill.Key) ? "active" : "inactive")">
+                                <Tag Color="@GetSkillTypeColor(skill.Value)">@GetSkillType(skill.Value)</Tag>
+                                <Tag Color="@(SkillManager.IsSkillEnabled(skill.Key) ? "success" : "default")">
                                     @(SkillManager.IsSkillEnabled(skill.Key) ? "Enabled" : "Disabled")
-                                </span>
+                                </Tag>
                             </div>
+                        </div>
+                        <div class="card-header-action">
+                            <Button Type="@ButtonType.Default" Size="@ButtonSize.Small" OnClick="@(() => ViewSkill(skill.Key))">详情</Button>
                         </div>
                     </div>
                     <div class="item-card-body">
@@ -118,10 +121,9 @@
                         }
                     </div>
                     <div class="item-card-footer">
-                        <div class="card-actions" @onclick:stopPropagation="true">
+                        <div class="card-actions">
                             <Switch Checked="@SkillManager.IsSkillEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
                         </div>
-                        <span class="card-timestamp">Click to view details</span>
                     </div>
                 </div>
             }
@@ -141,7 +143,7 @@
                     </thead>
                     <tbody>
                     @foreach (var skill in _filteredSkills) {
-                        <tr onclick="@(() => ViewSkill(skill.Key))" style="cursor: pointer;">
+                        <tr>
                             <td>
                                 <div class="table-cell-name">
                                     <div class="table-cell-icon"><Icon Type="@IconType.Outline.Code" /></div>
@@ -151,18 +153,19 @@
                                 </div>
                             </td>
                             <td>
-                                <span class="status-tag info">@GetSkillType(skill.Value)</span>
+                                <Tag Color="@GetSkillTypeColor(skill.Value)">@GetSkillType(skill.Value)</Tag>
                             </td>
                             <td>
-                                <span class="status-tag @(SkillManager.IsSkillEnabled(skill.Key) ? "active" : "inactive")">
+                                <Tag Color="@(SkillManager.IsSkillEnabled(skill.Key) ? "success" : "default")">
                                     @(SkillManager.IsSkillEnabled(skill.Key) ? "Enabled" : "Disabled")
-                                </span>
+                                </Tag>
                             </td>
                             <td>
                                 <span class="table-cell-description">@GetDescriptionPreview(skill.Value?.Description)</span>
                             </td>
                             <td>
-                                <div class="table-cell-actions" onclick:stopPropagation="true">
+                                <div class="table-cell-actions">
+                                    <Button Type="@ButtonType.Default" Size="@ButtonSize.Small" OnClick="@(() => ViewSkill(skill.Key))">详情</Button>
                                     <Switch Checked="@SkillManager.IsSkillEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
                                 </div>
                             </td>
@@ -203,6 +206,8 @@
     void ApplyFilter() {
         _filteredSkills = _allSkills
             .Where(s => string.IsNullOrEmpty(_searchText) || s.Key.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(s => GetSkillTypeSortOrder(s.Value))
+            .ThenBy(s => s.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
     
@@ -222,12 +227,37 @@
     
     string GetSkillType(SkillInfo? s) {
         if (s?.Location == null) return "未知";
+        // 内置技能：embedded:// 开头
+        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return "内置";
         // 用户级：路径包含用户目录
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "用户级";
         // 项目级：其他路径
         return "项目级";
     }
+    
+    /// <summary>
+    /// 获取技能类型排序值：项目级=1, 用户级=2, 内置=3
+    /// </summary>
+    int GetSkillTypeSortOrder(SkillInfo? s) {
+        if (s?.Location == null) return 4;
+        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return 3;
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return 2;
+        return 1;
+    }
+    
+    /// <summary>
+    /// 获取技能类型标签颜色（AntDesign Tag Color）
+    /// </summary>
+    string GetSkillTypeColor(SkillInfo? s) {
+        if (s?.Location == null) return "default";
+        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return "orange";  // 内置：橙色
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "purple";    // 用户级：紫色
+        return "blue";  // 项目级：蓝色
+    }
+    
     string GetDescriptionPreview(string? d) => string.IsNullOrEmpty(d) ? "无描述" : (d.Length > 100 ? d[..100] + "..." : d);
     string GetLocationPreview(string? loc) => loc?.Length > 40 ? "..." + loc[^Math.Min(40, loc.Length)..] : loc ?? "";
     void ViewSkill(string name) => NavigationManager.NavigateTo($"/skills/{name}");

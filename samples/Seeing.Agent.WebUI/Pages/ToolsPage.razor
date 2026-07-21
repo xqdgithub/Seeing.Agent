@@ -170,7 +170,8 @@
             } else if (_selectedStatus == "disabled") {
                 result = result.Where(t => !ToolInvoker.IsToolEnabled(t.Id));
             }
-            return result;
+            // 按 name 升序排序
+            return result.OrderBy(t => t.Id, StringComparer.OrdinalIgnoreCase);
         }
     }
     
