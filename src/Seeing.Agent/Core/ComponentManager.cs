@@ -165,7 +165,7 @@ internal class SkillLoader : IComponentLoader
         // 用户级 ~/.seeing/skills
         AddIfExists(skillManager, Path.Combine(workspaceProvider.UserSeeingDirectory, "skills"));
 
-        // 配置中的路径
+        // 配置中的额外路径
         if (options?.Value?.Skills?.Paths != null)
         {
             foreach (var p in options.Value.Skills.Paths)
@@ -174,11 +174,6 @@ internal class SkillLoader : IComponentLoader
                     AddIfExists(skillManager, ExpandPath(p.Trim(), workspaceProvider.WorkspaceRoot));
             }
         }
-
-        // 项目级目录
-        AddIfExists(skillManager, Path.Combine(workspaceProvider.ProjectSeeingDirectory, "skills"));
-        AddIfExists(skillManager, Path.Combine(workspaceProvider.WorkspaceRoot, ".agents", "skills"));
-        AddIfExists(skillManager, Path.Combine(workspaceProvider.WorkspaceRoot, "skills"));
 
         await skillManager.DiscoverSkillsAsync(cancellationToken);
 
@@ -274,7 +269,7 @@ internal class PluginLoader : IComponentLoader
             Directory = workspaceProvider.WorkspaceRoot,
             WorkspaceRoot = workspaceProvider.WorkspaceRoot,
             HookManager = services.GetRequiredService<HookManager>(),
-            ToolInvoker = services.GetRequiredService<ToolInvoker>(),
+            ToolInvoker = services.GetRequiredService<ToolManager>(),
             PermissionService = services.GetRequiredService<IPermissionService>(),
             SkillManager = services.GetRequiredService<SkillManager>(),
             AgentRegistry = services.GetRequiredService<IAgentRegistry>(),

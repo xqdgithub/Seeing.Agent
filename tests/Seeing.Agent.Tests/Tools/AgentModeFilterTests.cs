@@ -14,13 +14,13 @@ namespace Seeing.Agent.Tests.Tools
     /// </summary>
     public class AgentModeFilterTests
     {
-        private readonly Mock<ILogger<ToolInvoker>> _loggerMock;
+        private readonly Mock<ILogger<ToolManager>> _loggerMock;
         private readonly Mock<ILogger<HookManager>> _hookLoggerMock;
         private readonly HookManager _hookManager;
 
         public AgentModeFilterTests()
         {
-            _loggerMock = new Mock<ILogger<ToolInvoker>>();
+            _loggerMock = new Mock<ILogger<ToolManager>>();
             _hookLoggerMock = new Mock<ILogger<HookManager>>();
             _hookManager = new HookManager(_hookLoggerMock.Object);
         }
@@ -28,7 +28,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public void PrimaryMode_ShouldIncludePrimaryAndSubAgentTools()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(PrimaryTools));
 
             var schemas = invoker.GetToolSchemasForMode(AgentMode.Primary);
@@ -41,7 +41,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public void SubAgentMode_ShouldOnlyIncludeSubAgentTools()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(PrimaryTools));
 
             var subSchemas = invoker.GetToolSchemasForMode(AgentMode.SubAgent);
@@ -54,7 +54,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public void AllMode_ShouldIncludeAllTools()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(PrimaryTools));
 
             var allSchemas = invoker.GetToolSchemasForMode(AgentMode.All);
@@ -64,7 +64,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public void Default_ShouldBePrimary()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(PrimaryTools));
 
             var defaultSchemas = invoker.GetToolSchemasForMode();

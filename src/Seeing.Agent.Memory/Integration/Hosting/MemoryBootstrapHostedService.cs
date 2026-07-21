@@ -14,7 +14,7 @@ namespace Seeing.Agent.Memory.Integration.Hosting;
 internal sealed class MemoryBootstrapHostedService : IHostedService
 {
     private readonly IHookManager _hookManager;
-    private readonly ToolInvoker _toolInvoker;
+    private readonly ToolManager _toolInvoker;
     private readonly MemorySearchTool _searchTool;
     private readonly MemoryWriteTool _writeTool;
     private readonly MemoryReadTool _readTool;
@@ -25,7 +25,7 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
 
     public MemoryBootstrapHostedService(
         IHookManager hookManager,
-        ToolInvoker toolInvoker,
+        ToolManager toolInvoker,
         MemorySearchTool searchTool,
         MemoryWriteTool writeTool,
         MemoryReadTool readTool,

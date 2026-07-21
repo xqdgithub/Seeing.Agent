@@ -9,14 +9,14 @@ using System.Collections.Concurrent;
 
 internal sealed class McpToolRegistry : IMcpToolRegistry
 {
-    private readonly ToolInvoker _toolInvoker;
+    private readonly ToolManager _toolInvoker;
     private readonly IHookManager _hookManager;
     private readonly ILogger _logger;
 
     private readonly ConcurrentDictionary<string, HashSet<string>> _serverTools = new();
     private readonly ConcurrentDictionary<string, McpTool> _mcpTools = new();
 
-    public McpToolRegistry(ToolInvoker toolInvoker, IHookManager hookManager, ILogger logger)
+    public McpToolRegistry(ToolManager toolInvoker, IHookManager hookManager, ILogger logger)
     {
         _toolInvoker = toolInvoker;
         _hookManager = hookManager;

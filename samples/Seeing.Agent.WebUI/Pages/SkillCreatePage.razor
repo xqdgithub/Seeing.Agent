@@ -1,10 +1,17 @@
 @page "/skills/create"
 @using AntDesign
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Logging
 @using Seeing.Agent.Configuration
-@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.Skills
+@using Seeing.Agent.Skills.OnlineParsers
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 @inject IWorkspaceProvider WorkspaceProvider
+@inject SkillManager SkillManager
+@inject HttpClient HttpClient
+@inject OnlineSkillParserAggregator ParserAggregator
+@inject ILogger<SkillCreatePage> Logger
 
 <PageTitle>创建技能 - Seeing.Agent</PageTitle>
 
@@ -14,33 +21,317 @@
         <BreadcrumbItem>创建</BreadcrumbItem>
     </Breadcrumb>
     <ChildContent>
-        <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 24px;"
-               Message="技能通过工作区目录中的 SKILL.md 文件定义。"
-               Description="在技能目录下创建文件夹并添加 SKILL.md（含 YAML frontmatter），然后重启或刷新技能列表。" />
-        <Card Title="创建技能目录">
-            <Form Layout="@FormLayout.Vertical" Model="@_form">
-                <FormItem Label="技能名称" Required>
-                    <Input @bind-Value="@_form.Name" Placeholder="my-skill" />
-                </FormItem>
-                <FormItem Label="目标目录">
-                    <Input @bind-Value="@_form.Directory" Placeholder="留空则使用 .seeing/skills/{name}" />
-                </FormItem>
-                <FormItem Label="描述">
-                    <TextArea Rows="3" @bind-Value="@_form.Description" />
-                </FormItem>
+        <Tabs ActiveKey="@_activeTab" OnChange="@OnTabChange">
+            <TabPane Key="online" Tab="在线下载">
+                <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin: 16px 0;"
+                       Message="从技能市场下载"
+                       Description="输入技能页面 URL，解析后确认保存。" />
+                
+                <Card Style="margin-bottom: 16px;">
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">技能页面 URL <span style="color: red;">*</span></label>
+                        <InputGroup Compact>
+                            <Input @bind-Value="@_onlineUrl" Style="width: calc(100% - 80px)" Placeholder="https://www.skills.sh/... 或 https://modelscope.cn/skills/..." />
+                            <Button Type="@ButtonType.Primary" OnClick="ParseOnlineSkill" Loading="@_onlineLoading">解析</Button>
+                        </InputGroup>
+                        @if (!string.IsNullOrEmpty(_onlineParseError))
+                        {
+                            <Alert Type="@AlertType.Error" Message="@_onlineParseError" Style="margin-top: 8px;" ShowIcon="true" />
+                        }
+                    </div>
+                    
+                    @if (_onlinePreview != null)
+                    {
+                        <Divider>技能预览</Divider>
+                        
+                        <Descriptions Bordered Column="2" Size="@DescriptionsSize.Small" Style="margin-bottom: 16px;">
+                            <DescriptionsItem Title="名称">
+                                @_onlinePreview.Name
+                                @if (string.IsNullOrWhiteSpace(_onlinePreview.Name))
+                                {
+                                    <span style="color: var(--color-error);">（缺失）</span>
+                                }
+                            </DescriptionsItem>
+                            <DescriptionsItem Title="作者">@(_onlinePreview.Author ?? "-")</DescriptionsItem>
+                            <DescriptionsItem Title="版本">@(_onlinePreview.Version ?? "-")</DescriptionsItem>
+                            <DescriptionsItem Title="标签">
+                                @if (_onlinePreview.Tags != null && _onlinePreview.Tags.Count > 0)
+                                {
+                                    @foreach (var tag in _onlinePreview.Tags)
+                                    {
+                                        <Tag>@tag</Tag>
+                                    }
+                                }
+                                else
+                                {
+                                    <span style="color: #888;">-</span>
+                                }
+                            </DescriptionsItem>
+                            <DescriptionsItem Title="描述" Span="2">
+                                @_onlinePreview.Description
+                                @if (string.IsNullOrWhiteSpace(_onlinePreview.Description))
+                                {
+                                    <span style="color: var(--color-error);">（缺失）</span>
+                                }
+                            </DescriptionsItem>
+                        </Descriptions>
+                        
+                        @if (_onlineFiles.Count > 0)
+                        {
+                            <Divider>文件列表 (@_onlineFiles.Count 个文件)</Divider>
+                            <div style="max-height: 150px; overflow: auto; margin-bottom: 16px;">
+                                @foreach (var file in _onlineFiles)
+                                {
+                                    <Tag Style="margin: 2px;">@file</Tag>
+                                }
+                            </div>
+                        }
+                        
+                        <Divider>SKILL.md 预览</Divider>
+                        <pre style="background: var(--color-bg-layout); padding: 16px; border-radius: 4px; overflow: auto; max-height: 300px; white-space: pre-wrap; font-size: 12px;">@_onlineSkillContent</pre>
+                        
+                        <div style="margin-top: 16px;">
+                            <label style="font-weight: 500; display: block; margin-bottom: 8px;">存储位置 <span style="color: red;">*</span></label>
+                            <RadioGroup TValue="string" @bind-Value="@_onlineLevel" ButtonStyle="@RadioButtonStyle.Solid">
+                                <Radio Value="@("project")">项目级 (.seeing/skills)</Radio>
+                                <Radio Value="@("user")">用户级 (~/.seeing/skills)</Radio>
+                            </RadioGroup>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(_onlineUrl) && !_onlineLoading && string.IsNullOrEmpty(_onlineParseError))
+                    {
+                        <div style="padding: 40px; text-align: center; color: #888;">
+                            <div style="margin-bottom: 8px;">点击"解析"按钮获取技能信息</div>
+                            <div style="font-size: 12px;">支持 skills.sh 和 modelscope.cn</div>
+                        </div>
+                    }
+                </Card>
+                
                 <Space>
-                    <Button Type="@ButtonType.Primary" OnClick="CreateSkill">创建</Button>
+                    <Button Type="@ButtonType.Primary" OnClick="SaveOnlineSkill" Disabled="@(!CanSaveOnlineSkill)">保存技能</Button>
                     <Button OnClick="@(() => NavigationManager.NavigateTo("/skills"))">取消</Button>
                 </Space>
-            </Form>
-        </Card>
+            </TabPane>
+            
+            <TabPane Key="upload" Tab="上传 ZIP">
+                <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin: 16px 0;"
+                       Message="上传完整的技能目录"
+                       Description="ZIP 文件应包含 SKILL.md 及相关资源文件，将直接解压到技能目录。" />
+                
+                <Card Style="margin-bottom: 16px;">
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">存储位置 <span style="color: red;">*</span></label>
+                        <RadioGroup TValue="string" @bind-Value="@_uploadLevel" ButtonStyle="@RadioButtonStyle.Solid">
+                            <Radio Value="@("project")">项目级 (.seeing/skills)</Radio>
+                            <Radio Value="@("user")">用户级 (~/.seeing/skills)</Radio>
+                        </RadioGroup>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">技能名称 <span style="color: red;">*</span></label>
+                        <Input @bind-Value="@_uploadSkillName" Placeholder="留空则使用 ZIP 文件名" />
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">选择 ZIP 文件</label>
+                        <InputFile OnChange="HandleFileChange" Accept=".zip" />
+                        @if (!string.IsNullOrEmpty(_uploadedFileName))
+                        {
+                            <div style="margin-top: 12px; padding: 12px; background: var(--color-success-bg); border-radius: 4px;">
+                                <Text>已选择: @_uploadedFileName (@GetFileSize(_uploadedFileSize))</Text>
+                            </div>
+                        }
+                    </div>
+                    
+                    @if (_uploadedFileData != null)
+                    {
+                        <Divider>ZIP 内容预览</Divider>
+                        <div style="max-height: 200px; overflow: auto;">
+                            @foreach (var file in _uploadedFiles)
+                            {
+                                <Tag>@file</Tag>
+                            }
+                        </div>
+                    }
+                </Card>
+                
+                <Space>
+                    <Button Type="@ButtonType.Primary" OnClick="CreateFromZip" Disabled="@(_uploadedFileData == null)">创建技能</Button>
+                    <Button OnClick="@(() => NavigationManager.NavigateTo("/skills"))">取消</Button>
+                </Space>
+            </TabPane>
+            
+            <TabPane Key="form" Tab="表单创建">
+                <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin: 16px 0;"
+                       Message="填写基本信息创建技能"
+                       Description="将生成包含 YAML frontmatter 的 SKILL.md 文件。" />
+                
+                <Card Style="margin-bottom: 16px;">
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">技能名称 <span style="color: red;">*</span></label>
+                        <Input @bind-Value="@_form.Name" Placeholder="my-skill (小写字母、数字、连字符)" />
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">存储位置 <span style="color: red;">*</span></label>
+                        <RadioGroup TValue="string" @bind-Value="@_form.Level" ButtonStyle="@RadioButtonStyle.Solid">
+                            <Radio Value="@("project")">项目级 (.seeing/skills)</Radio>
+                            <Radio Value="@("user")">用户级 (~/.seeing/skills)</Radio>
+                        </RadioGroup>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">描述 <span style="color: red;">*</span></label>
+                        <TextArea Rows="2" @bind-Value="@_form.Description" Placeholder="简要描述技能的用途和触发场景" />
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="font-weight: 500; display: block; margin-bottom: 8px;">作者</label>
+                            <Input @bind-Value="@_form.Author" Placeholder="作者名称" />
+                        </div>
+                        <div>
+                            <label style="font-weight: 500; display: block; margin-bottom: 8px;">版本</label>
+                            <Input @bind-Value="@_form.Version" Placeholder="1.0.0" />
+                        </div>
+                        <div>
+                            <label style="font-weight: 500; display: block; margin-bottom: 8px;">标签</label>
+                            <Input @bind-Value="@_form.Tags" Placeholder="标签1, 标签2" />
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">技能内容</label>
+                        <TextArea Rows="10" @bind-Value="@_form.Content" 
+                                  Placeholder="# 技能说明&#10;&#10;描述技能的使用方法和注意事项。&#10;&#10;## 使用场景&#10;- 场景1&#10;- 场景2" />
+                    </div>
+                    
+                    <Divider>预览</Divider>
+                    <pre style="background: var(--color-bg-layout); padding: 16px; border-radius: 4px; overflow: auto; max-height: 300px; white-space: pre-wrap; font-size: 12px;">@GetPreviewContent()</pre>
+                </Card>
+                
+                <Space>
+                    <Button Type="@ButtonType.Primary" OnClick="CreateFromForm">创建技能</Button>
+                    <Button OnClick="@(() => NavigationManager.NavigateTo("/skills"))">取消</Button>
+                </Space>
+            </TabPane>
+            
+            
+        </Tabs>
     </ChildContent>
 </WorkspacePageShell>
 
 @code {
-    private CreateForm _form = new();
+    private string _activeTab = "online";
+    
+    // 表单创建
+    private CreateForm _form = new() { Level = "project" };
+    
+    // ZIP 上传
+    private string _uploadLevel = "project";
+    private string _uploadSkillName = "";
+    private string? _uploadedFileName;
+    private long _uploadedFileSize;
+    private byte[]? _uploadedFileData;
+    private List<string> _uploadedFiles = new();
 
-    private void CreateSkill()
+    // 在线下载
+    private string _onlineUrl = "";
+    private string _onlineLevel = "project";
+    private bool _onlineLoading;
+    private OnlineSkillPreview? _onlinePreview;
+    private string? _onlineSkillContent;
+    private string _onlineParseError = "";
+    private List<string> _onlineFiles = new();
+    private byte[]? _onlineZipData;
+    private string? _onlineSkillDirInZip; // 技能在 ZIP 中的目录路径（用于 skills.sh 仓库 ZIP）
+
+    private class OnlineSkillPreview
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string? Author { get; set; }
+        public string? Version { get; set; }
+        public List<string> Tags { get; set; } = new();
+    }
+
+    private bool CanSaveOnlineSkill => _onlinePreview != null
+        && !string.IsNullOrWhiteSpace(_onlinePreview.Name)
+        && !string.IsNullOrWhiteSpace(_onlinePreview.Description);
+
+    private void OnTabChange(string key)
+    {
+        _activeTab = key;
+    }
+
+    private async Task HandleFileChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        
+        if (!file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            MessageService.Warning("只支持 ZIP 格式文件");
+            return;
+        }
+
+        _uploadedFileName = file.Name;
+        _uploadedFileSize = file.Size;
+        
+        // 读取文件数据
+        using var stream = file.OpenReadStream(50 * 1024 * 1024); // 50MB 限制
+        _uploadedFileData = new byte[stream.Length];
+        await stream.ReadAsync(_uploadedFileData, 0, _uploadedFileData.Length);
+        
+        // 解析 ZIP 内容预览
+        _uploadedFiles.Clear();
+        using var zipStream = new System.IO.MemoryStream(_uploadedFileData);
+        using var archive = new System.IO.Compression.ZipArchive(zipStream);
+        
+        bool hasSkillMd = false;
+        foreach (var entry in archive.Entries)
+        {
+            if (!string.IsNullOrEmpty(entry.Name))
+            {
+                _uploadedFiles.Add(entry.FullName);
+                if (entry.Name.Equals("SKILL.md", StringComparison.OrdinalIgnoreCase))
+                    hasSkillMd = true;
+            }
+        }
+        
+        if (!hasSkillMd)
+        {
+            MessageService.Warning("ZIP 文件中未找到 SKILL.md");
+        }
+        
+        // 从文件名推断技能名称
+        if (string.IsNullOrEmpty(_uploadSkillName))
+        {
+            _uploadSkillName = Path.GetFileNameWithoutExtension(file.Name).ToLowerInvariant();
+        }
+        
+        StateHasChanged();
+    }
+
+    private string GetFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / 1024.0 / 1024.0:F1} MB";
+    }
+
+    private string GetPreviewContent()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("---");
+        sb.AppendLine($"name: {_form.Name ?? "my-skill"}");
+        sb.AppendLine($"description: {_form.Description ?? "技能描述"}");
+        if (!string.IsNullOrEmpty(_form.Author))
+            sb.AppendLine($"author: {_form.Author}");
+        if (!string.IsNullOrEmpty(_form.Version))
+            sb.AppendLine($"version: {_form.Version}");
+        if (!string.IsNullOrEmpty(_form.Tags))
+            sb.AppendLine($"tags: {_form.Tags}");
+        sb.AppendLine("---");
+        sb.AppendLine();
+        sb.AppendLine(_form.Content ?? "# 技能说明\n\n在此编写技能内容...");
+        return sb.ToString();
+    }
+
+    private async Task CreateFromForm()
     {
         if (string.IsNullOrWhiteSpace(_form.Name))
         {
@@ -48,39 +339,420 @@
             return;
         }
 
-        var dir = string.IsNullOrWhiteSpace(_form.Directory)
-            ? Path.Combine(WorkspaceProvider.ProjectSeeingDirectory, "skills", _form.Name)
-            : _form.Directory;
-
-        Directory.CreateDirectory(dir);
-        var skillPath = Path.Combine(dir, "SKILL.md");
-        if (File.Exists(skillPath))
+        if (!System.Text.RegularExpressions.Regex.IsMatch(_form.Name, @"^[a-z0-9]+(-[a-z0-9]+)*$"))
         {
-            MessageService.Warning("SKILL.md 已存在");
-            NavigationManager.NavigateTo($"/skills/{_form.Name}");
+            MessageService.Error("技能名称只能包含小写字母、数字和连字符");
             return;
         }
 
-        var content = $"""
-            ---
-            name: {_form.Name}
-            description: {_form.Description ?? "自定义技能"}
-            ---
+        if (string.IsNullOrWhiteSpace(_form.Description))
+        {
+            MessageService.Error("请输入技能描述");
+            return;
+        }
 
-            # {_form.Name}
+        string baseDir = _form.Level == "user"
+            ? WorkspaceProvider.UserSeeingDirectory
+            : WorkspaceProvider.ProjectSeeingDirectory;
+        
+        var skillDir = Path.Combine(baseDir, "skills", _form.Name);
 
-            {_form.Description ?? "在此编写技能说明。"}
-            """;
+        if (Directory.Exists(skillDir))
+        {
+            MessageService.Warning($"技能目录已存在");
+            return;
+        }
 
-        File.WriteAllText(skillPath, content);
-        MessageService.Success("技能文件已创建，请刷新技能列表");
-        NavigationManager.NavigateTo("/skills");
+        try
+        {
+            CreateSkillFile(skillDir);
+            SkillManager.ClearSkillInfos();
+            await SkillManager.DiscoverSkillsAsync();
+            
+            MessageService.Success("技能创建成功");
+            NavigationManager.NavigateTo($"/skills/{_form.Name}");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"创建失败: {ex.Message}");
+        }
+    }
+
+    private async Task CreateFromZip()
+    {
+        if (_uploadedFileData == null)
+        {
+            MessageService.Error("请先选择 ZIP 文件");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_uploadSkillName))
+        {
+            MessageService.Error("请输入技能名称");
+            return;
+        }
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(_uploadSkillName, @"^[a-z0-9]+(-[a-z0-9]+)*$"))
+        {
+            MessageService.Error("技能名称只能包含小写字母、数字和连字符");
+            return;
+        }
+
+        string baseDir = _uploadLevel == "user"
+            ? WorkspaceProvider.UserSeeingDirectory
+            : WorkspaceProvider.ProjectSeeingDirectory;
+        
+        var skillDir = Path.Combine(baseDir, "skills", _uploadSkillName);
+
+        if (Directory.Exists(skillDir))
+        {
+            MessageService.Warning($"技能目录已存在");
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(skillDir);
+
+            using var zipStream = new System.IO.MemoryStream(_uploadedFileData);
+            using var archive = new System.IO.Compression.ZipArchive(zipStream);
+            
+            // 检测 ZIP 是否有单一根目录
+            string? rootPrefix = null;
+            var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
+            
+            if (entries.Count > 0)
+            {
+                var firstPath = entries[0].FullName.Split('/');
+                if (firstPath.Length > 1)
+                {
+                    var potentialRoot = firstPath[0] + "/";
+                    if (entries.All(e => e.FullName.StartsWith(potentialRoot)))
+                    {
+                        rootPrefix = potentialRoot;
+                    }
+                }
+            }
+            
+            foreach (var entry in entries)
+            {
+                var relativePath = rootPrefix != null 
+                    ? entry.FullName.Substring(rootPrefix.Length) 
+                    : entry.FullName;
+                
+                if (string.IsNullOrEmpty(relativePath)) continue;
+
+                var entryPath = Path.Combine(skillDir, relativePath);
+                var entryDir = Path.GetDirectoryName(entryPath);
+                
+                if (!string.IsNullOrEmpty(entryDir))
+                    Directory.CreateDirectory(entryDir);
+
+                using var entryStream = entry.Open();
+                using var fileStream = File.Create(entryPath);
+                await entryStream.CopyToAsync(fileStream);
+            }
+
+            SkillManager.ClearSkillInfos();
+            await SkillManager.DiscoverSkillsAsync();
+            
+            MessageService.Success("技能创建成功");
+            NavigationManager.NavigateTo($"/skills/{_uploadSkillName}");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"创建失败: {ex.Message}");
+        }
+    }
+
+    private void CreateSkillFile(string skillDir)
+    {
+        Directory.CreateDirectory(skillDir);
+        
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("---");
+        sb.AppendLine($"name: {_form.Name}");
+        sb.AppendLine($"description: {_form.Description}");
+        if (!string.IsNullOrEmpty(_form.Author))
+            sb.AppendLine($"author: {_form.Author}");
+        if (!string.IsNullOrEmpty(_form.Version))
+            sb.AppendLine($"version: {_form.Version}");
+        if (!string.IsNullOrEmpty(_form.Tags))
+            sb.AppendLine($"tags: {_form.Tags}");
+        sb.AppendLine("---");
+        sb.AppendLine();
+        sb.AppendLine(_form.Content ?? "# 技能说明\n\n在此编写技能内容...");
+
+        var skillPath = Path.Combine(skillDir, "SKILL.md");
+        File.WriteAllText(skillPath, sb.ToString());
+    }
+
+    private async Task ParseOnlineSkill()
+    {
+        if (string.IsNullOrWhiteSpace(_onlineUrl))
+        {
+            MessageService.Warning("请输入技能页面 URL");
+            return;
+        }
+
+        _onlineLoading = true;
+        _onlinePreview = null;
+        _onlineSkillContent = null;
+        _onlineParseError = "";
+        _onlineFiles.Clear();
+        _onlineZipData = null;
+        _onlineSkillDirInZip = null;
+
+        try
+        {
+            Logger.LogInformation("开始解析技能 URL: {Url}", _onlineUrl);
+            
+            var result = await ParserAggregator.ParseAsync(_onlineUrl, HttpClient);
+            
+            if (result == null)
+            {
+                _onlineParseError = "无法解析该 URL，请检查地址是否正确";
+                Logger.LogWarning("解析技能失败，URL: {Url}", _onlineUrl);
+                MessageService.Error(_onlineParseError);
+                return;
+            }
+
+            _onlineSkillContent = result.Content;
+            _onlinePreview = new OnlineSkillPreview
+            {
+                Name = result.Name,
+                Description = result.Description,
+                Author = result.Author,
+                Version = result.Version,
+                Tags = result.Tags ?? new List<string>()
+            };
+
+            // 保存技能目录路径（用于 skills.sh 仓库 ZIP）
+            if (result.Files.Count > 0)
+            {
+                _onlineSkillDirInZip = result.Files[0];
+            }
+
+            // 尝试下载 ZIP 获取文件列表
+            if (!string.IsNullOrEmpty(result.DownloadUrl))
+            {
+                try
+                {
+                    _onlineZipData = await ParserAggregator.DownloadZipAsync(_onlineUrl, result, HttpClient);
+                    if (_onlineZipData != null)
+                    {
+                        using var zipStream = new System.IO.MemoryStream(_onlineZipData);
+                        using var archive = new System.IO.Compression.ZipArchive(zipStream);
+                        
+                        var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
+                        
+                        // 检测 ZIP 根目录（GitHub 仓库格式: repo-branch/）
+                        string? repoRoot = null;
+                        if (entries.Count > 0)
+                        {
+                            var firstPath = entries[0].FullName.Split('/');
+                            if (firstPath.Length > 1)
+                            {
+                                var potentialRoot = firstPath[0] + "/";
+                                if (entries.All(e => e.FullName.StartsWith(potentialRoot)))
+                                {
+                                    repoRoot = potentialRoot;
+                                }
+                            }
+                        }
+                        
+                        // 确定技能目录路径（用于 skills.sh 的仓库 ZIP）
+                        // result.Files[0] 可能包含技能目录路径，如 "skills/find-skills"
+                        string? skillDir = result.Files.Count > 0 ? result.Files[0] : null;
+                        
+                        foreach (var entry in entries)
+                        {
+                            var relativePath = repoRoot != null 
+                                ? entry.FullName.Substring(repoRoot.Length) 
+                                : entry.FullName;
+                            
+                            // 如果是 skills.sh 的仓库 ZIP，只提取目标技能目录
+                            if (!string.IsNullOrEmpty(skillDir) && !relativePath.StartsWith(skillDir + "/"))
+                            {
+                                continue;
+                            }
+                            
+                            // 去除技能目录前缀
+                            if (!string.IsNullOrEmpty(skillDir) && relativePath.StartsWith(skillDir + "/"))
+                            {
+                                relativePath = relativePath.Substring(skillDir.Length + 1);
+                            }
+                            
+                            if (!string.IsNullOrEmpty(relativePath))
+                            {
+                                _onlineFiles.Add(relativePath);
+                            }
+                        }
+                        
+                        Logger.LogInformation("下载 ZIP 成功，包含 {Count} 个文件", _onlineFiles.Count);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "下载 ZIP 失败: {DownloadUrl}", result.DownloadUrl);
+                    // ZIP 下载失败不影响解析结果
+                }
+            }
+
+            // 检查必填字段
+            if (string.IsNullOrWhiteSpace(result.Name) || string.IsNullOrWhiteSpace(result.Description))
+            {
+                _onlineParseError = "解析成功，但缺少必填字段（名称或描述），无法保存";
+                Logger.LogWarning("技能缺少必填字段: {Url}, Name={Name}, HasDescription={HasDesc}", 
+                    _onlineUrl, result.Name, !string.IsNullOrWhiteSpace(result.Description));
+                MessageService.Warning(_onlineParseError);
+            }
+            else
+            {
+                Logger.LogInformation("解析技能成功: {Name}, 文件数: {FileCount}", result.Name, _onlineFiles.Count);
+                MessageService.Success($"解析成功: {result.Name}" + (_onlineFiles.Count > 0 ? $" ({_onlineFiles.Count} 个文件)" : ""));
+            }
+        }
+        catch (Exception ex)
+        {
+            _onlineParseError = $"解析失败: {ex.Message}";
+            Logger.LogError(ex, "解析技能异常: {Url}", _onlineUrl);
+            MessageService.Error(_onlineParseError);
+        }
+        finally
+        {
+            _onlineLoading = false;
+        }
+    }
+
+    private async Task SaveOnlineSkill()
+    {
+        if (_onlinePreview == null || string.IsNullOrEmpty(_onlineSkillContent))
+        {
+            MessageService.Error("请先解析技能");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_onlinePreview.Name))
+        {
+            MessageService.Error("技能名称不能为空");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_onlinePreview.Description))
+        {
+            MessageService.Error("技能描述不能为空");
+            return;
+        }
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(_onlinePreview.Name, @"^[a-z0-9]+(-[a-z0-9]+)*$"))
+        {
+            MessageService.Error("技能名称只能包含小写字母、数字和连字符");
+            return;
+        }
+
+        string baseDir = _onlineLevel == "user"
+            ? WorkspaceProvider.UserSeeingDirectory
+            : WorkspaceProvider.ProjectSeeingDirectory;
+
+        var skillDir = Path.Combine(baseDir, "skills", _onlinePreview.Name);
+
+        if (Directory.Exists(skillDir))
+        {
+            MessageService.Warning($"技能目录已存在: {_onlinePreview.Name}");
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(skillDir);
+            
+            // 如果有 ZIP 数据，解压文件
+            if (_onlineZipData != null && _onlineFiles.Count > 0)
+            {
+                using var zipStream = new System.IO.MemoryStream(_onlineZipData);
+                using var archive = new System.IO.Compression.ZipArchive(zipStream);
+                
+                var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
+                
+                // 检测 ZIP 根目录（GitHub 仓库格式: repo-branch/）
+                string? repoRoot = null;
+                if (entries.Count > 0)
+                {
+                    var firstPath = entries[0].FullName.Split('/');
+                    if (firstPath.Length > 1)
+                    {
+                        var potentialRoot = firstPath[0] + "/";
+                        if (entries.All(e => e.FullName.StartsWith(potentialRoot)))
+                        {
+                            repoRoot = potentialRoot;
+                        }
+                    }
+                }
+                
+                foreach (var entry in entries)
+                {
+                    var relativePath = repoRoot != null 
+                        ? entry.FullName.Substring(repoRoot.Length) 
+                        : entry.FullName;
+                    
+                    if (string.IsNullOrEmpty(relativePath)) continue;
+                    
+                    // 如果是 skills.sh 的仓库 ZIP，只提取目标技能目录
+                    if (!string.IsNullOrEmpty(_onlineSkillDirInZip) && !relativePath.StartsWith(_onlineSkillDirInZip + "/"))
+                    {
+                        continue;
+                    }
+                    
+                    // 去除技能目录前缀
+                    if (!string.IsNullOrEmpty(_onlineSkillDirInZip) && relativePath.StartsWith(_onlineSkillDirInZip + "/"))
+                    {
+                        relativePath = relativePath.Substring(_onlineSkillDirInZip.Length + 1);
+                    }
+                    
+                    if (string.IsNullOrEmpty(relativePath)) continue;
+
+                    var entryPath = Path.Combine(skillDir, relativePath);
+                    var entryDir = Path.GetDirectoryName(entryPath);
+                    
+                    if (!string.IsNullOrEmpty(entryDir))
+                        Directory.CreateDirectory(entryDir);
+
+                    using var entryStream = entry.Open();
+                    using var fileStream = File.Create(entryPath);
+                    await entryStream.CopyToAsync(fileStream);
+                }
+                
+                Logger.LogInformation("解压技能 ZIP 成功: {Name}, 文件数: {Count}", _onlinePreview.Name, _onlineFiles.Count);
+            }
+            else
+            {
+                // 只保存 SKILL.md
+                var skillPath = Path.Combine(skillDir, "SKILL.md");
+                await File.WriteAllTextAsync(skillPath, _onlineSkillContent);
+            }
+
+            SkillManager.ClearSkillInfos();
+            await SkillManager.DiscoverSkillsAsync();
+
+            MessageService.Success("技能保存成功");
+            NavigationManager.NavigateTo($"/skills/{_onlinePreview.Name}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "保存技能失败: {Name}", _onlinePreview.Name);
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
     }
 
     private sealed class CreateForm
     {
         public string Name { get; set; } = "";
-        public string Directory { get; set; } = "";
-        public string? Description { get; set; }
+        public string Description { get; set; } = "";
+        public string Level { get; set; } = "project";
+        public string? Author { get; set; }
+        public string? Version { get; set; }
+        public string? Tags { get; set; }
+        public string? Content { get; set; }
     }
 }

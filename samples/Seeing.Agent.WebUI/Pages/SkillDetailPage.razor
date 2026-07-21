@@ -2,9 +2,7 @@
 @using AntDesign
 @using Seeing.Agent.Core.Interfaces
 @using Seeing.Agent.Skills
-@using Seeing.Agent.WebUI.Services
 @inject SkillManager SkillManager
-@inject SkillStateService SkillStateService
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 
@@ -27,7 +25,7 @@
         {
             <Descriptions Bordered Column="2" Style="margin-bottom: 16px;">
                 <DescriptionsItem Title="名称">@SkillName</DescriptionsItem>
-                <DescriptionsItem Title="类型">@(_skill.Location?.Contains(".agents") == true ? "内置" : "自定义")</DescriptionsItem>
+                <DescriptionsItem Title="类型">@GetSkillType(_skill)</DescriptionsItem>
                 <DescriptionsItem Title="路径" Span="2">@_skill.Location</DescriptionsItem>
                 <DescriptionsItem Title="描述" Span="2">@(_skill.Description ?? "无")</DescriptionsItem>
             </Descriptions>
@@ -65,18 +63,25 @@
     protected override async Task OnInitializedAsync()
     {
         _loading = true;
-        _skill = SkillManager.GetSkillInfo(SkillName);
-        _enabled = SkillStateService.IsEnabled(SkillName);
+        _skill = SkillManager.GetSkillInfoIncludingDisabled(SkillName);
+        _enabled = SkillManager.IsSkillEnabled(SkillName);
         if (_skill != null && !string.IsNullOrEmpty(_skill.Location) && File.Exists(_skill.Location))
             _rawContent = await File.ReadAllTextAsync(_skill.Location);
         _files = SkillManager.GetSkillFiles(SkillName);
         _loading = false;
     }
 
-    private void ToggleEnabled(bool enabled)
+    private async Task ToggleEnabled(bool enabled)
     {
-        SkillStateService.SetEnabled(SkillName, enabled);
+        await SkillManager.SetSkillEnabledAsync(SkillName, enabled);
         _enabled = enabled;
         MessageService.Success(enabled ? "已启用" : "已禁用");
+    }
+
+    string GetSkillType(SkillInfo? s) {
+        if (s?.Location == null) return "未知";
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "用户级";
+        return "项目级";
     }
 }

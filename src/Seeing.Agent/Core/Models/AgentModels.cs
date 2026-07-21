@@ -21,7 +21,7 @@ namespace Seeing.Agent.Core.Models
         public CancellationToken CancellationToken { get; set; }
 
         /// <summary>
-        /// 服务提供者（用于获取 AgentExecutor、ToolInvoker 等）
+        /// 服务提供者（用于获取 AgentExecutor、ToolManager 等）
         /// </summary>
         public IServiceProvider? Services { get; set; }
 

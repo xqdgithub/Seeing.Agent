@@ -2,6 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Skills;
+using Seeing.Agent.Tools;
 using Seeing.Agent.WebUI.Services;
 using Xunit;
 
@@ -14,8 +16,8 @@ public class WorkspaceSwitchServiceTests : IDisposable
 {
     private readonly Mock<IWorkspaceProvider> _workspaceMock;
     private readonly Mock<SeeingConfigService> _configServiceMock;
-    private readonly Mock<SkillStateService> _skillStateMock;
-    private readonly Mock<ToolStateService> _toolStateMock;
+    private readonly Mock<ToolManager> _toolInvokerMock;
+    private readonly Mock<SkillManager> _skillManagerMock;
     private readonly Mock<ILogger<WorkspaceSwitchService>> _loggerMock;
     private readonly string _testDirectory;
 
@@ -23,8 +25,13 @@ public class WorkspaceSwitchServiceTests : IDisposable
     {
         _workspaceMock = new Mock<IWorkspaceProvider>();
         _configServiceMock = new Mock<SeeingConfigService>(MockBehavior.Loose);
-        _skillStateMock = new Mock<SkillStateService>(MockBehavior.Loose);
-        _toolStateMock = new Mock<ToolStateService>(MockBehavior.Loose);
+        _toolInvokerMock = new Mock<ToolManager>(
+            MockBehavior.Loose,
+            new Mock<ILogger<ToolManager>>().Object,
+            new Mock<Seeing.Agent.Core.Hooks.IHookManager>().Object);
+        _skillManagerMock = new Mock<SkillManager>(
+            MockBehavior.Loose,
+            new Mock<ILogger<SkillManager>>().Object);
         _loggerMock = new Mock<ILogger<WorkspaceSwitchService>>();
         
         _testDirectory = Path.Combine(Path.GetTempPath(), $"workspace_test_{Guid.NewGuid():N}");
@@ -46,8 +53,8 @@ public class WorkspaceSwitchServiceTests : IDisposable
         return new WorkspaceSwitchService(
             _workspaceMock.Object,
             _configServiceMock.Object,
-            _skillStateMock.Object,
-            _toolStateMock.Object,
+            _toolInvokerMock.Object,
+            _skillManagerMock.Object,
             _loggerMock.Object);
     }
 
@@ -65,8 +72,8 @@ public class WorkspaceSwitchServiceTests : IDisposable
         result.Should().BeTrue();
         _workspaceMock.Verify(x => x.SetWorkspaceRoot(newPath), Times.Once);
         _configServiceMock.Verify(x => x.ReloadAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _skillStateMock.Verify(x => x.LoadAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _toolStateMock.Verify(x => x.LoadAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _toolInvokerMock.Verify(x => x.LoadToolStateAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _skillManagerMock.Verify(x => x.LoadSkillStateAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

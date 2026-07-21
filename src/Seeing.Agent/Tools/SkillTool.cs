@@ -115,6 +115,13 @@ namespace Seeing.Agent.Tools
                 return Failure("Parameter 'name' must be a non-empty string");
             }
 
+            // 检查技能是否启用
+            if (!_skillManager.IsSkillEnabled(skillName))
+            {
+                _logger.LogWarning("尝试加载已禁用的技能: {SkillName}", skillName);
+                return Failure($"Skill '{skillName}' is disabled. Enable it in the Skills settings.");
+            }
+
             // 获取技能信息
             var skill = _skillManager.GetSkillInfo(skillName);
             if (skill == null)

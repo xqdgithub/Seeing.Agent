@@ -1,10 +1,8 @@
 ﻿@page "/skills"
 @using AntDesign
 @using Seeing.Agent.Skills
-@using Seeing.Agent.WebUI.Services
 @using Seeing.Agent.Core.Interfaces
 @inject SkillManager SkillManager
-@inject SkillStateService SkillStateService
 @inject IMessageService MessageService
 @inject NavigationManager NavigationManager
 
@@ -97,15 +95,15 @@
             @foreach (var skill in _filteredSkills) {
                 <div class="item-card" onclick="@(() => ViewSkill(skill.Key))">
                     <div class="item-card-header">
-                        <div class="card-icon @(SkillStateService.IsEnabled(skill.Key) ? "success" : "")">
+                        <div class="card-icon @(SkillManager.IsSkillEnabled(skill.Key) ? "success" : "")">
                             <Icon Type="@IconType.Outline.Code" />
                         </div>
                         <div class="card-title-section">
                             <h3 class="card-title">@skill.Key</h3>
                             <div class="card-status-row">
                                 <span class="status-tag info">@GetSkillType(skill.Value)</span>
-                                <span class="status-tag @(SkillStateService.IsEnabled(skill.Key) ? "active" : "inactive")">
-                                    @(SkillStateService.IsEnabled(skill.Key) ? "Enabled" : "Disabled")
+                                <span class="status-tag @(SkillManager.IsSkillEnabled(skill.Key) ? "active" : "inactive")">
+                                    @(SkillManager.IsSkillEnabled(skill.Key) ? "Enabled" : "Disabled")
                                 </span>
                             </div>
                         </div>
@@ -120,8 +118,8 @@
                         }
                     </div>
                     <div class="item-card-footer">
-                        <div class="card-actions">
-                            <Switch Checked="@SkillStateService.IsEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
+                        <div class="card-actions" @onclick:stopPropagation="true">
+                            <Switch Checked="@SkillManager.IsSkillEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
                         </div>
                         <span class="card-timestamp">Click to view details</span>
                     </div>
@@ -156,8 +154,8 @@
                                 <span class="status-tag info">@GetSkillType(skill.Value)</span>
                             </td>
                             <td>
-                                <span class="status-tag @(SkillStateService.IsEnabled(skill.Key) ? "active" : "inactive")">
-                                    @(SkillStateService.IsEnabled(skill.Key) ? "Enabled" : "Disabled")
+                                <span class="status-tag @(SkillManager.IsSkillEnabled(skill.Key) ? "active" : "inactive")">
+                                    @(SkillManager.IsSkillEnabled(skill.Key) ? "Enabled" : "Disabled")
                                 </span>
                             </td>
                             <td>
@@ -165,7 +163,7 @@
                             </td>
                             <td>
                                 <div class="table-cell-actions" onclick:stopPropagation="true">
-                                    <Switch Checked="@SkillStateService.IsEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
+                                    <Switch Checked="@SkillManager.IsSkillEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
                                 </div>
                             </td>
                         </tr>
@@ -186,7 +184,7 @@
     
     // Statistics
     private int _totalCount => _allSkills.Count;
-    private int _enabledCount => _allSkills.Count(s => SkillStateService.IsEnabled(s.Key));
+    private int _enabledCount => _allSkills.Count(s => SkillManager.IsSkillEnabled(s.Key));
     private int _disabledCount => _totalCount - _enabledCount;
     
     protected override async Task OnInitializedAsync() => await RefreshSkills();
@@ -195,7 +193,7 @@
         _isLoading = true;
         StateHasChanged();
         
-        _allSkills = SkillManager.GetAllSkillInfos().ToList();
+        _allSkills = SkillManager.GetAllSkillInfosIncludingDisabled().ToList();
         ApplyFilter();
         
         _isLoading = false;
@@ -217,12 +215,19 @@
         ApplyFilter();
     }
     
-    void ToggleSkill(string name, bool enabled) {
-        SkillStateService.SetEnabled(name, enabled);
+    private async Task ToggleSkill(string name, bool enabled) {
+        await SkillManager.SetSkillEnabledAsync(name, enabled);
         StateHasChanged();
     }
     
-    string GetSkillType(SkillInfo? s) => s?.Location?.Contains(".agents") == true ? "内置" : "自定义";
+    string GetSkillType(SkillInfo? s) {
+        if (s?.Location == null) return "未知";
+        // 用户级：路径包含用户目录
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "用户级";
+        // 项目级：其他路径
+        return "项目级";
+    }
     string GetDescriptionPreview(string? d) => string.IsNullOrEmpty(d) ? "无描述" : (d.Length > 100 ? d[..100] + "..." : d);
     string GetLocationPreview(string? loc) => loc?.Length > 40 ? "..." + loc[^Math.Min(40, loc.Length)..] : loc ?? "";
     void ViewSkill(string name) => NavigationManager.NavigateTo($"/skills/{name}");

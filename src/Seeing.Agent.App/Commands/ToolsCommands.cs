@@ -11,9 +11,9 @@ namespace Seeing.Agent.App.Commands;
 [CommandProvider]
 public class ToolsCommands
 {
-    private readonly ToolInvoker _toolInvoker;
+    private readonly ToolManager _toolInvoker;
 
-    public ToolsCommands(ToolInvoker toolInvoker)
+    public ToolsCommands(ToolManager toolInvoker)
     {
         _toolInvoker = toolInvoker;
     }

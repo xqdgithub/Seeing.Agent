@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Skills.Pulling;
 using System.Collections.Concurrent;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -20,6 +22,10 @@ namespace Seeing.Agent.Skills
         private readonly ConcurrentDictionary<string, SkillInfo> _skillInfos = new();
         private readonly List<string> _skillDirectories = new();
         private readonly ISkillPuller? _skillPuller;
+        private readonly IWorkspaceProvider? _workspace;
+        private readonly object _skillStateLock = new();
+        private HashSet<string> _userDisabledSkills = new(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> _projectDisabledSkills = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// 技能名称验证正则：小写字母数字，单个连字符分隔，1-64字符
@@ -36,14 +42,11 @@ namespace Seeing.Agent.Skills
         /// </summary>
         private const int MaxNameLength = 64;
 
-        public SkillManager(ILogger<SkillManager> logger, ISkillPuller? skillPuller = null)
+        public SkillManager(ILogger<SkillManager> logger, ISkillPuller? skillPuller = null, IWorkspaceProvider? workspace = null)
         {
             _logger = logger;
             _skillPuller = skillPuller;
-
-            // 项目相对路径
-            AddDefaultDirectory("./.agents/skills");
-            AddDefaultDirectory("./.seeing/skills");
+            _workspace = workspace;
 
             // 用户目录（跨平台支持）
             var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -51,6 +54,14 @@ namespace Seeing.Agent.Skills
             {
                 AddDefaultDirectory(Path.Combine(userProfile, ".agents", "skills"));
                 AddDefaultDirectory(Path.Combine(userProfile, ".seeing", "skills"));
+            }
+
+            // 项目目录（通过 workspace provider 获取，无条件添加）
+            if (_workspace != null)
+            {
+                AddDefaultDirectory(Path.Combine(_workspace.ProjectSeeingDirectory, "skills"));
+                AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, ".agents", "skills"));
+                AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, "skills"));
             }
         }
 
@@ -100,16 +111,20 @@ namespace Seeing.Agent.Skills
         {
             _skillDirectories.Clear();
 
-            // 项目相对路径
-            AddDefaultDirectory("./.seeing/skills");
-            AddDefaultDirectory("./.agents/skills");
-
             // 用户目录
             var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             if (!string.IsNullOrEmpty(userProfile))
             {
                 AddDefaultDirectory(Path.Combine(userProfile, ".agents", "skills"));
                 AddDefaultDirectory(Path.Combine(userProfile, ".seeing", "skills"));
+            }
+
+            // 项目目录（通过 workspace provider 获取，无条件添加）
+            if (_workspace != null)
+            {
+                AddDefaultDirectory(Path.Combine(_workspace.ProjectSeeingDirectory, "skills"));
+                AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, ".agents", "skills"));
+                AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, "skills"));
             }
         }
 
@@ -186,17 +201,180 @@ namespace Seeing.Agent.Skills
         }
 
         /// <summary>
-        /// 获取技能信息
+        /// 获取技能信息（禁用的技能返回 null）
         /// </summary>
         public SkillInfo? GetSkillInfo(string name)
         {
-            return string.IsNullOrEmpty(name) ? null : _skillInfos.TryGetValue(name, out var info) ? info : null;
+            if (string.IsNullOrEmpty(name)) return null;
+            if (!IsSkillEnabled(name)) return null;
+            return _skillInfos.TryGetValue(name, out var info) ? info : null;
         }
 
         /// <summary>
-        /// 获取所有技能信息
+        /// 获取技能信息（包括禁用的，供详情页使用）
         /// </summary>
-        public IReadOnlyDictionary<string, SkillInfo> GetAllSkillInfos() => _skillInfos;
+        public SkillInfo? GetSkillInfoIncludingDisabled(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            return _skillInfos.TryGetValue(name, out var info) ? info : null;
+        }
+
+        /// <summary>
+        /// 获取所有技能信息（只返回启用的技能）
+        /// </summary>
+        public IReadOnlyDictionary<string, SkillInfo> GetAllSkillInfos()
+        {
+            return _skillInfos
+                .Where(kvp => IsSkillEnabled(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>获取所有技能信息（包括禁用的，供 UI 使用）</summary>
+        public IReadOnlyDictionary<string, SkillInfo> GetAllSkillInfosIncludingDisabled() => _skillInfos;
+
+        /// <summary>合并后的禁用技能集合（用户级 + 项目级）</summary>
+        public IReadOnlySet<string> DisabledSkills
+        {
+            get
+            {
+                lock (_skillStateLock)
+                {
+                    return _userDisabledSkills
+                        .Union(_projectDisabledSkills)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+            }
+        }
+
+        /// <summary>状态变更事件</summary>
+        public event Action? OnSkillStateChanged;
+
+        /// <summary>检查技能是否启用</summary>
+        public bool IsSkillEnabled(string skillName)
+        {
+            if (string.IsNullOrWhiteSpace(skillName))
+                return true;
+
+            lock (_skillStateLock)
+            {
+                return !_userDisabledSkills.Contains(skillName) && !_projectDisabledSkills.Contains(skillName);
+            }
+        }
+
+        /// <summary>加载技能禁用状态（双层级）</summary>
+        public async Task LoadSkillStateAsync(CancellationToken ct = default)
+        {
+            if (_workspace == null) return;
+
+            var userPath = Path.Combine(_workspace.UserSeeingDirectory, "skill-state.json");
+            var projectPath = Path.Combine(_workspace.ProjectSeeingDirectory, "skill-state.json");
+
+            var userDisabled = await LoadDisabledSetAsync(userPath, ct);
+            var projectDisabled = await LoadDisabledSetAsync(projectPath, ct);
+
+            lock (_skillStateLock)
+            {
+                _userDisabledSkills = userDisabled;
+                _projectDisabledSkills = projectDisabled;
+            }
+
+            _logger.LogInformation("技能禁用状态已加载，用户级: {UserCount} 个，项目级: {ProjectCount} 个",
+                _userDisabledSkills.Count, _projectDisabledSkills.Count);
+        }
+
+        /// <summary>设置技能启用/禁用状态</summary>
+        public async Task SetSkillEnabledAsync(string skillName, bool enabled, CancellationToken ct = default)
+        {
+            if (_workspace == null) return;
+
+            ConfigLevel level;
+            lock (_skillStateLock)
+            {
+                level = _projectDisabledSkills.Contains(skillName) ? ConfigLevel.Project : ConfigLevel.User;
+            }
+
+            await SaveSkillStateAsync(skillName, enabled, level, ct);
+            OnSkillStateChanged?.Invoke();
+        }
+
+        /// <summary>保存技能禁用状态到指定级别</summary>
+        private async Task SaveSkillStateAsync(string skillName, bool enabled, ConfigLevel level, CancellationToken ct)
+        {
+            if (_workspace == null) return;
+
+            var filePath = level == ConfigLevel.User
+                ? Path.Combine(_workspace.UserSeeingDirectory, "skill-state.json")
+                : Path.Combine(_workspace.ProjectSeeingDirectory, "skill-state.json");
+
+            HashSet<string> targetSet;
+            lock (_skillStateLock)
+            {
+                targetSet = level == ConfigLevel.User ? _userDisabledSkills : _projectDisabledSkills;
+
+                if (enabled)
+                    targetSet.Remove(skillName);
+                else
+                    targetSet.Add(skillName);
+            }
+
+            await SaveDisabledSetAsync(filePath, targetSet, ct);
+        }
+
+        /// <summary>从文件加载禁用名称集合</summary>
+        private static async Task<HashSet<string>> LoadDisabledSetAsync(string filePath, CancellationToken ct)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!File.Exists(filePath))
+                return result;
+
+            try
+            {
+                var json = await File.ReadAllTextAsync(filePath, ct);
+                var data = JsonSerializer.Deserialize<DisabledSkillsData>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (data?.DisabledSkills != null)
+                {
+                    foreach (var name in data.DisabledSkills)
+                    {
+                        result.Add(name);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // 加载失败时返回空集合
+            }
+
+            return result;
+        }
+
+        /// <summary>保存禁用名称集合到文件</summary>
+        private static async Task SaveDisabledSetAsync(string filePath, HashSet<string> disabledSkills, CancellationToken ct)
+        {
+            var dir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var data = new DisabledSkillsData { DisabledSkills = disabledSkills.ToList() };
+            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            await File.WriteAllTextAsync(filePath, json, ct);
+        }
+
+        /// <summary>禁用技能数据模型</summary>
+        private sealed class DisabledSkillsData
+        {
+            public List<string>? DisabledSkills { get; set; }
+        }
 
         /// <summary>
         /// 获取所有技能目录

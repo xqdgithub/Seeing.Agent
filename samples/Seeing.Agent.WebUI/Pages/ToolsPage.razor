@@ -2,9 +2,7 @@
 @using AntDesign
 @using Seeing.Agent.Tools
 @using Seeing.Agent.Core.Interfaces
-@using Seeing.Agent.WebUI.Services
-@inject ToolInvoker ToolInvoker
-@inject ToolStateService ToolStateService
+@inject ToolManager ToolInvoker
 @inject IMessageService MessageService
 
 <PageTitle>工具 - Seeing.Agent</PageTitle>
@@ -102,8 +100,8 @@
                             <h3 class="card-title">@tool.Id</h3>
                             <div class="card-status-row">
                                 <Tag Color="@GetCategoryColor(tool.Category)">@tool.Category</Tag>
-                                <Tag Color="@(ToolStateService.IsEnabled(tool.Id) ? "success" : "default")">
-                                    @(ToolStateService.IsEnabled(tool.Id) ? "Enabled" : "Disabled")
+                                <Tag Color="@(ToolInvoker.IsToolEnabled(tool.Id) ? "success" : "default")">
+                                    @(ToolInvoker.IsToolEnabled(tool.Id) ? "Enabled" : "Disabled")
                                 </Tag>
                             </div>
                         </div>
@@ -121,7 +119,7 @@
                     </div>
                     <div class="item-card-footer">
                         <div class="card-actions">
-                            <Switch Checked="@ToolStateService.IsEnabled(tool.Id)" OnChange="@((bool v) => ToggleTool(tool.Id, v))" />
+                            <Switch Checked="@ToolInvoker.IsToolEnabled(tool.Id)" OnChange="@((bool v) => ToggleTool(tool.Id, v))" />
                         </div>
                         <button class="card-action-btn" onclick="() => ToggleExpand(tool.Id)" title="@(_expandedTool == tool.Id ? "Collapse" : "Expand")">
                             <Icon Type="@(_expandedTool == tool.Id ? IconType.Outline.Up : IconType.Outline.Down)" />
@@ -148,10 +146,10 @@
     private int _enabledCount = 0;
     
     protected override void OnInitialized() {
-        _tools = ToolInvoker.GetTools().ToList();
+        _tools = ToolInvoker.GetToolsIncludingDisabled().ToList();
         _categories = _tools.Select(t => t.Category.ToString()).Distinct().OrderBy(c => c).ToList();
         _categoryStats = _tools.GroupBy(t => t.Category.ToString()).ToDictionary(g => g.Key, g => g.Count());
-        _enabledCount = _tools.Count(t => ToolStateService.IsEnabled(t.Id));
+        _enabledCount = _tools.Count(t => ToolInvoker.IsToolEnabled(t.Id));
         _allEnabled = _enabledCount == _tools.Count;
     }
     
@@ -168,23 +166,23 @@
                 result = result.Where(t => t.Category.ToString() == _selectedCategory);
             }
             if (_selectedStatus == "enabled") {
-                result = result.Where(t => ToolStateService.IsEnabled(t.Id));
+                result = result.Where(t => ToolInvoker.IsToolEnabled(t.Id));
             } else if (_selectedStatus == "disabled") {
-                result = result.Where(t => !ToolStateService.IsEnabled(t.Id));
+                result = result.Where(t => !ToolInvoker.IsToolEnabled(t.Id));
             }
             return result;
         }
     }
     
-    void ToggleTool(string id, bool enabled) {
-        ToolStateService.SetEnabled(id, enabled);
-        _enabledCount = _tools.Count(t => ToolStateService.IsEnabled(t.Id));
+    private async Task ToggleTool(string id, bool enabled) {
+        await ToolInvoker.SetToolEnabledAsync(id, enabled);
+        _enabledCount = _tools.Count(t => ToolInvoker.IsToolEnabled(t.Id));
         _allEnabled = _enabledCount == _tools.Count;
         StateHasChanged();
     }
     
-    void ToggleAllTools(bool enabled) {
-        foreach (var tool in _tools) ToolStateService.SetEnabled(tool.Id, enabled);
+    private async Task ToggleAllTools(bool enabled) {
+        foreach (var tool in _tools) await ToolInvoker.SetToolEnabledAsync(tool.Id, enabled);
         _allEnabled = enabled;
         _enabledCount = enabled ? _tools.Count : 0;
         StateHasChanged();

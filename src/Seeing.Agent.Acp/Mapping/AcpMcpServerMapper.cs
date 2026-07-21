@@ -40,7 +40,7 @@ public sealed class AcpMcpServerMapper
 
         var result = new List<AcpMcpServerConfig>();
 
-        // 延迟解析 McpClientManager，避免 McpClientManager → ToolInvoker → AcpTool → … → 本类 的构造期死锁
+        // 延迟解析 McpClientManager，避免 McpClientManager → ToolManager → AcpTool → … → 本类 的构造期死锁
         var manager = _serviceProvider.GetService<McpClientManager>();
         if (manager != null)
         {

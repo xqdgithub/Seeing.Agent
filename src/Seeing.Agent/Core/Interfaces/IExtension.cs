@@ -31,7 +31,7 @@ namespace Seeing.Agent.Core.Interfaces
         public HookManager HookManager { get; set; } = null!;
 
         /// <summary>工具调用器</summary>
-        public ToolInvoker ToolInvoker { get; set; } = null!;
+        public ToolManager ToolInvoker { get; set; } = null!;
 
         /// <summary>权限服务</summary>
         public IPermissionService PermissionService { get; set; } = null!;

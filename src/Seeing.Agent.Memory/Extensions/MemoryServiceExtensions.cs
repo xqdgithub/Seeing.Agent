@@ -147,7 +147,7 @@ public static class MemoryServiceExtensions
         services.TryAddSingleton<MemoryWriteTool>();
         services.TryAddSingleton<MemoryReadTool>();
         // 注意：不能用 TryAddSingleton<ITool> —— AddSeeingAgent 已注册多个 ITool，
-        // TryAdd 会因 ServiceType 已存在而整条跳过，导致 memory 工具从未进入 ToolInvoker。
+        // TryAdd 会因 ServiceType 已存在而整条跳过，导致 memory 工具从未进入 ToolManager。
         services.AddSingleton<ITool>(sp => sp.GetRequiredService<MemorySearchTool>());
         services.AddSingleton<ITool>(sp => sp.GetRequiredService<MemoryWriteTool>());
         services.AddSingleton<ITool>(sp => sp.GetRequiredService<MemoryReadTool>());

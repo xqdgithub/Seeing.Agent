@@ -34,9 +34,9 @@ namespace Seeing.Agent.Extensions
             return services;
         }
 
-        /// <summary>注册 Git 工具到 ToolInvoker</summary>
+        /// <summary>注册 Git 工具到 ToolManager</summary>
         public static void RegisterGitTools(
-            this ToolInvoker toolInvoker,
+            this ToolManager toolInvoker,
             IServiceProvider serviceProvider)
         {
             toolInvoker.RegisterTool(serviceProvider.GetRequiredService<GitStatusTool>());

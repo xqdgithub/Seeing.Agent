@@ -26,6 +26,7 @@ using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.MCP.Core;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
+using Seeing.Agent.Skills.OnlineParsers;
 using System.Net.Http;
 using Seeing.Agent.MCP.Policy;
 using Seeing.Agent.Middlewares;
@@ -160,7 +161,7 @@ namespace Seeing.Agent.Extensions
             // 注册类型本身（如果需要 DI）
             services.AddTransient(typeof(T));
 
-            // 工具发现和注册在 ToolInvoker 中完成
+            // 工具发现和注册在 ToolManager 中完成
             return services;
         }
 
@@ -384,12 +385,16 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
             services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 
+            // 在线技能解析器
+            services.AddSingleton<OnlineSkillParserAggregator>();
+
             // 技能管理器（集成配置的 Skills.Paths）
             services.AddSingleton<SkillManager>(sp =>
             {
                 var logger = sp.GetRequiredService<ILogger<SkillManager>>();
+                var workspace = sp.GetService<IWorkspaceProvider>();
                 var options = sp.GetService<IOptions<SeeingAgentOptions>>();
-                var manager = new SkillManager(logger);
+                var manager = new SkillManager(logger, workspace: workspace);
 
                 // 应用配置中的 Skills.Paths
                 if (options?.Value?.Skills?.Paths != null)
@@ -452,14 +457,15 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ITool, CurrentTimeTool>();
 
             // 工具调用器（自动注册所有 ITool）
-            services.AddSingleton<ToolInvoker>(sp =>
+            services.AddSingleton<ToolManager>(sp =>
             {
-                var logger = sp.GetRequiredService<ILogger<ToolInvoker>>();
+                var logger = sp.GetRequiredService<ILogger<ToolManager>>();
                 var hookManager = sp.GetRequiredService<Seeing.Agent.Core.Hooks.IHookManager>();
                 var tools = sp.GetServices<ITool>();
                 var decoratorRegistry = sp.GetService<IToolDecoratorRegistry>();
+                var workspace = sp.GetService<IWorkspaceProvider>();
 
-                var invoker = new ToolInvoker(logger, hookManager, sp, decoratorRegistry);
+                var invoker = new ToolManager(logger, hookManager, sp, decoratorRegistry, workspace: workspace);
 
                 // 自动注册所有 ITool
                 foreach (var tool in tools)
@@ -499,7 +505,7 @@ namespace Seeing.Agent.Extensions
             // 3. 工具注册管理（内部服务）
             services.AddSingleton<McpToolRegistry>(sp =>
             {
-                var toolInvoker = sp.GetRequiredService<ToolInvoker>();
+                var toolInvoker = sp.GetRequiredService<ToolManager>();
                 var hookManager = sp.GetRequiredService<Seeing.Agent.Core.Hooks.IHookManager>();
                 var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<McpToolRegistry>();
                 return new McpToolRegistry(toolInvoker, hookManager, logger);
@@ -721,7 +727,22 @@ namespace Seeing.Agent.Extensions
 
             var componentManager = services.GetRequiredService<IComponentManager>();
             var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().WorkspaceRoot;
-            return await componentManager.LoadAllAsync(workspaceRoot, cancellationToken);
+            var results = await componentManager.LoadAllAsync(workspaceRoot, cancellationToken);
+
+            // 加载工具/技能禁用状态
+            var toolInvoker = services.GetService<ToolManager>();
+            if (toolInvoker != null)
+            {
+                await toolInvoker.LoadToolStateAsync(cancellationToken);
+            }
+
+            var skillManager = services.GetService<SkillManager>();
+            if (skillManager != null)
+            {
+                await skillManager.LoadSkillStateAsync(cancellationToken);
+            }
+
+            return results;
         }
 
         /// <summary>

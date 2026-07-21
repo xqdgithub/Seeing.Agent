@@ -25,7 +25,7 @@ namespace Seeing.Agent.MCP
         private readonly ILogger<McpClientManager> _logger;
         private readonly ILoggerFactory _loggerFactory;
         private readonly IHookManager _hookManager;
-        private readonly ToolInvoker _toolInvoker;
+        private readonly ToolManager _toolInvoker;
         private readonly McpWrapperFactoryRegistry _factoryRegistry;
         private readonly McpGlobalPolicy _globalPolicy;
         private readonly IMcpConfigPersistence _configPersistence;
@@ -51,7 +51,7 @@ namespace Seeing.Agent.MCP
             ILogger<McpClientManager> logger,
             ILoggerFactory loggerFactory,
             IHookManager hookManager,
-            ToolInvoker toolInvoker,
+            ToolManager toolInvoker,
             McpWrapperFactoryRegistry factoryRegistry,
             McpGlobalPolicy globalPolicy,
             IMcpConfigPersistence configPersistence,
@@ -83,7 +83,7 @@ namespace Seeing.Agent.MCP
         #region 兼容性构造函数（旧版）
 
         private static HookManager? s_defaultHookManager;
-        private static ToolInvoker? s_defaultToolInvoker;
+        private static ToolManager? s_defaultToolInvoker;
 
         public McpClientManager(
             ILogger<McpClientManager> logger,
@@ -108,13 +108,13 @@ namespace Seeing.Agent.MCP
             return s_defaultHookManager;
         }
 
-        private static ToolInvoker GetOrCreateDefaultToolInvoker(ILoggerFactory loggerFactory)
+        private static ToolManager GetOrCreateDefaultToolInvoker(ILoggerFactory loggerFactory)
         {
             if (s_defaultToolInvoker == null)
             {
                 var hookManager = GetOrCreateDefaultHookManager(loggerFactory);
-                s_defaultToolInvoker = new ToolInvoker(
-                    loggerFactory.CreateLogger<ToolInvoker>(),
+                s_defaultToolInvoker = new ToolManager(
+                    loggerFactory.CreateLogger<ToolManager>(),
                     hookManager);
             }
             return s_defaultToolInvoker;

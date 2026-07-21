@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
@@ -21,9 +22,9 @@ namespace Seeing.Agent.Tools
     /// 此类不重复检查以避免双重验证。
     /// </para>
     /// </summary>
-    public class ToolInvoker
+    public class ToolManager
     {
-        private readonly ILogger<ToolInvoker> _logger;
+        private readonly ILogger<ToolManager> _logger;
         private readonly Core.Hooks.IHookManager _hookManager;
         private readonly IRuleEvaluator? _ruleEvaluator;
         private readonly ConcurrentDictionary<string, ITool> _tools = new();
@@ -31,13 +32,18 @@ namespace Seeing.Agent.Tools
         private readonly IToolDecoratorRegistry? _decoratorRegistry;
         private readonly int _maxRetries;
         private readonly TimeSpan _retryDelay;
+        private readonly IWorkspaceProvider? _workspace;
+        private readonly object _toolStateLock = new();
+        private HashSet<string> _userDisabledTools = new(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> _projectDisabledTools = new(StringComparer.OrdinalIgnoreCase);
 
-        public ToolInvoker(
-            ILogger<ToolInvoker> logger,
+        public ToolManager(
+            ILogger<ToolManager> logger,
             Core.Hooks.IHookManager hookManager,
             IServiceProvider? serviceProvider = null,
             IToolDecoratorRegistry? decoratorRegistry = null,
             IRuleEvaluator? ruleEvaluator = null,
+            IWorkspaceProvider? workspace = null,
             int maxRetries = 3,
             TimeSpan? retryDelay = null)
         {
@@ -46,6 +52,7 @@ namespace Seeing.Agent.Tools
             _serviceProvider = serviceProvider;
             _decoratorRegistry = decoratorRegistry;
             _ruleEvaluator = ruleEvaluator;
+            _workspace = workspace;
             _maxRetries = maxRetries;
             _retryDelay = retryDelay ?? TimeSpan.FromSeconds(1);
         }
@@ -145,6 +152,150 @@ namespace Seeing.Agent.Tools
         /// </summary>
         public IReadOnlyCollection<ITool> GetTools() => _tools.Values.ToList().AsReadOnly();
 
+        /// <summary>合并后的禁用工具集合（用户级 + 项目级）</summary>
+        public IReadOnlySet<string> DisabledTools
+        {
+            get
+            {
+                lock (_toolStateLock)
+                {
+                    return _userDisabledTools
+                        .Union(_projectDisabledTools)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+            }
+        }
+
+        /// <summary>状态变更事件</summary>
+        public event Action? OnToolStateChanged;
+
+        /// <summary>检查工具是否启用</summary>
+        public bool IsToolEnabled(string toolId)
+        {
+            lock (_toolStateLock)
+            {
+                return !_userDisabledTools.Contains(toolId) && !_projectDisabledTools.Contains(toolId);
+            }
+        }
+
+        /// <summary>获取所有工具（包括禁用的，供 UI 使用）</summary>
+        public IReadOnlyCollection<ITool> GetToolsIncludingDisabled() => _tools.Values.ToList().AsReadOnly();
+
+        /// <summary>加载工具禁用状态（双层级）</summary>
+        public async Task LoadToolStateAsync(CancellationToken ct = default)
+        {
+            if (_workspace == null) return;
+
+            var userPath = Path.Combine(_workspace.UserSeeingDirectory, "tool-state.json");
+            var projectPath = Path.Combine(_workspace.ProjectSeeingDirectory, "tool-state.json");
+
+            var userDisabled = await LoadDisabledSetAsync(userPath, ct);
+            var projectDisabled = await LoadDisabledSetAsync(projectPath, ct);
+
+            lock (_toolStateLock)
+            {
+                _userDisabledTools = userDisabled;
+                _projectDisabledTools = projectDisabled;
+            }
+
+            _logger.LogInformation("工具禁用状态已加载，用户级: {UserCount} 个，项目级: {ProjectCount} 个",
+                _userDisabledTools.Count, _projectDisabledTools.Count);
+        }
+
+        /// <summary>设置工具启用/禁用状态</summary>
+        public async Task SetToolEnabledAsync(string toolId, bool enabled, CancellationToken ct = default)
+        {
+            if (_workspace == null) return;
+
+            ConfigLevel level;
+            lock (_toolStateLock)
+            {
+                level = _projectDisabledTools.Contains(toolId) ? ConfigLevel.Project : ConfigLevel.User;
+            }
+
+            await SaveToolStateAsync(toolId, enabled, level, ct);
+            OnToolStateChanged?.Invoke();
+        }
+
+        /// <summary>保存工具禁用状态到指定级别</summary>
+        private async Task SaveToolStateAsync(string toolId, bool enabled, ConfigLevel level, CancellationToken ct)
+        {
+            if (_workspace == null) return;
+
+            var filePath = level == ConfigLevel.User
+                ? Path.Combine(_workspace.UserSeeingDirectory, "tool-state.json")
+                : Path.Combine(_workspace.ProjectSeeingDirectory, "tool-state.json");
+
+            HashSet<string> targetSet;
+            lock (_toolStateLock)
+            {
+                targetSet = level == ConfigLevel.User ? _userDisabledTools : _projectDisabledTools;
+
+                if (enabled)
+                    targetSet.Remove(toolId);
+                else
+                    targetSet.Add(toolId);
+            }
+
+            await SaveDisabledSetAsync(filePath, targetSet, ct);
+        }
+
+        /// <summary>从文件加载禁用 ID 集合</summary>
+        private static async Task<HashSet<string>> LoadDisabledSetAsync(string filePath, CancellationToken ct)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!File.Exists(filePath))
+                return result;
+
+            try
+            {
+                var json = await File.ReadAllTextAsync(filePath, ct);
+                var data = JsonSerializer.Deserialize<DisabledToolsData>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (data?.DisabledTools != null)
+                {
+                    foreach (var id in data.DisabledTools)
+                    {
+                        result.Add(id);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // 加载失败时返回空集合
+            }
+
+            return result;
+        }
+
+        /// <summary>保存禁用 ID 集合到文件</summary>
+        private static async Task SaveDisabledSetAsync(string filePath, HashSet<string> disabledTools, CancellationToken ct)
+        {
+            var dir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var data = new DisabledToolsData { DisabledTools = disabledTools.ToList() };
+            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            await File.WriteAllTextAsync(filePath, json, ct);
+        }
+
+        /// <summary>禁用工具数据模型</summary>
+        private sealed class DisabledToolsData
+        {
+            public List<string>? DisabledTools { get; set; }
+        }
+
         /// <summary>
         /// 获取工具 Schema 列表（用于 LLM function calling，带 Hook 支持）
         /// </summary>
@@ -154,6 +305,10 @@ namespace Seeing.Agent.Tools
 
             foreach (var tool in _tools.Values)
             {
+                // 过滤禁用工具
+                if (!IsToolEnabled(tool.Id))
+                    continue;
+
                 // ========== Hook: tool.definition ==========
                 var mutable = new Dictionary<string, object?>
                 {
@@ -343,6 +498,19 @@ namespace Seeing.Agent.Tools
             IPermissionChannel? permissionChannel = null)
         {
             var toolId = toolCall.Name;
+
+            // 检查工具是否启用
+            if (!IsToolEnabled(toolId))
+            {
+                _logger.LogWarning("尝试执行已禁用的工具: {ToolId}", toolId);
+                return new ToolResult
+                {
+                    Success = false,
+                    ToolCallId = toolCall.Id,
+                    Title = "工具已禁用",
+                    Error = $"Tool '{toolId}' is disabled. Enable it in the Tools settings."
+                };
+            }
 
             if (!_tools.TryGetValue(toolId, out var tool))
             {

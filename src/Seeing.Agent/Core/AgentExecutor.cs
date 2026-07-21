@@ -25,7 +25,7 @@ namespace Seeing.Agent.Core;
 public class AgentExecutor
 {
     private readonly ILlmService _llm;
-    private readonly ToolInvoker _tools;
+    private readonly ToolManager _tools;
     private readonly IPermissionService _permissions;
     private readonly IHookManager _hooks;
     private readonly IAgentRegistry _registry;
@@ -37,7 +37,7 @@ public class AgentExecutor
 
     public AgentExecutor(
         ILlmService llm,
-        ToolInvoker tools,
+        ToolManager tools,
         IPermissionService permissions,
         IHookManager hooks,
         IAgentRegistry registry,
@@ -564,7 +564,7 @@ public class AgentExecutor
         var arguments = ParseArguments(tc.Function?.Arguments);
         var startTime = DateTime.Now;
 
-        // Session-first：task 走正常 ToolInvoker 路径（TaskTool），不再旁路
+        // Session-first：task 走正常 ToolManager 路径（TaskTool），不再旁路
 
         var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionChannel);
 

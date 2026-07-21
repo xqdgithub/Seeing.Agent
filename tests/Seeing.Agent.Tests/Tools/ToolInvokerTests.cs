@@ -13,17 +13,17 @@ using Xunit;
 namespace Seeing.Agent.Tests.Tools
 {
     /// <summary>
-    /// ToolInvoker 单元测试
+    /// ToolManager 单元测试
     /// </summary>
     public class ToolInvokerTests
     {
-        private readonly Mock<ILogger<ToolInvoker>> _loggerMock;
+        private readonly Mock<ILogger<ToolManager>> _loggerMock;
         private readonly Mock<ILogger<HookManager>> _hookLoggerMock;
         private readonly HookManager _hookManager;
 
         public ToolInvokerTests()
         {
-            _loggerMock = new Mock<ILogger<ToolInvoker>>();
+            _loggerMock = new Mock<ILogger<ToolManager>>();
             _hookLoggerMock = new Mock<ILogger<HookManager>>();
             _hookManager = new HookManager(_hookLoggerMock.Object);
         }
@@ -31,7 +31,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public void RegisterTool_ShouldAddTool()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             var tool = new TestTool();
 
             invoker.RegisterTool(tool);
@@ -42,7 +42,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public void RegisterToolsFromType_ShouldDiscoverAnnotatedMethods()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
 
             invoker.RegisterToolsFromType(typeof(TestToolClass));
 
@@ -53,7 +53,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public async Task ExecuteAsync_ShouldCallToolAndReturnResult()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(TestToolClass));
 
             var toolCall = new ToolCall
@@ -75,7 +75,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public async Task ExecuteAsync_ShouldHandleMissingTool()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
 
             var toolCall = new ToolCall
             {
@@ -96,7 +96,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public async Task ExecuteAsync_WithDictionaryArgs_ShouldWork()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(TestToolClass));
 
             var result = await invoker.ExecuteAsync("Add", new Dictionary<string, object?> { ["a"] = 10, ["b"] = 20 });
@@ -107,7 +107,7 @@ namespace Seeing.Agent.Tests.Tools
         [Fact]
         public void GetToolSchemas_ShouldReturnAllSchemas()
         {
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(TestToolClass));
 
             var schemas = invoker.GetToolSchemas();
@@ -120,7 +120,7 @@ namespace Seeing.Agent.Tests.Tools
         public async Task GetToolSchemasForAgentAsync_WithAllowedList_FiltersToAllowed()
         {
             // Arrange
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(TestToolClass));
             var agent = new AgentDefinition
             {
@@ -141,7 +141,7 @@ namespace Seeing.Agent.Tests.Tools
         public async Task GetToolSchemasForAgentAsync_WithDeniedList_ExcludesDenied()
         {
             // Arrange
-            var invoker = new ToolInvoker(_loggerMock.Object, _hookManager);
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(TestToolClass));
             var agent = new AgentDefinition
             {

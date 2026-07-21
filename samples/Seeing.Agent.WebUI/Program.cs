@@ -53,8 +53,6 @@ builder.Services.AddScoped<EventStreamHandler>();
 builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddScoped<SessionCompactionService>();
 builder.Services.AddSingleton<McpStateService>();
-builder.Services.AddSingleton<SkillStateService>();
-builder.Services.AddSingleton<ToolStateService>();
 builder.Services.AddSingleton<SeeingConfigService>();
 builder.Services.AddSingleton<GatewayClientConfigService>();
 builder.Services.AddSingleton<GatewayClientSupervisor>();
@@ -115,11 +113,6 @@ using (var scope = app.Services.CreateScope())
     
     // 注册 TokenBudget Hook Handler（自动管理 token 预算）
     sp.UseTokenBudgetHooks();
-
-    var skillState = sp.GetRequiredService<SkillStateService>();
-    var toolState = sp.GetRequiredService<ToolStateService>();
-    await skillState.LoadAsync();
-    await toolState.LoadAsync();
 
     var workspaceProvider = sp.GetRequiredService<IWorkspaceProvider>();
     sp.ReloadGatewayChannelRegistry(workspaceProvider.WorkspaceRoot);

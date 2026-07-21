@@ -1,4 +1,6 @@
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Skills;
+using Seeing.Agent.Tools;
 
 namespace Seeing.Agent.WebUI.Services;
 
@@ -12,8 +14,8 @@ public class WorkspaceSwitchService
 {
     private readonly IWorkspaceProvider _workspace;
     private readonly SeeingConfigService _configService;
-    private readonly SkillStateService _skillState;
-    private readonly ToolStateService _toolState;
+    private readonly ToolManager _toolInvoker;
+    private readonly SkillManager _skillManager;
     private readonly ILogger<WorkspaceSwitchService> _logger;
 
     /// <summary>
@@ -25,14 +27,14 @@ public class WorkspaceSwitchService
     public WorkspaceSwitchService(
         IWorkspaceProvider workspace,
         SeeingConfigService configService,
-        SkillStateService skillState,
-        ToolStateService toolState,
+        ToolManager toolInvoker,
+        SkillManager skillManager,
         ILogger<WorkspaceSwitchService> logger)
     {
         _workspace = workspace;
         _configService = configService;
-        _skillState = skillState;
-        _toolState = toolState;
+        _toolInvoker = toolInvoker;
+        _skillManager = skillManager;
         _logger = logger;
     }
 
@@ -74,8 +76,8 @@ public class WorkspaceSwitchService
             await _configService.ReloadAsync(cancellationToken);
 
             // 3. 重新加载 Skill 和 Tool 状态
-            await _skillState.LoadAsync(cancellationToken);
-            await _toolState.LoadAsync(cancellationToken);
+            await _toolInvoker.LoadToolStateAsync(cancellationToken);
+            await _skillManager.LoadSkillStateAsync(cancellationToken);
 
             // 4. 触发遗留事件（向后兼容）
 #pragma warning disable CS0618 // Type or member is obsolete
@@ -122,8 +124,8 @@ public class WorkspaceSwitchService
         
         // 重新加载配置
         await _configService.ReloadAsync(cancellationToken);
-        await _skillState.LoadAsync(cancellationToken);
-        await _toolState.LoadAsync(cancellationToken);
+        await _toolInvoker.LoadToolStateAsync(cancellationToken);
+        await _skillManager.LoadSkillStateAsync(cancellationToken);
     }
 
     /// <summary>
