@@ -62,8 +62,8 @@ public sealed class SchedulerSkillRegistrationHostedService : IHostedService
                     continue;
                 }
 
-                skill.Location = $"embedded://scheduler/{skill.Name}";
-                skillManager.RegisterSkill(skill);
+                skill.Location = $"scheduler/{skill.Name}";
+                skillManager.RegisterEmbeddedSkill(skill);
                 registered++;
             }
             catch (Exception ex)

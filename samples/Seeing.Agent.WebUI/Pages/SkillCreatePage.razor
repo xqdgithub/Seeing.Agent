@@ -366,8 +366,7 @@
         try
         {
             CreateSkillFile(skillDir);
-            SkillManager.ClearSkillInfos();
-            await SkillManager.DiscoverSkillsAsync();
+            await SkillManager.RefreshSkillsAsync();
             
             MessageService.Success("技能创建成功");
             NavigationManager.NavigateTo($"/skills/{_form.Name}");
@@ -453,8 +452,7 @@
                 await entryStream.CopyToAsync(fileStream);
             }
 
-            SkillManager.ClearSkillInfos();
-            await SkillManager.DiscoverSkillsAsync();
+            await SkillManager.RefreshSkillsAsync();
             
             MessageService.Success("技能创建成功");
             NavigationManager.NavigateTo($"/skills/{_uploadSkillName}");
@@ -732,8 +730,7 @@
                 await File.WriteAllTextAsync(skillPath, _onlineSkillContent);
             }
 
-            SkillManager.ClearSkillInfos();
-            await SkillManager.DiscoverSkillsAsync();
+            await SkillManager.RefreshSkillsAsync();
 
             MessageService.Success("技能保存成功");
             NavigationManager.NavigateTo($"/skills/{_onlinePreview.Name}");

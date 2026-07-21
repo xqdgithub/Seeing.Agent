@@ -145,6 +145,38 @@ namespace Seeing.Agent.Skills
         }
 
         /// <summary>
+        /// 刷新技能列表（只重新扫描文件系统，保留内部注册的技能）
+        /// <para>
+        /// 内部注册的技能（通过 RegisterSkill 注册的嵌入资源技能）不会被清除。
+        /// </para>
+        /// </summary>
+        public async Task RefreshSkillsAsync(CancellationToken cancellationToken = default)
+        {
+            // 记录内部注册的技能（location 以 embedded:// 开头）
+            var embeddedSkills = _skillInfos
+                .Where(kvp => kvp.Value.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
+
+            // 清空并重新扫描
+            _skillInfos.Clear();
+
+            // 重新发现文件系统中的技能
+            await DiscoverSkillsAsync(cancellationToken);
+
+            // 恢复内部注册的技能
+            foreach (var kvp in embeddedSkills)
+            {
+                if (!_skillInfos.ContainsKey(kvp.Key))
+                {
+                    _skillInfos[kvp.Key] = kvp.Value;
+                }
+            }
+
+            _logger.LogInformation("技能列表已刷新，当前共 {Count} 个技能（含 {EmbeddedCount} 个内置）",
+                _skillInfos.Count, embeddedSkills.Count);
+        }
+
+        /// <summary>
         /// 添加技能搜索目录（支持相对路径、~ 用户目录、环境变量）
         /// </summary>
         public void AddSearchDirectory(string directory)
@@ -631,6 +663,21 @@ namespace Seeing.Agent.Skills
                 return;
             }
 
+            _skillInfos[skillInfo.Name] = skillInfo;
+            _logger.LogInformation("Registered skill: {Name}", skillInfo.Name);
+        }
+
+        /// <summary>
+        /// 注册内置技能（手动添加）
+        /// </summary>
+        public void RegisterEmbeddedSkill(SkillInfo skillInfo)
+        {
+            if (skillInfo == null || string.IsNullOrEmpty(skillInfo.Name))
+            {
+                _logger.LogWarning("Invalid skill info, cannot register");
+                return;
+            }
+            skillInfo.Location= "embedded://" + skillInfo.Name?.TrimStart('/');
             _skillInfos[skillInfo.Name] = skillInfo;
             _logger.LogInformation("Registered skill: {Name}", skillInfo.Name);
         }
