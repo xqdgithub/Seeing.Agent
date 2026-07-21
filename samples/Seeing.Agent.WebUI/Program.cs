@@ -125,14 +125,25 @@ using (var scope = app.Services.CreateScope())
     sp.ReloadGatewayChannelRegistry(workspaceProvider.WorkspaceRoot);
 }
 
+// 局域网 HTTP 分发默认关闭 HTTPS 跳转（SEEING_DISABLE_HTTPS_REDIRECTION=true 或配置 DisableHttpsRedirection）
+var disableHttpsRedirection =
+    app.Configuration.GetValue("DisableHttpsRedirection", false)
+    || string.Equals(
+        Environment.GetEnvironmentVariable("SEEING_DISABLE_HTTPS_REDIRECTION"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
-    app.UseHsts();
+    if (!disableHttpsRedirection)
+        app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+if (!disableHttpsRedirection)
+    app.UseHttpsRedirection();
+
 app.UseStaticFiles();
 app.UseRouting();
 

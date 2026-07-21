@@ -58,6 +58,17 @@ public sealed class GatewayClientSupervisor
             return;
         }
 
+        // Starting 状态但进程不存在，说明启动失败或已退出
+        if (state.Status == GatewayClientStatuses.Starting)
+        {
+            client.Status = string.IsNullOrWhiteSpace(state.LastError)
+                ? GatewayClientStatuses.Stopped
+                : GatewayClientStatuses.Error;
+            client.ProcessId = null;
+            client.LastError = state.LastError;
+            return;
+        }
+
         client.Status = string.IsNullOrWhiteSpace(state.LastError)
             ? GatewayClientStatuses.Stopped
             : GatewayClientStatuses.Error;
@@ -99,12 +110,17 @@ public sealed class GatewayClientSupervisor
 
         var host = ResolveChannelHost()
             ?? throw new FileNotFoundException(
-                "找不到可运行的 Seeing.Gateway.ChannelHost。请执行: dotnet build samples/Seeing.Agent.WebUI");
+                "找不到可运行的 Seeing.Gateway.ChannelHost。请执行: dotnet build samples/Seeing.Gateway.ChannelHost");
 
         var pluginPath = ResolvePluginPath(typeInfo.AssemblyPath);
         var configPath = Path.GetFullPath(_configService.GetRuntimeConfigPath(channelId));
+
+        // 配置文件不存在时，跳过启动，让用户通过 WebUI 配置
         if (!File.Exists(configPath))
-            throw new FileNotFoundException($"Channel 配置文件不存在: {configPath}");
+        {
+            _logger.LogInformation("Channel 配置文件不存在，跳过启动: {ChannelId}，请通过 WebUI 配置", channelId);
+            return;
+        }
 
         var state = new GatewayClientRuntimeState
         {
@@ -115,17 +131,7 @@ public sealed class GatewayClientSupervisor
 
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"\"{host.HostDll}\" --plugin \"{pluginPath}\" --config \"{configPath}\"",
-                WorkingDirectory = host.WorkingDirectory,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
+            var startInfo = BuildChannelHostStartInfo(host.HostDll, host.WorkingDirectory, pluginPath, configPath);
             var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Channel 进程启动失败");
 
@@ -315,11 +321,25 @@ public sealed class GatewayClientSupervisor
         const string tfm = "net10.0";
         const string dllName = "Seeing.Gateway.ChannelHost.dll";
 
+        _logger.LogDebug("ResolveChannelHost: BaseDirectory={BaseDirectory}", AppContext.BaseDirectory);
+
+        // 1. 检查 bundled 目录 (channel-host 子目录) - 发布后的位置
         var bundledDir = Path.Combine(AppContext.BaseDirectory, "channel-host");
         var bundledDll = Path.Combine(bundledDir, dllName);
+        _logger.LogDebug("ResolveChannelHost: Checking bundled {Path}", bundledDll);
         if (IsRunnableChannelHost(bundledDll, bundledDir))
             return new ChannelHostLocation(bundledDll, bundledDir);
 
+        // 2. 检查 AppContext.BaseDirectory 根目录（开发环境或特殊部署）
+        var rootDll = Path.Combine(AppContext.BaseDirectory, dllName);
+        _logger.LogDebug("ResolveChannelHost: Checking root {Path}", rootDll);
+        if (IsRunnableChannelHost(rootDll, AppContext.BaseDirectory))
+        {
+            _logger.LogDebug("ResolveChannelHost: Found {Path}", rootDll);
+            return new ChannelHostLocation(rootDll, AppContext.BaseDirectory);
+        }
+
+        // 3. 检查项目输出目录（开发环境）
         foreach (var dir in GetChannelHostProjectOutputDirs(tfm))
         {
             var dll = Path.Combine(dir, dllName);
@@ -330,9 +350,15 @@ public sealed class GatewayClientSupervisor
         return null;
     }
 
-    private static bool IsRunnableChannelHost(string dllPath, string workingDirectory) =>
-        File.Exists(dllPath)
-        && File.Exists(Path.Combine(workingDirectory, "Microsoft.Extensions.Hosting.Abstractions.dll"));
+    private static bool IsRunnableChannelHost(string dllPath, string workingDirectory)
+    {
+        if (!File.Exists(dllPath))
+            return false;
+
+        // 检查 deps.json 是否存在，确保是完整的发布输出
+        var depsJSON = Path.Combine(workingDirectory, "Seeing.Gateway.ChannelHost.deps.json");
+        return File.Exists(depsJSON);
+    }
 
     private IEnumerable<string> GetChannelHostProjectOutputDirs(string tfm)
     {
@@ -359,4 +385,21 @@ public sealed class GatewayClientSupervisor
     }
 
     private sealed record ChannelHostLocation(string HostDll, string WorkingDirectory);
+
+    private static ProcessStartInfo BuildChannelHostStartInfo(
+        string hostPath, string workingDirectory, string pluginPath, string configPath)
+    {
+        // 统一使用 dotnet 命令启动 .dll 文件
+        // 这样 Windows 和 Linux 都使用相同的方式
+        return new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"\"{hostPath}\" --plugin \"{pluginPath}\" --config \"{configPath}\"",
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+    }
 }

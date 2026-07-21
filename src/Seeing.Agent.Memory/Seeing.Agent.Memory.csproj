@@ -10,6 +10,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="bin\**" />
+    <EmbeddedResource Remove="bin\**" />
+    <None Remove="bin\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Reference main Seeing.Agent library -->
     <ProjectReference Include="..\\Seeing.Agent\\Seeing.Agent.csproj" />
   </ItemGroup>

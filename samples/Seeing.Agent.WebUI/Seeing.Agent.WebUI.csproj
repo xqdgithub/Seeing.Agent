@@ -26,15 +26,35 @@
     <ProjectReference Include="../../src/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
     <ProjectReference Include="../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
-  <Target Name="CopyChannelHost" AfterTargets="Build">
-    <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+  <!-- 
+    ChannelHost 打包策略：
+    1. 始终使用 framework-dependent 发布（不使用 SelfContained）
+    2. 发布到 channel-host 子目录，保持 .dll 文件
+    3. 启动时统一使用 dotnet Seeing.Gateway.ChannelHost.dll
+  -->
+  <Target Name="PublishChannelHost" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <!-- 确定发布参数 -->
     <PropertyGroup>
-      <_ChannelHostOutput>$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/bin/$(Configuration)/$(TargetFramework)</_ChannelHostOutput>
-      <_ChannelHostBundle>$(OutputPath)channel-host</_ChannelHostBundle>
+      <!-- 保持 framework-dependent，不设置 RuntimeIdentifier 让 ChannelHost 保持跨平台 -->
+      <_ChannelHostPublishDir>$(PublishDir)channel-host/</_ChannelHostPublishDir>
     </PropertyGroup>
-    <ItemGroup>
-      <_ChannelHostFiles Include="$(_ChannelHostOutput)\**\*.*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_ChannelHostFiles)" DestinationFiles="@(_ChannelHostFiles->'$(_ChannelHostBundle)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="Exists('$(_ChannelHostOutput)\Seeing.Gateway.ChannelHost.dll')" />
+    
+    <!-- 发布 ChannelHost -->
+    <MSBuild 
+      Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" 
+      Targets="Publish" 
+      Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostPublishDir);SelfContained=false;RuntimeIdentifier=" />
+    
+    <!-- 删除 channel-host 目录中的原生可执行文件，只保留 dll 启动方式 -->
+    <Delete Files="$(_ChannelHostPublishDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(_ChannelHostPublishDir)Seeing.Gateway.ChannelHost')" />
+    <Delete Files="$(_ChannelHostPublishDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(_ChannelHostPublishDir)Seeing.Gateway.ChannelHost.exe')" />
+    
+    <!-- 删除主发布目录中 ChannelHost 的可执行文件（由于项目引用会被复制过来，但我们使用子目录中的版本） -->
+    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost')" />
+    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.exe')" />
+    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.dll" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.dll')" />
+    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.pdb" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.pdb')" />
+    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.deps.json" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.deps.json')" />
+    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.runtimeconfig.json" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.runtimeconfig.json')" />
   </Target>
 </Project>
