@@ -1,3 +1,5 @@
+using Seeing.Agent.Tools.BuiltIn.Todo;
+
 namespace Seeing.Agent.Core.Events;
 
 /// <summary>
@@ -74,7 +76,13 @@ public enum MessageEventType
     BudgetWarning,
 
     /// <summary>导航请求</summary>
-    Navigate
+    Navigate,
+
+    /// <summary>Todo 列表更新</summary>
+    TodoUpdate,
+
+    /// <summary>会话模式更新</summary>
+    ModeUpdate
 }
 
 /// <summary>
@@ -465,4 +473,32 @@ public record LoopCancelledEvent : IMessageEvent
 
     /// <summary>Token 使用统计（部分）</summary>
     public TokenUsage? PartialUsage { get; init; }
+}
+
+/// <summary>
+/// Todo 列表更新事件 - Agent 计划变更时发出
+/// </summary>
+public record TodoUpdateEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.TodoUpdate;
+
+    /// <summary>Todo 列表</summary>
+    public List<TodoItem> Todos { get; init; } = new();
+}
+
+/// <summary>
+/// 会话模式更新事件 - ACP Agent 切换模式时发出
+/// </summary>
+public record ModeUpdateEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public MessageEventType Type => MessageEventType.ModeUpdate;
+
+    /// <summary>新模式 ID</summary>
+    public required string ModeId { get; init; }
 }

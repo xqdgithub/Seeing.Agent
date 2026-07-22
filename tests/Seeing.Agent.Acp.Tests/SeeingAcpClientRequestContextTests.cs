@@ -1,5 +1,6 @@
 using Acp.Types;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -47,10 +48,12 @@ public class SeeingAcpClientRequestContextTests
         };
 
         var options = Options.Create(new SeeingAgentOptions());
+        var services = new ServiceCollection();
+        var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
 
         return new SeeingAcpClient(
             backend,
-            new AcpPermissionBridge(NullLogger<AcpPermissionBridge>.Instance),
+            new AcpPermissionBridge(scopeFactory, NullLogger<AcpPermissionBridge>.Instance),
             new AcpFileSystemBridge(NullLogger<AcpFileSystemBridge>.Instance),
             new AcpTerminalBridge(NullLogger<AcpTerminalBridge>.Instance),
             options,

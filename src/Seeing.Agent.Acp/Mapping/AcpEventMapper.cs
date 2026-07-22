@@ -2,6 +2,7 @@ using Acp.Types;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Tools.BuiltIn.Todo;
 
 namespace Seeing.Agent.Acp.Mapping;
 
@@ -45,10 +46,18 @@ public sealed class AcpEventMapper
                     Output = ExtractProgressOutput(progress)
                 }
             },
-            AgentPlanUpdate => Array.Empty<IMessageEvent>(),
+            AgentPlanUpdate plan => MapPlanToTodo(plan, seeingSessionId, loopId),
             SessionInfoUpdate => Array.Empty<IMessageEvent>(),
             UsageUpdate usage => MapUsage(usage, seeingSessionId, loopId),
-            CurrentModeUpdate => Array.Empty<IMessageEvent>(),
+            CurrentModeUpdate mode => new[]
+            {
+                new ModeUpdateEvent
+                {
+                    SessionId = seeingSessionId,
+                    LoopId = loopId,
+                    ModeId = mode.CurrentModeId
+                }
+            },
             ConfigOptionUpdate => Array.Empty<IMessageEvent>(),
             AvailableCommandsUpdate => Array.Empty<IMessageEvent>(),
             UnknownSessionUpdate => Array.Empty<IMessageEvent>(),
@@ -149,6 +158,46 @@ public sealed class AcpEventMapper
                     OutputTokens = usage.Used
                 }
             }
+        };
+
+    private static IEnumerable<IMessageEvent> MapPlanToTodo(
+        AgentPlanUpdate plan,
+        string sessionId,
+        string? loopId)
+    {
+        var todos = plan.Entries.Select(e => new TodoItem
+        {
+            Content = e.Content,
+            Priority = MapPlanPriority(e.Priority),
+            Status = MapPlanStatus(e.Status)
+        }).ToList();
+
+        return new IMessageEvent[]
+        {
+            new TodoUpdateEvent
+            {
+                SessionId = sessionId,
+                LoopId = loopId,
+                Todos = todos
+            }
+        };
+    }
+
+    private static TodoPriority MapPlanPriority(string priority) =>
+        priority?.ToLowerInvariant() switch
+        {
+            "high" => TodoPriority.High,
+            "low" => TodoPriority.Low,
+            _ => TodoPriority.Medium
+        };
+
+    private static TodoStatus MapPlanStatus(string status) =>
+        status?.ToLowerInvariant() switch
+        {
+            "completed" => TodoStatus.Completed,
+            "in_progress" => TodoStatus.InProgress,
+            "cancelled" => TodoStatus.Cancelled,
+            _ => TodoStatus.Pending
         };
 
 }

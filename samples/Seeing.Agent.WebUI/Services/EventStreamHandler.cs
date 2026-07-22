@@ -5,6 +5,7 @@ using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Api.Responses;
 using Seeing.Agent.TokenBudget;
+using Seeing.Agent.Tools.BuiltIn.Todo;
 using System.Text;
 
 namespace Seeing.Agent.WebUI.Services
@@ -229,6 +230,14 @@ namespace Seeing.Agent.WebUI.Services
                 // App 层扩展事件类型
                 case (MessageEventType)AppEventType.SkillContent:
                     HandleSkillContent((SkillContentEvent)evt);
+                    break;
+
+                case MessageEventType.TodoUpdate:
+                    HandleTodoUpdate((TodoUpdateEvent)evt);
+                    break;
+
+                case MessageEventType.ModeUpdate:
+                    HandleModeUpdate((ModeUpdateEvent)evt);
                     break;
 
                 default:
@@ -720,6 +729,63 @@ namespace Seeing.Agent.WebUI.Services
             // 压缩完成，状态已由 BudgetStatusEvent 更新
             // OnStateChanged 会触发 UI 刷新
         }
+
+        /// <summary>
+        /// 处理 Todo 更新事件 - 从 ACP AgentPlanUpdate 映射
+        /// </summary>
+        private void HandleTodoUpdate(TodoUpdateEvent evt)
+        {
+            var todoList = new TodoListViewModel
+            {
+                SessionId = evt.SessionId,
+                LastUpdated = evt.Timestamp
+            };
+
+            foreach (var item in evt.Todos)
+            {
+                todoList.Items.Add(new TodoItemViewModel
+                {
+                    Id = Guid.NewGuid().ToString()[..8],
+                    Content = item.Content,
+                    Status = MapTodoStatus(item.Status),
+                    Priority = MapTodoPriority(item.Priority)
+                });
+            }
+
+            _sessionState.UpdateTodoList(todoList);
+        }
+
+        /// <summary>
+        /// 处理模式更新事件 - 从 ACP CurrentModeUpdate 映射
+        /// </summary>
+        private void HandleModeUpdate(ModeUpdateEvent evt)
+        {
+            // 更新 Session 的 ACP Mode
+            _sessionState.SelectedAcpMode = evt.ModeId;
+        }
+
+        /// <summary>
+        /// 映射 Todo 状态
+        /// </summary>
+        private static TodoStatusViewModel MapTodoStatus(TodoStatus status) => status switch
+        {
+            TodoStatus.Pending => TodoStatusViewModel.Pending,
+            TodoStatus.InProgress => TodoStatusViewModel.InProgress,
+            TodoStatus.Completed => TodoStatusViewModel.Completed,
+            TodoStatus.Cancelled => TodoStatusViewModel.Cancelled,
+            _ => TodoStatusViewModel.Pending
+        };
+
+        /// <summary>
+        /// 映射 Todo 优先级
+        /// </summary>
+        private static TodoPriorityViewModel MapTodoPriority(TodoPriority priority) => priority switch
+        {
+            TodoPriority.Low => TodoPriorityViewModel.Low,
+            TodoPriority.Medium => TodoPriorityViewModel.Medium,
+            TodoPriority.High => TodoPriorityViewModel.High,
+            _ => TodoPriorityViewModel.Medium
+        };
 
         /// <summary>
         /// 格式化错误详情为用户友好的消息

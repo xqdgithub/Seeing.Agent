@@ -2,6 +2,7 @@ using Acp.Types;
 using FluentAssertions;
 using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Core.Events;
+using Seeing.Agent.Tools.BuiltIn.Todo;
 using Xunit;
 
 namespace Seeing.Agent.Acp.Tests;
@@ -91,5 +92,67 @@ public class AcpEventMapperTests
         };
 
         _mapper.Map(update, "sess", "loop").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Map_AgentPlanUpdate_ShouldEmitTodoUpdateEvent()
+    {
+        var update = new AgentPlanUpdate
+        {
+            Entries =
+            [
+                new PlanEntry { Content = "Task 1", Priority = "high", Status = "pending" },
+                new PlanEntry { Content = "Task 2", Priority = "medium", Status = "in_progress" },
+                new PlanEntry { Content = "Task 3", Priority = "low", Status = "completed" }
+            ]
+        };
+
+        var evt = _mapper.Map(update, "sess-1", "loop-1").Single().Should().BeOfType<TodoUpdateEvent>().Subject;
+
+        evt.Type.Should().Be(MessageEventType.TodoUpdate);
+        evt.SessionId.Should().Be("sess-1");
+        evt.LoopId.Should().Be("loop-1");
+        evt.Todos.Should().HaveCount(3);
+
+        evt.Todos[0].Content.Should().Be("Task 1");
+        evt.Todos[0].Priority.Should().Be(TodoPriority.High);
+        evt.Todos[0].Status.Should().Be(TodoStatus.Pending);
+
+        evt.Todos[1].Content.Should().Be("Task 2");
+        evt.Todos[1].Priority.Should().Be(TodoPriority.Medium);
+        evt.Todos[1].Status.Should().Be(TodoStatus.InProgress);
+
+        evt.Todos[2].Content.Should().Be("Task 3");
+        evt.Todos[2].Priority.Should().Be(TodoPriority.Low);
+        evt.Todos[2].Status.Should().Be(TodoStatus.Completed);
+    }
+
+    [Fact]
+    public void Map_AgentPlanUpdate_EmptyEntries_ShouldEmitEmptyTodoList()
+    {
+        var update = new AgentPlanUpdate
+        {
+            Entries = []
+        };
+
+        var evt = _mapper.Map(update, "sess-1", null).Single().Should().BeOfType<TodoUpdateEvent>().Subject;
+
+        evt.Todos.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Map_CurrentModeUpdate_ShouldEmitModeUpdateEvent()
+    {
+        var update = new CurrentModeUpdate
+        {
+            CurrentModeId = "build"
+        };
+
+        var evt = _mapper.Map(update, "sess-1", "loop-1").Single().Should().BeOfType<ModeUpdateEvent>().Subject;
+
+        evt.Type.Should().Be(MessageEventType.ModeUpdate);
+        evt.SessionId.Should().Be("sess-1");
+        evt.LoopId.Should().Be("loop-1");
+        evt.ModeId.Should().Be("build");
     }
 }

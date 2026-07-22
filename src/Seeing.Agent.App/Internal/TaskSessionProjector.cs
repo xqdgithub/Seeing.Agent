@@ -31,6 +31,9 @@ public static class TaskSessionProjector
             case TaskFailedEvent failed:
                 ApplyTaskFailed(session, failed);
                 break;
+            case ModeUpdateEvent modeUpdate:
+                session.SelectedAcpMode = modeUpdate.ModeId;
+                break;
         }
     }
 
