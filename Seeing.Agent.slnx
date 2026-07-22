@@ -15,8 +15,8 @@
     <Project Path="src/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
     <Project Path="src/Seeing.Agent/Seeing.Agent.csproj" />
     <Project Path="src/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
-    <Project Path="src/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
     <Project Path="src/Seeing.Gateway.QQ/Seeing.Gateway.QQ.csproj" />
+    <Project Path="src/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
     <Project Path="src/Seeing.Gateway/Seeing.Gateway.csproj" />
     <Project Path="src/Seeing.Session/Seeing.Session.csproj" />
     <Project Path="src/Seeing.TokenEstimation/Seeing.TokenEstimation.csproj" />
@@ -30,9 +30,11 @@
       <Build Solution="Debug|*" Project="false" />
     </Project>
     <Project Path="tests/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />
+    <Project Path="tests/Seeing.Gateway.QQ.Tests/Seeing.Gateway.QQ.Tests.csproj">
+      <Build Solution="Debug|*" Project="false" />
+    </Project>
     <Project Path="tests/Seeing.Gateway.Tests/Seeing.Gateway.Tests.csproj" />
     <Project Path="tests/Seeing.Gateway.WeCom.Tests/Seeing.Gateway.WeCom.Tests.csproj" />
-    <Project Path="tests/Seeing.Gateway.QQ.Tests/Seeing.Gateway.QQ.Tests.csproj" />
     <Project Path="tests/Seeing.Session.Tests/Seeing.Session.Tests.csproj">
       <Build Solution="Debug|*" Project="false" />
     </Project>
