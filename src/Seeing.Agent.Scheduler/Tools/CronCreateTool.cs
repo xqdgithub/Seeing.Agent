@@ -21,9 +21,10 @@ public sealed class CronCreateTool : ToolBase
     public override string Id => "cron_create";
 
     public override string Description =>
-        "创建或替换定时任务。必填：taskType（text|agent）、prompt、schedule（cron/interval/once）；可选 id/name/agent。" +
+        "创建或替换定时任务。必填：taskType（text|agent）、prompt、schedule（cron/interval/once）；可选 id/name/agent/model/mode。" +
         " interval 可带 windows 生效时段（本地墙钟，空=全天，起点对齐间隔）。" +
-        " text=到点投递固定文案；agent=到点运行 Agent。SessionId 自动取自当前会话。";
+        " text=到点投递固定文案；agent=到点运行 Agent。SessionId 自动取自当前会话。" +
+        " model（仅 agent）：Native agent 用 modelId；ACP agent 用 provider/model。mode（仅 agent 且 ACP）：build/ask 等 ACP 会话模式。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {
@@ -43,6 +44,8 @@ public sealed class CronCreateTool : ToolBase
                 description = "text：用户看到的提醒正文；agent：给 Agent 的任务指令"
             },
             agent = new { type = "string", description = "Agent ID（仅 taskType=agent 时有效）" },
+            model = new { type = "string", description = "模型 ID（仅 agent）：Native agent 用 modelId；ACP agent 用 provider/model（如 openai/gpt-4）" },
+            mode = new { type = "string", description = "ACP 透传 Mode（仅 agent 且 ACP 时有效，如 build / ask）" },
             schedule = new
             {
                 type = "object",
@@ -110,6 +113,8 @@ public sealed class CronCreateTool : ToolBase
             Text = isText ? prompt : null,
             Prompt = isText ? null : prompt,
             Agent = isText ? null : GetStringArgument(arguments, "agent")?.Trim(),
+            Model = isText ? null : GetStringArgument(arguments, "model")?.Trim(),
+            Mode = isText ? null : GetStringArgument(arguments, "mode")?.Trim(),
             Schedule = schedule,
             Dispatch = new DispatchSpec
             {

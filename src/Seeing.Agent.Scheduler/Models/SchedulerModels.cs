@@ -165,6 +165,12 @@ public class ScheduledJobSpec
     public string? Prompt { get; set; }
     public string? Agent { get; set; }
 
+    /// <summary>模型 ID（Native: modelId；ACP: provider/model）</summary>
+    public string? Model { get; set; }
+
+    /// <summary>ACP 透传 Mode（如 build / ask），仅 ACP Agent 有效</summary>
+    public string? Mode { get; set; }
+
     public ScheduleSpec Schedule { get; set; } = new();
     public DispatchSpec Dispatch { get; set; } = new();
     public JobRuntimeSpec Runtime { get; set; } = new();

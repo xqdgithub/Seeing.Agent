@@ -2,6 +2,14 @@
 @using Seeing.Agent.Scheduler
 @using Seeing.Agent.Scheduler.Engine
 @using Seeing.Agent.Scheduler.Models
+@using Seeing.Agent.Core.Models
+@using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.Llm
+@using Seeing.Agent.Configuration
+@inject IAgentRegistry AgentRegistry
+@inject ILlmService LlmService
+@inject IProviderManager ProviderManager
+@inject IModelConfigManager ModelManager
 
 <Modal Title="@(IsEdit ? "编辑任务" : "新建任务")"
        Visible="@Visible"
@@ -40,7 +48,62 @@
         </FormItem>
         @if (Job.TaskType == ScheduleTaskTypes.Agent)
         {
-            <FormItem Label="Agent"><Input @bind-Value="@Job.Agent" Placeholder="留空使用默认 Agent" /></FormItem>
+            <FormItem Label="Agent">
+                <Select TItemValue="string" TItem="string"
+                        Value="@_selectedAgentName"
+                        ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
+                        DataSource="@_agentNames"
+                        Placeholder="留空使用默认 Agent"
+                        EnableSearch="true"
+                        AllowClear="true" />
+                <small style="color: #999;">选择执行任务的 Agent（留空使用默认）</small>
+            </FormItem>
+            @if (!string.IsNullOrEmpty(_selectedAgentName))
+            {
+                if (_isAcpPassthrough)
+                {
+                    <AntDesign.Row Gutter="16">
+                        <AntDesign.Col Span="8">
+                            <FormItem Label="ACP Mode">
+                                <Input Value="@_selectedAcpMode"
+                                       ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
+                                       Placeholder="Mode（如 build / ask）" />
+                                <small style="color: #999;">ACP 会话模式</small>
+                            </FormItem>
+                        </AntDesign.Col>
+                        <AntDesign.Col Span="16">
+                            <FormItem Label="Model">
+                                <Input Value="@_selectedModel"
+                                       ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
+                                       Placeholder="Provider/Model（如 openai/gpt-4）" />
+                                <small style="color: #999;">格式：provider/model</small>
+                            </FormItem>
+                        </AntDesign.Col>
+                    </AntDesign.Row>
+                }
+                else
+                {
+                    <FormItem Label="模型">
+                        <Select TItemValue="string" TItem="ModelViewModel"
+                                Value="@_selectedModel"
+                                ValueChanged="@OnModelChanged"
+                                DataSource="@_models"
+                                ValueName="Id"
+                                LabelName="ModelName"
+                                Placeholder="选择模型"
+                                EnableSearch="true">
+                            <ItemTemplate Context="model">
+                                <span>@model.ModelName</span>
+                                @if (!string.IsNullOrEmpty(model.ProviderName))
+                                {
+                                    <span style="color: #999; font-size: 12px; margin-left: 4px;">(@model.ProviderName)</span>
+                                }
+                            </ItemTemplate>
+                        </Select>
+                        <small style="color: #999;">Agent 执行时使用的模型</small>
+                    </FormItem>
+                }
+            }
             <FormItem Label="Prompt" Required>
                 <TextArea Rows="4" @bind-Value="@Job.Prompt" Placeholder="输入要发送给 Agent 的提示内容..." />
                 <small style="color: #999;">Agent 执行时的提示内容（必填）</small>
@@ -66,7 +129,7 @@
         {
             <FormItem Label="Cron 表达式" Required>
                 <Input @bind-Value="@Job.Schedule.Cron" Placeholder="0 9 * * *" />
-                <small style="color: #999;">格式：秒 分 时 日 月（5字段），例如 "0 9 * * *" 表示每天9点执行</small>
+                <small style="color: #999;">5字段（分 时 日 月 周）或 6字段（秒 分 时 日 月 周），例如 "0 9 * * *" = 每天9点，"0 0 10-19 * * ?" = 每天10-19点整点</small>
             </FormItem>
         }
         else if (Job.Schedule.Type == ScheduleTypes.Interval)
@@ -152,6 +215,69 @@
     private List<WindowRow> _windowRows = new();
     private string? _loadedJobId;
 
+    private List<string> _agentNames = new();
+    private string _selectedAgentName = "";
+    private string _selectedModel = "";
+    private string _selectedAcpMode = "";
+    private bool _isAcpPassthrough;
+    private List<ModelViewModel> _models = new();
+    private bool _optionsReady;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOptionsAsync();
+    }
+
+    private async Task LoadOptionsAsync()
+    {
+        _optionsReady = false;
+        try
+        {
+            var agents = await AgentRegistry.GetPrimaryAgentsAsync();
+            _agentNames = agents
+                .Where(a => !string.IsNullOrEmpty(a.Name))
+                .Select(a => a.Name)
+                .ToList();
+        }
+        catch
+        {
+            _agentNames = new List<string>();
+        }
+
+        try
+        {
+            var availableModels = LlmService.GetAvailableModels();
+            if (availableModels != null)
+            {
+                _models = availableModels
+                    .Where(m => !string.IsNullOrEmpty(m.Key))
+                    .Select(m =>
+                    {
+                        var providerName = m.Value.Provider
+                            ?? ModelRef.Parse(m.Key, ProviderManager.GetProviders().Keys).ProviderId
+                            ?? "";
+                        var modelName = !string.IsNullOrEmpty(m.Value.Id)
+                            ? m.Value.Id
+                            : ModelRef.Parse(m.Key, ProviderManager.GetProviders().Keys).ModelId;
+                        return new ModelViewModel
+                        {
+                            Id = m.Key,
+                            ModelName = modelName,
+                            ProviderName = providerName
+                        };
+                    })
+                    .ToList();
+            }
+        }
+        catch
+        {
+            _models = new List<ModelViewModel>();
+        }
+
+        _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
+        RefreshAgentRuntime();
+    }
+
     protected override void OnParametersSet()
     {
         _runAtText = Job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? string.Empty;
@@ -164,7 +290,67 @@
             _windowRows = (Job.Schedule.Windows ?? new List<ScheduleWindow>())
                 .Select(w => new WindowRow { Start = w.Start ?? "", End = w.End ?? "" })
                 .ToList();
+
+            _selectedAgentName = Job.Agent ?? "";
+            _selectedModel = Job.Model ?? "";
+            _selectedAcpMode = Job.Mode ?? "";
+            RefreshAgentRuntime();
         }
+    }
+
+    private void RefreshAgentRuntime()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedAgentName))
+        {
+            _isAcpPassthrough = false;
+            return;
+        }
+
+        AgentDefinition? info = null;
+        try
+        {
+            info = AgentRegistry.GetAgentAsync(_selectedAgentName).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            info = null;
+        }
+
+        _isAcpPassthrough = info?.Runtime == AgentRuntime.AcpPassthrough;
+    }
+
+    private async Task OnAgentChanged(string value)
+    {
+        _selectedAgentName = value ?? "";
+
+        var wasAcpPassthrough = _isAcpPassthrough;
+        RefreshAgentRuntime();
+
+        if (!wasAcpPassthrough && _isAcpPassthrough)
+        {
+            _selectedModel = "";
+            _selectedAcpMode = "";
+        }
+        else if (wasAcpPassthrough && !_isAcpPassthrough)
+        {
+            var defaultModel = _models.FirstOrDefault()?.Id ?? "";
+            _selectedModel = defaultModel;
+        }
+    }
+
+    private async Task OnModelChanged(string value)
+    {
+        _selectedModel = value ?? "";
+    }
+
+    private async Task OnAcpModelChanged(string? value)
+    {
+        _selectedModel = value ?? "";
+    }
+
+    private void OnAcpModeChanged(string? value)
+    {
+        _selectedAcpMode = value ?? "";
     }
 
     private void AddWindow() => _windowRows.Add(new WindowRow());
@@ -198,6 +384,10 @@
     {
         _validationError = null;
         ApplyWindowsToJob();
+
+        Job.Agent = string.IsNullOrWhiteSpace(_selectedAgentName) ? null : _selectedAgentName.Trim();
+        Job.Model = string.IsNullOrWhiteSpace(_selectedModel) ? null : _selectedModel.Trim();
+        Job.Mode = string.IsNullOrWhiteSpace(_selectedAcpMode) ? null : _selectedAcpMode.Trim();
         
         if (string.IsNullOrWhiteSpace(Job.Id))
         {
@@ -277,7 +467,7 @@
             ScheduleTypes.Cron when string.IsNullOrWhiteSpace(Job.Schedule.Cron)
                 => "Cron 表达式不能为空",
             ScheduleTypes.Cron when !IsValidCronExpression(Job.Schedule.Cron)
-                => "Cron 表达式格式不正确，应为5字段格式（秒 分 时 日 月）",
+                => "Cron 表达式格式不正确，应为5字段（分 时 日 月 周）或6字段（秒 分 时 日 月 周）",
             ScheduleTypes.Interval when string.IsNullOrWhiteSpace(Job.Schedule.Every)
                 => "间隔时间不能为空",
             ScheduleTypes.Interval when !IsValidInterval(Job.Schedule.Every)
@@ -305,28 +495,17 @@
             return false;
         
         var parts = cron.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 5)
+        if (parts.Length < 5 || parts.Length > 6)
             return false;
         
         foreach (var part in parts)
         {
-            if (part == "*")
+            if (part == "*" || part == "?")
                 continue;
             
-            if (!System.Text.RegularExpressions.Regex.IsMatch(part, @"^[\d*/,]+$"))
+            // 允许数字、* / , - ? L W # 以及字母（Quartz 月/周英文缩写）
+            if (!System.Text.RegularExpressions.Regex.IsMatch(part, @"^[\dA-Za-z*/\-,?LW#]+$"))
                 return false;
-            
-            if (part.Contains('-'))
-            {
-                var rangeParts = part.Split('-');
-                if (rangeParts.Length != 2)
-                    return false;
-                foreach (var rp in rangeParts)
-                {
-                    if (rp != "*" && !System.Text.RegularExpressions.Regex.IsMatch(rp, @"^\d+$"))
-                        return false;
-                }
-            }
         }
         
         return true;
@@ -342,6 +521,13 @@
     }
 
     private async Task HandleCancel() => await VisibleChanged.InvokeAsync(false);
+
+    private sealed class ModelViewModel
+    {
+        public string Id { get; init; } = "";
+        public string ModelName { get; init; } = "";
+        public string ProviderName { get; init; } = "";
+    }
 
     private sealed class WindowRow
     {

@@ -24,7 +24,13 @@ public static class JobDataKeys
     
     /// <summary>文本内容（Text 类型任务）</summary>
     public const string Text = "text";
-    
+
+    /// <summary>模型 ID（Native: modelId；ACP: provider/model）</summary>
+    public const string Model = "model";
+
+    /// <summary>ACP 透传 Mode（如 build / ask）</summary>
+    public const string Mode = "mode";
+
     // ===== 执行参数 =====
     
     /// <summary>Session ID</summary>

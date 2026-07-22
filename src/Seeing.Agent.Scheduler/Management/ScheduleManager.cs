@@ -500,6 +500,10 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         {
             jobData[JobDataKeys.AgentId] = job.Agent ?? string.Empty;
             jobData[JobDataKeys.Prompt] = job.Prompt ?? string.Empty;
+            if (!string.IsNullOrEmpty(job.Model))
+                jobData[JobDataKeys.Model] = job.Model;
+            if (!string.IsNullOrEmpty(job.Mode))
+                jobData[JobDataKeys.Mode] = job.Mode;
         }
 
         // 投递配置

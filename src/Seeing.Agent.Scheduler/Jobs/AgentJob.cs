@@ -296,6 +296,18 @@ public class AgentJob : IJob
         var agentDefinition = Core.Models.AgentDefinition.FromAgent(agentInstance);
         var workspaceRoot = _workspace.WorkspaceRoot;
 
+        var model = data.GetStringValue(JobDataKeys.Model);
+        var mode = data.GetStringValue(JobDataKeys.Mode);
+
+        var metadata = new Dictionary<string, object>
+        {
+            ["source"] = ScheduleSources.Cron
+        };
+        if (!string.IsNullOrEmpty(model))
+            metadata[AgentContextKeys.RequestModelId] = model;
+        if (!string.IsNullOrEmpty(mode))
+            metadata[AgentContextKeys.AcpModeId] = mode;
+
         var context = new AgentContext
         {
             SessionId = sessionId,
@@ -315,10 +327,7 @@ public class AgentJob : IJob
                         SystemReminder.Kinds.Cron)
                 }
             },
-            Metadata = new Dictionary<string, object>
-            {
-                ["source"] = ScheduleSources.Cron
-            }
+            Metadata = metadata
         };
 
         var output = new StringBuilder();
