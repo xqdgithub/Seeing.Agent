@@ -1,0 +1,47 @@
+src/Seeing.Agent/Core/Permission/DynamicPermissionChannel.cs
+  s_a942a60fe98659::t_b0f4690ab51384 2-3,5-91
+  s_a942a60fe98659::t_f1dc835a18580d 1,4
+src/Seeing.Agent/Configuration/SeeingAgentOptionsMonitor.cs
+  s_a942a60fe98659::t_fd4cfcccc6b272 6,11-12,16-20,25-85,87
+  s_a942a60fe98659::t_bfda55c61ecf46 8,21-24
+samples/Seeing.Agent.WebUI/Pages/GatewayPage.razor
+  s_a942a60fe98659::t_a5e42cb9b39eef 5,21,56-57,84,115-116,141,152,174
+src/Seeing.Agent.Acp/Permission/AcpPermissionBridge.cs
+  s_a942a60fe98659::t_8116c1575c6d49 4,19,22-24,26,44-45,68-73,88
+samples/Seeing.Agent.WebUI/Services/SeeingConfigService.cs
+  s_a942a60fe98659::t_5dd393f91aa146 37-42
+samples/Seeing.Agent.WebUI/Components/ConfigLevelSelector.razor
+  s_a942a60fe98659::t_a124704f17fe27 43,61
+  s_a942a60fe98659::t_77da626ae6187c 42
+  s_a942a60fe98659::t_f52b4704365157 58
+  s_a942a60fe98659::t_3e09179a807152 1-5,24,26-36,40-41,62-74
+  s_a942a60fe98659::t_a05423d01506a9 6-23,38-39,45-51
+  s_a942a60fe98659::t_d1bf1fa81238e9 25,37,44,52-57,59-60
+src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs
+  s_a942a60fe98659::t_0fc6acb792c41f 266
+  s_a942a60fe98659::t_617bb7271c021e 116-119
+  s_a942a60fe98659::t_63b894cb4ca8eb 267-270
+  s_a942a60fe98659::t_6d3a76eaf514ae 73-76
+  s_a942a60fe98659::t_617003f9281550 554-556,560-561,563-564
+samples/Seeing.Agent.WebUI/Pages/SecurityPage.razor
+  s_a942a60fe98659::t_ab17c60d346975 6,25,44-46,55-56,125-127,131-132
+  s_a942a60fe98659::t_cb7559e78470da 129
+  s_a942a60fe98659::t_39d5c088dee58a 24,26-27,30-31,97,123,130,133,135-136,138-139,150
+  s_a942a60fe98659::t_4a71aa913fb5bf 134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.35-trip",
+  "base_commit_sha": "ad7c5d4838993eea6ed102b2c1aad203ed6cef6e",
+  "prompts": {},
+  "sessions": {
+    "s_a942a60fe98659": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_077560847ffecP2x33HfQULqpt",
+        "model": "DeepSeek-V4-Flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
