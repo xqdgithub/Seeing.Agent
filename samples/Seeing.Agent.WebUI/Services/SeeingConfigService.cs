@@ -34,6 +34,12 @@ public sealed class SeeingConfigService
         return Task.FromResult(_configManager.SeeingAgent);
     }
 
+    // ===== 来源信息 =====
+
+    /// <summary>获取配置节来源信息（哪个级别存在、完整路径等）</summary>
+    public ConfigSourceInfo GetSourceInfo(string sectionName)
+        => _configManager.GetSourceInfo(sectionName);
+
     // ===== Scheduler =====
 
     /// <summary>获取调度器配置</summary>

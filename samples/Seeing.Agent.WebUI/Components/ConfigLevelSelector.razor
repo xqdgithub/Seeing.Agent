@@ -1,0 +1,74 @@
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.WebUI.Services
+@inject SeeingConfigService ConfigService
+
+@if (_scope is ConfigScope.ProjectOnly && !string.IsNullOrWhiteSpace(SectionName))
+{
+    <span style="margin-right: 8px;">保存到：</span>
+    <Tag Color="@("blue")">项目级</Tag>
+    <Tooltip Title="@_scopeReason">
+        <Icon Type="@IconType.Outline.InfoCircle" Theme="@IconThemeType.Outline"
+              Style="margin-left: 4px; color: var(--ant-color-text-secondary); cursor: help;" />
+    </Tooltip>
+}
+else
+{
+    <span style="margin-right: 8px;">保存到：</span>
+    <Select TItemValue="ConfigLevel" TItem="ConfigLevel" @bind-Value="_selectedLevel"
+            Style="width: 120px;">
+        <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
+        <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
+    </Select>
+}
+
+@if (ShowOverlapWarning && _selectedLevel == ConfigLevel.Project && _hasUserSection)
+{
+    <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-top: 8px;"
+           Message="@($"用户级配置也存在：{ConfigService.GetConfigPath(ConfigLevel.User)}。保存到项目级后，项目文件中的同名字段会覆盖用户级。")" />
+}
+
+@code {
+    [Parameter] public ConfigLevel Value { get; set; } = ConfigLevel.Project;
+    [Parameter] public EventCallback<ConfigLevel> ValueChanged { get; set; }
+    [Parameter] public string? SectionName { get; set; }
+    [Parameter] public bool ShowOverlapWarning { get; set; } = true;
+
+    private ConfigLevel _selectedLevel;
+    private ConfigScope _scope = ConfigScope.Both;
+    private string? _scopeReason;
+    private bool _hasUserSection;
+
+    protected override void OnInitialized()
+    {
+        _selectedLevel = Value;
+
+        if (!string.IsNullOrWhiteSpace(SectionName))
+        {
+            var info = ConfigService.GetSourceInfo(SectionName);
+            _scope = info.Scope;
+            _scopeReason = info.ScopeReason;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_selectedLevel != Value)
+        {
+            await ValueChanged.InvokeAsync(_selectedLevel);
+            await RefreshOverlapAsync();
+        }
+    }
+
+    private async Task RefreshOverlapAsync()
+    {
+        if (string.IsNullOrWhiteSpace(SectionName))
+        {
+            _hasUserSection = false;
+            return;
+        }
+
+        var info = await Task.Run(() => ConfigService.GetSourceInfo(SectionName));
+        _hasUserSection = info.HasUserLevel;
+    }
+}

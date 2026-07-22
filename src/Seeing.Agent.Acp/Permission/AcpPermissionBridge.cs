@@ -1,6 +1,7 @@
 using Acp.Helpers;
 using Acp.Messages;
 using Acp.Types;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Core.Interfaces;
@@ -15,10 +16,14 @@ public sealed class AcpPermissionBridge
 {
     private static readonly AsyncLocal<Stack<AcpPermissionContext>> ContextStack = new();
 
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AcpPermissionBridge> _logger;
 
-    public AcpPermissionBridge(ILogger<AcpPermissionBridge> logger)
+    public AcpPermissionBridge(
+        IServiceScopeFactory scopeFactory,
+        ILogger<AcpPermissionBridge> logger)
     {
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -36,7 +41,8 @@ public sealed class AcpPermissionBridge
         var optionList = options.ToList();
         var toolName = string.IsNullOrWhiteSpace(toolCall.ToolName) ? "acp_tool" : toolCall.ToolName;
 
-        var channel = ctx.PermissionChannel ?? DefaultPermissionChannel.Instance;
+        // 优先使用上下文中的通道，否则从 DI 解析（支持热重载）
+        var channel = ctx.PermissionChannel ?? ResolveDefaultChannel();
         var decision = await channel.RequestToolPermissionAsync(
             toolName,
             toolCall.Input,
@@ -57,6 +63,12 @@ public sealed class AcpPermissionBridge
 
         var selected = optionList.FirstOrDefault()?.Id ?? "allow";
         return PermissionOutcomes.SelectedResponse(selected);
+    }
+
+    private IPermissionChannel ResolveDefaultChannel()
+    {
+        using var scope = _scopeFactory.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<IPermissionChannel>();
     }
 
     private sealed class Scope : IDisposable

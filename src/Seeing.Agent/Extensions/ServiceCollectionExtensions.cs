@@ -70,8 +70,10 @@ namespace Seeing.Agent.Extensions
             });
             services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
             
-            // IOptions 兼容
-            services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
+            // IOptions 兼容 + IOptionsMonitor 支持热重载
+            services.AddSingleton<SeeingAgentOptionsMonitor>();
+            services.AddSingleton<IOptions<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
+            services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
             services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
 
             RegisterCoreServices(services);
@@ -111,8 +113,10 @@ namespace Seeing.Agent.Extensions
             });
             services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
             
-            // IOptions 兼容
-            services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
+            // IOptions 兼容 + IOptionsMonitor 支持热重载
+            services.AddSingleton<SeeingAgentOptionsMonitor>();
+            services.AddSingleton<IOptions<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
+            services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
             services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
 
             RegisterCoreServices(services);
@@ -259,7 +263,11 @@ namespace Seeing.Agent.Extensions
                     return manager;
                 });
                 services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
-                services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
+                
+            // IOptions 兼容 + IOptionsMonitor 支持热重载
+            services.AddSingleton<SeeingAgentOptionsMonitor>();
+            services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
+            services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
                 services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
             }
             else if (!services.Any(d => d.ServiceType == typeof(IConfigSectionStore)))
@@ -543,17 +551,17 @@ namespace Seeing.Agent.Extensions
             // 执行上下文相关
             services.AddSingleton<IMetadataStore, ConcurrentMetadataStore>();
 
-            // 权限通道 - 根据配置选择安全模式
-            // 注意：如果用户在其他地方注册了 IPermissionChannel（如 ConsolePermissionChannel），
+            // 权限通道 - 动态读取配置，支持热重载
+            // 使用 IOptionsMonitor 实现运行时配置变更无需重启
+            // 注意：如果用户在其他地方注册了 IPermissionChannel（如 BlazorPermissionChannel），
             // 那个注册会覆盖这里的默认注册
             services.AddSingleton<IPermissionChannel>(sp =>
             {
-                var options = sp.GetService<IOptions<SeeingAgentOptions>>();
-                var autoApprove = options?.Value?.Permission?.AutoApproveAll ?? false;
+                var optionsMonitor = sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>();
+                var logger = sp.GetService<ILogger<Core.Permission.DynamicPermissionChannel>>();
 
-                IPermissionChannel inner = autoApprove
-                    ? Core.Interfaces.DefaultPermissionChannel.AutoApproveInstance
-                    : Core.Interfaces.DefaultPermissionChannel.Instance;
+                // 动态通道：每次请求时从 IOptionsMonitor 读取最新配置
+                var inner = new Core.Permission.DynamicPermissionChannel(optionsMonitor, logger);
 
                 // 进程级 Ask 串行（宿主可再包一层，如 Blazor）
                 return new Core.Permission.SerializingPermissionChannel(inner);

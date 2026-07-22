@@ -2,6 +2,7 @@
 @using AntDesign
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Gateway.Hosting
+@using Seeing.Agent.WebUI.Components
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
 @inject IHttpClientFactory HttpClientFactory
@@ -17,6 +18,7 @@
     </Breadcrumb>
     <Extra>
         <Space>
+            <ConfigLevelSelector @bind-Value="_saveLevel" SectionName="Gateway" />
             <Button Icon="@IconType.Outline.Reload" OnClick="CheckHealth">检查状态</Button>
             <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存配置</Button>
         </Space>
@@ -47,16 +49,12 @@
                         <FormItem Label="自动启动"><Switch @bind-Checked="@_gateway.AutoStart" /></FormItem>
                         <FormItem Label="端口"><InputNumber @bind-Value="@_gateway.Port" Min="1" Max="65535" Style="width: 100%;" /></FormItem>
                         <FormItem Label="绑定地址"><Input @bind-Value="@_gateway.BindAddress" /></FormItem>
-                        <FormItem Label="权限模式">
-                            <Select TItemValue="string" TItem="string" @bind-Value="@_gateway.PermissionMode">
-                                <SelectOption TItemValue="string" TItem="string" Value="@("interactive")">交互式审批</SelectOption>
-                                <SelectOption TItemValue="string" TItem="string" Value="@("auto_approve")">自动批准</SelectOption>
-                            </Select>
-                        </FormItem>
                         <FormItem Label="启用 WebSocket"><Switch @bind-Checked="@_gateway.EnableWebSocket" /></FormItem>
                         <FormItem Label="WebSocket 路径"><Input @bind-Value="@_gateway.WebSocketPath" /></FormItem>
                     </div>
                     </Form>
+                    <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-top: 12px;"
+                           Message="Gateway 权限模式请前往「安全」页面配置。" />
                 </Card>
             </Col>
             <Col Span="12">
@@ -83,6 +81,7 @@
 @code {
     private GatewayOptions _gateway = new();
     private GatewayOptions _originalGateway = new();
+    private ConfigLevel _saveLevel = ConfigLevel.Project;
     private bool _loading;
     private bool _healthy;
     private string? _healthMessage;
@@ -113,12 +112,10 @@
 
     private async Task SaveAsync()
     {
-        await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?> { ["Gateway"] = _gateway });
-        
-        // 根据 Enabled 状态变化启动或停止 Gateway Server
+        await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?> { ["Gateway"] = _gateway });
+
         if (_gateway.Enabled && !_originalGateway.Enabled)
         {
-            // 从禁用变为启用，启动服务
             try
             {
                 await GatewayServer.StartAsync();
@@ -131,7 +128,6 @@
         }
         else if (!_gateway.Enabled && _originalGateway.Enabled)
         {
-            // 从启用变为禁用，停止服务
             try
             {
                 await GatewayServer.StopAsync();
@@ -142,8 +138,7 @@
                 MessageService.Error($"停止 Gateway 服务失败: {ex.Message}");
             }
         }
-        
-        // 更新原始配置
+
         _originalGateway = new GatewayOptions
         {
             Enabled = _gateway.Enabled,
@@ -154,7 +149,7 @@
             EnableWebSocket = _gateway.EnableWebSocket,
             WebSocketPath = _gateway.WebSocketPath
         };
-        
+
         MessageService.Success("Gateway 配置已保存");
         await CheckHealth();
     }

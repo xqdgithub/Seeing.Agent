@@ -3,6 +3,7 @@
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Interfaces
 @using Seeing.Agent.Core.Permission
+@using Seeing.Agent.WebUI.Components
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Agent.WebUI.State
 @inject SeeingConfigService ConfigService
@@ -20,9 +21,14 @@
         <BreadcrumbItem>安全</BreadcrumbItem>
     </Breadcrumb>
     <Extra>
-        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存</Button>
+        <Space>
+            <ConfigLevelSelector @bind-Value="_saveLevel" SectionName="Permission" />
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存</Button>
+        </Space>
     </Extra>
     <ChildContent>
+        <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;"
+               Message="页面展示的是合并后的生效配置（项目级覆盖用户级）。保存时写入所选级别。" />
         <Tabs>
             <TabPane Key="global" Tab="全局策略">
                 <Card>
@@ -31,6 +37,13 @@
                         <FormItem Label="自动批准所有权限（危险）">
                             <Switch @bind-Checked="@_permission.AutoApproveAll" />
                         </FormItem>
+                    </div>
+                    </Form>
+                    <Alert Type="@AlertType.Warning" ShowIcon="true"
+                           Message="启用自动批准后，工具调用将不再弹出确认对话框。" />
+                    <Divider />
+                    <Form Layout="@FormLayout.Vertical" Model="@_gateway" Context="gatewayForm">
+                    <div>
                         <FormItem Label="Gateway 权限模式">
                             <Select TItemValue="string" TItem="string" @bind-Value="@_gateway.PermissionMode">
                                 <SelectOption TItemValue="string" TItem="string" Value="@("interactive")">交互式审批</SelectOption>
@@ -39,8 +52,8 @@
                         </FormItem>
                     </div>
                     </Form>
-                    <Alert Type="@AlertType.Warning" ShowIcon="true"
-                           Message="启用自动批准后，工具调用将不再弹出确认对话框。" />
+                    <Alert Type="@AlertType.Info" ShowIcon="true"
+                           Message="控制 Gateway HTTP/WS 请求的权限审批行为。框架级自动批准请使用上方开关。" />
                 </Card>
             </TabPane>
             <TabPane Key="tools" Tab="工具守卫">
@@ -81,6 +94,7 @@
     private GatewayOptions _gateway = new();
     private List<PermissionRuleEntry> _agentRules = new();
     private List<RuleRow> _ruleRows = new();
+    private ConfigLevel _saveLevel = ConfigLevel.Project;
 
     protected override async Task OnInitializedAsync()
     {
@@ -106,16 +120,23 @@
 
     private async Task SaveAsync()
     {
-        var projectGateway = await ConfigService.LoadLevelSectionAsync<GatewayOptions>(ConfigLevel.Project, "Gateway")
-            ?? _gateway;
-        projectGateway.PermissionMode = _gateway.PermissionMode;
-
-        await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+        try
         {
-            ["Permission"] = _permission,
-            ["Gateway"] = projectGateway
-        });
-        MessageService.Success("安全策略已保存");
+            var projectGateway = await ConfigService.LoadLevelSectionAsync<GatewayOptions>(ConfigLevel.Project, "Gateway")
+                ?? _gateway;
+            projectGateway.PermissionMode = _gateway.PermissionMode;
+
+            await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+            {
+                ["Permission"] = _permission,
+                ["Gateway"] = projectGateway
+            });
+            MessageService.Success("安全策略已保存");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
     }
 
     private sealed class RuleRow
