@@ -44,9 +44,9 @@ builder.Services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 
 // === WebUI 服务 ===
 builder.Services.AddScoped<BlazorPermissionChannel>();
-builder.Services.AddScoped<IPermissionChannel>(sp =>
-    new Seeing.Agent.Core.Permission.SerializingPermissionChannel(
-        sp.GetRequiredService<BlazorPermissionChannel>()));
+// 直接注册 BlazorPermissionChannel，不再包装 SerializingPermissionChannel
+// AgentExecutor 会统一包装 SerializingPermissionChannel 确保权限请求串行
+builder.Services.AddScoped<IPermissionChannel>(sp => sp.GetRequiredService<BlazorPermissionChannel>());
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<EventStreamHandler>();
@@ -73,7 +73,6 @@ builder.Services.AddExecutionEngine(options =>
     options.MaxConcurrentExecutions = -1;  // -1 = 无限制
     options.EventBufferSize = 100;
     options.ExecutionHistoryLimit = 100;
-    options.PermissionTimeout = TimeSpan.FromSeconds(30);
     options.SessionIdleTimeout = TimeSpan.FromMinutes(30);
     options.CleanupInterval = TimeSpan.FromMinutes(5);
 });

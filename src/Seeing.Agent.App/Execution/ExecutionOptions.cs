@@ -24,13 +24,6 @@ public class ExecutionOptions
     public int ExecutionHistoryLimit { get; set; } = 100;
 
     /// <summary>
-    /// Timeout for permission requests during background execution.
-    /// After this time, permissions are automatically denied.
-    /// Default: 30 seconds.
-    /// </summary>
-    public TimeSpan PermissionTimeout { get; set; } = TimeSpan.FromSeconds(30);
-
-    /// <summary>
     /// Time after which an idle session's resources are cleaned up.
     /// A session is idle when it has no active execution and no queued tasks.
     /// Default: 30 minutes.

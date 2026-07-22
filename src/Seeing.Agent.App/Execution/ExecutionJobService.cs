@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.App.Events;
 using Seeing.Agent.App.Internal;
 using Seeing.Agent.App.Models;
@@ -33,6 +34,7 @@ public class ExecutionJobService : IDisposable
     private readonly IServiceProvider _serviceProvider;
     private readonly IExecutionEventPublisher _eventPublisher;
     private readonly ExecutionOptions _options;
+    private readonly IOptionsMonitor<SeeingAgentOptions> _seeingAgentOptions;
     private readonly ILogger<ExecutionJobService> _logger;
     private readonly Timer _cleanupTimer;
     private readonly IAgentLoopScheduler? _loopScheduler;
@@ -46,6 +48,7 @@ public class ExecutionJobService : IDisposable
         IServiceProvider serviceProvider,
         IExecutionEventPublisher eventPublisher,
         ExecutionOptions options,
+        IOptionsMonitor<SeeingAgentOptions> seeingAgentOptions,
         ILogger<ExecutionJobService> logger,
         IAgentLoopScheduler? loopScheduler = null,
         IBackgroundTaskManager? backgroundTasks = null)
@@ -53,6 +56,7 @@ public class ExecutionJobService : IDisposable
         _serviceProvider = serviceProvider;
         _eventPublisher = eventPublisher;
         _options = options ?? new ExecutionOptions();
+        _seeingAgentOptions = seeingAgentOptions;
         _logger = logger;
         _loopScheduler = loopScheduler;
         _backgroundTasks = backgroundTasks;
@@ -118,9 +122,12 @@ public class ExecutionJobService : IDisposable
             {
                 using var scope = _serviceProvider.CreateScope();
                 var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+                var providerManager = scope.ServiceProvider.GetRequiredService<IProviderManager>();
                 var session = await sessionManager.EnsureSessionAsync(sessionId);
-
                 TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
+
+                // ⭐ Persist model/provider/mode selection to session (ensures they're saved even if execution fails)
+                TryBackfillSessionModelSelection(session, options?.ModelId, options?.ModeId, providerManager);
 
                 var userMessage = BuildUserMessage(input);
                 session.Messages.Add(userMessage);
@@ -134,6 +141,24 @@ public class ExecutionJobService : IDisposable
             {
                 _logger.LogError(ex, "Failed to save user message for execution {ExecutionId}", executionId);
                 return ExecutionSubmitResult.Failed($"Failed to save message: {ex.Message}");
+            }
+        }
+        else
+        {
+            // Even when skipping user message persist, we still need to save model/mode selection
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+                var providerManager = scope.ServiceProvider.GetRequiredService<IProviderManager>();
+                var session = await sessionManager.EnsureSessionAsync(sessionId);
+                TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
+                TryBackfillSessionModelSelection(session, options?.ModelId, options?.ModeId, providerManager);
+                await sessionManager.SaveAsync(sessionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to save model/mode selection for execution {ExecutionId}", executionId);
             }
         }
 
@@ -448,6 +473,12 @@ public class ExecutionJobService : IDisposable
 
         var agentDef = Core.Models.AgentDefinition.FromAgent(agent);
 
+        // 权限通道选择优先级：
+        // 1. AutoApproveAll=true 时使用 AutoApproveInstance（全局配置优先）
+        // 2. 调用方传递的 PermissionChannel（WebUI 传递 BlazorPermissionChannel）
+        // 3. 否则使用 DenyAllPermissionChannel（立即拒绝）
+        var permissionChannel = ResolvePermissionChannel(record.Options?.PermissionChannel);
+
         return new ChatExecutionContext
         {
             SessionId = record.SessionId,
@@ -455,12 +486,52 @@ public class ExecutionJobService : IDisposable
             History = new List<ChatMessage>(),
             WorkingDirectory = record.Options?.WorkingDirectory ?? workspaceProvider.WorkspaceRoot,
             WorkspaceRoot = workspaceProvider.WorkspaceRoot,
-            PermissionChannel = new BackgroundPermissionChannel(_options.PermissionTimeout),
+            PermissionChannel = permissionChannel,
             ChannelId = record.Options?.ChannelId,
             UserId = record.Options?.UserId,
             AcpModeId = record.Options?.ModeId,
             RequestModelId = record.Options?.ModelId
         };
+    }
+
+    /// <summary>
+    /// 根据配置解析权限通道。
+    /// <para>
+    /// 优先级：
+    /// 1. AutoApproveAll=true 时使用 AutoApproveInstance（全局配置优先）
+    /// 2. 调用方传递的 PermissionChannel（WebUI 传递 BlazorPermissionChannel）
+    /// 3. 否则使用 DenyAllPermissionChannel（立即拒绝，不等待超时）
+    /// </para>
+    /// </summary>
+    /// <param name="callerChannel">调用方传递的权限通道（可选）</param>
+    private IPermissionChannel ResolvePermissionChannel(IPermissionChannel? callerChannel)
+    {
+        // 全局配置 AutoApproveAll=true 优先级最高
+        var autoApprove = _seeingAgentOptions.CurrentValue.Permission?.AutoApproveAll ?? false;
+
+        if (autoApprove)
+        {
+            _logger.LogInformation(
+                "Using AutoApprove permission channel (AutoApproveAll=true, overriding caller channel)");
+
+            // 使用自动批准的权限通道
+            return DefaultPermissionChannel.AutoApproveInstance;
+        }
+
+        // 调用方传递的权限通道
+        if (callerChannel != null)
+        {
+            _logger.LogInformation(
+                "Using caller-provided permission channel ({ChannelType})",
+                callerChannel.GetType().Name);
+            return callerChannel;
+        }
+
+        _logger.LogInformation(
+            "Using DenyAll permission channel (no caller channel, AutoApproveAll=false)");
+
+        // 后台执行模式：立即拒绝，不等待超时
+        return DenyAllPermissionChannel.Instance;
     }
 
     /// <summary>
@@ -499,6 +570,38 @@ public class ExecutionJobService : IDisposable
         }
 
         return changed;
+    }
+
+    /// <summary>
+    /// Fills session model/mode selection from inbound ChatOptions.
+    /// Updates model and mode when provided in options, ensuring they're persisted even if execution fails.
+    /// </summary>
+    /// <param name="session">The session to update</param>
+    /// <param name="modelId">
+    /// Model identifier. Can be either:
+    /// - Full format: "provider/modelId" (e.g., "seeing-coding-plan/GLM-5")
+    /// - Model only: "gpt-4o" (provider resolved later)
+    /// </param>
+    /// <param name="modeId">ACP mode identifier (e.g., "build", "ask")</param>
+    /// <param name="providerManager">Provider manager for parsing provider/modelId format</param>
+    /// <returns>True if any field was updated.</returns>
+    public static bool TryBackfillSessionModelSelection(
+        SessionData session,
+        string? modelId,
+        string? modeId,
+        IProviderManager providerManager)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(providerManager);
+        var knownProviders = providerManager.GetProviders().Keys;
+        var (providerId, apiModelId) = ModelRef.Parse(modelId.Trim(), knownProviders);
+
+        // Store parsed values separately (consistent with how WebUI stores them)
+        session.SelectedModel = apiModelId;
+        session.SelectedModelProvider = providerId ?? string.Empty;
+        session.SelectedAcpMode = modeId.Trim();
+
+        return true;
     }
 
     /// <summary>

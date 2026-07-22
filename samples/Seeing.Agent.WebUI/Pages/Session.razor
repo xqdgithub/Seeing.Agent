@@ -1120,6 +1120,10 @@
     /// <summary>
     /// 会话未指定 Agent/Model 时，按 .seeing 配置解析默认值并同步到 UI 状态。
     /// </summary>
+    /// <remarks>
+    /// 注意：空字符串 "" 表示用户主动清空，不应填充默认值。
+    /// 只有 null 才表示"从未设置"，需要填充默认值。
+    /// </remarks>
     private async Task EnsureDefaultAgentSelectionAsync()
     {
         if (SessionState.CurrentSession == null)
@@ -1135,28 +1139,13 @@
             _selectedAgent = agentId;
         }
 
-        if (string.IsNullOrWhiteSpace(SessionState.CurrentSession.SelectedModel))
-        {
-            RefreshAgentRuntime();
-            string? modelId;
-            if (_isAcpPassthrough)
-            {
-                modelId = AgentSelectionResolver.ResolveAcpModelId(null, null);
-            }
-            else
-            {
-                modelId = AgentSelectionResolver.ResolveModelId(
-                    null,
-                    null,
-                    SessionState.SelectedAgent);
-            }
-
-            if (!string.IsNullOrEmpty(modelId))
-            {
-                SessionState.SelectedModel = modelId;
-                _selectedModel = modelId;
-            }
-        }
+        // 注意：SelectedModel 是 string 类型，默认值是 ""（空字符串）。
+        // 用户主动清空模型后，session 中存储的是空字符串。
+        // 只有当 SelectedModel 为 null（从未初始化）时才填充默认值。
+        // 由于 SessionData.SelectedModel 默认初始化为 ""，所以这里无法区分"从未设置"和"用户清空"。
+        // 
+        // 修复方案：不在加载时自动填充模型，保留用户的选择（包括空值）。
+        // 模型默认值的解析应该在执行时由 AgentSelectionResolver 处理，而不是在加载时覆盖 session。
     }
 
     /// <summary>
@@ -1312,7 +1301,9 @@
             AgentId = SessionState.SelectedAgent,
             ModelId = fullModelId,
             ModeId = SessionState.SelectedAcpMode,
-            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot
+            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot,
+            // 传递权限通道，支持交互式确认
+            PermissionChannel = PermissionChannel
         };
 
         try

@@ -85,7 +85,7 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>是否自动批准所有请求（危险！仅在用户明确选择时启用）</summary>
         public bool AutoApproveAll { get; init; } = false;
 
-        /// <summary>单例实例（默认拒绝模式）</summary>
+        /// <summary>单例实例（默认拒绝模式，抛异常）</summary>
         public static readonly DefaultPermissionChannel Instance = new();
 
         /// <summary>自动批准所有请求的实例（危险！）</summary>
@@ -152,6 +152,44 @@ namespace Seeing.Agent.Core.Interfaces
                 $"文件写入: {filePath}",
                 "未配置权限确认通道。文件写入操作需要用户确认。");
         }
+    }
+
+    /// <summary>
+    /// 立即拒绝所有权限请求的通道（用于后台执行无权限通道时）。
+    /// <para>
+    /// 不同于 DefaultPermissionChannel.Instance（抛异常），
+    /// 此通道返回 PermissionDecision.Deny，让 Agent 可以优雅地处理拒绝。
+    /// </para>
+    /// </summary>
+    public sealed class DenyAllPermissionChannel : IPermissionChannel
+    {
+        /// <summary>单例实例</summary>
+        public static readonly DenyAllPermissionChannel Instance = new();
+
+        /// <inheritdoc/>
+        public Task<bool> RequestConfirmationAsync(PermissionRequest request)
+            => Task.FromResult(false);
+
+        /// <inheritdoc/>
+        public Task<PermissionDecision> RequestToolPermissionAsync(
+            string toolName,
+            object? arguments,
+            AgentContext context)
+            => Task.FromResult(PermissionDecision.Deny("后台执行模式：未配置权限通道，请求被拒绝"));
+
+        /// <inheritdoc/>
+        public Task<PermissionDecision> RequestSubAgentPermissionAsync(
+            string agentName,
+            string prompt,
+            AgentContext context)
+            => Task.FromResult(PermissionDecision.Deny("后台执行模式：未配置权限通道，请求被拒绝"));
+
+        /// <inheritdoc/>
+        public Task<PermissionDecision> RequestWritePermissionAsync(
+            string filePath,
+            string? contentPreview,
+            AgentContext context)
+            => Task.FromResult(PermissionDecision.Deny("后台执行模式：未配置权限通道，请求被拒绝"));
     }
 
     /// <summary>
