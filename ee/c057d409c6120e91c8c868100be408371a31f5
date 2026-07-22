@@ -1,0 +1,44 @@
+src/Seeing.Agent.Scheduler/Tools/CronCreateTool.cs
+  s_f5763e7cff7d9c::t_b90d33979187ed 116-117
+  s_f5763e7cff7d9c::t_79a0e73b3edf8c 24,26-27
+  s_f5763e7cff7d9c::t_2dcc7e1858e6ec 47-48
+src/Seeing.Agent.Scheduler/Jobs/AgentJob.cs
+  s_f5763e7cff7d9c::t_f935a2dc55f6a2 299-310,330
+src/Seeing.Agent.Scheduler/Management/ScheduleManager.cs
+  s_f5763e7cff7d9c::t_ee4bea68119189 503-506
+src/Seeing.Agent.Scheduler/Jobs/JobDataKeys.cs
+  s_f5763e7cff7d9c::t_04131c43455653 27-33
+src/Seeing.Agent.Scheduler/Models/SchedulerModels.cs
+  s_f5763e7cff7d9c::t_40cea42637e806 168-173
+samples/Seeing.Agent.WebUI/Components/CronJobs/JobEditorModal.razor
+  s_f5763e7cff7d9c::t_217f69211fe4b7 525-531
+  s_f5763e7cff7d9c::t_48a3b64c4407f1 387-390
+  s_f5763e7cff7d9c::t_4dda7950cc5765 132
+  s_f5763e7cff7d9c::t_2d0616d2dceb17 309-310,312-316
+  s_f5763e7cff7d9c::t_6dc7fee58662cb 5,7
+  s_f5763e7cff7d9c::t_557c983c2c22d7 68-70,75-78
+  s_f5763e7cff7d9c::t_cea591a9def668 470
+  s_f5763e7cff7d9c::t_b7978cfbb4371b 6,8-12
+  s_f5763e7cff7d9c::t_171ea89f91b2a9 218-223,225-232,251,279-280,293-297,301-308,318-324,327-328,330,332,339-341,347-348
+  s_f5763e7cff7d9c::t_05dca020a2de29 224,233-250,252-278,311,317,325-326,329,331,333-338,342-346,349-353
+  s_f5763e7cff7d9c::t_e28e001f391bd0 51-64,67,71-72,79-80,83-106
+  s_f5763e7cff7d9c::t_bdd936c1315af2 498
+  s_f5763e7cff7d9c::t_6ed894619b71d9 503,506-507
+  s_f5763e7cff7d9c::t_5e3e88d0b195bf 65-66,73-74,81-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.35-trip",
+  "base_commit_sha": "eec057d409c6120e91c8c868100be408371a31f5",
+  "prompts": {},
+  "sessions": {
+    "s_f5763e7cff7d9c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0778f5c6affeP3LapJ17ZSU0R9",
+        "model": "DeepSeek-V4-Pro-discount"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
