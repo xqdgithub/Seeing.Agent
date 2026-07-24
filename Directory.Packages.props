@@ -1,6 +1,6 @@
 <Project>
   <ItemGroup>
-    <PackageVersion Include="Acp.NetCore" Version="1.0.4" />
+    <PackageVersion Include="Acp.NetCore" Version="1.0.6" />
     <PackageVersion Include="AntDesign" Version="2.0.0-nightly-250526143149" />
     <PackageVersion Include="Markdig" Version="0.41.0" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.9" />
