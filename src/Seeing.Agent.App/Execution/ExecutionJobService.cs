@@ -593,15 +593,33 @@ public class ExecutionJobService : IDisposable
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(providerManager);
-        var knownProviders = providerManager.GetProviders().Keys;
-        var (providerId, apiModelId) = ModelRef.Parse(modelId.Trim(), knownProviders);
 
-        // Store parsed values separately (consistent with how WebUI stores them)
-        session.SelectedModel = apiModelId;
-        session.SelectedModelProvider = providerId ?? string.Empty;
-        session.SelectedAcpMode = modeId.Trim();
+        var changed = false;
 
-        return true;
+        // Update model/provider only if modelId is not null or whitespace
+        if (!string.IsNullOrWhiteSpace(modelId))
+        {
+            var knownProviders = providerManager.GetProviders().Keys;
+            var (providerId, apiModelId) = ModelRef.Parse(modelId.Trim(), knownProviders);
+
+            session.SelectedModel = apiModelId;
+            session.SelectedModelProvider = providerId ?? string.Empty;
+            changed = true;
+        }
+
+        // Update mode only if modeId is not null or whitespace
+        if (!string.IsNullOrWhiteSpace(modeId))
+        {
+            session.SelectedAcpMode = modeId!.Trim();
+            changed = true;
+        }
+
+        if (changed)
+        {
+            session.UpdatedAt = DateTime.Now;
+        }
+
+        return changed;
     }
 
     /// <summary>
