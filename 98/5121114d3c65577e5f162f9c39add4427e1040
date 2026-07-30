@@ -1,0 +1,53 @@
+src/Seeing.Agent/Configuration/AgentManager.cs
+  s_9c920fd2fff09d::t_608882f8f7cad7 779
+samples/Seeing.Agent.WebUI/Pages/AgentConfigPage.razor
+  s_9c920fd2fff09d::t_ceb4ab616b3fdf 128
+samples/Seeing.Agent.WebUI/appsettings.json
+  s_9c920fd2fff09d::t_482903de142ad1 6-8
+  s_9c920fd2fff09d::t_f333a2ced55543 9-10
+src/Seeing.Agent/Configuration/AgentEditModel.cs
+  s_9c920fd2fff09d::t_bfbe4e47e906ae 87-89
+src/Seeing.Agent.Scheduler/Jobs/AgentJob.cs
+  s_9c920fd2fff09d::t_f6c43d4518c8e0 168,170-171,175
+src/Seeing.Agent.Scheduler/Jobs/HeartbeatJob.cs
+  s_9c920fd2fff09d::t_58db469efffb98 201,203,207
+samples/Seeing.Agent.WebUI/Pages/CronJobsPage.razor
+  s_9c920fd2fff09d::t_c2639c5e342121 404,411,421-435,437-438
+  s_9c920fd2fff09d::t_c272fea5143475 302,308,315
+samples/Seeing.Agent.WebUI/Services/SeeingCircuitHandler.cs
+  s_9c920fd2fff09d::t_0596084f2e5667 7-8,23,29,35,39-43
+  s_9c920fd2fff09d::t_7fb10281fb7a26 2-6,9-11,16,44
+  s_9c920fd2fff09d::t_e6474667a5d073 12-15,17-22,24-28,30-34,36-38
+  s_9c920fd2fff09d::t_f89234869f36d0 1
+samples/Seeing.Agent.WebUI/Program.cs
+  s_9c920fd2fff09d::t_94ac0c01b8197a 97-100
+  s_9c920fd2fff09d::t_933357ac0fd514 1
+samples/Seeing.Agent.WebUI/Components/CronJobs/JobNextRunTimer.razor
+  s_9c920fd2fff09d::t_5eab8615e73e28 3
+  s_9c920fd2fff09d::t_924ad8dea16e74 12,17-24,26-38
+samples/Seeing.Agent.WebUI/Pages/Settings.razor
+  s_9c920fd2fff09d::t_2b7c9285811151 196
+samples/Seeing.Agent.WebUI/Components/Agents/AgentConfigForm.razor
+  s_9c920fd2fff09d::t_a220fd5898e681 34,37
+  s_9c920fd2fff09d::t_b1bac9ef93ae13 35-36,38-48
+samples/Seeing.Agent.WebUI/Pages/AgentsPage.razor
+  s_9c920fd2fff09d::t_e42bc07297f892 182,194
+  s_9c920fd2fff09d::t_bbd7c67df77804 81
+  s_9c920fd2fff09d::t_e435cd9f884fc7 329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.38-trip",
+  "base_commit_sha": "985121114d3c65577e5f162f9c39add4427e1040",
+  "prompts": {},
+  "sessions": {
+    "s_9c920fd2fff09d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b8c671f7-9f62-4c71-b5fb-95af0d0249d9",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
