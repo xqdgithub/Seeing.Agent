@@ -3,6 +3,7 @@
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
     <Project Path="samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" />
     <Project Path="samples/Seeing.Gateway.Console.Demo/Seeing.Gateway.Console.Demo.csproj" />
+    <Project Path="samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj" />
     <Project Path="samples/Seeing.Gateway.Server/Seeing.Gateway.Server.csproj" />
     <Project Path="samples/Seeing.Gateway.WeCom.Demo/Seeing.Gateway.WeCom.Demo.csproj" />
   </Folder>
