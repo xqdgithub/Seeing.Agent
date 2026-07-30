@@ -287,13 +287,13 @@ public class AnthropicClient : ILlmClient
     /// <summary>
     /// 测试连接
     /// </summary>
-    public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken = default)
     {
         try
         {
             var testRequest = new ChatRequest
             {
-                Model = _config.DefaultModel ?? "claude-3-5-haiku-20241022",
+                Model = modelId,
                 Messages = new List<ChatMessage>
                 {
                     new() { Role = ChatRole.User, Content = "Hi" }

@@ -37,7 +37,7 @@ public interface ILlmService
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(string modelId, ChatRequest request, string? sessionId, CancellationToken cancellationToken = default);
 
     /// <summary>测试 Provider 连接</summary>
-    Task<bool> TestConnectionAsync(string providerId, CancellationToken cancellationToken = default);
+    Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -525,9 +525,9 @@ public class LlmService : ILlmService
     }
 
     /// <summary>测试 Provider 连接</summary>
-    public async Task<bool> TestConnectionAsync(string providerId, CancellationToken cancellationToken = default)
+    public async Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken cancellationToken = default)
     {
-        return await _providerManager.TestConnectionAsync(providerId, cancellationToken);
+        return await _providerManager.TestConnectionAsync(providerId, modelId, cancellationToken);
     }
 
     /// <summary>

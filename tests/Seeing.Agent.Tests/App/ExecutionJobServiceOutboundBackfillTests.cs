@@ -256,7 +256,7 @@ internal class MockProviderManager : IProviderManager
 
     public ILlmClient? GetClientForModel(string modelId) => null;
 
-    public Task<bool> TestConnectionAsync(string providerId, CancellationToken ct = default) => Task.FromResult(true);
+    public Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken ct = default) => Task.FromResult(true);
 
     public Task SaveProviderAsync(string providerId, ProviderConfig config, ConfigLevel level = ConfigLevel.Project, CancellationToken ct = default) => Task.CompletedTask;
 

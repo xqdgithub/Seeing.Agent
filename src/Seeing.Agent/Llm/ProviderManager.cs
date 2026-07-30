@@ -79,7 +79,7 @@ public class ProviderManager : IProviderManager, IDisposable
     #region 连接测试
 
     /// <summary>测试 Provider 连接</summary>
-    public async Task<bool> TestConnectionAsync(string providerId, CancellationToken ct = default)
+    public async Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken ct = default)
     {
         var client = GetClient(providerId);
         if (client == null)
@@ -90,7 +90,7 @@ public class ProviderManager : IProviderManager, IDisposable
 
         try
         {
-            return await client.TestConnectionAsync(ct);
+            return await client.TestConnectionAsync(modelId, ct);
         }
         catch (Exception ex)
         {

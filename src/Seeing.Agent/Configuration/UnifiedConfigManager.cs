@@ -71,8 +71,10 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 typeof(Dictionary<string, ProviderConfig>), displayName: "Provider 配置", displayOrder: 4),
             ["Models"] = new("Models", "seeing.json", ConfigScope.Both, 
                 typeof(Dictionary<string, ModelConfig>), displayName: "模型配置", displayOrder: 5),
-            ["ModelScope"] = new("ModelScope", "seeing.json", ConfigScope.Both, 
+            ["ModelScope"] = new("ModelScope", "seeing.json", ConfigScope.Both,
                 typeof(ModelScopeSection), displayName: "ModelScope 配置", displayOrder: 6),
+            ["AgentModels"] = new("AgentModels", "seeing.json", ConfigScope.Both,
+                typeof(Dictionary<string, string>), displayName: "Agent 模型绑定", displayOrder: 7),
             ["Acp"] = new("Acp", "seeing.json", ConfigScope.Both, 
                 typeof(AcpOptions), displayName: "ACP 配置", displayOrder: 7),
             ["Plugins"] = new("Plugins", "seeing.json", ConfigScope.Both, 
@@ -112,8 +114,12 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             ["Memory"] = new("Memory", "memory.json", ConfigScope.Both, 
                 typeof(object),  // Memory 在独立模块中定义
                 displayName: "Memory 配置", displayOrder: 15),
-            ["TokenBudget"] = new("TokenBudget", "seeing.json", ConfigScope.Both, 
+            ["TokenBudget"] = new("TokenBudget", "seeing.json", ConfigScope.Both,
                 typeof(TokenBudgetOptions), displayName: "Token 预算配置", displayOrder: 16),
+            ["GlobalWorkspaceRoot"] = new("GlobalWorkspaceRoot", "seeing.json", ConfigScope.UserOnly,
+                typeof(string),
+                scopeReason: "全局默认工作区为用户级偏好，独立于项目",
+                displayName: "全局默认工作区", displayOrder: 17),
         };
     }
     
@@ -215,10 +221,14 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         return new ConfigSourceInfo
         {
             SectionName = sectionName,
-            HasUserLevel = meta.Scope == ConfigScope.Both && HasSectionAtLevel(sectionName, ConfigLevel.User),
-            HasProjectLevel = HasSectionAtLevel(sectionName, ConfigLevel.Project),
-            UserPath = meta.Scope == ConfigScope.Both ? GetFilePath(ConfigLevel.User, meta.FileName) : null,
-            ProjectPath = GetFilePath(ConfigLevel.Project, meta.FileName),
+            HasUserLevel = (meta.Scope == ConfigScope.Both || meta.Scope == ConfigScope.UserOnly)
+                && HasSectionAtLevel(sectionName, ConfigLevel.User),
+            HasProjectLevel = meta.Scope != ConfigScope.UserOnly
+                && HasSectionAtLevel(sectionName, ConfigLevel.Project),
+            UserPath = (meta.Scope == ConfigScope.Both || meta.Scope == ConfigScope.UserOnly)
+                ? GetFilePath(ConfigLevel.User, meta.FileName) : null,
+            ProjectPath = meta.Scope != ConfigScope.UserOnly
+                ? GetFilePath(ConfigLevel.Project, meta.FileName) : null,
             Scope = meta.Scope,
             ScopeReason = meta.ScopeReason
         };
@@ -354,6 +364,11 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         {
             throw new ConfigScopeException(meta.SectionName, level, meta.Scope, meta.ScopeReason);
         }
+
+        if (meta.Scope == ConfigScope.UserOnly && level == ConfigLevel.Project)
+        {
+            throw new ConfigScopeException(meta.SectionName, level, meta.Scope, meta.ScopeReason);
+        }
     }
     
     private async Task<T?> LoadFileAsync<T>(
@@ -390,7 +405,6 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     private async Task LoadSectionToCacheAsync(ConfigSectionMeta meta, CancellationToken ct)
     {
         // 独立配置文件直接加载整个文件内容到缓存
-        // GetSection<T> 会在调用时进行类型转换
         if (meta.Scope == ConfigScope.ProjectOnly)
         {
             var path = GetFilePath(ConfigLevel.Project, meta.FileName);
@@ -591,6 +605,8 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             "Permission" => SeeingAgent.Permission as T,
             "Workspace" => SeeingAgent.Workspace as T,
             "TokenBudget" => SeeingAgent.TokenBudget as T,
+            "AgentModels" => SeeingAgent.AgentModels as T,
+            "GlobalWorkspaceRoot" => SeeingAgent.GlobalWorkspaceRoot as T,
             _ => null
         };
     }
@@ -669,6 +685,13 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             case "TokenBudget":
                 if (value is TokenBudgetOptions tokenBudget)
                     SeeingAgent.TokenBudget = tokenBudget;
+                break;
+            case "AgentModels":
+                if (value is Dictionary<string, string> agentModels)
+                    SeeingAgent.AgentModels = agentModels;
+                break;
+            case "GlobalWorkspaceRoot":
+                SeeingAgent.GlobalWorkspaceRoot = value as string;
                 break;
         }
     }

@@ -222,18 +222,7 @@ namespace Seeing.Agent.Configuration
         /// <inheritdoc/>
         public async Task<string> GetDefaultAgentNameAsync()
         {
-            // 1. 优先检查运行时设置
-            var runtimeDefault = await _runtimeManager.GetDefaultAgentNameAsync();
-            if (runtimeDefault != null)
-            {
-                var agent = await GetAgentAsync(runtimeDefault);
-                if (agent != null && (agent.Mode == AgentMode.Primary || agent.Mode == AgentMode.All) && !agent.IsHidden && !agent.Disabled)
-                {
-                    return runtimeDefault;
-                }
-            }
-
-            // 2. 检查配置文件默认
+            // 统一从 seeing.json 读取 DefaultAgent
             var configDefault = _options?.Value.DefaultAgent;
             if (configDefault != null)
             {
@@ -244,14 +233,14 @@ namespace Seeing.Agent.Configuration
                 }
             }
 
-            // 3. 优先查找 "build" Agent
+            // 回退 1：优先查找 "build" Agent
             var buildAgent = await GetAgentAsync("build");
             if (buildAgent != null && !buildAgent.IsHidden && !buildAgent.Disabled)
             {
                 return "build";
             }
 
-            // 4. 回退：查找第一个可见的主代理
+            // 回退 2：查找第一个可见的主代理
             var primaryAgents = await GetPrimaryAgentsAsync();
             if (primaryAgents.Count > 0)
             {
@@ -265,6 +254,12 @@ namespace Seeing.Agent.Configuration
         public async Task SetDefaultAgentAsync(string name)
         {
             await _runtimeManager.SetDefaultAgentAsync(name);
+        }
+
+        /// <inheritdoc/>
+        public async Task SetDefaultAgentAsync(string name, ConfigLevel level)
+        {
+            await _runtimeManager.SetDefaultAgentAsync(name, level);
         }
 
         #endregion

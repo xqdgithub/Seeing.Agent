@@ -121,7 +121,6 @@ public class WorkspaceProvider : IWorkspaceProvider
     private readonly object _lock = new();
     
     // 依赖服务（延迟注入）
-    private IConfigurationPersistence? _persistence;
     private UnifiedConfigManager? _configManager;
     private ILogger<WorkspaceProvider>? _logger;
 
@@ -149,11 +148,9 @@ public class WorkspaceProvider : IWorkspaceProvider
 
     /// <summary>设置依赖服务（由 DI 容器在初始化时调用）</summary>
     internal void SetDependencies(
-        IConfigurationPersistence persistence,
         UnifiedConfigManager configManager,
         ILogger<WorkspaceProvider>? logger)
     {
-        _persistence = persistence;
         _configManager = configManager;
         _logger = logger;
     }
@@ -213,16 +210,15 @@ public class WorkspaceProvider : IWorkspaceProvider
         }
         
         // 2. 加载用户级设置（全局工作区）
-        if (_persistence != null)
+        if (_configManager != null)
         {
             try
             {
-                var userSettings = await _persistence.LoadAsync(cancellationToken);
-                _globalWorkspaceRoot = userSettings.GlobalWorkspaceRoot;
+                _globalWorkspaceRoot = _configManager.SeeingAgent.GlobalWorkspaceRoot;
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "加载用户级设置失败");
+                _logger?.LogWarning(ex, "加载用户级全局工作区设置失败");
             }
         }
         
@@ -279,13 +275,11 @@ public class WorkspaceProvider : IWorkspaceProvider
     /// <inheritdoc/>
     public async Task SetGlobalWorkspaceRootAsync(string? path, CancellationToken cancellationToken = default)
     {
-        if (_persistence == null)
-            throw new InvalidOperationException("ConfigurationPersistence 未注入");
-        
-        var settings = await _persistence.LoadAsync(cancellationToken);
-        settings.GlobalWorkspaceRoot = path;
-        await _persistence.SaveAsync(settings, cancellationToken);
-        
+        if (_configManager == null)
+            throw new InvalidOperationException("UnifiedConfigManager 未注入");
+
+        await _configManager.SaveSectionAsync("GlobalWorkspaceRoot", path, ConfigLevel.User, cancellationToken);
+
         _globalWorkspaceRoot = path;
         _logger?.LogInformation("已保存全局工作区: {Path}", path ?? "(空)");
         

@@ -35,9 +35,10 @@ public interface ILlmClient
     /// <summary>
     /// 测试连接是否可用
     /// </summary>
+    /// <param name="modelId">用于测试的模型 ID</param>
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>是否可用</returns>
-    Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
+    Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

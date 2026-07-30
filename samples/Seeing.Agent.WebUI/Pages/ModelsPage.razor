@@ -57,10 +57,22 @@
                             <FormItem Label="名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
                             <FormItem Label="Base URL"><Input @bind-Value="@_currentProvider.BaseUrl" /></FormItem>
                             <FormItem Label="API Key"><Input Password @bind-Value="@_currentProvider.ApiKey" /></FormItem>
-                            <FormItem Label="默认模型"><Input @bind-Value="@_currentProvider.DefaultModel" /></FormItem>
                             <Space>
-                                <Button Loading="@_testing" OnClick="TestConnection">测试连接</Button>
-                                <Button OnClick="SetAsDefaultProvider">设为默认 Provider</Button>
+                                <Select TItemValue="string" TItem="string"
+                                        @bind-Value="_testModelId"
+                                        Style="width: 240px;"
+                                        Placeholder="选择测试模型"
+                                        Disabled="@(_modelRows.Count == 0)">
+                                    @foreach (var m in _modelRows)
+                                    {
+                                        <SelectOption TItemValue="string" TItem="string"
+                                                      Value="@m.Id" Label="@m.Id" />
+                                    }
+                                </Select>
+                                <Button Loading="@_testing" OnClick="TestConnection"
+                                        Disabled="@(string.IsNullOrEmpty(_testModelId))">
+                                    测试连接
+                                </Button>
                             </Space>
                         </div>
                         </Form>
@@ -83,6 +95,9 @@
                                 <Space>
                                     <Button Size="@ButtonSize.Small" OnClick="@(() => ShowEditTypes(context))">编辑类型</Button>
                                     <Button Size="@ButtonSize.Small" OnClick="@(() => SetDefaultModel(context.Key))">设为默认</Button>
+                                    <Popconfirm Title="确定要删除此模型吗？" OnConfirm="@(() => DeleteModel(context))">
+                                        <Button Size="@ButtonSize.Small" Danger Icon="@IconType.Outline.Delete">删除</Button>
+                                    </Popconfirm>
                                 </Space>
                             </ActionColumn>
                         </Table>
@@ -190,6 +205,7 @@
     private bool _addingModel;
     private readonly AddModelForm _addModelForm = new();
     private IEnumerable<ModelType> _addModelTypes = new[] { ModelType.Text };
+    private string _testModelId = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -229,6 +245,7 @@
         _selectedProviderKeys = new[] { id };
         _currentProvider = ProviderManager.GetProvider(id);
         RefreshModelRows();
+        _testModelId = _modelRows.Count > 0 ? _modelRows[0].Id : "";
     }
 
     private void RefreshModelRows()
@@ -258,22 +275,6 @@
             await ProviderManager.SaveProviderAsync(_selectedProviderId, _currentProvider, _saveLevel);
         }
 
-        var defaultProvider = ProviderManager.GetDefaultProvider();
-        var defaultModel = ModelManager.GetDefaultModel();
-
-        if (defaultProvider != null)
-        {
-            await ProviderManager.SetDefaultProviderAsync(defaultProvider, _saveLevel);
-        }
-
-        if (defaultModel != null)
-        {
-            if (ModelManager.CanSetAsDefaultModel(defaultModel))
-                await ModelManager.SetDefaultModelAsync(defaultModel, _saveLevel);
-            else
-                MessageService.Warning($"当前默认模型 '{defaultModel}' 不是 Text 类型，未写入 DefaultModel");
-        }
-
         MessageService.Success("模型配置已保存");
         await LoadAsync();
     }
@@ -281,20 +282,19 @@
     private async Task TestConnection()
     {
         if (string.IsNullOrEmpty(_selectedProviderId)) return;
+        if (string.IsNullOrEmpty(_testModelId))
+        {
+            MessageService.Warning("请先选择测试模型");
+            return;
+        }
         _testing = true;
         try
         {
-            var ok = await ProviderManager.TestConnectionAsync(_selectedProviderId);
-            if (ok) MessageService.Success("连接成功");
+            var ok = await ProviderManager.TestConnectionAsync(_selectedProviderId, _testModelId);
+            if (ok) MessageService.Success($"连接成功 ({_testModelId})");
             else MessageService.Error("连接失败");
         }
         finally { _testing = false; }
-    }
-
-    private async Task SetAsDefaultProvider()
-    {
-        await ProviderManager.SetDefaultProviderAsync(_selectedProviderId, _saveLevel);
-        MessageService.Info($"已选择 {_selectedProviderId} 为默认 Provider，请保存");
     }
 
     private async Task SetDefaultModel(string key)
@@ -307,6 +307,19 @@
 
         await ModelManager.SetDefaultModelAsync(key, _saveLevel);
         MessageService.Info($"已选择 {key} 为默认模型，请保存");
+    }
+
+    private async Task DeleteModel(ModelRow row)
+    {
+        if (ModelManager.GetDefaultModel() == row.Key)
+        {
+            MessageService.Warning("请先更改默认模型后再删除");
+            return;
+        }
+
+        await ModelManager.DeleteModelAsync(row.Key, _saveLevel);
+        RefreshModelRows();
+        MessageService.Success($"已删除模型 {row.Key}");
     }
 
     private void ShowEditTypes(ModelRow row)

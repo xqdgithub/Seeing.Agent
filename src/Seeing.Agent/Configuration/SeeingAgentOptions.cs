@@ -63,6 +63,12 @@ namespace Seeing.Agent.Configuration
         /// </summary>
         public Dictionary<string, bool> PluginEnabled { get; set; } = new();
 
+        /// <summary>Agent 特定的模型配置（Agent 名称 → 模型 ID，格式 provider/model）</summary>
+        public Dictionary<string, string> AgentModels { get; set; } = new();
+
+        /// <summary>全局默认工作区路径（仅用户级）</summary>
+        public string? GlobalWorkspaceRoot { get; set; }
+
         /// <summary>工作区配置</summary>
         public WorkspaceOptions Workspace { get; set; } = new();
 

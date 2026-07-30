@@ -131,13 +131,13 @@ public class OpenAiClient : ILlmClient
     /// <summary>
     /// 测试连接
     /// </summary>
-    public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken = default)
     {
         try
         {
             var testRequest = new ChatRequest
             {
-                Model = _config.DefaultModel ?? "gpt-4o-mini",
+                Model = modelId,
                 Messages = new List<CoreChatMessage>
                 {
                     new() { Role = ChatRole.User, Content = "Hi" }

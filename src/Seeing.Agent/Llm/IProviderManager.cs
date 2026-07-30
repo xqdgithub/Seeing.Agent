@@ -38,7 +38,10 @@ public interface IProviderManager
     #region 连接测试
 
     /// <summary>测试 Provider 连接</summary>
-    Task<bool> TestConnectionAsync(string providerId, CancellationToken ct = default);
+    /// <param name="providerId">Provider ID</param>
+    /// <param name="modelId">用于测试的模型 ID</param>
+    /// <param name="ct">取消令牌</param>
+    Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken ct = default);
 
     #endregion
 

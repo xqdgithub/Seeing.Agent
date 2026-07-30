@@ -1,6 +1,8 @@
 @page "/settings"
 @using AntDesign
 @using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Models
+@using Seeing.Agent.Llm
 @using Seeing.Agent.Scheduler
 @using Seeing.Agent.Scheduler.Abstractions
 @using Seeing.Agent.Scheduler.Models
@@ -8,6 +10,8 @@
 @using Seeing.Agent.WebUI.Components.Scheduler
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
+@inject IAgentManager AgentManager
+@inject IModelConfigManager ModelManager
 @inject IWorkspaceProvider WorkspaceProvider
 @inject WorkspaceSwitchService WorkspaceSwitchService
 @inject IScheduleManager ScheduleManager
@@ -37,8 +41,28 @@
         <Tabs @bind-ActiveKey="_activeTab">
             <TabPane Key="general" Tab="常规">
                 <Form Layout="@FormLayout.Vertical" Model="@_options">
-                    <FormItem Label="默认智能体"><Input @bind-Value="@_options.DefaultAgent" /></FormItem>
-                    <FormItem Label="默认模型"><Input @bind-Value="@_options.DefaultModel" /></FormItem>
+                    <FormItem Label="默认智能体">
+                        <Select TItemValue="string" TItem="AgentOption"
+                                @bind-Value="@_options.DefaultAgent"
+                                Placeholder="选择默认智能体" AllowClear="true">
+                            @foreach (var a in _availableAgents)
+                            {
+                                <SelectOption TItemValue="string" TItem="AgentOption"
+                                              Value="@a.Name" Label="@a.Display" />
+                            }
+                        </Select>
+                    </FormItem>
+                    <FormItem Label="默认模型">
+                        <Select TItemValue="string" TItem="ModelOption"
+                                @bind-Value="@_options.DefaultModel"
+                                Placeholder="选择默认模型（格式: provider/model）" AllowClear="true">
+                            @foreach (var m in _availableModels)
+                            {
+                                <SelectOption TItemValue="string" TItem="ModelOption"
+                                              Value="@m.Key" Label="@m.Display" />
+                            }
+                        </Select>
+                    </FormItem>
                     
                     <Divider Orientation="@DividerOrientation.Left">工作区设置</Divider>
                     
@@ -178,6 +202,8 @@
     private SchedulerStatus _schedulerStatus = new();
     private string _workspacePath = "";
     private List<PluginRow> _pluginRows = new();
+    private List<AgentOption> _availableAgents = new();
+    private List<ModelOption> _availableModels = new();
     private bool _schedulerLoading;
     private WorkspaceSelectorModal? _workspaceSelectorModal;
     private WorkspaceSelectorModal? _globalWorkspaceSelectorModal;
@@ -195,10 +221,24 @@
         _scheduler = ConfigService.GetSchedulerOptions();
 
         BuildPluginRows();
-        
+
+        // 加载可选 Agent 列表（仅启用、未隐藏的 Primary/All 模式）
+        var agents = await AgentManager.GetAgentsAsync();
+        _availableAgents = agents
+            .Where(a => !a.IsHidden && !a.Disabled
+                && (a.Mode == AgentMode.Primary || a.Mode == AgentMode.All))
+            .Select(a => new AgentOption { Name = a.Name, Display = $"{a.Name}{(a.Description is { Length: > 0 } ? $" — {a.Description}" : "")}" })
+            .ToList();
+
+        // 加载可选模型列表
+        _availableModels = ModelManager.GetModels()
+            .Select(m => new ModelOption { Key = m.Key, Display = $"{m.Key}{(m.Value.Name is { Length: > 0 } ? $" ({m.Value.Name})" : "")}" })
+            .OrderBy(m => m.Key)
+            .ToList();
+
         // 加载工作区配置
         LoadWorkspaceSettings();
-        
+
         // 加载调度器状态
         await LoadSchedulerStatusAsync();
     }
@@ -392,5 +432,17 @@
     {
         public string Id { get; set; } = "";
         public bool Enabled { get; set; }
+    }
+
+    private sealed class AgentOption
+    {
+        public string Name { get; set; } = "";
+        public string Display { get; set; } = "";
+    }
+
+    private sealed class ModelOption
+    {
+        public string Key { get; set; } = "";
+        public string Display { get; set; } = "";
     }
 }

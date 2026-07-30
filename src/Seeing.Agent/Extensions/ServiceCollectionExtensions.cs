@@ -297,12 +297,6 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         private static void RegisterCoreServices(IServiceCollection services)
         {
-            // 配置持久化服务
-            services.AddSingleton<IConfigurationPersistence>(sp =>
-                new ConfigurationPersistence(
-                    sp.GetRequiredService<ILogger<ConfigurationPersistence>>(),
-                    sp.GetRequiredService<IWorkspaceProvider>()));
-
             // 权限服务（新系统 - 统一权限检查入口）
             services.AddPermissionService();
 
@@ -717,13 +711,12 @@ namespace Seeing.Agent.Extensions
             // 初始化工作区（自动根据配置解析）
             if (services.GetService<WorkspaceProvider>() is { } workspaceProvider)
             {
-                var persistence = services.GetService<IConfigurationPersistence>();
                 var configManager = services.GetService<UnifiedConfigManager>();
                 var workspaceLogger = services.GetService<ILogger<WorkspaceProvider>>();
-                
-                if (persistence != null && configManager != null)
+
+                if (configManager != null)
                 {
-                    workspaceProvider.SetDependencies(persistence, configManager, workspaceLogger);
+                    workspaceProvider.SetDependencies(configManager, workspaceLogger);
                     await workspaceProvider.InitializeAsync(cancellationToken);
                 }
             }

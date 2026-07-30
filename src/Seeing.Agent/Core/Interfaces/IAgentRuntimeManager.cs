@@ -1,3 +1,4 @@
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Core.Interfaces
@@ -35,6 +36,12 @@ namespace Seeing.Agent.Core.Interfaces
         /// <param name="agentName">Agent 名称</param>
         /// <exception cref="ArgumentException">Agent 不存在或不是有效的主代理</exception>
         Task SetDefaultAgentAsync(string agentName);
+
+        /// <summary>设置默认 Agent（带级别）</summary>
+        /// <param name="agentName">Agent 名称</param>
+        /// <param name="level">保存级别</param>
+        /// <exception cref="ArgumentException">Agent 不存在或不是有效的主代理</exception>
+        Task SetDefaultAgentAsync(string agentName, ConfigLevel level);
 
         /// <summary>获取默认 Agent 名称</summary>
         /// <returns>默认 Agent 名称，未设置则返回 null</returns>

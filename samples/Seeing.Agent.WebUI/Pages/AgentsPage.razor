@@ -202,7 +202,7 @@
 
     private async Task SetDefault(string name)
     {
-        await AgentManager.SetDefaultAgentAsync(name);
+        await AgentManager.SetDefaultAgentAsync(name, _selectedLevel);
         await LoadAsync();
         MessageService.Success($"已将 {name} 设为默认智能体");
     }

@@ -56,6 +56,11 @@ namespace Seeing.Agent.Configuration
         /// </summary>
         Task SetDefaultAgentAsync(string name);
 
+        /// <summary>
+        /// 设置默认 Agent（带级别）
+        /// </summary>
+        Task SetDefaultAgentAsync(string name, ConfigLevel level);
+
         #endregion
 
         #region 运行时模型管理

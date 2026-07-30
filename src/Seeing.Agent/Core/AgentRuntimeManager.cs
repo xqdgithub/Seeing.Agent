@@ -9,18 +9,11 @@ namespace Seeing.Agent.Core
 {
     /// <summary>
     /// Agent 运行时管理实现 - 管理运行时设置和模型配置
-    /// <para>
-    /// 负责加载和应用运行时设置，包括：
-    /// - 默认代理设置
-    /// - Agent 特定的模型配置
-    /// - 配置持久化
-    /// - 模型变更事件广播
-    /// - 会话级模型状态管理
-    /// </para>
+    /// <para>所有持久化配置统一走 UnifiedConfigManager → seeing.json，不再依赖独立 settings.json。</para>
     /// <para>
     /// 模型优先级（从高到低）：
     /// 1. 会话级用户设置（SessionModelOverrides）- 仅当前会话有效
-    /// 2. 持久化的运行时设置（RuntimeSettings.AgentModels）
+    /// 2. 持久化的 AgentModels（seeing.json → SeeingAgentOptions.AgentModels）
     /// 3. Agent 代码/配置定义的模型
     /// 4. 上次使用的模型（LastUsedModel）
     /// 5. 全局默认模型（SeeingAgentOptions.DefaultModel）
@@ -29,11 +22,9 @@ namespace Seeing.Agent.Core
     public class AgentRuntimeManager : IAgentRuntimeManager
     {
         private readonly ILogger<AgentRuntimeManager> _logger;
-        private readonly IConfigurationPersistence? _persistence;
-        private readonly IConfigReloadService? _reloadService;
-        private RuntimeSettings? _runtimeSettings;
         private readonly IAgentStore _agentStore;
-        private readonly SeeingAgentOptions _options;
+        private readonly IOptionsMonitor<SeeingAgentOptions> _optionsMonitor;
+        private readonly IConfigSectionStore _configStore;
         private readonly ILlmService? _llmService;
 
         /// <summary>模型变更事件 - 当 Agent 的模型配置发生变更时触发</summary>
@@ -68,134 +59,75 @@ namespace Seeing.Agent.Core
         public AgentRuntimeManager(
             ILogger<AgentRuntimeManager> logger,
             IAgentStore agentStore,
-            IOptions<SeeingAgentOptions>? options = null,
-            IConfigurationPersistence? persistence = null,
-            IConfigReloadService? reloadService = null,
+            IOptionsMonitor<SeeingAgentOptions> optionsMonitor,
+            IConfigSectionStore configStore,
             ILlmService? llmService = null)
         {
             _logger = logger;
             _agentStore = agentStore;
-            _options = options?.Value ?? new SeeingAgentOptions();
-            _persistence = persistence;
-            _reloadService = reloadService;
+            _optionsMonitor = optionsMonitor;
+            _configStore = configStore;
             _llmService = llmService;
-        }
 
-        /// <summary>
-        /// 订阅配置热重载服务
-        /// </summary>
-        public void SubscribeToConfigReload()
-        {
-            if (_reloadService != null)
-            {
-                _reloadService.ConfigChanged += OnConfigChanged;
-                _logger.LogInformation("已订阅配置热重载服务");
-            }
-        }
-
-        /// <summary>
-        /// 取消订阅配置热重载服务
-        /// </summary>
-        public void UnsubscribeFromConfigReload()
-        {
-            if (_reloadService != null)
-            {
-                _reloadService.ConfigChanged -= OnConfigChanged;
-                _logger.LogInformation("已取消订阅配置热重载服务");
-            }
-        }
-
-        /// <summary>
-        /// 配置变更处理
-        /// </summary>
-        private async void OnConfigChanged(object? sender, ConfigReloadEventArgs e)
-        {
-            try
-            {
-                if (e.NewSettings == null)
-                    return;
-
-                switch (e.ChangeType)
-                {
-                    case ConfigChangeType.AgentModelChanged:
-                        await HandleAgentModelChangeAsync(e);
-                        break;
-
-                    case ConfigChangeType.DefaultAgentChanged:
-                        _runtimeSettings = e.NewSettings;
-                        _logger.LogInformation("默认代理已变更: {Agent}", e.NewSettings.DefaultAgent);
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "处理配置变更失败");
-            }
-        }
-
-        /// <summary>
-        /// 处理 Agent 模型变更
-        /// </summary>
-        private async Task HandleAgentModelChangeAsync(ConfigReloadEventArgs e)
-        {
-            if (e.NewSettings?.AgentModels == null || string.IsNullOrEmpty(e.Section))
-                return;
-
-            // 解析 Agent 名称（Section 格式为 "AgentModels.{agentName}"）
-            var agentName = e.Section.StartsWith("AgentModels.")
-                ? e.Section.Substring("AgentModels.".Length)
-                : e.Section;
-
-            var agent = await _agentStore.GetAsync(agentName);
-            if (agent == null)
-            {
-                _logger.LogWarning("配置变更的 Agent 不存在: {Agent}", agentName);
-                return;
-            }
-
-            // 获取旧模型
-            var oldModel = agent.Model;
-
-            // 更新运行时设置
-            _runtimeSettings = e.NewSettings;
-
-            // 应用新模型
-            ApplyRuntimeModel(agent);
-
-            // 触发事件
-            OnModelChanged(new AgentModelChangedEventArgs
-            {
-                AgentName = agentName,
-                OldModel = oldModel,
-                NewModel = agent.Model,
-                Source = ModelChangeSource.ConfigReload
-            });
-
-            _logger.LogInformation("Agent 模型已通过热重载更新: {Agent} -> {Model}",
-                agentName, agent.Model?.ToString() ?? "null");
+            // 订阅配置热重载事件
+            _configStore.ConfigChanged += OnConfigChanged;
         }
 
         /// <inheritdoc/>
         public async Task InitializeAsync()
         {
-            if (_persistence != null)
-            {
-                _runtimeSettings = await _persistence.LoadAsync();
-                _logger.LogInformation("已加载运行时设置: DefaultAgent={Agent}", _runtimeSettings.DefaultAgent);
+            var options = _optionsMonitor.CurrentValue;
 
-                // 应用运行时设置中的 Agent 模型配置
-                if (_runtimeSettings.AgentModels != null)
+            // 应用 AgentModels 中的模型配置
+            if (options.AgentModels is { Count: > 0 })
+            {
+                var allAgents = await _agentStore.GetAllAsync();
+                foreach (var agent in allAgents)
                 {
-                    var allAgents = await _agentStore.GetAllAsync();
-                    foreach (var agent in allAgents)
-                    {
-                        ApplyRuntimeModel(agent);
-                    }
+                    ApplyRuntimeModel(agent);
                 }
             }
 
-            // 订阅配置热重载
-            SubscribeToConfigReload();
+            _logger.LogInformation(
+                "AgentRuntimeManager 已初始化: DefaultAgent={Agent}, AgentModels={Count}",
+                options.DefaultAgent,
+                options.AgentModels?.Count ?? 0);
+        }
+
+        /// <summary>
+        /// UnifiedConfigManager 配置变更处理
+        /// </summary>
+        private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
+        {
+            if (e.ChangedSections.Length == 0)
+                return;
+
+            // 关注 DefaultAgent 和 AgentModels 变更
+            foreach (var section in e.ChangedSections)
+            {
+                if (section is "DefaultAgent")
+                {
+                    _logger.LogInformation("[AgentRuntimeManager] 默认 Agent 已变更: {Agent}",
+                        _optionsMonitor.CurrentValue.DefaultAgent);
+                }
+                else if (section is "AgentModels")
+                {
+                    _logger.LogInformation("[AgentRuntimeManager] AgentModels 已更新，重新应用模型配置");
+                    _ = ApplyAgentModelsAsync();
+                }
+            }
+        }
+
+        private async Task ApplyAgentModelsAsync()
+        {
+            var options = _optionsMonitor.CurrentValue;
+            if (options.AgentModels is not { Count: > 0 }) return;
+
+            var allAgents = await _agentStore.GetAllAsync();
+            foreach (var agent in allAgents)
+            {
+                ApplyRuntimeModel(agent);
+            }
         }
 
         /// <inheritdoc/>
@@ -211,26 +143,32 @@ namespace Seeing.Agent.Core
             if ((agent.Mode != AgentMode.Primary && agent.Mode != AgentMode.All) || agent.IsHidden)
                 throw new ArgumentException($"Agent 不是可见的主代理: {agentName}", nameof(agentName));
 
-            // 更新运行时设置
-            _runtimeSettings ??= new RuntimeSettings();
-            _runtimeSettings.DefaultAgent = agentName;
+            // 默认保存到项目级（AgentsPage 层会透传 ConfigLevel）
+            await _configStore.SaveSectionAsync("DefaultAgent", agentName, ConfigLevel.Project);
+            _logger.LogInformation("已设置默认 Agent: {Name}", agentName);
+        }
 
-            // 持久化
-            if (_persistence != null)
-            {
-                await _persistence.SaveAsync(_runtimeSettings);
-                _logger.LogInformation("已设置默认代理: {Name}", agentName);
-            }
-            else
-            {
-                _logger.LogWarning("未配置持久化服务，设置仅对当前会话有效");
-            }
+        /// <inheritdoc/>
+        public async Task SetDefaultAgentAsync(string agentName, ConfigLevel level)
+        {
+            if (string.IsNullOrEmpty(agentName))
+                throw new ArgumentException("Agent 名称不能为空", nameof(agentName));
+
+            var agent = await _agentStore.GetAsync(agentName);
+            if (agent == null)
+                throw new ArgumentException($"Agent 不存在: {agentName}", nameof(agentName));
+
+            if ((agent.Mode != AgentMode.Primary && agent.Mode != AgentMode.All) || agent.IsHidden)
+                throw new ArgumentException($"Agent 不是可见的主代理: {agentName}", nameof(agentName));
+
+            await _configStore.SaveSectionAsync("DefaultAgent", agentName, level);
+            _logger.LogInformation("已设置默认 Agent: {Name} (级别: {Level})", agentName, level);
         }
 
         /// <inheritdoc/>
         public async Task<string?> GetDefaultAgentNameAsync()
         {
-            return _runtimeSettings?.DefaultAgent;
+            return _optionsMonitor.CurrentValue.DefaultAgent;
         }
 
         /// <inheritdoc/>
@@ -255,23 +193,20 @@ namespace Seeing.Agent.Core
                 agent.Model = model;
             }
 
-            // 更新运行时设置
-            _runtimeSettings ??= new RuntimeSettings();
+            // 持久化到 AgentModels
             var modelId = string.IsNullOrEmpty(model.ProviderId)
                 ? model.ModelId
                 : $"{model.ProviderId}/{model.ModelId}";
-            _runtimeSettings.SetAgentModel(agentName, modelId);
 
-            // 持久化
-            if (_persistence != null)
+            var agentModels = new Dictionary<string, string>(
+                _optionsMonitor.CurrentValue.AgentModels ?? new(),
+                StringComparer.OrdinalIgnoreCase)
             {
-                await _persistence.SaveAsync(_runtimeSettings);
-                _logger.LogInformation("已更新代理模型: {Agent} -> {Model}", agentName, modelId);
-            }
-            else
-            {
-                _logger.LogWarning("未配置持久化服务，设置仅对当前会话有效");
-            }
+                [agentName] = modelId
+            };
+
+            await _configStore.SaveSectionAsync("AgentModels", agentModels);
+            _logger.LogInformation("已更新 Agent 模型: {Agent} -> {Model}", agentName, modelId);
 
             // 触发事件
             OnModelChanged(new AgentModelChangedEventArgs
@@ -287,10 +222,8 @@ namespace Seeing.Agent.Core
         public async Task<ModelReference?> GetEffectiveModelAsync(string agentName)
         {
             var effectiveModelId = await GetEffectiveModelIdAsync(agentName);
-
             if (string.IsNullOrEmpty(effectiveModelId))
                 return null;
-
             return ParseModelReference(effectiveModelId);
         }
 
@@ -309,7 +242,7 @@ namespace Seeing.Agent.Core
                 return sessionModel;
             }
 
-            // 2. 持久化的运行时设置
+            // 2. Agent 配置的模型
             var agent = await _agentStore.GetAsync(agentName);
             if (agent?.Model != null)
             {
@@ -326,21 +259,18 @@ namespace Seeing.Agent.Core
             }
 
             // 4. 全局默认模型
-            if (!string.IsNullOrEmpty(_options.DefaultModel))
+            var options = _optionsMonitor.CurrentValue;
+            if (!string.IsNullOrEmpty(options.DefaultModel))
             {
-                _logger.LogDebug("[ModelManager] Agent {Agent} 使用全局默认模型: {Model}", agentName, _options.DefaultModel);
-                return _options.DefaultModel;
+                _logger.LogDebug("[ModelManager] Agent {Agent} 使用全局默认模型: {Model}", agentName, options.DefaultModel);
+                return options.DefaultModel;
             }
 
             _logger.LogWarning("[ModelManager] Agent {Agent} 未找到有效模型", agentName);
             return null;
         }
 
-        /// <summary>
-        /// 设置会话级模型（仅当前会话有效，不持久化）
-        /// </summary>
-        /// <param name="agentName">Agent 名称</param>
-        /// <param name="modelId">模型 ID</param>
+        /// <inheritdoc/>
         public async Task SetSessionModelOverrideAsync(string agentName, string modelId)
         {
             if (string.IsNullOrEmpty(agentName))
@@ -355,8 +285,7 @@ namespace Seeing.Agent.Core
                 var modelConfig = _llmService.GetModelConfig(modelId);
                 if (modelConfig == null)
                 {
-                    // 尝试带 provider 前缀匹配
-                    foreach (var provider in _options.Providers.Keys)
+                    foreach (var provider in _optionsMonitor.CurrentValue.Providers.Keys)
                     {
                         var prefixedId = $"{provider}/{modelId}";
                         modelConfig = _llmService.GetModelConfig(prefixedId);
@@ -372,7 +301,6 @@ namespace Seeing.Agent.Core
                     throw new ArgumentException($"模型不存在: {modelId}");
             }
 
-            // 设置会话级覆盖
             _sessionModelOverrides[agentName] = modelId;
             CurrentModel = modelId;
             _lastUsedModel = modelId;
@@ -380,18 +308,7 @@ namespace Seeing.Agent.Core
             _logger.LogInformation("[ModelManager] 会话级模型设置: {Agent} -> {Model}", agentName, modelId);
         }
 
-        /// <summary>
-        /// 切换 Agent 并返回有效模型
-        /// <para>
-        /// 模型优先级：
-        /// 1. 该 Agent 的会话级设置
-        /// 2. Agent 配置的模型
-        /// 3. 上次使用的模型
-        /// 4. 全局默认模型
-        /// </para>
-        /// </summary>
-        /// <param name="newAgentName">新 Agent 名称</param>
-        /// <returns>有效模型引用</returns>
+        /// <inheritdoc/>
         public async Task<ModelReference?> SwitchAgentAsync(string newAgentName)
         {
             if (string.IsNullOrEmpty(newAgentName))
@@ -400,9 +317,7 @@ namespace Seeing.Agent.Core
             var previousAgent = CurrentAgentName;
             CurrentAgentName = newAgentName;
 
-            // 获取新 Agent 的有效模型
             var effectiveModelId = await GetEffectiveModelIdAsync(newAgentName);
-
             if (!string.IsNullOrEmpty(effectiveModelId))
             {
                 CurrentModel = effectiveModelId;
@@ -416,10 +331,7 @@ namespace Seeing.Agent.Core
             return string.IsNullOrEmpty(effectiveModelId) ? null : ParseModelReference(effectiveModelId);
         }
 
-        /// <summary>
-        /// 清除会话级模型设置
-        /// </summary>
-        /// <param name="agentName">Agent 名称，为 null 则清除所有</param>
+        /// <inheritdoc/>
         public void ClearSessionModelOverride(string? agentName = null)
         {
             if (string.IsNullOrEmpty(agentName))
@@ -436,11 +348,11 @@ namespace Seeing.Agent.Core
         /// <inheritdoc/>
         public void ApplyRuntimeModel(Models.AgentDefinition agent)
         {
-            if (_runtimeSettings?.AgentModels == null)
+            var agentModels = _optionsMonitor.CurrentValue.AgentModels;
+            if (agentModels == null || agentModels.Count == 0)
                 return;
 
-            var modelId = _runtimeSettings.GetAgentModel(agent.Name);
-            if (modelId != null)
+            if (agentModels.TryGetValue(agent.Name, out var modelId))
             {
                 var modelRef = ParseModelReference(modelId);
                 if (modelRef != null)
@@ -459,7 +371,6 @@ namespace Seeing.Agent.Core
             if (string.IsNullOrEmpty(modelStr))
                 return null;
 
-            // 格式：provider:model 或 provider/model
             var parts = modelStr.Split(new[] { ':', '/' }, 2);
             if (parts.Length >= 2)
             {
@@ -470,7 +381,6 @@ namespace Seeing.Agent.Core
                 };
             }
 
-            // 只有模型 ID，无 Provider
             return new ModelReference
             {
                 ProviderId = string.Empty,
