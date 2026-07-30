@@ -125,7 +125,7 @@
     {
         var allAgents = await AgentManager.GetAgentsAsync();
         _agentNames = allAgents
-            .Where(a => !string.IsNullOrEmpty(a.Name))
+            .Where(a => !string.IsNullOrEmpty(a.Name) && string.IsNullOrEmpty(a.AcpBackend))
             .Select(a => a.Name)
             .ToList();
 

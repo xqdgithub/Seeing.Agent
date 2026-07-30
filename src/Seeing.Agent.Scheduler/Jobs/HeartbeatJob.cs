@@ -198,27 +198,17 @@ public class HeartbeatJob : IJob
                 await _listener.OnJobExecutedAsync(jobId, result, timeoutCts.Token);
             }
         }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            _logger.LogWarning("Heartbeat timed out after {Timeout}s", timeoutSeconds);
+            _logger.LogInformation("Heartbeat job cancelled");
             context.Result = new JobExecutionResult
             {
                 Success = false,
-                Error = $"Execution timed out after {timeoutSeconds}s",
+                Error = "Cancelled",
                 Source = ScheduleSources.Heartbeat,
                 SessionId = sessionId
             };
 
-            // 触发心跳后 Hook
-            _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
-            {
-                ["source"] = ScheduleSources.Heartbeat,
-                ["sessionId"] = sessionId,
-                ["success"] = false,
-                ["error"] = "Timed out"
-            });
-
-            // 通知监听器
             if (_listener != null)
             {
                 await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);

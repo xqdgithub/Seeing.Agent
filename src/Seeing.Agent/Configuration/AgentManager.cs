@@ -776,6 +776,7 @@ maxSteps: 50
                 AllowedTools = agent.AllowedTools?.ToList() ?? new List<string>(),
                 DeniedTools = agent.DeniedTools?.ToList() ?? new List<string>(),
                 IsBuiltIn = agent.IsNative,
+                AcpBackend = agent.AcpBackend,
                 HasMdOverride = mdInfo != null,
                 MdConfigLevel = mdInfo?.Level
             };

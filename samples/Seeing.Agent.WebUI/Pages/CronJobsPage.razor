@@ -299,33 +299,23 @@
     
     private void OnJobProgress(object? sender, JobProgressEventArgs args)
     {
-        _ = InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             switch (args.Stage)
             {
                 case JobProgressStage.Triggered:
                     _runningJobs.Add(args.JobId);
-                    // 仅更新行内「执行中」按钮状态，不做整页 Load（避免定时触发时闪 Spin）
-                    var row = _rows.FirstOrDefault(r => r.Id == args.JobId);
-                    if (row != null)
-                        row.State = JobState.Running;
-                    ApplyTabFilter();
-                    _rowsVersion++;
+                    await RefreshSingleRowAsync(args.JobId);
                     MessageService.Info($"任务 {args.JobId} 已触发");
                     break;
                 case JobProgressStage.Completed:
-                    _runningJobs.Remove(args.JobId);
-                    break;
                 case JobProgressStage.Failed:
-                    _runningJobs.Remove(args.JobId);
-                    break;
                 case JobProgressStage.Cancelled:
                     _runningJobs.Remove(args.JobId);
+                    await RefreshSingleRowAsync(args.JobId);
                     MessageService.Warning($"任务 {args.JobId} 已取消");
                     break;
             }
-            StateHasChanged();
-            return Task.CompletedTask;
         });
     }
     
@@ -411,28 +401,41 @@
     {
         await StatusService.DisableJobAsync(id);
         MessageService.Info("任务已禁用");
-        await LoadAsync(showPageLoading: false);
+        await RefreshSingleRowAsync(id);
     }
 
     private async Task EnableJob(string id)
     {
         await StatusService.EnableJobAsync(id);
         MessageService.Success("任务已启用");
-        await LoadAsync(showPageLoading: false);
+        await RefreshSingleRowAsync(id);
     }
 
     private async Task CancelJob(string id)
     {
         var success = await StatusService.CancelJobAsync(id);
         if (success)
-        {
             MessageService.Success("任务已取消");
-        }
         else
-        {
             MessageService.Warning("取消任务失败，任务可能已完成");
+        await RefreshSingleRowAsync(id);
+    }
+
+    /// <summary>
+    /// 查询单行最新状态并刷新 Table（统一入口，不做补丁式状态推演）
+    /// </summary>
+    private async Task RefreshSingleRowAsync(string id)
+    {
+        var status = await StatusService.GetJobStatusAsync(id);
+        var row = _rows.FirstOrDefault(r => r.Id == id);
+        if (row != null)
+        {
+            row.State = status.State;
+            row.NextFireTime = status.NextFireTime;
+            row.NextRunText = status.NextFireTime?.ToString("yyyy-MM-dd HH:mm") ?? "-";
         }
-        await LoadAsync(showPageLoading: false);
+        ApplyTabFilter();
+        _rowsVersion++;
     }
 
     private void NavigateToDetail(string jobId)

@@ -165,13 +165,14 @@ public class AgentJob : IJob
                 await _listener.OnJobExecutedAsync(jobId, result, timeoutCts.Token);
             }
         }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            _logger.LogWarning("Job {JobId} timed out after {Timeout}s", jobId, timeoutSeconds);
+            // 用户取消或 Circuit 断开，正常退出即可
+            _logger.LogInformation("Job {JobId} was cancelled", jobId);
             context.Result = new JobExecutionResult
             {
                 Success = false,
-                Error = $"Execution timed out after {timeoutSeconds}s",
+                Error = "Cancelled",
                 TaskType = taskType,
                 Source = ScheduleSources.Cron,
                 SessionId = sessionId,
@@ -181,17 +182,6 @@ public class AgentJob : IJob
                 DispatchSessionId = dispatchSessionId
             };
 
-            // 触发执行后 Hook
-            _hooks.TriggerFireAndForget(HookRegistry.SchedulerJobAfterExecute, sessionId, new Dictionary<string, object?>
-            {
-                ["source"] = ScheduleSources.Cron,
-                ["sessionId"] = sessionId,
-                ["jobId"] = jobId,
-                ["success"] = false,
-                ["error"] = "Timed out"
-            });
-
-            // 通知监听器
             if (_listener != null)
             {
                 await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);

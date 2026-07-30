@@ -78,6 +78,7 @@
                             Disabled="@context.IsDefault"
                             OnClick="@(() => SetDefault(context.Name))">设为默认</Button>
                     <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary"
+                            Disabled="@context.IsAcp"
                             OnClick="@(() => GoConfig(context.Name))">配置</Button>
                     @if (context.IsMdConfig && context.IsBuiltIn)
                     {
@@ -178,7 +179,7 @@
             // 加载 MD 配置信息
             _mdConfigs = (await AgentManager.GetAllMdInfoAsync()).ToList();
             
-            _rows = agents.Select(a => 
+            _rows = agents.Select(a =>
             {
                 var mdInfo = _mdConfigs.FirstOrDefault(m => m.Name == a.Name);
                 return new AgentRow
@@ -190,6 +191,7 @@
                     IsDefault = a.Name == _defaultAgent,
                     DefaultLabel = a.Name == _defaultAgent ? "是" : "",
                     IsBuiltIn = a.IsNative,
+                    IsAcp = !string.IsNullOrEmpty(a.AcpBackend),
                     IsHidden = a.IsHidden,
                     Disabled = a.Disabled
                 };
@@ -324,6 +326,7 @@
         public bool IsBuiltIn { get; set; }
         public bool IsHidden { get; set; }
         public bool Disabled { get; set; }
+        public bool IsAcp { get; set; }
         public ConfigLevel Level { get; set; }
         public string Source => IsBuiltIn ? "内置" : (IsMdConfig ? "MD" : "其他");
         public string StatusText => Disabled ? "已禁用" : (IsHidden ? "已隐藏" : "启用");

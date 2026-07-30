@@ -84,6 +84,9 @@ namespace Seeing.Agent.Configuration
         /// <summary>是否为内置 Agent</summary>
         public bool IsBuiltIn { get; set; }
 
+        /// <summary>ACP 后端标识（非空表示 ACP 智能体）</summary>
+        public string? AcpBackend { get; set; }
+
         /// <summary>是否已有 MD 覆盖配置</summary>
         public bool HasMdOverride { get; set; }
 

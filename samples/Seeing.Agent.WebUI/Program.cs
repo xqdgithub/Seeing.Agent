@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.App;
 using Seeing.Agent.Configuration;
@@ -92,6 +93,10 @@ builder.Services.AddMessageRendering();
 
 // AntDesign 2.0 配置
 builder.Services.AddAntDesign();
+
+// Circuit 生命周期管理（JSDisconnectedException 防护）
+builder.Services.AddSingleton<CircuitTracker>();
+builder.Services.AddScoped<CircuitHandler, SeeingCircuitHandler>();
 
 var app = builder.Build();
 

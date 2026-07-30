@@ -31,13 +31,21 @@
                         </Col>
                         <Col Span="8">
                             <FormItem Label="默认模型">
-                                <Select TItemValue="string" TItem="string"
-                                        Value="@_modelKey"
-                                        ValueExpression="@(() => _modelKey)"
-                                        ValueChanged="OnModelKeyChanged"
-                                        DataSource="@_modelKeys"
-                                        AllowClear
-                                        Placeholder="空则 Task 时继承主 Agent 模型" />
+                                @if (!string.IsNullOrEmpty(EditModel.AcpBackend))
+                                {
+                                    <Input Value="@_modelKey" Disabled />
+                                    <span style="color: #999; font-size: 12px; margin-left: 8px;">ACP 智能体不可编辑</span>
+                                }
+                                else
+                                {
+                                    <Select TItemValue="string" TItem="string"
+                                            Value="@_modelKey"
+                                            ValueExpression="@(() => _modelKey)"
+                                            ValueChanged="OnModelKeyChanged"
+                                            DataSource="@_modelKeys"
+                                            AllowClear
+                                            Placeholder="空则 Task 时继承主 Agent 模型" />
+                                }
                             </FormItem>
                         </Col>
                     </Row>
