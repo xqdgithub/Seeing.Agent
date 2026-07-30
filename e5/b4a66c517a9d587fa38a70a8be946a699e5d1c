@@ -1,0 +1,79 @@
+src/Seeing.Gateway/IChannelBridge.cs
+  s_28c8220fa1f2b1::t_ffe04c21881bc8 10-14
+samples/Seeing.Gateway.ChannelHost/Program.cs
+  s_28c8220fa1f2b1::t_f76762b7a318be 171,175-176
+  s_28c8220fa1f2b1::t_266c3eb2e1bb8d 170,172-174,177-178,182,185-192
+samples/Seeing.Agent.WebUI/Pages/GatewayClientsPage.razor
+  s_28c8220fa1f2b1::t_5ab873e540885a 49-55
+src/Seeing.Gateway.Client/WebSocketGatewayClient.cs
+  s_28c8220fa1f2b1::t_1a58824f2bbe47 272-275
+  s_28c8220fa1f2b1::t_a00401d3e482ec 41,43-45
+tests/Seeing.Agent.Memory.Tests/Pipeline/MemoryPipelineGraphTests.cs
+  s_835f1df7706591::t_a92f930ada16a6 1-77,79-80,82-158
+  s_835f1df7706591::t_b070ac2ef932a1 78,81
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_28c8220fa1f2b1::t_675cac70ef14d5 29,32-34,36,40-41,46
+  s_28c8220fa1f2b1::t_fff6b727334088 37-39,42-45
+tests/Seeing.Agent.Memory.Tests/Evolution/LlmMemoryEvolutionGraphTests.cs
+  s_835f1df7706591::t_72e357a68754d4 1-78,80-97
+  s_835f1df7706591::t_c7c24f5119c7f1 79
+src/Seeing.Gateway.WeCom/WeComChannelBridge.cs
+  s_28c8220fa1f2b1::t_01218b680244e2 69-70
+src/Seeing.Agent.Gateway/Core/GatewayConnectionManager.cs
+  s_28c8220fa1f2b1::t_6352ba0887b544 48-51
+tests/Seeing.Agent.Memory.Tests/Pipeline/MemoryPipelineTests.cs
+  s_835f1df7706591::t_dbde9c4255bb36 45,52
+  s_835f1df7706591::t_00d838e444d7d5 7
+src/Seeing.Gateway/IGatewayConnection.cs
+  s_28c8220fa1f2b1::t_38742408f0d8cf 11,13
+  s_28c8220fa1f2b1::t_7eb48f67fc00eb 12,14
+src/Seeing.Gateway.QQ/QQChannelBridge.cs
+  s_28c8220fa1f2b1::t_bd514d3415febc 73-74
+samples/Seeing.Agent.WebUI/Components/GatewayClients/GatewayClientCard.razor
+  s_28c8220fa1f2b1::t_b6ecdb39f5fcf5 42
+  s_28c8220fa1f2b1::t_215d91c2884353 69,78,88
+src/Seeing.Agent/Configuration/GatewayClientsOptions.cs
+  s_28c8220fa1f2b1::t_32f0f465f7c76f 91-93
+src/Seeing.Agent.Memory/Core/Evolution/LlmMemoryEvolution.cs
+  s_835f1df7706591::t_b9cdba45cdaec7 120
+  s_835f1df7706591::t_c7e9ea36b1fbe5 9
+  s_835f1df7706591::t_78d039d9b51f49 178-215
+  s_835f1df7706591::t_2fad593bf9aa9f 7,19,27,34
+src/Seeing.Agent.Gateway/Endpoints/AdminEndpoints.cs
+  s_28c8220fa1f2b1::t_b00a18339250a0 97-102
+  s_28c8220fa1f2b1::t_098164dcc3e078 29
+samples/Seeing.Agent.WebUI/Services/GatewayClientSupervisor.cs
+  s_28c8220fa1f2b1::t_1ec088aae428d6 387-418
+  s_28c8220fa1f2b1::t_2d2b33b6a6d113 2
+  s_28c8220fa1f2b1::t_65d21382bbf092 57-69
+src/Seeing.Agent.Memory/Core/Pipeline/MemoryPipeline.cs
+  s_835f1df7706591::t_00bd2b4b7836a9 125
+  s_835f1df7706591::t_e0285db5e5bc9b 117-124,126-150
+  s_835f1df7706591::t_82f2c237db740e 7,19,29,37
+  s_835f1df7706591::t_24886571fcb8bf 9
+  s_835f1df7706591::t_d0323ac6eee0e1 79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.38-trip",
+  "base_commit_sha": "e5b4a66c517a9d587fa38a70a8be946a699e5d1c",
+  "prompts": {},
+  "sessions": {
+    "s_28c8220fa1f2b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f594a539-2acf-4004-b6e1-c868112e98a0",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_835f1df7706591": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67b11b45-e6d0-4682-97db-f521c15b670e",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
