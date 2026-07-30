@@ -29,44 +29,28 @@
   <!--
     ChannelHost 打包策略：
     1. 始终使用 framework-dependent 发布（不使用 SelfContained）
-    2. Build 时同步到 channel-host 子目录（开发环境）
-    3. Publish 时发布到 channel-host 子目录
+    2. Build 时同步到 WebUI 输出目录（同级根目录）
+    3. Publish 时发布到 WebUI 发布目录（同级根目录）
     4. 启动时统一使用 dotnet Seeing.Gateway.ChannelHost.dll
   -->
   <Target Name="CopyChannelHostForBuild" AfterTargets="Build" Condition="'$(PublishDir)' == ''">
-    <PropertyGroup>
-      <_ChannelHostBuildDir>$(OutDir)channel-host\</_ChannelHostBuildDir>
-    </PropertyGroup>
     <MSBuild
       Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
       Targets="Publish"
-      Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostBuildDir);SelfContained=false;RuntimeIdentifier=" />
-    <Delete Files="$(_ChannelHostBuildDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(_ChannelHostBuildDir)Seeing.Gateway.ChannelHost')" />
-    <Delete Files="$(_ChannelHostBuildDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(_ChannelHostBuildDir)Seeing.Gateway.ChannelHost.exe')" />
+      Properties="Configuration=$(Configuration);PublishDir=$(OutDir);SelfContained=false;RuntimeIdentifier=" />
+    <!-- 删除项目引用带来的 ChannelHost exe/dll（我们使用 Publish 输出版本），删除 exe 因为它不能跨平台 -->
+    <Delete Files="$(OutDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(OutDir)Seeing.Gateway.ChannelHost.exe')" />
+    <Delete Files="$(OutDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(OutDir)Seeing.Gateway.ChannelHost')" />
+    <!-- 清理旧的 channel-host 子目录（之前版本遗留） -->
+    <RemoveDir Directories="$(OutDir)channel-host" Condition="Exists('$(OutDir)channel-host')" />
   </Target>
   <Target Name="PublishChannelHost" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
-    <!-- 确定发布参数 -->
-    <PropertyGroup>
-      <!-- 保持 framework-dependent，不设置 RuntimeIdentifier 让 ChannelHost 保持跨平台 -->
-      <_ChannelHostPublishDir>$(PublishDir)channel-host/</_ChannelHostPublishDir>
-    </PropertyGroup>
-    
-    <!-- 发布 ChannelHost -->
-    <MSBuild 
-      Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" 
-      Targets="Publish" 
-      Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostPublishDir);SelfContained=false;RuntimeIdentifier=" />
-    
-    <!-- 删除 channel-host 目录中的原生可执行文件，只保留 dll 启动方式 -->
-    <Delete Files="$(_ChannelHostPublishDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(_ChannelHostPublishDir)Seeing.Gateway.ChannelHost')" />
-    <Delete Files="$(_ChannelHostPublishDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(_ChannelHostPublishDir)Seeing.Gateway.ChannelHost.exe')" />
-    
-    <!-- 删除主发布目录中 ChannelHost 的可执行文件（由于项目引用会被复制过来，但我们使用子目录中的版本） -->
+    <MSBuild
+      Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);PublishDir=$(PublishDir);SelfContained=false;RuntimeIdentifier=" />
+
     <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost')" />
     <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.exe')" />
-    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.dll" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.dll')" />
-    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.pdb" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.pdb')" />
-    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.deps.json" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.deps.json')" />
-    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.runtimeconfig.json" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.runtimeconfig.json')" />
   </Target>
 </Project>

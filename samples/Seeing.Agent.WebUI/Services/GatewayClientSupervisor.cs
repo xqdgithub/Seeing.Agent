@@ -335,14 +335,7 @@ public sealed class GatewayClientSupervisor
 
         _logger.LogDebug("ResolveChannelHost: BaseDirectory={BaseDirectory}", AppContext.BaseDirectory);
 
-        // 1. 检查 bundled 目录 (channel-host 子目录) - 发布后的位置
-        var bundledDir = Path.Combine(AppContext.BaseDirectory, "channel-host");
-        var bundledDll = Path.Combine(bundledDir, dllName);
-        _logger.LogDebug("ResolveChannelHost: Checking bundled {Path}", bundledDll);
-        if (IsRunnableChannelHost(bundledDll, bundledDir))
-            return new ChannelHostLocation(bundledDll, bundledDir);
-
-        // 2. 检查 AppContext.BaseDirectory 根目录（开发环境或特殊部署）
+        // 1. 检查 AppContext.BaseDirectory 根目录（开发 build 后或发布后，ChannelHost 输出到同级根目录）
         var rootDll = Path.Combine(AppContext.BaseDirectory, dllName);
         _logger.LogDebug("ResolveChannelHost: Checking root {Path}", rootDll);
         if (IsRunnableChannelHost(rootDll, AppContext.BaseDirectory))
@@ -351,7 +344,7 @@ public sealed class GatewayClientSupervisor
             return new ChannelHostLocation(rootDll, AppContext.BaseDirectory);
         }
 
-        // 3. 检查项目输出目录（开发环境）
+        // 2. 检查项目输出目录（开发环境 fallback）
         foreach (var dir in GetChannelHostProjectOutputDirs(tfm))
         {
             var dll = Path.Combine(dir, dllName);
