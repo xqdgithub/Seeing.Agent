@@ -1,0 +1,77 @@
+samples/Seeing.Agent.Cli/Infrastructure/CliServiceBootstrap.cs
+  s_a29daf3260e9f4::t_925205f49e6b97 1-35
+samples/Seeing.Agent.Cli/Program.cs
+  s_a29daf3260e9f4::t_487a8299ecc18b 1,3-23
+  s_a29daf3260e9f4::t_26b99c1c596be1 2
+samples/Seeing.Agent.Cli/Commands/AgentCommand.cs
+  s_a29daf3260e9f4::t_65cb05e86c03b5 35
+  s_a29daf3260e9f4::t_986e6106f013ec 1,3-16,18-34,36-66
+  s_a29daf3260e9f4::t_412c883713c310 2
+  s_a29daf3260e9f4::t_101441b682eb50 17
+samples/Seeing.Agent.Cli/Commands/StopCommand.cs
+  s_a29daf3260e9f4::t_1681baf413d34f 1-42,44-84
+samples/Seeing.Agent.Cli/Services/ServiceProcessManager.cs
+  s_a29daf3260e9f4::t_99855db9cf627c 1-131
+samples/Seeing.Agent.Cli/Commands/JobCommand.cs
+  s_a29daf3260e9f4::t_667978b590a5de 1,3-4,6-17,19-35,37-53,55-63,65-77
+  s_a29daf3260e9f4::t_7ff1f89147fcb2 2
+  s_a29daf3260e9f4::t_2d297ae5ab12ea 5,18,36,54,64
+samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj
+  s_a29daf3260e9f4::t_80fc7a7088cf0b 1-33
+Seeing.Agent.slnx
+  s_a29daf3260e9f4::t_938e31f0ac8cea 6
+CLAUDE.md
+  s_c000e73589bce5::t_f4462edd779aac 1-144
+samples/Seeing.Agent.Cli/Services/ManagementApiClient.cs
+  s_a29daf3260e9f4::t_0475f9a65dc10a 1-67
+samples/Seeing.Agent.Cli/Commands/StatusCommand.cs
+  s_a29daf3260e9f4::t_dbf0c825268bfc 22,26,29-35
+  s_a29daf3260e9f4::t_7ac3793eebec8b 1-21,23-25,27-28,36-88
+src/Seeing.Agent.Gateway/Hosting/GatewayHost.cs
+  s_a29daf3260e9f4::t_a1c0586a781313 92-94
+  s_a29daf3260e9f4::t_e54a0f0145f095 104
+  s_a29daf3260e9f4::t_1e591c50a86a7d 14
+samples/Seeing.Agent.Cli/Commands/ConfigCommand.cs
+  s_a29daf3260e9f4::t_df3b35d16f2772 87
+  s_a29daf3260e9f4::t_411692ad09b156 119-149
+  s_a29daf3260e9f4::t_926c218c706c49 1-2,4-18,20-28,30-36,38-82,84,88-89,92,98,100-101,103-106,108,114-118,150-218
+  s_a29daf3260e9f4::t_88417bea5d9a87 3
+  s_a29daf3260e9f4::t_071d8b6e7928c7 19,29,37
+  s_a29daf3260e9f4::t_95509c540054e8 83,85-86,90-91,93-97,99,102,107,109-113
+samples/Seeing.Agent.Cli/appsettings.json
+  s_a29daf3260e9f4::t_0a3fc036c93eea 1-8
+samples/Seeing.Agent.Cli/Commands/SessionCommand.cs
+  s_a29daf3260e9f4::t_ae583deb17170d 1,3-16,18-35,37-49,51-77
+  s_a29daf3260e9f4::t_7597631370a748 2
+  s_a29daf3260e9f4::t_29b1eb06f9e001 17,36,50
+samples/Seeing.Agent.Cli/Commands/StartCommand.cs
+  s_a29daf3260e9f4::t_aea797be81f5e2 1-121
+Directory.Packages.props
+  s_a29daf3260e9f4::t_6ea66d32cad836 48
+src/Seeing.Agent.Gateway/Endpoints/AdminEndpoints.cs
+  s_a29daf3260e9f4::t_1f22b1cb9bfd1a 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.38-trip",
+  "base_commit_sha": "d7fa718c534b8678f6415daca781af4fc6caac18",
+  "prompts": {},
+  "sessions": {
+    "s_a29daf3260e9f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27363f14-3bb9-4a22-9408-51cba8c0cd8d",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_c000e73589bce5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1f7edbe-0ec8-49db-8798-c17d7bb9a8d4",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
