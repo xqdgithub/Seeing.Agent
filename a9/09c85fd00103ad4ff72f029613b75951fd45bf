@@ -1,0 +1,23 @@
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_be990b8b3d0fce::t_884bd680287b11 44-45
+  s_be990b8b3d0fce::t_a5db93a4aca7c8 32-33,40,42,48-52
+  s_be990b8b3d0fce::t_5418b31df7214a 41,43
+samples/Seeing.Agent.WebUI/Services/GatewayClientSupervisor.cs
+  s_be990b8b3d0fce::t_ef6dfe8db1b118 338,347
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.38-trip",
+  "base_commit_sha": "a909c85fd00103ad4ff72f029613b75951fd45bf",
+  "prompts": {},
+  "sessions": {
+    "s_be990b8b3d0fce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6801ec27-a899-4b66-b0a3-cf71017e0bf3",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
