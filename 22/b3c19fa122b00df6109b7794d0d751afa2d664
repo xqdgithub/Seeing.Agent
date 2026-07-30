@@ -1,0 +1,83 @@
+src/Seeing.Agent/Core/AgentRuntimeManager.cs
+  s_facbdf72ff73f4::t_d8a72a98c60e03 147
+  s_facbdf72ff73f4::t_60624c469bfeb7 164
+  s_facbdf72ff73f4::t_15b8ffc0441617 27
+  s_facbdf72ff73f4::t_2ed35d9676e14f 208
+  s_facbdf72ff73f4::t_8cd9bbd1be61b4 63,69,72-73
+  s_facbdf72ff73f4::t_309ce756d1e928 12,16,26,62,68,76-77,79,81-82,84-85,87,90-94,98,100,102,105-106,108-117,119,121-124,126-127,129-130,134,136-137,139-144,146,148,152,165,171,196,201-203,205-206,209,245,262-263,265-266,273,288,311,334,351-352,355
+samples/Seeing.Agent.WebUI/Pages/AgentsPage.razor
+  s_facbdf72ff73f4::t_c2cb9ce9b5f13c 205
+src/Seeing.Agent/Configuration/AgentManager.cs
+  s_facbdf72ff73f4::t_512dec68aea412 225,236,243,259-262
+src/Seeing.Agent/Llm/LlmService.cs
+  s_facbdf72ff73f4::t_43958baacc44e6 40
+  s_facbdf72ff73f4::t_32762645f11c23 528,530
+tests/Seeing.Agent.Tests/App/ExecutionJobServiceOutboundBackfillTests.cs
+  s_facbdf72ff73f4::t_021243dc3850c8 259
+samples/Seeing.Agent.WebUI/Pages/Settings.razor
+  s_facbdf72ff73f4::t_fa194e31ec70fc 44,48-49,52-55,59-60,63-65
+  s_facbdf72ff73f4::t_46cc2e19f2223f 4
+  s_facbdf72ff73f4::t_eb84752c326d1c 205-206
+  s_facbdf72ff73f4::t_7bd25a72730f17 224-238,241
+  s_facbdf72ff73f4::t_a5de3dfbb948c1 5,13-14
+  s_facbdf72ff73f4::t_f2c0494b8cf95b 436-447
+  s_facbdf72ff73f4::t_aff2da863f3f47 45-47,50-51,56-58,61-62
+samples/Seeing.Agent.WebUI/Pages/ModelsPage.razor
+  s_facbdf72ff73f4::t_1766a252b5fb1b 208
+  s_facbdf72ff73f4::t_d549ccf474e7d3 248
+  s_facbdf72ff73f4::t_d048ac4c0f764b 285-289,293-294
+  s_facbdf72ff73f4::t_3abe593051bcf5 312-324
+  s_facbdf72ff73f4::t_bdae5e6563566d 98-100
+  s_facbdf72ff73f4::t_81c86970f41772 61-68,70-75
+  s_facbdf72ff73f4::t_1bbcccf9536c34 69
+src/Seeing.Agent/Llm/Clients/AnthropicClient.cs
+  s_facbdf72ff73f4::t_0d651df36d01bf 290
+  s_facbdf72ff73f4::t_ad9e08c5054285 296
+src/Seeing.Agent/Llm/ProviderManager.cs
+  s_facbdf72ff73f4::t_91240fb18c3fd0 82,93
+src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs
+  s_facbdf72ff73f4::t_05167de1f4c9f9 716-717,719
+src/Seeing.Agent/Core/Interfaces/IAgentRuntimeManager.cs
+  s_facbdf72ff73f4::t_6044634e56ee73 1
+  s_facbdf72ff73f4::t_932dc560196d58 40-45
+src/Seeing.Agent/Configuration/WorkspaceProvider.cs
+  s_facbdf72ff73f4::t_017ee391184d2b 217
+  s_facbdf72ff73f4::t_c4e258cf667793 278-282
+  s_facbdf72ff73f4::t_4eb7f77ac39d28 213,221
+src/Seeing.Agent/Llm/ILlmClient.cs
+  s_facbdf72ff73f4::t_8d9e713982029b 38,41
+src/Seeing.Agent/Llm/IProviderManager.cs
+  s_facbdf72ff73f4::t_583927c06a5812 41-44
+src/Seeing.Agent/Configuration/SeeingAgentOptions.cs
+  s_facbdf72ff73f4::t_e104566c912e9a 66-71
+src/Seeing.Agent/Configuration/IAgentManager.cs
+  s_facbdf72ff73f4::t_4c78ad6332d9db 59-63
+src/Seeing.Agent/Configuration/UnifiedConfigManager.cs
+  s_facbdf72ff73f4::t_fc6f3623a4840d 608-609
+  s_facbdf72ff73f4::t_97e83b82d316d6 367-371
+  s_facbdf72ff73f4::t_1b8d20705e81f5 689-695
+  s_facbdf72ff73f4::t_bd0fc98816f051 74,76-77
+  s_facbdf72ff73f4::t_4f144e74615fbf 117,119-122
+  s_facbdf72ff73f4::t_6790fce29dc26d 224-231
+src/Seeing.Agent/Llm/Clients/OpenAiClient.cs
+  s_facbdf72ff73f4::t_02701d7f481145 140
+  s_facbdf72ff73f4::t_0952acb0f7f9d7 134
+src/Seeing.Agent/Configuration/ConfigScope.cs
+  s_facbdf72ff73f4::t_0f7493eefc4c00 10,12-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.38-trip",
+  "base_commit_sha": "22b3c19fa122b00df6109b7794d0d751afa2d664",
+  "prompts": {},
+  "sessions": {
+    "s_facbdf72ff73f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3751b1c1-c91b-47ea-aab9-005f50a8a6c0",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
