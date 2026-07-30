@@ -8,7 +8,10 @@ namespace Seeing.Gateway;
 /// </summary>
 public interface IGatewayConnection : IAsyncDisposable
 {
-    Task ConnectAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 连接到 Gateway Server 并注册为指定 channel（连接即注册）
+    /// </summary>
+    Task ConnectAsync(string channelId, CancellationToken cancellationToken = default);
 
     Task<GatewaySubmitResult> SubmitAsync(GatewayRequest request, CancellationToken cancellationToken = default);
 

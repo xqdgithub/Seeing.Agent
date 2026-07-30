@@ -26,12 +26,24 @@
     <ProjectReference Include="../../src/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
     <ProjectReference Include="../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
-  <!-- 
+  <!--
     ChannelHost 打包策略：
     1. 始终使用 framework-dependent 发布（不使用 SelfContained）
-    2. 发布到 channel-host 子目录，保持 .dll 文件
-    3. 启动时统一使用 dotnet Seeing.Gateway.ChannelHost.dll
+    2. Build 时同步到 channel-host 子目录（开发环境）
+    3. Publish 时发布到 channel-host 子目录
+    4. 启动时统一使用 dotnet Seeing.Gateway.ChannelHost.dll
   -->
+  <Target Name="CopyChannelHostForBuild" AfterTargets="Build" Condition="'$(PublishDir)' == ''">
+    <PropertyGroup>
+      <_ChannelHostBuildDir>$(OutDir)channel-host\</_ChannelHostBuildDir>
+    </PropertyGroup>
+    <MSBuild
+      Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostBuildDir);SelfContained=false;RuntimeIdentifier=" />
+    <Delete Files="$(_ChannelHostBuildDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(_ChannelHostBuildDir)Seeing.Gateway.ChannelHost')" />
+    <Delete Files="$(_ChannelHostBuildDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(_ChannelHostBuildDir)Seeing.Gateway.ChannelHost.exe')" />
+  </Target>
   <Target Name="PublishChannelHost" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
     <!-- 确定发布参数 -->
     <PropertyGroup>

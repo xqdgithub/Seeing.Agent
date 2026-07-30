@@ -4,7 +4,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
+using Seeing.Agent.Memory.Core.Graph;
 using Seeing.Agent.Memory.Core.Models;
+using Seeing.Agent.Memory.Core.Storage;
 
 namespace Seeing.Agent.Memory.Core.Pipeline;
 
@@ -14,6 +16,7 @@ public sealed class MemoryPipeline : IMemoryPipeline
     private readonly IMemoryExtractor _extractor;
     private readonly IFileStore _fileStore;
     private readonly IMemoryIndex _index;
+    private readonly IMemoryGraph _graph;
     private readonly IOptions<MemoryOptions> _options;
     private readonly ILogger<MemoryPipeline>? _logger;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionLocks = new();
@@ -23,6 +26,7 @@ public sealed class MemoryPipeline : IMemoryPipeline
         IMemoryExtractor extractor,
         IFileStore fileStore,
         IMemoryIndex index,
+        IMemoryGraph graph,
         IOptions<MemoryOptions> options,
         ILogger<MemoryPipeline>? logger = null)
     {
@@ -30,6 +34,7 @@ public sealed class MemoryPipeline : IMemoryPipeline
         _extractor = extractor;
         _fileStore = fileStore;
         _index = index;
+        _graph = graph;
         _options = options;
         _logger = logger;
     }
@@ -71,6 +76,7 @@ public sealed class MemoryPipeline : IMemoryPipeline
 
         var dailyNode = await _fileStore.WriteAsync(dailyPath, dailyContent, ct);
         await _index.IndexAsync(dailyNode, ct);
+        await UpdateGraphAsync(dailyNode, extraction, ct);
 
         var indexPath = $"session/{candidate.SessionId}/index.md";
         var line = $"- {DateTimeOffset.UtcNow:HH:mm:ss} [{extraction.Kind}] {extraction.Title} → [[{dailyPath}]]\n";
@@ -108,4 +114,38 @@ public sealed class MemoryPipeline : IMemoryPipeline
 
     private static string EscapeYaml(string value) =>
         value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
+
+    /// <summary>
+    /// 更新知识图谱（节点 + Wikilink 边 + 目录父子边 + 标签边）
+    /// </summary>
+    private async Task UpdateGraphAsync(FileNode node, ExtractionResult extraction, CancellationToken ct)
+    {
+        await _graph.AddNodeAsync(node.Path, node.Metadata.Title ?? node.Path, ct);
+
+        foreach (var link in WikilinkParser.Parse(extraction.Content))
+        {
+            var target = ResolveLinkPath(node.Path, link);
+            await _graph.AddEdgeAsync(node.Path, target, EdgeType.Reference, ct: ct);
+        }
+
+        var dir = Path.GetDirectoryName(node.Path)?.Replace('\\', '/');
+        if (!string.IsNullOrEmpty(dir) && dir != ".")
+            await _graph.AddEdgeAsync(dir, node.Path, EdgeType.ParentChild, ct: ct);
+
+        foreach (var tag in extraction.Tags)
+        {
+            var tagPath = $"tag/{tag}";
+            await _graph.AddNodeAsync(tagPath, $"#{tag}", ct);
+            await _graph.AddEdgeAsync(node.Path, tagPath, EdgeType.Tag, ct: ct);
+        }
+    }
+
+    private static string ResolveLinkPath(string sourcePath, string link)
+    {
+        if (link.Contains('/') || link.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            return link;
+
+        var sourceDir = Path.GetDirectoryName(sourcePath)?.Replace('\\', '/') ?? "";
+        return sourceDir.Length > 0 ? $"{sourceDir}/{link}.md" : $"{link}.md";
+    }
 }

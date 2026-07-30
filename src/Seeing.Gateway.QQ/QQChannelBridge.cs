@@ -70,6 +70,8 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
 
     public string ChannelId => "qq";
 
+    IGatewayConnection IChannelBridge.GatewayConnection => _gatewayClient;
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (!_options.Enabled)
@@ -84,8 +86,6 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _qqWs.OnDispatch += HandleDispatchAsync;
         _gatewayClient.OnChannelOutbound += HandleChannelOutboundAsync;
-        await _gatewayClient.ConnectAsync(_cts.Token).ConfigureAwait(false);
-        await _gatewayClient.RegisterChannelAsync(ChannelId, _cts.Token).ConfigureAwait(false);
         await _qqWs.StartAsync(_cts.Token).ConfigureAwait(false);
         var snap = _health.GetSnapshot();
         _logger.LogInformation(
@@ -100,7 +100,6 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
         _gatewayClient.OnChannelOutbound -= HandleChannelOutboundAsync;
         _cts?.Cancel();
         await _qqWs.StopAsync().ConfigureAwait(false);
-        await _gatewayClient.DisposeAsync().ConfigureAwait(false);
         _cts?.Dispose();
         _cts = null;
     }

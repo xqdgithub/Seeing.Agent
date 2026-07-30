@@ -26,6 +26,7 @@ public static class AdminEndpoints
         app.MapPost("/api/admin/shutdown", ShutdownAsync);
         app.MapGet("/api/admin/sessions", GetSessionsAsync);
         app.MapGet("/api/admin/jobs", GetJobsAsync);
+        app.MapGet("/api/admin/channels/connected", GetConnectedChannelsAsync);
         return app;
     }
 
@@ -92,5 +93,11 @@ public static class AdminEndpoints
             lastError = s.LastError
         });
         return Results.Ok(result);
+    }
+
+    private static IResult GetConnectedChannelsAsync(GatewayConnectionManager connectionManager)
+    {
+        var channels = connectionManager.GetRegisteredChannels();
+        return Results.Ok(new { channels });
     }
 }

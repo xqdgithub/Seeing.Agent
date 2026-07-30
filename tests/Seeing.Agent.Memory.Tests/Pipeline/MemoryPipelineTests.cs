@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
+using Seeing.Agent.Memory.Core.Graph;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Memory.Core.Pipeline;
 using Seeing.Agent.Memory.Core.Storage;
@@ -41,12 +42,14 @@ public class MemoryPipelineTests : IDisposable
         index.Setup(i => i.IndexAsync(It.IsAny<FileNode>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        var graph = new Mock<IMemoryGraph>();
         var store = new LocalFileStore(_dir, NullLogger<LocalFileStore>.Instance);
         var pipeline = new MemoryPipeline(
             filter.Object,
             extractor.Object,
             store,
             index.Object,
+            graph.Object,
             Options.Create(new MemoryOptions()),
             NullLogger<MemoryPipeline>.Instance);
 

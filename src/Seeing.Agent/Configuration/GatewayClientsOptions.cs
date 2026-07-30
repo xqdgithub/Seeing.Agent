@@ -88,4 +88,7 @@ public static class GatewayClientStatuses
     public const string Running = "Running";
     public const string Error = "Error";
     public const string Disabled = "Disabled";
+
+    /// <summary>进程存活但 WebSocket 未连接到 Gateway Server</summary>
+    public const string Disconnected = "Disconnected";
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Channels;
 
@@ -52,9 +53,20 @@ public sealed class GatewayClientSupervisor
 
         if (state.ProcessId is int pid && IsProcessAlive(pid))
         {
-            client.Status = GatewayClientStatuses.Running;
             client.ProcessId = pid;
-            client.LastError = null;
+
+            var connected = await IsChannelConnectedAsync(client.ChannelId, client.Gateway, ct);
+            if (connected)
+            {
+                client.Status = GatewayClientStatuses.Running;
+                client.LastError = null;
+            }
+            else
+            {
+                client.Status = GatewayClientStatuses.Disconnected;
+                client.LastError = "进程已启动但未连接到 Gateway Server";
+            }
+
             return;
         }
 
@@ -369,6 +381,38 @@ public sealed class GatewayClientSupervisor
                 yield return Path.GetFullPath(Path.Combine(root, "samples", "Seeing.Gateway.ChannelHost", "bin", configuration, tfm));
                 yield return Path.GetFullPath(Path.Combine(root, "..", "Seeing.Gateway.ChannelHost", "bin", configuration, tfm));
             }
+        }
+    }
+
+    private static async Task<bool> IsChannelConnectedAsync(
+        string channelId,
+        GatewayClientConnectionOptions connection,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            var url = $"{connection.BaseUrl.TrimEnd('/')}/api/admin/channels/connected";
+            var response = await httpClient.GetAsync(url, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return false;
+
+            var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("channels", out var channels))
+                return false;
+
+            foreach (var element in channels.EnumerateArray())
+            {
+                if (element.GetString()?.Equals(channelId, StringComparison.OrdinalIgnoreCase) == true)
+                    return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
         }
     }
 

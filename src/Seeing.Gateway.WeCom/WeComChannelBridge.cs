@@ -66,6 +66,8 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
     public string ChannelId => "wecom";
 
+    IGatewayConnection IChannelBridge.GatewayConnection => _gatewayClient;
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (!_options.Enabled)
@@ -81,8 +83,6 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _weComClient.OnMessage += HandleWeComMessageAsync;
         _weComClient.OnEvent += HandleWeComEventAsync;
         _weComClient.ConnectionChanged += HandleConnectionChanged;
-
-        await _gatewayClient.ConnectAsync(_cts.Token).ConfigureAwait(false);
 
         await _weComClient.ConnectAsync(new WeComWsClientOptions
         {
@@ -106,7 +106,6 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _cts?.Cancel();
 
         await _weComClient.DisposeAsync().ConfigureAwait(false);
-        await _gatewayClient.DisposeAsync().ConfigureAwait(false);
 
         _cts?.Dispose();
         _cts = null;

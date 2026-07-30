@@ -45,6 +45,10 @@ public sealed class GatewayConnectionManager
         }
     }
 
+    /// <summary>获取当前已注册的所有 channel ID</summary>
+    public IReadOnlyCollection<string> GetRegisteredChannels()
+        => _channelRegistrations.Keys.ToArray();
+
     /// <summary>订阅 session 事件推送</summary>
     public void SubscribeSession(string connectionId, string sessionId)
     {

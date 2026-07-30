@@ -46,6 +46,13 @@
                 <span class="stat-label">已停止</span>
             </div>
         </div>
+        <div class="stat-item">
+            <div class="stat-icon"><Icon Type="@IconType.Outline.Disconnect" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_clients.Count(c => c.Status == GatewayClientStatuses.Disconnected)</span>
+                <span class="stat-label">未连接</span>
+            </div>
+        </div>
     </Stats>
     <Filters>
         <Tabs ActiveKey="@_filter" OnChange="OnFilterChanged">

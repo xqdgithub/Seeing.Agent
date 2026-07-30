@@ -167,12 +167,28 @@ internal sealed class ChannelBridgeHostedService : IHostedService
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("启动 Channel Bridge: {ChannelId}", _bridge.ChannelId);
+
+        // Host 统一负责 Gateway 连接（连接即注册 channel）
+        var connection = _bridge.GatewayConnection;
+        if (connection != null)
+        {
+            await connection.ConnectAsync(_bridge.ChannelId, cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("Gateway 已连接并注册: {ChannelId}", _bridge.ChannelId);
+        }
+
         await _bridge.StartAsync(cancellationToken);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("停止 Channel Bridge: {ChannelId}", _bridge.ChannelId);
-        return _bridge.StopAsync(cancellationToken);
+        await _bridge.StopAsync(cancellationToken);
+
+        var connection = _bridge.GatewayConnection;
+        if (connection != null)
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+            _logger.LogInformation("Gateway 连接已释放: {ChannelId}", _bridge.ChannelId);
+        }
     }
 }

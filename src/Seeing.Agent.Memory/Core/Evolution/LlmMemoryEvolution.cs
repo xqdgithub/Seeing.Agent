@@ -4,7 +4,9 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
+using Seeing.Agent.Memory.Core.Graph;
 using Seeing.Agent.Memory.Core.Models;
+using Seeing.Agent.Memory.Core.Storage;
 
 namespace Seeing.Agent.Memory.Core.Evolution;
 
@@ -14,6 +16,7 @@ public sealed class LlmMemoryEvolution : IMemoryEvolutionService
 
     private readonly IFileStore _fileStore;
     private readonly IMemoryIndex _index;
+    private readonly IMemoryGraph _graph;
     private readonly ITextCompletion _completion;
     private readonly IOptions<MemoryOptions> _options;
     private readonly ILogger<LlmMemoryEvolution>? _logger;
@@ -21,12 +24,14 @@ public sealed class LlmMemoryEvolution : IMemoryEvolutionService
     public LlmMemoryEvolution(
         IFileStore fileStore,
         IMemoryIndex index,
+        IMemoryGraph graph,
         ITextCompletion completion,
         IOptions<MemoryOptions> options,
         ILogger<LlmMemoryEvolution>? logger = null)
     {
         _fileStore = fileStore;
         _index = index;
+        _graph = graph;
         _completion = completion;
         _options = options;
         _logger = logger;
@@ -112,6 +117,7 @@ public sealed class LlmMemoryEvolution : IMemoryEvolutionService
 
                 var node = await _fileStore.WriteAsync(path, content, ct);
                 await _index.IndexAsync(node, ct);
+                await UpdateGraphForNodeAsync(node, item.Title ?? path, item.Tags, item.Content, ct);
             }
         }
         catch (Exception ex)
@@ -168,6 +174,44 @@ public sealed class LlmMemoryEvolution : IMemoryEvolutionService
 
     // 测试入口
     public static string ExtractJsonPayloadForTests(string text) => ExtractJsonPayload(text);
+
+    /// <summary>
+    /// 为演化生成的节点更新知识图谱
+    /// </summary>
+    private async Task UpdateGraphForNodeAsync(FileNode node, string title,
+        IReadOnlyList<string>? tags, string content, CancellationToken ct)
+    {
+        await _graph.AddNodeAsync(node.Path, title, ct);
+
+        foreach (var link in WikilinkParser.Parse(content))
+        {
+            var target = ResolveLinkPath(node.Path, link);
+            await _graph.AddEdgeAsync(node.Path, target, EdgeType.Reference, ct: ct);
+        }
+
+        var dir = Path.GetDirectoryName(node.Path)?.Replace('\\', '/');
+        if (!string.IsNullOrEmpty(dir) && dir != ".")
+            await _graph.AddEdgeAsync(dir, node.Path, EdgeType.ParentChild, ct: ct);
+
+        if (tags != null)
+        {
+            foreach (var tag in tags)
+            {
+                var tagPath = $"tag/{tag}";
+                await _graph.AddNodeAsync(tagPath, $"#{tag}", ct);
+                await _graph.AddEdgeAsync(node.Path, tagPath, EdgeType.Tag, ct: ct);
+            }
+        }
+    }
+
+    private static string ResolveLinkPath(string sourcePath, string link)
+    {
+        if (link.Contains('/') || link.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            return link;
+
+        var sourceDir = Path.GetDirectoryName(sourcePath)?.Replace('\\', '/') ?? "";
+        return sourceDir.Length > 0 ? $"{sourceDir}/{link}.md" : $"{link}.md";
+    }
 
     private sealed class EvolutionDto
     {

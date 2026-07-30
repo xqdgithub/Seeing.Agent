@@ -38,8 +38,11 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
 
     public bool IsConnected => _webSocket?.State == WebSocketState.Open;
 
-    public async Task ConnectAsync(CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(string channelId, CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelId);
+        _registeredChannelId = channelId.Trim();
+
         await _connectLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -54,15 +57,6 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         {
             _connectLock.Release();
         }
-    }
-
-    /// <summary>向 Gateway 声明本连接负责的 channel（定时出站路由用）；断线重连后会自动再次注册</summary>
-    public async Task RegisterChannelAsync(string channelId, CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(channelId);
-        _registeredChannelId = channelId.Trim();
-        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        await TrySendChannelRegisterAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<GatewaySubmitResult> SubmitAsync(GatewayRequest request, CancellationToken cancellationToken = default)
@@ -275,7 +269,10 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         if (IsConnected)
             return;
 
-        await ConnectAsync(cancellationToken).ConfigureAwait(false);
+        if (_registeredChannelId == null)
+            throw new InvalidOperationException("必须先调用 ConnectAsync 注册 channel");
+
+        await ConnectAsync(_registeredChannelId, cancellationToken).ConfigureAwait(false);
     }
 
     private void EnsureLifecycleCts(CancellationToken cancellationToken)
