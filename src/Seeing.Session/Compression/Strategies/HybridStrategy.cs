@@ -73,7 +73,7 @@ public class HybridStrategy : ICompressionStrategy
         // If sliding window succeeded and meets target, return it
         if (slidingResult.Success && slidingResult.CompressedMessages != null)
         {
-            var tokensAfter = CountTokens(slidingResult.CompressedMessages, tokenCounter);
+            var tokensAfter = TokenCounterHelper.CountTokens(slidingResult.CompressedMessages, tokenCounter);
             if (tokensAfter <= targetTokens)
             {
                 return slidingResult;
@@ -100,37 +100,6 @@ public class HybridStrategy : ICompressionStrategy
     }
 
     /// <summary>
-    /// Counts the total tokens in a collection of messages.
+    /// Counts the total tokens in a collection of messages (delegated to TokenCounterHelper).
     /// </summary>
-    /// <param name="messages">The messages to count tokens for.</param>
-    /// <param name="counter">The token counter to use.</param>
-    /// <returns>Total token count.</returns>
-    private int CountTokens(IReadOnlyList<SessionMessage> messages, ITokenCounter counter)
-    {
-        if (messages == null) return 0;
-        var total = 0;
-        foreach (var message in messages)
-        {
-            total += counter.Estimate(message.Content ?? string.Empty);
-            if (!string.IsNullOrEmpty(message.ReasoningContent))
-                total += counter.Estimate(message.ReasoningContent);
-            if (message.ToolCalls != null)
-            {
-                foreach (var toolCall in message.ToolCalls)
-                {
-                    total += counter.Estimate(toolCall.Name ?? string.Empty);
-                    total += counter.Estimate(toolCall.Arguments ?? string.Empty);
-                }
-            }
-            if (message.Parts != null)
-            {
-                foreach (var part in message.Parts)
-                {
-                    if (!string.IsNullOrEmpty(part.Text))
-                        total += counter.Estimate(part.Text);
-                }
-            }
-        }
-        return total;
-    }
 }

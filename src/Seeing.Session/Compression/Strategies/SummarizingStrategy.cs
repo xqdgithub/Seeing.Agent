@@ -93,7 +93,7 @@ Summary format:
             return CompressionResult.Succeeded(0, 0, 0, Array.Empty<SessionMessage>());
         }
 
-        var tokensBefore = CountTokens(messages, tokenCounter);
+        var tokensBefore = TokenCounterHelper.CountTokens(messages, tokenCounter);
         var targetTokens = config.SummaryTargetTokens;
 
         // No compression needed
@@ -112,7 +112,7 @@ Summary format:
         {
             // Build summary request for middle messages
             var toSummarize = messages.Skip(1).Take(messages.Count - _keepRecentMessages - 1).ToList();
-            var summaryContent = GenerateSummaryAsync(toSummarize).GetAwaiter().GetResult();
+            var summaryContent = Task.Run(() => GenerateSummaryAsync(toSummarize)).GetAwaiter().GetResult();
 
             // Build compressed message list
             var result = new List<SessionMessage> { messages[0] }; // Keep system prompt
@@ -126,7 +126,7 @@ Summary format:
                 result.Add(messages[i]);
             }
 
-            var tokensAfter = CountTokens(result, tokenCounter);
+            var tokensAfter = TokenCounterHelper.CountTokens(result, tokenCounter);
 
             return CompressionResult.Succeeded(
                 tokensBefore,
@@ -143,39 +143,11 @@ Summary format:
     /// <summary>
     /// Generates a summary for the specified messages.
     /// </summary>
-    /// <param name="messages">The messages to summarize.</param>
-    /// <returns>The generated summary.</returns>
     private async Task<string> GenerateSummaryAsync(IReadOnlyList<SessionMessage> messages)
     {
         var historyText = string.Join("\n\n", messages.Select(m =>
             $"[{m.Role}]: {m.Content}"));
 
         return await _summarizer.SummarizeAsync(historyText);
-    }
-
-    /// <summary>
-    /// Counts the total tokens in a collection of messages.
-    /// </summary>
-    /// <param name="messages">The messages to count tokens for.</param>
-    /// <param name="counter">The token counter to use.</param>
-    /// <returns>Total token count.</returns>
-    private int CountTokens(IReadOnlyList<SessionMessage> messages, ITokenCounter counter)
-    {
-        var total = 0;
-        foreach (var message in messages)
-        {
-            total += counter.Estimate(message.Content ?? string.Empty);
-            if (!string.IsNullOrEmpty(message.ReasoningContent))
-                total += counter.Estimate(message.ReasoningContent);
-            if (message.ToolCalls != null)
-            {
-                foreach (var toolCall in message.ToolCalls)
-                {
-                    total += counter.Estimate(toolCall.Name ?? string.Empty);
-                    total += counter.Estimate(toolCall.Arguments ?? string.Empty);
-                }
-            }
-        }
-        return total;
     }
 }

@@ -446,7 +446,7 @@ public class TaskTool : ToolBase
     {
         try
         {
-            var taskable = _agentRegistry.GetTaskableAgentsAsync().GetAwaiter().GetResult();
+            var taskable = Task.Run(() => _agentRegistry.GetTaskableAgentsAsync()).GetAwaiter().GetResult();
             var agentListText = taskable.Count > 0
                 ? string.Join("\n", taskable.Select(a =>
                     $"- {a.Name}: {a.Description ?? "此子代理应仅由用户手动调用"}"))

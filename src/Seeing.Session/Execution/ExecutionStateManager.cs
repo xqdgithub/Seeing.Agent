@@ -1,9 +1,10 @@
 namespace Seeing.Session.Execution
 {
     // Simple implementation of IExecutionState managing a CancellationTokenSource
-    public class ExecutionStateManager : IExecutionState
+    public class ExecutionStateManager : IExecutionState, IDisposable
     {
         private CancellationTokenSource? _cts;
+        private bool _disposed;
 
         public bool IsExecuting { get; private set; }
         public bool IsPaused { get; private set; }
@@ -19,13 +20,13 @@ namespace Seeing.Session.Execution
 
         public Task StartExecutionAsync()
         {
-            // If already running, no-op
             if (IsExecuting)
                 return Task.CompletedTask;
 
             LastError = null;
             IsExecuting = true;
             IsPaused = false;
+            _cts?.Dispose();
             _cts = new CancellationTokenSource();
             return Task.CompletedTask;
         }
@@ -50,7 +51,6 @@ namespace Seeing.Session.Execution
 
         public Task CancelExecutionAsync()
         {
-            // Cancel any ongoing operation and reset state
             if (_cts != null)
             {
                 try
@@ -59,7 +59,6 @@ namespace Seeing.Session.Execution
                 }
                 catch
                 {
-                    // Ignore exceptions from cancellation
                 }
                 _cts.Dispose();
                 _cts = null;
@@ -67,7 +66,6 @@ namespace Seeing.Session.Execution
 
             IsExecuting = false;
             IsPaused = false;
-            // Do not swallow existing LastError; clear for fresh runs
             LastError = null;
             return Task.CompletedTask;
         }
@@ -75,6 +73,18 @@ namespace Seeing.Session.Execution
         public CancellationToken GetCancellationToken()
         {
             return _cts?.Token ?? CancellationToken.None;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            if (_cts != null)
+            {
+                try { _cts.Cancel(); } catch { }
+                _cts.Dispose();
+                _cts = null;
+            }
         }
     }
 }

@@ -305,10 +305,28 @@ public sealed class PermissionService : IPermissionService, IDisposable
 
     private byte[] LoadOrGenerateHmacKey()
     {
-        // 在实际实现中，应该从安全配置中加载
-        // 这里生成一个随机密钥
+        var keyPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Seeing.Agent", "permission_hmac_key.bin");
+
+        if (File.Exists(keyPath))
+        {
+            try { return File.ReadAllBytes(keyPath); }
+            catch { }
+        }
+
         var key = new byte[32];
         RandomNumberGenerator.Fill(key);
+
+        try
+        {
+            var dir = Path.GetDirectoryName(keyPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            File.WriteAllBytes(keyPath, key);
+        }
+        catch { }
+
         return key;
     }
 

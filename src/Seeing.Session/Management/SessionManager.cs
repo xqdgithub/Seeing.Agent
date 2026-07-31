@@ -420,49 +420,8 @@ namespace Seeing.Session.Management
             string? label,
             CancellationToken ct)
         {
-            var sourceSession = Get(sessionId)
-                ?? throw new InvalidOperationException($"Session not found: {sessionId}");
-
-            var forkedSession = SessionData.Create(sourceSession.PartitionId, sourceSession.SelectedAgent);
-
-            // SubAgent 分叉：产出可操作的独立 Root（无 Parent）；其它会话保持 Fork 谱系
-            if (sourceSession.Kind == SessionKind.SubAgent)
-            {
-                forkedSession.Kind = SessionKind.Root;
-                forkedSession.ParentSessionId = null;
-                forkedSession.ForkLabel = label ?? $"Detached from {sessionId}";
-                forkedSession.Title = label ?? $"{sourceSession.Title} (独立会话)";
-            }
-            else
-            {
-                forkedSession.Kind = SessionKind.Fork;
-                forkedSession.ParentSessionId = sessionId;
-                forkedSession.ForkLabel = label ?? $"Fork of {sessionId}";
-                forkedSession.Title = $"{sourceSession.Title} (Fork)";
-            }
-
-            forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
-            forkedSession.SelectedModel = sourceSession.SelectedModel;
-            forkedSession.SelectedModelProvider = sourceSession.SelectedModelProvider;
-
-            if (atMessageId != null)
-            {
-                var messageIndex = sourceSession.Messages.FindIndex(m => m.Id == atMessageId);
-                if (messageIndex >= 0)
-                {
-                    for (int i = 0; i < messageIndex; i++)
-                        forkedSession.Messages.Add(sourceSession.Messages[i]);
-                }
-            }
-            else
-            {
-                foreach (var msg in sourceSession.Messages)
-                    forkedSession.Messages.Add(msg);
-            }
-
-            Register(forkedSession);
-            await SaveAsync(forkedSession.Id);
-            return forkedSession;
+            var forker = new SessionForker(null!, this);
+            return await forker.ForkAsync(sessionId, atMessageId, label, ct);
         }
 
         /// <inheritdoc />

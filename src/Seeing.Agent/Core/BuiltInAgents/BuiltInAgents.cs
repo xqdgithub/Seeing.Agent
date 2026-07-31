@@ -280,6 +280,8 @@ namespace Seeing.Agent.Core.BuiltInAgents
                 Mode = AgentMode.SubAgent,
                 IsNative = true,
                 IsHidden = false,
+                MaxSteps = 64,
+                Temperature = 0.3,
                 SystemPrompt = """
 你是代码库探索专家，擅长快速、准确地导航和探索代码库。
 
@@ -351,6 +353,8 @@ namespace Seeing.Agent.Core.BuiltInAgents
                 Mode = AgentMode.SubAgent,
                 IsNative = true,
                 IsHidden = true,
+                MaxSteps = 64,
+                Temperature = 0.7,
                 SystemPrompt = """
 你是通用代理，用于研究复杂问题和执行多步骤任务。
 
@@ -428,6 +432,7 @@ namespace Seeing.Agent.Core.BuiltInAgents
                 Mode = AgentMode.All,
                 IsNative = true,
                 IsHidden = true,
+                MaxSteps = 1,
                 Temperature = 0.5,
                 PermissionRules = new List<PermissionRuleEntry>
                 {
@@ -461,6 +466,7 @@ namespace Seeing.Agent.Core.BuiltInAgents
 用户："implement rate limiting" → "实现速率限制"
 用户："@src/auth.ts add refresh token support" → "Auth 刷新令牌支持"
 """,
+                Tags = new List<string> { "system", "hidden", "title-generation" }
             };
         }
 
@@ -476,6 +482,8 @@ namespace Seeing.Agent.Core.BuiltInAgents
                 Mode = AgentMode.All,
                 IsNative = true,
                 IsHidden = true,
+                MaxSteps = 1,
+                Temperature = 0.5,
                 PermissionRules = new List<PermissionRuleEntry>
                 {
                     // 禁用所有工具
@@ -497,6 +505,7 @@ namespace Seeing.Agent.Core.BuiltInAgents
 - 如果对话以未回答的问题结束，保留该问题
 - 如果对话以请求用户执行某操作结束，包含该请求
 """,
+                Tags = new List<string> { "system", "hidden", "summary-generation" }
             };
         }
     }

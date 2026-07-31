@@ -177,7 +177,7 @@ namespace Seeing.Agent.MCP
                 return McpOperationResult.Failed(name, McpOperationType.Pause,
                     McpErrorInfo.ConfigInvalid(name, "服务器未连接，无法暂停"));
 
-            return coordinator.PauseAsync(_shutdownCts.Token).GetAwaiter().GetResult();
+            return Task.Run(() => coordinator.PauseAsync(_shutdownCts.Token)).GetAwaiter().GetResult();
         }
 
         public McpOperationResult ResumeServer(string name)
@@ -186,7 +186,7 @@ namespace Seeing.Agent.MCP
                 return McpOperationResult.Failed(name, McpOperationType.Resume,
                     McpErrorInfo.ConfigInvalid(name, "服务器未连接，无法恢复"));
 
-            return coordinator.ResumeAsync(_shutdownCts.Token).GetAwaiter().GetResult();
+            return Task.Run(() => coordinator.ResumeAsync(_shutdownCts.Token)).GetAwaiter().GetResult();
         }
 
         public int PauseAllServers()
@@ -194,7 +194,7 @@ namespace Seeing.Agent.MCP
             var count = 0;
             foreach (var coordinator in _coordinators.Values)
             {
-                var result = coordinator.PauseAsync(_shutdownCts.Token).GetAwaiter().GetResult();
+                var result = Task.Run(() => coordinator.PauseAsync(_shutdownCts.Token)).GetAwaiter().GetResult();
                 if (result.Success) count++;
             }
             return count;
@@ -205,7 +205,7 @@ namespace Seeing.Agent.MCP
             var count = 0;
             foreach (var coordinator in _coordinators.Values)
             {
-                var result = coordinator.ResumeAsync(_shutdownCts.Token).GetAwaiter().GetResult();
+                var result = Task.Run(() => coordinator.ResumeAsync(_shutdownCts.Token)).GetAwaiter().GetResult();
                 if (result.Success) count++;
             }
             return count;

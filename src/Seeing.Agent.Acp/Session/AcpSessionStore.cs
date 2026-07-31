@@ -41,7 +41,7 @@ public sealed class AcpSessionStore
     public void SaveMapping(string seeingSessionId, AcpSessionMapping mapping)
     {
         // 使用 EnsureSessionAsync 确保 session 存在（如果不存在则创建）
-        var session = _sessionManager.EnsureSessionAsync(seeingSessionId).GetAwaiter().GetResult();
+        var session = Task.Run(() => _sessionManager.EnsureSessionAsync(seeingSessionId)).GetAwaiter().GetResult();
         session.Metadata[AcpMetadataKeys.Passthrough(seeingSessionId)] = mapping.Serialize();
         Persist(session);
         _logger.LogDebug("Saved ACP mapping for session {SessionId}", seeingSessionId);
@@ -130,7 +130,7 @@ public sealed class AcpSessionStore
     {
         try
         {
-            _sessionManager.SaveAsync(session.Id).GetAwaiter().GetResult();
+            Task.Run(() => _sessionManager.SaveAsync(session.Id)).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {

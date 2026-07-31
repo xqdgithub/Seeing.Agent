@@ -50,7 +50,7 @@ public sealed class AgentSelectionResolver
             return _options.Value.DefaultModel;
 
         // 从 Agent 注册表获取 Agent 的默认模型
-        var agent = _agentRegistry.GetAgentAsync(agentName).GetAwaiter().GetResult();
+        var agent = Task.Run(() => _agentRegistry.GetAgentAsync(agentName)).GetAwaiter().GetResult();
         if (agent?.Model?.ModelId != null)
         {
             return agent.Model.ModelId;

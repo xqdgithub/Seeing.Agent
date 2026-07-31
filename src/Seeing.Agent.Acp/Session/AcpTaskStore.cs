@@ -71,7 +71,7 @@ public sealed class AcpTaskStore
     {
         try
         {
-            _sessionManager.SaveAsync(session.Id).GetAwaiter().GetResult();
+            Task.Run(() => _sessionManager.SaveAsync(session.Id)).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {

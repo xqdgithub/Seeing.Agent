@@ -153,7 +153,7 @@ public static class SchedulerServiceCollectionExtensions
                 }
 
                 // 自动初始化 SQLite 数据库表结构
-                QuartzSqliteInitializer.InitializeAsync(dbPath, logger).GetAwaiter().GetResult();
+                Task.Run(() => QuartzSqliteInitializer.InitializeAsync(dbPath, logger)).GetAwaiter().GetResult();
 
                 q.UsePersistentStore(store =>
                 {

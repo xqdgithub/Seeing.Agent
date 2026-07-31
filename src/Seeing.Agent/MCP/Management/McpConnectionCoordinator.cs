@@ -735,7 +735,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
         {
             try
             {
-                _client.DisconnectAsync().GetAwaiter().GetResult();
+                Task.Run(async () => await _client.DisconnectAsync()).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {

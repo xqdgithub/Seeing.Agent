@@ -194,14 +194,14 @@ public class ExecutionJobService : IDisposable
         if (!_sessionQueues.TryGetValue(record.SessionId, out var queue))
             return false;
 
-        var cancelled = queue.CancelAsync(executionId).GetAwaiter().GetResult();
+        var cancelled = Task.Run(() => queue.CancelAsync(executionId)).GetAwaiter().GetResult();
 
         // 无论队列取消是否成功，都级联取消该会话下未完成的后台 Task
         try
         {
             var btm = _backgroundTasks
                 ?? _serviceProvider.GetService(typeof(IBackgroundTaskManager)) as IBackgroundTaskManager;
-            btm?.CancelBySessionAsync(record.SessionId).GetAwaiter().GetResult();
+            Task.Run(() => btm?.CancelBySessionAsync(record.SessionId)).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
 using System.ClientModel;
+using System.ClientModel.Primitives;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -43,6 +44,11 @@ public class OpenAiClient : ILlmClient
         if (!string.IsNullOrEmpty(config.BaseUrl))
         {
             options.Endpoint = new Uri(config.BaseUrl);
+        }
+
+        if (config.Headers != null)
+        {
+            options.AddPolicy(new HeaderPolicy(config.Headers), PipelinePosition.PerCall);
         }
 
         _openAiClient = new OpenAIClient(new ApiKeyCredential(config.ApiKey), options);
@@ -413,6 +419,34 @@ public class OpenAiClient : ILlmClient
             }
 
             return list;
+        }
+    }
+
+    private sealed class HeaderPolicy : PipelinePolicy
+    {
+        private readonly Dictionary<string, string> _headers;
+
+        public HeaderPolicy(Dictionary<string, string> headers)
+        {
+            _headers = headers;
+        }
+
+        public override void Process(PipelineMessage message, IReadOnlyList<PipelinePolicy> pipeline, int currentIndex)
+        {
+            foreach (var (key, value) in _headers)
+            {
+                message.Request.Headers.Add(key, value);
+            }
+            ProcessNext(message, pipeline, currentIndex);
+        }
+
+        public override async ValueTask ProcessAsync(PipelineMessage message, IReadOnlyList<PipelinePolicy> pipeline, int currentIndex)
+        {
+            foreach (var (key, value) in _headers)
+            {
+                message.Request.Headers.Add(key, value);
+            }
+            await ProcessNextAsync(message, pipeline, currentIndex);
         }
     }
 }

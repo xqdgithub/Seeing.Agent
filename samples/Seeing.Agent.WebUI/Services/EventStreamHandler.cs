@@ -1078,7 +1078,7 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public void ProcessEvent(IMessageEvent evt)
         {
-            ProcessEventAsync(evt).GetAwaiter().GetResult();
+            Task.Run(() => ProcessEventAsync(evt)).GetAwaiter().GetResult();
         }
     }
 }

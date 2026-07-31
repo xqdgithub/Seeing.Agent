@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -259,7 +260,7 @@ namespace Seeing.Agent.Extensions
                     var workspace = sp.GetRequiredService<IWorkspaceProvider>();
                     var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
                     var manager = new UnifiedConfigManager(workspace, logger);
-                    manager.LoadAsync().GetAwaiter().GetResult();
+                manager.LoadAsync().GetAwaiter().GetResult();
                     return manager;
                 });
                 services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
@@ -383,9 +384,8 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ISessionManager>(sp =>
                 sp.GetRequiredService<SessionManager>());
 
-            // 新增 DI 注册：会话事件发布器与会话生命周期管理
+            // 新增 DI 注册：会话事件发布器
             services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
-            services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 
             // 在线技能解析器
             services.AddSingleton<OnlineSkillParserAggregator>();
@@ -457,6 +457,40 @@ namespace Seeing.Agent.Extensions
 
             // 时间工具
             services.AddSingleton<ITool, CurrentTimeTool>();
+
+            // ========== 注册装饰器链（超时→重试→缓存）==========
+            services.AddSingleton<IToolDecoratorRegistry>(sp =>
+            {
+                var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+                var cache = sp.GetService<IMemoryCache>();
+
+                var registry = new ToolDecoratorRegistry(sp);
+
+                // 最外层：超时装饰器（30 秒默认）
+                registry.Register(tool => new TimeoutToolDecorator(
+                    tool,
+                    TimeSpan.FromSeconds(30),
+                    loggerFactory.CreateLogger<TimeoutToolDecorator>()));
+
+                // 中间层：重试装饰器（3 次，1 秒间隔，指数退避）
+                registry.Register(tool => new RetryToolDecorator(
+                    tool,
+                    maxRetries: 3,
+                    delay: TimeSpan.FromSeconds(1),
+                    logger: loggerFactory.CreateLogger<RetryToolDecorator>()));
+
+                // 最内层：缓存装饰器（5 分钟过期）— 仅在 IMemoryCache 可用时
+                if (cache != null)
+                {
+                    registry.Register(tool => new CachedToolDecorator(
+                        tool,
+                        cache,
+                        TimeSpan.FromMinutes(5),
+                        loggerFactory.CreateLogger<CachedToolDecorator>()));
+                }
+
+                return registry;
+            });
 
             // 工具调用器（自动注册所有 ITool）
             services.AddSingleton<ToolManager>(sp =>

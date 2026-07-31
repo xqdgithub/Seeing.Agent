@@ -58,6 +58,14 @@ public class AnthropicClient : ILlmClient
 
         _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
+        if (_config.Headers != null)
+        {
+            foreach (var (key, value) in _config.Headers)
+            {
+                _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, value);
+            }
+        }
+
         _logger.LogDebug("Anthropic 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}",
             ProviderId, baseUrl);
     }

@@ -41,7 +41,6 @@ builder.Services.AddMemoryServices();
 // === Session 管理：由 AddSeeingAgent 统一注册 ISessionStore + SessionManager + ISessionManager ===
 // 勿再调用 AddSessionManager()，避免接口/具体类型双实例分裂
 builder.Services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
-builder.Services.AddSingleton<ISessionLifecycle, SessionLifecycle>();
 
 // === WebUI 服务 ===
 builder.Services.AddScoped<BlazorPermissionChannel>();

@@ -83,16 +83,11 @@ namespace Seeing.Session.Management
             return forkedSession;
         }
 
-        private SessionMessage CloneMessage(SessionMessage msg)
+        private static SessionMessage CloneMessage(SessionMessage msg)
         {
-            return new SessionMessage
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                Role = msg.Role,
-                Content = msg.Content,
-                ToolName = msg.ToolName,
-                CreatedAt = msg.CreatedAt
-            };
+            var clone = msg.Clone();
+            clone.Id = Guid.NewGuid().ToString("N");
+            return clone;
         }
     }
 }

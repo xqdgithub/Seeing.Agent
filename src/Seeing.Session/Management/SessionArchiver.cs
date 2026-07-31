@@ -68,13 +68,14 @@ namespace Seeing.Session.Management
                 try
                 {
                     var fileName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(file));
-                    var parts = fileName.Split('_');
-                    if (parts.Length >= 2)
+                    var lastUnderscore = fileName.LastIndexOf('_');
+                    if (lastUnderscore > 0)
                     {
                         result.Add(new ArchiveInfo
                         {
-                            SessionId = parts[0],
-                            ArchivedAt = DateTimeOffset.TryParse(parts[1], out var dt) ? dt : DateTimeOffset.MinValue,
+                            SessionId = fileName.Substring(0, lastUnderscore),
+                            ArchivedAt = DateTimeOffset.TryParse(
+                                fileName.Substring(lastUnderscore + 1), out var dt) ? dt : DateTimeOffset.MinValue,
                             FilePath = file,
                             SizeBytes = new FileInfo(file).Length
                         });

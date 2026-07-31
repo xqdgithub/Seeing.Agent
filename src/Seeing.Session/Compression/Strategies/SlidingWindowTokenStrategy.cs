@@ -90,7 +90,7 @@ public class SlidingWindowTokenStrategy : ICompressionStrategy
         }
 
         // Calculate tokens before compression
-        var tokensBefore = CountTokens(messages, tokenCounter);
+        var tokensBefore = TokenCounterHelper.CountTokens(messages, tokenCounter);
 
         // Determine target token count
         var targetTokens = config.SlidingWindowKeepTokens;
@@ -111,7 +111,7 @@ public class SlidingWindowTokenStrategy : ICompressionStrategy
 
         // Always keep first message (system prompt)
         var firstMessage = messages[0];
-        var firstMessageTokens = CountTokens(new[] { firstMessage }, tokenCounter);
+        var firstMessageTokens = TokenCounterHelper.CountTokens(new[] { firstMessage }, tokenCounter);
         result.Add(firstMessage);
 
         var currentTokens = firstMessageTokens;
@@ -119,7 +119,7 @@ public class SlidingWindowTokenStrategy : ICompressionStrategy
         // Add messages from the end until we reach target tokens
         for (var i = messages.Count - 1; i >= 1; i--)
         {
-            var messageTokens = CountTokens(new[] { messages[i] }, tokenCounter);
+            var messageTokens = TokenCounterHelper.CountTokens(new[] { messages[i] }, tokenCounter);
 
             // Check if adding this message would exceed target
             if (currentTokens + messageTokens <= targetTokens)
@@ -134,7 +134,7 @@ public class SlidingWindowTokenStrategy : ICompressionStrategy
             }
         }
 
-        var tokensAfter = CountTokens(result, tokenCounter);
+        var tokensAfter = TokenCounterHelper.CountTokens(result, tokenCounter);
 
         return CompressionResult.Succeeded(
             tokensBefore,
@@ -144,44 +144,6 @@ public class SlidingWindowTokenStrategy : ICompressionStrategy
     }
 
     /// <summary>
-    /// Counts the total tokens in a collection of messages.
+    /// Counts the total tokens in a collection of messages (delegated to TokenCounterHelper).
     /// </summary>
-    /// <param name="messages">The messages to count tokens for.</param>
-    /// <param name="tokenCounter">The token counter to use.</param>
-    /// <returns>Total token count.</returns>
-    private int CountTokens(IReadOnlyList<SessionMessage> messages, ITokenCounter tokenCounter)
-    {
-        var total = 0;
-        foreach (var message in messages)
-        {
-            total += tokenCounter.Estimate(message.Content);
-
-            if (!string.IsNullOrEmpty(message.ReasoningContent))
-            {
-                total += tokenCounter.Estimate(message.ReasoningContent);
-            }
-
-            if (message.ToolCalls != null)
-            {
-                foreach (var toolCall in message.ToolCalls)
-                {
-                    total += tokenCounter.Estimate(toolCall.Name);
-                    total += tokenCounter.Estimate(toolCall.Arguments);
-                }
-            }
-
-            if (message.Parts != null)
-            {
-                foreach (var part in message.Parts)
-                {
-                    if (!string.IsNullOrEmpty(part.Text))
-                    {
-                        total += tokenCounter.Estimate(part.Text);
-                    }
-                }
-            }
-        }
-
-        return total;
-    }
 }

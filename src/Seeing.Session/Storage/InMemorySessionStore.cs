@@ -70,16 +70,19 @@ namespace Seeing.Session.Storage
         /// </summary>
         public Task<IAsyncEnumerable<SessionData>> ListAsync()
         {
-            return Task.FromResult(EnumerateSessions());
+            return Task.FromResult(EnumerateSessions(CancellationToken.None));
         }
 
         /// <summary>
         /// 枚举所有会话
         /// </summary>
-        private async IAsyncEnumerable<SessionData> EnumerateSessions()
+        private async IAsyncEnumerable<SessionData> EnumerateSessions(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
         {
+            await Task.CompletedTask;
             foreach (var session in _sessions.Values)
             {
+                ct.ThrowIfCancellationRequested();
                 yield return session;
             }
         }
@@ -99,7 +102,7 @@ namespace Seeing.Session.Storage
             string partitionId,
             string agentId)
         {
-            await foreach (var session in EnumerateSessions())
+            await foreach (var session in EnumerateSessions(CancellationToken.None))
             {
                 var matchPartition = string.IsNullOrEmpty(partitionId) ||
                                      session.PartitionId == partitionId;

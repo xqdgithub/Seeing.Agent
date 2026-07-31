@@ -33,7 +33,8 @@ Seeing.Session/
 ├── Hooks/
 │   ├── ISessionHook.cs    # 会话钩子接口
 │   ├── SessionHookManager.cs # 钩子管理
-│   └── SessionHookPoints.cs # 钩子点常量
+│   ├── HookPoints.cs         # 钩子点常量（实际使用）
+│   └── SessionHookResult.cs  # 钩子结果
 │
 └── Execution/
 │   ├── IExecutionState.cs # 执行状态接口
@@ -58,12 +59,12 @@ Seeing.Session/
 
 ### Hook 点（Session 专属）
 ```csharp
-SessionHookPoints.Created    // "session.created"
-SessionHookPoints.Updated    // "session.updated"
-SessionHookPoints.Deleted    // "session.deleted"
-SessionHookPoints.Compacting // "session.compacting"
-SessionHookPoints.Idle       // "session.idle"
-SessionHookPoints.Error      // "session.error"
+HookPoints.Created    // "session.created"
+HookPoints.Updated    // "session.updated"
+HookPoints.Deleted    // "session.deleted"
+HookPoints.Compacting // "session.compacting"
+HookPoints.Idle       // "session.idle"
+HookPoints.Error      // "session.error"
 ```
 
 ### 压缩策略

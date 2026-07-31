@@ -102,6 +102,7 @@ namespace Seeing.Agent.Decorators
         {
             return ex is TimeoutException
                 || ex is HttpRequestException
+                || ex is IOException
                 || ex is TaskCanceledException tce && !tce.CancellationToken.IsCancellationRequested;
         }
     }

@@ -187,7 +187,7 @@ public sealed class GatewayChannelRegistry
         if (spec.StartsWith("builtin:", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"内置插件不应通过文件路径解析: {spec}");
 
-        return _extensionLoader.ResolveTarget(spec).GetAwaiter().GetResult();
+        return Task.Run(() => _extensionLoader.ResolveTarget(spec)).GetAwaiter().GetResult();
     }
 
     private static string ResolveBuiltinAssemblyPath<T>() =>

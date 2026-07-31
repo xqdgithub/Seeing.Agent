@@ -39,7 +39,7 @@ public static class McpConfigLoader
         // 先加载用户级（作为基础）
         if (persistence.ConfigExists(ConfigLevel.User))
         {
-            var userConfigs = persistence.LoadAsync(ConfigLevel.User).GetAwaiter().GetResult();
+            var userConfigs = Task.Run(() => persistence.LoadAsync(ConfigLevel.User)).GetAwaiter().GetResult();
             foreach (var kvp in userConfigs)
                 configs[kvp.Key] = kvp.Value;
         }
@@ -47,7 +47,7 @@ public static class McpConfigLoader
         // 后加载项目级（覆盖同名服务）
         if (persistence.ConfigExists(ConfigLevel.Project))
         {
-            var projectConfigs = persistence.LoadAsync(ConfigLevel.Project).GetAwaiter().GetResult();
+            var projectConfigs = Task.Run(() => persistence.LoadAsync(ConfigLevel.Project)).GetAwaiter().GetResult();
             foreach (var kvp in projectConfigs)
                 configs[kvp.Key] = kvp.Value;
         }

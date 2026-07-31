@@ -30,8 +30,6 @@ namespace Seeing.Agent.Tools
         private readonly ConcurrentDictionary<string, ITool> _tools = new();
         private readonly IServiceProvider? _serviceProvider;
         private readonly IToolDecoratorRegistry? _decoratorRegistry;
-        private readonly int _maxRetries;
-        private readonly TimeSpan _retryDelay;
         private readonly IWorkspaceProvider? _workspace;
         private readonly object _toolStateLock = new();
         private HashSet<string> _userDisabledTools = new(StringComparer.OrdinalIgnoreCase);
@@ -43,9 +41,7 @@ namespace Seeing.Agent.Tools
             IServiceProvider? serviceProvider = null,
             IToolDecoratorRegistry? decoratorRegistry = null,
             IRuleEvaluator? ruleEvaluator = null,
-            IWorkspaceProvider? workspace = null,
-            int maxRetries = 3,
-            TimeSpan? retryDelay = null)
+            IWorkspaceProvider? workspace = null)
         {
             _logger = logger;
             _hookManager = hookManager;
@@ -53,8 +49,6 @@ namespace Seeing.Agent.Tools
             _decoratorRegistry = decoratorRegistry;
             _ruleEvaluator = ruleEvaluator;
             _workspace = workspace;
-            _maxRetries = maxRetries;
-            _retryDelay = retryDelay ?? TimeSpan.FromSeconds(1);
         }
 
         // Primary tools that are allowed in Primary mode
@@ -97,7 +91,7 @@ namespace Seeing.Agent.Tools
         /// </summary>
         public List<FunctionToolSchema> GetToolSchemasForMode(AgentMode mode)
         {
-            return GetToolSchemasForModeAsync(mode).GetAwaiter().GetResult();
+            return Task.Run(() => GetToolSchemasForModeAsync(mode)).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -125,7 +119,7 @@ namespace Seeing.Agent.Tools
         /// </summary>
         public List<FunctionToolSchema> GetToolSchemasForAgent(AgentDefinition agent)
         {
-            return GetToolSchemasForAgentAsync(agent).GetAwaiter().GetResult();
+            return Task.Run(() => GetToolSchemasForAgentAsync(agent)).GetAwaiter().GetResult();
         }
 
         private static List<FunctionToolSchema> FilterSchemasByAgentToolLists(
@@ -341,7 +335,7 @@ namespace Seeing.Agent.Tools
         /// </summary>
         public List<FunctionToolSchema> GetToolSchemas()
         {
-            return GetToolSchemasAsync().GetAwaiter().GetResult();
+            return Task.Run(() => GetToolSchemasAsync()).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -355,8 +349,7 @@ namespace Seeing.Agent.Tools
                 return;
             }
 
-            // 同步版本调用异步方法
-            RegisterToolAsync(tool).GetAwaiter().GetResult();
+            Task.Run(async () => await RegisterToolAsync(tool)).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -550,118 +543,71 @@ namespace Seeing.Agent.Tools
                 };
             }
 
-            // ========== Oracle 建议：工具级重试策略 ==========
-            Exception? lastException = null;
+            // 执行工具（装饰器链已在 RegisterTool 时 Apply，处理重试/超时/缓存）
             var startTime = DateTime.Now;
 
-            for (int attempt = 0; attempt < _maxRetries; attempt++)
+            try
             {
-                try
+                var context = new ToolContext
                 {
-                    var context = new ToolContext
+                    SessionId = sessionId,
+                    CallId = toolCall.Id,
+                    CancellationToken = cancellationToken,
+                    EmitAsync = emitAsync,
+                    PermissionChannel = permissionChannel,
+                    Services = _serviceProvider
+                };
+
+                JsonElement args;
+                if (argsMutable["args"] is JsonElement je)
+                    args = je;
+                else if (argsMutable["args"] != null)
+                    args = JsonSerializer.SerializeToElement(argsMutable["args"]);
+                else
+                    args = toolCall.Arguments is JsonElement je2 ? je2 : new JsonElement();
+
+                var toolResult = await tool.ExecuteAsync(args, context);
+
+                // ========== Hook: tool.execute.after ==========
+                _hookManager.TriggerFireAndForget(
+                    HookRegistry.ToolExecuteAfter,
+                    sessionId,
+                    new Dictionary<string, object?>
                     {
-                        SessionId = sessionId,
-                        CallId = toolCall.Id,
-                        CancellationToken = cancellationToken,
-                        EmitAsync = emitAsync,
-                        PermissionChannel = permissionChannel,
-                        Services = _serviceProvider
-                    };
-
-                    // 使用可能被 Hook 修改的参数
-                    JsonElement args;
-                    if (argsMutable["args"] is JsonElement je)
+                        ["toolId"] = toolId,
+                        ["callId"] = toolCall.Id,
+                        ["args"] = args
+                    },
+                    new Dictionary<string, object?>
                     {
-                        args = je;
-                    }
-                    else if (argsMutable["args"] != null)
-                    {
-                        args = JsonSerializer.SerializeToElement(argsMutable["args"]);
-                    }
-                    else
-                    {
-                        args = toolCall.Arguments is JsonElement je2 ? je2 : new JsonElement();
-                    }
+                        ["success"] = toolResult.Success,
+                        ["output"] = toolResult.Output,
+                        ["error"] = toolResult.Error,
+                        ["metadata"] = toolResult.Metadata,
+                        ["duration"] = DateTime.Now - startTime
+                    });
 
-                    var toolResult = await tool.ExecuteAsync(args, context);
-
-                    // ========== Hook: tool.execute.after ==========
-                    _hookManager.TriggerFireAndForget(
-                        HookRegistry.ToolExecuteAfter,
-                        sessionId,
-                        new Dictionary<string, object?>
-                        {
-                            ["toolId"] = toolId,
-                            ["callId"] = toolCall.Id,
-                            ["args"] = args
-                        },
-                        new Dictionary<string, object?>
-                        {
-                            ["success"] = toolResult.Success,
-                            ["output"] = toolResult.Output,
-                            ["error"] = toolResult.Error,
-                            ["metadata"] = toolResult.Metadata,
-                            ["duration"] = DateTime.Now - startTime
-                        });
-
-                    toolResult.ToolCallId = toolCall.Id;
-                    toolResult.Duration = DateTime.Now - startTime;
-
-                    return toolResult;
-                }
-                catch (Exception ex) when (attempt < _maxRetries - 1 && IsRetryableException(ex))
-                {
-                    lastException = ex;
-                    var delay = _retryDelay * (attempt + 1); // 指数退避
-
-                    _logger.LogWarning(
-                        "[ToolRetry] 工具 {ToolId} 执行失败，准备重试: Attempt={Attempt}/{Max}, Delay={Delay}ms",
-                        toolId, attempt + 1, _maxRetries, delay.TotalMilliseconds);
-
-                    await Task.Delay(delay, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "工具执行失败: {ToolId}", toolId);
-
-                    // ========== Hook: tool.on_error ==========
-                    _hookManager.TriggerFireAndForget(
-                        HookRegistry.ToolOnError,
-                        sessionId,
-                        new Dictionary<string, object?>
-                        {
-                            ["toolId"] = toolId,
-                            ["callId"] = toolCall.Id,
-                            ["error"] = ex
-                        });
-
-                    throw;
-                }
+                toolResult.ToolCallId = toolCall.Id;
+                toolResult.Duration = DateTime.Now - startTime;
+                return toolResult;
             }
-
-            // 所有重试都失败了
-            _logger.LogError(
-                "[ToolRetry] 工具 {ToolId} 重试耗尽: MaxRetries={Max}",
-                toolId, _maxRetries);
-
-            return new ToolResult
+            catch (Exception ex)
             {
-                Success = false,
-                ToolCallId = toolCall.Id,
-                Error = $"[重试耗尽] {lastException?.Message}",
-                Duration = DateTime.Now - startTime
-            };
-        }
+                _logger.LogError(ex, "工具执行失败: {ToolId}", toolId);
 
-        /// <summary>
-        /// 判断异常是否可重试
-        /// </summary>
-        private static bool IsRetryableException(Exception ex)
-        {
-            return ex is TimeoutException
-                || ex is HttpRequestException
-                || ex is TaskCanceledException tce && !tce.CancellationToken.IsCancellationRequested
-                || ex is IOException;
+                // ========== Hook: tool.on_error ==========
+                _hookManager.TriggerFireAndForget(
+                    HookRegistry.ToolOnError,
+                    sessionId,
+                    new Dictionary<string, object?>
+                    {
+                        ["toolId"] = toolId,
+                        ["callId"] = toolCall.Id,
+                        ["error"] = ex
+                    });
+
+                throw;
+            }
         }
 
         /// <summary>

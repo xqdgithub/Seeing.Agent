@@ -119,13 +119,13 @@ namespace Seeing.Session.Compression
             }
 
             // 计算压缩前的token数
-            var tokensBefore = CountTokens(messages, tokenCounter);
+            var tokensBefore = TokenCounterHelper.CountTokens(messages, tokenCounter);
 
             // 使用默认压缩逻辑
             var compressed = Compress(messages);
 
             // 计算压缩后的token数
-            var tokensAfter = CountTokens(compressed, tokenCounter);
+            var tokensAfter = TokenCounterHelper.CountTokens(compressed, tokenCounter);
 
             return CompressionResult.Succeeded(
                 tokensBefore,
@@ -135,28 +135,7 @@ namespace Seeing.Session.Compression
         }
 
         /// <summary>
-        /// 计算消息列表的总token数
+        /// 计算消息列表的总token数（委托给 TokenCounterHelper）
         /// </summary>
-        private int CountTokens(IReadOnlyList<SessionMessage> messages, ITokenCounter tokenCounter)
-        {
-            var total = 0;
-            foreach (var message in messages)
-            {
-                total += tokenCounter.Estimate(message.Content);
-                if (!string.IsNullOrEmpty(message.ReasoningContent))
-                {
-                    total += tokenCounter.Estimate(message.ReasoningContent);
-                }
-                if (message.ToolCalls != null)
-                {
-                    foreach (var toolCall in message.ToolCalls)
-                    {
-                        total += tokenCounter.Estimate(toolCall.Name);
-                        total += tokenCounter.Estimate(toolCall.Arguments);
-                    }
-                }
-            }
-            return total;
-        }
     }
 }
