@@ -53,7 +53,7 @@
                     Size="@ButtonSize.Small"
                     Icon="@IconType.Outline.Home"
                     OnClick="@GoToHome">
-                @if (!SidebarCollapsed && !AppState.IsMobile)
+                @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
                 {
                     <span>首页</span>
                 }
@@ -507,11 +507,6 @@
     public string? SessionId { get; set; }
 
     /// <summary>
-    /// 侧边栏折叠状态（从 MainLayout 获取）
-    /// </summary>
-    private bool SidebarCollapsed { get; set; } = false;
-
-    /// <summary>
     /// 是否正在加载会话
     /// </summary>
     private bool IsLoadingSession { get; set; } = false;
@@ -561,6 +556,9 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        // 订阅 AppState 变更事件，确保移动端/桌面端切换时同步重渲染
+        AppState.OnChange += OnAppStateChange;
+        
         // 加载 Agent 和模型选项列表（不设置选中值）
         await LoadOptionsAsync();
         
@@ -667,6 +665,11 @@
     {
         if (firstRender)
             _hasRendered = true;
+    }
+
+    private void OnAppStateChange()
+    {
+        RequestRender();
     }
 
     private void RequestRender()
@@ -1891,6 +1894,7 @@
     /// </summary>
     public void Dispose()
     {
+        AppState.OnChange -= OnAppStateChange;
         SessionState.CancelExecution();
         _budgetSubscription?.Dispose();
 
