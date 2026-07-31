@@ -1,30 +1,27 @@
-using System.Diagnostics;
-using System.Text.Json;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Channels;
 
 namespace Seeing.Agent.WebUI.Services;
 
 /// <summary>
-/// Gateway Client 独立进程监督器（启动/停止/状态）
+/// Gateway Client 监督器：UI 状态刷新 + 进程管理（委托给 <see cref="ChannelHostManager"/>）。
 /// </summary>
 public sealed class GatewayClientSupervisor
 {
     private readonly GatewayClientConfigService _configService;
-    private readonly GatewayChannelRegistry _registry;
-    private readonly IWorkspaceProvider _workspace;
+    private readonly ChannelHostManager _channelHostManager;
+    private readonly ChannelHostConfigStore _channelHostConfigStore;
     private readonly ILogger<GatewayClientSupervisor> _logger;
-    private readonly SemaphoreSlim _startLock = new(1, 1);
 
     public GatewayClientSupervisor(
         GatewayClientConfigService configService,
-        GatewayChannelRegistry registry,
-        IWorkspaceProvider workspace,
+        ChannelHostManager channelHostManager,
+        ChannelHostConfigStore channelHostConfigStore,
         ILogger<GatewayClientSupervisor> logger)
     {
         _configService = configService;
-        _registry = registry;
-        _workspace = workspace;
+        _channelHostManager = channelHostManager;
+        _channelHostConfigStore = channelHostConfigStore;
         _logger = logger;
     }
 
@@ -41,7 +38,7 @@ public sealed class GatewayClientSupervisor
 
     public async Task RefreshStatusAsync(GatewayClientViewModel client, CancellationToken ct = default)
     {
-        var state = await _configService.LoadRuntimeStateAsync(client.ChannelId, ct);
+        var state = await _channelHostConfigStore.LoadRuntimeStateAsync(client.ChannelId, ct);
 
         if (!client.Enabled)
         {
@@ -51,11 +48,12 @@ public sealed class GatewayClientSupervisor
             return;
         }
 
-        if (state.ProcessId is int pid && IsProcessAlive(pid))
+        if (state.ProcessId is int pid && ChannelHostManager.IsProcessAlive(pid))
         {
             client.ProcessId = pid;
 
-            var connected = await IsChannelConnectedAsync(client.ChannelId, client.Gateway, ct);
+            var connected = await ChannelHostManager.IsChannelConnectedAsync(
+                client.ChannelId, client.Gateway.BaseUrl, ct);
             if (connected)
             {
                 client.Status = GatewayClientStatuses.Running;
@@ -70,7 +68,6 @@ public sealed class GatewayClientSupervisor
             return;
         }
 
-        // Starting 状态但进程不存在，说明启动失败或已退出
         if (state.Status == GatewayClientStatuses.Starting)
         {
             client.Status = string.IsNullOrWhiteSpace(state.LastError)
@@ -89,354 +86,11 @@ public sealed class GatewayClientSupervisor
     }
 
     public async Task StartAsync(string channelId, CancellationToken ct = default)
-    {
-        await _startLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            await StartCoreAsync(channelId, ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _startLock.Release();
-        }
-    }
-
-    private async Task StartCoreAsync(string channelId, CancellationToken ct = default)
-    {
-        var clients = await _configService.GetClientsAsync(ct);
-        var client = clients.FirstOrDefault(c => c.ChannelId.Equals(channelId, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"未知 Channel: {channelId}");
-
-        if (!client.Enabled)
-            throw new InvalidOperationException("Channel 未启用，请打开开关后再启动。");
-
-        var typeInfo = _registry.GetTypeInfo(channelId)
-            ?? throw new InvalidOperationException($"未注册 Channel: {channelId}");
-
-        var existing = await _configService.LoadRuntimeStateAsync(channelId, ct);
-        if (existing.ProcessId is int pid && IsProcessAlive(pid))
-        {
-            _logger.LogInformation("Channel {ChannelId} 已在运行 (PID {Pid})", channelId, pid);
-            return;
-        }
-
-        var host = ResolveChannelHost()
-            ?? throw new FileNotFoundException(
-                "找不到可运行的 Seeing.Gateway.ChannelHost。请执行: dotnet build samples/Seeing.Gateway.ChannelHost");
-
-        var pluginPath = ResolvePluginPath(typeInfo.AssemblyPath);
-        var configPath = Path.GetFullPath(_configService.GetRuntimeConfigPath(channelId));
-
-        // 配置文件不存在时，跳过启动，让用户通过 WebUI 配置
-        if (!File.Exists(configPath))
-        {
-            _logger.LogInformation("Channel 配置文件不存在，跳过启动: {ChannelId}，请通过 WebUI 配置", channelId);
-            return;
-        }
-
-        var state = new GatewayClientRuntimeState
-        {
-            Status = GatewayClientStatuses.Starting,
-            StartedAt = DateTimeOffset.Now
-        };
-        await _configService.SaveRuntimeStateAsync(channelId, state, ct);
-
-        try
-        {
-            var startInfo = BuildChannelHostStartInfo(host.HostDll, host.WorkingDirectory, pluginPath, configPath);
-            var process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("Channel 进程启动失败");
-
-            await Task.Delay(800, ct);
-            if (process.HasExited)
-            {
-                var error = await process.StandardError.ReadToEndAsync(ct);
-                throw new InvalidOperationException(
-                    string.IsNullOrWhiteSpace(error)
-                        ? $"Channel 进程启动后立即退出，代码 {process.ExitCode}"
-                        : error.Trim());
-            }
-
-            state.ProcessId = process.Id;
-            state.Status = GatewayClientStatuses.Running;
-            state.LastError = null;
-            await _configService.SaveRuntimeStateAsync(channelId, state, ct);
-
-            _ = Task.Run(() => PumpProcessOutputAsync(process, channelId), CancellationToken.None);
-
-            _logger.LogInformation(
-                "已启动 Gateway Client {ChannelId}, PID={Pid}, Host={HostDir}",
-                channelId,
-                process.Id,
-                host.WorkingDirectory);
-        }
-        catch (Exception ex)
-        {
-            state.Status = GatewayClientStatuses.Error;
-            state.ProcessId = null;
-            state.LastError = ex.Message;
-            await _configService.SaveRuntimeStateAsync(channelId, state, ct);
-            throw;
-        }
-    }
+        => await _channelHostManager.StartAsync(channelId, ct);
 
     public async Task StopAsync(string channelId, CancellationToken ct = default)
-    {
-        var state = await _configService.LoadRuntimeStateAsync(channelId, ct);
-        if (state.ProcessId is not int pid)
-        {
-            state.Status = GatewayClientStatuses.Stopped;
-            await _configService.SaveRuntimeStateAsync(channelId, state, ct);
-            return;
-        }
-
-        try
-        {
-            var process = Process.GetProcessById(pid);
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(ct);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "停止 Channel {ChannelId} 时发生异常", channelId);
-        }
-
-        state.ProcessId = null;
-        state.Status = GatewayClientStatuses.Stopped;
-        await _configService.SaveRuntimeStateAsync(channelId, state, ct);
-    }
+        => await _channelHostManager.StopAsync(channelId, ct);
 
     public async Task RestartAsync(string channelId, CancellationToken ct = default)
-    {
-        await StopAsync(channelId, ct);
-        await StartAsync(channelId, ct);
-    }
-
-    public async Task StartEnabledClientsAsync(CancellationToken ct = default)
-    {
-        var clients = await _configService.GetClientsAsync(ct);
-        foreach (var client in clients.Where(c => c.Enabled))
-        {
-            await RefreshStatusAsync(client, ct);
-            if (client.Status == GatewayClientStatuses.Running)
-                continue;
-
-            try
-            {
-                await StartAsync(client.ChannelId, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "自动启动 Gateway Client {ChannelId} 失败", client.ChannelId);
-            }
-        }
-    }
-
-    public async Task StopRunningClientsAsync(CancellationToken ct = default)
-    {
-        var clients = await _configService.GetClientsAsync(ct);
-        foreach (var client in clients)
-        {
-            await RefreshStatusAsync(client, ct);
-            if (client.Status != GatewayClientStatuses.Running)
-                continue;
-
-            try
-            {
-                await StopAsync(client.ChannelId, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "停止 Gateway Client {ChannelId} 时出现异常", client.ChannelId);
-            }
-        }
-    }
-
-    private async Task PumpProcessOutputAsync(Process process, string channelId)
-    {
-        try
-        {
-            var stdoutTask = PumpStreamAsync(
-                process.StandardOutput,
-                line => _logger.LogInformation("[{ChannelId}] {Line}", channelId, line));
-
-            var stderrTask = PumpStreamAsync(
-                process.StandardError,
-                line => _logger.LogWarning("[{ChannelId}] {Line}", channelId, line));
-
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-
-            var runtime = await _configService.LoadRuntimeStateAsync(channelId, CancellationToken.None)
-                .ConfigureAwait(false);
-            if (runtime.ProcessId != process.Id)
-                return;
-
-            runtime.ProcessId = null;
-            runtime.Status = process.ExitCode == 0
-                ? GatewayClientStatuses.Stopped
-                : GatewayClientStatuses.Error;
-            if (process.ExitCode != 0 && string.IsNullOrWhiteSpace(runtime.LastError))
-                runtime.LastError = $"进程退出，代码 {process.ExitCode}";
-
-            await _configService.SaveRuntimeStateAsync(channelId, runtime, CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "读取 Channel {ChannelId} 输出时出现异常", channelId);
-        }
-    }
-
-    private static async Task PumpStreamAsync(
-        StreamReader reader,
-        Action<string> onLine)
-    {
-        while (true)
-        {
-            var line = await reader.ReadLineAsync().ConfigureAwait(false);
-            if (line is null)
-                break;
-
-            if (!string.IsNullOrWhiteSpace(line))
-                onLine(line);
-        }
-    }
-
-    private static bool IsProcessAlive(int pid)
-    {
-        try
-        {
-            var process = Process.GetProcessById(pid);
-            return !process.HasExited;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static string ResolvePluginPath(string assemblyPath)
-    {
-        var fullPath = Path.GetFullPath(assemblyPath);
-        if (!File.Exists(fullPath))
-            throw new FileNotFoundException($"Channel 插件不存在: {fullPath}");
-
-        return fullPath;
-    }
-
-    private ChannelHostLocation? ResolveChannelHost()
-    {
-        const string tfm = "net10.0";
-        const string dllName = "Seeing.Gateway.ChannelHost.dll";
-
-        _logger.LogDebug("ResolveChannelHost: BaseDirectory={BaseDirectory}", AppContext.BaseDirectory);
-
-        // 1. 检查 AppContext.BaseDirectory 根目录（开发 build 后或发布后，ChannelHost 输出到同级根目录）
-        var rootDll = Path.Combine(AppContext.BaseDirectory, dllName);
-        _logger.LogDebug("ResolveChannelHost: Checking root {Path}", rootDll);
-        if (IsRunnableChannelHost(rootDll, AppContext.BaseDirectory))
-        {
-            _logger.LogDebug("ResolveChannelHost: Found {Path}", rootDll);
-            return new ChannelHostLocation(rootDll, AppContext.BaseDirectory);
-        }
-
-        // 2. 检查项目输出目录（开发环境 fallback）
-        foreach (var dir in GetChannelHostProjectOutputDirs(tfm))
-        {
-            var dll = Path.Combine(dir, dllName);
-            if (IsRunnableChannelHost(dll, dir))
-                return new ChannelHostLocation(dll, dir);
-        }
-
-        return null;
-    }
-
-    private static bool IsRunnableChannelHost(string dllPath, string workingDirectory)
-    {
-        if (!File.Exists(dllPath))
-            return false;
-
-        // 检查 deps.json 是否存在，确保是完整的发布输出
-        var depsJSON = Path.Combine(workingDirectory, "Seeing.Gateway.ChannelHost.deps.json");
-        return File.Exists(depsJSON);
-    }
-
-    private IEnumerable<string> GetChannelHostProjectOutputDirs(string tfm)
-    {
-        foreach (var root in GetSearchRoots())
-        {
-            foreach (var configuration in new[] { "Debug", "Release" })
-            {
-                yield return Path.GetFullPath(Path.Combine(root, "samples", "Seeing.Gateway.ChannelHost", "bin", configuration, tfm));
-                yield return Path.GetFullPath(Path.Combine(root, "..", "Seeing.Gateway.ChannelHost", "bin", configuration, tfm));
-            }
-        }
-    }
-
-    private static async Task<bool> IsChannelConnectedAsync(
-        string channelId,
-        GatewayClientConnectionOptions connection,
-        CancellationToken ct)
-    {
-        try
-        {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            var url = $"{connection.BaseUrl.TrimEnd('/')}/api/admin/channels/connected";
-            var response = await httpClient.GetAsync(url, ct).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-                return false;
-
-            var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("channels", out var channels))
-                return false;
-
-            foreach (var element in channels.EnumerateArray())
-            {
-                if (element.GetString()?.Equals(channelId, StringComparison.OrdinalIgnoreCase) == true)
-                    return true;
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private IEnumerable<string> GetSearchRoots()
-    {
-        yield return _workspace.WorkspaceRoot;
-
-        var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 6 && !string.IsNullOrEmpty(dir); i++)
-        {
-            yield return dir;
-            dir = Directory.GetParent(dir)?.FullName ?? string.Empty;
-        }
-    }
-
-    private sealed record ChannelHostLocation(string HostDll, string WorkingDirectory);
-
-    private static ProcessStartInfo BuildChannelHostStartInfo(
-        string hostPath, string workingDirectory, string pluginPath, string configPath)
-    {
-        // 统一使用 dotnet 命令启动 .dll 文件
-        // 这样 Windows 和 Linux 都使用相同的方式
-        return new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = $"\"{hostPath}\" --plugin \"{pluginPath}\" --config \"{configPath}\"",
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-    }
+        => await _channelHostManager.RestartAsync(channelId, ct);
 }

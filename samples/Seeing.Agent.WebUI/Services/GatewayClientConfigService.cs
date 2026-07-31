@@ -14,6 +14,7 @@ namespace Seeing.Agent.WebUI.Services;
 /// Gateway Client 配置读写与 Channel 运行时 JSON 生成。
 /// Channel 参数写入 <c>.seeing/gateway-clients/{channelId}.json</c>；
 /// <c>seeing.json</c> 仅保留启用状态与插件引用。
+/// 运行时状态读写委托给 <see cref="ChannelHostConfigStore"/>。
 /// </summary>
 public sealed class GatewayClientConfigService
 {
@@ -25,31 +26,30 @@ public sealed class GatewayClientConfigService
         Converters = { new JsonStringEnumConverter() }
     };
 
-    private readonly UnifiedConfigManager _configManager;
+    private readonly IConfigSectionStore _configStore;
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly GatewayChannelRegistry _registry;
+    private readonly ChannelHostConfigStore _channelHostConfigStore;
     private readonly ILogger<GatewayClientConfigService> _logger;
-    private readonly string _clientsDirectory;
 
     public GatewayClientConfigService(
-        UnifiedConfigManager configManager,
+        IConfigSectionStore configStore,
         IWorkspaceProvider workspaceProvider,
         GatewayChannelRegistry registry,
+        ChannelHostConfigStore channelHostConfigStore,
         ILogger<GatewayClientConfigService> logger)
     {
-        _configManager = configManager;
+        _configStore = configStore;
         _workspaceProvider = workspaceProvider;
         _registry = registry;
+        _channelHostConfigStore = channelHostConfigStore;
         _logger = logger;
-        _clientsDirectory = Path.Combine(_workspaceProvider.ProjectSeeingDirectory, "gateway-clients");
     }
-
-    public string ClientsDirectory => _clientsDirectory;
 
     public async Task<IReadOnlyList<GatewayClientViewModel>> GetClientsAsync(CancellationToken ct = default)
     {
-        var gatewayClients = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
-        var serverGateway = _configManager.GetGatewayOptions();
+        var gatewayClients = _configStore.GetSection<GatewayClientsOptions>("GatewayClients");
+        var serverGateway = _configStore.GetSection<GatewayOptions>("Gateway");
         var result = new List<GatewayClientViewModel>();
 
         foreach (var typeInfo in _registry.Types)
@@ -86,7 +86,7 @@ public sealed class GatewayClientConfigService
                 Fields = typeInfo.Fields,
                 ConfigFormComponentType = typeInfo.ConfigFormComponentType,
                 AssemblyPath = typeInfo.AssemblyPath,
-                ConfigFilePath = GetRuntimeConfigPath(typeInfo.ChannelId)
+                ConfigFilePath = _channelHostConfigStore.GetRuntimeConfigPath(typeInfo.ChannelId)
             });
         }
 
@@ -102,9 +102,9 @@ public sealed class GatewayClientConfigService
 
         await WriteChannelConfigAsync(typeInfo, model, ct);
 
-        var gatewayClients = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
+        var gatewayClients = _configStore.GetSection<GatewayClientsOptions>("GatewayClients");
         gatewayClients.Channels[model.ChannelId] = CreateRegistryEntry(model, typeInfo);
-        await _configManager.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
+        await _configStore.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
 
         _logger.LogInformation(
             "已保存 Gateway Client 配置: {ChannelId} -> {ConfigPath}",
@@ -126,29 +126,7 @@ public sealed class GatewayClientConfigService
     }
 
     public string GetRuntimeConfigPath(string channelId) =>
-        Path.Combine(_clientsDirectory, $"{channelId}.json");
-
-    public string GetRuntimeStatePath(string channelId) =>
-        Path.Combine(_clientsDirectory, $"{channelId}.state.json");
-
-    public async Task<GatewayClientRuntimeState> LoadRuntimeStateAsync(string channelId, CancellationToken ct = default)
-    {
-        var path = GetRuntimeStatePath(channelId);
-        if (!File.Exists(path))
-            return new GatewayClientRuntimeState();
-
-        var json = await File.ReadAllTextAsync(path, ct);
-        return JsonSerializer.Deserialize<GatewayClientRuntimeState>(json, JsonOptions)
-               ?? new GatewayClientRuntimeState();
-    }
-
-    public async Task SaveRuntimeStateAsync(string channelId, GatewayClientRuntimeState state, CancellationToken ct = default)
-    {
-        Directory.CreateDirectory(_clientsDirectory);
-        var path = GetRuntimeStatePath(channelId);
-        var json = JsonSerializer.Serialize(state, JsonOptions);
-        await File.WriteAllTextAsync(path, json, ct);
-    }
+        _channelHostConfigStore.GetRuntimeConfigPath(channelId);
 
     public void ReloadRegistry() =>
         _registry.Reload(_workspaceProvider.WorkspaceRoot);
@@ -162,12 +140,12 @@ public sealed class GatewayClientConfigService
         File.Copy(sourceDllPath, targetPath, overwrite: true);
         ReloadRegistry();
 
-        var gatewayClients = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
+        var gatewayClients = _configStore.GetSection<GatewayClientsOptions>("GatewayClients");
         var spec = $"file://{targetPath.Replace('\\', '/')}";
         if (!gatewayClients.Plugins.Any(p => p.Spec.Equals(spec, StringComparison.OrdinalIgnoreCase)))
         {
             gatewayClients.Plugins.Add(new PluginSpec { Spec = spec });
-            await _configManager.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
+            await _configStore.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
         }
     }
 
@@ -237,7 +215,7 @@ public sealed class GatewayClientConfigService
             _logger.LogInformation("已将 legacy Gateway Client 配置迁移到 {Path}", configPath);
         }
 
-        var gatewayClients = _configManager.GetSection<GatewayClientsOptions>("GatewayClients");
+        var gatewayClients = _configStore.GetSection<GatewayClientsOptions>("GatewayClients");
         if (gatewayClients.Channels.TryGetValue(typeInfo.ChannelId, out var existing))
         {
             gatewayClients.Channels[typeInfo.ChannelId] = new GatewayChannelEntry
@@ -245,7 +223,7 @@ public sealed class GatewayClientConfigService
                 Enabled = existing.Enabled,
                 PluginSpec = existing.PluginSpec
             };
-            await _configManager.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
+            await _configStore.SaveSectionAsync("GatewayClients", gatewayClients, ConfigLevel.Project, ct);
         }
     }
 
@@ -254,7 +232,7 @@ public sealed class GatewayClientConfigService
         GatewayClientViewModel model,
         CancellationToken ct)
     {
-        Directory.CreateDirectory(_clientsDirectory);
+        Directory.CreateDirectory(_channelHostConfigStore.ClientsDirectory);
 
         var instance = BindOptions(typeInfo, model.Options);
         SetEnabledOnInstance(typeInfo, instance, model.Enabled);

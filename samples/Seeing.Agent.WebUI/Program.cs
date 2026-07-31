@@ -56,6 +56,7 @@ builder.Services.AddScoped<SessionCompactionService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SeeingConfigService>();
 builder.Services.AddSingleton<GatewayClientConfigService>();
+builder.Services.AddChannelHostManagement();
 builder.Services.AddSingleton<GatewayClientSupervisor>();
 builder.Services.AddSingleton<WorkspaceSwitchService>();
 
@@ -85,7 +86,6 @@ builder.Services.AddScoped<CommandListService>();
 builder.Services.AddSingleton<SchedulerStatusService>();
 builder.Services.AddSingleton<JobNotificationService>();
 
-builder.Services.AddHostedService<GatewayClientHostedService>();
 builder.Services.AddHttpClient();
 
 // === 消息渲染管线 ===

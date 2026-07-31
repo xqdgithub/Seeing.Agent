@@ -20,6 +20,7 @@
     <ProjectReference Include="..\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\Seeing.Gateway\Seeing.Gateway.csproj" />
+    <ProjectReference Include="..\Seeing.Gateway.Client\Seeing.Gateway.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
