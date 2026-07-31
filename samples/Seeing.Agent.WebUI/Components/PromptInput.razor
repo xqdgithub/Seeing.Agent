@@ -13,6 +13,7 @@
 @using System.Text
 @using Seeing.Agent.TokenBudget.Api.Responses
 @inject IJSRuntime JSRuntime
+@inject AppState AppState
 @inject SkillManager SkillManager
 
 <div Class="prompt-input-container" @ref="@ContainerRef">
@@ -40,7 +41,7 @@
                       @bind="@InputText"
                       @bind:event="oninput"
                       @bind:after="@HandleInputChange"
-                      placeholder="@Placeholder"
+                      placeholder="@(AppState.IsMobile ? HelpText : Placeholder)"
                       disabled="@IsProcessing"
                       @onkeydown="@HandleKeyDown"
                       @onkeydown:preventDefault="@_preventDefaultKeydown"
@@ -142,6 +143,9 @@
     <SlotHost SlotName="message_toolbar" />
     
     <!-- 底部提示栏：帮助文字 + Token Budget -->
+    @* 移动端不显示底部提示栏（帮助文字作为 placeholder，Token 预算隐藏） *@
+    @if (!AppState.IsMobile)
+    {
     <div class="prompt-footer">
         @if (!string.IsNullOrEmpty(HelpText))
         {
@@ -157,6 +161,7 @@
             </div>
         }
     </div>
+    }
 </div>
 
 @code {

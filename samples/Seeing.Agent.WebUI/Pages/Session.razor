@@ -53,12 +53,15 @@
                     Size="@ButtonSize.Small"
                     Icon="@IconType.Outline.Home"
                     OnClick="@GoToHome">
-                @if (!SidebarCollapsed)
+                @if (!SidebarCollapsed && !AppState.IsMobile)
                 {
                     <span>首页</span>
                 }
             </Button>
-            <Divider Type="@DividerType.Vertical" />
+            @if (!AppState.IsMobile)
+            {
+                <Divider Type="@DividerType.Vertical" />
+            }
             <span Class="session-title">@SessionState.Title</span>
             @if (IsSubAgentView)
             {
@@ -77,13 +80,16 @@
                     ? SessionState.CurrentSession.WorkingDirectory 
                     : WorkspaceProvider.WorkspaceRoot;
             }
-            <Tooltip Title="@currentWorkspace">
-                <span Class="session-workspace-badge">
-                    <Icon Type="@IconType.Outline.Folder" />
-                    @TruncateWorkspacePath(currentWorkspace)
-                </span>
-            </Tooltip>
-            @if (!IsSubAgentView && _optionsReady && SessionState.CurrentSession != null)
+            @if (!AppState.IsMobile)
+            {
+                <Tooltip Title="@currentWorkspace">
+                    <span Class="session-workspace-badge">
+                        <Icon Type="@IconType.Outline.Folder" />
+                        @TruncateWorkspacePath(currentWorkspace)
+                    </span>
+                </Tooltip>
+            }
+            @if (!AppState.IsMobile && !IsSubAgentView && _optionsReady && SessionState.CurrentSession != null)
             {
                 <div class="subagent-meta" title="出站绑定" style="margin-left: 8px;">
                     <span class="subagent-meta-chip">
@@ -114,6 +120,22 @@
             }
         </div>
         <div Class="session-header-right">
+            @if (AppState.IsMobile)
+            {
+                @* 移动端：新建按钮 + 更多菜单 *@
+                <Button Type="@ButtonType.Text"
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.Plus"
+                        OnClick="@CreateNewSessionAsync"
+                        Disabled="@(SessionState.IsExecuting || IsSubAgentView)" />
+                <Button Type="@ButtonType.Text"
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.Ellipsis"
+                        OnClick="@ToggleMobileHeader"
+                        Class="mobile-header-more-btn" />
+            }
+            else
+            {
             <Space>
                 <SpaceItem>
                     @if (IsSubAgentView)
@@ -221,8 +243,56 @@
                     </Tooltip>
                 </SpaceItem>
              </Space>
+            }
         </div>
     </div>
+
+    @* 移动端溢出面板：智能体/模型选择 + 操作按钮 *@
+    @if (AppState.IsMobile && _showMobileHeaderPanel && !IsSubAgentView)
+    {
+        <div class="session-header-mobile-panel">
+            <div class="mobile-panel-row">
+                @if (_optionsReady && !_isAcpPassthrough)
+                {
+                    <Select TItemValue="string" TItem="string"
+                            Value="@_selectedAgent"
+                            ValueExpression="@(() => _selectedAgent)"
+                            ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
+                            DataSource="@_agentNames"
+                            Style="flex:1; min-width: 0;"
+                            Size="@InputSize.Small"
+                            Placeholder="智能体" />
+                }
+                @if (_optionsReady && !_isAcpPassthrough)
+                {
+                    <Select TItemValue="string" TItem="ModelViewModel"
+                            Value="@_selectedModel"
+                            ValueExpression="@(() => _selectedModel)"
+                            ValueChanged="@OnModelChanged"
+                            DataSource="@_models"
+                            ValueName="Id"
+                            LabelName="ModelName"
+                            Style="flex:1; min-width: 0;"
+                            Size="@InputSize.Small"
+                            Placeholder="模型"
+                            EnableSearch="true">
+                        <ItemTemplate Context="model">
+                            <span>@model.ModelName</span>
+                        </ItemTemplate>
+                    </Select>
+                }
+            </div>
+            <div class="mobile-panel-actions">
+                <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Edit"
+                        OnClick="@OnRenameSession">重命名</Button>
+                <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Copy"
+                        OnClick="@OnBranchSession">分支</Button>
+                <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Delete"
+                        OnClick="@OnClearSession"
+                        Disabled="@(SessionState.IsExecuting)">清空</Button>
+            </div>
+        </div>
+    }
 
     <!-- 主内容区域（消息列表 + Todo 面板） -->
     <div Class="session-content-wrapper">
@@ -398,6 +468,7 @@
     private string _selectedAcpMode = "";
     private bool _isAcpPassthrough;
     private bool _optionsReady;
+    private bool _showMobileHeaderPanel;
     
     /// <summary>
     /// 模型视图类 - 用于选择器显示
@@ -1603,6 +1674,12 @@
     private void GoToHome()
     {
         NavigationManager.NavigateTo("/home");
+    }
+
+    /// <summary>移动端切换溢出面板</summary>
+    private void ToggleMobileHeader()
+    {
+        _showMobileHeaderPanel = !_showMobileHeaderPanel;
     }
     
     /// <summary>

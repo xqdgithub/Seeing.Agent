@@ -20,6 +20,8 @@
     border-bottom: 1px solid var(--color-border);
     min-height: 48px;
     flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: var(--space-2);
 }
 
 .session-header-left {
@@ -235,4 +237,38 @@
     .session-todo-panel {
         width: 280px;
     }
+}
+
+/* ========== 移动端溢出面板 ========== */
+.session-header-mobile-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-container);
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+
+.mobile-panel-row {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.mobile-panel-actions {
+    display: flex;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+}
+
+/* 移动端更多按钮 */
+.mobile-header-more-btn {
+    margin-left: var(--space-1);
+}
+
+/* 移动端全宽内容 */
+.main-layout-content--mobile .session-input-container,
+.main-layout-content--mobile .message-list-container {
+    max-width: 100%;
+    min-width: 0;
 }

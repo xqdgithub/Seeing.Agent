@@ -10,7 +10,7 @@
        CollapsedWidth="80"
        Collapsed="@EffectiveCollapsed"
        CollapsedChanged="@OnCollapsedChanged"
-       Collapsible
+       Collapsible="@(!AppState.IsMobile)"
        Theme="@SiderTheme.Light"
        Style="@GetSiderStyle()">
     <a href="/" class="sider-header" style="cursor: pointer; text-decoration: none;">
@@ -246,7 +246,7 @@
             ? $"/session/{AppState.CurrentSessionId}"
             : "/sessions";
 
-    /// <summary>折叠状态变更回调：移动端忽略 Sider 自带的折叠触发器</summary>
+    /// <summary>折叠状态变更回调：移动端关闭 Sider 内置折叠，只用 CSS 控制</summary>
     private async Task OnCollapsedChanged(bool collapsed)
     {
         if (AppState.IsMobile) return;

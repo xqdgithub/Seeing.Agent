@@ -18,6 +18,14 @@ using Seeing.Agent.TokenBudget.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 启用 .NET 9+ StaticWebAssets 管道。
+// 在 .NET 9+，Microsoft.NET.Sdk.Web 不再把 wwwroot 复制到 bin\<Config>\<TFM>\wwwroot，
+// 改为生成 staticwebassets 清单（runtime.json + endpoints.json）。
+// 单独调用 app.UseStaticFiles() 找不到 wwwroot 物理目录，会导致 js/app.js、css/*.css、
+// _framework/blazor.server.js 全部 404，破坏 13 处 JS 互操作（'isMobileBrowser is not a function'）。
+// 在 builder 上调用 UseStaticWebAssets() 让中间件从清单路由文件，适用于所有环境。
+builder.WebHost.UseStaticWebAssets();
+
 // Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();

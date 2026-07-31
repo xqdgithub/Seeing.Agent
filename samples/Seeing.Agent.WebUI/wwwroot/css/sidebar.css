@@ -149,7 +149,7 @@ aside.app-sider.ant-layout-sider {
     position: fixed;
     left: 12px;
     bottom: 20px;
-    z-index: 150;
+    z-index: 220;
     box-shadow: var(--shadow-base);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
