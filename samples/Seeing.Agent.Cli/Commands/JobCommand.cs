@@ -13,7 +13,7 @@ public static class JobCommand
         var command = new Command("job", "管理定时任务");
 
         var listCommand = new Command("list", "列出所有定时任务");
-        listCommand.SetHandler(async () =>
+        listCommand.SetAction(async parseResult =>
         {
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<IScheduleManager>();
@@ -29,10 +29,11 @@ public static class JobCommand
             }
         });
 
-        var runJobArg = new Argument<string>("jobId", "任务 ID");
+        var runJobArg = new Argument<string>("jobId") { Description = "任务 ID" };
         var runCommand = new Command("run", "立即执行一个任务") { runJobArg };
-        runCommand.SetHandler(async (jobId) =>
+        runCommand.SetAction(async parseResult =>
         {
+            var jobId = parseResult.GetValue<string>(runJobArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<IScheduleManager>();
             var result = await manager.RunJobOnceAsync(jobId);
@@ -45,32 +46,34 @@ public static class JobCommand
                 TriggerResult.Conflict c => $"冲突: {c.Reason}",
                 _ => "未知结果"
             });
-        }, runJobArg);
+        });
 
-        var disableJobArg = new Argument<string>("jobId", "任务 ID");
+        var disableJobArg = new Argument<string>("jobId") { Description = "任务 ID" };
         var disableCommand = new Command("disable", "暂停任务") { disableJobArg };
-        disableCommand.SetHandler(async (jobId) =>
+        disableCommand.SetAction(async parseResult =>
         {
+            var jobId = parseResult.GetValue<string>(disableJobArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<IScheduleManager>();
             await manager.DisableJobAsync(jobId);
             Console.WriteLine($"任务 {jobId} 已禁用");
-        }, disableJobArg);
+        });
 
-        var enableJobArg = new Argument<string>("jobId", "任务 ID");
+        var enableJobArg = new Argument<string>("jobId") { Description = "任务 ID" };
         var enableCommand = new Command("enable", "恢复任务") { enableJobArg };
-        enableCommand.SetHandler(async (jobId) =>
+        enableCommand.SetAction(async parseResult =>
         {
+            var jobId = parseResult.GetValue<string>(enableJobArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<IScheduleManager>();
             await manager.ResumeJobAsync(jobId);
             Console.WriteLine($"任务 {jobId} 已恢复");
-        }, enableJobArg);
+        });
 
-        command.AddCommand(listCommand);
-        command.AddCommand(runCommand);
-        command.AddCommand(disableCommand);
-        command.AddCommand(enableCommand);
+        command.Subcommands.Add(listCommand);
+        command.Subcommands.Add(runCommand);
+        command.Subcommands.Add(disableCommand);
+        command.Subcommands.Add(enableCommand);
 
         return command;
     }

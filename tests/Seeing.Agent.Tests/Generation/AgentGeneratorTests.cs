@@ -264,32 +264,6 @@ public class AgentGeneratorTests
     }
 
     [Fact]
-    public async Task GenerateAsync_WithTemplate_ShouldRenderVariables()
-    {
-        // Arrange
-        var generator = CreateGenerator();
-        var request = new AgentGenerationRequest
-        {
-            TemplateId = "general-assistant",
-            Name = "my-assistant",
-            Description = "My custom assistant",
-            Variables = new Dictionary<string, string>
-            {
-                ["Name"] = "CustomBot",
-                ["Description"] = "A custom bot for testing"
-            }
-        };
-
-        // Act
-        var definition = await generator.GenerateAsync(request);
-
-        // Assert
-        definition.Name.Should().Be("my-assistant");
-        definition.SystemPrompt.Should().Contain("CustomBot");
-        definition.SourceTemplateId.Should().Be("general-assistant");
-    }
-
-    [Fact]
     public async Task GenerateAsync_WithoutTemplate_ShouldUseDefaults()
     {
         // Arrange

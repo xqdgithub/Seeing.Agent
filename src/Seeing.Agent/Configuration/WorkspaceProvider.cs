@@ -278,7 +278,7 @@ public class WorkspaceProvider : IWorkspaceProvider
         if (_configManager == null)
             throw new InvalidOperationException("UnifiedConfigManager 未注入");
 
-        await _configManager.SaveSectionAsync("GlobalWorkspaceRoot", path, ConfigLevel.User, cancellationToken);
+        await _configManager.SaveSectionAsync("GlobalWorkspaceRoot", path ?? (string)null!, ConfigLevel.User, cancellationToken);
 
         _globalWorkspaceRoot = path;
         _logger?.LogInformation("已保存全局工作区: {Path}", path ?? "(空)");

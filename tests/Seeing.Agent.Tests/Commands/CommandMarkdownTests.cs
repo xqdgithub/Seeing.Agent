@@ -186,7 +186,7 @@ Hello {{1}}, this is {{arguments}}";
             var discoveryType = typeof(CommandDiscovery);
             var markdownCommandType = discoveryType.GetNestedType("MarkdownCommand", BindingFlags.NonPublic | BindingFlags.Instance);
 
-            var command = (ICommand?)Activator.CreateInstance(markdownCommandType, metadata, null);
+            var command = (ICommand?)Activator.CreateInstance(markdownCommandType!, metadata, null);
 
             var context = new CommandContext
             {
@@ -214,7 +214,7 @@ Hello {{1}}, this is {{arguments}}";
 
             var discoveryType = typeof(CommandDiscovery);
             var markdownCommandType = discoveryType.GetNestedType("MarkdownCommand", BindingFlags.NonPublic | BindingFlags.Instance);
-            var command = (ICommand?)Activator.CreateInstance(markdownCommandType, metadata, null);
+            var command = (ICommand?)Activator.CreateInstance(markdownCommandType!, metadata, null);
 
             var context = new CommandContext
             {
@@ -242,7 +242,7 @@ Hello {{1}}, this is {{arguments}}";
 
             var discoveryType = typeof(CommandDiscovery);
             var markdownCommandType = discoveryType.GetNestedType("MarkdownCommand", BindingFlags.NonPublic | BindingFlags.Instance);
-            var command = (ICommand?)Activator.CreateInstance(markdownCommandType, metadata, null);
+            var command = (ICommand?)Activator.CreateInstance(markdownCommandType!, metadata, null);
 
             var context = new CommandContext
             {
@@ -273,7 +273,7 @@ Hello {{1}}, this is {{arguments}}";
 
             var discoveryType = typeof(CommandDiscovery);
             var markdownCommandType = discoveryType.GetNestedType("MarkdownCommand", BindingFlags.NonPublic | BindingFlags.Instance);
-            var command = (ICommand?)Activator.CreateInstance(markdownCommandType, metadata, null);
+            var command = (ICommand?)Activator.CreateInstance(markdownCommandType!, metadata, null);
 
             var context = new CommandContext
             {
@@ -301,7 +301,7 @@ Hello {{1}}, this is {{arguments}}";
 
             var discoveryType = typeof(CommandDiscovery);
             var markdownCommandType = discoveryType.GetNestedType("MarkdownCommand", BindingFlags.NonPublic | BindingFlags.Instance);
-            var command = (ICommand?)Activator.CreateInstance(markdownCommandType, metadata, null);
+            var command = (ICommand?)Activator.CreateInstance(markdownCommandType!, metadata, null);
 
             var context = new CommandContext();
 

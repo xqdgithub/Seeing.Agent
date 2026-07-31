@@ -401,7 +401,7 @@ public class SchedulerIntegrationTests
         private readonly IScheduler _scheduler;
         public PreconfiguredSchedulerFactory(IScheduler scheduler) => _scheduler = scheduler;
         public Task<IScheduler> GetScheduler(CancellationToken cancellationToken = default) => Task.FromResult(_scheduler);
-        public Task<IScheduler> GetScheduler(string schedName, CancellationToken cancellationToken = default) => Task.FromResult(_scheduler);
+        public Task<IScheduler?> GetScheduler(string schedName, CancellationToken cancellationToken = default) => Task.FromResult<IScheduler?>(_scheduler);
         public Task<IReadOnlyList<IScheduler>> GetAllSchedulers(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<IScheduler>>(new[] { _scheduler });
     }
 

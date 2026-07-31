@@ -43,7 +43,7 @@ namespace Seeing.Agent.Configuration
         /// </para>
         /// <para>
         /// <b>默认行为：</b>如果未设置（null），系统会自动使用模型的 output limit
-        /// （即 <see cref="Llm.ModelConfig.Limit.Output"/>）。例如：
+        /// （即 <see cref="Seeing.Agent.Llm.ModelLimits.Output"/>）。例如：
         /// <list type="bullet">
         ///   <item><description>Kimi-K2.5: 32000 tokens</description></item>
         ///   <item><description>GLM-4.7: 128000 tokens</description></item>

@@ -106,7 +106,9 @@ public class SQLitePersistenceTests
         public WorkspaceResolutionSource ResolutionSource => WorkspaceResolutionSource.StartupDirectory;
         public string? GlobalWorkspaceRoot => null;
         
+        #pragma warning disable CS0067
         public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged;
+#pragma warning restore CS0067
 
         public void SetWorkspaceRoot(string workspaceRoot)
         {

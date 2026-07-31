@@ -686,7 +686,7 @@ maxSteps: 50
 
             return new AgentMdInfo
             {
-                Name = config.Name,
+                Name = config.Name!,
                 Description = config.Description,
                 Level = level,
                 FilePath = filePath,

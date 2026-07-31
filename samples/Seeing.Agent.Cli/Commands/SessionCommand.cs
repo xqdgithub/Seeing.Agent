@@ -12,7 +12,7 @@ public static class SessionCommand
         var command = new Command("session", "管理会话");
 
         var listCommand = new Command("list", "列出所有会话");
-        listCommand.SetHandler(async () =>
+        listCommand.SetAction(async parseResult =>
         {
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<ISessionManager>();
@@ -29,10 +29,11 @@ public static class SessionCommand
                 Console.WriteLine("(无会话)");
         });
 
-        var deleteIdArg = new Argument<string>("id", "会话 ID");
+        var deleteIdArg = new Argument<string>("id") { Description = "会话 ID" };
         var deleteCommand = new Command("delete", "删除会话") { deleteIdArg };
-        deleteCommand.SetHandler(async (id) =>
+        deleteCommand.SetAction(async parseResult =>
         {
+            var id = parseResult.GetValue<string>(deleteIdArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<ISessionManager>();
             var deleted = manager.Delete(id);
@@ -41,12 +42,13 @@ public static class SessionCommand
                 Console.WriteLine($"会话 {id} 已删除");
             else
                 Console.WriteLine($"未找到会话: {id}");
-        }, deleteIdArg);
+        });
 
-        var showIdArg = new Argument<string>("id", "会话 ID");
+        var showIdArg = new Argument<string>("id") { Description = "会话 ID" };
         var showCommand = new Command("show", "查看会话详情") { showIdArg };
-        showCommand.SetHandler(async (id) =>
+        showCommand.SetAction(async parseResult =>
         {
+            var id = parseResult.GetValue<string>(showIdArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<ISessionManager>();
             var session = manager.Get(id);
@@ -66,11 +68,11 @@ public static class SessionCommand
             Console.WriteLine($"  更新时间:   {session.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
             Console.WriteLine($"  分区:       {session.PartitionId ?? "-"}");
             Console.WriteLine($"  父会话:     {session.ParentSessionId ?? "-"}");
-        }, showIdArg);
+        });
 
-        command.AddCommand(listCommand);
-        command.AddCommand(deleteCommand);
-        command.AddCommand(showCommand);
+        command.Subcommands.Add(listCommand);
+        command.Subcommands.Add(deleteCommand);
+        command.Subcommands.Add(showCommand);
 
         return command;
     }

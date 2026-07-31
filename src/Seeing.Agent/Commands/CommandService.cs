@@ -58,7 +58,7 @@ namespace Seeing.Agent.Commands
                 context.CommandName, context.SessionId);
 
             // 触发 command.execute.before Hook
-            var output = new Dictionary<string, object>
+            var output = new Dictionary<string, object?>
             {
                 ["arguments"] = context.Arguments,
                 ["proceed"] = true
@@ -77,7 +77,7 @@ namespace Seeing.Agent.Commands
                 cancellationToken);
 
             // 检查是否被 Hook 中断
-            if (!hookResult.Continue || (output.TryGetValue("proceed", out var proceed) && !(bool)proceed))
+            if (!hookResult.Continue || (output.TryGetValue("proceed", out var proceed) && proceed is bool proceedValue && !proceedValue))
             {
                 _logger.LogWarning("命令执行被 Hook 中断: {CommandName}", context.CommandName);
                 return CommandResult.Fail("命令执行被 Hook 中断");
@@ -92,8 +92,8 @@ namespace Seeing.Agent.Commands
                     CommandName = context.CommandName,
                     RawInput = context.RawInput,
                     Arguments = args,
-                    SessionId = context.SessionId,
-                    MessageId = context.MessageId,
+SessionId = context.SessionId ?? string.Empty,
+                    MessageId = context.MessageId ?? string.Empty,
                     Services = context.Services,
                     CancellationToken = context.CancellationToken,
                     WorkspaceRoot = context.WorkspaceRoot

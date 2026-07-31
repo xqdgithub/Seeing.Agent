@@ -4,7 +4,7 @@ namespace Seeing.Session.Core
     public interface ISessionFactory
     {
         // Creates a new session with optional title, partition and agent identifiers
-        Task<ISession> CreateAsync(string title = null, string partitionId = null, string agentId = null);
+        Task<ISession> CreateAsync(string? title = null, string? partitionId = null, string? agentId = null);
 
         // Clones an existing session (sourceSessionId) into a new session (newSessionId)
         Task<ISession> CloneAsync(string sourceSessionId, string newSessionId);

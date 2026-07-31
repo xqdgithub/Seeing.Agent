@@ -205,7 +205,7 @@ public class Wave1IntegrationTests
         public int? OverrideMaxSteps { get; set; }
 
         public TestAgent(ILogger logger, IHookManager? hookManager = null)
-            : base(logger, hookManager) { }
+            : base(logger, hookManager!) { }
 
         public override string Name { get; set; } = "test-agent";
         public override string Description { get; set; } = "测试 Agent";

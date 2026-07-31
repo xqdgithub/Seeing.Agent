@@ -217,7 +217,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
         if (!string.IsNullOrEmpty(modelId) && !CanSetAsDefaultModel(modelId))
             throw new InvalidOperationException($"模型 '{modelId}' 不是 Text 类型，不能设为默认对话模型。");
 
-        await _configManager.SaveSectionAsync("DefaultModel", modelId, level, ct);
+        await _configManager.SaveSectionAsync("DefaultModel", modelId ?? (string)null!, level, ct);
 
         _logger.LogInformation("已设置默认模型: {ModelId}", modelId ?? "(空)");
     }

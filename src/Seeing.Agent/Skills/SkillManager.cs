@@ -678,7 +678,7 @@ namespace Seeing.Agent.Skills
                 return;
             }
             skillInfo.Location= "embedded://" + skillInfo.Name?.TrimStart('/');
-            _skillInfos[skillInfo.Name] = skillInfo;
+            _skillInfos[skillInfo.Name!] = skillInfo;
             _logger.LogInformation("Registered skill: {Name}", skillInfo.Name);
         }
     }

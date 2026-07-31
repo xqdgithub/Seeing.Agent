@@ -12,16 +12,16 @@ namespace Seeing.Session.Core
             _store = store;
         }
 
-        public async Task<ISession> CreateAsync(string title = null, string partitionId = null, string agentId = null)
+        public async Task<ISession> CreateAsync(string? title = null, string? partitionId = null, string? agentId = null)
         {
             var data = new SessionData
             {
                 Id = Guid.NewGuid().ToString(),
-                Title = title,
-                PartitionId = partitionId,
+                Title = title ?? string.Empty,
+                PartitionId = partitionId ?? string.Empty,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now,
-                SelectedAgent = agentId
+                SelectedAgent = agentId ?? string.Empty
             };
             // In a real implementation, you might persist initialization here.
             return new Session(data, _store);

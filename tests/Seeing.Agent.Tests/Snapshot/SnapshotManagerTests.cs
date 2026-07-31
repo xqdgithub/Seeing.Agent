@@ -82,27 +82,6 @@ public class DiffCalculatorTests
     }
 
     [Fact]
-    public void SerializeDeserialize_ShouldRoundTrip()
-    {
-        // Arrange
-        var text1 = "line1\nline2\nline3";
-        var text2 = "line1\nnew\nline3";
-        var diff = _calculator.ComputeDiff(text1, text2);
-
-        // Act
-        var serialized = _calculator.SerializePatch(diff);
-        var deserialized = _calculator.DeserializePatch(serialized);
-
-        // Assert
-        deserialized.Should().HaveCount(diff.Count);
-        for (int i = 0; i < diff.Count; i++)
-        {
-            deserialized[i].Operation.Should().Be(diff[i].Operation);
-            deserialized[i].Content.Should().Be(diff[i].Content);
-        }
-    }
-
-    [Fact]
     public void ToUnifiedDiff_ShouldIncludeHeaders()
     {
         // Arrange

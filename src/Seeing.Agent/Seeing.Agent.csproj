@@ -23,7 +23,7 @@
     <WarningLevel>4</WarningLevel>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <!-- OpenAI SDK：文件 / 输入音频等多模态 API 仍带实验性诊断 OPENAI001 -->
-    <NoWarn>$(NoWarn);OPENAI001</NoWarn>
+    <NoWarn>$(NoWarn);OPENAI001;CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

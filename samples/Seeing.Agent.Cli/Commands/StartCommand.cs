@@ -7,15 +7,16 @@ public static class StartCommand
 {
     public static Command Create()
     {
-        var serviceArg = new Argument<string>("service", "要启动的服务: webui 或 gateway");
+        var serviceArg = new Argument<string>("service") { Description = "要启动的服务: webui 或 gateway" };
 
         var command = new Command("start", "启动指定的服务")
         {
             serviceArg
         };
 
-        command.SetHandler(async (service) =>
+        command.SetAction(async parseResult =>
         {
+            var service = parseResult.GetValue<string>(serviceArg);
             service = service.ToLowerInvariant();
             if (service != "webui" && service != "gateway")
             {
@@ -67,7 +68,7 @@ public static class StartCommand
                 Console.Error.WriteLine($"启动失败: {ex.Message}");
                 Environment.ExitCode = 1;
             }
-        }, serviceArg);
+        });
 
         return command;
     }

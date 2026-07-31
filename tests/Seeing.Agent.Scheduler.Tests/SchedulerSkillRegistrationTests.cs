@@ -38,7 +38,7 @@ public class SchedulerSkillRegistrationTests
         {
             var skill = skillManager.GetSkillInfo(name);
             skill.Should().NotBeNull($"skill '{name}' should be registered");
-            skill!.Location.Should().Be($"embedded://scheduler/{name}");
+            skill!.Location.Should().Be($"embedded://{name}");
             skill.Description.Should().NotBeNullOrWhiteSpace();
             skill.Content.Should().NotBeNullOrWhiteSpace();
         }

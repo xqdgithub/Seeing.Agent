@@ -1,7 +1,5 @@
 using Seeing.Agent.Core.Models;
 
-using Seeing.Agent.Core.Models;
-
 namespace Seeing.Agent.Core.Interfaces
 {
     /// <summary>

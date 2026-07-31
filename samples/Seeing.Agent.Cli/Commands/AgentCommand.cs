@@ -12,7 +12,7 @@ public static class AgentCommand
         var command = new Command("agent", "管理代理");
 
         var listCommand = new Command("list", "列出所有代理");
-        listCommand.SetHandler(async () =>
+        listCommand.SetAction(async parseResult =>
         {
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var registry = host.Services.GetRequiredService<IAgentRegistry>();
@@ -28,10 +28,11 @@ public static class AgentCommand
             }
         });
 
-        var showNameArg = new Argument<string>("name", "代理名称");
+        var showNameArg = new Argument<string>("name") { Description = "代理名称" };
         var showCommand = new Command("show", "查看代理详情") { showNameArg };
-        showCommand.SetHandler(async (name) =>
+        showCommand.SetAction(async parseResult =>
         {
+            var name = parseResult.GetValue<string>(showNameArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var registry = host.Services.GetRequiredService<IAgentRegistry>();
             var agent = await registry.GetAgentAsync(name);
@@ -56,10 +57,10 @@ public static class AgentCommand
             Console.WriteLine($"  禁止的工具:   {(agent.DeniedTools.Count > 0 ? string.Join(", ", agent.DeniedTools) : "(无)")}");
             Console.WriteLine($"  权限规则数:   {agent.PermissionRules.Count}");
             Console.WriteLine($"  系统提示词:   {(string.IsNullOrEmpty(agent.SystemPrompt) ? "(无)" : $"{agent.SystemPrompt[..Math.Min(100, agent.SystemPrompt.Length)]}...")}");
-        }, showNameArg);
+        });
 
-        command.AddCommand(listCommand);
-        command.AddCommand(showCommand);
+        command.Subcommands.Add(listCommand);
+        command.Subcommands.Add(showCommand);
 
         return command;
     }

@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 namespace Seeing.Agent.Llm;
 
 /// <summary>
@@ -30,7 +28,7 @@ public interface ILlmClient
     /// <returns>流式更新</returns>
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         ChatRequest request,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 测试连接是否可用

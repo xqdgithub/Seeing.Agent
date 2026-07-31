@@ -92,7 +92,7 @@
     </EmptyAction>
 </WorkspacePageShell>
 
-<Modal Title="@_modalTitle" Visible="@_modalVisible" Footer="@null" OnCancel="@CloseModal" Width="640">
+<Modal Title="@_modalTitle" Visible="@_modalVisible" OnCancel="@CloseModal" Width="640">
     @if (_modalVisible)
     {
         <Form Layout="@FormLayout.Vertical" Model="@_editBackendForm">
@@ -104,10 +104,10 @@
         </div>
         </Form>
     }
-    <FooterTemplate>
+    <Footer>
         <Button OnClick="@CloseModal">取消</Button>
         <Button Type="@ButtonType.Primary" Loading="@_saving" OnClick="@ConfirmBackend">确定并保存</Button>
-    </FooterTemplate>
+    </Footer>
 </Modal>
 
 @code {

@@ -14,5 +14,5 @@ public sealed class McpToolInfo
     public string Name { get; init; } = string.Empty;
     public string ServerName { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
-    public IReadOnlyDictionary<string, object>? Schema { get; init; }
+    public IReadOnlyDictionary<string, object?>? Schema { get; init; }
 }

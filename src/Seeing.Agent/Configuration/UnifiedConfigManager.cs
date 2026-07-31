@@ -228,7 +228,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             UserPath = (meta.Scope == ConfigScope.Both || meta.Scope == ConfigScope.UserOnly)
                 ? GetFilePath(ConfigLevel.User, meta.FileName) : null,
             ProjectPath = meta.Scope != ConfigScope.UserOnly
-                ? GetFilePath(ConfigLevel.Project, meta.FileName) : null,
+                ? GetFilePath(ConfigLevel.Project, meta.FileName) ?? string.Empty : string.Empty,
             Scope = meta.Scope,
             ScopeReason = meta.ScopeReason
         };

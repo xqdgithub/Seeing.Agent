@@ -427,7 +427,7 @@
     /// <summary>
     /// 当前流式输出的消息 ID
     /// </summary>
-    private string? _currentStreamingMessageId;
+    private string _currentStreamingMessageId = string.Empty;
 
     /// <summary>
     /// 路由参数：会话 ID
@@ -704,7 +704,7 @@
                 .Select(a => a.Name)
                 .ToList();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _agentNames = new List<string>();
         }
@@ -737,7 +737,7 @@
                     .ToList();
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _models = new List<ModelViewModel>();
         }
@@ -849,7 +849,7 @@
             await ToolInvoker.GetToolSchemasAsync();
             await SkillManager.DiscoverSkillsAsync();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // 静默处理，不影响主流程
         }
@@ -864,7 +864,7 @@
         {
             _availableCommands = CommandListService.GetAvailableCommands(SessionState);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _availableCommands = new List<CommandItemViewModel>();
         }

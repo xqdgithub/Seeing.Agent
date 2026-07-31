@@ -15,9 +15,7 @@
 @if (_notFound)
 {
     <Alert Type="@AlertType.Error" ShowIcon="true" Message="任务不存在" Description="指定的任务不存在或已被删除" Style="margin: 24px 0;">
-        <ExtraAction>
-            <Button Type="@ButtonType.Primary" OnClick="NavigateBack">返回列表</Button>
-        </ExtraAction>
+        <Button Type="@ButtonType.Primary" OnClick="NavigateBack">返回列表</Button>
     </Alert>
 }
 else if (_job != null)

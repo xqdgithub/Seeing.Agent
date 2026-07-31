@@ -1,4 +1,4 @@
-using Seeing.Agent.Core.Events;
+﻿using Seeing.Agent.Core.Events;
 using Seeing.Agent.App.Events;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.State;
@@ -190,13 +190,6 @@ namespace Seeing.Agent.WebUI.Services
 
                 case MessageEventType.TaskFailed:
                     HandleTaskFailed((TaskFailedEvent)evt);
-                    break;
-
-                case MessageEventType.SubAgentStarted:
-                case MessageEventType.SubAgentCompleted:
-#pragma warning disable CS0618
-                    HandleSubAgent((SubAgentEvent)evt);
-#pragma warning restore CS0618
                     break;
 
                 case MessageEventType.PermissionRequest:
@@ -552,16 +545,6 @@ namespace Seeing.Agent.WebUI.Services
             {
                 // 解析失败，忽略
             }
-        }
-
-        /// <summary>
-        /// 处理子代理事件（已废弃，保留兼容）
-        /// </summary>
-#pragma warning disable CS0618
-        private void HandleSubAgent(SubAgentEvent evt)
-#pragma warning restore CS0618
-        {
-            // 已由 HandleTask* 替代
         }
 
         private void HandleTaskStarted(TaskStartedEvent evt)

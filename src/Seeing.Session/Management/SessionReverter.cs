@@ -63,7 +63,7 @@ namespace Seeing.Session.Management
             var lastUserMessage = session.Messages.LastOrDefault(m => m.Role == "user");
             if (lastUserMessage == null) return false;
 
-            return await RevertAsync(sessionId, lastUserMessage.Id, ct);
+            return await RevertAsync(sessionId, lastUserMessage.Id!, ct);
         }
 
         /// <summary>回滚指定数量的消息</summary>

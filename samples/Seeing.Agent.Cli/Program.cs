@@ -10,14 +10,14 @@ internal class Program
         var rootCommand = new RootCommand("Seeing.Agent CLI 管理工具");
 
         // Subcommands will be added in following tasks
-        rootCommand.AddCommand(StartCommand.Create());
-        rootCommand.AddCommand(StopCommand.Create());
-        rootCommand.AddCommand(StatusCommand.Create());
-        rootCommand.AddCommand(ConfigCommand.Create());
-        rootCommand.AddCommand(AgentCommand.Create());
-        rootCommand.AddCommand(JobCommand.Create());
-        rootCommand.AddCommand(SessionCommand.Create());
+        rootCommand.Subcommands.Add(StartCommand.Create());
+        rootCommand.Subcommands.Add(StopCommand.Create());
+        rootCommand.Subcommands.Add(StatusCommand.Create());
+        rootCommand.Subcommands.Add(ConfigCommand.Create());
+        rootCommand.Subcommands.Add(AgentCommand.Create());
+        rootCommand.Subcommands.Add(JobCommand.Create());
+        rootCommand.Subcommands.Add(SessionCommand.Create());
 
-        return await rootCommand.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 }

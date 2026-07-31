@@ -35,7 +35,9 @@ public static class GatewayEventMapper
             LoopCompleteEvent e => WithMeta(e, MapLoopComplete(e)),
             LoopCancelledEvent e => WithMeta(e, MapLoopCancelled(e)),
             ErrorEvent e => WithMeta(e, MapError(e)),
-            SubAgentEvent e => WithMeta(e, MapSubAgent(e)),
+            TaskStartedEvent e => WithMeta(e, MapTaskStarted(e)),
+            TaskCompletedEvent e => WithMeta(e, MapTaskCompleted(e)),
+            TaskFailedEvent e => WithMeta(e, MapTaskFailed(e)),
             _ => throw new NotSupportedException($"Unsupported message event type: {source.Type}")
         };
     }
@@ -267,7 +269,7 @@ public static class GatewayEventMapper
         }
     };
 
-    private static GatewayEvent MapSubAgent(SubAgentEvent e) => new()
+    private static GatewayEvent MapTaskStarted(TaskStartedEvent e) => new()
     {
         Object = GatewayEventObject.Content,
         Status = GatewayEventStatus.InProgress,
@@ -276,10 +278,35 @@ public static class GatewayEventMapper
         Data = new GatewayEventData
         {
             SubAgentName = e.AgentName,
-            SubSessionId = e.SubSessionId,
-            Text = e.Result,
-            Error = e.Error,
-            Success = e.Status == "completed" ? true : e.Status == "failed" ? false : null
+            SubSessionId = e.TaskId,
+            Text = e.Description
+        }
+    };
+
+    private static GatewayEvent MapTaskCompleted(TaskCompletedEvent e) => new()
+    {
+        Object = GatewayEventObject.Content,
+        Status = GatewayEventStatus.Completed,
+        SessionId = e.SessionId,
+        LoopId = e.LoopId,
+        Data = new GatewayEventData
+        {
+            SubSessionId = e.TaskId,
+            Text = e.ResultText,
+            Duration = e.Duration
+        }
+    };
+
+    private static GatewayEvent MapTaskFailed(TaskFailedEvent e) => new()
+    {
+        Object = GatewayEventObject.Content,
+        Status = GatewayEventStatus.Failed,
+        SessionId = e.SessionId,
+        LoopId = e.LoopId,
+        Data = new GatewayEventData
+        {
+            SubSessionId = e.TaskId,
+            Error = e.Error
         }
     };
 }

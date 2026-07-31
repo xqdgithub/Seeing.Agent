@@ -208,18 +208,18 @@ public class MessageRenderPipeline : IMessageRenderPipeline
     {
         return builder =>
         {
-            // 每个 block 使用独立 Region + SetKey，避免工具状态变化后事件处理器丢失
             var regionSeq = 0;
             foreach (var block in blocks.OrderBy(b => b.SortIndex))
             {
                 _logger.LogDebug("Rendering block: Type={Type}, Id={Id}, ToolCall={ToolCallId}",
                     block.Type, block.Id, block.ToolCall?.Id ?? "null");
 
+#pragma warning disable ASP0006
                 builder.OpenRegion(regionSeq++);
 
                 if (_componentRegistry.TryGetComponent(block, out var component))
                 {
-                    _logger.LogDebug("Found component: {ComponentName} for block {BlockType}", component.Name, block.Type);
+                    _logger.LogDebug("Found component: {ComponentName} for block {BlockType}", component!.Name, block.Type);
 
                     builder.OpenComponent(0, component.GetComponentType());
                     builder.SetKey(block.Id);
@@ -242,6 +242,7 @@ public class MessageRenderPipeline : IMessageRenderPipeline
                 }
 
                 builder.CloseRegion();
+#pragma warning restore ASP0006
             }
         };
     }

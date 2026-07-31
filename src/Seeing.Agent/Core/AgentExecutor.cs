@@ -92,7 +92,6 @@ public class AgentExecutor
         var loopStartTime = DateTime.Now;
         var totalSteps = 0;
         TokenUsage? totalUsage = null;
-        var hasError = false;
         string? errorMessage = null;
 
         // ========== 发布 LoopStart 事件 ==========
@@ -277,7 +276,6 @@ public class AgentExecutor
             // 处理 LLM 异常
             if (llmException != null)
             {
-                hasError = true;
                 errorMessage = llmException.Message;
 
                 // 触发 chat.on_error Hook
@@ -316,7 +314,6 @@ public class AgentExecutor
             if (assistantMessage == null)
             {
                 _logger.LogWarning("[AgentExecutor] LLM 返回空响应");
-                hasError = true;
                 errorMessage = "LLM 返回空响应";
 
                 yield return new ErrorEvent
@@ -393,7 +390,6 @@ public class AgentExecutor
         }
 
         // 达到最大步数
-        hasError = true;
         errorMessage = $"达到最大步数 {maxSteps}，已停止";
 
         yield return new ErrorEvent

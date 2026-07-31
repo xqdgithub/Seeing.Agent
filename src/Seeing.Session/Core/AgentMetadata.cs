@@ -2,8 +2,8 @@ namespace Seeing.Session.Core
 {
     public class AgentMetadata
     {
-        public string AgentId { get; set; }
-        public string AgentName { get; set; }
-        public string Role { get; set; }
+        public string AgentId { get; set; } = string.Empty;
+        public string AgentName { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
     }
 }

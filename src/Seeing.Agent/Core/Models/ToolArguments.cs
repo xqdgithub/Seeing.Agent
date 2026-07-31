@@ -68,7 +68,7 @@ namespace Seeing.Agent.Core.Models
                 {
                     return JsonSerializer.Deserialize<T>(je.GetRawText());
                 }
-                return (T)Convert.ChangeType(value, typeof(T));
+                return (T)Convert.ChangeType(value, typeof(T))!;
             }
             catch
             {

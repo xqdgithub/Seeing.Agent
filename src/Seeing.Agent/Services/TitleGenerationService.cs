@@ -70,7 +70,7 @@ namespace Seeing.Agent.Services
                 return Task.FromResult(HookResult.Success);
 
             // 忽略 synthetic 消息
-            if (message.Metadata.ContainsKey("synthetic"))
+            if (message.Metadata?.ContainsKey("synthetic") == true)
                 return Task.FromResult(HookResult.Success);
 
             var sessionId = payload.SessionId;
@@ -82,7 +82,7 @@ namespace Seeing.Agent.Services
             // 计算真实用户消息数量
             var realUserMessageCount = session.Messages.Count(m =>
                 m.Role.Equals("user", StringComparison.OrdinalIgnoreCase) &&
-                !m.Metadata.ContainsKey("synthetic"));
+                m.Metadata?.ContainsKey("synthetic") != true);
 
             // 检查是否应该生成标题
             if (!ShouldGenerateTitle(session.Title, session.ParentSessionId, realUserMessageCount))

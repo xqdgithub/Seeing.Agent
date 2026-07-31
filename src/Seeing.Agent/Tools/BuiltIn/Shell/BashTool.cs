@@ -191,9 +191,8 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
 
             using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
             var outputBuilder = new StringBuilder();
-            var timedOut = false;
+var timedOut = false;
             var aborted = false;
-            var exited = false;
 
             // 设置超时计时器
             using var timeoutCts = new CancellationTokenSource(timeout + 100);
@@ -243,10 +242,9 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
             {
                 await WaitForExitAsync(process, linkedCts.Token);
 
-                // 确保所有输出都已读取
+// 确保所有输出都已读取
                 process.WaitForExit();  // 二次确认，等待异步输出完成
 
-                exited = true;
             }
             catch (OperationCanceledException)
             {
@@ -265,8 +263,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
                 // 等待进程真正退出
                 try
                 {
-                    await WaitForExitAsync(process, CancellationToken.None);
-                    exited = true;
+await WaitForExitAsync(process, CancellationToken.None);
                 }
                 catch
                 {

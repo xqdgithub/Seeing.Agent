@@ -140,7 +140,7 @@ public class ProviderManager : IProviderManager, IDisposable
         ConfigLevel level = ConfigLevel.Project,
         CancellationToken ct = default)
     {
-        await _configManager.SaveSectionAsync("DefaultProvider", providerId, level, ct);
+        await _configManager.SaveSectionAsync("DefaultProvider", providerId ?? (string)null!, level, ct);
 
         _logger.LogInformation("已设置默认 Provider: {ProviderId}", providerId ?? "(空)");
     }

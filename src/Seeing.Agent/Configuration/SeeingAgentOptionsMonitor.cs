@@ -8,7 +8,7 @@ namespace Seeing.Agent.Configuration;
 public sealed class SeeingAgentOptionsMonitor : IOptions<SeeingAgentOptions>, IOptionsMonitor<SeeingAgentOptions>
 {
     private readonly UnifiedConfigManager _manager;
-    private readonly List<Action<SeeingAgentOptions?, string?>> _changeListeners = new();
+    private readonly List<Action<SeeingAgentOptions, string?>> _changeListeners = new();
 
     public SeeingAgentOptionsMonitor(UnifiedConfigManager manager)
     {
@@ -26,7 +26,7 @@ public sealed class SeeingAgentOptionsMonitor : IOptions<SeeingAgentOptions>, IO
 
     public SeeingAgentOptions Get(string? name) => CurrentValue;
 
-    public IDisposable? OnChange(Action<SeeingAgentOptions?, string?> listener)
+    public IDisposable? OnChange(Action<SeeingAgentOptions, string?> listener)
     {
         lock (_changeListeners)
         {
@@ -55,11 +55,11 @@ public sealed class SeeingAgentOptionsMonitor : IOptions<SeeingAgentOptions>, IO
             {
                 try
                 {
-                    listener(newValue, null);
+                    if (newValue is not null)
+                        listener(newValue, null);
                 }
                 catch
                 {
-                    // 忽略监听器异常
                 }
             }
         }
@@ -68,9 +68,9 @@ public sealed class SeeingAgentOptionsMonitor : IOptions<SeeingAgentOptions>, IO
     private sealed class ChangeListenerDisposable : IDisposable
     {
         private readonly SeeingAgentOptionsMonitor _monitor;
-        private readonly Action<SeeingAgentOptions?, string?> _listener;
+        private readonly Action<SeeingAgentOptions, string?> _listener;
 
-        public ChangeListenerDisposable(SeeingAgentOptionsMonitor monitor, Action<SeeingAgentOptions?, string?> listener)
+        public ChangeListenerDisposable(SeeingAgentOptionsMonitor monitor, Action<SeeingAgentOptions, string?> listener)
         {
             _monitor = monitor;
             _listener = listener;

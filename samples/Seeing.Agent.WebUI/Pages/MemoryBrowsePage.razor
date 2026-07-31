@@ -42,11 +42,11 @@
     <Filters>
         <Space>
             <SpaceItem>
-                <RadioGroup @bind-Value="@_typeFilter">
-                    <RadioButton Value="@("")">全部</RadioButton>
-                    <RadioButton Value="@("session")">会话</RadioButton>
-                    <RadioButton Value="@("daily")">每日</RadioButton>
-                    <RadioButton Value="@("digest")">整合</RadioButton>
+                <RadioGroup @bind-Value="@_typeFilter" ButtonStyle="@RadioButtonStyle.Solid">
+                    <Radio RadioButton Value="@("")">全部</Radio>
+                    <Radio RadioButton Value="@("session")">会话</Radio>
+                    <Radio RadioButton Value="@("daily")">每日</Radio>
+                    <Radio RadioButton Value="@("digest")">整合</Radio>
                 </RadioGroup>
             </SpaceItem>
             <SpaceItem>

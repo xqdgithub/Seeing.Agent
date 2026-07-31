@@ -12,36 +12,39 @@ public static class ConfigCommand
     {
         var command = new Command("config", "管理配置");
 
-        var showSectionArg = new Argument<string?>("section", () => null, "要显示的配置段（不指定则显示全部）");
+        var showSectionArg = new Argument<string?>("section") { DefaultValueFactory = _ => null, Description = "要显示的配置段（不指定则显示全部）" };
         var showCommand = new Command("show", "查看配置") { showSectionArg };
-        showCommand.SetHandler(async (section) =>
+        showCommand.SetAction(async parseResult =>
         {
+            var section = parseResult.GetValue<string?>(showSectionArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var config = host.Services.GetRequiredService<UnifiedConfigManager>();
             await ShowConfig(config, section);
-        }, showSectionArg);
+        });
 
-        var setPathArg = new Argument<string>("path", "配置路径（如 Gateway.Port）");
-        var setValueArg = new Argument<string>("value", "配置值");
+        var setPathArg = new Argument<string>("path") { Description = "配置路径（如 Gateway.Port）" };
+        var setValueArg = new Argument<string>("value") { Description = "配置值" };
         var setCommand = new Command("set", "设置配置值") { setPathArg, setValueArg };
-        setCommand.SetHandler(async (path, value) =>
+        setCommand.SetAction(async parseResult =>
         {
+            var path = parseResult.GetValue<string>(setPathArg);
+            var value = parseResult.GetValue<string>(setValueArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var config = host.Services.GetRequiredService<UnifiedConfigManager>();
             await SetConfig(config, path, value);
-        }, setPathArg, setValueArg);
+        });
 
         var initCommand = new Command("init", "初始化工作区");
-        initCommand.SetHandler(async () =>
+        initCommand.SetAction(async parseResult =>
         {
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var config = host.Services.GetRequiredService<UnifiedConfigManager>();
             await InitWorkspace(config);
         });
 
-        command.AddCommand(showCommand);
-        command.AddCommand(setCommand);
-        command.AddCommand(initCommand);
+        command.Subcommands.Add(showCommand);
+        command.Subcommands.Add(setCommand);
+        command.Subcommands.Add(initCommand);
 
         return command;
     }

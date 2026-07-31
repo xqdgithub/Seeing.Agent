@@ -131,7 +131,7 @@
 
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        _agentName = query["agent"];
+        _agentName = query["agent"] ?? "";
         if (string.IsNullOrEmpty(_agentName) && _agentNames.Count > 0)
             _agentName = await AgentManager.GetDefaultAgentNameAsync() ?? _agentNames[0];
         if (!string.IsNullOrEmpty(_agentName) && !_agentNames.Contains(_agentName))

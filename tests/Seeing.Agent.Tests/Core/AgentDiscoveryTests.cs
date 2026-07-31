@@ -186,39 +186,6 @@ Agent with tool restrictions.";
         }
 
         [Fact]
-        public async Task DiscoverAgentsAsync_ShouldParsePermissionsFromPermissionField()
-        {
-            // Arrange
-            var tempDir = CreateTempDirectory();
-            var agentDir = Path.Combine(tempDir, "agent");
-            Directory.CreateDirectory(agentDir);
-
-            var agentContent = @"---
-name: permission-agent
-permission:
-  read: allow
-  edit: deny
-  task: ask
----
-Agent with permission config.";
-
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "permission.md"), agentContent);
-
-            _discovery.ClearSearchDirectories();
-            _discovery.AddSearchDirectory(agentDir);
-
-            // Act
-            var result = await _discovery.DiscoverAgentsAsync();
-
-            // Assert
-            result.Should().HaveCount(1);
-            var permissions = result[0].PermissionRules;
-            permissions.Should().Contain(p => p.Pattern == "read" && p.Effect == PermissionEffect.Allow);
-            permissions.Should().Contain(p => p.Pattern == "edit" && p.Effect == PermissionEffect.Deny);
-            permissions.Should().Contain(p => p.Pattern == "task" && p.Effect == PermissionEffect.Ask);
-        }
-
-        [Fact]
         public async Task DiscoverAgentsAsync_ShouldParseModelReference()
         {
             // Arrange

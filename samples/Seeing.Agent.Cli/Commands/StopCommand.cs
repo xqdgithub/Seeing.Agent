@@ -7,15 +7,16 @@ public static class StopCommand
 {
     public static Command Create()
     {
-        var serviceArg = new Argument<string>("service", "要停止的服务: webui 或 gateway");
+        var serviceArg = new Argument<string>("service") { Description = "要停止的服务: webui 或 gateway" };
 
         var command = new Command("stop", "停止指定的服务")
         {
             serviceArg
         };
 
-        command.SetHandler(async (service) =>
+        command.SetAction(async parseResult =>
         {
+            var service = parseResult.GetValue<string>(serviceArg);
             service = service.ToLowerInvariant();
             if (service != "webui" && service != "gateway")
             {
@@ -52,7 +53,7 @@ public static class StopCommand
                 Console.Error.WriteLine($"停止失败: {ex.Message}");
                 Environment.ExitCode = 1;
             }
-        }, serviceArg);
+        });
 
         return command;
     }

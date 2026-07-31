@@ -17,10 +17,10 @@ public class LlmException : Exception
     /// <summary>重试次数</summary>
     public int RetryCount { get; init; }
 
-    /// <summary>错误来源（client/network/timeout/cancellation）</summary>
-    public string Source { get; init; } = "unknown";
-
-    public LlmException(string message) : base(message) { }
+public LlmException(string message) : base(message)
+    {
+        Source = "unknown";
+    }
 
     public LlmException(string message, Exception innerException)
         : base(message, innerException) { }
@@ -98,7 +98,7 @@ public class LlmRetryExhaustedException : LlmException
     public Exception? LastException { get; init; }
 
     public LlmRetryExhaustedException(int maxRetries, Exception? lastException)
-        : base($"LLM 请求在 {maxRetries} 次重试后仍然失败", lastException)
+        : base($"LLM 请求在 {maxRetries} 次重试后仍然失败", lastException!)
     {
         Source = "retry_exhausted";
         MaxRetries = maxRetries;

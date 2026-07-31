@@ -9,7 +9,7 @@ public static class StatusCommand
     {
         var command = new Command("status", "查看所有服务运行状态");
 
-        command.SetHandler(async () =>
+        command.SetAction(async parseResult =>
         {
             try
             {

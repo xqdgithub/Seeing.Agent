@@ -100,7 +100,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
                         ["numResults"] = numResults,
                         ["livecrawl"] = livecrawl,
                         ["type"] = searchType,
-                        ["contextMaxCharacters"] = contextMaxCharacters
+["contextMaxCharacters"] = contextMaxCharacters ?? (object)0
                     }
                 });
             }

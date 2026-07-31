@@ -330,7 +330,7 @@ public class ExecutionJobService : IDisposable
             if (inputText != null && inputText.StartsWith('/') && inputText.Length > 1 && !inputText.StartsWith("//"))
             {
                 await foreach (var cmdEvent in ProcessCommandAsync(
-                    record.SessionId, record.Input.Text, session, context, commandRegistry, queue.CurrentCancellationToken))
+                    record.SessionId, inputText, session, context, commandRegistry, queue.CurrentCancellationToken))
                 {
                     if (cmdEvent != null)
                     {

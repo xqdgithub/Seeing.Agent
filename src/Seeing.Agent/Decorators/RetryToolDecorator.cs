@@ -12,7 +12,7 @@ namespace Seeing.Agent.Decorators
     {
         private readonly int _maxRetries;
         private readonly TimeSpan _delay;
-        private readonly Func<Exception, bool>? _isRetryable;
+        private readonly Func<Exception, bool> _isRetryable;
         private readonly ILogger? _logger;
 
         /// <summary>

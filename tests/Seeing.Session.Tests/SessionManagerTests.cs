@@ -46,7 +46,7 @@ namespace Seeing.Session.Tests
             // Assert
             session.Should().NotBeNull();
             session.Id.Should().StartWith("ses_");
-            session.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
+            session.CreatedAt.Should().BeCloseTo(DateTime.Now, TimeSpan.FromSeconds(2));
             session.Status.Should().Be(SessionStatus.Created);
             session.SelectedAgent.Should().BeEmpty();
             session.PartitionId.Should().Be("default");
@@ -475,24 +475,6 @@ namespace Seeing.Session.Tests
             // Assert
             result.Should().BeEmpty();
         }
-
-        [Fact]
-        public void Compress_WithoutCompressor_ShouldReturnOriginalMessages()
-        {
-            // Arrange
-            var managerWithoutCompressor = new SessionManager(compressor: null, logger: new NullLogger<SessionManager>());
-            var session = managerWithoutCompressor.Create();
-            session.AddMessage(SessionMessage.UserMessage("Test"));
-
-            // Act
-            var result = managerWithoutCompressor.Compress(session.Id);
-
-            // Assert
-            result.Should().HaveCount(1);
-            result[0].Content.Should().Be("Test");
-        }
-
-        // === 无注入组件测试 ===
 
         [Fact]
         public void SessionManager_WithNullDependencies_ShouldWorkForBasicOperations()

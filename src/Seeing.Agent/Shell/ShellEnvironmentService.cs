@@ -49,7 +49,7 @@ namespace Seeing.Agent.Shell
             CancellationToken cancellationToken = default)
         {
             // 初始输出为空字典，Hook 可以修改
-            var output = new Dictionary<string, object>
+            var output = new Dictionary<string, object?>
             {
                 ["env"] = new Dictionary<string, string>()
             };

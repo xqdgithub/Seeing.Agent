@@ -47,7 +47,7 @@ namespace Seeing.Agent.Middlewares
                 {
                     return await next(context);
                 }
-                catch (Exception ex) when (attempt < _maxRetries - 1 && _isRetryable(ex))
+                catch (Exception ex) when (attempt < _maxRetries - 1 && _isRetryable!(ex))
                 {
                     lastException = ex;
                     var delay = _delay * (attempt + 1); // 指数退避
