@@ -121,3 +121,40 @@ aside.app-sider.ant-layout-sider {
         border-bottom-color: #303030;
     }
 }
+
+/* ========== 移动端侧边栏 ========== */
+/* 这些 class 仅由 AppSidebar.GetSiderClass() 在 AppState.IsMobile 时添加，无需 @media */
+.app-sider.sider-hidden {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+}
+
+.app-sider.sider-overlay {
+    width: 240px !important;
+    min-width: 240px !important;
+    max-width: 240px !important;
+    box-shadow: var(--shadow-lg);
+    z-index: 200 !important;
+    flex: 0 0 240px !important;
+}
+
+.app-sider.sider-overlay .ant-layout-sider-zero-width-trigger {
+    display: none !important;
+}
+
+/* ========== 移动端汉堡按钮 ========== */
+/* 按钮仅当 AppState.IsMobile 时才渲染到 DOM，默认显示 */
+.mobile-hamburger {
+    position: fixed;
+    left: 12px;
+    bottom: 20px;
+    z-index: 150;
+    box-shadow: var(--shadow-base);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mobile-hamburger:hover {
+    transform: scale(1.05);
+    box-shadow: var(--shadow-lg);
+}

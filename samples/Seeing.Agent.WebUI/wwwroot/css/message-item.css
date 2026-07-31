@@ -138,34 +138,59 @@
     white-space: nowrap;
 }
 
-/* 思考过程折叠/展开样式（灰色圆角卡片，无彩色边框） */
+/* 思考过程折叠/展开样式（无边框、无背景色，简洁样式） */
 .reasoning-section {
     margin: 4px 0;
-    border: 1px solid #e0e0e0;
-    border-radius: var(--radius-md);
-    background: #f0f0f0;
+    overflow: hidden;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .reasoning-section .reasoning-header {
     display: flex;
     align-items: center;
-    padding: var(--space-2) var(--space-3);
+    padding: 2px 0;
     background: transparent;
     cursor: pointer;
     transition: var(--transition-fast);
     user-select: none;
+    color: var(--color-text-tertiary);
+    font-size: 12px;
 }
 
 .reasoning-section .reasoning-header:hover {
-    background: #e8e8e8;
+    color: var(--color-text-secondary);
 }
 
 .reasoning-section .reasoning-toggle-icon {
-    margin-right: var(--space-1);
-    font-size: 10px;
+    margin-right: 6px;
+    font-size: 9px;
     color: var(--color-text-tertiary);
     transition: transform 0.2s ease;
     display: inline-block;
+    opacity: 0.7;
+}
+
+.reasoning-section .reasoning-icon {
+    margin-right: 6px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 16px;
+}
+
+.reasoning-section .reasoning-icon .anticon {
+    font-size: 16px;
+    color: #faad14;
+}
+
+.reasoning-section .reasoning-icon .anticon-spin {
+    color: #1890ff;
+}
+
+.reasoning-section .reasoning-label {
+    margin-right: 6px;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
 }
 
 .reasoning-section.collapsed .reasoning-toggle-icon {
@@ -177,11 +202,29 @@
 }
 
 .reasoning-section .reasoning-content {
-    padding: var(--space-2) var(--space-3);
-    background: #ffffff;
-    border-top: 1px solid #e0e0e0;
+    padding: 8px 0 4px 18px;
+    background: transparent;
     opacity: 1;
+    overflow: hidden;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+    box-sizing: border-box;
     transition: opacity 0.2s ease;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    line-height: 1.6;
+}
+
+.reasoning-section .reasoning-content p,
+.reasoning-section .reasoning-content li {
+    margin: 4px 0;
+    color: var(--color-text-tertiary);
+}
+
+.reasoning-section .reasoning-content strong {
+    color: var(--color-text-secondary);
+    font-weight: 600;
 }
 
 .reasoning-section.collapsed .reasoning-content {

@@ -24,7 +24,6 @@
     left: 0 !important;
     top: 0 !important;
     height: 100vh !important;
-    z-index: 100 !important;
     flex: none !important;
 }
 
@@ -41,6 +40,11 @@
 
 .main-layout-content.collapsed {
     margin-left: 80px;
+}
+
+/* 移动端：Sider 隐藏，移除内容区左边距 */
+.main-layout-content--mobile {
+    margin-left: 0 !important;
 }
 
 .main-layout-content > .ant-layout-content {
@@ -96,14 +100,6 @@
 
 /* ========== 响应式调整 ========== */
 @media (max-width: 768px) {
-    .main-layout-content {
-        margin-left: 0;
-    }
-    
-    .main-layout-content.collapsed {
-        margin-left: 0;
-    }
-    
     .status-bar {
         padding: 0 16px;
     }
@@ -134,5 +130,32 @@
     
     .status-text {
         color: #a6a6a6;
+    }
+}
+
+/* ========== 移动端侧边栏遮罩 ========== */
+/* 遮罩仅当 AppState.IsMobile && AppState.MobileSidebarOpen 时才渲染到 DOM */
+.sidebar-overlay-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 180;
+    display: none;
+    animation: fadeIn 0.2s ease;
+}
+
+.sidebar-overlay-mask.visible {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* ========== 深色模式遮罩 ========== */
+@media (prefers-color-scheme: dark) {
+    .sidebar-overlay-mask {
+        background: rgba(0, 0, 0, 0.65);
     }
 }

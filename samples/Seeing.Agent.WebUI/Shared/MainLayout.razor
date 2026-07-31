@@ -9,6 +9,7 @@
 @using Seeing.Session.Core
 @using Seeing.Session.Management
 @using Seeing.Agent.App
+@using Microsoft.JSInterop
 @inject AppState AppState
 @inject SessionState SessionState
 @inject IChatOrchestrator ChatOrchestrator
@@ -16,15 +17,32 @@
 @inject IMessageService MessageService
 @inject IAgentRegistry AgentRegistry
 @inject IModelConfigManager ModelManager
+@inject IJSRuntime JSRuntime
 @implements IDisposable
 
 <Layout Class="app-layout" Style="min-height: 100vh;">
-    <!-- 左侧边栏 -->
-    <AppSidebar Collapsed="@AppState.SidebarCollapsed"
+    <AppSidebar @ref="_sidebarRef"
+                Collapsed="@AppState.SidebarCollapsed"
                 CollapsedChanged="@OnSiderCollapse" />
-    
-    <!-- 主内容区域 -->
-    <Layout Class="@(AppState.SidebarCollapsed ? "main-layout-content collapsed" : "main-layout-content")">
+
+    @if (AppState.IsMobile && AppState.MobileSidebarOpen)
+    {
+        <div class="sidebar-overlay-mask visible"
+             @onclick="CloseMobileSidebar"
+             @onclick:stopPropagation="true" />
+    }
+
+    @if (AppState.IsMobile)
+    {
+        <Button Class="mobile-hamburger"
+                Icon="@IconType.Outline.Menu"
+                Shape="@ButtonShape.Circle"
+                Size="@ButtonSize.Large"
+                OnClick="ToggleMobileSidebar"
+                OnClickStopPropagation="true" />
+    }
+
+    <Layout Class="@GetContentClass()">
         <Content Class="content-area">
             @Body
         </Content>
@@ -35,9 +53,14 @@
 
 @code {
     private bool _hasRendered;
+    private AppSidebar? _sidebarRef;
 
     protected override async Task OnInitializedAsync()
     {
+        // 重置移动端状态（AppState 为 Singleton，每次新电路连接需清零）
+        AppState.IsMobile = false;
+        AppState.MobileSidebarOpen = false;
+
         AppState.OnChange += OnAppStateChange;
 
         // 监听模型配置变更
@@ -48,10 +71,16 @@
         await LoadAgentsAndModelsAsync();
     }
 
-    protected override void OnAfterRender(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
+        {
             _hasRendered = true;
+
+            // JS Interop 仅在首次渲染后可用（避开预渲染）
+            AppState.IsMobile = await JSRuntime.InvokeAsync<bool>("isMobileBrowser");
+            AppState.NotifyChange();
+        }
     }
 
     private void OnAppStateChange()
@@ -74,14 +103,14 @@
             return;
         _ = InvokeAsync(StateHasChanged);
     }
-    
+
     private async Task LoadAgentsAndModelsAsync()
     {
         try
         {
             var primaryAgents = await AgentRegistry.GetPrimaryAgentsAsync();
             AppState.AvailableAgents = primaryAgents.Where(a => !string.IsNullOrEmpty(a.Name)).ToList();
-            
+
             // 从 ModelConfigManager 获取模型列表
             AppState.AvailableModels = ModelManager.GetModelsByType();
 
@@ -92,11 +121,30 @@
             AppState.ErrorMessage = string.Format("加载失败: {0}", ex.Message);
         }
     }
-    
+
+    /// <summary>计算内容区 CSS class：移动端始终无 margin-left，桌面端根据折叠状态切换</summary>
+    private string GetContentClass()
+    {
+        if (AppState.IsMobile)
+            return "main-layout-content main-layout-content--mobile";
+        return AppState.SidebarCollapsed ? "main-layout-content collapsed" : "main-layout-content";
+    }
+
     private void OnSiderCollapse(bool collapsed)
     {
         AppState.SidebarCollapsed = collapsed;
     }
+
+    private void ToggleMobileSidebar()
+    {
+        if (AppState.MobileSidebarOpen)
+            _sidebarRef?.CloseMobileSidebar();
+        else
+            _sidebarRef?.OpenMobileSidebar();
+    }
+
+    private void CloseMobileSidebar()
+        => _sidebarRef?.CloseMobileSidebar();
 
     public void Dispose()
     {

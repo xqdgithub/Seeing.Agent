@@ -5,14 +5,16 @@
 @inject AppState AppState
 @inject NavigationManager NavigationManager
 
-<Sider Class="app-sider"
-       Width="@GetSiderWidth()"
-       Collapsed="@Collapsed"
+<Sider Class="@GetSiderClass()"
+       Width="240"
+       CollapsedWidth="80"
+       Collapsed="@EffectiveCollapsed"
        CollapsedChanged="@OnCollapsedChanged"
+       Collapsible
        Theme="@SiderTheme.Light"
-       Style="overflow: auto; height: 100vh; position: fixed; left: 0; top: 0; z-index: 100;">
+       Style="@GetSiderStyle()">
     <a href="/" class="sider-header" style="cursor: pointer; text-decoration: none;">
-        @if (!Collapsed)
+        @if (!EffectiveCollapsed)
         {
             <div class="logo-section">
                 <img src="ai.svg" alt="Seeing.Agent" class="app-logo" width="24" height="24" />
@@ -154,6 +156,40 @@
         ["settings-page"] = "settings",
     };
 
+    /// <summary>有效折叠状态：移动端 overlay 模式时强制展开 Sider</summary>
+    private bool EffectiveCollapsed =>
+        AppState.IsMobile ? !AppState.MobileSidebarOpen : Collapsed;
+
+    /// <summary>根据设备和 overlay 状态返回不同 CSS class</summary>
+    private string GetSiderClass()
+    {
+        if (!AppState.IsMobile) return "app-sider";
+        return AppState.MobileSidebarOpen ? "app-sider sider-overlay" : "app-sider sider-hidden";
+    }
+
+    /// <summary>根据设备和 overlay 状态返回不同内联样式</summary>
+    private string GetSiderStyle()
+    {
+        var baseStyle = "overflow: auto; height: 100vh; position: fixed; left: 0; top: 0;";
+        if (AppState.IsMobile && AppState.MobileSidebarOpen)
+            return baseStyle + " z-index: 200;";
+        return baseStyle + " z-index: 100;";
+    }
+
+    /// <summary>打开移动端侧边栏 overlay</summary>
+    public void OpenMobileSidebar()
+    {
+        AppState.MobileSidebarOpen = true;
+        AppState.NotifyChange();
+    }
+
+    /// <summary>关闭移动端侧边栏 overlay</summary>
+    public void CloseMobileSidebar()
+    {
+        AppState.MobileSidebarOpen = false;
+        AppState.NotifyChange();
+    }
+
     protected override void OnInitialized()
     {
         AppState.OnChange += OnAppStateChange;
@@ -166,8 +202,6 @@
         AppState.OnChange -= OnAppStateChange;
         NavigationManager.LocationChanged -= OnLocationChanged;
     }
-
-    private int GetSiderWidth() => Collapsed ? 80 : 240;
 
     private void UpdateSelectedKey()
     {
@@ -182,7 +216,6 @@
             _ => new[] { segment }
         };
 
-        // 确保当前菜单项所属的 SubMenu 展开
         if (!string.IsNullOrEmpty(segment) && KeyToSubMenu.TryGetValue(segment, out var subMenuKey))
         {
             if (!_openKeys.Contains(subMenuKey))
@@ -200,15 +233,23 @@
 
     private void OnAppStateChange() => InvokeAsync(StateHasChanged);
 
-    private void NavigateTo(string path) => NavigationManager.NavigateTo(path);
+    /// <summary>导航到指定路径，移动端 overlay 模式下自动关闭侧边栏</summary>
+    private void NavigateTo(string path)
+    {
+        NavigationManager.NavigateTo(path);
+        if (AppState.IsMobile && AppState.MobileSidebarOpen)
+            CloseMobileSidebar();
+    }
 
     private string GetChatPath() =>
         !string.IsNullOrEmpty(AppState.CurrentSessionId)
             ? $"/session/{AppState.CurrentSessionId}"
             : "/sessions";
 
+    /// <summary>折叠状态变更回调：移动端忽略 Sider 自带的折叠触发器</summary>
     private async Task OnCollapsedChanged(bool collapsed)
     {
+        if (AppState.IsMobile) return;
         Collapsed = collapsed;
         if (CollapsedChanged.HasDelegate)
             await CollapsedChanged.InvokeAsync(collapsed);

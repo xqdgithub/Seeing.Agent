@@ -536,3 +536,16 @@ function setCommandDropdownState(textareaId, isOpen) {
         textarea.dataset.commandDropdownOpen = isOpen ? 'true' : 'false';
     }
 }
+
+/**
+ * 判断是否为移动设备浏览器（非桌面端缩窄窗口）
+ * 使用 navigator 属性区分，不依赖窗口宽度
+ * @returns {boolean}
+ */
+function isMobileBrowser() {
+    var hasTouch = navigator.maxTouchPoints > 0;
+    var ua = navigator.userAgent;
+    var isMobileUA = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+    var smallScreen = window.screen.width <= 1024 && window.screen.height <= 1024;
+    return isMobileUA || (hasTouch && smallScreen);
+}

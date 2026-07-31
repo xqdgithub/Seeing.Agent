@@ -48,6 +48,12 @@ namespace Seeing.Agent.WebUI.State
         /// <summary>侧边栏是否折叠</summary>
         public bool SidebarCollapsed { get; set; } = false;
 
+        /// <summary>是否为移动设备浏览器（非窗口大小判断）</summary>
+        public bool IsMobile { get; set; }
+
+        /// <summary>移动端侧边栏 overlay 开关</summary>
+        public bool MobileSidebarOpen { get; set; }
+
         /// <summary>是否正在加载</summary>
         public bool IsLoading { get; set; } = false;
 
