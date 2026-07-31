@@ -9,7 +9,7 @@
 /* ========== 角色样式 ========== */
 .message-user {
     align-self: flex-end;
-    background: var(--color-user-bg, #e6f7ff);
+    background: var(--color-user-bg, #f0f0f0);
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-md);
     border: 1px solid var(--color-user-border);
@@ -17,10 +17,9 @@
 
 .message-assistant {
     align-self: flex-start;
-    background: var(--color-assistant-bg, #f6ffed);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-assistant-border);
+    background: transparent;
+    padding: 0;
+    border: none;
 }
 
 .message-system {
@@ -58,12 +57,12 @@
     align-items: center;
 }
 
-/* ========== 推理过程 ========== */
+/* ========== 思考卡片（灰色圆角卡片，与工具蓝框风格区分） ========== */
 .message-reasoning-section {
     margin-bottom: var(--space-3);
-    border: 1px solid var(--color-border-secondary);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg-tertiary);
+    border: 1px solid #e0e0e0;
+    border-radius: var(--radius-md);
+    background: #fafafa;
 }
 
 .message-reasoning-header {
@@ -104,22 +103,20 @@
     padding: var(--space-3);
     font-size: var(--font-size-sm);
     color: var(--color-text-secondary);
-    background: var(--color-bg-tertiary);
+    background: #ffffff;
     border-radius: var(--radius-sm);
     max-height: 300px;
     overflow-y: auto;
-    animation: expandContent 0.15s ease-out;
 }
 
 /* 推理过程流式显示状态 */
 .message-reasoning.reasoning-streaming {
-    border-left: 3px solid var(--color-primary);
-    background: linear-gradient(90deg, var(--color-bg-tertiary), transparent);
+    background: #f9f9f9;
 }
 
 /* 推理过程完成状态 */
 .message-reasoning.reasoning-complete {
-    border-left: 3px solid var(--color-success);
+    background: #f9f9f9;
 }
 
 /* 推理状态指示器 */
@@ -141,29 +138,32 @@
     white-space: nowrap;
 }
 
-/* 思考过程折叠/展开样式 */
+/* 思考过程折叠/展开样式（灰色圆角卡片，无彩色边框） */
 .reasoning-section {
-    margin-bottom: var(--space-2);
+    margin: 4px 0;
+    border: 1px solid #e0e0e0;
+    border-radius: var(--radius-md);
+    background: #f0f0f0;
 }
 
 .reasoning-section .reasoning-header {
     display: flex;
     align-items: center;
-    padding: var(--space-1) var(--space-2);
-    background: var(--color-bg-secondary);
-    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
     cursor: pointer;
     transition: var(--transition-fast);
     user-select: none;
 }
 
 .reasoning-section .reasoning-header:hover {
-    background: var(--color-bg-tertiary);
+    background: #e8e8e8;
 }
 
 .reasoning-section .reasoning-toggle-icon {
     margin-right: var(--space-1);
     font-size: 10px;
+    color: var(--color-text-tertiary);
     transition: transform 0.2s ease;
     display: inline-block;
 }
@@ -178,10 +178,10 @@
 
 .reasoning-section .reasoning-content {
     padding: var(--space-2) var(--space-3);
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-sm);
-    margin-top: var(--space-1);
-    border-left: 3px solid var(--color-primary);
+    background: #ffffff;
+    border-top: 1px solid #e0e0e0;
+    opacity: 1;
+    transition: opacity 0.2s ease;
 }
 
 .reasoning-section.collapsed .reasoning-content {
@@ -190,7 +190,6 @@
 
 .reasoning-section.expanded .reasoning-content {
     display: block;
-    animation: expandContent 0.15s ease-out;
 }
 
 @keyframes pulse {
@@ -280,11 +279,15 @@
     font-weight: var(--font-weight-semibold);
 }
 
-/* ========== 工具调用（消息流内兜底样式，确保展开灰底可见） ========== */
+/* ========== 工具调用（消息流内兜底样式，左侧蓝色强调） ========== */
 .tool-call-shell {
     margin: 4px 0;
-    background: var(--color-bg-tertiary, #f5f5f5);
-    border: 1px solid var(--color-border-secondary, #e8e8e8);
+    background: #ffffff;
+    background: var(--color-tool-card-bg, #ffffff);
+    border: 1px solid #d9d9d9;
+    border: 1px solid var(--color-border, #d9d9d9);
+    border-left: 3px solid #1890ff;
+    border-left: 3px solid var(--color-tool-accent, #1890ff);
     border-radius: var(--radius-sm, 4px);
     overflow: hidden;
 }
@@ -296,8 +299,6 @@
 }
 
 .tool-call-shell .tool-call-details {
-    padding: 8px 12px;
-    border-top: 1px solid var(--color-border-secondary, #e8e8e8);
     background: transparent;
 }
 

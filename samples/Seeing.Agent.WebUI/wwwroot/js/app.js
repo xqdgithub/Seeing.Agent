@@ -401,13 +401,11 @@ function toggleReasoning(reasoningId) {
     const content = section.querySelector('.reasoning-content');
     
     if (isExpanded) {
-        // 折叠
         section.classList.remove('expanded');
         section.classList.add('collapsed');
         if (icon) icon.style.transform = 'rotate(0deg)';
         if (content) content.style.display = 'none';
     } else {
-        // 展开
         section.classList.remove('collapsed');
         section.classList.add('expanded');
         if (icon) icon.style.transform = 'rotate(90deg)';

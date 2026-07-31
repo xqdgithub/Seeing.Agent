@@ -42,9 +42,7 @@ else
                   Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
         </div>
 
-        @if (_isExpanded)
-        {
-            <div class="tool-call-details">
+        <div class="tool-call-details @(_isExpanded ? "expanded" : "collapsed")">
                 @if (HasParametersSection)
                 {
                     <div class="tool-call-section">
@@ -156,7 +154,6 @@ else
                     </div>
                 }
             </div>
-        }
     </div>
 }
 

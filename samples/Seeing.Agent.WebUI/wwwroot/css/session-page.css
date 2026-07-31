@@ -105,6 +105,7 @@
 .session-content-wrapper {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     display: flex;
     overflow: hidden;
 }
@@ -114,12 +115,8 @@
     flex: 1;
     min-width: 0;
     min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: var(--space-4);
+    overflow: hidden;
     position: relative;
-    /* 确保滚动生效 */
-    overscroll-behavior: contain;
 }
 
 .session-empty-state {
@@ -169,6 +166,12 @@
     background: var(--color-bg-container);
     border-top: 1px solid var(--color-border);
     flex-shrink: 0;
+    max-width: var(--message-area-width);
+    min-width: var(--message-area-min-width);
+    margin: 0 auto;
+    width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
 }
 
 /* ========== Token Budget Footer ========== */
@@ -222,7 +225,7 @@
     }
     
     .session-messages-container {
-        padding: var(--space-2);
+        overflow-y: auto;
     }
     
     .session-input-container {

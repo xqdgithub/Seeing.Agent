@@ -48,14 +48,18 @@
   --color-border-secondary: #f0f0f0;
   
   /* 消息角色颜色 */
-  --color-user-bg: #e6f7ff;
-  --color-user-border: #91d5ff;
-  --color-assistant-bg: #f6ffed;
-  --color-assistant-border: #b7eb8f;
+  --color-user-bg: #f0f0f0;
+  --color-user-border: #d9d9d9;
+  --color-assistant-bg: transparent;
+  --color-assistant-border: transparent;
   --color-system-bg: #fff7e6;
   --color-system-border: #ffd591;
   --color-tool-bg: #f9f0ff;
   --color-tool-border: #d3adf7;
+  
+  /* 工具卡片（左侧蓝色强调，简洁白框） */
+  --color-tool-card-bg: #ffffff;
+  --color-tool-accent: #1890ff;
   
   /* ========== 间距系统 (4px 基数) ========== */
   --space-0: 0;
@@ -119,6 +123,8 @@
   --header-height: 56px;
   --footer-height: 40px;
   --message-max-width: 85%;
+  --message-area-width: 70%;
+  --message-area-min-width: min(700px, 100%);
   
   /* ========== Z-index 层级 ========== */
   --z-dropdown: 1000;
@@ -147,14 +153,18 @@
   --color-border: #424242;
   --color-border-secondary: #303030;
   
-  --color-user-bg: #111d2c;
-  --color-user-border: #153450;
-  --color-assistant-bg: #162312;
-  --color-assistant-border: #274916;
+  --color-user-bg: #2a2a2a;
+  --color-user-border: #424242;
+  --color-assistant-bg: transparent;
+  --color-assistant-border: transparent;
   --color-system-bg: #2b2111;
   --color-system-border: #594214;
   --color-tool-bg: #241130;
   --color-tool-border: #44107a;
+  
+  /* 工具卡片（暗色） */
+  --color-tool-card-bg: #1f1f1f;
+  --color-tool-accent: #1890ff;
 }
 
 /* ========== 全局重置 ========== */

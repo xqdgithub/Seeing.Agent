@@ -53,7 +53,7 @@ public class ReasoningBlockRenderer : IContentBlockRenderer
                 builder.OpenElement(0, "div");
                 builder.AddAttribute(1, "class", "reasoning-hidden-indicator");
                 builder.AddAttribute(2, "style",
-                    "padding: 4px 8px; background: var(--color-bg-secondary); " +
+                    "padding: 4px 8px; background: #f0f0f0; " +
                     "border-radius: var(--radius-sm); margin: 4px 0; font-size: 12px; " +
                     "color: var(--color-text-secondary);");
                 builder.AddContent(3, $"💡 思考过程 ({content.Length} 字符)");
@@ -74,7 +74,7 @@ public class ReasoningBlockRenderer : IContentBlockRenderer
             builder.AddAttribute(5, "onclick", $"toggleReasoning('{blockId}')");
             builder.AddAttribute(6, "style",
                 "display: flex; align-items: center; padding: 4px 8px; " +
-                "background: var(--color-bg-secondary); border-radius: var(--radius-sm); " +
+                "border-radius: var(--radius-sm); " +
                 "margin: 4px 0; cursor: pointer; user-select: none;");
 
             // 展开/折叠图标
@@ -121,28 +121,23 @@ public class ReasoningBlockRenderer : IContentBlockRenderer
 
             builder.CloseElement(); // reasoning-header
 
-            // 内容区域（流式时展开，完成后折叠）
-            if (isStreaming)
-            {
-                builder.OpenElement(23, "div");
-                builder.AddAttribute(24, "class", "reasoning-content");
-                builder.AddAttribute(25, "style",
-                    "padding: 8px 12px; background: var(--color-bg-tertiary); " +
-                    "border-radius: var(--radius-sm); margin-top: 2px; " +
-                    "border-left: 3px solid var(--color-primary);");
+            // 内容区域（始终渲染，通过 CSS 控制折叠/展开）
+            builder.OpenElement(23, "div");
+            builder.AddAttribute(24, "class", "reasoning-content");
+            builder.AddAttribute(25, "style",
+                "padding: 8px 12px; background: #ffffff; " +
+                "border-radius: var(--radius-sm); margin-top: 2px; ");
 
-                builder.OpenElement(26, "div");
-                builder.AddAttribute(27, "style",
-                    "font-size: 12px; color: var(--color-text-secondary); " +
-                    "max-height: 300px; overflow-y: auto;");
+            builder.OpenElement(26, "div");
+            builder.AddAttribute(27, "style",
+                "font-size: 12px; color: var(--color-text-secondary); " +
+                "max-height: 300px; overflow-y: auto;");
 
-                // 渲染 Markdown
-                var html = context.Cache?.GetOrCreateMarkdown(content, cacheKey) ?? content;
-                builder.AddContent(28, new MarkupString(html));
+            var html = context.Cache?.GetOrCreateMarkdown(content, cacheKey) ?? content;
+            builder.AddContent(28, new MarkupString(html));
 
-                builder.CloseElement(); // inner div
-                builder.CloseElement(); // reasoning-content
-            }
+            builder.CloseElement(); // inner div
+            builder.CloseElement(); // reasoning-content
 
             builder.CloseElement(); // content-block-reasoning
         };
