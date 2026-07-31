@@ -108,7 +108,9 @@
                             </div>
                         </div>
                         <div class="card-header-action">
-                            <Button Type="@ButtonType.Default" Size="@ButtonSize.Small" OnClick="@(() => ViewSkill(skill.Key))">详情</Button>
+                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.InfoCircle"
+                                    OnClick="@(() => ViewSkill(skill.Key))" />
                         </div>
                     </div>
                     <div class="item-card-body">
@@ -165,7 +167,9 @@
                             </td>
                             <td>
                                 <div class="table-cell-actions">
-                                    <Button Type="@ButtonType.Default" Size="@ButtonSize.Small" OnClick="@(() => ViewSkill(skill.Key))">详情</Button>
+                                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
+                                            Icon="@IconType.Outline.InfoCircle"
+                                            OnClick="@(() => ViewSkill(skill.Key))" />
                                     <Switch Checked="@SkillManager.IsSkillEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
                                 </div>
                             </td>

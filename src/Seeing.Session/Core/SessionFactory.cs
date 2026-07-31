@@ -21,10 +21,7 @@ namespace Seeing.Session.Core
                 PartitionId = partitionId,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now,
-                Agent = new AgentMetadata
-                {
-                    AgentId = agentId
-                }
+                SelectedAgent = agentId
             };
             // In a real implementation, you might persist initialization here.
             return new Session(data, _store);

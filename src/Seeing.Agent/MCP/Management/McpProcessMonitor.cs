@@ -47,7 +47,10 @@ internal sealed class McpProcessMonitor
                 process.EnableRaisingEvents = false;
                 process.Exited -= (s, e) => OnProcessExited(serverName);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "取消监控 MCP 进程时发生异常: {Server}", serverName);
+            }
         }
 
         _errorCallbacks.TryRemove(serverName, out _);
@@ -62,7 +65,10 @@ internal sealed class McpProcessMonitor
             {
                 kvp.Value.EnableRaisingEvents = false;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "停止 MCP 进程监控时发生异常");
+            }
         }
 
         _processes.Clear();
@@ -80,7 +86,10 @@ internal sealed class McpProcessMonitor
             {
                 exitCode = process.ExitCode;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "停止 MCP 进程监控时发生异常");
+            }
         }
 
         var error = McpErrorInfo.ProcessCrashed(serverName, exitCode);

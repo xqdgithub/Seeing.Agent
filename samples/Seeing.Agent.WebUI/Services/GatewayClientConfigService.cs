@@ -67,9 +67,6 @@ public sealed class GatewayClientConfigService
                 serverGateway,
                 ct);
 
-            if (entry.Options is { Count: > 0 })
-                await MigrateLegacyConfigAsync(typeInfo, entry, snapshot, ct);
-
             result.Add(new GatewayClientViewModel
             {
                 ChannelId = typeInfo.ChannelId,
@@ -176,18 +173,9 @@ public sealed class GatewayClientConfigService
                 enabled);
         }
 
-        if (entry.Options is { Count: > 0 })
-        {
-            return new ChannelConfigSnapshot(
-                DeserializeOptions(typeInfo, entry.Options),
-                MergeGatewayOptions(defaults.Gateway, entry.Gateway, serverGateway),
-                MergeCommonOptions(defaults, null),
-                entry.Enabled);
-        }
-
         return new ChannelConfigSnapshot(
             DeserializeOptions(typeInfo, null),
-            MergeGatewayOptions(defaults.Gateway, entry.Gateway, serverGateway),
+            MergeGatewayOptions(defaults.Gateway, null, serverGateway),
             MergeCommonOptions(defaults, null),
             entry.Enabled);
     }

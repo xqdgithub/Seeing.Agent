@@ -1,7 +1,13 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Moq;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.MCP;
+using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.MCP.Core;
+using Seeing.Agent.MCP.Factory;
+using Seeing.Agent.MCP.Policy;
+using Seeing.Agent.Tools;
 using Xunit;
 using CoreMcpConnectionState = Seeing.Agent.MCP.Core.McpConnectionState;
 
@@ -101,8 +107,20 @@ public class McpClientManagerDisableTests
     private static McpClientManager CreateManager()
     {
         var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
+        var hookManager = new HookManager(loggerFactory.CreateLogger<HookManager>());
+        var toolManager = new ToolManager(
+            loggerFactory.CreateLogger<ToolManager>(),
+            hookManager);
+        var factoryRegistry = new McpWrapperFactoryRegistry();
+        factoryRegistry.Register(new Seeing.Agent.MCP.Factory.StdioWrapperFactory());
+        var configPersistence = new Mock<IMcpConfigPersistence>().Object;
         return new McpClientManager(
             loggerFactory.CreateLogger<McpClientManager>(),
-            loggerFactory);
+            loggerFactory,
+            hookManager,
+            toolManager,
+            factoryRegistry,
+            new McpGlobalPolicy(),
+            configPersistence);
     }
 }

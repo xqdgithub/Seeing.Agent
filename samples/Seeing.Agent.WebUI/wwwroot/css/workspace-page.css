@@ -866,7 +866,7 @@
     background: rgba(24, 144, 255, 0.1);
 }
 
-/* ========== Card Details (Expand) ========== */
+/* ========== Card Details (Modal) ========== */
 .card-details {
     margin-top: var(--space-3);
     padding-top: var(--space-3);
@@ -898,12 +898,4 @@
     word-break: break-all;
     max-height: 200px;
     overflow-y: auto;
-}
-
-.item-card.expanded {
-    grid-column: span 1;
-}
-
-.item-card.expanded .card-description {
-    -webkit-line-clamp: unset;
 }

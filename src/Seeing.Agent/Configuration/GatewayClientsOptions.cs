@@ -55,14 +55,8 @@ public class GatewayChannelEntry
 
     public string? PluginSpec { get; set; }
 
-    /// <summary>已弃用：仅用于从旧版 seeing.json 迁移，新保存不再写入。</summary>
-    public GatewayClientConnectionOptions? Gateway { get; set; }
-
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
-
-    /// <summary>已弃用：仅用于从旧版 seeing.json 迁移，新保存不再写入。</summary>
-    public Dictionary<string, JsonElement>? Options { get; set; }
 }
 
 /// <summary>

@@ -177,7 +177,12 @@ namespace Seeing.Agent.Extensions
                 {
                     try
                     {
-                        await context.McpClientManager.ConnectAsync(mcpConfig);
+                        var result = await context.McpClientManager.AddServerAsync(
+                            mcpConfig.Name, mcpConfig, persist: false);
+                        if (result.Success)
+                        {
+                            await context.McpClientManager.ConnectServerAsync(mcpConfig.Name);
+                        }
                         _logger.LogDebug("Connected MCP server: {Name} from extension {Id}",
                             mcpConfig.Name, ext.Id);
                     }

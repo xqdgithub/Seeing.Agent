@@ -113,8 +113,6 @@ namespace Seeing.Session.Core
         public DateTime? CachedUsageUpdatedAt { get; set; }
 
         // === 向后兼容字段（Deprecated） ===
-        [Obsolete("使用 SelectedAgent 替代")]
-        public AgentMetadata? Agent { get; set; }
 
         public Dictionary<string, string> State { get; set; } = new Dictionary<string, string>();
 

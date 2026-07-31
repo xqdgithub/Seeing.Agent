@@ -16,7 +16,11 @@ public record DataField<T>(
             if (value == null) return DefaultValue;
 
             try { return (T)Convert.ChangeType(value, typeof(T)); }
-            catch { return DefaultValue; }
+            catch
+            {
+                System.Diagnostics.Debug.WriteLine($"DataField '{Name}' 类型转换失败: {value.GetType().Name} -> {typeof(T).Name}");
+                return DefaultValue;
+            }
         }
 
         if (Required)

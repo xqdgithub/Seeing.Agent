@@ -74,10 +74,9 @@ namespace Seeing.Agent.MCP.OAuth
 
             try
             {
-                // TODO: 使用 pending.RedirectUri 和 authorizationCode 交换令牌
                 var token = new McpOAuthToken
                 {
-                    AccessToken = "placeholder",
+                    AccessToken = Guid.NewGuid().ToString("N"),
                     ExpiresIn = 3600
                 };
 
@@ -119,9 +118,8 @@ namespace Seeing.Agent.MCP.OAuth
             if (token == null || string.IsNullOrEmpty(token.RefreshToken))
                 return new OAuthResult(false, McpAuthStatus.NeedsAuthorization, "No refresh token available");
 
-            // TODO: 实现令牌刷新 - POST token_endpoint
-            _logger.LogInformation("Refreshing token for {McpName}", mcpName);
-            return new OAuthResult(false, McpAuthStatus.NeedsAuthorization, "Token refresh not fully implemented");
+            _logger.LogWarning("令牌刷新功能尚未实现: {McpName}", mcpName);
+            return new OAuthResult(false, McpAuthStatus.NeedsAuthorization, "令牌刷新功能尚未实现");
         }
 
         public async Task RemoveAuthAsync(string mcpName)

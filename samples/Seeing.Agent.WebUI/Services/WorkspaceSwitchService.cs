@@ -18,12 +18,6 @@ public class WorkspaceSwitchService
     private readonly SkillManager _skillManager;
     private readonly ILogger<WorkspaceSwitchService> _logger;
 
-    /// <summary>
-    /// 工作区变更事件（向后兼容，建议使用 IWorkspaceProvider.WorkspaceRootChanged）
-    /// </summary>
-    [Obsolete("Use IWorkspaceProvider.WorkspaceRootChanged instead")]
-    public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceChanged;
-
     public WorkspaceSwitchService(
         IWorkspaceProvider workspace,
         SeeingConfigService configService,
@@ -78,15 +72,6 @@ public class WorkspaceSwitchService
             // 3. 重新加载 Skill 和 Tool 状态
             await _toolInvoker.LoadToolStateAsync(cancellationToken);
             await _skillManager.LoadSkillStateAsync(cancellationToken);
-
-            // 4. 触发遗留事件（向后兼容）
-#pragma warning disable CS0618 // Type or member is obsolete
-            WorkspaceChanged?.Invoke(this, new WorkspaceChangedEventArgs
-            {
-                OldWorkspace = oldWorkspace,
-                NewWorkspace = newWorkspaceRoot
-            });
-#pragma warning restore CS0618 // Type or member is obsolete
 
             _logger.LogInformation("工作区切换完成: {Path}", newWorkspaceRoot);
             return true;

@@ -3,7 +3,6 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Helpers;
 using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.MCP.Core;
@@ -79,60 +78,6 @@ namespace Seeing.Agent.MCP
                 },
                 GetAllStatus);
         }
-
-        #region 兼容性构造函数（旧版）
-
-        private static HookManager? s_defaultHookManager;
-        private static ToolManager? s_defaultToolInvoker;
-
-        public McpClientManager(
-            ILogger<McpClientManager> logger,
-            ILoggerFactory loggerFactory,
-            IHttpClientFactory? httpClientFactory = null)
-            : this(
-                logger,
-                loggerFactory,
-                GetOrCreateDefaultHookManager(loggerFactory),
-                GetOrCreateDefaultToolInvoker(loggerFactory),
-                CreateDefaultFactoryRegistry(loggerFactory),
-                new McpGlobalPolicy(),
-                CreateDefaultConfigPersistence(loggerFactory),
-                httpClientFactory)
-        {
-        }
-
-        private static HookManager GetOrCreateDefaultHookManager(ILoggerFactory loggerFactory)
-        {
-            if (s_defaultHookManager == null)
-                s_defaultHookManager = new HookManager(loggerFactory.CreateLogger<HookManager>());
-            return s_defaultHookManager;
-        }
-
-        private static ToolManager GetOrCreateDefaultToolInvoker(ILoggerFactory loggerFactory)
-        {
-            if (s_defaultToolInvoker == null)
-            {
-                var hookManager = GetOrCreateDefaultHookManager(loggerFactory);
-                s_defaultToolInvoker = new ToolManager(
-                    loggerFactory.CreateLogger<ToolManager>(),
-                    hookManager);
-            }
-            return s_defaultToolInvoker;
-        }
-
-        private static McpWrapperFactoryRegistry CreateDefaultFactoryRegistry(ILoggerFactory loggerFactory)
-        {
-            var registry = new McpWrapperFactoryRegistry();
-            registry.Register(new StdioWrapperFactory(loggerFactory));
-            registry.Register(new StreamableHttpWrapperFactory(loggerFactory));
-            registry.Register(new SseWrapperFactory(loggerFactory));
-            return registry;
-        }
-
-        private static McpConfigPersistence CreateDefaultConfigPersistence(ILoggerFactory loggerFactory)
-            => new(loggerFactory.CreateLogger<McpConfigPersistence>(), new WorkspaceProvider());
-
-        #endregion
 
         #region IMcpStatusProvider 实现
 
@@ -854,77 +799,6 @@ namespace Seeing.Agent.MCP
 
         #endregion
 
-        #region 兼容性方法（旧版 API）
-
-        public IReadOnlyCollection<McpTool> GetMcpTools() => _toolRegistry.GetTools();
-
-        public IEnumerable<ITool> GetToolsAsITools() => _toolRegistry.GetTools().Cast<ITool>();
-
-        public async Task ConnectAsync(McpServerConfig config, CancellationToken cancellationToken = default)
-        {
-            if (string.IsNullOrEmpty(config.Name))
-            {
-                _logger.LogWarning("MCP Server 配置缺少名称，已跳过");
-                return;
-            }
-
-            if (!config.IsValid())
-            {
-                _logger.LogWarning("MCP Server {Name} 配置无效，已跳过", config.Name);
-                return;
-            }
-
-            // persist: false 因为这是从配置文件加载，不需要再保存
-            var result = await AddServerAsync(config.Name, config, null, persist: false, cancellationToken);
-
-            if (!result.Success)
-            {
-                _logger.LogError("连接 MCP Server {Name} 失败: {Error}", config.Name, result.Error?.UserMessage);
-                throw new InvalidOperationException(result.Error?.UserMessage ?? "连接失败");
-            }
-
-            var coordinator = GetOrCreateCoordinator(config.Name);
-            await coordinator.WaitForReadyAsync(_globalPolicy.WaitForReadyTimeout, cancellationToken);
-        }
-
-        public async Task ConnectAsync(IEnumerable<McpServerConfig> configs, CancellationToken cancellationToken = default)
-        {
-            var configDict = new Dictionary<string, McpServerConfig>();
-            foreach (var config in configs)
-            {
-                if (!string.IsNullOrEmpty(config.Name))
-                    configDict[config.Name] = config;
-            }
-
-            await InitializeAsync(configDict, cancellationToken);
-        }
-
-        public async Task DisconnectAllAsync()
-        {
-            await ShutdownAsync(_shutdownCts.Token);
-
-            lock (_stateLock)
-            {
-                _configs.Clear();
-                _statuses.Clear();
-                _coordinators.Clear();
-            }
-
-            await _toolRegistry.UnregisterAllToolsAsync("");
-
-            foreach (var s in _reconnectLocks.Values)
-            {
-                try { s.Dispose(); } catch { }
-            }
-            _reconnectLocks.Clear();
-        }
-
-        public bool IsConnected(string serverName) => IsAvailable(serverName);
-
-        public IReadOnlyCollection<string> GetConnectedServers() => GetAvailableServers();
-
-        #endregion
-
         #region 内部方法
 
         internal void UpdateState(string serverName, McpServerStatus newStatus)
@@ -1083,54 +957,6 @@ namespace Seeing.Agent.MCP
 
         #endregion
     }
-
-    #region 默认工厂实现
-
-    internal class StdioWrapperFactory : IMcpClientWrapperFactory
-    {
-        private readonly ILoggerFactory _loggerFactory;
-
-        public McpTransportType TransportType => McpTransportType.Stdio;
-
-        public StdioWrapperFactory(ILoggerFactory loggerFactory) => _loggerFactory = loggerFactory;
-
-        public IMcpClientWrapper Create(McpServerConfig config, IHttpClientFactory? httpClientFactory, ILoggerFactory loggerFactory)
-            => new StdioMcpClientWrapper(config, loggerFactory.CreateLogger<StdioMcpClientWrapper>());
-    }
-
-    internal class StreamableHttpWrapperFactory : IMcpClientWrapperFactory
-    {
-        private readonly ILoggerFactory _loggerFactory;
-
-        public McpTransportType TransportType => McpTransportType.StreamableHttp;
-
-        public StreamableHttpWrapperFactory(ILoggerFactory loggerFactory) => _loggerFactory = loggerFactory;
-
-        public IMcpClientWrapper Create(McpServerConfig config, IHttpClientFactory? httpClientFactory, ILoggerFactory loggerFactory)
-        {
-            if (httpClientFactory == null)
-                throw new InvalidOperationException("HTTP 传输需要 IHttpClientFactory");
-            return new HttpMcpClientWrapper(config, httpClientFactory, loggerFactory.CreateLogger<HttpMcpClientWrapper>(), HttpTransportMode.StreamableHttp);
-        }
-    }
-
-    internal class SseWrapperFactory : IMcpClientWrapperFactory
-    {
-        private readonly ILoggerFactory _loggerFactory;
-
-        public McpTransportType TransportType => McpTransportType.Sse;
-
-        public SseWrapperFactory(ILoggerFactory loggerFactory) => _loggerFactory = loggerFactory;
-
-        public IMcpClientWrapper Create(McpServerConfig config, IHttpClientFactory? httpClientFactory, ILoggerFactory loggerFactory)
-        {
-            if (httpClientFactory == null)
-                throw new InvalidOperationException("HTTP 传输需要 IHttpClientFactory");
-            return new HttpMcpClientWrapper(config, httpClientFactory, loggerFactory.CreateLogger<HttpMcpClientWrapper>(), HttpTransportMode.Sse);
-        }
-    }
-
-    #endregion
 
     #region 旧版包装器接口和类型（兼容性保留）
 

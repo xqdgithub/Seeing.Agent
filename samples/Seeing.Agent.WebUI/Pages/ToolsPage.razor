@@ -2,6 +2,7 @@
 @using AntDesign
 @using Seeing.Agent.Tools
 @using Seeing.Agent.Core.Interfaces
+@using Seeing.Agent.MCP
 @inject ToolManager ToolInvoker
 @inject IMessageService MessageService
 
@@ -93,42 +94,58 @@
         else {
             <div class="items-grid">
             @foreach (var tool in _filteredTools) {
-                <div class="item-card @(_expandedTool == tool.Id ? "expanded" : "")">
+                <div class="item-card">
                     <div class="item-card-header">
                         <div class="card-icon">@GetToolIcon(tool)</div>
                         <div class="card-title-section">
                             <h3 class="card-title">@tool.Id</h3>
                             <div class="card-status-row">
                                 <Tag Color="@GetCategoryColor(tool.Category)">@tool.Category</Tag>
+                                @if (tool is McpTool mcpTool)
+                                {
+                                    <Tag Color="@("geekblue")">MCP</Tag>
+                                    <span class="meta-value" style="font-size:var(--font-size-xs); color:var(--color-text-tertiary);">@mcpTool.ServerName</span>
+                                }
+                                else
+                                {
+                                    <Tag Color="@("orange")">内置</Tag>
+                                }
                                 <Tag Color="@(ToolInvoker.IsToolEnabled(tool.Id) ? "success" : "default")">
                                     @(ToolInvoker.IsToolEnabled(tool.Id) ? "Enabled" : "Disabled")
                                 </Tag>
                             </div>
                         </div>
+                        <div class="card-header-action">
+                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.InfoCircle"
+                                    OnClick="@(() => ShowDetail(tool))" />
+                        </div>
                     </div>
                     <div class="item-card-body">
                         <p class="card-description">@tool.Description</p>
-                        @if (_expandedTool == tool.Id) {
-                            <div class="card-details">
-                                <div class="detail-section">
-                                    <span class="detail-label">Parameters Schema:</span>
-                                    <pre class="detail-code">@tool.ParametersSchema.GetRawText()</pre>
-                                </div>
-                            </div>
-                        }
                     </div>
                     <div class="item-card-footer">
                         <div class="card-actions">
                             <Switch Checked="@ToolInvoker.IsToolEnabled(tool.Id)" OnChange="@((bool v) => ToggleTool(tool.Id, v))" />
                         </div>
-                        <button class="card-action-btn" onclick="() => ToggleExpand(tool.Id)" title="@(_expandedTool == tool.Id ? "Collapse" : "Expand")">
-                            <Icon Type="@(_expandedTool == tool.Id ? IconType.Outline.Up : IconType.Outline.Down)" />
-                        </button>
                     </div>
                 </div>
             }
             </div>
         }
+    <Modal Title="@($"工具详情 - {_detailTool?.Id}")"
+           Visible="_detailTool != null"
+           OnCancel="CloseDetail"
+           Footer="null"
+            Width="@("640px")">
+        @if (_detailTool != null)
+        {
+            <div class="detail-section">
+                <span class="detail-label">参数 Schema:</span>
+                <pre class="detail-code">@_detailTool.ParametersSchema.GetRawText()</pre>
+            </div>
+        }
+    </Modal>
     </div>
 </div>
 
@@ -139,7 +156,7 @@
     private string _searchText = "";
     private string? _selectedCategory = null;
     private string? _selectedStatus = null;
-    private string? _expandedTool = null;
+    private ITool? _detailTool = null;
     
     private List<string> _categories = new();
     private Dictionary<string, int> _categoryStats = new();
@@ -189,9 +206,8 @@
         StateHasChanged();
     }
     
-    void ToggleExpand(string toolId) {
-        _expandedTool = _expandedTool == toolId ? null : toolId;
-    }
+    void ShowDetail(ITool tool) => _detailTool = tool;
+    void CloseDetail() => _detailTool = null;
     
     string GetToolIcon(ITool t) => t.Category switch {
         ToolCategory.FileSystem => "📁",

@@ -125,12 +125,8 @@ namespace Seeing.Agent.Extensions
                 }
             }
 
-            // TODO: 实现 NuGet 下载
-            _logger.LogInformation("Downloading extension: {Pkg}@{Version}", pkg, version);
-            await Task.Delay(100); // 占位，避免编译警告
-
             throw new NotSupportedException(
-                $"NuGet extension download not implemented. Please use file path instead: {spec}");
+                $"NuGet扩展下载功能尚未实现，请使用文件路径方式: {spec}");
         }
 
         /// <summary>

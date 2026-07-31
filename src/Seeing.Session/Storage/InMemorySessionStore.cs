@@ -105,7 +105,7 @@ namespace Seeing.Session.Storage
                                      session.PartitionId == partitionId;
 
                 var matchAgent = string.IsNullOrEmpty(agentId) ||
-                                 (session.Agent?.AgentId == agentId);
+                                 (session.SelectedAgent == agentId);
 
                 if (matchPartition && matchAgent)
                 {
