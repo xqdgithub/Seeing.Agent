@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Skills.Pulling;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -21,7 +20,6 @@ namespace Seeing.Agent.Skills
         private readonly ILogger<SkillManager> _logger;
         private readonly ConcurrentDictionary<string, SkillInfo> _skillInfos = new();
         private readonly List<string> _skillDirectories = new();
-        private readonly ISkillPuller? _skillPuller;
         private readonly IWorkspaceProvider? _workspace;
         private readonly object _skillStateLock = new();
         private HashSet<string> _userDisabledSkills = new(StringComparer.OrdinalIgnoreCase);
@@ -42,10 +40,9 @@ namespace Seeing.Agent.Skills
         /// </summary>
         private const int MaxNameLength = 64;
 
-        public SkillManager(ILogger<SkillManager> logger, ISkillPuller? skillPuller = null, IWorkspaceProvider? workspace = null)
+        public SkillManager(ILogger<SkillManager> logger, IWorkspaceProvider? workspace = null)
         {
             _logger = logger;
-            _skillPuller = skillPuller;
             _workspace = workspace;
 
             // 用户目录（跨平台支持）
@@ -109,22 +106,25 @@ namespace Seeing.Agent.Skills
         /// </summary>
         public void ResetSearchDirectoriesToDefault()
         {
-            _skillDirectories.Clear();
-
-            // 用户目录
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (!string.IsNullOrEmpty(userProfile))
+            lock (_skillStateLock)
             {
-                AddDefaultDirectory(Path.Combine(userProfile, ".agents", "skills"));
-                AddDefaultDirectory(Path.Combine(userProfile, ".seeing", "skills"));
-            }
+                _skillDirectories.Clear();
 
-            // 项目目录（通过 workspace provider 获取，无条件添加）
-            if (_workspace != null)
-            {
-                AddDefaultDirectory(Path.Combine(_workspace.ProjectSeeingDirectory, "skills"));
-                AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, ".agents", "skills"));
-                AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, "skills"));
+                // 用户目录
+                var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                if (!string.IsNullOrEmpty(userProfile))
+                {
+                    AddDefaultDirectory(Path.Combine(userProfile, ".agents", "skills"));
+                    AddDefaultDirectory(Path.Combine(userProfile, ".seeing", "skills"));
+                }
+
+                // 项目目录（通过 workspace provider 获取，无条件添加）
+                if (_workspace != null)
+                {
+                    AddDefaultDirectory(Path.Combine(_workspace.ProjectSeeingDirectory, "skills"));
+                    AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, ".agents", "skills"));
+                    AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, "skills"));
+                }
             }
         }
 
@@ -133,7 +133,10 @@ namespace Seeing.Agent.Skills
         /// </summary>
         public void ClearSearchDirectories()
         {
-            _skillDirectories.Clear();
+            lock (_skillStateLock)
+            {
+                _skillDirectories.Clear();
+            }
         }
 
         /// <summary>
@@ -184,10 +187,13 @@ namespace Seeing.Agent.Skills
             if (string.IsNullOrEmpty(directory)) return;
 
             var resolvedDirectory = ResolvePath(directory);
-            if (!_skillDirectories.Contains(resolvedDirectory))
+            lock (_skillStateLock)
             {
-                _skillDirectories.Add(resolvedDirectory);
-                _logger.LogDebug("添加技能搜索目录: {Directory} (原始: {Original})", resolvedDirectory, directory);
+                if (!_skillDirectories.Contains(resolvedDirectory))
+                {
+                    _skillDirectories.Add(resolvedDirectory);
+                    _logger.LogDebug("添加技能搜索目录: {Directory} (原始: {Original})", resolvedDirectory, directory);
+                }
             }
         }
 
@@ -196,9 +202,15 @@ namespace Seeing.Agent.Skills
         /// </summary>
         public async Task DiscoverSkillsAsync(CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("开始发现技能，搜索目录数量: {Count}", _skillDirectories.Count);
+            List<string> directories;
+            lock (_skillStateLock)
+            {
+                directories = new List<string>(_skillDirectories);
+            }
 
-            foreach (var directory in _skillDirectories)
+            _logger.LogInformation("开始发现技能，搜索目录数量: {Count}", directories.Count);
+
+            foreach (var directory in directories)
             {
                 if (!Directory.Exists(directory)) continue;
 
@@ -411,7 +423,13 @@ namespace Seeing.Agent.Skills
         /// <summary>
         /// 获取所有技能目录
         /// </summary>
-        public IReadOnlyList<string> GetSkillDirectories() => _skillDirectories;
+        public IReadOnlyList<string> GetSkillDirectories()
+        {
+            lock (_skillStateLock)
+            {
+                return _skillDirectories.ToList();
+            }
+        }
 
         /// <summary>
         /// 获取技能目录下的相关文件（排除 SKILL.md）
@@ -590,66 +608,6 @@ namespace Seeing.Agent.Skills
             }
 
             return info;
-        }
-
-        /// <summary>
-        /// 从远程源拉取技能
-        /// </summary>
-        /// <param name="source">远程源 (Git URL, HTTP URL, 或本地路径)</param>
-        /// <param name="cancellationToken">取消令牌</param>
-        /// <returns>拉取结果</returns>
-        public async Task<SkillPullResult> PullSkillAsync(string source, CancellationToken cancellationToken = default)
-        {
-            if (_skillPuller == null)
-            {
-                return new SkillPullResult
-                {
-                    Success = false,
-                    Error = "SkillPuller not configured"
-                };
-            }
-
-            // 验证源
-            var validation = await _skillPuller.ValidateSourceAsync(source, cancellationToken);
-            if (!validation.IsValid)
-            {
-                return new SkillPullResult
-                {
-                    Success = false,
-                    Error = validation.Error
-                };
-            }
-
-            // 判断源类型并拉取
-            SkillPullResult result;
-            if (source.StartsWith("git@", StringComparison.OrdinalIgnoreCase) ||
-                source.Contains("github.com", StringComparison.OrdinalIgnoreCase) ||
-                source.Contains("gitlab.com", StringComparison.OrdinalIgnoreCase))
-            {
-                result = await _skillPuller.PullFromGitAsync(source, null, null, cancellationToken);
-            }
-            else if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                     source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                result = await _skillPuller.PullFromHttpAsync(source, cancellationToken);
-            }
-            else
-            {
-                result = await _skillPuller.PullFromLocalAsync(source, cancellationToken);
-            }
-
-            // 如果拉取成功，添加到搜索目录并重新发现
-            if (result.Success && !string.IsNullOrEmpty(result.LocalPath))
-            {
-                var skillDir = Path.GetDirectoryName(result.LocalPath);
-                if (!string.IsNullOrEmpty(skillDir) && Directory.Exists(skillDir))
-                {
-                    AddSearchDirectory(skillDir);
-                    await DiscoverSkillsAsync(cancellationToken);
-                }
-            }
-
-            return result;
         }
 
         /// <summary>

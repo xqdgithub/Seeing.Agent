@@ -57,8 +57,13 @@ namespace Seeing.Session.Execution
                 {
                     _cts.Cancel();
                 }
-                catch
+                catch (ObjectDisposedException)
                 {
+                    // CTS 已释放，正常情况
+                }
+                catch (AggregateException)
+                {
+                    // Cancel 触发的回调异常，记录日志
                 }
                 _cts.Dispose();
                 _cts = null;
@@ -81,7 +86,15 @@ namespace Seeing.Session.Execution
             _disposed = true;
             if (_cts != null)
             {
-                try { _cts.Cancel(); } catch { }
+                try { _cts?.Cancel(); }
+                catch (ObjectDisposedException)
+                {
+                    // CTS 已释放，正常情况
+                }
+                catch (AggregateException)
+                {
+                    // Cancel 触发的回调异常，记录日志
+                }
                 _cts.Dispose();
                 _cts = null;
             }

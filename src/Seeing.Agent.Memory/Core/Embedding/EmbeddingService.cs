@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Models;
@@ -109,7 +108,6 @@ public class EmbeddingService : IEmbeddingService
 
     private static string ComputeHash(string text)
     {
-        var hashBytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text));
-        return Convert.ToHexString(hashBytes)[..16];
+        return Seeing.Agent.Helpers.HashHelper.ComputeSha256Hex(text)[..16];
     }
 }

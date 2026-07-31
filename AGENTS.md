@@ -21,7 +21,7 @@ Seeing.Agent/
 ├── Directory.Packages.props       # 包版本集中定义
 │
 ├── src/
-│   ├── Seeing.Agent/              # 主 NuGet 库（~170 个 C# 文件）
+│   ├── Seeing.Agent/              # 主 NuGet 库（**260** 个 C# 文件）
 │   ├── Seeing.Agent.Acp/          # ACP 集成
 │   ├── Seeing.Agent.App/          # 应用层 / Chat 编排器
 │   ├── Seeing.Agent.Gateway/      # Gateway 集成
@@ -32,11 +32,11 @@ Seeing.Agent/
 │   ├── Seeing.Gateway.Client/     # Gateway 客户端
 │   ├── Seeing.Gateway.QQ/         # QQ Gateway 通道
 │   ├── Seeing.Gateway.WeCom/      # 企业微信 Gateway 通道
-│   ├── Seeing.Session/            # 独立会话管理包（47 个文件）
+│   ├── Seeing.Session/            # 独立会话管理包（**46** 个文件）
 │   └── Seeing.TokenEstimation/    # Token 估算
 │
 ├── tests/
-│   ├── Seeing.Agent.Tests/        # 单元测试（49 个文件）
+│   ├── Seeing.Agent.Tests/        # 单元测试（**65** 个文件）
 │   ├── Seeing.Agent.Acp.Tests/    # ACP 测试
 │   ├── Seeing.Agent.Memory.Tests/ # Memory 测试
 │   ├── Seeing.Agent.Scheduler.Tests/ # Scheduler 测试
@@ -97,7 +97,7 @@ Seeing.Agent/
 | 服务 | 生命周期 |
 |------|----------|
 | ToolManager, HookManager, PermissionService, SkillManager, McpClientManager, IToolDecoratorRegistry | Singleton |
-| SessionManager, AgentExecutor | Scoped |
+| SessionManager, AgentExecutor | Singleton |
 | Middleware (Logging, Permission, Retry) | Transient |
 
 ### 注解发现

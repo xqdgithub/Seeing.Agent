@@ -403,7 +403,7 @@ namespace Seeing.Session.Management
 
             // 触发 Hook
             _hookManager?.TriggerFireAndForget(
-                "session.forked",
+                HookPoints.SessionForked,
                 forkedSession.Id,
                 result: new Dictionary<string, object?>
                 {
@@ -519,7 +519,7 @@ namespace Seeing.Session.Management
 
                 // 触发 Hook
                 _hookManager?.TriggerFireAndForget(
-                    "session.archived",
+                    HookPoints.SessionArchived,
                     sessionId,
                     result: new Dictionary<string, object?> { ["session"] = session });
             }
@@ -547,7 +547,7 @@ namespace Seeing.Session.Management
 
             // 触发 Hook
             _hookManager?.TriggerFireAndForget(
-                "session.shared",
+                HookPoints.SessionShared,
                 sessionId,
                 result: new Dictionary<string, object?>
                 {
@@ -575,7 +575,7 @@ namespace Seeing.Session.Management
             {
                 // 触发 Hook
                 _hookManager?.TriggerFireAndForget(
-                    "session.reverted",
+                    HookPoints.SessionReverted,
                     sessionId,
                     result: new Dictionary<string, object?>
                     {

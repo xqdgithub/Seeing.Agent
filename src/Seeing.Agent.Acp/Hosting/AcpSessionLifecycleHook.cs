@@ -10,7 +10,7 @@ namespace Seeing.Agent.Acp.Hosting;
 /// </summary>
 public sealed class AcpSessionLifecycleHook : IMultiHookHandler
 {
-    private static readonly HookSpec SessionForked = new(HookPolicy.FireAndForget, "session.forked");
+    private static readonly HookSpec SessionForked = new(HookPolicy.FireAndForget, Seeing.Session.Hooks.HookPoints.SessionForked);
 
     private readonly AcpSessionStore _sessionStore;
     private readonly AcpConnectionManager _connectionManager;

@@ -2,6 +2,9 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -18,6 +21,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
         private const int MaxTimeoutSeconds = 120;
 
         private readonly HttpClient _httpClient;
+        private readonly ConcurrentDictionary<string, byte> _approvedHosts = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// 创建 WebFetchTool 实例
@@ -77,6 +81,15 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
                 !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
                 return Failure("URL 必须以 http:// 或 https:// 开头");
+            }
+
+            // SSRF 防护：检查内网地址（同会话缓存已批准的域名）
+            var approved = _approvedHosts;
+            var safetyCheck = await ValidateUrlSafetyAsync(url, null, host => approved.TryAdd(host, 0));
+            if (safetyCheck != null)
+            {
+                _logger.LogWarning("SSRF 防护拒绝请求: {Reason}, URL: {Url}", safetyCheck, url);
+                return Failure($"请求被安全策略拒绝: {safetyCheck}");
             }
 
             var format = GetStringArgument(arguments, "format") ?? "markdown";
@@ -337,6 +350,92 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
             html = Regex.Replace(html, @"^\s+", "", RegexOptions.Multiline);
 
             return html.Trim();
+        }
+
+        private static readonly IPAddress[] s_blockedIpv4Prefixes =
+        [
+            IPAddress.Parse("10.0.0.0"),
+            IPAddress.Parse("172.16.0.0"),
+            IPAddress.Parse("192.168.0.0"),
+            IPAddress.Parse("127.0.0.0"),
+            IPAddress.Parse("169.254.0.0"),
+            IPAddress.Parse("0.0.0.0"),
+        ];
+
+        private static readonly IPAddress[] s_blockedIpv4Masks =
+        [
+            IPAddress.Parse("255.0.0.0"),
+            IPAddress.Parse("255.240.0.0"),
+            IPAddress.Parse("255.255.0.0"),
+            IPAddress.Parse("255.0.0.0"),
+            IPAddress.Parse("255.255.0.0"),
+            IPAddress.Parse("255.0.0.0"),
+        ];
+
+        private static bool IsPrivateOrReserved(IPAddress address)
+        {
+            if (IPAddress.IsLoopback(address)) return true;
+
+            if (address.AddressFamily == AddressFamily.InterNetwork)
+            {
+                var bytes = address.GetAddressBytes();
+                for (int i = 0; i < s_blockedIpv4Prefixes.Length; i++)
+                {
+                    var prefix = s_blockedIpv4Prefixes[i].GetAddressBytes();
+                    var mask = s_blockedIpv4Masks[i].GetAddressBytes();
+                    bool match = true;
+                    for (int j = 0; j < 4; j++)
+                    {
+                        if ((bytes[j] & mask[j]) != (prefix[j] & mask[j]))
+                        {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) return true;
+                }
+            }
+
+            if (address.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                if (IPAddress.IPv6Loopback.Equals(address)) return true;
+                if (address.IsIPv6LinkLocal) return true;
+                var b = address.GetAddressBytes();
+                if (b[0] == 0xfc || b[0] == 0xfd) return true;
+                if (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) return true;
+            }
+
+            return false;
+        }
+
+        private static async Task<string?> ValidateUrlSafetyAsync(string url, HashSet<string>? cachedApproved, Action<string> addToCache)
+        {
+            try
+            {
+                var uri = new Uri(url);
+                var host = uri.Host.ToLowerInvariant();
+
+                if (cachedApproved != null && cachedApproved.Contains(host))
+                    return null;
+
+                if (host is "localhost" or "127.0.0.1" or "[::1]" ||
+                    host.EndsWith(".local") || host.EndsWith(".internal"))
+                    return "禁止访问内网地址";
+
+                var addresses = await Dns.GetHostAddressesAsync(uri.Host);
+                foreach (var addr in addresses)
+                {
+                    if (IsPrivateOrReserved(addr))
+                        return $"禁止访问私有/内网 IP: {addr} ({uri.Host})";
+                }
+
+                addToCache(host);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return $"URL 安全验证失败: {ex.Message}";
+            }
         }
     }
 }

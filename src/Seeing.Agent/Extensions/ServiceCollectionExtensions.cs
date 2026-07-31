@@ -76,6 +76,8 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<IOptions<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
             services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
             services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
+            services.AddSingleton<IValidateOptions<GatewayOptions>, GatewayOptionsValidator>();
+            services.AddSingleton<IValidateOptions<TokenBudgetOptions>, TokenBudgetOptionsValidator>();
 
             RegisterCoreServices(services);
 
@@ -119,6 +121,8 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<IOptions<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
             services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
             services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
+            services.AddSingleton<IValidateOptions<GatewayOptions>, GatewayOptionsValidator>();
+            services.AddSingleton<IValidateOptions<TokenBudgetOptions>, TokenBudgetOptionsValidator>();
 
             RegisterCoreServices(services);
 

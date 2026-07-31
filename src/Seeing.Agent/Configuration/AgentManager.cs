@@ -66,18 +66,18 @@ namespace Seeing.Agent.Configuration
             {
                 foreach (var agent in builtInAgents)
                 {
-                    _agentStore.RegisterAsync(agent).Wait();
+                    Task.Run(async () => await _agentStore.RegisterAsync(agent)).GetAwaiter().GetResult();
                 }
             }
 
             // 备份原始 Agent 定义（用于 MD 删除后恢复）
-            foreach (var agent in _agentStore.GetAllAsync().Result)
+            foreach (var agent in Task.Run(async () => await _agentStore.GetAllAsync()).GetAwaiter().GetResult())
             {
                 _originalAgents[agent.Name] = agent;
             }
 
             _logger.LogInformation("AgentManager 初始化完成，已注册 {Count} 个代理",
-                _agentStore.GetAllAsync().Result.Count);
+                Task.Run(async () => await _agentStore.GetAllAsync()).GetAwaiter().GetResult().Count);
         }
 
         /// <inheritdoc/>

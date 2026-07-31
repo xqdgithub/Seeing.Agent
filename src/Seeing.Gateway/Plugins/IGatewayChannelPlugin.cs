@@ -26,4 +26,10 @@ public interface IGatewayChannelPlugin
     Type? ConfigFormComponentType => null;
 
     void ConfigureServices(IServiceCollection services, IConfiguration configuration);
+
+    /// <summary>初始化通道插件</summary>
+    Task InitializeAsync(IServiceProvider services) => Task.CompletedTask;
+
+    /// <summary>释放通道插件资源</summary>
+    Task DisposeAsync() => Task.CompletedTask;
 }

@@ -130,7 +130,15 @@ namespace Seeing.Agent.Core.Configuration
             if (type == typeof(string))
                 return string.Empty;
 
-            return type.IsValueType ? Activator.CreateInstance(type) : null;
+            try
+            {
+                return type.IsValueType ? Activator.CreateInstance(type) : null;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"MergeDeep: 无法创建类型 {type?.FullName} 的默认实例: {ex.Message}");
+                return null;
+            }
         }
 
         private static bool IsEmptyCollection(object? value)
@@ -176,7 +184,17 @@ namespace Seeing.Agent.Core.Configuration
 
         private static object? MergeDictionary(object baseValue, object overrideValue, Type type)
         {
-            var result = Activator.CreateInstance(type) as IDictionary;
+            IDictionary? result;
+            try
+            {
+                result = Activator.CreateInstance(type) as IDictionary;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"MergeDeep: 无法创建字典类型 {type?.FullName} 的实例: {ex.Message}");
+                return overrideValue;
+            }
+
             if (result == null) return overrideValue;
 
             // 添加基础字典的所有键
@@ -215,7 +233,17 @@ namespace Seeing.Agent.Core.Configuration
 
         private static object? MergeObject(object baseValue, object overrideValue, Type type)
         {
-            var result = Activator.CreateInstance(type);
+            object? result;
+            try
+            {
+                result = Activator.CreateInstance(type);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"MergeDeep: 无法创建对象类型 {type?.FullName} 的实例: {ex.Message}");
+                return overrideValue;
+            }
+
             if (result == null) return overrideValue;
 
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))

@@ -26,6 +26,7 @@ namespace Seeing.Agent.Decorators
     public class ToolDecoratorRegistry : IToolDecoratorRegistry
     {
         private readonly List<Func<ITool, ITool>> _factories = new();
+        private readonly object _factoriesLock = new();
         private readonly IServiceProvider? _serviceProvider;
 
         /// <summary>
@@ -37,7 +38,16 @@ namespace Seeing.Agent.Decorators
         }
 
         /// <inheritdoc />
-        public int Count => _factories.Count;
+        public int Count
+        {
+            get
+            {
+                lock (_factoriesLock)
+                {
+                    return _factories.Count;
+                }
+            }
+        }
 
         /// <inheritdoc />
         public void Register(Func<ITool, ITool> factory)
@@ -45,34 +55,37 @@ namespace Seeing.Agent.Decorators
             if (factory == null)
                 throw new ArgumentNullException(nameof(factory));
 
-            _factories.Add(factory);
+            lock (_factoriesLock)
+            {
+                _factories.Add(factory);
+            }
         }
 
         /// <inheritdoc />
         public void Register<TDecorator>() where TDecorator : ITool
         {
-            // 类型化注册需要 DI 支持
             if (_serviceProvider == null)
             {
                 throw new InvalidOperationException(
                     "类型化装饰器注册需要 IServiceProvider。请在构造时传入。");
             }
 
-            _factories.Add(tool =>
+            lock (_factoriesLock)
             {
-                // 尝试从 DI 获取装饰器实例
-                var decorator = _serviceProvider.GetService(typeof(TDecorator));
-                if (decorator is ToolDecorator td)
+                _factories.Add(tool =>
                 {
-                    // 使用反射重新构造，传入内部工具
-                    var constructor = typeof(TDecorator).GetConstructor(new[] { typeof(ITool) });
-                    if (constructor != null)
+                    var decorator = _serviceProvider.GetService(typeof(TDecorator));
+                    if (decorator is ToolDecorator td)
                     {
-                        return (ITool)constructor.Invoke(new object[] { tool });
+                        var constructor = typeof(TDecorator).GetConstructor(new[] { typeof(ITool) });
+                        if (constructor != null)
+                        {
+                            return (ITool)constructor.Invoke(new object[] { tool });
+                        }
                     }
-                }
-                return tool;
-            });
+                    return tool;
+                });
+            }
         }
 
         /// <inheritdoc />
@@ -81,8 +94,14 @@ namespace Seeing.Agent.Decorators
             if (tool == null)
                 throw new ArgumentNullException(nameof(tool));
 
+            Func<ITool, ITool>[] snapshot;
+            lock (_factoriesLock)
+            {
+                snapshot = _factories.ToArray();
+            }
+
             var current = tool;
-            foreach (var factory in _factories)
+            foreach (var factory in snapshot)
             {
                 current = factory(current);
             }

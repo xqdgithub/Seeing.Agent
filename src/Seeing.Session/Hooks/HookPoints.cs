@@ -31,4 +31,16 @@ public static class HookPoints
 
     /// <summary>Session 模型变更 - 非阻塞</summary>
     public const string ModelChanged = "session.model_changed";
+
+    /// <summary>Session 分叉 - 非阻塞</summary>
+    public const string SessionForked = "session.forked";
+
+    /// <summary>Session 归档 - 非阻塞</summary>
+    public const string SessionArchived = "session.archived";
+
+    /// <summary>Session 分享 - 非阻塞</summary>
+    public const string SessionShared = "session.shared";
+
+    /// <summary>Session 回滚 - 非阻塞</summary>
+    public const string SessionReverted = "session.reverted";
 }

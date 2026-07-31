@@ -10,6 +10,7 @@ namespace Seeing.Agent.Core.Models
     public class ExecutionPipeline : IExecutionPipeline
     {
         private readonly List<IExecutionMiddleware> _middlewares = new();
+        private readonly object _middlewaresLock = new();
         private readonly ILogger<ExecutionPipeline>? _logger;
 
         /// <summary>
@@ -26,8 +27,11 @@ namespace Seeing.Agent.Core.Models
             if (middleware == null)
                 throw new ArgumentNullException(nameof(middleware));
 
-            _middlewares.Add(middleware);
-            _middlewares.Sort((a, b) => a.Order.CompareTo(b.Order));
+            lock (_middlewaresLock)
+            {
+                _middlewares.Add(middleware);
+                _middlewares.Sort((a, b) => a.Order.CompareTo(b.Order));
+            }
 
             _logger?.LogDebug("添加中间件: {Name}, Order={Order}", middleware.Name, middleware.Order);
             return this;
@@ -61,10 +65,15 @@ namespace Seeing.Agent.Core.Models
             // 构建中间件链
             ExecutionDelegate<TContext, TResult> pipeline = (ctx) => handler(ctx);
 
-            // 从后向前构建（最后的中间件最先包装）
-            for (int i = _middlewares.Count - 1; i >= 0; i--)
+            IExecutionMiddleware[] snapshot;
+            lock (_middlewaresLock)
             {
-                var middleware = _middlewares[i];
+                snapshot = _middlewares.ToArray();
+            }
+
+            for (int i = snapshot.Length - 1; i >= 0; i--)
+            {
+                var middleware = snapshot[i];
                 var next = pipeline;
                 pipeline = (ctx) => middleware.InvokeAsync(next, ctx);
             }
@@ -75,6 +84,15 @@ namespace Seeing.Agent.Core.Models
         /// <summary>
         /// 获取中间件数量
         /// </summary>
-        public int MiddlewareCount => _middlewares.Count;
+        public int MiddlewareCount
+        {
+            get
+            {
+                lock (_middlewaresLock)
+                {
+                    return _middlewares.Count;
+                }
+            }
+        }
     }
 }

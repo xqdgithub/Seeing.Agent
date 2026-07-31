@@ -735,7 +735,16 @@ internal sealed class McpConnectionCoordinator : IDisposable
         {
             try
             {
-                Task.Run(async () => await _client.DisconnectAsync()).GetAwaiter().GetResult();
+                try
+                {
+                    Task.Run(async () => await _client.DisconnectAsync())
+                        .Wait(TimeSpan.FromSeconds(5));
+                }
+                catch (Exception ex)
+                {
+                    // 断开连接失败不阻塞 Dispose
+                    System.Diagnostics.Debug.WriteLine($"McpConnectionCoordinator Dispose 断开连接超时: {ex.Message}");
+                }
             }
             catch (Exception ex)
             {

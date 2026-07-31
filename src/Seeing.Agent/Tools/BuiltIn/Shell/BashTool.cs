@@ -4,7 +4,9 @@ using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Shell;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
@@ -21,6 +23,24 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
     {
         private const int DefaultTimeoutMs = 120_000; // 2 分钟
         private const int MaxMetadataLength = 30_000;
+
+        private static readonly HashSet<string> _blockedCommands = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "rm", "rmdir", "del", "format", "mkfs", "dd", "shutdown", "reboot",
+            "halt", "poweroff", "init", "systemctl",
+        };
+
+        private static readonly string[] _blockedPatterns = new[]
+        {
+            "rm -rf /", "rm -r /", "rm -rf ~", "rm -rf .",
+            ":(){ :|:& };:",
+            "dd if=/dev/zero of=/dev/",
+            "chmod 777 /", "chmod -R 777 /",
+            "del /f /s C:\\",
+            "format C:", "format D:",
+            "reg delete HKLM",
+            "> /etc/", "> /boot/", "> /sys/",
+        };
 
         private readonly IShellService _shellService;
         private readonly IShellEnvironmentService _shellEnvService;
@@ -158,10 +178,16 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
                 });
             }
 
+            var dangerCheck = CheckDangerousCommand(command);
+            if (dangerCheck != null)
+            {
+                _logger.LogWarning("拒绝危险命令: {Reason}, 命令: {Command}", dangerCheck, command);
+                return Failure($"命令被拒绝执行: {dangerCheck}");
+            }
+
             // 获取 Shell
             var shell = _shellService.GetAcceptableShell();
-            var argFormat = _shellService.GetShellArgumentFormat(shell);
-            _logger.LogInformation("使用 Shell: {Shell}, 参数格式: {ArgFormat}", shell, argFormat);
+            _logger.LogInformation("使用 Shell: {Shell}", shell);
 
             // 触发 shell.env Hook 获取环境变量
             var envVars = await _shellEnvService.GetEnvironmentAsync(
@@ -174,7 +200,6 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
             var startInfo = new ProcessStartInfo
             {
                 FileName = shell,
-                Arguments = string.Format(argFormat, command),
                 WorkingDirectory = workdir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -224,7 +249,7 @@ var timedOut = false;
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            // 关闭标准输入，防止某些程序等待输入
+            await process.StandardInput.WriteLineAsync(command);
             process.StandardInput.Close();
 
             // 初始元数据
@@ -325,6 +350,71 @@ await WaitForExitAsync(process, CancellationToken.None);
                     ["description"] = description
                 });
             }
+        }
+
+        /// <summary>
+        /// 检查命令是否包含危险操作
+        /// </summary>
+        /// <returns>如果命令安全返回 null，否则返回拒绝原因</returns>
+        private static string? CheckDangerousCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command)) return "空命令";
+
+            var trimmed = command.Trim().ToLowerInvariant();
+
+            // 检查管道：curl/wget | bash/sh
+            if (trimmed.Contains("|"))
+            {
+                var parts = trimmed.Split('|');
+                foreach (var part in parts)
+                {
+                    var pt = part.Trim();
+                    if ((pt.StartsWith("bash") || pt.StartsWith("sh") ||
+                         pt.StartsWith("zsh") || pt.StartsWith("powershell")) &&
+                        !pt.Contains("-c"))
+                        return "禁止使用管道将输出传递给 Shell 解释器";
+                }
+            }
+
+            // 检查命令替换 $() 和反引号 — 仅禁止与网络请求组合
+            if (trimmed.Contains("$(") || trimmed.Contains("`"))
+            {
+                if (trimmed.Contains("curl") || trimmed.Contains("wget") ||
+                    trimmed.Contains("nc ") || trimmed.Contains("ncat"))
+                    return "禁止命令替换与网络请求组合使用";
+            }
+
+            // 检查危险模式
+            foreach (var pattern in _blockedPatterns)
+            {
+                if (trimmed.Contains(pattern.ToLowerInvariant()))
+                    return $"禁止执行危险命令模式: {pattern}";
+            }
+
+            // 检查命令名
+            var firstWord = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+            var cmdName = Path.GetFileName(firstWord);
+            if (_blockedCommands.Contains(cmdName))
+            {
+                if (cmdName is "rm" or "rmdir" or "del")
+                {
+                    if (trimmed.Contains("-r") || trimmed.Contains("-rf") || trimmed.Contains("--recursive"))
+                        return $"禁止递归删除操作: {command}";
+                }
+                return $"禁止执行危险命令: {cmdName}";
+            }
+
+            // 禁止重定向到绝对路径
+            var redirIdx = trimmed.LastIndexOf('>');
+            if (redirIdx > 0)
+            {
+                var target = trimmed.Substring(redirIdx + 1).Trim();
+                if (target.StartsWith("/") || target.StartsWith("~/") ||
+                    (target.Length >= 2 && target[1] == ':'))
+                    return $"禁止重定向到绝对路径: {target}";
+            }
+
+            return null;
         }
 
         /// <summary>

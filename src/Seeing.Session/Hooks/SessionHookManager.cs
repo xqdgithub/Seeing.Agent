@@ -55,9 +55,21 @@ public sealed class SessionHookManager : IHookManager
 
     public int GetHookCount(string hookPoint) => _hooks.TryGetValue(hookPoint, out var list) ? list.Count : 0;
 
+    private List<ISessionHook> GetHooks(string hookPoint)
+    {
+        if (!_hooks.TryGetValue(hookPoint, out var list))
+            return new List<ISessionHook>();
+
+        lock (list)
+        {
+            return list.ToList();
+        }
+    }
+
     public async Task TriggerAsync(string hookPoint, string sessionId = "", SessionData? session = null)
     {
-        if (!_hooks.TryGetValue(hookPoint, out var hooks) || hooks.Count == 0) return;
+        var hooks = GetHooks(hookPoint);
+        if (hooks.Count == 0) return;
 
         var context = new SessionHookContext
         {
@@ -84,7 +96,8 @@ public sealed class SessionHookManager : IHookManager
         IReadOnlyDictionary<string, object?>? input = null,
         IReadOnlyDictionary<string, object?>? result = null)
     {
-        if (!_hooks.TryGetValue(hookPoint, out var hooks) || hooks.Count == 0) return;
+        var hooks = GetHooks(hookPoint);
+        if (hooks.Count == 0) return;
 
         _ = Task.Run(async () =>
         {

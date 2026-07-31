@@ -10,12 +10,12 @@ namespace Seeing.Agent.Llm;
 public sealed class TextCompletionService : ITextCompletion
 {
     private readonly ILlmService _llm;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<SeeingAgentOptions> _options;
     private readonly ILogger<TextCompletionService>? _logger;
 
     public TextCompletionService(
         ILlmService llm,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<SeeingAgentOptions> options,
         ILogger<TextCompletionService>? logger = null)
     {
         _llm = llm;
@@ -29,7 +29,7 @@ public sealed class TextCompletionService : ITextCompletion
         string? model = null,
         CancellationToken ct = default)
     {
-        var modelId = model ?? _options.Value.DefaultModel;
+        var modelId = model ?? _options.CurrentValue.DefaultModel;
         if (string.IsNullOrWhiteSpace(modelId))
             throw new InvalidOperationException("No model configured for text completion (DefaultModel is empty).");
 

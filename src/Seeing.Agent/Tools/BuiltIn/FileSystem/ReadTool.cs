@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Tools.BuiltIn;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem
@@ -13,7 +14,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
     /// 自动检测和处理二进制文件、图片、PDF 文件。
     /// </para>
     /// </summary>
-    public class ReadTool : ToolBase
+    public class ReadTool : BuiltInToolBase
     {
         /// <summary>
         /// 创建 ReadTool 实例
@@ -88,6 +89,9 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             {
                 filePath = Path.GetFullPath(filePath);
             }
+
+            var pathCheck = await CheckPathWithinWorkspaceAsync(filePath, context);
+            if (pathCheck != null) return pathCheck;
 
             _logger.LogInformation("读取文件: {FilePath}, offset={Offset}, limit={Limit}", filePath, offset, limit);
 

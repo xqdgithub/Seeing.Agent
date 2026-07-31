@@ -10,9 +10,9 @@ namespace Seeing.Agent.Core.Permission;
 /// <summary>
 /// 权限服务实现 - 统一的权限评估入口
 /// </summary>
-public sealed class PermissionService : IPermissionService, IDisposable
+public class PermissionService : IPermissionService, IDisposable
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IPermissionCache _cache;
     private readonly ILogger<PermissionService> _logger;
     private readonly byte[] _hmacKey;
@@ -22,15 +22,15 @@ public sealed class PermissionService : IPermissionService, IDisposable
     private readonly Timer _cleanupTimer;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _cacheExpirations = new();
 
-    // 懒加载的 IPermissionChannel（可能是 scoped）
     private IPermissionChannel? _channel;
+    private IServiceScope? _channelScope;
 
     public PermissionService(
-        IServiceProvider serviceProvider,
+        IServiceScopeFactory scopeFactory,
         IPermissionCache cache,
         ILogger<PermissionService> logger)
     {
-        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -46,17 +46,16 @@ public sealed class PermissionService : IPermissionService, IDisposable
     }
 
     /// <summary>
-    /// 获取权限通道（支持 scoped 服务）
+    /// 获取权限通道（缓存 channel 和 scope，避免 scope 泄漏问题）
     /// </summary>
     private IPermissionChannel GetChannel()
     {
         if (_channel != null)
             return _channel;
 
-        // 尝试从 serviceProvider 获取（可能是 scoped）
-        _channel = _serviceProvider.GetService<IPermissionChannel>()
+        _channelScope = _scopeFactory.CreateScope();
+        _channel = _channelScope.ServiceProvider.GetService<IPermissionChannel>()
             ?? Core.Interfaces.DefaultPermissionChannel.Instance;
-
         return _channel;
     }
 
@@ -74,7 +73,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
             // 1. 验证 Context 完整性
             var integrityHash = context.ComputeIntegrityHash();
             var stepResult = await RecordStepAsync("ValidateIntegrity", resource, context,
-                () => Task.FromResult(true), stopwatch.ElapsedMilliseconds);
+                () => Task.FromResult(true), stopwatch.ElapsedMilliseconds).ConfigureAwait(false);
             evaluationPath.Add(stepResult);
 
             // 2. 构建缓存键
@@ -90,12 +89,12 @@ public sealed class PermissionService : IPermissionService, IDisposable
             }
 
             // 4. 评估规则（按优先级）
-            var (matchedRule, effect, reason) = await EvaluateRulesAsync(resource, context, cancellationToken);
+            var (matchedRule, effect, reason) = await EvaluateRulesAsync(resource, context, cancellationToken).ConfigureAwait(false);
 
             // 5. 检查父上下文（递归）- 父上下文可以覆盖当前决策
             if (context.Parent != null)
             {
-                var parentResult = await EvaluateAsync(resource, context.Parent, cancellationToken);
+                var parentResult = await EvaluateAsync(resource, context.Parent, cancellationToken).ConfigureAwait(false);
 
                 // 父上下文 Deny 总是覆盖当前 Allow
                 if (parentResult.IsDenied)
@@ -128,7 +127,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
 
             // 7. 记录审计日志
             var result = CreateResult(effect, resource, reason, matchedRule, evaluationPath, integrityHash);
-            await LogAuditAsync(result, context, cancellationToken);
+            await LogAuditAsync(result, context, cancellationToken).ConfigureAwait(false);
 
             return result;
         }
@@ -154,7 +153,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var resource = new ResourceIdentifier(PermissionKind.Tool, toolName, ns);
-        return await EvaluateAsync(resource, context, cancellationToken);
+        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -164,7 +163,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var resource = new ResourceIdentifier(PermissionKind.Agent, agentName);
-        return await EvaluateAsync(resource, context, cancellationToken);
+        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -178,12 +177,12 @@ public sealed class PermissionService : IPermissionService, IDisposable
         var normalizedPath = NormalizePath(filePath, context.WorkingDirectory);
         var resource = new ResourceIdentifier(PermissionKind.File, normalizedPath);
 
-        var result = await EvaluateAsync(resource, context, cancellationToken);
+        var result = await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
 
         // 对于写入操作，需要通过 IPermissionChannel 获取确认
         if (result.NeedsConfirmation && operation == FileOperation.Write)
         {
-            var decision = await GetChannel().RequestWritePermissionAsync(normalizedPath, null, CreateAgentContext(context));
+            var decision = await GetChannel().RequestWritePermissionAsync(normalizedPath, null, CreateAgentContext(context)).ConfigureAwait(false);
             return new PermissionResult
             {
                 Effect = MapToEffect(decision.Action),
@@ -207,7 +206,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var resource = new ResourceIdentifier(PermissionKind.McpTool, toolName, mcpServer);
-        return await EvaluateAsync(resource, context, cancellationToken);
+        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -217,7 +216,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var resource = new ResourceIdentifier(PermissionKind.Skill, skillName);
-        return await EvaluateAsync(resource, context, cancellationToken);
+        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -299,6 +298,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
     public void Dispose()
     {
         _cleanupTimer?.Dispose();
+        _channelScope?.Dispose();
     }
 
     #region Private Methods
@@ -311,8 +311,24 @@ public sealed class PermissionService : IPermissionService, IDisposable
 
         if (File.Exists(keyPath))
         {
-            try { return File.ReadAllBytes(keyPath); }
-            catch { }
+            try
+            {
+                return File.ReadAllBytes(keyPath);
+            }
+            catch (FileNotFoundException)
+            {
+                _logger?.LogInformation("HMAC 密钥文件在读取前被移除，将生成新密钥");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger?.LogError(ex, "无权限读取 HMAC 密钥文件: {Path}", keyPath);
+                throw;
+            }
+            catch (IOException ex)
+            {
+                _logger?.LogError(ex, "读取 HMAC 密钥文件 I/O 错误: {Path}", keyPath);
+                throw;
+            }
         }
 
         var key = new byte[32];
@@ -324,8 +340,12 @@ public sealed class PermissionService : IPermissionService, IDisposable
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
             File.WriteAllBytes(keyPath, key);
+            _logger?.LogInformation("已生成并保存新的 HMAC 密钥到: {Path}", keyPath);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "无法持久化 HMAC 密钥，每次启动将生成新密钥: {Path}", keyPath);
+        }
 
         return key;
     }
@@ -530,7 +550,7 @@ public sealed class PermissionService : IPermissionService, IDisposable
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            var result = await execute();
+            var result = await execute().ConfigureAwait(false);
             return new PermissionEvaluationStep
             {
                 Step = stepName,

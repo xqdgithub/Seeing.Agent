@@ -1,8 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 
 namespace Seeing.Agent.Core.Snapshot
@@ -148,9 +146,7 @@ namespace Seeing.Agent.Core.Snapshot
 
         public static string ComputeHash(string content)
         {
-            var bytes = Encoding.UTF8.GetBytes(content);
-            var hash = SHA256.HashData(bytes);
-            return Convert.ToHexString(hash).ToLowerInvariant();
+            return Helpers.HashHelper.ComputeSha256Hex(content);
         }
     }
 }

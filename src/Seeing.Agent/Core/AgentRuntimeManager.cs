@@ -4,6 +4,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core
 {
@@ -36,12 +37,13 @@ namespace Seeing.Agent.Core
         /// 会话级模型覆盖（用户在当前会话中手动设置的模型）
         /// <para>Key: Agent 名称, Value: 模型 ID</para>
         /// </summary>
-        private readonly Dictionary<string, string> _sessionModelOverrides = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, string> _sessionModelOverrides = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// 上次使用的模型（用于切换 Agent 时回退）
         /// </summary>
         private string? _lastUsedModel;
+        private readonly object _modelLock = new();
 
         /// <summary>
         /// 当前 Agent 名称
@@ -301,9 +303,12 @@ namespace Seeing.Agent.Core
                     throw new ArgumentException($"模型不存在: {modelId}");
             }
 
-            _sessionModelOverrides[agentName] = modelId;
-            CurrentModel = modelId;
-            _lastUsedModel = modelId;
+            lock (_modelLock)
+            {
+                _sessionModelOverrides.AddOrUpdate(agentName, modelId, (_, _) => modelId);
+                CurrentModel = modelId;
+                _lastUsedModel = modelId;
+            }
 
             _logger.LogInformation("[ModelManager] 会话级模型设置: {Agent} -> {Model}", agentName, modelId);
         }
@@ -334,14 +339,24 @@ namespace Seeing.Agent.Core
         /// <inheritdoc/>
         public void ClearSessionModelOverride(string? agentName = null)
         {
-            if (string.IsNullOrEmpty(agentName))
+            lock (_modelLock)
             {
-                _sessionModelOverrides.Clear();
-                _logger.LogInformation("[ModelManager] 已清除所有会话级模型设置");
-            }
-            else if (_sessionModelOverrides.Remove(agentName))
-            {
-                _logger.LogInformation("[ModelManager] 已清除 Agent {Agent} 的会话级模型设置", agentName);
+                if (string.IsNullOrEmpty(agentName))
+                {
+                    _sessionModelOverrides.Clear();
+                    CurrentModel = null;
+                    _lastUsedModel = null;
+                    _logger.LogInformation("[ModelManager] 已清除所有会话级模型设置");
+                }
+                else if (_sessionModelOverrides.TryRemove(agentName, out _))
+                {
+                    if (CurrentModel != null && _sessionModelOverrides.IsEmpty)
+                    {
+                        CurrentModel = null;
+                        _lastUsedModel = null;
+                    }
+                    _logger.LogInformation("[ModelManager] 已清除 Agent {Agent} 的会话级模型设置", agentName);
+                }
             }
         }
 

@@ -90,7 +90,7 @@ public class LlmService : ILlmService
         ChatRequest request,
         CancellationToken cancellationToken = default)
     {
-        return await CompleteAsync(modelId, request, sessionId: null, cancellationToken);
+        return await CompleteAsync(modelId, request, sessionId: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>发送聊天请求（带 Hook 支持）</summary>
@@ -125,7 +125,7 @@ public class LlmService : ILlmService
                 ["modelId"] = apiModelId,
                 ["provider"] = client.ProviderId
             },
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         // ========== Hook: chat.params ==========
         var paramsOutput = new Dictionary<string, object?>
@@ -145,7 +145,7 @@ public class LlmService : ILlmService
                 ["provider"] = client.ProviderId
             },
             paramsOutput,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
         // 应用 Hook 修改后的参数
         request.Temperature = Convert.ToDouble(paramsOutput["temperature"]);
@@ -167,7 +167,7 @@ public class LlmService : ILlmService
                 ["provider"] = client.ProviderId
             },
             headersOutput,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
         // ========== Hook: llm.system_prompt ==========
         if (!string.IsNullOrEmpty(request.SystemPrompt))
@@ -185,7 +185,7 @@ public class LlmService : ILlmService
                     ["modelId"] = modelId
                 },
                 promptOutput,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             request.SystemPrompt = promptOutput["prompt"]?.ToString();
         }
@@ -195,7 +195,7 @@ public class LlmService : ILlmService
         ChatResponse response;
         try
         {
-            response = await client.CompleteAsync(request, cancellationToken);
+            response = await client.CompleteAsync(request, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -221,7 +221,7 @@ public class LlmService : ILlmService
                 ["messageId"] = response.Id,
                 ["modelId"] = modelId
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
         // ========== Hook: chat.after_complete ==========
         _hookManager.TriggerFireAndForget(
@@ -285,7 +285,7 @@ public class LlmService : ILlmService
                 ["provider"] = client.ProviderId,
                 ["streaming"] = true
             },
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         // ========== Hook: chat.params ==========
         var paramsOutput = new Dictionary<string, object?>
@@ -305,7 +305,7 @@ public class LlmService : ILlmService
                 ["streaming"] = true
             },
             paramsOutput,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
         request.Temperature = Convert.ToDouble(paramsOutput["temperature"]);
         request.TopP = Convert.ToDouble(paramsOutput["topP"]);
@@ -328,7 +328,7 @@ public class LlmService : ILlmService
                     ["streaming"] = true
                 },
                 promptOutput,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             request.SystemPrompt = promptOutput["prompt"]?.ToString();
         }
@@ -380,7 +380,7 @@ public class LlmService : ILlmService
                     {
                         if (!string.IsNullOrEmpty(update.Id))
                             messageId = update.Id;
-                        await writer.WriteAsync(update, cancellationToken);
+                        await writer.WriteAsync(update, cancellationToken).ConfigureAwait(false);
                     }
 
                     // 成功完成
@@ -412,7 +412,7 @@ public class LlmService : ILlmService
 
                     // 指数退避
                     var delay = TimeSpan.FromMilliseconds(retryDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
-                    await Task.Delay(delay, cancellationToken);
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -484,7 +484,7 @@ public class LlmService : ILlmService
         }
 
         // 确保后台任务完成
-        await processTask;
+        await processTask.ConfigureAwait(false);
 
         // ✅ 如果有异常，包装并抛出
         if (capturedException != null)
@@ -527,7 +527,7 @@ public class LlmService : ILlmService
     /// <summary>测试 Provider 连接</summary>
     public async Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken cancellationToken = default)
     {
-        return await _providerManager.TestConnectionAsync(providerId, modelId, cancellationToken);
+        return await _providerManager.TestConnectionAsync(providerId, modelId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -9,7 +9,7 @@ using CoreMcpConnectionState = Seeing.Agent.MCP.Core.McpConnectionState;
 /// <summary>
 /// MCP 后台重连器 - 定时检查错误状态的 Server 并自动重连
 /// </summary>
-internal sealed class McpBackgroundReconnector
+internal sealed class McpBackgroundReconnector : IDisposable
 {
     private readonly ILogger _logger;
     private readonly McpGlobalPolicy _policy;
@@ -167,5 +167,16 @@ internal sealed class McpBackgroundReconnector
     public void ResetReconnectTime(string serverName)
     {
         _lastReconnectTime.TryRemove(serverName, out _);
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _timer?.Change(Timeout.Infinite, Timeout.Infinite);
+        _timer?.Dispose();
+        _timer = null;
     }
 }

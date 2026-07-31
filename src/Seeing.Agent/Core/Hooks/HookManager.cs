@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core.Hooks;
 
-public sealed class HookManager : IHookManager
+public class HookManager : IHookManager
 {
     private readonly ConcurrentDictionary<string, List<object>> _handlers = new();
     private readonly ILogger<HookManager> _logger;
@@ -89,8 +89,16 @@ public sealed class HookManager : IHookManager
         handler is IHookHandler h ? h.Priority :
         handler is IMultiHookHandler m ? m.Priority : 0;
 
-    private List<object> GetHandlers(string point) =>
-        _handlers.TryGetValue(point, out var list) ? list : new List<object>();
+    private List<object> GetHandlers(string point)
+    {
+        if (!_handlers.TryGetValue(point, out var list))
+            return new List<object>();
+
+        lock (list)
+        {
+            return list.ToList();
+        }
+    }
 
     private async Task<HookResult> ExecuteBlockingAsync(HookPayload payload)
     {

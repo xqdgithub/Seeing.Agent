@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Models;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Commands
 {
@@ -48,13 +49,13 @@ namespace Seeing.Agent.Commands
     public class CommandRegistry : ICommandRegistry
     {
         // Runtime 特定命令: (name, runtime) -> command
-        private readonly Dictionary<(string Name, AgentRuntime Runtime), ICommand> _commandsByRuntime = new();
+        private readonly ConcurrentDictionary<(string Name, AgentRuntime Runtime), ICommand> _commandsByRuntime = new();
         // 默认命令（支持所有 Runtime）：name -> command
-        private readonly Dictionary<string, ICommand> _defaultCommands = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, ICommand> _defaultCommands = new(StringComparer.OrdinalIgnoreCase);
         // 别名映射：(alias, runtime) -> command (用于 Runtime 特定命令的别名)
-        private readonly Dictionary<(string Alias, AgentRuntime Runtime), ICommand> _aliasByRuntime = new();
+        private readonly ConcurrentDictionary<(string Alias, AgentRuntime Runtime), ICommand> _aliasByRuntime = new();
         // 默认命令别名：alias -> command
-        private readonly Dictionary<string, ICommand> _defaultAliases = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, ICommand> _defaultAliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly ILogger<CommandRegistry>? _logger;
 
         public CommandRegistry(ILogger<CommandRegistry>? logger = null)
@@ -94,7 +95,7 @@ namespace Seeing.Agent.Commands
             {
                 _logger?.LogWarning("默认命令 '{Name}' 已存在，将被覆盖", name);
             }
-            _defaultCommands[name] = command;
+            _defaultCommands.AddOrUpdate(name, command, (_, _) => command);
 
             // 注册别名
             foreach (var alias in metadata.Aliases)
@@ -105,7 +106,7 @@ namespace Seeing.Agent.Commands
                 }
                 else
                 {
-                    _defaultAliases[alias] = command;
+                    _defaultAliases.AddOrUpdate(alias, command, (_, _) => command);
                 }
             }
 
@@ -123,7 +124,7 @@ namespace Seeing.Agent.Commands
                 {
                     _logger?.LogWarning("命令 '{Name}' (Runtime={Runtime}) 已存在，将被覆盖", name, runtime);
                 }
-                _commandsByRuntime[key] = command;
+                _commandsByRuntime.AddOrUpdate(key, command, (_, _) => command);
 
                 // 注册别名
                 foreach (var alias in metadata.Aliases)
@@ -135,7 +136,7 @@ namespace Seeing.Agent.Commands
                     }
                     else
                     {
-                        _aliasByRuntime[aliasKey] = command;
+                        _aliasByRuntime.AddOrUpdate(aliasKey, command, (_, _) => command);
                     }
                 }
             }
@@ -248,21 +249,21 @@ namespace Seeing.Agent.Commands
             var metadata = command.Metadata;
 
             // 从默认命令中移除
-            if (_defaultCommands.Remove(metadata.Name))
+            if (_defaultCommands.TryRemove(metadata.Name, out _))
             {
                 foreach (var alias in metadata.Aliases)
                 {
-                    _defaultAliases.Remove(alias);
+                    _defaultAliases.TryRemove(alias, out _);
                 }
             }
 
             // 从 Runtime 特定命令中移除
             foreach (var runtime in metadata.SupportedRuntimes)
             {
-                _commandsByRuntime.Remove((metadata.Name, runtime));
+                _commandsByRuntime.TryRemove((metadata.Name, runtime), out _);
                 foreach (var alias in metadata.Aliases)
                 {
-                    _aliasByRuntime.Remove((alias, runtime));
+                    _aliasByRuntime.TryRemove((alias, runtime), out _);
                 }
             }
 

@@ -30,7 +30,7 @@ public class AgentExecutor
     private readonly IHookManager _hooks;
     private readonly IAgentRegistry _registry;
     private readonly PromptBuilder _promptBuilder;
-    private readonly SeeingAgentOptions _options;
+    private readonly IOptionsMonitor<SeeingAgentOptions> _options;
     private readonly ILogger<AgentExecutor> _logger;
     private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
     private readonly Scheduling.IAgentLoopScheduler? _loopScheduler;
@@ -42,7 +42,7 @@ public class AgentExecutor
         IHookManager hooks,
         IAgentRegistry registry,
         PromptBuilder promptBuilder,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<SeeingAgentOptions> options,
         ILogger<AgentExecutor> logger,
         Seeing.Session.Core.ISessionManager? sessionManager = null,
         Scheduling.IAgentLoopScheduler? loopScheduler = null)
@@ -53,7 +53,7 @@ public class AgentExecutor
         _hooks = hooks;
         _registry = registry;
         _promptBuilder = promptBuilder;
-        _options = options.Value;
+        _options = options;
         _logger = logger;
         _sessionManager = sessionManager;
         _loopScheduler = loopScheduler;
@@ -127,7 +127,7 @@ public class AgentExecutor
             };
 
             // 构建请求（异步注入动态上下文）
-            var request = await BuildRequestAsync(agent, messages, context);
+            var request = await BuildRequestAsync(agent, messages, context).ConfigureAwait(false);
 
             // 调用 LLM（流式）
             ChatMessage? assistantMessage = null;
@@ -150,7 +150,7 @@ public class AgentExecutor
                         context.SessionId,
                         effectiveToken))
                     {
-                        await llmChannel.Writer.WriteAsync(update, effectiveToken);
+                        await llmChannel.Writer.WriteAsync(update, effectiveToken).ConfigureAwait(false);
                     }
                     llmChannel.Writer.Complete();
                 }
@@ -271,7 +271,7 @@ public class AgentExecutor
             }
 
             // 确保后台任务完成
-            await llmTask;
+            await llmTask.ConfigureAwait(false);
 
             // 处理 LLM 异常
             if (llmException != null)
@@ -437,7 +437,7 @@ public class AgentExecutor
                 Platform = Environment.OSVersion.Platform.ToString(),
                 Tools = toolSchemas.Select(ts => ts.Function).ToList(),
             };
-            systemPrompt = await _promptBuilder.BuildAsync(promptContext, context.CancellationToken);
+            systemPrompt = await _promptBuilder.BuildAsync(promptContext, context.CancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(systemPrompt))
                 systemPrompt = null;
         }
@@ -562,7 +562,7 @@ public class AgentExecutor
 
         // Session-first：task 走正常 ToolManager 路径（TaskTool），不再旁路
 
-        var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionChannel);
+        var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionChannel).ConfigureAwait(false);
 
         if (decision.Action == PermissionAction.Deny)
         {
@@ -583,7 +583,7 @@ public class AgentExecutor
         if (decision.Action == PermissionAction.Ask)
         {
             var userDecision = await permissionChannel.RequestToolPermissionAsync(
-                name, arguments, context);
+                name, arguments, context).ConfigureAwait(false);
 
             if (userDecision.Action != PermissionAction.Allow)
             {
@@ -606,7 +606,7 @@ public class AgentExecutor
         try
         {
             result = await _tools.ExecuteAsync(
-                tc, context.SessionId, cancellationToken, emitAsync, permissionChannel);
+                tc, context.SessionId, cancellationToken, emitAsync, permissionChannel).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -654,13 +654,13 @@ public class AgentExecutor
         var policy = ResolvePolicy(agent, context);
         var permContext = PermissionContext.FromAgentContext(context, policy, agent.Name);
 
-        var result = await _permissions.EvaluateToolAsync(toolName, null, permContext);
+        var result = await _permissions.EvaluateToolAsync(toolName, null, permContext).ConfigureAwait(false);
 
         // 处理 Ask 情况
         if (result.NeedsConfirmation)
         {
             var userDecision = await permissionChannel.RequestToolPermissionAsync(
-                toolName, arguments, context);
+                toolName, arguments, context).ConfigureAwait(false);
 
             if (userDecision.Action != PermissionAction.Allow)
             {
@@ -711,11 +711,11 @@ public class AgentExecutor
         }
 
         // 2. 回退到全局默认模型
-        if (!string.IsNullOrEmpty(_options.DefaultModel))
+        if (!string.IsNullOrEmpty(_options.CurrentValue.DefaultModel))
         {
             _logger.LogDebug("[AgentExecutor] Agent {Name} 未配置模型，使用全局默认: {DefaultModel}",
-                agent.Name, _options.DefaultModel);
-            return _options.DefaultModel;
+                agent.Name, _options.CurrentValue.DefaultModel);
+            return _options.CurrentValue.DefaultModel;
         }
 
         // 3. 无默认模型配置，抛出错误

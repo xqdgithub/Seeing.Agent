@@ -19,7 +19,7 @@ using CoreMcpConnectionState = Seeing.Agent.MCP.Core.McpConnectionState;
 
 namespace Seeing.Agent.MCP
 {
-    public sealed class McpClientManager : IMcpManager
+    public class McpClientManager : IMcpManager
     {
         private readonly ILogger<McpClientManager> _logger;
         private readonly ILoggerFactory _loggerFactory;
@@ -33,7 +33,6 @@ namespace Seeing.Agent.MCP
         private readonly ConcurrentDictionary<string, McpServerStatus> _statuses = new();
         private readonly ConcurrentDictionary<string, McpServerConfig> _configs = new();
         private readonly ConcurrentDictionary<string, McpConnectionCoordinator> _coordinators = new();
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> _reconnectLocks = new();
 
         private readonly McpToolRegistry _toolRegistry;
         private readonly McpBackgroundReconnector _reconnector;
@@ -83,18 +82,12 @@ namespace Seeing.Agent.MCP
 
         public IReadOnlyDictionary<string, McpServerStatus> GetAllStatus()
         {
-            lock (_stateLock)
-            {
-                return _statuses.ToDictionary(k => k.Key, v => v.Value.Clone());
-            }
+            return _statuses.ToDictionary(k => k.Key, v => v.Value.Clone());
         }
 
         public McpServerStatus? GetStatus(string name)
         {
-            lock (_stateLock)
-            {
-                return _statuses.TryGetValue(name, out var status) ? status.Clone() : null;
-            }
+            return _statuses.TryGetValue(name, out var status) ? status.Clone() : null;
         }
 
         public IReadOnlyList<Core.McpToolInfo> GetTools()
@@ -392,10 +385,7 @@ namespace Seeing.Agent.MCP
 
         public McpServerConfig? GetConfig(string name)
         {
-            lock (_stateLock)
-            {
-                return _configs.TryGetValue(name, out var config) ? config : null;
-            }
+            return _configs.TryGetValue(name, out var config) ? config : null;
         }
 
         public async Task SaveConfigAsync(ConfigLevel level, CancellationToken cancellationToken = default)
@@ -416,21 +406,15 @@ namespace Seeing.Agent.MCP
         /// <inheritdoc />
         public IReadOnlyDictionary<string, McpServerConfig> GetAllConfigs()
         {
-            lock (_stateLock)
-            {
-                return new Dictionary<string, McpServerConfig>(_configs);
-            }
+            return new Dictionary<string, McpServerConfig>(_configs);
         }
 
         /// <inheritdoc />
         public ConfigLevel? GetConfigLevel(string name)
         {
-            lock (_stateLock)
-            {
-                if (_configs.TryGetValue(name, out var config))
-                    return config.ConfigLevel ?? ConfigLevel.Project;
-                return null;
-            }
+            if (_configs.TryGetValue(name, out var config))
+                return config.ConfigLevel ?? ConfigLevel.Project;
+            return null;
         }
 
         /// <inheritdoc />

@@ -61,10 +61,8 @@ public sealed class AgentPermissionPolicy
 
     private static string ComputeHash(IReadOnlyList<PermissionRuleEntry> rules)
     {
-        using var sha256 = SHA256.Create();
-        var json = JsonSerializer.SerializeToUtf8Bytes(rules);
-        var hash = sha256.ComputeHash(json);
-        return Convert.ToBase64String(hash);
+        var json = JsonSerializer.Serialize(rules);
+        return Helpers.HashHelper.ComputeSha256Hex(json);
     }
 
     /// <summary>

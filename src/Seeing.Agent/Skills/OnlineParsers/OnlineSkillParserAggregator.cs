@@ -12,6 +12,7 @@ public class OnlineSkillParserAggregator
 {
     private readonly ILogger<OnlineSkillParserAggregator> _logger;
     private readonly List<IOnlineSkillParser> _parsers = new();
+    private readonly object _parsersLock = new();
 
     public OnlineSkillParserAggregator(ILogger<OnlineSkillParserAggregator> logger)
     {
@@ -27,14 +28,23 @@ public class OnlineSkillParserAggregator
     /// </summary>
     public void RegisterParser(IOnlineSkillParser parser)
     {
-        _parsers.Add(parser);
+        lock (_parsersLock)
+        {
+            _parsers.Add(parser);
+        }
         _logger.LogDebug("注册在线技能解析器: {ParserName}", parser.Name);
     }
 
     /// <summary>
     /// 获取所有已注册的解析器
     /// </summary>
-    public IReadOnlyList<IOnlineSkillParser> GetParsers() => _parsers;
+    public IReadOnlyList<IOnlineSkillParser> GetParsers()
+    {
+        lock (_parsersLock)
+        {
+            return _parsers.ToList();
+        }
+    }
 
     /// <summary>
     /// 解析技能元数据
@@ -45,7 +55,13 @@ public class OnlineSkillParserAggregator
     /// <returns>解析结果，失败返回 null</returns>
     public async Task<OnlineSkillResult?> ParseAsync(string url, HttpClient httpClient, CancellationToken cancellationToken = default)
     {
-        var parser = _parsers.FirstOrDefault(p => p.CanParse(url));
+        List<IOnlineSkillParser> snapshot;
+        lock (_parsersLock)
+        {
+            snapshot = _parsers.ToList();
+        }
+
+        var parser = snapshot.FirstOrDefault(p => p.CanParse(url));
         
         if (parser == null)
         {
@@ -83,7 +99,13 @@ public class OnlineSkillParserAggregator
     /// <returns>ZIP 文件字节数组，失败返回 null</returns>
     public async Task<byte[]?> DownloadZipAsync(string url, OnlineSkillResult result, HttpClient httpClient, CancellationToken cancellationToken = default)
     {
-        var parser = _parsers.FirstOrDefault(p => p.CanParse(url));
+        List<IOnlineSkillParser> snapshot;
+        lock (_parsersLock)
+        {
+            snapshot = _parsers.ToList();
+        }
+
+        var parser = snapshot.FirstOrDefault(p => p.CanParse(url));
         
         if (parser == null)
         {

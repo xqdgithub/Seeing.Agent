@@ -1,14 +1,15 @@
 namespace Seeing.Agent.MCP.Factory;
 
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 public class McpWrapperFactoryRegistry
 {
-    private readonly Dictionary<McpTransportType, IMcpClientWrapperFactory> _factories = new();
+    private readonly ConcurrentDictionary<McpTransportType, IMcpClientWrapperFactory> _factories = new();
 
     public void Register(IMcpClientWrapperFactory factory)
     {
-        _factories[factory.TransportType] = factory;
+        _factories.TryAdd(factory.TransportType, factory);
     }
 
     public IMcpClientWrapper Create(

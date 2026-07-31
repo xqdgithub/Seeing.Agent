@@ -70,7 +70,7 @@ namespace Seeing.Agent.Tools
         public async Task<List<FunctionToolSchema>> GetToolSchemasForModeAsync(AgentMode mode)
         {
             // Retrieve all schemas first, including hooks processing
-            var allSchemas = await GetToolSchemasAsync();
+            var allSchemas = await GetToolSchemasAsync().ConfigureAwait(false);
 
             // Build allowed set based on mode
             HashSet<string> allowed = mode switch
@@ -110,7 +110,7 @@ namespace Seeing.Agent.Tools
             if (agent == null)
                 throw new ArgumentNullException(nameof(agent));
 
-            var baseList = await GetToolSchemasForModeAsync(agent.Mode);
+            var baseList = await GetToolSchemasForModeAsync(agent.Mode).ConfigureAwait(false);
             return FilterSchemasByAgentToolLists(baseList, agent.AllowedTools, agent.DeniedTools);
         }
 
@@ -183,8 +183,8 @@ namespace Seeing.Agent.Tools
             var userPath = Path.Combine(_workspace.UserSeeingDirectory, "tool-state.json");
             var projectPath = Path.Combine(_workspace.ProjectSeeingDirectory, "tool-state.json");
 
-            var userDisabled = await LoadDisabledSetAsync(userPath, ct);
-            var projectDisabled = await LoadDisabledSetAsync(projectPath, ct);
+            var userDisabled = await LoadDisabledSetAsync(userPath, ct).ConfigureAwait(false);
+            var projectDisabled = await LoadDisabledSetAsync(projectPath, ct).ConfigureAwait(false);
 
             lock (_toolStateLock)
             {
@@ -207,7 +207,7 @@ namespace Seeing.Agent.Tools
                 level = _projectDisabledTools.Contains(toolId) ? ConfigLevel.Project : ConfigLevel.User;
             }
 
-            await SaveToolStateAsync(toolId, enabled, level, ct);
+            await SaveToolStateAsync(toolId, enabled, level, ct).ConfigureAwait(false);
             OnToolStateChanged?.Invoke();
         }
 
@@ -231,7 +231,7 @@ namespace Seeing.Agent.Tools
                     targetSet.Add(toolId);
             }
 
-            await SaveDisabledSetAsync(filePath, targetSet, ct);
+            await SaveDisabledSetAsync(filePath, targetSet, ct).ConfigureAwait(false);
         }
 
         /// <summary>从文件加载禁用 ID 集合</summary>
@@ -244,7 +244,7 @@ namespace Seeing.Agent.Tools
 
             try
             {
-                var json = await File.ReadAllTextAsync(filePath, ct);
+                var json = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
                 var data = JsonSerializer.Deserialize<DisabledToolsData>(json, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
@@ -281,7 +281,7 @@ namespace Seeing.Agent.Tools
                 WriteIndented = true
             });
 
-            await File.WriteAllTextAsync(filePath, json, ct);
+            await File.WriteAllTextAsync(filePath, json, ct).ConfigureAwait(false);
         }
 
         /// <summary>禁用工具数据模型</summary>
@@ -314,7 +314,7 @@ namespace Seeing.Agent.Tools
                     HookRegistry.ToolDefinition,
                     string.Empty,
                     new Dictionary<string, object?> { ["toolId"] = tool.Id },
-                    mutable);
+                    mutable).ConfigureAwait(false);
 
                 schemas.Add(new FunctionToolSchema
                 {
@@ -388,7 +388,7 @@ namespace Seeing.Agent.Tools
                     ["tool"] = tool
                 },
                 beforeMutable,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             if (!beforeResult.Continue)
             {
@@ -531,7 +531,7 @@ namespace Seeing.Agent.Tools
                     ["callId"] = toolCall.Id
                 },
                 argsMutable,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             if (!hookResult.Continue)
             {
@@ -566,7 +566,7 @@ namespace Seeing.Agent.Tools
                 else
                     args = toolCall.Arguments is JsonElement je2 ? je2 : new JsonElement();
 
-                var toolResult = await tool.ExecuteAsync(args, context);
+                var toolResult = await tool.ExecuteAsync(args, context).ConfigureAwait(false);
 
                 // ========== Hook: tool.execute.after ==========
                 _hookManager.TriggerFireAndForget(
@@ -633,7 +633,7 @@ namespace Seeing.Agent.Tools
                     ["toolIds"] = toolCalls.Select(tc => tc.Name).Distinct().ToList()
                 },
                 batchMutable,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             if (!beforeResult.Continue)
             {
@@ -650,7 +650,7 @@ namespace Seeing.Agent.Tools
 
             foreach (var toolCall in toolCalls)
             {
-                var result = await ExecuteAsync(toolCall, sessionId, cancellationToken);
+                var result = await ExecuteAsync(toolCall, sessionId, cancellationToken).ConfigureAwait(false);
                 results.Add(result);
             }
 
@@ -695,7 +695,7 @@ namespace Seeing.Agent.Tools
                 }
             };
 
-            return await ExecuteAsync(toolCall, sessionId, cancellationToken);
+            return await ExecuteAsync(toolCall, sessionId, cancellationToken).ConfigureAwait(false);
         }
     }
 }

@@ -22,6 +22,7 @@ namespace Seeing.Agent.Core
         private readonly ILogger<AgentDiscovery> _logger;
         private readonly IDeserializer _yamlDeserializer;
         private readonly List<string> _searchDirectories = new();
+        private readonly object _searchDirsLock = new();
 
         /// <summary>
         /// Agent 文件模式匹配
@@ -68,11 +69,14 @@ namespace Seeing.Agent.Core
             if (string.IsNullOrEmpty(directory)) return;
 
             var resolvedPath = ResolvePath(directory);
-            if (!_searchDirectories.Contains(resolvedPath))
+            lock (_searchDirsLock)
             {
-                _searchDirectories.Add(resolvedPath);
-                _logger.LogDebug("添加 Agent 搜索目录: {Directory}", resolvedPath);
+                if (!_searchDirectories.Contains(resolvedPath))
+                {
+                    _searchDirectories.Add(resolvedPath);
+                }
             }
+            _logger.LogDebug("添加 Agent 搜索目录: {Directory}", resolvedPath);
         }
 
         /// <summary>
@@ -108,7 +112,13 @@ namespace Seeing.Agent.Core
         {
             var agents = new List<Models.AgentDefinition>();
 
-            foreach (var directory in _searchDirectories)
+            string[] searchDirectories;
+            lock (_searchDirsLock)
+            {
+                searchDirectories = _searchDirectories.ToArray();
+            }
+
+            foreach (var directory in searchDirectories)
             {
                 if (!Directory.Exists(directory))
                 {
@@ -351,14 +361,23 @@ namespace Seeing.Agent.Core
         /// <summary>
         /// 获取所有搜索目录
         /// </summary>
-        public IReadOnlyList<string> GetSearchDirectories() => _searchDirectories;
+        public IReadOnlyList<string> GetSearchDirectories()
+        {
+            lock (_searchDirsLock)
+            {
+                return _searchDirectories.ToArray();
+            }
+        }
 
         /// <summary>
         /// 清空搜索目录
         /// </summary>
         public void ClearSearchDirectories()
         {
-            _searchDirectories.Clear();
+            lock (_searchDirsLock)
+            {
+                _searchDirectories.Clear();
+            }
         }
 
         /// <summary>
@@ -366,7 +385,10 @@ namespace Seeing.Agent.Core
         /// </summary>
         public void ResetToDefaultDirectories()
         {
-            _searchDirectories.Clear();
+            lock (_searchDirsLock)
+            {
+                _searchDirectories.Clear();
+            }
             AddDefaultDirectories();
         }
     }

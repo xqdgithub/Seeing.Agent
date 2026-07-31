@@ -8,9 +8,9 @@ namespace Seeing.Agent.Llm;
 /// </summary>
 public sealed class OptionsProviderEndpointLookup : IProviderEndpointLookup
 {
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<SeeingAgentOptions> _options;
 
-    public OptionsProviderEndpointLookup(IOptions<SeeingAgentOptions> options)
+    public OptionsProviderEndpointLookup(IOptionsMonitor<SeeingAgentOptions> options)
     {
         _options = options;
     }
@@ -18,7 +18,7 @@ public sealed class OptionsProviderEndpointLookup : IProviderEndpointLookup
     public bool TryGet(string providerName, out ProviderEndpoint? endpoint)
     {
         if (string.IsNullOrWhiteSpace(providerName)
-            || !_options.Value.Providers.TryGetValue(providerName, out var config)
+            || !_options.CurrentValue.Providers.TryGetValue(providerName, out var config)
             || config is null)
         {
             endpoint = null;

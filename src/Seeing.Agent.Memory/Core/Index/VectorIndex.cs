@@ -300,9 +300,7 @@ public class VectorIndex : IVectorIndex
 
     private static string ComputeHash(string content)
     {
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(content));
-        return Convert.ToHexString(hashBytes)[..16];
+        return Seeing.Agent.Helpers.HashHelper.ComputeSha256Hex(content)[..16];
     }
 }
 
