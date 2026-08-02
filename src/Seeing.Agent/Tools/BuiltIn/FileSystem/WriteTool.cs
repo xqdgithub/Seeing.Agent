@@ -82,8 +82,9 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 filePath = Path.GetFullPath(filePath);
             }
 
-            var pathCheck = await CheckPathWithinWorkspaceAsync(filePath, context);
-            if (pathCheck != null) return pathCheck;
+            var permCheck = await RequestPermissionAsync(context, "filesystem.write", filePath,
+                new Dictionary<string, object> { ["filePath"] = filePath });
+            if (permCheck != null) return permCheck;
 
             _logger.LogInformation("写入文件: {FilePath}", filePath);
 
@@ -93,22 +94,6 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 
             // 生成 diff
             var diff = GenerateDiff(filePath, oldContent, content);
-
-            // 权限检查
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
-                {
-                    Permission = "edit",
-                    Patterns = new List<string> { filePath },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["filePath"] = filePath,
-                        ["diff"] = diff,
-                        ["exists"] = exists
-                    }
-                });
-            }
 
             // 确保目录存在
             var directory = Path.GetDirectoryName(filePath);

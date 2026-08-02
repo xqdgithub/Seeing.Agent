@@ -130,22 +130,6 @@ namespace Seeing.Agent.Tools
                 return Failure($"Skill \"{skillName}\" not found. Available skills: {(string.IsNullOrEmpty(available) ? "none" : available)}");
             }
 
-            // 权限检查由 AgentExecutor.EvaluatePermissionAsync 统一处理
-            // 此处仅保留 AskPermission 回调（用于需要用户确认的场景）
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
-                {
-                    Permission = "skill",
-                    Patterns = new List<string> { skillName },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["name"] = skill.Name,
-                        ["description"] = skill.Description
-                    }
-                });
-            }
-
             _logger.LogInformation("Loading skill: {Name}", skillName);
 
             // 获取技能文件列表

@@ -22,9 +22,6 @@ public class PermissionService : IPermissionService, IDisposable
     private readonly Timer _cleanupTimer;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _cacheExpirations = new();
 
-    private IPermissionChannel? _channel;
-    private IServiceScope? _channelScope;
-
     public PermissionService(
         IServiceScopeFactory scopeFactory,
         IPermissionCache cache,
@@ -43,20 +40,6 @@ public class PermissionService : IPermissionService, IDisposable
             state: null,
             dueTime: TimeSpan.FromMinutes(1),
             period: TimeSpan.FromMinutes(1));
-    }
-
-    /// <summary>
-    /// 获取权限通道（缓存 channel 和 scope，避免 scope 泄漏问题）
-    /// </summary>
-    private IPermissionChannel GetChannel()
-    {
-        if (_channel != null)
-            return _channel;
-
-        _channelScope = _scopeFactory.CreateScope();
-        _channel = _channelScope.ServiceProvider.GetService<IPermissionChannel>()
-            ?? Core.Interfaces.DefaultPermissionChannel.Instance;
-        return _channel;
     }
 
     /// <inheritdoc />
@@ -173,29 +156,9 @@ public class PermissionService : IPermissionService, IDisposable
         PermissionContext context,
         CancellationToken cancellationToken = default)
     {
-        // 路径规范化
         var normalizedPath = NormalizePath(filePath, context.WorkingDirectory);
         var resource = new ResourceIdentifier(PermissionKind.File, normalizedPath);
-
-        var result = await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
-
-        // 对于写入操作，需要通过 IPermissionChannel 获取确认
-        if (result.NeedsConfirmation && operation == FileOperation.Write)
-        {
-            var decision = await GetChannel().RequestWritePermissionAsync(normalizedPath, null, CreateAgentContext(context)).ConfigureAwait(false);
-            return new PermissionResult
-            {
-                Effect = MapToEffect(decision.Action),
-                Resource = resource,
-                Reason = decision.Reason ?? "User confirmation",
-                MatchedRule = result.MatchedRule,
-                EvaluationPath = result.EvaluationPath,
-                ContextHash = result.ContextHash,
-                FromCache = false
-            };
-        }
-
-        return result;
+        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -298,7 +261,6 @@ public class PermissionService : IPermissionService, IDisposable
     public void Dispose()
     {
         _cleanupTimer?.Dispose();
-        _channelScope?.Dispose();
     }
 
     #region Private Methods

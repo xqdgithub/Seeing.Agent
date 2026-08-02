@@ -97,20 +97,9 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 
             _logger.LogInformation("Glob 搜索: pattern={Pattern}, path={Path}", pattern, searchPath);
 
-            // 权限检查
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
-                {
-                    Permission = "glob",
-                    Patterns = new List<string> { pattern },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["pattern"] = pattern,
-                        ["path"] = searchPath
-                    }
-                });
-            }
+            var permCheck = await RequestPermissionAsync(context, "filesystem.read", searchPath,
+                new Dictionary<string, object> { ["pattern"] = pattern, ["path"] = searchPath });
+            if (permCheck != null) return permCheck;
 
             // 执行搜索
             var files = FileSystemHelper.GlobSearch(searchPath, pattern, DefaultLimit);

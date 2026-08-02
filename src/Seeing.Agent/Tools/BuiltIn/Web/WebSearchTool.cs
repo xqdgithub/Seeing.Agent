@@ -88,22 +88,16 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
             var contextMaxCharacters = GetIntArgument(arguments, "contextMaxCharacters");
 
             // 请求权限确认
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
+            var permCheck = await RequestPermissionAsync(context, "network.search", "web_search",
+                new Dictionary<string, object>
                 {
-                    Permission = "websearch",
-                    Patterns = new List<string> { query },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["query"] = query,
-                        ["numResults"] = numResults,
-                        ["livecrawl"] = livecrawl,
-                        ["type"] = searchType,
-["contextMaxCharacters"] = contextMaxCharacters ?? (object)0
-                    }
+                    ["query"] = query,
+                    ["numResults"] = numResults,
+                    ["livecrawl"] = livecrawl,
+                    ["type"] = searchType,
+                    ["contextMaxCharacters"] = contextMaxCharacters ?? (object)0
                 });
-            }
+            if (permCheck != null) return permCheck;
 
             try
             {

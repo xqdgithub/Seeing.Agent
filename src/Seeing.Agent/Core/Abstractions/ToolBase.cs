@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using System.Text.Json;
 
 namespace Seeing.Agent.Core.Abstractions
@@ -31,6 +32,32 @@ namespace Seeing.Agent.Core.Abstractions
 
         /// <summary>执行工具</summary>
         public abstract Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context);
+
+        /// <summary>
+        /// 通过 IPermissionChannel 请求权限确认
+        /// </summary>
+        protected async Task<ToolResult?> RequestPermissionAsync(
+            ToolContext context,
+            string permissionKind,
+            string? resource,
+            Dictionary<string, object>? metadata = null)
+        {
+            var channel = context.PermissionChannel;
+            if (channel == null) return null;
+
+            var result = await channel.RequestAsync(new PermissionRequest
+            {
+                PermissionKind = permissionKind,
+                Resource = resource,
+                SessionId = context.SessionId,
+                Metadata = metadata ?? new Dictionary<string, object>()
+            });
+
+            if (result.Action == PermissionChannelAction.Deny)
+                return Failure(result.Reason ?? "权限被拒绝");
+
+            return null;
+        }
 
         /// <summary>
         /// 创建成功结果

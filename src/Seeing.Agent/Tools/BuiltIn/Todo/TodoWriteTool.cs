@@ -92,18 +92,9 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
             var todos = ParseTodos(todosElement);
 
             // 请求权限确认
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
-                {
-                    Permission = "todowrite",
-                    Patterns = new List<string> { "*" },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["todos"] = todos
-                    }
-                });
-            }
+            var permCheck = await RequestPermissionAsync(context, "tool.execute", "todowrite",
+                new Dictionary<string, object> { ["todos"] = todos });
+            if (permCheck != null) return permCheck;
 
             // 更新会话中的 Todo 列表
             var session = _sessionManager.Get(context.SessionId);
@@ -301,15 +292,9 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
         public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             // 请求权限确认
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
-                {
-                    Permission = "todoread",
-                    Patterns = new List<string> { "*" },
-                    Metadata = new Dictionary<string, object>()
-                });
-            }
+            var permCheck = await RequestPermissionAsync(context, "tool.execute", "todoread",
+                new Dictionary<string, object>());
+            if (permCheck != null) return permCheck;
 
             var session = _sessionManager.Get(context.SessionId);
             var todos = session?.GetContext<List<TodoItem>>(TodoContextKey) ?? new List<TodoItem>();

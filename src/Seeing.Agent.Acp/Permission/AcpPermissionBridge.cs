@@ -43,16 +43,14 @@ public sealed class AcpPermissionBridge
 
         // 优先使用上下文中的通道，否则从 DI 解析（支持热重载）
         var channel = ctx.PermissionChannel ?? ResolveDefaultChannel();
-        var decision = await channel.RequestToolPermissionAsync(
-            toolName,
-            toolCall.Input,
-            new AgentContext
-            {
-                SessionId = ctx.SeeingSessionId,
-                CancellationToken = cancellationToken
-            }).ConfigureAwait(false);
+        var channelResult = await channel.RequestAsync(new PermissionRequest
+        {
+            PermissionKind = "tool.execute",
+            Resource = toolName,
+            SessionId = ctx.SeeingSessionId
+        }, cancellationToken).ConfigureAwait(false);
 
-        var approved = decision.Action == PermissionAction.Allow;
+        var approved = channelResult.Action == Core.Permission.PermissionChannelAction.Allow;
 
         if (!approved)
         {

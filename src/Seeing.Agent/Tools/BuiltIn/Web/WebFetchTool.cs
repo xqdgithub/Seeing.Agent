@@ -97,20 +97,14 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
             timeoutSeconds = Math.Min(timeoutSeconds, MaxTimeoutSeconds);
 
             // 请求权限确认
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
+            var permCheck = await RequestPermissionAsync(context, "network.fetch", url,
+                new Dictionary<string, object>
                 {
-                    Permission = "webfetch",
-                    Patterns = new List<string> { url },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["url"] = url,
-                        ["format"] = format,
-                        ["timeout"] = timeoutSeconds
-                    }
+                    ["url"] = url,
+                    ["format"] = format,
+                    ["timeout"] = timeoutSeconds
                 });
-            }
+            if (permCheck != null) return permCheck;
 
             try
             {

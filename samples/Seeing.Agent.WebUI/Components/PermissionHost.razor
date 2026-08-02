@@ -1,6 +1,6 @@
 @using Seeing.Agent.Core.Events
 @using Seeing.Agent.Core.Interfaces
-@using Seeing.Agent.Core.Models
+@using Seeing.Agent.Core.Permission
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Services
 @implements IDisposable
@@ -48,8 +48,14 @@
 
   private static PermissionRequestType MapType(string? kind) => kind switch
   {
-    "tool" => PermissionRequestType.Tool,
-    "file" or "write" => PermissionRequestType.Write,
+    "tool.execute" => PermissionRequestType.Tool,
+    "filesystem.write" => PermissionRequestType.Write,
+    "filesystem.read" => PermissionRequestType.Read,
+    "filesystem.external" => PermissionRequestType.Confirmation,
+    "filesystem.workspace_extend" => PermissionRequestType.Confirmation,
+    "shell.execute" => PermissionRequestType.Tool,
+    "network.fetch" => PermissionRequestType.Tool,
+    "network.search" => PermissionRequestType.Tool,
     "agent" or "subagent" => PermissionRequestType.SubAgent,
     _ => PermissionRequestType.Confirmation
   };
@@ -57,9 +63,18 @@
   private void OnDecision(PermissionDecisionViewModel decision)
   {
     _decided = true;
-    PermissionChannel.RespondToPermission(
-      _request.PermissionId,
-      decision.Approved ? PermissionAction.Allow : PermissionAction.Deny);
+    var action = decision.Approved ? PermissionChannelAction.Allow : PermissionChannelAction.Deny;
+
+    var resourceToRemember = decision switch
+    {
+      { Approved: true, Scope: DecisionScope.SessionFile } => _request.Resource,
+      { Approved: true, Scope: DecisionScope.SessionDirectory } => _request.GetDirectoryPath(),
+      { Approved: true, Scope: DecisionScope.Session } => _request.Resource,
+      { Approved: false, Scope: DecisionScope.Session } => _request.Resource,
+      _ => null
+    };
+
+    PermissionChannel.RespondToPermission(_request.PermissionId, action, resourceToRemember);
     _visible = false;
   }
 
@@ -67,7 +82,7 @@
   {
     _visible = visible;
     if (!visible && !_decided && !string.IsNullOrEmpty(_request.PermissionId))
-      PermissionChannel.RespondToPermission(_request.PermissionId, PermissionAction.Deny);
+      PermissionChannel.RespondToPermission(_request.PermissionId, PermissionChannelAction.Deny);
     return Task.CompletedTask;
   }
 

@@ -61,11 +61,13 @@ namespace Seeing.Agent.Middlewares
                         {
                             var request = new PermissionRequest
                             {
-                                Permission = "tool",
-                                Patterns = new List<string> { permissionCtx.ToolId }
+                                PermissionKind = "tool.execute",
+                                Resource = permissionCtx.ToolId,
+                                SessionId = execCtx.SessionId
                             };
 
-                            var confirmed = await execCtx.PermissionChannel.RequestConfirmationAsync(request);
+                            var channelResult = await execCtx.PermissionChannel.RequestAsync(request);
+                            var confirmed = channelResult.Action == PermissionChannelAction.Allow;
 
                             if (!confirmed)
                             {

@@ -77,24 +77,12 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 searchPath = Path.GetFullPath(searchPath);
             }
 
-            // 权限检查
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
-                {
-                    Permission = "grep",
-                    Patterns = new List<string> { pattern },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["pattern"] = pattern,
-                        ["path"] = searchPath,
-                        ["include"] = includePattern ?? ""
-                    }
-                });
-            }
-
             _logger.LogInformation("Grep 搜索: pattern={Pattern}, path={Path}, include={Include}",
                 pattern, searchPath, includePattern);
+
+            var permCheck = await RequestPermissionAsync(context, "filesystem.read", searchPath,
+                new Dictionary<string, object> { ["path"] = searchPath, ["pattern"] = pattern });
+            if (permCheck != null) return permCheck;
 
             try
             {

@@ -106,8 +106,7 @@ public class AgentExecutor
         var messages = context.History.ToList();
 
         // Ask 全局串行：并行工具不得并发弹出多个 Ask
-        var permissionChannel = new SerializingPermissionChannel(
-            context.PermissionChannel ?? Interfaces.DefaultPermissionChannel.Instance);
+        var permissionChannel = context.PermissionChannel ?? Interfaces.DefaultPermissionChannel.Instance;
 
         // SubAgent：合并 Session PermissionSnapshot 作为本 Loop 权限真相源
         context.PermissionContext = PermissionContext.FromAgentContext(
@@ -580,27 +579,6 @@ public class AgentExecutor
             };
         }
 
-        if (decision.Action == PermissionAction.Ask)
-        {
-            var userDecision = await permissionChannel.RequestToolPermissionAsync(
-                name, arguments, context).ConfigureAwait(false);
-
-            if (userDecision.Action != PermissionAction.Allow)
-            {
-                return new ToolCallEvent
-                {
-                    SessionId = context.SessionId,
-                    LoopId = loopId,
-                    Type = MessageEventType.ToolCallComplete,
-                    ToolCallId = tc.Id,
-                    ToolName = name,
-                    Arguments = arguments,
-                    Status = ToolCallStatus.Rejected,
-                    Error = "用户拒绝",
-                    Duration = DateTime.Now - startTime
-                };
-            }
-        }
 
         ToolResult result;
         try
@@ -656,16 +634,21 @@ public class AgentExecutor
 
         var result = await _permissions.EvaluateToolAsync(toolName, null, permContext).ConfigureAwait(false);
 
-        // 处理 Ask 情况
         if (result.NeedsConfirmation)
         {
-            var userDecision = await permissionChannel.RequestToolPermissionAsync(
-                toolName, arguments, context).ConfigureAwait(false);
-
-            if (userDecision.Action != PermissionAction.Allow)
+            var channelResult = await permissionChannel.RequestAsync(new PermissionRequest
             {
-                return PermissionDecision.Deny("用户拒绝");
-            }
+                PermissionKind = "tool.execute",
+                Resource = toolName,
+                SessionId = context.SessionId,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["arguments"] = arguments ?? new object()
+                }
+            }, context.CancellationToken).ConfigureAwait(false);
+
+            if (channelResult.Action != PermissionChannelAction.Allow)
+                return PermissionDecision.Deny(channelResult.Reason ?? "用户拒绝");
 
             return PermissionDecision.Allow("用户确认允许");
         }

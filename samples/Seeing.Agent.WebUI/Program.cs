@@ -52,9 +52,14 @@ builder.Services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
 
 // === WebUI 服务 ===
 builder.Services.AddScoped<BlazorPermissionChannel>();
-// 直接注册 BlazorPermissionChannel，不再包装 SerializingPermissionChannel
-// AgentExecutor 会统一包装 SerializingPermissionChannel 确保权限请求串行
-builder.Services.AddScoped<IPermissionChannel>(sp => sp.GetRequiredService<BlazorPermissionChannel>());
+// BlazorPermissionChannel 包 SerializingPermissionChannel（记忆层 + 工作区检查 + 串行化）
+builder.Services.AddScoped<IPermissionChannel>(sp =>
+{
+    var memory = sp.GetRequiredService<Seeing.Agent.Core.Permission.IPermissionMemory>();
+    var workspace = sp.GetService<Seeing.Agent.Configuration.IWorkspaceProvider>();
+    var inner = sp.GetRequiredService<BlazorPermissionChannel>();
+    return new Seeing.Agent.Core.Permission.SerializingPermissionChannel(inner, memory, workspace);
+});
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<EventStreamHandler>();

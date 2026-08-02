@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Core.Interfaces;
@@ -10,11 +11,19 @@ namespace Seeing.Agent.Tests.Permission;
 public class PermissionServiceTests
 {
     private readonly Mock<IPermissionCache> _cacheMock = new();
-    private readonly Mock<IServiceProvider> _spMock = new();
+    private readonly Mock<IServiceScopeFactory> _scopeFactoryMock;
+
+    public PermissionServiceTests()
+    {
+        var services = new ServiceCollection();
+        var serviceProvider = services.BuildServiceProvider();
+        _scopeFactoryMock = new Mock<IServiceScopeFactory>();
+        _scopeFactoryMock.Setup(f => f.CreateScope()).Returns(serviceProvider.CreateScope());
+    }
 
     private PermissionService CreateService()
     {
-        return new PermissionService(_spMock.Object, _cacheMock.Object, NullLogger<PermissionService>.Instance);
+        return new PermissionService(_scopeFactoryMock.Object, _cacheMock.Object, NullLogger<PermissionService>.Instance);
     }
 
     [Fact]

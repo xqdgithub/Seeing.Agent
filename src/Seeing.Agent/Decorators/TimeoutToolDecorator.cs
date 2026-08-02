@@ -76,7 +76,6 @@ namespace Seeing.Agent.Decorators
                 Agent = original.Agent;
                 CancellationToken = timeoutToken;
                 SetMetadata = original.SetMetadata;
-                AskPermission = original.AskPermission;
                 EmitAsync = original.EmitAsync;
                 PermissionChannel = original.PermissionChannel;
                 Services = original.Services;

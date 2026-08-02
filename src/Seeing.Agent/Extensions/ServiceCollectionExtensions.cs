@@ -16,6 +16,7 @@ using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Core.Todo;
@@ -429,6 +430,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ITool, EditTool>();
             services.AddSingleton<ITool, GlobTool>();
             services.AddSingleton<ITool, GrepTool>();
+            services.AddSingleton<ITool, AddWorkspacePathTool>();
 
             // Shell 工具
             services.AddSingleton<ITool, BashTool>();
@@ -583,20 +585,25 @@ namespace Seeing.Agent.Extensions
             // 执行上下文相关
             services.AddSingleton<IMetadataStore, ConcurrentMetadataStore>();
 
-            // 权限通道 - 动态读取配置，支持热重载
+            // 权限记忆（会话级，纯内存）
+            services.AddSingleton<IPermissionMemory, SessionPermissionMemory>();
+
+            // 权限通道 — 默认使用 DynamicPermissionChannel + SerializingPermissionChannel（带记忆）
             // 使用 IOptionsMonitor 实现运行时配置变更无需重启
             // 注意：如果用户在其他地方注册了 IPermissionChannel（如 BlazorPermissionChannel），
             // 那个注册会覆盖这里的默认注册
             services.AddSingleton<IPermissionChannel>(sp =>
             {
+                var memory = sp.GetRequiredService<IPermissionMemory>();
+                var workspace = sp.GetService<IWorkspaceProvider>();
                 var optionsMonitor = sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>();
                 var logger = sp.GetService<ILogger<Core.Permission.DynamicPermissionChannel>>();
 
                 // 动态通道：每次请求时从 IOptionsMonitor 读取最新配置
                 var inner = new Core.Permission.DynamicPermissionChannel(optionsMonitor, logger);
 
-                // 进程级 Ask 串行（宿主可再包一层，如 Blazor）
-                return new Core.Permission.SerializingPermissionChannel(inner);
+                // 进程级 Ask 串行 + 会话级记忆 + 工作区边界检查（宿主可再包一层，如 Blazor）
+                return new Core.Permission.SerializingPermissionChannel(inner, memory, workspace);
             });
 
             // Agent 执行器（统一执行引擎）

@@ -14,9 +14,11 @@ public class TextCompletionServiceTests
     public async Task CompleteAsync_WhenModelEmptyAndNoDefault_ShouldThrow()
     {
         var llm = new Mock<ILlmService>(MockBehavior.Strict);
+        var options = new SeeingAgentOptions { DefaultModel = null };
+        var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
         var svc = new TextCompletionService(
             llm.Object,
-            Options.Create(new SeeingAgentOptions { DefaultModel = null }),
+            optionsMonitor,
             NullLogger<TextCompletionService>.Instance);
 
         var act = () => svc.CompleteAsync("sys", "user", model: null);
@@ -33,9 +35,11 @@ public class TextCompletionServiceTests
                 Message = new ChatMessage { Role = ChatRole.Assistant, Content = "  hello  " }
             });
 
+        var options = new SeeingAgentOptions { DefaultModel = "m1" };
+        var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
         var svc = new TextCompletionService(
             llm.Object,
-            Options.Create(new SeeingAgentOptions { DefaultModel = "m1" }));
+            optionsMonitor);
 
         var text = await svc.CompleteAsync("sys", "user");
         text.Should().Be("hello");
@@ -49,7 +53,8 @@ public class OptionsProviderEndpointLookupTests
     [Fact]
     public void TryGet_WhenMissing_ShouldReturnFalse()
     {
-        var lookup = new OptionsProviderEndpointLookup(Options.Create(new SeeingAgentOptions()));
+        var options = new SeeingAgentOptions();
+        var lookup = new OptionsProviderEndpointLookup(Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options));
         lookup.TryGet("openai", out var ep).Should().BeFalse();
         ep.Should().BeNull();
     }
@@ -64,7 +69,7 @@ public class OptionsProviderEndpointLookupTests
                 ["openai"] = new ProviderConfig { BaseUrl = "https://api.example/v1", ApiKey = "k" }
             }
         };
-        var lookup = new OptionsProviderEndpointLookup(Options.Create(opts));
+        var lookup = new OptionsProviderEndpointLookup(Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == opts));
         lookup.TryGet("openai", out var ep).Should().BeTrue();
         ep!.BaseUrl.Should().Be("https://api.example/v1");
         ep.ApiKey.Should().Be("k");

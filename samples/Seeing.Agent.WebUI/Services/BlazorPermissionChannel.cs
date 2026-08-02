@@ -1,136 +1,84 @@
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using System.Collections.Concurrent;
-using System.Reflection;
 
 namespace Seeing.Agent.WebUI.Services
 {
-    /// <summary>
-    /// Blazor UI 侧权限通道实现
-    /// 通过 EventStreamHandler 派发权限请求事件给 UI，UI 响应后通过 RespondToPermission 回填决策
-    /// </summary>
-    public class BlazorPermissionChannel : Seeing.Agent.Core.Interfaces.IPermissionChannel
+    public class BlazorPermissionChannel : IPermissionChannel
     {
         private readonly EventStreamHandler _eventStreamHandler;
-        private readonly Seeing.Agent.WebUI.State.SessionState _sessionState;
+        private readonly State.SessionState _sessionState;
 
-        // 待处理的权限请求集合：requestId -> TaskCompletionSource<PermissionDecision>
-        private readonly ConcurrentDictionary<string, TaskCompletionSource<PermissionDecision>> _pendingRequests = new();
+        private readonly ConcurrentDictionary<string, TaskCompletionSource<PermissionChannelResult>> _pendingRequests = new();
 
-        /// <summary>待处理权限请求数量</summary>
         public int PendingCount => _pendingRequests.Count;
 
-        public BlazorPermissionChannel(EventStreamHandler eventStreamHandler, Seeing.Agent.WebUI.State.SessionState sessionState)
+        public BlazorPermissionChannel(EventStreamHandler eventStreamHandler, State.SessionState sessionState)
         {
-            _eventStreamHandler = eventStreamHandler ?? throw new ArgumentNullException(nameof(eventStreamHandler));
-            _sessionState = sessionState ?? throw new ArgumentNullException(nameof(sessionState));
+            _eventStreamHandler = eventStreamHandler;
+            _sessionState = sessionState;
         }
 
-        /// <summary>
-        /// 请求工具执行权限
-        /// </summary>
-        public async Task<PermissionDecision> RequestToolPermissionAsync(
-            string toolName,
-            object? arguments,
-            AgentContext context)
+        public async Task<PermissionChannelResult> RequestAsync(PermissionRequest request, CancellationToken ct = default)
         {
             var requestId = Guid.NewGuid().ToString();
-            var tcs = new TaskCompletionSource<PermissionDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource<PermissionChannelResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             _pendingRequests[requestId] = tcs;
 
-            // 派发权限请求事件给 UI
+            ct.Register(() =>
+            {
+                if (_pendingRequests.TryRemove(requestId, out var t))
+                    t.TrySetResult(PermissionChannelResult.Denied("操作已取消"));
+            });
+
             await _eventStreamHandler.ProcessEventAsync(new PermissionRequestEvent
             {
-                SessionId = context.SessionId,
+                SessionId = request.SessionId ?? string.Empty,
                 PermissionId = requestId,
-                PermissionKind = "tool",
-                Resource = toolName,
-                Arguments = arguments,
-                Message = $"工具 {toolName} 需要权限确认",
-                RiskLevel = "medium"
+                PermissionKind = request.PermissionKind,
+                Resource = request.Resource,
+                Arguments = request.Metadata,
+                Message = BuildMessage(request.PermissionKind, request.Resource),
+                RiskLevel = request.PermissionKind.Contains("write") ? "high" : "medium"
             });
 
             try
             {
-                // 等待 UI 响应，5 分钟超时以避免无限等待
-                return await tcs.Task.WaitAsync(TimeSpan.FromMinutes(5));
+                return await tcs.Task.WaitAsync(TimeSpan.FromMinutes(5), ct);
             }
             catch (TimeoutException)
             {
                 _pendingRequests.TryRemove(requestId, out _);
-                return PermissionDecision.Deny("权限请求超时");
+                return PermissionChannelResult.Denied("权限请求超时");
             }
         }
 
-        /// <summary>
-        /// UI 调用：响应权限请求
-        /// </summary>
-        public void RespondToPermission(string requestId, PermissionAction action)
+        public void RespondToPermission(string requestId, PermissionChannelAction action, string? resourceToRemember = null)
         {
-            if (_pendingRequests.TryGetValue(requestId, out var tcs))
+            if (_pendingRequests.TryRemove(requestId, out var tcs))
             {
-                var decision = action switch
+                var result = action switch
                 {
-                    PermissionAction.Allow => PermissionDecision.Allow(),
-                    PermissionAction.Deny => PermissionDecision.Deny("用户拒绝"),
-                    PermissionAction.Ask => PermissionDecision.Ask("需要用户进一步确认"),
-                    _ => PermissionDecision.Deny("未知操作")
+                    PermissionChannelAction.Allow => PermissionChannelResult.Allowed(resourceToRemember),
+                    PermissionChannelAction.Deny => PermissionChannelResult.Denied("用户拒绝", resourceToRemember),
+                    _ => PermissionChannelResult.Denied("未知操作")
                 };
-                tcs.SetResult(decision);
-                _pendingRequests.TryRemove(requestId, out _);
+                tcs.SetResult(result);
             }
         }
 
-        /// <summary>
-        /// 委托：请求确认，转发到工具权限请求以保持单一入口
-        /// </summary>
-        public Task<bool> RequestConfirmationAsync(PermissionRequest request)
+        private static string BuildMessage(string kind, string? resource) => kind switch
         {
-            // 将通用确认请求转发给工具权限请求的路径，使用一个虚拟工具名称进行描述
-            var task = RequestToolPermissionAsync("permission_confirmation", request, new AgentContext());
-            // 尝试从 PermissionDecision 对象反射获取布尔结果（Granted/Allowed/IsAllowed）
-            return task.ContinueWith<bool>(t =>
-            {
-                var dec = t.Result;
-                if (dec == null) return false;
-                var tType = dec.GetType();
-                foreach (var propName in new[] { "Granted", "Allowed", "IsAllowed" })
-                {
-                    var prop = tType.GetProperty(propName);
-                    if (prop != null)
-                    {
-                        var value = prop.GetValue(dec);
-                        if (value is bool b)
-                        {
-                            return b;
-                        }
-                    }
-                }
-                return false;
-            });
-        }
-
-        /// <summary>
-        /// 请求子代理调用权限（同样走权限通道，UI 将进行人机交互）
-        /// </summary>
-        public Task<PermissionDecision> RequestSubAgentPermissionAsync(
-            string agentName,
-            string prompt,
-            AgentContext context)
-        {
-            return RequestToolPermissionAsync($"subagent:{agentName}", prompt, context);
-        }
-
-        /// <summary>
-        /// 请求文件写入权限
-        /// </summary>
-        public Task<PermissionDecision> RequestWritePermissionAsync(
-            string filePath,
-            string? contentPreview,
-            AgentContext context)
-        {
-            return RequestToolPermissionAsync($"write:{filePath}", contentPreview, context);
-        }
+            "tool.execute" => $"工具 {resource} 需要权限确认",
+            "filesystem.write" => $"写入文件 {resource} 需要权限确认",
+            "filesystem.read" => $"读取文件 {resource} 需要权限确认",
+            "filesystem.external" => $"访问工作区外路径 {resource} 需要权限确认",
+            "filesystem.workspace_extend" => $"请求将 {resource} 加入工作区白名单",
+            "shell.execute" => $"执行命令 {resource} 需要权限确认",
+            "network.fetch" => $"访问 URL {resource} 需要权限确认",
+            "network.search" => $"搜索操作需要权限确认",
+            _ => $"操作 {resource} 需要权限确认"
+        };
     }
 }

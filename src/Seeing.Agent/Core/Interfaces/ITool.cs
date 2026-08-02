@@ -16,9 +16,6 @@ namespace Seeing.Agent.Core.Interfaces
         /// <summary>设置元数据</summary>
         public Action<string, Dictionary<string, object>?>? SetMetadata { get; set; }
 
-        /// <summary>请求权限确认</summary>
-        public Func<PermissionRequest, Task>? AskPermission { get; set; }
-
         /// <summary>
         /// 向父事件流推送事件（子任务投影等）。由 AgentExecutor 在执行工具时接线。
         /// </summary>
@@ -31,16 +28,6 @@ namespace Seeing.Agent.Core.Interfaces
 
         /// <summary>可选服务定位（用于 Task 等需要额外依赖的工具）</summary>
         public IServiceProvider? Services { get; set; }
-    }
-
-    /// <summary>
-    /// 权限请求
-    /// </summary>
-    public class PermissionRequest
-    {
-        public string Permission { get; set; } = string.Empty;
-        public List<string> Patterns { get; set; } = new();
-        public Dictionary<string, object> Metadata { get; set; } = new();
     }
 
     /// <summary>

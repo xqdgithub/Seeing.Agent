@@ -87,12 +87,12 @@ public sealed class AcpTool : ToolBase
             return Failure(ex.Message);
         }
 
-        if (context.AskPermission != null)
+        if (context.PermissionChannel is not null)
         {
-            await context.AskPermission(new PermissionRequest
+            var permResult = await context.PermissionChannel.RequestAsync(new PermissionRequest
             {
-                Permission = "tool",
-                Patterns = new List<string> { "acp" },
+                PermissionKind = "tool.execute",
+                Resource = "acp",
                 Metadata = new Dictionary<string, object>
                 {
                     ["description"] = description,
@@ -100,6 +100,9 @@ public sealed class AcpTool : ToolBase
                     ["prompt"] = prompt
                 }
             });
+
+            if (permResult.Action != PermissionChannelAction.Allow)
+                return Failure(permResult.Reason ?? "权限被拒绝");
         }
 
         var session = await ResolveTaskSessionAsync(context.SessionId, taskId, description, backend);
@@ -201,9 +204,7 @@ public sealed class AcpTool : ToolBase
             ParentContext = new AgentContext
             {
                 SessionId = context.SessionId,
-                PermissionChannel = context.AskPermission != null
-                    ? new ToolPermissionChannel(context.AskPermission)
-                    : null
+                PermissionChannel = context.PermissionChannel
             }
         };
 
@@ -297,20 +298,5 @@ public sealed class AcpTool : ToolBase
         public required string Backend { get; init; }
         public string? Output { get; init; }
         public string? Error { get; init; }
-    }
-
-    private sealed class ToolPermissionChannel(Func<PermissionRequest, Task> ask) : IPermissionChannel
-    {
-        public Task<bool> RequestConfirmationAsync(PermissionRequest request) =>
-            ask(request).ContinueWith(_ => true);
-
-        public Task<PermissionDecision> RequestToolPermissionAsync(string toolName, object? arguments, AgentContext context) =>
-            Task.FromResult(PermissionDecision.Allow());
-
-        public Task<PermissionDecision> RequestSubAgentPermissionAsync(string agentName, string prompt, AgentContext context) =>
-            Task.FromResult(PermissionDecision.Allow());
-
-        public Task<PermissionDecision> RequestWritePermissionAsync(string filePath, string? contentPreview, AgentContext context) =>
-            Task.FromResult(PermissionDecision.Allow());
     }
 }

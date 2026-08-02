@@ -10,7 +10,7 @@ namespace Seeing.Agent.Tests.Core;
 public class SerializingPermissionChannelTests
 {
     [Fact]
-    public async Task RequestToolPermissionAsync_ShouldSerializeConcurrentAsks()
+    public async Task RequestAsync_ShouldSerializeConcurrentAsks()
     {
         var gate = new object();
         var concurrent = 0;
@@ -31,14 +31,19 @@ public class SerializingPermissionChannelTests
                 concurrent--;
             }
 
-            return PermissionDecision.Allow();
+            return PermissionChannelResult.Allowed();
         });
 
-        var serial = new SerializingPermissionChannel(inner);
-        var ctx = new AgentContext { SessionId = "s1" };
+        var serial = new SerializingPermissionChannel(inner, new NoOpPermissionMemory());
+        var request = new PermissionRequest
+        {
+            PermissionKind = "tool.execute",
+            Resource = "bash",
+            SessionId = "s1"
+        };
 
         var tasks = Enumerable.Range(0, 4)
-            .Select(_ => serial.RequestToolPermissionAsync("bash", null, ctx))
+            .Select(_ => serial.RequestAsync(request))
             .ToArray();
 
         await Task.WhenAll(tasks);
@@ -49,28 +54,28 @@ public class SerializingPermissionChannelTests
 
     private sealed class CountingChannel : IPermissionChannel
     {
-        private readonly Func<PermissionDecision> _onAsk;
+        private readonly Func<PermissionChannelResult> _onRequest;
 
-        public CountingChannel(Func<PermissionDecision> onAsk) => _onAsk = onAsk;
+        public CountingChannel(Func<PermissionChannelResult> onRequest) => _onRequest = onRequest;
 
         public int CallCount { get; private set; }
 
-        public Task<bool> RequestConfirmationAsync(PermissionRequest request) =>
-            Task.FromResult(true);
-
-        public Task<PermissionDecision> RequestToolPermissionAsync(
-            string toolName, object? arguments, AgentContext context)
+        public Task<PermissionChannelResult> RequestAsync(PermissionRequest request, CancellationToken ct = default)
         {
             CallCount++;
-            return Task.FromResult(_onAsk());
+            return Task.FromResult(_onRequest());
         }
+    }
 
-        public Task<PermissionDecision> RequestSubAgentPermissionAsync(
-            string agentName, string prompt, AgentContext context) =>
-            Task.FromResult(PermissionDecision.Allow());
+    private sealed class NoOpPermissionMemory : IPermissionMemory
+    {
+        public PermissionMemoryEntry? Match(string permissionKind, string? resource, string sessionId)
+            => null;
 
-        public Task<PermissionDecision> RequestWritePermissionAsync(
-            string filePath, string? contentPreview, AgentContext context) =>
-            Task.FromResult(PermissionDecision.Allow());
+        public void Remember(string sessionId, PermissionMemoryEntry entry) { }
+
+        public void Forget(string sessionId, string? resource) { }
+
+        public void ClearSession(string sessionId) { }
     }
 }

@@ -5,10 +5,10 @@
        Visible="@Visible"
        MaskClosable="false"
        Width="600"
-       OnCancel="@OnDeny"
+       OnCancel="@OnDenyOnce"
        Footer="@null"
        Class="permission-modal">
-    
+
     <!-- 风险警告 -->
     @if (Request.IsHighRisk || !string.IsNullOrEmpty(Request.RiskWarning))
     {
@@ -18,14 +18,11 @@
                Description="@Request.RiskWarning"
                Style="margin-bottom: var(--space-3);" />
     }
-    
+
     <!-- 请求详情 -->
     <div Class="permission-request-details">
-        <!-- 请求类型和目标 -->
-        <div Class="permission-detail-row"
-             Style="margin-bottom: var(--space-3);">
-            <div Class="permission-detail-label"
-                 Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+        <div Class="permission-detail-row" Style="margin-bottom: var(--space-3);">
+            <div Class="permission-detail-label" Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
                 请求类型
             </div>
             <div Class="permission-detail-value">
@@ -35,135 +32,124 @@
                 </Tag>
             </div>
         </div>
-        
-        <!-- 目标名称 -->
-        <div Class="permission-detail-row"
-             Style="margin-bottom: var(--space-3);">
-            <div Class="permission-detail-label"
-                 Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+
+        <div Class="permission-detail-row" Style="margin-bottom: var(--space-3);">
+            <div Class="permission-detail-label" Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
                 目标
             </div>
-            <div Class="permission-detail-value"
-                 Style="font-weight: var(--font-weight-medium);">
+            <div Class="permission-detail-value" Style="font-weight: var(--font-weight-medium);">
                 @Request.Target
             </div>
         </div>
-        
-        <!-- 描述信息 -->
+
         @if (!string.IsNullOrEmpty(Request.Description))
         {
-            <div Class="permission-detail-row"
-                 Style="margin-bottom: var(--space-3);">
-                <div Class="permission-detail-label"
-                     Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+            <div Class="permission-detail-row" Style="margin-bottom: var(--space-3);">
+                <div Class="permission-detail-label" Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
                     描述
                 </div>
-                <div Class="permission-detail-value">
-                    @Request.Description
-                </div>
+                <div Class="permission-detail-value">@Request.Description</div>
             </div>
         }
-        
-        <!-- 参数/内容预览 -->
+
         @if (Request.Arguments != null)
         {
-            <div Class="permission-detail-row"
-                 Style="margin-bottom: var(--space-3);">
-                <div Class="permission-detail-label"
-                     Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+            <div Class="permission-detail-row" Style="margin-bottom: var(--space-3);">
+                <div Class="permission-detail-label" Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
                     @GetArgumentsLabel()
                 </div>
-                <div Class="permission-detail-value"
-                     Style="background: var(--color-bg-tertiary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); max-height: 150px; overflow-y: auto;">
+                <div Class="permission-detail-value" Style="background: var(--color-bg-tertiary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); max-height: 150px; overflow-y: auto;">
                     <pre Style="margin: 0; font-size: var(--font-size-xs); white-space: pre-wrap; word-break: break-all;">
 @GetArgumentsString()
                     </pre>
                 </div>
             </div>
         }
-        
-        <!-- 请求时间 -->
-        <div Class="permission-detail-row"
-             Style="margin-bottom: var(--space-3);">
-            <div Class="permission-detail-label"
-                 Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+
+        <div Class="permission-detail-row" Style="margin-bottom: var(--space-3);">
+            <div Class="permission-detail-label" Style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
                 请求时间
             </div>
-            <div Class="permission-detail-value"
-                 Style="font-size: var(--font-size-xs); color: var(--color-text-tertiary);">
+            <div Class="permission-detail-value" Style="font-size: var(--font-size-xs); color: var(--color-text-tertiary);">
                 @Request.RequestTime.ToString("HH:mm:ss")
             </div>
         </div>
     </div>
-    
+
     <!-- 操作按钮 -->
-    <div Class="permission-actions"
-         Style="margin-top: var(--space-4); display: flex; justify-content: flex-end; gap: var(--space-2);">
-        
-        <!-- 记住决策选项 -->
-        <Checkbox @bind-Value="@RememberDecision"
-                  Style="margin-right: var(--space-2); font-size: var(--font-size-sm);">
-            始终允许此操作
-        </Checkbox>
-        
-        <Space>
-            <SpaceItem>
-                <Button Type="@ButtonType.Default"
-                        Danger="true"
-                        OnClick="@OnDeny">
-                    <Icon Type="@IconType.Outline.CloseCircle" />
-                    拒绝
-                </Button>
-            </SpaceItem>
-            <SpaceItem>
-                <Button Type="@ButtonType.Primary"
-                        OnClick="@OnAllow">
-                    <Icon Type="@IconType.Outline.CheckCircle" />
-                    允许
-                </Button>
-            </SpaceItem>
-        </Space>
-    </div>
+    @if (Request.IsFileSystemOperation)
+    {
+        <div Class="permission-actions" Style="margin-top: var(--space-4);">
+@*             <div Style="font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2);">
+                选择允许范围：
+            </div> *@
+            <div Style="display: flex; flex-direction: column; gap: var(--space-2);">
+                <div Style="display: flex; gap: var(--space-2);">
+                    <Button Type="@ButtonType.Default" OnClick="@OnAllowOnce" Style="flex: 1;">
+                        <Icon Type="@IconType.Outline.Check" /> 本次允许
+                    </Button>
+                    <Button Type="@ButtonType.Primary" Ghost OnClick="@OnAllowFile" Style="flex: 1;">
+                        <Icon Type="@IconType.Outline.File" /> 始终允许
+                    </Button>
+                </div>
+                @if (!string.IsNullOrEmpty(Request.GetDirectoryPath()))
+                {
+                    <div Style="display: flex; gap: var(--space-2);">
+                        <Button Type="@ButtonType.Primary" OnClick="@OnAllowDirectory" Style="flex: 1;">
+                            <Icon Type="@IconType.Outline.Folder" /> 允许此目录
+                        </Button>
+                    </div>
+                }
+                <Divider Style="margin: var(--space-1) 0;" />
+                <div Style="display: flex; gap: var(--space-2);">
+                    <Button Type="@ButtonType.Default" Danger OnClick="@OnDenyOnce" Style="flex: 1;">
+                        <Icon Type="@IconType.Outline.CloseCircle" /> 本次拒绝
+                    </Button>
+                    <Button Type="@ButtonType.Primary" Danger Ghost OnClick="@OnDenySession" Style="flex: 1;">
+                        <Icon Type="@IconType.Outline.Stop" /> 始终拒绝
+                    </Button>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div Class="permission-actions" Style="margin-top: var(--space-4); display: flex; justify-content: flex-end; gap: var(--space-2);">
+            <Space>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Default" OnClick="@OnAllowOnce">
+                        <Icon Type="@IconType.Outline.Check" /> 本次允许
+                    </Button>
+                </SpaceItem>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Primary" OnClick="@OnAllowSession">
+                        <Icon Type="@IconType.Outline.CheckCircle" /> 始终允许
+                    </Button>
+                </SpaceItem>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Default" Danger OnClick="@OnDenyOnce">
+                        <Icon Type="@IconType.Outline.CloseCircle" /> 本次拒绝
+                    </Button>
+                </SpaceItem>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Default" Danger Ghost OnClick="@OnDenySession">
+                        <Icon Type="@IconType.Outline.Stop" /> 始终拒绝
+                    </Button>
+                </SpaceItem>
+                
+            </Space>
+        </div>
+    }
 </Modal>
 
 @code {
-    /// <summary>
-    /// 权限请求数据
-    /// </summary>
-    [Parameter]
-    public PermissionRequestViewModel Request { get; set; } = new();
-    
-    /// <summary>
-    /// 是否显示
-    /// </summary>
-    [Parameter]
-    public bool Visible { get; set; }
-    
-    /// <summary>
-    /// 决策事件回调
-    /// </summary>
-    [Parameter]
-    public EventCallback<PermissionDecisionViewModel> OnDecision { get; set; }
-    
-    /// <summary>
-    /// 关闭事件回调
-    /// </summary>
-    [Parameter]
-    public EventCallback<bool> OnVisibleChange { get; set; }
-    
-    /// <summary>
-    /// 是否记住决策
-    /// </summary>
-    private bool RememberDecision { get; set; } = false;
-    
-    /// <summary>
-    /// 获取模态框标题
-    /// </summary>
+    [Parameter] public PermissionRequestViewModel Request { get; set; } = new();
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<PermissionDecisionViewModel> OnDecision { get; set; }
+    [Parameter] public EventCallback<bool> OnVisibleChange { get; set; }
+
     private string ModalTitle => $"权限请求 - {Request.GetRequestTypeText()}";
-    
-    /// <summary>
-    /// 获取请求类型颜色
-    /// </summary>
+
     private string GetRequestTypeColor()
     {
         return Request.Type switch
@@ -171,14 +157,12 @@
             PermissionRequestType.Tool => "blue",
             PermissionRequestType.SubAgent => "purple",
             PermissionRequestType.Write => "orange",
+            PermissionRequestType.Read => "cyan",
             PermissionRequestType.Confirmation => "cyan",
             _ => "default"
         };
     }
-    
-    /// <summary>
-    /// 获取请求类型图标
-    /// </summary>
+
     private string GetRequestTypeIcon()
     {
         return Request.Type switch
@@ -186,14 +170,12 @@
             PermissionRequestType.Tool => IconType.Outline.Tool,
             PermissionRequestType.SubAgent => IconType.Outline.Robot,
             PermissionRequestType.Write => IconType.Outline.FileText,
+            PermissionRequestType.Read => IconType.Outline.FileText,
             PermissionRequestType.Confirmation => IconType.Outline.QuestionCircle,
             _ => IconType.Outline.InfoCircle
         };
     }
-    
-    /// <summary>
-    /// 获取参数标签
-    /// </summary>
+
     private string GetArgumentsLabel()
     {
         return Request.Type switch
@@ -201,13 +183,11 @@
             PermissionRequestType.Tool => "工具参数",
             PermissionRequestType.SubAgent => "调用提示",
             PermissionRequestType.Write => "内容预览",
+            PermissionRequestType.Read => "路径信息",
             _ => "参数"
         };
     }
-    
-    /// <summary>
-    /// 获取参数字符串
-    /// </summary>
+
     private string GetArgumentsString()
     {
         if (Request.Arguments == null) return "";
@@ -217,36 +197,32 @@
             _ => System.Text.Json.JsonSerializer.Serialize(Request.Arguments, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })
         };
     }
-    
-    /// <summary>
-    /// 允许操作
-    /// </summary>
-    private async Task OnAllow()
+
+    private async Task OnAllowOnce()
+        => await Decide(true, DecisionScope.Once);
+
+    private async Task OnAllowFile()
+        => await Decide(true, DecisionScope.SessionFile);
+
+    private async Task OnAllowDirectory()
+        => await Decide(true, DecisionScope.SessionDirectory);
+
+    private async Task OnAllowSession()
+        => await Decide(true, DecisionScope.Session);
+
+    private async Task OnDenyOnce()
+        => await Decide(false, DecisionScope.Once);
+
+    private async Task OnDenySession()
+        => await Decide(false, DecisionScope.Session);
+
+    private async Task Decide(bool approved, DecisionScope scope)
     {
-        var decision = new PermissionDecisionViewModel
+        await OnDecision.InvokeAsync(new PermissionDecisionViewModel
         {
-            Approved = true,
-            RememberDecision = RememberDecision
-        };
-        
-        await OnDecision.InvokeAsync(decision);
+            Approved = approved,
+            Scope = scope
+        });
         await OnVisibleChange.InvokeAsync(false);
-        RememberDecision = false;
-    }
-    
-    /// <summary>
-    /// 拒绝操作
-    /// </summary>
-    private async Task OnDeny()
-    {
-        var decision = new PermissionDecisionViewModel
-        {
-            Approved = false,
-            RememberDecision = false
-        };
-        
-        await OnDecision.InvokeAsync(decision);
-        await OnVisibleChange.InvokeAsync(false);
-        RememberDecision = false;
     }
 }

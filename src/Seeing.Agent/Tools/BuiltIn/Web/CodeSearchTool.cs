@@ -74,19 +74,13 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
             tokensNum = Math.Clamp(tokensNum, MinTokensNum, MaxTokensNum);
 
             // 请求权限确认
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
+            var permCheck = await RequestPermissionAsync(context, "network.search", "code_search",
+                new Dictionary<string, object>
                 {
-                    Permission = "codesearch",
-                    Patterns = new List<string> { query },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["query"] = query,
-                        ["tokensNum"] = tokensNum
-                    }
+                    ["query"] = query,
+                    ["tokensNum"] = tokensNum
                 });
-            }
+            if (permCheck != null) return permCheck;
 
             try
             {

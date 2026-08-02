@@ -162,21 +162,15 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
             ToolContext context)
         {
             // 权限检查 - 执行命令前需要确认
-            if (context.AskPermission != null)
-            {
-                await context.AskPermission(new PermissionRequest
+            var permCheck = await RequestPermissionAsync(context, "shell.execute", command,
+                new Dictionary<string, object>
                 {
-                    Permission = "bash",
-                    Patterns = new List<string> { command },
-                    Metadata = new Dictionary<string, object>
-                    {
-                        ["command"] = command,
-                        ["workdir"] = workdir,
-                        ["timeout"] = timeout,
-                        ["description"] = description
-                    }
+                    ["command"] = command,
+                    ["workdir"] = workdir,
+                    ["timeout"] = timeout,
+                    ["description"] = description
                 });
-            }
+            if (permCheck != null) return permCheck;
 
             var dangerCheck = CheckDangerousCommand(command);
             if (dangerCheck != null)
