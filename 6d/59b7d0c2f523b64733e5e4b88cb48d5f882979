@@ -1,0 +1,23 @@
+docs/superpowers/specs/2026-08-03-agent-todo-enforcement-design.md
+  s_41cf7696e89f6d::t_e3666f466c2a81 321-323,337
+  s_41cf7696e89f6d::t_055dfd55854ec4 358-367
+  s_41cf7696e89f6d::t_9f08eb31a3f4a1 78,80,82,84-93,95-96,107-117,119-121,123-124,126,128
+  s_41cf7696e89f6d::t_949a3f537300b7 97-106,118,122,125,127
+  s_41cf7696e89f6d::t_7d802ede38d769 1-77,79,81,83,94,129-320,324-336,338-357
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.39-trip",
+  "base_commit_sha": "6d59b7d0c2f523b64733e5e4b88cb48d5f882979",
+  "prompts": {},
+  "sessions": {
+    "s_41cf7696e89f6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6f028d2-0a32-48ea-ba54-837baf6326f0",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
