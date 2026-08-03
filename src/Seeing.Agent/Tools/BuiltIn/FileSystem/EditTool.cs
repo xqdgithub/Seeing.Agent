@@ -109,10 +109,6 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 
             _logger.LogInformation("编辑文件: {FilePath}", filePath);
 
-            var permCheck = await RequestPermissionAsync(context, "filesystem.write", filePath,
-                new Dictionary<string, object> { ["filePath"] = filePath });
-            if (permCheck != null) return permCheck;
-
             // 检查文件是否存在
             if (!File.Exists(filePath))
             {

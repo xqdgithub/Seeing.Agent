@@ -262,11 +262,6 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
         /// <inheritdoc/>
         public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
-            // 请求权限确认
-            var permCheck = await RequestPermissionAsync(context, "tool.execute", "todoread",
-                new Dictionary<string, object>());
-            if (permCheck != null) return permCheck;
-
             var session = _sessionManager.Get(context.SessionId);
             var todos = session?.GetContext<List<TodoItem>>(TodoContextKey) ?? new List<TodoItem>();
 

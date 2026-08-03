@@ -90,15 +90,6 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 filePath = Path.GetFullPath(filePath);
             }
 
-            var permCheck = await RequestPermissionAsync(context, "filesystem.read", filePath,
-                new Dictionary<string, object>
-                {
-                    ["filePath"] = filePath,
-                    ["offset"] = offset,
-                    ["limit"] = limit
-                });
-            if (permCheck != null) return permCheck;
-
             _logger.LogInformation("读取文件: {FilePath}, offset={Offset}, limit={Limit}", filePath, offset, limit);
 
             // 检查路径是否存在

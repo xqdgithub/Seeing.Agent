@@ -3,6 +3,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Decorators;
 using System.Collections.Concurrent;
 using System.Text.Json;
@@ -31,6 +32,7 @@ namespace Seeing.Agent.Tools
         private readonly IServiceProvider? _serviceProvider;
         private readonly IToolDecoratorRegistry? _decoratorRegistry;
         private readonly IWorkspaceProvider? _workspace;
+        private readonly IToolPermissionPolicy? _permissionPolicy;
         private readonly object _toolStateLock = new();
         private HashSet<string> _userDisabledTools = new(StringComparer.OrdinalIgnoreCase);
         private HashSet<string> _projectDisabledTools = new(StringComparer.OrdinalIgnoreCase);
@@ -41,7 +43,8 @@ namespace Seeing.Agent.Tools
             IServiceProvider? serviceProvider = null,
             IToolDecoratorRegistry? decoratorRegistry = null,
             IRuleEvaluator? ruleEvaluator = null,
-            IWorkspaceProvider? workspace = null)
+            IWorkspaceProvider? workspace = null,
+            IToolPermissionPolicy? permissionPolicy = null)
         {
             _logger = logger;
             _hookManager = hookManager;
@@ -49,6 +52,7 @@ namespace Seeing.Agent.Tools
             _decoratorRegistry = decoratorRegistry;
             _ruleEvaluator = ruleEvaluator;
             _workspace = workspace;
+            _permissionPolicy = permissionPolicy;
         }
 
         // Primary tools that are allowed in Primary mode
@@ -543,6 +547,42 @@ namespace Seeing.Agent.Tools
                 };
             }
 
+            // Resolve args from hook-mutable (moved up for permission check access)
+            JsonElement resolvedArgs;
+            if (argsMutable["args"] is JsonElement je)
+                resolvedArgs = je;
+            else if (argsMutable["args"] != null)
+                resolvedArgs = JsonSerializer.SerializeToElement(argsMutable["args"]);
+            else
+                resolvedArgs = toolCall.Arguments is JsonElement je2 ? je2 : new JsonElement();
+
+            // ========== Resource-level permission check ==========
+            if (permissionChannel != null && _permissionPolicy != null)
+            {
+                var check = _permissionPolicy.Evaluate(toolId, resolvedArgs);
+                if (check != null)
+                {
+                    var decision = await permissionChannel.RequestAsync(new PermissionRequest
+                    {
+                        PermissionKind = check.PermissionKind,
+                        Resource = check.Resource,
+                        Patterns = check.Patterns ?? new List<string>(),
+                        SessionId = sessionId,
+                        Metadata = check.Metadata ?? new Dictionary<string, object>()
+                    }, cancellationToken).ConfigureAwait(false);
+
+                    if (decision.Action == PermissionChannelAction.Deny)
+                    {
+                        return new ToolResult
+                        {
+                            Success = false,
+                            ToolCallId = toolCall.Id,
+                            Error = decision.Reason ?? "Permission denied"
+                        };
+                    }
+                }
+            }
+
             // 执行工具（装饰器链已在 RegisterTool 时 Apply，处理重试/超时/缓存）
             var startTime = DateTime.Now;
 
@@ -558,15 +598,7 @@ namespace Seeing.Agent.Tools
                     Services = _serviceProvider
                 };
 
-                JsonElement args;
-                if (argsMutable["args"] is JsonElement je)
-                    args = je;
-                else if (argsMutable["args"] != null)
-                    args = JsonSerializer.SerializeToElement(argsMutable["args"]);
-                else
-                    args = toolCall.Arguments is JsonElement je2 ? je2 : new JsonElement();
-
-                var toolResult = await tool.ExecuteAsync(args, context).ConfigureAwait(false);
+                var toolResult = await tool.ExecuteAsync(resolvedArgs, context).ConfigureAwait(false);
 
                 // ========== Hook: tool.execute.after ==========
                 _hookManager.TriggerFireAndForget(
@@ -576,7 +608,7 @@ namespace Seeing.Agent.Tools
                     {
                         ["toolId"] = toolId,
                         ["callId"] = toolCall.Id,
-                        ["args"] = args
+                        ["args"] = resolvedArgs
                     },
                     new Dictionary<string, object?>
                     {

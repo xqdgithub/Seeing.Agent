@@ -80,10 +80,6 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             _logger.LogInformation("Grep 搜索: pattern={Pattern}, path={Path}, include={Include}",
                 pattern, searchPath, includePattern);
 
-            var permCheck = await RequestPermissionAsync(context, "filesystem.read", searchPath,
-                new Dictionary<string, object> { ["path"] = searchPath, ["pattern"] = pattern });
-            if (permCheck != null) return permCheck;
-
             try
             {
                 // 验证正则表达式

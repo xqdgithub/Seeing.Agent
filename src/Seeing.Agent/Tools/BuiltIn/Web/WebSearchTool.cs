@@ -87,18 +87,6 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
             var searchType = GetStringArgument(arguments, "searchType") ?? "auto";
             var contextMaxCharacters = GetIntArgument(arguments, "contextMaxCharacters");
 
-            // 请求权限确认
-            var permCheck = await RequestPermissionAsync(context, "network.search", "web_search",
-                new Dictionary<string, object>
-                {
-                    ["query"] = query,
-                    ["numResults"] = numResults,
-                    ["livecrawl"] = livecrawl,
-                    ["type"] = searchType,
-                    ["contextMaxCharacters"] = contextMaxCharacters ?? (object)0
-                });
-            if (permCheck != null) return permCheck;
-
             try
             {
                 // 构建 MCP 请求参数

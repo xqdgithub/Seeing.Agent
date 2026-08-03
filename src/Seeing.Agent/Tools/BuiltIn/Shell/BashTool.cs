@@ -161,17 +161,6 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
             int timeout,
             ToolContext context)
         {
-            // 权限检查 - 执行命令前需要确认
-            var permCheck = await RequestPermissionAsync(context, "shell.execute", command,
-                new Dictionary<string, object>
-                {
-                    ["command"] = command,
-                    ["workdir"] = workdir,
-                    ["timeout"] = timeout,
-                    ["description"] = description
-                });
-            if (permCheck != null) return permCheck;
-
             var dangerCheck = CheckDangerousCommand(command);
             if (dangerCheck != null)
             {

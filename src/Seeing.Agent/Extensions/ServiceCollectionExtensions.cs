@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
@@ -35,6 +36,7 @@ using Seeing.Agent.Middlewares;
 using Seeing.Agent.Shell;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
+using Seeing.Agent.Tools.BuiltIn;
 using Seeing.Agent.Tools.BuiltIn.FileSystem;
 using Seeing.Agent.Tools.BuiltIn.Shell;
 using Seeing.Agent.Tools.BuiltIn.SubTask;
@@ -498,6 +500,9 @@ namespace Seeing.Agent.Extensions
                 return registry;
             });
 
+            // 工具权限策略
+            services.TryAddSingleton<IToolPermissionPolicy, DefaultToolPermissionPolicy>();
+
             // 工具调用器（自动注册所有 ITool）
             services.AddSingleton<ToolManager>(sp =>
             {
@@ -506,8 +511,10 @@ namespace Seeing.Agent.Extensions
                 var tools = sp.GetServices<ITool>();
                 var decoratorRegistry = sp.GetService<IToolDecoratorRegistry>();
                 var workspace = sp.GetService<IWorkspaceProvider>();
+                var permissionPolicy = sp.GetService<IToolPermissionPolicy>();
 
-                var invoker = new ToolManager(logger, hookManager, sp, decoratorRegistry, workspace: workspace);
+                var invoker = new ToolManager(logger, hookManager, sp, decoratorRegistry,
+                    workspace: workspace, permissionPolicy: permissionPolicy);
 
                 // 自动注册所有 ITool
                 foreach (var tool in tools)

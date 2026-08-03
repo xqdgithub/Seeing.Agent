@@ -73,15 +73,6 @@ namespace Seeing.Agent.Tools.BuiltIn.Web
             var tokensNum = GetIntArgument(arguments, "tokensNum") ?? DefaultTokensNum;
             tokensNum = Math.Clamp(tokensNum, MinTokensNum, MaxTokensNum);
 
-            // 请求权限确认
-            var permCheck = await RequestPermissionAsync(context, "network.search", "code_search",
-                new Dictionary<string, object>
-                {
-                    ["query"] = query,
-                    ["tokensNum"] = tokensNum
-                });
-            if (permCheck != null) return permCheck;
-
             try
             {
                 // 构建 MCP 请求

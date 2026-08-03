@@ -4,6 +4,7 @@ using Moq;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.Attributes;
@@ -156,6 +157,127 @@ namespace Seeing.Agent.Tests.Tools
             // Assert
             schemas.Select(s => s.Function!.Name).Should().Contain("Add");
             schemas.Select(s => s.Function!.Name).Should().NotContain("greet");
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_PermissionPolicyDenies_ReturnsFailure()
+        {
+            // Arrange
+            var permissionPolicy = new Mock<IToolPermissionPolicy>();
+            var permissionChannel = new Mock<IPermissionChannel>();
+            var invoker = new ToolManager(
+                _loggerMock.Object, _hookManager,
+                permissionPolicy: permissionPolicy.Object);
+            invoker.RegisterTool(new TestTool());
+
+            permissionPolicy
+                .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
+                .Returns(new PermissionResourceCheck("filesystem.read", "/secret/file.txt"));
+
+            permissionChannel
+                .Setup(c => c.RequestAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(PermissionChannelResult.Denied("User denied"));
+
+            var toolCall = new ToolCall
+            {
+                Id = "call-001",
+                Function = new FunctionCall { Name = "test_tool", Arguments = "{}" }
+            };
+
+            // Act
+            var result = await invoker.ExecuteAsync(toolCall, "session-1",
+                CancellationToken.None, null, permissionChannel.Object);
+
+            // Assert
+            result.Success.Should().BeFalse();
+            result.Error.Should().Be("User denied");
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_PermissionPolicyAllows_ProceedsToTool()
+        {
+            // Arrange
+            var permissionPolicy = new Mock<IToolPermissionPolicy>();
+            var permissionChannel = new Mock<IPermissionChannel>();
+            var invoker = new ToolManager(
+                _loggerMock.Object, _hookManager,
+                permissionPolicy: permissionPolicy.Object);
+            invoker.RegisterTool(new TestTool());
+
+            permissionPolicy
+                .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
+                .Returns(new PermissionResourceCheck("filesystem.read", "/allowed/file.txt"));
+
+            permissionChannel
+                .Setup(c => c.RequestAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(PermissionChannelResult.Allowed());
+
+            var toolCall = new ToolCall
+            {
+                Id = "call-002",
+                Function = new FunctionCall { Name = "test_tool", Arguments = "{}" }
+            };
+
+            // Act
+            var result = await invoker.ExecuteAsync(toolCall, "session-1",
+                CancellationToken.None, null, permissionChannel.Object);
+
+            // Assert
+            result.Success.Should().BeTrue();
+            result.Output.Should().Be("完成");
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_PermissionPolicyReturnsNull_SkipsChannelCheck()
+        {
+            // Arrange
+            var permissionPolicy = new Mock<IToolPermissionPolicy>();
+            var permissionChannel = new Mock<IPermissionChannel>();
+            var invoker = new ToolManager(
+                _loggerMock.Object, _hookManager,
+                permissionPolicy: permissionPolicy.Object);
+            invoker.RegisterTool(new TestTool());
+
+            permissionPolicy
+                .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
+                .Returns((PermissionResourceCheck?)null);
+
+            var toolCall = new ToolCall
+            {
+                Id = "call-003",
+                Function = new FunctionCall { Name = "test_tool", Arguments = "{}" }
+            };
+
+            // Act
+            var result = await invoker.ExecuteAsync(toolCall, "session-1",
+                CancellationToken.None, null, permissionChannel.Object);
+
+            // Assert
+            result.Success.Should().BeTrue();
+            // Verify channel was never called
+            permissionChannel.Verify(
+                c => c.RequestAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_NoPolicy_NullChannel_Succeeds()
+        {
+            // Arrange -- no policy, no channel: old behavior, tool runs fine
+            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
+            invoker.RegisterTool(new TestTool());
+
+            var toolCall = new ToolCall
+            {
+                Id = "call-004",
+                Function = new FunctionCall { Name = "test_tool", Arguments = "{}" }
+            };
+
+            // Act
+            var result = await invoker.ExecuteAsync(toolCall);
+
+            // Assert
+            result.Success.Should().BeTrue();
         }
     }
 
