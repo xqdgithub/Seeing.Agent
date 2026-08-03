@@ -13,4 +13,7 @@ public class InstructionFile
 
     /// <summary>最后修改时间</summary>
     public DateTimeOffset LastModified { get; set; }
+
+    /// <summary>UTF-8 内容的 SHA256 指纹</summary>
+    public string Hash { get; set; } = string.Empty;
 }

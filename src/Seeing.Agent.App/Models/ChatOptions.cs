@@ -29,6 +29,11 @@ public record ChatOptions
     public bool SkipUserMessagePersist { get; init; }
 
     /// <summary>
+    /// 跳过项目指令注入。
+    /// </summary>
+    public bool SkipInstructionInject { get; init; }
+
+    /// <summary>
     /// 权限通道（可选，覆盖默认权限通道）
     /// <para>
     /// - WebUI 调用时传递 BlazorPermissionChannel（支持交互式确认）

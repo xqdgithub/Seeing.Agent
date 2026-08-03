@@ -696,10 +696,7 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         public static IServiceCollection AddPromptBuilder(this IServiceCollection services)
         {
-            services.AddSingleton<IInstructionLoader>(sp =>
-                new InstructionLoader(
-                    sp.GetRequiredService<ILogger<InstructionLoader>>(),
-                    sp.GetRequiredService<IWorkspaceProvider>()));
+            services.AddSingleton<IInstructionManager, InstructionManager>();
             services.AddSingleton<PromptBuilder>();
 
             return services;

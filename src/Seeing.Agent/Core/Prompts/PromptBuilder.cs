@@ -1,4 +1,3 @@
-using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Skills;
@@ -15,7 +14,6 @@ namespace Seeing.Agent.Core.Prompts;
 /// - {{agents}} - 代理列表
 /// - {{skills}} - 技能列表
 /// - {{environment}} - 环境信息（工作目录、平台、时间）
-/// - {{instructions}} - AGENTS.md 指令
 /// - 自定义变量 {{variable_name}}
 /// </para>
 /// </summary>
@@ -25,18 +23,13 @@ public class PromptBuilder
     private const string AgentsPlaceholder = "{{agents}}";
     private const string SkillsPlaceholder = "{{skills}}";
     private const string EnvironmentPlaceholder = "{{environment}}";
-    private const string InstructionsPlaceholder = "{{instructions}}";
-
-    private readonly IInstructionLoader _instructionLoader;
     private readonly IAgentRegistry _agentRegistry;
     private readonly SkillManager _skillManager;
 
     public PromptBuilder(
-        IInstructionLoader instructionLoader,
         IAgentRegistry agentRegistry,
         SkillManager skillManager)
     {
-        _instructionLoader = instructionLoader;
         _agentRegistry = agentRegistry;
         _skillManager = skillManager;
     }
@@ -84,21 +77,13 @@ public class PromptBuilder
             result = result.Replace(EnvironmentPlaceholder, BuildEnvironmentSection(context));
         }
 
-        // 6. 替换指令占位符
-        if (result.Contains(InstructionsPlaceholder))
-        {
-            var instructions = await _instructionLoader.DiscoverAsync(context.WorkingDirectory ?? "", cancellationToken);
-            var mergedInstructions = _instructionLoader.Merge(instructions);
-            result = result.Replace(InstructionsPlaceholder, mergedInstructions);
-        }
-
-        // 7. 替换自定义变量
+        // 6. 替换自定义变量
         foreach (var (key, value) in context.Variables)
         {
             result = result.Replace($"{{{{{key}}}}}", value);
         }
 
-        // 8. 替换内置变量
+        // 7. 替换内置变量
         result = ReplaceBuiltinVariables(result, context);
 
         return result.Trim();
@@ -106,7 +91,7 @@ public class PromptBuilder
 
     /// <summary>
     /// 同步构建（向后兼容）
-    /// <para>注意：不支持 {{agents}}（需异步）、{{instructions}}（需异步）占位符</para>
+    /// <para>注意：不支持 {{agents}}（需异步）占位符</para>
     /// </summary>
     public string Build(string basePrompt, PromptContext context)
     {

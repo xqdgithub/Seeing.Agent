@@ -13,6 +13,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.Scheduling;
@@ -115,51 +116,68 @@ public class ExecutionJobService : IDisposable
         if (queue.QueueLength >= _options.MaxQueueSizePerSession)
             return ExecutionSubmitResult.Failed($"Queue is full (max {_options.MaxQueueSizePerSession} items). Please wait for current executions to complete.");
 
-        // ⭐ Immediately save user message to session storage
-        if (options?.SkipUserMessagePersist != true)
+        // ⭐ Immediately update and save session state before execution starts
+        try
         {
-            try
+            using var scope = _serviceProvider.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+            var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
+            var instructionManager = scope.ServiceProvider.GetRequiredService<IInstructionManager>();
+            var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
+            var session = await sessionManager.EnsureSessionAsync(sessionId);
+            TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
+
+            // ⭐ Persist model/mode selection to session (ensures they're saved even if execution fails)
+            ApplyInboundModelAndMode(session, options?.ModelId, options?.ModeId, modelManager);
+
+            var cwd = options?.WorkingDirectory
+                ?? session.WorkingDirectory
+                ?? workspaceProvider.WorkspaceRoot;
+            if (!string.Equals(session.WorkingDirectory, cwd, StringComparison.Ordinal))
             {
-                using var scope = _serviceProvider.CreateScope();
-                var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
-                var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
-                var session = await sessionManager.EnsureSessionAsync(sessionId);
-                TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
+                session.WorkingDirectory = cwd;
+            }
 
-                // ⭐ Persist model/mode selection to session (ensures they're saved even if execution fails)
-                ApplyInboundModelAndMode(session, options?.ModelId, options?.ModeId, modelManager);
+            if (options?.SkipInstructionInject != true)
+            {
+                try
+                {
+                    await instructionManager.InjectIfNeededAsync(
+                        session,
+                        cwd,
+                        workspaceProvider.WorkspaceRoot,
+                        CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Failed to inject project instructions for execution {ExecutionId}",
+                        executionId);
+                }
+            }
 
+            if (options?.SkipUserMessagePersist != true)
+            {
                 var userMessage = BuildUserMessage(input);
                 session.Messages.Add(userMessage);
+            }
 
-                // Save immediately - this is the key fix for the persistence issue
-                await sessionManager.SaveAsync(sessionId);
+            await sessionManager.SaveAsync(sessionId);
 
+            if (options?.SkipUserMessagePersist != true)
+            {
                 _logger.LogDebug("User message saved immediately for execution {ExecutionId}", executionId);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to save user message for execution {ExecutionId}", executionId);
-                return ExecutionSubmitResult.Failed($"Failed to save message: {ex.Message}");
-            }
         }
-        else
+        catch (Exception ex) when (options?.SkipUserMessagePersist == true)
         {
-            // Even when skipping user message persist, we still need to save model/mode selection
-            try
-            {
-                using var scope = _serviceProvider.CreateScope();
-                var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
-                var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
-                var session = await sessionManager.EnsureSessionAsync(sessionId);
-                TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
-                ApplyInboundModelAndMode(session, options?.ModelId, options?.ModeId, modelManager);
-                await sessionManager.SaveAsync(sessionId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to save model/mode selection for execution {ExecutionId}", executionId);
-            }
+            _logger.LogWarning(ex, "Failed to save model/mode selection for execution {ExecutionId}", executionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save user message for execution {ExecutionId}", executionId);
+            return ExecutionSubmitResult.Failed($"Failed to save message: {ex.Message}");
         }
 
         // Submit to queue
