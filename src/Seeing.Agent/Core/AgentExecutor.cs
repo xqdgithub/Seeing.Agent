@@ -11,8 +11,11 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
+using Seeing.Agent.Core.Reminders;
+using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools;
+using Seeing.Agent.Tools.BuiltIn.Todo;
 
 namespace Seeing.Agent.Core;
 
@@ -34,6 +37,9 @@ public class AgentExecutor
     private readonly ILogger<AgentExecutor> _logger;
     private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
     private readonly Scheduling.IAgentLoopScheduler? _loopScheduler;
+    private bool _todoEmptyReminded;
+    private bool _incompleteReminded;
+    private int _totalToolCallsExecuted;
 
     public AgentExecutor(
         ILlmService llm,
@@ -117,6 +123,20 @@ public class AgentExecutor
             effectiveToken.ThrowIfCancellationRequested();
             totalSteps = step + 1;
 
+            // === 循环开始检查：上一轮遗留的 paused todo ===
+            if (step == 0 && _sessionManager != null && !string.IsNullOrEmpty(context.SessionId))
+            {
+                var todoList = LoadTodoList(_sessionManager, context.SessionId);
+                if (todoList.HasPaused())
+                {
+                    var reminder = BuildTodoReminderMessage(
+                        SystemReminder.Kinds.TodoPaused,
+                        todoList.FormatBrief());
+                    if (reminder != null)
+                        messages.Add(reminder);
+                }
+            }
+
             // ========== 发布 StreamStart 事件（标记新轮次开始）==========
             yield return new StreamStartEvent
             {
@@ -124,6 +144,22 @@ public class AgentExecutor
                 LoopId = loopId,
                 Step = step
             };
+
+            // === TodoEmpty 检查：已执行多步但未创建 todo ===
+            if (step >= 2 && !_todoEmptyReminded
+                && _sessionManager != null && !string.IsNullOrEmpty(context.SessionId))
+            {
+                var todoList = LoadTodoList(_sessionManager, context.SessionId);
+                if (todoList.IsEmpty())
+                {
+                    var reminder = BuildTodoReminderMessage(
+                        SystemReminder.Kinds.TodoEmpty,
+                        "请评估当前任务是否需要使用 TodoWrite 规划。");
+                    if (reminder != null)
+                        messages.Add(reminder);
+                    _todoEmptyReminded = true;
+                }
+            }
 
             // 构建请求（异步注入动态上下文）
             var request = await BuildRequestAsync(agent, messages, context).ConfigureAwait(false);
@@ -347,9 +383,29 @@ public class AgentExecutor
                 Usage = lastUsage
             };
 
-            // 无工具调用则结束
+            // 无工具调用则检查 todo 状态
             if (assistantMessage.ToolCalls == null || assistantMessage.ToolCalls.Count == 0)
             {
+                // === 退出检查：未完成 todo ===
+                if (_sessionManager != null && !string.IsNullOrEmpty(context.SessionId))
+                {
+                    var todoList = LoadTodoList(_sessionManager, context.SessionId);
+                    if (todoList.HasIncompletePendingOrInProgress())
+                    {
+                        if (!_incompleteReminded)
+                        {
+                            var reminder = BuildTodoReminderMessage(
+                                SystemReminder.Kinds.TodoIncomplete,
+                                todoList.FormatBrief());
+                            if (reminder != null)
+                                messages.Add(reminder);
+                            _incompleteReminded = true;
+                            continue; // 不退出，再给一轮
+                        }
+                        // 第二次仍然未完成 → 信任 agent，允许退出
+                    }
+                }
+
                 // 发布 LoopComplete 事件（成功）
                 yield return new LoopCompleteEvent
                 {
@@ -362,6 +418,10 @@ public class AgentExecutor
                 };
                 yield break;
             }
+
+            // 累计工具调用次数
+            if (assistantMessage.ToolCalls != null)
+                _totalToolCallsExecuted += assistantMessage.ToolCalls.Count;
 
             // ========== 执行工具调用 ==========
             await foreach (var toolEvent in ExecuteToolCallsAsync(
@@ -758,5 +818,33 @@ public class AgentExecutor
         {
             return arguments;
         }
+    }
+
+    /// <summary>
+    /// 从会话加载 Todo 列表
+    /// </summary>
+    private static TodoList LoadTodoList(
+        Seeing.Session.Core.ISessionManager? sessionManager, string sessionId)
+    {
+        if (sessionManager == null)
+            return new TodoList { SessionId = sessionId, Items = new() };
+
+        var session = sessionManager.Get(sessionId);
+        var storedItems = session?.GetContext<List<Core.Todo.TodoItem>>(TodoWriteTool.TodoContextKey)
+            ?? new List<Core.Todo.TodoItem>();
+        return new TodoList { SessionId = sessionId, Items = storedItems };
+    }
+
+    /// <summary>
+    /// 构建 Todo 提醒消息
+    /// </summary>
+    private static ChatMessage? BuildTodoReminderMessage(
+        string kind, string taskBody)
+    {
+        var content = SystemReminderRenderer.Wrap(
+            taskBody,
+            SystemReminder.Sources.Agent,
+            kind);
+        return new ChatMessage { Role = ChatRole.User, Content = content };
     }
 }

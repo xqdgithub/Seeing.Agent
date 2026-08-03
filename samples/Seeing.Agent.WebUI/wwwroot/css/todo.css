@@ -161,6 +161,15 @@
     color: var(--color-text-tertiary);
 }
 
+.todo-item-paused {
+    opacity: 0.7;
+    font-style: italic;
+}
+
+.todo-stat-paused {
+    color: var(--color-text-secondary);
+}
+
 /* ===========================
    Todo Panel (侧边面板)
    =========================== */

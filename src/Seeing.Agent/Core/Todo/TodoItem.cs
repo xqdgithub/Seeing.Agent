@@ -14,7 +14,22 @@ public enum TodoStatus
     /// <summary>已完成</summary>
     Completed,
     /// <summary>已取消</summary>
-    Cancelled
+    Cancelled,
+    /// <summary>等待用户回复，暂停执行</summary>
+    Paused
+}
+
+/// <summary>
+/// Todo 项优先级
+/// </summary>
+public enum TodoPriority
+{
+    /// <summary>低优先级</summary>
+    Low,
+    /// <summary>中等优先级</summary>
+    Medium,
+    /// <summary>高优先级</summary>
+    High
 }
 
 /// <summary>
@@ -36,7 +51,7 @@ public class TodoItem
 
     /// <summary>任务优先级（low/medium/high）</summary>
     [JsonPropertyName("priority")]
-    public string Priority { get; set; } = "medium";
+    public TodoPriority Priority { get; set; } = TodoPriority.Medium;
 
     /// <summary>创建时间</summary>
     [JsonPropertyName("createdAt")]

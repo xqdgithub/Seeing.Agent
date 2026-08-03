@@ -12,7 +12,9 @@ public enum TodoStatusViewModel
     /// <summary>已完成</summary>
     Completed,
     /// <summary>已取消</summary>
-    Cancelled
+    Cancelled,
+    /// <summary>等待用户回复，暂停执行</summary>
+    Paused
 }
 
 /// <summary>
@@ -54,6 +56,7 @@ public class TodoItemViewModel
         TodoStatusViewModel.InProgress => "🔄",
         TodoStatusViewModel.Completed => "✅",
         TodoStatusViewModel.Cancelled => "❌",
+        TodoStatusViewModel.Paused => "⏸",
         _ => "⏳"
     };
 
@@ -64,6 +67,7 @@ public class TodoItemViewModel
         TodoStatusViewModel.InProgress => "var(--color-primary)",
         TodoStatusViewModel.Completed => "var(--color-success)",
         TodoStatusViewModel.Cancelled => "var(--color-error)",
+        TodoStatusViewModel.Paused => "var(--color-text-secondary)",
         _ => "var(--color-text-secondary)"
     };
 
@@ -74,6 +78,7 @@ public class TodoItemViewModel
         TodoStatusViewModel.InProgress => "processing",
         TodoStatusViewModel.Completed => "success",
         TodoStatusViewModel.Cancelled => "error",
+        TodoStatusViewModel.Paused => "warning",
         _ => "default"
     };
 
@@ -84,6 +89,7 @@ public class TodoItemViewModel
         TodoStatusViewModel.InProgress => "进行中",
         TodoStatusViewModel.Completed => "已完成",
         TodoStatusViewModel.Cancelled => "已取消",
+        TodoStatusViewModel.Paused => "暂停中",
         _ => "未知"
     };
 
@@ -141,6 +147,9 @@ public class TodoListViewModel
 
     /// <summary>已取消数</summary>
     public int CancelledCount => Items.Count(i => i.Status == TodoStatusViewModel.Cancelled);
+
+    /// <summary>暂停数</summary>
+    public int PausedCount => Items.Count(i => i.Status == TodoStatusViewModel.Paused);
 
     /// <summary>进度百分比 (0-100)</summary>
     public double ProgressPercent => TotalCount > 0 ? Math.Round(CompletedCount * 100.0 / TotalCount, 1) : 0;
@@ -218,19 +227,19 @@ public class TodoListViewModel
             TodoPriorityViewModel priority = TodoPriorityViewModel.Medium;
 
             // 解析 Content
-            if (element.TryGetProperty("Content", out var contentProp))
+            if (element.TryGetProperty("content", out var contentProp))
             {
                 content = contentProp.GetString() ?? "";
             }
 
             // 解析 Status（支持整数和字符串）
-            if (element.TryGetProperty("Status", out var statusProp))
+            if (element.TryGetProperty("status", out var statusProp))
             {
                 status = ParseStatusFromJson(statusProp);
             }
 
             // 解析 Priority（支持整数和字符串）
-            if (element.TryGetProperty("Priority", out var priorityProp))
+            if (element.TryGetProperty("priority", out var priorityProp))
             {
                 priority = ParsePriorityFromJson(priorityProp);
             }
@@ -293,6 +302,7 @@ public class TodoListViewModel
             "in_progress" => TodoStatusViewModel.InProgress,
             "completed" => TodoStatusViewModel.Completed,
             "cancelled" => TodoStatusViewModel.Cancelled,
+            "paused" => TodoStatusViewModel.Paused,
             _ => TodoStatusViewModel.Pending
         };
     }

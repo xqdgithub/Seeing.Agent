@@ -2,7 +2,7 @@ using Acp.Types;
 using FluentAssertions;
 using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Core.Events;
-using Seeing.Agent.Tools.BuiltIn.Todo;
+using Seeing.Agent.Core.Todo;
 using Xunit;
 
 namespace Seeing.Agent.Acp.Tests;
@@ -103,7 +103,9 @@ public class AcpEventMapperTests
             [
                 new PlanEntry { Content = "Task 1", Priority = "high", Status = "pending" },
                 new PlanEntry { Content = "Task 2", Priority = "medium", Status = "in_progress" },
-                new PlanEntry { Content = "Task 3", Priority = "low", Status = "completed" }
+                new PlanEntry { Content = "Task 3", Priority = "low", Status = "completed" },
+                new PlanEntry { Content = "Task 4", Priority = "medium", Status = "paused" },
+                new PlanEntry { Content = "Task 5", Priority = "high", Status = "cancelled" }
             ]
         };
 
@@ -112,7 +114,7 @@ public class AcpEventMapperTests
         evt.Type.Should().Be(MessageEventType.TodoUpdate);
         evt.SessionId.Should().Be("sess-1");
         evt.LoopId.Should().Be("loop-1");
-        evt.Todos.Should().HaveCount(3);
+        evt.Todos.Should().HaveCount(5);
 
         evt.Todos[0].Content.Should().Be("Task 1");
         evt.Todos[0].Priority.Should().Be(TodoPriority.High);
@@ -125,6 +127,14 @@ public class AcpEventMapperTests
         evt.Todos[2].Content.Should().Be("Task 3");
         evt.Todos[2].Priority.Should().Be(TodoPriority.Low);
         evt.Todos[2].Status.Should().Be(TodoStatus.Completed);
+
+        evt.Todos[3].Content.Should().Be("Task 4");
+        evt.Todos[3].Priority.Should().Be(TodoPriority.Medium);
+        evt.Todos[3].Status.Should().Be(TodoStatus.Paused);
+
+        evt.Todos[4].Content.Should().Be("Task 5");
+        evt.Todos[4].Priority.Should().Be(TodoPriority.High);
+        evt.Todos[4].Status.Should().Be(TodoStatus.Cancelled);
     }
 
     [Fact]

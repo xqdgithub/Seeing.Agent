@@ -10,7 +10,7 @@
 
 @if (ToolCall.IsTodoTool && ToolCall.TodoList != null && ToolCall.TodoList.HasTasks)
 {
-    <TodoCard TodoList="@ToolCall.TodoList" />
+    <TodoCard TodoList="@ToolCall.TodoList" IsToolRunning="@ToolCall.IsRunning" />
 }
 else
 {

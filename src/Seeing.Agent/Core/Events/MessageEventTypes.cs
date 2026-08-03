@@ -1,4 +1,4 @@
-using Seeing.Agent.Tools.BuiltIn.Todo;
+using Seeing.Agent.Core.Todo;
 
 namespace Seeing.Agent.Core.Events;
 
@@ -486,7 +486,7 @@ public record TodoUpdateEvent : IMessageEvent
     public MessageEventType Type => MessageEventType.TodoUpdate;
 
     /// <summary>Todo 列表</summary>
-    public List<TodoItem> Todos { get; init; } = new();
+    public List<Core.Todo.TodoItem> Todos { get; init; } = new();
 }
 
 /// <summary>

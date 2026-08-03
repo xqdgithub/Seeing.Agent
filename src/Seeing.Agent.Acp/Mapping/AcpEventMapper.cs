@@ -1,8 +1,8 @@
 using Acp.Types;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Llm;
-using Seeing.Agent.Tools.BuiltIn.Todo;
 
 namespace Seeing.Agent.Acp.Mapping;
 
@@ -165,7 +165,7 @@ public sealed class AcpEventMapper
         string sessionId,
         string? loopId)
     {
-        var todos = plan.Entries.Select(e => new TodoItem
+        var todos = plan.Entries.Select(e => new Core.Todo.TodoItem
         {
             Content = e.Content,
             Priority = MapPlanPriority(e.Priority),
@@ -197,6 +197,7 @@ public sealed class AcpEventMapper
             "completed" => TodoStatus.Completed,
             "in_progress" => TodoStatus.InProgress,
             "cancelled" => TodoStatus.Cancelled,
+            "paused" => TodoStatus.Paused,
             _ => TodoStatus.Pending
         };
 

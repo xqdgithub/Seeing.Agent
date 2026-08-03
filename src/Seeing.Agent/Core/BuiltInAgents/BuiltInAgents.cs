@@ -87,29 +87,36 @@ namespace Seeing.Agent.Core.BuiltInAgents
 - 探索代码库时，优先使用 Task 工具委托给专门的子代理
 - 可以在单个响应中调用多个工具，并行执行
 
-## 任务管理 **必须**（不可协商）
+## 任务管理
 
-使用 TodoWrite/TodoRead 工具跟踪和规划任务：
+使用 TodoWrite/TodoRead 工具跟踪和规划任务。主动使用以展示进展给用户。
 
-**创建规则：**
-- 对于 2+ 步骤的任务，必须先创建 todo 列表
-- 每个 todo 必须是原子、可验证的步骤
-- 开始任务前标记为 in_progress（一次只有一个）
+**何时使用：**
+- 复杂多步任务（3 步以上）
+- 用户明确提供了多个任务（编号或逗号分隔）
+- 收到新指令后立即捕获为 todo
 
-**完成规则：**
-- 完成后必须立即标记为 completed（不要批量标记）
-- 如果发现新任务，必须添加到 todo 列表
-- 所有 todo 必须标记为 completed 才能结束任务
+**何时不用：**
+- 单个简单任务
+- 纯问答 / 信息性请求
 
-**终止条件（强制）：**
-- 所有 todo 必须标记为 completed
-- 不允许在 todo 未完成时声明任务完成
-- 不允许跳过或忽略任何 todo
-- 如果某个 todo 无法完成，必须说明原因并添加替代方案
+**任务状态：**
+- pending → in_progress（一次只能一个）→ completed
+- 需要等待用户回复时标记为 paused，获得回复后恢复
+- 不需要的任务标记为 cancelled
 
-**验证：**
-- 结束前检查：所有 todo 状态是否为 completed
-- 如果有 pending 或 in_progress 的 todo，继续执行
+**关键规则：**
+- 完成后立即标记 completed，不要批量
+- 发现新任务必须添加
+- 结束前确保所有 todo 为 completed、cancelled 或 paused
+- paused 的 todo 会在下次用户回复时提醒你继续
+
+**示例：**
+用户：「帮我添加深色模式并运行测试」
+助手：先创建 todo：1. 添加深色模式切换 2. 更新组件 3. 运行测试。然后开始执行并逐步标记状态。
+
+用户：「git status 做什么的？」
+助手：显示工作区和暂存区状态。（不使用 todo）
 
 ## 代码引用
 
@@ -368,29 +375,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
 2. **并行执行**：同时执行多个独立的工作单元
 3. **综合结果**：将各个部分的结果整合成最终答案
 
-## 任务管理（不可协商）
+## 任务管理
 
-使用 TodoWrite 工具跟踪进度：
-
-**创建规则：**
-- 对于 2+ 步骤的任务，必须先创建 todo 列表
-- 每个 todo 必须是原子、可验证的步骤
-- 开始任务前标记为 in_progress
-
-**完成规则：**
-- 完成后必须立即标记为 completed
-- 发现新任务必须添加到 todo 列表
-- 所有 todo 必须标记为 completed 才能结束任务
-
-**终止条件（强制）：**
-- 所有 todo 必须标记为 completed
-- 不允许在 todo 未完成时声明任务完成
-- 不允许跳过或忽略任何 todo
-- 如果某个 todo 无法完成，必须说明原因并添加替代方案
-
-**验证：**
-- 结束前检查：所有 todo 状态是否为 completed
-- 如果有 pending 或 in_progress 的 todo，继续执行
+使用 TodoWrite 工具跟踪进度。对 3 步以上任务创建 todo，完成立即标记 completed。需要等待用户时标记 paused。结束时确保所有 todo 为 completed、cancelled 或 paused。
 
 ## 工具使用
 

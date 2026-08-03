@@ -61,7 +61,7 @@ namespace Seeing.Agent.Tests.Todo
                 SessionId = sessionId,
                 Items = new List<TodoItem>
                 {
-                    new TodoItem { Id = "todo_001", Content = "测试任务", Priority = "high" }
+                    new TodoItem { Id = "todo_001", Content = "测试任务", Priority = TodoPriority.High }
                 }
             };
 
@@ -80,7 +80,7 @@ namespace Seeing.Agent.Tests.Todo
             var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_003";
             var content = "完成代码审查";
-            var priority = "high";
+            var priority = TodoPriority.High;
 
             // Act
             var result = await manager.AddAsync(sessionId, content, priority);
@@ -106,7 +106,7 @@ namespace Seeing.Agent.Tests.Todo
             // Arrange
             var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_004";
-            var addedItem = await manager.AddAsync(sessionId, "待完成任务", "medium");
+            var addedItem = await manager.AddAsync(sessionId, "待完成任务", TodoPriority.Medium);
 
             // Act - 标记为进行中
             var result = await manager.UpdateStatusAsync(sessionId, addedItem.Id, TodoStatus.InProgress);
@@ -132,9 +132,9 @@ namespace Seeing.Agent.Tests.Todo
             var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_005";
 
-            await manager.AddAsync(sessionId, "任务一", "high");
-            await manager.AddAsync(sessionId, "任务二", "medium");
-            await manager.AddAsync(sessionId, "任务三", "low");
+            await manager.AddAsync(sessionId, "任务一", TodoPriority.High);
+            await manager.AddAsync(sessionId, "任务二", TodoPriority.Medium);
+            await manager.AddAsync(sessionId, "任务三", TodoPriority.Low);
 
             // Act
             var result = await manager.LoadAsync(sessionId);
@@ -144,11 +144,11 @@ namespace Seeing.Agent.Tests.Todo
             result.SessionId.Should().Be(sessionId);
             result.Items.Should().HaveCount(3);
             result.Items[0].Content.Should().Be("任务一");
-            result.Items[0].Priority.Should().Be("high");
+            result.Items[0].Priority.Should().Be(TodoPriority.High);
             result.Items[1].Content.Should().Be("任务二");
-            result.Items[1].Priority.Should().Be("medium");
+            result.Items[1].Priority.Should().Be(TodoPriority.Medium);
             result.Items[2].Content.Should().Be("任务三");
-            result.Items[2].Priority.Should().Be("low");
+            result.Items[2].Priority.Should().Be(TodoPriority.Low);
         }
 
         [Fact]
@@ -157,7 +157,7 @@ namespace Seeing.Agent.Tests.Todo
             // Arrange
             var manager = new TodoManager(_loggerMock.Object, _workspaceMock.Object);
             var sessionId = "test_session_006";
-            await manager.AddAsync(sessionId, "待删除任务", "low");
+            await manager.AddAsync(sessionId, "待删除任务", TodoPriority.Low);
 
             // 验证文件已创建
             var filePath = Path.Combine(_testDirectory, ".seeing", "todos", $"{sessionId}.json");

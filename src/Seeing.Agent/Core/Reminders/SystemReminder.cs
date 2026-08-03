@@ -6,6 +6,7 @@ public static class SystemReminder
 
     public static class Sources
     {
+        public const string Agent = "agent";
         public const string Job = "job";
         public const string Task = "task";
     }
@@ -17,6 +18,9 @@ public static class SystemReminder
         public const string Completed = "completed";
         public const string Failed = "failed";
         public const string Cancelled = "cancelled";
+        public const string TodoEmpty = "todo_empty";
+        public const string TodoIncomplete = "todo_incomplete";
+        public const string TodoPaused = "todo_paused";
     }
 
     public static class MetadataKeys

@@ -23,9 +23,9 @@ public interface ITodoManager
     /// </summary>
     /// <param name="sessionId">会话 ID</param>
     /// <param name="content">任务内容</param>
-    /// <param name="priority">优先级（low/medium/high）</param>
+    /// <param name="priority">优先级</param>
     /// <returns>新创建的 Todo 项</returns>
-    Task<TodoItem> AddAsync(string sessionId, string content, string priority = "medium");
+    Task<TodoItem> AddAsync(string sessionId, string content, TodoPriority priority = TodoPriority.Medium);
 
     /// <summary>
     /// 更新 Todo 项状态

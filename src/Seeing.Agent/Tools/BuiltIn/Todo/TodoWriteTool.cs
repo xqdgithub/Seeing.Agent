@@ -2,59 +2,17 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Todo;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.Todo
 {
     /// <summary>
-    /// Todo 项状态
-    /// </summary>
-    public enum TodoStatus
-    {
-        /// <summary>待处理</summary>
-        Pending,
-        /// <summary>进行中</summary>
-        InProgress,
-        /// <summary>已完成</summary>
-        Completed,
-        /// <summary>已取消</summary>
-        Cancelled
-    }
-
-    /// <summary>
-    /// Todo 项优先级
-    /// </summary>
-    public enum TodoPriority
-    {
-        /// <summary>低优先级</summary>
-        Low,
-        /// <summary>中等优先级</summary>
-        Medium,
-        /// <summary>高优先级</summary>
-        High
-    }
-
-    /// <summary>
-    /// Todo 项
-    /// </summary>
-    public class TodoItem
-    {
-        /// <summary>任务内容描述</summary>
-        public string Content { get; set; } = string.Empty;
-
-        /// <summary>任务状态</summary>
-        public TodoStatus Status { get; set; } = TodoStatus.Pending;
-
-        /// <summary>任务优先级</summary>
-        public TodoPriority Priority { get; set; } = TodoPriority.Medium;
-    }
-
-    /// <summary>
     /// Todo 写入工具 - 更新会话的 Todo 列表
     /// </summary>
     public class TodoWriteTool : ToolBase
     {
-        private const string TodoContextKey = "todos";
+        internal const string TodoContextKey = "todos";
         private readonly Seeing.Session.Core.ISessionManager _sessionManager;
 
         /// <summary>
@@ -70,9 +28,27 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
 
         /// <inheritdoc/>
         public override string Description =>
-            "使用此工具创建和管理任务列表，帮助跟踪任务进度。" +
-            "支持设置任务状态（pending/in_progress/completed/cancelled）和优先级（low/medium/high）。" +
-            "有助于组织复杂的多步骤任务。";
+            "使用此工具创建和管理结构化任务列表，帮助跟踪进度、组织复杂任务。" +
+            "## 何时使用" +
+            "- 复杂多步任务（3 步以上）" +
+            "- 用户提供多个任务（编号或逗号分隔）" +
+            "- 收到新指令后立即捕获为 todo" +
+            "## 何时不用" +
+            "- 单个简单任务" +
+            "- 纯问答 / 信息性请求" +
+            "- 可在 3 步内完成的小任务" +
+            "## 任务状态" +
+            "- pending: 未开始" +
+            "- in_progress: 当前进行中（一次只能一个）" +
+            "- completed: 已完成" +
+            "- cancelled: 不需要了" +
+            "- paused: 等待用户回复，暂停执行" +
+            "## 规则" +
+            "- 完成后立即标记 completed，不要批量" +
+            "- 一次只保持一个 in_progress" +
+            "- 需要等待用户时标记 paused" +
+            "- 发现新任务立即添加" +
+            "有疑问时，使用此工具。主动管理任务体现你的专注度。";
 
         /// <inheritdoc/>
         public override JsonElement ParametersSchema => BuildObjectSchema(new Dictionary<string, (string, string, bool, string[]?)>
@@ -91,11 +67,6 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
 
             var todos = ParseTodos(todosElement);
 
-            // 请求权限确认
-            var permCheck = await RequestPermissionAsync(context, "tool.execute", "todowrite",
-                new Dictionary<string, object> { ["todos"] = todos });
-            if (permCheck != null) return permCheck;
-
             // 更新会话中的 Todo 列表
             var session = _sessionManager.Get(context.SessionId);
             if (session == null)
@@ -106,7 +77,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
             // 直接设置 SessionData 的 Context
             session.SetContext(TodoContextKey, todos);
 
-            var pendingCount = todos.Count(t => t.Status != TodoStatus.Completed);
+            var pendingCount = todos.Count(t => t.Status == TodoStatus.Pending || t.Status == TodoStatus.InProgress);
             var output = JsonSerializer.Serialize(todos, new JsonSerializerOptions
             {
                 WriteIndented = true
@@ -124,13 +95,13 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
         /// <summary>
         /// 解析 Todo 数组
         /// </summary>
-        private List<TodoItem> ParseTodos(JsonElement todosElement)
+        private List<Core.Todo.TodoItem> ParseTodos(JsonElement todosElement)
         {
-            var todos = new List<TodoItem>();
+            var todos = new List<Core.Todo.TodoItem>();
 
             foreach (var item in todosElement.EnumerateArray())
             {
-                var todo = new TodoItem();
+                var todo = new Core.Todo.TodoItem();
 
                 if (item.TryGetProperty("content", out var contentProp))
                 {
@@ -166,6 +137,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
                 "in_progress" => TodoStatus.InProgress,
                 "completed" => TodoStatus.Completed,
                 "cancelled" => TodoStatus.Cancelled,
+                "paused" => TodoStatus.Paused,
                 _ => TodoStatus.Pending
             };
         }
@@ -173,14 +145,13 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
         /// <summary>
         /// 解析优先级字符串
         /// </summary>
-        private static TodoPriority ParsePriority(string priority)
+        private static Core.Todo.TodoPriority ParsePriority(string priority)
         {
             return priority.ToLowerInvariant() switch
             {
-                "low" => TodoPriority.Low,
-                "medium" => TodoPriority.Medium,
-                "high" => TodoPriority.High,
-                _ => TodoPriority.Medium
+                "low" => Core.Todo.TodoPriority.Low,
+                "high" => Core.Todo.TodoPriority.High,
+                _ => Core.Todo.TodoPriority.Medium
             };
         }
 
@@ -222,7 +193,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
                             ["status"] = new Dictionary<string, object>
                             {
                                 ["type"] = "string",
-                                ["enum"] = new[] { "pending", "in_progress", "completed", "cancelled" },
+                                ["enum"] = new[] { "pending", "in_progress", "completed", "cancelled", "paused" },
                                 ["description"] = "任务状态"
                             },
                             ["priority"] = new Dictionary<string, object>
@@ -299,7 +270,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
             var session = _sessionManager.Get(context.SessionId);
             var todos = session?.GetContext<List<TodoItem>>(TodoContextKey) ?? new List<TodoItem>();
 
-            var pendingCount = todos.Count(t => t.Status != TodoStatus.Completed);
+            var pendingCount = todos.Count(t => t.Status == TodoStatus.Pending || t.Status == TodoStatus.InProgress);
             var output = JsonSerializer.Serialize(todos, new JsonSerializerOptions
             {
                 WriteIndented = true

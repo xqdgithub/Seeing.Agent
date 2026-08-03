@@ -59,6 +59,12 @@
                         ❌ @(TodoList.CancelledCount) 已取消
                     </span>
                 }
+                @if (TodoList.PausedCount > 0)
+                {
+                    <span class="todo-stat-item todo-stat-paused">
+                        ⏸ @(TodoList.PausedCount) 暂停中
+                    </span>
+                }
             </div>
             
             @* 任务列表 *@
@@ -100,9 +106,35 @@
     public TodoListViewModel TodoList { get; set; } = new();
 
     /// <summary>
+    /// 关联的 todowrite 工具是否仍在执行中
+    /// </summary>
+    [Parameter]
+    public bool IsToolRunning { get; set; }
+
+    /// <summary>
     /// 是否展开
     /// </summary>
     private bool _isExpanded = true;
+
+    /// <summary>
+    /// 上一轮的 IsToolRunning 值，用于检测工具完成 → 自动折叠
+    /// </summary>
+    private bool _lastIsToolRunning = true;
+
+    protected override void OnParametersSet()
+    {
+        // 工具运行中 → 展开；工具从运行→完成 → 自动折叠
+        if (IsToolRunning)
+        {
+            _isExpanded = true;
+        }
+        else if (_lastIsToolRunning && !IsToolRunning)
+        {
+            // 工具刚从运行变为完成，自动折叠
+            _isExpanded = false;
+        }
+        _lastIsToolRunning = IsToolRunning;
+    }
 
     /// <summary>
     /// 切换展开状态
@@ -139,6 +171,9 @@
         
         if (item.Status == TodoStatusViewModel.Cancelled)
             classes.Add("todo-item-cancelled");
+
+        if (item.Status == TodoStatusViewModel.Paused)
+            classes.Add("todo-item-paused");
         
         return string.Join(" ", classes);
     }

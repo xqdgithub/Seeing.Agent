@@ -34,6 +34,7 @@ public class TodoManager : ITodoManager
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
+        _jsonOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     }
 
     /// <inheritdoc/>
@@ -130,7 +131,7 @@ public class TodoManager : ITodoManager
     }
 
     /// <inheritdoc/>
-    public async Task<TodoItem> AddAsync(string sessionId, string content, string priority = "medium")
+    public async Task<TodoItem> AddAsync(string sessionId, string content, TodoPriority priority = TodoPriority.Medium)
     {
         if (string.IsNullOrEmpty(sessionId))
         {
@@ -141,9 +142,6 @@ public class TodoManager : ITodoManager
         {
             throw new ArgumentException("content 不能为空", nameof(content));
         }
-
-        // 验证优先级
-        priority = NormalizePriority(priority);
 
         var todoList = await LoadAsync(sessionId);
 
@@ -279,18 +277,5 @@ public class TodoManager : ITodoManager
         var timestamp = DateTimeOffset.Now.ToString("yyyyMMddHHmmss");
         var random = Guid.NewGuid().ToString("N").Substring(0, 8);
         return $"todo_{timestamp}_{random}";
-    }
-
-    /// <summary>
-    /// 标准化优先级
-    /// </summary>
-    private static string NormalizePriority(string priority)
-    {
-        return priority.ToLowerInvariant() switch
-        {
-            "low" => "low",
-            "high" => "high",
-            _ => "medium"
-        };
     }
 }
