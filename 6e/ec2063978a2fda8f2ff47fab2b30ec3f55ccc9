@@ -1,0 +1,103 @@
+src/Seeing.Agent/Core/Todo/TodoManager.cs
+  s_41cf7696e89f6d::t_a17355fcc7591b 37
+  s_41cf7696e89f6d::t_3ddf506eb6e74e 134
+samples/Seeing.Agent.WebUI/Components/Messaging/ToolCallMessageComponent.razor
+  s_52c04ac90b589c::t_a70dde8c66c72a 13
+src/Seeing.Agent/Core/Events/MessageEventTypes.cs
+  s_41cf7696e89f6d::t_06754670f043c4 1
+  s_41cf7696e89f6d::t_5c0c87b9a2e6b0 489
+tests/Seeing.Agent.Tests/Todo/TodoManagerTests.cs
+  s_41cf7696e89f6d::t_577dd89d56dd91 109
+  s_41cf7696e89f6d::t_d52a7ad32ef220 64
+  s_41cf7696e89f6d::t_bcabbcc053f157 160
+  s_41cf7696e89f6d::t_ec4c4df6cdd842 83
+  s_41cf7696e89f6d::t_a3fb96a8615bec 135-137
+  s_41cf7696e89f6d::t_736819dc916295 147,149,151
+tests/Seeing.Agent.Acp.Tests/AcpEventMapperTests.cs
+  s_41cf7696e89f6d::t_0cbd663ee93ad9 5
+  s_41cf7696e89f6d::t_519113b08f4948 106-108,117,130-137
+src/Seeing.Agent/Core/Reminders/SystemReminder.cs
+  s_41cf7696e89f6d::t_355e9bd11f9d58 9
+  s_41cf7696e89f6d::t_6e78731ffd58ca 21-23
+src/Seeing.Agent/Core/AgentExecutor.cs
+  s_41cf7696e89f6d::t_d0f353899218c7 126-139
+  s_41cf7696e89f6d::t_c8823afe7f5703 14-15,18
+  s_41cf7696e89f6d::t_036507debb4deb 422-425
+  s_41cf7696e89f6d::t_8bc65773eb10ad 148,150-163
+  s_41cf7696e89f6d::t_9a96538cb79d3c 833-835
+  s_41cf7696e89f6d::t_f8f813009cfa0a 386,389-408
+  s_41cf7696e89f6d::t_0952c1ee816629 822-832,836-849
+  s_41cf7696e89f6d::t_507421879e788e 40-42
+src/Seeing.Agent.Acp/Mapping/AcpEventMapper.cs
+  s_41cf7696e89f6d::t_ffef9ef1ff1811 200
+  s_41cf7696e89f6d::t_c4e98ebb112d66 4
+  s_41cf7696e89f6d::t_64e0467cdcfa4c 168
+src/Seeing.Agent/Core/Todo/TodoItem.cs
+  s_41cf7696e89f6d::t_e044ca43a1fcb8 23-32,54
+  s_41cf7696e89f6d::t_c601b9ac0d1c90 17-19
+src/Seeing.Agent/Tools/BuiltIn/Todo/TodoWriteTool.cs
+  s_41cf7696e89f6d::t_2c1b86dd10a6e0 15
+  s_41cf7696e89f6d::t_86f0be5a95188d 140
+  s_41cf7696e89f6d::t_5e546a5b73925e 5
+  s_41cf7696e89f6d::t_d6efcc68c027c0 80,273
+  s_41cf7696e89f6d::t_1f805171064d8f 98,100,104,148,152-154
+  s_41cf7696e89f6d::t_170af1bd6e5013 196
+  s_41cf7696e89f6d::t_0f3ba784ad16e3 31-51
+samples/Seeing.Agent.WebUI/Services/EventStreamHandler.cs
+  s_41cf7696e89f6d::t_abeed2ba02ea83 8
+src/Seeing.Agent/Core/Todo/TodoListExtensions.cs
+  s_41cf7696e89f6d::t_7fb27b75787719 1-37
+src/Seeing.Agent/Core/BuiltInAgents/BuiltInAgents.cs
+  s_41cf7696e89f6d::t_b0eba4e70c28c6 378,380
+  s_41cf7696e89f6d::t_5a719029d7bd93 90,92,94-97,99-101,103-106,108-119
+src/Seeing.Agent/Core/Reminders/SystemReminderNotices.cs
+  s_41cf7696e89f6d::t_552b7bfc0867bb 17-22
+tests/Seeing.Agent.Tests/Core/Todo/TodoListExtensionsTests.cs
+  s_41cf7696e89f6d::t_6d3ff0dfba9ab1 1-88
+tests/Seeing.Agent.Tests/Core/Reminders/SystemReminderNoticesTests.cs
+  s_41cf7696e89f6d::t_6f07f24d766fcd 1-38
+samples/Seeing.Agent.WebUI/Components/TodoCard.razor
+  s_41cf7696e89f6d::t_6c9c6335d26fef 62-67
+  s_41cf7696e89f6d::t_0a01cb0b5bfb90 174-176
+  s_52c04ac90b589c::t_53fd5906c76f80 109-113,119-120,122,126-131,133-134,136
+  s_52c04ac90b589c::t_c004c4c9d04d3e 121,123-125,132,135,137-138
+samples/Seeing.Agent.WebUI/wwwroot/css/todo.css
+  s_41cf7696e89f6d::t_9e64eea7838d15 164-172
+src/Seeing.Agent/Core/Todo/ITodoManager.cs
+  s_41cf7696e89f6d::t_6f418ab7407e05 26,28
+samples/Seeing.Agent.WebUI/Models/TodoViewModel.cs
+  s_41cf7696e89f6d::t_d26de88cc2cfcb 59
+  s_41cf7696e89f6d::t_316aa7ff1b9366 81
+  s_41cf7696e89f6d::t_ab89102660d9ed 230
+  s_41cf7696e89f6d::t_568e041761714f 236
+  s_41cf7696e89f6d::t_1e138c6054e8f4 242
+  s_41cf7696e89f6d::t_edba0cf20f5045 305
+  s_41cf7696e89f6d::t_916f851989c215 70
+  s_41cf7696e89f6d::t_7cb9f05ac204a5 92
+  s_41cf7696e89f6d::t_b94e1a1176d572 15-17
+  s_41cf7696e89f6d::t_9aa00d012018e1 151-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.39-trip",
+  "base_commit_sha": "6eec2063978a2fda8f2ff47fab2b30ec3f55ccc9",
+  "prompts": {},
+  "sessions": {
+    "s_41cf7696e89f6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6f028d2-0a32-48ea-ba54-837baf6326f0",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_52c04ac90b589c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61fe2868-382d-4246-827f-c767e98da901",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
