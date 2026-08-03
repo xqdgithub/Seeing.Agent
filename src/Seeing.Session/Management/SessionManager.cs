@@ -444,7 +444,6 @@ namespace Seeing.Session.Management
             child.PartitionId = parent.PartitionId;
             // 默认继承父委派时模型；子 Agent 自带 Model 时由 TaskTool 覆盖
             child.SelectedModel = parent.SelectedModel;
-            child.SelectedModelProvider = parent.SelectedModelProvider;
             child.Messages = new List<SessionMessage>();
             child.PermissionSnapshot = permissionSnapshot?
                 .Select(r => new SessionPermissionRule
@@ -653,7 +652,7 @@ namespace Seeing.Session.Management
         /// <summary>
         /// 设置会话的模型
         /// </summary>
-        public async Task SetModelAsync(string sessionId, string modelId, string? providerId = null, CancellationToken ct = default)
+        public async Task SetModelAsync(string sessionId, string modelId, CancellationToken ct = default)
         {
             var session = Get(sessionId);
             if (session == null)
@@ -662,25 +661,15 @@ namespace Seeing.Session.Management
                 return;
             }
 
-            // 不可盲拆 '/'：API 模型 ID 本身可含 '/'（如 Qwen/Qwen3-...）。
-            // 未显式传入 providerId 时，整段视为 modelId。
-
-            // 更新会话的模型选择
             session.SelectedModel = modelId;
-            if (!string.IsNullOrEmpty(providerId))
-            {
-                session.SelectedModelProvider = providerId;
-            }
             session.UpdatedAt = DateTime.Now;
 
-            // 触发 ModelChanged Hook（让 Budget 服务响应）
-            var fullModelId = string.IsNullOrEmpty(providerId) ? modelId : $"{providerId}/{modelId}";
             _hookManager?.TriggerFireAndForget(
                 HookPoints.ModelChanged,
                 session.Id,
                 input: new Dictionary<string, object?>
                 {
-                    ["modelId"] = fullModelId,
+                    ["modelId"] = modelId,
                     ["session"] = session
                 });
 
@@ -696,8 +685,8 @@ namespace Seeing.Session.Management
                 await SaveAsync(sessionId);
             }
 
-            _logger?.LogInformation("设置会话模型: SessionId={SessionId}, Model={Model}, Provider={Provider}",
-                sessionId, modelId, providerId ?? "(auto)");
+            _logger?.LogInformation("设置会话模型: SessionId={SessionId}, Model={Model}",
+                sessionId, modelId);
         }
 
         // === 原子操作方法（确保缓存一致性） ===

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Management;
@@ -21,7 +20,6 @@ namespace Seeing.Agent.TokenBudget;
 /// </remarks>
 public class BudgetModelLimitHandler : IMultiHookHandler
 {
-    private readonly ILlmService _llmService;
     private readonly ITokenBudgetManager _budgetManager;
     private readonly IBudgetStatusNotifier? _notifier;
     private readonly ILogger<BudgetModelLimitHandler>? _logger;
@@ -48,12 +46,10 @@ public class BudgetModelLimitHandler : IMultiHookHandler
     /// 创建 BudgetModelLimitHandler 实例
     /// </summary>
     public BudgetModelLimitHandler(
-        ILlmService llmService,
         ITokenBudgetManager budgetManager,
         IBudgetStatusNotifier? notifier = null,
         ILogger<BudgetModelLimitHandler>? logger = null)
     {
-        _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
         _budgetManager = budgetManager ?? throw new ArgumentNullException(nameof(budgetManager));
         _notifier = notifier;
         _logger = logger;
@@ -93,10 +89,10 @@ public class BudgetModelLimitHandler : IMultiHookHandler
             return HookResult.Success;
         }
 
-        // 如果没有显式传入 modelId，从 session 获取当前选中的模型
+        // 如果没有显式传入 modelId，从 session 获取当前选中的 modelRef
         if (string.IsNullOrEmpty(modelId))
         {
-            modelId = GetFullModelId(session);
+            modelId = GetSessionModelRef(session);
         }
 
         // 计算 budget 状态并通知 UI
@@ -137,41 +133,6 @@ public class BudgetModelLimitHandler : IMultiHookHandler
         }
     }
 
-    /// <summary>
-    /// 获取完整的模型 ID（包含 provider 前缀）
-    /// </summary>
-    private string? GetFullModelId(SessionData session)
-    {
-        if (string.IsNullOrEmpty(session.SelectedModel))
-            return null;
-
-        // 情况 1：selectedModel 已经包含 provider 前缀（如 "anthropic/GLM-5"）
-        if (session.SelectedModel.Contains('/'))
-        {
-            return session.SelectedModel;
-        }
-
-        // 情况 2：有独立的 provider 字段
-        if (!string.IsNullOrEmpty(session.SelectedModelProvider))
-        {
-            return $"{session.SelectedModelProvider}/{session.SelectedModel}";
-        }
-
-        // 情况 3：只有 modelId，尝试在 availableModels 中查找带前缀的版本
-        var availableModels = _llmService.GetAvailableModels();
-        
-        // 尝试直接匹配
-        if (availableModels.ContainsKey(session.SelectedModel))
-            return session.SelectedModel;
-
-        // 尝试查找带前缀的版本
-        foreach (var key in availableModels.Keys)
-        {
-            if (key.EndsWith($"/{session.SelectedModel}"))
-                return key;
-        }
-
-        // 兜底：返回原始值
-        return session.SelectedModel;
-    }
+    private static string? GetSessionModelRef(SessionData session) =>
+        string.IsNullOrWhiteSpace(session.SelectedModel) ? null : session.SelectedModel.Trim();
 }

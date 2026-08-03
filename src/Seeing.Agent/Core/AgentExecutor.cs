@@ -34,6 +34,7 @@ public class AgentExecutor
     private readonly IAgentRegistry _registry;
     private readonly PromptBuilder _promptBuilder;
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
+    private readonly IModelManager _modelManager;
     private readonly ILogger<AgentExecutor> _logger;
     private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
     private readonly Scheduling.IAgentLoopScheduler? _loopScheduler;
@@ -49,6 +50,7 @@ public class AgentExecutor
         IAgentRegistry registry,
         PromptBuilder promptBuilder,
         IOptionsMonitor<SeeingAgentOptions> options,
+        IModelManager modelManager,
         ILogger<AgentExecutor> logger,
         Seeing.Session.Core.ISessionManager? sessionManager = null,
         Scheduling.IAgentLoopScheduler? loopScheduler = null)
@@ -60,6 +62,7 @@ public class AgentExecutor
         _registry = registry;
         _promptBuilder = promptBuilder;
         _options = options;
+        _modelManager = modelManager;
         _logger = logger;
         _sessionManager = sessionManager;
         _loopScheduler = loopScheduler;
@@ -737,31 +740,20 @@ public class AgentExecutor
     /// </summary>
     private string ResolveModelId(Models.AgentDefinition agent, AgentContext? context = null)
     {
-        // 0. 优先使用用户在界面上选择的模型（会话级覆盖）
+        string? requestModelRef = null;
         if (context?.Metadata != null &&
-            context.Metadata.TryGetValue(AgentContextKeys.RequestModelId, out var sessionModelObj) &&
-            sessionModelObj is string sessionModel &&
-            !string.IsNullOrEmpty(sessionModel))
+            context.Metadata.TryGetValue(AgentContextKeys.RequestModelId, out var requestModelObj) &&
+            requestModelObj is string requestModel &&
+            !string.IsNullOrEmpty(requestModel))
         {
-            _logger.LogDebug("[AgentExecutor] 使用会话级模型选择: {SessionModel}", sessionModel);
-            return sessionModel;
+            requestModelRef = requestModel;
+            _logger.LogDebug("[AgentExecutor] 使用请求/会话模型: {Model}", requestModelRef);
         }
 
-        // 1. 使用 Agent 定义的模型
-        if (agent.Model != null)
-        {
-            return agent.Model.ToString();
-        }
+        var resolved = _modelManager.ResolveNativeModel(requestModelRef, null, agent.Name);
+        if (!string.IsNullOrEmpty(resolved))
+            return resolved;
 
-        // 2. 回退到全局默认模型
-        if (!string.IsNullOrEmpty(_options.CurrentValue.DefaultModel))
-        {
-            _logger.LogDebug("[AgentExecutor] Agent {Name} 未配置模型，使用全局默认: {DefaultModel}",
-                agent.Name, _options.CurrentValue.DefaultModel);
-            return _options.CurrentValue.DefaultModel;
-        }
-
-        // 3. 无默认模型配置，抛出错误
         throw new InvalidOperationException(
             $"Agent '{agent.Name}' 未配置模型，且未设置全局默认模型 (SeeingAgent:DefaultModel)。" +
             $"请在 Agent 定义中设置 Model，或在配置中设置 DefaultModel。");

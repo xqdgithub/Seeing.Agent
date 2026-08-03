@@ -122,12 +122,12 @@ public class ExecutionJobService : IDisposable
             {
                 using var scope = _serviceProvider.CreateScope();
                 var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
-                var providerManager = scope.ServiceProvider.GetRequiredService<IProviderManager>();
+                var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
                 var session = await sessionManager.EnsureSessionAsync(sessionId);
                 TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
 
-                // ⭐ Persist model/provider/mode selection to session (ensures they're saved even if execution fails)
-                TryBackfillSessionModelSelection(session, options?.ModelId, options?.ModeId, providerManager);
+                // ⭐ Persist model/mode selection to session (ensures they're saved even if execution fails)
+                ApplyInboundModelAndMode(session, options?.ModelId, options?.ModeId, modelManager);
 
                 var userMessage = BuildUserMessage(input);
                 session.Messages.Add(userMessage);
@@ -150,10 +150,10 @@ public class ExecutionJobService : IDisposable
             {
                 using var scope = _serviceProvider.CreateScope();
                 var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
-                var providerManager = scope.ServiceProvider.GetRequiredService<IProviderManager>();
+                var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
                 var session = await sessionManager.EnsureSessionAsync(sessionId);
                 TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
-                TryBackfillSessionModelSelection(session, options?.ModelId, options?.ModeId, providerManager);
+                ApplyInboundModelAndMode(session, options?.ModelId, options?.ModeId, modelManager);
                 await sessionManager.SaveAsync(sessionId);
             }
             catch (Exception ex)
@@ -298,6 +298,7 @@ public class ExecutionJobService : IDisposable
         var agentRegistry = scope.ServiceProvider.GetRequiredService<IAgentRegistry>();
         var executionRouter = scope.ServiceProvider.GetRequiredService<IAgentExecutionRouter>();
         var agentSelectionResolver = scope.ServiceProvider.GetRequiredService<AgentSelectionResolver>();
+        var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
         var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
         var commandRegistry = scope.ServiceProvider.GetRequiredService<ICommandRegistry>();
 
@@ -323,7 +324,7 @@ public class ExecutionJobService : IDisposable
 
             // Build execution context with background permission channel
             var context = await BuildExecutionContextAsync(
-                session, record, agentRegistry, agentSelectionResolver, workspaceProvider);
+                session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider);
 
             // Process command if applicable
             var inputText = record.Input?.Text;
@@ -460,10 +461,13 @@ public class ExecutionJobService : IDisposable
         ExecutionRecord record,
         IAgentRegistry agentRegistry,
         AgentSelectionResolver agentSelectionResolver,
+        IModelManager modelManager,
         IWorkspaceProvider workspaceProvider)
     {
-        var agentId = record.Options?.AgentId
-            ?? await agentSelectionResolver.ResolveAgentIdAsync(null, null, CancellationToken.None);
+        var agentId = await agentSelectionResolver.ResolveAgentIdAsync(
+            record.Options?.AgentId,
+            session.SelectedAgent,
+            CancellationToken.None).ConfigureAwait(false);
 
         var agent = agentRegistry.GetOrCreateAgentInstance(agentId)
             ?? throw new InvalidOperationException($"Agent '{agentId}' not found");
@@ -479,6 +483,17 @@ public class ExecutionJobService : IDisposable
         // 3. 否则使用 DenyAllPermissionChannel（立即拒绝）
         var permissionChannel = ResolvePermissionChannel(record.Options?.PermissionChannel);
 
+        var sessionModelRef = modelManager.GetSessionModelRef(session);
+        var sessionModelRefOrNull = string.IsNullOrEmpty(sessionModelRef) ? null : sessionModelRef;
+
+        string? requestModelId = agentDef.Runtime == AgentRuntime.AcpPassthrough
+            ? modelManager.ResolveAcpModel(record.Options?.ModelId, sessionModelRefOrNull)
+            : modelManager.ResolveNativeModel(record.Options?.ModelId, sessionModelRefOrNull, agentId);
+
+        var acpModeId = agentSelectionResolver.ResolveAcpModeId(
+            record.Options?.ModeId,
+            session.SelectedAcpMode);
+
         return new ChatExecutionContext
         {
             SessionId = record.SessionId,
@@ -489,8 +504,8 @@ public class ExecutionJobService : IDisposable
             PermissionChannel = permissionChannel,
             ChannelId = record.Options?.ChannelId,
             UserId = record.Options?.UserId,
-            AcpModeId = record.Options?.ModeId,
-            RequestModelId = record.Options?.ModelId
+            AcpModeId = acpModeId,
+            RequestModelId = requestModelId
         };
     }
 
@@ -573,53 +588,45 @@ public class ExecutionJobService : IDisposable
     }
 
     /// <summary>
-    /// Fills session model/mode selection from inbound ChatOptions.
-    /// Updates model and mode when provided in options, ensuring they're persisted even if execution fails.
+    /// Persists inbound model/mode from <see cref="ChatOptions"/> onto the session before execution.
     /// </summary>
-    /// <param name="session">The session to update</param>
-    /// <param name="modelId">
-    /// Model identifier. Can be either:
-    /// - Full format: "provider/modelId" (e.g., "seeing-coding-plan/GLM-5")
-    /// - Model only: "gpt-4o" (provider resolved later)
-    /// </param>
-    /// <param name="modeId">ACP mode identifier (e.g., "build", "ask")</param>
-    /// <param name="providerManager">Provider manager for parsing provider/modelId format</param>
-    /// <returns>True if any field was updated.</returns>
-    public static bool TryBackfillSessionModelSelection(
+    public static bool ApplyInboundModelAndMode(
         SessionData session,
         string? modelId,
         string? modeId,
-        IProviderManager providerManager)
+        IModelManager modelManager)
     {
         ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(providerManager);
+        ArgumentNullException.ThrowIfNull(modelManager);
 
         var changed = false;
-
-        // Update model/provider only if modelId is not null or whitespace
         if (!string.IsNullOrWhiteSpace(modelId))
-        {
-            var knownProviders = providerManager.GetProviders().Keys;
-            var (providerId, apiModelId) = ModelRef.Parse(modelId.Trim(), knownProviders);
+            changed |= modelManager.ApplyModelToSession(session, modelId);
 
-            session.SelectedModel = apiModelId;
-            session.SelectedModelProvider = providerId ?? string.Empty;
-            changed = true;
-        }
-
-        // Update mode only if modeId is not null or whitespace
-        if (!string.IsNullOrWhiteSpace(modeId))
-        {
-            session.SelectedAcpMode = modeId!.Trim();
-            changed = true;
-        }
+        changed |= TryBackfillSessionAcpMode(session, modeId);
 
         if (changed)
-        {
             session.UpdatedAt = DateTime.Now;
-        }
 
         return changed;
+    }
+
+    /// <summary>
+    /// Updates session ACP mode when provided in inbound options.
+    /// </summary>
+    public static bool TryBackfillSessionAcpMode(SessionData session, string? modeId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (string.IsNullOrWhiteSpace(modeId))
+            return false;
+
+        var trimmed = modeId.Trim();
+        if (string.Equals(session.SelectedAcpMode ?? string.Empty, trimmed, StringComparison.Ordinal))
+            return false;
+
+        session.SelectedAcpMode = trimmed;
+        return true;
     }
 
     /// <summary>

@@ -31,6 +31,7 @@ public class ChatOrchestrator : IChatOrchestrator
     private readonly ICommandRegistry _commandRegistry;
     private readonly IPermissionChannel _permissionChannel;
     private readonly AgentSelectionResolver _agentSelectionResolver;
+    private readonly IModelManager _modelManager;
     private readonly ChatExecutionQueue _executionQueue;
     private readonly ChatRunTracker _runTracker;
     private readonly ILogger<ChatOrchestrator> _logger;
@@ -44,6 +45,7 @@ public class ChatOrchestrator : IChatOrchestrator
         ICommandRegistry commandRegistry,
         IPermissionChannel permissionChannel,
         AgentSelectionResolver agentSelectionResolver,
+        IModelManager modelManager,
         ChatExecutionQueue executionQueue,
         ChatRunTracker runTracker,
         ILogger<ChatOrchestrator> logger)
@@ -56,6 +58,7 @@ public class ChatOrchestrator : IChatOrchestrator
         _commandRegistry = commandRegistry;
         _permissionChannel = permissionChannel;
         _agentSelectionResolver = agentSelectionResolver;
+        _modelManager = modelManager;
         _executionQueue = executionQueue;
         _runTracker = runTracker;
         _logger = logger;
@@ -131,21 +134,36 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task<SessionData> CreateSessionAsync(string? title = null, string? agentId = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
     {
-        var session = _sessionManager.Create(selectedAgent: agentId);
-        
+        var resolvedAgentId = await _agentSelectionResolver.ResolveAgentIdAsync(
+            agentId,
+            sessionSelectedAgent: null,
+            cancellationToken).ConfigureAwait(false);
+
+        var session = _sessionManager.Create(selectedAgent: resolvedAgentId);
+
         if (!string.IsNullOrEmpty(title))
         {
             session.Title = title;
         }
-        
+
         if (!string.IsNullOrEmpty(workingDirectory))
         {
             session.WorkingDirectory = workingDirectory;
         }
-        
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _modelManager.SeedSessionModel(session, resolvedAgentId);
+
         await _sessionManager.SaveAsync(session.Id);
-        
-        _logger.LogInformation("Created session: {SessionId}, Title: {Title}", session.Id, session.Title);
+
+        _logger.LogInformation(
+            "Created session: {SessionId}, Title: {Title}, Agent: {Agent}, Model: {Model}",
+            session.Id,
+            session.Title,
+            session.SelectedAgent,
+            string.IsNullOrEmpty(session.SelectedModel)
+                ? "(none)"
+                : session.SelectedModel);
         return session;
     }
 
@@ -185,7 +203,6 @@ public class ChatOrchestrator : IChatOrchestrator
         newSession.Title = title ?? string.Format("{0} (分支)", sourceSession.Title);
         newSession.WorkingDirectory = sourceSession.WorkingDirectory;
         newSession.SelectedModel = sourceSession.SelectedModel;
-        newSession.SelectedModelProvider = sourceSession.SelectedModelProvider;
         newSession.Messages = new List<SessionMessage>(sourceSession.Messages);
         
         await _sessionManager.SaveAsync(newSession.Id);

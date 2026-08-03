@@ -1,4 +1,7 @@
+using Seeing.Agent.Core;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
+using Seeing.Agent.Llm;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
 
@@ -9,14 +12,19 @@ public sealed class GatewaySessionService
 {
     private readonly ISessionManager _sessionManager;
     private readonly IAgentRegistry _agentRegistry;
+    private readonly IModelManager _modelManager;
 
-    public GatewaySessionService(ISessionManager sessionManager, IAgentRegistry agentRegistry)
+    public GatewaySessionService(
+        ISessionManager sessionManager,
+        IAgentRegistry agentRegistry,
+        IModelManager modelManager)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;
+        _modelManager = modelManager;
     }
 
-    /// <summary>清空指定会话的消息历史并重置默认 Agent 选择</summary>
+    /// <summary>清空指定会话的消息历史并重置默认 Agent / Model 选择</summary>
     public async Task<GatewaySessionResetResult?> ResetAsync(
         string sessionId,
         CancellationToken cancellationToken = default)
@@ -33,11 +41,14 @@ public sealed class GatewaySessionService
         session.ClearMessages();
         session.Context.Clear();
         session.SelectedModel = string.Empty;
-        session.SelectedModelProvider = string.Empty;
         session.SelectedAcpMode = string.Empty;
         session.SelectedAgent = await _agentRegistry.GetDefaultAgentNameAsync().ConfigureAwait(false);
         session.LastActiveAt = DateTime.Now;
         session.UpdatedAt = DateTime.Now;
+
+        var agent = await _agentRegistry.GetAgentAsync(session.SelectedAgent).ConfigureAwait(false);
+        if (agent?.Runtime != AgentRuntime.AcpPassthrough)
+            _modelManager.SeedSessionModel(session, session.SelectedAgent);
 
         await _sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
 

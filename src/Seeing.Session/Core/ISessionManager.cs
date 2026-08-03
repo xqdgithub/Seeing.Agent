@@ -101,10 +101,9 @@ namespace Seeing.Session.Core
         /// 设置会话的模型
         /// </summary>
         /// <param name="sessionId">会话 ID</param>
-        /// <param name="modelId">模型 ID（可以是 "model" 或 "provider/model" 格式）</param>
-        /// <param name="providerId">Provider ID（可选，可从 modelId 解析）</param>
+        /// <param name="modelId">完整模型引用（modelRef，如 openai/gpt-4o 或 ACP 模型 ID）</param>
         /// <param name="ct">取消令牌</param>
-        Task SetModelAsync(string sessionId, string modelId, string? providerId = null, CancellationToken ct = default);
+        Task SetModelAsync(string sessionId, string modelId, CancellationToken ct = default);
 
         // === 原子操作方法（确保缓存一致性） ===
 

@@ -110,19 +110,6 @@ namespace Seeing.Agent.WebUI.State
             }
         }
 
-        /// <summary>
-        /// 当前选中的 Model 所属 Provider ID（从 CurrentSession 一级字段获取）
-        /// </summary>
-        public string SelectedModelProvider
-        {
-            get => CurrentSession?.SelectedModelProvider ?? "";
-            set
-            {
-                if (CurrentSession != null)
-                    CurrentSession.SelectedModelProvider = value;
-            }
-        }
-
         /// <summary>ACP 透传 session mode（如 build / ask）</summary>
         public string SelectedAcpMode
         {

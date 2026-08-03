@@ -290,9 +290,7 @@ public class SchedulerEngineTests
         var services = new ServiceCollection()
             .AddSingleton<IAgentExecutionRouter>(router.Object)
             .AddSingleton(registry.Object)
-            .AddSingleton(new AgentSelectionResolver(
-                Microsoft.Extensions.Options.Options.Create(new SeeingAgentOptions { DefaultAgent = "test-agent" }),
-                registry.Object))
+            .AddSingleton(new AgentSelectionResolver(registry.Object))
             .BuildServiceProvider();
 
         var engine = CreateEngine();

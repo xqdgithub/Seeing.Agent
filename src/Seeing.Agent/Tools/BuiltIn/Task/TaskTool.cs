@@ -138,8 +138,7 @@ public class TaskTool : ToolBase
                 // 子 Agent 配置了默认模型则覆盖；否则保留 CreateChild 继承的主会话模型
                 if (HasConfiguredModel(agentInfo))
                 {
-                    session.SelectedModel = agentInfo.Model!.ModelId;
-                    session.SelectedModelProvider = agentInfo.Model.ProviderId ?? string.Empty;
+                    session.SelectedModel = agentInfo.Model!.ToString();
                     await _sessionManager.SaveAsync(session.Id);
                 }
             }
@@ -353,10 +352,7 @@ public class TaskTool : ToolBase
 
         if (!string.IsNullOrEmpty(session?.SelectedModel))
         {
-            var modelId = session.SelectedModel;
-            var provider = session.SelectedModelProvider;
-            var fullModelId = Seeing.Agent.Llm.ModelRef.Format(provider, modelId);
-            agentContext.Metadata[AgentContextKeys.RequestModelId] = fullModelId;
+            agentContext.Metadata[AgentContextKeys.RequestModelId] = session.SelectedModel;
         }
 
         agentContext.History.Add(new ChatMessage { Role = ChatRole.User, Content = prompt });

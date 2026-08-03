@@ -365,9 +365,7 @@ public class SchedulerIntegrationTests
             .AddSingleton<IAgentExecutionRouter>(router)
             .AddSingleton(registry)
             .AddSingleton<AgentSelectionResolver>(sp =>
-                new AgentSelectionResolver(
-                    Microsoft.Extensions.Options.Options.Create(new SeeingAgentOptions { DefaultAgent = "test-agent" }),
-                    registry))
+                new AgentSelectionResolver(registry))
             .AddSingleton<IWorkspaceProvider>(ws.Workspace)
             .AddSingleton<ISessionManager>(sessionManager)
             .AddSingleton<HookManager>(hooks)

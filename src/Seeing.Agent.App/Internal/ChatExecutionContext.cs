@@ -68,7 +68,7 @@ internal class ChatExecutionContext
     /// 请求级 Model ID（用户在界面选择的模型）
     /// <para>
     /// 适用于 Native Agent 和 ACP Passthrough。
-    /// 优先级：RequestModelId &gt; Agent.Model &gt; DefaultModel
+    /// 优先级：RequestModelId &gt; session &gt; Agent.Model &gt; DefaultModel
     /// </para>
     /// </summary>
     public string? RequestModelId { get; init; }

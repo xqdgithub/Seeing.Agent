@@ -673,8 +673,14 @@ namespace Seeing.Agent.Extensions
             // LLM 客户端工厂
             services.AddSingleton<ILlmClientFactory, DefaultLlmClientFactory>();
 
-            // 模型配置管理器（先注册，ProviderManager 依赖它）
-            services.AddSingleton<IModelConfigManager, ModelConfigManager>();
+            // ModelManager 依赖 IAgentStore（非 IAgentRegistry），避免环：
+            // ModelManager → AgentManager → AgentRuntimeManager → IModelManager
+            services.AddSingleton<ModelConfigManager>();
+            services.AddSingleton<ModelManager>(sp => new ModelManager(
+                sp.GetRequiredService<ModelConfigManager>(),
+                sp.GetRequiredService<IAgentStore>()));
+            services.AddSingleton<IModelManager>(sp => sp.GetRequiredService<ModelManager>());
+            services.AddSingleton<IModelConfigManager>(sp => sp.GetRequiredService<ModelManager>());
 
             // Provider 管理器
             services.AddSingleton<IProviderManager, ProviderManager>();

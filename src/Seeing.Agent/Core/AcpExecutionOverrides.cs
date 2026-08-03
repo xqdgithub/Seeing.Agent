@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Core.Models;
+using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core;
@@ -17,12 +18,13 @@ public static class AcpExecutionContextBuilder
     /// 解析 ACP 透传使用的 model / mode（不回退 Native DefaultModel）。
     /// </summary>
     public static AcpExecutionOverrides Resolve(
+        IModelManager modelManager,
         AgentSelectionResolver resolver,
         string? requestModelId,
         string? requestModeId,
         SessionData session)
     {
-        var modelId = resolver.ResolveAcpModelId(requestModelId, session.SelectedModel);
+        var modelId = modelManager.ResolveAcpModel(requestModelId, session.SelectedModel);
         var modeId = resolver.ResolveAcpModeId(requestModeId, session.SelectedAcpMode);
         return new AcpExecutionOverrides(modelId, modeId);
     }
@@ -30,10 +32,10 @@ public static class AcpExecutionContextBuilder
     /// <summary>
     /// 将解析结果写入会话持久化字段。
     /// </summary>
-    public static void ApplyToSession(SessionData session, AcpExecutionOverrides overrides)
+    public static void ApplyToSession(SessionData session, AcpExecutionOverrides overrides, IModelManager modelManager)
     {
         if (!string.IsNullOrEmpty(overrides.ModelId))
-            session.SelectedModel = overrides.ModelId;
+            modelManager.ApplyModelToSession(session, overrides.ModelId);
 
         if (!string.IsNullOrEmpty(overrides.ModeId))
             session.SelectedAcpMode = overrides.ModeId;

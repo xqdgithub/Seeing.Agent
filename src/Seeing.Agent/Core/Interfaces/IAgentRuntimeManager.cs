@@ -10,12 +10,8 @@ namespace Seeing.Agent.Core.Interfaces
     /// 不涉及：Agent 注册、权限筛选、实例创建
     /// </para>
     /// <para>
-    /// 模型优先级（从高到低）：
-    /// 1. 会话级用户设置（SetSessionModelOverrideAsync）
-    /// 2. 持久化的运行时设置（UpdateAgentModelAsync）
-    /// 3. Agent 代码/配置定义的模型
-    /// 4. 上次使用的模型（切换 Agent 时保留）
-    /// 5. 全局默认模型
+    /// 有效模型解析与 <see cref="Seeing.Agent.Llm.IModelManager.ResolveNativeModel"/> 一致；
+    /// 本会话的 UI 覆盖（SetSessionModelOverrideAsync）作为 sessionModelRef 传入。
     /// </para>
     /// </summary>
     public interface IAgentRuntimeManager

@@ -12,12 +12,8 @@ namespace Seeing.Agent.Core
     /// Agent 运行时管理实现 - 管理运行时设置和模型配置
     /// <para>所有持久化配置统一走 UnifiedConfigManager → seeing.json，不再依赖独立 settings.json。</para>
     /// <para>
-    /// 模型优先级（从高到低）：
-    /// 1. 会话级用户设置（SessionModelOverrides）- 仅当前会话有效
-    /// 2. 持久化的 AgentModels（seeing.json → SeeingAgentOptions.AgentModels）
-    /// 3. Agent 代码/配置定义的模型
-    /// 4. 上次使用的模型（LastUsedModel）
-    /// 5. 全局默认模型（SeeingAgentOptions.DefaultModel）
+    /// 有效模型解析委托 <see cref="IModelManager.ResolveNativeModel"/>（会话 UI 覆盖作为 sessionModelRef）。
+    /// <see cref="_lastUsedModel"/> 仅用于 <see cref="CurrentModel"/> 展示，不参与解析。
     /// </para>
     /// </summary>
     public class AgentRuntimeManager : IAgentRuntimeManager
@@ -26,6 +22,7 @@ namespace Seeing.Agent.Core
         private readonly IAgentStore _agentStore;
         private readonly IOptionsMonitor<SeeingAgentOptions> _optionsMonitor;
         private readonly IConfigSectionStore _configStore;
+        private readonly IModelManager _modelManager;
         private readonly ILlmService? _llmService;
 
         /// <summary>模型变更事件 - 当 Agent 的模型配置发生变更时触发</summary>
@@ -63,12 +60,14 @@ namespace Seeing.Agent.Core
             IAgentStore agentStore,
             IOptionsMonitor<SeeingAgentOptions> optionsMonitor,
             IConfigSectionStore configStore,
+            IModelManager modelManager,
             ILlmService? llmService = null)
         {
             _logger = logger;
             _agentStore = agentStore;
             _optionsMonitor = optionsMonitor;
             _configStore = configStore;
+            _modelManager = modelManager;
             _llmService = llmService;
 
             // 订阅配置热重载事件
@@ -230,46 +229,25 @@ namespace Seeing.Agent.Core
         }
 
         /// <summary>
-        /// 获取有效模型 ID（内部方法，实现完整优先级逻辑）
+        /// 获取有效模型 ID（委托 <see cref="IModelManager.ResolveNativeModel"/>）
         /// </summary>
-        private async Task<string?> GetEffectiveModelIdAsync(string agentName)
+        private Task<string?> GetEffectiveModelIdAsync(string agentName)
         {
             if (string.IsNullOrEmpty(agentName))
-                return null;
+                return Task.FromResult<string?>(null);
 
-            // 1. 会话级用户设置（最高优先级）
-            if (_sessionModelOverrides.TryGetValue(agentName, out var sessionModel))
+            _sessionModelOverrides.TryGetValue(agentName, out var sessionOverride);
+            var sessionRef = string.IsNullOrEmpty(sessionOverride) ? null : sessionOverride;
+
+            var effective = _modelManager.ResolveNativeModel(null, sessionRef, agentName);
+            if (string.IsNullOrEmpty(effective))
             {
-                _logger.LogDebug("[ModelManager] Agent {Agent} 使用会话级设置模型: {Model}", agentName, sessionModel);
-                return sessionModel;
+                _logger.LogWarning("[ModelManager] Agent {Agent} 未找到有效模型", agentName);
+                return Task.FromResult<string?>(null);
             }
 
-            // 2. Agent 配置的模型
-            var agent = await _agentStore.GetAsync(agentName);
-            if (agent?.Model != null)
-            {
-                var agentModel = agent.Model.ToString();
-                _logger.LogDebug("[ModelManager] Agent {Agent} 使用配置模型: {Model}", agentName, agentModel);
-                return agentModel;
-            }
-
-            // 3. 上次使用的模型
-            if (!string.IsNullOrEmpty(_lastUsedModel))
-            {
-                _logger.LogDebug("[ModelManager] Agent {Agent} 使用上次模型: {Model}", agentName, _lastUsedModel);
-                return _lastUsedModel;
-            }
-
-            // 4. 全局默认模型
-            var options = _optionsMonitor.CurrentValue;
-            if (!string.IsNullOrEmpty(options.DefaultModel))
-            {
-                _logger.LogDebug("[ModelManager] Agent {Agent} 使用全局默认模型: {Model}", agentName, options.DefaultModel);
-                return options.DefaultModel;
-            }
-
-            _logger.LogWarning("[ModelManager] Agent {Agent} 未找到有效模型", agentName);
-            return null;
+            _logger.LogDebug("[ModelManager] Agent {Agent} 有效模型: {Model}", agentName, effective);
+            return Task.FromResult<string?>(effective);
         }
 
         /// <inheritdoc/>

@@ -163,7 +163,6 @@ public sealed class FakeSessionManager : ISessionManager
         child.SelectedAgent = agentName;
         child.WorkingDirectory = parent.WorkingDirectory;
         child.SelectedModel = parent.SelectedModel;
-        child.SelectedModelProvider = parent.SelectedModelProvider;
         child.Messages = new List<SessionMessage>();
         child.PermissionSnapshot = permissionSnapshot?.ToList() ?? new List<SessionPermissionRule>();
         Register(child);
@@ -207,15 +206,11 @@ public sealed class FakeSessionManager : ISessionManager
     public Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default) =>
         Task.CompletedTask;
 
-    public Task SetModelAsync(string sessionId, string modelId, string? providerId = null, CancellationToken ct = default)
+    public Task SetModelAsync(string sessionId, string modelId, CancellationToken ct = default)
     {
         var session = Get(sessionId);
         if (session != null)
-        {
             session.SelectedModel = modelId;
-            if (!string.IsNullOrEmpty(providerId))
-                session.SelectedModelProvider = providerId;
-        }
         return Task.CompletedTask;
     }
 

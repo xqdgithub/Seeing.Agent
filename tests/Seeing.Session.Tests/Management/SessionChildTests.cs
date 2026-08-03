@@ -79,8 +79,7 @@ namespace Seeing.Session.Tests.Management
             var mgr = CreateManager();
             var parent = mgr.Create(selectedAgent: "build");
             parent.Kind = SessionKind.Root;
-            parent.SelectedModel = "gpt-4o";
-            parent.SelectedModelProvider = "openai";
+            parent.SelectedModel = "openai/gpt-4o";
             mgr.Register(parent);
 
             var child = await mgr.CreateChildAsync(
@@ -98,8 +97,7 @@ namespace Seeing.Session.Tests.Management
 
             detached.Kind.Should().Be(SessionKind.Root);
             detached.ParentSessionId.Should().BeNull();
-            detached.SelectedModel.Should().Be("gpt-4o");
-            detached.SelectedModelProvider.Should().Be("openai");
+            detached.SelectedModel.Should().Be("openai/gpt-4o");
             detached.Messages.Should().HaveCount(1);
             detached.Id.Should().NotBe(child.Id);
 

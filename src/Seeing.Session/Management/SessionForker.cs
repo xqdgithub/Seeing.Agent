@@ -53,7 +53,6 @@ namespace Seeing.Session.Management
 
             forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
             forkedSession.SelectedModel = sourceSession.SelectedModel;
-            forkedSession.SelectedModelProvider = sourceSession.SelectedModelProvider;
 
             if (atMessageId != null)
             {

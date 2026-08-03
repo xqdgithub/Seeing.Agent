@@ -1,6 +1,9 @@
 using FluentAssertions;
+using Moq;
 using Seeing.Agent.App.Execution;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using Xunit;
@@ -82,77 +85,72 @@ public class ExecutionJobServiceOutboundBackfillTests
 
 public class ExecutionJobServiceModelSelectionTests
 {
-    private readonly MockProviderManager _providerManager = new();
+    private readonly IModelManager _modelManager = CreateModelManager();
 
     [Fact]
-    public void TryBackfillSessionModelSelection_EmptyFields_ShouldFillFromOptions()
+    public void ApplyInboundModelAndMode_EmptyFields_ShouldFillFromOptions()
     {
         var session = SessionData.Create();
         session.SelectedModel = string.Empty;
         session.SelectedAcpMode = string.Empty;
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "gpt-4o", "ask", _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "gpt-4o", "ask", _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("gpt-4o");
-        session.SelectedModelProvider.Should().BeEmpty();
         session.SelectedAcpMode.Should().Be("ask");
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_ExistingFields_ShouldOverwrite()
+    public void ApplyInboundModelAndMode_ExistingFields_ShouldOverwrite()
     {
-        // Unlike TryBackfillSessionOutbound, model selection should ALWAYS update
-        // to reflect user's explicit choice
         var session = SessionData.Create();
         session.SelectedModel = "gpt-4o-mini";
         session.SelectedAcpMode = "build";
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "claude-sonnet-4-20250514", "ask", _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "claude-sonnet-4-20250514", "ask", _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("claude-sonnet-4-20250514");
-        session.SelectedModelProvider.Should().BeEmpty();
         session.SelectedAcpMode.Should().Be("ask");
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_ModelOnly_ShouldUpdateModelOnly()
+    public void ApplyInboundModelAndMode_ModelOnly_ShouldUpdateModelOnly()
     {
         var session = SessionData.Create();
         session.SelectedModel = string.Empty;
         session.SelectedAcpMode = "build";
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "gpt-4o", null, _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "gpt-4o", null, _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("gpt-4o");
-        session.SelectedModelProvider.Should().BeEmpty();
-        session.SelectedAcpMode.Should().Be("build"); // Should preserve existing mode
+        session.SelectedAcpMode.Should().Be("build");
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_ModeOnly_ShouldUpdateModeOnly()
+    public void ApplyInboundModelAndMode_ModeOnly_ShouldUpdateModeOnly()
     {
         var session = SessionData.Create();
         session.SelectedModel = "gpt-4o-mini";
         session.SelectedAcpMode = string.Empty;
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, null, "ask", _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, null, "ask", _modelManager);
 
         changed.Should().BeTrue();
-        session.SelectedModel.Should().Be("gpt-4o-mini"); // Should preserve existing model
+        session.SelectedModel.Should().Be("gpt-4o-mini");
         session.SelectedAcpMode.Should().Be("ask");
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_BlankOptions_ShouldNotChange()
+    public void ApplyInboundModelAndMode_BlankOptions_ShouldNotChange()
     {
         var session = SessionData.Create();
         session.SelectedModel = "gpt-4o";
         session.SelectedAcpMode = "build";
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "  ", null, _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "  ", null, _modelManager);
 
         changed.Should().BeFalse();
         session.SelectedModel.Should().Be("gpt-4o");
@@ -160,11 +158,11 @@ public class ExecutionJobServiceModelSelectionTests
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_ShouldTrimWhitespace()
+    public void ApplyInboundModelAndMode_ShouldTrimWhitespace()
     {
         var session = SessionData.Create();
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "  gpt-4o  ", "  ask  ", _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "  gpt-4o  ", "  ask  ", _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("gpt-4o");
@@ -172,95 +170,68 @@ public class ExecutionJobServiceModelSelectionTests
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_ShouldUpdateTimestamp()
+    public void ApplyInboundModelAndMode_ShouldUpdateTimestamp()
     {
         var session = SessionData.Create();
         var originalUpdatedAt = session.UpdatedAt;
         session.SelectedModel = string.Empty;
 
-        // Ensure time difference
         Thread.Sleep(10);
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "gpt-4o", null, _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "gpt-4o", null, _modelManager);
 
         changed.Should().BeTrue();
         session.UpdatedAt.Should().BeAfter(originalUpdatedAt);
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_WithKnownProvider_ShouldSplitProviderAndModel()
+    public void ApplyInboundModelAndMode_WithKnownProvider_ShouldStoreFullModelRef()
     {
-        // When ModelId is in "provider/modelId" format and provider is known,
-        // should split into SelectedModelProvider and SelectedModel
         var session = SessionData.Create();
-        session.SelectedModel = "gpt-4o-mini";
-        session.SelectedModelProvider = "openai";
+        session.SelectedModel = "openai/gpt-4o-mini";
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "openai/gpt-4o", null, _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "openai/gpt-4o", null, _modelManager);
 
         changed.Should().BeTrue();
-        session.SelectedModel.Should().Be("gpt-4o");
-        session.SelectedModelProvider.Should().Be("openai");
+        session.SelectedModel.Should().Be("openai/gpt-4o");
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_WithUnknownProvider_ShouldStoreAsModelOnly()
+    public void ApplyInboundModelAndMode_WithUnknownProvider_ShouldStoreAsModelOnly()
     {
-        // When ModelId is in "provider/modelId" format but provider is NOT known,
-        // should store the full string as SelectedModel (HuggingFace style IDs)
         var session = SessionData.Create();
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "Qwen/Qwen3-VL-Embedding-8B", null, _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "Qwen/Qwen3-VL-Embedding-8B", null, _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("Qwen/Qwen3-VL-Embedding-8B");
-        session.SelectedModelProvider.Should().BeEmpty();
     }
 
     [Fact]
-    public void TryBackfillSessionModelSelection_ExistingProvider_ShouldUpdateWhenModelUpdated()
+    public void ApplyInboundModelAndMode_ExistingProvider_ShouldUpdateWhenModelUpdated()
     {
-        // When updating model, should also update/clear provider accordingly
         var session = SessionData.Create();
-        session.SelectedModel = "GLM-5";
-        session.SelectedModelProvider = "seeing-coding-plan";
+        session.SelectedModel = "seeing-coding-plan/GLM-5";
 
-        var changed = ExecutionJobService.TryBackfillSessionModelSelection(session, "openai/gpt-4o", null, _providerManager);
+        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "openai/gpt-4o", null, _modelManager);
 
         changed.Should().BeTrue();
-        session.SelectedModel.Should().Be("gpt-4o");
-        session.SelectedModelProvider.Should().Be("openai");
+        session.SelectedModel.Should().Be("openai/gpt-4o");
     }
-}
 
-/// <summary>
-/// Mock IProviderManager for testing
-/// </summary>
-internal class MockProviderManager : IProviderManager
-{
-    private readonly Dictionary<string, ProviderConfig> _providers = new()
+    private static IModelManager CreateModelManager()
     {
-        ["openai"] = new ProviderConfig { Name = "openai" },
-        ["anthropic"] = new ProviderConfig { Name = "anthropic" },
-        ["seeing-coding-plan"] = new ProviderConfig { Name = "seeing-coding-plan" }
-    };
+        var catalog = new Mock<IModelConfigManager>();
+        catalog.Setup(c => c.GetModel(It.IsAny<string>())).Returns((string _) => null);
+        catalog.Setup(c => c.GetModels()).Returns(new Dictionary<string, ModelConfig>());
 
-    public IReadOnlyDictionary<string, ProviderConfig> GetProviders() => _providers;
+        var store = new Mock<IAgentStore>();
+        store.Setup(s => s.GetAsync(It.IsAny<string>())).ReturnsAsync(new AgentDefinition
+        {
+            Name = "build",
+            Runtime = AgentRuntime.Native
+        });
 
-    public ProviderConfig? GetProvider(string providerId) =>
-        _providers.TryGetValue(providerId, out var config) ? config : null;
-
-    public string? GetDefaultProvider() => "openai";
-
-    public ILlmClient? GetClient(string providerId) => null;
-
-    public ILlmClient? GetClientForModel(string modelId) => null;
-
-    public Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken ct = default) => Task.FromResult(true);
-
-    public Task SaveProviderAsync(string providerId, ProviderConfig config, ConfigLevel level = ConfigLevel.Project, CancellationToken ct = default) => Task.CompletedTask;
-
-    public Task DeleteProviderAsync(string providerId, ConfigLevel level = ConfigLevel.Project, CancellationToken ct = default) => Task.CompletedTask;
-
-    public Task SetDefaultProviderAsync(string? providerId, ConfigLevel level = ConfigLevel.Project, CancellationToken ct = default) => Task.CompletedTask;
+        return new ModelManager(catalog.Object, store.Object);
+    }
 }

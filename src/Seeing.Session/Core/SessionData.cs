@@ -35,11 +35,8 @@ namespace Seeing.Session.Core
         /// <summary>选中的 Agent ID（未设置时由 Seeing.Agent 解析 DefaultAgent）</summary>
         public string SelectedAgent { get; set; } = string.Empty;
 
-        /// <summary>选中的 Model ID（如 gpt-4o, claude-3-5-sonnet 等）</summary>
+        /// <summary>选中的模型引用（完整 modelRef，如 openai/gpt-4o 或 ACP 模型 ID）</summary>
         public string SelectedModel { get; set; } = string.Empty;
-
-        /// <summary>Model 所属 Provider ID（如 openai, anthropic 等）</summary>
-        public string SelectedModelProvider { get; set; } = string.Empty;
 
         /// <summary>ACP 透传 session mode（如 build / ask）</summary>
         public string SelectedAcpMode { get; set; } = string.Empty;
@@ -144,11 +141,10 @@ namespace Seeing.Session.Core
             LastActiveAt = DateTime.Now;
         }
 
-        public void SetAgentConfig(string agent, string? model = null, string? provider = null)
+        public void SetAgentConfig(string agent, string? model = null)
         {
             SelectedAgent = agent;
             if (model != null) SelectedModel = model;
-            if (provider != null) SelectedModelProvider = provider;
             UpdatedAt = DateTime.Now;
         }
 
@@ -214,7 +210,6 @@ namespace Seeing.Session.Core
                 LastActiveAt = LastActiveAt,
                 SelectedAgent = SelectedAgent,
                 SelectedModel = SelectedModel,
-                SelectedModelProvider = SelectedModelProvider,
                 SelectedAcpMode = SelectedAcpMode,
                 WorkingDirectory = WorkingDirectory,
                 Status = Status,
