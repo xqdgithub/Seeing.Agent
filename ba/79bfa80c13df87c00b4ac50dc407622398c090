@@ -1,0 +1,43 @@
+src/Seeing.Agent/Tools/BuiltIn/DefaultToolPermissionPolicy.cs
+  s_3eec45ac067206::t_406bc422c76152 61-80,85
+  s_3eec45ac067206::t_2fc36e3fba8eb3 21
+  s_3eec45ac067206::t_7ce00dda10e19b 1-20,22-37,39-60,81-84,86-97
+src/Seeing.Agent/Tools/ToolManager.cs
+  s_3eec45ac067206::t_5b5409a9ac63bf 35
+  s_3eec45ac067206::t_57836628fdffce 46-47,55
+  s_3eec45ac067206::t_faa92bda7ff412 6
+  s_3eec45ac067206::t_d73518695a1faf 550-585,601
+  s_3eec45ac067206::t_1b5feb04a48f17 611
+tests/Seeing.Agent.Tests/Tools/DefaultToolPermissionPolicyTests.cs
+  s_3eec45ac067206::t_ba41f51278281c 83-84
+  s_3eec45ac067206::t_9464cd9d4c9674 191-204
+  s_3eec45ac067206::t_2dd95624b2cb5f 95-96
+  s_3eec45ac067206::t_dac2706d8e79cf 1-30,33-82,85-94,97-106,109-132,134-190,205
+  s_3eec45ac067206::t_4365d496a1669a 31-32
+  s_3eec45ac067206::t_b9c9c2c9228f1a 133
+src/Seeing.Agent/Core/Interfaces/IToolPermissionPolicy.cs
+  s_3eec45ac067206::t_121c9b482236c1 1-32
+tests/Seeing.Agent.Tests/Tools/ToolInvokerTests.cs
+  s_3eec45ac067206::t_36914d8e06a47b 7
+  s_3eec45ac067206::t_5d114e4f5e10af 161-281
+src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs
+  s_3eec45ac067206::t_ef91894ceb271c 4
+  s_3eec45ac067206::t_12a9dea27e76e9 503-505,514,516-517
+  s_3eec45ac067206::t_a810ae92d71f0c 39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.39-trip",
+  "base_commit_sha": "ba79bfa80c13df87c00b4ac50dc407622398c090",
+  "prompts": {},
+  "sessions": {
+    "s_3eec45ac067206": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b24f56f-697f-4be6-a815-37174531ea7d",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
