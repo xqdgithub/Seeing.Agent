@@ -60,10 +60,10 @@
     <ChildContent>
         @* 状态筛选标签页 *@
         <Tabs @bind-ActiveKey="_activeTab" OnChange="OnTabChange" Style="margin-bottom: 16px;">
-            <TabPane Key="all" Tab="@($"全部 ({_rows.Count})")" />
             <TabPane Key="scheduled" Tab="@($"已调度 ({_rows.Count(r => r.State == JobState.Scheduled)})")" />
             <TabPane Key="running" Tab="@($"运行中 ({_rows.Count(r => r.State == JobState.Running)})")" />
             <TabPane Key="disabled" Tab="@($"已禁用 ({_rows.Count(r => r.State == JobState.Paused || r.State == JobState.Disabled)})")" />
+            <TabPane Key="all" Tab="@($"全部 ({_rows.Count})")" />
         </Tabs>
         
         <Table TItem="JobRow" DataSource="@_filteredRows" RowKey="@(j => j.Id)" @key="_rowsVersion">
@@ -148,7 +148,7 @@
     private bool _editorVisible;
     private bool _isEdit;
     private bool _saving;
-    private string _activeTab = "all";
+    private string _activeTab = "scheduled";
     private HashSet<string> _runningJobs = new();  // 追踪正在执行的任务
     private int _rowsVersion;  // 用于强制 Table 刷新
     private readonly SemaphoreSlim _loadLock = new(1, 1);

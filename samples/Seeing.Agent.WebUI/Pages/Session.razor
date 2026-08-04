@@ -295,42 +295,89 @@
         </div>
     }
 
-    <!-- 主内容区域（消息列表 + Todo 面板） -->
+    <!-- 主内容区域（消息列 + Todo 面板）；输入与消息同列，避免 Todo 出现时输入相对对话偏移 -->
     <div Class="session-content-wrapper">
-        <!-- 消息列表区域 -->
-        <div Class="session-messages-container">
-        @if (ShowEmptyState)
-        {
-            <!-- 无会话状态：引导用户创建新会话 -->
-            <Empty Class="session-empty-state">
-                <DescriptionTemplate>
-                    <div Class="empty-content">
-                        <Icon Type="@IconType.Outline.FileAdd" Class="empty-icon" Style="font-size: 48px;" />
-                        <p Style="font-size: 18px; margin-top: 16px;">暂无会话</p>
-                        <p Class="empty-hint">点击下方按钮或顶部工具栏的"新建会话"开始对话</p>
-                        <Button Type="@ButtonType.Primary"
-                                Icon="@IconType.Outline.Plus"
-                                OnClick="@CreateNewSessionAsync"
-                                Style="margin-top: 16px;">
-                            新建会话
-                        </Button>
-                    </div>
-                </DescriptionTemplate>
-            </Empty>
-        }
-        else
-        {
-            <MessageList AutoScroll="true"
-                         OnToolClick="@OnToolClick" />
-        }
-        
-        <!-- 加载状态指示器 -->
-        @if (IsLoadingSession)
-        {
-            <div Class="loading-overlay">
-                <Spin Size="@SpinSize.Large" Tip="加载会话..." />
+        <div Class="session-main-column">
+            <!-- 消息列表区域 -->
+            <div Class="session-messages-container">
+            @if (ShowEmptyState)
+            {
+                <!-- 无会话状态：引导用户创建新会话 -->
+                <Empty Class="session-empty-state">
+                    <DescriptionTemplate>
+                        <div Class="empty-content">
+                            <Icon Type="@IconType.Outline.FileAdd" Class="empty-icon" Style="font-size: 48px;" />
+                            <p Style="font-size: 18px; margin-top: 16px;">暂无会话</p>
+                            <p Class="empty-hint">点击下方按钮或顶部工具栏的"新建会话"开始对话</p>
+                            <Button Type="@ButtonType.Primary"
+                                    Icon="@IconType.Outline.Plus"
+                                    OnClick="@CreateNewSessionAsync"
+                                    Style="margin-top: 16px;">
+                                新建会话
+                            </Button>
+                        </div>
+                    </DescriptionTemplate>
+                </Empty>
+            }
+            else
+            {
+                <MessageList AutoScroll="true"
+                             OnToolClick="@OnToolClick" />
+            }
+            
+            <!-- 加载状态指示器 -->
+            @if (IsLoadingSession)
+            {
+                <div Class="loading-overlay">
+                    <Spin Size="@SpinSize.Large" Tip="加载会话..." />
+                </div>
+            }
             </div>
-        }
+
+            <!-- 输入区域：仅在非空状态时显示；SubAgent 子会话只读 -->
+            @if (!ShowEmptyState)
+            {
+                <div Class="session-input-container">
+                    @if (IsSubAgentView)
+                    {
+                        <div class="subagent-readonly-banner" style="padding: 12px 16px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <Icon Type="@IconType.Outline.Eye" />
+                            <span style="flex: 1;">当前为 Task 子会话（只读）。可返回主会话，或分叉为独立会话后再继续对话。</span>
+                            @if (!string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
+                            {
+                                <Button Type="@ButtonType.Default"
+                                        Size="@ButtonSize.Small"
+                                        Icon="@IconType.Outline.ArrowLeft"
+                                        OnClick="@ReturnToParentSession">
+                                    返回主会话
+                                </Button>
+                            }
+                            <Button Type="@ButtonType.Primary"
+                                    Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.Copy"
+                                    OnClick="@OnBranchSession">
+                                分叉为独立会话
+                            </Button>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Slot 扩展点: session_prompt -->
+                        <SlotHost SlotName="session_prompt" />
+                        
+                         <PromptInput IsProcessing="@SessionState.HasActiveExecution"
+                                      Placeholder="@GetPlaceholderText()"
+                                      HelpText="@GetHelpText()"
+                                      AvailableCommands="_availableCommands"
+                                      SessionState="SessionState"
+                                      CancellationTokenSource="@SessionState.CancellationTokenSource"
+                                      BudgetStatus="SessionState.BudgetStatus"
+                                      OnCompactRequested="OnCompactRequested"
+                                      OnSubmitCallback="@OnSubmitMessage"
+                                      OnCancelCallback="@OnCancelExecution" />
+                    }
+                </div>
+            }
         </div>
         
         @* Todo 侧边面板（当有任务时显示） *@
@@ -341,51 +388,6 @@
             </div>
         }
     </div>
-
-    <!-- 输入区域：仅在非空状态时显示；SubAgent 子会话只读 -->
-    @if (!ShowEmptyState)
-    {
-        <div Class="session-input-container">
-            @if (IsSubAgentView)
-            {
-                <div class="subagent-readonly-banner" style="padding: 12px 16px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                    <Icon Type="@IconType.Outline.Eye" />
-                    <span style="flex: 1;">当前为 Task 子会话（只读）。可返回主会话，或分叉为独立会话后再继续对话。</span>
-                    @if (!string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
-                    {
-                        <Button Type="@ButtonType.Default"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.ArrowLeft"
-                                OnClick="@ReturnToParentSession">
-                            返回主会话
-                        </Button>
-                    }
-                    <Button Type="@ButtonType.Primary"
-                            Size="@ButtonSize.Small"
-                            Icon="@IconType.Outline.Copy"
-                            OnClick="@OnBranchSession">
-                        分叉为独立会话
-                    </Button>
-                </div>
-            }
-            else
-            {
-                <!-- Slot 扩展点: session_prompt -->
-                <SlotHost SlotName="session_prompt" />
-                
-                 <PromptInput IsProcessing="@SessionState.HasActiveExecution"
-                              Placeholder="@GetPlaceholderText()"
-                              HelpText="@GetHelpText()"
-                              AvailableCommands="_availableCommands"
-                              SessionState="SessionState"
-                              CancellationTokenSource="@SessionState.CancellationTokenSource"
-                              BudgetStatus="SessionState.BudgetStatus"
-                              OnCompactRequested="OnCompactRequested"
-                              OnSubmitCallback="@OnSubmitMessage"
-                              OnCancelCallback="@OnCancelExecution" />
-            }
-        </div>
-    }
     
     <!-- 错误提示 -->
     @if (!string.IsNullOrEmpty(ErrorMessage))
