@@ -44,6 +44,9 @@
     /// <summary>折叠状态：流式时默认展开，完成后默认折叠</summary>
     private bool _isExpanded;
 
+    private bool _wasComplete;
+    private bool _initialized;
+
     /// <summary>是否已完成</summary>
     private bool IsComplete => Block.IsComplete;
 
@@ -52,10 +55,21 @@
         ? string.Empty 
         : Context.Cache?.GetOrCreateMarkdown(Content, Context.GetMarkdownCacheKey(Block)) ?? Content;
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
-        // 流式时默认展开，完成后默认折叠
-        _isExpanded = !Block.IsComplete;
+        if (!_initialized)
+        {
+            _isExpanded = !IsComplete;
+            _wasComplete = IsComplete;
+            _initialized = true;
+            return;
+        }
+
+        // Incomplete → complete: auto-collapse (same key may be reused across Revision rebuilds).
+        if (IsComplete && !_wasComplete)
+            _isExpanded = false;
+
+        _wasComplete = IsComplete;
     }
 
     /// <summary>切换展开/折叠</summary>

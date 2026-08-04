@@ -1,0 +1,54 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+@using TimelineModel = Seeing.Agent.WebUI.Models.Timeline
+
+@if (Item.Kind == TimelineModel.TimelineItemKind.AssistantTurn && Item.Turn != null)
+{
+    <LoopGroupItem Loop="@Item.Turn" ContentRevision="@Item.Revision" OnToolClick="@OnToolClick" />
+}
+else if (Item.Message != null)
+{
+    @if (Item.Kind == TimelineModel.TimelineItemKind.Reminder)
+    {
+        <SystemReminderMessageItem Message="@Item.Message" />
+    }
+    else if (Item.Kind == TimelineModel.TimelineItemKind.ProjectInstructions)
+    {
+        <ProjectInstructionsMessageItem Message="@Item.Message" />
+    }
+    else if (Item.Kind == TimelineModel.TimelineItemKind.Compaction)
+    {
+        <div class="compaction-summary-message" style="margin: 8px 0; padding: 12px; background: var(--ant-info-bg); border-radius: 6px;">
+            <Icon Type="@IconType.Outline.FileText" Style="margin-right: 8px;" />
+            @((MarkupString)Item.Message.Content.Replace("\n", "<br/>"))
+        </div>
+    }
+    else
+    {
+        <ChatMessageItem Message="@Item.Message" OnToolClick="@OnToolClick" />
+    }
+}
+
+@code {
+    [Parameter] public TimelineModel.TimelineItem Item { get; set; } = null!;
+    [Parameter] public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+
+    private int _renderedRevision = -1;
+    private TimelineModel.TimelineItem? _boundItem;
+
+    protected override void OnParametersSet()
+    {
+        // ResetFromSession replaces item instances at the same Key; force a fresh render.
+        if (!ReferenceEquals(_boundItem, Item))
+        {
+            _boundItem = Item;
+            _renderedRevision = -1;
+        }
+    }
+
+    protected override bool ShouldRender()
+        => _renderedRevision != Item.Revision;
+
+    protected override void OnAfterRender(bool firstRender)
+        => _renderedRevision = Item.Revision;
+}

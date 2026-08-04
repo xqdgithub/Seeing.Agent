@@ -62,6 +62,7 @@ builder.Services.AddScoped<IPermissionChannel>(sp =>
 });
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
+builder.Services.AddScoped<MessageTimelineStore>();
 builder.Services.AddScoped<EventStreamHandler>();
 builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddScoped<SessionCompactionService>();

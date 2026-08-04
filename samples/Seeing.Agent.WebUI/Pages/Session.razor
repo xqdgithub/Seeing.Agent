@@ -43,6 +43,7 @@
 @inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
 @inject ISessionManager SessionManager
 @inject Seeing.Agent.Core.Background.IBackgroundTaskManager BackgroundTaskManager
+@inject Services.MessageTimelineStore Timeline
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -317,22 +318,9 @@
                 </DescriptionTemplate>
             </Empty>
         }
-        else if (_messageViewModels.Count == 0)
-        {
-            <Empty Class="session-empty-state">
-                <DescriptionTemplate>
-                    <div Class="empty-content">
-                        <Icon Type="@IconType.Outline.Message" Class="empty-icon" />
-                        <p>暂无消息</p>
-                        <p Class="empty-hint">输入问题开始与 AI Agent 对话</p>
-                    </div>
-                </DescriptionTemplate>
-            </Empty>
-        }
         else
         {
-            <MessageList Messages="@_messageViewModels"
-                         AutoScroll="true"
+            <MessageList AutoScroll="true"
                          OnToolClick="@OnToolClick" />
         }
         
@@ -518,11 +506,6 @@
     private List<CommandItemViewModel> _availableCommands = new();
 
     /// <summary>
-    /// UI 显示用的消息视图模型列表（从 SessionData.Messages 转换）
-    /// </summary>
-    private List<MessageViewModel> _messageViewModels = new();
-
-    /// <summary>
     /// 当前流式输出的消息 ID
     /// </summary>
     private string _currentStreamingMessageId = string.Empty;
@@ -583,6 +566,8 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        // MessageList subscribes to Timeline.Changed itself — Session does not refresh the whole page on every token.
+
         // 订阅 AppState 变更事件，确保移动端/桌面端切换时同步重渲染
         AppState.OnChange += OnAppStateChange;
         
@@ -640,6 +625,89 @@
                 _ = InvokeAsync(StateHasChanged);
             });
         }
+    }
+
+    /// <summary>
+    /// Full rebuild — whitelist only: load / switch session / compaction / SessionUpdated.
+    /// Always requests force pin so enter/switch lands at the latest messages.
+    /// </summary>
+    private void ResetTimelineFromSession()
+    {
+        var session = SessionState.CurrentSession;
+        if (session?.Messages is null)
+        {
+            Timeline.ResetFromSession([], SessionState.SessionId ?? "");
+            Timeline.RequestPinToBottom();
+            return;
+        }
+
+        Timeline.ResetFromSession(session.Messages, SessionState.SessionId ?? "");
+        Timeline.RequestPinToBottom();
+    }
+
+    /// <summary>
+    /// Append any session messages not yet in the timeline (user/system after submit or cancel).
+    /// </summary>
+    private void ReconcileTimelineFromSession()
+    {
+        var session = SessionState.CurrentSession;
+        if (session?.Messages is null)
+            return;
+
+        Timeline.ReconcileAppendFromSession(session.Messages, SessionState.SessionId ?? "");
+    }
+
+    private void CompleteCurrentTimelineTurn()
+    {
+        var loopId = EventStreamHandler.GetCurrentLoopId()
+            ?? ResolveCurrentStreamingAssistantMessage()?.LoopId;
+        Timeline.CompleteTurn(loopId);
+    }
+
+    /// <summary>
+    /// Resolve the assistant message currently being streamed (preserves timeline identity).
+    /// </summary>
+    private SessionMessage? ResolveCurrentStreamingAssistantMessage()
+    {
+        var fromHandler = EventStreamHandler.GetCurrentAssistantMessage();
+        if (fromHandler != null
+            && string.Equals(fromHandler.Role, "assistant", StringComparison.OrdinalIgnoreCase))
+        {
+            _currentStreamingMessageId = fromHandler.Id ?? _currentStreamingMessageId;
+            return fromHandler;
+        }
+
+        var messages = SessionState.CurrentSession?.Messages;
+        if (messages == null)
+            return null;
+
+        if (!string.IsNullOrEmpty(_currentStreamingMessageId))
+        {
+            var byId = messages.FirstOrDefault(m => m.Id == _currentStreamingMessageId);
+            if (byId != null
+                && string.Equals(byId.Role, "assistant", StringComparison.OrdinalIgnoreCase))
+                return byId;
+        }
+
+        return messages.LastOrDefault(m =>
+            string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// In-place sync of the streaming assistant message (keeps ToolCall IsExpanded / Revision isolation).
+    /// Falls back to reconcile (never mid-stream full Reset).
+    /// </summary>
+    private void SyncTimelineAssistantFromStream(bool isComplete = false)
+    {
+        var msg = ResolveCurrentStreamingAssistantMessage();
+        if (msg == null)
+        {
+            ReconcileTimelineFromSession();
+            return;
+        }
+
+        _currentStreamingMessageId = msg.Id ?? _currentStreamingMessageId;
+        Timeline.SyncAssistantMessage(msg, SessionState.SessionId ?? "", isComplete);
     }
 
     /// <summary>
@@ -971,7 +1039,7 @@
                 SessionState.CurrentSession.Messages.Add(result.SummaryMessage!);
                 SessionState.CurrentSession.Messages.AddRange(result.TailMessages!);
                 // Session 由 ChatOrchestrator 管理，这里只更新本地状态
-                RefreshMessageViewModels();
+                ResetTimelineFromSession();
                 MessageService.Success(string.Format("已压缩 {0} 条消息", result.CompressedCount));
             }
             else
@@ -1014,7 +1082,7 @@
         if (discarded > 0)
             messages.Insert(0, SessionMessage.SystemMessage(string.Format("已截断 {0} 条旧消息", discarded)));
         // Session 由 ChatOrchestrator 管理，这里只更新本地状态
-        RefreshMessageViewModels();
+        ResetTimelineFromSession();
     }
     
     /// <summary>
@@ -1069,7 +1137,7 @@
     
 
     /// <summary>
-    /// 参数变更时重新加载会话
+    /// 参数变更时：仅在 SessionId 变化时加载；同 Id 禁止无条件 Reset。
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
@@ -1080,15 +1148,6 @@
         {
             await LoadSessionByIdAsync(SessionId);
             _loadedSessionId = SessionId;
-            return;
-        }
-
-        // SessionId 相同但需要刷新 UI（比如外部切换会话后）
-        if (!string.IsNullOrEmpty(SessionId) && SessionId == _loadedSessionId)
-        {
-            // 刷新消息列表 UI
-            RefreshMessageViewModels();
-            RequestRender();
         }
     }
 
@@ -1126,7 +1185,7 @@
                 else
                 {
                     // 已有当前会话，直接使用
-                    RefreshMessageViewModels();
+                    ResetTimelineFromSession();
                     ShowEmptyState = false;
                     SyncSelectorValues();
                 }
@@ -1157,7 +1216,7 @@
             await EnsureDefaultAgentSelectionAsync();
             
             // 转换消息为 UI 显示用的 MessageViewModel
-            RefreshMessageViewModels();
+            ResetTimelineFromSession();
             
             // 更新当前会话 ID
             AppState.CurrentSessionId = sessionId;
@@ -1224,118 +1283,6 @@
             SessionState.CurrentSession.UpdatedAt = DateTime.Now;
             await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
         }
-    }
-
-    /// <summary>
-    /// 从 SessionData.Messages 刷新 UI 显示的消息列表
-    /// </summary>
-    private void RefreshMessageViewModels()
-    {
-        _messageViewModels.Clear();
-        
-        if (SessionState.CurrentSession?.Messages == null)
-            return;
-
-        // 同 Id 消息保留最后一条，避免 MessageList 刷新时撞 key
-        var indexById = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var msg in SessionState.CurrentSession.Messages)
-        {
-            var vm = ConvertToMessageViewModel(msg);
-            if (!string.IsNullOrEmpty(vm.Id) && indexById.TryGetValue(vm.Id, out var existingIndex))
-            {
-                _messageViewModels[existingIndex] = vm;
-                continue;
-            }
-
-            if (!string.IsNullOrEmpty(vm.Id))
-                indexById[vm.Id] = _messageViewModels.Count;
-            _messageViewModels.Add(vm);
-        }
-    }
-
-    /// <summary>
-    /// 将 SessionMessage 转换为 MessageViewModel（用于 UI 显示）
-    /// </summary>
-    /// <param name="msg">会话消息</param>
-    /// <param name="isComplete">消息是否已完成（默认 true，流式过程中应传 false）</param>
-    private MessageViewModel ConvertToMessageViewModel(SessionMessage msg, bool isComplete = true)
-    {
-        var viewModel = new MessageViewModel
-        {
-            Id = msg.Id ?? Guid.NewGuid().ToString("N")[..8],
-            LoopId = msg.LoopId,
-            Step = msg.Step,
-            Role = msg.Role,
-            Content = msg.Content,
-            Reasoning = msg.ReasoningContent,
-            Timestamp = msg.CreatedAt.ToLocalTime(),
-            IsComplete = isComplete,
-            IsReasoningComplete = isComplete && !string.IsNullOrEmpty(msg.ReasoningContent)
-        };
-
-        // 转换多模态内容段（修复：复制 Parts）
-        if (msg.Parts != null && msg.Parts.Count > 0)
-        {
-            viewModel.Parts = msg.Parts.Select(p => ContentPartViewModel.FromSessionPart(p)).ToList();
-        }
-
-        // 转换工具调用（使用统一工厂方法）
-        if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
-        {
-            viewModel.ToolCalls = msg.ToolCalls
-                .Select(tc => ToolCallViewModel.FromSessionToolCall(tc, SessionState.SessionId))
-                .ToList();
-        }
-
-        // 读取压缩摘要标记
-        viewModel.IsCompactionSummary = msg.Metadata?.TryGetValue("is_compaction_summary", out _) == true;
-
-        // 系统提醒：以 Content 解析为准；Metadata 损坏时不强制标记
-        if (SystemReminderRenderer.TryParse(msg.Content ?? "", out var reminderParts))
-        {
-            viewModel.IsSystemReminder = true;
-            viewModel.ReminderSource = reminderParts.Source;
-            viewModel.ReminderKind = reminderParts.Kind;
-            viewModel.ReminderTaskBody = reminderParts.Task;
-            viewModel.ReminderRaw = reminderParts.Raw;
-        }
-        else if (ProjectInstructionsRenderer.TryParse(msg.Content ?? "", out var instructionParts))
-        {
-            viewModel.IsProjectInstructions = true;
-            viewModel.InstructionReason = instructionParts.Reason;
-            viewModel.InstructionCwd = instructionParts.Cwd;
-            viewModel.InstructionPaths = instructionParts.Files
-                .Select(file => file.Path)
-                .ToArray();
-            viewModel.InstructionRaw = instructionParts.Raw;
-        }
-        else if (msg.Metadata?.TryGetValue(ProjectInstructions.MetadataKeys.ProjectInstructions, out _) == true)
-        {
-            // Content 解析失败时仍按 Metadata 识别，避免回落成普通用户气泡
-            viewModel.IsProjectInstructions = true;
-            if (msg.Metadata.TryGetValue(ProjectInstructions.MetadataKeys.Reason, out var reasonObj))
-                viewModel.InstructionReason = reasonObj?.ToString();
-            if (msg.Metadata.TryGetValue(ProjectInstructions.MetadataKeys.Cwd, out var cwdObj))
-                viewModel.InstructionCwd = cwdObj?.ToString();
-            if (msg.Metadata.TryGetValue(ProjectInstructions.MetadataKeys.Paths, out var pathsObj)
-                && pathsObj is string pathsJson)
-            {
-                try
-                {
-                    viewModel.InstructionPaths =
-                        System.Text.Json.JsonSerializer.Deserialize<string[]>(pathsJson)
-                        ?? Array.Empty<string>();
-                }
-                catch (System.Text.Json.JsonException)
-                {
-                    viewModel.InstructionPaths = Array.Empty<string>();
-                }
-            }
-
-            viewModel.InstructionRaw = msg.Content ?? "";
-        }
-
-        return viewModel;
     }
 
     /// <summary>
@@ -1429,6 +1376,11 @@
                 return;
             }
 
+            // Append newly persisted user (and any other) messages without full Reset.
+            ReconcileTimelineFromSession();
+            Timeline.RequestPinToBottom();
+            _currentStreamingMessageId = string.Empty;
+
             // 更新 UI 状态
             SessionState.ExecutionStatus = result.Status;
             SessionState.QueuePosition = result.QueuePosition;
@@ -1461,10 +1413,12 @@
                 // 检查是否是当前执行的事件
                 if (evt is ExecutionCompleteEvent completeEvt && completeEvt.ExecutionId == executionId)
                 {
-                    // 执行完成，更新状态
                     SessionState.ExecutionStatus = completeEvt.Status;
                     SessionState.CurrentExecutionId = null;
-                    RefreshMessageViewModels();
+                    SyncTimelineAssistantFromStream(isComplete: true);
+                    CompleteCurrentTimelineTurn();
+                    ReconcileTimelineFromSession();
+                    // Status badges need a page refresh beyond MessageList
                     await InvokeAsync(StateHasChanged);
                     break;
                 }
@@ -1472,7 +1426,6 @@
                 // 处理事件 - 由 EventStreamHandler 统一处理（必须 await，否则 Task 字段可能未写入就刷新）
                 await EventStreamHandler.ProcessEventAsync(evt);
 
-                // UI 更新动态节流
                 if (evt is StreamDeltaEvent deltaEvt)
                 {
                     var contentLen = deltaEvt.ContentDelta?.Length ?? 0;
@@ -1493,38 +1446,49 @@
 
                     if (charCount >= threshold || hasNewline || threshold == 0)
                     {
-                        RefreshMessageViewModels();
-                        await InvokeAsync(StateHasChanged);
+                        SyncTimelineAssistantFromStream(isComplete: false);
                         charCount = 0;
                     }
                 }
-                else if (evt is StreamStartEvent)
+                else if (evt is StreamStartEvent or ToolCallEvent or StreamCompleteEvent
+                         or LoopStartEvent or SubAgentEvent
+                         or TaskStartedEvent or TaskProgressEvent or TaskCompletedEvent or TaskFailedEvent
+                         or PermissionRequestEvent or PermissionResponseEvent
+                         or TodoUpdateEvent or ModeUpdateEvent)
                 {
-                    RefreshMessageViewModels();
-                    await InvokeAsync(StateHasChanged);
+                    SyncTimelineAssistantFromStream(isComplete: false);
+                }
+                else if (evt is LoopCompleteEvent)
+                {
+                    SyncTimelineAssistantFromStream(isComplete: true);
+                    CompleteCurrentTimelineTurn();
+                }
+                else if (evt is LoopCancelledEvent or ErrorEvent)
+                {
+                    SyncTimelineAssistantFromStream(isComplete: true);
+                    CompleteCurrentTimelineTurn();
+                    ReconcileTimelineFromSession();
                 }
                 else if (evt is SessionUpdatedEvent)
                 {
-                    RefreshMessageViewModels();
+                    // Whitelist: structural session rewrite
+                    ResetTimelineFromSession();
                 }
                 else if (evt is NavigateEvent navEvt)
                 {
                     if (!string.IsNullOrEmpty(navEvt.Target))
-                    {
                         NavigationManager.NavigateTo(navEvt.Target);
-                    }
                 }
                 else
                 {
-                    RefreshMessageViewModels();
-                    await InvokeAsync(StateHasChanged);
+                    // Unknown event: incremental sync only — never mid-stream Reset
+                    SyncTimelineAssistantFromStream(isComplete: false);
+                    ReconcileTimelineFromSession();
                 }
             }
         }
         catch (OperationCanceledException)
         {
-            // 只有在执行状态为 Cancelled 时才显示取消消息
-            // 避免 CancellationToken.None 导致的误判
             if (SessionState.ExecutionStatus == ExecutionStatus.Cancelled)
             {
                 if (SessionState.CurrentSession != null)
@@ -1532,7 +1496,10 @@
                     SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("执行已取消"));
                 }
             }
-            RefreshMessageViewModels();
+
+            SyncTimelineAssistantFromStream(isComplete: true);
+            CompleteCurrentTimelineTurn();
+            ReconcileTimelineFromSession();
         }
         catch (Exception ex)
         {
@@ -1541,14 +1508,20 @@
             {
                 SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage($"执行出错: {ex.Message}"));
             }
-            RefreshMessageViewModels();
+
+            SyncTimelineAssistantFromStream(isComplete: true);
+            CompleteCurrentTimelineTurn();
+            ReconcileTimelineFromSession();
         }
         finally
         {
             SessionState.ExecutionStatus = null;
             SessionState.CurrentExecutionId = null;
             SessionState.CompleteExecution();
-            RefreshMessageViewModels();
+            SyncTimelineAssistantFromStream(isComplete: true);
+            CompleteCurrentTimelineTurn();
+            ReconcileTimelineFromSession();
+            _currentStreamingMessageId = string.Empty;
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1665,7 +1638,9 @@
             SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("用户取消了当前执行"));
         }
 
-        RefreshMessageViewModels();
+        SyncTimelineAssistantFromStream(isComplete: true);
+        CompleteCurrentTimelineTurn();
+        ReconcileTimelineFromSession();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -1682,7 +1657,7 @@
             });
 
             if (n > 0)
-                RefreshMessageViewModels();
+                ResetTimelineFromSession();
         }
         catch
         {
@@ -1850,7 +1825,7 @@
             await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
             UpdateBudgetStatus();
             MessageService.Info("会话已清空");
-            RefreshMessageViewModels();
+            ResetTimelineFromSession();
         }
 
         await InvokeAsync(StateHasChanged);
@@ -1900,7 +1875,7 @@
                 UpdateBudgetStatus();
 
                 MessageService.Success(string.Format("已压缩 {0} 条消息", result.CompressedCount));
-                RefreshMessageViewModels();
+                ResetTimelineFromSession();
             }
             else if (!string.IsNullOrEmpty(result.Message))
             {

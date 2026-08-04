@@ -211,10 +211,30 @@ function setupTextareaAutoResize(textareaId) {
 class ScrollManager {
     constructor() {
         this.userScrolled = false;
-        this.scrollTimeout = null;
         this.lastScrollTop = 0;
         this.container = null;
         this.anchorElement = null;
+        this.containerId = null;
+        this.anchorId = null;
+        this.threshold = 100;
+        this._resizeObserver = null;
+        this._pinRetryTimer = null;
+        this._onScroll = () => this.handleScroll();
+        this._onWheel = (e) => {
+            if (!this.container) return;
+            // Only unpin when the user scrolls away from the bottom.
+            if (e.deltaY < 0 || !this.isAtBottom()) {
+                this.userScrolled = true;
+                this.setBackToBottomVisible(true);
+            }
+        };
+        this._onTouchMove = () => {
+            if (!this.container) return;
+            if (!this.isAtBottom()) {
+                this.userScrolled = true;
+                this.setBackToBottomVisible(true);
+            }
+        };
     }
     
     /**
@@ -222,28 +242,54 @@ class ScrollManager {
      * @param {string} containerId - 滚动容器 ID
      * @param {string} anchorId - 滚动锚点 ID
      * @param {number} threshold - 判断用户滚动的阈值（像素）
+     * @param {string} [contentId] - 内容区 ID（高度变化时保持贴底）
      */
-    init(containerId, anchorId, threshold = 100) {
-        this.container = document.getElementById(containerId);
-        this.anchorElement = document.getElementById(anchorId);
+    init(containerId, anchorId, threshold = 100, contentId = null) {
+        this.containerId = containerId;
+        this.anchorId = anchorId;
+        this.contentId = contentId;
         this.threshold = threshold;
-        
+        this.bindContainer();
+        this.observeResize();
+    }
+
+    bindContainer() {
+        const next = document.getElementById(this.containerId);
+        if (this.container === next && next)
+            return !!this.container;
+
         if (this.container) {
-            // 监听用户滚动
-            this.container.addEventListener('scroll', () => this.handleScroll());
-            
-            // 监听鼠标滚轮
-            this.container.addEventListener('wheel', () => {
-                this.userScrolled = true;
-                this.resetScrollTimeout();
-            });
-            
-            // 监听触摸滑动（移动端）
-            this.container.addEventListener('touchmove', () => {
-                this.userScrolled = true;
-                this.resetScrollTimeout();
-            });
+            this.container.removeEventListener('scroll', this._onScroll);
+            this.container.removeEventListener('wheel', this._onWheel);
+            this.container.removeEventListener('touchmove', this._onTouchMove);
         }
+
+        this.container = next;
+        this.anchorElement = this.anchorId ? document.getElementById(this.anchorId) : null;
+        if (this.container) {
+            this.container.addEventListener('scroll', this._onScroll, { passive: true });
+            this.container.addEventListener('wheel', this._onWheel, { passive: true });
+            this.container.addEventListener('touchmove', this._onTouchMove, { passive: true });
+        }
+        return !!this.container;
+    }
+
+    ensureContainer() {
+        return this.bindContainer();
+    }
+
+    observeResize() {
+        if (typeof ResizeObserver === 'undefined') return;
+        this._resizeObserver?.disconnect();
+        this._resizeObserver = new ResizeObserver(() => {
+            // Content (markdown/tools) often grows after first paint — stay pinned if user hasn't scrolled away.
+            if (!this.userScrolled)
+                this.scrollToBottom(true, 'auto');
+        });
+        const target = (this.contentId && document.getElementById(this.contentId))
+            || this.container;
+        if (target)
+            this._resizeObserver.observe(target);
     }
     
     /**
@@ -253,61 +299,68 @@ class ScrollManager {
         if (!this.container) return;
         
         const currentScrollTop = this.container.scrollTop;
-        const scrollHeight = this.container.scrollHeight;
-        const clientHeight = this.container.clientHeight;
+        const atBottom = this.isAtBottom();
         
-        // 检测是否滚动到底部
-        const isAtBottom = scrollHeight - currentScrollTop - clientHeight < this.threshold;
-        
-        if (isAtBottom) {
-            // 滚动到底部，重置用户滚动标记
-            this.userScrolled = false;
-        } else if (currentScrollTop < this.lastScrollTop) {
-            // 向上滚动，标记为用户滚动
-            this.userScrolled = true;
-            this.resetScrollTimeout();
-        }
-        
+        this.userScrolled = !atBottom;
         this.lastScrollTop = currentScrollTop;
-    }
-    
-    /**
-     * 重置滚动超时（用户停止滚动一段时间后恢复自动滚动）
-     */
-    resetScrollTimeout() {
-        if (this.scrollTimeout) {
-            clearTimeout(this.scrollTimeout);
-        }
-        
-        // 3 秒后恢复自动滚动
-        this.scrollTimeout = setTimeout(() => {
-            this.userScrolled = false;
-        }, 3000);
+        this.setBackToBottomVisible(this.userScrolled);
     }
     
     /**
      * 滚动到底部（如果用户没有手动滚动）
      * @param {boolean} force - 强制滚动，忽略用户滚动标记
+     * @param {ScrollBehavior} behavior - 'auto' | 'smooth'
      */
-    scrollToBottom(force = false) {
+    scrollToBottom(force = false, behavior = 'smooth') {
         if (this.userScrolled && !force) return;
-        
-        if (this.anchorElement) {
-            this.anchorElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        } else if (this.container) {
-            this.container.scrollTo({
-                top: this.container.scrollHeight,
-                behavior: 'smooth'
-            });
+        if (!this.ensureContainer()) return;
+
+        // Direct scrollTop — reliable inside nested overflow containers.
+        const top = this.container.scrollHeight;
+        if (behavior === 'smooth') {
+            this.container.scrollTo({ top, behavior: 'smooth' });
+        } else {
+            this.container.scrollTop = top;
         }
     }
     
     /**
-     * 强制滚动到底部并重置用户滚动标记
+     * 强制滚动到底部并重置用户滚动标记；短延迟再补滚以覆盖异步撑高。
      */
     forceScrollToBottom() {
         this.userScrolled = false;
-        this.scrollToBottom(true);
+        this.ensureContainer();
+        this.scrollToBottom(true, 'auto');
+        this.setBackToBottomVisible(false);
+        this.schedulePinRetries();
+    }
+
+    schedulePinRetries() {
+        if (this._pinRetryTimer)
+            clearTimeout(this._pinRetryTimer);
+
+        const delays = [50, 150, 350, 700];
+        let i = 0;
+        const tick = () => {
+            if (this.userScrolled) return;
+            this.scrollToBottom(true, 'auto');
+            this.setBackToBottomVisible(false);
+            i++;
+            if (i < delays.length)
+                this._pinRetryTimer = setTimeout(tick, delays[i] - (delays[i - 1] || 0));
+        };
+        this._pinRetryTimer = setTimeout(tick, delays[0]);
+    }
+
+    isAtBottom() {
+        if (!this.ensureContainer()) return true;
+        // Not laid out yet — treat as not at bottom so C# keeps retrying.
+        if (this.container.clientHeight < 8)
+            return false;
+        const distance = this.container.scrollHeight
+            - this.container.scrollTop
+            - this.container.clientHeight;
+        return distance < this.threshold;
     }
     
     /**
@@ -316,13 +369,47 @@ class ScrollManager {
     shouldAutoScroll() {
         return !this.userScrolled;
     }
+
+    notifyContentGrew() {
+        this.scrollToBottom(false, 'auto');
+    }
+
+    preserveScrollOnPrepend(previousScrollHeight) {
+        if (!this.ensureContainer()) return;
+        const delta = this.container.scrollHeight - previousScrollHeight;
+        this.container.scrollTop += delta;
+    }
+
+    setBackToBottomVisible(visible) {
+        const btn = document.getElementById('message-list-scroll-to-bottom');
+        if (!btn) return;
+        if (visible) btn.removeAttribute('hidden');
+        else btn.setAttribute('hidden', '');
+    }
+
+    isNearTop(threshold = 80) {
+        if (!this.ensureContainer()) return false;
+        return this.container.scrollTop < threshold;
+    }
+
+    getScrollHeight() {
+        return this.ensureContainer() ? (this.container.scrollHeight ?? 0) : 0;
+    }
     
     /**
      * 销毁滚动管理器
      */
     destroy() {
-        if (this.scrollTimeout) {
-            clearTimeout(this.scrollTimeout);
+        if (this._pinRetryTimer) {
+            clearTimeout(this._pinRetryTimer);
+            this._pinRetryTimer = null;
+        }
+        this._resizeObserver?.disconnect();
+        this._resizeObserver = null;
+        if (this.container) {
+            this.container.removeEventListener('scroll', this._onScroll);
+            this.container.removeEventListener('wheel', this._onWheel);
+            this.container.removeEventListener('touchmove', this._onTouchMove);
         }
         this.container = null;
         this.anchorElement = null;
@@ -336,13 +423,23 @@ let messageListScrollManager = null;
  * 初始化消息列表滚动管理器
  * @param {string} containerId - 滚动容器 ID
  * @param {string} anchorId - 滚动锚点 ID
+ * @param {string} [contentId] - 内容区 ID（用于 ResizeObserver）
+ * @returns {boolean} 是否找到滚动容器并完成绑定
  */
-function initMessageListScroll(containerId, anchorId) {
+function initMessageListScroll(containerId, anchorId, contentId) {
     if (messageListScrollManager) {
         messageListScrollManager.destroy();
+        messageListScrollManager = null;
     }
+
+    const container = document.getElementById(containerId);
+    if (!container) {
+        return false;
+    }
+
     messageListScrollManager = new ScrollManager();
-    messageListScrollManager.init(containerId, anchorId);
+    messageListScrollManager.init(containerId, anchorId, 100, contentId);
+    return true;
 }
 
 /**
@@ -360,9 +457,12 @@ function smartScrollToBottom() {
 function forceScrollToBottom() {
     if (messageListScrollManager) {
         messageListScrollManager.forceScrollToBottom();
-    } else {
-        // 回退到简单滚动
-        scrollIntoView('message-list-scroll-anchor');
+        return;
+    }
+
+    const container = document.getElementById('message-list-container');
+    if (container) {
+        container.scrollTop = container.scrollHeight;
     }
 }
 
@@ -377,6 +477,18 @@ function shouldAutoScroll() {
 }
 
 /**
+ * 是否已贴近底部（用于 C# 校验 force pin 是否生效）
+ */
+function isAtBottom() {
+    if (messageListScrollManager) {
+        return messageListScrollManager.isAtBottom();
+    }
+    const container = document.getElementById('message-list-container');
+    if (!container) return true;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+}
+
+/**
  * 销毁消息列表滚动管理器
  */
 function destroyMessageListScroll() {
@@ -384,6 +496,22 @@ function destroyMessageListScroll() {
         messageListScrollManager.destroy();
         messageListScrollManager = null;
     }
+}
+
+function notifyContentGrew() {
+    messageListScrollManager?.notifyContentGrew();
+}
+
+function preserveScrollOnPrepend(previousScrollHeight) {
+    messageListScrollManager?.preserveScrollOnPrepend(previousScrollHeight);
+}
+
+function isNearTop(threshold) {
+    return messageListScrollManager?.isNearTop(threshold) ?? false;
+}
+
+function getScrollHeight() {
+    return messageListScrollManager?.getScrollHeight() ?? 0;
 }
 
 // ========== 思考过程折叠/展开 ==========

@@ -348,6 +348,7 @@ namespace Seeing.Session.Core
         {
             return new SessionMessage
             {
+                Id = NewId(),
                 Role = MessageRole.System,
                 Content = content
             };
@@ -358,6 +359,7 @@ namespace Seeing.Session.Core
         {
             return new SessionMessage
             {
+                Id = NewId(),
                 Role = MessageRole.User,
                 Content = content
             };
@@ -368,6 +370,7 @@ namespace Seeing.Session.Core
         {
             return new SessionMessage
             {
+                Id = NewId(),
                 Role = MessageRole.User,
                 Parts = parts
             };
@@ -378,6 +381,7 @@ namespace Seeing.Session.Core
         {
             return new SessionMessage
             {
+                Id = NewId(),
                 Role = MessageRole.User,
                 Parts = new List<SessionContentPart>
                 {
@@ -392,6 +396,7 @@ namespace Seeing.Session.Core
         {
             return new SessionMessage
             {
+                Id = NewId(),
                 Role = MessageRole.Assistant,
                 Content = content
             };
@@ -402,6 +407,7 @@ namespace Seeing.Session.Core
         {
             return new SessionMessage
             {
+                Id = NewId(),
                 Role = MessageRole.Assistant,
                 Content = content,
                 ReasoningContent = reasoning
@@ -413,6 +419,7 @@ namespace Seeing.Session.Core
         {
             return new SessionMessage
             {
+                Id = NewId(),
                 Role = MessageRole.Assistant,
                 Content = content ?? string.Empty,
                 ToolCalls = toolCalls
@@ -424,12 +431,15 @@ namespace Seeing.Session.Core
         {
             return new SessionMessage
             {
+                Id = NewId(),
                 Role = MessageRole.Tool,
                 Content = content,
                 ToolCallId = toolCallId,
                 ToolName = toolName
             };
         }
+
+        private static string NewId() => Guid.NewGuid().ToString("N")[..12];
 
         /// <summary>创建带 Token 统计的消息</summary>
         public SessionMessage WithTokenUsage(int inputTokens, int outputTokens)

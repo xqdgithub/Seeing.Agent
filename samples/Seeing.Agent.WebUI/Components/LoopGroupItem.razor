@@ -6,7 +6,7 @@
 @inject IMessageRenderPipeline Pipeline
 
 @* Loop 分组组件 - 使用渲染管线 *@
-@Pipeline.RenderLoop(Loop, GetRenderOptions(), null, OnToolClick)
+@_body
 
 @code {
     /// <summary>
@@ -16,10 +16,28 @@
     public LoopGroupViewModel Loop { get; set; } = new();
 
     /// <summary>
+    /// 与 TimelineItem.Revision 同步；变更时重建内容块。
+    /// </summary>
+    [Parameter]
+    public int ContentRevision { get; set; }
+
+    /// <summary>
     /// 工具点击事件回调
     /// </summary>
     [Parameter]
     public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+
+    private int _blocksRevision = int.MinValue;
+    private RenderFragment? _body;
+
+    protected override void OnParametersSet()
+    {
+        if (_body != null && _blocksRevision == ContentRevision)
+            return;
+
+        _blocksRevision = ContentRevision;
+        _body = Pipeline.RenderLoop(Loop, GetRenderOptions(), null, OnToolClick);
+    }
 
     /// <summary>
     /// 获取渲染选项

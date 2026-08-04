@@ -1,0 +1,21 @@
+@using AntDesign
+
+@* JS owns visibility; never re-render after first paint so Blazor won't reset `hidden`/classes. *@
+<div id="message-list-scroll-to-bottom"
+     class="scroll-to-bottom-button"
+     hidden
+     onclick="forceScrollToBottom()">
+    <Icon Type="@IconType.Outline.ArrowDown" />
+</div>
+
+@code {
+    private bool _rendered;
+
+    protected override bool ShouldRender() => !_rendered;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+            _rendered = true;
+    }
+}
