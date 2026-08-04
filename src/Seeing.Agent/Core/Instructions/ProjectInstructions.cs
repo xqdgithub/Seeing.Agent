@@ -1,11 +1,16 @@
+using Seeing.Session.Core;
+
 namespace Seeing.Agent.Core.Instructions;
 
-internal static class ProjectInstructions
+/// <summary>
+/// 项目指令注入消息约定（标签、Metadata 键、reason）。
+/// </summary>
+public static class ProjectInstructions
 {
     public const string Tag = "project-instructions";
-    public const string FingerprintMetadataKey = "instruction.fingerprints";
+    public const string FingerprintMetadataKey = SessionMetadataKeys.InstructionFingerprints;
 
-    internal static class MetadataKeys
+    public static class MetadataKeys
     {
         public const string ProjectInstructions = "projectInstructions";
         public const string Reason = "instructionReason";
@@ -13,7 +18,7 @@ internal static class ProjectInstructions
         public const string Paths = "instructionPaths";
     }
 
-    internal static class Reasons
+    public static class Reasons
     {
         public const string Initial = "initial";
         public const string CwdChange = "cwd-change";

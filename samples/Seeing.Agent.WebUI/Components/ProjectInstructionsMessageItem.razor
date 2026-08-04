@@ -1,0 +1,116 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+<div class="project-instructions @(_expanded ? "is-expanded" : null)">
+    <button type="button"
+            class="project-instructions__summary"
+            onclick="@Toggle"
+            title="@(_expanded ? "收起详情" : "展开文件列表")">
+        <span class="project-instructions__leading">
+            <span class="project-instructions__icon" aria-hidden="true">
+                <Icon Type="@IconType.Outline.FileText" Theme="IconThemeType.Outline" />
+            </span>
+            <span class="project-instructions__label">已加载 @FileCount 个项目指令</span>
+            @if (!string.IsNullOrEmpty(ReasonLabel))
+            {
+                <span class="project-instructions__reason">@ReasonLabel</span>
+            }
+        </span>
+        <span class="project-instructions__trailing">
+            <span class="project-instructions__time"
+                  title="注入时间 @Message.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")">
+                @Message.Timestamp.ToString("HH:mm:ss")
+            </span>
+            <span class="project-instructions__chevron" aria-hidden="true">
+                <Icon Type="@(_expanded ? IconType.Outline.Up : IconType.Outline.Down)"
+                      Theme="IconThemeType.Outline" />
+            </span>
+        </span>
+    </button>
+
+    @if (_expanded)
+    {
+        <div class="project-instructions__details">
+            @if (!string.IsNullOrEmpty(Message.InstructionCwd))
+            {
+                <div class="project-instructions__cwd" title="@Message.InstructionCwd">
+                    cwd: @ShortPath(Message.InstructionCwd)
+                </div>
+            }
+
+            @if (Message.InstructionPaths.Count == 0)
+            {
+                <div class="project-instructions__empty">（无文件路径信息）</div>
+            }
+            else
+            {
+                <ul class="project-instructions__paths">
+                    @foreach (var path in Message.InstructionPaths)
+                    {
+                        <li title="@path">@ShortPath(path)</li>
+                    }
+                </ul>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Message.InstructionRaw))
+            {
+                <button type="button"
+                        class="project-instructions__raw-toggle"
+                        onclick="@ToggleRaw">
+                    @(_showRaw ? "隐藏原文" : "查看原文")
+                </button>
+                @if (_showRaw)
+                {
+                    <pre class="project-instructions__raw">@Message.InstructionRaw</pre>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public MessageViewModel Message { get; set; } = default!;
+
+    private bool _expanded;
+    private bool _showRaw;
+
+    private int FileCount => Message.InstructionPaths?.Count ?? 0;
+
+    private string? ReasonLabel => Message.InstructionReason switch
+    {
+        "initial" => "首次",
+        "cwd-change" => "目录变更",
+        "content-change" => "内容更新",
+        _ => string.IsNullOrEmpty(Message.InstructionReason) ? null : Message.InstructionReason
+    };
+
+    private void Toggle()
+    {
+        _expanded = !_expanded;
+        if (!_expanded)
+            _showRaw = false;
+    }
+
+    private void ToggleRaw() => _showRaw = !_showRaw;
+
+    private static string ShortPath(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return path;
+
+        try
+        {
+            var fileName = Path.GetFileName(path);
+            var dir = Path.GetDirectoryName(path);
+            if (string.IsNullOrEmpty(dir))
+                return fileName;
+
+            var parent = Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            return string.IsNullOrEmpty(parent) ? fileName : $"{parent}/{fileName}";
+        }
+        catch
+        {
+            return path;
+        }
+    }
+}

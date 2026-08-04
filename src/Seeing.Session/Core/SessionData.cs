@@ -175,6 +175,7 @@ namespace Seeing.Session.Core
         public void ClearMessages()
         {
             Messages.Clear();
+            Metadata.Remove(SessionMetadataKeys.InstructionFingerprints);
             CachedInputTokens = null;
             CachedOutputTokens = null;
             CachedUsageUpdatedAt = null;

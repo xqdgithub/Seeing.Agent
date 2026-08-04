@@ -87,6 +87,16 @@ public class MessageViewModel
     public string ReminderRaw { get; set; } = "";
 
     /// <summary>
+    /// 是否为项目指令注入（AGENTS.md 渐进加载）
+    /// </summary>
+    public bool IsProjectInstructions { get; set; }
+
+    public string? InstructionReason { get; set; }
+    public string? InstructionCwd { get; set; }
+    public IReadOnlyList<string> InstructionPaths { get; set; } = Array.Empty<string>();
+    public string InstructionRaw { get; set; } = "";
+
+    /// <summary>
     /// 是否包含附件
     /// </summary>
     public bool HasAttachments => Parts != null && Parts.Count > 0;

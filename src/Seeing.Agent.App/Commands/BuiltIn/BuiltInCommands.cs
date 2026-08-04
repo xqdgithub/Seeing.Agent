@@ -71,7 +71,7 @@ public class BuiltInCommands
             return CommandResult.Fail($"Session not found: {context.SessionId}");
         }
 
-        session.Messages.Clear();
+        session.ClearMessages();
         await _sessionManager.SaveAsync(context.SessionId);
 
         return CommandResult.Ok("会话历史已清除", needsRefresh: true);

@@ -20,6 +20,7 @@
 @using Seeing.Agent.App.Execution
 @using Seeing.Agent.Core.Events
 @using Seeing.Agent.Core.Reminders
+@using Seeing.Agent.Core.Instructions
 @inject SessionState SessionState
 @inject AppState AppState
 @inject EventStreamHandler EventStreamHandler
@@ -1297,6 +1298,41 @@
             viewModel.ReminderKind = reminderParts.Kind;
             viewModel.ReminderTaskBody = reminderParts.Task;
             viewModel.ReminderRaw = reminderParts.Raw;
+        }
+        else if (ProjectInstructionsRenderer.TryParse(msg.Content ?? "", out var instructionParts))
+        {
+            viewModel.IsProjectInstructions = true;
+            viewModel.InstructionReason = instructionParts.Reason;
+            viewModel.InstructionCwd = instructionParts.Cwd;
+            viewModel.InstructionPaths = instructionParts.Files
+                .Select(file => file.Path)
+                .ToArray();
+            viewModel.InstructionRaw = instructionParts.Raw;
+        }
+        else if (msg.Metadata?.TryGetValue(ProjectInstructions.MetadataKeys.ProjectInstructions, out _) == true)
+        {
+            // Content 解析失败时仍按 Metadata 识别，避免回落成普通用户气泡
+            viewModel.IsProjectInstructions = true;
+            if (msg.Metadata.TryGetValue(ProjectInstructions.MetadataKeys.Reason, out var reasonObj))
+                viewModel.InstructionReason = reasonObj?.ToString();
+            if (msg.Metadata.TryGetValue(ProjectInstructions.MetadataKeys.Cwd, out var cwdObj))
+                viewModel.InstructionCwd = cwdObj?.ToString();
+            if (msg.Metadata.TryGetValue(ProjectInstructions.MetadataKeys.Paths, out var pathsObj)
+                && pathsObj is string pathsJson)
+            {
+                try
+                {
+                    viewModel.InstructionPaths =
+                        System.Text.Json.JsonSerializer.Deserialize<string[]>(pathsJson)
+                        ?? Array.Empty<string>();
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    viewModel.InstructionPaths = Array.Empty<string>();
+                }
+            }
+
+            viewModel.InstructionRaw = msg.Content ?? "";
         }
 
         return viewModel;

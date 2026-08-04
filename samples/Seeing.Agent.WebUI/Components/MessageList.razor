@@ -28,6 +28,10 @@
                     {
                         <SystemReminderMessageItem @key="message.Id" Message="@message" />
                     }
+                    else if (message.IsProjectInstructions)
+                    {
+                        <ProjectInstructionsMessageItem @key="message.Id" Message="@message" />
+                    }
                     else
                     {
                         <ChatMessageItem @key="message.Id"

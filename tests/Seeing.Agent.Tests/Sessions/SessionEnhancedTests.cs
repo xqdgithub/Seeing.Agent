@@ -71,6 +71,8 @@ public class SessionForkerTests
         var (manager, forker) = CreateForker();
         var original = manager.Create();
         original.AddMessage(new SessionMessage { Role = "user", Content = "Hello" });
+        original.Metadata[SessionMetadataKeys.InstructionFingerprints] =
+            """{"cwd":"/repo","files":{"/repo/AGENTS.md":"sha256:abc"}}""";
 
         // Act
         var forked = await forker.ForkAsync(original.Id);
@@ -79,6 +81,8 @@ public class SessionForkerTests
         forked.Id.Should().NotBe(original.Id);
         forked.ParentSessionId.Should().Be(original.Id);
         forked.Messages.Should().HaveCount(1);
+        forked.Metadata[SessionMetadataKeys.InstructionFingerprints]
+            .Should().Be(original.Metadata[SessionMetadataKeys.InstructionFingerprints]);
     }
 
     [Fact]

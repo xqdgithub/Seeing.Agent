@@ -7,7 +7,7 @@ using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Instructions;
 
-internal static partial class ProjectInstructionsRenderer
+public static partial class ProjectInstructionsRenderer
 {
     private const string EscapeClose = "<\\/";
     private const string Notice =
@@ -112,7 +112,7 @@ internal static partial class ProjectInstructionsRenderer
     private static partial Regex FileRegex();
 }
 
-internal sealed record ProjectInstructionsParts(
+public sealed record ProjectInstructionsParts(
     string Cwd,
     string Reason,
     string Notice,

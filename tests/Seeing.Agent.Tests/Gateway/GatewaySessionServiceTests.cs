@@ -37,6 +37,8 @@ public class GatewaySessionServiceTests
         session.SelectedModel = "old-model";
         session.AddMessage(SessionMessage.UserMessage("hello"));
         session.AddMessage(SessionMessage.AssistantMessage("hi"));
+        session.Metadata[SessionMetadataKeys.InstructionFingerprints] =
+            """{"cwd":"/repo","files":{"/repo/AGENTS.md":"sha256:abc"}}""";
         await manager.SaveAsync(session.Id);
 
         var service = new GatewaySessionService(manager, registryMock.Object, modelManager);
@@ -50,6 +52,7 @@ public class GatewaySessionServiceTests
         var loaded = manager.Get(session.Id);
         loaded.Should().NotBeNull();
         loaded!.Messages.Should().BeEmpty();
+        loaded.Metadata.Should().NotContainKey(SessionMetadataKeys.InstructionFingerprints);
         loaded.SelectedAgent.Should().Be("build");
         loaded.SelectedModel.Should().Be("openai/gpt-4o");
     }

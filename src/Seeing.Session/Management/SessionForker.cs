@@ -53,6 +53,7 @@ namespace Seeing.Session.Management
 
             forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
             forkedSession.SelectedModel = sourceSession.SelectedModel;
+            CopyInstructionFingerprints(sourceSession, forkedSession);
 
             if (atMessageId != null)
             {
@@ -87,6 +88,15 @@ namespace Seeing.Session.Management
             var clone = msg.Clone();
             clone.Id = Guid.NewGuid().ToString("N");
             return clone;
+        }
+
+        private static void CopyInstructionFingerprints(SessionData source, SessionData target)
+        {
+            if (source.Metadata.TryGetValue(SessionMetadataKeys.InstructionFingerprints, out var fingerprints)
+                && !string.IsNullOrEmpty(fingerprints))
+            {
+                target.Metadata[SessionMetadataKeys.InstructionFingerprints] = fingerprints;
+            }
         }
     }
 }

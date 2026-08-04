@@ -204,7 +204,12 @@ public class ChatOrchestrator : IChatOrchestrator
         newSession.WorkingDirectory = sourceSession.WorkingDirectory;
         newSession.SelectedModel = sourceSession.SelectedModel;
         newSession.Messages = new List<SessionMessage>(sourceSession.Messages);
-        
+        if (sourceSession.Metadata.TryGetValue(SessionMetadataKeys.InstructionFingerprints, out var fingerprints)
+            && !string.IsNullOrEmpty(fingerprints))
+        {
+            newSession.Metadata[SessionMetadataKeys.InstructionFingerprints] = fingerprints;
+        }
+
         await _sessionManager.SaveAsync(newSession.Id);
         
         _logger.LogInformation("Branched session: {SourceId} -> {NewId} (Root, no parent)", sessionId, newSession.Id);
