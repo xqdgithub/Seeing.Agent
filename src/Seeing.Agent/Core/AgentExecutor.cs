@@ -103,6 +103,11 @@ public class AgentExecutor
         TokenUsage? totalUsage = null;
         string? errorMessage = null;
 
+        // AgentExecutor 为 Singleton：每次执行重置 Loop 局部状态，避免跨执行泄漏
+        _todoEmptyReminded = false;
+        _incompleteReminded = false;
+        _totalToolCallsExecuted = 0;
+
         // ========== 发布 LoopStart 事件 ==========
         yield return new LoopStartEvent
         {

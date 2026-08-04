@@ -1364,8 +1364,14 @@
 
         try
         {
-            // 初始化取消令牌源
-            SessionState.StartExecution();
+            // 防重复提交：已有执行则直接拒绝（避免 Enter/点击竞态打出两次 Loop）
+            if (!SessionState.TryStartExecution())
+            {
+                ErrorMessage = "当前会话已有执行在进行中，请稍候";
+                return;
+            }
+
+            SessionState.ExecutionStatus = ExecutionStatus.Pending;
             
             // 提交执行（用户消息会立即保存）
             var result = await ChatOrchestrator.SubmitAsync(SessionState.SessionId, input, options);
@@ -1396,6 +1402,8 @@
         catch (Exception ex)
         {
             ErrorMessage = $"执行失败: {ex.Message}";
+            SessionState.CompleteExecution();
+            SessionState.ExecutionStatus = null;
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1823,6 +1831,9 @@
         {
             SessionState.CurrentSession.ClearMessages();
             SessionState.CurrentSession.Title = "新会话";
+            SessionState.CurrentTodoList = null;
+            _currentStreamingMessageId = string.Empty;
+            EventStreamHandler.ClearCache();
 
             await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
             UpdateBudgetStatus();

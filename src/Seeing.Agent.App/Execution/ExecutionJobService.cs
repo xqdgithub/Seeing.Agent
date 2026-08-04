@@ -291,18 +291,16 @@ public class ExecutionJobService : IDisposable
         if (!_sessionQueues.TryGetValue(sessionId, out var queue))
             return;
 
-        while (queue.HasActiveExecution)
-        {
-            var current = queue.CurrentExecution;
-            if (current == null)
-                break;
+        // 只启动当前 Pending 项；后续排队项由 ProcessExecutionAsync.finally → CompleteAsync 链式启动。
+        // 禁止 while 循环续跑，否则会与 finally 中的 ProcessExecutionAsync(next) 双开同一条执行。
+        var current = queue.CurrentExecution;
+        if (current == null)
+            return;
 
-            // Skip if already being processed (race condition guard)
-            if (current.Status != ExecutionStatus.Pending)
-                break;
+        if (current.Status != ExecutionStatus.Pending)
+            return;
 
-            await ProcessExecutionAsync(current);
-        }
+        await ProcessExecutionAsync(current);
     }
 
     /// <summary>
@@ -421,11 +419,11 @@ public class ExecutionJobService : IDisposable
             record.CompletedAt = DateTime.UtcNow;
             _loopScheduler?.SetLoopBusy(record.SessionId, false);
 
-            // Final save
+            // Final save（先写 history 再落盘，避免 history 永远落后一次）
             try
             {
-                await sessionManager.SaveAsync(record.SessionId);
                 await AppendExecutionHistoryAsync(sessionManager, record);
+                await sessionManager.SaveAsync(record.SessionId);
             }
             catch (Exception ex)
             {
@@ -449,7 +447,7 @@ public class ExecutionJobService : IDisposable
             // Schedule cleanup
             _ = CleanupExecutionAsync(record.ExecutionId);
 
-            // Process next in queue
+            // Process next in queue（仅由此处启动，避免与 ProcessQueueAsync while 竞态双跑）
             if (nextExecution != null)
             {
                 _ = ProcessExecutionAsync(nextExecution);

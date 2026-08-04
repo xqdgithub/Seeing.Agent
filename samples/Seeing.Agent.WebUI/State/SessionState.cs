@@ -164,10 +164,13 @@ namespace Seeing.Agent.WebUI.State
         public string? CurrentExecutionId { get; set; }
 
         /// <summary>
-        /// 是否有活跃执行（Running 或 Pending）
+        /// 是否有活跃执行（Running / Pending，或 UI 已 StartExecution 但尚未拿到后端 Status）
         /// </summary>
-        public bool HasActiveExecution => ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Running ||
-                                          ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Pending;
+        public bool HasActiveExecution =>
+            IsExecuting
+            || ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Running
+            || ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Pending
+            || ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Queued;
 
         /// <summary>
         /// 是否在排队中

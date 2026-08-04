@@ -136,6 +136,7 @@ namespace Seeing.Agent.Services
         {
             return title.StartsWith(DefaultTitlePrefix, StringComparison.OrdinalIgnoreCase) ||
                    title.StartsWith("New Session", StringComparison.OrdinalIgnoreCase) ||
+                   title.Equals("新会话", StringComparison.Ordinal) ||
                    string.IsNullOrWhiteSpace(title);
         }
 

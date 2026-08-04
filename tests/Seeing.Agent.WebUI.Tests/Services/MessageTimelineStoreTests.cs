@@ -144,6 +144,59 @@ public class MessageTimelineStoreTests
     }
 
     [Fact]
+    public void SyncAssistantMessage_LoopIdArrivesAfterSingle_ShouldRekeyToOneTurn()
+    {
+        var store = new MessageTimelineStore();
+
+        // 流式早期：LoopId 尚未写入 → single-{id}
+        store.SyncAssistantMessage(Msg("L1_step0", "assistant", "hello"), "s1", isComplete: false);
+        store.Items.Should().ContainSingle();
+        store.Items[0].Key.Should().Be("single-L1_step0");
+        store.Items[0].Turn!.LoopIndex.Should().Be(1);
+
+        // 随后补上 LoopId（同 message Id）→ 必须认领，不能新建 Loop #2
+        store.SyncAssistantMessage(
+            Msg("L1_step0", "assistant", "hello!", loopId: "L1"), "s1", isComplete: false);
+
+        store.Items.Should().ContainSingle(i => i.Kind == TimelineItemKind.AssistantTurn);
+        store.Items[0].Key.Should().Be("L1");
+        store.Items[0].Turn!.LoopId.Should().Be("L1");
+        store.Items[0].Turn.LoopIndex.Should().Be(1);
+        store.Items[0].Turn.Messages.Should().ContainSingle().Which.Content.Should().Be("hello!");
+    }
+
+    [Fact]
+    public void SyncAssistantMessage_StepChangeSameLoop_ShouldStayOneTurn()
+    {
+        var store = new MessageTimelineStore();
+
+        store.SyncAssistantMessage(
+            Msg("L1_step0", "assistant", "first", loopId: "L1", step: 0), "s1", isComplete: true);
+        store.SyncAssistantMessage(
+            Msg("L1_step1", "assistant", "second", loopId: "L1", step: 1), "s1", isComplete: false);
+
+        store.Items.Should().ContainSingle(i => i.Kind == TimelineItemKind.AssistantTurn);
+        store.Items[0].Key.Should().Be("L1");
+        store.Items[0].Turn!.Messages.Should().HaveCount(2);
+        store.Items[0].Turn.LoopIndex.Should().Be(1);
+    }
+
+    [Fact]
+    public void SyncAssistantMessage_Step0SingleThenStep1WithLoopId_ShouldMergeOrphans()
+    {
+        var store = new MessageTimelineStore();
+
+        store.SyncAssistantMessage(Msg("L1_step0", "assistant", "one"), "s1", isComplete: false);
+        store.SyncAssistantMessage(
+            Msg("L1_step1", "assistant", "two", loopId: "L1", step: 1), "s1", isComplete: false);
+
+        store.Items.Should().ContainSingle(i => i.Kind == TimelineItemKind.AssistantTurn);
+        store.Items[0].Key.Should().Be("L1");
+        store.Items[0].Turn!.Messages.Select(m => m.Content).Should().Equal("one", "two");
+        store.Items[0].Turn.LoopIndex.Should().Be(1);
+    }
+
+    [Fact]
     public void ResetFromSession_ShouldBumpGeneration_SyncShouldNot()
     {
         var store = new MessageTimelineStore();

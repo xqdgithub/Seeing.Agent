@@ -176,6 +176,8 @@ namespace Seeing.Session.Core
         {
             Messages.Clear();
             Metadata.Remove(SessionMetadataKeys.InstructionFingerprints);
+            // 清空会话应同时去掉运行时上下文（如 todos），否则下次首条消息会因未完成 todo 再续一轮
+            Context.Clear();
             CachedInputTokens = null;
             CachedOutputTokens = null;
             CachedUsageUpdatedAt = null;

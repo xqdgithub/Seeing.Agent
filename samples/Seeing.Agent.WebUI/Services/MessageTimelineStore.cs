@@ -133,6 +133,11 @@ public sealed class MessageTimelineStore
     /// <summary>
     /// In-place sync of one assistant SessionMessage into its turn (preserves ToolCall IsExpanded).
     /// Skips <see cref="TimelineItem.Touch"/> / <see cref="Changed"/> when nothing visible changed.
+    /// <para>
+    /// 同一次 Agent Loop 内 message Id 会随 step 变化（如 <c>{loopId}_step0</c> → <c>_step1</c>）。
+    /// 若流式早期 LoopId 尚未写入，会短暂建出 <c>single-{id}</c> turn；随后补上 LoopId 时必须
+    /// 认领/合并，否则会出现 Loop #1 + Loop #2，刷新后 ResetFromSession 又变回一个。
+    /// </para>
     /// </summary>
     public void SyncAssistantMessage(SessionMessage msg, string sessionId, bool isComplete = false)
     {
@@ -140,8 +145,7 @@ public sealed class MessageTimelineStore
             return;
 
         var incoming = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete);
-        var key = TimelineItem.AssistantKey(incoming.LoopId, incoming.Id);
-        var item = FindAssistantTurn(incoming.LoopId, createIfMissing: true, seedVm: incoming, keyHint: key);
+        var item = ResolveAssistantTurnForSync(incoming, createIfMissing: true);
         if (item?.Turn == null)
             return;
 
@@ -401,35 +405,213 @@ public sealed class MessageTimelineStore
         return ids;
     }
 
+    /// <summary>
+    /// Resolve the assistant turn for a streaming/reconcile sync, adopting orphan <c>single-*</c>
+    /// turns when LoopId becomes available so step/Id changes stay in one Loop bubble.
+    /// </summary>
+    private TimelineItem? ResolveAssistantTurnForSync(MessageViewModel incoming, bool createIfMissing)
+    {
+        var loopId = incoming.LoopId;
+        var messageId = incoming.Id ?? string.Empty;
+
+        if (!string.IsNullOrEmpty(loopId))
+        {
+            var byLoop = FindTurnByKey(loopId);
+            if (byLoop != null)
+            {
+                AbsorbOrphanSinglesInto(byLoop, loopId, messageId);
+                return byLoop;
+            }
+
+            var orphan = FindOrphanTurnForMessage(messageId);
+            if (orphan != null)
+                return RekeyTurn(orphan, loopId);
+
+            // 同 Loop 内 step 切换：上一条可能仍挂在未完成的 single-* / 空 LoopId turn
+            var open = FindLastOpenAssistantTurn();
+            if (open != null &&
+                (open.Key.StartsWith("single-", StringComparison.Ordinal)
+                 || string.IsNullOrEmpty(open.Turn?.LoopId)
+                 || string.Equals(open.Turn?.LoopId, loopId, StringComparison.Ordinal)))
+            {
+                var adopted = RekeyTurn(open, loopId);
+                AbsorbOrphanSinglesInto(adopted, loopId, messageId);
+                return adopted;
+            }
+
+            return createIfMissing ? CreateAssistantTurn(loopId, incoming) : null;
+        }
+
+        // LoopId 尚未到达：每个 message Id 独立 single-*（避免误把无关助手合并）。
+        // 待后续带 LoopId 的 sync 再认领/合并。
+        if (!string.IsNullOrEmpty(messageId))
+        {
+            var singleKey = TimelineItem.AssistantKey(null, messageId);
+            var bySingle = FindTurnByKey(singleKey);
+            if (bySingle != null)
+                return bySingle;
+
+            return createIfMissing ? CreateAssistantTurn(null, incoming) : null;
+        }
+
+        if (!createIfMissing)
+            return null;
+
+        return CreateAssistantTurn(null, incoming);
+    }
+
     private TimelineItem? FindAssistantTurn(
         string? loopId,
         bool createIfMissing,
         MessageViewModel? seedVm = null,
         string? keyHint = null)
     {
+        if (seedVm != null)
+            return ResolveAssistantTurnForSync(seedVm, createIfMissing);
+
         TimelineItem? item = null;
 
         if (!string.IsNullOrEmpty(loopId))
         {
-            item = _items.LastOrDefault(i =>
-                i.Kind == TimelineItemKind.AssistantTurn && i.Key == loopId);
+            item = FindTurnByKey(loopId);
         }
         else if (!string.IsNullOrEmpty(keyHint))
         {
-            // keyHint provided: match exactly — never fall back to last turn
-            // (would merge distinct assistants that lack loopId).
-            item = _items.LastOrDefault(i =>
-                i.Kind == TimelineItemKind.AssistantTurn && i.Key == keyHint);
+            item = FindTurnByKey(keyHint);
         }
         else
         {
-            // CompleteTurn(null) / no identity: attach to the latest assistant turn.
             item = _items.LastOrDefault(i => i.Kind == TimelineItemKind.AssistantTurn);
         }
 
         if (item != null || !createIfMissing)
             return item;
 
+        return CreateAssistantTurn(loopId, seedVm, keyHint);
+    }
+
+    private TimelineItem? FindTurnByKey(string key) =>
+        _items.LastOrDefault(i =>
+            i.Kind == TimelineItemKind.AssistantTurn && i.Key == key);
+
+    private TimelineItem? FindLastOpenAssistantTurn() =>
+        _items.LastOrDefault(i =>
+            i.Kind == TimelineItemKind.AssistantTurn && i.Turn is { IsComplete: false });
+
+    private TimelineItem? FindOrphanTurnForMessage(string messageId)
+    {
+        if (string.IsNullOrEmpty(messageId))
+            return null;
+
+        var singleKey = TimelineItem.AssistantKey(null, messageId);
+        var byKey = FindTurnByKey(singleKey);
+        if (byKey != null)
+            return byKey;
+
+        return _items.LastOrDefault(i =>
+            i.Kind == TimelineItemKind.AssistantTurn &&
+            i.Key.StartsWith("single-", StringComparison.Ordinal) &&
+            i.Turn?.Messages.Any(m => m.Id == messageId) == true);
+    }
+
+    /// <summary>
+    /// TimelineItem.Key 为 init-only：用同内容新项替换并改到 canonical loop key。
+    /// </summary>
+    private TimelineItem RekeyTurn(TimelineItem old, string loopId)
+    {
+        if (old.Key == loopId)
+        {
+            if (old.Turn != null)
+                old.Turn.LoopId = loopId;
+            return old;
+        }
+
+        var idx = _items.IndexOf(old);
+        if (idx < 0)
+            return old;
+
+        // 若目标 key 已存在，把 orphan 消息并入后删除 orphan
+        var existing = FindTurnByKey(loopId);
+        if (existing?.Turn != null && !ReferenceEquals(existing, old))
+        {
+            if (old.Turn?.Messages != null)
+            {
+                foreach (var m in old.Turn.Messages)
+                {
+                    if (existing.Turn.Messages.All(x => x.Id != m.Id))
+                        existing.Turn.Messages.Add(m);
+                }
+
+                existing.Turn.IsComplete = existing.Turn.Messages.All(m => m.IsComplete);
+                existing.Turn.LoopId = loopId;
+                existing.Touch();
+            }
+
+            _items.RemoveAt(idx);
+            RenumberLoopIndexes();
+            return existing;
+        }
+
+        var rekeyed = new TimelineItem
+        {
+            Key = loopId,
+            Kind = TimelineItemKind.AssistantTurn,
+            Turn = old.Turn
+        };
+        if (rekeyed.Turn != null)
+            rekeyed.Turn.LoopId = loopId;
+
+        _items[idx] = rekeyed;
+        rekeyed.Touch();
+        return rekeyed;
+    }
+
+    private void AbsorbOrphanSinglesInto(TimelineItem target, string loopId, string currentMessageId)
+    {
+        if (target.Turn == null)
+            return;
+
+        for (var i = _items.Count - 1; i >= 0; i--)
+        {
+            var item = _items[i];
+            if (ReferenceEquals(item, target))
+                continue;
+            if (item.Kind != TimelineItemKind.AssistantTurn || item.Turn?.Messages == null)
+                continue;
+            if (!item.Key.StartsWith("single-", StringComparison.Ordinal)
+                && !string.IsNullOrEmpty(item.Turn.LoopId)
+                && !string.Equals(item.Turn.LoopId, loopId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // 仅吸收未完成、或消息已归属此 LoopId、或就是当前正在 sync 的 message
+            var shouldAbsorb = !item.Turn.IsComplete
+                || item.Turn.Messages.Any(m =>
+                    string.Equals(m.LoopId, loopId, StringComparison.Ordinal)
+                    || m.Id == currentMessageId);
+            if (!shouldAbsorb)
+                continue;
+
+            foreach (var m in item.Turn.Messages)
+            {
+                if (target.Turn.Messages.All(x => x.Id != m.Id))
+                    target.Turn.Messages.Add(m);
+            }
+
+            _items.RemoveAt(i);
+        }
+
+        target.Turn.LoopId = loopId;
+        target.Turn.IsComplete = target.Turn.Messages.All(m => m.IsComplete);
+        RenumberLoopIndexes();
+    }
+
+    private TimelineItem CreateAssistantTurn(
+        string? loopId,
+        MessageViewModel? seedVm,
+        string? keyHint = null)
+    {
         var key = keyHint
             ?? TimelineItem.AssistantKey(loopId, seedVm?.Id ?? Guid.NewGuid().ToString("N")[..8]);
         var loopIndex = _items.Count(i => i.Kind == TimelineItemKind.AssistantTurn) + 1;
@@ -440,7 +622,7 @@ public sealed class MessageTimelineStore
             Messages = seedVm != null ? [seedVm] : [],
             IsComplete = false
         };
-        item = new TimelineItem
+        var item = new TimelineItem
         {
             Key = key,
             Kind = TimelineItemKind.AssistantTurn,
@@ -448,6 +630,17 @@ public sealed class MessageTimelineStore
         };
         _items.Add(item);
         return item;
+    }
+
+    private void RenumberLoopIndexes()
+    {
+        var index = 0;
+        foreach (var item in _items)
+        {
+            if (item.Kind != TimelineItemKind.AssistantTurn || item.Turn == null)
+                continue;
+            item.Turn.LoopIndex = ++index;
+        }
     }
 
     private static TimelineItemKind ResolveKind(MessageViewModel vm)

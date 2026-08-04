@@ -5,6 +5,7 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Llm;
+using Seeing.Session.Core;
 using Moq;
 using Xunit;
 
@@ -55,9 +56,36 @@ public class AgentLoopSchedulerTests
     }
 
     [Fact]
-    public async Task TryResumeWhenIdleAsync_WhenIdle_ShouldInvokeHandler()
+    public async Task TryResumeWhenIdleAsync_WhenIdleWithoutSynthetic_ShouldSkip()
     {
-        var scheduler = new AgentLoopScheduler(NullLogger<AgentLoopScheduler>.Instance);
+        var sessions = new Mock<ISessionManager>();
+        sessions.Setup(s => s.Get("s1")).Returns(SessionData.Create());
+        var scheduler = new AgentLoopScheduler(
+            NullLogger<AgentLoopScheduler>.Instance,
+            sessions.Object);
+        var called = false;
+        scheduler.RegisterResumeHandler((_, _) =>
+        {
+            called = true;
+            return Task.CompletedTask;
+        });
+
+        var resumed = await scheduler.TryResumeWhenIdleAsync("s1");
+
+        resumed.Should().BeFalse();
+        called.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TryResumeWhenIdleAsync_WhenPendingSynthetic_ShouldInvokeHandler()
+    {
+        var session = SessionData.Create();
+        session.Messages.Add(SessionMessage.UserMessage("done").WithMetadata("synthetic", "true"));
+        var sessions = new Mock<ISessionManager>();
+        sessions.Setup(s => s.Get("s1")).Returns(session);
+        var scheduler = new AgentLoopScheduler(
+            NullLogger<AgentLoopScheduler>.Instance,
+            sessions.Object);
         var called = false;
         scheduler.RegisterResumeHandler((_, _) =>
         {
@@ -69,5 +97,26 @@ public class AgentLoopSchedulerTests
 
         resumed.Should().BeTrue();
         called.Should().BeTrue();
+    }
+
+    [Fact]
+    public void HasPendingSyntheticUserMessage_AfterAssistant_ShouldBeTrue()
+    {
+        var session = SessionData.Create();
+        session.Messages.Add(SessionMessage.UserMessage("hi"));
+        session.Messages.Add(SessionMessage.AssistantMessage("hello"));
+        session.Messages.Add(SessionMessage.UserMessage("task done").WithMetadata("synthetic", "true"));
+
+        AgentLoopScheduler.HasPendingSyntheticUserMessage(session).Should().BeTrue();
+    }
+
+    [Fact]
+    public void HasPendingSyntheticUserMessage_OnlyConsumedHistory_ShouldBeFalse()
+    {
+        var session = SessionData.Create();
+        session.Messages.Add(SessionMessage.UserMessage("hi"));
+        session.Messages.Add(SessionMessage.AssistantMessage("hello"));
+
+        AgentLoopScheduler.HasPendingSyntheticUserMessage(session).Should().BeFalse();
     }
 }

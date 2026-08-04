@@ -171,6 +171,11 @@
     private string InputText { get; set; } = "";
 
     /// <summary>
+    /// 本地提交锁（比 IsProcessing 参数更早生效，挡住 Enter/点击竞态）
+    /// </summary>
+    private bool _isSubmitting;
+
+    /// <summary>
     /// 是否正在处理
     /// </summary>
     [Parameter]
@@ -643,9 +648,10 @@
     /// </summary>
     private async Task OnSubmit()
     {
-        if ((string.IsNullOrWhiteSpace(InputText) && Attachments.Count == 0) || IsProcessing)
+        if ((string.IsNullOrWhiteSpace(InputText) && Attachments.Count == 0) || IsProcessing || _isSubmitting)
             return;
 
+        _isSubmitting = true;
         var trimmedInput = InputText.Trim();
 
         // 所有输入（包括命令）都发送给 ChatOrchestrator 处理
@@ -658,12 +664,18 @@
         InputText = "";
         Attachments.Clear();
 
-        if (OnSubmitCallback.HasDelegate)
+        try
         {
-            await OnSubmitCallback.InvokeAsync(submitArgs);
+            if (OnSubmitCallback.HasDelegate)
+            {
+                await OnSubmitCallback.InvokeAsync(submitArgs);
+            }
         }
-
-        StateHasChanged();
+        finally
+        {
+            _isSubmitting = false;
+            StateHasChanged();
+        }
     }
     
     /// <summary>

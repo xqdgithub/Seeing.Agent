@@ -33,6 +33,7 @@ public sealed class AgentLoopSchedulerHostedService : IHostedService
     {
         _scheduler.RegisterResumeHandler(async (sessionId, ct) =>
         {
+            // TryResumeWhenIdleAsync 已校验存在 pending synthetic；此处再提交空输入 continuation
             _logger.LogInformation("Idle resume: submitting continuation for {SessionId}", sessionId);
             var result = await _jobs.SubmitAsync(
                 sessionId,
