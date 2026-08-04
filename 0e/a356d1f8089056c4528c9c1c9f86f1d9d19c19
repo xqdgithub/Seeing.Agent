@@ -1,0 +1,203 @@
+tests/Seeing.Agent.WebUI.Tests/Services/MessageListWindowTests.cs
+  s_7199752fa6e5b0::t_e040d2aed6205a 26,28
+  s_acad0edefb3df5::t_d61d6e4c39c337 1-25,27,29-52
+samples/Seeing.Agent.WebUI/Services/MessageTimelineStore.cs
+  s_5edbd2f5269735::t_c91eb5f33f9213 419-420,424
+  s_7199752fa6e5b0::t_94933a8b2412d0 426
+  s_7199752fa6e5b0::t_fb44bc8171144b 169,171-172,174-175,177,179,182-187,189-190,195-197,200-205,242-259,312-315,346
+  s_1a687733ce9bf0::t_6cea011462741b 1-15,28-29,37-108,111-128,130-132,404-418,421-423,425,427-472
+  s_7199752fa6e5b0::t_84a29d3fc6edf3 191-194,199
+  s_7199752fa6e5b0::t_7130ae3353295f 30,32-36
+  s_7199752fa6e5b0::t_e158d6a8db783f 135,173,178,207-216,316-331,339-345,347-362,365,381-401
+  s_4f4a900ec4b567::t_79b9ff755a2934 133-134,136-161,163-168,170,180-181,206,217,219,402-403
+  s_7199752fa6e5b0::t_78b7ee55aa8bd8 22-27,31,110,129,162,176,188,218,220-241,260-283,285,289-301,303-304,306,309-310,363-364,366-380
+  s_7199752fa6e5b0::t_9032f6f033cafb 198
+  s_7199752fa6e5b0::t_7354d53c290539 16-21,109
+  s_7199752fa6e5b0::t_8fc67fb7f1a2b8 284,286-288,302,305,307-308,311
+  s_7199752fa6e5b0::t_ff90ca0e71a06c 332-338
+samples/Seeing.Agent.WebUI/Components/Messaging/ReasoningMessageComponent.razor
+  s_7199752fa6e5b0::t_1a6c6b56eff0e8 47-49,58,60-72
+samples/Seeing.Agent.WebUI/Services/MessageListWindow.cs
+  s_acad0edefb3df5::t_64e2e19ec0abba 1-14,18-22
+  s_7199752fa6e5b0::t_99c24af90fc776 15-17
+samples/Seeing.Agent.WebUI/wwwroot/css/message-list.css
+  s_7199752fa6e5b0::t_33ceddd0599300 119,130,147,152
+  s_7199752fa6e5b0::t_9f6cc5ca0fc3db 27-29,45
+  s_7199752fa6e5b0::t_b40558f9b04f12 162,166
+  s_7199752fa6e5b0::t_a23188466c1dea 12
+  s_b76a649e3be6c3::t_503bf11a793f4a 134-142
+  s_7199752fa6e5b0::t_ca33b80a7d22dd 41-44
+  s_7199752fa6e5b0::t_21b05c8a6a6e3e 116,118,131
+src/Seeing.Session/Core/SessionMessage.cs
+  s_7199752fa6e5b0::t_1730000747720d 434,442
+  s_7199752fa6e5b0::t_58dc0b14f7d4b3 351,362,373,384,399,410,422
+samples/Seeing.Agent.WebUI/Components/MessageList.razor
+  s_b76a649e3be6c3::t_30887d4a5d36f7 5,47,51-55,60,67,70,110,121,135,139,141,200,204,229,232,253-254,257-258,261-267,274,277-278,287-290,292,294,296
+  s_7199752fa6e5b0::t_b944c4ff3c50ae 8,64-65,74-76,78,80,82,104-105,111,114,120,189-190,201,205,216,280,282,284,286
+  s_7199752fa6e5b0::t_9753b37ed65582 127,145,149-150,157,166,168,233-235
+  s_7199752fa6e5b0::t_950781fff5e9a6 56,62,79,84,91,93-96,98-99,102,106-109,113,116,118-119,142-143,146,148,152,154
+  s_b76a649e3be6c3::t_c567f8b4d40a3a 6
+  s_7199752fa6e5b0::t_b07b0e96a7d498 63,90,100,117,124,126,155-156,158-165,167,197-198,202-203,206-207
+  s_7199752fa6e5b0::t_f3530ced5517de 12,40-41,77,85-86,88-89,138,237-238,240-242,246,250,283
+  s_7199752fa6e5b0::t_cb60de1d7519b7 199
+  s_7199752fa6e5b0::t_4226604c33fdba 38-39
+  s_5edbd2f5269735::t_dc18015bf35f15 11,61
+  s_7199752fa6e5b0::t_df6deac96c9405 42
+  s_b76a649e3be6c3::t_81e62eac18ceb5 208
+  s_7199752fa6e5b0::t_ba23a3710d67c2 245
+  s_7199752fa6e5b0::t_2574eaaf00dfd5 13-14,16-24,26-28,30-31,33-34,49
+  s_7199752fa6e5b0::t_754d4966829934 66
+  s_5edbd2f5269735::t_2a73d6b937d12c 172,174-175,177-185,188,209,213-215,217-225,256,268,273
+  s_b76a649e3be6c3::t_1032b0210302c2 57-59,140,171,192-195
+samples/Seeing.Agent.WebUI/Components/ScrollToBottomButton.razor
+  s_7199752fa6e5b0::t_444037802ebc34 3-21
+  s_7199752fa6e5b0::t_4017a30a2c0367 1-2
+samples/Seeing.Agent.WebUI/wwwroot/js/app.js
+  s_1d42c0f22384be::t_951c1b3c154cbf 306
+  s_7199752fa6e5b0::t_af694601fa8818 332
+  s_7199752fa6e5b0::t_2216c56557853b 224,227,230-232,234,237
+  s_5edbd2f5269735::t_0accc29f2e8385 222,312,314,374,409-412
+  s_1d42c0f22384be::t_d0a632d893187c 334,372-373,375-377,379-390,392-395,397
+  s_7199752fa6e5b0::t_79c0142530fcc4 426,429,441
+  s_7199752fa6e5b0::t_0ff26e0d7be066 460-465,479-488
+  s_1d42c0f22384be::t_0649c58de86823 501-516
+  s_7199752fa6e5b0::t_ca9bb19f3346da 427,432,434-439,442
+  s_7199752fa6e5b0::t_c631e4634e62bc 245,247,250,289-292
+  s_7199752fa6e5b0::t_a56e8f784316aa 217-221,223,225-226,228-229,233,235-236,252-253,256-258,260,262-264,266-267,270-272,275-288,302,304,316,318-319,321,323,328,335,338-354,356-359,378,391,396,403-408
+  s_7199752fa6e5b0::t_d68eefcfcc5751 248-249,254-255,259,268-269,273-274
+  s_7199752fa6e5b0::t_2dbb5279267cb6 317,320,322,333,336-337,355,360-363
+samples/Seeing.Agent.WebUI/Program.cs
+  s_1a687733ce9bf0::t_01116878bbd817 65
+samples/Seeing.Agent.WebUI/Models/Timeline/TimelineItemKind.cs
+  s_3b65e5ac9c0f67::t_0b1d6f2b23f1a8 1-11
+samples/Seeing.Agent.WebUI/Components/TimelineItemView.razor
+  s_e8fcd26dad00e3::t_54951580feea92 7
+  s_b76a649e3be6c3::t_2bceda8d0ab1a3 3,5,11,15,19,33,37
+  s_b76a649e3be6c3::t_98358b96e6b5a9 1-2,4,6,8-10,12-14,16-18,20-32,34-36,38-54
+samples/Seeing.Agent.WebUI/Components/LoopGroupItem.razor
+  s_e8fcd26dad00e3::t_2b3bdbed183a88 9,18-23,30-34,36-40
+  s_5edbd2f5269735::t_6427020521f9af 35
+samples/Seeing.Agent.WebUI/Models/Timeline/TimelineItem.cs
+  s_3b65e5ac9c0f67::t_2b1b278dd74b9d 1-17
+tests/Seeing.Agent.WebUI.Tests/Services/MessageTimelineStoreTests.cs
+  s_7199752fa6e5b0::t_22b2ac72083a47 114,124
+  s_4f4a900ec4b567::t_79126b47dda667 128-129,163-205
+  s_7199752fa6e5b0::t_6eb2694067a2cc 147-162
+  s_7199752fa6e5b0::t_3ab75a6c7f2525 226-268
+  s_7199752fa6e5b0::t_6227f8e80f3762 269-330
+  s_7199752fa6e5b0::t_025c60c0172ccd 206-211,215-225,357-373
+  s_1a687733ce9bf0::t_47d230021c122b 42-48
+  s_5edbd2f5269735::t_c57d380e054ba3 130-146
+  s_7199752fa6e5b0::t_6f4a4c93e39d59 212-214
+  s_1a687733ce9bf0::t_9719a7ec8cf4e6 1-41,49-113,115-123,125-127,374
+  s_7199752fa6e5b0::t_e0b9154a9ea127 331-356
+samples/Seeing.Agent.WebUI/Pages/Session.razor
+  s_7199752fa6e5b0::t_d86e6a3aeb5a69 569
+  s_b76a649e3be6c3::t_9782cc711d56d3 1042,1085,1188,1219,1475,1660,1828,1878
+  s_4f4a900ec4b567::t_1ed4ab3c17e999 1449,1459
+  s_7199752fa6e5b0::t_8d0c5db806e667 1379-1380,1382-1383
+  s_b76a649e3be6c3::t_cffcb3368c26c0 630,633-635,646-647
+  s_b76a649e3be6c3::t_13bbdcc713d989 46
+  s_4f4a900ec4b567::t_b758efd17ed530 668-674,677,679-697,699-704,706-708,710-712
+  s_7199752fa6e5b0::t_4abe7b09fc6741 632,640,645
+  s_7199752fa6e5b0::t_681ecc014c196d 1381
+  s_b76a649e3be6c3::t_edd6dbe53682ea 570
+  s_7199752fa6e5b0::t_b2fb5a728aab01 1418-1421,1453-1457,1460-1470,1474,1484-1486,1499-1502,1511-1514,1521-1524
+  s_7199752fa6e5b0::t_4887fdae146197 631,649-667,675-676,678,698,705,709
+  s_b76a649e3be6c3::t_cdfdfa389b025c 636-639,641-644
+  s_7199752fa6e5b0::t_d7b0231b882ce4 323
+  s_7199752fa6e5b0::t_36575227657756 1641-1643
+  s_7199752fa6e5b0::t_14734cd1dcc08e 1140
+samples/Seeing.Agent.WebUI/Services/MessageViewModelFactory.cs
+  s_7199752fa6e5b0::t_0631c0fdf5f060 23
+  s_5c48f9d29d1560::t_b39ef5f8be5b62 1-22,24-83,104-127
+  s_7199752fa6e5b0::t_2d43cef0e0d623 84-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.39-trip",
+  "base_commit_sha": "0ea356d1f8089056c4528c9c1c9f86f1d9d19c19",
+  "prompts": {},
+  "sessions": {
+    "s_1a687733ce9bf0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8c7a6328-a608-45ad-b77a-9fe313888731",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_1d42c0f22384be": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "365ffcf6-2ce2-44ce-b867-512bfa9da826",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_3b65e5ac9c0f67": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0d92995f-7ebe-4f0b-ba5d-719e0aff0660",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_4f4a900ec4b567": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "85ff3e22-a849-4b44-85cb-517672b15799",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_5c48f9d29d1560": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "801237c4-729e-4193-a068-0e784f993911",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_5edbd2f5269735": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6c7ca5e1-b117-4a67-8db1-bbb1138294a7",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_7199752fa6e5b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8a9dcd2a-19b8-4d78-bd0f-2141563d4c26",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_acad0edefb3df5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44ba154b-7409-4cb6-9690-5165bf1692a7",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_b76a649e3be6c3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "62d55153-5245-4988-b8a0-6d29969c11d7",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_e8fcd26dad00e3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f7af8f56-fa29-432b-ba07-e8ecd085b934",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
