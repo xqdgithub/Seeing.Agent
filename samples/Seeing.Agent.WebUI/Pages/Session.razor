@@ -63,7 +63,9 @@
             {
                 <Divider Type="@DividerType.Vertical" />
             }
-            <span Class="session-title">@SessionState.Title</span>
+            <Tooltip Title="@SessionState.Title">
+                <span Class="session-title">@SessionState.Title</span>
+            </Tooltip>
             @if (IsSubAgentView)
             {
                 <Badge Status="@BadgeStatus.Warning" Text="子会话（只读）" />
@@ -1428,8 +1430,10 @@
                     SyncTimelineAssistantFromStream(isComplete: true);
                     CompleteCurrentTimelineTurn();
                     ReconcileTimelineFromSession();
-                    // Status badges need a page refresh beyond MessageList
+                    // 标题生成是旁路任务，可能晚于 Complete：先同步，再短轮询等待变更
+                    await SyncTitleFromSessionAsync();
                     await InvokeAsync(StateHasChanged);
+                    await WaitForLateTitleChangeAsync(TimeSpan.FromSeconds(15));
                     break;
                 }
 
@@ -1478,6 +1482,16 @@
                     SyncTimelineAssistantFromStream(isComplete: true);
                     CompleteCurrentTimelineTurn();
                     ReconcileTimelineFromSession();
+                }
+                else if (evt is SessionTitleChangedEvent titleEvt)
+                {
+                    if (SessionState.CurrentSession != null &&
+                        SessionState.CurrentSession.Id == titleEvt.SessionId)
+                    {
+                        SessionState.CurrentSession.Title = titleEvt.Title;
+                    }
+
+                    await InvokeAsync(StateHasChanged);
                 }
                 else if (evt is SessionUpdatedEvent)
                 {
@@ -1533,6 +1547,52 @@
             ReconcileTimelineFromSession();
             _currentStreamingMessageId = string.Empty;
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// 从 SessionManager 同步最新标题到 UI 状态（同一 SessionData 引用时也可触发重绘）。
+    /// </summary>
+    private async Task SyncTitleFromSessionAsync()
+    {
+        if (SessionState.CurrentSession == null)
+            return;
+
+        var live = SessionManager.Get(SessionState.CurrentSession.Id);
+        if (live == null || string.IsNullOrEmpty(live.Title))
+            return;
+
+        if (!string.Equals(SessionState.CurrentSession.Title, live.Title, StringComparison.Ordinal))
+            SessionState.CurrentSession.Title = live.Title;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 执行结束后短轮询标题变更，覆盖旁路 LLM 晚于 ExecutionComplete 的竞态。
+    /// </summary>
+    private async Task WaitForLateTitleChangeAsync(TimeSpan timeout)
+    {
+        var session = SessionState.CurrentSession;
+        if (session == null)
+            return;
+
+        var titleAtComplete = session.Title ?? string.Empty;
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var live = SessionManager.Get(session.Id);
+            if (live != null &&
+                !string.IsNullOrEmpty(live.Title) &&
+                !string.Equals(live.Title, titleAtComplete, StringComparison.Ordinal))
+            {
+                session.Title = live.Title;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            await Task.Delay(200);
         }
     }
 

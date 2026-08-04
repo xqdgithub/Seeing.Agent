@@ -60,7 +60,7 @@ public sealed class LlmMemoryEvolution : IMemoryEvolutionService
                 PromptTemplates.EvolutionSystem,
                 bundle,
                 opts.Extraction.Model,
-                ct);
+                ct: ct);
 
             if (string.IsNullOrWhiteSpace(text))
             {

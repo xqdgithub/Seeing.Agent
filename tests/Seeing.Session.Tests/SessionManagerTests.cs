@@ -337,6 +337,29 @@ namespace Seeing.Session.Tests
             await managerWithoutStore.SaveAsync(created.Id);
         }
 
+        [Fact]
+        public async Task SetTitleAsync_ShouldPublishUpdatedEvent()
+        {
+            // Arrange
+            var eventPublisher = new SessionEventPublisher();
+            var received = new List<SessionEvent>();
+            using var subscription = eventPublisher.Events.Subscribe(
+                new ActionObserver<SessionEvent>(received.Add));
+            var manager = new SessionManager(
+                eventPublisher: eventPublisher,
+                logger: new NullLogger<SessionManager>());
+            var session = manager.Create();
+
+            // Act
+            await manager.SetTitleAsync(session.Id, "新标题");
+
+            // Assert
+            received.Should().ContainSingle(e =>
+                e.SessionId == session.Id &&
+                e.Type == SessionEventType.Updated &&
+                ReferenceEquals(e.Data, session));
+        }
+
         // === LoadAsync 测试 ===
 
         [Fact]

@@ -16,7 +16,7 @@ public class LlmMemoryExtractorTests
     public async Task ExtractAsync_WhenImportanceBelowThreshold_ShouldReturnNull()
     {
         var completion = new Mock<ITextCompletion>();
-        completion.Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        completion.Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("""{"title":"t","content":"c","importance":0.2,"tags":[],"kind":"fact"}""");
 
         var extractor = new LlmMemoryExtractor(
@@ -38,7 +38,7 @@ public class LlmMemoryExtractorTests
     public async Task ExtractAsync_WhenLlmThrows_ShouldReturnNull()
     {
         var completion = new Mock<ITextCompletion>();
-        completion.Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        completion.Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("boom"));
 
         var extractor = new LlmMemoryExtractor(
@@ -60,7 +60,7 @@ public class LlmMemoryExtractorTests
     public async Task ExtractAsync_WhenValid_ShouldReturnResult()
     {
         var completion = new Mock<ITextCompletion>();
-        completion.Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        completion.Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("""{"title":"DB","content":"User prefers PostgreSQL","importance":0.9,"tags":["db"],"kind":"preference"}""");
 
         var extractor = new LlmMemoryExtractor(

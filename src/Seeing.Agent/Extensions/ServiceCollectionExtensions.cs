@@ -619,28 +619,9 @@ namespace Seeing.Agent.Extensions
             // Agent 执行路由（Native 默认实现，ACP 包可替换 Composite 路由）
             services.AddSingleton<IAgentExecutionRouter, NativeAgentExecutionRouter>();
 
-            // 标题生成服务（实现 IHookHandler，自动注册到 HookManager）
-            services.AddSingleton<Seeing.Agent.Services.TitleGenerationService>(sp =>
-            {
-                var agentExecutor = sp.GetRequiredService<AgentExecutor>();
-                var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
-                var sessionManager = sp.GetRequiredService<Seeing.Session.Core.ISessionManager>();
-                var logger = sp.GetService<ILogger<Seeing.Agent.Services.TitleGenerationService>>();
-
-                var service = new Seeing.Agent.Services.TitleGenerationService(
-                    agentExecutor,
-                    agentRegistry,
-                    sessionManager,
-                    logger);
-
-                // 自动注册到 HookManager
-                var hookManager = sp.GetRequiredService<Seeing.Agent.Core.Hooks.HookManager>();
-                hookManager.Register(service);
-
-                return service;
-            });
-            services.AddSingleton<Seeing.Session.Management.ITitleGenerationService>(sp =>
-                sp.GetRequiredService<Seeing.Agent.Services.TitleGenerationService>());
+            services.AddSingleton<
+                Seeing.Agent.Services.ISessionTitleEnsuring,
+                Seeing.Agent.Services.SessionTitleEnsuring>();
 
             // Shell 环境服务（触发 shell.env Hook）
             services.AddSingleton<IShellEnvironmentService, ShellEnvironmentService>();

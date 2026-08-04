@@ -41,7 +41,7 @@ public sealed class LlmMemoryExtractor : IMemoryExtractor
                 PromptTemplates.ExtractionSystem,
                 user,
                 extraction.Model,
-                ct);
+                ct: ct);
 
             if (string.IsNullOrWhiteSpace(text))
                 return null;

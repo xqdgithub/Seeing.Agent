@@ -19,6 +19,9 @@ public enum AppEventType
     
     /// <summary>Skill 内容展开</summary>
     SkillContent = 1003,
+
+    /// <summary>Session 标题变更</summary>
+    SessionTitleChanged = 1004,
 }
 
 /// <summary>
@@ -33,6 +36,20 @@ public record SessionUpdatedEvent : IMessageEvent
     
     /// <summary>更新后的 Session 数据</summary>
     public required SessionData Session { get; init; }
+}
+
+/// <summary>
+/// Session 标题变更事件 - 标题自动生成完成时发出
+/// </summary>
+public record SessionTitleChangedEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public MessageEventType Type => (MessageEventType)AppEventType.SessionTitleChanged;
+
+    /// <summary>更新后的标题</summary>
+    public required string Title { get; init; }
 }
 
 /// <summary>

@@ -74,6 +74,24 @@ namespace Seeing.Agent.Configuration
 
         /// <summary>Token 预算全局配置</summary>
         public TokenBudgetOptions TokenBudget { get; set; } = new();
+
+        /// <summary>会话标题自动生成配置</summary>
+        public TitleGenerationOptions TitleGeneration { get; set; } = new();
+    }
+
+    /// <summary>
+    /// 会话标题自动生成选项
+    /// </summary>
+    public sealed class TitleGenerationOptions
+    {
+        /// <summary>是否启用自动生成</summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>标题生成专用模型（可选，未设置时使用 fallback）</summary>
+        public string? Model { get; set; }
+
+        /// <summary>LLM 调用超时（秒）</summary>
+        public int TimeoutSeconds { get; set; } = 60;
     }
 
     /// <summary>

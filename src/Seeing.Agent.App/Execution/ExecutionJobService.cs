@@ -18,6 +18,7 @@ using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Services;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 
@@ -342,6 +343,22 @@ public class ExecutionJobService : IDisposable
             var context = await BuildExecutionContextAsync(
                 session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider);
 
+            // 首条用户消息旁路生成标题（不阻塞主对话）
+            if (record.Options?.SkipUserMessagePersist != true)
+            {
+                var titleSource = ResolveTitleSourceText(record.Input);
+                if (!string.IsNullOrWhiteSpace(titleSource))
+                {
+                    var titleEnsuring = scope.ServiceProvider.GetRequiredService<ISessionTitleEnsuring>();
+                    var fallbackModel = context.RequestModelId ?? session.SelectedModel;
+                    _ = EnsureTitleFireAndForgetAsync(
+                        titleEnsuring,
+                        record.SessionId,
+                        titleSource,
+                        fallbackModel);
+                }
+            }
+
             // Process command if applicable
             var inputText = record.Input?.Text;
             if (inputText != null && inputText.StartsWith('/') && inputText.Length > 1 && !inputText.StartsWith("//"))
@@ -643,6 +660,52 @@ public class ExecutionJobService : IDisposable
 
         session.SelectedAcpMode = trimmed;
         return true;
+    }
+
+    /// <summary>
+    /// 从输入提取用于标题生成的文本（优先 Text，否则拼接文本 Parts）。
+    /// </summary>
+    private static string? ResolveTitleSourceText(ChatInput? input)
+    {
+        if (input == null)
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(input.Text))
+            return input.Text;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Fire-and-forget 标题确保；独立于主执行取消。
+    /// </summary>
+    private async Task EnsureTitleFireAndForgetAsync(
+        ISessionTitleEnsuring ensuring,
+        string sessionId,
+        string userText,
+        string? fallbackModel)
+    {
+        try
+        {
+            var title = await ensuring.TryEnsureAsync(
+                sessionId,
+                userText,
+                fallbackModel,
+                CancellationToken.None);
+
+            if (!string.IsNullOrEmpty(title))
+            {
+                _eventPublisher.Publish(sessionId, new SessionTitleChangedEvent
+                {
+                    SessionId = sessionId,
+                    Title = title
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Title ensure failed: {SessionId}", sessionId);
+        }
     }
 
     /// <summary>

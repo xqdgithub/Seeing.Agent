@@ -90,7 +90,9 @@
                         <Card Size="@CardSize.Small" Hoverable="true" Class="session-card">
                             <div Class="session-card-content">
                                 <div Class="session-card-header">
-                                    <span Class="session-title">@session.Title</span>
+                                    <Tooltip Title="@session.Title">
+                                        <span Class="session-title">@session.Title</span>
+                                    </Tooltip>
                                     <Tag Color="@TagColor.Blue">@session.SelectedAgent</Tag>
                                 </div>
                                 <div Class="session-card-meta">

@@ -177,13 +177,13 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task RenameSessionAsync(string sessionId, string newTitle, CancellationToken cancellationToken = default)
     {
-        var session = await _sessionManager.LoadAsync(sessionId);
-        if (session != null)
-        {
-            session.Title = newTitle;
-            await _sessionManager.SaveAsync(sessionId);
-            _logger.LogInformation("Renamed session: {SessionId} -> {NewTitle}", sessionId, newTitle);
-        }
+        var session = _sessionManager.Get(sessionId) ?? await _sessionManager.LoadAsync(sessionId);
+        if (session == null)
+            return;
+
+        // 统一走 SetTitleAsync，保证 SessionEvent / 持久化路径一致
+        await _sessionManager.SetTitleAsync(sessionId, newTitle, cancellationToken);
+        _logger.LogInformation("Renamed session: {SessionId} -> {NewTitle}", sessionId, newTitle);
     }
 
     /// <inheritdoc/>

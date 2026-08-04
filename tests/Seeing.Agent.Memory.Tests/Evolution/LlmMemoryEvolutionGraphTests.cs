@@ -68,7 +68,7 @@ public class LlmMemoryEvolutionGraphTests : IDisposable
             }
             """;
         completion.Setup(c => c.CompleteAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(evolutionJson);
 
         var options = Options.Create(new MemoryOptions());

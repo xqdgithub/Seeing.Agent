@@ -23,10 +23,13 @@ public sealed class TextCompletionService : ITextCompletion
         _logger = logger;
     }
 
+    public const int DefaultMaxTokens = 64;
+
     public async Task<string> CompleteAsync(
         string systemPrompt,
-        string userPrompt,
+        List<ChatMessage> messages,
         string? model = null,
+        int? maxTokens = null,
         CancellationToken ct = default)
     {
         var modelId = model ?? _options.CurrentValue.DefaultModel;
@@ -38,11 +41,8 @@ public sealed class TextCompletionService : ITextCompletion
             Model = modelId,
             SystemPrompt = systemPrompt,
             Temperature = 0,
-            MaxTokens = 2048,
-            Messages =
-            {
-                new ChatMessage { Role = ChatRole.User, Content = userPrompt }
-            }
+            MaxTokens = maxTokens is > 0 ? maxTokens.Value : DefaultMaxTokens,
+            Messages = messages
         };
 
         var response = await _llm.CompleteAsync(modelId, request, ct).ConfigureAwait(false);
@@ -50,5 +50,10 @@ public sealed class TextCompletionService : ITextCompletion
         if (string.IsNullOrEmpty(text))
             _logger?.LogDebug("ITextCompletion returned empty content for model {Model}", modelId);
         return text;
+    }
+
+    public Task<string> CompleteAsync(string systemPrompt, string userPrompt, string? model = null, int? maxTokens = null, CancellationToken ct = default)
+    {
+        throw new NotImplementedException();
     }
 }

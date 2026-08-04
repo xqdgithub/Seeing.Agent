@@ -44,7 +44,27 @@ public class TextCompletionServiceTests
         var text = await svc.CompleteAsync("sys", "user");
         text.Should().Be("hello");
         llm.Verify(x => x.CompleteAsync("m1", It.Is<ChatRequest>(r =>
-            r.SystemPrompt == "sys" && r.Messages[0].Content == "user"), It.IsAny<CancellationToken>()), Times.Once);
+            r.SystemPrompt == "sys" &&
+            r.Messages[0].Content == "user" &&
+            r.MaxTokens == TextCompletionService.DefaultMaxTokens), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_ShouldPassExplicitMaxTokens()
+    {
+        var llm = new Mock<ILlmService>();
+        llm.Setup(x => x.CompleteAsync("m1", It.IsAny<ChatRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatResponse
+            {
+                Message = new ChatMessage { Role = ChatRole.Assistant, Content = "短" }
+            });
+
+        var options = new SeeingAgentOptions { DefaultModel = "m1" };
+        var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
+        var svc = new TextCompletionService(llm.Object, optionsMonitor);
+
+        await svc.CompleteAsync("sys", "user", model: "m1", maxTokens: 32);
+        llm.Verify(x => x.CompleteAsync("m1", It.Is<ChatRequest>(r => r.MaxTokens == 32), It.IsAny<CancellationToken>()), Times.Once);
     }
 }
 

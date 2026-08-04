@@ -6,11 +6,32 @@ namespace Seeing.Agent.Llm;
 public interface ITextCompletion
 {
     /// <summary>
-    /// 完成一次文本补全。model 为空时使用配置的 DefaultModel。
+    /// 完成一次文本补全。
     /// </summary>
+    /// <param name="systemPrompt">系统提示</param>
+    /// <param name="userPrompt">用户提示</param>
+    /// <param name="model">模型 ID；空则使用配置的 DefaultModel</param>
+    /// <param name="maxTokens">生成上限；null 则使用实现默认值（当前 2048）</param>
+    /// <param name="ct">取消令牌</param>
     Task<string> CompleteAsync(
         string systemPrompt,
         string userPrompt,
         string? model = null,
+        int? maxTokens = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 完成一次文本补全。
+    /// </summary>
+    /// <param name="systemPrompt">系统提示</param>
+    /// <param name="messages">用户提示</param>
+    /// <param name="model">模型 ID；空则使用配置的 DefaultModel</param>
+    /// <param name="maxTokens">生成上限；null 则使用实现默认值（当前 2048）</param>
+    /// <param name="ct">取消令牌</param>
+    Task<string> CompleteAsync(
+        string systemPrompt,
+        List<ChatMessage> messages,
+        string? model = null,
+        int? maxTokens = null,
         CancellationToken ct = default);
 }

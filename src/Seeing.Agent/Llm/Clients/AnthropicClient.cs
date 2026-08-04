@@ -341,14 +341,28 @@ public class AnthropicClient : ILlmClient
                 content = BuildContent(msg)
             });
         }
+        List<object> systemInfo = [
+            new {
+            type="text",
+            text= request.SystemPrompt,
+                cache_control =new{
+                    type= "ephemeral"
+                }
+            }
+        ];
 
         return new
         {
             model = request.Model,
             max_tokens = request.MaxTokens ?? 4096,
-            system = request.SystemPrompt,
+            system = systemInfo,
             messages,
             stream,
+            //thinking = new
+            //{
+            //    type = "enabled",
+            //    budget_tokens = 10000
+            //},
             tools = request.Tools?.Select(t => new
             {
                 name = t.Function?.Name,
@@ -466,6 +480,7 @@ public class AnthropicClient : ILlmClient
         };
 
         var textContent = new StringBuilder();
+        var thinkingContent = new StringBuilder();
         var toolCalls = new List<ToolCall>();
 
         foreach (var block in response.Content ?? Array.Empty<AnthropicContentBlock>())
@@ -473,6 +488,10 @@ public class AnthropicClient : ILlmClient
             if (block.Type == "text" && block.Text != null)
             {
                 textContent.Append(block.Text);
+            }
+            else if (block.Type == "thinking" && block.Thinking != null)
+            {
+                thinkingContent.Append(block.Thinking);
             }
             else if (block.Type == "tool_use")
             {
@@ -490,6 +509,10 @@ public class AnthropicClient : ILlmClient
         }
 
         message.Content = textContent.ToString();
+        if (thinkingContent.Length > 0)
+        {
+            message.ReasoningContent = thinkingContent.ToString();
+        }
         if (toolCalls.Count > 0)
             message.ToolCalls = toolCalls;
 
@@ -513,19 +536,34 @@ public class AnthropicClient : ILlmClient
 
     private class AnthropicResponse
     {
+        [JsonPropertyName("id")]
         public string? Id { get; set; }
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
+        [JsonPropertyName("role")]
+        public string? Role { get; set; }
+        [JsonPropertyName("model")]
         public string? Model { get; set; }
+        [JsonPropertyName("content")]
         public AnthropicContentBlock[]? Content { get; set; }
+        [JsonPropertyName("stop_reason")]
         public string? StopReason { get; set; }
         public AnthropicUsage? Usage { get; set; }
     }
 
     private class AnthropicContentBlock
     {
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+        [JsonPropertyName("text")]
         public string? Text { get; set; }
+        [JsonPropertyName("thinking")]
+        public string? Thinking { get; set; }
+        [JsonPropertyName("id")]
         public string? Id { get; set; }
+        [JsonPropertyName("name")]
         public string? Name { get; set; }
+        [JsonPropertyName("input")]
         public object? Input { get; set; }
     }
 
@@ -535,16 +573,27 @@ public class AnthropicClient : ILlmClient
         public int InputTokens { get; set; }
         [JsonPropertyName("output_tokens")]
         public int OutputTokens { get; set; }
+        [JsonPropertyName("cache_creation_input_tokens")]
+        public int CacheCreationInputTokens { get; set; }
+        [JsonPropertyName("cache_read_input_tokens")]
+        public int CacheReadInputTokens { get; set; }
+        [JsonPropertyName("cost")]
+        public long Cost { get; set; }
     }
 
     private class AnthropicStreamEvent
     {
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+        [JsonPropertyName("index")]
         public int? Index { get; set; }
+        [JsonPropertyName("message")]
         public AnthropicMessageInfo? Message { get; set; }
         [JsonPropertyName("content_block")]
         public AnthropicStreamContentBlock? ContentBlock { get; set; }
+        [JsonPropertyName("delta")]
         public AnthropicDelta? Delta { get; set; }
+        [JsonPropertyName("usage")]
         public AnthropicUsage? Usage { get; set; }
         [JsonPropertyName("error")]
         public AnthropicStreamErrorBody? Error { get; set; }
@@ -552,30 +601,41 @@ public class AnthropicClient : ILlmClient
 
     private class AnthropicStreamErrorBody
     {
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+        [JsonPropertyName("message")]
         public string? Message { get; set; }
     }
 
     private class AnthropicStreamContentBlock
     {
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+        [JsonPropertyName("text")]
         public string? Text { get; set; }
+        [JsonPropertyName("id")]
         public string? Id { get; set; }
+        [JsonPropertyName("name")]
         public string? Name { get; set; }
     }
 
     private class AnthropicMessageInfo
     {
+        [JsonPropertyName("id")]
         public string? Id { get; set; }
     }
 
     private class AnthropicDelta
     {
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+        [JsonPropertyName("text")]
         public string? Text { get; set; }
         [JsonPropertyName("partial_json")]
         public string? PartialJson { get; set; }
+        [JsonPropertyName("thinking")]
         public string? Thinking { get; set; }
+        [JsonPropertyName("signature")]
         public string? Signature { get; set; }
     }
 

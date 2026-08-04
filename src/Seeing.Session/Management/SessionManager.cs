@@ -357,7 +357,7 @@ namespace Seeing.Session.Management
 
             session.AddMessage(message);
 
-            // 触发 Updated Hook（TitleGenerationService 通过此 Hook 监听并生成标题）
+            // 触发 Updated Hook
             _hookManager?.TriggerFireAndForget(
                 HookPoints.Updated,
                 session.Id,
@@ -639,6 +639,14 @@ namespace Seeing.Session.Management
                 HookPoints.Updated,
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session, ["title"] = title });
+
+            // 发布 SessionEvent（通知 UI 组件）
+            _eventPublisher?.Publish(new SessionEvent
+            {
+                SessionId = session.Id,
+                Type = SessionEventType.Updated,
+                Data = session
+            });
 
             // 自动保存
             if (_store != null)

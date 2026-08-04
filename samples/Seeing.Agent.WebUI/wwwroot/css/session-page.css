@@ -35,6 +35,12 @@
     font-weight: 600;
     color: var(--color-text);
     margin-left: var(--space-2);
+    max-width: min(40vw, 280px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: bottom;
 }
 
 .session-workspace-badge {
