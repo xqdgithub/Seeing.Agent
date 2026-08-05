@@ -17,6 +17,7 @@
     <ProjectReference Include="../../src/Seeing.Agent.App/Seeing.Agent.App.csproj" />
     <ProjectReference Include="../../src/Seeing.Session/Seeing.Session.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
+    <ProjectReference Include="../../plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
   </ItemGroup>

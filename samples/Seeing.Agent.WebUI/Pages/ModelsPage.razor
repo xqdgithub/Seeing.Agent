@@ -31,7 +31,15 @@
                     <Menu Mode="@MenuMode.Inline" SelectedKeys="@_selectedProviderKeys" OnMenuItemClicked="OnProviderSelected">
                         @foreach (var p in ProviderManager.GetProviders().OrderBy(pair => pair.Key))
                         {
-                            <MenuItem Key="@p.Key">@(p.Value.Name ?? p.Key) (@p.Value.Source)</MenuItem>
+                            <MenuItem Key="@p.Key">
+                                <span style="display: inline-flex; align-items: center; gap: 8px;">
+                                    @(p.Value.Name ?? p.Key)
+                                    @if (p.Value.Source == ProviderSource.Extension)
+                                    {
+                                        <Tag Color="@("blue")" Style="margin: 0; line-height: 18px;">扩展</Tag>
+                                    }
+                                </span>
+                            </MenuItem>
                         }
                     </Menu>
                 </Card>
@@ -79,7 +87,16 @@
                             <Descriptions>
                                 <DescriptionsItem Title="ID">@_currentProviderInfo!.Id</DescriptionsItem>
                                 <DescriptionsItem Title="名称">@(_currentProviderInfo.Name ?? _currentProviderInfo.Id)</DescriptionsItem>
-                                <DescriptionsItem Title="来源">@_currentProviderInfo.Source</DescriptionsItem>
+                                <DescriptionsItem Title="来源">
+                                    @if (_currentProviderInfo.Source == ProviderSource.Extension)
+                                    {
+                                        <Tag Color="@("blue")">扩展</Tag>
+                                    }
+                                    else
+                                    {
+                                        <Tag>配置</Tag>
+                                    }
+                                </DescriptionsItem>
                                 <DescriptionsItem Title="模型数">@_modelRows.Count</DescriptionsItem>
                             </Descriptions>
                             <Alert Type="@AlertType.Info" ShowIcon="true"
@@ -91,17 +108,18 @@
                         {
                             <Divider />
                             <Space>
-                                <Select TItemValue="string" TItem="string"
+                                @* @key：切换 Provider 时强制重建，避免 AntDesign Select 残留上一 Provider 的 Option *@
+                                <Select TItemValue="string"
+                                        TItem="ModelRow"
+                                        @key="@($"test-conn-{_selectedProviderId}")"
+                                        DataSource="@_modelRows"
                                         @bind-Value="_testModelId"
+                                        ValueName="@nameof(ModelRow.Id)"
+                                        LabelName="@nameof(ModelRow.Id)"
                                         Style="width: 240px;"
                                         Placeholder="选择测试模型"
-                                        Disabled="@(_modelRows.Count == 0)">
-                                    @foreach (var m in _modelRows)
-                                    {
-                                        <SelectOption TItemValue="string" TItem="string"
-                                                      Value="@m.Id" Label="@m.Id" />
-                                    }
-                                </Select>
+                                        Disabled="@(_modelRows.Count == 0)"
+                                        AllowClear />
                                 <Button Loading="@_testing" OnClick="TestConnection"
                                         Disabled="@(string.IsNullOrEmpty(_testModelId))">
                                     测试连接
@@ -326,7 +344,6 @@
         }
 
         RefreshModelRows();
-        _testModelId = _modelRows.Count > 0 ? _modelRows[0].Id : "";
     }
 
     private void RefreshModelRows()
@@ -347,6 +364,12 @@
                 };
             })
             .ToList();
+
+        // 当前选中测试模型若不在本 Provider 列表中，回落到首项或清空
+        if (_modelRows.Count == 0)
+            _testModelId = "";
+        else if (_modelRows.All(m => m.Id != _testModelId))
+            _testModelId = _modelRows[0].Id;
     }
 
     private async Task SaveProviderConfigAsync()

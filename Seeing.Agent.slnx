@@ -7,6 +7,9 @@
     <Project Path="samples/Seeing.Gateway.Server/Seeing.Gateway.Server.csproj" />
     <Project Path="samples/Seeing.Gateway.WeCom.Demo/Seeing.Gateway.WeCom.Demo.csproj" />
   </Folder>
+  <Folder Name="/plugs/providers/">
+    <Project Path="plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
     <Project Path="src/Seeing.Agent.App/Seeing.Agent.App.csproj" />
@@ -29,6 +32,7 @@
     <Project Path="tests/Seeing.Agent.Acp.Tests/Seeing.Agent.Acp.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
+    <Project Path="tests/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj">
       <Build Solution="Debug|*" Project="false" />

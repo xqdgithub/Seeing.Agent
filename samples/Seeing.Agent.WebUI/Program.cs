@@ -15,6 +15,7 @@ using Seeing.Session.Compression;
 using Seeing.Session.Compression.Strategies;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Extensions;
+using Seeing.Provider.DeepSeek;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,6 +46,7 @@ builder.Services.AddGatewayChannelRegistry();
 
 // === Memory 服务（混合检索、图谱、成本控制）===
 builder.Services.AddMemoryServices();
+builder.Services.AddDeepSeekProvider();
 
 // === Session 管理：由 AddSeeingAgent 统一注册 ISessionStore + SessionManager + ISessionManager + ISessionEventPublisher ===
 // 勿再调用 AddSessionManager() / 重复注册 ISessionEventPublisher，避免双实例分裂
