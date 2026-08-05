@@ -343,7 +343,7 @@ public class ExecutionJobService : IDisposable
             var context = await BuildExecutionContextAsync(
                 session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider);
 
-            // 首条用户消息旁路生成标题（不阻塞主对话）
+            // 旁路生成标题（不阻塞主对话）
             if (record.Options?.SkipUserMessagePersist != true)
             {
                 var titleSource = ResolveTitleSourceText(record.Input);
@@ -704,7 +704,7 @@ public class ExecutionJobService : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Title ensure failed: {SessionId}", sessionId);
+            _logger.LogWarning(ex, "Title ensure failed: SessionId={SessionId}", sessionId);
         }
     }
 

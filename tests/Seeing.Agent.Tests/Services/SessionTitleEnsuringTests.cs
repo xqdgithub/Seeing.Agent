@@ -38,7 +38,7 @@ namespace Seeing.Agent.Tests.Services
         }
 
         [Fact]
-        public void ShouldEnsure_false_when_disabled_or_fork_or_not_default_or_count_not_1()
+        public void ShouldEnsure_false_when_disabled_or_fork_or_subagent()
         {
             SessionTitleEnsuring.ShouldEnsure(
                 enabled: false, kind: SessionKind.Root, parentId: null,
@@ -51,18 +51,22 @@ namespace Seeing.Agent.Tests.Services
             SessionTitleEnsuring.ShouldEnsure(
                 enabled: true, kind: SessionKind.SubAgent, parentId: null,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeFalse();
+        }
 
-            SessionTitleEnsuring.ShouldEnsure(
-                enabled: true, kind: SessionKind.Root, parentId: null,
-                title: "已有标题", realUserCount: 1, userMessage: "hi").Should().BeFalse();
-
-            SessionTitleEnsuring.ShouldEnsure(
-                enabled: true, kind: SessionKind.Root, parentId: null,
-                title: "新会话", realUserCount: 2, userMessage: "hi").Should().BeFalse();
-
+        [Fact]
+        public void ShouldEnsure_true_for_default_title_under_10_or_every_10th()
+        {
             SessionTitleEnsuring.ShouldEnsure(
                 enabled: true, kind: SessionKind.Root, parentId: null,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeTrue();
+
+            SessionTitleEnsuring.ShouldEnsure(
+                enabled: true, kind: SessionKind.Root, parentId: null,
+                title: "新会话", realUserCount: 2, userMessage: "hi").Should().BeTrue();
+
+            SessionTitleEnsuring.ShouldEnsure(
+                enabled: true, kind: SessionKind.Root, parentId: null,
+                title: "已有标题", realUserCount: 10, userMessage: "hi").Should().BeTrue();
         }
 
         [Theory]
@@ -74,6 +78,39 @@ namespace Seeing.Agent.Tests.Services
             SessionTitleEnsuring.ShouldEnsure(
                 enabled: true, kind: SessionKind.Root, parentId: null,
                 title: "新会话", realUserCount: 1, userMessage: userMessage).Should().BeFalse();
+        }
+
+        [Fact]
+        public void BuildTitleHistory_merges_consecutive_users_and_skips_tool()
+        {
+            var session = SessionData.Create();
+            session.Messages.Add(
+                SessionMessage.UserMessage("<project-instructions>")
+                    .WithMetadata(ProjectInstructions.MetadataKeys.ProjectInstructions, true));
+            session.Messages.Add(SessionMessage.UserMessage("implement rate limiting"));
+            session.Messages.Add(SessionMessage.AssistantMessage("ok"));
+            session.Messages.Add(new SessionMessage
+            {
+                Role = "tool",
+                Content = "tool output",
+                ToolCallId = "t1"
+            });
+
+            var history = SessionTitleEnsuring.BuildTitleHistory(session);
+            history.Should().HaveCount(2);
+            history[0].Role.Should().Be(ChatRole.User);
+            history[0].Content.Should().Contain("<project-instructions>");
+            history[0].Content.Should().Contain("implement rate limiting");
+            history[1].Role.Should().Be(ChatRole.Assistant);
+            history[1].Content.Should().Be("ok");
+        }
+
+        [Fact]
+        public void ShouldWriteTitle_allows_refresh_every_10()
+        {
+            SessionTitleEnsuring.ShouldWriteTitle("新会话", 1).Should().BeTrue();
+            SessionTitleEnsuring.ShouldWriteTitle("已有标题", 1).Should().BeFalse();
+            SessionTitleEnsuring.ShouldWriteTitle("已有标题", 10).Should().BeTrue();
         }
 
         [Fact]
@@ -93,7 +130,7 @@ namespace Seeing.Agent.Tests.Services
             var text = new Mock<ITextCompletion>();
             text.Setup(x => x.CompleteAsync(
                     It.IsAny<string>(),
-                    It.IsAny<string>(),
+                    It.IsAny<List<ChatMessage>>(),
                     It.IsAny<string?>(),
                     It.IsAny<int?>(),
                     It.IsAny<CancellationToken>()))
@@ -109,9 +146,9 @@ namespace Seeing.Agent.Tests.Services
             session.Title.Should().Be("调试生产500错误");
             text.Verify(x => x.CompleteAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>(),
                 It.IsAny<string?>(),
-                32,
+                4096,
                 It.IsAny<CancellationToken>()), Times.Once);
         }
 
@@ -129,7 +166,7 @@ namespace Seeing.Agent.Tests.Services
             var text = new Mock<ITextCompletion>();
             text.Setup(x => x.CompleteAsync(
                     It.IsAny<string>(),
-                    It.IsAny<string>(),
+                    It.IsAny<List<ChatMessage>>(),
                     It.IsAny<string?>(),
                     It.IsAny<int?>(),
                     It.IsAny<CancellationToken>()))
@@ -184,7 +221,7 @@ namespace Seeing.Agent.Tests.Services
             var text = new Mock<ITextCompletion>();
             text.Setup(x => x.CompleteAsync(
                     It.IsAny<string>(),
-                    It.IsAny<string>(),
+                    It.IsAny<List<ChatMessage>>(),
                     It.IsAny<string?>(),
                     It.IsAny<int?>(),
                     It.IsAny<CancellationToken>()))
@@ -198,6 +235,40 @@ namespace Seeing.Agent.Tests.Services
 
             title.Should().Be("实现限流");
             session.Title.Should().Be("实现限流");
+        }
+
+        [Fact]
+        public async Task TryEnsureAsync_overwrites_on_every_10th_user_message()
+        {
+            var session = SessionData.Create();
+            session.Title = "旧标题";
+            session.Kind = SessionKind.Root;
+            for (var i = 0; i < 10; i++)
+                session.Messages.Add(SessionMessage.UserMessage($"msg-{i}"));
+
+            var sm = new Mock<ISessionManager>();
+            sm.Setup(x => x.Get(session.Id)).Returns(session);
+            sm.Setup(x => x.SetTitleAsync(session.Id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask)
+                .Callback<string, string, CancellationToken>((_, t, _) => session.Title = t);
+
+            var text = new Mock<ITextCompletion>();
+            text.Setup(x => x.CompleteAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<List<ChatMessage>>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync("新主题标题");
+
+            var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
+            opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
+
+            var svc = new SessionTitleEnsuring(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleEnsuring>.Instance);
+            var title = await svc.TryEnsureAsync(session.Id, "msg-9", "provider/model");
+
+            title.Should().Be("新主题标题");
+            session.Title.Should().Be("新主题标题");
         }
     }
 }

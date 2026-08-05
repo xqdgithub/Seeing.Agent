@@ -26,10 +26,10 @@ public class TextCompletionServiceTests
     }
 
     [Fact]
-    public async Task CompleteAsync_ShouldDelegateToLlmService()
+    public async Task CompleteAsync_ShouldUseCompleteRawAsync_WithoutHooks()
     {
-        var llm = new Mock<ILlmService>();
-        llm.Setup(x => x.CompleteAsync("m1", It.IsAny<ChatRequest>(), It.IsAny<CancellationToken>()))
+        var llm = new Mock<ILlmService>(MockBehavior.Strict);
+        llm.Setup(x => x.CompleteRawAsync("m1", It.IsAny<ChatRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ChatResponse
             {
                 Message = new ChatMessage { Role = ChatRole.Assistant, Content = "  hello  " }
@@ -37,23 +37,23 @@ public class TextCompletionServiceTests
 
         var options = new SeeingAgentOptions { DefaultModel = "m1" };
         var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
-        var svc = new TextCompletionService(
-            llm.Object,
-            optionsMonitor);
+        var svc = new TextCompletionService(llm.Object, optionsMonitor);
 
         var text = await svc.CompleteAsync("sys", "user");
         text.Should().Be("hello");
-        llm.Verify(x => x.CompleteAsync("m1", It.Is<ChatRequest>(r =>
+        llm.Verify(x => x.CompleteRawAsync("m1", It.Is<ChatRequest>(r =>
             r.SystemPrompt == "sys" &&
             r.Messages[0].Content == "user" &&
             r.MaxTokens == TextCompletionService.DefaultMaxTokens), It.IsAny<CancellationToken>()), Times.Once);
+        llm.Verify(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        llm.Verify(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task CompleteAsync_ShouldPassExplicitMaxTokens()
     {
-        var llm = new Mock<ILlmService>();
-        llm.Setup(x => x.CompleteAsync("m1", It.IsAny<ChatRequest>(), It.IsAny<CancellationToken>()))
+        var llm = new Mock<ILlmService>(MockBehavior.Strict);
+        llm.Setup(x => x.CompleteRawAsync("m1", It.IsAny<ChatRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ChatResponse
             {
                 Message = new ChatMessage { Role = ChatRole.Assistant, Content = "短" }
@@ -64,7 +64,33 @@ public class TextCompletionServiceTests
         var svc = new TextCompletionService(llm.Object, optionsMonitor);
 
         await svc.CompleteAsync("sys", "user", model: "m1", maxTokens: 32);
-        llm.Verify(x => x.CompleteAsync("m1", It.Is<ChatRequest>(r => r.MaxTokens == 32), It.IsAny<CancellationToken>()), Times.Once);
+        llm.Verify(x => x.CompleteRawAsync("m1", It.Is<ChatRequest>(r => r.MaxTokens == 32), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_WithMessages_ShouldPassHistory()
+    {
+        var llm = new Mock<ILlmService>(MockBehavior.Strict);
+        llm.Setup(x => x.CompleteRawAsync("m1", It.IsAny<ChatRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatResponse
+            {
+                Message = new ChatMessage { Role = ChatRole.Assistant, Content = "标题" }
+            });
+
+        var options = new SeeingAgentOptions { DefaultModel = "m1" };
+        var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
+        var svc = new TextCompletionService(llm.Object, optionsMonitor);
+
+        var messages = new List<ChatMessage>
+        {
+            new() { Role = ChatRole.User, Content = "hello" }
+        };
+        var text = await svc.CompleteAsync("sys", messages, model: "m1", maxTokens: 32);
+        text.Should().Be("标题");
+        llm.Verify(x => x.CompleteRawAsync(
+            "m1",
+            It.Is<ChatRequest>(r => r.Messages.Count == 1 && r.MaxTokens == 32),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }
 

@@ -16,6 +16,7 @@ namespace Seeing.Agent.Services
         private const string DefaultTitlePrefix = "Session ";
         private const string SyntheticMetadataKey = "synthetic";
         private const int TitleMaxLength = 15;
+        /// <summary>需覆盖 thinking 模型的 reasoning 占用，过小会导致 Content 为空。</summary>
         private const int TitleMaxTokens = 4096;
 
         private readonly ITextCompletion _text;
@@ -92,16 +93,22 @@ namespace Seeing.Agent.Services
             if (kind != SessionKind.Root)
                 return false;
 
-            if(realUserCount <10 && IsDefaultTitle(title))
+            if (realUserCount < 10 && IsDefaultTitle(title))
             {
                 return true;
             }
-            if (realUserCount % 10== 0)
-                return true;
 
+            if (realUserCount % 10 == 0)
+                return true;
 
             return true;
         }
+
+        /// <summary>
+        /// 默认标题可写；每 10 条意图消息允许覆盖已有标题（后续刷新）。
+        /// </summary>
+        internal static bool ShouldWriteTitle(string currentTitle, int realUserCount)
+            => IsDefaultTitle(currentTitle) || realUserCount % 10 == 0;
 
         internal static string CleanTitle(string rawTitle)
         {
@@ -141,7 +148,10 @@ namespace Seeing.Agent.Services
 
                 var session = _sessionManager.Get(sessionId);
                 if (session == null)
+                {
+                    _logger.LogWarning("TitleEnsure: session missing. SessionId={SessionId}", sessionId);
                     return null;
+                }
 
                 var realUserCount = CountIntentionalUserMessages(session.Messages);
 
@@ -160,9 +170,16 @@ namespace Seeing.Agent.Services
                 if (string.IsNullOrWhiteSpace(model))
                 {
                     _logger.LogWarning(
-                        "无法生成会话标题，未配置模型: SessionId={SessionId}",
-                        sessionId);
+                        "TitleEnsure: no model. SessionId={SessionId}, Fallback={Fallback}",
+                        sessionId,
+                        fallbackModelId);
                     return null;
+                }
+
+                var history = BuildTitleHistory(session);
+                if (history.Count == 0)
+                {
+                    history.Add(new ChatMessage { Role = ChatRole.User, Content = userMessage });
                 }
 
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -173,7 +190,7 @@ namespace Seeing.Agent.Services
                 {
                     rawTitle = await _text.CompleteAsync(
                         TitlePrompts.System,
-                        BuildHistoryFromSession(session),
+                        history,
                         model,
                         TitleMaxTokens,
                         cts.Token);
@@ -182,81 +199,92 @@ namespace Seeing.Agent.Services
                 {
                     _logger.LogWarning(
                         ex,
-                        "会话标题补全失败: SessionId={SessionId}",
-                        sessionId);
+                        "TitleEnsure LLM failed: SessionId={SessionId}, Model={Model}",
+                        sessionId,
+                        model);
                     return null;
                 }
 
                 var cleaned = CleanTitle(rawTitle);
                 if (string.IsNullOrWhiteSpace(cleaned))
+                {
+                    _logger.LogWarning(
+                        "TitleEnsure: empty title after clean. SessionId={SessionId}, RawLen={RawLen}",
+                        sessionId,
+                        rawTitle?.Length ?? 0);
                     return null;
+                }
 
                 var current = _sessionManager.Get(sessionId);
-                if (current == null || !IsDefaultTitle(current.Title))
+                if (current == null)
+                    return null;
+
+                if (!ShouldWriteTitle(current.Title, realUserCount))
                     return null;
 
                 await _sessionManager.SetTitleAsync(sessionId, cleaned, cancellationToken);
+                _logger.LogInformation(
+                    "TitleEnsure wrote: SessionId={SessionId}, Title={Title}",
+                    sessionId,
+                    cleaned);
                 return cleaned;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(
-                    ex,
-                    "确保会话标题失败: SessionId={SessionId}",
-                    sessionId);
+                _logger.LogWarning(ex, "TitleEnsure failed: SessionId={SessionId}", sessionId);
                 return null;
             }
         }
 
         /// <summary>
-        /// Builds history from session.
+        /// 为标题补全构建会话上下文：保留全文语义，但去掉 tool 轨迹并合并连续同角色，避免 Provider 校验失败。
         /// </summary>
-        private static List<ChatMessage> BuildHistoryFromSession(SessionData session)
+        internal static List<ChatMessage> BuildTitleHistory(SessionData session)
         {
             var history = new List<ChatMessage>();
 
             foreach (var msg in session.Messages)
             {
-                var chatMessage = new ChatMessage
-                {
-                    Role = msg.Role,
-                    Content = msg.Content,
-                    ReasoningContent = msg.ReasoningContent
-                };
+                if (msg.Role.Equals(ChatRole.Tool, StringComparison.OrdinalIgnoreCase) ||
+                    msg.Role.Equals("tool", StringComparison.OrdinalIgnoreCase))
+                    continue;
 
-                if (msg.Parts != null && msg.Parts.Count > 0)
+                var content = ExtractTextContent(msg);
+                if (string.IsNullOrWhiteSpace(content))
+                    continue;
+
+                var role = string.IsNullOrWhiteSpace(msg.Role) ? ChatRole.User : msg.Role;
+                if (history.Count > 0 &&
+                    history[^1].Role.Equals(role, StringComparison.OrdinalIgnoreCase))
                 {
-                    chatMessage.Parts = msg.Parts.Select(p => new ChatContentPart
-                    {
-                        Type = p.Type,
-                        Text = p.Text,
-                        Url = p.Url,
-                        DataBase64 = p.DataBase64,
-                        MimeType = p.MimeType,
-                        FileName = p.FileName
-                    }).ToList();
+                    history[^1].Content = $"{history[^1].Content}\n{content}";
+                    continue;
                 }
 
-                if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
+                history.Add(new ChatMessage
                 {
-                    chatMessage.ToolCalls = msg.ToolCalls.Select(tc => new ToolCall
-                    {
-                        Id = tc.Id,
-                        Type = tc.Type,
-                        Function = new FunctionCall
-                        {
-                            Name = tc.Name,
-                            Arguments = tc.Arguments
-                        }
-                    }).ToList();
-                }
-
-                history.Add(chatMessage);
+                    Role = role,
+                    Content = content
+                });
             }
 
             return history;
         }
 
+        private static string ExtractTextContent(SessionMessage msg)
+        {
+            if (!string.IsNullOrWhiteSpace(msg.Content))
+                return msg.Content;
 
+            if (msg.Parts is { Count: > 0 })
+            {
+                var parts = msg.Parts
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Text))
+                    .Select(p => p.Text!);
+                return string.Join("\n", parts);
+            }
+
+            return string.Empty;
+        }
     }
 }

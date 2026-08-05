@@ -145,6 +145,10 @@ public class ChatOrchestrator : IChatOrchestrator
         {
             session.Title = title;
         }
+        else
+        {
+            session.Title = "新会话";
+        }
 
         if (!string.IsNullOrEmpty(workingDirectory))
         {

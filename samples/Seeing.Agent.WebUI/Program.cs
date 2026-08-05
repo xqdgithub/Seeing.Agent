@@ -46,9 +46,8 @@ builder.Services.AddGatewayChannelRegistry();
 // === Memory 服务（混合检索、图谱、成本控制）===
 builder.Services.AddMemoryServices();
 
-// === Session 管理：由 AddSeeingAgent 统一注册 ISessionStore + SessionManager + ISessionManager ===
-// 勿再调用 AddSessionManager()，避免接口/具体类型双实例分裂
-builder.Services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
+// === Session 管理：由 AddSeeingAgent 统一注册 ISessionStore + SessionManager + ISessionManager + ISessionEventPublisher ===
+// 勿再调用 AddSessionManager() / 重复注册 ISessionEventPublisher，避免双实例分裂
 
 // === WebUI 服务 ===
 builder.Services.AddScoped<BlazorPermissionChannel>();

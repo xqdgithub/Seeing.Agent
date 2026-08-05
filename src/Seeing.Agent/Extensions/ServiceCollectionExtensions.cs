@@ -380,19 +380,20 @@ namespace Seeing.Agent.Extensions
                 });
             }
 
+            // 会话事件发布器（SessionManager / UI 必须共用同一实例）
+            services.TryAddSingleton<ISessionEventPublisher, SessionEventPublisher>();
+
+            // SessionManager 必须在 ISessionEventPublisher 注册之后，工厂解析时才能注入非 null publisher
             services.AddSingleton<SessionManager>(sp =>
                 new SessionManager(
                     store: sp.GetRequiredService<ISessionStore>(),
                     compressor: sp.GetService<Seeing.Session.Compression.ICompressionStrategy>(),
                     hookManager: sp.GetService<Seeing.Session.Hooks.IHookManager>(),
-                    eventPublisher: sp.GetService<ISessionEventPublisher>(),
+                    eventPublisher: sp.GetRequiredService<ISessionEventPublisher>(),
                     logger: sp.GetService<ILogger<SessionManager>>(),
                     globalStore: sp.GetService<GlobalSessionStore>()));
             services.AddSingleton<ISessionManager>(sp =>
                 sp.GetRequiredService<SessionManager>());
-
-            // 新增 DI 注册：会话事件发布器
-            services.AddSingleton<ISessionEventPublisher, SessionEventPublisher>();
 
             // 在线技能解析器
             services.AddSingleton<OnlineSkillParserAggregator>();

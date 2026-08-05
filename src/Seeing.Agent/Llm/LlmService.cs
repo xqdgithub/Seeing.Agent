@@ -30,6 +30,11 @@ public interface ILlmService
     /// <summary>发送聊天请求（带 Hook 支持）</summary>
     Task<ChatResponse> CompleteAsync(string modelId, ChatRequest request, string? sessionId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 发送聊天请求（不触发 chat.* / llm.* Hook）。供标题生成、Memory 等旁路补全使用。
+    /// </summary>
+    Task<ChatResponse> CompleteRawAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>发送流式聊天请求</summary>
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
 
@@ -46,7 +51,7 @@ public interface ILlmService
 public class LlmService : ILlmService
 {
     private readonly IProviderManager _providerManager;
-    private readonly IModelConfigManager _modelManager;
+    private readonly IModelManager _modelManager;
     private readonly UnifiedConfigManager _configManager;
     private readonly IHookManager _hookManager;
     private readonly ILogger _logger;
@@ -56,7 +61,7 @@ public class LlmService : ILlmService
     /// </summary>
     public LlmService(
         IProviderManager providerManager,
-        IModelConfigManager modelManager,
+        IModelManager modelManager,
         UnifiedConfigManager configManager,
         IHookManager hookManager,
         ILogger<LlmService> logger)
@@ -93,17 +98,25 @@ public class LlmService : ILlmService
         return await CompleteAsync(modelId, request, sessionId: null, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>发送聊天请求（带 Hook 支持）</summary>
-    public async Task<ChatResponse> CompleteAsync(
+    /// <inheritdoc />
+    public async Task<ChatResponse> CompleteRawAsync(
         string modelId,
         ChatRequest request,
-        string? sessionId,
         CancellationToken cancellationToken = default)
+    {
+        var (client, apiModelId) = PrepareClientRequest(modelId, request);
+        _logger.LogDebug("发送旁路聊天请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
+        return await client.CompleteAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 解析模型配置与客户端，并回写 request.Model / MaxTokens（无 Hook）。
+    /// </summary>
+    private (ILlmClient Client, string ApiModelId) PrepareClientRequest(string modelId, ChatRequest request)
     {
         var modelConfig = _modelManager.GetModel(modelId)
             ?? throw new InvalidOperationException($"未找到模型配置: {modelId}");
 
-        // 应用模型输出限制
         if (request.MaxTokens == null && modelConfig.Limit?.Output > 0)
         {
             request.MaxTokens = modelConfig.Limit.Output;
@@ -115,6 +128,17 @@ public class LlmService : ILlmService
 
         var apiModelId = string.IsNullOrEmpty(modelConfig.Id) ? modelId : modelConfig.Id;
         request.Model = apiModelId;
+        return (client, apiModelId);
+    }
+
+    /// <summary>发送聊天请求（带 Hook 支持）</summary>
+    public async Task<ChatResponse> CompleteAsync(
+        string modelId,
+        ChatRequest request,
+        string? sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var (client, apiModelId) = PrepareClientRequest(modelId, request);
 
         // ========== Hook: chat.before_start ==========
         await _hookManager.TriggerBlockingAsync(

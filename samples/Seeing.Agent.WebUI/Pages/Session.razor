@@ -42,6 +42,7 @@
 @inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
 @inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
 @inject ISessionManager SessionManager
+@inject ISessionEventPublisher SessionEventPublisher
 @inject Seeing.Agent.Core.Background.IBackgroundTaskManager BackgroundTaskManager
 @inject Services.MessageTimelineStore Timeline
 @implements IDisposable
@@ -564,6 +565,9 @@
     private bool _hasRendered;
     private string? _loadedSessionId;
     private IDisposable? _budgetSubscription;
+    private IDisposable? _sessionEventSubscription;
+    /// <summary>上次已渲染到 UI 的标题（与 SessionData 引用就地更新解耦）。</summary>
+    private string? _renderedTitle;
 
     /// <summary>
     /// 组件初始化
@@ -614,6 +618,7 @@
         
         // Subscribe to Budget status updates
         SubscribeToBudgetUpdates();
+        SubscribeToSessionEvents();
     }
 
     private void SubscribeToBudgetUpdates()
@@ -629,6 +634,63 @@
                 _ = InvokeAsync(StateHasChanged);
             });
         }
+    }
+
+    /// <summary>
+    /// 会话级订阅：标题由 SetTitleAsync → SessionEvent.Updated 驱动，与 execution 生命周期解耦。
+    /// </summary>
+    private void SubscribeToSessionEvents()
+    {
+        _sessionEventSubscription?.Dispose();
+        _sessionEventSubscription = SessionEventPublisher.Events.Subscribe(new SessionEventObserver(OnSessionLifecycleEvent));
+    }
+
+    private void OnSessionLifecycleEvent(SessionEvent evt)
+    {
+        if (evt.Type != SessionEventType.Updated)
+            return;
+
+        var current = SessionState.CurrentSession;
+        if (current == null ||
+            !string.Equals(evt.SessionId, current.Id, StringComparison.Ordinal))
+            return;
+
+        var newTitle = evt.Data?.Title;
+        if (string.IsNullOrEmpty(newTitle))
+            newTitle = SessionManager.Get(evt.SessionId)?.Title;
+
+        ApplyTitleToUi(newTitle);
+    }
+
+    /// <summary>
+    /// 将标题同步到 UI。用 _renderedTitle 区分「引用已就地改写」与「需要重绘」。
+    /// </summary>
+    private void ApplyTitleToUi(string? newTitle)
+    {
+        if (string.IsNullOrEmpty(newTitle))
+            return;
+
+        var current = SessionState.CurrentSession;
+        if (current == null)
+            return;
+
+        current.Title = newTitle;
+        if (string.Equals(_renderedTitle, newTitle, StringComparison.Ordinal))
+            return;
+
+        _renderedTitle = newTitle;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private sealed class SessionEventObserver : IObserver<SessionEvent>
+    {
+        private readonly Action<SessionEvent> _onNext;
+
+        public SessionEventObserver(Action<SessionEvent> onNext) => _onNext = onNext;
+
+        public void OnNext(SessionEvent value) => _onNext(value);
+        public void OnError(Exception error) { }
+        public void OnCompleted() { }
     }
 
     /// <summary>
@@ -1189,6 +1251,7 @@
                 else
                 {
                     // 已有当前会话，直接使用
+                    _renderedTitle = SessionState.CurrentSession?.Title;
                     ResetTimelineFromSession();
                     ShowEmptyState = false;
                     SyncSelectorValues();
@@ -1217,6 +1280,7 @@
         if (sessionData != null)
         {
             SessionState.SetSession(sessionData);
+            _renderedTitle = sessionData.Title;
             await EnsureDefaultAgentSelectionAsync();
             
             // 转换消息为 UI 显示用的 MessageViewModel
@@ -1425,15 +1489,15 @@
                 // 检查是否是当前执行的事件
                 if (evt is ExecutionCompleteEvent completeEvt && completeEvt.ExecutionId == executionId)
                 {
+                    // 立即结束执行态；晚到标题由会话级 SessionEvent 订阅更新，不阻塞本循环
                     SessionState.ExecutionStatus = completeEvt.Status;
                     SessionState.CurrentExecutionId = null;
+                    SessionState.CompleteExecution();
                     SyncTimelineAssistantFromStream(isComplete: true);
                     CompleteCurrentTimelineTurn();
                     ReconcileTimelineFromSession();
-                    // 标题生成是旁路任务，可能晚于 Complete：先同步，再短轮询等待变更
                     await SyncTitleFromSessionAsync();
                     await InvokeAsync(StateHasChanged);
-                    await WaitForLateTitleChangeAsync(TimeSpan.FromSeconds(15));
                     break;
                 }
 
@@ -1485,13 +1549,8 @@
                 }
                 else if (evt is SessionTitleChangedEvent titleEvt)
                 {
-                    if (SessionState.CurrentSession != null &&
-                        SessionState.CurrentSession.Id == titleEvt.SessionId)
-                    {
-                        SessionState.CurrentSession.Title = titleEvt.Title;
-                    }
-
-                    await InvokeAsync(StateHasChanged);
+                    if (string.Equals(SessionState.CurrentSession?.Id, titleEvt.SessionId, StringComparison.Ordinal))
+                        ApplyTitleToUi(titleEvt.Title);
                 }
                 else if (evt is SessionUpdatedEvent)
                 {
@@ -1551,49 +1610,16 @@
     }
 
     /// <summary>
-    /// 从 SessionManager 同步最新标题到 UI 状态（同一 SessionData 引用时也可触发重绘）。
+    /// 从 SessionManager 同步最新标题到 UI 状态。
     /// </summary>
-    private async Task SyncTitleFromSessionAsync()
+    private Task SyncTitleFromSessionAsync()
     {
         if (SessionState.CurrentSession == null)
-            return;
+            return Task.CompletedTask;
 
         var live = SessionManager.Get(SessionState.CurrentSession.Id);
-        if (live == null || string.IsNullOrEmpty(live.Title))
-            return;
-
-        if (!string.Equals(SessionState.CurrentSession.Title, live.Title, StringComparison.Ordinal))
-            SessionState.CurrentSession.Title = live.Title;
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    /// <summary>
-    /// 执行结束后短轮询标题变更，覆盖旁路 LLM 晚于 ExecutionComplete 的竞态。
-    /// </summary>
-    private async Task WaitForLateTitleChangeAsync(TimeSpan timeout)
-    {
-        var session = SessionState.CurrentSession;
-        if (session == null)
-            return;
-
-        var titleAtComplete = session.Title ?? string.Empty;
-        var deadline = DateTime.UtcNow + timeout;
-
-        while (DateTime.UtcNow < deadline)
-        {
-            var live = SessionManager.Get(session.Id);
-            if (live != null &&
-                !string.IsNullOrEmpty(live.Title) &&
-                !string.Equals(live.Title, titleAtComplete, StringComparison.Ordinal))
-            {
-                session.Title = live.Title;
-                await InvokeAsync(StateHasChanged);
-                return;
-            }
-
-            await Task.Delay(200);
-        }
+        ApplyTitleToUi(live?.Title);
+        return Task.CompletedTask;
     }
 
 
@@ -1978,6 +2004,7 @@
         AppState.OnChange -= OnAppStateChange;
         SessionState.CancelExecution();
         _budgetSubscription?.Dispose();
+        _sessionEventSubscription?.Dispose();
 
         var sessionId = SessionState.SessionId;
         if (!string.IsNullOrEmpty(sessionId))
