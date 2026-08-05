@@ -185,6 +185,10 @@ public class TokenUsage
     [JsonPropertyName("output_tokens")]
     public int OutputTokens { get; set; }
 
+    /// <summary>推理（思考）Token 数（仅部分模型支持，如 DeepSeek-R1、o1）</summary>
+    [JsonPropertyName("reasoning_tokens")]
+    public int ReasoningTokens { get; set; }
+
     /// <summary>总 Token 数</summary>
     [JsonIgnore]
     public int TotalTokens => InputTokens + OutputTokens;

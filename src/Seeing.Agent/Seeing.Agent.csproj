@@ -22,8 +22,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <WarningLevel>4</WarningLevel>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <!-- OpenAI SDK：文件 / 输入音频等多模态 API 仍带实验性诊断 OPENAI001 -->
-    <NoWarn>$(NoWarn);OPENAI001;CS1591</NoWarn>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -53,7 +52,6 @@
     <PackageReference Include="ModelContextProtocol.Core" />
     
     <!-- LLM SDK 支持 -->
-    <PackageReference Include="OpenAI" />
     <PackageReference Include="YamlDotNet" />
     <!-- Reactive Extensions for IObservable support -->
     <PackageReference Include="System.Reactive" />

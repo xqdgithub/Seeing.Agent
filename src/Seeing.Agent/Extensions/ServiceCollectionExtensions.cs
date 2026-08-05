@@ -715,7 +715,10 @@ namespace Seeing.Agent.Extensions
 
                 return config.Type switch
                 {
-                    ProviderType.OpenAI => new OpenAiClient(config, _loggerFactory.CreateLogger<OpenAiClient>()),
+                    ProviderType.OpenAI => new OpenAiChatClient(
+                    config,
+                    _httpClientFactory.CreateClient("LlmClient"),
+                    _loggerFactory.CreateLogger<OpenAiChatClient>()),
                     ProviderType.Anthropic => new AnthropicClient(
                         config,
                         httpClient,
