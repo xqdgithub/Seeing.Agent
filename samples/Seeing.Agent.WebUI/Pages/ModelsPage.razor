@@ -2,10 +2,10 @@
 @using AntDesign
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Llm
-@using Seeing.Agent.WebUI.Services
+@using Seeing.ConfigSchema
 @inject IProviderManager ProviderManager
 @inject IModelConfigManager ModelManager
-@inject SeeingConfigService ConfigService
+@inject UnifiedConfigManager ConfigManager
 @inject IMessageService MessageService
 @implements IDisposable
 
@@ -18,12 +18,7 @@
     </Breadcrumb>
     <Extra>
         <Space>
-            <Select TItemValue="ConfigLevel" TItem="ConfigLevel" @bind-Value="_saveLevel" Style="width: 160px;">
-                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
-                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
-            </Select>
             <Button Icon="@IconType.Outline.Plus" OnClick="ShowAddProvider">添加 Provider</Button>
-            <Button Icon="@IconType.Outline.Save" Type="@ButtonType.Primary" OnClick="SaveOptions">保存</Button>
         </Space>
     </Extra>
     <ChildContent>
@@ -34,29 +29,67 @@
             <Col Span="6">
                 <Card Title="Provider 列表" Size="@CardSize.Small">
                     <Menu Mode="@MenuMode.Inline" SelectedKeys="@_selectedProviderKeys" OnMenuItemClicked="OnProviderSelected">
-                        @foreach (var p in ProviderManager.GetProviders().Keys.OrderBy(k => k))
+                        @foreach (var p in ProviderManager.GetProviders().OrderBy(pair => pair.Key))
                         {
-                            <MenuItem Key="@p">@p</MenuItem>
+                            <MenuItem Key="@p.Key">@(p.Value.Name ?? p.Key) (@p.Value.Source)</MenuItem>
                         }
                     </Menu>
                 </Card>
             </Col>
             <Col Span="18">
-                @if (_currentProvider != null)
+                @if (_currentProviderInfo != null)
                 {
                     <Card Title="@($"Provider: {_selectedProviderId}")">
-                        <Form Layout="@FormLayout.Vertical" Model="@_currentProvider" Context="formContext">
-                        <div>
-                            <FormItem Label="ID"><Input @bind-Value="@_currentProvider.Id" Disabled="true" /></FormItem>
-                            <FormItem Label="类型">
-                                <Select TItemValue="ProviderType" TItem="ProviderType" @bind-Value="@_currentProvider.Type">
-                                    <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.OpenAI">OpenAI</SelectOption>
-                                    <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.Anthropic">Anthropic</SelectOption>
-                                </Select>
-                            </FormItem>
-                            <FormItem Label="名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
-                            <FormItem Label="Base URL"><Input @bind-Value="@_currentProvider.BaseUrl" /></FormItem>
-                            <FormItem Label="API Key"><Input Password @bind-Value="@_currentProvider.ApiKey" /></FormItem>
+                        @if (!string.IsNullOrEmpty(_configLoadError))
+                        {
+                            <Alert Type="@AlertType.Error" Message="@_configLoadError" ShowIcon="true" />
+                        }
+                        else if (_schemaFields is { Count: > 0 })
+                        {
+                            <SchemaDrivenConfigForm @ref="_schemaForm" Fields="_schemaFields" Values="_schemaValues" />
+                            <Button Type="@ButtonType.Primary" Loading="_savingProviderConfig" OnClick="SaveProviderConfigAsync"
+                                    Style="margin-top: 12px;">
+                                保存配置
+                            </Button>
+                        }
+                        else if (_currentProvider is not null)
+                        {
+                            <Form Layout="@FormLayout.Vertical" Model="@_currentProvider" Context="formContext">
+                            <div>
+                                <FormItem Label="ID"><Input @bind-Value="@_currentProvider.Id" Disabled="true" /></FormItem>
+                                <FormItem Label="类型">
+                                    <Select TItemValue="ProviderType" TItem="ProviderType" @bind-Value="@_currentProvider.Type">
+                                        <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.OpenAI">OpenAI</SelectOption>
+                                        <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.Anthropic">Anthropic</SelectOption>
+                                    </Select>
+                                </FormItem>
+                                <FormItem Label="名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
+                                <FormItem Label="Base URL"><Input @bind-Value="@_currentProvider.BaseUrl" /></FormItem>
+                                <FormItem Label="API Key"><Input Password @bind-Value="@_currentProvider.ApiKey" /></FormItem>
+                                <div style="margin-top: 12px;">
+                                    <Button Type="@ButtonType.Primary" Loading="_savingProviderConfig" OnClick="SaveProviderConfigAsync">
+                                        保存配置
+                                    </Button>
+                                </div>
+                            </div>
+                            </Form>
+                        }
+                        else
+                        {
+                            <Descriptions>
+                                <DescriptionsItem Title="ID">@_currentProviderInfo!.Id</DescriptionsItem>
+                                <DescriptionsItem Title="名称">@(_currentProviderInfo.Name ?? _currentProviderInfo.Id)</DescriptionsItem>
+                                <DescriptionsItem Title="来源">@_currentProviderInfo.Source</DescriptionsItem>
+                                <DescriptionsItem Title="模型数">@_modelRows.Count</DescriptionsItem>
+                            </Descriptions>
+                            <Alert Type="@AlertType.Info" ShowIcon="true"
+                                   Message="扩展 Provider 由扩展管理，不能在此编辑连接配置。" />
+                        }
+
+                        @* Shared Test Connection — schema, handcrafted, and extension tracks (not load-error-only) *@
+                        @if (string.IsNullOrEmpty(_configLoadError))
+                        {
+                            <Divider />
                             <Space>
                                 <Select TItemValue="string" TItem="string"
                                         @bind-Value="_testModelId"
@@ -74,14 +107,13 @@
                                     测试连接
                                 </Button>
                             </Space>
-                        </div>
-                        </Form>
+                        }
                     </Card>
 
                     <Card Title="模型列表" Style="margin-top: 16px;">
                         <div style="margin-bottom: 12px;">
                             <Button Icon="@IconType.Outline.Plus" Size="@ButtonSize.Small"
-                                    OnClick="ShowAddModel" Disabled="@(string.IsNullOrEmpty(_selectedProviderId))">
+                                    OnClick="ShowAddModel" Disabled="@(!CanEditCurrentProvider)">
                                 添加模型
                             </Button>
                         </div>
@@ -93,10 +125,12 @@
                             <PropertyColumn Property="c => c.Context" Title="上下文" />
                             <ActionColumn Title="操作">
                                 <Space>
-                                    <Button Size="@ButtonSize.Small" OnClick="@(() => ShowEditTypes(context))">编辑类型</Button>
+                                    <Button Size="@ButtonSize.Small" OnClick="@(() => ShowEditTypes(context))"
+                                            Disabled="@(!CanEditCurrentProvider)">编辑类型</Button>
                                     <Button Size="@ButtonSize.Small" OnClick="@(() => SetDefaultModel(context.Key))">设为默认</Button>
                                     <Popconfirm Title="确定要删除此模型吗？" OnConfirm="@(() => DeleteModel(context))">
-                                        <Button Size="@ButtonSize.Small" Danger Icon="@IconType.Outline.Delete">删除</Button>
+                                        <Button Size="@ButtonSize.Small" Danger Icon="@IconType.Outline.Delete"
+                                                Disabled="@(!CanEditCurrentProvider)">删除</Button>
                                     </Popconfirm>
                                 </Space>
                             </ActionColumn>
@@ -187,11 +221,12 @@
 </Modal>
 
 @code {
+    private ProviderInfo? _currentProviderInfo;
     private ProviderConfig? _currentProvider;
     private string _selectedProviderId = "";
     private string[] _selectedProviderKeys = Array.Empty<string>();
     private List<ModelRow> _modelRows = new();
-    private ConfigLevel _saveLevel = ConfigLevel.Project;
+    private ConfigLevel _saveLevel = ModelConfigManager.ModelStoreLevel;
     private bool _loading;
     private bool _testing;
     private bool _addModalVisible;
@@ -207,11 +242,20 @@
     private IEnumerable<ModelType> _addModelTypes = new[] { ModelType.Text };
     private string _testModelId = "";
 
+    private IConfigurableLlmProvider? _configurable;
+    private IReadOnlyList<ConfigFieldSchema>? _schemaFields;
+    private Dictionary<string, object?> _schemaValues = new();
+    private SchemaDrivenConfigForm? _schemaForm;
+    private bool _savingProviderConfig;
+    private string? _configLoadError;
+
+    private bool CanEditCurrentProvider =>
+        _currentProviderInfo?.Source == ProviderSource.Configured &&
+        _currentProvider is not null;
+
     protected override async Task OnInitializedAsync()
     {
-        // 监听配置变更
         ModelManager.ModelConfigChanged += OnModelConfigChanged;
-
         await LoadAsync();
     }
 
@@ -221,7 +265,7 @@
 
         var providers = ProviderManager.GetProviders();
         if (providers.Count > 0 && string.IsNullOrEmpty(_selectedProviderId))
-            SelectProvider(providers.Keys.First());
+            await SelectProviderAsync(providers.Keys.First());
 
         _loading = false;
     }
@@ -237,13 +281,50 @@
         });
     }
 
-    private void OnProviderSelected(MenuItem item) => SelectProvider(item.Key);
+    private async Task OnProviderSelected(MenuItem item) => await SelectProviderAsync(item.Key);
 
-    private void SelectProvider(string id)
+    private async Task SelectProviderAsync(string id)
     {
+        _configLoadError = null;
+        _schemaFields = null;
+        _schemaValues = new();
+        _configurable = null;
+        _currentProvider = null;
+
         _selectedProviderId = id;
         _selectedProviderKeys = new[] { id };
-        _currentProvider = ProviderManager.GetProvider(id);
+        _currentProviderInfo = ProviderManager.GetProvider(id);
+
+        if (ProviderManager.TryGetConfigurable(id, out var configurable) && configurable is not null)
+        {
+            _configurable = configurable;
+            _schemaFields = configurable.GetConfigSchema();
+
+            if (_schemaFields is { Count: > 0 })
+            {
+                try
+                {
+                    var loaded = await configurable.LoadConfigAsync();
+                    _schemaValues = loaded.ToDictionary(kv => kv.Key, kv => kv.Value);
+                }
+                catch (Exception ex)
+                {
+                    _configLoadError = $"加载配置失败: {ex.Message}";
+                }
+            }
+            else if (_currentProviderInfo?.Source == ProviderSource.Configured &&
+                     ConfigManager.SeeingAgent.Providers.TryGetValue(id, out var schemaNullConfig))
+            {
+                // ConfiguredLlmProvider: schema null → handcrafted form（编辑副本，不脏写 live 配置）
+                _currentProvider = CloneProviderConfig(schemaNullConfig);
+            }
+        }
+        else if (_currentProviderInfo?.Source == ProviderSource.Configured &&
+                 ConfigManager.SeeingAgent.Providers.TryGetValue(id, out var configured))
+        {
+            _currentProvider = CloneProviderConfig(configured);
+        }
+
         RefreshModelRows();
         _testModelId = _modelRows.Count > 0 ? _modelRows[0].Id : "";
     }
@@ -268,15 +349,50 @@
             .ToList();
     }
 
-    private async Task SaveOptions()
+    private async Task SaveProviderConfigAsync()
     {
-        if (_currentProvider != null)
-        {
-            await ProviderManager.SaveProviderAsync(_selectedProviderId, _currentProvider, _saveLevel);
-        }
+        if (_configurable is null) return;
 
-        MessageService.Success("模型配置已保存");
-        await LoadAsync();
+        _savingProviderConfig = true;
+        try
+        {
+            if (_schemaFields is { Count: > 0 })
+            {
+                string? err = null;
+                if (_schemaForm is null || !_schemaForm.TryValidate(out err))
+                {
+                    MessageService.Error(err ?? "请检查配置");
+                    return;
+                }
+
+                await _configurable.SaveConfigAsync(_schemaValues, _saveLevel);
+            }
+            else if (_currentProvider is not null)
+            {
+                var values = new Dictionary<string, object?>
+                {
+                    ["Name"] = _currentProvider.Name,
+                    ["Type"] = _currentProvider.Type.ToString(),
+                    ["BaseUrl"] = _currentProvider.BaseUrl,
+                    ["ApiKey"] = _currentProvider.ApiKey,
+                    ["Timeout"] = _currentProvider.Timeout,
+                    ["MaxRetries"] = _currentProvider.MaxRetries,
+                    ["DefaultModel"] = _currentProvider.DefaultModel
+                };
+                await _configurable.SaveConfigAsync(values, _saveLevel);
+            }
+
+            MessageService.Success("Provider 配置已保存");
+            await SelectProviderAsync(_selectedProviderId);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _savingProviderConfig = false;
+        }
     }
 
     private async Task TestConnection()
@@ -306,7 +422,7 @@
         }
 
         await ModelManager.SetDefaultModelAsync(key, _saveLevel);
-        MessageService.Info($"已选择 {key} 为默认模型，请保存");
+        MessageService.Success($"已设为默认模型：{key}");
     }
 
     private async Task DeleteModel(ModelRow row)
@@ -419,7 +535,7 @@
 
             await ModelManager.AddModelAsync(key, config, _saveLevel);
             _addModelVisible = false;
-            RefreshModelRows();
+            await SelectProviderAsync(_selectedProviderId);
             MessageService.Success($"已添加模型 {key}");
         }
         catch (Exception ex)
@@ -441,8 +557,23 @@
         await ProviderManager.SaveProviderAsync(id, config, _saveLevel);
 
         _addModalVisible = false;
-        SelectProvider(id);
+        await SelectProviderAsync(id);
     }
+
+    private static ProviderConfig CloneProviderConfig(ProviderConfig config) => new()
+    {
+        Id = config.Id,
+        Type = config.Type,
+        Name = config.Name,
+        BaseUrl = config.BaseUrl,
+        ApiKey = config.ApiKey,
+        DefaultModel = config.DefaultModel,
+        Timeout = config.Timeout,
+        MaxRetries = config.MaxRetries,
+        Models = config.Models is null ? null : new Dictionary<string, ModelConfig>(config.Models),
+        Options = config.Options is null ? null : new Dictionary<string, object>(config.Options),
+        Headers = config.Headers is null ? null : new Dictionary<string, string>(config.Headers)
+    };
 
     private sealed class ModelRow
     {

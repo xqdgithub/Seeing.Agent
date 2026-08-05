@@ -1,4 +1,4 @@
-using Seeing.Gateway.Configuration;
+using Seeing.ConfigSchema;
 
 namespace Seeing.Gateway.Plugins;
 

@@ -9,16 +9,35 @@ namespace Seeing.Agent.Llm;
 public sealed class OptionsProviderEndpointLookup : IProviderEndpointLookup
 {
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
+    private readonly IProviderRegistry _registry;
 
-    public OptionsProviderEndpointLookup(IOptionsMonitor<SeeingAgentOptions> options)
+    public OptionsProviderEndpointLookup(
+        IOptionsMonitor<SeeingAgentOptions> options,
+        IProviderRegistry registry)
     {
         _options = options;
+        _registry = registry;
     }
 
     public bool TryGet(string providerName, out ProviderEndpoint? endpoint)
     {
-        if (string.IsNullOrWhiteSpace(providerName)
-            || !_options.CurrentValue.Providers.TryGetValue(providerName, out var config)
+        if (string.IsNullOrWhiteSpace(providerName))
+        {
+            endpoint = null;
+            return false;
+        }
+
+        if (_registry.GetProvider(providerName) is IProviderEndpointInfo providerEndpoint)
+        {
+            endpoint = new ProviderEndpoint
+            {
+                BaseUrl = providerEndpoint.BaseUrl,
+                ApiKey = providerEndpoint.ApiKey
+            };
+            return true;
+        }
+
+        if (!_options.CurrentValue.Providers.TryGetValue(providerName, out var config)
             || config is null)
         {
             endpoint = null;

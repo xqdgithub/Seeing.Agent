@@ -23,6 +23,7 @@ namespace Seeing.Agent.Core
         private readonly IOptionsMonitor<SeeingAgentOptions> _optionsMonitor;
         private readonly IConfigSectionStore _configStore;
         private readonly IModelManager _modelManager;
+        private readonly IProviderRegistry _providerRegistry;
         private readonly ILlmService? _llmService;
 
         /// <summary>模型变更事件 - 当 Agent 的模型配置发生变更时触发</summary>
@@ -61,6 +62,7 @@ namespace Seeing.Agent.Core
             IOptionsMonitor<SeeingAgentOptions> optionsMonitor,
             IConfigSectionStore configStore,
             IModelManager modelManager,
+            IProviderRegistry providerRegistry,
             ILlmService? llmService = null)
         {
             _logger = logger;
@@ -68,6 +70,7 @@ namespace Seeing.Agent.Core
             _optionsMonitor = optionsMonitor;
             _configStore = configStore;
             _modelManager = modelManager;
+            _providerRegistry = providerRegistry;
             _llmService = llmService;
 
             // 订阅配置热重载事件
@@ -265,7 +268,7 @@ namespace Seeing.Agent.Core
                 var modelConfig = _llmService.GetModelConfig(modelId);
                 if (modelConfig == null)
                 {
-                    foreach (var provider in _optionsMonitor.CurrentValue.Providers.Keys)
+                    foreach (var provider in _providerRegistry.GetProviders().Keys)
                     {
                         var prefixedId = $"{provider}/{modelId}";
                         modelConfig = _llmService.GetModelConfig(prefixedId);

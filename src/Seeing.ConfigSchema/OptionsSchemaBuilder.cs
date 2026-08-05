@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 
-namespace Seeing.Gateway.Configuration;
+namespace Seeing.ConfigSchema;
 
 /// <summary>
 /// 从 Options 类型反射生成配置表单 Schema

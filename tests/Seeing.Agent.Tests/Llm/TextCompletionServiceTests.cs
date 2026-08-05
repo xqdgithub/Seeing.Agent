@@ -100,7 +100,9 @@ public class OptionsProviderEndpointLookupTests
     public void TryGet_WhenMissing_ShouldReturnFalse()
     {
         var options = new SeeingAgentOptions();
-        var lookup = new OptionsProviderEndpointLookup(Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options));
+        var lookup = new OptionsProviderEndpointLookup(
+            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options),
+            new ProviderRegistry(NullLogger<ProviderRegistry>.Instance));
         lookup.TryGet("openai", out var ep).Should().BeFalse();
         ep.Should().BeNull();
     }
@@ -115,9 +117,37 @@ public class OptionsProviderEndpointLookupTests
                 ["openai"] = new ProviderConfig { BaseUrl = "https://api.example/v1", ApiKey = "k" }
             }
         };
-        var lookup = new OptionsProviderEndpointLookup(Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == opts));
+        var lookup = new OptionsProviderEndpointLookup(
+            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == opts),
+            new ProviderRegistry(NullLogger<ProviderRegistry>.Instance));
         lookup.TryGet("openai", out var ep).Should().BeTrue();
         ep!.BaseUrl.Should().Be("https://api.example/v1");
         ep.ApiKey.Should().Be("k");
+    }
+
+    [Fact]
+    public void TryGet_WhenRegisteredProviderExposesEndpoint_ShouldPreferProvider()
+    {
+        var options = new SeeingAgentOptions
+        {
+            Providers =
+            {
+                ["extension"] = new ProviderConfig { BaseUrl = "https://fallback", ApiKey = "fallback-key" }
+            }
+        };
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        var provider = new Mock<ILlmProvider>();
+        provider.SetupGet(item => item.Id).Returns("extension");
+        provider.As<IProviderEndpointInfo>().SetupGet(item => item.BaseUrl).Returns("https://provider");
+        provider.As<IProviderEndpointInfo>().SetupGet(item => item.ApiKey).Returns("provider-key");
+        registry.Register(provider.Object, "extension-id");
+        var lookup = new OptionsProviderEndpointLookup(
+            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options),
+            registry);
+
+        lookup.TryGet("extension", out var endpoint).Should().BeTrue();
+
+        endpoint!.BaseUrl.Should().Be("https://provider");
+        endpoint.ApiKey.Should().Be("provider-key");
     }
 }

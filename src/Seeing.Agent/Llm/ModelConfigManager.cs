@@ -1,35 +1,56 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Llm;
 
 /// <summary>
 /// 模型配置管理器实现 - 负责模型配置的查询、索引和持久化
 /// </summary>
-public class ModelConfigManager : IModelConfigManager, IDisposable
+public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDisposable
 {
     private readonly UnifiedConfigManager _configManager;
+    private readonly IProviderRegistry _registry;
     private readonly ILogger<ModelConfigManager> _logger;
+    private readonly Channel<RefreshRequest> _refreshQueue = Channel.CreateUnbounded<RefreshRequest>();
+    private readonly CancellationTokenSource _disposeCts = new();
+    private readonly Task _refreshWorker;
+    private readonly object _cacheLock = new();
+    private readonly object _disposeLock = new();
+    private long _refreshVersion;
+    private Task? _refreshShutdown;
 
     // 模型索引缓存
     private IReadOnlyDictionary<string, ModelConfig> _modelCache = new Dictionary<string, ModelConfig>();
-    private Dictionary<string, Dictionary<string, ModelConfig>>? _providerIndex;
+    private Lazy<Dictionary<string, Dictionary<string, ModelConfig>>> _providerIndex =
+        new(() => new Dictionary<string, Dictionary<string, ModelConfig>>(),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+    /// <summary>
+    /// Providers 节持久化级别（<see cref="ConfigScope.UserOnly"/>）。
+    /// </summary>
+    public const ConfigLevel ModelStoreLevel = ConfigLevel.User;
 
     /// <summary>模型配置变更事件</summary>
     public event EventHandler<ModelConfigChangedEventArgs>? ModelConfigChanged;
 
     public ModelConfigManager(
         UnifiedConfigManager configManager,
+        IProviderRegistry registry,
         ILogger<ModelConfigManager> logger)
     {
         _configManager = configManager;
+        _registry = registry;
         _logger = logger;
 
         // 监听配置变更
         _configManager.ConfigChanged += OnConfigChanged;
+        _registry.ProvidersChanged += OnProvidersChanged;
 
-        // 初始化索引
-        RefreshCache();
+        // 初始目录只同步读取 Providers[*].Models，不依赖注册表装配时序。
+        SeedConfiguredModels();
+        _refreshWorker = ProcessRefreshQueueAsync(_disposeCts.Token);
+        EnqueueRefresh("initial");
 
         _logger.LogInformation("ModelConfigManager 已初始化，加载 {Count} 个模型", _modelCache.Count);
     }
@@ -49,7 +70,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
         if (_modelCache.TryGetValue(modelId, out var config))
             return config;
 
-        var providers = _configManager.SeeingAgent.Providers.Keys;
+        var providers = _registry.GetProviders().Keys;
         var (providerId, apiModelId) = ModelRef.Parse(modelId, providers);
 
         // 2. 已知 Provider 前缀：provider/apiModelId
@@ -96,8 +117,8 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
         if (string.IsNullOrEmpty(providerId))
             return new Dictionary<string, ModelConfig>();
 
-        _providerIndex ??= BuildProviderIndex();
-        return _providerIndex.TryGetValue(providerId, out var models)
+        var index = Volatile.Read(ref _providerIndex).Value;
+        return index.TryGetValue(providerId, out var models)
             ? models
             : new Dictionary<string, ModelConfig>();
     }
@@ -127,15 +148,12 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
     public async Task AddModelAsync(
         string modelId,
         ModelConfig config,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default)
     {
-        var models = new Dictionary<string, ModelConfig>(_configManager.SeeingAgent.Models ?? new())
-        {
-            [modelId] = config
-        };
-
-        await _configManager.SaveSectionAsync("Models", models, level, ct);
+        var providerId = RequireWritableProvider(config.Provider);
+        if (!await SaveProviderModelsAsync(providerId, models => models[NormalizeModelId(modelId, providerId)] = config, level, ct))
+            return;
 
         ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
         {
@@ -151,17 +169,18 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
     public async Task UpdateModelAsync(
         string modelId,
         ModelConfig config,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default)
     {
         var oldConfig = GetModel(modelId);
 
-        var models = new Dictionary<string, ModelConfig>(_configManager.SeeingAgent.Models ?? new())
-        {
-            [modelId] = config
-        };
+        var providerId = ResolveWritableProvider(modelId, oldConfig, config);
+        if (string.IsNullOrEmpty(providerId))
+            return;
 
-        await _configManager.SaveSectionAsync("Models", models, level, ct);
+        config.Provider = providerId;
+        if (!await SaveProviderModelsAsync(providerId, models => models[NormalizeModelId(modelId, providerId)] = config, level, ct))
+            return;
 
         ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
         {
@@ -177,15 +196,14 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
     /// <summary>删除模型配置</summary>
     public async Task DeleteModelAsync(
         string modelId,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default)
     {
         var oldConfig = GetModel(modelId);
 
-        var models = new Dictionary<string, ModelConfig>(_configManager.SeeingAgent.Models ?? new());
-        models.Remove(modelId);
-
-        await _configManager.SaveSectionAsync("Models", models, level, ct);
+        var providerId = ResolveWritableProvider(modelId, oldConfig);
+        if (!await SaveProviderModelsAsync(providerId, models => models.Remove(NormalizeModelId(modelId, providerId)), level, ct))
+            return;
 
         ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
         {
@@ -199,11 +217,28 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
 
     /// <summary>批量保存模型配置</summary>
     public async Task SaveModelsAsync(
+        string providerId,
         Dictionary<string, ModelConfig> models,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default)
     {
-        await _configManager.SaveSectionAsync("Models", models, level, ct);
+        providerId = RequireWritableProvider(providerId);
+        if (string.IsNullOrEmpty(providerId))
+            return;
+
+        foreach (var config in models.Values)
+            config.Provider = providerId;
+
+        await SaveProviderModelsAsync(
+            providerId,
+            destination =>
+            {
+                destination.Clear();
+                foreach (var (modelId, config) in models)
+                    destination[NormalizeModelId(modelId, providerId)] = config;
+            },
+            level,
+            ct);
 
         _logger.LogInformation("已保存 {Count} 个模型配置", models.Count);
     }
@@ -211,13 +246,13 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
     /// <summary>设置默认模型</summary>
     public async Task SetDefaultModelAsync(
         string? modelId,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default)
     {
         if (!string.IsNullOrEmpty(modelId) && !CanSetAsDefaultModel(modelId))
             throw new InvalidOperationException($"模型 '{modelId}' 不是 Text 类型，不能设为默认对话模型。");
 
-        await _configManager.SaveSectionAsync("DefaultModel", modelId ?? (string)null!, level, ct);
+        await _configManager.SaveSectionAsync("DefaultModel", modelId ?? (string)null!, ModelStoreLevel, ct);
 
         _logger.LogInformation("已设置默认模型: {ModelId}", modelId ?? "(空)");
     }
@@ -229,91 +264,294 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
     /// <summary>配置变更处理</summary>
     private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
     {
-        // 判断是否需要刷新模型缓存
         var needsRefresh = e.ChangedSections.Length == 0 ||
-                           e.ChangedSections.Contains("Models") ||
-                           e.ChangedSections.Contains("ModelScope") ||
-                           e.ChangedSections.Contains("Providers") ||
-                           e.ChangedSections.Contains("DefaultProvider");
+                           e.ChangedSections.Contains("Providers");
 
         if (needsRefresh)
+            EnqueueRefresh("configuration");
+    }
+
+    private void OnProvidersChanged(object? sender, ProvidersChangedEventArgs e)
+        => EnqueueRefresh("provider-registry");
+
+    private void EnqueueRefresh(string source)
+    {
+        long version;
+        lock (_cacheLock)
         {
-            _logger.LogDebug("配置变更，刷新模型缓存: {Sections}", string.Join(", ", e.ChangedSections));
-            RefreshCache();
+            version = ++_refreshVersion;
+        }
+
+        if (!_refreshQueue.Writer.TryWrite(new RefreshRequest(version, source)))
+            _logger.LogDebug("模型目录刷新队列已关闭，忽略 {Source} 请求", source);
+    }
+
+    private async Task ProcessRefreshQueueAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var request in _refreshQueue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                await RefreshFromProvidersAsync(request, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
         }
     }
 
-    /// <summary>刷新模型缓存</summary>
-    private void RefreshCache()
+    private async Task RefreshFromProvidersAsync(RefreshRequest request, CancellationToken ct)
     {
         var models = new Dictionary<string, ModelConfig>();
-        var options = _configManager.SeeingAgent;
 
-        // 1. 加载 Models（全局模型目录）
-        if (options.Models != null)
+        // 配置驱动：用户级 Providers[*].Models；扩展：仍走 ILlmProvider.GetModelsAsync。
+        foreach (var (providerId, providerConfig) in GetUserProviders())
         {
-            foreach (var (id, config) in options.Models)
+            if (providerConfig.Models is null)
+                continue;
+
+            foreach (var (modelId, config) in providerConfig.Models)
+                models[ModelRef.Format(providerId, modelId)] = CloneModelConfig(providerId, modelId, config);
+        }
+
+        var extensionLoads = _registry.GetProviders()
+            .Where(pair => _registry.GetOwnerExtensionId(pair.Key) is not null)
+            .Select(pair => LoadProviderModelsAsync(pair.Key, pair.Value, ct));
+        var extensionModels = await Task.WhenAll(extensionLoads).ConfigureAwait(false);
+
+        foreach (var (providerId, configurations) in extensionModels)
+        {
+            foreach (var config in configurations)
             {
-                EnsureModelDefaults(id, config, options.DefaultProvider, options.Providers.Keys);
-                models[id] = config;
+                if (string.IsNullOrWhiteSpace(config.Id))
+                    continue;
+
+                config.Provider = providerId;
+                models[ModelRef.Format(providerId, config.Id)] = config;
             }
         }
 
-        // 2. 加载 ModelScope.Models
-        if (options.ModelScope?.Models != null)
+        if (!TryReplaceCache(request.Version, models))
         {
-            foreach (var (id, config) in options.ModelScope.Models)
-            {
-                EnsureModelDefaults(id, config, options.DefaultProvider, options.Providers.Keys);
-                // 不覆盖已存在的模型
-                if (!models.ContainsKey(id))
-                    models[id] = config;
-            }
+            _logger.LogDebug("丢弃过期模型目录刷新 {Version}（当前 {CurrentVersion}）",
+                request.Version, Volatile.Read(ref _refreshVersion));
+            return;
         }
 
-        // 3. 加载 Provider.Models（最高优先级）
-        foreach (var (providerId, providerConfig) in options.Providers)
+        ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
         {
-            if (providerConfig.Models == null) continue;
-
-            foreach (var (id, config) in providerConfig.Models)
-            {
-                EnsureModelDefaults(id, config, providerId, options.Providers.Keys);
-
-                // 目录键：provider/apiModelId（apiModelId 可含 /）
-                var fullKey = ModelRef.Format(providerId, id);
-                models[fullKey] = config;
-            }
-        }
-
-        _modelCache = models;
-        _providerIndex = null; // 懒加载重建
-
-        _logger.LogDebug("模型缓存已刷新，共 {Count} 个模型", _modelCache.Count);
+            ChangeType = ModelConfigChangeType.Updated
+        });
     }
 
-    /// <summary>确保模型配置的默认值</summary>
-    private static void EnsureModelDefaults(
-        string keyOrId,
-        ModelConfig config,
-        string? defaultProvider,
-        IEnumerable<string> knownProviders)
+    private async Task<KeyValuePair<string, IReadOnlyList<ModelConfig>>> LoadProviderModelsAsync(
+        string providerId,
+        ILlmProvider provider,
+        CancellationToken ct)
     {
-        var (providerFromKey, apiIdFromKey) = ModelRef.Parse(keyOrId, knownProviders);
+        try
+        {
+            var models = await provider.GetModelsAsync(ct).ConfigureAwait(false);
+            return new KeyValuePair<string, IReadOnlyList<ModelConfig>>(providerId, models);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "加载 Provider {ProviderId} 模型目录失败", providerId);
+            return new KeyValuePair<string, IReadOnlyList<ModelConfig>>(providerId, []);
+        }
+    }
 
-        if (string.IsNullOrEmpty(config.Id))
-            config.Id = !string.IsNullOrEmpty(apiIdFromKey) ? apiIdFromKey : keyOrId;
+    private void SeedConfiguredModels()
+    {
+        var models = new Dictionary<string, ModelConfig>();
+        foreach (var (providerId, providerConfig) in GetUserProviders())
+        {
+            if (providerConfig.Models is null)
+                continue;
 
-        if (string.IsNullOrEmpty(config.Provider))
-            config.Provider = providerFromKey ?? defaultProvider ?? string.Empty;
+            foreach (var (modelId, config) in providerConfig.Models)
+                models[ModelRef.Format(providerId, modelId)] = CloneModelConfig(providerId, modelId, config);
+        }
+
+        ReplaceCache(models);
+    }
+
+    private static ModelConfig CloneModelConfig(string providerId, string modelId, ModelConfig config)
+        => new()
+        {
+            Id = string.IsNullOrWhiteSpace(config.Id) ? modelId : config.Id,
+            Name = config.Name,
+            Provider = providerId,
+            Types = config.Types is null ? new List<ModelType>() : new List<ModelType>(config.Types),
+            Modalities = config.Modalities,
+            Limit = config.Limit,
+            Options = config.Options,
+            Pricing = config.Pricing
+        };
+
+    private void ReplaceCache(IReadOnlyDictionary<string, ModelConfig> models)
+    {
+        lock (_cacheLock)
+        {
+            ReplaceCacheLocked(models);
+        }
+
+        _logger.LogDebug("模型缓存已刷新，共 {Count} 个模型", models.Count);
+    }
+
+    private bool TryReplaceCache(long version, IReadOnlyDictionary<string, ModelConfig> models)
+    {
+        lock (_cacheLock)
+        {
+            if (version != _refreshVersion)
+                return false;
+
+            ReplaceCacheLocked(models);
+        }
+
+        _logger.LogDebug("模型缓存已刷新，共 {Count} 个模型", models.Count);
+        return true;
+    }
+
+    private void ReplaceCacheLocked(IReadOnlyDictionary<string, ModelConfig> models)
+    {
+        Volatile.Write(ref _modelCache, models);
+        _providerIndex = new Lazy<Dictionary<string, Dictionary<string, ModelConfig>>>(
+            () => BuildProviderIndex(models),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+    }
+
+    private string RequireWritableProvider(string providerId)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+            throw new ArgumentException("模型必须指定 Provider。", nameof(providerId));
+
+        if (_registry.GetProvider(providerId) is null)
+            throw new ArgumentException($"Provider '{providerId}' 未注册。", nameof(providerId));
+
+        if (_registry.GetOwnerExtensionId(providerId) is not null)
+        {
+            _logger.LogWarning("扩展 Provider 不支持持久化模型: {ProviderId}", providerId);
+            return string.Empty;
+        }
+
+        if (!_configManager.SeeingAgent.Providers.ContainsKey(providerId))
+            throw new ArgumentException($"Provider '{providerId}' 不是可配置 Provider。", nameof(providerId));
+
+        return providerId;
+    }
+
+    private string ResolveWritableProvider(string modelId, ModelConfig? existing, ModelConfig? replacement = null)
+    {
+        var configuredProvider = FindCatalogProviderId(modelId, existing) ?? existing?.Provider;
+        if (string.IsNullOrWhiteSpace(configuredProvider))
+            configuredProvider = replacement?.Provider;
+
+        if (string.IsNullOrWhiteSpace(configuredProvider))
+        {
+            var (providerId, _) = ModelRef.Parse(modelId, _registry.GetProviders().Keys);
+            configuredProvider = providerId;
+        }
+
+        return RequireWritableProvider(configuredProvider ?? string.Empty);
+    }
+
+    private string? FindCatalogProviderId(string modelId, ModelConfig? existing)
+    {
+        if (existing is null)
+            return null;
+
+        var providerIds = _registry.GetProviders().Keys;
+        var cache = Volatile.Read(ref _modelCache);
+        if (cache.TryGetValue(modelId, out var direct) && ReferenceEquals(direct, existing))
+            return ModelRef.Parse(modelId, providerIds).ProviderId;
+
+        foreach (var (key, config) in cache)
+        {
+            if (ReferenceEquals(config, existing))
+                return ModelRef.Parse(key, providerIds).ProviderId;
+        }
+
+        return null;
+    }
+
+    private async Task<bool> SaveProviderModelsAsync(
+        string providerId,
+        Action<Dictionary<string, ModelConfig>> update,
+        ConfigLevel level,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(providerId))
+            return false;
+
+        if (!_configManager.SeeingAgent.Providers.TryGetValue(providerId, out var existingProvider))
+            return false;
+
+        if (level != ModelStoreLevel)
+        {
+            _logger.LogDebug(
+                "Providers 为 UserOnly，忽略请求级 {RequestedLevel}（Provider={ProviderId}）",
+                level,
+                providerId);
+        }
+
+        var providers = GetUserProviders().ToDictionary(
+            pair => pair.Key,
+            pair => CloneProviderConfig(pair.Value),
+            StringComparer.OrdinalIgnoreCase);
+
+        var provider = providers.TryGetValue(providerId, out var atUser)
+            ? CloneProviderConfig(atUser)
+            : CloneProviderConfig(existingProvider);
+        provider.Id = providerId;
+
+        var models = new Dictionary<string, ModelConfig>(provider.Models ?? []);
+        update(models);
+        provider.Models = models;
+        providers[providerId] = provider;
+
+        await _configManager
+            .SaveSectionAsync("Providers", providers, ModelStoreLevel, ct)
+            .ConfigureAwait(false);
+        return true;
+    }
+
+    private IReadOnlyDictionary<string, ProviderConfig> GetUserProviders()
+        => _configManager.UserSeeingAgent?.Providers
+           ?? _configManager.SeeingAgent.Providers
+           ?? (IReadOnlyDictionary<string, ProviderConfig>)new Dictionary<string, ProviderConfig>();
+
+    private static ProviderConfig CloneProviderConfig(ProviderConfig config)
+        => new()
+        {
+            Id = config.Id,
+            Type = config.Type,
+            Name = config.Name,
+            BaseUrl = config.BaseUrl,
+            ApiKey = config.ApiKey,
+            DefaultModel = config.DefaultModel,
+            Timeout = config.Timeout,
+            MaxRetries = config.MaxRetries,
+            Models = config.Models is null ? null : new Dictionary<string, ModelConfig>(config.Models),
+            Options = config.Options is null ? null : new Dictionary<string, object>(config.Options),
+            Headers = config.Headers is null ? null : new Dictionary<string, string>(config.Headers)
+        };
+
+    private static string NormalizeModelId(string modelId, string providerId)
+    {
+        var (referencedProvider, apiModelId) = ModelRef.Parse(modelId, [providerId]);
+        return referencedProvider is null ? modelId : apiModelId;
     }
 
     /// <summary>构建 Provider 索引</summary>
-    private Dictionary<string, Dictionary<string, ModelConfig>> BuildProviderIndex()
+    private static Dictionary<string, Dictionary<string, ModelConfig>> BuildProviderIndex(
+        IReadOnlyDictionary<string, ModelConfig> modelCache)
     {
         var index = new Dictionary<string, Dictionary<string, ModelConfig>>();
 
-        foreach (var (key, config) in _modelCache)
+        foreach (var (key, config) in modelCache)
         {
             var providerId = config.Provider;
             if (string.IsNullOrEmpty(providerId)) continue;
@@ -333,6 +571,51 @@ public class ModelConfigManager : IModelConfigManager, IDisposable
 
     public void Dispose()
     {
-        _configManager.ConfigChanged -= OnConfigChanged;
+        _ = ShutdownRefreshWorkerAsync();
+        GC.SuppressFinalize(this);
     }
+
+    public async ValueTask DisposeAsync()
+    {
+        await ShutdownRefreshWorkerAsync().ConfigureAwait(false);
+        GC.SuppressFinalize(this);
+    }
+
+    private Task ShutdownRefreshWorkerAsync()
+    {
+        lock (_disposeLock)
+        {
+            if (_refreshShutdown is not null)
+                return _refreshShutdown;
+
+            _refreshShutdown = AwaitRefreshWorkerShutdownAsync();
+            return _refreshShutdown;
+        }
+    }
+
+    private async Task AwaitRefreshWorkerShutdownAsync()
+    {
+        _configManager.ConfigChanged -= OnConfigChanged;
+        _registry.ProvidersChanged -= OnProvidersChanged;
+        _refreshQueue.Writer.TryComplete();
+        _disposeCts.Cancel();
+
+        try
+        {
+            await _refreshWorker.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "关闭模型目录刷新工作器时发生错误");
+        }
+        finally
+        {
+            _disposeCts.Dispose();
+        }
+    }
+
+    private sealed record RefreshRequest(long Version, string Source);
 }

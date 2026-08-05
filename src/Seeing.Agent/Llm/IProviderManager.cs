@@ -9,14 +9,17 @@ public interface IProviderManager
 {
     #region 查询
 
-    /// <summary>获取所有 Provider 配置</summary>
-    IReadOnlyDictionary<string, ProviderConfig> GetProviders();
+    /// <summary>获取所有已注册 Provider 的信息</summary>
+    IReadOnlyDictionary<string, ProviderInfo> GetProviders();
 
-    /// <summary>获取指定 Provider 配置</summary>
-    ProviderConfig? GetProvider(string providerId);
+    /// <summary>获取指定 Provider 的信息</summary>
+    ProviderInfo? GetProvider(string providerId);
 
     /// <summary>获取默认 Provider ID</summary>
     string? GetDefaultProvider();
+
+    /// <summary>若指定 Provider 支持可配置连接字段，则返回其实例。</summary>
+    bool TryGetConfigurable(string providerId, out IConfigurableLlmProvider? configurable);
 
     #endregion
 
@@ -47,17 +50,17 @@ public interface IProviderManager
 
     #region 持久化
 
-    /// <summary>保存 Provider 配置</summary>
+    /// <summary>保存 Provider 配置（仅用户级）</summary>
     Task SaveProviderAsync(
         string providerId,
         ProviderConfig config,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
 
-    /// <summary>删除 Provider 配置</summary>
+    /// <summary>删除 Provider 配置（仅用户级）</summary>
     Task DeleteProviderAsync(
         string providerId,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
 
     /// <summary>设置默认 Provider</summary>

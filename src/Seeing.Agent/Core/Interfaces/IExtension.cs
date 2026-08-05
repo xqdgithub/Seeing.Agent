@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Llm;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
@@ -183,6 +184,11 @@ namespace Seeing.Agent.Core.Interfaces
         /// 提供的命令（新增）
         /// </summary>
         IEnumerable<ICommand> GetCommands() => Enumerable.Empty<ICommand>();
+
+        /// <summary>
+        /// 提供的 LLM Provider
+        /// </summary>
+        IEnumerable<ILlmProvider> GetProviders() => Enumerable.Empty<ILlmProvider>();
 
         #endregion
     }

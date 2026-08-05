@@ -31,12 +31,7 @@ public interface IModelConfigManager
     #region 查询
 
     /// <summary>获取所有模型配置</summary>
-    /// <remarks>
-    /// 模型来源优先级：
-    /// 1. Provider.Models (最高优先级，用于覆盖)
-    /// 2. Models (全局模型目录)
-    /// 3. ModelScope.Models (ModelScope 风格配置)
-    /// </remarks>
+    /// <remarks>模型目录聚合所有已注册 Provider 的模型。</remarks>
     IReadOnlyDictionary<string, ModelConfig> GetModels();
 
     /// <summary>获取指定模型配置</summary>
@@ -74,32 +69,33 @@ public interface IModelConfigManager
     Task AddModelAsync(
         string modelId,
         ModelConfig config,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
 
     /// <summary>更新模型配置</summary>
     Task UpdateModelAsync(
         string modelId,
         ModelConfig config,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
 
     /// <summary>删除模型配置</summary>
     Task DeleteModelAsync(
         string modelId,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
 
     /// <summary>批量保存模型配置</summary>
     Task SaveModelsAsync(
+        string providerId,
         Dictionary<string, ModelConfig> models,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
 
     /// <summary>设置默认模型</summary>
     Task SetDefaultModelAsync(
         string? modelId,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
 
     #endregion

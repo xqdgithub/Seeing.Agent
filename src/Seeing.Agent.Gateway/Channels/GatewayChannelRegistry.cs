@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Extensions;
-using Seeing.Gateway.Configuration;
+using Seeing.ConfigSchema;
 using Seeing.Gateway.Plugins;
 using Seeing.Gateway.WeCom;
 using Seeing.Gateway.QQ;

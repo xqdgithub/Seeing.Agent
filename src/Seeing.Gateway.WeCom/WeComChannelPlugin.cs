@@ -2,7 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
-using Seeing.Gateway.Configuration;
+using Seeing.ConfigSchema;
 using Seeing.Gateway.Plugins;
 using Seeing.Gateway.WeCom.Extensions;
 

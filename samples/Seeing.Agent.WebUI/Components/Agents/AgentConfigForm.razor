@@ -260,7 +260,8 @@
             return;
         }
 
-        var (provider, modelId) = ModelRef.Parse(_modelKey, ProviderManager.GetProviders().Keys);
+        var providerIds = ProviderManager.GetProviders().Keys;
+        var (provider, modelId) = ModelRef.Parse(_modelKey, providerIds);
         EditModel.Provider = provider;
         EditModel.Model = modelId;
     }

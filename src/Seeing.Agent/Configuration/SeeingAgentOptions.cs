@@ -19,13 +19,7 @@ namespace Seeing.Agent.Configuration
         /// <summary>默认 Agent</summary>
         public string? DefaultAgent { get; set; }
 
-        /// <summary>全局模型目录（与 ModelScope 单模型条目结构一致：modalities、limit、options）</summary>
-        public Dictionary<string, ModelConfig>? Models { get; set; }
-
-        /// <summary>ModelScope 风格块（与 <see cref="Models"/> 合并，通常包含 models 字典）</summary>
-        public ModelScopeSection? ModelScope { get; set; }
-
-        /// <summary>Provider 配置列表</summary>
+        /// <summary>Provider 配置列表（连接 + Models；仅用户级）</summary>
         public Dictionary<string, ProviderConfig> Providers { get; set; } = new();
 
         /// <summary>技能配置</summary>
@@ -122,15 +116,6 @@ namespace Seeing.Agent.Configuration
 
         /// <summary>远程技能 URL 列表（index.json 格式）</summary>
         public List<string> Urls { get; set; } = new();
-    }
-
-    /// <summary>
-    /// ModelScope 兼容配置节（JSON: SeeingAgent:ModelScope）
-    /// </summary>
-    public class ModelScopeSection
-    {
-        /// <summary>模型 ID → 模型定义（与 Provider.models 条目相同）</summary>
-        public Dictionary<string, ModelConfig>? Models { get; set; }
     }
 
     /// <summary>

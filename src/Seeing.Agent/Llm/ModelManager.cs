@@ -118,10 +118,11 @@ public sealed class ModelManager : IModelManager
         _catalog.DeleteModelAsync(modelId, level, ct);
 
     public Task SaveModelsAsync(
+        string providerId,
         Dictionary<string, ModelConfig> models,
         ConfigLevel level = ConfigLevel.Project,
         CancellationToken ct = default) =>
-        _catalog.SaveModelsAsync(models, level, ct);
+        _catalog.SaveModelsAsync(providerId, models, level, ct);
 
     public Task SetDefaultModelAsync(
         string? modelId,

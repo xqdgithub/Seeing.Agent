@@ -360,8 +360,8 @@ public class LlmService : ILlmService
         _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
 
         var startTime = DateTime.Now;
-        var providerConfig = _providerManager.GetProvider(modelConfig.Provider);
-        var maxRetries = providerConfig?.MaxRetries ?? 3;
+        var providerInfo = _providerManager.GetProvider(modelConfig.Provider);
+        var maxRetries = providerInfo?.MaxRetries ?? 3;
         var retryDelay = TimeSpan.FromSeconds(1);
 
         // 流式数据累计变量

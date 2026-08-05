@@ -249,16 +249,17 @@
             var availableModels = LlmService.GetAvailableModels();
             if (availableModels != null)
             {
+                var providerIds = ProviderManager.GetProviders().Keys.ToArray();
                 _models = availableModels
                     .Where(m => !string.IsNullOrEmpty(m.Key))
                     .Select(m =>
                     {
                         var providerName = m.Value.Provider
-                            ?? ModelRef.Parse(m.Key, ProviderManager.GetProviders().Keys).ProviderId
+                            ?? ModelRef.Parse(m.Key, providerIds).ProviderId
                             ?? "";
                         var modelName = !string.IsNullOrEmpty(m.Value.Id)
                             ? m.Value.Id
-                            : ModelRef.Parse(m.Key, ProviderManager.GetProviders().Keys).ModelId;
+                            : ModelRef.Parse(m.Key, providerIds).ModelId;
                         return new ModelViewModel
                         {
                             Id = m.Key,

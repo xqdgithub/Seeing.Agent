@@ -52,7 +52,7 @@ public class ProviderConfig
     [JsonPropertyName("max_retries")]
     public int MaxRetries { get; set; } = 3;
 
-    /// <summary>自定义模型配置</summary>
+    /// <summary>自定义模型配置（属于该 Provider 连接）</summary>
     [JsonPropertyName("models")]
     public Dictionary<string, ModelConfig>? Models { get; set; }
 

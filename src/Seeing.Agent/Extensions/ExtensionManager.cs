@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Llm;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Extensions
@@ -24,6 +26,7 @@ namespace Seeing.Agent.Extensions
         private readonly ConcurrentDictionary<string, LoadedExtension> _extensions = new();
         private readonly ConcurrentDictionary<string, bool> _enabledStates = new();
         private readonly ConcurrentDictionary<string, List<Func<Task>>> _disposeCallbacks = new();
+        private readonly ConcurrentDictionary<string, IProviderRegistry> _providerRegistries = new();
 
         private const int DISPOSE_TIMEOUT_MS = 5000;
 
@@ -145,6 +148,9 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         private async Task<bool> RegisterComponents(LoadedExtension ext, ExtensionContext context)
         {
+            IProviderRegistry? providerRegistry = null;
+            var providersRegistered = false;
+
             try
             {
                 // 注册 Agent
@@ -209,10 +215,35 @@ namespace Seeing.Agent.Extensions
                         command.Metadata.Name, ext.Id);
                 }
 
+                // 注册 LLM Provider
+                var providers = ext.Instance.GetProviders().ToList();
+                if (providers.Count > 0)
+                {
+                    providerRegistry =
+                        context.Services.GetRequiredService<IProviderRegistry>();
+                    foreach (var provider in providers)
+                    {
+                        providersRegistered = true;
+                        providerRegistry.Register(provider, ext.Id);
+                        _logger.LogDebug(
+                            "Registered LLM provider: {ProviderId} from extension {Id}",
+                            provider.Id,
+                            ext.Id);
+                    }
+
+                    _providerRegistries[ext.Id] = providerRegistry;
+                }
+
                 return true;
             }
             catch (Exception ex)
             {
+                if (providersRegistered && providerRegistry is not null)
+                {
+                    providerRegistry.UnregisterByOwner(ext.Id);
+                    _providerRegistries.TryRemove(ext.Id, out _);
+                }
+
                 _logger.LogError(ex, "Failed to register components for extension: {Id}", ext.Id);
                 return false;
             }
@@ -287,6 +318,11 @@ namespace Seeing.Agent.Extensions
                 _disposeCallbacks.TryRemove(id, out _);
             }
 
+            if (_providerRegistries.TryRemove(id, out var providerRegistry))
+            {
+                providerRegistry.UnregisterByOwner(ext.Id);
+            }
+
             // 调用扩展的 DisposeAsync
             try
             {
@@ -347,6 +383,9 @@ namespace Seeing.Agent.Extensions
             {
                 try
                 {
+                    if (_providerRegistries.TryRemove(ext.Id, out var providerRegistry))
+                        providerRegistry.UnregisterByOwner(ext.Id);
+
                     await ext.Instance.DisposeAsync();
                 }
                 catch (Exception ex)

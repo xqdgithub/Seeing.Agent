@@ -1,7 +1,7 @@
-namespace Seeing.Gateway.Configuration;
+namespace Seeing.ConfigSchema;
 
 /// <summary>
-/// Gateway Channel 配置字段 Schema（驱动 UI 动态表单）
+/// 配置字段 Schema（驱动 UI 动态表单）
 /// </summary>
 public sealed record ConfigFieldSchema(
     string Name,

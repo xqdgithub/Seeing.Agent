@@ -10,6 +10,15 @@ public sealed class ProviderEndpoint
 }
 
 /// <summary>
+/// Provider 可选暴露的连接端点信息，供 Embedding 等旁路服务使用。
+/// </summary>
+public interface IProviderEndpointInfo
+{
+    string? BaseUrl { get; }
+    string? ApiKey { get; }
+}
+
+/// <summary>
 /// 按名称查找 Provider 端点 — Embedding 等场景使用。
 /// </summary>
 public interface IProviderEndpointLookup

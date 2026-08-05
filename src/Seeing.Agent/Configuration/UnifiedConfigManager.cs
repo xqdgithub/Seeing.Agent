@@ -39,6 +39,12 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     
     /// <summary>合并后的 SeeingAgent 配置</summary>
     public SeeingAgentOptions SeeingAgent { get; private set; } = new();
+
+    /// <summary>用户级 SeeingAgent（未合并）。</summary>
+    public SeeingAgentOptions? UserSeeingAgent { get; private set; }
+
+    /// <summary>项目级 SeeingAgent（未合并）。</summary>
+    public SeeingAgentOptions? ProjectSeeingAgent { get; private set; }
     
     /// <summary>配置变更事件（细粒度通知）</summary>
     public event EventHandler<ConfigChangedEventArgs>? ConfigChanged;
@@ -67,59 +73,57 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 typeof(string), displayName: "默认模型", displayOrder: 2),
             ["DefaultAgent"] = new("DefaultAgent", "seeing.json", ConfigScope.Both, 
                 typeof(string), displayName: "默认智能体", displayOrder: 3),
-            ["Providers"] = new("Providers", "seeing.json", ConfigScope.Both, 
-                typeof(Dictionary<string, ProviderConfig>), displayName: "Provider 配置", displayOrder: 4),
-            ["Models"] = new("Models", "seeing.json", ConfigScope.Both, 
-                typeof(Dictionary<string, ModelConfig>), displayName: "模型配置", displayOrder: 5),
-            ["ModelScope"] = new("ModelScope", "seeing.json", ConfigScope.Both,
-                typeof(ModelScopeSection), displayName: "ModelScope 配置", displayOrder: 6),
+            ["Providers"] = new("Providers", "seeing.json", ConfigScope.UserOnly,
+                typeof(Dictionary<string, ProviderConfig>),
+                scopeReason: "Provider 连接与模型目录为用户级配置，不随项目覆盖",
+                displayName: "Provider 配置", displayOrder: 4),
             ["AgentModels"] = new("AgentModels", "seeing.json", ConfigScope.Both,
-                typeof(Dictionary<string, string>), displayName: "Agent 模型绑定", displayOrder: 7),
+                typeof(Dictionary<string, string>), displayName: "Agent 模型绑定", displayOrder: 5),
             ["Acp"] = new("Acp", "seeing.json", ConfigScope.Both, 
-                typeof(AcpOptions), displayName: "ACP 配置", displayOrder: 7),
+                typeof(AcpOptions), displayName: "ACP 配置", displayOrder: 6),
             ["Plugins"] = new("Plugins", "seeing.json", ConfigScope.Both, 
-                typeof(List<PluginSpec>), displayName: "插件列表", displayOrder: 8),
+                typeof(List<PluginSpec>), displayName: "插件列表", displayOrder: 7),
             ["PluginEnabled"] = new("PluginEnabled", "seeing.json", ConfigScope.Both, 
-                typeof(Dictionary<string, bool>), displayName: "插件启用状态", displayOrder: 9),
+                typeof(Dictionary<string, bool>), displayName: "插件启用状态", displayOrder: 8),
             ["Skills"] = new("Skills", "seeing.json", ConfigScope.Both, 
-                typeof(SkillsConfig), displayName: "技能配置", displayOrder: 10),
+                typeof(SkillsConfig), displayName: "技能配置", displayOrder: 9),
             
             // seeing.json 内的配置（仅项目级）
             ["Gateway"] = new("Gateway", "seeing.json", ConfigScope.ProjectOnly, 
                 typeof(GatewayOptions), 
                 scopeReason: "Gateway 服务端口绑定与项目运行环境相关", 
-                displayName: "Gateway 配置", displayOrder: 11),
+                displayName: "Gateway 配置", displayOrder: 10),
             ["GatewayClients"] = new("GatewayClients", "seeing.json", ConfigScope.ProjectOnly, 
                 typeof(GatewayClientsOptions), 
                 scopeReason: "Gateway Client 配置与项目运行环境相关", 
-                displayName: "Gateway Clients 配置", displayOrder: 12),
+                displayName: "Gateway Clients 配置", displayOrder: 11),
             ["Permission"] = new("Permission", "seeing.json", ConfigScope.ProjectOnly, 
                 typeof(PermissionOptions), 
                 scopeReason: "权限策略与项目安全上下文绑定", 
-                displayName: "权限配置", displayOrder: 13),
+                displayName: "权限配置", displayOrder: 12),
             ["Workspace"] = new("Workspace", "seeing.json", ConfigScope.ProjectOnly, 
                 typeof(WorkspaceOptions), 
                 scopeReason: "工作区配置与项目运行环境绑定", 
-                displayName: "工作区配置", displayOrder: 14),
+                displayName: "工作区配置", displayOrder: 13),
             
             // 独立配置文件（仅项目级）
             ["Scheduler"] = new("Scheduler", "scheduler.json", ConfigScope.ProjectOnly, 
                 typeof(object),
                 scopeReason: "任务调度与项目工作流绑定，避免循环依赖", 
-                displayName: "调度器配置", displayOrder: 13),
+                displayName: "调度器配置", displayOrder: 14),
             
             // 独立配置文件（双层级）
             ["Mcp"] = new("Mcp", "mcp.json", ConfigScope.Both, 
-                typeof(Dictionary<string, McpServerConfig>), displayName: "MCP 服务器", displayOrder: 14),
+                typeof(Dictionary<string, McpServerConfig>), displayName: "MCP 服务器", displayOrder: 15),
             ["Memory"] = new("Memory", "memory.json", ConfigScope.Both, 
                 typeof(object),  // Memory 在独立模块中定义
-                displayName: "Memory 配置", displayOrder: 15),
+                displayName: "Memory 配置", displayOrder: 16),
             ["TokenBudget"] = new("TokenBudget", "seeing.json", ConfigScope.Both,
-                typeof(TokenBudgetOptions), displayName: "Token 预算配置", displayOrder: 16),
+                typeof(TokenBudgetOptions), displayName: "Token 预算配置", displayOrder: 17),
             ["GlobalWorkspaceRoot"] = new("GlobalWorkspaceRoot", "seeing.json", ConfigScope.UserOnly,
                 typeof(string),
                 scopeReason: "全局默认工作区为用户级偏好，独立于项目",
-                displayName: "全局默认工作区", displayOrder: 17),
+                displayName: "全局默认工作区", displayOrder: 18),
         };
     }
     
@@ -136,17 +140,250 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         // 加载 seeing.json
         var userSeeing = await LoadFileAsync<SeeingAgentOptions>(ConfigLevel.User, "seeing.json", "SeeingAgent", ct);
         var projectSeeing = await LoadFileAsync<SeeingAgentOptions>(ConfigLevel.Project, "seeing.json", "SeeingAgent", ct);
+        UserSeeingAgent = userSeeing;
+        ProjectSeeingAgent = projectSeeing;
         SeeingAgent = MergeDeep.Merge(userSeeing ?? new(), projectSeeing ?? new());
-        
+        await EnsureProvidersUserOnlyAsync(ct).ConfigureAwait(false);
+
         // 加载独立配置文件
         foreach (var meta in _sectionRegistry.Values.Where(m => m.FileName != "seeing.json"))
         {
             await LoadSectionToCacheAsync(meta, ct);
         }
-        
+
         _logger.LogInformation("配置已加载完成");
         OnConfigChanged(Array.Empty<string>());
     }
+
+    /// <summary>
+    /// Providers 为 UserOnly：合并后只保留用户级；一次性吸收项目级 Providers，
+    /// 并清理误写的 ProviderModels 节（回填到 Providers[*].Models）。
+    /// </summary>
+    private async Task EnsureProvidersUserOnlyAsync(CancellationToken ct)
+    {
+        var userProviders = CloneProvidersDictionary(UserSeeingAgent?.Providers);
+        var dirty = false;
+
+        // 必须先吸收 ProviderModels，再删项目级键，避免「先删后吸」丢数据。
+        if (await AbsorbProviderModelsJsonAsync(ConfigLevel.User, userProviders, ct).ConfigureAwait(false))
+            dirty = true;
+        if (await AbsorbProviderModelsJsonAsync(ConfigLevel.Project, userProviders, ct).ConfigureAwait(false))
+            dirty = true;
+
+        if (ProjectSeeingAgent?.Providers is { Count: > 0 } projectProviders)
+        {
+            if (AbsorbProviders(userProviders, projectProviders))
+                dirty = true;
+            ProjectSeeingAgent.Providers = new Dictionary<string, ProviderConfig>();
+            await RemoveSeeingAgentKeysAsync(ConfigLevel.Project, ["Providers"], ct)
+                .ConfigureAwait(false);
+        }
+
+        UserSeeingAgent ??= new SeeingAgentOptions();
+        UserSeeingAgent.Providers = userProviders;
+        SeeingAgent.Providers = CloneProvidersDictionary(userProviders);
+
+        if (!dirty)
+            return;
+
+        await SaveSectionAsync("Providers", userProviders, ConfigLevel.User, ct).ConfigureAwait(false);
+        _logger.LogInformation("已将 Providers 收敛为用户级（含历史项目级 / ProviderModels 迁移）");
+    }
+
+    private async Task<bool> AbsorbProviderModelsJsonAsync(
+        ConfigLevel level,
+        Dictionary<string, ProviderConfig> userProviders,
+        CancellationToken ct)
+    {
+        var path = GetFilePath(level, "seeing.json");
+        if (!File.Exists(path))
+            return false;
+
+        var root = await LoadJsonRootAsync(path, ct).ConfigureAwait(false);
+        if (root["SeeingAgent"] is not JsonObject seeingAgent)
+            return false;
+
+        if (seeingAgent["ProviderModels"] is not JsonObject providerModelsNode)
+            return false;
+
+        var providerModels = providerModelsNode.Deserialize<Dictionary<string, Dictionary<string, ModelConfig>>>(JsonOptions)
+            ?? new Dictionary<string, Dictionary<string, ModelConfig>>();
+        var absorbed = false;
+
+        foreach (var (providerId, models) in providerModels)
+        {
+            if (models is not { Count: > 0 })
+                continue;
+
+            if (!userProviders.TryGetValue(providerId, out var provider))
+            {
+                provider = new ProviderConfig { Id = providerId, Type = ProviderType.OpenAI, Name = providerId };
+                userProviders[providerId] = provider;
+            }
+
+            provider.Models ??= new Dictionary<string, ModelConfig>();
+            foreach (var (modelId, model) in models)
+            {
+                if (provider.Models.ContainsKey(modelId))
+                    continue;
+                provider.Models[modelId] = CloneModelConfig(providerId, modelId, model);
+                absorbed = true;
+            }
+        }
+
+        seeingAgent.Remove("ProviderModels");
+        await WriteJsonAsync(path, root, ct).ConfigureAwait(false);
+        return absorbed || providerModels.Count > 0;
+    }
+
+    private async Task RemoveSeeingAgentKeysAsync(
+        ConfigLevel level,
+        IEnumerable<string> keys,
+        CancellationToken ct)
+    {
+        var path = GetFilePath(level, "seeing.json");
+        if (!File.Exists(path))
+            return;
+
+        var root = await LoadJsonRootAsync(path, ct).ConfigureAwait(false);
+        if (root["SeeingAgent"] is not JsonObject seeingAgent)
+            return;
+
+        var removed = false;
+        foreach (var key in keys)
+        {
+            if (seeingAgent.Remove(key))
+                removed = true;
+        }
+
+        if (removed)
+            await WriteJsonAsync(path, root, ct).ConfigureAwait(false);
+    }
+
+    private static bool AbsorbProviders(
+        Dictionary<string, ProviderConfig> target,
+        Dictionary<string, ProviderConfig> source)
+    {
+        var changed = false;
+        foreach (var (providerId, sourceProvider) in source)
+        {
+            if (!target.TryGetValue(providerId, out var destination))
+            {
+                target[providerId] = CloneProviderConfig(sourceProvider);
+                changed = true;
+                continue;
+            }
+
+            // 用户已有条目：保留用户连接；仅回填用户为空的连接字段，并吸收缺失模型。
+            if (FillEmptyConnectionFields(destination, sourceProvider))
+                changed = true;
+
+            if (sourceProvider.Models is not { Count: > 0 })
+                continue;
+
+            destination.Models ??= new Dictionary<string, ModelConfig>();
+            foreach (var (modelId, model) in sourceProvider.Models)
+            {
+                if (destination.Models.ContainsKey(modelId))
+                    continue;
+                destination.Models[modelId] = CloneModelConfig(providerId, modelId, model);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>仅当目标字段为空时，用源配置回填连接信息（不覆盖用户已有值）。</summary>
+    private static bool FillEmptyConnectionFields(ProviderConfig destination, ProviderConfig source)
+    {
+        var changed = false;
+
+        if (string.IsNullOrWhiteSpace(destination.ApiKey) && !string.IsNullOrWhiteSpace(source.ApiKey))
+        {
+            destination.ApiKey = source.ApiKey;
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(destination.BaseUrl) && !string.IsNullOrWhiteSpace(source.BaseUrl))
+        {
+            destination.BaseUrl = source.BaseUrl;
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(destination.Name) && !string.IsNullOrWhiteSpace(source.Name))
+        {
+            destination.Name = source.Name;
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(destination.DefaultModel) && !string.IsNullOrWhiteSpace(source.DefaultModel))
+        {
+            destination.DefaultModel = source.DefaultModel;
+            changed = true;
+        }
+
+        if ((destination.Headers is null || destination.Headers.Count == 0) &&
+            source.Headers is { Count: > 0 })
+        {
+            destination.Headers = new Dictionary<string, string>(source.Headers);
+            changed = true;
+        }
+
+        if ((destination.Options is null || destination.Options.Count == 0) &&
+            source.Options is { Count: > 0 })
+        {
+            destination.Options = new Dictionary<string, object>(source.Options);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private static Dictionary<string, ProviderConfig> CloneProvidersDictionary(
+        Dictionary<string, ProviderConfig>? source)
+    {
+        if (source is null || source.Count == 0)
+            return new Dictionary<string, ProviderConfig>(StringComparer.OrdinalIgnoreCase);
+
+        return source.ToDictionary(
+            pair => pair.Key,
+            pair => CloneProviderConfig(pair.Value),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static ProviderConfig CloneProviderConfig(ProviderConfig config)
+        => new()
+        {
+            Id = config.Id,
+            Type = config.Type,
+            Name = config.Name,
+            BaseUrl = config.BaseUrl,
+            ApiKey = config.ApiKey,
+            DefaultModel = config.DefaultModel,
+            Timeout = config.Timeout,
+            MaxRetries = config.MaxRetries,
+            Models = config.Models is null ? null : new Dictionary<string, ModelConfig>(
+                config.Models.ToDictionary(
+                    pair => pair.Key,
+                    pair => CloneModelConfig(config.Id, pair.Key, pair.Value),
+                    StringComparer.OrdinalIgnoreCase)),
+            Options = config.Options is null ? null : new Dictionary<string, object>(config.Options),
+            Headers = config.Headers is null ? null : new Dictionary<string, string>(config.Headers)
+        };
+
+    private static ModelConfig CloneModelConfig(string providerId, string modelId, ModelConfig config)
+        => new()
+        {
+            Id = string.IsNullOrWhiteSpace(config.Id) ? modelId : config.Id,
+            Name = config.Name,
+            Provider = string.IsNullOrWhiteSpace(config.Provider) ? providerId : config.Provider,
+            Types = config.Types is null ? new List<ModelType>() : new List<ModelType>(config.Types),
+            Modalities = config.Modalities,
+            Limit = config.Limit,
+            Options = config.Options,
+            Pricing = config.Pricing
+        };
     
     /// <summary>重载配置（外部文件变更时调用）</summary>
     public async Task ReloadAsync(CancellationToken ct = default)
@@ -594,8 +831,6 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             "DefaultModel" => SeeingAgent.DefaultModel as T,
             "DefaultAgent" => SeeingAgent.DefaultAgent as T,
             "Providers" => SeeingAgent.Providers as T,
-            "Models" => SeeingAgent.Models as T,
-            "ModelScope" => SeeingAgent.ModelScope as T,
             "Gateway" => SeeingAgent.Gateway as T,
             "GatewayClients" => SeeingAgent.GatewayClients as T,
             "Acp" => SeeingAgent.Acp as T,
@@ -618,14 +853,14 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             // seeing.json 内的配置需要更新 SeeingAgent 属性
             if (_sectionRegistry.TryGetValue(sectionName, out var meta) && meta.FileName == "seeing.json")
             {
-                UpdateSeeingAgentProperty(sectionName, value);
+                UpdateSeeingAgentProperty(sectionName, value, level);
             }
             
             _cache[sectionName] = value;
         }
     }
     
-    private void UpdateSeeingAgentProperty(string sectionName, object value)
+    private void UpdateSeeingAgentProperty(string sectionName, object value, ConfigLevel level)
     {
         switch (sectionName)
         {
@@ -640,15 +875,11 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 break;
             case "Providers":
                 if (value is Dictionary<string, ProviderConfig> providers)
+                {
                     SeeingAgent.Providers = providers;
-                break;
-            case "Models":
-                if (value is Dictionary<string, ModelConfig> models)
-                    SeeingAgent.Models = models;
-                break;
-            case "ModelScope":
-                if (value is ModelScopeSection modelScope)
-                    SeeingAgent.ModelScope = modelScope;
+                    UserSeeingAgent ??= new SeeingAgentOptions();
+                    UserSeeingAgent.Providers = providers;
+                }
                 break;
             case "Gateway":
                 if (value is GatewayOptions gateway)

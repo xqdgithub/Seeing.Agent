@@ -1,7 +1,7 @@
-namespace Seeing.Gateway.Configuration;
+namespace Seeing.ConfigSchema;
 
 /// <summary>
-/// Gateway Channel 配置字段 UI 类型
+/// 配置字段 UI 类型
 /// </summary>
 public enum ConfigFieldType
 {

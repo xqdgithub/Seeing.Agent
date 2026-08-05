@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Channels;
 using Seeing.Gateway.Client;
+using Seeing.ConfigSchema;
 using Seeing.Gateway.Plugins;
 
 namespace Seeing.Agent.WebUI.Services;
@@ -437,7 +438,7 @@ public sealed class GatewayClientViewModel
     public string? Model { get; set; }
     public string? Mode { get; set; }
     public Dictionary<string, object?> Options { get; set; } = new();
-    public IReadOnlyList<Seeing.Gateway.Configuration.ConfigFieldSchema> Fields { get; set; } = Array.Empty<Seeing.Gateway.Configuration.ConfigFieldSchema>();
+    public IReadOnlyList<ConfigFieldSchema> Fields { get; set; } = Array.Empty<ConfigFieldSchema>();
     public Type? ConfigFormComponentType { get; set; }
     public string Status { get; set; } = GatewayClientStatuses.Stopped;
     public string? LastError { get; set; }

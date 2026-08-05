@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Seeing.Agent\Seeing.Agent.csproj" />
+    <ProjectReference Include="..\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
   </ItemGroup>
 
 </Project>

@@ -665,6 +665,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<IModelConfigManager>(sp => sp.GetRequiredService<ModelManager>());
 
             // Provider 管理器
+            services.AddSingleton<IProviderRegistry, ProviderRegistry>();
             services.AddSingleton<IProviderManager, ProviderManager>();
 
             // LLM 服务（调用层）
