@@ -101,7 +101,7 @@ namespace Seeing.Agent.Services
             if (realUserCount % 10 == 0)
                 return true;
 
-            return true;
+            return false;
         }
 
         /// <summary>

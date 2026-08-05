@@ -23,7 +23,7 @@ public sealed class TextCompletionService : ITextCompletion
         _logger = logger;
     }
 
-    public const int DefaultMaxTokens = 64;
+    public const int DefaultMaxTokens = 4096;
 
     public Task<string> CompleteAsync(
         string systemPrompt,
