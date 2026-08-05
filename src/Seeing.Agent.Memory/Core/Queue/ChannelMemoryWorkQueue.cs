@@ -6,7 +6,7 @@ namespace Seeing.Agent.Memory.Core.Queue;
 
 public sealed class ChannelMemoryWorkQueue : IMemoryWorkQueue
 {
-    private readonly Channel<MemoryCandidate> _channel;
+    private readonly Channel<MemoryBatch> _channel;
     private int _count;
 
     public ChannelMemoryWorkQueue(int capacity)
@@ -14,7 +14,7 @@ public sealed class ChannelMemoryWorkQueue : IMemoryWorkQueue
         if (capacity < 1)
             throw new ArgumentOutOfRangeException(nameof(capacity));
 
-        _channel = Channel.CreateBounded<MemoryCandidate>(new BoundedChannelOptions(capacity)
+        _channel = Channel.CreateBounded<MemoryBatch>(new BoundedChannelOptions(capacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
@@ -24,16 +24,16 @@ public sealed class ChannelMemoryWorkQueue : IMemoryWorkQueue
 
     public int Count => Volatile.Read(ref _count);
 
-    public bool TryEnqueue(MemoryCandidate candidate)
+    public bool TryEnqueue(MemoryBatch batch)
     {
-        if (!_channel.Writer.TryWrite(candidate))
+        if (!_channel.Writer.TryWrite(batch))
             return false;
 
         Interlocked.Increment(ref _count);
         return true;
     }
 
-    public async IAsyncEnumerable<MemoryCandidate> ReadAllAsync(
+    public async IAsyncEnumerable<MemoryBatch> ReadAllAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         await foreach (var item in _channel.Reader.ReadAllAsync(ct))

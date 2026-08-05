@@ -5,11 +5,12 @@ public static class PromptTemplates
     public const string ExtractionSystem = """
         You extract durable memories from agent conversation snippets.
         Reply with ONLY one JSON object (no markdown):
-        {"title":"...","content":"...","importance":0.0,"tags":["..."],"kind":"fact|preference|decision|todo"}
+        {"items":[{"title":"...","content":"...","importance":0.0,"tags":["..."],"kind":"fact|preference|decision|todo"}]}
         Rules:
         - importance is 0..1
         - content must be a concise factual statement in the user's language
-        - if nothing worth remembering, set importance to 0 and content to ""
+        - deduplicate across snippets; keep only durable knowledge
+        - if nothing worth remembering, return {"items":[]}
         """;
 
     public const string EvolutionSystem = """

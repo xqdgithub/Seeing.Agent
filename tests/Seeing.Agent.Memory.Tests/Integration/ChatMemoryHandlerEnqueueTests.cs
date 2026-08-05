@@ -5,6 +5,7 @@ using Moq;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
+using Seeing.Agent.Memory.Core;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Memory.Integration;
 using Xunit;
@@ -14,15 +15,20 @@ namespace Seeing.Agent.Memory.Tests.Integration;
 public class ChatMemoryHandlerEnqueueTests
 {
     [Fact]
-    public async Task ExecuteAsync_WhenAutoCapture_ShouldEnqueueAndNotSave()
+    public async Task ExecuteAsync_WhenAutoCapture_ShouldBufferAndNotEnqueuePipeline()
     {
-        var queue = new Mock<IMemoryWorkQueue>();
-        queue.Setup(q => q.TryEnqueue(It.IsAny<MemoryCandidate>())).Returns(true);
+        var buffer = new SessionMemoryBuffer(MemoryTestOptions.Monitor());
+        var flush = new Mock<IMemoryFlushService>(MockBehavior.Strict);
+        var filter = new Mock<IMemoryHeuristicFilter>();
+        filter.Setup(f => f.Evaluate(It.IsAny<MemoryCandidate>()))
+            .Returns(new FilterDecision(true, null));
 
         var handler = new ChatMemoryHandler(
-            queue.Object,
-            Options.Create(new MemoryOptions()),
-            new Seeing.Agent.Memory.Core.SessionActivityTracker(),
+            buffer,
+            flush.Object,
+            filter.Object,
+            MemoryTestOptions.Monitor(),
+            new SessionActivityTracker(),
             NullLogger<ChatMemoryHandler>.Instance);
 
         var payload = HookPayload.FireAndForget(
@@ -36,23 +42,25 @@ public class ChatMemoryHandlerEnqueueTests
         var result = await handler.ExecuteAsync(payload);
 
         result.Should().Be(HookResult.Success);
-        queue.Verify(q => q.TryEnqueue(It.Is<MemoryCandidate>(c =>
-            c.Source == MemorySource.Chat
-            && c.SessionId == "session-1"
-            && c.Snippet.Contains("深色主题"))), Times.Once);
+        buffer.GetPendingCount("session-1").Should().Be(1);
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenAutoCaptureDisabled_ShouldNotEnqueue()
+    public async Task ExecuteAsync_WhenAutoCaptureDisabled_ShouldNotBuffer()
     {
-        var queue = new Mock<IMemoryWorkQueue>(MockBehavior.Strict);
+        var buffer = new SessionMemoryBuffer(MemoryTestOptions.Monitor());
+        var flush = new Mock<IMemoryFlushService>(MockBehavior.Strict);
+        var filter = new Mock<IMemoryHeuristicFilter>(MockBehavior.Strict);
+
         var handler = new ChatMemoryHandler(
-            queue.Object,
-            Options.Create(new MemoryOptions
+            buffer,
+            flush.Object,
+            filter.Object,
+            MemoryTestOptions.Monitor(new MemoryOptions
             {
                 Capture = new MemoryCaptureOptions { AutoCapture = false }
             }),
-            new Seeing.Agent.Memory.Core.SessionActivityTracker(),
+            new SessionActivityTracker(),
             NullLogger<ChatMemoryHandler>.Instance);
 
         var payload = HookPayload.FireAndForget(
@@ -62,5 +70,74 @@ public class ChatMemoryHandlerEnqueueTests
 
         var result = await handler.ExecuteAsync(payload);
         result.Should().Be(HookResult.Success);
+        buffer.GetPendingCount("session-1").Should().Be(0);
+    }
+}
+
+public class ToolMemoryHandlerTests
+{
+    [Fact]
+    public async Task ExecuteAsync_WhenCaptureToolsDisabled_ShouldNoOp()
+    {
+        var handler = new ToolMemoryHandler(
+            MemoryTestOptions.Monitor(new MemoryOptions
+            {
+                Capture = new MemoryCaptureOptions { CaptureTools = false }
+            }),
+            NullLogger<ToolMemoryHandler>.Instance);
+
+        var payload = HookPayload.FireAndForget(
+            HookRegistry.ToolExecuteAfter,
+            "session-1",
+            input: new Dictionary<string, object?> { ["toolId"] = "bash", ["callId"] = "c1" },
+            result: new Dictionary<string, object?> { ["output"] = "lots of tool output that would waste extraction tokens" });
+
+        var result = await handler.ExecuteAsync(payload);
+        result.Should().Be(HookResult.Success);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCaptureToolsEnabled_StillDoesNotCapture()
+    {
+        var handler = new ToolMemoryHandler(
+            MemoryTestOptions.Monitor(new MemoryOptions
+            {
+                Capture = new MemoryCaptureOptions { CaptureTools = true }
+            }),
+            NullLogger<ToolMemoryHandler>.Instance);
+
+        var payload = HookPayload.FireAndForget(
+            HookRegistry.ToolExecuteAfter,
+            "session-1",
+            input: new Dictionary<string, object?> { ["toolId"] = "bash", ["callId"] = "c1" },
+            result: new Dictionary<string, object?> { ["output"] = "tool output" });
+
+        (await handler.ExecuteAsync(payload)).Should().Be(HookResult.Success);
+    }
+}
+
+public class AgentTurnMemoryHandlerTests
+{
+    [Fact]
+    public async Task ExecuteAsync_ShouldCallFlushAfterTurn()
+    {
+        var flush = new Mock<IMemoryFlushService>();
+        flush.Setup(f => f.TryFlushAfterTurn("session-1")).Returns(true);
+
+        var handler = new AgentTurnMemoryHandler(
+            flush.Object,
+            MemoryTestOptions.Monitor(new MemoryOptions
+            {
+                Extraction = new MemoryExtractionOptions { ExtractEveryNTurns = 10 }
+            }),
+            NullLogger<AgentTurnMemoryHandler>.Instance);
+
+        var payload = HookPayload.FireAndForget(
+            HookRegistry.AgentAfterInvoke,
+            "session-1",
+            input: new Dictionary<string, object?> { ["agentName"] = "build", ["success"] = true });
+
+        await handler.ExecuteAsync(payload);
+        flush.Verify(f => f.TryFlushAfterTurn("session-1"), Times.Once);
     }
 }

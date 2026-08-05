@@ -36,6 +36,12 @@ public class MemoryPipelineGraphTests : IDisposable
             .Returns(new FilterDecision(true, null));
 
         var extractor = new Mock<IMemoryExtractor>();
+        extractor.Setup(e => e.ExtractBatchAsync(It.IsAny<IReadOnlyList<MemoryCandidate>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new ExtractionResult("Title", "Content about [[other]]. More text here for length.", 0.9,
+                    new[] { "t1" }, "fact")
+            });
         extractor.Setup(e => e.ExtractAsync(It.IsAny<MemoryCandidate>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExtractionResult("Title", "Content about [[other]]. More text here for length.", 0.9,
                 new[] { "t1" }, "fact"));
@@ -112,6 +118,12 @@ public class MemoryPipelineGraphTests : IDisposable
             .Returns(new FilterDecision(true, null));
 
         var extractor = new Mock<IMemoryExtractor>();
+        extractor.Setup(e => e.ExtractBatchAsync(It.IsAny<IReadOnlyList<MemoryCandidate>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new ExtractionResult("Simple Note", "Just content no links.", 0.6,
+                    new[] { "simple" }, "note")
+            });
         extractor.Setup(e => e.ExtractAsync(It.IsAny<MemoryCandidate>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExtractionResult("Simple Note", "Just content no links.", 0.6,
                 new[] { "simple" }, "note"));

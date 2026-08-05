@@ -18,7 +18,7 @@
 
 ## 功能特性
 
-- **异步管道**：Hook 只入队；后台过滤 → LLM 抽取 → 轻量 session 索引 + daily 落盘
+- **异步管道**：Hook 写入会话缓冲；每 N 轮用户对话 / 会话结束 / 短空闲后批量 LLM 抽取 → daily 落盘（默认不捕获工具）
 - **文件存储**：Markdown + YAML frontmatter
 - **混合检索**：未配置 Embedding 时仅 BM25；配置后启用向量 + RRF
 - **知识图谱**：Wikilink 关联

@@ -11,8 +11,7 @@ public class ChannelMemoryWorkQueueTests
     public void TryEnqueue_WhenUnderCapacity_ShouldReturnTrueAndIncreaseCount()
     {
         var q = new ChannelMemoryWorkQueue(capacity: 2);
-        var c = NewCandidate("a");
-        q.TryEnqueue(c).Should().BeTrue();
+        q.TryEnqueue(NewBatch("a")).Should().BeTrue();
         q.Count.Should().Be(1);
     }
 
@@ -20,11 +19,14 @@ public class ChannelMemoryWorkQueueTests
     public void TryEnqueue_WhenFull_ShouldReturnFalse()
     {
         var q = new ChannelMemoryWorkQueue(capacity: 1);
-        q.TryEnqueue(NewCandidate("a")).Should().BeTrue();
-        q.TryEnqueue(NewCandidate("b")).Should().BeFalse();
+        q.TryEnqueue(NewBatch("a")).Should().BeTrue();
+        q.TryEnqueue(NewBatch("b")).Should().BeFalse();
         q.Count.Should().Be(1);
     }
 
-    private static MemoryCandidate NewCandidate(string id) =>
-        new(id, "s1", null, MemorySource.Chat, null, "hello world content here", DateTimeOffset.UtcNow);
+    private static MemoryBatch NewBatch(string id)
+    {
+        var c = new MemoryCandidate(id, "s1", null, MemorySource.Chat, null, "hello world content here", DateTimeOffset.UtcNow);
+        return new MemoryBatch(id, "s1", new[] { c }, DateTimeOffset.UtcNow);
+    }
 }

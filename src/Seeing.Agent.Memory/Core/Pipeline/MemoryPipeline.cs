@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Memory.Abstractions;
@@ -41,49 +40,85 @@ public sealed class MemoryPipeline : IMemoryPipeline
 
     public async Task<PipelineResult> ProcessAsync(MemoryCandidate candidate, CancellationToken ct = default)
     {
-        if (!_options.Value.Enabled)
-            return new PipelineResult(false, null, "disabled");
+        var batchResult = await ProcessBatchAsync(
+            new MemoryBatch(
+                candidate.Id,
+                candidate.SessionId,
+                new[] { candidate },
+                candidate.CreatedAt),
+            ct);
 
-        var decision = _filter.Evaluate(candidate);
-        if (!decision.Accepted)
-            return new PipelineResult(false, null, decision.Reason);
+        if (batchResult.StoredCount > 0)
+            return new PipelineResult(true, batchResult.DailyPaths?.FirstOrDefault(), null);
+
+        return new PipelineResult(false, null, batchResult.Reason ?? "extract_skipped");
+    }
+
+    public async Task<BatchPipelineResult> ProcessBatchAsync(MemoryBatch batch, CancellationToken ct = default)
+    {
+        if (!_options.Value.Enabled)
+            return new BatchPipelineResult(0, "disabled");
 
         if (!_options.Value.Extraction.Enabled)
-            return new PipelineResult(false, null, "extraction_disabled");
+            return new BatchPipelineResult(0, "extraction_disabled");
 
-        var extraction = await _extractor.ExtractAsync(candidate, ct);
-        if (extraction is null)
-            return new PipelineResult(false, null, "extract_skipped");
+        if (batch.Candidates.Count == 0)
+            return new BatchPipelineResult(0, "empty");
 
-        var id = candidate.Id;
-        var date = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd");
-        var dailyPath = $"daily/{date}/{id}.md";
-        var tagsYaml = string.Join(", ", extraction.Tags.Select(t => t));
-        var dailyContent = $"""
-            ---
-            id: {id}
-            type: daily
-            title: "{EscapeYaml(extraction.Title)}"
-            tags: [{tagsYaml}]
-            importance: {extraction.Importance:0.###}
-            kind: {extraction.Kind}
-            source_session: {candidate.SessionId}
-            created_at: {DateTimeOffset.UtcNow:O}
-            ---
+        // 入缓冲前通常已过滤；此处再滤一次以兼容直接 ProcessAsync 调用
+        var accepted = new List<MemoryCandidate>(batch.Candidates.Count);
+        foreach (var candidate in batch.Candidates)
+        {
+            var decision = _filter.Evaluate(candidate);
+            if (decision.Accepted)
+                accepted.Add(candidate);
+        }
 
-            {extraction.Content}
-            """;
+        if (accepted.Count == 0)
+            return new BatchPipelineResult(0, "filtered");
 
-        var dailyNode = await _fileStore.WriteAsync(dailyPath, dailyContent, ct);
-        await _index.IndexAsync(dailyNode, ct);
-        await UpdateGraphAsync(dailyNode, extraction, ct);
+        var extractions = await _extractor.ExtractBatchAsync(accepted, ct);
+        if (extractions.Count == 0)
+            return new BatchPipelineResult(0, "extract_skipped");
 
-        var indexPath = $"session/{candidate.SessionId}/index.md";
-        var line = $"- {DateTimeOffset.UtcNow:HH:mm:ss} [{extraction.Kind}] {extraction.Title} → [[{dailyPath}]]\n";
-        await AppendSessionIndexAsync(indexPath, line, ct);
+        var storedPaths = new List<string>();
+        var date = DateTimeOffset.Now.ToString("yyyy-MM-dd");
+        foreach (var extraction in extractions)
+        {
+            var id = Guid.NewGuid().ToString("N");
+            var dailyPath = $"daily/{date}/{id}.md";
+            var tagsYaml = string.Join(", ", extraction.Tags.Select(t => t));
+            var dailyContent = $"""
+                ---
+                id: {id}
+                type: daily
+                title: "{EscapeYaml(extraction.Title)}"
+                tags: [{tagsYaml}]
+                importance: {extraction.Importance:0.###}
+                kind: {extraction.Kind}
+                source_session: {batch.SessionId}
+                created_at: {DateTimeOffset.Now:O}
+                ---
 
-        _logger?.LogInformation("Stored memory {Path} for session {SessionId}", dailyPath, candidate.SessionId);
-        return new PipelineResult(true, dailyPath, null);
+                {extraction.Content}
+                """;
+
+            var dailyNode = await _fileStore.WriteAsync(dailyPath, dailyContent, ct);
+            await _index.IndexAsync(dailyNode, ct);
+            await UpdateGraphAsync(dailyNode, extraction, ct);
+
+            var indexPath = $"session/{batch.SessionId}/index.md";
+            var line = $"- {DateTimeOffset.Now:HH:mm:ss} [{extraction.Kind}] {extraction.Title} → [[{dailyPath}]]\n";
+            await AppendSessionIndexAsync(indexPath, line, ct);
+            storedPaths.Add(dailyPath);
+        }
+
+        _logger?.LogInformation(
+            "Stored {Count} memories for session {SessionId} from batch {BatchId}",
+            storedPaths.Count,
+            batch.SessionId,
+            batch.Id);
+        return new BatchPipelineResult(storedPaths.Count, null, storedPaths);
     }
 
     private async Task AppendSessionIndexAsync(string path, string line, CancellationToken ct)
@@ -115,9 +150,6 @@ public sealed class MemoryPipeline : IMemoryPipeline
     private static string EscapeYaml(string value) =>
         value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
 
-    /// <summary>
-    /// 更新知识图谱（节点 + Wikilink 边 + 目录父子边 + 标签边）
-    /// </summary>
     private async Task UpdateGraphAsync(FileNode node, ExtractionResult extraction, CancellationToken ct)
     {
         await _graph.AddNodeAsync(node.Path, node.Metadata.Title ?? node.Path, ct);

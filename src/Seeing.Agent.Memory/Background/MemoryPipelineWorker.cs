@@ -23,13 +23,13 @@ public sealed class MemoryPipelineWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("MemoryPipelineWorker started");
-        await foreach (var candidate in _queue.ReadAllAsync(stoppingToken))
+        await foreach (var batch in _queue.ReadAllAsync(stoppingToken))
         {
             try
             {
-                var result = await _pipeline.ProcessAsync(candidate, stoppingToken);
-                if (!result.Stored)
-                    _logger.LogDebug("Pipeline skipped {Id}: {Reason}", candidate.Id, result.Reason);
+                var result = await _pipeline.ProcessBatchAsync(batch, stoppingToken);
+                if (result.StoredCount == 0)
+                    _logger.LogDebug("Pipeline skipped batch {Id}: {Reason}", batch.Id, result.Reason);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -37,7 +37,7 @@ public sealed class MemoryPipelineWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Pipeline failed for {Id}", candidate.Id);
+                _logger.LogError(ex, "Pipeline failed for batch {Id}", batch.Id);
             }
         }
     }

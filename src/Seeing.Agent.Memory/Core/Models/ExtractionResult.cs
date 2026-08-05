@@ -8,3 +8,5 @@ public record ExtractionResult(
     string Kind);
 
 public record PipelineResult(bool Stored, string? DailyPath, string? Reason);
+
+public record BatchPipelineResult(int StoredCount, string? Reason, IReadOnlyList<string>? DailyPaths = null);

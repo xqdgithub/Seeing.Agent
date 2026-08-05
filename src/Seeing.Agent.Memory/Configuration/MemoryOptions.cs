@@ -20,7 +20,8 @@ public sealed class MemoryCaptureOptions
 {
     public bool AutoCapture { get; set; } = true;
     public bool CaptureChat { get; set; } = true;
-    public bool CaptureTools { get; set; } = true;
+    /// <summary>默认关闭：工具输出噪声大、触发频繁，不参与记忆捕获。</summary>
+    public bool CaptureTools { get; set; } = false;
     public List<string> ToolAllowlist { get; set; } = new();
     public List<string> ToolBlocklist { get; set; } = new() { "list_dir", "glob", "grep" };
     public int MaxSnippetChars { get; set; } = 4096;
@@ -42,7 +43,14 @@ public sealed class MemoryExtractionOptions
     public bool Enabled { get; set; } = true;
     public double MinImportance { get; set; } = 0.5;
     public string? Model { get; set; }
-    public int MaxCandidatesPerMinute { get; set; } = 30;
+    /// <summary>每分钟最多 flush（批量抽取）次数。</summary>
+    public int MaxCandidatesPerMinute { get; set; } = 6;
+    /// <summary>每累计 N 次顶层 agent.after_invoke 触发一次 flush；≤0 关闭轮次触发。</summary>
+    public int ExtractEveryNTurns { get; set; } = 10;
+    /// <summary>缓冲空闲超过该分钟数则 flush；≤0 关闭空闲 flush。</summary>
+    public int FlushIdleMinutes { get; set; } = 5;
+    public int MaxBufferedSnippets { get; set; } = 64;
+    public int MaxBatchChars { get; set; } = 16000;
 }
 
 public sealed class MemoryEvolutionOptions

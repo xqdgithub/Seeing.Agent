@@ -17,7 +17,7 @@ public class LlmMemoryExtractorTests
     {
         var completion = new Mock<ITextCompletion>();
         completion.Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("""{"title":"t","content":"c","importance":0.2,"tags":[],"kind":"fact"}""");
+            .ReturnsAsync("""{"items":[{"title":"t","content":"c","importance":0.2,"tags":[],"kind":"fact"}]}""");
 
         var extractor = new LlmMemoryExtractor(
             completion.Object,
@@ -61,7 +61,7 @@ public class LlmMemoryExtractorTests
     {
         var completion = new Mock<ITextCompletion>();
         completion.Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("""{"title":"DB","content":"User prefers PostgreSQL","importance":0.9,"tags":["db"],"kind":"preference"}""");
+            .ReturnsAsync("""{"items":[{"title":"DB","content":"User prefers PostgreSQL","importance":0.9,"tags":["db"],"kind":"preference"}]}""");
 
         var extractor = new LlmMemoryExtractor(
             completion.Object,

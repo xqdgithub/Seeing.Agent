@@ -11,6 +11,7 @@ public sealed class MemoryEvolutionWorker : BackgroundService
 {
     private readonly IMemoryEvolutionService _evolution;
     private readonly ISessionActivityTracker _activity;
+    private readonly IMemoryFlushService _flush;
     private readonly IOptionsMonitor<MemoryOptions> _options;
     private readonly IMemorySessionEvents _sessionEvents;
     private readonly ILogger<MemoryEvolutionWorker> _logger;
@@ -20,12 +21,14 @@ public sealed class MemoryEvolutionWorker : BackgroundService
     public MemoryEvolutionWorker(
         IMemoryEvolutionService evolution,
         ISessionActivityTracker activity,
+        IMemoryFlushService flush,
         IOptionsMonitor<MemoryOptions> options,
         IMemorySessionEvents sessionEvents,
         ILogger<MemoryEvolutionWorker> logger)
     {
         _evolution = evolution;
         _activity = activity;
+        _flush = flush;
         _options = options;
         _sessionEvents = sessionEvents;
         _logger = logger;
@@ -53,13 +56,22 @@ public sealed class MemoryEvolutionWorker : BackgroundService
             try
             {
                 var opts = _options.CurrentValue;
-                if (opts.Enabled && opts.Evolution.Enabled)
+                if (opts.Enabled)
                 {
-                    var idle = TimeSpan.FromMinutes(Math.Max(1, opts.Evolution.IdleMinutes));
-                    foreach (var sessionId in _activity.GetIdleSessions(idle))
+                    // 缓冲空闲 flush（默认 5 分钟），与 Evolution 升格解耦
+                    if (opts.Extraction.Enabled)
+                        _flush.FlushIdleSessions();
+
+                    if (opts.Evolution.Enabled)
                     {
-                        await _evolution.EvolveSessionAsync(sessionId, stoppingToken);
-                        _activity.Clear(sessionId);
+                        var idle = TimeSpan.FromMinutes(Math.Max(1, opts.Evolution.IdleMinutes));
+                        foreach (var sessionId in _activity.GetIdleSessions(idle))
+                        {
+                            if (opts.Extraction.Enabled)
+                                await _flush.FlushSessionInlineAsync(sessionId, stoppingToken);
+                            await _evolution.EvolveSessionAsync(sessionId, stoppingToken);
+                            _activity.Clear(sessionId);
+                        }
                     }
                 }
             }
@@ -79,12 +91,20 @@ public sealed class MemoryEvolutionWorker : BackgroundService
             try
             {
                 var opts = _options.CurrentValue;
-                if (!opts.Enabled || !opts.Evolution.Enabled || !opts.Evolution.OnSessionEnd)
+                if (!opts.Enabled)
                     continue;
 
-                await _evolution.EvolveSessionAsync(sessionId, stoppingToken);
+                // 先同步 flush 提取，再 evolve 升格
+                if (opts.Extraction.Enabled)
+                    await _flush.FlushSessionInlineAsync(sessionId, stoppingToken);
+
+                if (opts.Evolution.Enabled && opts.Evolution.OnSessionEnd)
+                {
+                    await _evolution.EvolveSessionAsync(sessionId, stoppingToken);
+                    _logger.LogInformation("Evolved memory after session end: {SessionId}", sessionId);
+                }
+
                 _activity.Clear(sessionId);
-                _logger.LogInformation("Evolved memory after session end: {SessionId}", sessionId);
             }
             catch (Exception ex)
             {

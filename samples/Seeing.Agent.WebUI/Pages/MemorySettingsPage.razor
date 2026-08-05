@@ -39,13 +39,19 @@
                 <Card Title="捕获" Style="margin-bottom: 16px;">
                     <FormItem Label="自动捕获"><Switch @bind-Value="@_options.Capture.AutoCapture" /></FormItem>
                     <FormItem Label="捕获对话"><Switch @bind-Value="@_options.Capture.CaptureChat" /></FormItem>
-                    <FormItem Label="捕获工具"><Switch @bind-Value="@_options.Capture.CaptureTools" /></FormItem>
+                    <FormItem Label="捕获工具">
+                        <Switch @bind-Value="@_options.Capture.CaptureTools" Disabled />
+                        <div style="color:#888;font-size:12px;margin-top:4px;">批量抽取模式下工具捕获已停用</div>
+                    </FormItem>
                     <FormItem Label="Snippet 上限"><AntDesign.InputNumber @bind-Value="@_options.Capture.MaxSnippetChars" Min="256" Max="32000" /></FormItem>
                     <FormItem Label="队列容量"><AntDesign.InputNumber @bind-Value="@_options.Capture.QueueCapacity" Min="8" Max="4096" /></FormItem>
                 </Card>
                 <Card Title="抽取" Style="margin-bottom: 16px;">
                     <FormItem Label="启用 LLM 抽取"><Switch @bind-Value="@_options.Extraction.Enabled" /></FormItem>
                     <FormItem Label="最低重要性"><AntDesign.InputNumber @bind-Value="@_options.Extraction.MinImportance" Min="0" Max="1" Step="0.1" /></FormItem>
+                    <FormItem Label="每 N 轮抽取"><AntDesign.InputNumber @bind-Value="@_options.Extraction.ExtractEveryNTurns" Min="0" Max="100" /></FormItem>
+                    <FormItem Label="空闲 Flush 分钟"><AntDesign.InputNumber @bind-Value="@_options.Extraction.FlushIdleMinutes" Min="0" Max="1440" /></FormItem>
+                    <FormItem Label="每分钟 Flush 上限"><AntDesign.InputNumber @bind-Value="@_options.Extraction.MaxCandidatesPerMinute" Min="1" Max="60" /></FormItem>
                     <FormItem Label="抽取模型">
                         <Select TItemValue="string"
                                 TItem="string"

@@ -4,7 +4,6 @@ namespace Seeing.Agent.Memory.Abstractions;
 
 public interface IMemoryWorkQueue
 {
-    bool TryEnqueue(MemoryCandidate candidate);
-    IAsyncEnumerable<MemoryCandidate> ReadAllAsync(CancellationToken ct);
-    int Count { get; }
+    bool TryEnqueue(MemoryBatch batch);
+    IAsyncEnumerable<MemoryBatch> ReadAllAsync(CancellationToken ct);
 }

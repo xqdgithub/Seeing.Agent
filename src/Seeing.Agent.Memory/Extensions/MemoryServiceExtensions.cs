@@ -135,12 +135,15 @@ public static class MemoryServiceExtensions
 
         services.TryAddSingleton<IMemoryExtractor, Core.Evolution.LlmMemoryExtractor>();
         services.TryAddSingleton<IMemoryPipeline, Core.Pipeline.MemoryPipeline>();
+        services.TryAddSingleton<ISessionMemoryBuffer, SessionMemoryBuffer>();
+        services.TryAddSingleton<IMemoryFlushService, MemoryFlushService>();
         services.TryAddSingleton<ISessionActivityTracker, SessionActivityTracker>();
         services.TryAddSingleton<IMemoryEvolutionService, Core.Evolution.LlmMemoryEvolution>();
         services.TryAddSingleton<IMemoryRecallService, Core.Recall.MemoryRecallService>();
 
         services.TryAddSingleton<ChatMemoryHandler>();
         services.TryAddSingleton<ToolMemoryHandler>();
+        services.TryAddSingleton<AgentTurnMemoryHandler>();
         services.TryAddSingleton<MemoryRecallHandler>();
 
         services.TryAddSingleton<MemorySearchTool>();

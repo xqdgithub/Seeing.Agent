@@ -20,6 +20,7 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
     private readonly MemoryReadTool _readTool;
     private readonly ChatMemoryHandler _chat;
     private readonly ToolMemoryHandler _tool;
+    private readonly AgentTurnMemoryHandler _agentTurn;
     private readonly MemoryRecallHandler _recall;
     private readonly ILogger<MemoryBootstrapHostedService> _logger;
 
@@ -31,6 +32,7 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
         MemoryReadTool readTool,
         ChatMemoryHandler chat,
         ToolMemoryHandler tool,
+        AgentTurnMemoryHandler agentTurn,
         MemoryRecallHandler recall,
         ILogger<MemoryBootstrapHostedService> logger)
     {
@@ -41,6 +43,7 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
         _readTool = readTool;
         _chat = chat;
         _tool = tool;
+        _agentTurn = agentTurn;
         _recall = recall;
         _logger = logger;
     }
@@ -59,8 +62,9 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
 
         _hookManager.Register(_chat);
         _hookManager.Register(_tool);
+        _hookManager.Register(_agentTurn);
         _hookManager.Register(_recall);
-        _logger.LogInformation("Memory hooks registered (chat/tool/recall)");
+        _logger.LogInformation("Memory hooks registered (chat/tool/agent-turn/recall)");
         return Task.CompletedTask;
     }
 

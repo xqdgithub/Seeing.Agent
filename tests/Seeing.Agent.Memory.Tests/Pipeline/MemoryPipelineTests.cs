@@ -35,6 +35,8 @@ public class MemoryPipelineTests : IDisposable
             .Returns(new FilterDecision(true, null));
 
         var extractor = new Mock<IMemoryExtractor>();
+        extractor.Setup(e => e.ExtractBatchAsync(It.IsAny<IReadOnlyList<MemoryCandidate>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ExtractionResult("Title", "Content body", 0.9, new[] { "t1" }, "fact") });
         extractor.Setup(e => e.ExtractAsync(It.IsAny<MemoryCandidate>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExtractionResult("Title", "Content body", 0.9, new[] { "t1" }, "fact"));
 

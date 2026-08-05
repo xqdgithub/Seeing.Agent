@@ -24,6 +24,7 @@ public class MemoryExtension : IExtension
     private MemoryReadTool? _readTool;
     private ChatMemoryHandler? _chat;
     private ToolMemoryHandler? _tool;
+    private AgentTurnMemoryHandler? _agentTurn;
     private MemoryRecallHandler? _recall;
     private ILogger? _logger;
 
@@ -39,6 +40,7 @@ public class MemoryExtension : IExtension
         _readTool = context.Services.GetService<MemoryReadTool>();
         _chat = context.Services.GetService<ChatMemoryHandler>();
         _tool = context.Services.GetService<ToolMemoryHandler>();
+        _agentTurn = context.Services.GetService<AgentTurnMemoryHandler>();
         _recall = context.Services.GetService<MemoryRecallHandler>();
 
         _logger.LogInformation("初始化 {Name} v{Version} (state: {State})", Name, Version, meta.State);
@@ -47,9 +49,10 @@ public class MemoryExtension : IExtension
 
     public IEnumerable<IHookHandler> GetHookHandlers()
     {
-        var handlers = new List<IHookHandler>(3);
+        var handlers = new List<IHookHandler>(4);
         if (_chat != null) handlers.Add(_chat);
         if (_tool != null) handlers.Add(_tool);
+        if (_agentTurn != null) handlers.Add(_agentTurn);
         if (_recall != null) handlers.Add(_recall);
 
         // 与 Bootstrap 共用闸门：先到先注册，避免双重触发

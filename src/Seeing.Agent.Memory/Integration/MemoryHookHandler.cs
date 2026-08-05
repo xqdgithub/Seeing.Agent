@@ -8,12 +8,14 @@ using Seeing.Agent.Memory.Core.Models;
 namespace Seeing.Agent.Memory.Integration;
 
 /// <summary>
-/// Chat Hook：仅入队 MemoryCandidate，不写盘。
+/// Chat Hook：过滤后写入会话缓冲，不立即抽取。
 /// </summary>
 public sealed class ChatMemoryHandler : IHookHandler
 {
-    private readonly IMemoryWorkQueue _queue;
-    private readonly IOptions<MemoryOptions> _options;
+    private readonly ISessionMemoryBuffer _buffer;
+    private readonly IMemoryFlushService _flush;
+    private readonly IMemoryHeuristicFilter _filter;
+    private readonly IOptionsMonitor<MemoryOptions> _options;
     private readonly ISessionActivityTracker _activity;
     private readonly ILogger<ChatMemoryHandler>? _logger;
 
@@ -21,12 +23,16 @@ public sealed class ChatMemoryHandler : IHookHandler
     public int Priority => 10;
 
     public ChatMemoryHandler(
-        IMemoryWorkQueue queue,
-        IOptions<MemoryOptions> options,
+        ISessionMemoryBuffer buffer,
+        IMemoryFlushService flush,
+        IMemoryHeuristicFilter filter,
+        IOptionsMonitor<MemoryOptions> options,
         ISessionActivityTracker activity,
         ILogger<ChatMemoryHandler>? logger = null)
     {
-        _queue = queue ?? throw new ArgumentNullException(nameof(queue));
+        _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
+        _flush = flush ?? throw new ArgumentNullException(nameof(flush));
+        _filter = filter ?? throw new ArgumentNullException(nameof(filter));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _logger = logger;
@@ -36,7 +42,7 @@ public sealed class ChatMemoryHandler : IHookHandler
     {
         try
         {
-            var opts = _options.Value;
+            var opts = _options.CurrentValue;
             if (!opts.Enabled || !opts.Capture.AutoCapture || !opts.Capture.CaptureChat)
                 return Task.FromResult(HookResult.Success);
 
@@ -46,20 +52,26 @@ public sealed class ChatMemoryHandler : IHookHandler
 
             var max = Math.Max(1, opts.Capture.MaxSnippetChars);
             var snippet = content.Length <= max ? content : content[..max];
+            var sessionId = string.IsNullOrEmpty(payload.SessionId) ? "unknown" : payload.SessionId;
 
             var candidate = new MemoryCandidate(
                 Guid.NewGuid().ToString("N"),
-                string.IsNullOrEmpty(payload.SessionId) ? "unknown" : payload.SessionId,
+                sessionId,
                 AgentId: null,
                 MemorySource.Chat,
                 ToolId: null,
                 snippet,
                 DateTimeOffset.UtcNow);
 
-            if (!_queue.TryEnqueue(candidate))
-                _logger?.LogWarning("Memory queue full, dropping chat candidate Session={SessionId}", payload.SessionId);
-            else
-                _activity.Touch(candidate.SessionId);
+            var decision = _filter.Evaluate(candidate);
+            if (!decision.Accepted)
+                return Task.FromResult(HookResult.Success);
+
+            var overflow = _buffer.Add(candidate);
+            _activity.Touch(sessionId);
+
+            if (overflow is not null)
+                _flush.TryEnqueueBatch(overflow);
 
             return Task.FromResult(HookResult.Success);
         }
@@ -72,27 +84,21 @@ public sealed class ChatMemoryHandler : IHookHandler
 }
 
 /// <summary>
-/// Tool Hook：仅入队 MemoryCandidate，不写盘。
+/// Tool Hook：默认 CaptureTools=false，不捕获工具输出。
 /// </summary>
 public sealed class ToolMemoryHandler : IHookHandler
 {
-    private readonly IMemoryWorkQueue _queue;
-    private readonly IOptions<MemoryOptions> _options;
-    private readonly ISessionActivityTracker _activity;
+    private readonly IOptionsMonitor<MemoryOptions> _options;
     private readonly ILogger<ToolMemoryHandler>? _logger;
 
     public HookSpec Spec => HookRegistry.ToolExecuteAfter;
     public int Priority => 10;
 
     public ToolMemoryHandler(
-        IMemoryWorkQueue queue,
-        IOptions<MemoryOptions> options,
-        ISessionActivityTracker activity,
+        IOptionsMonitor<MemoryOptions> options,
         ILogger<ToolMemoryHandler>? logger = null)
     {
-        _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _logger = logger;
     }
 
@@ -100,45 +106,64 @@ public sealed class ToolMemoryHandler : IHookHandler
     {
         try
         {
-            var opts = _options.Value;
+            var opts = _options.CurrentValue;
             if (!opts.Enabled || !opts.Capture.AutoCapture || !opts.Capture.CaptureTools)
                 return Task.FromResult(HookResult.Success);
 
-            var toolId = HookDataContract.ToolExecuteAfter.ToolId.GetFrom(payload.Input) ?? "";
-            var output = HookDataContract.ToolExecuteAfter.Output.GetFrom(payload.Result);
-            if (string.IsNullOrWhiteSpace(output))
-                return Task.FromResult(HookResult.Success);
-
-            if (opts.Capture.ToolAllowlist.Count > 0
-                && !opts.Capture.ToolAllowlist.Contains(toolId, StringComparer.OrdinalIgnoreCase))
-                return Task.FromResult(HookResult.Success);
-
-            if (opts.Capture.ToolBlocklist.Contains(toolId, StringComparer.OrdinalIgnoreCase))
-                return Task.FromResult(HookResult.Success);
-
-            var raw = $"Tool: {toolId}\nOutput: {output}";
-            var max = Math.Max(1, opts.Capture.MaxSnippetChars);
-            var snippet = raw.Length <= max ? raw : raw[..max];
-
-            var candidate = new MemoryCandidate(
-                Guid.NewGuid().ToString("N"),
-                string.IsNullOrEmpty(payload.SessionId) ? "unknown" : payload.SessionId,
-                AgentId: null,
-                MemorySource.Tool,
-                toolId,
-                snippet,
-                DateTimeOffset.UtcNow);
-
-            if (!_queue.TryEnqueue(candidate))
-                _logger?.LogWarning("Memory queue full, dropping tool candidate Tool={ToolId}", toolId);
-            else
-                _activity.Touch(candidate.SessionId);
-
+            // 显式开启工具捕获时仍不入缓冲：本版本不支持工具批处理，避免回归高频 LLM。
+            _logger?.LogDebug(
+                "CaptureTools enabled but tool capture is disabled in batch extraction mode; Tool={ToolId}",
+                HookDataContract.ToolExecuteAfter.ToolId.GetFrom(payload.Input));
             return Task.FromResult(HookResult.Success);
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "ToolMemoryHandler failed");
+            return Task.FromResult(HookResult.Success);
+        }
+    }
+}
+
+/// <summary>
+/// 顶层 Agent 完成后累计轮次，达到阈值则 flush。
+/// </summary>
+public sealed class AgentTurnMemoryHandler : IHookHandler
+{
+    private readonly IMemoryFlushService _flush;
+    private readonly IOptionsMonitor<MemoryOptions> _options;
+    private readonly ILogger<AgentTurnMemoryHandler>? _logger;
+
+    public HookSpec Spec => HookRegistry.AgentAfterInvoke;
+    public int Priority => 10;
+
+    public AgentTurnMemoryHandler(
+        IMemoryFlushService flush,
+        IOptionsMonitor<MemoryOptions> options,
+        ILogger<AgentTurnMemoryHandler>? logger = null)
+    {
+        _flush = flush ?? throw new ArgumentNullException(nameof(flush));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _logger = logger;
+    }
+
+    public Task<HookResult> ExecuteAsync(HookPayload payload)
+    {
+        try
+        {
+            var opts = _options.CurrentValue;
+            if (!opts.Enabled || !opts.Extraction.Enabled || opts.Extraction.ExtractEveryNTurns <= 0)
+                return Task.FromResult(HookResult.Success);
+
+            var sessionId = payload.SessionId;
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return Task.FromResult(HookResult.Success);
+
+            _flush.TryFlushAfterTurn(sessionId);
+            return Task.FromResult(HookResult.Success);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "AgentTurnMemoryHandler failed");
             return Task.FromResult(HookResult.Success);
         }
     }
