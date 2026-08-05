@@ -22,11 +22,16 @@ public class OpenAiChatClient : ILlmClient
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        ArgumentNullException.ThrowIfNull(httpClient);
 
         if (string.IsNullOrEmpty(config.ApiKey))
             throw new ArgumentException("ApiKey is required", nameof(config));
 
-        _httpClient = OpenAiHttpHelper.CreateHttpClient(config, logger);
+        // 已配置 BaseAddress 的 HttpClient（如单测 mock handler）直接使用；
+        // 否则创建专用客户端，避免污染命名 HttpClient 连接池。
+        _httpClient = httpClient.BaseAddress != null
+            ? httpClient
+            : OpenAiHttpHelper.CreateHttpClient(config, logger);
     }
 
     public async Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken ct = default)
@@ -58,7 +63,7 @@ public class OpenAiChatClient : ILlmClient
 
         var responseId = string.Empty;
         var streamingTools = new StreamingToolCallAccumulator();
-        var streamFinalizeSent = false;
+        string? pendingFinishReason = null;
         TokenUsage? lastUsage = null;
         var chunkCount = 0;
         var reasoningCount = 0;
@@ -72,6 +77,10 @@ public class OpenAiChatClient : ILlmClient
 
             var delta = chunk.Choices?.FirstOrDefault()?.Delta;
             var finishReason = chunk.Choices?.FirstOrDefault()?.FinishReason;
+
+            // 任意 chunk 都可携带 usage（含 finish_reason 之后的 trailing usage）
+            if (chunk.Usage != null)
+                lastUsage = MapUsage(chunk.Usage);
 
             // 每个 chunk 输出 Debug 级别摘要
             _logger.LogDebug("SSE chunk #{N}: hasDelta={HasDelta}, content={C}, reasoning={R}, toolCalls={T}, finish={F}",
@@ -112,39 +121,37 @@ public class OpenAiChatClient : ILlmClient
                 }
             }
 
+            // 只记录 finish_reason，推迟到 SSE 真正结束后再发 IsComplete
             if (!string.IsNullOrEmpty(finishReason))
             {
+                pendingFinishReason = finishReason;
                 _logger.LogInformation(
-                    "ChatCompletions SSE 结束: FinishReason={FinishReason}, Chunks={N}, Reasoning={R}, Content={C}",
+                    "ChatCompletions SSE 收到结束原因: FinishReason={FinishReason}, Chunks={N}, Reasoning={R}, Content={C}",
                     finishReason, chunkCount, reasoningCount, contentCount);
-
-                if (chunk.Usage != null)
-                    lastUsage = MapUsage(chunk.Usage);
-
-                yield return new StreamUpdate
-                {
-                    Id = responseId,
-                    IsComplete = true,
-                    ToolCallDeltas = streamingTools.Build(),
-                    Usage = lastUsage
-                };
-                streamFinalizeSent = true;
             }
         }
 
-        if (!streamFinalizeSent)
+        if (pendingFinishReason == null)
         {
             _logger.LogWarning(
                 "ChatCompletions SSE 未收到 finish_reason 即结束: Chunks={N}, Reasoning={R}, Content={C}",
                 chunkCount, reasoningCount, contentCount);
-            yield return new StreamUpdate
-            {
-                Id = responseId,
-                IsComplete = true,
-                ToolCallDeltas = streamingTools.Build(),
-                Usage = lastUsage
-            };
         }
+        else
+        {
+            _logger.LogInformation(
+                "ChatCompletions SSE 流结束: FinishReason={FinishReason}, Chunks={N}, Reasoning={R}, Content={C}",
+                pendingFinishReason, chunkCount, reasoningCount, contentCount);
+        }
+
+        yield return new StreamUpdate
+        {
+            Id = responseId,
+            IsComplete = true,
+            FinishReason = pendingFinishReason,
+            ToolCallDeltas = streamingTools.Build(),
+            Usage = lastUsage
+        };
     }
 
     public async Task<bool> TestConnectionAsync(string modelId, CancellationToken ct = default)
@@ -371,18 +378,22 @@ public class OpenAiChatClient : ILlmClient
 
     private sealed class StreamingToolCallAccumulator
     {
-        private readonly Dictionary<int, (string Id, string Name, StringBuilder Args)> _byIndex = new();
+        private readonly Dictionary<int, ToolSlot> _byIndex = new();
 
         public void Append(ChatCompletionChunkToolCall tc)
         {
             if (!_byIndex.TryGetValue(tc.Index, out var slot))
             {
-                slot = ("", "", new StringBuilder());
+                slot = new ToolSlot();
                 _byIndex[tc.Index] = slot;
             }
-            if (!string.IsNullOrEmpty(tc.Id)) slot.Id = tc.Id;
-            if (!string.IsNullOrEmpty(tc.Function?.Name)) slot.Name = tc.Function.Name;
-            if (!string.IsNullOrEmpty(tc.Function?.Arguments)) slot.Args.Append(tc.Function.Arguments);
+
+            if (!string.IsNullOrEmpty(tc.Id))
+                slot.Id = tc.Id;
+            if (!string.IsNullOrEmpty(tc.Function?.Name))
+                slot.Name = tc.Function.Name;
+            if (!string.IsNullOrEmpty(tc.Function?.Arguments))
+                slot.Args.Append(tc.Function.Arguments);
         }
 
         public List<ToolCall>? Build()
@@ -404,6 +415,13 @@ public class OpenAiChatClient : ILlmClient
                 });
             }
             return list.Count > 0 ? list : null;
+        }
+
+        private sealed class ToolSlot
+        {
+            public string Id = "";
+            public string Name = "";
+            public StringBuilder Args = new();
         }
     }
 

@@ -278,6 +278,11 @@ public class StreamUpdate
     /// <summary>是否完成</summary>
     public bool IsComplete { get; set; }
 
+    /// <summary>
+    /// 完成原因（仅在 IsComplete=true 时有意义），如 stop / tool_calls / length。
+    /// </summary>
+    public string? FinishReason { get; set; }
+
     /// <summary>Token 使用统计</summary>
     public TokenUsage? Usage { get; set; }
 }
