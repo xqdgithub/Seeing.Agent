@@ -1,0 +1,47 @@
+src/Seeing.Agent/Llm/Clients/OpenAiChatClient.cs
+  s_6fde8ac1cd0d22::t_d835cf36ff735f 9-10,12,14,21,29,32,34,36,40,42,47,49-51,57,61-62,67,70-73,84,86,92,97-98,100-113,115,121-122,128-129,131,134-136,140-147,150,154,157,160,165,170,172,174-198,201,203,207-211,218,220-226,233,237,239,243-245,247,251,253-254,256-258,260-261,263-283,287-289,292,294,296-300,302-310,312,315,317,319,321-322,324,327-328,331,333-334,337,341-342,349-350,352-364,370-371,374,376,378,380-381,383-385,388,390-391,394,397,401-402,406,410
+  s_6fde8ac1cd0d22::t_8b336336ca3099 55-56,63-65,69,74-83,88,99,117-120,137-139
+  s_6fde8ac1cd0d22::t_a4dedc0ee20817 37-38,41
+  s_6fde8ac1cd0d22::t_e443f010e07790 52-53
+  s_6fde8ac1cd0d22::t_5b5aec35b461b9 248,255,259,262
+src/Seeing.Agent/Llm/Clients/OpenAiJsonModels.cs
+  s_6fde8ac1cd0d22::t_5dfcda8b6c4e06 1-41,43-56,58-67,69-70,72-462
+  s_6fde8ac1cd0d22::t_b0a9df4c10293c 42
+  s_6fde8ac1cd0d22::t_03308b18771185 57,68,71
+src/Seeing.Agent/Llm/Clients/OpenAiHttpHelper.cs
+  s_6fde8ac1cd0d22::t_0b0a3ed4595775 1-4,6-44,46-47,49-50,52-67,90-107,110,112-123,125-151,154,156-174,176-184,186,200
+  s_6fde8ac1cd0d22::t_bf08e8f14222d9 5
+  s_6fde8ac1cd0d22::t_0aa929be7295ad 45,48,51,68-89,108-109,111,124,152-153,155,175,185,187-199
+src/Seeing.Agent/Llm/Clients/OpenAiResponsesClient.cs
+  s_6fde8ac1cd0d22::t_7c12903c5ffe30 38-39,42
+  s_6fde8ac1cd0d22::t_764321f91999eb 1-37,40-41,43-52,55-353
+  s_6fde8ac1cd0d22::t_f212b130ce486d 53-54
+src/Seeing.Agent/Llm/LlmModels.cs
+  s_6fde8ac1cd0d22::t_628b26a5950a1e 188-191
+src/Seeing.Agent/Llm/Clients/OpenAiModelsClient.cs
+  s_6fde8ac1cd0d22::t_b2faded2fd7958 8
+  s_6fde8ac1cd0d22::t_bdc88b4c136033 1-7,9-28,30-31,33-35
+  s_6fde8ac1cd0d22::t_46279d445b347d 29,32
+src/Seeing.Agent/Seeing.Agent.csproj
+  s_6fde8ac1cd0d22::t_57989436a93c7c 25
+src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs
+  s_6fde8ac1cd0d22::t_2b31ab21c0ba69 718-721
+tests/Seeing.Agent.Tests/Llm/Clients/OpenAiClientReasoningTests.cs
+  s_6fde8ac1cd0d22::t_92a0f7f520b25f 1-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.39-trip",
+  "base_commit_sha": "abd725e3486666f994c964243db328b0d09a4434",
+  "prompts": {},
+  "sessions": {
+    "s_6fde8ac1cd0d22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b8364cf-1629-43dd-90a7-0e8d5d24873f",
+        "model": "ep-5e9quh5a"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
