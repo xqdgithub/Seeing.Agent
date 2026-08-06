@@ -1,0 +1,157 @@
+samples/Seeing.Agent.Cli/Services/ManagementApiClient.cs
+  s_ce186a5dc992e7::t_547e0c3238d561 55-67
+tests/Seeing.Agent.Cli.Tests/InstanceRegistryTests.cs
+  s_6c348de20b0a65::t_a4fb62cd5725ee 1-79
+samples/Seeing.Agent.Cli/Program.cs
+  s_ce186a5dc992e7::t_edcda5b07ab13b 13
+samples/Seeing.Agent.Cli/Services/PortAllocator.cs
+  s_ce186a5dc992e7::t_ff96497a490c58 23
+  s_4f9a68cc1c714c::t_5d9556e0988f32 1-22,24-33
+tests/Seeing.Agent.Cli.Tests/PortAllocatorTests.cs
+  s_4f9a68cc1c714c::t_f2284c618da82d 1-21,23-35
+  s_ce186a5dc992e7::t_4d9fa37986149a 22
+samples/Seeing.Agent.Cli/Services/InstanceRegistry.cs
+  s_6c348de20b0a65::t_8d348b23ac2d6b 1-97
+samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj
+  s_d7c26ceff339af::t_9a54a49b4eef25 35-36
+  s_d7c26ceff339af::t_c43fa636b12470 41
+  s_d7c26ceff339af::t_e5b14aa921c886 33-34,37-40,42
+tests/Seeing.Agent.Cli.Tests/ManagementApiClientTests.cs
+  s_3ea9057800c3b0::t_a2ab180c2c7daf 1-74
+samples/Seeing.Agent.Cli/Commands/StopCommand.cs
+  s_0d5a3af3508926::t_faf3c0bd0cbc99 2,33,35-38,44-67,69-71,73,91
+samples/Seeing.Agent.Cli/Commands/StatusCommand.cs
+  s_f6263c7c0a0bc3::t_b3b48ceb6f497f 2,19,21-24,26-28,30,34,36-38,57
+tests/Seeing.Agent.Cli.Tests/InstallServiceTests.cs
+  s_ce186a5dc992e7::t_6ea15976cb9936 59,61-62,65-66,68
+  s_ce186a5dc992e7::t_48f6e8b930f07b 9-22
+  s_ce186a5dc992e7::t_15d9f5db3e99c1 1-8,23-58,60,63-64,67,69-70
+samples/Seeing.Agent.Cli/Services/InstallService.cs
+  s_ce186a5dc992e7::t_f56d25bdadad22 1-70
+samples/Seeing.Agent.Cli/Services/InstanceRecord.cs
+  s_3ef92c7f199a9d::t_2e92eddf76c96e 1-11
+src/Seeing.Agent/Tools/BuiltIn/Shell/BashTool.cs
+  s_ac9e4e818291cb::t_4be8ba0b308ee0 10
+  s_ac9e4e818291cb::t_3f5088e9566f4b 342-373
+  s_ac9e4e818291cb::t_07ffc84b63a4ca 56-57,69
+samples/Seeing.Agent.Cli/Commands/InstallCommand.cs
+  s_ce186a5dc992e7::t_72580d4a3c9d47 1-24,27,31-47,50,55-81
+  s_ce186a5dc992e7::t_12931c83bcd5c0 25-26,28-30,48-49,51-54
+samples/Seeing.Agent.Cli/Commands/StartCommand.cs
+  s_3cf549ca53bda8::t_c784e7b14e6184 2
+  s_3cf549ca53bda8::t_7a76e95a06781f 33,35-38,40,50-55,57-62,64-65,67,69-78,83
+src/Seeing.Agent/Tools/BuiltIn/Shell/ShellService.cs
+  s_ac9e4e818291cb::t_9676874e2777aa 291
+  s_ac9e4e818291cb::t_b3a3b220aa6431 30-33
+Seeing.Agent.slnx
+  s_49c19a2a5f4165::t_d4e283bed51b13 53
+samples/Seeing.Agent.Cli/Services/ServiceProcessManager.cs
+  s_ca65bdaf44c8f4::t_16e28868c7f1a2 8,10,13,16,19,43-51,53-54,57-60,64,66-73,76,100
+  s_ce186a5dc992e7::t_d3bdcf9944f2bc 82,89-92
+tests/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj
+  s_49c19a2a5f4165::t_2c5b2ec33765df 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.39-trip",
+  "base_commit_sha": "20b41957ba27a0945c64f3af1b867060d411a345",
+  "prompts": {},
+  "sessions": {
+    "s_0d5a3af3508926": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02af201ceffe5bUKKufyQe0Yv9",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_3cf549ca53bda8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02af38a6affeXHGqfgigk17M8r",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_3ea9057800c3b0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02af605b2ffev7IQLXeD2G8FcO",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_3ef92c7f199a9d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02afba7feffepv5CYO0pS8Y4gn",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_49c19a2a5f4165": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02afdc13dffe5okO6jQN5cr7hR",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_4f9a68cc1c714c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02af7de72ffeov7bfvxMgjm3Ej",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_6c348de20b0a65": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02afa46bdffejpwcy2g4HzJr1o",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_ac9e4e818291cb": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02b0f1142ffeBEOyq2kkr2R0D5",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_ca65bdaf44c8f4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02af49972ffesteZ33DPtqXp3P",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_ce186a5dc992e7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02b0848b3ffe6z9SMuzMsT4SEr",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_d7c26ceff339af": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02b1e1e90ffe1vPVFERdO2a9vP",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_f6263c7c0a0bc3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02af0ff5bffeOfJGqgRypeDS9W",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
