@@ -30,4 +30,15 @@
     </None>
   </ItemGroup>
 
+  <!--
+    WebUI 解耦发布：
+    1. Cli 不直接引用 WebUI 项目（无代码依赖），避免 WebUI 内容文件(appsettings.json)回流导致重复冲突。
+    2. Publish 时自动把 WebUI 发布到 Cli 相同的输出目录，供 `start webui` 独立进程启动，减少手动操作。
+  -->
+  <Target Name="PublishWebUIForCli" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(PublishDir);SelfContained=false;RuntimeIdentifier=" />
+  </Target>
+
 </Project>

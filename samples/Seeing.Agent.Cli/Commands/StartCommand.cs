@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Linq;
 using Seeing.Agent.Cli.Services;
 
 namespace Seeing.Agent.Cli.Commands;
@@ -29,12 +30,14 @@ public static class StartCommand
             {
                 var workspaceRoot = ResolveWorkspaceRoot();
                 var manager = new ServiceProcessManager(workspaceRoot);
+                manager.Registry.PruneDead();
 
-                manager.CleanupDeadPidFile(service);
-
-                if (manager.IsRunning(service))
+                var running = manager.Registry.Load()
+                    .Where(i => i.Service == service && i.WorkspaceRoot == workspaceRoot)
+                    .ToList();
+                if (running.Count > 0)
                 {
-                    Console.WriteLine($"服务 {service} 已在运行中");
+                    Console.WriteLine($"服务 {service} 已在 {workspaceRoot} 运行中（端口: {running[0].Port}）");
                     return;
                 }
 
@@ -42,26 +45,42 @@ public static class StartCommand
                 string dllName = service == "webui"
                     ? "Seeing.Agent.WebUI.dll"
                     : "Seeing.Gateway.Server.dll";
-
                 var dllPath = FindDll(cliDir, dllName);
-                var extraArgs = service == "webui"
-                    ? new[] { "--urls", "http://0.0.0.0:5000" }
-                    : Array.Empty<string>();
+
+                // webui 动态分配端口；gateway 使用工作区配置端口（其自身据此监听）
+                int port;
+                string[]? extraArgs;
+                if (service == "webui")
+                {
+                    port = new PortAllocator().NextAvailable(5000);
+                    extraArgs = new[] { "--urls", $"http://127.0.0.1:{port}" };
+                }
+                else
+                {
+                    port = GetGatewayPort(workspaceRoot);
+                    extraArgs = Array.Empty<string>();
+                }
 
                 Console.WriteLine($"正在启动 {service}...");
-                var process = await manager.StartAsync(service, dllPath, extraArgs);
+                var record = await manager.StartAsync(service, dllPath, port, extraArgs);
 
-                var gatewayPort = GetGatewayPort(workspaceRoot);
-                var apiClient = new ManagementApiClient($"http://127.0.0.1:{gatewayPort}");
-
+                using var apiClient = new ManagementApiClient($"http://127.0.0.1:{port}");
                 Console.Write($"等待 {service} 就绪");
-                await manager.WaitForReadyAsync(apiClient);
-                Console.WriteLine(" 就绪!");
+                try
+                {
+                    await manager.WaitForReadyAsync(apiClient, checkGatewayHealth: service == "gateway");
+                    Console.WriteLine(" 就绪!");
+                }
+                catch
+                {
+                    await manager.StopAsync(record, apiClient, CancellationToken.None);
+                    throw;
+                }
 
                 if (service == "webui")
-                    Console.WriteLine($"WebUI 已启动: http://0.0.0.0:5000");
+                    Console.WriteLine($"WebUI 已启动: http://127.0.0.1:{port}（工作区: {workspaceRoot}）");
                 else
-                    Console.WriteLine($"Gateway 已启动: http://127.0.0.1:{gatewayPort}");
+                    Console.WriteLine($"Gateway 已启动: http://127.0.0.1:{port}（工作区: {workspaceRoot}）");
             }
             catch (Exception ex)
             {

@@ -52,6 +52,19 @@ public sealed class ManagementApiClient : IDisposable
         }
     }
 
+    public async Task<bool> ReachableAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync(_baseUrl, ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public void Dispose() => _http.Dispose();
 }
 

@@ -5,43 +5,21 @@ namespace Seeing.Agent.Cli.Services;
 public sealed class ServiceProcessManager
 {
     private readonly string _workspaceRoot;
+    public InstanceRegistry Registry { get; }
 
-    public ServiceProcessManager(string workspaceRoot)
+    public ServiceProcessManager(string workspaceRoot, string? registryDirectory = null)
     {
         _workspaceRoot = workspaceRoot;
+        Registry = new InstanceRegistry(registryDirectory);
     }
 
-    private string PidFilePath(string service)
-        => Path.Combine(_workspaceRoot, ".seeing", $"{service}.pid");
-
-    public bool IsRunning(string service)
-    {
-        var pidPath = PidFilePath(service);
-        if (!File.Exists(pidPath)) return false;
-
-        try
-        {
-            var pidText = File.ReadAllText(pidPath).Trim();
-            if (!int.TryParse(pidText, out var pid)) return false;
-
-            var process = Process.GetProcessById(pid);
-            return !process.HasExited;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    public async Task<Process?> StartAsync(
+    public async Task<InstanceRecord> StartAsync(
         string service,
         string dllPath,
+        int port,
         string[]? extraArgs = null,
         CancellationToken ct = default)
     {
-        if (IsRunning(service))
-            throw new InvalidOperationException($"服务 {service} 已在运行中");
-
         if (!File.Exists(dllPath))
             throw new FileNotFoundException($"找不到 {service} 的 dll 文件: {dllPath}");
 
@@ -62,70 +40,61 @@ public sealed class ServiceProcessManager
         if (process == null)
             throw new InvalidOperationException($"无法启动 {service} 进程");
 
-        // Write PID
-        var seeingDir = Path.Combine(_workspaceRoot, ".seeing");
-        Directory.CreateDirectory(seeingDir);
-        await File.WriteAllTextAsync(PidFilePath(service), process.Id.ToString(), ct);
+        var record = new InstanceRecord
+        {
+            Id = $"{service}-{Guid.NewGuid().ToString("N")[..6]}",
+            Service = service,
+            Pid = process.Id,
+            WorkspaceRoot = _workspaceRoot,
+            Port = port,
+            StartedAt = DateTime.UtcNow
+        };
 
-        return process;
+        Registry.Add(record);
+        return record;
     }
 
-    public async Task<bool> StopAsync(string service, ManagementApiClient apiClient, CancellationToken ct)
+    public async Task<bool> StopAsync(
+        InstanceRecord record,
+        ManagementApiClient apiClient,
+        CancellationToken ct = default)
     {
-        // Try graceful shutdown via API first
         var shutdownOk = await apiClient.ShutdownAsync(ct);
 
-        // Wait for process to exit
-        var pidPath = PidFilePath(service);
-        if (File.Exists(pidPath))
+        try
         {
-            try
-            {
-                var pidText = await File.ReadAllTextAsync(pidPath, ct);
-                if (int.TryParse(pidText.Trim(), out var pid))
-                {
-                    var process = Process.GetProcessById(pid);
-                    var exited = process.WaitForExit(10_000); // 10s timeout
-                    if (!exited)
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-                }
-            }
-            catch
-            {
-                // Process already gone
-            }
-
-            File.Delete(pidPath);
+            var process = Process.GetProcessById(record.Pid);
+            var exited = process.WaitForExit(10_000);
+            if (!exited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // 进程已退出
         }
 
+        Registry.Remove(record.Id);
         return shutdownOk;
     }
 
     public async Task WaitForReadyAsync(
         ManagementApiClient apiClient,
+        bool checkGatewayHealth,
         int timeoutSeconds = 30,
         CancellationToken ct = default)
     {
         var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
         while (DateTime.UtcNow < deadline)
         {
-            if (await apiClient.HealthCheckAsync(ct))
+            var ready = checkGatewayHealth
+                ? await apiClient.HealthCheckAsync(ct)
+                : await apiClient.ReachableAsync(ct);
+            if (ready)
                 return;
 
             await Task.Delay(500, ct);
         }
 
         throw new TimeoutException($"服务在 {timeoutSeconds} 秒内未就绪");
-    }
-
-    public void CleanupDeadPidFile(string service)
-    {
-        var pidPath = PidFilePath(service);
-        if (!File.Exists(pidPath)) return;
-
-        if (!IsRunning(service))
-            File.Delete(pidPath);
     }
 }

@@ -27,6 +27,11 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         string GetShellArgumentFormat(string shell);
 
         /// <summary>
+        /// 从 Shell 路径提取 Shell 名称（如 bash、cmd、powershell）
+        /// </summary>
+        string GetShellName(string shell);
+
+        /// <summary>
         /// 终止进程树（包括所有子进程）
         /// </summary>
         Task KillProcessTreeAsync(Process process, CancellationToken cancellationToken = default);
@@ -283,7 +288,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         /// <summary>
         /// 获取 Shell 名称（从路径中提取）
         /// </summary>
-        private static string GetShellName(string shellPath)
+        public string GetShellName(string shellPath)
         {
             try
             {

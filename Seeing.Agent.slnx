@@ -50,6 +50,7 @@
     <Project Path="tests/Seeing.TokenEstimation.Tests/Seeing.TokenEstimation.Tests.csproj">
       <Build Solution="Debug|*" Project="false" />
     </Project>
+    <Project Path="tests/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
   </Folder>
   <Folder Name="/解决方案项/" />
 </Solution>

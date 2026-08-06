@@ -10,6 +10,7 @@ internal class Program
         var rootCommand = new RootCommand("Seeing.Agent CLI 管理工具");
 
         // Subcommands will be added in following tasks
+        rootCommand.Subcommands.Add(InstallCommand.Create());
         rootCommand.Subcommands.Add(StartCommand.Create());
         rootCommand.Subcommands.Add(StopCommand.Create());
         rootCommand.Subcommands.Add(StatusCommand.Create());

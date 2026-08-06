@@ -7,6 +7,7 @@ using Seeing.Agent.Shell;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -52,6 +53,8 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         /// <summary>工具描述</summary>
         public override string Description =>
             "执行 Shell 命令。支持跨平台执行，提供超时控制和取消支持。" +
+            $"当前运行环境：{BuildPlatformHint()}。" +
+            "请使用与当前 Shell 语法匹配的命令。" +
             "重要提示：请谨慎使用危险命令（如 rm、删除文件等）。";
 
         /// <summary>参数 Schema</summary>
@@ -63,7 +66,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
                 command = new
                 {
                     type = "string",
-                    description = "要执行的命令"
+                    description = "要执行的命令。" + $"当前环境：{BuildPlatformHint()}"
                 },
                 timeout = new
                 {
@@ -332,6 +335,39 @@ await WaitForExitAsync(process, CancellationToken.None);
                     ["output"] = truncatedOutput,
                     ["description"] = description
                 });
+            }
+        }
+
+        /// <summary>
+        /// 构建平台提示：操作系统 + 实际使用的 Shell
+        /// </summary>
+        private string BuildPlatformHint()
+        {
+            var platform = DescribePlatform();
+            var shell = DescribeShell();
+            return $"{platform}，Shell: {shell}";
+        }
+
+        private static string DescribePlatform()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "Windows";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "macOS";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return "Linux";
+            return RuntimeInformation.OSDescription;
+        }
+
+        private string DescribeShell()
+        {
+            try
+            {
+                var shell = _shellService.GetAcceptableShell();
+                if (string.IsNullOrWhiteSpace(shell)) return "未知";
+                var name = _shellService.GetShellName(shell);
+                return $"{name}（{shell}）";
+            }
+            catch
+            {
+                return "未知";
             }
         }
 
