@@ -8,4 +8,5 @@ public sealed class InstanceRecord
     public string WorkspaceRoot { get; set; } = string.Empty;
     public int Port { get; set; }
     public DateTime StartedAt { get; set; }
+    public string LogPath { get; set; } = string.Empty;
 }

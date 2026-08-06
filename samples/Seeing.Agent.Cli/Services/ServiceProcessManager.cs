@@ -27,6 +27,11 @@ public sealed class ServiceProcessManager
         if (extraArgs is { Length: > 0 })
             args += " " + string.Join(" ", extraArgs);
 
+        var logDir = Path.Combine(_workspaceRoot, ".seeing", "logs");
+        Directory.CreateDirectory(logDir);
+        var logFile = Path.Combine(logDir, $"{service}-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+
+        var contentRoot = Path.GetDirectoryName(dllPath)!;
         var psi = new ProcessStartInfo("dotnet", args)
         {
             UseShellExecute = false,
@@ -35,10 +40,21 @@ public sealed class ServiceProcessManager
             RedirectStandardError = true,
             WorkingDirectory = _workspaceRoot
         };
+        psi.Environment["ASPNETCORE_CONTENTROOT"] = contentRoot;
+        psi.Environment["SEEING_WORKSPACE_ROOT"] = _workspaceRoot;
 
         var process = Process.Start(psi);
         if (process == null)
             throw new InvalidOperationException($"无法启动 {service} 进程");
+
+        // 逐行异步写入日志文件，AutoFlush 确保实时落盘
+        _ = Task.Run(async () =>
+        {
+            using var writer = new StreamWriter(logFile, append: false) { AutoFlush = true };
+            var stdoutTask = PipeToWriterAsync(process.StandardOutput, writer);
+            var stderrTask = PipeToWriterAsync(process.StandardError, writer);
+            await Task.WhenAll(stdoutTask, stderrTask);
+        });
 
         var record = new InstanceRecord
         {
@@ -47,7 +63,8 @@ public sealed class ServiceProcessManager
             Pid = process.Id,
             WorkspaceRoot = _workspaceRoot,
             Port = port,
-            StartedAt = DateTime.UtcNow
+            StartedAt = DateTime.UtcNow,
+            LogPath = logFile
         };
 
         Registry.Add(record);
@@ -96,5 +113,14 @@ public sealed class ServiceProcessManager
         }
 
         throw new TimeoutException($"服务在 {timeoutSeconds} 秒内未就绪");
+    }
+
+    private static async Task PipeToWriterAsync(StreamReader reader, StreamWriter writer)
+    {
+        string? line;
+        while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
+        {
+            await writer.WriteLineAsync(line).ConfigureAwait(false);
+        }
     }
 }

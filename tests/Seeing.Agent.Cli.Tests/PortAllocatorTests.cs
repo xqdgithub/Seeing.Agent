@@ -32,4 +32,21 @@ public class PortAllocatorTests
             listener.Stop();
         }
     }
+
+    [Fact]
+    public void NextAvailable_WhenPreferredInUseOnLoopback_ShouldReturnLaterFreePort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 25200);
+        listener.Start();
+        try
+        {
+            var allocator = new PortAllocator();
+            var port = allocator.NextAvailable(25200);
+            port.Should().BeGreaterThan(25200);
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
 }

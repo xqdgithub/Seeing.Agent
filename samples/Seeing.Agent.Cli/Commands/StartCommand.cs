@@ -78,9 +78,9 @@ public static class StartCommand
                 }
 
                 if (service == "webui")
-                    Console.WriteLine($"WebUI 已启动: http://127.0.0.1:{port}（工作区: {workspaceRoot}）");
+                    Console.WriteLine($"WebUI 已启动: http://127.0.0.1:{port} 日志: {record.LogPath}（工作区: {workspaceRoot}）");
                 else
-                    Console.WriteLine($"Gateway 已启动: http://127.0.0.1:{port}（工作区: {workspaceRoot}）");
+                    Console.WriteLine($"Gateway 已启动: http://127.0.0.1:{port} 日志: {record.LogPath}（工作区: {workspaceRoot}）");
             }
             catch (Exception ex)
             {
