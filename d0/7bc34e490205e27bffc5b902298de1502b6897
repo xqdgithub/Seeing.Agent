@@ -1,0 +1,32 @@
+tests/Seeing.Agent.Cli.Tests/PortAllocatorTests.cs
+  s_ce186a5dc992e7::t_e19f832777b394 35-51
+samples/Seeing.Agent.Cli/Services/ServiceProcessManager.cs
+  s_ce186a5dc992e7::t_5d27374acccab9 34,43-44
+  s_ce186a5dc992e7::t_bcb4ea1082ea58 30-33
+  s_ce186a5dc992e7::t_6c897b9c374ef4 66-67
+  s_ce186a5dc992e7::t_e9173168feb6d0 50-57
+  s_ce186a5dc992e7::t_64ff0c530f1bf2 117-125
+samples/Seeing.Agent.Cli/Commands/StartCommand.cs
+  s_ce186a5dc992e7::t_a4c126ae21ed72 81,83
+samples/Seeing.Agent.Cli/Services/PortAllocator.cs
+  s_ce186a5dc992e7::t_87a067a99c2b67 21-31,43,45-47
+  s_ce186a5dc992e7::t_2677b915313d0a 32-34,38,41
+samples/Seeing.Agent.Cli/Services/InstanceRecord.cs
+  s_ce186a5dc992e7::t_b7185328ee3035 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.39-trip",
+  "base_commit_sha": "d07bc34e490205e27bffc5b902298de1502b6897",
+  "prompts": {},
+  "sessions": {
+    "s_ce186a5dc992e7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02b0848b3ffe6z9SMuzMsT4SEr",
+        "model": "DeepSeek-V4-Pro-discount"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
