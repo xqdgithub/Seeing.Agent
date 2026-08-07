@@ -1,8 +1,10 @@
+using System.IO;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Background;
@@ -27,7 +29,7 @@ public static class MemoryServiceExtensions
 {
     public static IServiceCollection AddMemoryServices(
         this IServiceCollection services,
-        string connectionString = "Data Source=memory.db")
+        string? connectionString = null)
     {
         services.TryAddSingleton<MemoryOptionsProvider>();
         services.TryAddSingleton<IMemoryOptionsStore>(sp => sp.GetRequiredService<MemoryOptionsProvider>());
@@ -54,7 +56,8 @@ public static class MemoryServiceExtensions
 
         services.TryAddSingleton(sp =>
         {
-            var connection = new SqliteConnection(connectionString);
+            var resolved = ResolveConnectionString(sp, connectionString);
+            var connection = new SqliteConnection(resolved);
             connection.Open();
             return connection;
         });
@@ -165,7 +168,7 @@ public static class MemoryServiceExtensions
 
     public static IServiceCollection AddMemoryServices<TEmbedding>(
         this IServiceCollection services,
-        string connectionString = "Data Source=memory.db")
+        string? connectionString = null)
         where TEmbedding : class, IEmbeddingService
     {
         services.AddMemoryServices(connectionString);
@@ -178,5 +181,22 @@ public static class MemoryServiceExtensions
             return new EmbeddingService(inner, cache, logger);
         });
         return services;
+    }
+
+    /// <summary>
+    /// 解析 SQLite 连接字符串。未显式传入时，默认使用项目级 .seeing 隐藏目录下的 memory.db。
+    /// </summary>
+    private static string ResolveConnectionString(IServiceProvider sp, string? connectionString)
+    {
+        if (!string.IsNullOrWhiteSpace(connectionString))
+            return connectionString;
+
+        var workspace = sp.GetService<IWorkspaceProvider>();
+        var dbDir = workspace?.ProjectSeeingDirectory
+            // 兜底：无工作区提供者时回退到当前目录的 .seeing
+            ?? Path.Combine(Directory.GetCurrentDirectory(), ".seeing");
+
+        Directory.CreateDirectory(dbDir);
+        return $"Data Source={Path.Combine(dbDir, "memory.db")}";
     }
 }
