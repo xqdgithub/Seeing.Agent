@@ -42,7 +42,6 @@
                       @bind:event="oninput"
                       @bind:after="@HandleInputChange"
                       placeholder="@(AppState.IsMobile ? HelpText : Placeholder)"
-                      disabled="@IsProcessing"
                       @onkeydown="@HandleKeyDown"
                       @onkeydown:preventDefault="@_preventDefaultKeydown"
                       @ref="@TextareaRef"
@@ -105,17 +104,6 @@
                                 Disabled="@IsProcessing" />
                     </Tooltip>
                 </SpaceItem>
-                @if (IsProcessing)
-                {
-                    <SpaceItem>
-                        <Tooltip Title="取消执行">
-                            <Button Type="@ButtonType.Text"
-                                    Size="@ButtonSize.Small"
-                                    Icon="@IconType.Outline.CloseCircle"
-                                    OnClick="@OnCancelClick" />
-                        </Tooltip>
-                    </SpaceItem>
-                }
                 <SpaceItem>
                     <Tooltip Title="清空输入">
                         <Button Type="@ButtonType.Text"
@@ -126,12 +114,13 @@
                     </Tooltip>
                 </SpaceItem>
                 <SpaceItem>
-                    <Tooltip Title="发送消息 (Enter)">
-                        <Button Type="@ButtonType.Primary"
-                                Icon="@IconType.Outline.Send"
-                                Loading="@IsProcessing"
-                                OnClick="@OnSubmit">
-                            发送
+                    <Tooltip Title="@(IsProcessing ? "取消执行" : "发送消息 (Enter)")">
+                        <Button Type="@(IsProcessing ? ButtonType.Default : ButtonType.Primary)"
+                                Size="@ButtonSize.Default"
+                                Icon="@(IsProcessing ? IconType.Outline.CloseCircle : IconType.Outline.Send)"
+                                Danger="@IsProcessing"
+                                OnClick="@OnSendOrCancel">
+                            @(IsProcessing ? "取消" : "发送")
                         </Button>
                     </Tooltip>
                 </SpaceItem>
@@ -316,6 +305,16 @@
     /// 是否阻止 keydown 默认行为
     /// </summary>
     private bool _preventDefaultKeydown = false;
+
+    /// <summary>
+    /// 上一次 IsProcessing 状态（用于检测执行结束，重新聚焦输入框）
+    /// </summary>
+    private bool _prevIsProcessing;
+
+    /// <summary>
+    /// 是否需要在渲染后重新聚焦输入框
+    /// </summary>
+    private bool _pendingRefocus;
 
     /// <summary>
     /// 加载所有命令（仅从后端获取的命令，已按 Runtime 过滤）
@@ -516,6 +515,24 @@
             }
         }
         
+        // 上键：召回上一条用户消息到输入框（仅在输入框为空时，避免覆盖正在输入的内容）
+        if (e.Key == "ArrowUp")
+        {
+            _preventDefaultKeydown = true;
+            if (string.IsNullOrWhiteSpace(InputText))
+            {
+                var lastUserMsg = SessionState?.Messages
+                    .LastOrDefault(m => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase)
+                                        && !string.IsNullOrWhiteSpace(m.Content));
+                if (lastUserMsg != null)
+                {
+                    InputText = lastUserMsg.Content;
+                    StateHasChanged();
+                }
+            }
+            return;
+        }
+        
         // Enter 键处理
         if (e.Key == "Enter")
         {
@@ -676,6 +693,16 @@
             _isSubmitting = false;
             StateHasChanged();
         }
+    }
+    
+    /// <summary>
+    /// 发送/取消一体化按钮：执行中点击为取消，空闲时点击为发送
+    /// </summary>
+    private Task OnSendOrCancel()
+    {
+        if (IsProcessing)
+            return OnCancelClick();
+        return OnSubmit();
     }
     
     /// <summary>
@@ -936,8 +963,30 @@
     /// <summary>
     /// 组件初始化后设置 JSInterop
     /// </summary>
+    protected override void OnParametersSet()
+    {
+        // 检测执行结束（处理中 -> 空闲），标记渲染后聚焦输入框
+        if (_prevIsProcessing && !IsProcessing)
+            _pendingRefocus = true;
+        _prevIsProcessing = IsProcessing;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // 执行结束后重新聚焦输入框
+        if (_pendingRefocus)
+        {
+            _pendingRefocus = false;
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("focusElement", TextareaId);
+            }
+            catch
+            {
+                // 忽略 JS 错误
+            }
+        }
+
         if (firstRender)
         {
             // 设置拖放处理
