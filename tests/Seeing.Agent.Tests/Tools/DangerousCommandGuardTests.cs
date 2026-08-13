@@ -22,6 +22,11 @@ public class DangerousCommandGuardTests
     [InlineData("rm -rf ~/Downloads/tmp")]
     [InlineData("rm -rf /tmp/cache")]
     [InlineData("del /f /s C:\\Users\\me\\file.txt")]
+    [InlineData("echo foo | shasum")]
+    [InlineData("cat x | shred -u")]
+    [InlineData("echo x | sha256sum")]
+    [InlineData("echo hi | shellcheck")]
+    [InlineData("cat /etc/passwd | showmount")]
     public void Check_OrdinaryCommands_ShouldReturnNull(string command)
     {
         DangerousCommandGuard.Check(command, Default()).Should().BeNull();
@@ -43,6 +48,22 @@ public class DangerousCommandGuardTests
     [InlineData("echo x | sudo rm -rf /")]
     [InlineData("format C:")]
     [InlineData("chmod -R 777 /")]
+    [InlineData("rm -fr /")]
+    [InlineData("rm -fR /")]
+    [InlineData("rm -irf /")]
+    [InlineData("rm -fr ~")]
+    [InlineData("rm -fr C:\\")]
+    [InlineData("sudo -n rm -rf /")]
+    [InlineData("sudo -h shutdown now")]
+    [InlineData("env -i rm -fr /")]
+    [InlineData("env -i dd if=/dev/sda of=/dev/sdb")]
+    [InlineData("env -i mkfs.ext4 /dev/sda")]
+    [InlineData("rmdir /s C:\\")]
+    [InlineData("rd /s /q C:\\")]
+    [InlineData("erase /s C:\\")]
+    [InlineData("del /f /s C:\\")]
+    [InlineData("bash <(curl -sL url)")]
+    [InlineData("curl x | 'bash'")]
     public void Check_CatastrophicPatterns_ShouldReject(string command)
     {
         DangerousCommandGuard.Check(command, Default()).Should().NotBeNull();

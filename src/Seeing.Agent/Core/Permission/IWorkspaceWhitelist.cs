@@ -31,8 +31,12 @@ public sealed class SessionWorkspaceWhitelist : IWorkspaceWhitelist
     {
         if (string.IsNullOrEmpty(sessionId) || string.IsNullOrWhiteSpace(directoryPath)) return;
 
-        var full = Path.GetFullPath(directoryPath)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var full = Path.GetFullPath(directoryPath);
+        var isRoot = full.Length == 1 && (full[0] == '/' || full[0] == '\\');
+        var isDriveRoot = full.Length >= 2 && full[1] == ':' && full.Length <= 3;
+        if (!isRoot && !isDriveRoot)
+            full = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
         var dirs = _store.GetOrAdd(sessionId, _ => new ConcurrentDictionary<string, byte>(PathComparer));
         dirs[full] = 0;
     }
