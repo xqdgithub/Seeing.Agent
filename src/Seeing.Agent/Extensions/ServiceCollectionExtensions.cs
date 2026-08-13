@@ -596,6 +596,9 @@ namespace Seeing.Agent.Extensions
             // 权限记忆（会话级，纯内存）
             services.AddSingleton<IPermissionMemory, SessionPermissionMemory>();
 
+            // 会话级工作区白名单（AddWorkspacePathTool 写入，权限通道读取）
+            services.AddSingleton<IWorkspaceWhitelist, SessionWorkspaceWhitelist>();
+
             // 权限通道 — 默认使用 DynamicPermissionChannel + SerializingPermissionChannel（带记忆）
             // 使用 IOptionsMonitor 实现运行时配置变更无需重启
             // 注意：如果用户在其他地方注册了 IPermissionChannel（如 BlazorPermissionChannel），
@@ -611,7 +614,8 @@ namespace Seeing.Agent.Extensions
                 var inner = new Core.Permission.DynamicPermissionChannel(optionsMonitor, logger);
 
                 // 进程级 Ask 串行 + 会话级记忆 + 工作区边界检查（宿主可再包一层，如 Blazor）
-                return new Core.Permission.SerializingPermissionChannel(inner, memory, workspace);
+                return new Core.Permission.SerializingPermissionChannel(inner, memory, workspace,
+                    sp.GetRequiredService<Core.Permission.IWorkspaceWhitelist>());
             });
 
             // Agent 执行器（统一执行引擎）

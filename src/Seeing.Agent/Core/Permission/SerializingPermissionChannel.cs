@@ -16,13 +16,19 @@ public sealed class SerializingPermissionChannel : IPermissionChannel
     private readonly IPermissionChannel _inner;
     private readonly IPermissionMemory _memory;
     private readonly IWorkspaceProvider? _workspace;
+    private readonly IWorkspaceWhitelist? _whitelist;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public SerializingPermissionChannel(IPermissionChannel inner, IPermissionMemory memory, IWorkspaceProvider? workspace = null)
+    public SerializingPermissionChannel(
+        IPermissionChannel inner,
+        IPermissionMemory memory,
+        IWorkspaceProvider? workspace = null,
+        IWorkspaceWhitelist? whitelist = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _memory = memory ?? throw new ArgumentNullException(nameof(memory));
         _workspace = workspace;
+        _whitelist = whitelist;
     }
 
     public async Task<PermissionChannelResult> RequestAsync(PermissionRequest request, CancellationToken ct = default)
@@ -31,7 +37,10 @@ public sealed class SerializingPermissionChannel : IPermissionChannel
         if (_workspace != null && request.Resource != null &&
             request.PermissionKind.StartsWith("filesystem.", StringComparison.OrdinalIgnoreCase))
         {
-            if (FileSystemHelper.IsPathWithinDirectory(request.Resource, _workspace.WorkspaceRoot))
+            var inWorkspace = FileSystemHelper.IsPathWithinDirectory(request.Resource, _workspace.WorkspaceRoot);
+            var inWhitelist = _whitelist != null &&
+                _whitelist.Contains(request.SessionId ?? string.Empty, request.Resource);
+            if (inWorkspace || inWhitelist)
                 return PermissionChannelResult.Allowed();
         }
 

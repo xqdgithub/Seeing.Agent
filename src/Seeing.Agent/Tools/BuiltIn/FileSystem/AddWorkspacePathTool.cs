@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Permission;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem;
@@ -27,9 +28,12 @@ public class AddWorkspacePathTool : BuiltInToolBase
         ["required"] = new[] { "path" }
     });
 
-    public AddWorkspacePathTool(ILogger<AddWorkspacePathTool> logger)
+    private readonly IWorkspaceWhitelist _whitelist;
+
+    public AddWorkspacePathTool(ILogger<AddWorkspacePathTool> logger, IWorkspaceWhitelist whitelist)
         : base(logger)
     {
+        _whitelist = whitelist;
     }
 
     public override string Id => "add_workspace_path";
@@ -52,6 +56,8 @@ public class AddWorkspacePathTool : BuiltInToolBase
 
         if (!Directory.Exists(path))
             return Failure($"目录不存在: {path}");
+
+        _whitelist.Add(context.SessionId, path);
 
         return Success("路径已加入当前会话的工作区白名单", path);
     }
