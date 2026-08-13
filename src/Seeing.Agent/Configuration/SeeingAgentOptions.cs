@@ -69,6 +69,9 @@ namespace Seeing.Agent.Configuration
         /// <summary>Token 预算全局配置</summary>
         public TokenBudgetOptions TokenBudget { get; set; } = new();
 
+        /// <summary>Shell 配置（危险命令拦截与 Shell 优先级）</summary>
+        public ShellOptions Shell { get; set; } = new();
+
         /// <summary>会话标题自动生成配置</summary>
         public TitleGenerationOptions TitleGeneration { get; set; } = new();
     }
@@ -233,5 +236,34 @@ namespace Seeing.Agent.Configuration
         /// Ignored if Percentage is also set.
         /// </summary>
         public int? AbsoluteTokens { get; set; }
+    }
+
+    /// <summary>
+    /// Shell 配置 - 危险命令拦截与 Windows Shell 优先级
+    /// </summary>
+    public sealed class ShellOptions
+    {
+        /// <summary>Windows 优先 Shell（按顺序，找不到则顺延）。bash 条目通过 git.exe 推断 git bash 路径</summary>
+        public List<string> PreferredShells { get; set; } = new() { "pwsh", "powershell", "bash", "cmd" };
+
+        /// <summary>封禁命令（只保留灾难性）。匹配时大小写不敏感</summary>
+        public List<string> BlockedCommands { get; set; } = new()
+            { "dd", "mkfs", "format", "shutdown", "reboot", "halt", "poweroff", "init" };
+
+        /// <summary>封禁模式（灾难性 pattern）</summary>
+        public List<string> BlockedPatterns { get; set; } = new()
+        {
+            "rm -rf /", "rm -r /", "rm -rf ~", "rm -rf .",
+            ":(){ :|:& };:",
+            "dd if=/dev/zero of=/dev/",
+            "chmod 777 /", "chmod -R 777 /",
+            "del /f /s C:\\",
+            "format C:", "format D:",
+            "reg delete HKLM",
+            "> /etc/", "> /boot/", "> /sys/",
+        };
+
+        /// <summary>是否启用危险命令拦截（默认 true）</summary>
+        public bool EnableCommandGuard { get; set; } = true;
     }
 }

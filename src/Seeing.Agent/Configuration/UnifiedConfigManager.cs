@@ -124,6 +124,8 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 typeof(string),
                 scopeReason: "全局默认工作区为用户级偏好，独立于项目",
                 displayName: "全局默认工作区", displayOrder: 18),
+            ["Shell"] = new("Shell", "seeing.json", ConfigScope.Both,
+                typeof(ShellOptions), displayName: "Shell 配置", displayOrder: 19),
         };
     }
     
