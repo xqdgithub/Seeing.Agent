@@ -842,6 +842,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             "Permission" => SeeingAgent.Permission as T,
             "Workspace" => SeeingAgent.Workspace as T,
             "TokenBudget" => SeeingAgent.TokenBudget as T,
+            "Shell" => SeeingAgent.Shell as T,
             "AgentModels" => SeeingAgent.AgentModels as T,
             "GlobalWorkspaceRoot" => SeeingAgent.GlobalWorkspaceRoot as T,
             _ => null
@@ -918,6 +919,10 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             case "TokenBudget":
                 if (value is TokenBudgetOptions tokenBudget)
                     SeeingAgent.TokenBudget = tokenBudget;
+                break;
+            case "Shell":
+                if (value is ShellOptions shell)
+                    SeeingAgent.Shell = shell;
                 break;
             case "AgentModels":
                 if (value is Dictionary<string, string> agentModels)
