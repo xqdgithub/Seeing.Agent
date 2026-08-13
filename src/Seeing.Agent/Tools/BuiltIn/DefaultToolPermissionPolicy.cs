@@ -23,11 +23,12 @@ public sealed class DefaultToolPermissionPolicy : IToolPermissionPolicy
 
     private static readonly Dictionary<string, Mapping> Mappings = new()
     {
-        ["read"]                = new("filesystem.read",               "file_path"),
-        ["write"]               = new("filesystem.write",              "file_path"),
-        ["edit"]                = new("filesystem.write",              "file_path"),
+        ["read"]                = new("filesystem.read",               "filePath"),
+        ["write"]               = new("filesystem.write",              "filePath"),
+        ["edit"]                = new("filesystem.write",              "filePath"),
         ["grep"]                = new("filesystem.read",               "path"),
         ["glob"]                = new("filesystem.read",               "path"),
+        ["delete"]              = new("filesystem.delete",             "path"),
         ["bash"]                = new("shell.execute",                 "command"),
         ["webfetch"]            = new("network.fetch",                 "url"),
         ["websearch"]           = new("network.search",                null, FixedResource: "web_search"),

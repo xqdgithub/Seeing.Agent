@@ -434,6 +434,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ITool, GlobTool>();
             services.AddSingleton<ITool, GrepTool>();
             services.AddSingleton<ITool, AddWorkspacePathTool>();
+            services.AddSingleton<ITool, DeleteTool>();
 
             // Shell 工具
             services.AddSingleton<ITool, BashTool>();
