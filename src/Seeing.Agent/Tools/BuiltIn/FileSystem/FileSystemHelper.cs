@@ -319,19 +319,59 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         }
 
         /// <summary>
-        /// 验证路径是否在工作目录内（安全检查）
+        /// 验证路径是否在指定目录内（含符号链接真实路径解析，避免前缀误判）
         /// </summary>
         public static bool IsPathWithinDirectory(string path, string baseDirectory)
         {
             try
             {
-                var fullPath = Path.GetFullPath(path);
-                var fullBase = Path.GetFullPath(baseDirectory);
-                return fullPath.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase);
+                var fullPath = ResolveRealPath(Path.GetFullPath(path));
+                var fullBase = ResolveRealPath(Path.GetFullPath(baseDirectory));
+
+                if (string.Equals(fullPath, fullBase, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                // 必须带分隔符前缀，避免 C:\foo 误匹配 C:\foobar
+                var prefix = fullBase.EndsWith(Path.DirectorySeparatorChar) || fullBase.EndsWith(Path.AltDirectorySeparatorChar)
+                    ? fullBase
+                    : fullBase + Path.DirectorySeparatorChar;
+
+                return fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
             }
             catch
             {
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// 解析符号链接真实路径；失败或非链接时返回原路径
+        /// </summary>
+        private static string ResolveRealPath(string fullPath)
+        {
+            try
+            {
+                if (Directory.Exists(fullPath))
+                {
+                    var info = new DirectoryInfo(fullPath);
+                    var target = info.ResolveLinkTarget(returnFinalTarget: true);
+                    return target?.FullName ?? info.FullName;
+                }
+                if (File.Exists(fullPath))
+                {
+                    var info = new FileInfo(fullPath);
+                    var target = info.ResolveLinkTarget(returnFinalTarget: true);
+                    return target?.FullName ?? info.FullName;
+                }
+                // 目标不存在：解析父目录，尾段原样拼回（保持已存在部分的真实路径）
+                var parent = Directory.GetParent(fullPath);
+                if (parent == null) return fullPath;
+                var resolvedParent = ResolveRealPath(parent.FullName);
+                return Path.Combine(resolvedParent, Path.GetFileName(fullPath));
+            }
+            catch
+            {
+                return fullPath;
             }
         }
 

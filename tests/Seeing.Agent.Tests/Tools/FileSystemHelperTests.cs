@@ -57,6 +57,32 @@ public class FileSystemHelperTests
     }
 
     [Fact]
+    public void IsPathWithinDirectory_SiblingPrefix_ShouldReturnFalse()
+    {
+        // C:\foo 不是 C:\foobar 的子路径（前缀误判回归）
+        FileSystemHelper.IsPathWithinDirectory(@"C:\foo", @"C:\foobar").Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsPathWithinDirectory_SiblingPrefixReversed_ShouldReturnFalse()
+    {
+        FileSystemHelper.IsPathWithinDirectory(@"C:\foobar", @"C:\foo").Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsPathWithinDirectory_ExactDirectory_ShouldReturnTrue()
+    {
+        // 目录本身也算"在目录内"
+        FileSystemHelper.IsPathWithinDirectory(@"C:\workspace", @"C:\workspace").Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsPathWithinDirectory_NestedSubdir_ShouldReturnTrue()
+    {
+        FileSystemHelper.IsPathWithinDirectory(@"C:\workspace\a\b", @"C:\workspace").Should().BeTrue();
+    }
+
+    [Fact]
     public void GetMimeType_Png_ShouldReturnImagePng()
     {
         var result = FileSystemHelper.GetMimeType("logo.png");

@@ -38,24 +38,6 @@ namespace Seeing.Agent.Tools.BuiltIn
         }
 
         /// <summary>
-        /// 检查路径是否在工作目录内
-        /// </summary>
-        protected bool IsWithinWorkingDirectory(string path)
-        {
-            var fullPath = Path.GetFullPath(path);
-            var fullWorkingDir = Path.GetFullPath(_workingDirectory);
-            return fullPath.StartsWith(fullWorkingDir, StringComparison.OrdinalIgnoreCase);
-        }
-
-        /// <summary>
-        /// 获取相对路径
-        /// </summary>
-        protected string GetRelativePath(string absolutePath)
-        {
-            return Path.GetRelativePath(_workingDirectory, absolutePath);
-        }
-
-        /// <summary>
         /// 构建标准 JSON Schema
         /// </summary>
         protected JsonElement BuildSchema(Dictionary<string, object> schema)

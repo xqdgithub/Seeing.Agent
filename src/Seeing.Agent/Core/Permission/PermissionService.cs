@@ -443,10 +443,7 @@ public class PermissionService : IPermissionService, IDisposable
         if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(parentPath))
             return false;
 
-        var fullPath = Path.GetFullPath(path);
-        var fullParent = Path.GetFullPath(parentPath);
-
-        return fullPath.StartsWith(fullParent, StringComparison.OrdinalIgnoreCase);
+        return Seeing.Agent.Tools.BuiltIn.FileSystem.FileSystemHelper.IsPathWithinDirectory(path, parentPath);
     }
 
     private static string NormalizePath(string filePath, string workingDirectory)
