@@ -60,6 +60,10 @@ internal static class DangerousCommandGuard
         return null;
     }
 
+    /// <summary>cmd 风格选项：/ 后跟单个字母（如 /s、/q、/f）。排除 /*、/bin 等路径形态</summary>
+    private static bool IsCmdOption(string t) =>
+        t.Length == 2 && t[0] == '/' && char.IsLetter(t[1]) && t[1] != ':';
+
     /// <summary>提取命令名：剥离 sudo/env 前缀与所有选项令牌（-x、--xx、cmd 风格 /x），剥引号</summary>
     private static string? GetCommandName(string lowerCommand)
     {
@@ -70,8 +74,7 @@ internal static class DangerousCommandGuard
             if (t is "sudo" or "env") continue;
             if (t.StartsWith("--")) continue;
             if (t.Length > 1 && t[0] == '-') continue;
-            // cmd 风格选项 /s /q /f（排除 /bin/bash 这类多段路径与 C:\ 盘符）
-            if (t.StartsWith("/") && t.IndexOf('/', 1) < 0 && t.Length > 1 && t[1] != ':') continue;
+            if (IsCmdOption(t)) continue;
             return Path.GetFileName(t);
         }
         return null;
@@ -113,7 +116,7 @@ internal static class DangerousCommandGuard
                 if (t.Contains('r')) recursive = true; // 含 -fr、-irf、-fR 等组合短选项
                 continue;
             }
-            if (t.StartsWith("/") && t.IndexOf('/', 1) < 0 && t.Length > 1 && t[1] != ':')
+            if (IsCmdOption(t))
             {
                 if (t.Contains('s')) recursive = true; // cmd 风格 /s
                 continue;
