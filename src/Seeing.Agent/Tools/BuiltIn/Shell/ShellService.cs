@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Seeing.Agent.Configuration;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -12,6 +14,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         /// <summary>
         /// 获取首选 Shell（优先使用环境变量 SHELL）
         /// </summary>
+        [Obsolete("该成员已不再使用，将在未来版本移除。")]
         string GetPreferredShell();
 
         /// <summary>
@@ -24,6 +27,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         /// </summary>
         /// <param name="shell">Shell 路径</param>
         /// <returns>参数格式字符串，{0} 会被替换为命令</returns>
+        [Obsolete("该成员已不再使用，将在未来版本移除。")]
         string GetShellArgumentFormat(string shell);
 
         /// <summary>
@@ -43,6 +47,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
     public class ShellService : IShellService
     {
         private readonly ILogger<ShellService> _logger;
+        private readonly IOptionsMonitor<SeeingAgentOptions> _options;
         private string? _preferredShell;
         private string? _acceptableShell;
 
@@ -54,14 +59,16 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
             "fish", "nu"  // fish 和 nushell 与某些命令格式不兼容
         };
 
-        public ShellService(ILogger<ShellService> logger)
+        public ShellService(ILogger<ShellService> logger, IOptionsMonitor<SeeingAgentOptions> options)
         {
             _logger = logger;
+            _options = options;
         }
 
         /// <summary>
         /// 获取首选 Shell
         /// </summary>
+        [Obsolete("该成员已不再使用，将在未来版本移除。")]
         public string GetPreferredShell()
         {
             if (_preferredShell != null)
@@ -136,27 +143,21 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // Windows 平台：尝试 Git Bash，回退到 CMD 或 PowerShell
-                var gitBashPath = GetGitBashPath();
-                if (!string.IsNullOrEmpty(gitBashPath))
+                foreach (var name in _options.CurrentValue.Shell.PreferredShells)
                 {
-                    return gitBashPath;
+                    var found = name.ToLowerInvariant() switch
+                    {
+                        "pwsh" or "powershell" => FindExecutable(name),
+                        "bash" => GetGitBashPath() ?? FindExecutable("bash"),
+                        "cmd" => Environment.GetEnvironmentVariable("COMSPEC") ?? FindExecutable("cmd"),
+                        _ => FindExecutable(name),
+                    };
+                    if (!string.IsNullOrEmpty(found))
+                        return found;
                 }
 
-                // 回退到 COMSPEC（通常是 cmd.exe）或 PowerShell
-                var comspec = Environment.GetEnvironmentVariable("COMSPEC");
-                if (!string.IsNullOrEmpty(comspec))
-                {
-                    return comspec;
-                }
-
-                // 尝试 PowerShell
-                if (File.Exists("powershell.exe"))
-                {
-                    return "powershell.exe";
-                }
-
-                return "cmd.exe";
+                var fallback = Environment.GetEnvironmentVariable("COMSPEC");
+                return string.IsNullOrEmpty(fallback) ? "cmd.exe" : fallback;
             }
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -178,6 +179,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         /// <summary>
         /// 获取 Shell 执行命令的参数格式
         /// </summary>
+        [Obsolete("该成员已不再使用，将在未来版本移除。")]
         public string GetShellArgumentFormat(string shell)
         {
             var shellName = GetShellName(shell);
