@@ -15,12 +15,13 @@ internal static class DangerousCommandGuard
         if (options == null) return null;
         if (!options.EnableCommandGuard) return null;
 
-        var trimmed = command.Trim().ToLowerInvariant();
+        var trimmed = command.Trim();
+        var lower = trimmed.ToLowerInvariant();
 
         // 管道：curl/wget | bash/sh 等
-        if (trimmed.Contains("|"))
+        if (lower.Contains("|"))
         {
-            foreach (var part in trimmed.Split('|'))
+            foreach (var part in lower.Split('|'))
             {
                 var pt = part.Trim();
                 if ((pt.StartsWith("bash") || pt.StartsWith("sh") ||
@@ -31,27 +32,80 @@ internal static class DangerousCommandGuard
         }
 
         // 命令替换 $() / 反引号 与网络请求组合
-        if (trimmed.Contains("$(") || trimmed.Contains("`"))
+        if (lower.Contains("$(") || lower.Contains("`"))
         {
-            if (trimmed.Contains("curl") || trimmed.Contains("wget") ||
-                trimmed.Contains("nc ") || trimmed.Contains("ncat"))
+            if (lower.Contains("curl") || lower.Contains("wget") ||
+                lower.Contains("nc ") || lower.Contains("ncat"))
                 return "禁止命令替换与网络请求组合使用";
         }
 
-        // 封禁模式（灾难性）
+        // 封禁模式（子串匹配，用于明确灾难性片段）
         foreach (var pattern in options.BlockedPatterns)
         {
             if (string.IsNullOrWhiteSpace(pattern)) continue;
-            if (trimmed.Contains(pattern.ToLowerInvariant()))
+            if (lower.Contains(pattern.ToLowerInvariant()))
                 return $"禁止执行危险命令模式: {pattern}";
         }
 
-        // 封禁命令（大小写不敏感）
-        var firstWord = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-        var cmdName = Path.GetFileName(firstWord);
-        if (options.BlockedCommands.Contains(cmdName, StringComparer.OrdinalIgnoreCase))
+        // 命令名封禁（剥离 sudo/env 前缀）
+        var cmdName = GetCommandName(lower);
+        if (cmdName != null && options.BlockedCommands.Contains(cmdName, StringComparer.OrdinalIgnoreCase))
             return $"禁止执行危险命令: {cmdName}";
 
+        // 删除目标检查：rm/rmdir/del 递归删除根/家/当前目录/盘符根
+        var deleteTarget = CheckDestructiveDelete(lower);
+        if (deleteTarget != null)
+            return $"禁止递归删除根/家/当前目录: {deleteTarget}";
+
         return null;
+    }
+
+    /// <summary>提取命令名（剥离 sudo/env 前缀，处理带路径的可执行文件）</summary>
+    private static string? GetCommandName(string lowerCommand)
+    {
+        var tokens = lowerCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var t in tokens)
+        {
+            if (t is "sudo" or "env") continue;
+            if (t.StartsWith("--")) continue;
+            return Path.GetFileName(t);
+        }
+        return null;
+    }
+
+    /// <summary>检查 rm/rmdir/del 递归删除是否指向危险目标（根/家/当前/盘符根）。返回危险目标 token 或 null</summary>
+    private static string? CheckDestructiveDelete(string lowerCommand)
+    {
+        var tokens = lowerCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var cmdName = GetCommandName(lowerCommand);
+        if (cmdName is not ("rm" or "rmdir" or "del")) return null;
+
+        // 递归标志：rm/rmdir 用 -r/--recursive；del 用 /s
+        var recursive = cmdName is "rm" or "rmdir"
+            ? lowerCommand.Contains("-r") || lowerCommand.Contains("--recursive")
+            : lowerCommand.Contains("/s");
+        if (!recursive) return null;
+
+        foreach (var t in tokens)
+        {
+            if (t is "sudo" or "env") continue;
+            if (t == cmdName) continue;
+            if (IsDestructiveTarget(t)) return t;
+            if (t.StartsWith("-") || t.StartsWith("/")) continue; // 选项
+        }
+        return null;
+    }
+
+    /// <summary>判断是否为危险删除目标：/、~、.、盘符根（C:、C:\、C:\*、C:/ 等）</summary>
+    private static bool IsDestructiveTarget(string target)
+    {
+        if (target is "/" or "~" or ".") return true;
+        if (target.Length >= 2 && target[1] == ':')
+        {
+            // 盘符根：C:、C:\、C:/、C:\*、C:/* 或 C:\** 等（后面没有更多路径片段）
+            var rest = target.Length > 2 ? target[2..].Trim('\\', '/', '*') : string.Empty;
+            return rest.Length == 0;
+        }
+        return false;
     }
 }

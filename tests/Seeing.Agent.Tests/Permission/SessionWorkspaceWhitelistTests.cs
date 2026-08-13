@@ -37,6 +37,13 @@ public class SessionWorkspaceWhitelistTests
     }
 
     [Fact]
+    public void Contains_TrailingSeparator_ShouldMatch()
+    {
+        _whitelist.Add("s1", @"C:\data\");
+        _whitelist.Contains("s1", @"C:\data\file.txt").Should().BeTrue();
+    }
+
+    [Fact]
     public void ClearSession_ShouldForgetAll()
     {
         _whitelist.Add("s1", @"C:\data");

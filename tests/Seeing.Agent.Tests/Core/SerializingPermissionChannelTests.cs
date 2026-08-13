@@ -52,6 +52,27 @@ public class SerializingPermissionChannelTests
         inner.CallCount.Should().Be(4);
     }
 
+    [Fact]
+    public async Task RequestAsync_WhitelistedPathOutsideWorkspace_ShouldAllowWithoutInnerCall()
+    {
+        var inner = new CountingChannel(() => PermissionChannelResult.Allowed());
+        var whitelist = new SessionWorkspaceWhitelist();
+        whitelist.Add("s1", @"C:\data");
+
+        var serial = new SerializingPermissionChannel(inner, new NoOpPermissionMemory(), whitelist: whitelist);
+        var request = new PermissionRequest
+        {
+            PermissionKind = "filesystem.read",
+            Resource = @"C:\data\file.txt",
+            SessionId = "s1"
+        };
+
+        var result = await serial.RequestAsync(request);
+
+        result.Action.Should().Be(PermissionChannelAction.Allow);
+        inner.CallCount.Should().Be(0);
+    }
+
     private sealed class CountingChannel : IPermissionChannel
     {
         private readonly Func<PermissionChannelResult> _onRequest;

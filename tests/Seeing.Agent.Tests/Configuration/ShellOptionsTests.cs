@@ -25,11 +25,13 @@ public class ShellOptionsTests
     }
 
     [Fact]
-    public void Defaults_BlockedPatterns_ShouldContainRmRfRoot()
+    public void Defaults_BlockedPatterns_ShouldNotContainRmDeletePatterns()
     {
         var options = new ShellOptions();
-        options.BlockedPatterns.Should().Contain("rm -rf /");
-        options.BlockedPatterns.Should().Contain("format C:");
+        options.BlockedPatterns.Should().NotContain("rm -rf /");
+        options.BlockedPatterns.Should().NotContain("rm -r /");
+        options.BlockedPatterns.Should().NotContain("del /f /s C:\\");
+        options.BlockedPatterns.Should().Contain("> /etc/");
     }
 
     [Fact]

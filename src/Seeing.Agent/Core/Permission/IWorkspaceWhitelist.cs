@@ -19,15 +19,21 @@ public interface IWorkspaceWhitelist
 /// </summary>
 public sealed class SessionWorkspaceWhitelist : IWorkspaceWhitelist
 {
+    private static readonly StringComparer PathComparer =
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _store =
-        new(StringComparer.OrdinalIgnoreCase);
+        new(PathComparer);
 
     public void Add(string sessionId, string directoryPath)
     {
         if (string.IsNullOrEmpty(sessionId) || string.IsNullOrWhiteSpace(directoryPath)) return;
 
-        var full = Path.GetFullPath(directoryPath);
-        var dirs = _store.GetOrAdd(sessionId, _ => new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase));
+        var full = Path.GetFullPath(directoryPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var dirs = _store.GetOrAdd(sessionId, _ => new ConcurrentDictionary<string, byte>(PathComparer));
         dirs[full] = 0;
     }
 

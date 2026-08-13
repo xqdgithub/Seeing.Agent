@@ -33,11 +33,12 @@ public sealed class SerializingPermissionChannel : IPermissionChannel
 
     public async Task<PermissionChannelResult> RequestAsync(PermissionRequest request, CancellationToken ct = default)
     {
-        // 工作区边界检查：filesystem.* 操作若路径在工作区内则自动通过
-        if (_workspace != null && request.Resource != null &&
+        // 工作区边界检查：filesystem.* 操作若路径在工作区内或白名单内则自动通过
+        if (request.Resource != null &&
             request.PermissionKind.StartsWith("filesystem.", StringComparison.OrdinalIgnoreCase))
         {
-            var inWorkspace = FileSystemHelper.IsPathWithinDirectory(request.Resource, _workspace.WorkspaceRoot);
+            var inWorkspace = _workspace != null &&
+                FileSystemHelper.IsPathWithinDirectory(request.Resource, _workspace.WorkspaceRoot);
             var inWhitelist = _whitelist != null &&
                 _whitelist.Contains(request.SessionId ?? string.Empty, request.Resource);
             if (inWorkspace || inWhitelist)

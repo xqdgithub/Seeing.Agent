@@ -17,6 +17,11 @@ public class DangerousCommandGuardTests
     [InlineData("systemctl status nginx")]
     [InlineData("echo hello > output.txt")]
     [InlineData("dir > C:\\report.txt")]
+    [InlineData("rm -rf ./node_modules")]
+    [InlineData("rm -rf .next")]
+    [InlineData("rm -rf ~/Downloads/tmp")]
+    [InlineData("rm -rf /tmp/cache")]
+    [InlineData("del /f /s C:\\Users\\me\\file.txt")]
     public void Check_OrdinaryCommands_ShouldReturnNull(string command)
     {
         DangerousCommandGuard.Check(command, Default()).Should().BeNull();
@@ -26,7 +31,11 @@ public class DangerousCommandGuardTests
     [InlineData("rm -rf /")]
     [InlineData("rm -rf ~")]
     [InlineData("rm -rf .")]
+    [InlineData("rm -rf C:\\")]
     [InlineData("dd if=/dev/zero of=/dev/sda")]
+    [InlineData("sudo dd if=/dev/urandom of=/dev/sda")]
+    [InlineData("sudo shutdown -h now")]
+    [InlineData("env rm -rf /")]
     [InlineData("format C:")]
     [InlineData("chmod -R 777 /")]
     public void Check_CatastrophicPatterns_ShouldReject(string command)

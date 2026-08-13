@@ -21,6 +21,12 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
         /// <summary>单行截断后缀</summary>
         public static string MaxLineSuffix => $"... (行已截断至 {MaxLineLength} 字符)";
 
+        /// <summary>平台相关的路径比较（Windows/macOS 大小写不敏感，Linux 敏感）</summary>
+        internal static StringComparison PathComparison =>
+            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
         /// <summary>二进制文件扩展名列表</summary>
         private static readonly HashSet<string> BinaryExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -328,7 +334,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 var fullPath = ResolveRealPath(Path.GetFullPath(path));
                 var fullBase = ResolveRealPath(Path.GetFullPath(baseDirectory));
 
-                if (string.Equals(fullPath, fullBase, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(fullPath, fullBase, PathComparison))
                     return true;
 
                 // 必须带分隔符前缀，避免 C:\foo 误匹配 C:\foobar
@@ -336,7 +342,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                     ? fullBase
                     : fullBase + Path.DirectorySeparatorChar;
 
-                return fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+                return fullPath.StartsWith(prefix, PathComparison);
             }
             catch
             {

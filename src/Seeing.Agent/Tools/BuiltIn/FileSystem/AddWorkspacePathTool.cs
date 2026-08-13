@@ -57,6 +57,9 @@ public class AddWorkspacePathTool : BuiltInToolBase
         if (!Directory.Exists(path))
             return Failure($"目录不存在: {path}");
 
+        if (string.IsNullOrEmpty(context.SessionId))
+            return Failure("当前上下文缺少会话 ID，无法扩展工作区白名单");
+
         _whitelist.Add(context.SessionId, path);
 
         return Success("路径已加入当前会话的工作区白名单", path);
