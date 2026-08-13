@@ -127,7 +127,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 
             var outputLines = new List<string>
             {
-                $"文件不存在: {filePath}", // 使用正确的方法
+                $"目录: {filePath}",
                 $"类型: directory",
                 $"总条目数: {entries.Count}",
                 "",
