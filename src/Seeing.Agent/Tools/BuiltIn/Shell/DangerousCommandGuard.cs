@@ -24,7 +24,7 @@ internal static class DangerousCommandGuard
             foreach (var segment in lower.Split('|'))
             {
                 var segCmd = GetCommandName(segment);
-                if (segCmd is "bash" or "sh" or "zsh" or "powershell" or "pwsh")
+                if (segCmd is "bash" or "sh" or "zsh" or "powershell" or "pwsh" or "cmd" or "cmd.exe")
                     return "禁止使用管道将输出传递给 Shell 解释器";
             }
         }
@@ -64,16 +64,39 @@ internal static class DangerousCommandGuard
     private static bool IsCmdOption(string t) =>
         t.Length == 2 && t[0] == '/' && char.IsLetter(t[1]) && t[1] != ':';
 
-    /// <summary>提取命令名：剥离 sudo/env 前缀与所有选项令牌（-x、--xx、cmd 风格 /x），剥引号</summary>
+    /// <summary>提取命令名：跳过 env 赋值（VAR=value）、sudo/env 前缀与选项令牌及其参数</summary>
     private static string? GetCommandName(string lowerCommand)
     {
         var tokens = lowerCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var raw in tokens)
+        for (var i = 0; i < tokens.Length; i++)
         {
-            var t = raw.Trim('\'', '"');
+            var t = tokens[i].Trim('\'', '"');
             if (t is "sudo" or "env") continue;
-            if (t.StartsWith("--")) continue;
-            if (t.Length > 1 && t[0] == '-') continue;
+            if (t.Contains('=')) continue; // 环境赋值 VAR=value
+            if (t.StartsWith("--"))
+            {
+                // 长选项：--key=value 一体，或 --key value 消费下一 token
+                if (t.StartsWith("--user=") || t.StartsWith("--group=") || t.StartsWith("--directory="))
+                    continue;
+                if (t is "--user" or "--group" or "--directory" or "--preserve-env")
+                {
+                    i++; // 消费参数
+                    continue;
+                }
+                continue;
+            }
+            if (t.Length > 1 && t[0] == '-')
+            {
+                // 短选项：-u value、-g value、-C value、-S、-i、-n 等
+                if (t is "-u" or "-g" or "-C" or "-D" or "-S" or "-l")
+                {
+                    if (t is "-u" or "-g" or "-C" or "-D")
+                        i++; // 消费参数
+                    continue;
+                }
+                if (t.Length > 2 && t.StartsWith("-u")) continue; // -uroot 合并写法
+                continue;
+            }
             if (IsCmdOption(t)) continue;
             return Path.GetFileName(t);
         }

