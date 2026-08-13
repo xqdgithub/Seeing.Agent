@@ -64,7 +64,15 @@ internal static class DangerousCommandGuard
     private static bool IsCmdOption(string t) =>
         t.Length == 2 && t[0] == '/' && char.IsLetter(t[1]) && t[1] != ':';
 
-    /// <summary>提取命令名：跳过 env 赋值（VAR=value）、sudo/env 前缀与选项令牌及其参数</summary>
+    /// <summary>敏感命令名集合（命令封禁 + 删除检查），用于选项参数消费前的守卫</summary>
+    private static readonly HashSet<string> SensitiveCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "rm", "rmdir", "rd", "del", "erase",
+        "dd", "mkfs", "format", "shutdown", "reboot", "halt", "poweroff", "init"
+    };
+
+    /// <summary>提取命令名：跳过 env 赋值（VAR=value）、sudo/env 前缀与选项令牌及其参数。
+    /// 任何选项在消费参数前，先检查下一 token 是否为敏感命令，若是则停止消费，让敏感命令成为命令名。</summary>
     private static string? GetCommandName(string lowerCommand)
     {
         var tokens = lowerCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -72,30 +80,40 @@ internal static class DangerousCommandGuard
         {
             var t = tokens[i].Trim('\'', '"');
             if (t is "sudo" or "env") continue;
-            if (t.Contains('=')) continue; // 环境赋值 VAR=value
+            if (t.Contains('=')) continue; // 环境赋值 VAR=value / --key=value 一体式
+
+            // 辅助：判断某 token 是否为敏感命令（含 mkfs. 子命令）
+            bool IsSensitive(string tok)
+            {
+                if (SensitiveCommands.Contains(tok)) return true;
+                foreach (var s in SensitiveCommands)
+                    if (tok.StartsWith(s + ".", StringComparison.OrdinalIgnoreCase)) return true;
+                return false;
+            }
+
+            bool NextIsSensitive() =>
+                i + 1 < tokens.Length && IsSensitive(tokens[i + 1].Trim('\'', '"'));
+
             if (t.StartsWith("--"))
             {
-                // 长选项：--key=value 一体，或 --key value 消费下一 token
-                if (t.StartsWith("--user=") || t.StartsWith("--group=") || t.StartsWith("--directory="))
-                    continue;
-                if (t is "--user" or "--group" or "--directory" or "--preserve-env")
-                {
-                    i++; // 消费参数
-                    continue;
-                }
+                // 长选项（可选/必选参数）：仅当下一 token 非敏感命令时消费参数
+                if (NextIsSensitive()) continue;
+                if (i + 1 < tokens.Length) i++;
                 continue;
             }
             if (t.Length > 1 && t[0] == '-')
             {
-                // 短选项：-u value、-g value、-C value、-S、-i、-n 等
-                if (t is "-u" or "-g" or "-C" or "-D" or "-S" or "-l")
+                // 必选参数短选项（-u/-g/-C/-D/-p/-T/-R/-a/-S，输入已小写化）：仅当下一 token 非敏感命令时消费参数
+                if (t.StartsWith("-u") || t.StartsWith("-g") || t.StartsWith("-c") ||
+                    t.StartsWith("-d") || t.StartsWith("-p") || t.StartsWith("-t") ||
+                    t.StartsWith("-r") || t.StartsWith("-a") || t.StartsWith("-s"))
                 {
-                    if (t is "-u" or "-g" or "-C" or "-D")
-                        i++; // 消费参数
+                    if (t.Length > 2) continue; // -uroot 合并写法：本身是选项，不消费
+                    if (NextIsSensitive()) continue; // 不消费敏感命令
+                    if (i + 1 < tokens.Length) i++; // 消费参数
                     continue;
                 }
-                if (t.Length > 2 && t.StartsWith("-u")) continue; // -uroot 合并写法
-                continue;
+                continue; // 其他短选项（-i、-n、-h 等）
             }
             if (IsCmdOption(t)) continue;
             return Path.GetFileName(t);
