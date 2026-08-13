@@ -29,6 +29,10 @@ public class DangerousCommandGuardTests
 
     [Theory]
     [InlineData("rm -rf /")]
+    [InlineData("rm -rf //")]
+    [InlineData("rm -rf ./")]
+    [InlineData("rm -rf ~/")]
+    [InlineData("rm -rf /*")]
     [InlineData("rm -rf ~")]
     [InlineData("rm -rf .")]
     [InlineData("rm -rf C:\\")]
@@ -36,6 +40,7 @@ public class DangerousCommandGuardTests
     [InlineData("sudo dd if=/dev/urandom of=/dev/sda")]
     [InlineData("sudo shutdown -h now")]
     [InlineData("env rm -rf /")]
+    [InlineData("echo x | sudo rm -rf /")]
     [InlineData("format C:")]
     [InlineData("chmod -R 777 /")]
     public void Check_CatastrophicPatterns_ShouldReject(string command)

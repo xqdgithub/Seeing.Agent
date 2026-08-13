@@ -52,10 +52,13 @@ internal static class DangerousCommandGuard
         if (cmdName != null && options.BlockedCommands.Contains(cmdName, StringComparer.OrdinalIgnoreCase))
             return $"禁止执行危险命令: {cmdName}";
 
-        // 删除目标检查：rm/rmdir/del 递归删除根/家/当前目录/盘符根
-        var deleteTarget = CheckDestructiveDelete(lower);
-        if (deleteTarget != null)
-            return $"禁止递归删除根/家/当前目录: {deleteTarget}";
+        // 删除目标检查：rm/rmdir/del 递归删除根/家/当前目录/盘符根（对管道各段分别检查）
+        foreach (var segment in lower.Split('|'))
+        {
+            var deleteTarget = CheckDestructiveDelete(segment);
+            if (deleteTarget != null)
+                return $"禁止递归删除根/家/当前目录: {deleteTarget}";
+        }
 
         return null;
     }
@@ -96,14 +99,17 @@ internal static class DangerousCommandGuard
         return null;
     }
 
-    /// <summary>判断是否为危险删除目标：/、~、.、盘符根（C:、C:\、C:\*、C:/ 等）</summary>
+    /// <summary>判断是否为危险删除目标：/、~、.、盘符根（C:、C:\、C:\*、C:/ 等）。先归一化尾部路径分隔符与通配符</summary>
     private static bool IsDestructiveTarget(string target)
     {
-        if (target is "/" or "~" or ".") return true;
-        if (target.Length >= 2 && target[1] == ':')
+        var normalized = target.TrimEnd('\\', '/', '*');
+        // 根路径特例：全为分隔符/通配符时 TrimEnd 会得到空串，还原为根 "/"（覆盖 /、//、/* 等）
+        if (normalized.Length == 0 && target.StartsWith("/")) normalized = "/";
+        if (normalized is "/" or "~" or ".") return true;
+        if (normalized.Length >= 2 && normalized[1] == ':')
         {
-            // 盘符根：C:、C:\、C:/、C:\*、C:/* 或 C:\** 等（后面没有更多路径片段）
-            var rest = target.Length > 2 ? target[2..].Trim('\\', '/', '*') : string.Empty;
+            // 盘符根：C:、C:\、C:/ 等（后面没有更多路径片段）
+            var rest = normalized.Length > 2 ? normalized[2..].Trim('\\', '/') : string.Empty;
             return rest.Length == 0;
         }
         return false;
