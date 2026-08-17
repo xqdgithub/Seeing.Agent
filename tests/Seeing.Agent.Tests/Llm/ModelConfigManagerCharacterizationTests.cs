@@ -353,6 +353,109 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
         models.TryGetProperty("remove-model", out _).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task DeleteModelAsync_CleansProjectLevelResidualProviders()
+    {
+        // 场景：项目级 .seeing/seeing.json 残留 Providers（历史/外部写回），
+        // 删除模型必须同步清理项目级残留，否则下次加载被吸收合并导致"删除复活"。
+        var userSeeingDirectory = Path.Combine(_tempDirectory, "user", ".seeing");
+        var projectSeeingDirectory = Path.Combine(_tempDirectory, "project", ".seeing");
+        Directory.CreateDirectory(userSeeingDirectory);
+        Directory.CreateDirectory(projectSeeingDirectory);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(userSeeingDirectory, "seeing.json"),
+            """
+            {
+              "SeeingAgent": {
+                "Providers": {
+                  "openai": {
+                    "id": "openai",
+                    "type": "OpenAI",
+                    "models": {
+                      "keep-model": { "id": "keep-model", "provider": "openai" },
+                      "remove-model": { "id": "remove-model", "provider": "openai" }
+                    }
+                  }
+                }
+              }
+            }
+            """);
+        var projectResidual =
+            """
+            {
+              "SeeingAgent": {
+                "Providers": {
+                  "openai": {
+                    "id": "openai",
+                    "type": "OpenAI",
+                    "models": {
+                      "remove-model": { "id": "remove-model", "provider": "openai" }
+                    }
+                  }
+                }
+              }
+            }
+            """;
+        await File.WriteAllTextAsync(
+            Path.Combine(projectSeeingDirectory, "seeing.json"),
+            projectResidual);
+
+        var workspace = new Mock<IWorkspaceProvider>();
+        workspace.Setup(candidate => candidate.WorkspaceRoot).Returns(Path.Combine(_tempDirectory, "project"));
+        workspace.Setup(candidate => candidate.UserSeeingDirectory).Returns(userSeeingDirectory);
+        workspace.Setup(candidate => candidate.ProjectSeeingDirectory).Returns(projectSeeingDirectory);
+
+        var configManager = new UnifiedConfigManager(
+            workspace.Object,
+            NullLogger<UnifiedConfigManager>.Instance);
+        await configManager.LoadAsync();
+
+        // 模拟加载后项目级文件被外部重新写入残留（如 git 恢复 / 旧版本进程）
+        await File.WriteAllTextAsync(
+            Path.Combine(projectSeeingDirectory, "seeing.json"),
+            projectResidual);
+
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(configManager.SeeingAgent),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await sut.DeleteModelAsync(
+            "remove-model",
+            ct: TestContext.Current.CancellationToken);
+
+        // 删除后：用户级文件移除模型，且项目级残留 Providers 键被清理
+        using (var document = await ReadUserConfigAsync())
+        {
+            var models = document.RootElement
+                .GetProperty("SeeingAgent")
+                .GetProperty("Providers")
+                .GetProperty("openai")
+                .GetProperty("models");
+            models.TryGetProperty("keep-model", out _).Should().BeTrue();
+            models.TryGetProperty("remove-model", out _).Should().BeFalse();
+        }
+
+        var projectJson = await File.ReadAllTextAsync(
+            Path.Combine(projectSeeingDirectory, "seeing.json"));
+        projectJson.Contains("\"Providers\"").Should().BeFalse("删除后必须清理项目级 Providers 残留");
+        projectJson.Contains("\"ProviderModels\"").Should().BeFalse("删除后必须清理项目级 ProviderModels 残留");
+
+        // 模拟重启：重新加载后模型不应复活
+        var configManager2 = new UnifiedConfigManager(
+            workspace.Object,
+            NullLogger<UnifiedConfigManager>.Instance);
+        await configManager2.LoadAsync(TestContext.Current.CancellationToken);
+        using var sut2 = new ModelConfigManager(
+            configManager2,
+            CreateRegistry(configManager2.SeeingAgent),
+            NullLogger<ModelConfigManager>.Instance);
+
+        sut2.GetModels().Keys.Should().Contain("openai/keep-model");
+        sut2.GetModels().Keys.Should().NotContain("openai/remove-model");
+    }
+
     private async Task<UnifiedConfigManager> CreateConfigManagerAsync(SeeingAgentOptions options)
     {
         var userSeeingDirectory = Path.Combine(_tempDirectory, "user", ".seeing");

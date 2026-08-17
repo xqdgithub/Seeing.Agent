@@ -488,6 +488,14 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         ValidateScope(meta, level);
         
         await SaveToFileAsync(level, meta.FileName, sectionName, value, ct);
+
+        // Providers 为 UserOnly：任何用户级 Providers 写入（增/删/改模型、保存 Provider 连接）后，
+        // 同步清理项目级残留的 Providers/ProviderModels 键，避免下次加载时被吸收合并导致"删除复活"。
+        if (level == ConfigLevel.User && string.Equals(sectionName, "Providers", StringComparison.Ordinal))
+        {
+            await RemoveSeeingAgentKeysAsync(ConfigLevel.Project, ["Providers", "ProviderModels"], ct)
+                .ConfigureAwait(false);
+        }
         
         UpdateCache(sectionName, value, level);
         OnConfigChanged(new[] { sectionName });
