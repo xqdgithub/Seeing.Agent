@@ -33,24 +33,14 @@
     <Project Path="tests/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
     <Project Path="tests/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
-    <Project Path="tests/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
+    <Project Path="tests/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
+    <Project Path="tests/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />
     <Project Path="tests/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />
-    <Project Path="tests/Seeing.Gateway.QQ.Tests/Seeing.Gateway.QQ.Tests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
+    <Project Path="tests/Seeing.Gateway.QQ.Tests/Seeing.Gateway.QQ.Tests.csproj" />
     <Project Path="tests/Seeing.Gateway.Tests/Seeing.Gateway.Tests.csproj" />
     <Project Path="tests/Seeing.Gateway.WeCom.Tests/Seeing.Gateway.WeCom.Tests.csproj" />
-    <Project Path="tests/Seeing.Session.Tests/Seeing.Session.Tests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
-    <Project Path="tests/Seeing.TokenEstimation.Tests/Seeing.TokenEstimation.Tests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
+    <Project Path="tests/Seeing.Session.Tests/Seeing.Session.Tests.csproj" />
+    <Project Path="tests/Seeing.TokenEstimation.Tests/Seeing.TokenEstimation.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
   </Folder>
   <Folder Name="/解决方案项/" />
