@@ -11,6 +11,7 @@
     <Project Path="plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Seeing.Agent.Abstractions/Seeing.Agent.Abstractions.csproj" />
     <Project Path="src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
     <Project Path="src/Seeing.Agent.App/Seeing.Agent.App.csproj" />
     <Project Path="src/Seeing.Agent.Gateway/Seeing.Agent.Gateway.csproj" />

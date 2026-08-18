@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Agent.Abstractions</RootNamespace>
+    <Description>Seeing.Agent 契约包：接口/DTO/注解/常量/事件声明，零实现逻辑</Description>
+    <PackageId>Seeing.Agent.Abstractions</PackageId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
+  </ItemGroup>
+
+</Project>
