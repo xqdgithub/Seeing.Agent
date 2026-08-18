@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
     <ProjectReference Include="..\Seeing.Agent\Seeing.Agent.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
