@@ -102,8 +102,9 @@ public class TokenBudgetManager : ITokenBudgetManager
             breakdown.BySource.ToolDefinitions = toolTokens.Value;
         }
 
-        // Process session messages
-        foreach (var message in session.Messages)
+        // Snapshot messages before estimating them. Session messages are updated by the
+        // execution/event pipeline while a budget update may be running.
+        foreach (var message in session.Messages.ToList())
         {
             var messageTokens = EstimateMessageTokens(message);
 
