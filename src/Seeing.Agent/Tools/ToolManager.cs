@@ -15,6 +15,7 @@ using System.Text.Json;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Components;
+using Seeing.Agent.Core;
 namespace Seeing.Agent.Tools
 {
     /// <summary>
@@ -595,11 +596,15 @@ namespace Seeing.Agent.Tools
 
             try
             {
+                // Sink 接线：emitAsync 委托包装为 IToolEventSink/IToolMetadataSink（同一实例）
+                var sink = emitAsync is null ? null : new ToolSinkAdapter(emitAsync, null);
                 var context = new ToolContext
                 {
                     SessionId = sessionId,
                     CallId = toolCall.Id,
                     CancellationToken = cancellationToken,
+                    EventSink = sink,
+                    MetadataSink = sink,
                     PermissionChannel = permissionChannel,
                     Services = _serviceProvider
                 };
