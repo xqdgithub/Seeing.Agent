@@ -247,7 +247,7 @@ public class SlidingWindowTokenStrategyTests
         result.Success.Should().BeTrue();
         // Total: 13 + 29 + 14 = 56 tokens
         result.TokensBefore.Should().Be(56);
-        result.TokensAfter.Should().BeLessOrEqualTo(50);
+        result.TokensAfter.Should().BeLessThanOrEqualTo(50);
     }
 
     [Fact]

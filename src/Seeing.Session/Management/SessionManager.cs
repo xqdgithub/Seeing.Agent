@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Session.Compression;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
@@ -420,7 +421,7 @@ namespace Seeing.Session.Management
             string? label,
             CancellationToken ct)
         {
-            var forker = new SessionForker(null!, this);
+            var forker = new SessionForker(NullLogger<SessionForker>.Instance, this);
             return await forker.ForkAsync(sessionId, atMessageId, label, ct);
         }
 
