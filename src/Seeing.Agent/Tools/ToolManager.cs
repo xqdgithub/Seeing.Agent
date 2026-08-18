@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
@@ -596,7 +597,6 @@ namespace Seeing.Agent.Tools
                     SessionId = sessionId,
                     CallId = toolCall.Id,
                     CancellationToken = cancellationToken,
-                    EmitAsync = emitAsync,
                     PermissionChannel = permissionChannel,
                     Services = _serviceProvider
                 };

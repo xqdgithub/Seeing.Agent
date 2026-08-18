@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Models;
+﻿namespace Seeing.Agent.Abstractions.Tools;
 
 /// <summary>
 /// 文件附件

@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Tools.Attributes
+﻿namespace Seeing.Agent.Abstractions.Tools
 {
     /// <summary>
     /// 标记方法为可调用的工具

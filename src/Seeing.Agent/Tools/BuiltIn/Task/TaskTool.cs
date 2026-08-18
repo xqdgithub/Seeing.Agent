@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Agents;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -157,7 +158,7 @@ public class TaskTool : ToolBase
 
             await EmitParentAsync(context, _projector.CreateStarted(ctxProj));
 
-            context.SetMetadata?.Invoke(description, new Dictionary<string, object>
+            context.MetadataSink?.SetMetadata(description, new Dictionary<string, object>
             {
                 ["sessionId"] = session.Id,
                 ["agent"] = agentInfo.Name,
@@ -308,8 +309,8 @@ public class TaskTool : ToolBase
     {
         try
         {
-            if (context.EmitAsync != null)
-                await context.EmitAsync(evt);
+            if (context.EventSink is not null)
+                await context.EventSink.EmitAsync(evt);
         }
         catch
         {

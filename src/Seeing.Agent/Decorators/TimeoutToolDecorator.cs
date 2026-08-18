@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
@@ -75,8 +76,8 @@ namespace Seeing.Agent.Decorators
                 CallId = original.CallId;
                 Agent = original.Agent;
                 CancellationToken = timeoutToken;
-                SetMetadata = original.SetMetadata;
-                EmitAsync = original.EmitAsync;
+                MetadataSink = original.MetadataSink;
+                EventSink = original.EventSink;
                 PermissionChannel = original.PermissionChannel;
                 Services = original.Services;
             }

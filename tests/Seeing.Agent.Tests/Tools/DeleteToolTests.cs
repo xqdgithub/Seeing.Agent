@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Tools;
 // tests/Seeing.Agent.Tests/Tools/DeleteToolTests.cs
 
 using System.Text.Json;

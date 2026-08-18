@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
@@ -307,14 +308,14 @@ await WaitForExitAsync(process, CancellationToken.None);
         /// </summary>
         private void UpdateMetadata(ToolContext context, StringBuilder output, string description)
         {
-            if (context.SetMetadata != null)
+            if (context.MetadataSink is not null)
             {
                 var outputStr = output.ToString();
                 var truncatedOutput = outputStr.Length > MaxMetadataLength
                     ? outputStr.Substring(0, MaxMetadataLength) + "\n\n..."
                     : outputStr;
 
-                context.SetMetadata("bash_output", new Dictionary<string, object>
+                context.MetadataSink.SetMetadata("bash_output", new Dictionary<string, object>
                 {
                     ["output"] = truncatedOutput,
                     ["description"] = description

@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Tools;
 using System.Reflection;
 using System.Text.Json;
 
@@ -42,7 +43,7 @@ namespace Seeing.Agent.Tools.Discovery
 
             foreach (var method in methods)
             {
-                var toolAttr = method.GetCustomAttribute<Attributes.ToolAttribute>();
+                var toolAttr = method.GetCustomAttribute<Seeing.Agent.Abstractions.Tools.ToolAttribute>();
                 if (toolAttr == null) continue;
 
                 var tool = new DiscoveredTool
@@ -79,8 +80,8 @@ namespace Seeing.Agent.Tools.Discovery
 
             foreach (var param in method.GetParameters())
             {
-                var paramAttr = param.GetCustomAttribute<Attributes.ToolParamAttribute>();
-                var requiredAttr = param.GetCustomAttribute<Attributes.RequiredAttribute>();
+                var paramAttr = param.GetCustomAttribute<Seeing.Agent.Abstractions.Tools.ToolParamAttribute>();
+                var requiredAttr = param.GetCustomAttribute<Seeing.Agent.Abstractions.Tools.RequiredAttribute>();
 
                 var paramSchema = BuildTypeSchema(param.ParameterType, paramAttr?.Description ?? "");
 
@@ -140,7 +141,7 @@ namespace Seeing.Agent.Tools.Discovery
                 foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
                     if (!prop.CanRead) continue;
-                    var propAttr = prop.GetCustomAttribute<Attributes.ToolParamTypeAttribute>();
+                    var propAttr = prop.GetCustomAttribute<Seeing.Agent.Abstractions.Tools.ToolParamTypeAttribute>();
                     properties[prop.Name] = BuildTypeSchema(prop.PropertyType, propAttr?.Description ?? "");
                 }
                 schema["properties"] = properties;

@@ -5,7 +5,7 @@ using Moq;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Tools;
-using Seeing.Agent.Tools.Attributes;
+using Seeing.Agent.Abstractions.Tools;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools

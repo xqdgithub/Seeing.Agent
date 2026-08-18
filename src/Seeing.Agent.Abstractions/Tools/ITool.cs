@@ -1,7 +1,8 @@
 ﻿using System.Text.Json;
 
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Permissions;
-namespace Seeing.Agent.Core.Interfaces
+namespace Seeing.Agent.Abstractions.Tools
 {
     /// <summary>
     /// 工具上下文
@@ -11,16 +12,16 @@ namespace Seeing.Agent.Core.Interfaces
         public string SessionId { get; set; } = string.Empty;
         public string MessageId { get; set; } = string.Empty;
         public string? CallId { get; set; }
-        public IAgent? Agent { get; set; }
+        public AgentDefinition? Agent { get; set; }
         public CancellationToken CancellationToken { get; set; }
 
-        /// <summary>设置元数据</summary>
-        public Action<string, Dictionary<string, object>?>? SetMetadata { get; set; }
+        /// <summary>元数据出口（由 AgentExecutor 接线，可空）</summary>
+        public IToolMetadataSink? MetadataSink { get; set; }
 
         /// <summary>
-        /// 向父事件流推送事件（子任务投影等）。由 AgentExecutor 在执行工具时接线。
+        /// 事件出口（子任务投影等）。由 AgentExecutor 在执行工具时接线。
         /// </summary>
-        public Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? EmitAsync { get; set; }
+        public IToolEventSink? EventSink { get; set; }
 
         /// <summary>
         /// 父 Loop 权限通道（勿从根 DI 解析 Scoped IPermissionChannel）。
@@ -52,7 +53,7 @@ namespace Seeing.Agent.Core.Interfaces
         JsonElement ParametersSchema { get; }
 
         /// <summary>执行工具</summary>
-        Task<Models.ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context);
+        Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context);
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Permissions;
+﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,7 @@ using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Tools;
-using Seeing.Agent.Tools.Attributes;
+using Seeing.Agent.Abstractions.Tools;
 using System.Text.Json;
 using Xunit;
 
@@ -307,15 +308,15 @@ namespace Seeing.Agent.Tests.Tools
     /// <summary>
     /// 简单测试工具
     /// </summary>
-    public class TestTool : Seeing.Agent.Core.Interfaces.ITool
+    public class TestTool : Seeing.Agent.Abstractions.Tools.ITool
     {
         public string Id => "test_tool";
         public string Description => "测试工具";
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
 
-        public async Task<Seeing.Agent.Core.Models.ToolResult> ExecuteAsync(JsonElement arguments, Seeing.Agent.Core.Interfaces.ToolContext context)
+        public async Task<Seeing.Agent.Abstractions.Tools.ToolResult> ExecuteAsync(JsonElement arguments, Seeing.Agent.Abstractions.Tools.ToolContext context)
         {
-            return new Seeing.Agent.Core.Models.ToolResult
+            return new Seeing.Agent.Abstractions.Tools.ToolResult
             {
                 Success = true,
                 Output = "完成"
