@@ -171,6 +171,12 @@ namespace Seeing.Agent.Extensions
                 // 注册工具
                 foreach (var tool in (ext.Instance as IToolExtension)?.GetTools() ?? Enumerable.Empty<ITool>())
                 {
+                    // first-party 扩展的工具已由 DI 注册（如 AddSeeingAcp），跳过以避免重复注册与装饰器嵌套
+                    if (context.ToolManager.GetTool(tool.Id) != null)
+                    {
+                        _logger.LogDebug("Tool {Id} already registered, skipping", tool.Id);
+                        continue;
+                    }
                     await context.ToolManager.RegisterToolAsync(tool);
                     _logger.LogDebug("Registered tool: {Id} from extension {Id}",
                         tool.Id, ext.Id);

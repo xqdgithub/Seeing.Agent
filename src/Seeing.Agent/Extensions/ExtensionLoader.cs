@@ -161,9 +161,15 @@ namespace Seeing.Agent.Extensions
         {
             try
             {
-                // 使用 AssemblyLoadContext 实现隔离（可选卸载）
-                var loadContext = new ExtensionLoadContext(assemblyPath);
-                var assembly = loadContext.LoadFromAssemblyPath(Path.GetFullPath(assemblyPath));
+                var fullPath = Path.GetFullPath(assemblyPath);
+                var assemblyName = AssemblyLoadContext.GetAssemblyName(fullPath);
+
+                // 若宿主已加载同名程序集（first-party 插件，如 Seeing.Agent.Acp），直接复用宿主实例，
+                // 避免隔离 ALC 重复加载产生类型身份分裂，导致插件内类型无法从 DI 解析（GetService 返回 null）。
+                var hostAssembly = AssemblyLoadContext.Default.Assemblies
+                    .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.Ordinal));
+                var assembly = hostAssembly
+                    ?? new ExtensionLoadContext(fullPath).LoadFromAssemblyPath(fullPath);
 
                 var extensionType = assembly.GetTypes()
                     .FirstOrDefault(t => typeof(IExtension).IsAssignableFrom(t)

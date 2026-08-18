@@ -282,7 +282,6 @@ namespace Seeing.Agent.Extensions
                 manager.LoadAsync().GetAwaiter().GetResult();
                 return manager;
             });
-            services.AddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
                 services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
                 
             // IOptions 兼容 + IOptionsMonitor 支持热重载
@@ -435,6 +434,8 @@ namespace Seeing.Agent.Extensions
 
                 return manager;
             });
+            // 技能管理器接口映射（必须与具体类同处注册，避免 AddLlmProviders 分支跳过导致缺失）
+            services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
 
             // 技能工具（让 LLM 加载技能内容）
             services.AddSingleton<ITool, SkillTool>();
