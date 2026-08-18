@@ -1,6 +1,7 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 
+using Seeing.Agent.Abstractions.Components;
 namespace Seeing.Agent.Middlewares
 {
     /// <summary>

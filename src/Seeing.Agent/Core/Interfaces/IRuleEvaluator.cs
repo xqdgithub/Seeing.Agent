@@ -1,5 +1,6 @@
-using Seeing.Agent.Abstractions.Permissions;
+﻿using Seeing.Agent.Abstractions.Permissions;
 
+using Seeing.Agent.Abstractions.Components;
 namespace Seeing.Agent.Core.Interfaces
 {
     /// <summary>

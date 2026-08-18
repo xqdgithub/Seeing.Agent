@@ -1,10 +1,8 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
 using System.Text.Json;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 
-namespace Seeing.Agent.Commands
+namespace Seeing.Agent.Abstractions.Commands
 {
     /// <summary>
     /// 命令类型 - 决定命令执行后的行为

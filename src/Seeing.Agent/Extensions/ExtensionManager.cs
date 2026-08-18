@@ -12,9 +12,11 @@ using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Commands;
 using System.Collections.Concurrent;
 
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Commands;
 namespace Seeing.Agent.Extensions
 {
     /// <summary>
@@ -206,21 +208,21 @@ namespace Seeing.Agent.Extensions
                     }
                 }
 
-                // 添加 Skill 路径（Task 12 恢复 SkillManager 注入）
-                // foreach (var skillPath in (ext.Instance as ISkillPathExtension)?.GetSkillPaths() ?? Enumerable.Empty<string>())
-                // {
-                //     context.SkillManager.AddSearchDirectory(skillPath);
-                //     _logger.LogDebug("Added skill path: {Path} from extension {Id}",
-                //         skillPath, ext.Id);
-                // }
+                // 添加 Skill 路径
+                foreach (var skillPath in (ext.Instance as ISkillPathExtension)?.GetSkillPaths() ?? Enumerable.Empty<string>())
+                {
+                    context.SkillManager.AddSearchDirectory(skillPath);
+                    _logger.LogDebug("Added skill path: {Path} from extension {Id}",
+                        skillPath, ext.Id);
+                }
 
-                // 注册命令（Task 12 恢复 CommandRegistry 注入）
-                // foreach (var command in ext.Instance.GetCommands())
-                // {
-                //     context.CommandRegistry.Register(command);
-                //     _logger.LogDebug("Registered command: {Name} from extension {Id}",
-                //         command.Metadata.Name, ext.Id);
-                // }
+                // 注册命令
+                foreach (var command in (ext.Instance as ICommandExtension)?.GetCommands() ?? Enumerable.Empty<ICommand>())
+                {
+                    context.CommandRegistry.Register(command);
+                    _logger.LogDebug("Registered command: {Name} from extension {Id}",
+                        command.Metadata.Name, ext.Id);
+                }
 
                 // 注册 LLM Provider
                 var providers = (ext.Instance as IProviderExtension)?.GetProviders().ToList() ?? new List<ILlmProvider>();

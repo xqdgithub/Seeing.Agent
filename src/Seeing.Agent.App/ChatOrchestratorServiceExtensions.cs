@@ -1,4 +1,6 @@
-﻿using Seeing.Agent.Abstractions.Permissions;
+﻿using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Permissions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App.Commands;

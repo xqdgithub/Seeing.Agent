@@ -1,27 +1,12 @@
-namespace Seeing.Agent.Core.Interfaces;
-
-/// <summary>
-/// 组件类型枚举
-/// </summary>
-public enum ComponentType
-{
-    /// <summary>技能</summary>
-    Skill,
-    /// <summary>MCP Server</summary>
-    Mcp,
-    /// <summary>插件/扩展</summary>
-    Plugin,
-    /// <summary>权限规则</summary>
-    Rule
-}
+﻿namespace Seeing.Agent.Abstractions.Components;
 
 /// <summary>
 /// 组件加载结果
 /// </summary>
 public class ComponentLoadResult
 {
-    /// <summary>组件类型</summary>
-    public ComponentType Type { get; init; }
+    /// <summary>组件类型（字符串标识，支持扩展自定义类型）</summary>
+    public string Type { get; init; } = "";
 
     /// <summary>是否成功</summary>
     public bool Success { get; init; }
@@ -41,8 +26,8 @@ public class ComponentLoadResult
 /// </summary>
 public interface IComponentLoader
 {
-    /// <summary>组件类型</summary>
-    ComponentType Type { get; }
+    /// <summary>组件类型（字符串标识，如 "Skill" / "Mcp" / "Plugin" / "Rule"）</summary>
+    string Type { get; }
 
     /// <summary>加载组件</summary>
     Task<ComponentLoadResult> LoadAsync(
@@ -69,10 +54,10 @@ public interface IComponentManager
 
     /// <summary>加载指定类型的组件</summary>
     Task<ComponentLoadResult> LoadAsync(
-        ComponentType type,
+        string type,
         string workspaceRoot,
         CancellationToken cancellationToken = default);
 
     /// <summary>获取组件加载状态</summary>
-    IReadOnlyDictionary<ComponentType, ComponentLoadResult> GetLoadStatus();
+    IReadOnlyDictionary<string, ComponentLoadResult> GetLoadStatus();
 }

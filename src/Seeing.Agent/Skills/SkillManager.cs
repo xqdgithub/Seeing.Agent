@@ -1,13 +1,17 @@
 ﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Abstractions.Skills;
 using System.Collections.Concurrent;
+using Seeing.Agent.Abstractions.Skills;
 using System.Text.Json;
+using Seeing.Agent.Abstractions.Skills;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Skills;
 namespace Seeing.Agent.Skills
 {
     /// <summary>

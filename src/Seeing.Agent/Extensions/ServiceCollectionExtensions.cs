@@ -1,4 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Components;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

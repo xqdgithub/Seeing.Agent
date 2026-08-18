@@ -16,8 +16,14 @@ using Seeing.Agent.Extensions;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Components;
+using Seeing.Agent.Abstractions.Skills;
 using System.Collections.Concurrent;
 
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Components;
+using Seeing.Agent.Abstractions.Skills;
 namespace Seeing.Agent.Core;
 
 /// <summary>
@@ -32,8 +38,8 @@ public class ComponentManager : IComponentManager
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<ComponentManager> _logger;
-    private readonly ConcurrentDictionary<ComponentType, IComponentLoader> _loaders = new();
-    private readonly ConcurrentDictionary<ComponentType, ComponentLoadResult> _loadStatus = new();
+    private readonly ConcurrentDictionary<string, IComponentLoader> _loaders = new();
+    private readonly ConcurrentDictionary<string, ComponentLoadResult> _loadStatus = new();
 
     public ComponentManager(IServiceProvider services, ILogger<ComponentManager> logger)
     {
@@ -47,9 +53,9 @@ public class ComponentManager : IComponentManager
     /// <summary>注册内置加载器</summary>
     private void RegisterBuiltInLoaders()
     {
-        _loaders[ComponentType.Skill] = new SkillLoader();
-        _loaders[ComponentType.Mcp] = new McpLoader();
-        _loaders[ComponentType.Plugin] = new PluginLoader();
+        _loaders["Skill"] = new SkillLoader();
+        _loaders["Mcp"] = new McpLoader();
+        _loaders["Plugin"] = new PluginLoader();
         // Rule loader removed - rules are now managed through PermissionService
     }
 
@@ -64,7 +70,7 @@ public class ComponentManager : IComponentManager
     public IReadOnlyList<IComponentLoader> GetLoaders() => _loaders.Values.ToList();
 
     /// <inheritdoc/>
-    public IReadOnlyDictionary<ComponentType, ComponentLoadResult> GetLoadStatus() => _loadStatus;
+    public IReadOnlyDictionary<string, ComponentLoadResult> GetLoadStatus() => _loadStatus;
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<ComponentLoadResult>> LoadAllAsync(
@@ -76,7 +82,7 @@ public class ComponentManager : IComponentManager
         var results = new List<ComponentLoadResult>();
 
         // 按顺序加载：Skill → MCP → Plugin → Rule → 自定义
-        var order = new[] { ComponentType.Skill, ComponentType.Mcp, ComponentType.Plugin, ComponentType.Rule };
+        var order = new[] { "Skill", "Mcp", "Plugin", "Rule" };
 
         foreach (var type in order)
         {
@@ -105,7 +111,7 @@ public class ComponentManager : IComponentManager
 
     /// <inheritdoc/>
     public async Task<ComponentLoadResult> LoadAsync(
-        ComponentType type,
+        string type,
         string workspaceRoot,
         CancellationToken cancellationToken = default)
     {
@@ -152,7 +158,7 @@ public class ComponentManager : IComponentManager
 /// <summary>技能加载器</summary>
 internal class SkillLoader : IComponentLoader
 {
-    public ComponentType Type => ComponentType.Skill;
+    public string Type => "Skill";
 
     public async Task<ComponentLoadResult> LoadAsync(
         IServiceProvider services,
@@ -211,7 +217,7 @@ internal class SkillLoader : IComponentLoader
 /// <summary>MCP 加载器</summary>
 internal class McpLoader : IComponentLoader
 {
-    public ComponentType Type => ComponentType.Mcp;
+    public string Type => "Mcp";
 
     public async Task<ComponentLoadResult> LoadAsync(
         IServiceProvider services,
@@ -253,7 +259,7 @@ internal class McpLoader : IComponentLoader
 /// <summary>插件加载器</summary>
 internal class PluginLoader : IComponentLoader
 {
-    public ComponentType Type => ComponentType.Plugin;
+    public string Type => "Plugin";
 
     public async Task<ComponentLoadResult> LoadAsync(
         IServiceProvider services,
@@ -278,6 +284,8 @@ internal class PluginLoader : IComponentLoader
             PermissionService = services.GetRequiredService<IPermissionService>(),
             AgentRegistry = services.GetRequiredService<IAgentRegistry>(),
             McpClientManager = services.GetRequiredService<McpClientManager>(),
+            SkillManager = services.GetRequiredService<ISkillManager>(),
+            CommandRegistry = services.GetRequiredService<ICommandRegistry>()
         };
 
         var pluginSpecs = options?.Value?.Plugins ?? new List<PluginSpec>();

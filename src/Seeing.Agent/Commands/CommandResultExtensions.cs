@@ -1,6 +1,7 @@
 ﻿using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 
+using Seeing.Agent.Abstractions.Commands;
 namespace Seeing.Agent.Commands;
 
 /// <summary>

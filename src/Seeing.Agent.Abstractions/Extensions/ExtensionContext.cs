@@ -1,9 +1,11 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Abstractions.Commands;
 
 namespace Seeing.Agent.Abstractions.Extensions;
 
@@ -24,8 +26,6 @@ public class ExtensionContext
     /// <summary>工作区根目录</summary>
     public string WorkspaceRoot { get; set; } = "";
 
-    // 核心服务引用（SkillManager / CommandRegistry 由 Task 12 恢复注入）
-
     /// <summary>Hook 管理器</summary>
     public IHookManager HookManager { get; set; } = null!;
 
@@ -40,4 +40,10 @@ public class ExtensionContext
 
     /// <summary>MCP 客户端管理器</summary>
     public IMcpManager McpClientManager { get; set; } = null!;
+
+    /// <summary>技能管理器</summary>
+    public ISkillManager SkillManager { get; set; } = null!;
+
+    /// <summary>命令注册表</summary>
+    public ICommandRegistry CommandRegistry { get; set; } = null!;
 }

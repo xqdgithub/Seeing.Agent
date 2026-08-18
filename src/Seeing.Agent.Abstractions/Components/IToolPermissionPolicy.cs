@@ -1,9 +1,9 @@
-﻿// src/Seeing.Agent/Core/Interfaces/IToolPermissionPolicy.cs
+﻿// src/Seeing.Agent.Abstractions/Components/IToolPermissionPolicy.cs
 
 using System.Text.Json;
 
 using Seeing.Agent.Abstractions.Permissions;
-namespace Seeing.Agent.Core.Interfaces;
+namespace Seeing.Agent.Abstractions.Components;
 
 /// <summary>
 /// Resource-level permission policy for tool invocations.

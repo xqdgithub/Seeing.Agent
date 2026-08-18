@@ -1,7 +1,8 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 
+using Seeing.Agent.Abstractions.Components;
 namespace Seeing.Agent.Core.Models
 {
     /// <summary>

@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+﻿using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

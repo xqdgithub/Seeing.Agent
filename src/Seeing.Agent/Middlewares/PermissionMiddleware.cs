@@ -3,6 +3,7 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Permission;
 
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Components;
 namespace Seeing.Agent.Middlewares
 {
     /// <summary>

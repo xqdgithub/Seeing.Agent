@@ -1,4 +1,6 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+﻿using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Agents;
 using System.Text;
 using System.Text.RegularExpressions;
 using Seeing.Agent.Commands;

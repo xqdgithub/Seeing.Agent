@@ -2,7 +2,7 @@
 
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
-namespace Seeing.Agent.Core.Interfaces
+namespace Seeing.Agent.Abstractions.Components
 {
     /// <summary>
     /// 执行上下文接口 - 所有操作的统一上下文
@@ -16,7 +16,7 @@ namespace Seeing.Agent.Core.Interfaces
         string MessageId { get; }
 
         /// <summary>当前活动的 Agent</summary>
-        IAgent? ActiveAgent { get; }
+        AgentDefinition? ActiveAgent { get; }
 
         /// <summary>取消令牌</summary>
         CancellationToken CancellationToken { get; }

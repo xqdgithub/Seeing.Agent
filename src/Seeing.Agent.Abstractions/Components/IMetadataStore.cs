@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Interfaces
+﻿namespace Seeing.Agent.Abstractions.Components
 {
     /// <summary>
     /// 元数据存储接口 - 线程安全的 Key-Value 存储

@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Commands;
 using FluentAssertions;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;

@@ -2,6 +2,7 @@
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 
+using Seeing.Agent.Abstractions.Skills;
 namespace Seeing.Agent.Core.Prompts;
 
 /// <summary>

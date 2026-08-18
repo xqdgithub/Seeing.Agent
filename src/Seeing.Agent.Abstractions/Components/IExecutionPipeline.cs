@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Interfaces
+﻿namespace Seeing.Agent.Abstractions.Components
 {
     /// <summary>
     /// 执行管道接口 - 中间件链

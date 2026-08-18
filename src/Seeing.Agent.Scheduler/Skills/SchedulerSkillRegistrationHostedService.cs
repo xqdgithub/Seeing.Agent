@@ -1,3 +1,5 @@
+﻿using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Abstractions.Commands;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

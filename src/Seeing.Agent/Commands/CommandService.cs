@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Hooks;
 
+using Seeing.Agent.Abstractions.Commands;
 namespace Seeing.Agent.Commands
 {
     /// <summary>

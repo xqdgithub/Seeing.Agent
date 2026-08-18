@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Interfaces
+﻿namespace Seeing.Agent.Abstractions.Skills
 {
     /// <summary>
     /// Skill 信息 - 技能只是数据模型，提供上下文给 LLM

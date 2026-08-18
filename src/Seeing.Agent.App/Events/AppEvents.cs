@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Events;
+﻿using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.App.Events;

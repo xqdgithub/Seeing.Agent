@@ -5,6 +5,7 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Extensions;using DefaultPermissionChannelAlias = Seeing.Agent.Abstractions.Permissions.DefaultPermissionChannel;
 
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Components;
 namespace Seeing.Agent.Core.Models
 {
     /// <summary>
@@ -24,7 +25,7 @@ namespace Seeing.Agent.Core.Models
         public string MessageId { get; init; } = string.Empty;
 
         /// <inheritdoc />
-        public IAgent? ActiveAgent { get; init; }
+        public AgentDefinition? ActiveAgent { get; init; }
 
         /// <inheritdoc />
         public CancellationToken CancellationToken { get; init; }
