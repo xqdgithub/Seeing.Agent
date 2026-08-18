@@ -1,7 +1,7 @@
 # Seeing.Agent 解耦重构设计：Abstractions 契约包 + Agent 纯数据化 + Todo 端口-适配器
 
 **日期:** 2026-08-17
-**状态:** 设计确认（待实施）
+**状态:** 已实施（2026-08-18 完成）
 
 ---
 
@@ -588,3 +588,75 @@ public interface ICommandExtension  { IEnumerable<ICommand> GetCommands(); }
 - `ITaskEventProjector`：**保留**（TaskTool 注入 + DI 注册，Child Loop 事件降采样职责单一）
 
 **Phase 0a/1/2 执行说明：** 命名规范修订（§5.1 补充 Generator/Scheduler/Initializer/Pipeline 后缀）与「审查中」项定案放 Phase 2 前；`IAgentConfigManager` 删除随 §6.1 IAgentManager 删除任务一并落地（该接口无实现无消费，零改动成本）。
+
+---
+
+## 13. 实施记录
+
+**完成日期:** 2026-08-18
+**实施计划:** `docs/superpowers/plans/2026-08-17-decoupling-refactor.md`（Task 1-22 全部完成）
+
+### Phase 0 接口审查
+
+| 任务 | 内容 | Commit |
+|------|------|--------|
+| Task 1-3 | IProviderManager/IProviderRegistry 职责结论 + 模型管理三接口审查 + 全量接口审计表 | `0c09d3f` |
+
+### Phase 1 建包 + 类型迁移
+
+| 任务 | 内容 | Commit |
+|------|------|--------|
+| Task 4 | 创建 Seeing.Agent.Abstractions 契约包项目骨架 | `d5d5900` |
+| Task 5 | 迁移 Hooks 契约组 | `26d81bc` |
+| Task 6 | 迁移 Todo/Permissions/ConfigLevel，新建 ITodoStore | `d98a37e` |
+| Task 7 | 迁移 Events/Llm 基础类型，TokenUsage 改 record | `8cc96b0` |
+| Task 8 | 迁移 Agents DTO，AgentDefinition 纯数据化 | `461a1c6` |
+| Task 9 | 迁移 Llm/Mcp 契约组 | `38f7579` |
+| Task 10 | 迁移 Tools 契约，新建 IToolManager 与 Sink 接口 | `db08d4c` |
+| Task 11 | 拆分 IExtension，新建扩展契约组 | `f98a8b2` |
+| Task 12 | 迁移 Skills/Commands/Configuration/Components，ComponentType 开放化 | `397061e` |
+| Task 13 | 全库批量修复混合命名空间 using，Phase 1 完成 | `de698a8` |
+
+### Phase 2 核心重新设计
+
+| 任务 | 内容 | Commit |
+|------|------|--------|
+| Task 14 | 删除 IAgent/AgentBase/AgentDecorator，新建 IAgentExecutor 契约 | `db29b51` |
+| Task 15 | AgentExecutor 4 参化，删除 AgentContext.History，执行器改名接线 | `ad6fb8d` |
+| Task 16 | IAgentRegistry 拆分，删除 IAgentManager | `2b80a73` |
+| Task 17 | ToolContext 委托字段替换为 IToolEventSink/IToolMetadataSink 接线 | `21c224a` |
+| Task 18 | Todo 端口-适配器化（ITodoStore），删除 TodoManager/TodoReadTool 孤儿 | `b31fe83` |
+| Task 19 | AcpTool 魔法键透传改为类型化 Metadata | `59a04c8` |
+
+### Phase 3 Gateway 解耦
+
+| 任务 | 内容 | Commit |
+|------|------|--------|
+| Task 20 | Seeing.Gateway 移除主库依赖，仅依赖 Abstractions（协议层独立） | `8ea4efa` |
+
+### Phase 4 验证收尾
+
+| 任务 | 内容 | Commit |
+|------|------|--------|
+| Task 21 | 全量验证通过，收尾 §11 验收合规（清理 RequiresFactory/ConfigureServices/CreateSubAgentContext） | `2555dd6` |
+| Task 22 | 文档与规范落地（依赖方向 + 命名规范 + 结构树 + 已知问题勾选） | 本任务 |
+
+### 验证结论（§11 逐条）
+
+1. **Seeing.Gateway 编译通过且零主库 using**：✓（`dotnet build src/Seeing.Gateway -v q` 0 错误；正则 `using Seeing\.Agent\.(?!Abstractions)` 零匹配）
+2. **全量构建/测试绿**：✓（`dotnet build Seeing.Agent.slnx` 0 错误；`dotnet test Seeing.Agent.slnx --no-build` 仅 1 个已知基线失败 `Load_AbsorbsProjectProviderModelsBeforeRemovingProviders`，与本次重构无关）
+3. **删除项不存在**：✓（`AgentFactory`/`FromAgent`/`IAgent`/`AgentBase`/`AgentDecorator`/`ITodoManager`/`TodoReadTool`/`IAgentExecutionRouter`/`IAgentManager`/`GetAgentWithMergedConfigAsync`/`AgentStatus.RequiresFactory`/`AgentManager.AgentInfoWrapper`/`AgentContext.History`/`TotalSteps`/`TotalUsage`/`CreateSubAgentContext`/`IExtension.ConfigureServices` 全部清零；残留仅为注释引用与无关接口 `IGatewayChannelPlugin.ConfigureServices`）
+4. **TodoWriteTool/LoadTodoList 无 ISessionManager 注入**：✓（改走 ITodoStore；AgentExecutor 保留 `_sessionManager` 仅用于 ResolvePolicy 权限快照）
+5. **命名规范**：✓（Task 3 审计表 + Phase 0 结论落地，§5.1 写入 AGENTS.md）
+6. **扩展包编译**：✓（Memory/Acp/DeepSeek 全部编译通过，引用 Abstractions）
+7. **AgentExecutor.ExecuteAsync 4 参**：✓（`(AgentDefinition, IReadOnlyList<ChatMessage>, AgentContext, CancellationToken)`；全库无 `context.History` 引用——仅 `ChatExecutionContext.History`（App 独立类型）保留）
+
+### 实施偏差记录
+
+| 偏差 | 说明 |
+|------|------|
+| Task 11 ConfigureServices 未按计划删除 | 前序任务保留 `IExtension.ConfigureServices` DIM 与 Acp/Memory 实现；Task 21 全量验证时确认其零调用方（ExtensionManager 不调用、宿主显式 `AddSeeingAcp/AddMemoryServices`），按 §11 标准 3 收尾删除 |
+| Task 8 RequiresFactory 未删 | `AgentStatus.RequiresFactory` 零使用残留；Task 21 按 §11 标准 3 收尾删除 |
+| Task 8 CreateSubAgentContext 未删 | `PermissionIntegrity.CreateSubAgentContext` 零调用孤儿（唯一调用方随 Task 8 删除后遗留）；Task 21 收尾删除；`PermissionDelegationException` 按 Task 6 决定保守保留 |
+| Task 20 下游传递引用中断 | Seeing.Gateway 移除主库引用后，`Seeing.Gateway.QQ`/`Seeing.Gateway.WeCom`（扩展层，合法引用主库）及 `Seeing.Gateway.Tests` 的传递引用失效——QQ/WeCom csproj 显式添加主库 ProjectReference，测试删除冗余 `using Seeing.Agent.Llm;`，协议层独立性不受影响 |
+| 完成日期 | 计划文本写「2026-08-17 完成」，实际完成于 2026-08-18（状态与记录按实际日期） |

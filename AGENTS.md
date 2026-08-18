@@ -22,6 +22,7 @@ Seeing.Agent/
 │
 ├── src/
 │   ├── Seeing.Agent/              # 主 NuGet 库（**260** 个 C# 文件）
+│   ├── Seeing.Agent.Abstractions/ # 零实现契约包（接口/DTO/注解/常量/事件声明，仅引用原语层 Seeing.Session）
 │   ├── Seeing.Agent.Acp/          # ACP 集成
 │   ├── Seeing.Agent.App/          # 应用层 / Chat 编排器
 │   ├── Seeing.Agent.Gateway/      # Gateway 集成
@@ -64,11 +65,29 @@ Seeing.Agent/
 └── command-line-api/              # [外部] dotnet 命令行 API
 ```
 
+## 依赖方向规范（三层）
+
+| 层 | 项目 | 说明 |
+|----|------|------|
+| 原语层 | `Seeing.Session`、`Seeing.TokenEstimation` | 零依赖或仅 BCL |
+| 主库层 | `Seeing.Agent` | 依赖原语层 + Abstractions |
+| 扩展层 | `Seeing.Agent.*`、`Seeing.Gateway*`、`plugs/providers/*` | 只引用 Abstractions 接口与契约 + 原语层 |
+
+- **依赖只能向下**：禁止反向引用（扩展层 → 主库层 → Abstractions → 原语层）
+- **Abstractions 零实现纪律**：只放接口/DTO/注解/常量/事件声明，禁止实现逻辑；唯一豁免是允许引用原语层 `Seeing.Session`（`AgentDefinition.BudgetConfig` 依赖 `TokenBudgetConfig`）
+- **扩展包禁止引用主库具体类**，只能引用 Abstractions 接口与契约
+- **协议层独立**：`Seeing.Gateway`（核心协议包）禁止引用主库，仅依赖 Abstractions；`Seeing.Agent.Gateway`（集成包）允许引用主库
+
 ## WHERE TO LOOK
 
 | 任务 | 位置 | 说明 |
 |------|------|------|
-| 新增 Agent 实现 | `src/Seeing.Agent/Core/BuiltInAgents/BuiltInAgents.cs` | AgentDefinition 数据定义，或继承 AgentBase |
+| 新增 Agent 实现 | `src/Seeing.Agent/Core/BuiltInAgents/BuiltInAgents.cs` | AgentDefinition 纯数据定义（无基类继承；自定义行为通过 Hook/工具/子代理组合表达） |
+| Agent 执行入口 | `src/Seeing.Agent.Abstractions/Agents/IAgentExecutor.cs` | 定义 + 消息入参 → 流式事件；默认实现 `NativeAgentExecutor`，ACP 走 `AcpAgentExecutor` |
+| Agent 注册 / 运行时 | `src/Seeing.Agent.Abstractions/Agents/IAgentRegistry.cs`、`IAgentRuntimeManager.cs` | 注册/查询/权限筛选 + 默认 Agent / 模型绑定（拆分自 IAgentManager） |
+| Todo 存取 | `src/Seeing.Agent.Abstractions/Todo/ITodoStore.cs` + `src/Seeing.Agent/Todo/SessionContextTodoStore.cs` | 端口-适配器，替代 Session 魔法键直写 |
+| 扩展插件生命周期 | `src/Seeing.Agent.Abstractions/Extensions/IExtensionManager.cs` | 插件加载/激活/停用 |
+| 契约类型总览 | `src/Seeing.Agent.Abstractions/` | 接口/DTO/注解/常量/事件声明（Events/Hooks/Tools/Agents/Extensions/Llm/Mcp/Permissions/Skills/Commands/Configuration/Todo/Components） |
 | 新增 Tool 工具 | `src/Seeing.Agent/Tools/Attributes/ToolAttributes.cs` | 使用 `[Tool]` 注解 |
 | 子 Agent / Task | `src/Seeing.Agent/Tools/BuiltIn/Task/TaskTool.cs` | Session-first：`task`/`task_status`；Child=`SessionKind.SubAgent` |
 | 扩展生命周期钩子 | `src/Seeing.Agent/Core/Hooks/HookManager.cs` | 实现 `IHookHandler`，30+ 钩子点 |
@@ -76,7 +95,7 @@ Seeing.Agent/
 | 连接 MCP Server | `src/Seeing.Agent/MCP/McpClientManager.cs` | `ConnectAsync()`，支持 stdio/HTTP/SSE |
 | DI 注册入口 | `src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs` | `AddSeeingAgent()` |
 | 会话管理 | `src/Seeing.Session/Management/SessionManager.cs` | 独立包，生命周期管理 |
-| 扩展插件开发 | `src/Seeing.Agent/Extensions/ExtensionLoader.cs` | 实现 `IExtension` 接口 |
+| 扩展插件开发 | `src/Seeing.Agent/Extensions/ExtensionLoader.cs` | 实现 `IExtension`/`IToolExtension` 等拆分接口（Abstractions.Extensions） |
 | 循环检测防护 | `src/Seeing.Agent/Core/Detection/LoopDetector.cs` | 防止 LLM 无限循环 |
 | 文件系统安全 | `src/Seeing.Agent/Tools/BuiltIn/FileSystemHelper.cs` | 路径白名单、输出限制 |
 | 配置深度合并 | `src/Seeing.Agent/Core/Configuration/MergeDeep.cs` | 递归合并算法 |
@@ -92,6 +111,21 @@ Seeing.Agent/
 - 异步方法统一 `Async` 后缀
 - 私有字段：`_camelCase`（_ 前缀）
 - 私有静态字段：`s_camelCase`（s_ 前缀）
+
+### 接口后缀即职责
+| 后缀 | 职责 |
+|------|------|
+| Store | 纯数据存取（无业务规则、无生命周期） |
+| Registry | 集合管理（注册/查询/注销条目，不含执行与生命周期） |
+| Manager | 生命周期+编排（可组合 Store/Registry/Service） |
+| Service | 业务能力入口（请求-响应式操作） |
+| Provider | 能力适配器（可插拔实现） |
+| Executor | 执行引擎（定义+上下文 → 事件/结果流） |
+| Channel | 通信通道（请求/审批通道） |
+| Loader | 加载器（从源加载组件） |
+| Sink | 单向出口（执行器向工具提供的只写能力出口，不可反向调用） |
+
+层级：`Store < Registry < Manager`；接口名 = 实现类名去 I。
 
 ### DI 生命周期
 | 服务 | 生命周期 |
@@ -167,6 +201,10 @@ public static async Task<string> GetWeather(
 | **P2** | ISession 旧体系未清理 | 修复中（Phase 3） |
 | **P2** | CountTokens 4 处重复 | 修复中（Phase 3） |
 | **P3** | HMAC 密钥不持久化 | 修复中（Phase 5） |
+| **P1** | IAgent/AgentBase/IAgentManager 死代码体系未清理 | **已完成**（2026-08-18 解耦重构：IAgentExecutor 统一执行入口 + Registry 拆分） |
+| **P1** | Todo 魔法键后门（TodoManager/TodoReadTool 孤儿） | **已完成**（ITodoStore 端口-适配器化，SessionContextTodoStore） |
+| **P1** | Seeing.Gateway 反向依赖主库 | **已完成**（协议层独立，仅依赖 Abstractions） |
+| **P1** | IExtension 巨型接口 + ConfigureServices 死契约 | **已完成**（按组件类型拆分 7 接口） |
 
 ## 命令
 
