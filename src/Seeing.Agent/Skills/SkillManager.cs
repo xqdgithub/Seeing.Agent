@@ -20,7 +20,7 @@ namespace Seeing.Agent.Skills
     /// 技能是上下文提供者，不是可执行单元。技能内容通过 SkillTool 注入到 LLM 上下文中。
     /// </para>
     /// </summary>
-    public class SkillManager
+    public class SkillManager : ISkillManager
     {
         private readonly ILogger<SkillManager> _logger;
         private readonly ConcurrentDictionary<string, SkillInfo> _skillInfos = new();
