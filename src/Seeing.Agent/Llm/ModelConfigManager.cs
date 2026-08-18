@@ -439,7 +439,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             return string.Empty;
         }
 
-        if (!_configManager.SeeingAgent.Providers.ContainsKey(providerId))
+        if (!_configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers").ContainsKey(providerId))
             throw new ArgumentException($"Provider '{providerId}' 不是可配置 Provider。", nameof(providerId));
 
         return providerId;
@@ -488,7 +488,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         if (string.IsNullOrEmpty(providerId))
             return false;
 
-        if (!_configManager.SeeingAgent.Providers.TryGetValue(providerId, out var existingProvider))
+        if (!_configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers").TryGetValue(providerId, out var existingProvider))
             return false;
 
         if (level != ModelStoreLevel)
@@ -521,9 +521,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     }
 
     private IReadOnlyDictionary<string, ProviderConfig> GetUserProviders()
-        => _configManager.UserSeeingAgent?.Providers
-           ?? _configManager.SeeingAgent.Providers
-           ?? (IReadOnlyDictionary<string, ProviderConfig>)new Dictionary<string, ProviderConfig>();
+        => _configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers");
 
     private static ProviderConfig CloneProviderConfig(ProviderConfig config)
         => new()

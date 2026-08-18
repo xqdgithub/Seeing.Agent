@@ -26,11 +26,11 @@ public class ProviderManagerTests : IDisposable
     [Fact]
     public async Task ConfigChanged_ApiKeyChange_RecreatesConfiguredProvider()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["provider"] = PredefinedProviders.OpenAI("sk-original") }
+            ["provider"] = PredefinedProviders.OpenAI("sk-original")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var firstClient = Mock.Of<ILlmClient>();
         var secondClient = Mock.Of<ILlmClient>();
         var factory = new Mock<ILlmClientFactory>();
@@ -58,11 +58,11 @@ public class ProviderManagerTests : IDisposable
     [Fact]
     public async Task ConfigChanged_ConfiguredProviderOverwrittenByExtension_KeepsExtensionProvider()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["provider"] = PredefinedProviders.OpenAI("sk-original") }
+            ["provider"] = PredefinedProviders.OpenAI("sk-original")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
@@ -99,11 +99,11 @@ public class ProviderManagerTests : IDisposable
     [Fact]
     public async Task ExtensionProviderUnregistered_ConfiguredProviderIsRestored()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["provider"] = PredefinedProviders.OpenAI("sk-original") }
+            ["provider"] = PredefinedProviders.OpenAI("sk-original")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
@@ -157,11 +157,11 @@ public class ProviderManagerTests : IDisposable
     [Fact]
     public async Task Constructor_RegistersConfiguredProvidersAndReturnsProviderInfo()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["openai"] = PredefinedProviders.OpenAI("sk-test") }
+            ["openai"] = PredefinedProviders.OpenAI("sk-test")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
@@ -189,11 +189,11 @@ public class ProviderManagerTests : IDisposable
     [Fact]
     public async Task TryGetConfigurable_ConfiguredProvider_ReturnsTrue()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["openai"] = PredefinedProviders.OpenAI("sk-test") }
+            ["openai"] = PredefinedProviders.OpenAI("sk-test")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
@@ -270,7 +270,7 @@ public class ProviderManagerTests : IDisposable
             PredefinedProviders.OpenAI("sk-test"),
             ct: TestContext.Current.CancellationToken);
 
-        configManager.SeeingAgent.Providers.Should().NotContainKey("extension");
+        configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers").Should().NotContainKey("extension");
         logger.Levels.Should().Contain(LogLevel.Warning);
     }
 
@@ -278,11 +278,11 @@ public class ProviderManagerTests : IDisposable
     public async Task RegisterConfiguredProvider_UsesConfigClone_LiveMutationDoesNotAffectCreatedClient()
     {
         var live = PredefinedProviders.OpenAI("sk-original");
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["provider"] = live }
+            ["provider"] = live
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         string? capturedApiKey = null;
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
@@ -306,58 +306,13 @@ public class ProviderManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveProviderAsync_MigratesProjectProvidersToUserOnly()
-    {
-        var projectOptions = new SeeingAgentOptions
-        {
-            Providers =
-            {
-                ["openai"] = PredefinedProviders.OpenAI("sk-project"),
-                ["anthropic"] = PredefinedProviders.Anthropic("sk-anthropic")
-            }
-        };
-        // 写入项目级：加载时应迁移到用户级
-        var configManager = await CreateConfigManagerAsync(projectOptions, writeToProject: true);
-        var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(It.IsAny<ProviderType>())).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
-            .Returns(Mock.Of<ILlmClient>());
-        using var sut = new ProviderManager(
-            configManager,
-            factory.Object,
-            Mock.Of<IModelConfigManager>(),
-            new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
-            NullLogger<ProviderManager>.Instance);
-
-        configManager.UserSeeingAgent!.Providers.Should().ContainKey("openai");
-        configManager.UserSeeingAgent.Providers.Should().ContainKey("anthropic");
-
-        await sut.SaveProviderAsync(
-            "openai",
-            PredefinedProviders.OpenAI("sk-user"),
-            ConfigLevel.User,
-            TestContext.Current.CancellationToken);
-
-        var userOptions = await configManager.GetSeeingAgentOptionsAtLevelAsync(
-            ConfigLevel.User,
-            TestContext.Current.CancellationToken);
-        userOptions.Should().NotBeNull();
-        userOptions!.Providers.Should().ContainKey("openai");
-        userOptions.Providers.Should().ContainKey("anthropic");
-        userOptions.Providers["openai"].ApiKey.Should().Be("sk-user");
-
-        configManager.SeeingAgent.Providers["openai"].ApiKey.Should().Be("sk-user");
-        configManager.SeeingAgent.Providers["anthropic"].ApiKey.Should().Be("sk-anthropic");
-    }
-
-    [Fact]
     public async Task Unregister_DisposesConfiguredProviderClient()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["provider"] = PredefinedProviders.OpenAI("sk") }
+            ["provider"] = PredefinedProviders.OpenAI("sk")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var disposableClient = new DisposableClient();
         var factory = new Mock<ILlmClientFactory>();
@@ -380,23 +335,20 @@ public class ProviderManagerTests : IDisposable
     [Fact]
     public async Task SaveProviderAsync_EmptyModels_PreservesExistingModelsAtLevel()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers =
+            ["siliconflow"] = new ProviderConfig
             {
-                ["siliconflow"] = new ProviderConfig
+                Id = "siliconflow",
+                Type = ProviderType.OpenAI,
+                ApiKey = "sk-old",
+                Models = new Dictionary<string, ModelConfig>
                 {
-                    Id = "siliconflow",
-                    Type = ProviderType.OpenAI,
-                    ApiKey = "sk-old",
-                    Models = new Dictionary<string, ModelConfig>
-                    {
-                        ["keep-me"] = new() { Id = "keep-me", Provider = "siliconflow" }
-                    }
+                    ["keep-me"] = new() { Id = "keep-me", Provider = "siliconflow" }
                 }
             }
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
@@ -420,13 +372,14 @@ public class ProviderManagerTests : IDisposable
             ConfigLevel.User,
             TestContext.Current.CancellationToken);
 
-        configManager.SeeingAgent.Providers["siliconflow"].ApiKey.Should().Be("sk-new");
-        configManager.SeeingAgent.Providers["siliconflow"].Models.Should().ContainKey("keep-me");
+        var savedProviders = configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers");
+        savedProviders["siliconflow"].ApiKey.Should().Be("sk-new");
+        savedProviders["siliconflow"].Models.Should().ContainKey("keep-me");
     }
 
     private async Task<UnifiedConfigManager> CreateConfigManagerAsync(
         SeeingAgentOptions options,
-        bool writeToProject = false)
+        Dictionary<string, ProviderConfig>? providers = null)
     {
         var userSeeingDirectory = Path.Combine(_tempDirectory, "user", ".seeing");
         var projectSeeingDirectory = Path.Combine(_tempDirectory, "project", ".seeing");
@@ -434,8 +387,14 @@ public class ProviderManagerTests : IDisposable
         Directory.CreateDirectory(projectSeeingDirectory);
 
         var json = JsonSerializer.Serialize(new { SeeingAgent = options }, JsonOptions);
-        var targetDir = writeToProject ? projectSeeingDirectory : userSeeingDirectory;
-        await File.WriteAllTextAsync(Path.Combine(targetDir, "seeing.json"), json);
+        await File.WriteAllTextAsync(Path.Combine(userSeeingDirectory, "seeing.json"), json);
+
+        if (providers is { Count: > 0 })
+        {
+            var providersJson = JsonSerializer.Serialize(providers, JsonOptions);
+            await File.WriteAllTextAsync(
+                Path.Combine(userSeeingDirectory, "providers.json"), providersJson);
+        }
 
         var workspace = new Mock<IWorkspaceProvider>();
         workspace.Setup(candidate => candidate.WorkspaceRoot).Returns(Path.Combine(_tempDirectory, "project"));

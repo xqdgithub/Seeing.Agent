@@ -70,15 +70,13 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         return new Dictionary<string, ConfigSectionMeta>
         {
             // seeing.json 内的配置（双层级）
-            ["DefaultProvider"] = new("DefaultProvider", "seeing.json", ConfigScope.Both, 
-                typeof(string), displayName: "默认 Provider", displayOrder: 1),
             ["DefaultModel"] = new("DefaultModel", "seeing.json", ConfigScope.Both, 
                 typeof(string), displayName: "默认模型", displayOrder: 2),
             ["DefaultAgent"] = new("DefaultAgent", "seeing.json", ConfigScope.Both, 
                 typeof(string), displayName: "默认智能体", displayOrder: 3),
-            ["Providers"] = new("Providers", "seeing.json", ConfigScope.UserOnly,
+            ["Providers"] = new("Providers", "providers.json", ConfigScope.UserOnly,
                 typeof(Dictionary<string, ProviderConfig>),
-                scopeReason: "Provider 连接与模型目录为用户级配置，不随项目覆盖",
+                scopeReason: "Provider 连接与模型目录为用户级私有配置，独立文件承载",
                 displayName: "Provider 配置", displayOrder: 4),
             ["AgentModels"] = new("AgentModels", "seeing.json", ConfigScope.Both,
                 typeof(Dictionary<string, string>), displayName: "Agent 模型绑定", displayOrder: 5),
@@ -148,7 +146,6 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         UserSeeingAgent = userSeeing;
         ProjectSeeingAgent = projectSeeing;
         SeeingAgent = MergeDeep.Merge(userSeeing ?? new(), projectSeeing ?? new());
-        await EnsureProvidersUserOnlyAsync(ct).ConfigureAwait(false);
 
         // 加载独立配置文件
         foreach (var meta in _sectionRegistry.Values.Where(m => m.FileName != "seeing.json"))
@@ -158,34 +155,6 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
 
         _logger.LogInformation("配置已加载完成");
         OnConfigChanged(Array.Empty<string>());
-    }
-
-    /// <summary>
-    /// Providers 为 UserOnly：合并后只保留用户级；一次性吸收项目级 Providers。
-    /// </summary>
-    private async Task EnsureProvidersUserOnlyAsync(CancellationToken ct)
-    {
-        var userProviders = CloneProvidersDictionary(UserSeeingAgent?.Providers);
-        var dirty = false;
-
-        if (ProjectSeeingAgent?.Providers is { Count: > 0 } projectProviders)
-        {
-            if (AbsorbProviders(userProviders, projectProviders))
-                dirty = true;
-            ProjectSeeingAgent.Providers = new Dictionary<string, ProviderConfig>();
-            await RemoveSeeingAgentKeysAsync(ConfigLevel.Project, ["Providers"], ct)
-                .ConfigureAwait(false);
-        }
-
-        UserSeeingAgent ??= new SeeingAgentOptions();
-        UserSeeingAgent.Providers = userProviders;
-        SeeingAgent.Providers = CloneProvidersDictionary(userProviders);
-
-        if (!dirty)
-            return;
-
-        await SaveSectionAsync("Providers", userProviders, ConfigLevel.User, ct).ConfigureAwait(false);
-        _logger.LogInformation("已将 Providers 收敛为用户级（含历史项目级 / ProviderModels 迁移）");
     }
 
     private async Task RemoveSeeingAgentKeysAsync(
@@ -212,131 +181,6 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             await WriteJsonAsync(path, root, ct).ConfigureAwait(false);
     }
 
-    private static bool AbsorbProviders(
-        Dictionary<string, ProviderConfig> target,
-        Dictionary<string, ProviderConfig> source)
-    {
-        var changed = false;
-        foreach (var (providerId, sourceProvider) in source)
-        {
-            if (!target.TryGetValue(providerId, out var destination))
-            {
-                target[providerId] = CloneProviderConfig(sourceProvider);
-                changed = true;
-                continue;
-            }
-
-            // 用户已有条目：保留用户连接；仅回填用户为空的连接字段，并吸收缺失模型。
-            if (FillEmptyConnectionFields(destination, sourceProvider))
-                changed = true;
-
-            if (sourceProvider.Models is not { Count: > 0 })
-                continue;
-
-            destination.Models ??= new Dictionary<string, ModelConfig>();
-            foreach (var (modelId, model) in sourceProvider.Models)
-            {
-                if (destination.Models.ContainsKey(modelId))
-                    continue;
-                destination.Models[modelId] = CloneModelConfig(providerId, modelId, model);
-                changed = true;
-            }
-        }
-
-        return changed;
-    }
-
-    /// <summary>仅当目标字段为空时，用源配置回填连接信息（不覆盖用户已有值）。</summary>
-    private static bool FillEmptyConnectionFields(ProviderConfig destination, ProviderConfig source)
-    {
-        var changed = false;
-
-        if (string.IsNullOrWhiteSpace(destination.ApiKey) && !string.IsNullOrWhiteSpace(source.ApiKey))
-        {
-            destination.ApiKey = source.ApiKey;
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(destination.BaseUrl) && !string.IsNullOrWhiteSpace(source.BaseUrl))
-        {
-            destination.BaseUrl = source.BaseUrl;
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(destination.Name) && !string.IsNullOrWhiteSpace(source.Name))
-        {
-            destination.Name = source.Name;
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(destination.DefaultModel) && !string.IsNullOrWhiteSpace(source.DefaultModel))
-        {
-            destination.DefaultModel = source.DefaultModel;
-            changed = true;
-        }
-
-        if ((destination.Headers is null || destination.Headers.Count == 0) &&
-            source.Headers is { Count: > 0 })
-        {
-            destination.Headers = new Dictionary<string, string>(source.Headers);
-            changed = true;
-        }
-
-        if ((destination.Options is null || destination.Options.Count == 0) &&
-            source.Options is { Count: > 0 })
-        {
-            destination.Options = new Dictionary<string, object>(source.Options);
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    private static Dictionary<string, ProviderConfig> CloneProvidersDictionary(
-        Dictionary<string, ProviderConfig>? source)
-    {
-        if (source is null || source.Count == 0)
-            return new Dictionary<string, ProviderConfig>(StringComparer.OrdinalIgnoreCase);
-
-        return source.ToDictionary(
-            pair => pair.Key,
-            pair => CloneProviderConfig(pair.Value),
-            StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static ProviderConfig CloneProviderConfig(ProviderConfig config)
-        => new()
-        {
-            Id = config.Id,
-            Type = config.Type,
-            Name = config.Name,
-            BaseUrl = config.BaseUrl,
-            ApiKey = config.ApiKey,
-            DefaultModel = config.DefaultModel,
-            Timeout = config.Timeout,
-            MaxRetries = config.MaxRetries,
-            Models = config.Models is null ? null : new Dictionary<string, ModelConfig>(
-                config.Models.ToDictionary(
-                    pair => pair.Key,
-                    pair => CloneModelConfig(config.Id, pair.Key, pair.Value),
-                    StringComparer.OrdinalIgnoreCase)),
-            Options = config.Options is null ? null : new Dictionary<string, object>(config.Options),
-            Headers = config.Headers is null ? null : new Dictionary<string, string>(config.Headers)
-        };
-
-    private static ModelConfig CloneModelConfig(string providerId, string modelId, ModelConfig config)
-        => new()
-        {
-            Id = string.IsNullOrWhiteSpace(config.Id) ? modelId : config.Id,
-            Name = config.Name,
-            Provider = string.IsNullOrWhiteSpace(config.Provider) ? providerId : config.Provider,
-            Types = config.Types is null ? new List<ModelType>() : new List<ModelType>(config.Types),
-            Modalities = config.Modalities,
-            Limit = config.Limit,
-            Options = config.Options,
-            Pricing = config.Pricing
-        };
-    
     /// <summary>重载配置（外部文件变更时调用）</summary>
     public async Task ReloadAsync(CancellationToken ct = default)
     {
@@ -619,6 +463,21 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 _logger.LogWarning(ex, "加载配置文件失败: {Path}", path);
             }
         }
+        else if (meta.Scope == ConfigScope.UserOnly)
+        {
+            // 仅用户级：只加载用户级文件，不读取项目级
+            var userPath = GetFilePath(ConfigLevel.User, meta.FileName);
+            if (!File.Exists(userPath)) return;
+
+            try
+            {
+                _cache[meta.SectionName] = JsonNode.Parse(await File.ReadAllTextAsync(userPath, ct));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "加载用户级配置失败: {Path}", userPath);
+            }
+        }
         else
         {
             var userPath = GetFilePath(ConfigLevel.User, meta.FileName);
@@ -787,10 +646,8 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     {
         return sectionName switch
         {
-            "DefaultProvider" => SeeingAgent.DefaultProvider as T,
             "DefaultModel" => SeeingAgent.DefaultModel as T,
             "DefaultAgent" => SeeingAgent.DefaultAgent as T,
-            "Providers" => SeeingAgent.Providers as T,
             "Gateway" => SeeingAgent.Gateway as T,
             "GatewayClients" => SeeingAgent.GatewayClients as T,
             "Acp" => SeeingAgent.Acp as T,
@@ -825,22 +682,11 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     {
         switch (sectionName)
         {
-            case "DefaultProvider":
-                SeeingAgent.DefaultProvider = value as string;
-                break;
             case "DefaultModel":
                 SeeingAgent.DefaultModel = value as string;
                 break;
             case "DefaultAgent":
                 SeeingAgent.DefaultAgent = value as string;
-                break;
-            case "Providers":
-                if (value is Dictionary<string, ProviderConfig> providers)
-                {
-                    SeeingAgent.Providers = providers;
-                    UserSeeingAgent ??= new SeeingAgentOptions();
-                    UserSeeingAgent.Providers = providers;
-                }
                 break;
             case "Gateway":
                 if (value is GatewayOptions gateway)

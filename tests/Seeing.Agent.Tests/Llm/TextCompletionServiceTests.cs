@@ -1,4 +1,5 @@
 ﻿using FluentAssertions;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -95,31 +96,32 @@ public class TextCompletionServiceTests
     }
 }
 
-public class OptionsProviderEndpointLookupTests
+public class OptionsProviderEndpointLookupTests : IDisposable
 {
+    private readonly string _tempDirectory =
+        Path.Combine(Path.GetTempPath(), "endpoint-lookup-" + Guid.NewGuid().ToString("N"));
+
     [Fact]
-    public void TryGet_WhenMissing_ShouldReturnFalse()
+    public async Task TryGet_WhenMissing_ShouldReturnFalse()
     {
-        var options = new SeeingAgentOptions();
+        var configManager = await CreateConfigManagerAsync();
         var lookup = new OptionsProviderEndpointLookup(
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options),
+            configManager,
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance));
         lookup.TryGet("openai", out var ep).Should().BeFalse();
         ep.Should().BeNull();
     }
 
     [Fact]
-    public void TryGet_WhenPresent_ShouldMapEndpoint()
+    public async Task TryGet_WhenPresent_ShouldMapEndpoint()
     {
-        var opts = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers =
-            {
-                ["openai"] = new ProviderConfig { BaseUrl = "https://api.example/v1", ApiKey = "k" }
-            }
+            ["openai"] = new ProviderConfig { BaseUrl = "https://api.example/v1", ApiKey = "k" }
         };
+        var configManager = await CreateConfigManagerAsync(providers);
         var lookup = new OptionsProviderEndpointLookup(
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == opts),
+            configManager,
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance));
         lookup.TryGet("openai", out var ep).Should().BeTrue();
         ep!.BaseUrl.Should().Be("https://api.example/v1");
@@ -127,28 +129,56 @@ public class OptionsProviderEndpointLookupTests
     }
 
     [Fact]
-    public void TryGet_WhenRegisteredProviderExposesEndpoint_ShouldPreferProvider()
+    public async Task TryGet_WhenRegisteredProviderExposesEndpoint_ShouldPreferProvider()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers =
-            {
-                ["extension"] = new ProviderConfig { BaseUrl = "https://fallback", ApiKey = "fallback-key" }
-            }
+            ["extension"] = new ProviderConfig { BaseUrl = "https://fallback", ApiKey = "fallback-key" }
         };
+        var configManager = await CreateConfigManagerAsync(providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var provider = new Mock<ILlmProvider>();
         provider.SetupGet(item => item.Id).Returns("extension");
         provider.As<IProviderEndpointInfo>().SetupGet(item => item.BaseUrl).Returns("https://provider");
         provider.As<IProviderEndpointInfo>().SetupGet(item => item.ApiKey).Returns("provider-key");
         registry.Register(provider.Object, "extension-id");
-        var lookup = new OptionsProviderEndpointLookup(
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options),
-            registry);
+        var lookup = new OptionsProviderEndpointLookup(configManager, registry);
 
         lookup.TryGet("extension", out var endpoint).Should().BeTrue();
 
         endpoint!.BaseUrl.Should().Be("https://provider");
         endpoint.ApiKey.Should().Be("provider-key");
+    }
+
+    private async Task<UnifiedConfigManager> CreateConfigManagerAsync(
+        Dictionary<string, ProviderConfig>? providers = null)
+    {
+        var userSeeingDirectory = Path.Combine(_tempDirectory, "user", ".seeing");
+        var projectSeeingDirectory = Path.Combine(_tempDirectory, "project", ".seeing");
+        Directory.CreateDirectory(userSeeingDirectory);
+        Directory.CreateDirectory(projectSeeingDirectory);
+
+        if (providers is { Count: > 0 })
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(userSeeingDirectory, "providers.json"),
+                JsonSerializer.Serialize(providers));
+        }
+
+        var workspace = new Mock<IWorkspaceProvider>();
+        workspace.Setup(candidate => candidate.UserSeeingDirectory).Returns(userSeeingDirectory);
+        workspace.Setup(candidate => candidate.ProjectSeeingDirectory).Returns(projectSeeingDirectory);
+
+        var manager = new UnifiedConfigManager(
+            workspace.Object,
+            NullLogger<UnifiedConfigManager>.Instance);
+        await manager.LoadAsync();
+        return manager;
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempDirectory))
+            Directory.Delete(_tempDirectory, recursive: true);
     }
 }

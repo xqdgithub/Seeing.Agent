@@ -17,9 +17,6 @@ public interface IProviderManager
     /// <summary>获取指定 Provider 的信息</summary>
     ProviderInfo? GetProvider(string providerId);
 
-    /// <summary>获取默认 Provider ID</summary>
-    string? GetDefaultProvider();
-
     /// <summary>若指定 Provider 支持可配置连接字段，则返回其实例。</summary>
     bool TryGetConfigurable(string providerId, out IConfigurableLlmProvider? configurable);
 
@@ -63,12 +60,6 @@ public interface IProviderManager
     Task DeleteProviderAsync(
         string providerId,
         ConfigLevel level = ConfigLevel.User,
-        CancellationToken ct = default);
-
-    /// <summary>设置默认 Provider</summary>
-    Task SetDefaultProviderAsync(
-        string? providerId,
-        ConfigLevel level = ConfigLevel.Project,
         CancellationToken ct = default);
 
     #endregion

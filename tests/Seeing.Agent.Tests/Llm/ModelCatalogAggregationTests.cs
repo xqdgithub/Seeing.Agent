@@ -37,20 +37,18 @@ public sealed class ModelCatalogAggregationTests : IDisposable
     [Fact]
     public async Task GetModels_ExtensionProvider_DynamicModelsVisibleAfterRefresh()
     {
-        var config = await CreateConfigAsync(new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers =
+            ["openai"] = new ProviderConfig
             {
-                ["openai"] = new ProviderConfig
+                Id = "openai",
+                Models = new Dictionary<string, ModelConfig>
                 {
-                    Id = "openai",
-                    Models = new Dictionary<string, ModelConfig>
-                    {
-                        ["configured"] = new() { Id = "configured" }
-                    }
+                    ["configured"] = new() { Id = "configured" }
                 }
             }
-        });
+        };
+        var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         registry.Register(new TestProvider("openai", [new() { Id = "configured" }]));
         using var catalog = new ModelConfigManager(
@@ -108,7 +106,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             "extension/dynamic",
             new ModelConfig { Id = "dynamic", Provider = "extension" });
 
-        config.SeeingAgent.Providers.Should().BeEmpty();
+        config.GetSection<Dictionary<string, ProviderConfig>>("Providers").Should().BeEmpty();
     }
 
     [Fact]
@@ -129,26 +127,24 @@ public sealed class ModelCatalogAggregationTests : IDisposable
                 ["dynamic"] = new() { Id = "dynamic" }
             });
 
-        config.SeeingAgent.Providers.Should().BeEmpty();
+        config.GetSection<Dictionary<string, ProviderConfig>>("Providers").Should().BeEmpty();
     }
 
     [Fact]
     public async Task UpdateModelAsync_ExistingCatalogOwnerWinsOverReplacementProvider()
     {
-        var config = await CreateConfigAsync(new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers =
+            ["openai"] = new ProviderConfig
             {
-                ["openai"] = new ProviderConfig
+                Id = "openai",
+                Models = new Dictionary<string, ModelConfig>
                 {
-                    Id = "openai",
-                    Models = new Dictionary<string, ModelConfig>
-                    {
-                        ["original"] = new() { Id = "original" }
-                    }
+                    ["original"] = new() { Id = "original" }
                 }
             }
-        });
+        };
+        var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         registry.Register(new TestProvider("openai", [new() { Id = "original" }]));
         registry.Register(new TestProvider("extension"), ownerExtensionId: "sample-extension");
@@ -159,11 +155,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         var replacement = new ModelConfig { Id = "replacement", Provider = "extension" };
 
         await catalog.UpdateModelAsync("openai/original", replacement);
-        var saved = await config.GetSeeingAgentOptionsAtLevelAsync(
-            ConfigLevel.User,
-            TestContext.Current.CancellationToken);
 
-        saved!.Providers["openai"].Models!["original"].Id.Should().Be("replacement");
+        config.GetSection<Dictionary<string, ProviderConfig>>("Providers")["openai"].Models!["original"].Id.Should().Be("replacement");
         replacement.Provider.Should().Be("openai");
     }
 
@@ -228,7 +221,9 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         }
     }
 
-    private async Task<UnifiedConfigManager> CreateConfigAsync(SeeingAgentOptions options)
+    private async Task<UnifiedConfigManager> CreateConfigAsync(
+        SeeingAgentOptions options,
+        Dictionary<string, ProviderConfig>? providers = null)
     {
         var user = Path.Combine(_root, "user", ".seeing");
         var project = Path.Combine(_root, "project", ".seeing");
@@ -237,6 +232,13 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         await File.WriteAllTextAsync(
             Path.Combine(user, "seeing.json"),
             JsonSerializer.Serialize(new { SeeingAgent = options }));
+        if (providers is { Count: > 0 })
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(user, "providers.json"),
+                JsonSerializer.Serialize(providers));
+        }
+
         // 项目级可空：模型目录只读用户级
 
         var workspace = new Mock<IWorkspaceProvider>();

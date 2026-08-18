@@ -23,7 +23,7 @@
     </Extra>
     <ChildContent>
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
-               Message="@($"默认 Provider: {ProviderManager.GetDefaultProvider() ?? "未设置"} | 默认模型: {ModelManager.GetDefaultModel() ?? "未设置"}")" />
+               Message="@($"默认模型: {ModelManager.GetDefaultModel() ?? "未设置"}")" />
 
         <Row Gutter="16">
             <Col Span="6">
@@ -370,14 +370,14 @@
                 }
             }
             else if (_currentProviderInfo?.Source == ProviderSource.Configured &&
-                     ConfigManager.SeeingAgent.Providers.TryGetValue(id, out var schemaNullConfig))
+                     ConfigManager.GetSection<Dictionary<string, ProviderConfig>>("Providers").TryGetValue(id, out var schemaNullConfig))
             {
                 // ConfiguredLlmProvider: schema null → handcrafted form（编辑副本，不脏写 live 配置）
                 _currentProvider = CloneProviderConfig(schemaNullConfig);
             }
         }
         else if (_currentProviderInfo?.Source == ProviderSource.Configured &&
-                 ConfigManager.SeeingAgent.Providers.TryGetValue(id, out var configured))
+                 ConfigManager.GetSection<Dictionary<string, ProviderConfig>>("Providers").TryGetValue(id, out var configured))
         {
             _currentProvider = CloneProviderConfig(configured);
         }

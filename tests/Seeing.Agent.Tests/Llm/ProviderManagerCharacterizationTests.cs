@@ -32,11 +32,11 @@ public class ProviderManagerCharacterizationTests : IDisposable
     [Fact]
     public async Task GetClient_ConfiguredProvider_ReturnsClient()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["openai"] = PredefinedProviders.OpenAI("sk-test") }
+            ["openai"] = PredefinedProviders.OpenAI("sk-test")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var expectedClient = CreateClient(ProviderType.OpenAI);
         var factory = CreateFactory((_) => expectedClient);
         using var sut = new ProviderManager(
@@ -55,11 +55,11 @@ public class ProviderManagerCharacterizationTests : IDisposable
     [Fact]
     public async Task GetClient_UnknownProvider_ReturnsNull()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["openai"] = PredefinedProviders.OpenAI("sk-test") }
+            ["openai"] = PredefinedProviders.OpenAI("sk-test")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var factory = CreateFactory((_) => CreateClient(ProviderType.OpenAI));
         using var sut = new ProviderManager(
             configManager,
@@ -79,15 +79,12 @@ public class ProviderManagerCharacterizationTests : IDisposable
     {
         var openAi = PredefinedProviders.OpenAI("sk-test");
         var anthropic = PredefinedProviders.Anthropic("sk-anthropic-test");
-        var options = new SeeingAgentOptions
+        var configuredProviders = new Dictionary<string, ProviderConfig>
         {
-            Providers =
-            {
-                ["openai"] = openAi,
-                ["anthropic"] = anthropic
-            }
+            ["openai"] = openAi,
+            ["anthropic"] = anthropic
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), configuredProviders);
         var factory = CreateFactory(config => CreateClient(config.Type));
         using var sut = new ProviderManager(
             configManager,
@@ -108,11 +105,11 @@ public class ProviderManagerCharacterizationTests : IDisposable
     // 预期行为变更：同类型下的 API Key 更改也必须重建配置驱动 Provider。
     public async Task TestConnectionAsync_ConfigChanged_RecreatesClientOnProviderSettingsChange()
     {
-        var options = new SeeingAgentOptions
+        var providers = new Dictionary<string, ProviderConfig>
         {
-            Providers = { ["provider"] = PredefinedProviders.OpenAI("sk-original") }
+            ["provider"] = PredefinedProviders.OpenAI("sk-original")
         };
-        var configManager = await CreateConfigManagerAsync(options);
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var openAiClient = CreateClient(ProviderType.OpenAI, connectionResult: false);
         var anthropicClient = CreateClient(ProviderType.Anthropic, connectionResult: true);
         var factory = CreateFactory(config =>
@@ -165,7 +162,9 @@ public class ProviderManagerCharacterizationTests : IDisposable
         factory.Verify(candidate => candidate.Create(It.IsAny<ProviderConfig>()), Times.Exactly(3));
     }
 
-    private async Task<UnifiedConfigManager> CreateConfigManagerAsync(SeeingAgentOptions options)
+    private async Task<UnifiedConfigManager> CreateConfigManagerAsync(
+        SeeingAgentOptions options,
+        Dictionary<string, ProviderConfig>? providers = null)
     {
         var userSeeingDirectory = Path.Combine(_tempDirectory, "user", ".seeing");
         var projectSeeingDirectory = Path.Combine(_tempDirectory, "project", ".seeing");
@@ -174,6 +173,13 @@ public class ProviderManagerCharacterizationTests : IDisposable
 
         var json = JsonSerializer.Serialize(new { SeeingAgent = options }, JsonOptions);
         await File.WriteAllTextAsync(Path.Combine(projectSeeingDirectory, "seeing.json"), json);
+
+        if (providers is { Count: > 0 })
+        {
+            var providersJson = JsonSerializer.Serialize(providers, JsonOptions);
+            await File.WriteAllTextAsync(
+                Path.Combine(userSeeingDirectory, "providers.json"), providersJson);
+        }
 
         var workspace = new Mock<IWorkspaceProvider>();
         workspace.Setup(candidate => candidate.WorkspaceRoot).Returns(Path.Combine(_tempDirectory, "project"));

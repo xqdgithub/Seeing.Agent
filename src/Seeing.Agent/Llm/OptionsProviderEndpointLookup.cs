@@ -2,21 +2,22 @@
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Llm;
 
 /// <summary>
-/// 从 <see cref="SeeingAgentOptions.Providers"/> 解析端点。
+/// 从用户级 providers.json 解析端点。
 /// </summary>
 public sealed class OptionsProviderEndpointLookup : IProviderEndpointLookup
 {
-    private readonly IOptionsMonitor<SeeingAgentOptions> _options;
+    private readonly UnifiedConfigManager _configManager;
     private readonly IProviderRegistry _registry;
 
     public OptionsProviderEndpointLookup(
-        IOptionsMonitor<SeeingAgentOptions> options,
+        UnifiedConfigManager configManager,
         IProviderRegistry registry)
     {
-        _options = options;
+        _configManager = configManager;
         _registry = registry;
     }
 
@@ -38,7 +39,8 @@ public sealed class OptionsProviderEndpointLookup : IProviderEndpointLookup
             return true;
         }
 
-        if (!_options.CurrentValue.Providers.TryGetValue(providerName, out var config)
+        if (!_configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers")
+                .TryGetValue(providerName, out var config)
             || config is null)
         {
             endpoint = null;

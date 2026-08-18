@@ -14,14 +14,8 @@ namespace Seeing.Agent.Configuration
         /// <summary>默认模型</summary>
         public string? DefaultModel { get; set; }
 
-        /// <summary>默认 Provider</summary>
-        public string? DefaultProvider { get; set; }
-
         /// <summary>默认 Agent</summary>
         public string? DefaultAgent { get; set; }
-
-        /// <summary>Provider 配置列表（连接 + Models；仅用户级）</summary>
-        public Dictionary<string, ProviderConfig> Providers { get; set; } = new();
 
         /// <summary>技能配置</summary>
         public SkillsConfig Skills { get; set; } = new();

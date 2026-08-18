@@ -18,6 +18,10 @@ public class ProviderManager : IProviderManager, IDisposable
     private readonly Dictionary<string, ConfiguredLlmProvider> _configuredProviders = [];
     private readonly Dictionary<string, ProviderConfig> _configuredProviderConfigs = [];
 
+    /// <summary>当前配置驱动的 Provider 字典（用户级 providers.json）。</summary>
+    private Dictionary<string, ProviderConfig> ConfiguredProviders
+        => _configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers");
+
     public ProviderManager(
         UnifiedConfigManager configManager,
         ILlmClientFactory clientFactory,
@@ -56,10 +60,6 @@ public class ProviderManager : IProviderManager, IDisposable
         var provider = _registry.GetProvider(providerId);
         return provider is null ? null : CreateProviderInfo(providerId, provider);
     }
-
-    /// <summary>获取默认 Provider ID</summary>
-    public string? GetDefaultProvider()
-        => _configManager.SeeingAgent.DefaultProvider;
 
     /// <inheritdoc />
     public bool TryGetConfigurable(string providerId, out IConfigurableLlmProvider? configurable)
@@ -204,23 +204,6 @@ public class ProviderManager : IProviderManager, IDisposable
         _logger.LogInformation("已删除 Provider 配置: {ProviderId} (User)", providerId);
     }
 
-    /// <summary>设置默认 Provider</summary>
-    public async Task SetDefaultProviderAsync(
-        string? providerId,
-        ConfigLevel level = ConfigLevel.Project,
-        CancellationToken ct = default)
-    {
-        if (providerId is not null && IsExtensionProvider(providerId))
-        {
-            _logger.LogWarning("扩展 Provider 不支持设为默认 Provider: {ProviderId}", providerId);
-            return;
-        }
-
-        await _configManager.SaveSectionAsync("DefaultProvider", providerId ?? (string)null!, level, ct);
-
-        _logger.LogInformation("已设置默认 Provider: {ProviderId}", providerId ?? "(空)");
-    }
-
     #endregion
 
     #region 私有方法
@@ -245,7 +228,7 @@ public class ProviderManager : IProviderManager, IDisposable
             if (e.Providers.ContainsKey(providerId))
                 continue;
 
-            if (!_configManager.SeeingAgent.Providers.TryGetValue(providerId, out var currentConfig))
+            if (!ConfiguredProviders.TryGetValue(providerId, out var currentConfig))
             {
                 _configuredProviders.Remove(providerId);
                 _configuredProviderConfigs.Remove(providerId);
@@ -258,13 +241,13 @@ public class ProviderManager : IProviderManager, IDisposable
 
     private void RegisterConfiguredProviders()
     {
-        foreach (var (providerId, providerConfig) in _configManager.SeeingAgent.Providers)
+        foreach (var (providerId, providerConfig) in ConfiguredProviders)
             RegisterConfiguredProvider(providerId, providerConfig);
     }
 
     private void RefreshConfiguredProviders()
     {
-        var currentProviders = _configManager.SeeingAgent.Providers;
+        var currentProviders = ConfiguredProviders;
         foreach (var providerId in _configuredProviders.Keys.Except(currentProviders.Keys).ToArray())
         {
             if (_registry.GetProvider(providerId) is not null &&
@@ -343,10 +326,10 @@ public class ProviderManager : IProviderManager, IDisposable
         ConfigLevel level,
         CancellationToken ct)
     {
-        var optionsAtLevel = await _configManager
-            .GetSeeingAgentOptionsAtLevelAsync(level, ct)
+        var providers = await _configManager
+            .GetSectionAtLevelAsync<Dictionary<string, ProviderConfig>>("Providers", level, ct)
             .ConfigureAwait(false);
-        return optionsAtLevel?.Providers is { Count: > 0 } providers
+        return providers is { Count: > 0 }
             ? providers.ToDictionary(
                 pair => pair.Key,
                 pair => CloneConfig(pair.Value),
