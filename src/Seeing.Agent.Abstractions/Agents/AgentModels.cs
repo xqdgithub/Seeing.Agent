@@ -50,5 +50,14 @@ namespace Seeing.Agent.Abstractions.Agents
 
         /// <summary>ACP 透传 session mode（如 build / ask）</summary>
         public const string AcpModeId = "acp:modeId";
+
+        /// <summary>ACP 子任务：父会话 ID 透传键</summary>
+        public const string ParentSessionIdKey = "acp:parentSessionId";
+
+        /// <summary>ACP 子任务：任务描述透传键</summary>
+        public const string TaskDescriptionKey = "acp:taskDescription";
+
+        /// <summary>ACP 子任务：后端标识透传键</summary>
+        public const string AcpBackendKey = "acp:backend";
     }
 }

@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Agents;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -59,6 +60,34 @@ public class AcpToolTests
         result.Output.Should().Contain("<task_result>");
         result.Output.Should().Contain("done");
         result.Output.Should().Contain("task_id:");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SyncRun_ShouldPassthroughTypedMetadata()
+    {
+        AcpRunRequest? captured = null;
+        var runner = new Mock<IAcpSessionRunner>();
+        runner.Setup(r => r.RunAsync(It.IsAny<AcpRunRequest>(), It.IsAny<IAcpUpdateSink>(), It.IsAny<CancellationToken>()))
+            .Callback<AcpRunRequest, IAcpUpdateSink, CancellationToken>((req, _, _) => captured = req)
+            .ReturnsAsync(new AcpRunResult { Text = "done", Success = true });
+
+        var tool = CreateTool(runner.Object);
+
+        var args = JsonSerializer.SerializeToElement(new
+        {
+            description = "meta task",
+            prompt = "hello",
+            backend = "opencode"
+        });
+
+        var result = await tool.ExecuteAsync(args, new ToolContext { SessionId = "parent-sess" });
+
+        result.Success.Should().BeTrue();
+        captured.Should().NotBeNull();
+        captured!.ParentContext.Should().NotBeNull();
+        captured.ParentContext!.Metadata[AgentContextKeys.ParentSessionIdKey].Should().Be("parent-sess");
+        captured.ParentContext.Metadata[AgentContextKeys.TaskDescriptionKey].Should().Be("meta task");
+        captured.ParentContext.Metadata[AgentContextKeys.AcpBackendKey].Should().Be("opencode");
     }
 
     private static AcpTool CreateTool(IAcpSessionRunner? runner, FakeSessionManager? sessionManager = null)

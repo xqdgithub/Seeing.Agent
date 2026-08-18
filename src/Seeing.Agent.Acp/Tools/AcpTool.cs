@@ -108,7 +108,7 @@ public sealed class AcpTool : ToolBase
                 return Failure(permResult.Reason ?? "权限被拒绝");
         }
 
-        var session = await ResolveTaskSessionAsync(context.SessionId, taskId, description, backend);
+        var session = await ResolveTaskSessionAsync(taskId);
         var workingDirectory = cwd ?? session.WorkingDirectory ?? _workspace.WorkspaceRoot;
 
         if (runInBackground)
@@ -125,7 +125,7 @@ public sealed class AcpTool : ToolBase
             {
                 try
                 {
-                    var result = await RunTaskAsync(session.Id, backend, prompt, workingDirectory, context, CancellationToken.None);
+                    var result = await RunTaskAsync(session.Id, backend, prompt, description, workingDirectory, context, CancellationToken.None);
                     _backgroundTasks[bgTaskId] = new BackgroundTaskState
                     {
                         Status = result.Success ? "completed" : "failed",
@@ -159,7 +159,7 @@ public sealed class AcpTool : ToolBase
 
         try
         {
-            var result = await RunTaskAsync(session.Id, backend, prompt, workingDirectory, context, context.CancellationToken);
+            var result = await RunTaskAsync(session.Id, backend, prompt, description, workingDirectory, context, context.CancellationToken);
             var output = new StringBuilder();
             output.AppendLine($"task_id: {session.Id}（用于继续此任务）");
             output.AppendLine();
@@ -191,6 +191,7 @@ public sealed class AcpTool : ToolBase
         string taskId,
         string backend,
         string prompt,
+        string description,
         string workingDirectory,
         ToolContext context,
         CancellationToken cancellationToken)
@@ -207,7 +208,13 @@ public sealed class AcpTool : ToolBase
             ParentContext = new AgentContext
             {
                 SessionId = context.SessionId,
-                PermissionChannel = context.PermissionChannel
+                PermissionChannel = context.PermissionChannel,
+                Metadata = new Dictionary<string, object>
+                {
+                    [AgentContextKeys.ParentSessionIdKey] = context.SessionId,
+                    [AgentContextKeys.TaskDescriptionKey] = description,
+                    [AgentContextKeys.AcpBackendKey] = backend
+                }
             }
         };
 
@@ -218,11 +225,7 @@ public sealed class AcpTool : ToolBase
         return result;
     }
 
-    private async Task<SessionData> ResolveTaskSessionAsync(
-        string parentSessionId,
-        string? taskId,
-        string description,
-        string backend)
+    private async Task<SessionData> ResolveTaskSessionAsync(string? taskId)
     {
         if (taskId != null)
         {
@@ -236,9 +239,6 @@ public sealed class AcpTool : ToolBase
         }
 
         var session = _sessionManager.Create();
-        session.SetContext("parentSessionId", parentSessionId);
-        session.SetContext("taskDescription", description);
-        session.SetContext("acpBackend", backend);
         await _sessionManager.SaveAsync(session.Id);
         return session;
     }
