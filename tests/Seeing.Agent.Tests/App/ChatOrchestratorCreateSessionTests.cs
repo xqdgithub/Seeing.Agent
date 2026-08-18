@@ -34,7 +34,8 @@ public class ChatOrchestratorCreateSessionTests
         });
 
         var registry = new Mock<IAgentRegistry>();
-        registry.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("build");
+        var runtime = new Mock<IAgentRuntimeManager>();
+        runtime.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("build");
         var buildAgent = new AgentDefinition
         {
             Name = "build",
@@ -47,7 +48,7 @@ public class ChatOrchestratorCreateSessionTests
         var orchestrator = CreateOrchestrator(
             sessionManager,
             registry.Object,
-            new AgentSelectionResolver(registry.Object),
+            new AgentSelectionResolver(runtime.Object),
             modelManager);
 
         var session = await orchestrator.CreateSessionAsync(title: "新会话");
@@ -68,7 +69,8 @@ public class ChatOrchestratorCreateSessionTests
         });
 
         var registry = new Mock<IAgentRegistry>();
-        registry.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("acp-cursor");
+        var runtime = new Mock<IAgentRuntimeManager>();
+        runtime.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("acp-cursor");
         var acpAgent = new AgentDefinition
         {
             Name = "acp-cursor",
@@ -81,7 +83,7 @@ public class ChatOrchestratorCreateSessionTests
         var orchestrator = CreateOrchestrator(
             sessionManager,
             registry.Object,
-            new AgentSelectionResolver(registry.Object),
+            new AgentSelectionResolver(runtime.Object),
             modelManager);
 
         var session = await orchestrator.CreateSessionAsync();
@@ -101,7 +103,8 @@ public class ChatOrchestratorCreateSessionTests
         });
 
         var registry = new Mock<IAgentRegistry>();
-        registry.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("build");
+        var runtime = new Mock<IAgentRuntimeManager>();
+        runtime.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("build");
         var buildAgent = new AgentDefinition
         {
             Name = "build",
@@ -115,7 +118,7 @@ public class ChatOrchestratorCreateSessionTests
         var orchestrator = CreateOrchestrator(
             sessionManager,
             registry.Object,
-            new AgentSelectionResolver(registry.Object),
+            new AgentSelectionResolver(runtime.Object),
             modelManager);
 
         var session = await orchestrator.CreateSessionAsync();

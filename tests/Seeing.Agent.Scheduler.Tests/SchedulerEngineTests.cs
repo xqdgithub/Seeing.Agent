@@ -292,7 +292,7 @@ public class SchedulerEngineTests
         var services = new ServiceCollection()
             .AddSingleton<IAgentExecutor>(router.Object)
             .AddSingleton(registry.Object)
-            .AddSingleton(new AgentSelectionResolver(registry.Object))
+            .AddSingleton(new AgentSelectionResolver(new Mock<IAgentRuntimeManager>().Object))
             .BuildServiceProvider();
 
         var engine = CreateEngine();

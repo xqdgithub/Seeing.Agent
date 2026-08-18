@@ -368,7 +368,7 @@ public class SchedulerIntegrationTests
             .AddSingleton<IAgentExecutor>(router)
             .AddSingleton(registry)
             .AddSingleton<AgentSelectionResolver>(sp =>
-                new AgentSelectionResolver(registry))
+                new AgentSelectionResolver(new Mock<IAgentRuntimeManager>().Object))
             .AddSingleton<IWorkspaceProvider>(ws.Workspace)
             .AddSingleton<ISessionManager>(sessionManager)
             .AddSingleton<HookManager>(hooks)

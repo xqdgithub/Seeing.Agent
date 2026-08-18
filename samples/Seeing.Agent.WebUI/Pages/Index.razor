@@ -11,6 +11,7 @@
 @inject AppState AppState
 @inject IWorkspaceProvider WorkspaceProvider
 @inject IAgentRegistry AgentRegistry
+@inject IAgentRuntimeManager RuntimeManager
 @inject ILlmService LlmService
 @inject NavigationManager NavigationManager
 
@@ -288,7 +289,7 @@
     private async Task CreateNewSession()
     {
         // 使用配置中的默认智能体
-        var defaultAgent = await AgentRegistry.GetDefaultAgentNameAsync();
+        var defaultAgent = await RuntimeManager.GetDefaultAgentNameAsync();
         
         var newSession = await ChatOrchestrator.CreateSessionAsync(
             "新会话", 

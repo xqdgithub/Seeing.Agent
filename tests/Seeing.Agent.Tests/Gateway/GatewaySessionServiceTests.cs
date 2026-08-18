@@ -22,7 +22,8 @@ public class GatewaySessionServiceTests
     public async Task ResetAsync_ShouldClearMessagesAndResetSelectedAgentAndDefaultModel()
     {
         var registryMock = new Mock<IAgentRegistry>();
-        registryMock
+        var runtimeMock = new Mock<IAgentRuntimeManager>();
+        runtimeMock
             .Setup(r => r.GetDefaultAgentNameAsync())
             .ReturnsAsync("build");
         var buildAgent = new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native };
@@ -43,7 +44,7 @@ public class GatewaySessionServiceTests
             """{"cwd":"/repo","files":{"/repo/AGENTS.md":"sha256:abc"}}""";
         await manager.SaveAsync(session.Id);
 
-        var service = new GatewaySessionService(manager, registryMock.Object, modelManager);
+        var service = new GatewaySessionService(manager, registryMock.Object, runtimeMock.Object, modelManager);
         var result = await service.ResetAsync(session.Id);
 
         result.Should().NotBeNull();
@@ -65,7 +66,7 @@ public class GatewaySessionServiceTests
         var registryMock = new Mock<IAgentRegistry>();
         var modelManager = CreateModelManager(new SeeingAgentOptions(), new AgentDefinition { Name = "build" });
         var manager = CreateSessionManager();
-        var service = new GatewaySessionService(manager, registryMock.Object, modelManager);
+        var service = new GatewaySessionService(manager, registryMock.Object, new Mock<IAgentRuntimeManager>().Object, modelManager);
 
         var result = await service.ResetAsync("missing-session");
 

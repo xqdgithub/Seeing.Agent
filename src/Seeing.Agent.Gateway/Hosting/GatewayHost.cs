@@ -69,9 +69,10 @@ public sealed class GatewayHost : IAsyncDisposable
         var sessionManager = _rootServices.GetRequiredService<ISessionManager>();
         var selectionResolver = _rootServices.GetRequiredService<AgentSelectionResolver>();
         var agentRegistry = _rootServices.GetRequiredService<IAgentRegistry>();
+        var runtimeManager = _rootServices.GetRequiredService<IAgentRuntimeManager>();
         var modelManager = _rootServices.GetRequiredService<Seeing.Agent.Llm.IModelManager>();
         var sessionResolver = new GatewaySessionResolver(sessionManager, selectionResolver, modelManager);
-        var sessionService = new GatewaySessionService(sessionManager, agentRegistry, modelManager);
+        var sessionService = new GatewaySessionService(sessionManager, agentRegistry, runtimeManager, modelManager);
         var loggerFactory = _rootServices.GetRequiredService<ILoggerFactory>();
         var orchestratorLogger = loggerFactory.CreateLogger<GatewayOrchestratorV2>();
 

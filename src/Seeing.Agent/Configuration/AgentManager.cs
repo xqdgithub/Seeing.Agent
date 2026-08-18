@@ -21,7 +21,7 @@ namespace Seeing.Agent.Configuration
     /// 确保 Agent 信息和配置的一致性。
     /// </para>
     /// </summary>
-    public class AgentManager : IAgentManager, IAgentRegistry, IHostedService
+    public class AgentManager : IAgentRegistry, IHostedService
     {
         private readonly ILogger<AgentManager> _logger;
         private readonly IAgentStore _agentStore;
@@ -143,17 +143,6 @@ namespace Seeing.Agent.Configuration
             return await _agentStore.GetAsync(name);
         }
 
-        /// <summary>
-        /// 获取 Agent 并合并 MD 配置（IAgentRegistry 兼容）
-        /// </summary>
-        public async Task<AgentDefinition?> GetAgentWithMergedConfigAsync(
-            string name,
-            string? provider = null,
-            string? model = null)
-        {
-            return await GetAgentAsync(name);
-        }
-
         /// <inheritdoc/>
         public async Task<IReadOnlyList<AgentDefinition>> GetSubAgentsAsync()
         {
@@ -216,53 +205,6 @@ namespace Seeing.Agent.Configuration
             }
 
             return accessibleAgents.OrderBy(a => a.Name).ToList().AsReadOnly();
-        }
-
-        #endregion
-
-        #region 默认 Agent 管理
-
-        /// <inheritdoc/>
-        public async Task<string> GetDefaultAgentNameAsync()
-        {
-            // 统一从 seeing.json 读取 DefaultAgent
-            var configDefault = _options?.Value.DefaultAgent;
-            if (configDefault != null)
-            {
-                var agent = await GetAgentAsync(configDefault);
-                if (agent != null && (agent.Mode == AgentMode.Primary || agent.Mode == AgentMode.All) && !agent.IsHidden && !agent.Disabled)
-                {
-                    return configDefault;
-                }
-            }
-
-            // 回退 1：优先查找 "build" Agent
-            var buildAgent = await GetAgentAsync("build");
-            if (buildAgent != null && !buildAgent.IsHidden && !buildAgent.Disabled)
-            {
-                return "build";
-            }
-
-            // 回退 2：查找第一个可见的主代理
-            var primaryAgents = await GetPrimaryAgentsAsync();
-            if (primaryAgents.Count > 0)
-            {
-                return primaryAgents[0].Name;
-            }
-
-            throw new InvalidOperationException("未找到可用的主代理");
-        }
-
-        /// <inheritdoc/>
-        public async Task SetDefaultAgentAsync(string name)
-        {
-            await _runtimeManager.SetDefaultAgentAsync(name);
-        }
-
-        /// <inheritdoc/>
-        public async Task SetDefaultAgentAsync(string name, ConfigLevel level)
-        {
-            await _runtimeManager.SetDefaultAgentAsync(name, level);
         }
 
         #endregion

@@ -18,7 +18,7 @@ public class AcpExecutionContextBuilderTests
     public void Resolve_ShouldPreferRequestModelAndMode()
     {
         var modelManager = CreateModelManager(new SeeingAgentOptions { DefaultModel = "anthropic/GLM-5" });
-        var resolver = new AgentSelectionResolver(new Mock<IAgentRegistry>().Object);
+        var resolver = new AgentSelectionResolver(new Mock<IAgentRuntimeManager>().Object);
         var session = new SessionData
         {
             SelectedModel = "session/model",

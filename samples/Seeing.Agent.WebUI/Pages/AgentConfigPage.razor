@@ -7,7 +7,8 @@
 @using Seeing.Agent.Tools
 @using Seeing.Agent.WebUI.Components.Agents
 @using Seeing.Agent.WebUI.State
-@inject IAgentManager AgentManager
+@inject AgentManager AgentManager
+@inject IAgentRuntimeManager RuntimeManager
 @inject ILlmService LlmService
 @inject ToolManager ToolInvoker
 @inject NavigationManager NavigationManager
@@ -133,7 +134,7 @@
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
         _agentName = query["agent"] ?? "";
         if (string.IsNullOrEmpty(_agentName) && _agentNames.Count > 0)
-            _agentName = await AgentManager.GetDefaultAgentNameAsync() ?? _agentNames[0];
+            _agentName = await RuntimeManager.GetDefaultAgentNameAsync() ?? _agentNames[0];
         if (!string.IsNullOrEmpty(_agentName) && !_agentNames.Contains(_agentName))
             _agentName = _agentNames.FirstOrDefault() ?? "";
 

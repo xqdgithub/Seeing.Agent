@@ -367,7 +367,6 @@ namespace Seeing.Agent.Extensions
 
                 return manager;
             });
-            services.AddSingleton<IAgentManager>(sp => sp.GetRequiredService<AgentManager>());
             // 兼容旧接口
             services.AddSingleton<IAgentRegistry>(sp => sp.GetRequiredService<AgentManager>());
 

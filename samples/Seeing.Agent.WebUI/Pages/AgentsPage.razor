@@ -4,7 +4,8 @@
 @using Seeing.Agent.Core.Models
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.WebUI.Services
-@inject IAgentManager AgentManager
+@inject AgentManager AgentManager
+@inject IAgentRuntimeManager RuntimeManager
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 @inject IWorkspaceProvider WorkspaceProvider
@@ -173,7 +174,7 @@
         _loading = true;
         try
         {
-            _defaultAgent = await AgentManager.GetDefaultAgentNameAsync();
+            _defaultAgent = await RuntimeManager.GetDefaultAgentNameAsync();
             var agents = await AgentManager.GetAgentsAsync();
             
             // 加载 MD 配置信息
@@ -202,7 +203,7 @@
 
     private async Task SetDefault(string name)
     {
-        await AgentManager.SetDefaultAgentAsync(name, _selectedLevel);
+        await RuntimeManager.SetDefaultAgentAsync(name, _selectedLevel);
         await LoadAsync();
         MessageService.Success($"已将 {name} 设为默认智能体");
     }

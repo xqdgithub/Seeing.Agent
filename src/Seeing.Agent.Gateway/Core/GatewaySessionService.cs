@@ -14,15 +14,18 @@ public sealed class GatewaySessionService
 {
     private readonly ISessionManager _sessionManager;
     private readonly IAgentRegistry _agentRegistry;
+    private readonly IAgentRuntimeManager _runtimeManager;
     private readonly IModelManager _modelManager;
 
     public GatewaySessionService(
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
+        IAgentRuntimeManager runtimeManager,
         IModelManager modelManager)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;
+        _runtimeManager = runtimeManager;
         _modelManager = modelManager;
     }
 
@@ -44,7 +47,7 @@ public sealed class GatewaySessionService
         session.Context.Clear();
         session.SelectedModel = string.Empty;
         session.SelectedAcpMode = string.Empty;
-        session.SelectedAgent = await _agentRegistry.GetDefaultAgentNameAsync().ConfigureAwait(false);
+        session.SelectedAgent = await _runtimeManager.GetDefaultAgentNameAsync().ConfigureAwait(false);
         session.LastActiveAt = DateTime.Now;
         session.UpdatedAt = DateTime.Now;
 

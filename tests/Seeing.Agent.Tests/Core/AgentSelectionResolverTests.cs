@@ -32,9 +32,9 @@ public class AgentSelectionResolverTests
     [Fact]
     public async Task ResolveAgentIdAsync_ShouldPreferRequestOverSessionAndDefault()
     {
-        var registry = new Mock<IAgentRegistry>();
-        registry.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("default-agent");
-        var resolver = new AgentSelectionResolver(registry.Object);
+        var runtime = new Mock<IAgentRuntimeManager>();
+        runtime.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("default-agent");
+        var resolver = new AgentSelectionResolver(runtime.Object);
 
         var result = await resolver.ResolveAgentIdAsync("request-agent", "session-agent");
 
@@ -43,8 +43,8 @@ public class AgentSelectionResolverTests
 
     private static AgentSelectionResolver CreateResolver()
     {
-        var registry = new Mock<IAgentRegistry>();
-        registry.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("build");
-        return new AgentSelectionResolver(registry.Object);
+        var runtime = new Mock<IAgentRuntimeManager>();
+        runtime.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("build");
+        return new AgentSelectionResolver(runtime.Object);
     }
 }

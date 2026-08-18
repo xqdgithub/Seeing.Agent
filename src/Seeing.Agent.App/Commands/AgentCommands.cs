@@ -16,13 +16,16 @@ namespace Seeing.Agent.App.Commands;
 public class AgentCommands
 {
     private readonly IAgentRegistry _agentRegistry;
+    private readonly IAgentRuntimeManager _runtimeManager;
     private readonly ILlmService _llmService;
 
     public AgentCommands(
         IAgentRegistry agentRegistry,
+        IAgentRuntimeManager runtimeManager,
         ILlmService llmService)
     {
         _agentRegistry = agentRegistry;
+        _runtimeManager = runtimeManager;
         _llmService = llmService;
     }
 
@@ -65,7 +68,7 @@ public class AgentCommands
         }
 
         // 执行切换（持久化）
-        await _agentRegistry.SetDefaultAgentAsync(targetAgent.Name);
+        await _runtimeManager.SetDefaultAgentAsync(targetAgent.Name);
 
         return CommandResult.WithData($"Switched to agent: {targetAgent.Name}", 
             new Dictionary<string, object> { ["agentSwitch"] = targetAgent.Name });

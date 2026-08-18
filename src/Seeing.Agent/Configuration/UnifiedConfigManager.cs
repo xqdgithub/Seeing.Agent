@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -6,6 +6,9 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Llm;
 using Seeing.Agent.MCP;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Mcp;
 
 namespace Seeing.Agent.Configuration;
 
@@ -158,19 +161,12 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     }
 
     /// <summary>
-    /// Providers 为 UserOnly：合并后只保留用户级；一次性吸收项目级 Providers，
-    /// 并清理误写的 ProviderModels 节（回填到 Providers[*].Models）。
+    /// Providers 为 UserOnly：合并后只保留用户级；一次性吸收项目级 Providers。
     /// </summary>
     private async Task EnsureProvidersUserOnlyAsync(CancellationToken ct)
     {
         var userProviders = CloneProvidersDictionary(UserSeeingAgent?.Providers);
         var dirty = false;
-
-        // 必须先吸收 ProviderModels，再删项目级键，避免「先删后吸」丢数据。
-        if (await AbsorbProviderModelsJsonAsync(ConfigLevel.User, userProviders, ct).ConfigureAwait(false))
-            dirty = true;
-        if (await AbsorbProviderModelsJsonAsync(ConfigLevel.Project, userProviders, ct).ConfigureAwait(false))
-            dirty = true;
 
         if (ProjectSeeingAgent?.Providers is { Count: > 0 } projectProviders)
         {
@@ -190,52 +186,6 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
 
         await SaveSectionAsync("Providers", userProviders, ConfigLevel.User, ct).ConfigureAwait(false);
         _logger.LogInformation("已将 Providers 收敛为用户级（含历史项目级 / ProviderModels 迁移）");
-    }
-
-    private async Task<bool> AbsorbProviderModelsJsonAsync(
-        ConfigLevel level,
-        Dictionary<string, ProviderConfig> userProviders,
-        CancellationToken ct)
-    {
-        var path = GetFilePath(level, "seeing.json");
-        if (!File.Exists(path))
-            return false;
-
-        var root = await LoadJsonRootAsync(path, ct).ConfigureAwait(false);
-        if (root["SeeingAgent"] is not JsonObject seeingAgent)
-            return false;
-
-        if (seeingAgent["ProviderModels"] is not JsonObject providerModelsNode)
-            return false;
-
-        var providerModels = providerModelsNode.Deserialize<Dictionary<string, Dictionary<string, ModelConfig>>>(JsonOptions)
-            ?? new Dictionary<string, Dictionary<string, ModelConfig>>();
-        var absorbed = false;
-
-        foreach (var (providerId, models) in providerModels)
-        {
-            if (models is not { Count: > 0 })
-                continue;
-
-            if (!userProviders.TryGetValue(providerId, out var provider))
-            {
-                provider = new ProviderConfig { Id = providerId, Type = ProviderType.OpenAI, Name = providerId };
-                userProviders[providerId] = provider;
-            }
-
-            provider.Models ??= new Dictionary<string, ModelConfig>();
-            foreach (var (modelId, model) in models)
-            {
-                if (provider.Models.ContainsKey(modelId))
-                    continue;
-                provider.Models[modelId] = CloneModelConfig(providerId, modelId, model);
-                absorbed = true;
-            }
-        }
-
-        seeingAgent.Remove("ProviderModels");
-        await WriteJsonAsync(path, root, ct).ConfigureAwait(false);
-        return absorbed || providerModels.Count > 0;
     }
 
     private async Task RemoveSeeingAgentKeysAsync(

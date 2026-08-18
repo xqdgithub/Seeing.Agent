@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Interfaces;
 
 namespace Seeing.Agent.Core

@@ -9,11 +9,11 @@ namespace Seeing.Agent.Core;
 /// </summary>
 public sealed class AgentSelectionResolver
 {
-    private readonly IAgentRegistry _agentRegistry;
+    private readonly IAgentRuntimeManager _runtimeManager;
 
-    public AgentSelectionResolver(IAgentRegistry agentRegistry)
+    public AgentSelectionResolver(IAgentRuntimeManager runtimeManager)
     {
-        _agentRegistry = agentRegistry;
+        _runtimeManager = runtimeManager;
     }
 
     /// <summary>解析最终使用的 Agent ID</summary>
@@ -29,7 +29,7 @@ public sealed class AgentSelectionResolver
             return sessionSelectedAgent;
 
         cancellationToken.ThrowIfCancellationRequested();
-        return await _agentRegistry.GetDefaultAgentNameAsync().ConfigureAwait(false);
+        return await _runtimeManager.GetDefaultAgentNameAsync().ConfigureAwait(false);
     }
 
     /// <summary>解析 ACP 透传 session mode（request &gt; session &gt; null）。</summary>
