@@ -52,6 +52,7 @@ using Seeing.Agent.Tools.BuiltIn.SubTask;
 using Seeing.Agent.Tools.BuiltIn.Time;
 using Seeing.Agent.Tools.BuiltIn.Todo;
 using Seeing.Agent.Tools.BuiltIn.Web;
+using Seeing.Agent.Todo;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
@@ -583,8 +584,8 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<WorkspaceProvider>();
             services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
 
-            // 5.1 Todo 管理器（依赖 IWorkspaceProvider）
-            services.AddSingleton<ITodoManager, TodoManager>();
+            // 5.1 Todo 存储（端口-适配器：基于 Session Context 的默认实现）
+            services.AddSingleton<ITodoStore, SessionContextTodoStore>();
 
             // 6. Agent / Model 默认解析
             services.AddSingleton<AgentSelectionResolver>();

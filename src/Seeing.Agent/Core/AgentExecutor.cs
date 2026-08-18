@@ -43,6 +43,7 @@ public class AgentExecutor : IAgentExecutor
     private readonly ILogger<AgentExecutor> _logger;
     private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
     private readonly Scheduling.IAgentLoopScheduler? _loopScheduler;
+    private readonly ITodoStore? _todoStore;
     private bool _todoEmptyReminded;
     private bool _incompleteReminded;
     private int _totalToolCallsExecuted;
@@ -58,7 +59,8 @@ public class AgentExecutor : IAgentExecutor
         IModelManager modelManager,
         ILogger<AgentExecutor> logger,
         Seeing.Session.Core.ISessionManager? sessionManager = null,
-        Scheduling.IAgentLoopScheduler? loopScheduler = null)
+        Scheduling.IAgentLoopScheduler? loopScheduler = null,
+        ITodoStore? todoStore = null)
     {
         _llm = llm;
         _tools = tools;
@@ -71,6 +73,7 @@ public class AgentExecutor : IAgentExecutor
         _logger = logger;
         _sessionManager = sessionManager;
         _loopScheduler = loopScheduler;
+        _todoStore = todoStore;
     }
 
     /// <summary>
@@ -139,9 +142,9 @@ public class AgentExecutor : IAgentExecutor
             totalSteps = step + 1;
 
             // === 循环开始检查：上一轮遗留的 paused todo ===
-            if (step == 0 && _sessionManager != null && !string.IsNullOrEmpty(context.SessionId))
+            if (step == 0 && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
             {
-                var todoList = LoadTodoList(_sessionManager, context.SessionId);
+                var todoList = await LoadTodoList(context.SessionId);
                 if (todoList.HasPaused())
                 {
                     var reminder = BuildTodoReminderMessage(
@@ -162,9 +165,9 @@ public class AgentExecutor : IAgentExecutor
 
             // === TodoEmpty 检查：已执行多步但未创建 todo ===
             if (step >= 2 && !_todoEmptyReminded
-                && _sessionManager != null && !string.IsNullOrEmpty(context.SessionId))
+                && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
             {
-                var todoList = LoadTodoList(_sessionManager, context.SessionId);
+                var todoList = await LoadTodoList(context.SessionId);
                 if (todoList.IsEmpty())
                 {
                     var reminder = BuildTodoReminderMessage(
@@ -405,9 +408,9 @@ public class AgentExecutor : IAgentExecutor
             if (assistantMessage.ToolCalls == null || assistantMessage.ToolCalls.Count == 0)
             {
                 // === 退出检查：未完成 todo ===
-                if (_sessionManager != null && !string.IsNullOrEmpty(context.SessionId))
+                if (_todoStore != null && !string.IsNullOrEmpty(context.SessionId))
                 {
-                    var todoList = LoadTodoList(_sessionManager, context.SessionId);
+                    var todoList = await LoadTodoList(context.SessionId);
                     if (todoList.HasIncompletePendingOrInProgress())
                     {
                         if (!_incompleteReminded)
@@ -828,18 +831,14 @@ public class AgentExecutor : IAgentExecutor
     }
 
     /// <summary>
-    /// 从会话加载 Todo 列表
+    /// 从会话加载 Todo 列表（经 ITodoStore 端口，不再直读 Session 键值）
     /// </summary>
-    private static TodoList LoadTodoList(
-        Seeing.Session.Core.ISessionManager? sessionManager, string sessionId)
+    private async Task<TodoList> LoadTodoList(string sessionId)
     {
-        if (sessionManager == null)
+        if (_todoStore == null)
             return new TodoList { SessionId = sessionId, Items = new() };
 
-        var session = sessionManager.Get(sessionId);
-        var storedItems = session?.GetContext<List<Seeing.Agent.Abstractions.Todo.TodoItem>>(TodoWriteTool.TodoContextKey)
-            ?? new List<Seeing.Agent.Abstractions.Todo.TodoItem>();
-        return new TodoList { SessionId = sessionId, Items = storedItems };
+        return await _todoStore.LoadAsync(sessionId);
     }
 
     /// <summary>
