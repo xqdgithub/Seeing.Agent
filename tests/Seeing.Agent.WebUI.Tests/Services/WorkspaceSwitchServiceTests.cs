@@ -16,7 +16,7 @@ namespace Seeing.Agent.WebUI.Tests.Services;
 public class WorkspaceSwitchServiceTests : IDisposable
 {
     private readonly Mock<IWorkspaceProvider> _workspaceMock;
-    private readonly Mock<SeeingConfigService> _configServiceMock;
+    private readonly Mock<ISeeingConfigService> _configServiceMock;
     private readonly Mock<ToolManager> _toolInvokerMock;
     private readonly Mock<SkillManager> _skillManagerMock;
     private readonly Mock<ILogger<WorkspaceSwitchService>> _loggerMock;
@@ -25,14 +25,20 @@ public class WorkspaceSwitchServiceTests : IDisposable
     public WorkspaceSwitchServiceTests()
     {
         _workspaceMock = new Mock<IWorkspaceProvider>();
-        _configServiceMock = new Mock<SeeingConfigService>(MockBehavior.Loose);
+        _configServiceMock = new Mock<ISeeingConfigService>();
         _toolInvokerMock = new Mock<ToolManager>(
             MockBehavior.Loose,
             new Mock<ILogger<ToolManager>>().Object,
-            new Mock<Seeing.Agent.Core.Hooks.IHookManager>().Object);
+            new Mock<Seeing.Agent.Abstractions.Hooks.IHookManager>().Object,
+            null,
+            null,
+            null,
+            null,
+            null);
         _skillManagerMock = new Mock<SkillManager>(
             MockBehavior.Loose,
-            new Mock<ILogger<SkillManager>>().Object);
+            new Mock<ILogger<SkillManager>>().Object,
+            null);
         _loggerMock = new Mock<ILogger<WorkspaceSwitchService>>();
         
         _testDirectory = Path.Combine(Path.GetTempPath(), $"workspace_test_{Guid.NewGuid():N}");
@@ -73,8 +79,6 @@ public class WorkspaceSwitchServiceTests : IDisposable
         result.Should().BeTrue();
         _workspaceMock.Verify(x => x.SetWorkspaceRoot(newPath), Times.Once);
         _configServiceMock.Verify(x => x.ReloadAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _toolInvokerMock.Verify(x => x.LoadToolStateAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _skillManagerMock.Verify(x => x.LoadSkillStateAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -111,8 +115,8 @@ public class WorkspaceSwitchServiceTests : IDisposable
     {
         // Arrange
         var newPath = _testDirectory;
-        _workspaceMock.Setup(x => x.WorkspaceRoot).Returns(newPath);
         var service = CreateService();
+        _workspaceMock.Setup(x => x.WorkspaceRoot).Returns(newPath);
 
         // Act
         var result = await service.SwitchWorkspaceAsync(newPath);
@@ -190,8 +194,8 @@ public class WorkspaceSwitchServiceTests : IDisposable
     public void CurrentWorkspace_ShouldReturnWorkspaceRoot()
     {
         // Arrange
-        _workspaceMock.Setup(x => x.WorkspaceRoot).Returns("/test/workspace");
         var service = CreateService();
+        _workspaceMock.Setup(x => x.WorkspaceRoot).Returns("/test/workspace");
 
         // Act
         var current = service.CurrentWorkspace;

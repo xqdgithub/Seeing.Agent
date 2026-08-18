@@ -7,7 +7,7 @@ namespace Seeing.Agent.WebUI.Services;
 /// <summary>
 /// WebUI 配置服务 - 封装 UnifiedConfigManager，提供页面友好的 API
 /// </summary>
-public sealed class SeeingConfigService
+public sealed class SeeingConfigService : ISeeingConfigService
 {
     private readonly UnifiedConfigManager _configManager;
     private readonly IWorkspaceProvider _workspaceProvider;

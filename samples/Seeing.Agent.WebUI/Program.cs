@@ -71,6 +71,7 @@ builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddScoped<SessionCompactionService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SeeingConfigService>();
+builder.Services.AddSingleton<ISeeingConfigService>(sp => sp.GetRequiredService<SeeingConfigService>());
 builder.Services.AddSingleton<GatewayClientConfigService>();
 builder.Services.AddChannelHostManagement();
 builder.Services.AddSingleton<GatewayClientSupervisor>();

@@ -13,14 +13,14 @@ namespace Seeing.Agent.WebUI.Services;
 public class WorkspaceSwitchService
 {
     private readonly IWorkspaceProvider _workspace;
-    private readonly SeeingConfigService _configService;
+    private readonly ISeeingConfigService _configService;
     private readonly ToolManager _toolInvoker;
     private readonly SkillManager _skillManager;
     private readonly ILogger<WorkspaceSwitchService> _logger;
 
     public WorkspaceSwitchService(
         IWorkspaceProvider workspace,
-        SeeingConfigService configService,
+        ISeeingConfigService configService,
         ToolManager toolInvoker,
         SkillManager skillManager,
         ILogger<WorkspaceSwitchService> logger)
