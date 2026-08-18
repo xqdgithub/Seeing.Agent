@@ -6,13 +6,15 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration.Tools;
 
+using Seeing.Agent.Abstractions.Extensions;
+using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Memory.Integration;
 
 /// <summary>
 /// Memory 插件入口。服务由 <see cref="MemoryServiceExtensions.AddMemoryServices"/> 注册；
 /// 本扩展导出 Tools/Hooks，供 Plugins 加载路径使用。
 /// </summary>
-public class MemoryExtension : IExtension
+public class MemoryExtension : IExtension, IHookExtension, IToolExtension
 {
     public string? Id => "seeing.agent.memory";
     public string Version => "2.1.0";

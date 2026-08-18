@@ -1,5 +1,7 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+
+using Seeing.Agent.Abstractions.Configuration;
 
 namespace Seeing.Agent.Configuration;
 

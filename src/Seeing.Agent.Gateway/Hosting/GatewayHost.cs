@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -14,6 +14,7 @@ using Seeing.Agent.Gateway.Permission;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Session.Core;
 
+using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Gateway.Hosting;
 
 /// <summary>

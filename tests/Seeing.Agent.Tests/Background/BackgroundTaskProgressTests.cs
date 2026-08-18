@@ -1,10 +1,11 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.Interfaces;
 using Xunit;
 
+using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Tests.Background;
 
 public class BackgroundTaskProgressTests

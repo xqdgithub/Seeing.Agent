@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
-namespace Seeing.Agent.Core.Models
+using Seeing.Agent.Abstractions.Llm;
+namespace Seeing.Agent.Abstractions.Agents
 {
     /// <summary>
     /// Agent 执行结果
@@ -10,7 +11,7 @@ namespace Seeing.Agent.Core.Models
         public bool Success { get; set; }
 
         /// <summary>生成的消息列表</summary>
-        public List<Seeing.Agent.Abstractions.Llm.ChatMessage> Messages { get; set; } = new();
+        public List<ChatMessage> Messages { get; set; } = new();
 
         /// <summary>输出文本</summary>
         public string Output { get; set; } = string.Empty;

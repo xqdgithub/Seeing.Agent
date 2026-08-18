@@ -1,8 +1,13 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Extensions;
+using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
@@ -157,24 +162,23 @@ namespace Seeing.Agent.Extensions
             try
             {
                 // 注册 Agent
-                foreach (var agent in ext.Instance.GetAgents())
+                foreach (var agent in (ext.Instance as IAgentExtension)?.GetAgents() ?? Enumerable.Empty<AgentDefinition>())
                 {
-                    var info = CreateAgentInfo(agent, ext.Id);
-                    await context.AgentRegistry.RegisterAgentAsync(info);
+                    await context.AgentRegistry.RegisterAgentAsync(agent);
                     _logger.LogDebug("Registered agent: {Name} from extension {Id}",
                         agent.Name, ext.Id);
                 }
 
                 // 注册工具
-                foreach (var tool in ext.Instance.GetTools())
+                foreach (var tool in (ext.Instance as IToolExtension)?.GetTools() ?? Enumerable.Empty<ITool>())
                 {
-                    context.ToolInvoker.RegisterTool(tool);
+                    await context.ToolManager.RegisterToolAsync(tool);
                     _logger.LogDebug("Registered tool: {Id} from extension {Id}",
                         tool.Id, ext.Id);
                 }
 
                 // 注册 Hook
-                foreach (var hook in ext.Instance.GetHookHandlers())
+                foreach (var hook in (ext.Instance as IHookExtension)?.GetHookHandlers() ?? Enumerable.Empty<IHookHandler>())
                 {
                     context.HookManager.Register(hook);
                     _logger.LogDebug("Registered hook: {HookPoint} from extension {Id}",
@@ -182,7 +186,7 @@ namespace Seeing.Agent.Extensions
                 }
 
                 // 连接 MCP Server
-                foreach (var mcpConfig in ext.Instance.GetMcpServers())
+                foreach (var mcpConfig in (ext.Instance as IMcpExtension)?.GetMcpServers() ?? Enumerable.Empty<McpServerConfig>())
                 {
                     try
                     {
@@ -202,24 +206,24 @@ namespace Seeing.Agent.Extensions
                     }
                 }
 
-                // 添加 Skill 路径
-                foreach (var skillPath in ext.Instance.GetSkillPaths())
-                {
-                    context.SkillManager.AddSearchDirectory(skillPath);
-                    _logger.LogDebug("Added skill path: {Path} from extension {Id}",
-                        skillPath, ext.Id);
-                }
+                // 添加 Skill 路径（Task 12 恢复 SkillManager 注入）
+                // foreach (var skillPath in (ext.Instance as ISkillPathExtension)?.GetSkillPaths() ?? Enumerable.Empty<string>())
+                // {
+                //     context.SkillManager.AddSearchDirectory(skillPath);
+                //     _logger.LogDebug("Added skill path: {Path} from extension {Id}",
+                //         skillPath, ext.Id);
+                // }
 
-                // 注册命令
-                foreach (var command in ext.Instance.GetCommands())
-                {
-                    context.CommandRegistry.Register(command);
-                    _logger.LogDebug("Registered command: {Name} from extension {Id}",
-                        command.Metadata.Name, ext.Id);
-                }
+                // 注册命令（Task 12 恢复 CommandRegistry 注入）
+                // foreach (var command in ext.Instance.GetCommands())
+                // {
+                //     context.CommandRegistry.Register(command);
+                //     _logger.LogDebug("Registered command: {Name} from extension {Id}",
+                //         command.Metadata.Name, ext.Id);
+                // }
 
                 // 注册 LLM Provider
-                var providers = ext.Instance.GetProviders().ToList();
+                var providers = (ext.Instance as IProviderExtension)?.GetProviders().ToList() ?? new List<ILlmProvider>();
                 if (providers.Count > 0)
                 {
                     providerRegistry =
@@ -250,26 +254,6 @@ namespace Seeing.Agent.Extensions
                 _logger.LogError(ex, "Failed to register components for extension: {Id}", ext.Id);
                 return false;
             }
-        }
-
-        /// <summary>
-        /// 创建 AgentInfo
-        /// </summary>
-        private static AgentDefinition CreateAgentInfo(IAgent agent, string extensionId)
-        {
-            return new AgentDefinition
-            {
-                Name = agent.Name,
-                Description = agent.Description,
-                Mode = agent.Mode,
-                SystemPrompt = agent.SystemPrompt,
-                MaxSteps = agent.MaxSteps,
-                PermissionRules = agent.PermissionRules?.ToList() ?? new List<PermissionRuleEntry>(),
-                AllowedTools = agent.AllowedTools?.ToList() ?? new List<string>(),
-                DeniedTools = agent.DeniedTools?.ToList() ?? new List<string>(),
-                IsNative = false,
-                Tags = new List<string> { "extension", extensionId }
-            };
         }
 
         /// <summary>

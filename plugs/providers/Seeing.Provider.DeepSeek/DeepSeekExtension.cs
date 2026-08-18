@@ -3,9 +3,11 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 
+using Seeing.Agent.Abstractions.Extensions;
+using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Provider.DeepSeek;
 
-public sealed class DeepSeekExtension : IExtension
+public sealed class DeepSeekExtension : IExtension, IProviderExtension
 {
     public string? Id => DeepSeekProvider.ExtensionId;
     public string Version => "1.0.0";

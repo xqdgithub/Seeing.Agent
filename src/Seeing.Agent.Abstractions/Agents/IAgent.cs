@@ -1,9 +1,7 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
-
 using Seeing.Agent.Abstractions.Permissions;
-namespace Seeing.Agent.Core.Interfaces
+using Seeing.Agent.Abstractions.Llm;
+namespace Seeing.Agent.Abstractions.Agents
 {
     /// <summary>
     /// Agent 接口 - AI Agent 的核心抽象

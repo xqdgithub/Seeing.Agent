@@ -1,10 +1,12 @@
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 
+using Seeing.Agent.Abstractions.Extensions;
+using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Acp.Extensions;
 
 /// <summary>

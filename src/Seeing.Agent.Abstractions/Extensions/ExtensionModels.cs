@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Extensions
+﻿namespace Seeing.Agent.Abstractions.Extensions
 {
     /// <summary>
     /// 扩展加载结果
@@ -42,13 +42,13 @@ namespace Seeing.Agent.Extensions
         public string Target { get; init; } = "";
 
         /// <summary>扩展实例</summary>
-        public Core.Interfaces.IExtension Instance { get; init; } = null!;
+        public IExtension Instance { get; init; } = null!;
 
         /// <summary>插件选项</summary>
         public Dictionary<string, object>? Options { get; init; }
 
         /// <summary>扩展元数据</summary>
-        public Core.Interfaces.ExtensionMeta Meta { get; init; } = null!;
+        public ExtensionMeta Meta { get; init; } = null!;
 
         /// <summary>是否启用</summary>
         public bool Enabled { get; set; } = true;

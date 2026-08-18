@@ -27,7 +27,7 @@ namespace Seeing.Agent.Tools
     /// 此类不重复检查以避免双重验证。
     /// </para>
     /// </summary>
-    public class ToolManager
+    public class ToolManager : IToolManager
     {
         private readonly ILogger<ToolManager> _logger;
         private readonly Abstractions.Hooks.IHookManager _hookManager;

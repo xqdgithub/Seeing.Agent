@@ -8,7 +8,9 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Extensions;using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.MCP;
@@ -272,12 +274,10 @@ internal class PluginLoader : IComponentLoader
             Directory = workspaceProvider.WorkspaceRoot,
             WorkspaceRoot = workspaceProvider.WorkspaceRoot,
             HookManager = services.GetRequiredService<HookManager>(),
-            ToolInvoker = services.GetRequiredService<ToolManager>(),
+            ToolManager = services.GetRequiredService<ToolManager>(),
             PermissionService = services.GetRequiredService<IPermissionService>(),
-            SkillManager = services.GetRequiredService<SkillManager>(),
             AgentRegistry = services.GetRequiredService<IAgentRegistry>(),
             McpClientManager = services.GetRequiredService<McpClientManager>(),
-            CommandRegistry = services.GetRequiredService<ICommandRegistry>()
         };
 
         var pluginSpecs = options?.Value?.Plugins ?? new List<PluginSpec>();

@@ -1,9 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
-
-using Seeing.Agent.Abstractions.Permissions;
-namespace Seeing.Agent.Core.Interfaces
+using Seeing.Agent.Abstractions.Permissions;namespace Seeing.Agent.Abstractions.Agents
 {
     /// <summary>
     /// Agent 注册表接口 - 管理代理的注册、发现和生命周期

@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Configuration;
+﻿using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Interfaces;
-using System.Reflection;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Extensions;using System.Reflection;
 using System.Runtime.Loader;
 
 namespace Seeing.Agent.Extensions
@@ -268,9 +269,9 @@ namespace Seeing.Agent.Extensions
                 var now = DateTimeOffset.Now.ToUnixTimeMilliseconds();
                 var meta = new ExtensionMeta
                 {
-                    State = "first",
+                    State = ExtensionLoadState.First,
                     Id = id,
-                    Source = IsFileSpec(spec.Spec) ? "file" : "npm",
+                    Source = IsFileSpec(spec.Spec) ? ExtensionSource.File : ExtensionSource.Npm,
                     Spec = spec.Spec,
                     Target = target,
                     LoadCount = 1,
@@ -302,7 +303,7 @@ namespace Seeing.Agent.Extensions
                     {
                         Id = id,
                         Spec = spec.Spec,
-                        Source = meta.Source,
+                        Source = meta.Source == ExtensionSource.File ? "file" : "npm",
                         Target = target,
                         Instance = instance,
                         Options = spec.Options,

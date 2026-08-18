@@ -10,7 +10,7 @@ using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Abstractions.Agents;using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.BuiltInAgents;
 using Seeing.Agent.Abstractions.Events;

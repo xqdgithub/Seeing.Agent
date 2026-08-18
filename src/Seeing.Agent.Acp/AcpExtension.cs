@@ -9,6 +9,8 @@ using Seeing.Agent.Acp.Transport;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 
+using Seeing.Agent.Abstractions.Extensions;
+using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Acp;
 
 /// <summary>
@@ -18,7 +20,7 @@ namespace Seeing.Agent.Acp;
 /// 本扩展仅提供 <see cref="IExtension"/> 生命周期（工具导出、连接清理）。
 /// </para>
 /// </summary>
-public sealed class AcpExtension : IExtension
+public sealed class AcpExtension : IExtension, IToolExtension
 {
     /// <inheritdoc />
     public string? Id => "seeing.agent.acp";

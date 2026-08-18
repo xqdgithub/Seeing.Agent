@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
-using Seeing.Session.Core;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Extensions;using Seeing.Session.Core;
 using System.Collections.Concurrent;
 using System.Reactive.Subjects;
 using System.Text;
