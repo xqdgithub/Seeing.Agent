@@ -29,7 +29,7 @@ namespace Seeing.Agent.Extensions
     /// - 清理资源
     /// </para>
     /// </summary>
-    public class ExtensionManager
+    public class ExtensionManager : IExtensionManager
     {
         private readonly ILogger<ExtensionManager> _logger;
         private readonly ExtensionLoader _loader;

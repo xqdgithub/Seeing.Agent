@@ -19,6 +19,7 @@ public interface IExtensionManager
     /// <summary>加载并初始化扩展</summary>
     Task InitializeAsync(
         IEnumerable<PluginSpec> specs,
+        Dictionary<string, bool>? enabledOverrides,
         ExtensionContext context,
         CancellationToken cancellationToken = default);
 

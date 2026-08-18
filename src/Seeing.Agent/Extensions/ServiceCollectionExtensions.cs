@@ -2,6 +2,7 @@
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Abstractions.Extensions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -603,6 +604,7 @@ namespace Seeing.Agent.Extensions
             // 扩展系统
             services.AddSingleton<ExtensionLoader>();
             services.AddSingleton<ExtensionManager>();
+            services.AddSingleton<IExtensionManager>(sp => sp.GetRequiredService<ExtensionManager>());
 
             // 执行上下文相关
             services.AddSingleton<IMetadataStore, ConcurrentMetadataStore>();
