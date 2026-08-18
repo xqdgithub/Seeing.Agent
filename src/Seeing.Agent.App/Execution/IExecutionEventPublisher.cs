@@ -1,4 +1,4 @@
-using Seeing.Agent.Core.Events;
+﻿using Seeing.Agent.Abstractions.Events;
 
 namespace Seeing.Agent.App.Execution;
 

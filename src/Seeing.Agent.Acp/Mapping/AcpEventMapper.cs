@@ -1,5 +1,5 @@
-using Acp.Types;
-using Seeing.Agent.Core.Events;
+﻿using Acp.Types;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Llm;

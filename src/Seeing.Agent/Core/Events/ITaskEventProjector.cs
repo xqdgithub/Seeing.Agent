@@ -1,3 +1,5 @@
+﻿using Seeing.Agent.Abstractions.Events;
+
 namespace Seeing.Agent.Core.Events;
 
 /// <summary>

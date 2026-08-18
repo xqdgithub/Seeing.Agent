@@ -1,4 +1,4 @@
-using Seeing.Agent.Core.Events;
+﻿using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.App.Models;
 using Seeing.Agent.App.Execution;
 using Seeing.Session.Core;

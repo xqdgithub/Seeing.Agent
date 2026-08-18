@@ -125,7 +125,7 @@ namespace Seeing.Agent.Core.Models
         public bool Success { get; set; }
 
         /// <summary>生成的消息列表</summary>
-        public List<Llm.ChatMessage> Messages { get; set; } = new();
+        public List<Seeing.Agent.Abstractions.Llm.ChatMessage> Messages { get; set; } = new();
 
         /// <summary>输出文本</summary>
         public string Output { get; set; } = string.Empty;

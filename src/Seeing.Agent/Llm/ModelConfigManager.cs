@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Seeing.Agent.Abstractions.Llm;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using System.Threading.Channels;
 

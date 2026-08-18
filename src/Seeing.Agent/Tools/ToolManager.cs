@@ -493,7 +493,7 @@ namespace Seeing.Agent.Tools
             ToolCall toolCall,
             string sessionId = "",
             CancellationToken cancellationToken = default,
-            Func<Seeing.Agent.Core.Events.IMessageEvent, ValueTask>? emitAsync = null,
+            Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync = null,
             IPermissionChannel? permissionChannel = null)
         {
             var toolId = toolCall.Name;

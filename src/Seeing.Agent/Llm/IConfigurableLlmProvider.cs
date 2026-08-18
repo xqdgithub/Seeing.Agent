@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Configuration;
+﻿using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Configuration;
 using Seeing.ConfigSchema;
 
 using Seeing.Agent.Abstractions.Configuration;

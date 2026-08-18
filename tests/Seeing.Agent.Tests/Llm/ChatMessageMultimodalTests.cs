@@ -1,7 +1,7 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Agent.Llm;
 using Xunit;
-using LlmChatMessage = Seeing.Agent.Llm.ChatMessage;
+using LlmChatMessage = Seeing.Agent.Abstractions.Llm.ChatMessage;
 
 namespace Seeing.Agent.Tests.Llm;
 

@@ -5,7 +5,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
@@ -300,8 +300,11 @@ public class AgentExecutor
                     }
                     else
                     {
-                        totalUsage.InputTokens += update.Usage.InputTokens;
-                        totalUsage.OutputTokens += update.Usage.OutputTokens;
+                        totalUsage = totalUsage with
+                        {
+                            InputTokens = totalUsage.InputTokens + update.Usage.InputTokens,
+                            OutputTokens = totalUsage.OutputTokens + update.Usage.OutputTokens
+                        };
                     }
                 }
 

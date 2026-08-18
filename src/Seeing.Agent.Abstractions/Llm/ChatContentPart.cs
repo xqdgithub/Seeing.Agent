@@ -1,6 +1,6 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
-namespace Seeing.Agent.Llm;
+namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
 /// 单条消息中的内容段，用于多模态（文本、图片、文件、音频等）传输。

@@ -1,11 +1,11 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Channels;
 using Acp.Types;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Acp.Mapping;
-using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Events;
 
 namespace Seeing.Agent.Acp.Execution;
 

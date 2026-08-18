@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Background;
+﻿namespace Seeing.Agent.Core.Background;
 
 /// <summary>
 /// 后台任务状态
@@ -85,7 +85,7 @@ public class BackgroundTaskLaunchArgs
     public required string AgentName { get; set; }
 
     /// <summary>输入消息</summary>
-    public required Llm.ChatMessage Input { get; set; }
+    public required Seeing.Agent.Abstractions.Llm.ChatMessage Input { get; set; }
 
     /// <summary>执行上下文</summary>
     public required Models.AgentContext Context { get; set; }

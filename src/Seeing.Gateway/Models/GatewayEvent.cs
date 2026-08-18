@@ -1,4 +1,4 @@
-namespace Seeing.Gateway.Models;
+﻿namespace Seeing.Gateway.Models;
 
 /// <summary>
 /// 网关事件对象类型
@@ -42,7 +42,7 @@ public record GatewayEvent
 
     public GatewayEventData? Data { get; init; }
 
-    /// <summary>事件时间戳（对齐 <see cref="Seeing.Agent.Core.Events.IMessageEvent.Timestamp"/>）</summary>
+    /// <summary>事件时间戳（对齐 <see cref="Seeing.Agent.Abstractions.Events.IMessageEvent.Timestamp"/>）</summary>
     public DateTime Timestamp { get; init; } = DateTime.Now;
 
     /// <summary>原始 MessageEventType 字符串，便于 Client 精确分支</summary>

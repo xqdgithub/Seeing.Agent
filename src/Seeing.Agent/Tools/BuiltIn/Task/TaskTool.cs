@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Background;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;

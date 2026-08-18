@@ -1,7 +1,7 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Events;
 using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.App.Execution;

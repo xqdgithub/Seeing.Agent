@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App.Events;
 using Seeing.Agent.App.Execution;
@@ -7,7 +7,7 @@ using Seeing.Agent.App.Models;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;

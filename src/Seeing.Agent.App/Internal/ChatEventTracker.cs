@@ -1,5 +1,5 @@
-using System.Text.Json;
-using Seeing.Agent.Core.Events;
+﻿using System.Text.Json;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 
