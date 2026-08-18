@@ -16,7 +16,7 @@ namespace Seeing.Agent.Core.Generation
         private readonly AgentValidator _validator;
         private readonly IAgentRegistry? _agentRegistry;
         private readonly ConcurrentDictionary<string, AgentTemplate> _templates = new();
-        private readonly ConcurrentDictionary<string, AgentDefinition> _definitions = new();
+        private readonly ConcurrentDictionary<string, GeneratedAgentDefinition> _definitions = new();
 
         public AgentGenerator(
             ILogger<AgentGenerator> logger,
@@ -31,7 +31,7 @@ namespace Seeing.Agent.Core.Generation
             LoadBuiltinTemplates();
         }
 
-        public async Task<AgentDefinition> GenerateAsync(AgentGenerationRequest request, CancellationToken cancellationToken = default)
+        public async Task<GeneratedAgentDefinition> GenerateAsync(AgentGenerationRequest request, CancellationToken cancellationToken = default)
         {
             // 获取模板
             AgentTemplate? template = null;
@@ -68,7 +68,7 @@ namespace Seeing.Agent.Core.Generation
             }
 
             // 构建 Agent 定义
-            var definition = new AgentDefinition
+            var definition = new GeneratedAgentDefinition
             {
                 Name = request.Name,
                 Description = request.Description,
@@ -102,7 +102,7 @@ namespace Seeing.Agent.Core.Generation
             return definition;
         }
 
-        public Task<AgentValidationResult> ValidateAsync(AgentDefinition definition, CancellationToken cancellationToken = default)
+        public Task<AgentValidationResult> ValidateAsync(GeneratedAgentDefinition definition, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(_validator.Validate(definition));
         }
@@ -140,7 +140,7 @@ namespace Seeing.Agent.Core.Generation
             return Task.CompletedTask;
         }
 
-        public Task<AgentTemplate> ExtractTemplateAsync(AgentDefinition definition, string templateName, CancellationToken cancellationToken = default)
+        public Task<AgentTemplate> ExtractTemplateAsync(GeneratedAgentDefinition definition, string templateName, CancellationToken cancellationToken = default)
         {
             var template = new AgentTemplate
             {
@@ -262,7 +262,7 @@ Review criteria:
         /// <summary>
         /// Converts a Generation AgentDefinition to Models AgentDefinition for registry registration
         /// </summary>
-        private static Seeing.Agent.Abstractions.Agents.AgentDefinition ToModelsAgentDefinition(AgentDefinition definition)
+        private static Seeing.Agent.Abstractions.Agents.AgentDefinition ToModelsAgentDefinition(GeneratedAgentDefinition definition)
         {
             // Convert ModelConfigOverride to ModelReference
             ModelReference? modelRef = null;

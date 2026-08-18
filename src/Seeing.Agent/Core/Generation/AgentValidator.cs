@@ -16,7 +16,7 @@ namespace Seeing.Agent.Core.Generation
         };
 
         /// <summary>验证 Agent 定义</summary>
-        public AgentValidationResult Validate(AgentDefinition definition)
+        public AgentValidationResult Validate(GeneratedAgentDefinition definition)
         {
             var errors = new List<string>();
             var warnings = new List<string>();

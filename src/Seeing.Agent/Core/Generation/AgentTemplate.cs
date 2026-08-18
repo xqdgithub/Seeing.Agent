@@ -79,7 +79,7 @@ namespace Seeing.Agent.Core.Generation
     }
 
     /// <summary>Agent 定义（生成结果）</summary>
-    public class AgentDefinition
+    public class GeneratedAgentDefinition
     {
         /// <summary>Agent ID</summary>
         public string Id { get; set; } = Guid.NewGuid().ToString("N")[..12];

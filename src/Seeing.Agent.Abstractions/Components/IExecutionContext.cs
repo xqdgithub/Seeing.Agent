@@ -32,29 +32,5 @@ namespace Seeing.Agent.Abstractions.Components
 
         /// <summary>权限请求通道</summary>
         IPermissionChannel PermissionChannel { get; }
-
-        /// <summary>追踪器 - 分布式追踪</summary>
-        IActivityTracer? Tracer { get; }
-    }
-
-    /// <summary>
-    /// 活动追踪器接口 - 分布式追踪支持
-    /// </summary>
-    public interface IActivityTracer
-    {
-        /// <summary>追踪 ID</summary>
-        string TraceId { get; }
-
-        /// <summary>跨度 ID</summary>
-        string SpanId { get; }
-
-        /// <summary>开始新的跨度</summary>
-        IDisposable StartSpan(string name);
-
-        /// <summary>记录事件</summary>
-        void AddEvent(string name, KeyValuePair<string, object>? tag = null);
-
-        /// <summary>记录异常</summary>
-        void RecordException(Exception ex);
     }
 }

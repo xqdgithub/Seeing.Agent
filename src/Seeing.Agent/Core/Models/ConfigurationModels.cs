@@ -41,16 +41,6 @@ namespace Seeing.Agent.Core.Models
     }
 
     /// <summary>
-    /// 模型类型
-    /// </summary>
-    public enum ModelType
-    {
-        Chat,
-        Embedding,
-        Rerank
-    }
-
-    /// <summary>
     /// 会话信息
     /// </summary>
     public class SessionInfo

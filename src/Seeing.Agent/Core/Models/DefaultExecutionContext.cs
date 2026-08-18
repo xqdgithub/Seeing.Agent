@@ -42,9 +42,6 @@ namespace Seeing.Agent.Core.Models
         /// <inheritdoc />
         public IPermissionChannel PermissionChannel => _permissionChannel;
 
-        /// <inheritdoc />
-        public IActivityTracer? Tracer { get; init; }
-
         /// <summary>
         /// 创建默认执行上下文
         /// </summary>

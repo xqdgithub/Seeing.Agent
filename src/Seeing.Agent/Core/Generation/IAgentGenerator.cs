@@ -8,10 +8,10 @@ namespace Seeing.Agent.Core.Generation
     public interface IAgentGenerator
     {
         /// <summary>根据模板生成 Agent 配置</summary>
-        Task<AgentDefinition> GenerateAsync(AgentGenerationRequest request, CancellationToken cancellationToken = default);
+        Task<GeneratedAgentDefinition> GenerateAsync(AgentGenerationRequest request, CancellationToken cancellationToken = default);
 
         /// <summary>验证 Agent 定义是否有效</summary>
-        Task<AgentValidationResult> ValidateAsync(AgentDefinition definition, CancellationToken cancellationToken = default);
+        Task<AgentValidationResult> ValidateAsync(GeneratedAgentDefinition definition, CancellationToken cancellationToken = default);
 
         /// <summary>列出所有可用模板</summary>
         Task<IReadOnlyList<AgentTemplate>> ListTemplatesAsync(CancellationToken cancellationToken = default);
@@ -23,7 +23,7 @@ namespace Seeing.Agent.Core.Generation
         Task RegisterTemplateAsync(AgentTemplate template, CancellationToken cancellationToken = default);
 
         /// <summary>从现有 Agent 定义创建模板</summary>
-        Task<AgentTemplate> ExtractTemplateAsync(AgentDefinition definition, string templateName, CancellationToken cancellationToken = default);
+        Task<AgentTemplate> ExtractTemplateAsync(GeneratedAgentDefinition definition, string templateName, CancellationToken cancellationToken = default);
     }
 
     /// <summary>Agent 生成请求</summary>
