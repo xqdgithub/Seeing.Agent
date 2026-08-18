@@ -28,7 +28,8 @@ public sealed class AgentSelectionResolver
             return sessionSelectedAgent;
 
         cancellationToken.ThrowIfCancellationRequested();
-        return await _runtimeManager.GetDefaultAgentNameAsync().ConfigureAwait(false);
+        return await _runtimeManager.GetDefaultAgentNameAsync().ConfigureAwait(false)
+            ?? throw new InvalidOperationException("未配置默认 Agent（DefaultAgent）");
     }
 
     /// <summary>解析 ACP 透传 session mode（request &gt; session &gt; null）。</summary>

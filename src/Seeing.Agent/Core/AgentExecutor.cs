@@ -445,7 +445,7 @@ public class AgentExecutor : IAgentExecutor
 
             // ========== 执行工具调用 ==========
             await foreach (var toolEvent in ExecuteToolCallsAsync(
-                assistantMessage.ToolCalls,
+                assistantMessage.ToolCalls ?? new List<ToolCall>(),
                 agent,
                 context,
                 permissionChannel,

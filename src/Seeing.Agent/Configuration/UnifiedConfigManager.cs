@@ -471,7 +471,9 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
 
             try
             {
-                _cache[meta.SectionName] = JsonNode.Parse(await File.ReadAllTextAsync(userPath, ct));
+                var node = JsonNode.Parse(await File.ReadAllTextAsync(userPath, ct));
+                if (node != null)
+                    _cache[meta.SectionName] = node;
             }
             catch (Exception ex)
             {

@@ -95,7 +95,7 @@ namespace Seeing.Session.Execution
                 {
                     // Cancel 触发的回调异常，记录日志
                 }
-                _cts.Dispose();
+                _cts!.Dispose();
                 _cts = null;
             }
         }

@@ -97,9 +97,8 @@ namespace Seeing.Agent.MCP.OAuth
         private static byte[] DeriveKey()
         {
             var machineId = Environment.MachineName + Environment.UserName;
-            using var pbkdf2 = new Rfc2898DeriveBytes(
-                Encoding.UTF8.GetBytes(machineId), Salt, 100000, HashAlgorithmName.SHA256);
-            return pbkdf2.GetBytes(32);
+            return Rfc2898DeriveBytes.Pbkdf2(
+                Encoding.UTF8.GetBytes(machineId), Salt, 100000, HashAlgorithmName.SHA256, 32);
         }
 
         /// <summary>删除令牌</summary>
