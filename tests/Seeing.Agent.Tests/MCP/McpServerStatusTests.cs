@@ -1,9 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.MCP.Core;
 using FluentAssertions;
 using Seeing.Agent.MCP;
-using Seeing.Agent.Abstractions.Mcp;
-using Seeing.Agent.MCP.Core;
 using Xunit;
 
 namespace Seeing.Agent.Tests.MCP;

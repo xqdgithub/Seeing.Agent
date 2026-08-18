@@ -1,9 +1,8 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Cli.Infrastructure;
 
-using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Cli.Commands;
 
 public static class AgentCommand

@@ -1,7 +1,6 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Memory.Integration;
 using Seeing.Agent.Memory.Integration.Tools;

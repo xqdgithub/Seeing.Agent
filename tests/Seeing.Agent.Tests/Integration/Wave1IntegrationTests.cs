@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
@@ -8,11 +8,7 @@ using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Xunit;

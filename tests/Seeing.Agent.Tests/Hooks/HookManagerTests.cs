@@ -1,10 +1,8 @@
-﻿using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Core.Hooks;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Hooks

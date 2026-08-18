@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using System.Text;
@@ -9,12 +9,8 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Reminders;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Models;

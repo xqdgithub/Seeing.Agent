@@ -1,9 +1,8 @@
-﻿using Seeing.Agent.Abstractions.Todo;
+using Seeing.Agent.Abstractions.Todo;
 using Acp.Types;
 using FluentAssertions;
 using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Todo;
 using Xunit;
 
 namespace Seeing.Agent.Acp.Tests;

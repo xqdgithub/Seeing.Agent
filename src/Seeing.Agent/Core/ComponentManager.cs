@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Mcp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -20,9 +20,6 @@ using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Skills;
 using System.Collections.Concurrent;
 
-using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Components;
-using Seeing.Agent.Abstractions.Skills;
 namespace Seeing.Agent.Core;
 
 /// <summary>

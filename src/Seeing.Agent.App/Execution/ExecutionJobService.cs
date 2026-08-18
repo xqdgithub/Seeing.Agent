@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
@@ -22,8 +22,6 @@ using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.Scheduling;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Services;
 using Seeing.Session.Core;
 using Seeing.Session.Management;

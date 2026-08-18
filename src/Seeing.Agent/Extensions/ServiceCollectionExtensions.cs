@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Skills;
@@ -59,7 +59,6 @@ using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
 
-using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Extensions
 {
     /// <summary>

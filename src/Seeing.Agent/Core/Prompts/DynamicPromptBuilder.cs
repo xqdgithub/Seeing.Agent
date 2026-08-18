@@ -1,13 +1,11 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Abstractions.Skills;
 using System.Text;
-using Seeing.Agent.Abstractions.Skills;
 using System.Text.Json;
 // 使用别名解决命名冲突
 using PromptAgentInfo = Seeing.Agent.Abstractions.Agents.AgentDefinition;
 
-using Seeing.Agent.Abstractions.Skills;
 namespace Seeing.Agent.Core.Prompts;
 
 /// <summary>

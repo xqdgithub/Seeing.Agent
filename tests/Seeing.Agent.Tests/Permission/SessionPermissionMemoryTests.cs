@@ -1,8 +1,6 @@
-﻿using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Core.Permission;
-using FluentAssertions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Permission;
+using FluentAssertions;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Permission;

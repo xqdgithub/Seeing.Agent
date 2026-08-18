@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Components;
+using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
@@ -8,11 +8,9 @@ using Moq;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Tools;
-using Seeing.Agent.Abstractions.Tools;
 using System.Text.Json;
 using Xunit;
 

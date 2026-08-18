@@ -1,9 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Abstractions.Commands;
 using System.Reflection;
 
-using Seeing.Agent.Abstractions.Commands;
 namespace Seeing.Agent.Commands
 {
     /// <summary>

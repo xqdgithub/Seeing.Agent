@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Agents;
 using System.Collections.Concurrent;
 using System.Text;
@@ -11,7 +11,6 @@ using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Session.Core;
 

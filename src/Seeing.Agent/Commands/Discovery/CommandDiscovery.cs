@@ -1,13 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Commands.Attributes;
 using Seeing.Agent.Abstractions.Commands;
 using System.Reflection;
-using Seeing.Agent.Abstractions.Commands;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
-using Seeing.Agent.Abstractions.Commands;
 namespace Seeing.Agent.Commands.Discovery
 {
     /// <summary>

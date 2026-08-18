@@ -1,10 +1,7 @@
-﻿using Acp.Types;
+using Acp.Types;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Abstractions.Todo;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 
