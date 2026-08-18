@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Mcp.Policy;
 namespace Seeing.Agent.MCP.Policy;
 
 public sealed class McpGlobalPolicy

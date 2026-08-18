@@ -32,7 +32,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
 using Seeing.Agent.MCP;
 using Seeing.Agent.MCP.Configuration;
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
 using Seeing.Agent.Skills.OnlineParsers;

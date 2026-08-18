@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Seeing.Agent.Abstractions.Mcp;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Abstractions.Hooks;

@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Llm;
-namespace Seeing.Agent.Llm;
+﻿namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
 /// 模型用途类型（多标签）。缺省视为 <see cref="Text"/>。

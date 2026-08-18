@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Llm;
-namespace Seeing.Agent.Llm;
+﻿namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
 /// 已注册 Provider 的描述信息。

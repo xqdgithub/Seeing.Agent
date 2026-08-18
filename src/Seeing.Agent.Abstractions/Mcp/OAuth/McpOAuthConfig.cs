@@ -1,4 +1,4 @@
-namespace Seeing.Agent.MCP.OAuth
+﻿namespace Seeing.Agent.Abstractions.Mcp.OAuth
 {
     /// <summary>
     /// MCP OAuth 配置

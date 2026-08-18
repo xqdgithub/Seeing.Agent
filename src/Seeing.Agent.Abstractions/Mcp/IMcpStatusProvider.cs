@@ -1,4 +1,4 @@
-namespace Seeing.Agent.MCP.Core;
+﻿namespace Seeing.Agent.Abstractions.Mcp;
 
 public interface IMcpStatusProvider
 {

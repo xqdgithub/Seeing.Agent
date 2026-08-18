@@ -1,4 +1,4 @@
-namespace Seeing.Agent.MCP.Policy;
+﻿namespace Seeing.Agent.Abstractions.Mcp.Policy;
 
 public enum McpConnectionState
 {

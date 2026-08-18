@@ -3,7 +3,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.MCP;
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Tools;
 using System.Collections.Concurrent;
 

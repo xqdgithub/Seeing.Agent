@@ -1,16 +1,17 @@
-﻿namespace Seeing.Agent.MCP.Management;
+﻿using Seeing.Agent.MCP.Core;
+namespace Seeing.Agent.MCP.Management;
 
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.MCP;
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Policy;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CoreMcpConnectionState = Seeing.Agent.MCP.Core.McpConnectionState;
+using CoreMcpConnectionState = Seeing.Agent.Abstractions.Mcp.McpConnectionState;
 
 internal sealed class McpConnectionCoordinator : IDisposable
 {

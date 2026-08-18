@@ -90,11 +90,11 @@ public sealed class ModelManager : IModelManager
     public IReadOnlyDictionary<string, ModelConfig> GetModelsByProvider(string providerId) =>
         _catalog.GetModelsByProvider(providerId);
 
-    public IReadOnlyList<ModelType> GetEffectiveTypes(ModelConfig config) =>
+    public IReadOnlyList<Seeing.Agent.Abstractions.Llm.ModelType> GetEffectiveTypes(ModelConfig config) =>
         _catalog.GetEffectiveTypes(config);
 
     public IReadOnlyDictionary<string, ModelConfig> GetModelsByType(
-        ModelType type = ModelType.Text,
+        Seeing.Agent.Abstractions.Llm.ModelType type = Seeing.Agent.Abstractions.Llm.ModelType.Text,
         string? providerId = null) =>
         _catalog.GetModelsByType(type, providerId);
 

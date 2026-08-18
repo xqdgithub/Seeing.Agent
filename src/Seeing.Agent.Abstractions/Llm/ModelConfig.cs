@@ -1,7 +1,6 @@
-﻿using Seeing.Agent.Abstractions.Llm;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
-namespace Seeing.Agent.Llm;
+namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
 /// 模型配置（与 ModelScope / Provider.models 条目结构对齐）

@@ -1,6 +1,6 @@
-namespace Seeing.Agent.MCP.Validation;
+﻿namespace Seeing.Agent.MCP.Validation;
 
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 
 public sealed class McpValidationResult
 {

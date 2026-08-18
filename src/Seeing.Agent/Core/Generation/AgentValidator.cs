@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+﻿using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Agents;
 using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Core.Generation

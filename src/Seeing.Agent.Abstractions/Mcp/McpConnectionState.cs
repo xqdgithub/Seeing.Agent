@@ -1,4 +1,4 @@
-namespace Seeing.Agent.MCP.Core;
+﻿namespace Seeing.Agent.Abstractions.Mcp;
 
 /// <summary>
 /// MCP 连接运行时状态（与 <see cref="Seeing.Agent.MCP.McpServerConfig.Disabled"/> 配置标志配合使用）

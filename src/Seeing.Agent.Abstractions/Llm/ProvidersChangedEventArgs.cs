@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Llm;
-namespace Seeing.Agent.Llm;
+﻿namespace Seeing.Agent.Abstractions.Llm;
 
 public sealed class ProvidersChangedEventArgs : EventArgs
 {

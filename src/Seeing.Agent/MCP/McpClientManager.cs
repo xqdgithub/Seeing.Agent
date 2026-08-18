@@ -1,11 +1,12 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Seeing.Agent.MCP.Core;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Helpers;
 using Seeing.Agent.MCP.Configuration;
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
 using Seeing.Agent.MCP.Policy;
@@ -15,7 +16,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
 
-using CoreMcpConnectionState = Seeing.Agent.MCP.Core.McpConnectionState;
+using CoreMcpConnectionState = Seeing.Agent.Abstractions.Mcp.McpConnectionState;
 
 using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.MCP
@@ -91,10 +92,10 @@ namespace Seeing.Agent.MCP
             return _statuses.TryGetValue(name, out var status) ? status.Clone() : null;
         }
 
-        public IReadOnlyList<Core.McpToolInfo> GetTools()
+        public IReadOnlyList<Seeing.Agent.Abstractions.Mcp.McpToolInfo> GetTools()
         {
             return _toolRegistry.GetTools()
-                .Select(t => new Core.McpToolInfo
+                .Select(t => new Seeing.Agent.Abstractions.Mcp.McpToolInfo
                 {
                     Name = t.ToolName,
                     ServerName = t.ServerName,

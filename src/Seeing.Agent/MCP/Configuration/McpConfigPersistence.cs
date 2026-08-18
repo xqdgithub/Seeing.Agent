@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 

@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Llm;
-namespace Seeing.Agent.Llm;
+﻿namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
 /// 提供 LLM 客户端与模型目录的 Provider 抽象。

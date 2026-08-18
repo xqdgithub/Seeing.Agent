@@ -1,7 +1,6 @@
-﻿using Seeing.Agent.Configuration;
-
+﻿
 using Seeing.Agent.Abstractions.Configuration;
-namespace Seeing.Agent.MCP.Core;
+namespace Seeing.Agent.Abstractions.Mcp;
 
 /// <summary>
 /// MCP 配置管理器接口 - 提供服务器配置的管理、验证和持久化能力

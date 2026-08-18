@@ -1,4 +1,4 @@
-namespace Seeing.Agent.MCP.Core;
+﻿namespace Seeing.Agent.Abstractions.Mcp;
 
 public sealed class McpServerStatus
 {
@@ -19,7 +19,7 @@ public sealed class McpServerStatus
     public bool IsAvailable => State == McpConnectionState.Connected && !IsDisabled;
     public bool CanReconnect => !IsDisabled && State is McpConnectionState.Error or McpConnectionState.Reconnecting;
 
-    internal McpServerStatus(
+    public McpServerStatus(
         string name,
         McpConnectionState state,
         McpServerConfig? config,
@@ -60,19 +60,4 @@ public sealed class McpServerStatus
         new List<string>(ToolNames), CreatedAt,
         LastConnectedAt, LastErrorAt, LastError,
         ReconnectAttempts, ActivePolicy);
-
-    internal McpServerStatus WithBuilder(McpServerStatusBuilder builder)
-        => new(
-            builder.Name ?? Name,
-            builder.State ?? State,
-            builder.Config ?? Config,
-            builder.Priority ?? Priority,
-            builder.ToolCount ?? ToolCount,
-            builder.ToolNames ?? ToolNames,
-            builder.CreatedAt ?? CreatedAt,
-            builder.LastConnectedAt ?? LastConnectedAt,
-            builder.LastErrorAt ?? LastErrorAt,
-            builder.LastError ?? LastError,
-            builder.ReconnectAttempts ?? ReconnectAttempts,
-            builder.ActivePolicy ?? ActivePolicy);
 }

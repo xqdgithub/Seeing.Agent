@@ -1,3 +1,5 @@
+﻿using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Mcp.OAuth;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;

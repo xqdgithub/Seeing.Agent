@@ -1,5 +1,5 @@
 ﻿using Seeing.Agent.Configuration;
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 using System.Text.Json;
 
 using Seeing.Agent.Abstractions.Configuration;

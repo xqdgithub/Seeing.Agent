@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Mcp;
 namespace Seeing.Agent.MCP.Core;
 
 public sealed class McpServerStatusBuilder

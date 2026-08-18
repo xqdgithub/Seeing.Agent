@@ -3,7 +3,7 @@ namespace Seeing.Agent.WebUI.Services;
 
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 using System.Collections.Concurrent;
 
 /// <summary>

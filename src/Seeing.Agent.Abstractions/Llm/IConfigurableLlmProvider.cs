@@ -1,9 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Configuration;
-using Seeing.ConfigSchema;
+﻿using Seeing.ConfigSchema;
 
 using Seeing.Agent.Abstractions.Configuration;
-namespace Seeing.Agent.Llm;
+namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
 /// 支持通过配置 Schema 加载/保存连接字段的 LLM Provider。

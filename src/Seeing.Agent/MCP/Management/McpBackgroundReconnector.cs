@@ -1,10 +1,10 @@
-namespace Seeing.Agent.MCP.Management;
+﻿namespace Seeing.Agent.MCP.Management;
 
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.MCP.Core;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.MCP.Policy;
 using System.Collections.Concurrent;
-using CoreMcpConnectionState = Seeing.Agent.MCP.Core.McpConnectionState;
+using CoreMcpConnectionState = Seeing.Agent.Abstractions.Mcp.McpConnectionState;
 
 /// <summary>
 /// MCP 后台重连器 - 定时检查错误状态的 Server 并自动重连

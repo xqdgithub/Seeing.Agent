@@ -1,9 +1,10 @@
+﻿using Seeing.Agent.Abstractions.Mcp;
 using Acp.Types;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.MCP;
-using SeeingMcpConfig = Seeing.Agent.MCP.McpServerConfig;
+using SeeingMcpConfig = Seeing.Agent.Abstractions.Mcp.McpServerConfig;
 using Xunit;
 
 namespace Seeing.Agent.Acp.Tests;

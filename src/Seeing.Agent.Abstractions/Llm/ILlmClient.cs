@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Llm;
-namespace Seeing.Agent.Llm;
+﻿namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
 /// LLM 客户端接口 - 只负责发送请求和接收响应

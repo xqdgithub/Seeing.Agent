@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Seeing.Agent.Abstractions.Mcp;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.MCP.Configuration;
 
