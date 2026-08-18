@@ -64,33 +64,3 @@ public class ProviderConfig
     [JsonPropertyName("headers")]
     public Dictionary<string, string>? Headers { get; set; }
 }
-
-/// <summary>
-/// 预定义的 Provider 配置
-/// </summary>
-public static class PredefinedProviders
-{
-    /// <summary>OpenAI Provider</summary>
-    public static ProviderConfig OpenAI(string? apiKey = null) => new()
-    {
-        Id = "openai",
-        Type = ProviderType.OpenAI,
-        Name = "OpenAI",
-        BaseUrl = "https://api.openai.com/v1",
-        ApiKey = apiKey,
-        DefaultModel = "gpt-4o",
-        Models = PredefinedModels.OpenAI
-    };
-
-    /// <summary>Anthropic Provider</summary>
-    public static ProviderConfig Anthropic(string? apiKey = null) => new()
-    {
-        Id = "anthropic",
-        Type = ProviderType.Anthropic,
-        Name = "Anthropic",
-        BaseUrl = "https://api.anthropic.com/v1",
-        ApiKey = apiKey,
-        DefaultModel = "claude-sonnet-4-20250514",
-        Models = PredefinedModels.Anthropic
-    };
-}

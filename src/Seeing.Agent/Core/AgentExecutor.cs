@@ -130,7 +130,7 @@ public class AgentExecutor : IAgentExecutor
         var history = messages.ToList();
 
         // Ask 全局串行：并行工具不得并发弹出多个 Ask
-        var permissionChannel = context.PermissionChannel ?? Seeing.Agent.Abstractions.Permissions.DefaultPermissionChannel.Instance;
+        var permissionChannel = context.PermissionChannel ?? Seeing.Agent.Core.Permission.DefaultPermissionChannel.Instance;
 
         // SubAgent：合并 Session PermissionSnapshot 作为本 Loop 权限真相源
         context.PermissionContext = PermissionIntegrity.FromAgentContext(

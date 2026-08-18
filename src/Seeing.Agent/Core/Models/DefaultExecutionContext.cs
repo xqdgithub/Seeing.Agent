@@ -2,7 +2,8 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Extensions;using DefaultPermissionChannelAlias = Seeing.Agent.Abstractions.Permissions.DefaultPermissionChannel;
+using Seeing.Agent.Abstractions.Extensions;
+using DefaultPermissionChannelAlias = Seeing.Agent.Core.Permission.DefaultPermissionChannel;
 
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Components;

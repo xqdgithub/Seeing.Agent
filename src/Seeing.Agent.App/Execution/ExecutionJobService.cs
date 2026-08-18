@@ -3,6 +3,7 @@ using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Core.Permission;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
