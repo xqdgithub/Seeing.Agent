@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
+﻿using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Gateway.Models;
 
