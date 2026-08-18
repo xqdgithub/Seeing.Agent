@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Commands;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -29,7 +30,7 @@ namespace Seeing.Agent.Acp.Extensions;
 public static class AcpServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册 Seeing.Agent.Acp 全部服务，并将 <see cref="IAgentExecutionRouter"/> 装饰为 ACP 路由。
+    /// 注册 Seeing.Agent.Acp 全部服务，并将 <see cref="IAgentExecutor"/> 装饰为 ACP 执行器。
     /// 需在 <c>AddSeeingAgent</c> 之后调用。
     /// </summary>
     public static IServiceCollection AddSeeingAcp(this IServiceCollection services)
@@ -89,12 +90,12 @@ public static class AcpServiceCollectionExtensions
 
     private static void ReplaceExecutionRouter(IServiceCollection services)
     {
-        var existing = services.LastOrDefault(d => d.ServiceType == typeof(IAgentExecutionRouter));
+        var existing = services.LastOrDefault(d => d.ServiceType == typeof(IAgentExecutor));
         if (existing != null)
             services.Remove(existing);
 
-        services.AddSingleton<NativeAgentExecutionRouter>();
-        services.AddSingleton<AcpAgentExecutionRouter>();
-        services.AddSingleton<IAgentExecutionRouter>(sp => sp.GetRequiredService<AcpAgentExecutionRouter>());
+        services.AddSingleton<NativeAgentExecutor>();
+        services.AddSingleton<AcpAgentExecutor>();
+        services.AddSingleton<IAgentExecutor>(sp => sp.GetRequiredService<AcpAgentExecutor>());
     }
 }

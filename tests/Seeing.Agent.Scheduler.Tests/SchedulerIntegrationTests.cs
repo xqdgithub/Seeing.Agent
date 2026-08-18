@@ -410,9 +410,9 @@ public class SchedulerIntegrationTests
     {
         var router = new Mock<IAgentExecutor>();
         router.Setup(r => r.ExecuteAsync(It.IsAny<AgentDefinition>(), It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext ctx, CancellationToken _) =>
+            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> messages, AgentContext ctx, CancellationToken _) =>
             {
-                var prompt = ctx.History.LastOrDefault()?.Content;
+                var prompt = messages.LastOrDefault()?.Content;
                 if (prompt != null)
                     executedPrompts.Add(prompt);
 

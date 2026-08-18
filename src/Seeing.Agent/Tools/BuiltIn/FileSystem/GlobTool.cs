@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Abstractions;
@@ -39,7 +39,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             "返回匹配的文件路径列表，按修改时间排序（最近的在前）。\n" +
             "默认限制返回 100 个结果，可通过更具体的模式或路径来获取更多结果。";
 
-        public ToolCategory Category => ToolCategory.FileSystem;
+        public override ToolCategory Category => ToolCategory.FileSystem;
 
         public override JsonElement ParametersSchema => BuildParametersSchema();
 

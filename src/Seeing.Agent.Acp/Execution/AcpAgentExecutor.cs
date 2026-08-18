@@ -4,22 +4,21 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Acp.Execution;
 
 /// <summary>
-/// 装饰 <see cref="IAgentExecutionRouter"/>，按 Agent Runtime 分发执行。
+/// ACP 执行器 - 装饰 <see cref="IAgentExecutor"/>，按 Agent Runtime 分发执行。
 /// </summary>
-public sealed class AcpAgentExecutionRouter : IAgentExecutionRouter
+public sealed class AcpAgentExecutor : IAgentExecutor
 {
-    private readonly IAgentExecutionRouter _inner;
+    private readonly IAgentExecutor _inner;
     private readonly AcpPassthroughExecutor _passthroughExecutor;
     private readonly IOptions<SeeingAgentOptions> _options;
 
-    public AcpAgentExecutionRouter(
-        NativeAgentExecutionRouter inner,
+    public AcpAgentExecutor(
+        NativeAgentExecutor inner,
         AcpPassthroughExecutor passthroughExecutor,
         IOptions<SeeingAgentOptions> options)
     {
@@ -30,6 +29,7 @@ public sealed class AcpAgentExecutionRouter : IAgentExecutionRouter
 
     public async IAsyncEnumerable<IMessageEvent> ExecuteAsync(
         AgentDefinition agent,
+        IReadOnlyList<ChatMessage> messages,
         AgentContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -46,7 +46,7 @@ public sealed class AcpAgentExecutionRouter : IAgentExecutionRouter
                 yield break;
             }
 
-            await foreach (var evt in _passthroughExecutor.ExecuteAsync(agent, context, cancellationToken)
+            await foreach (var evt in _passthroughExecutor.ExecuteAsync(agent, messages, context, cancellationToken)
                                .ConfigureAwait(false))
             {
                 yield return evt;
@@ -55,7 +55,7 @@ public sealed class AcpAgentExecutionRouter : IAgentExecutionRouter
             yield break;
         }
 
-        await foreach (var evt in _inner.ExecuteAsync(agent, context, cancellationToken).ConfigureAwait(false))
+        await foreach (var evt in _inner.ExecuteAsync(agent, messages, context, cancellationToken).ConfigureAwait(false))
             yield return evt;
     }
 }

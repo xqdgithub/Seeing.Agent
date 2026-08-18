@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
@@ -33,7 +33,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             "如果文件已存在，会覆盖原有内容。\n" +
             "如果文件不存在，会创建新文件（包括必要的目录）。";
 
-        public ToolCategory Category => ToolCategory.FileSystem;
+        public override ToolCategory Category => ToolCategory.FileSystem;
 
         public override JsonElement ParametersSchema => BuildParametersSchema();
 

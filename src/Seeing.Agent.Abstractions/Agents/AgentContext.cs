@@ -1,4 +1,3 @@
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 
 namespace Seeing.Agent.Abstractions.Agents;
@@ -33,11 +32,6 @@ public class AgentContext
 
     /// <summary>权限上下文</summary>
     public PermissionContext? PermissionContext { get; set; }
-
-    /// <summary>
-    /// 消息历史
-    /// </summary>
-    public List<ChatMessage> History { get; set; } = new();
 
     /// <summary>
     /// 工作目录

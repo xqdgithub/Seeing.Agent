@@ -82,7 +82,7 @@ Seeing.Agent/
 | 配置深度合并 | `src/Seeing.Agent/Core/Configuration/MergeDeep.cs` | 递归合并算法 |
 | 工具装饰器链 | `src/Seeing.Agent/Decorators/ToolDecoratorRegistry.cs` | 超时→重试→缓存（由 ToolManager 在 RegisterTool() 时通过 `IToolDecoratorRegistry.Apply()` 生效） |
 | 内置 Agent | `src/Seeing.Agent/Core/BuiltInAgents/BuiltInAgents.cs` | build/plan/explore/general/title/summary |
-| ACP 集成 | `src/Seeing.Agent.Acp/` | Passthrough 透传 + acp 工具委派，`IAgentExecutionRouter` 路由 |
+| ACP 集成 | `src/Seeing.Agent.Acp/` | Passthrough 透传 + acp 工具委派，`IAgentExecutor` 执行器 |
 
 ## CONVENTIONS（仅非标准）
 

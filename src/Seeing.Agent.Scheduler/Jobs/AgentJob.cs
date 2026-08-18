@@ -11,7 +11,6 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Llm;
@@ -26,7 +25,7 @@ namespace Seeing.Agent.Scheduler.Jobs;
 [DisallowConcurrentExecution]
 public class AgentJob : IJob
 {
-    private readonly IAgentExecutionRouter _executionRouter;
+    private readonly IAgentExecutor _executionRouter;
     private readonly IAgentRegistry _agentRegistry;
     private readonly AgentSelectionResolver _selectionResolver;
     private readonly IWorkspaceProvider _workspace;
@@ -37,7 +36,7 @@ public class AgentJob : IJob
     private readonly ILogger<AgentJob> _logger;
 
     public AgentJob(
-        IAgentExecutionRouter executionRouter,
+        IAgentExecutor executionRouter,
         IAgentRegistry agentRegistry,
         AgentSelectionResolver selectionResolver,
         IWorkspaceProvider workspace,
@@ -304,6 +303,18 @@ public class AgentJob : IJob
         if (!string.IsNullOrEmpty(mode))
             metadata[AgentContextKeys.AcpModeId] = mode;
 
+        var messages = new List<ChatMessage>
+        {
+            new()
+            {
+                Role = ChatRole.User,
+                Content = SystemReminderRenderer.Wrap(
+                    prompt,
+                    SystemReminder.Sources.Job,
+                    SystemReminder.Kinds.Cron)
+            }
+        };
+
         var context = new AgentContext
         {
             SessionId = sessionId,
@@ -312,17 +323,6 @@ public class AgentJob : IJob
             WorkingDirectory = workspaceRoot,
             WorkspaceRoot = workspaceRoot,
             IsBackground = true,
-            History = new List<ChatMessage>
-            {
-                new()
-                {
-                    Role = ChatRole.User,
-                    Content = SystemReminderRenderer.Wrap(
-                        prompt,
-                        SystemReminder.Sources.Job,
-                        SystemReminder.Kinds.Cron)
-                }
-            },
             Metadata = metadata
         };
 
@@ -330,7 +330,7 @@ public class AgentJob : IJob
         var hasError = false;
         string? errorMessage = null;
 
-        await foreach (var evt in _executionRouter.ExecuteAsync(agentDefinition, context, ct))
+        await foreach (var evt in _executionRouter.ExecuteAsync(agentDefinition, messages, context, ct))
         {
             switch (evt)
             {

@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Models;
@@ -22,7 +22,7 @@ namespace Seeing.Agent.Tools.BuiltIn
         /// <summary>
         /// 工具标签
         /// </summary>
-        public virtual IReadOnlyList<string> Tags => new[] { "built-in" };
+        public override IReadOnlyList<string> Tags => new[] { "built-in" };
 
         /// <summary>
         /// 解析文件路径（支持相对路径转绝对路径）

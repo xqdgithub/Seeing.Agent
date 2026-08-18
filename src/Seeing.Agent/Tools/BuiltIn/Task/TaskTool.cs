@@ -360,71 +360,39 @@ public class TaskTool : ToolBase
             agentContext.Metadata[AgentContextKeys.RequestModelId] = session.SelectedModel;
         }
 
-        agentContext.History.Add(new ChatMessage { Role = ChatRole.User, Content = prompt });
+        var messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = prompt } };
 
         _loopScheduler.SetLoopBusy(sessionId, true);
         try
         {
-            var executor = parentContext.Services?.GetService(typeof(AgentExecutor)) as AgentExecutor;
-            if (executor != null)
-            {
-                var def = agent;
-                var outputBuilder = new StringBuilder();
-                await foreach (var evt in executor.ExecuteAsync(def, agentContext, ct))
-                {
-                    foreach (var projected in _projector.Project(evt, projCtx))
-                        await EmitParentAsync(parentContext, projected);
-
-                    // 子会话无 EventStreamHandler：在此投影并落盘助手/工具消息
-                    var childSession = _sessionManager.Get(sessionId);
-                    if (SessionStreamEventApplier.Apply(childSession, evt))
-                        await _sessionManager.SaveAsync(sessionId);
-
-                    if (evt is StreamCompleteEvent complete &&
-                        complete.Message.Role == ChatRole.Assistant &&
-                        !string.IsNullOrEmpty(complete.Message.Content))
-                    {
-                        outputBuilder.Clear();
-                        outputBuilder.Append(complete.Message.Content);
-                    }
-
-                    if (evt is ErrorEvent error)
-                        throw new InvalidOperationException(error.Message);
-                }
-
-                var text = outputBuilder.ToString().Trim();
-                return string.IsNullOrEmpty(text) ? "子任务执行完成，无输出内容。" : text;
-            }
-
-            var fallbackExecutor = parentContext.Services?.GetService(typeof(IAgentExecutor)) as IAgentExecutor
+            var executor = parentContext.Services?.GetService(typeof(IAgentExecutor)) as IAgentExecutor
                 ?? throw new InvalidOperationException("无法解析 Agent 执行器（IAgentExecutor）");
-            var fallback = new StringBuilder();
-            var fallbackMessages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = prompt } };
-            await foreach (var evt in fallbackExecutor.ExecuteAsync(agent, fallbackMessages, agentContext, ct))
+            var def = agent;
+            var outputBuilder = new StringBuilder();
+            await foreach (var evt in executor.ExecuteAsync(def, messages, agentContext, ct))
             {
-                if (evt is not StreamCompleteEvent complete)
-                    continue;
+                foreach (var projected in _projector.Project(evt, projCtx))
+                    await EmitParentAsync(parentContext, projected);
 
-                var message = complete.Message;
-                if (message.Role == ChatRole.Assistant && !string.IsNullOrEmpty(message.Content))
+                // 子会话无 EventStreamHandler：在此投影并落盘助手/工具消息
+                var childSession = _sessionManager.Get(sessionId);
+                if (SessionStreamEventApplier.Apply(childSession, evt))
+                    await _sessionManager.SaveAsync(sessionId);
+
+                if (evt is StreamCompleteEvent complete &&
+                    complete.Message.Role == ChatRole.Assistant &&
+                    !string.IsNullOrEmpty(complete.Message.Content))
                 {
-                    fallback.Clear();
-                    fallback.Append(message.Content);
-
-                    var childSession = _sessionManager.Get(sessionId);
-                    if (childSession != null)
-                    {
-                        var assistant = SessionMessage.AssistantMessage(message.Content);
-                        if (!string.IsNullOrEmpty(message.ReasoningContent))
-                            assistant.ReasoningContent = message.ReasoningContent;
-                        childSession.AddMessage(assistant);
-                        await _sessionManager.SaveAsync(sessionId);
-                    }
+                    outputBuilder.Clear();
+                    outputBuilder.Append(complete.Message.Content);
                 }
+
+                if (evt is ErrorEvent error)
+                    throw new InvalidOperationException(error.Message);
             }
 
-            var fallbackText = fallback.ToString().Trim();
-            return string.IsNullOrEmpty(fallbackText) ? "子任务执行完成，无输出内容。" : fallbackText;
+            var text = outputBuilder.ToString().Trim();
+            return string.IsNullOrEmpty(text) ? "子任务执行完成，无输出内容。" : text;
         }
         finally
         {

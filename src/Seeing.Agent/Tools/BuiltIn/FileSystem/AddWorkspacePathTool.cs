@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
@@ -41,7 +41,7 @@ public class AddWorkspacePathTool : BuiltInToolBase
 
     public override string Description => "请求将指定目录加入当前会话的工作区白名单，获批准后该目录下所有文件操作自动免询问";
 
-    public ToolCategory Category => ToolCategory.FileSystem;
+    public override ToolCategory Category => ToolCategory.FileSystem;
 
     public override JsonElement ParametersSchema => s_schema;
 

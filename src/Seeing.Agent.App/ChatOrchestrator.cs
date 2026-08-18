@@ -11,7 +11,6 @@ using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
@@ -32,7 +31,7 @@ public class ChatOrchestrator : IChatOrchestrator
     private readonly ISessionManager _sessionManager;
     private readonly IAgentRegistry _agentRegistry;
     private readonly IWorkspaceProvider _workspaceProvider;
-    private readonly IAgentExecutionRouter _executionRouter;
+    private readonly IAgentExecutor _executionRouter;
     private readonly ICommandRegistry _commandRegistry;
     private readonly IPermissionChannel _permissionChannel;
     private readonly AgentSelectionResolver _agentSelectionResolver;
@@ -46,7 +45,7 @@ public class ChatOrchestrator : IChatOrchestrator
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
         IWorkspaceProvider workspaceProvider,
-        IAgentExecutionRouter executionRouter,
+        IAgentExecutor executionRouter,
         ICommandRegistry commandRegistry,
         IPermissionChannel permissionChannel,
         AgentSelectionResolver agentSelectionResolver,

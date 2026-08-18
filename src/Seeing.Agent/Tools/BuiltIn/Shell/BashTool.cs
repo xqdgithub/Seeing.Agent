@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
@@ -80,7 +80,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
         });
 
         /// <summary>工具分类</summary>
-        public ToolCategory Category => ToolCategory.ExternalService;
+        public override ToolCategory Category => ToolCategory.ExternalService;
 
         public BashTool(
             ILogger<BashTool> logger,

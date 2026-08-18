@@ -11,7 +11,6 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Llm;
@@ -27,7 +26,7 @@ namespace Seeing.Agent.Scheduler.Jobs;
 [DisallowConcurrentExecution]
 public class HeartbeatJob : IJob
 {
-    private readonly IAgentExecutionRouter _executionRouter;
+    private readonly IAgentExecutor _executionRouter;
     private readonly IAgentRegistry _agentRegistry;
     private readonly AgentSelectionResolver _selectionResolver;
     private readonly IWorkspaceProvider _workspace;
@@ -39,7 +38,7 @@ public class HeartbeatJob : IJob
     private readonly ILogger<HeartbeatJob> _logger;
 
     public HeartbeatJob(
-        IAgentExecutionRouter executionRouter,
+        IAgentExecutor executionRouter,
         IAgentRegistry agentRegistry,
         AgentSelectionResolver selectionResolver,
         IWorkspaceProvider workspace,
@@ -284,6 +283,18 @@ public class HeartbeatJob : IJob
 
         var workspaceRoot = _workspace.WorkspaceRoot;
 
+        var messages = new List<ChatMessage>
+        {
+            new()
+            {
+                Role = ChatRole.User,
+                Content = SystemReminderRenderer.Wrap(
+                    prompt,
+                    SystemReminder.Sources.Job,
+                    SystemReminder.Kinds.Heartbeat)
+            }
+        };
+
         var context = new AgentContext
         {
             SessionId = sessionId,
@@ -292,17 +303,6 @@ public class HeartbeatJob : IJob
             WorkingDirectory = workspaceRoot,
             WorkspaceRoot = workspaceRoot,
             IsBackground = true,
-            History = new List<ChatMessage>
-            {
-                new()
-                {
-                    Role = ChatRole.User,
-                    Content = SystemReminderRenderer.Wrap(
-                        prompt,
-                        SystemReminder.Sources.Job,
-                        SystemReminder.Kinds.Heartbeat)
-                }
-            },
             Metadata = new Dictionary<string, object>
             {
                 ["source"] = ScheduleSources.Heartbeat
@@ -313,7 +313,7 @@ public class HeartbeatJob : IJob
         var hasError = false;
         string? errorMessage = null;
 
-        await foreach (var evt in _executionRouter.ExecuteAsync(agentDefinition, context, ct))
+        await foreach (var evt in _executionRouter.ExecuteAsync(agentDefinition, messages, context, ct))
         {
             switch (evt)
             {

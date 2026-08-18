@@ -40,6 +40,7 @@ public sealed class AcpPassthroughExecutor
 
     public async IAsyncEnumerable<IMessageEvent> ExecuteAsync(
         AgentDefinition agent,
+        IReadOnlyList<ChatMessage> messages,
         AgentContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -70,7 +71,7 @@ public sealed class AcpPassthroughExecutor
         {
             SessionId = context.SessionId,
             LoopId = loopId,
-            UserInput = context.History.LastOrDefault()?.Content
+            UserInput = messages.LastOrDefault()?.Content
         };
 
         yield return new StreamStartEvent
@@ -81,7 +82,7 @@ public sealed class AcpPassthroughExecutor
         };
 
         var sink = new EventYieldingSink(_eventMapper, context.SessionId, _logger, loopId);
-        var prompt = _contentMapper.MapUserDelta(context);
+        var prompt = _contentMapper.MapUserDelta(context, messages);
         var workingDirectory = string.IsNullOrWhiteSpace(context.WorkingDirectory)
             ? Environment.CurrentDirectory
             : context.WorkingDirectory;

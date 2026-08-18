@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Abstractions;
@@ -34,7 +34,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             "支持在指定目录中递归搜索，可通过 include 参数过滤文件类型。\n" +
             "返回匹配的文件路径、行号和行内容。";
 
-        public ToolCategory Category => ToolCategory.FileSystem;
+        public override ToolCategory Category => ToolCategory.FileSystem;
 
         public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
         {

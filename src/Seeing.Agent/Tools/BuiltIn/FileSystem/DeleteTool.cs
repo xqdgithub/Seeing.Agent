@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
@@ -22,7 +22,7 @@ public class DeleteTool : BuiltInToolBase
         "删除文件或目录。\n\n" +
         "删除指定路径的文件，或递归删除整个目录（含所有子项）。";
 
-    public ToolCategory Category => ToolCategory.FileSystem;
+    public override ToolCategory Category => ToolCategory.FileSystem;
 
     public override JsonElement ParametersSchema => BuildParametersSchema();
 

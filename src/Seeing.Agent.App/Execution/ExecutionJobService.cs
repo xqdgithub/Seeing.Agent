@@ -319,7 +319,7 @@ public class ExecutionJobService : IDisposable
         using var scope = _serviceProvider.CreateScope();
         var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
         var agentRegistry = scope.ServiceProvider.GetRequiredService<IAgentRegistry>();
-        var executionRouter = scope.ServiceProvider.GetRequiredService<IAgentExecutionRouter>();
+        var executionRouter = scope.ServiceProvider.GetRequiredService<IAgentExecutor>();
         var agentSelectionResolver = scope.ServiceProvider.GetRequiredService<AgentSelectionResolver>();
         var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
         var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
@@ -380,14 +380,17 @@ public class ExecutionJobService : IDisposable
             }
 
             // Build history
-            context.History = BuildHistoryFromSession(session);
+            var messages = BuildHistoryFromSession(session);
 
             // 服务端负责将事件投影到 Session 并落盘；UI 只订阅展示
             var eventTracker = new ChatEventTracker();
 
             // Execute agent
             await foreach (var evt in executionRouter.ExecuteAsync(
-                context.Agent, BuildAgentContext(context, queue.CurrentCancellationToken), queue.CurrentCancellationToken))
+                context.Agent,
+                messages,
+                BuildAgentContext(context, queue.CurrentCancellationToken),
+                queue.CurrentCancellationToken))
             {
                 // Check for cancellation
                 if (queue.CurrentCancellationToken.IsCancellationRequested)
@@ -801,7 +804,6 @@ public class ExecutionJobService : IDisposable
         var agentContext = new AgentContext
         {
             SessionId = context.SessionId,
-            History = context.History,
             WorkingDirectory = context.WorkingDirectory ?? context.WorkspaceRoot ?? "",
             WorkspaceRoot = context.WorkspaceRoot ?? "",
             PermissionChannel = context.PermissionChannel,

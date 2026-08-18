@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
@@ -32,7 +32,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             "必须先使用 Read 工具读取文件，确保了解要编辑的内容。\n" +
             "oldString 和 newString 必须完全匹配，包括空白和缩进。";
 
-        public ToolCategory Category => ToolCategory.FileSystem;
+        public override ToolCategory Category => ToolCategory.FileSystem;
 
         public override JsonElement ParametersSchema => BuildParametersSchema();
 

@@ -30,7 +30,7 @@ namespace Seeing.Agent.Core;
 /// 返回事件流（IMessageEvent），由调用方决定如何渲染和存储。
 /// </para>
 /// </summary>
-public class AgentExecutor
+public class AgentExecutor : IAgentExecutor
 {
     private readonly ILlmService _llm;
     private readonly ToolManager _tools;
@@ -77,11 +77,13 @@ public class AgentExecutor
     /// 执行 Agent - 核心 LLM 循环
     /// </summary>
     /// <param name="agent">Agent 定义</param>
+    /// <param name="messages">输入消息流</param>
     /// <param name="context">执行上下文</param>
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>事件流（流式增量、完整消息、工具调用、错误等）</returns>
     public async IAsyncEnumerable<IMessageEvent> ExecuteAsync(
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
+        IReadOnlyList<ChatMessage> messages,
         AgentContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -118,11 +120,11 @@ public class AgentExecutor
         {
             SessionId = context.SessionId,
             LoopId = loopId,
-            UserInput = context.History.LastOrDefault()?.Content
+            UserInput = messages.LastOrDefault()?.Content
         };
 
         var maxSteps = agent.MaxSteps ?? 32;
-        var messages = context.History.ToList();
+        var history = messages.ToList();
 
         // Ask 全局串行：并行工具不得并发弹出多个 Ask
         var permissionChannel = context.PermissionChannel ?? Seeing.Agent.Abstractions.Permissions.DefaultPermissionChannel.Instance;
@@ -146,7 +148,7 @@ public class AgentExecutor
                         SystemReminder.Kinds.TodoPaused,
                         todoList.FormatBrief());
                     if (reminder != null)
-                        messages.Add(reminder);
+                        history.Add(reminder);
                 }
             }
 
@@ -169,13 +171,13 @@ public class AgentExecutor
                         SystemReminder.Kinds.TodoEmpty,
                         "请评估当前任务是否需要使用 TodoWrite 规划。");
                     if (reminder != null)
-                        messages.Add(reminder);
+                        history.Add(reminder);
                     _todoEmptyReminded = true;
                 }
             }
 
             // 构建请求（异步注入动态上下文）
-            var request = await BuildRequestAsync(agent, messages, context).ConfigureAwait(false);
+            var request = await BuildRequestAsync(agent, history, context).ConfigureAwait(false);
 
             // 调用 LLM（流式）
             ChatMessage? assistantMessage = null;
@@ -388,7 +390,7 @@ public class AgentExecutor
                 yield break;
             }
 
-            messages.Add(assistantMessage);
+            history.Add(assistantMessage);
 
             // ========== 发布 StreamComplete 事件 ==========
             yield return new StreamCompleteEvent
@@ -414,7 +416,7 @@ public class AgentExecutor
                                 SystemReminder.Kinds.TodoIncomplete,
                                 todoList.FormatBrief());
                             if (reminder != null)
-                                messages.Add(reminder);
+                                history.Add(reminder);
                             _incompleteReminded = true;
                             continue; // 不退出，再给一轮
                         }
@@ -454,7 +456,7 @@ public class AgentExecutor
                 if (toolEvent is ToolCallEvent { Status: ToolCallStatus.Success or ToolCallStatus.Failed } tcEvent
                     && tcEvent.Output != null)
                 {
-                    messages.Add(new ChatMessage
+                    history.Add(new ChatMessage
                     {
                         Role = ChatRole.Tool,
                         ToolCallId = tcEvent.ToolCallId,

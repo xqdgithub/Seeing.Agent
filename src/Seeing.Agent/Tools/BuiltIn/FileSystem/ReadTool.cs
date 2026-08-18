@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
@@ -32,7 +32,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             "使用 offset 和 limit 参数分页读取大文件。\n" +
             "自动检测二进制文件、图片、PDF 文件并返回附件而非文本内容。";
 
-        public ToolCategory Category => ToolCategory.FileSystem;
+        public override ToolCategory Category => ToolCategory.FileSystem;
 
         public override JsonElement ParametersSchema => BuildParametersSchema();
 

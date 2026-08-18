@@ -73,7 +73,7 @@ Seeing.Agent.WebUI (Blazor)   ← the main sample application
 1. `ChatOrchestrator.SubmitAsync(sessionId, chatInput)` → delegates to `ExecutionJobService`
 2. `ExecutionJobService` (singleton) manages concurrent executions with `ChatExecutionQueue` serializing per-session
 3. `AgentLoopSchedulerHostedService` handles idle-resume and session idle timeout detection
-4. `IAgentExecutionRouter` dispatches to Native or ACP execution engine based on `AgentRuntime`
+4. `IAgentExecutor` dispatches to Native or ACP execution engine based on `AgentRuntime`
 5. Events stream to subscribers via `IExecutionEventPublisher` → `SessionEventBus` → UI (SignalR/SSE)
 
 ### Configuration System

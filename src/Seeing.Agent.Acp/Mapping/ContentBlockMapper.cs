@@ -16,9 +16,9 @@ public sealed class ContentBlockMapper
     /// <summary>
     /// Passthrough：仅映射本轮用户 delta（最后一条 user 消息）。
     /// </summary>
-    public IEnumerable<ContentBlock> MapUserDelta(AgentContext context)
+    public IEnumerable<ContentBlock> MapUserDelta(AgentContext context, IReadOnlyList<ChatMessage> messages)
     {
-        var lastUser = context.History.LastOrDefault(m => m.Role == "user");
+        var lastUser = messages.LastOrDefault(m => m.Role == "user");
         if (lastUser == null)
             return new ContentBlock[] { new TextContentBlock("Hello") };
 
