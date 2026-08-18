@@ -1,8 +1,9 @@
-// src/Seeing.Agent/Tools/BuiltIn/DefaultToolPermissionPolicy.cs
+﻿// src/Seeing.Agent/Tools/BuiltIn/DefaultToolPermissionPolicy.cs
 
 using System.Text.Json;
 using Seeing.Agent.Core.Interfaces;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Tools.BuiltIn;
 
 /// <summary>

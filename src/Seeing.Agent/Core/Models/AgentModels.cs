@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Core.Permission;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Models
 {
     /// <summary>
@@ -28,7 +29,7 @@ namespace Seeing.Agent.Core.Models
         /// <summary>
         /// 权限请求通道（多入口抽象）
         /// </summary>
-        public Interfaces.IPermissionChannel? PermissionChannel { get; set; }
+        public Seeing.Agent.Abstractions.Permissions.IPermissionChannel? PermissionChannel { get; set; }
 
         /// <summary>权限上下文</summary>
         public PermissionContext? PermissionContext { get; set; }
@@ -88,12 +89,12 @@ namespace Seeing.Agent.Core.Models
             if (PermissionContext != null)
             {
                 // 使用父上下文创建子上下文，建立权限继承链
-                subPermContext = PermissionContext.CreateSubAgentContext(targetAgent.Name, subPolicy);
+                subPermContext = PermissionIntegrity.CreateSubAgentContext(PermissionContext, targetAgent.Name, subPolicy, PermissionIntegrity.GenerateHmacKey());
             }
             else
             {
                 // 无父上下文时，从当前上下文创建
-                subPermContext = PermissionContext.FromAgentContext(this, subPolicy, targetAgent.Name);
+                subPermContext = PermissionIntegrity.FromAgentContext(this, subPolicy, targetAgent.Name);
             }
 
             return new AgentContext

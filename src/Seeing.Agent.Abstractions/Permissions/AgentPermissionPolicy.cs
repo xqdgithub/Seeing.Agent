@@ -1,7 +1,7 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace Seeing.Agent.Core.Permission;
+namespace Seeing.Agent.Abstractions.Permissions;
 
 /// <summary>
 /// Agent 权限策略 - 完整的策略定义
@@ -62,7 +62,8 @@ public sealed class AgentPermissionPolicy
     private static string ComputeHash(IReadOnlyList<PermissionRuleEntry> rules)
     {
         var json = JsonSerializer.Serialize(rules);
-        return Helpers.HashHelper.ComputeSha256Hex(json);
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json));
+        return Convert.ToHexStringLower(bytes);
     }
 
     /// <summary>

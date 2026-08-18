@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Permission;
+﻿namespace Seeing.Agent.Abstractions.Permissions;
 
 /// <summary>
 /// 资源标识符 - 统一的资源命名格式

@@ -1,7 +1,8 @@
-using Seeing.Agent.Core.Interfaces;
+﻿using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.BuiltInAgents
 {
     /// <summary>

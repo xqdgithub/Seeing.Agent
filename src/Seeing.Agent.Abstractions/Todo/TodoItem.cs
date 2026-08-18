@@ -1,6 +1,6 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
-namespace Seeing.Agent.Core.Todo;
+namespace Seeing.Agent.Abstractions.Todo;
 
 /// <summary>
 /// Todo 项状态

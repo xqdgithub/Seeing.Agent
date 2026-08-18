@@ -10,13 +10,15 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Reminders;
-using Seeing.Agent.Core.Todo;
+using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn.Todo;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core;
 
 /// <summary>
@@ -120,10 +122,10 @@ public class AgentExecutor
         var messages = context.History.ToList();
 
         // Ask 全局串行：并行工具不得并发弹出多个 Ask
-        var permissionChannel = context.PermissionChannel ?? Interfaces.DefaultPermissionChannel.Instance;
+        var permissionChannel = context.PermissionChannel ?? Seeing.Agent.Abstractions.Permissions.DefaultPermissionChannel.Instance;
 
         // SubAgent：合并 Session PermissionSnapshot 作为本 Loop 权限真相源
-        context.PermissionContext = PermissionContext.FromAgentContext(
+        context.PermissionContext = PermissionIntegrity.FromAgentContext(
             context, ResolvePolicy(agent, context), agent.Name);
 
         for (var step = 0; step < maxSteps; step++)
@@ -698,7 +700,7 @@ public class AgentExecutor
         IPermissionChannel permissionChannel)
     {
         var policy = ResolvePolicy(agent, context);
-        var permContext = PermissionContext.FromAgentContext(context, policy, agent.Name);
+        var permContext = PermissionIntegrity.FromAgentContext(context, policy, agent.Name);
 
         var result = await _permissions.EvaluateToolAsync(toolName, null, permContext).ConfigureAwait(false);
 
@@ -827,8 +829,8 @@ public class AgentExecutor
             return new TodoList { SessionId = sessionId, Items = new() };
 
         var session = sessionManager.Get(sessionId);
-        var storedItems = session?.GetContext<List<Core.Todo.TodoItem>>(TodoWriteTool.TodoContextKey)
-            ?? new List<Core.Todo.TodoItem>();
+        var storedItems = session?.GetContext<List<Seeing.Agent.Abstractions.Todo.TodoItem>>(TodoWriteTool.TodoContextKey)
+            ?? new List<Seeing.Agent.Abstractions.Todo.TodoItem>();
         return new TodoList { SessionId = sessionId, Items = storedItems };
     }
 

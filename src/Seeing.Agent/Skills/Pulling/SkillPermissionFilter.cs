@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Permission;
 using System.Text.RegularExpressions;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Skills
 {
     /// <summary>

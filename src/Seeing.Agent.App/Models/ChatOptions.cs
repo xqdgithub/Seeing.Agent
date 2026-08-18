@@ -1,4 +1,4 @@
-namespace Seeing.Agent.App.Models;
+﻿namespace Seeing.Agent.App.Models;
 
 /// <summary>
 /// 聊天选项 - 可选的执行配置
@@ -40,5 +40,5 @@ public record ChatOptions
     /// - Gateway/后台调用时不传递，使用 DenyAllPermissionChannel 或 AutoApproveInstance
     /// </para>
     /// </summary>
-    public Core.Interfaces.IPermissionChannel? PermissionChannel { get; init; }
+    public Seeing.Agent.Abstractions.Permissions.IPermissionChannel? PermissionChannel { get; init; }
 }

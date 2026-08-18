@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Permission;
+﻿namespace Seeing.Agent.Abstractions.Permissions;
 
 /// <summary>
 /// 权限服务接口 - 统一的权限评估入口

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -9,6 +9,8 @@ using Seeing.Session.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Configuration
 {
     /// <summary>

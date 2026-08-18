@@ -1,7 +1,8 @@
-using Seeing.Agent.Configuration;
+﻿using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Tools.BuiltIn.FileSystem;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>

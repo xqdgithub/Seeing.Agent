@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Configuration;
 
 /// <summary>

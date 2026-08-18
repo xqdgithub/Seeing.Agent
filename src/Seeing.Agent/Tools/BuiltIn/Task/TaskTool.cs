@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -9,6 +9,7 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Core.Session;

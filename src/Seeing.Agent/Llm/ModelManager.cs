@@ -1,8 +1,9 @@
-using Seeing.Agent.Core.Interfaces;
+﻿using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Configuration;
 using Seeing.Session.Core;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Llm;
 
 /// <summary>

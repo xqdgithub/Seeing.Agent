@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Permission;
+﻿namespace Seeing.Agent.Abstractions.Permissions;
 
 /// <summary>
 /// 权限通道统一返回结果
@@ -13,9 +13,6 @@ public class PermissionChannelResult
 
     /// <summary>拒绝原因</summary>
     public string? Reason { get; init; }
-
-    /// <summary>匹配的记忆条目（内部使用）</summary>
-    internal PermissionMemoryEntry? MatchedMemory { get; init; }
 
     public static PermissionChannelResult Allowed(string? resourceToRemember = null)
         => new() { Action = PermissionChannelAction.Allow, ResourceToRemember = resourceToRemember };

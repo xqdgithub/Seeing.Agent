@@ -1,9 +1,10 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.MCP.Core;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.MCP.Configuration;
 
 /// <summary>

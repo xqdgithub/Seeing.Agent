@@ -1,7 +1,8 @@
-// src/Seeing.Agent/Core/Interfaces/IToolPermissionPolicy.cs
+﻿// src/Seeing.Agent/Core/Interfaces/IToolPermissionPolicy.cs
 
 using System.Text.Json;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Interfaces;
 
 /// <summary>

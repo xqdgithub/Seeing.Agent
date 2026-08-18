@@ -1,7 +1,8 @@
-using Seeing.Agent.Configuration;
+﻿using Seeing.Agent.Configuration;
 using Seeing.Agent.MCP.Core;
 using System.Text.Json;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.MCP.Configuration;
 
 /// <summary>

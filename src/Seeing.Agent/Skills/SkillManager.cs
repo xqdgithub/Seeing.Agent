@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using System.Collections.Concurrent;
@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Skills
 {
     /// <summary>

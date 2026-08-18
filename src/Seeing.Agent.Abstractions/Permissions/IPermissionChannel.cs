@@ -1,6 +1,4 @@
-using Seeing.Agent.Core.Permission;
-
-namespace Seeing.Agent.Core.Interfaces
+namespace Seeing.Agent.Abstractions.Permissions
 {
     /// <summary>
     /// 统一的权限请求

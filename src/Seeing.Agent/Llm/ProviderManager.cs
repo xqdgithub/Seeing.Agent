@@ -1,6 +1,7 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Llm;
 
 /// <summary>

@@ -1,6 +1,7 @@
-using Seeing.Agent.Core.Models;
+﻿using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Configuration
 {
     /// <summary>

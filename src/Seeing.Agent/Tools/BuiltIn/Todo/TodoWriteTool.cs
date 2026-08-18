@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Todo;
+using Seeing.Agent.Abstractions.Todo;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.Todo
@@ -95,13 +95,13 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
         /// <summary>
         /// 解析 Todo 数组
         /// </summary>
-        private List<Core.Todo.TodoItem> ParseTodos(JsonElement todosElement)
+        private List<Seeing.Agent.Abstractions.Todo.TodoItem> ParseTodos(JsonElement todosElement)
         {
-            var todos = new List<Core.Todo.TodoItem>();
+            var todos = new List<Seeing.Agent.Abstractions.Todo.TodoItem>();
 
             foreach (var item in todosElement.EnumerateArray())
             {
-                var todo = new Core.Todo.TodoItem();
+                var todo = new Seeing.Agent.Abstractions.Todo.TodoItem();
 
                 if (item.TryGetProperty("content", out var contentProp))
                 {
@@ -145,13 +145,13 @@ namespace Seeing.Agent.Tools.BuiltIn.Todo
         /// <summary>
         /// 解析优先级字符串
         /// </summary>
-        private static Core.Todo.TodoPriority ParsePriority(string priority)
+        private static Seeing.Agent.Abstractions.Todo.TodoPriority ParsePriority(string priority)
         {
             return priority.ToLowerInvariant() switch
             {
-                "low" => Core.Todo.TodoPriority.Low,
-                "high" => Core.Todo.TodoPriority.High,
-                _ => Core.Todo.TodoPriority.Medium
+                "low" => Seeing.Agent.Abstractions.Todo.TodoPriority.Low,
+                "high" => Seeing.Agent.Abstractions.Todo.TodoPriority.High,
+                _ => Seeing.Agent.Abstractions.Todo.TodoPriority.Medium
             };
         }
 

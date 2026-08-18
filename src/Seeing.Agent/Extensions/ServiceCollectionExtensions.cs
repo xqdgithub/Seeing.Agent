@@ -13,6 +13,8 @@ using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.BuiltInAgents;
 using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Instructions;
@@ -21,6 +23,7 @@ using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Scheduling;
+using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Llm;
@@ -48,6 +51,7 @@ using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Extensions
 {
     /// <summary>
@@ -731,7 +735,7 @@ namespace Seeing.Agent.Extensions
                         _loggerFactory.CreateLogger<AnthropicClient>()),
                     _ => throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}")
                 };
-            }
+}
         }
 }
 

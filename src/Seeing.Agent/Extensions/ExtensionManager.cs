@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
@@ -7,6 +7,7 @@ using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
 using System.Collections.Concurrent;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Extensions
 {
     /// <summary>

@@ -1,5 +1,6 @@
-using Seeing.Agent.Core.Todo;
+﻿using Seeing.Agent.Abstractions.Todo;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Events;
 
 /// <summary>
@@ -486,7 +487,7 @@ public record TodoUpdateEvent : IMessageEvent
     public MessageEventType Type => MessageEventType.TodoUpdate;
 
     /// <summary>Todo 列表</summary>
-    public List<Core.Todo.TodoItem> Todos { get; init; } = new();
+    public List<Seeing.Agent.Abstractions.Todo.TodoItem> Todos { get; init; } = new();
 }
 
 /// <summary>

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Extensions;

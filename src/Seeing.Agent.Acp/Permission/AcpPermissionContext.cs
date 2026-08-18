@@ -1,4 +1,4 @@
-using Seeing.Agent.Acp.Execution;
+﻿using Seeing.Agent.Acp.Execution;
 
 namespace Seeing.Agent.Acp.Permission;
 
@@ -15,5 +15,5 @@ public sealed record AcpPermissionContext
 
     public IAcpUpdateSink? UpdateSink { get; init; }
 
-    public Seeing.Agent.Core.Interfaces.IPermissionChannel? PermissionChannel { get; init; }
+    public Seeing.Agent.Abstractions.Permissions.IPermissionChannel? PermissionChannel { get; init; }
 }

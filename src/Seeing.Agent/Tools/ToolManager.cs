@@ -8,6 +8,8 @@ using Seeing.Agent.Decorators;
 using System.Collections.Concurrent;
 using System.Text.Json;
 
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Tools
 {
     /// <summary>

@@ -1,5 +1,6 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Configuration;
 
 /// <summary>
@@ -94,18 +95,6 @@ public interface IWorkspaceProvider
     
     /// <summary>设置项目级工作区配置（持久化到项目级）</summary>
     Task SetWorkspaceOptionsAsync(WorkspaceOptions options, CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// 配置级别
-/// </summary>
-public enum ConfigLevel
-{
-    /// <summary>用户级：~/.seeing/</summary>
-    User,
-
-    /// <summary>项目级：{WorkspaceRoot}/.seeing/</summary>
-    Project
 }
 
 /// <summary>

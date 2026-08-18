@@ -1,5 +1,6 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Interfaces
 {
     /// <summary>

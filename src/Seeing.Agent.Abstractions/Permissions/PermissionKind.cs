@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Permission;
+﻿namespace Seeing.Agent.Abstractions.Permissions;
 
 /// <summary>
 /// 权限类型 - 细粒度资源分类

@@ -17,6 +17,7 @@ using System.Text.Json;
 
 using CoreMcpConnectionState = Seeing.Agent.MCP.Core.McpConnectionState;
 
+using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.MCP
 {
     public class McpClientManager : IMcpManager

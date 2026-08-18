@@ -1,6 +1,7 @@
-using Seeing.Agent.Core.Permission;
+﻿using Seeing.Agent.Core.Permission;
 using YamlDotNet.Serialization;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Configuration
 {
     /// <summary>

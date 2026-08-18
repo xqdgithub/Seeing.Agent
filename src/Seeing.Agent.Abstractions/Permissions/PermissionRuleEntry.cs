@@ -1,6 +1,5 @@
-using Seeing.Agent.Core.Interfaces;
-
-namespace Seeing.Agent.Core.Permission;
+﻿
+namespace Seeing.Agent.Abstractions.Permissions;
 
 /// <summary>
 /// 权限规则条目 - 新权限系统的规则定义

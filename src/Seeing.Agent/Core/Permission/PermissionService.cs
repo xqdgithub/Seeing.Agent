@@ -1,10 +1,11 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>
@@ -54,7 +55,7 @@ public class PermissionService : IPermissionService, IDisposable
         try
         {
             // 1. 验证 Context 完整性
-            var integrityHash = context.ComputeIntegrityHash();
+            var integrityHash = PermissionIntegrity.ComputeIntegrityHash(context, _hmacKey);
             var stepResult = await RecordStepAsync("ValidateIntegrity", resource, context,
                 () => Task.FromResult(true), stopwatch.ElapsedMilliseconds).ConfigureAwait(false);
             evaluationPath.Add(stepResult);

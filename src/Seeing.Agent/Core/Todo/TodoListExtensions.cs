@@ -1,5 +1,6 @@
-using System.Text;
+﻿using System.Text;
 
+using Seeing.Agent.Abstractions.Todo;
 namespace Seeing.Agent.Core.Todo;
 
 public static class TodoListExtensions

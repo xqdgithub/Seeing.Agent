@@ -1,6 +1,5 @@
-using Seeing.Agent.Core.Interfaces;
-
-namespace Seeing.Agent.Core.Permission;
+﻿
+namespace Seeing.Agent.Abstractions.Permissions;
 
 /// <summary>
 /// 权限评估结果 - 包含完整评估路径和审计信息
