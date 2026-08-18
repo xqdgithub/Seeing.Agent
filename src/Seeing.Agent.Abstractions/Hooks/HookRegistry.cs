@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Hooks;
+﻿namespace Seeing.Agent.Abstractions.Hooks;
 
 /// <summary>
 /// Hook 点注册表 - 定义所有 Hook 点及其执行策略

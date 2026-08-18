@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Hooks;
+﻿namespace Seeing.Agent.Abstractions.Hooks;
 
 public record DataField<T>(
     string Name,

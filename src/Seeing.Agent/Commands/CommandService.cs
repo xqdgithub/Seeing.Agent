@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Hooks;
+﻿using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Hooks;
 
 namespace Seeing.Agent.Commands
 {
@@ -31,11 +31,11 @@ namespace Seeing.Agent.Commands
     public class CommandService : ICommandService
     {
         private readonly ILogger<CommandService> _logger;
-        private readonly Core.Hooks.IHookManager _hookManager;
+        private readonly Abstractions.Hooks.IHookManager _hookManager;
 
         public CommandService(
             ILogger<CommandService> logger,
-            Core.Hooks.IHookManager hookManager)
+            Abstractions.Hooks.IHookManager hookManager)
         {
             _logger = logger;
             _hookManager = hookManager;

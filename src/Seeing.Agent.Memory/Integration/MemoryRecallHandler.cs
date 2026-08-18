@@ -1,7 +1,7 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 

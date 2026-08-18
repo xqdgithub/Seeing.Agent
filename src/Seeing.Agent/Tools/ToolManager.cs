@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
@@ -26,7 +26,7 @@ namespace Seeing.Agent.Tools
     public class ToolManager
     {
         private readonly ILogger<ToolManager> _logger;
-        private readonly Core.Hooks.IHookManager _hookManager;
+        private readonly Abstractions.Hooks.IHookManager _hookManager;
         private readonly IRuleEvaluator? _ruleEvaluator;
         private readonly ConcurrentDictionary<string, ITool> _tools = new();
         private readonly IServiceProvider? _serviceProvider;
@@ -39,7 +39,7 @@ namespace Seeing.Agent.Tools
 
         public ToolManager(
             ILogger<ToolManager> logger,
-            Core.Hooks.IHookManager hookManager,
+            Abstractions.Hooks.IHookManager hookManager,
             IServiceProvider? serviceProvider = null,
             IToolDecoratorRegistry? decoratorRegistry = null,
             IRuleEvaluator? ruleEvaluator = null,

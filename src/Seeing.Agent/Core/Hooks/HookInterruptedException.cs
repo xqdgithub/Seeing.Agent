@@ -1,3 +1,5 @@
+using Seeing.Agent.Abstractions.Hooks;
+
 namespace Seeing.Agent.Core.Hooks;
 
 /// <summary>

@@ -1,9 +1,9 @@
-using Seeing.Agent.Core.Hooks;
+﻿using Seeing.Agent.Abstractions.Hooks;
 
 namespace Seeing.Agent.Services
 {
     /// <summary>
-    /// Hook 管理器适配器 - 将 Seeing.Agent.Core.Hooks.IHookManager 适配为 Seeing.Session.Hooks.IHookManager
+    /// Hook 管理器适配器 - 将 Seeing.Agent.Abstractions.Hooks.IHookManager 适配为 Seeing.Session.Hooks.IHookManager
     /// </summary>
     public class HookManagerAdapter : Seeing.Session.Hooks.IHookManager
     {

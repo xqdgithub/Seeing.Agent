@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Hooks;
+﻿namespace Seeing.Agent.Abstractions.Hooks;
 
 /// <summary>
 /// Hook 数据契约 - 每个 Hook 点的字段定义

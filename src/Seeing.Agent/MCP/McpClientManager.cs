@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Helpers;
 using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.MCP.Core;

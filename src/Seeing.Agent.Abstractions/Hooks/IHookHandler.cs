@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Hooks;
+﻿namespace Seeing.Agent.Abstractions.Hooks;
 
 /// <summary>
 /// Hook 处理器接口（单点监听）

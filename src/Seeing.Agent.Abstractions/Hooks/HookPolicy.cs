@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Hooks;
+﻿namespace Seeing.Agent.Abstractions.Hooks;
 
 /// <summary>
 /// Hook 执行策略

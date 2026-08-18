@@ -1,6 +1,6 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 
-namespace Seeing.Agent.Core.Hooks;
+namespace Seeing.Agent.Abstractions.Hooks;
 
 public class HookPayload
 {

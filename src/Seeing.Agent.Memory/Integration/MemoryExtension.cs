@@ -1,6 +1,6 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration.Tools;

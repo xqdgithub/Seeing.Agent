@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using Seeing.Agent.Abstractions.Hooks;
 
 namespace Seeing.Agent.Core.Hooks;
 

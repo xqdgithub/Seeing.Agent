@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -13,6 +13,7 @@ using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.BuiltInAgents;
 using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Interfaces;
@@ -310,7 +311,7 @@ namespace Seeing.Agent.Extensions
 
             // Hook 管理器
             services.AddSingleton<HookManager>();
-            services.AddSingleton<Seeing.Agent.Core.Hooks.IHookManager>(sp => sp.GetRequiredService<HookManager>());
+            services.AddSingleton<Seeing.Agent.Abstractions.Hooks.IHookManager>(sp => sp.GetRequiredService<HookManager>());
             // Session Hook 管理器适配器（让 SessionManager 使用）
             services.AddSingleton<Seeing.Session.Hooks.IHookManager>(sp =>
                 new Seeing.Agent.Services.HookManagerAdapter(sp.GetRequiredService<HookManager>()));
@@ -509,7 +510,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ToolManager>(sp =>
             {
                 var logger = sp.GetRequiredService<ILogger<ToolManager>>();
-                var hookManager = sp.GetRequiredService<Seeing.Agent.Core.Hooks.IHookManager>();
+                var hookManager = sp.GetRequiredService<Seeing.Agent.Abstractions.Hooks.IHookManager>();
                 var tools = sp.GetServices<ITool>();
                 var decoratorRegistry = sp.GetService<IToolDecoratorRegistry>();
                 var workspace = sp.GetService<IWorkspaceProvider>();
@@ -557,7 +558,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<McpToolRegistry>(sp =>
             {
                 var toolInvoker = sp.GetRequiredService<ToolManager>();
-                var hookManager = sp.GetRequiredService<Seeing.Agent.Core.Hooks.IHookManager>();
+                var hookManager = sp.GetRequiredService<Seeing.Agent.Abstractions.Hooks.IHookManager>();
                 var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<McpToolRegistry>();
                 return new McpToolRegistry(toolInvoker, hookManager, logger);
             });

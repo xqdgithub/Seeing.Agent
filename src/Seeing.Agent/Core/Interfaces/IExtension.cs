@@ -1,6 +1,7 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Commands;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;

@@ -1,7 +1,7 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Session;
 using Seeing.Agent.Acp.Transport;
-using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 
 namespace Seeing.Agent.Acp.Hosting;
 

@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Events;
-using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
@@ -17,7 +17,7 @@ namespace Seeing.Agent.Core.Abstractions
     public abstract class AgentBase : IAgent
     {
         protected readonly ILogger _logger;
-        protected readonly Core.Hooks.IHookManager? _hookManager;
+        protected readonly IHookManager? _hookManager;
 
         /// <summary>
         /// 创建 Agent 基类实例（无 Hook 支持）
@@ -31,7 +31,7 @@ namespace Seeing.Agent.Core.Abstractions
         /// <summary>
         /// 创建 Agent 基类实例（带 Hook 支持）
         /// </summary>
-        protected AgentBase(ILogger logger, Core.Hooks.IHookManager hookManager)
+        protected AgentBase(ILogger logger, IHookManager hookManager)
         {
             _logger = logger;
             _hookManager = hookManager;

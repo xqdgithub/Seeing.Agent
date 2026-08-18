@@ -1,10 +1,10 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Events;
-using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Reminders;

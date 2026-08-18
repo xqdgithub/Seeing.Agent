@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Channels;

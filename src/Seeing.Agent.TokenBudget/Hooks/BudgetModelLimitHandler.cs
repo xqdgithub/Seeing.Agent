@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Hooks;
+﻿using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Management;

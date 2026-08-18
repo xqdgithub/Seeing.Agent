@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Hooks;
+﻿using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Hooks;
 
 namespace Seeing.Agent.Shell
 {
@@ -29,11 +29,11 @@ namespace Seeing.Agent.Shell
     public class ShellEnvironmentService : IShellEnvironmentService
     {
         private readonly ILogger<ShellEnvironmentService> _logger;
-        private readonly Core.Hooks.IHookManager _hookManager;
+        private readonly Abstractions.Hooks.IHookManager _hookManager;
 
         public ShellEnvironmentService(
             ILogger<ShellEnvironmentService> logger,
-            Core.Hooks.IHookManager hookManager)
+            Abstractions.Hooks.IHookManager hookManager)
         {
             _logger = logger;
             _hookManager = hookManager;

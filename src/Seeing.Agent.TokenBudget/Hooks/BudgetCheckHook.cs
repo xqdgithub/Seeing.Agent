@@ -1,5 +1,5 @@
-using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Core.Hooks;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
 
