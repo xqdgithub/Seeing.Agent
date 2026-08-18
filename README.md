@@ -63,14 +63,14 @@ public class WeatherTools
 }
 
 // 注册工具
-var toolInvoker = serviceProvider.GetRequiredService<ToolInvoker>();
-toolInvoker.RegisterToolsFromType<WeatherTools>();
+var ToolManager = serviceProvider.GetRequiredService<ToolManager>();
+ToolManager.RegisterToolsFromType<WeatherTools>();
 ```
 
 ### 3. 实现 ITool 接口（手动方式）
 
 ```csharp
-using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Abstractions.Tools;
 using System.Text.Json;
 
 public class MyTool : ITool
@@ -107,10 +107,10 @@ public class MyTool : ITool
 using Seeing.Agent.Tools;
 using Seeing.Agent.Core.Models;
 
-var toolInvoker = serviceProvider.GetRequiredService<ToolInvoker>();
+var ToolManager = serviceProvider.GetRequiredService<ToolManager>();
 
 // 方式1: 使用 ToolCall 对象
-var result = await toolInvoker.ExecuteAsync(new ToolCall
+var result = await ToolManager.ExecuteAsync(new ToolCall
 {
     Name = "GetWeather",
     Id = "call-001",
@@ -118,14 +118,14 @@ var result = await toolInvoker.ExecuteAsync(new ToolCall
 });
 
 // 方式2: 使用字典参数
-var result = await toolInvoker.ExecuteAsync("GetWeather", new Dictionary<string, object?>
+var result = await ToolManager.ExecuteAsync("GetWeather", new Dictionary<string, object?>
 {
     ["city"] = "北京",
     ["date"] = DateTime.Now
 });
 
 // 获取工具 Schema（用于 LLM function calling）
-var schemas = toolInvoker.GetToolSchemas();
+var schemas = ToolManager.GetToolSchemas();
 ```
 
 ### 5. 连接 MCP Server
@@ -150,42 +150,35 @@ await mcpManager.ConnectAsync(new[]
     new McpServerConfig { Name = "brave-search", Command = "mcp-brave-search", Args = new List<string>() }
 });
 
-// 获取 MCP 工具并注册到 ToolInvoker
+// 获取 MCP 工具并注册到 ToolManager
 var mcpTools = mcpManager.GetTools();
-toolInvoker.RegisterTools(mcpTools);
+ToolManager.RegisterTools(mcpTools);
 ```
 
 ### 6. 定义 Skill
 
 ```csharp
-using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Skills;
 
-public class MySkill : ISkill
+// 技能以 SKILL.md 文件形式存在，通过 SkillManager 发现与加载
+var skillManager = serviceProvider.GetRequiredService<SkillManager>();
+var skillInfo = new SkillInfo
 {
-    public string Name => "my_skill";
-    public string Description => "示例技能";
-    public string Location => "skills/my_skill.md";
-    
-    public async Task<SkillResult> ExecuteAsync(SkillContext context, CancellationToken cancellationToken = default)
-    {
-        return new SkillResult
-        {
-            Success = true,
-            Output = "技能执行完成"
-        };
-    }
-}
+    Name = "my_skill",
+    Description = "示例技能",
+    Location = "skills/my_skill.md"
+};
 ```
 
 ### 7. 使用 Hook
 
 ```csharp
-using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
 
 public class LogHook : IHookHandler
 {
-    public string HookPoint => HookPoints.ToolExecuteBefore;
+    public string HookPoint => HookPoints.ToolBeforeExecute;
     public int Priority => 10;
     
     public async Task<HookResult> ExecuteAsync(HookContext context)
@@ -203,31 +196,20 @@ services.AddSingleton<IHookHandler, LogHook>();
 ### 8. 配置权限规则
 
 ```csharp
-using Seeing.Agent.Core.Interfaces;
-using Seeing.Agent.Rules;
+using Seeing.Agent.Abstractions.Permissions;
 
-var ruleEngine = serviceProvider.GetRequiredService<RuleEngine>();
-
-ruleEngine.AddRule(new PermissionRule
+// 通过 AgentPermissionPolicy 配置权限规则（PermissionRuleEntry）
+var policy = new AgentPermissionPolicy
 {
-    Permission = "file_write",
-    Pattern = "/safe/path/*",
-    Action = PermissionAction.Allow
-});
-
-ruleEngine.AddRule(new PermissionRule
-{
-    Permission = "file_write",
-    Pattern = "/system/*",
-    Action = PermissionAction.Deny
-});
-
-ruleEngine.AddRule(new PermissionRule
-{
-    Permission = "tool",
-    Pattern = "dangerous_*",
-    Action = PermissionAction.Ask  // 需要用户确认
-});
+    AgentName = "build",
+    Rules = new[]
+    {
+        PermissionRuleEntry.Allow(PermissionKind.Tool, "read", 0),
+        PermissionRuleEntry.Allow(PermissionKind.Tool, "write", 0),
+        PermissionRuleEntry.Deny(PermissionKind.Tool, "bash", 0),
+    },
+    DefaultEffect = PermissionEffect.Ask
+};
 ```
 
 ## 注解属性
@@ -280,7 +262,7 @@ Seeing.Agent/
 ├── Tools/
 │   ├── Attributes/    # Tool, ToolParam, Required 注解
 │   ├── Discovery/     # ToolDiscovery, ReflectedTool
-│   ├── ToolInvoker.cs # 统一工具调用器
+│   ├── ToolManager.cs # 统一工具调用器
 │   └── ToolRegistry.cs
 ├── MCP/
 │   ├── McpTool.cs         # MCP 工具包装器
