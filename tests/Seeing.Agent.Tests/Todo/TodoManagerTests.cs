@@ -1,8 +1,10 @@
 ﻿using Seeing.Agent.Abstractions.Todo;
+using Seeing.Agent.Core.Todo;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Todo;
 using Xunit;
 

@@ -1,9 +1,11 @@
 ﻿using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Core.Permission;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Core.Interfaces;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Permission;
 using Xunit;
 

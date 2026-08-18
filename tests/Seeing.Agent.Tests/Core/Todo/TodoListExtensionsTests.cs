@@ -1,5 +1,7 @@
 ﻿using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Todo;
+using Seeing.Agent.Abstractions.Todo;
+using Seeing.Agent.Core.Todo;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Core.Todo;

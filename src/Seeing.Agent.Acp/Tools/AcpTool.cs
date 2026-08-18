@@ -12,7 +12,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Session.Core;
 

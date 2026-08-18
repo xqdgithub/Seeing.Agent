@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Core.Hooks;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;

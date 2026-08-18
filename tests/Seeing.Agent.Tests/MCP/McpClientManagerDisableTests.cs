@@ -1,11 +1,14 @@
-﻿using Seeing.Agent.MCP.Core;
+﻿using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.MCP.Core;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.MCP;
 using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.MCP.Core;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Policy;
 using Seeing.Agent.Tools;

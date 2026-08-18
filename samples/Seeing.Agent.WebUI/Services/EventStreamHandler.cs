@@ -1,14 +1,14 @@
 ﻿using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.App.Events;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Api.Responses;
 using Seeing.Agent.TokenBudget;
-using Seeing.Agent.Core.Todo;
+using Seeing.Agent.Abstractions.Todo;
 using System.Text;
 
 namespace Seeing.Agent.WebUI.Services

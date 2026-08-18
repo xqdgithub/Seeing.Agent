@@ -4,7 +4,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 

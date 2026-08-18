@@ -6,7 +6,7 @@ using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Abstractions.Permissions;
 
 namespace Seeing.Agent.Acp.Hosting;
 

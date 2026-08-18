@@ -2,6 +2,8 @@
 using Seeing.Agent.Acp.Hosting;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Core.Hooks;
 
 namespace Seeing.Agent.Acp.Extensions;
 

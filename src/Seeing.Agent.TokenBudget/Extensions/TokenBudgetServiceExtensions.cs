@@ -4,6 +4,8 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Compression;

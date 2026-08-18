@@ -5,6 +5,8 @@ using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Models;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
