@@ -1,7 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Permissions;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Gateway.Mapping;
 using Seeing.Gateway.Models;

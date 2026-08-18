@@ -60,37 +60,6 @@ internal static class PermissionIntegrity
         => ComputeIntegrityHash(context, hmacKey) == expectedHash;
 
     /// <summary>
-    /// 创建子代理上下文
-    /// </summary>
-    /// <param name="context">父权限上下文</param>
-    /// <param name="subAgentName">子代理名称</param>
-    /// <param name="subPolicy">子代理策略</param>
-    /// <param name="hmacKey">HMAC 密钥</param>
-    /// <returns>新的权限上下文</returns>
-    /// <exception cref="PermissionDelegationException">不允许委托</exception>
-    public static PermissionContext CreateSubAgentContext(
-        PermissionContext context,
-        string subAgentName,
-        AgentPermissionPolicy subPolicy,
-        byte[] hmacKey)
-    {
-        if (!context.Policy.IsDelegableTo(subAgentName))
-            throw new PermissionDelegationException($"Agent '{context.AgentName}' cannot delegate to '{subAgentName}'");
-
-        var mergedPolicy = context.Policy.Intersect(subPolicy);
-
-        return new PermissionContext
-        {
-            SessionId = context.SessionId,
-            AgentName = subAgentName,
-            Parent = context,
-            Policy = mergedPolicy,
-            EnvironmentSnapshot = context.EnvironmentSnapshot,
-            WorkingDirectory = context.WorkingDirectory
-        };
-    }
-
-    /// <summary>
     /// 从 AgentContext 创建 PermissionContext
     /// </summary>
     /// <param name="agentContext">Agent 执行上下文</param>

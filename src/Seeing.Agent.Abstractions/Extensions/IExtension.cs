@@ -1,5 +1,4 @@
 ﻿using Seeing.Agent.Abstractions.Llm;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Seeing.Agent.Abstractions.Extensions
 {
@@ -44,11 +43,6 @@ namespace Seeing.Agent.Abstractions.Extensions
         #endregion
 
         #region 生命周期
-
-        /// <summary>
-        /// 注册服务（DI 容器构建前调用）
-        /// </summary>
-        void ConfigureServices(IServiceCollection services) { }
 
         /// <summary>
         /// 初始化扩展（服务容器构建后调用）

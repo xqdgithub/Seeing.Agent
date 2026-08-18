@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Seeing.Agent\Seeing.Agent.csproj" />
     <ProjectReference Include="..\Seeing.Gateway\Seeing.Gateway.csproj" />
     <ProjectReference Include="..\Seeing.Gateway.Client\Seeing.Gateway.Client.csproj" />
   </ItemGroup>

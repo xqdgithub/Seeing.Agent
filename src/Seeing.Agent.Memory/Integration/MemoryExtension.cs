@@ -31,8 +31,6 @@ public class MemoryExtension : IExtension, IHookExtension, IToolExtension
     private MemoryRecallHandler? _recall;
     private ILogger? _logger;
 
-    public void ConfigureServices(IServiceCollection services) => services.AddMemoryServices();
-
     public Task InitializeAsync(ExtensionContext context, ExtensionMeta meta)
     {
         var loggerFactory = context.Services.GetRequiredService<ILoggerFactory>();

@@ -43,9 +43,6 @@ public sealed class AcpExtension : IExtension, IToolExtension
     private ILogger? _logger;
 
     /// <inheritdoc />
-    public void ConfigureServices(IServiceCollection services) => services.AddSeeingAcp();
-
-    /// <inheritdoc />
     public Task InitializeAsync(ExtensionContext context, ExtensionMeta meta)
     {
         var loggerFactory = context.Services.GetRequiredService<ILoggerFactory>();

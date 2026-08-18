@@ -28,9 +28,6 @@ namespace Seeing.Agent.Abstractions.Agents
         /// <summary>就绪 - 可以执行</summary>
         Ready,
 
-        /// <summary>需要工厂 - 需要通过 AgentFactory 创建实例</summary>
-        RequiresFactory,
-
         /// <summary>已禁用 - 被配置禁用</summary>
         Disabled,
 
