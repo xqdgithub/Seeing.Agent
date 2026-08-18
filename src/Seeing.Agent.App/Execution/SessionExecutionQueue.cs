@@ -86,17 +86,21 @@ internal class SessionExecutionQueue
     /// <summary>
     /// Marks the current execution as started (transition from Pending to Running).
     /// </summary>
-    public async Task StartAsync()
+    /// <returns>True if the current execution was started, false if none or not startable.</returns>
+    public async Task<bool> StartAsync()
     {
         await _lock.WaitAsync();
         try
         {
-            if (_currentExecution != null)
+            if (_currentExecution != null &&
+                _currentExecution.Status == ExecutionStatus.Pending)
             {
                 _currentExecution.Status = ExecutionStatus.Running;
                 _currentExecution.StartedAt = DateTime.UtcNow;
                 _lastActiveTime = DateTime.UtcNow;
+                return true;
             }
+            return false;
         }
         finally
         {
@@ -164,8 +168,24 @@ internal class SessionExecutionQueue
                     _currentExecution.Status == ExecutionStatus.Pending)
                 {
                     _currentCts?.Cancel();
+                    _currentCts?.Dispose();
+                    _currentCts = null;
                     _currentExecution.Status = ExecutionStatus.Cancelled;
                     _currentExecution.CompletedAt = DateTime.UtcNow;
+
+                    // 推进队列：取消当前项后立即释放并启动下一项，避免队列卡死
+                    if (_pendingQueue.TryDequeue(out var next))
+                    {
+                        _currentExecution = next;
+                        _currentCts = new CancellationTokenSource();
+                        next.Status = ExecutionStatus.Pending;
+                        next.QueuePosition = 0;
+                        _lastActiveTime = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        _currentExecution = null;
+                    }
                     return true;
                 }
                 return false;

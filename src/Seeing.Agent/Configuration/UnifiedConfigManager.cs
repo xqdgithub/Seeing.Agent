@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Collections.Concurrent;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -36,6 +37,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     private readonly ILogger<UnifiedConfigManager> _logger;
     private readonly Dictionary<string, ConfigSectionMeta> _sectionRegistry;
     private readonly Dictionary<string, object> _cache = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new();
     private readonly object _lock = new();
     
     // ===== 公开的配置属性 =====
@@ -166,19 +168,28 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         if (!File.Exists(path))
             return;
 
-        var root = await LoadJsonRootAsync(path, ct).ConfigureAwait(false);
-        if (root["SeeingAgent"] is not JsonObject seeingAgent)
-            return;
-
-        var removed = false;
-        foreach (var key in keys)
+        var fileLock = GetFileLock(path);
+        await fileLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            if (seeingAgent.Remove(key))
-                removed = true;
-        }
+            var root = await LoadJsonRootAsync(path, ct).ConfigureAwait(false);
+            if (root["SeeingAgent"] is not JsonObject seeingAgent)
+                return;
 
-        if (removed)
-            await WriteJsonAsync(path, root, ct).ConfigureAwait(false);
+            var removed = false;
+            foreach (var key in keys)
+            {
+                if (seeingAgent.Remove(key))
+                    removed = true;
+            }
+
+            if (removed)
+                await WriteJsonAsync(path, root, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            fileLock.Release();
+        }
     }
 
     /// <summary>重载配置（外部文件变更时调用）</summary>
@@ -561,25 +572,34 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         CancellationToken ct) where T : class
     {
         var path = GetFilePath(level, fileName);
-        var root = await LoadJsonRootAsync(path, ct);
-        
-        if (fileName == "seeing.json")
+        var fileLock = GetFileLock(path);
+        await fileLock.WaitAsync(ct);
+        try
         {
-            var seeingAgent = root["SeeingAgent"] as JsonObject ?? new JsonObject();
-            seeingAgent[sectionName] = JsonSerializer.SerializeToNode(value, JsonOptions);
-            root["SeeingAgent"] = seeingAgent;
-        }
-        else
-        {
-            // 独立配置文件，直接替换根
-            var serialized = JsonSerializer.SerializeToNode(value, JsonOptions);
-            if (serialized is JsonObject obj)
-                root = obj;
+            var root = await LoadJsonRootAsync(path, ct);
+
+            if (fileName == "seeing.json")
+            {
+                var seeingAgent = root["SeeingAgent"] as JsonObject ?? new JsonObject();
+                seeingAgent[sectionName] = JsonSerializer.SerializeToNode(value, JsonOptions);
+                root["SeeingAgent"] = seeingAgent;
+            }
             else
-                root[sectionName] = serialized;
+            {
+                // 独立配置文件，直接替换根
+                var serialized = JsonSerializer.SerializeToNode(value, JsonOptions);
+                if (serialized is JsonObject obj)
+                    root = obj;
+                else
+                    root[sectionName] = serialized;
+            }
+
+            await WriteJsonAsync(path, root, ct);
         }
-        
-        await WriteJsonAsync(path, root, ct);
+        finally
+        {
+            fileLock.Release();
+        }
     }
     
     private async Task SaveMultipleToFileAsync(
@@ -589,29 +609,47 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         CancellationToken ct)
     {
         var path = GetFilePath(level, fileName);
-        var root = await LoadJsonRootAsync(path, ct);
-        
-        if (fileName == "seeing.json")
+        var fileLock = GetFileLock(path);
+        await fileLock.WaitAsync(ct);
+        try
         {
-            var seeingAgent = root["SeeingAgent"] as JsonObject ?? new JsonObject();
-            foreach (var (name, value) in sections)
+            var root = await LoadJsonRootAsync(path, ct);
+
+            if (fileName == "seeing.json")
             {
-                seeingAgent[name] = JsonSerializer.SerializeToNode(value, JsonOptions);
+                var seeingAgent = root["SeeingAgent"] as JsonObject ?? new JsonObject();
+                foreach (var (name, value) in sections)
+                {
+                    seeingAgent[name] = JsonSerializer.SerializeToNode(value, JsonOptions);
+                }
+                root["SeeingAgent"] = seeingAgent;
             }
-            root["SeeingAgent"] = seeingAgent;
+            else
+            {
+                // 独立配置文件（providers.json、mcp.json 等）：每个文件仅承载一个节，
+                // 与 SaveToFileAsync 语义一致，值直接替换根对象，避免多包一层 {SectionName}
+                foreach (var (name, value) in sections)
+                {
+                    var serialized = JsonSerializer.SerializeToNode(value, JsonOptions);
+                    if (serialized is JsonObject obj)
+                        root = obj;
+                    else
+                        root[name] = serialized;
+                    break;
+                }
+            }
+
+            await WriteJsonAsync(path, root, ct);
         }
-        else
+        finally
         {
-            // 独立配置文件：mcp.json、memory.json、scheduler.json 等
-            foreach (var (name, value) in sections)
-            {
-                root[name] = JsonSerializer.SerializeToNode(value, JsonOptions);
-            }
+            fileLock.Release();
         }
-        
-        await WriteJsonAsync(path, root, ct);
     }
     
+    private SemaphoreSlim GetFileLock(string path)
+        => _fileLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+
     private async Task<JsonObject> LoadJsonRootAsync(string path, CancellationToken ct)
     {
         if (!File.Exists(path)) return new JsonObject();
@@ -631,9 +669,17 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             Directory.CreateDirectory(dir);
         
-        var tempPath = path + ".tmp";
-        await File.WriteAllTextAsync(tempPath, content, ct);
-        File.Move(tempPath, path, overwrite: true);
+        var tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, content, ct);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
     }
     
     private string GetFilePath(ConfigLevel level, string fileName)

@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
     <ProjectReference Include="..\Seeing.Agent\Seeing.Agent.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />

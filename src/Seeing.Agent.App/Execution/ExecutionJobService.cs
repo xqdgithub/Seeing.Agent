@@ -234,13 +234,26 @@ public class ExecutionJobService : IDisposable
         if (cancelled)
         {
             _logger.LogInformation("Execution {ExecutionId} cancelled", executionId);
-            _eventPublisher.Publish(record.SessionId, new ExecutionCompleteEvent
+
+            // 执行体已启动（Running）时，完成事件由执行体 finally 统一发布，避免重复。
+            // 从未启动的项（排队项 / 尚未启动的当前项）由这里发布。
+            if (record.StartedAt == default)
             {
-                SessionId = record.SessionId,
-                ExecutionId = executionId,
-                Status = ExecutionStatus.Cancelled
-            });
-            _eventPublisher.CompleteSession(record.SessionId);
+                _eventPublisher.Publish(record.SessionId, new ExecutionCompleteEvent
+                {
+                    SessionId = record.SessionId,
+                    ExecutionId = executionId,
+                    Status = ExecutionStatus.Cancelled
+                });
+            }
+
+            // 不终止会话事件流：后续排队项仍需向订阅者发布输出。
+            // 队列取消已推进：启动下一项执行（StartAsync 校验防止双开）
+            var next = queue.CurrentExecution;
+            if (next != null && next.Status == ExecutionStatus.Pending)
+            {
+                _ = ProcessExecutionAsync(next);
+            }
         }
 
         return cancelled;
@@ -325,8 +338,9 @@ public class ExecutionJobService : IDisposable
 
         var queue = _sessionQueues[record.SessionId];
 
-        // Mark as running
-        await queue.StartAsync();
+        // Mark as running（若已被取消/推进则返回 false，避免把已终态记录重新置 Running）
+        if (!await queue.StartAsync())
+            return;
         record.StartedAt = DateTime.UtcNow;
         _loopScheduler?.SetLoopBusy(record.SessionId, true);
 
@@ -462,9 +476,6 @@ public class ExecutionJobService : IDisposable
                 Status = record.Status
             });
 
-            // Clear event buffer on terminal state
-            _eventPublisher.ClearBuffer(record.SessionId);
-
             // Complete the execution and start next
             var nextExecution = await queue.CompleteAsync(record.ExecutionId, record.Status);
 
@@ -475,6 +486,11 @@ public class ExecutionJobService : IDisposable
             if (nextExecution != null)
             {
                 _ = ProcessExecutionAsync(nextExecution);
+            }
+            else
+            {
+                // 队列为空才清理事件缓冲，避免清掉下一项已发布的事件
+                _eventPublisher.ClearBuffer(record.SessionId);
             }
         }
     }
