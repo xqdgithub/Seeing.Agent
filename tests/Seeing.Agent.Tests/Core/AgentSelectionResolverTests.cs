@@ -1,7 +1,6 @@
 ﻿using FluentAssertions;
 using Moq;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Interfaces;
 using Xunit;
 
 using Seeing.Agent.Abstractions.Agents;

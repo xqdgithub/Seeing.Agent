@@ -10,7 +10,6 @@ using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Abstractions;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Permissions;

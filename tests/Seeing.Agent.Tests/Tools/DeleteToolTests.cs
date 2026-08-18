@@ -4,7 +4,6 @@
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Tools.BuiltIn.FileSystem;
 using Xunit;
 

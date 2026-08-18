@@ -1,6 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Configuration;
 using Seeing.Session.Core;

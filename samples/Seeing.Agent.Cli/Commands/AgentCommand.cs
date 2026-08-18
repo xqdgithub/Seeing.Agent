@@ -2,7 +2,6 @@
 using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Cli.Infrastructure;
-using Seeing.Agent.Core.Interfaces;
 
 using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Cli.Commands;

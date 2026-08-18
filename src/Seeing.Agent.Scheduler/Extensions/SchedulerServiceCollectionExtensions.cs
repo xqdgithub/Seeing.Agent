@@ -2,7 +2,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Quartz;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Commands;
 using Seeing.Agent.Scheduler.Configuration;

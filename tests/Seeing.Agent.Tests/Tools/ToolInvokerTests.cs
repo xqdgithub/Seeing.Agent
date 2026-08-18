@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Llm;

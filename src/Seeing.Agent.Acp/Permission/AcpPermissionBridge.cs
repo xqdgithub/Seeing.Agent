@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Acp.Permission;

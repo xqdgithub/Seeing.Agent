@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 

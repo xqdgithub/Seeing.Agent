@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Permission;
 
 using Seeing.Agent.Abstractions.Permissions;

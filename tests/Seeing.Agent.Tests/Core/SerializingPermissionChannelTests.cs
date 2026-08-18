@@ -4,7 +4,6 @@ using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Xunit;
 

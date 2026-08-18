@@ -3,7 +3,6 @@ using FluentAssertions;
 using Moq;
 using Seeing.Agent.App.Execution;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;

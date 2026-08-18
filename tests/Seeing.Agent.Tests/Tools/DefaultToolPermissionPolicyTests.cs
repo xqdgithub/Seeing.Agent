@@ -2,7 +2,6 @@
 // tests/Seeing.Agent.Tests/Tools/DefaultToolPermissionPolicyTests.cs
 
 using FluentAssertions;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Tools.BuiltIn;
 using System.Text.Json;
 using Xunit;

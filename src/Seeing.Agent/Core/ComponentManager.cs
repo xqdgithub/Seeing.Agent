@@ -7,7 +7,6 @@ using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Extensions;using Seeing.Agent.Core.Permission;

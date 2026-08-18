@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Interfaces;
 
 using Seeing.Agent.Abstractions.Extensions;
 using Seeing.Agent.Abstractions.Agents;

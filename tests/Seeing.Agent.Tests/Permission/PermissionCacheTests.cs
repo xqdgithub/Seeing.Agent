@@ -1,5 +1,4 @@
 ﻿using FluentAssertions;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Permissions;

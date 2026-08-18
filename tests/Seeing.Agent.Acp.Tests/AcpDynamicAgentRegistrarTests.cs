@@ -6,7 +6,6 @@ using Moq;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Hosting;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Xunit;
 

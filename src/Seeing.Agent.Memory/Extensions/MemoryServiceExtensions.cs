@@ -6,7 +6,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Background;
 using Seeing.Agent.Memory.Configuration;

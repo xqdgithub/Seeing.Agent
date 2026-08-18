@@ -9,7 +9,6 @@ using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Models;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Instructions;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;

@@ -18,7 +18,6 @@ using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Background;

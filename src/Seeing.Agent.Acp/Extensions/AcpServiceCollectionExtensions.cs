@@ -20,7 +20,6 @@ using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Interfaces;
 
 namespace Seeing.Agent.Acp.Extensions;
 

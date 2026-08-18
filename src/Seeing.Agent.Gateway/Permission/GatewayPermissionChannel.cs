@@ -1,7 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Permissions;
 using System.Collections.Concurrent;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Gateway.Mapping;

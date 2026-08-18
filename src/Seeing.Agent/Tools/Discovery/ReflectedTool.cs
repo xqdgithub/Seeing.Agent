@@ -1,6 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Helpers;
 using Seeing.Agent.Abstractions.Tools;

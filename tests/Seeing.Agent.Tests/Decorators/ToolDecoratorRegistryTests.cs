@@ -1,6 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Tools;
 using FluentAssertions;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Decorators;
 using System.Text.Json;

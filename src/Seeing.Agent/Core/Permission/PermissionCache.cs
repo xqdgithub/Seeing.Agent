@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Interfaces;
 using System.Collections.Concurrent;
 
 using Seeing.Agent.Abstractions.Permissions;

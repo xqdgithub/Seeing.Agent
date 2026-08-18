@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Skills;
 
 namespace Seeing.Agent.Scheduler.Skills;

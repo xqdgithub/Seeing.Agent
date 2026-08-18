@@ -1,5 +1,4 @@
 ﻿using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Interfaces;
 
 namespace Seeing.Agent.Decorators
 {

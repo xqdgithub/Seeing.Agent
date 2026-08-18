@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Abstractions.Skills;
 using System.Collections.Concurrent;
 using Seeing.Agent.Abstractions.Skills;

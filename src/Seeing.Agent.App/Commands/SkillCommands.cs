@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Skills;
 

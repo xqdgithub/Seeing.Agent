@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Extensions;using System.Reflection;
 using System.Runtime.Loader;

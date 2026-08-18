@@ -1,5 +1,4 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Abstractions.Skills;

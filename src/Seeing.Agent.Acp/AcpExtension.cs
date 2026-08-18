@@ -7,7 +7,6 @@ using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Acp.Tools;
 using Seeing.Agent.Acp.Transport;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Interfaces;
 
 using Seeing.Agent.Abstractions.Extensions;
 using Seeing.Agent.Abstractions.Agents;
