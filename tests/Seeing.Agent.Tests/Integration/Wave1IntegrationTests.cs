@@ -83,11 +83,13 @@ public class Wave1IntegrationTests
         var cacheOptions = new PermissionCacheOptions { Ttl = TimeSpan.FromMinutes(5) };
         var cache = new PermissionCache(cacheOptions, _cacheLoggerMock.Object);
 
-        // 创建 SubAgent 模式的 Agent
-        var subAgentMock = new Mock<IAgent>();
-        subAgentMock.Setup(a => a.Name).Returns("test-subagent");
-        subAgentMock.Setup(a => a.Mode).Returns(AgentMode.SubAgent);
-        subAgentMock.Setup(a => a.MaxSteps).Returns(20);
+        // 创建 SubAgent 模式的 Agent 定义
+        var subAgentDef = new AgentDefinition
+        {
+            Name = "test-subagent",
+            Mode = AgentMode.SubAgent,
+            MaxSteps = 20
+        };
 
         // Act - 设置权限决策到缓存
         var allowedKey = new PermissionCacheKey("file_read", "/public/test.txt", "test-subagent");
@@ -101,8 +103,8 @@ public class Wave1IntegrationTests
         cache.Get(deniedKey).Should().Be(PermissionAction.Deny);
 
         // 验证 SubAgent 模式
-        subAgentMock.Object.Mode.Should().Be(AgentMode.SubAgent);
-        subAgentMock.Object.MaxSteps.Should().Be(20);
+        subAgentDef.Mode.Should().Be(AgentMode.SubAgent);
+        subAgentDef.MaxSteps.Should().Be(20);
     }
 
     /// <summary>
@@ -167,10 +169,12 @@ public class Wave1IntegrationTests
     [Fact]
     public void MaxStepsLimit_ShouldBeConfiguredCorrectly()
     {
-        // Arrange - 创建测试 Agent（使用 NullLogger 避免 Moq 内部类问题）
-        var agent = new TestAgent(Microsoft.Extensions.Logging.Abstractions.NullLogger<TestAgent>.Instance, null)
+        // Arrange - 创建测试 Agent 定义
+        var agent = new AgentDefinition
         {
-            OverrideMaxSteps = 5
+            Name = "test-agent",
+            Mode = AgentMode.All,
+            MaxSteps = 5
         };
 
         // Assert - MaxSteps 应被正确设置
@@ -205,32 +209,5 @@ public class Wave1IntegrationTests
         public int? MaxSteps { get; set; }
         public AgentMode Mode { get; set; } = AgentMode.All;
         public List<PermissionRuleEntry> PermissionRules { get; set; } = new();
-    }
-
-    // 测试 Agent 实现
-    private class TestAgent : AgentBase
-    {
-        public int? OverrideMaxSteps { get; set; }
-
-        public TestAgent(ILogger logger, IHookManager? hookManager = null)
-            : base(logger, hookManager!) { }
-
-        public override string Name { get; set; } = "test-agent";
-        public override string Description { get; set; } = "测试 Agent";
-        public override int? MaxSteps => OverrideMaxSteps;
-
-        protected override async IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-            ChatMessage input,
-            AgentContext context,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            // 简单实现：返回一条消息
-            yield return new ChatMessage
-            {
-                Role = ChatRole.Assistant,
-                Content = "Test response"
-            };
-            await Task.CompletedTask;
-        }
     }
 }

@@ -66,7 +66,7 @@ public class CommandListService
 
         try
         {
-            var agent = _agentRegistry.GetOrCreateAgentInstance(session.SelectedAgent);
+            var agent = _agentRegistry.GetAgentAsync(session.SelectedAgent).GetAwaiter().GetResult();
             return agent?.Runtime ?? AgentRuntime.Native;
         }
         catch

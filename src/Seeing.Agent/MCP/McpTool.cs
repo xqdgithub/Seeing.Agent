@@ -27,6 +27,13 @@ namespace Seeing.Agent.MCP
         public string ServerName => _serverName;
         public string ToolName => _realName;
         public string Description => _description;
+
+        /// <summary>工具标签（用于分类和过滤）</summary>
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+
+        /// <summary>工具分类</summary>
+        public ToolCategory Category => ToolCategory.General;
+
         public JsonElement ParametersSchema => _parametersSchema;
 
         public McpTool(

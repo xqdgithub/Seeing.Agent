@@ -303,16 +303,6 @@ namespace Seeing.Agent.Configuration
             return removed;
         }
 
-        /// <inheritdoc/>
-        public IAgent? GetOrCreateAgentInstance(string name)
-        {
-            var info = _agentStore.GetAsync(name).Result;
-            if (info == null)
-                return null;
-
-            return new AgentInfoWrapper(info);
-        }
-
         #endregion
 
         #region 配置编辑
@@ -850,46 +840,6 @@ maxSteps: 50
                 Level = level,
                 Action = action
             });
-        }
-
-        /// <summary>
-        /// 代理信息包装器
-        /// </summary>
-        private class AgentInfoWrapper : IAgent
-        {
-            private readonly AgentDefinition _info;
-
-            public AgentInfoWrapper(AgentDefinition info) => _info = info;
-
-            public string Name { get => _info.Name; set => _info.Name = value; }
-            public AgentMode Mode { get => _info.Mode; set => _info.Mode = value; }
-            public string Description { get => _info.Description ?? string.Empty; set => _info.Description = value; }
-            public IReadOnlyList<PermissionRuleEntry> PermissionRules { get => _info.PermissionRules.AsReadOnly(); set { _info.PermissionRules.Clear(); _info.PermissionRules.AddRange(value); } }
-            public string? SystemPrompt { get => _info.SystemPrompt; set => _info.SystemPrompt = value; }
-            public ModelReference? Model { get => _info.Model; set => _info.Model = value; }
-            public int? MaxSteps { get => _info.MaxSteps; set => _info.MaxSteps = value; }
-            public double? Temperature { get => _info.Temperature; set => _info.Temperature = value; }
-            public double? TopP { get => _info.TopP; set => _info.TopP = value; }
-            public int? MaxTokens { get => _info.MaxTokens; set => _info.MaxTokens = value; }
-            public AgentStatus Status { get => AgentStatus.Ready; set { } }
-            public bool Disabled { get => _info.Disabled; set => _info.Disabled = value; }
-            public IReadOnlyList<string> AllowedTools { get => _info.AllowedTools.AsReadOnly(); set { _info.AllowedTools.Clear(); _info.AllowedTools.AddRange(value); } }
-            public IReadOnlyList<string> DeniedTools { get => _info.DeniedTools.AsReadOnly(); set { _info.DeniedTools.Clear(); _info.DeniedTools.AddRange(value); } }
-            public PermissionEffect PermissionDefaultEffect { get => _info.PermissionDefaultEffect; set => _info.PermissionDefaultEffect = value; }
-            public AgentRuntime Runtime { get => _info.Runtime; set => _info.Runtime = value; }
-            public string? AcpBackend { get => _info.AcpBackend; set => _info.AcpBackend = value; }
-
-            public async IAsyncEnumerable<ChatMessage> ExecuteAsync(
-                ChatMessage input,
-                AgentContext context,
-                [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-            {
-                yield return new ChatMessage
-                {
-                    Role = "system",
-                    Content = $"代理 {_info.Name} 需要通过 AgentFactory 创建实例才能执行"
-                };
-            }
         }
 
         #endregion

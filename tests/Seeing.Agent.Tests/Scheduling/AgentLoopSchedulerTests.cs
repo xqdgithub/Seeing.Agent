@@ -37,7 +37,7 @@ public class AgentLoopSchedulerTests
     public async Task StartAsync_ShouldUseProvidedTaskIdAsJobId()
     {
         var registry = new Mock<IAgentRegistry>();
-        var mgr = new BackgroundTaskManager(registry.Object, NullLogger<BackgroundTaskManager>.Instance);
+        var mgr = new BackgroundTaskManager(registry.Object, Mock.Of<IAgentExecutor>(), NullLogger<BackgroundTaskManager>.Instance);
 
         var id = await mgr.StartAsync(new BackgroundTaskLaunchArgs
         {

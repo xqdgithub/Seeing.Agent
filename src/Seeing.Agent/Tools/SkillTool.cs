@@ -38,6 +38,9 @@ namespace Seeing.Agent.Tools
 
         public ToolCategory Category => ToolCategory.LlmInteraction;
 
+        /// <summary>工具标签</summary>
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+
         public JsonElement ParametersSchema => BuildParametersSchema();
 
         /// <summary>

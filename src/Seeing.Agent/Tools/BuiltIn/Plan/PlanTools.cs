@@ -13,6 +13,12 @@ namespace Seeing.Agent.Tools.BuiltIn.Plan
         public string Id => "plan_enter";
         public string Description => "Enter plan mode to create or edit an execution plan";
 
+        /// <summary>工具标签（用于分类和过滤）</summary>
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+
+        /// <summary>工具分类</summary>
+        public ToolCategory Category => ToolCategory.General;
+
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
@@ -71,6 +77,12 @@ namespace Seeing.Agent.Tools.BuiltIn.Plan
     {
         public string Id => "plan_exit";
         public string Description => "Exit plan mode and optionally start execution";
+
+        /// <summary>工具标签（用于分类和过滤）</summary>
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+
+        /// <summary>工具分类</summary>
+        public ToolCategory Category => ToolCategory.General;
 
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
         {
@@ -159,6 +171,12 @@ namespace Seeing.Agent.Tools.BuiltIn.Plan
     {
         public string Id => "plan_add_task";
         public string Description => "Add a task to an execution plan";
+
+        /// <summary>工具标签（用于分类和过滤）</summary>
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+
+        /// <summary>工具分类</summary>
+        public ToolCategory Category => ToolCategory.General;
 
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
         {

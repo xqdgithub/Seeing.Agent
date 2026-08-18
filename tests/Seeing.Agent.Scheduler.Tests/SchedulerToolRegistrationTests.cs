@@ -47,6 +47,8 @@ public class SchedulerToolRegistrationTests
         public StubTool(string id) => Id = id;
         public string Id { get; }
         public string Description => "stub";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
         public JsonElement ParametersSchema => default;
 
         public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context) =>

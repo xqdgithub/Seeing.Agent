@@ -29,6 +29,12 @@ namespace Seeing.Agent.Core.Abstractions
         /// <summary>工具描述</summary>
         public abstract string Description { get; }
 
+        /// <summary>工具标签（用于分类和过滤）</summary>
+        public virtual IReadOnlyList<string> Tags => Array.Empty<string>();
+
+        /// <summary>工具分类</summary>
+        public virtual ToolCategory Category => ToolCategory.General;
+
         /// <summary>参数 Schema (JSON Schema)</summary>
         public virtual JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
 

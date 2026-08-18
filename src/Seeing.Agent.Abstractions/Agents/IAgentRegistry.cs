@@ -88,10 +88,5 @@ using Seeing.Agent.Abstractions.Permissions;namespace Seeing.Agent.Abstractions.
         /// <param name="callerPermissions">调用者的权限规则</param>
         /// <returns>可访问的子 Agent 列表</returns>
         Task<IReadOnlyList<AgentDefinition>> GetAccessibleSubAgentsAsync(IReadOnlyList<PermissionRuleEntry> callerPermissions);
-
-        /// <summary>获取或创建 Agent 实例（用于执行）</summary>
-        /// <param name="name">Agent 名称</param>
-        /// <returns>Agent 实例，不存在则返回 null</returns>
-        IAgent? GetOrCreateAgentInstance(string name);
     }
 }

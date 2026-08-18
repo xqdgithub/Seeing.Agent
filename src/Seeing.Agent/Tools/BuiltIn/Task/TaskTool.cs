@@ -337,7 +337,7 @@ public class TaskTool : ToolBase
         TaskProjectionContext projCtx,
         CancellationToken ct)
     {
-        var agent = _agentRegistry.GetOrCreateAgentInstance(agentName)
+        var agent = await _agentRegistry.GetAgentAsync(agentName)
             ?? throw new InvalidOperationException($"无法创建 Agent 实例: {agentName}");
 
         var session = _sessionManager.Get(sessionId);
@@ -368,26 +368,7 @@ public class TaskTool : ToolBase
             var executor = parentContext.Services?.GetService(typeof(AgentExecutor)) as AgentExecutor;
             if (executor != null)
             {
-                var def = new AgentDefinition
-                {
-                    Name = agent.Name,
-                    Description = agent.Description,
-                    Mode = agent.Mode,
-                    SystemPrompt = agent.SystemPrompt,
-                    Model = agent.Model,
-                    MaxSteps = agent.MaxSteps,
-                    Temperature = agent.Temperature,
-                    TopP = agent.TopP,
-                    MaxTokens = agent.MaxTokens,
-                    AllowedTools = agent.AllowedTools.ToList(),
-                    DeniedTools = agent.DeniedTools.ToList(),
-                    PermissionRules = agent.PermissionRules.ToList(),
-                    PermissionDefaultEffect = agent.PermissionDefaultEffect,
-                    IsHidden = agent.Status == AgentStatus.Disabled,
-                    Disabled = agent.Disabled,
-                    Runtime = agent.Runtime,
-                    AcpBackend = agent.AcpBackend
-                };
+                var def = agent;
                 var outputBuilder = new StringBuilder();
                 await foreach (var evt in executor.ExecuteAsync(def, agentContext, ct))
                 {
@@ -415,12 +396,16 @@ public class TaskTool : ToolBase
                 return string.IsNullOrEmpty(text) ? "子任务执行完成，无输出内容。" : text;
             }
 
+            var fallbackExecutor = parentContext.Services?.GetService(typeof(IAgentExecutor)) as IAgentExecutor
+                ?? throw new InvalidOperationException("无法解析 Agent 执行器（IAgentExecutor）");
             var fallback = new StringBuilder();
-            await foreach (var message in agent.ExecuteAsync(
-                new ChatMessage { Role = ChatRole.User, Content = prompt },
-                agentContext,
-                ct))
+            var fallbackMessages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = prompt } };
+            await foreach (var evt in fallbackExecutor.ExecuteAsync(agent, fallbackMessages, agentContext, ct))
             {
+                if (evt is not StreamCompleteEvent complete)
+                    continue;
+
+                var message = complete.Message;
                 if (message.Role == ChatRole.Assistant && !string.IsNullOrEmpty(message.Content))
                 {
                     fallback.Clear();

@@ -44,10 +44,10 @@ namespace Seeing.Agent.Abstractions.Tools
         string Description { get; }
 
         /// <summary>工具标签（用于分类和过滤）</summary>
-        IReadOnlyList<string> Tags => Array.Empty<string>();
+        IReadOnlyList<string> Tags { get; }
 
         /// <summary>工具分类</summary>
-        ToolCategory Category => ToolCategory.General;
+        ToolCategory Category { get; }
 
         /// <summary>参数 Schema (JSON Schema)</summary>
         JsonElement ParametersSchema { get; }

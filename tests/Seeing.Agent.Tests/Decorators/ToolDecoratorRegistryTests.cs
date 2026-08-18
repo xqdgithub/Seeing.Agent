@@ -104,6 +104,8 @@ public class ToolDecoratorRegistryTests
     {
         public string Id => "stub";
         public string Description => "stub tool";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
         public JsonElement ParametersSchema => default;
         public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx)
             => Task.FromResult(new ToolResult { Success = true });

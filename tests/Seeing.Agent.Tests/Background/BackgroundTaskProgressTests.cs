@@ -101,7 +101,8 @@ public class BackgroundTaskManagerProgressTests
     private static BackgroundTaskManager CreateManager()
     {
         var agentRegistry = new Mock<IAgentRegistry>();
+        var executor = new Mock<IAgentExecutor>();
         var logger = new Mock<ILogger<BackgroundTaskManager>>();
-        return new BackgroundTaskManager(agentRegistry.Object, logger.Object, null);
+        return new BackgroundTaskManager(agentRegistry.Object, executor.Object, logger.Object, null);
     }
 }

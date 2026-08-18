@@ -92,11 +92,6 @@ namespace Seeing.Agent.Configuration
         /// </summary>
         bool UnregisterAgent(string name);
 
-        /// <summary>
-        /// 获取或创建 Agent 实例
-        /// </summary>
-        IAgent? GetOrCreateAgentInstance(string name);
-
         #endregion
 
         #region 配置编辑（统一模型）

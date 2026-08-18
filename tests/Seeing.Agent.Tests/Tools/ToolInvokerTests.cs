@@ -314,6 +314,8 @@ namespace Seeing.Agent.Tests.Tools
     {
         public string Id => "test_tool";
         public string Description => "测试工具";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
 
         public async Task<Seeing.Agent.Abstractions.Tools.ToolResult> ExecuteAsync(JsonElement arguments, Seeing.Agent.Abstractions.Tools.ToolContext context)

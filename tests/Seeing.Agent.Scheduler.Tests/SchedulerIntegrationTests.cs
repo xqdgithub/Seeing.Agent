@@ -365,7 +365,7 @@ public class SchedulerIntegrationTests
 
         // 注册所有依赖（包括 manager 作为 IJobExecutionListener）
         var services = new ServiceCollection()
-            .AddSingleton<IAgentExecutionRouter>(router)
+            .AddSingleton<IAgentExecutor>(router)
             .AddSingleton(registry)
             .AddSingleton<AgentSelectionResolver>(sp =>
                 new AgentSelectionResolver(registry))
@@ -406,11 +406,11 @@ public class SchedulerIntegrationTests
         public Task<IReadOnlyList<IScheduler>> GetAllSchedulers(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<IScheduler>>(new[] { _scheduler });
     }
 
-    private static IAgentExecutionRouter CreateMockRouter(List<string> executedPrompts)
+    private static IAgentExecutor CreateMockRouter(List<string> executedPrompts)
     {
-        var router = new Mock<IAgentExecutionRouter>();
-        router.Setup(r => r.ExecuteAsync(It.IsAny<AgentDefinition>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition agent, AgentContext ctx, CancellationToken _) =>
+        var router = new Mock<IAgentExecutor>();
+        router.Setup(r => r.ExecuteAsync(It.IsAny<AgentDefinition>(), It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
+            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext ctx, CancellationToken _) =>
             {
                 var prompt = ctx.History.LastOrDefault()?.Content;
                 if (prompt != null)

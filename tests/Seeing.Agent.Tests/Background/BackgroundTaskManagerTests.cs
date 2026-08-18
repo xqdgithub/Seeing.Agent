@@ -7,6 +7,7 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Events;
 using System.Runtime.CompilerServices;
 using Xunit;
 
@@ -18,50 +19,89 @@ namespace Seeing.Agent.Tests.Background
     public class BackgroundTaskManagerTests
     {
         private readonly Mock<IAgentRegistry> _agentRegistryMock;
+        private readonly Mock<IAgentExecutor> _executorMock;
         private readonly Mock<ILogger<BackgroundTaskManager>> _loggerMock;
         private readonly BackgroundTaskManager _manager;
 
         public BackgroundTaskManagerTests()
         {
             _agentRegistryMock = new Mock<IAgentRegistry>();
+            _executorMock = new Mock<IAgentExecutor>();
             _loggerMock = new Mock<ILogger<BackgroundTaskManager>>();
-            _manager = new BackgroundTaskManager(_agentRegistryMock.Object, _loggerMock.Object);
+            _manager = new BackgroundTaskManager(_agentRegistryMock.Object, _executorMock.Object, _loggerMock.Object);
         }
 
         /// <summary>
         /// 创建模拟的 Agent 执行序列
         /// </summary>
-        private static async IAsyncEnumerable<ChatMessage> CreateAgentResponse(
+        private static async IAsyncEnumerable<IMessageEvent> CreateAgentResponse(
             string content,
             int delayMs = 100,
             [EnumeratorCancellation] CancellationToken ct = default)
         {
             await Task.Delay(delayMs, ct);
-            yield return new ChatMessage { Role = ChatRole.Assistant, Content = content };
+            yield return new StreamCompleteEvent
+            {
+                SessionId = "",
+                Message = new ChatMessage { Role = ChatRole.Assistant, Content = content }
+            };
         }
 
         /// <summary>
         /// 创建长时间运行的 Agent 执行序列（可取消）
         /// </summary>
-        private static async IAsyncEnumerable<ChatMessage> CreateLongRunningAgentResponse(
+        private static async IAsyncEnumerable<IMessageEvent> CreateLongRunningAgentResponse(
             [EnumeratorCancellation] CancellationToken ct = default)
         {
             await Task.Delay(10000, ct);
-            yield return new ChatMessage { Role = ChatRole.Assistant, Content = "Test output" };
+            yield return new StreamCompleteEvent
+            {
+                SessionId = "",
+                Message = new ChatMessage { Role = ChatRole.Assistant, Content = "Test output" }
+            };
+        }
+
+        /// <summary>
+        /// 创建模拟的 Agent 定义 + 执行器 Setup
+        /// </summary>
+        private void SetupAgent(string content, int delayMs = 100)
+        {
+            var definition = new AgentDefinition { Name = "test-agent" };
+            _executorMock.Setup(r => r.ExecuteAsync(
+                    It.IsAny<AgentDefinition>(),
+                    It.IsAny<IReadOnlyList<ChatMessage>>(),
+                    It.IsAny<AgentContext>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken ct) =>
+                    CreateAgentResponse(content, delayMs, ct));
+
+            _agentRegistryMock.Setup(r => r.GetAgentAsync("test-agent"))
+                .ReturnsAsync(definition);
+        }
+
+        /// <summary>
+        /// 创建长时间运行的 Agent 定义 + 执行器 Setup
+        /// </summary>
+        private void SetupLongRunningAgent()
+        {
+            var definition = new AgentDefinition { Name = "test-agent" };
+            _executorMock.Setup(r => r.ExecuteAsync(
+                    It.IsAny<AgentDefinition>(),
+                    It.IsAny<IReadOnlyList<ChatMessage>>(),
+                    It.IsAny<AgentContext>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken ct) =>
+                    CreateLongRunningAgentResponse(ct));
+
+            _agentRegistryMock.Setup(r => r.GetAgentAsync("test-agent"))
+                .ReturnsAsync(definition);
         }
 
         [Fact]
         public async Task StartAsync_ShouldCreateTaskWithPendingStatus()
         {
             // Arrange
-            var agentMock = new Mock<IAgent>();
-            agentMock.Setup(a => a.Name).Returns("test-agent");
-            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
-                    CreateAgentResponse("Test output", 100, ct));
-
-            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
-                .Returns(agentMock.Object);
+            SetupAgent("Test output", 100);
 
             var args = new BackgroundTaskLaunchArgs
             {
@@ -107,14 +147,7 @@ namespace Seeing.Agent.Tests.Background
         public async Task CancelAsync_ShouldCancelRunningTask()
         {
             // Arrange
-            var agentMock = new Mock<IAgent>();
-            agentMock.Setup(a => a.Name).Returns("test-agent");
-            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
-                    CreateLongRunningAgentResponse(ct));
-
-            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
-                .Returns(agentMock.Object);
+            SetupLongRunningAgent();
 
             var args = new BackgroundTaskLaunchArgs
             {
@@ -145,14 +178,7 @@ namespace Seeing.Agent.Tests.Background
         public async Task ListAsync_ShouldReturnAllTasks()
         {
             // Arrange
-            var agentMock = new Mock<IAgent>();
-            agentMock.Setup(a => a.Name).Returns("test-agent");
-            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
-                    CreateAgentResponse("Test output", 100, ct));
-
-            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
-                .Returns(agentMock.Object);
+            SetupAgent("Test output", 100);
 
             var args = new BackgroundTaskLaunchArgs
             {
@@ -176,14 +202,7 @@ namespace Seeing.Agent.Tests.Background
         public async Task ListAsync_ShouldFilterByStatus()
         {
             // Arrange
-            var agentMock = new Mock<IAgent>();
-            agentMock.Setup(a => a.Name).Returns("test-agent");
-            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
-                    CreateAgentResponse("Test output", 100, ct));
-
-            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
-                .Returns(agentMock.Object);
+            SetupAgent("Test output", 100);
 
             var args = new BackgroundTaskLaunchArgs
             {
@@ -208,14 +227,7 @@ namespace Seeing.Agent.Tests.Background
         public async Task WaitAsync_ShouldReturnCompletedTask()
         {
             // Arrange
-            var agentMock = new Mock<IAgent>();
-            agentMock.Setup(a => a.Name).Returns("test-agent");
-            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
-                    CreateAgentResponse("Test output", 0, ct));
-
-            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
-                .Returns(agentMock.Object);
+            SetupAgent("Test output", 0);
 
             var args = new BackgroundTaskLaunchArgs
             {
@@ -239,14 +251,7 @@ namespace Seeing.Agent.Tests.Background
         public async Task CancelAllAsync_ShouldCancelAllRunningTasks()
         {
             // Arrange
-            var agentMock = new Mock<IAgent>();
-            agentMock.Setup(a => a.Name).Returns("test-agent");
-            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
-                    CreateLongRunningAgentResponse(ct));
-
-            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
-                .Returns(agentMock.Object);
+            SetupLongRunningAgent();
 
             var args = new BackgroundTaskLaunchArgs
             {
@@ -278,14 +283,7 @@ namespace Seeing.Agent.Tests.Background
         [Fact]
         public async Task CancelBySessionAsync_ShouldCancelRelatedTasks()
         {
-            var agentMock = new Mock<IAgent>();
-            agentMock.Setup(a => a.Name).Returns("test-agent");
-            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
-                    CreateLongRunningAgentResponse(ct));
-
-            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
-                .Returns(agentMock.Object);
+            SetupLongRunningAgent();
 
             var parentId = "parent-session";
             await _manager.StartAsync(new BackgroundTaskLaunchArgs
@@ -330,14 +328,7 @@ namespace Seeing.Agent.Tests.Background
         public async Task GetOutputAsync_ShouldReturnResult_WhenTaskCompleted()
         {
             // Arrange
-            var agentMock = new Mock<IAgent>();
-            agentMock.Setup(a => a.Name).Returns("test-agent");
-            agentMock.Setup(a => a.ExecuteAsync(It.IsAny<ChatMessage>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-                .Returns((ChatMessage input, AgentContext ctx, CancellationToken ct) =>
-                    CreateAgentResponse("Hello from agent", 0, ct));
-
-            _agentRegistryMock.Setup(r => r.GetOrCreateAgentInstance("test-agent"))
-                .Returns(agentMock.Object);
+            SetupAgent("Hello from agent", 0);
 
             var args = new BackgroundTaskLaunchArgs
             {

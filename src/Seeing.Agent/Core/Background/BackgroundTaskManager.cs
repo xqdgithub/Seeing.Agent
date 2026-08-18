@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Extensions;using Seeing.Session.Core;
 using System.Collections.Concurrent;
 using System.Reactive.Subjects;
@@ -20,6 +21,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager, IHostedService
     private readonly ConcurrentDictionary<string, Subject<BackgroundTaskProgress>> _progressSubjects = new();
     private readonly ConcurrentDictionary<string, Subject<string>> _outputSubjects = new();
     private readonly IAgentRegistry _agentRegistry;
+    private readonly IAgentExecutor _executor;
     private readonly ISessionManager? _sessionManager;
     private readonly ILogger<BackgroundTaskManager> _logger;
 
@@ -28,10 +30,12 @@ public class BackgroundTaskManager : IBackgroundTaskManager, IHostedService
     /// </summary>
     public BackgroundTaskManager(
         IAgentRegistry agentRegistry,
+        IAgentExecutor executor,
         ILogger<BackgroundTaskManager> logger,
         ISessionManager? sessionManager = null)
     {
         _agentRegistry = agentRegistry;
+        _executor = executor;
         _logger = logger;
         _sessionManager = sessionManager;
     }
@@ -300,23 +304,25 @@ public class BackgroundTaskManager : IBackgroundTaskManager, IHostedService
             }
             else
             {
-                var agent = _agentRegistry.GetOrCreateAgentInstance(args.AgentName);
-                if (agent == null)
-                {
-                    throw new InvalidOperationException($"Agent '{args.AgentName}' 不存在");
-                }
+                var def = await _agentRegistry.GetAgentAsync(args.AgentName)
+                    ?? throw new InvalidOperationException($"Agent '{args.AgentName}' 不存在");
 
-                await foreach (var message in agent.ExecuteAsync(args.Input, args.Context, cancellationToken))
+                var messages = new List<ChatMessage> { args.Input };
+                await foreach (var evt in _executor.ExecuteAsync(def, messages, args.Context, cancellationToken))
                 {
                     if (cancellationToken.IsCancellationRequested)
                         break;
 
-                    if (!string.IsNullOrEmpty(message.Content))
-                        outputBuilder.AppendLine(message.Content);
+                    // 仅处理完整消息事件（原 IAgent 流为纯消息序列，语义等价）
+                    if (evt is not StreamCompleteEvent complete)
+                        continue;
 
-                    if (message.ToolCalls?.Count > 0)
+                    if (!string.IsNullOrEmpty(complete.Message.Content))
+                        outputBuilder.AppendLine(complete.Message.Content);
+
+                    if (complete.Message.ToolCalls?.Count > 0)
                     {
-                        foreach (var toolCall in message.ToolCalls)
+                        foreach (var toolCall in complete.Message.ToolCalls)
                             outputBuilder.AppendLine($"[Tool: {toolCall.Name}]");
                     }
                 }

@@ -14,6 +14,12 @@ namespace Seeing.Agent.Git.Tools
         public string Id => "git_log";
         public string Description => "Get the commit history of the repository";
 
+        /// <summary>工具标签（用于分类和过滤）</summary>
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+
+        /// <summary>工具分类</summary>
+        public ToolCategory Category => ToolCategory.ExternalService;
+
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",

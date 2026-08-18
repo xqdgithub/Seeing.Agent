@@ -272,9 +272,9 @@ public class SchedulerEngineTests
         List<string> executedPrompts)
     {
         var optionsProvider = ws.CreateOptionsProvider();
-        var router = new Mock<IAgentExecutionRouter>();
-        router.Setup(r => r.ExecuteAsync(It.IsAny<AgentDefinition>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, AgentContext ctx, CancellationToken _) =>
+        var router = new Mock<IAgentExecutor>();
+        router.Setup(r => r.ExecuteAsync(It.IsAny<AgentDefinition>(), It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
+            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext ctx, CancellationToken _) =>
             {
                 var prompt = ctx.History.LastOrDefault()?.Content;
                 if (prompt != null) executedPrompts.Add(prompt);
@@ -290,7 +290,7 @@ public class SchedulerEngineTests
             .ReturnsAsync((string name) => new AgentDefinition { Name = name });
 
         var services = new ServiceCollection()
-            .AddSingleton<IAgentExecutionRouter>(router.Object)
+            .AddSingleton<IAgentExecutor>(router.Object)
             .AddSingleton(registry.Object)
             .AddSingleton(new AgentSelectionResolver(registry.Object))
             .BuildServiceProvider();
