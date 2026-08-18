@@ -29,7 +29,6 @@ public class TaskTool : ToolBase
 {
     private readonly ISessionManager _sessionManager;
     private readonly IAgentRegistry _agentRegistry;
-    private readonly IBackgroundTaskManager _backgroundTasks;
     private readonly IAgentLoopScheduler _loopScheduler;
     private readonly ITaskEventProjector _projector;
     private readonly ISessionEventBus? _eventBus;
@@ -38,14 +37,12 @@ public class TaskTool : ToolBase
         ILogger<TaskTool> logger,
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
-        IBackgroundTaskManager backgroundTasks,
         IAgentLoopScheduler loopScheduler,
         ITaskEventProjector projector,
         ISessionEventBus? eventBus = null) : base(logger)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;
-        _backgroundTasks = backgroundTasks;
         _loopScheduler = loopScheduler;
         _projector = projector;
         _eventBus = eventBus;
@@ -97,6 +94,10 @@ public class TaskTool : ToolBase
         if (agentInfo.Disabled)
             return Failure($"Agent '{subagentType}' 已禁用");
 
+        // 运行期解析后台任务管理器，避免 ToolManager → TaskTool → BackgroundTaskManager
+        // → IAgentExecutor → AgentExecutor → ToolManager 的构造期循环依赖
+        var backgroundTasks = context.Services?.GetService(typeof(IBackgroundTaskManager)) as IBackgroundTaskManager;
+
         TaskProjectionContext? ctxProj = null;
         try
         {
@@ -113,7 +114,7 @@ public class TaskTool : ToolBase
                 if (!string.Equals(session.ParentSessionId, context.SessionId, StringComparison.Ordinal))
                     return Failure($"task_id '{taskId}' 不属于当前父会话");
 
-                var existing = await _backgroundTasks.GetAsync(session.Id);
+                var existing = backgroundTasks == null ? null : await backgroundTasks.GetAsync(session.Id);
                 if (existing?.Status is BackgroundTaskStatus.Pending or BackgroundTaskStatus.Running)
                     return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
 
@@ -186,7 +187,9 @@ public class TaskTool : ToolBase
                 var childId = session.Id;
                 var agentName = agentInfo.Name;
 
-                await _backgroundTasks.StartAsync(new BackgroundTaskLaunchArgs
+                await (backgroundTasks ?? throw new InvalidOperationException(
+                    "无法解析后台任务管理器（IBackgroundTaskManager）"))
+                    .StartAsync(new BackgroundTaskLaunchArgs
                 {
                     TaskId = childId,
                     AgentName = agentName,
@@ -266,7 +269,7 @@ public class TaskTool : ToolBase
                     {
                         try
                         {
-                            _ = _backgroundTasks.CancelAsync(childId);
+                            _ = backgroundTasks?.CancelAsync(childId);
                         }
                         catch
                         {

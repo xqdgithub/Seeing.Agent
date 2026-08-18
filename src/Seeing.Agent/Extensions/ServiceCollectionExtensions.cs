@@ -469,13 +469,11 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<ILogger<TaskTool>>(),
                 sp.GetRequiredService<ISessionManager>(),
                 sp.GetRequiredService<IAgentRegistry>(),
-                sp.GetRequiredService<IBackgroundTaskManager>(),
                 sp.GetRequiredService<IAgentLoopScheduler>(),
                 sp.GetRequiredService<ITaskEventProjector>(),
                 sp.GetService<ISessionEventBus>()));
             services.AddSingleton<ITool>(sp => new TaskStatusTool(
                 sp.GetRequiredService<ILogger<TaskStatusTool>>(),
-                sp.GetRequiredService<IBackgroundTaskManager>(),
                 sp.GetRequiredService<ISessionManager>()));
             services.AddSingleton<ITool, TodoWriteTool>();
 

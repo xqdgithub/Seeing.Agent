@@ -29,7 +29,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
-        Converters = { new JsonStringEnumConverter() }
+        Converters = { new JsonStringEnumConverter(), new PluginSpecConverter() }
     };
     
     private readonly IWorkspaceProvider _workspace;

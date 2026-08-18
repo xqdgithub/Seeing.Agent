@@ -16,15 +16,12 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask;
 /// </summary>
 public class TaskStatusTool : ToolBase
 {
-    private readonly IBackgroundTaskManager _backgroundTasks;
     private readonly ISessionManager _sessionManager;
 
     public TaskStatusTool(
         ILogger<TaskStatusTool> logger,
-        IBackgroundTaskManager backgroundTasks,
         ISessionManager sessionManager) : base(logger)
     {
-        _backgroundTasks = backgroundTasks;
         _sessionManager = sessionManager;
     }
 
@@ -56,13 +53,19 @@ public class TaskStatusTool : ToolBase
         if (arguments.TryGetProperty("timeout_ms", out var t) && t.TryGetInt32(out var ms))
             timeoutMs = Math.Clamp(ms, 1, 600_000);
 
+        // 运行期解析后台任务管理器，避免与 ToolManager 的构造期循环依赖
+        var backgroundTasks = context.Services?.GetService(typeof(IBackgroundTaskManager)) as IBackgroundTaskManager;
+
         BackgroundTaskInfo? info;
         if (wait)
         {
-            info = await _backgroundTasks.WaitAsync(taskId, timeoutMs);
+            if (backgroundTasks == null)
+                return Failure("后台任务管理器不可用，无法等待任务");
+
+            info = await backgroundTasks.WaitAsync(taskId, timeoutMs);
             if (info == null)
             {
-                var current = await _backgroundTasks.GetAsync(taskId);
+                var current = await backgroundTasks.GetAsync(taskId);
                 if (current == null)
                     return await FallbackFromSessionAsync(taskId);
                 if (current.Status is BackgroundTaskStatus.Pending or BackgroundTaskStatus.Running)
@@ -72,7 +75,7 @@ public class TaskStatusTool : ToolBase
         }
         else
         {
-            info = await _backgroundTasks.GetAsync(taskId);
+            info = backgroundTasks == null ? null : await backgroundTasks.GetAsync(taskId);
             if (info == null)
                 return await FallbackFromSessionAsync(taskId);
         }
