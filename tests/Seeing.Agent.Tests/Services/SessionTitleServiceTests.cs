@@ -12,7 +12,7 @@ using Xunit;
 
 namespace Seeing.Agent.Tests.Services
 {
-    public class SessionTitleEnsuringTests
+    public class SessionTitleServiceTests
     {
         [Theory]
         [InlineData("Session abc", true)]
@@ -21,13 +21,13 @@ namespace Seeing.Agent.Tests.Services
         [InlineData("", true)]
         [InlineData("调试生产错误", false)]
         public void IsDefaultTitle_cases(string title, bool expected)
-            => SessionTitleEnsuring.IsDefaultTitle(title).Should().Be(expected);
+            => SessionTitleService.IsDefaultTitle(title).Should().Be(expected);
 
         [Fact]
         public void CleanTitle_truncates_to_15_chars_without_ellipsis()
         {
             var raw = "这是一个超过十五个字的超长标题内容继续";
-            var cleaned = SessionTitleEnsuring.CleanTitle(raw);
+            var cleaned = SessionTitleService.CleanTitle(raw);
             cleaned.Length.Should().BeLessThanOrEqualTo(15);
             cleaned.Should().NotContain("...");
         }
@@ -35,21 +35,21 @@ namespace Seeing.Agent.Tests.Services
         [Fact]
         public void CleanTitle_takes_first_line_and_strips_quotes()
         {
-            SessionTitleEnsuring.CleanTitle("\"短标题\"\n第二行").Should().Be("短标题");
+            SessionTitleService.CleanTitle("\"短标题\"\n第二行").Should().Be("短标题");
         }
 
         [Fact]
         public void ShouldEnsure_false_when_disabled_or_fork_or_subagent()
         {
-            SessionTitleEnsuring.ShouldEnsure(
+            SessionTitleService.ShouldEnsure(
                 enabled: false, kind: SessionKind.Root, parentId: null,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeFalse();
 
-            SessionTitleEnsuring.ShouldEnsure(
+            SessionTitleService.ShouldEnsure(
                 enabled: true, kind: SessionKind.Root, parentId: "p",
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeFalse();
 
-            SessionTitleEnsuring.ShouldEnsure(
+            SessionTitleService.ShouldEnsure(
                 enabled: true, kind: SessionKind.SubAgent, parentId: null,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeFalse();
         }
@@ -57,15 +57,15 @@ namespace Seeing.Agent.Tests.Services
         [Fact]
         public void ShouldEnsure_true_for_default_title_under_10_or_every_10th()
         {
-            SessionTitleEnsuring.ShouldEnsure(
+            SessionTitleService.ShouldEnsure(
                 enabled: true, kind: SessionKind.Root, parentId: null,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeTrue();
 
-            SessionTitleEnsuring.ShouldEnsure(
+            SessionTitleService.ShouldEnsure(
                 enabled: true, kind: SessionKind.Root, parentId: null,
                 title: "新会话", realUserCount: 2, userMessage: "hi").Should().BeTrue();
 
-            SessionTitleEnsuring.ShouldEnsure(
+            SessionTitleService.ShouldEnsure(
                 enabled: true, kind: SessionKind.Root, parentId: null,
                 title: "已有标题", realUserCount: 10, userMessage: "hi").Should().BeTrue();
         }
@@ -76,7 +76,7 @@ namespace Seeing.Agent.Tests.Services
         [InlineData("\t")]
         public void ShouldEnsure_false_when_user_message_empty_or_whitespace(string userMessage)
         {
-            SessionTitleEnsuring.ShouldEnsure(
+            SessionTitleService.ShouldEnsure(
                 enabled: true, kind: SessionKind.Root, parentId: null,
                 title: "新会话", realUserCount: 1, userMessage: userMessage).Should().BeFalse();
         }
@@ -97,7 +97,7 @@ namespace Seeing.Agent.Tests.Services
                 ToolCallId = "t1"
             });
 
-            var history = SessionTitleEnsuring.BuildTitleHistory(session);
+            var history = SessionTitleService.BuildTitleHistory(session);
             history.Should().HaveCount(2);
             history[0].Role.Should().Be(ChatRole.User);
             history[0].Content.Should().Contain("<project-instructions>");
@@ -109,9 +109,9 @@ namespace Seeing.Agent.Tests.Services
         [Fact]
         public void ShouldWriteTitle_allows_refresh_every_10()
         {
-            SessionTitleEnsuring.ShouldWriteTitle("新会话", 1).Should().BeTrue();
-            SessionTitleEnsuring.ShouldWriteTitle("已有标题", 1).Should().BeFalse();
-            SessionTitleEnsuring.ShouldWriteTitle("已有标题", 10).Should().BeTrue();
+            SessionTitleService.ShouldWriteTitle("新会话", 1).Should().BeTrue();
+            SessionTitleService.ShouldWriteTitle("已有标题", 1).Should().BeFalse();
+            SessionTitleService.ShouldWriteTitle("已有标题", 10).Should().BeTrue();
         }
 
         [Fact]
@@ -140,7 +140,7 @@ namespace Seeing.Agent.Tests.Services
             var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
-            var svc = new SessionTitleEnsuring(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleEnsuring>.Instance);
+            var svc = new SessionTitleService(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
             var title = await svc.TryEnsureAsync(session.Id, "debug 500 errors in production", "provider/model");
 
             title.Should().Be("调试生产500错误");
@@ -177,7 +177,7 @@ namespace Seeing.Agent.Tests.Services
             var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
-            var svc = new SessionTitleEnsuring(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleEnsuring>.Instance);
+            var svc = new SessionTitleService(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
             var title = await svc.TryEnsureAsync(session.Id, "hi", "m");
 
             title.Should().BeNull();
@@ -197,9 +197,9 @@ namespace Seeing.Agent.Tests.Services
                 SessionMessage.AssistantMessage("reply"),
             };
 
-            SessionTitleEnsuring.CountIntentionalUserMessages(messages).Should().Be(1);
-            SessionTitleEnsuring.IsIntentionalUserMessage(messages[0]).Should().BeFalse();
-            SessionTitleEnsuring.IsIntentionalUserMessage(messages[2]).Should().BeTrue();
+            SessionTitleService.CountIntentionalUserMessages(messages).Should().Be(1);
+            SessionTitleService.IsIntentionalUserMessage(messages[0]).Should().BeFalse();
+            SessionTitleService.IsIntentionalUserMessage(messages[2]).Should().BeTrue();
         }
 
         [Fact]
@@ -231,7 +231,7 @@ namespace Seeing.Agent.Tests.Services
             var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
-            var svc = new SessionTitleEnsuring(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleEnsuring>.Instance);
+            var svc = new SessionTitleService(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
             var title = await svc.TryEnsureAsync(session.Id, "implement rate limiting", "provider/model");
 
             title.Should().Be("实现限流");
@@ -265,7 +265,7 @@ namespace Seeing.Agent.Tests.Services
             var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
-            var svc = new SessionTitleEnsuring(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleEnsuring>.Instance);
+            var svc = new SessionTitleService(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
             var title = await svc.TryEnsureAsync(session.Id, "msg-9", "provider/model");
 
             title.Should().Be("新主题标题");

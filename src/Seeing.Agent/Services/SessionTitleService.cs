@@ -12,7 +12,7 @@ namespace Seeing.Agent.Services
     /// <summary>
     /// 会话标题确保：判定时机、清洗 LLM 输出，并完成一次受限 LLM 调用。
     /// </summary>
-    public sealed class SessionTitleEnsuring : ISessionTitleEnsuring
+    public sealed class SessionTitleService : ISessionTitleService
     {
         private const string DefaultTitlePrefix = "Session ";
         private const string SyntheticMetadataKey = "synthetic";
@@ -23,17 +23,17 @@ namespace Seeing.Agent.Services
         private readonly ITextCompletion _text;
         private readonly ISessionManager _sessionManager;
         private readonly IOptionsMonitor<SeeingAgentOptions> _options;
-        private readonly ILogger<SessionTitleEnsuring> _logger;
+        private readonly ILogger<SessionTitleService> _logger;
 
         private static readonly Regex ThinkingTagRegex = new(
             @"<think>.*?</think>|<tool_call>think.*?</(?:redacted_thinking|think)>\s*",
             RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        public SessionTitleEnsuring(
+        public SessionTitleService(
             ITextCompletion text,
             ISessionManager sessionManager,
             IOptionsMonitor<SeeingAgentOptions> options,
-            ILogger<SessionTitleEnsuring> logger)
+            ILogger<SessionTitleService> logger)
         {
             _text = text;
             _sessionManager = sessionManager;

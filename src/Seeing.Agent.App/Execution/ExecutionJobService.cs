@@ -1,4 +1,4 @@
-using Seeing.Agent.Abstractions.Commands;
+﻿using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
@@ -353,7 +353,7 @@ public class ExecutionJobService : IDisposable
                 var titleSource = ResolveTitleSourceText(record.Input);
                 if (!string.IsNullOrWhiteSpace(titleSource))
                 {
-                    var titleEnsuring = scope.ServiceProvider.GetRequiredService<ISessionTitleEnsuring>();
+                    var titleEnsuring = scope.ServiceProvider.GetRequiredService<ISessionTitleService>();
                     var fallbackModel = context.RequestModelId ?? session.SelectedModel;
                     _ = EnsureTitleFireAndForgetAsync(
                         titleEnsuring,
@@ -685,7 +685,7 @@ public class ExecutionJobService : IDisposable
     /// Fire-and-forget 标题确保；独立于主执行取消。
     /// </summary>
     private async Task EnsureTitleFireAndForgetAsync(
-        ISessionTitleEnsuring ensuring,
+        ISessionTitleService ensuring,
         string sessionId,
         string userText,
         string? fallbackModel)

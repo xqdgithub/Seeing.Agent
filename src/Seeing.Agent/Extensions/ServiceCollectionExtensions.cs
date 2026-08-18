@@ -1,4 +1,4 @@
-using Seeing.Agent.Abstractions.Tools;
+﻿using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Skills;
@@ -637,8 +637,8 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<IAgentExecutor, NativeAgentExecutor>();
 
             services.AddSingleton<
-                Seeing.Agent.Services.ISessionTitleEnsuring,
-                Seeing.Agent.Services.SessionTitleEnsuring>();
+                Seeing.Agent.Services.ISessionTitleService,
+                Seeing.Agent.Services.SessionTitleService>();
 
             // Shell 环境服务（触发 shell.env Hook）
             services.AddSingleton<IShellEnvironmentService, ShellEnvironmentService>();
