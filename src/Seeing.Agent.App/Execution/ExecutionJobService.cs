@@ -1,4 +1,8 @@
-﻿using System.Collections.Concurrent;
+﻿using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Agents;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -18,6 +22,7 @@ using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Services;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
@@ -502,13 +507,11 @@ public class ExecutionJobService : IDisposable
             session.SelectedAgent,
             CancellationToken.None).ConfigureAwait(false);
 
-        var agent = agentRegistry.GetOrCreateAgentInstance(agentId)
+        var agentDef = await agentRegistry.GetAgentAsync(agentId)
             ?? throw new InvalidOperationException($"Agent '{agentId}' not found");
 
-        if (agent.Disabled)
+        if (agentDef.Disabled)
             throw new InvalidOperationException($"Agent '{agentId}' is disabled");
-
-        var agentDef = Core.Models.AgentDefinition.FromAgent(agent);
 
         // 权限通道选择优先级：
         // 1. AutoApproveAll=true 时使用 AutoApproveInstance（全局配置优先）

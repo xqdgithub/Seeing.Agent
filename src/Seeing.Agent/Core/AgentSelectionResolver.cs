@@ -1,10 +1,11 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Interfaces;
 
 namespace Seeing.Agent.Core;
 
 /// <summary>
 /// 统一 Agent 默认解析，供 Gateway 与 WebUI 共用。
-/// 执行路径由 Agent 的 <see cref="Models.AgentRuntime"/> 自动分流 ACP / Native。
+/// 执行路径由 Agent 的 <see cref="Seeing.Agent.Abstractions.Agents.AgentRuntime"/> 自动分流 ACP / Native。
 /// </summary>
 public sealed class AgentSelectionResolver
 {

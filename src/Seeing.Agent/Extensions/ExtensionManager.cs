@@ -1,10 +1,12 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using System.Collections.Concurrent;
 
 using Seeing.Agent.Abstractions.Permissions;
@@ -266,8 +268,7 @@ namespace Seeing.Agent.Extensions
                 AllowedTools = agent.AllowedTools?.ToList() ?? new List<string>(),
                 DeniedTools = agent.DeniedTools?.ToList() ?? new List<string>(),
                 IsNative = false,
-                Tags = new List<string> { "extension", extensionId },
-                AgentFactory = () => agent
+                Tags = new List<string> { "extension", extensionId }
             };
         }
 

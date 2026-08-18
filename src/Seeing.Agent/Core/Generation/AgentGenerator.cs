@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
@@ -261,7 +262,7 @@ Review criteria:
         /// <summary>
         /// Converts a Generation AgentDefinition to Models AgentDefinition for registry registration
         /// </summary>
-        private static Seeing.Agent.Core.Models.AgentDefinition ToModelsAgentDefinition(AgentDefinition definition)
+        private static Seeing.Agent.Abstractions.Agents.AgentDefinition ToModelsAgentDefinition(AgentDefinition definition)
         {
             // Convert ModelConfigOverride to ModelReference
             ModelReference? modelRef = null;
@@ -274,7 +275,7 @@ Review criteria:
                 };
             }
 
-            return new Seeing.Agent.Core.Models.AgentDefinition
+            return new Seeing.Agent.Abstractions.Agents.AgentDefinition
             {
                 Name = definition.Name,
                 Description = definition.Description ?? string.Empty,

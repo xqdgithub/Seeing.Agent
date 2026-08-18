@@ -7,6 +7,7 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Agent.TokenBudget.Api.Responses;

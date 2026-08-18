@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using Seeing.Agent.Abstractions.Agents;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Mapping;
@@ -6,6 +7,9 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Acp.Execution;
 

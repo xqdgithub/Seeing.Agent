@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Quartz;
 using Quartz.Serialization.SystemTextJson;

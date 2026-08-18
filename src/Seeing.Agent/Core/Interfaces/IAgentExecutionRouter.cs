@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Events;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Core.Interfaces

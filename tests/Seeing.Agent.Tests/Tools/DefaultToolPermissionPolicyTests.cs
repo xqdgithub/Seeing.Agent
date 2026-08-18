@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Permissions;
 // tests/Seeing.Agent.Tests/Tools/DefaultToolPermissionPolicyTests.cs
 
 using FluentAssertions;

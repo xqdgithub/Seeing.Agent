@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using Acp.Types;
 using Seeing.Agent.Core.Models;
 

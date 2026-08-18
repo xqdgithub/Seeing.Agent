@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using Seeing.Agent.Abstractions.Agents;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -308,11 +309,6 @@ namespace Seeing.Agent.Configuration
             var info = _agentStore.GetAsync(name).Result;
             if (info == null)
                 return null;
-
-            if (info.AgentFactory != null)
-            {
-                return info.AgentFactory();
-            }
 
             return new AgentInfoWrapper(info);
         }
@@ -875,7 +871,7 @@ maxSteps: 50
             public double? Temperature { get => _info.Temperature; set => _info.Temperature = value; }
             public double? TopP { get => _info.TopP; set => _info.TopP = value; }
             public int? MaxTokens { get => _info.MaxTokens; set => _info.MaxTokens = value; }
-            public AgentStatus Status { get => _info.AgentFactory != null ? AgentStatus.Ready : AgentStatus.RequiresFactory; set { } }
+            public AgentStatus Status { get => AgentStatus.Ready; set { } }
             public bool Disabled { get => _info.Disabled; set => _info.Disabled = value; }
             public IReadOnlyList<string> AllowedTools { get => _info.AllowedTools.AsReadOnly(); set { _info.AllowedTools.Clear(); _info.AllowedTools.AddRange(value); } }
             public IReadOnlyList<string> DeniedTools { get => _info.DeniedTools.AsReadOnly(); set { _info.DeniedTools.Clear(); _info.DeniedTools.AddRange(value); } }

@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Permissions;
 using System.Collections.Concurrent;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;

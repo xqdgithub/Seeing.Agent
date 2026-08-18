@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Seeing.Agent.Abstractions.Permissions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App.Commands;
 using Seeing.Agent.App.Commands.BuiltIn;
@@ -7,6 +8,7 @@ using Seeing.Agent.App.Internal;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Skills;
 

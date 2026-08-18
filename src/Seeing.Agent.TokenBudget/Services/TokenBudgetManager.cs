@@ -1,6 +1,7 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
 using Seeing.TokenEstimation;
 

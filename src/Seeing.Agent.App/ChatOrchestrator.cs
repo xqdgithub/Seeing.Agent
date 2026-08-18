@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using Seeing.Agent.Abstractions.Permissions;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App.Events;
 using Seeing.Agent.App.Execution;
@@ -11,6 +12,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.App;

@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using Seeing.Agent.Abstractions.Agents;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -15,6 +16,7 @@ using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Core.Session;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Tools.BuiltIn.SubTask;
@@ -365,7 +367,26 @@ public class TaskTool : ToolBase
             var executor = parentContext.Services?.GetService(typeof(AgentExecutor)) as AgentExecutor;
             if (executor != null)
             {
-                var def = AgentDefinition.FromAgent(agent);
+                var def = new AgentDefinition
+                {
+                    Name = agent.Name,
+                    Description = agent.Description,
+                    Mode = agent.Mode,
+                    SystemPrompt = agent.SystemPrompt,
+                    Model = agent.Model,
+                    MaxSteps = agent.MaxSteps,
+                    Temperature = agent.Temperature,
+                    TopP = agent.TopP,
+                    MaxTokens = agent.MaxTokens,
+                    AllowedTools = agent.AllowedTools.ToList(),
+                    DeniedTools = agent.DeniedTools.ToList(),
+                    PermissionRules = agent.PermissionRules.ToList(),
+                    PermissionDefaultEffect = agent.PermissionDefaultEffect,
+                    IsHidden = agent.Status == AgentStatus.Disabled,
+                    Disabled = agent.Disabled,
+                    Runtime = agent.Runtime,
+                    AcpBackend = agent.AcpBackend
+                };
                 var outputBuilder = new StringBuilder();
                 await foreach (var evt in executor.ExecuteAsync(def, agentContext, ct))
                 {

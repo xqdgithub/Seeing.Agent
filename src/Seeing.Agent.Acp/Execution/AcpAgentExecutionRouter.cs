@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using Seeing.Agent.Abstractions.Agents;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;

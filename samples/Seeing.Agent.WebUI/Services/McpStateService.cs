@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.WebUI.Services;
 
 using Microsoft.Extensions.Logging;

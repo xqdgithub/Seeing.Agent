@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Permissions;
 using System.Security.Cryptography;
 using System.Text;
 using FluentAssertions;

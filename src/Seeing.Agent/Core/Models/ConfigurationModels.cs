@@ -1,4 +1,5 @@
-using Seeing.Agent.Llm;
+﻿using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Core.Models

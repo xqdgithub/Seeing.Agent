@@ -1,9 +1,10 @@
-using Acp.Helpers;
+﻿using Acp.Helpers;
 using Acp.Messages;
 using Acp.Types;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 
@@ -50,7 +51,7 @@ public sealed class AcpPermissionBridge
             SessionId = ctx.SeeingSessionId
         }, cancellationToken).ConfigureAwait(false);
 
-        var approved = channelResult.Action == Core.Permission.PermissionChannelAction.Allow;
+        var approved = channelResult.Action == Seeing.Agent.Abstractions.Permissions.PermissionChannelAction.Allow;
 
         if (!approved)
         {

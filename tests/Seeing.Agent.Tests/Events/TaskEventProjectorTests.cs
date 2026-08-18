@@ -1,4 +1,5 @@
-using FluentAssertions;
+﻿using FluentAssertions;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Events;
 using Xunit;
 

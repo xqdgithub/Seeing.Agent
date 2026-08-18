@@ -28,6 +28,7 @@ using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
 using Seeing.Agent.MCP;
 using Seeing.Agent.MCP.Configuration;

@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,11 +8,12 @@ using Quartz.Impl;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Abstractions;
-using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
@@ -284,8 +286,8 @@ public class SchedulerEngineTests
             });
 
         var registry = new Mock<IAgentRegistry>();
-        registry.Setup(r => r.GetOrCreateAgentInstance(It.IsAny<string>()))
-            .Returns((string name) => new StubAgent(name));
+        registry.Setup(r => r.GetAgentAsync(It.IsAny<string>()))
+            .ReturnsAsync((string name) => new AgentDefinition { Name = name });
 
         var services = new ServiceCollection()
             .AddSingleton<IAgentExecutionRouter>(router.Object)
@@ -310,15 +312,5 @@ public class SchedulerEngineTests
     {
         foreach (var evt in events) yield return evt;
         await Task.CompletedTask;
-    }
-
-    private sealed class StubAgent : AgentBase
-    {
-        private readonly string _name;
-        public StubAgent(string name) : base(NullLogger<AgentBase>.Instance) => _name = name;
-        public override string Name => _name;
-        protected override IAsyncEnumerable<ChatMessage> ExecuteCoreAsync(
-            ChatMessage input, AgentContext context, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
     }
 }

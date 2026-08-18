@@ -1,8 +1,9 @@
-using System.Net;
+﻿using System.Net;
 using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
 using Xunit;
 

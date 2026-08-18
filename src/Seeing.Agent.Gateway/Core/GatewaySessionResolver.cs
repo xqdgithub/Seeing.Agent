@@ -1,6 +1,7 @@
-using Seeing.Agent.Core;
+﻿using Seeing.Agent.Core;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Gateway.Core;

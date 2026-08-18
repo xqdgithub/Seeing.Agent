@@ -1,4 +1,4 @@
-@page "/session"
+﻿@page "/session"
 @page "/session/{SessionId}"
 @using AntDesign
 @using Microsoft.AspNetCore.Components.Web
@@ -32,7 +32,7 @@
 @inject Core.Interfaces.IAgentRegistry AgentRegistry
 @inject Core.AgentSelectionResolver AgentSelectionResolver
 @inject IWorkspaceProvider WorkspaceProvider
-@inject Core.Interfaces.IPermissionChannel PermissionChannel
+@inject Seeing.Agent.Abstractions.Permissions.IPermissionChannel PermissionChannel
 @inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
 @inject ILlmService LlmService
@@ -915,7 +915,7 @@
         }
 
         // TaskTool 子会话理论上只会是 Native；查不到时不要当成 ACP
-        _isAcpPassthrough = info?.Runtime == Seeing.Agent.Core.Models.AgentRuntime.AcpPassthrough;
+        _isAcpPassthrough = info?.Runtime == Seeing.Agent.Abstractions.Agents.AgentRuntime.AcpPassthrough;
     }
     
     /// <summary>

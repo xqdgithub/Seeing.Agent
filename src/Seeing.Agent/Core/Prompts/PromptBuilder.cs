@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Skills;
@@ -160,7 +161,7 @@ public class PromptBuilder
         return sb.ToString();
     }
 
-    private string BuildAgentSection(IEnumerable<Models.AgentDefinition> agents, string? currentAgentName)
+    private string BuildAgentSection(IEnumerable<Seeing.Agent.Abstractions.Agents.AgentDefinition> agents, string? currentAgentName)
     {
         var agentList = agents.ToList();
         var subAgents = agentList

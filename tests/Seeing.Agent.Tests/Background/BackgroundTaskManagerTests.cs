@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -5,6 +6,7 @@ using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using System.Runtime.CompilerServices;
 using Xunit;
 

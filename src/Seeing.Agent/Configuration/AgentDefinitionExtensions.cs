@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Core.Models;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 
 using Seeing.Agent.Abstractions.Permissions;
@@ -9,6 +10,23 @@ namespace Seeing.Agent.Configuration
     /// </summary>
     public static class AgentDefinitionExtensions
     {
+        /// <summary>
+        /// 构建权限策略
+        /// </summary>
+        public static AgentPermissionPolicy BuildPermissionPolicy(this AgentDefinition definition)
+        {
+            return new AgentPermissionPolicy
+            {
+                AgentName = definition.Name,
+                Rules = definition.PermissionRules,
+                AllowedTools = definition.AllowedTools,
+                DeniedTools = definition.DeniedTools,
+                AllowedAgents = definition.AllowedAgents,
+                AllowedMcpServers = definition.AllowedMcpServers,
+                DefaultEffect = definition.PermissionDefaultEffect
+            };
+        }
+
         /// <summary>
         /// 将 AgentConfigFile 合并到 AgentDefinition
         /// </summary>

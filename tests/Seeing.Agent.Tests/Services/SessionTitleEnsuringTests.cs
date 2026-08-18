@@ -1,10 +1,11 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Services;
 using Seeing.Session.Core;
 using Xunit;

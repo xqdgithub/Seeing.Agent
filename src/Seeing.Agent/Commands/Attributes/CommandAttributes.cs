@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Commands.Attributes

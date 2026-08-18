@@ -1,6 +1,8 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using System.Text.Json;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Commands
 {

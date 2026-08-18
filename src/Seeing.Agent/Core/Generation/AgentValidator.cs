@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Core.Generation

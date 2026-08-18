@@ -1,3 +1,5 @@
+﻿using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -11,6 +13,7 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Xunit;

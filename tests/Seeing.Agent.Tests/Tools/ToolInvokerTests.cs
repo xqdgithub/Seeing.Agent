@@ -1,3 +1,5 @@
+﻿using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -6,6 +8,7 @@ using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.Attributes;
 using System.Text.Json;

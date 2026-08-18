@@ -1,4 +1,5 @@
-﻿namespace Seeing.Agent.App.Models;
+﻿using Seeing.Agent.Abstractions.Permissions;
+namespace Seeing.Agent.App.Models;
 
 /// <summary>
 /// 聊天选项 - 可选的执行配置

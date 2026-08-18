@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Hooks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;

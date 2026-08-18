@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
@@ -109,9 +110,9 @@ namespace Seeing.Agent.Core
         /// <summary>
         /// 发现所有 Agent
         /// </summary>
-        public async Task<List<Models.AgentDefinition>> DiscoverAgentsAsync(CancellationToken cancellationToken = default)
+        public async Task<List<Seeing.Agent.Abstractions.Agents.AgentDefinition>> DiscoverAgentsAsync(CancellationToken cancellationToken = default)
         {
-            var agents = new List<Models.AgentDefinition>();
+            var agents = new List<Seeing.Agent.Abstractions.Agents.AgentDefinition>();
 
             string[] searchDirectories;
             lock (_searchDirsLock)
@@ -156,7 +157,7 @@ namespace Seeing.Agent.Core
         /// <summary>
         /// 解析 Agent 文件
         /// </summary>
-        private async Task<Models.AgentDefinition?> ParseAgentFileAsync(string filePath, CancellationToken cancellationToken)
+        private async Task<Seeing.Agent.Abstractions.Agents.AgentDefinition?> ParseAgentFileAsync(string filePath, CancellationToken cancellationToken)
         {
             var content = await File.ReadAllTextAsync(filePath, cancellationToken);
 
@@ -198,7 +199,7 @@ namespace Seeing.Agent.Core
             }
 
             // 构建 AgentInfo
-            var agentInfo = new Models.AgentDefinition
+            var agentInfo = new Seeing.Agent.Abstractions.Agents.AgentDefinition
             {
                 Name = data.Name,
                 Description = data.Description,

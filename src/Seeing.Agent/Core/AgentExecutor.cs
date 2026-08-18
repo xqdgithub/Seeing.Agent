@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using Seeing.Agent.Abstractions.Agents;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -15,6 +16,7 @@ using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn.Todo;
 
@@ -78,7 +80,7 @@ public class AgentExecutor
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>事件流（流式增量、完整消息、工具调用、错误等）</returns>
     public async IAsyncEnumerable<IMessageEvent> ExecuteAsync(
-        Models.AgentDefinition agent,
+        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -488,7 +490,7 @@ public class AgentExecutor
     /// 构建聊天请求
     /// </summary>
     private async Task<ChatRequest> BuildRequestAsync(
-        Models.AgentDefinition agent,
+        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         List<ChatMessage> messages,
         AgentContext context)
     {
@@ -543,7 +545,7 @@ public class AgentExecutor
     /// </summary>
     private async IAsyncEnumerable<IMessageEvent> ExecuteToolCallsAsync(
         List<ToolCall> toolCalls,
-        Models.AgentDefinition agent,
+        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel,
         string loopId,
@@ -587,7 +589,7 @@ public class AgentExecutor
 
     private async Task RunToolCallWithEventsAsync(
         ToolCall tc,
-        Models.AgentDefinition agent,
+        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel,
         string loopId,
@@ -621,7 +623,7 @@ public class AgentExecutor
     /// </summary>
     private async Task<ToolCallEvent> ExecuteSingleToolCallAsync(
         ToolCall tc,
-        Models.AgentDefinition agent,
+        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel,
         string loopId,
@@ -698,7 +700,7 @@ public class AgentExecutor
     private async Task<PermissionDecision> EvaluatePermissionAsync(
         string toolName,
         object? arguments,
-        Models.AgentDefinition agent,
+        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel)
     {
@@ -732,7 +734,7 @@ public class AgentExecutor
     /// <summary>
     /// 解析权限策略：SubAgent Session 合并 PermissionSnapshot。
     /// </summary>
-    private AgentPermissionPolicy ResolvePolicy(Models.AgentDefinition agent, AgentContext context)
+    private AgentPermissionPolicy ResolvePolicy(Seeing.Agent.Abstractions.Agents.AgentDefinition agent, AgentContext context)
     {
         var policy = agent.BuildPermissionPolicy();
         var session = _sessionManager?.Get(context.SessionId);
@@ -748,7 +750,7 @@ public class AgentExecutor
     /// <summary>
     /// 解析模型 ID
     /// </summary>
-    private string ResolveModelId(Models.AgentDefinition agent, AgentContext? context = null)
+    private string ResolveModelId(Seeing.Agent.Abstractions.Agents.AgentDefinition agent, AgentContext? context = null)
     {
         string? requestModelRef = null;
         if (context?.Metadata != null &&
@@ -772,7 +774,7 @@ public class AgentExecutor
     /// <summary>
     /// 获取工具 Schema
     /// </summary>
-    private List<FunctionToolSchema> GetToolSchemas(Models.AgentDefinition agent)
+    private List<FunctionToolSchema> GetToolSchemas(Seeing.Agent.Abstractions.Agents.AgentDefinition agent)
     {
         // 基于 Agent 的 Mode 和 Allowed/Denied 列表过滤
         var agentInfo = new AgentDefinition

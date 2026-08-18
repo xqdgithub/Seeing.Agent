@@ -1,4 +1,5 @@
-﻿namespace Seeing.Agent.Core.Background;
+﻿using Seeing.Agent.Abstractions.Agents;
+namespace Seeing.Agent.Core.Background;
 
 /// <summary>
 /// 后台任务状态
@@ -88,7 +89,7 @@ public class BackgroundTaskLaunchArgs
     public required Seeing.Agent.Abstractions.Llm.ChatMessage Input { get; set; }
 
     /// <summary>执行上下文</summary>
-    public required Models.AgentContext Context { get; set; }
+    public required Seeing.Agent.Abstractions.Agents.AgentContext Context { get; set; }
 
     /// <summary>任务描述（可选，用于状态显示）</summary>
     public string? Description { get; set; }

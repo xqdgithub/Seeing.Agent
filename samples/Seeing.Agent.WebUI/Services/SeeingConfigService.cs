@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Models;
 

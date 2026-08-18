@@ -6,6 +6,7 @@ using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.MCP;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;

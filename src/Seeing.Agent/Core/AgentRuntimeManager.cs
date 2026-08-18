@@ -1,9 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using System.Collections.Concurrent;
 
 using Seeing.Agent.Abstractions.Configuration;
@@ -343,7 +345,7 @@ namespace Seeing.Agent.Core
         }
 
         /// <inheritdoc/>
-        public void ApplyRuntimeModel(Models.AgentDefinition agent)
+        public void ApplyRuntimeModel(Seeing.Agent.Abstractions.Agents.AgentDefinition agent)
         {
             var agentModels = _optionsMonitor.CurrentValue.AgentModels;
             if (agentModels == null || agentModels.Count == 0)

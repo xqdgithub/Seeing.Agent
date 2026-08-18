@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Configuration;
 using System.Net;
 using System.Text;
 using FluentAssertions;
@@ -5,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.ConfigSchema;
 using Seeing.Provider.DeepSeek;
 using Xunit;

@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Permissions;
 using FluentAssertions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;

@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 
@@ -12,7 +13,7 @@ public class PromptContext
     public IEnumerable<FunctionSchema>? Tools { get; set; }
 
     /// <summary>可用代理列表</summary>
-    public IEnumerable<Seeing.Agent.Core.Models.AgentDefinition>? Agents { get; set; }
+    public IEnumerable<Seeing.Agent.Abstractions.Agents.AgentDefinition>? Agents { get; set; }
 
     /// <summary>可用技能列表</summary>
     public IEnumerable<SkillInfo>? Skills { get; set; }

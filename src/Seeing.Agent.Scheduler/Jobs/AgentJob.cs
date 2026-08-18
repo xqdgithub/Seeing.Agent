@@ -1,14 +1,19 @@
-﻿using System.Text;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Session.Core;
@@ -280,10 +285,9 @@ public class AgentJob : IJob
         }
 
         var resolvedAgentId = await _selectionResolver.ResolveAgentIdAsync(agentId, null, ct);
-        var agentInstance = _agentRegistry.GetOrCreateAgentInstance(resolvedAgentId)
+        var agentDefinition = await _agentRegistry.GetAgentAsync(resolvedAgentId)
             ?? throw new InvalidOperationException($"Agent '{resolvedAgentId}' not found");
 
-        var agentDefinition = Core.Models.AgentDefinition.FromAgent(agentInstance);
         var workspaceRoot = _workspace.WorkspaceRoot;
 
         var model = data.GetStringValue(JobDataKeys.Model);

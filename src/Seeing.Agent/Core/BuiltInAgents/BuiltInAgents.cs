@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Core.Interfaces;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 
@@ -19,7 +20,7 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 获取所有内置 Agent 定义
         /// </summary>
-        public static IEnumerable<Models.AgentDefinition> GetBuiltInAgents()
+        public static IEnumerable<Seeing.Agent.Abstractions.Agents.AgentDefinition> GetBuiltInAgents()
         {
             yield return CreateBuildAgent();
             yield return CreatePlanAgent();
@@ -31,9 +32,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 build Agent - 默认主代理
         /// </summary>
-        private static Models.AgentDefinition CreateBuildAgent()
+        private static Seeing.Agent.Abstractions.Agents.AgentDefinition CreateBuildAgent()
         {
-            return new Models.AgentDefinition
+            return new Seeing.Agent.Abstractions.Agents.AgentDefinition
             {
                 Name = "build",
                 Description = "默认主代理。拥有完整权限，可执行所有工具（包括 MCP 工具、文件操作、Shell 命令）。" +
@@ -156,9 +157,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 plan Agent - 计划模式
         /// </summary>
-        private static Models.AgentDefinition CreatePlanAgent()
+        private static Seeing.Agent.Abstractions.Agents.AgentDefinition CreatePlanAgent()
         {
-            return new Models.AgentDefinition
+            return new Seeing.Agent.Abstractions.Agents.AgentDefinition
             {
                 Name = "plan",
                 Description = "计划模式代理。专注于分析和规划，只允许读取操作和计划文件管理。" +
@@ -276,9 +277,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 explore Agent - 代码库探索
         /// </summary>
-        private static Models.AgentDefinition CreateExploreAgent()
+        private static Seeing.Agent.Abstractions.Agents.AgentDefinition CreateExploreAgent()
         {
-            return new Models.AgentDefinition
+            return new Seeing.Agent.Abstractions.Agents.AgentDefinition
             {
                 Name = "explore",
                 Description = "代码库探索专家。专注于快速、准确地查找代码模式和结构。" +
@@ -349,9 +350,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 general Agent - 通用代理
         /// </summary>
-        private static Models.AgentDefinition CreateGeneralAgent()
+        private static Seeing.Agent.Abstractions.Agents.AgentDefinition CreateGeneralAgent()
         {
-            return new Models.AgentDefinition
+            return new Seeing.Agent.Abstractions.Agents.AgentDefinition
             {
                 Name = "general",
                 Description = "通用代理。用于研究复杂问题和执行多步骤任务。" +
@@ -410,9 +411,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
         /// <summary>
         /// 创建 summary Agent - 摘要生成（隐藏）
         /// </summary>
-        private static Models.AgentDefinition CreateSummaryAgent()
+        private static Seeing.Agent.Abstractions.Agents.AgentDefinition CreateSummaryAgent()
         {
-            return new Models.AgentDefinition
+            return new Seeing.Agent.Abstractions.Agents.AgentDefinition
             {
                 Name = "summary",
                 Description = "摘要生成代理。为对话生成简洁摘要，保留关键信息。",

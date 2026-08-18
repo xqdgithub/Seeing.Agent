@@ -1,4 +1,5 @@
-using Seeing.Agent.Llm;
+﻿using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Commands;
 

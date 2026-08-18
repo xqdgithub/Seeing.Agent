@@ -1,5 +1,7 @@
-﻿using Seeing.Agent.Core.Models;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core;

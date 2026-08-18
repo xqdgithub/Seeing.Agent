@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Gateway.Models;
 
 namespace Seeing.Gateway.Mapping;

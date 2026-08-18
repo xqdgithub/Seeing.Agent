@@ -1,3 +1,4 @@
+﻿using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Core.Generation
 {
     /// <summary>

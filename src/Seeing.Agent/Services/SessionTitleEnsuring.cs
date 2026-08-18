@@ -1,8 +1,9 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using System.Text.RegularExpressions;
 using Seeing.Session.Core;
 

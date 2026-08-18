@@ -1,7 +1,8 @@
+﻿using Seeing.Agent.Abstractions.Todo;
 using Acp.Types;
 using FluentAssertions;
 using Seeing.Agent.Acp.Mapping;
-using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Todo;
 using Xunit;
 

@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Core.Models;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Acp.Configuration;
 

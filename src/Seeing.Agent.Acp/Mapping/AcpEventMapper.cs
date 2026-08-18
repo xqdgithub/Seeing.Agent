@@ -1,8 +1,12 @@
 ﻿using Acp.Types;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Acp.Mapping;
 
@@ -165,7 +169,7 @@ public sealed class AcpEventMapper
         string sessionId,
         string? loopId)
     {
-        var todos = plan.Entries.Select(e => new Core.Todo.TodoItem
+        var todos = plan.Entries.Select(e => new Seeing.Agent.Abstractions.Todo.TodoItem
         {
             Content = e.Content,
             Priority = MapPlanPriority(e.Priority),

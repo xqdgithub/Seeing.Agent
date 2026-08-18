@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Core.Interfaces;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Core.Interfaces;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Session.Core;
@@ -17,22 +18,22 @@ namespace Seeing.Agent.Configuration
         /// <summary>
         /// 获取所有 Agent 信息
         /// </summary>
-        Task<IReadOnlyList<Core.Models.AgentDefinition>> GetAgentsAsync();
+        Task<IReadOnlyList<Seeing.Agent.Abstractions.Agents.AgentDefinition>> GetAgentsAsync();
 
         /// <summary>
         /// 获取单个 Agent 信息
         /// </summary>
-        Task<Core.Models.AgentDefinition?> GetAgentAsync(string name);
+        Task<Seeing.Agent.Abstractions.Agents.AgentDefinition?> GetAgentAsync(string name);
 
         /// <summary>
         /// 获取所有子代理
         /// </summary>
-        Task<IReadOnlyList<Core.Models.AgentDefinition>> GetSubAgentsAsync();
+        Task<IReadOnlyList<Seeing.Agent.Abstractions.Agents.AgentDefinition>> GetSubAgentsAsync();
 
         /// <summary>
         /// 获取所有主代理
         /// </summary>
-        Task<IReadOnlyList<Core.Models.AgentDefinition>> GetPrimaryAgentsAsync();
+        Task<IReadOnlyList<Seeing.Agent.Abstractions.Agents.AgentDefinition>> GetPrimaryAgentsAsync();
 
         /// <summary>
         /// 检查 Agent 是否存在
@@ -42,7 +43,7 @@ namespace Seeing.Agent.Configuration
         /// <summary>
         /// 获取可访问的子代理（根据权限筛选）
         /// </summary>
-        Task<IReadOnlyList<Core.Models.AgentDefinition>> GetAccessibleSubAgentsAsync(IReadOnlyList<PermissionRuleEntry> callerPermissions);
+        Task<IReadOnlyList<Seeing.Agent.Abstractions.Agents.AgentDefinition>> GetAccessibleSubAgentsAsync(IReadOnlyList<PermissionRuleEntry> callerPermissions);
 
         #endregion
 
@@ -84,7 +85,7 @@ namespace Seeing.Agent.Configuration
         /// <summary>
         /// 注册 Agent
         /// </summary>
-        Task RegisterAgentAsync(Core.Models.AgentDefinition agentInfo);
+        Task RegisterAgentAsync(Seeing.Agent.Abstractions.Agents.AgentDefinition agentInfo);
 
         /// <summary>
         /// 注销 Agent

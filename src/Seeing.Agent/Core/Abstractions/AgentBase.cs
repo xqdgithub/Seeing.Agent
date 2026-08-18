@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Seeing.Agent.Abstractions.Agents;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Interfaces;
