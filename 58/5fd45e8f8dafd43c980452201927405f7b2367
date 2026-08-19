@@ -1,0 +1,96 @@
+src/Seeing.Agent/Llm/ConfiguredLlmProvider.cs
+  s_f4389ea7236cbf::t_7bf03893c5ec6f 64-66,162-164,193-229
+src/Seeing.Agent.Scheduler/Management/ScheduleManager.cs
+  s_f4389ea7236cbf::t_989004c2c0371a 101,104-105,114-119,122-123
+src/Seeing.Agent.Memory/Background/MemoryPipelineWorker.cs
+  s_f4389ea7236cbf::t_1c4d5e833d9597 35
+src/Seeing.Agent/Llm/Clients/OpenAiHttpHelper.cs
+  s_f4389ea7236cbf::t_ddb1f84a503978 45-47
+  s_f4389ea7236cbf::t_83bc3b338ec966 50
+samples/Seeing.Agent.WebUI/wwwroot/css/session-page.css
+  s_f4389ea7236cbf::t_fa9d3dd1ee9cc4 118-119,129-130
+  s_f4389ea7236cbf::t_6ba0cba102abba 185-186,195-196
+src/Seeing.Agent.Gateway/Hosting/GatewayServer.cs
+  s_f4389ea7236cbf::t_792d48bba029d2 72-77
+  s_f4389ea7236cbf::t_4a9aca326114da 33
+src/Seeing.Agent.Memory/Background/MemoryIndexingService.cs
+  s_f4389ea7236cbf::t_05459ae712b725 75
+samples/Seeing.Agent.WebUI/wwwroot/css/sidebar.css
+  s_f4389ea7236cbf::t_30451ed1a2ae03 125-127,130-151
+  s_f4389ea7236cbf::t_589407c5d3c61b 128-129
+samples/Seeing.Agent.WebUI/Program.cs
+  s_f4389ea7236cbf::t_a6ef75a711e71f 138,140-141,143
+  s_f4389ea7236cbf::t_c91ec31d56eb09 1-2,120-137,139,142,144-148
+src/Seeing.Agent.Scheduler/Hosting/ScheduleHostedService.cs
+  s_f4389ea7236cbf::t_e53b678c7105cc 44-54
+samples/Seeing.Agent.WebUI/Components/AppSidebar.razor
+  s_f4389ea7236cbf::t_442d3e6b9ddaba 8-9,133-148,178-179
+  s_f4389ea7236cbf::t_a27a3f0c041665 3
+  s_f4389ea7236cbf::t_3337551f71c2ab 249-262
+src/Seeing.Agent/Llm/Clients/OpenAiResponsesClient.cs
+  s_f4389ea7236cbf::t_c5b9ccd969460b 28-30
+tests/Seeing.Agent.WebUI.Tests/Infrastructure/WebUiScriptInteropContractTests.cs
+  s_f4389ea7236cbf::t_375d43bdfb1013 138-140
+  s_f4389ea7236cbf::t_089f518799dff4 118-126
+  s_f4389ea7236cbf::t_1e5288070d6d9e 130-131,147-148
+  s_f4389ea7236cbf::t_23065efd1d6c4d 142
+  s_f4389ea7236cbf::t_61547840c8402c 206-224,226-235,248
+  s_f4389ea7236cbf::t_140529ffbb44c4 117,127-129,132-137
+  s_f4389ea7236cbf::t_79eafe0242534a 141,143-146,149-151,154,157-165
+  s_f4389ea7236cbf::t_3c9b22ce3ee79a 152-153,155-156
+  s_f4389ea7236cbf::t_179b1dd0a31635 225
+tests/Seeing.Agent.WebUI.Tests/Infrastructure/GatewayHostedServiceLifecycleTests.cs
+  s_f4389ea7236cbf::t_505c5bf05150c2 1-62
+tests/Seeing.Agent.Scheduler.Tests/SchedulerHostedServiceTests.cs
+  s_f4389ea7236cbf::t_d93e167749c621 1-39
+src/Seeing.Agent.Scheduler/Engine/QuartzSchedulerEngine.cs
+  s_f4389ea7236cbf::t_620d5eff94141e 323-332
+src/Seeing.Agent.Memory/Background/MemoryEvolutionWorker.cs
+  s_f4389ea7236cbf::t_f239605a40af13 48
+src/Seeing.Agent.Gateway/Hosting/GatewayHost.cs
+  s_f4389ea7236cbf::t_77578ae4f15b84 43
+  s_f4389ea7236cbf::t_03698eecccaf20 123-124
+samples/Seeing.Agent.WebUI/wwwroot/css/todo.css
+  s_f4389ea7236cbf::t_6c7fe10cf4146b 322-323,332-333
+  s_f4389ea7236cbf::t_65474952bf070f 347-367
+src/Seeing.Agent/Llm/Clients/AnthropicClient.cs
+  s_f4389ea7236cbf::t_b93073be5bf078 38-40,54-56
+  s_f4389ea7236cbf::t_381bc1ee689fa0 65
+src/Seeing.Agent/Llm/Clients/HttpHeaderHelper.cs
+  s_f4389ea7236cbf::t_66c07b3a2d0d03 9-13
+samples/Seeing.Agent.WebUI/wwwroot/js/app.js
+  s_f4389ea7236cbf::t_2d1d1b94e76b16 679-693
+tests/Seeing.Agent.Tests/Llm/Clients/LlmHttpClientFactoryTests.cs
+  s_f4389ea7236cbf::t_20a4a5e9d3f21a 86,121
+  s_f4389ea7236cbf::t_c72a654e48bce8 87-92,106-120,122-139
+src/Seeing.Gateway.Client/WebSocketGatewayClient.cs
+  s_f4389ea7236cbf::t_8f71d0c45861f0 53-67
+tests/Seeing.Gateway.Client.Tests/WebSocketGatewayClientTests.cs
+  s_f4389ea7236cbf::t_b8e9e2081d638d 20
+  s_f4389ea7236cbf::t_39115534b295e4 1-19,21-24
+tests/Seeing.Agent.Tests/Llm/ConfiguredLlmProviderTests.cs
+  s_f4389ea7236cbf::t_454a301d52c123 34-37,49,83-86,97
+src/Seeing.Agent.Gateway/Hosting/GatewayHostedService.cs
+  s_f4389ea7236cbf::t_386023e52522ea 47-48,50
+  s_f4389ea7236cbf::t_5b83412ffbcc4c 9,29,37,40-41
+samples/Seeing.Gateway.ChannelHost/Program.cs
+  s_f4389ea7236cbf::t_b03661fda7cdff 176
+src/Seeing.Agent.Gateway/Channels/ChannelHostHostedService.cs
+  s_f4389ea7236cbf::t_53b414dfd99ec9 82-87,130-132,141,144-147,155-156,160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.40-trip",
+  "base_commit_sha": "585fd45e8f8dafd43c980452201927405f7b2367",
+  "prompts": {},
+  "sessions": {
+    "s_f4389ea7236cbf": {
+      "agent_id": {
+        "tool": "kiro-cli",
+        "id": "591fa1f0-4ed8-45b9-9269-9827bf446a81",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
