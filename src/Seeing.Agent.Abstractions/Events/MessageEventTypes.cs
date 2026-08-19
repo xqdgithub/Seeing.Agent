@@ -4,86 +4,86 @@ using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Abstractions.Events;
 
 /// <summary>
-/// 消息事件类型
+/// 消息事件类型 - 开放的字符串标识（插件可自由扩展，无需修改本类）
 /// </summary>
-public enum MessageEventType
+public static class MessageEventType
 {
     /// <summary>Agent Loop 开始（一次完整对话循环开始）</summary>
-    LoopStart,
+    public const string LoopStart = "loop.start";
 
     /// <summary>Agent Loop 结束（一次完整对话循环结束）</summary>
-    LoopComplete,
+    public const string LoopComplete = "loop.complete";
 
     /// <summary>流式开始（新轮次开始信号）</summary>
-    StreamStart,
+    public const string StreamStart = "stream.start";
 
     /// <summary>流式增量（实时渲染用）</summary>
-    StreamDelta,
+    public const string StreamDelta = "stream.delta";
 
     /// <summary>流式结束（添加历史用）</summary>
-    StreamComplete,
+    public const string StreamComplete = "stream.complete";
 
     /// <summary>工具调用请求（pending）</summary>
-    ToolCallPending,
+    public const string ToolCallPending = "tool.call.pending";
 
     /// <summary>工具执行中</summary>
-    ToolCallRunning,
+    public const string ToolCallRunning = "tool.call.running";
 
     /// <summary>工具执行完成</summary>
-    ToolCallComplete,
+    public const string ToolCallComplete = "tool.call.complete";
 
     /// <summary>子代理启动（废弃：使用 TaskStarted）</summary>
     [Obsolete("Use TaskStarted")]
-    SubAgentStarted,
+    public const string SubAgentStarted = "subagent.started";
 
     /// <summary>子代理完成（废弃：使用 TaskCompleted）</summary>
     [Obsolete("Use TaskCompleted")]
-    SubAgentCompleted,
+    public const string SubAgentCompleted = "subagent.completed";
 
     /// <summary>子任务启动</summary>
-    TaskStarted,
+    public const string TaskStarted = "task.started";
 
     /// <summary>子任务进度投影</summary>
-    TaskProgress,
+    public const string TaskProgress = "task.progress";
 
     /// <summary>子任务完成</summary>
-    TaskCompleted,
+    public const string TaskCompleted = "task.completed";
 
     /// <summary>子任务失败</summary>
-    TaskFailed,
+    public const string TaskFailed = "task.failed";
 
     /// <summary>权限请求（需要用户确认）</summary>
-    PermissionRequest,
+    public const string PermissionRequest = "permission.request";
 
     /// <summary>权限响应（用户确认/拒绝）</summary>
-    PermissionResponse,
+    public const string PermissionResponse = "permission.response";
 
     /// <summary>Loop 被取消</summary>
-    LoopCancelled,
-    
+    public const string LoopCancelled = "loop.cancelled";
+
     /// <summary>错误</summary>
-    Error,
+    public const string Error = "error";
 
     /// <summary>命令执行结果</summary>
-    CommandResult,
+    public const string CommandResult = "command.result";
 
     /// <summary>预算状态更新</summary>
-    BudgetStatus,
+    public const string BudgetStatus = "budget.status";
 
     /// <summary>压缩执行</summary>
-    Compaction,
+    public const string Compaction = "compaction";
 
     /// <summary>预算警告</summary>
-    BudgetWarning,
+    public const string BudgetWarning = "budget.warning";
 
     /// <summary>导航请求</summary>
-    Navigate,
+    public const string Navigate = "navigate";
 
     /// <summary>Todo 列表更新</summary>
-    TodoUpdate,
+    public const string TodoUpdate = "todo.update";
 
     /// <summary>会话模式更新</summary>
-    ModeUpdate
+    public const string ModeUpdate = "mode.update";
 }
 
 /// <summary>
@@ -122,8 +122,8 @@ public interface IMessageEvent
     /// <summary>时间戳</summary>
     DateTime Timestamp { get; }
 
-    /// <summary>事件类型</summary>
-    MessageEventType Type { get; }
+    /// <summary>事件类型（开放字符串标识）</summary>
+    string Type { get; }
 }
 
 /// <summary>
@@ -134,7 +134,7 @@ public record LoopStartEvent : IMessageEvent
     public required string SessionId { get; init; }
     public required string LoopId { get; init; } = Guid.NewGuid().ToString("N");
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.LoopStart;
+    public string Type => MessageEventType.LoopStart;
 
     /// <summary>触发 Loop 的用户消息 ID</summary>
     public string? TriggerMessageId { get; init; }
@@ -151,7 +151,7 @@ public record LoopCompleteEvent : IMessageEvent
     public required string SessionId { get; init; }
     public required string LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.LoopComplete;
+    public string Type => MessageEventType.LoopComplete;
 
     /// <summary>Loop 执行的总步数</summary>
     public int TotalSteps { get; init; }
@@ -181,7 +181,7 @@ public record StreamStartEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.StreamStart;
+    public string Type => MessageEventType.StreamStart;
 
     /// <summary>轮次索引（step=0, 1, 2...）</summary>
     public int Step { get; init; }
@@ -195,7 +195,7 @@ public record StreamDeltaEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.StreamDelta;
+    public string Type => MessageEventType.StreamDelta;
 
     /// <summary>内容增量</summary>
     public string? ContentDelta { get; init; }
@@ -218,7 +218,7 @@ public record StreamCompleteEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.StreamComplete;
+    public string Type => MessageEventType.StreamComplete;
 
     /// <summary>完整的消息对象</summary>
     public required ChatMessage Message { get; init; }
@@ -259,7 +259,7 @@ public record ToolCallEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type { get; init; }
+    public string Type { get; init; } = string.Empty;
 
     /// <summary>工具调用 ID</summary>
     public required string ToolCallId { get; init; }
@@ -295,7 +295,7 @@ public record SubAgentEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type { get; init; }
+    public string Type { get; init; } = string.Empty;
 
     /// <summary>子代理名称</summary>
     public required string AgentName { get; init; }
@@ -319,7 +319,7 @@ public record TaskStartedEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.TaskStarted;
+    public string Type => MessageEventType.TaskStarted;
 
     public required string TaskId { get; init; }
     public string? ParentSessionId { get; init; }
@@ -335,7 +335,7 @@ public record TaskStartedEvent : IMessageEvent
         public required string SessionId { get; init; }
         public string? LoopId { get; init; }
         public DateTime Timestamp { get; init; } = DateTime.Now;
-        public MessageEventType Type => MessageEventType.TaskProgress;
+        public string Type => MessageEventType.TaskProgress;
 
         public required string TaskId { get; init; }
         public string? ParentSessionId { get; init; }
@@ -357,7 +357,7 @@ public record TaskCompletedEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.TaskCompleted;
+    public string Type => MessageEventType.TaskCompleted;
 
     public required string TaskId { get; init; }
     public string? ParentSessionId { get; init; }
@@ -372,7 +372,7 @@ public record TaskFailedEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.TaskFailed;
+    public string Type => MessageEventType.TaskFailed;
 
     public required string TaskId { get; init; }
     public string? ParentSessionId { get; init; }
@@ -389,7 +389,7 @@ public record ErrorEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.Error;
+    public string Type => MessageEventType.Error;
 
     /// <summary>错误信息</summary>
     public required string Message { get; init; }
@@ -409,7 +409,7 @@ public record PermissionRequestEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.PermissionRequest;
+    public string Type => MessageEventType.PermissionRequest;
 
     /// <summary>权限请求 ID</summary>
     public required string PermissionId { get; init; }
@@ -441,7 +441,7 @@ public record PermissionResponseEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.PermissionResponse;
+    public string Type => MessageEventType.PermissionResponse;
 
     /// <summary>对应的权限请求 ID</summary>
     public required string PermissionId { get; init; }
@@ -464,7 +464,7 @@ public record LoopCancelledEvent : IMessageEvent
     public required string SessionId { get; init; }
     public required string LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.LoopCancelled;
+    public string Type => MessageEventType.LoopCancelled;
 
     /// <summary>取消原因: user, timeout, error, resource_limit</summary>
     public required string Reason { get; init; }
@@ -487,7 +487,7 @@ public record TodoUpdateEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.TodoUpdate;
+    public string Type => MessageEventType.TodoUpdate;
 
     /// <summary>Todo 列表</summary>
     public List<TodoItem> Todos { get; init; } = new();
@@ -501,7 +501,7 @@ public record ModeUpdateEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.ModeUpdate;
+    public string Type => MessageEventType.ModeUpdate;
 
     /// <summary>新模式 ID</summary>
     public required string ModeId { get; init; }
