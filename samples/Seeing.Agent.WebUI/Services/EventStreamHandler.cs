@@ -222,7 +222,7 @@ namespace Seeing.Agent.WebUI.Services
                     break;
 
                 // App 层扩展事件类型
-                case (MessageEventType)AppEventType.SkillContent:
+                case AppEventTypeConstants.SkillContent:
                     HandleSkillContent((SkillContentEvent)evt);
                     break;
 
