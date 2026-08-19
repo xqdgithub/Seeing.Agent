@@ -118,7 +118,7 @@ public sealed class AcpEventMapper
         };
     }
 
-    private static MessageEventType MapToolProgressType(string status) =>
+    private static string MapToolProgressType(string status) =>
         status switch
         {
             "completed" or "failed" => MessageEventType.ToolCallComplete,
