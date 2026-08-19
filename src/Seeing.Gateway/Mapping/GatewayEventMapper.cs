@@ -82,7 +82,7 @@ public static class GatewayEventMapper
         SessionId = pending.SessionId,
         LoopId = pending.LoopId,
         Timestamp = pending.CreatedAt,
-        SourceType = MessageEventType.PermissionRequest.ToString(),
+        SourceType = MessageEventType.PermissionRequest,
         Data = new GatewayEventData
         {
             PermissionId = pending.PermissionId,
@@ -98,7 +98,7 @@ public static class GatewayEventMapper
         gatewayEvent with
         {
             Timestamp = source.Timestamp,
-            SourceType = source.Type.ToString()
+            SourceType = source.Type
         };
 
     private static GatewayEvent MapLoopStart(LoopStartEvent e) => new()

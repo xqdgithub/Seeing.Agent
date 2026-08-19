@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Gateway.Models;
 
 namespace Seeing.Gateway.Channels;
@@ -12,7 +13,7 @@ namespace Seeing.Gateway.Channels;
 /// </summary>
 public sealed class GatewayAssistantReplyCollector
 {
-    public const string LoopCompleteSourceType = "LoopComplete";
+    public const string LoopCompleteSourceType = MessageEventType.LoopComplete;
 
     public string Text { get; private set; } = string.Empty;
 

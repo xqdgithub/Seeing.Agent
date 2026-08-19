@@ -33,7 +33,7 @@ public class GatewayEventMapperTests
         result.LoopId.Should().Be(LoopId);
         result.Data!.UserInput.Should().Be("hello");
         result.Timestamp.Should().Be(TestTimestamp);
-        result.SourceType.Should().Be(nameof(MessageEventType.LoopStart));
+        result.SourceType.Should().Be(MessageEventType.LoopStart);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class GatewayEventMapperTests
         result.Object.Should().Be(GatewayEventObject.Content);
         result.Status.Should().Be(GatewayEventStatus.InProgress);
         result.Data!.Step.Should().Be(2);
-        result.SourceType.Should().Be(nameof(MessageEventType.StreamStart));
+        result.SourceType.Should().Be(MessageEventType.StreamStart);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class GatewayEventMapperTests
     [InlineData(MessageEventType.ToolCallRunning, ToolCallStatus.Running)]
     [InlineData(MessageEventType.ToolCallComplete, ToolCallStatus.Success)]
     public void Map_ToolCallEvents_ShouldMapToContentInProgress(
-        MessageEventType eventType,
+        string eventType,
         ToolCallStatus status)
     {
         var source = new ToolCallEvent
@@ -316,6 +316,6 @@ public class GatewayEventMapperTests
         result.Object.Should().Be(GatewayEventObject.Permission);
         result.Status.Should().Be(GatewayEventStatus.InProgress);
         result.Data!.PermissionId.Should().Be("perm_1");
-        result.SourceType.Should().Be(nameof(MessageEventType.PermissionRequest));
+        result.SourceType.Should().Be(MessageEventType.PermissionRequest);
     }
 }
