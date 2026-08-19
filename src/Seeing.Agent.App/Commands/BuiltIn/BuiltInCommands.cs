@@ -2,6 +2,7 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
+using Seeing.Agent.Compression;
 using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
 
@@ -15,13 +16,16 @@ public class BuiltInCommands
 {
     private readonly ISessionManager _sessionManager;
     private readonly ICommandRegistry _commandRegistry;
+    private readonly CompressionService _compressionService;
 
     public BuiltInCommands(
         ISessionManager sessionManager,
-        ICommandRegistry commandRegistry)
+        ICommandRegistry commandRegistry,
+        CompressionService compressionService)
     {
         _sessionManager = sessionManager;
         _commandRegistry = commandRegistry;
+        _compressionService = compressionService;
     }
 
     /// <summary>
@@ -175,34 +179,22 @@ public class BuiltInCommands
             return CommandResult.Fail("No active session");
         }
 
-        // 解析保留数量
-        var keepCount = 10;
-        if (!string.IsNullOrWhiteSpace(context.Arguments))
+        // 走主库 CompressionService 执行压缩（保留条数由 CompressionOptions 控制）
+        var outcome = await _compressionService.CompressAsync(
+            context.SessionId,
+            reason: "manual",
+            cancellationToken: ct);
+
+        if (!outcome.Success)
         {
-            if (int.TryParse(context.Arguments.Trim(), out var parsed) && parsed > 0)
-            {
-                keepCount = parsed;
-            }
+            return CommandResult.Fail(outcome.ErrorMessage ?? "压缩失败");
         }
 
-        var session = _sessionManager.Get(context.SessionId);
-        if (session == null)
-        {
-            return CommandResult.Fail($"Session not found: {context.SessionId}");
-        }
-
-        var totalCount = session.Messages.Count;
-        if (totalCount <= keepCount)
-        {
-            return CommandResult.Ok($"No need to compact. Current message count: {totalCount}");
-        }
-
-        // 保留最近的 keepCount 条消息
-        var removeCount = totalCount - keepCount;
-        session.Messages.RemoveRange(0, removeCount);
-        await _sessionManager.SaveAsync(context.SessionId);
-
-        return CommandResult.Ok($"Compacted history: kept {keepCount} recent messages (removed {removeCount})", needsRefresh: true);
+        // 根因修复：shouldContinue:false 终止 Agent 循环（CommandResult.Ok 默认 shouldContinue:true）
+        return CommandResult.Ok(
+            $"Compacted history: removed {outcome.MessagesRemoved} messages",
+            needsRefresh: true,
+            shouldContinue: false);
     }
 
     /// <summary>
