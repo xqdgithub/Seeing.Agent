@@ -1049,7 +1049,7 @@ public record ExecutionStartedEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.LoopStart;
+    public string Type => MessageEventType.LoopStart;
 
     public string ExecutionId { get; init; } = "";
 }
@@ -1062,7 +1062,7 @@ public record ExecutionCompleteEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.LoopComplete;
+    public string Type => MessageEventType.LoopComplete;
 
     public string ExecutionId { get; init; } = "";
     public ExecutionStatus Status { get; init; }

@@ -12,7 +12,7 @@ public record BudgetStatusEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.BudgetStatus;
+    public string Type => MessageEventType.BudgetStatus;
 
     /// <summary>当前 Token 数</summary>
     public int CurrentTokens { get; init; }
@@ -38,7 +38,7 @@ public record CompactionEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.Compaction;
+    public string Type => MessageEventType.Compaction;
 
     /// <summary>使用的压缩策略</summary>
     public string Strategy { get; init; } = string.Empty;
@@ -67,7 +67,7 @@ public record BudgetWarningEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public MessageEventType Type => MessageEventType.BudgetWarning;
+    public string Type => MessageEventType.BudgetWarning;
 
     /// <summary>警告消息</summary>
     public string Message { get; init; } = string.Empty;
