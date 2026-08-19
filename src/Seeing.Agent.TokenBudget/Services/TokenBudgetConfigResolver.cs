@@ -9,7 +9,6 @@ namespace Seeing.Agent.TokenBudget;
 public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
 {
     // Default values for comparison
-    private const CompactionStrategyType DefaultCompactionStrategy = CompactionStrategyType.SlidingWindow;
     private const int DefaultSlidingWindowKeepTokens = 20000;
     private const int DefaultSummaryTargetTokens = 4000;
     private const bool DefaultAutoCompactionEnabled = true;
@@ -63,7 +62,6 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
             CompactionThreshold = MergeThresholds(baseConfig.CompactionThreshold, overrideConfig.CompactionThreshold, isWarningThreshold: false),
             
             // Non-nullable value types: use override if different from default, else inherit from base
-            CompactionStrategy = GetNonNullableValue(baseConfig.CompactionStrategy, overrideConfig.CompactionStrategy, DefaultCompactionStrategy),
             SlidingWindowKeepTokens = GetNonNullableValue(baseConfig.SlidingWindowKeepTokens, overrideConfig.SlidingWindowKeepTokens, DefaultSlidingWindowKeepTokens),
             SummaryTargetTokens = GetNonNullableValue(baseConfig.SummaryTargetTokens, overrideConfig.SummaryTargetTokens, DefaultSummaryTargetTokens),
             AutoCompactionEnabled = GetNonNullableValue(baseConfig.AutoCompactionEnabled, overrideConfig.AutoCompactionEnabled, DefaultAutoCompactionEnabled)

@@ -20,7 +20,6 @@ public class GlobalTokenBudgetOptions
         MaxContextTokens = null,  // null = 自动使用模型配置
         WarningThreshold = new ThresholdConfig { Percentage = 80 },
         CompactionThreshold = new ThresholdConfig { Percentage = 90 },
-        CompactionStrategy = CompactionStrategyType.Hybrid,
         SlidingWindowKeepTokens = 20000,
         SummaryTargetTokens = 4000,
         AutoCompactionEnabled = true

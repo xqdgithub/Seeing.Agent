@@ -26,9 +26,8 @@ public interface ITokenBudgetApi
     /// Triggers compaction for a session.
     /// </summary>
     /// <param name="sessionId">The session identifier.</param>
-    /// <param name="strategy">Optional compaction strategy. If null, uses the configured strategy.</param>
     /// <returns>The result of the compaction operation.</returns>
-    Task<CompactionResponse> TriggerCompactionAsync(string sessionId, CompactionStrategyType? strategy = null);
+    Task<CompactionResponse> TriggerCompactionAsync(string sessionId);
 
     /// <summary>
     /// Updates the token budget configuration for a session.

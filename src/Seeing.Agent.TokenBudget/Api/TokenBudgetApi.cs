@@ -1,6 +1,6 @@
-using Seeing.Session.Compression;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
+using Seeing.Agent.Compression;
 using Seeing.Agent.TokenBudget.Api.Responses;
 using Seeing.TokenEstimation;
 
@@ -15,7 +15,7 @@ public class TokenBudgetApi : ITokenBudgetApi
     private readonly ISessionManager _sessionManager;
     private readonly ITokenBudgetManager _budgetManager;
     private readonly ITokenBudgetConfigResolver _configResolver;
-    private readonly ICompressionStrategy _compressionStrategy;
+    private readonly CompressionService _compressionService;
     private readonly ITokenCounter _tokenCounter;
 
     /// <summary>
@@ -24,19 +24,19 @@ public class TokenBudgetApi : ITokenBudgetApi
     /// <param name="sessionManager">The session manager for accessing session data.</param>
     /// <param name="budgetManager">The budget manager for token calculations.</param>
     /// <param name="configResolver">The config resolver for determining effective configuration.</param>
-    /// <param name="compressionStrategy">The compression strategy for compaction operations.</param>
+    /// <param name="compressionService">主库压缩编排服务（压缩唯一执行入口）</param>
     /// <param name="tokenCounter">The token counter for estimating token counts.</param>
     public TokenBudgetApi(
         ISessionManager sessionManager,
         ITokenBudgetManager budgetManager,
         ITokenBudgetConfigResolver configResolver,
-        ICompressionStrategy compressionStrategy,
+        CompressionService compressionService,
         ITokenCounter tokenCounter)
     {
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _budgetManager = budgetManager ?? throw new ArgumentNullException(nameof(budgetManager));
         _configResolver = configResolver ?? throw new ArgumentNullException(nameof(configResolver));
-        _compressionStrategy = compressionStrategy ?? throw new ArgumentNullException(nameof(compressionStrategy));
+        _compressionService = compressionService ?? throw new ArgumentNullException(nameof(compressionService));
         _tokenCounter = tokenCounter ?? throw new ArgumentNullException(nameof(tokenCounter));
     }
 
@@ -62,57 +62,22 @@ public class TokenBudgetApi : ITokenBudgetApi
     }
 
     /// <inheritdoc />
-    public async Task<CompactionResponse> TriggerCompactionAsync(string sessionId, CompactionStrategyType? strategy = null)
+    public async Task<CompactionResponse> TriggerCompactionAsync(string sessionId)
     {
-        var session = await GetSessionOrThrowAsync(sessionId);
-        var config = await GetEffectiveConfigInternalAsync(session);
-        
-        // Use provided strategy or fall back to configured strategy
-        var effectiveStrategy = strategy ?? config.CompactionStrategy;
-        
-        // Calculate tokens before
-        var breakdownBefore = _budgetManager.CalculateBreakdown(session);
-        var tokensBefore = breakdownBefore.Total;
-        
-        try
+        // 校验会话存在（压缩由主库 CompressionService 执行）
+        await GetSessionOrThrowAsync(sessionId);
+
+        var outcome = await _compressionService.CompressAsync(sessionId, reason: "api");
+
+        return new CompactionResponse
         {
-            // Execute compression
-            var result = _compressionStrategy.CompressByTokenBudget(
-                session.Messages,
-                config,
-                _tokenCounter);
-            
-            // Update session messages if compression was successful
-            if (result.Success)
-            {
-                session.Messages.Clear();
-                session.Messages.AddRange(result.CompressedMessages);
-                session.UpdatedAt = DateTime.Now;
-                await _sessionManager.SaveAndNotifyAsync(session.Id, persist: true);
-            }
-            
-            return new CompactionResponse
-            {
-                Success = result.Success,
-                TokensBefore = tokensBefore,
-                TokensAfter = result.TokensAfter,
-                MessagesRemoved = result.MessagesRemoved,
-                StrategyUsed = effectiveStrategy.ToString(),
-                ErrorMessage = result.ErrorMessage
-            };
-        }
-        catch (Exception ex)
-        {
-            return new CompactionResponse
-            {
-                Success = false,
-                TokensBefore = tokensBefore,
-                TokensAfter = tokensBefore,
-                MessagesRemoved = 0,
-                StrategyUsed = effectiveStrategy.ToString(),
-                ErrorMessage = ex.Message
-            };
-        }
+            Success = outcome.Success,
+            TokensBefore = outcome.TokensBefore,
+            TokensAfter = outcome.TokensAfter,
+            MessagesRemoved = outcome.MessagesRemoved,
+            StrategyUsed = outcome.Strategy ?? string.Empty,
+            ErrorMessage = outcome.ErrorMessage
+        };
     }
 
     /// <inheritdoc />

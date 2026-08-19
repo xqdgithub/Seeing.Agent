@@ -6,8 +6,6 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Session.Compression;
-using Seeing.Session.Compression.Strategies;
 using Seeing.Agent.TokenBudget.Api;
 using Seeing.Agent.TokenBudget.Configuration;
 using Seeing.TokenEstimation;
@@ -46,13 +44,6 @@ public static class TokenBudgetServiceExtensions
             return new TokenBudgetManager(llmService, options, tokenCounter);
         });
         
-        // Compression - register SlidingWindowTokenStrategy as both itself and ICompressionStrategy
-        var slidingWindowDescriptor = ServiceDescriptor.Singleton<SlidingWindowTokenStrategy, SlidingWindowTokenStrategy>();
-        services.Add(slidingWindowDescriptor);
-        services.AddSingleton<ICompressionStrategy>(sp => sp.GetRequiredService<SlidingWindowTokenStrategy>());
-        
-        services.AddScoped<ICompressionTrigger, DefaultCompressionTrigger>();
-        
         // API
         services.AddScoped<ITokenBudgetApi, TokenBudgetApi>();
         
@@ -73,10 +64,6 @@ public static class TokenBudgetServiceExtensions
         // Register base token budget services
         services.AddTokenBudgetManagement(configuration);
 
-        // Register compression infrastructure
-        services.AddSingleton<ICompressionStrategyFactory, CompressionStrategyFactory>();
-        services.AddScoped<ICompressionService, CompressionService>();
-
         return services;
     }
 
@@ -92,7 +79,6 @@ public static class TokenBudgetServiceExtensions
         this IServiceCollection services)
     {
         // Register hooks as singletons
-        services.AddSingleton<BudgetCheckHook>();
         services.AddSingleton<BudgetUpdateHook>();
         services.AddSingleton<BudgetModelLimitHandler>();
 
@@ -110,11 +96,9 @@ public static class TokenBudgetServiceExtensions
     {
         var hookManager = services.GetRequiredService<HookManager>();
 
-        var checkHook = services.GetRequiredService<BudgetCheckHook>();
         var updateHook = services.GetRequiredService<BudgetUpdateHook>();
         var modelLimitHandler = services.GetRequiredService<BudgetModelLimitHandler>();
 
-        hookManager.Register(checkHook);
         hookManager.Register(updateHook);
         hookManager.RegisterMulti(modelLimitHandler);
 

@@ -202,9 +202,6 @@ namespace Seeing.Agent.Configuration
         /// <summary>压缩阈值</summary>
         public ThresholdOptions CompactionThreshold { get; set; } = new() { Percentage = 90 };
 
-        /// <summary>压缩策略类型</summary>
-        public CompactionStrategyType CompactionStrategy { get; set; } = CompactionStrategyType.SlidingWindow;
-
         /// <summary>滑动窗口保留 Token 数</summary>
         public int SlidingWindowKeepTokens { get; set; } = 20000;
 
