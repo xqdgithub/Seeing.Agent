@@ -677,3 +677,18 @@ function isMobileBrowser() {
     var smallScreen = window.screen.width <= 1024 && window.screen.height <= 1024;
     return isMobileUA || (hasTouch && smallScreen);
 }
+
+/**
+ * 请求当前 WebUI Host 正常退出。
+ * 通过同源 POST 调用，实际关闭权限由服务端限制为本机连接。
+ */
+async function shutdownWebUi() {
+    const response = await fetch('/api/webui/shutdown', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+    });
+
+    if (!response.ok) {
+        throw new Error(`关闭请求失败（HTTP ${response.status}）`);
+    }
+}

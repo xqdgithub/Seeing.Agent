@@ -79,6 +79,12 @@ public sealed class ChannelHostHostedService : IHostedService, IDisposable
     {
         try
         {
+            if (!_gatewayServer.IsRunning)
+            {
+                _logger.LogDebug("Gateway 尚未运行，跳过 ChannelHost 热重载协调");
+                return;
+            }
+
             var hosts = _configStore.GetChannelHosts();
             foreach (var entry in hosts)
             {
@@ -121,7 +127,9 @@ public sealed class ChannelHostHostedService : IHostedService, IDisposable
     {
         try
         {
-            await WaitForGatewayAsync().ConfigureAwait(false);
+            if (!await WaitForGatewayAsync().ConfigureAwait(false))
+                return;
+
             await _manager.StartEnabledAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -130,10 +138,13 @@ public sealed class ChannelHostHostedService : IHostedService, IDisposable
         }
     }
 
-    private async Task WaitForGatewayAsync()
+    private async Task<bool> WaitForGatewayAsync()
     {
         if (!_gatewayOptions.Enabled)
-            return;
+        {
+            _logger.LogInformation("Gateway 未启用，跳过 ChannelHost 自动启动");
+            return false;
+        }
 
         var deadline = DateTime.Now.AddSeconds(30);
         while (!_gatewayServer.IsRunning && DateTime.Now < deadline)
@@ -141,10 +152,11 @@ public sealed class ChannelHostHostedService : IHostedService, IDisposable
 
         if (!_gatewayServer.IsRunning)
         {
-            _logger.LogWarning("Gateway 未在超时内启动，仍将尝试启动 ChannelHost");
-            return;
+            _logger.LogWarning("Gateway 未在超时内启动，跳过 ChannelHost 自动启动");
+            return false;
         }
 
         await Task.Delay(300).ConfigureAwait(false);
+        return true;
     }
 }

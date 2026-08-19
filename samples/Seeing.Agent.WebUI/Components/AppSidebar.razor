@@ -1,9 +1,12 @@
 @using AntDesign
 @using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.JSInterop
 @using Seeing.Agent.WebUI.State
 @implements IDisposable
 @inject AppState AppState
 @inject NavigationManager NavigationManager
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
+@inject IMessageService MessageService
 
 <Sider Class="@GetSiderClass()"
        Width="240"
@@ -127,6 +130,22 @@
             </ChildContent>
         </SubMenu>
     </Menu>
+
+    <div class="sider-shutdown">
+        <Popconfirm Title="确定关闭当前 WebUI 程序？关闭后需要重新启动程序才能再次访问。"
+                    OkText="关闭程序"
+                    CancelText="取消"
+                    OnConfirm="RequestShutdown">
+            <Button Type="@ButtonType.Text"
+                    Danger="true"
+                    Block
+                    Class="sider-shutdown-button"
+                    Disabled="@_shutdownRequested">
+                <Icon Type="@IconType.Outline.CloseCircle" />
+                <span class="sider-shutdown-label">@(_shutdownRequested ? "正在关闭..." : "关闭 WebUI")</span>
+            </Button>
+        </Popconfirm>
+    </div>
 </Sider>
 
 @code {
@@ -155,6 +174,8 @@
         ["security"] = "settings",
         ["settings-page"] = "settings",
     };
+
+    private bool _shutdownRequested;
 
     /// <summary>有效折叠状态：移动端 overlay 模式时强制展开 Sider</summary>
     private bool EffectiveCollapsed =>
@@ -222,6 +243,23 @@
             {
                 _openKeys = _openKeys.Concat(new[] { subMenuKey }).ToArray();
             }
+        }
+    }
+
+    private async Task RequestShutdown()
+    {
+        if (_shutdownRequested)
+            return;
+
+        _shutdownRequested = true;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("shutdownWebUi");
+        }
+        catch (Exception ex)
+        {
+            _shutdownRequested = false;
+            MessageService.Error($"关闭 WebUI 失败: {ex.Message}");
         }
     }
 

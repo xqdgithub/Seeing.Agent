@@ -173,7 +173,7 @@ internal sealed class ChannelBridgeHostedService : IHostedService
         if (connection != null)
         {
             await connection.ConnectAsync(_bridge.ChannelId, cancellationToken).ConfigureAwait(false);
-            _logger.LogInformation("Gateway 已连接并注册: {ChannelId}", _bridge.ChannelId);
+            _logger.LogInformation("Gateway 连接探测已启动，连接成功后将注册 Channel: {ChannelId}", _bridge.ChannelId);
         }
 
         await _bridge.StartAsync(cancellationToken);

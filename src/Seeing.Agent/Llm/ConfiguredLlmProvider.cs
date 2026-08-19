@@ -61,6 +61,9 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             ["ApiKey"] = _config.ApiKey,
             ["Proxy"] = _config.Proxy,
             ["UseProxy"] = _config.UseProxy,
+            ["Headers"] = _config.Headers is null
+                ? null
+                : new Dictionary<string, string>(_config.Headers),
             ["Timeout"] = _config.Timeout,
             ["MaxRetries"] = _config.MaxRetries,
             ["DefaultModel"] = _config.DefaultModel
@@ -156,6 +159,9 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         if (TryGetBool(values, "UseProxy", out var useProxy))
             config.UseProxy = useProxy;
 
+        if (TryGetHeaders(values, "Headers", out var headers))
+            config.Headers = headers;
+
         if (TryGetInt(values, "Timeout", out var timeout))
             config.Timeout = timeout;
 
@@ -182,6 +188,45 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             _ => raw.ToString()
         };
         return true;
+    }
+
+    private static bool TryGetHeaders(
+        IReadOnlyDictionary<string, object?> values,
+        string key,
+        out Dictionary<string, string>? result)
+    {
+        result = null;
+        if (!values.TryGetValue(key, out var raw))
+            return false;
+
+        if (raw is null)
+            return true;
+
+        if (raw is IReadOnlyDictionary<string, string> readOnlyHeaders)
+        {
+            result = new Dictionary<string, string>(readOnlyHeaders);
+            return true;
+        }
+
+        if (raw is IDictionary<string, string> headers)
+        {
+            result = new Dictionary<string, string>(headers);
+            return true;
+        }
+
+        if (raw is JsonElement { ValueKind: JsonValueKind.Object } jsonObject)
+        {
+            result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in jsonObject.EnumerateObject())
+            {
+                result[property.Name] = property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString() ?? string.Empty
+                    : property.Value.ToString();
+            }
+            return true;
+        }
+
+        throw new ArgumentException("Headers must be a dictionary of header names and values.", key);
     }
 
     private static bool TryGetBool(

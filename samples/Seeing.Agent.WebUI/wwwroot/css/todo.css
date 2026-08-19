@@ -319,7 +319,8 @@
 .session-content-wrapper {
     display: flex;
     flex: 1;
-    overflow: hidden;
+    /* 必须允许 PromptInput 的候选列表向上溢出；此文件晚于 session-page.css 加载 */
+    overflow: visible;
 }
 
 .session-main-column {
@@ -328,7 +329,8 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    /* 避免候选列表被聊天列自身裁剪 */
+    overflow: visible;
 }
 
 .session-messages-container {
@@ -340,6 +342,27 @@
 
 .session-todo-panel {
     flex-shrink: 0;
+}
+
+/* ========== Session 命令候选列表层级 ========== */
+/*
+ * 候选列表向上穿过消息区域显示。消息列表内部有自己的定位层，
+ * 因此输入区必须在最后加载的样式中建立更高的层叠层级。
+ */
+.session-input-container {
+    position: relative;
+    z-index: 1000;
+    overflow: visible;
+}
+
+.prompt-input-container,
+.command-autocomplete-wrapper {
+    position: relative;
+    overflow: visible;
+}
+
+.command-dropdown {
+    z-index: 10000 !important;
 }
 
 /* ===========================

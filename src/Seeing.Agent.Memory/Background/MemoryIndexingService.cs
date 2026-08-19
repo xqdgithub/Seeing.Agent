@@ -72,6 +72,7 @@ public class MemoryIndexingService : BackgroundService
                 catch (Exception ex)
                 {
                     _logger?.LogError(ex, "处理文件变更失败: {Path}", change.Path);
+
                 }
             }
         }

@@ -35,8 +35,9 @@ public class AnthropicClient : ILlmClient
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _httpClient = httpClient;
 
-        if (string.IsNullOrEmpty(config.ApiKey))
-            throw new ArgumentException("ApiKey is required", nameof(config));
+        if (string.IsNullOrEmpty(config.ApiKey) &&
+            !HttpHeaderHelper.Contains(config.Headers, "x-api-key"))
+            throw new ArgumentException("ApiKey or an x-api-key header is required", nameof(config));
 
         // 配置 HTTP 客户端
         var baseUrl = config.BaseUrl ?? "https://api.anthropic.com";
@@ -50,7 +51,9 @@ public class AnthropicClient : ILlmClient
         _httpClient.Timeout = TimeSpan.FromMilliseconds(config.Timeout > 0 ? config.Timeout : 300000);
 
         _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
+        if (!HttpHeaderHelper.Contains(config.Headers, "x-api-key") &&
+            !string.IsNullOrEmpty(config.ApiKey))
+            _httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
         _httpClient.DefaultRequestHeaders.Add("anthropic-version", ApiVersion);
 
         // 使用特定格式的 User-Agent（跳过验证以支持多 product token 格式）
@@ -59,13 +62,7 @@ public class AnthropicClient : ILlmClient
 
         _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
-        if (_config.Headers != null)
-        {
-            foreach (var (key, value) in _config.Headers)
-            {
-                _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, value);
-            }
-        }
+        HttpHeaderHelper.Apply(_httpClient, _config.Headers);
 
         _logger.LogDebug("Anthropic 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}",
             ProviderId, baseUrl);

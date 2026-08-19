@@ -25,8 +25,9 @@ public class OpenAiChatClient : ILlmClient
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         ArgumentNullException.ThrowIfNull(httpClient);
 
-        if (string.IsNullOrEmpty(config.ApiKey))
-            throw new ArgumentException("ApiKey is required", nameof(config));
+        if (string.IsNullOrEmpty(config.ApiKey) &&
+            !HttpHeaderHelper.Contains(config.Headers, "Authorization"))
+            throw new ArgumentException("ApiKey or an Authorization header is required", nameof(config));
 
         // 保留调用方传入的 handler（包括 Provider 专用代理）；
         // 单测等已配置 BaseAddress 的 HttpClient 也继续直接复用。

@@ -40,7 +40,7 @@ public sealed class GatewayHost : IAsyncDisposable
     }
 
     /// <summary>启动 Gateway HTTP 服务</summary>
-    public Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
@@ -120,15 +120,14 @@ public sealed class GatewayHost : IAsyncDisposable
 
         _hostCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _app = app;
-        _runTask = app.RunAsync();
+        await app.StartAsync(_hostCts.Token).ConfigureAwait(false);
+        _runTask = app.WaitForShutdownAsync(CancellationToken.None);
 
         _logger.LogInformation(
             "GatewayHost listening on http://{BindAddress}:{Port}{WebSocketPath}",
             _options.BindAddress,
             _options.Port,
             _options.EnableWebSocket ? $" (WS: {_options.WebSocketPath})" : string.Empty);
-
-        return Task.CompletedTask;
     }
 
     /// <summary>停止 Gateway HTTP 服务</summary>

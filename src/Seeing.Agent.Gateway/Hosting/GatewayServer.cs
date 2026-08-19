@@ -30,7 +30,7 @@ public sealed class GatewayServer : IGatewayServer, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public bool IsRunning => _host != null;
+    public bool IsRunning => Volatile.Read(ref _host) is not null;
 
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -69,6 +69,12 @@ public sealed class GatewayServer : IGatewayServer, IAsyncDisposable
     /// <inheritdoc />
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
+        if (Volatile.Read(ref _host) is null)
+        {
+            _logger.LogDebug("Gateway 未运行，跳过停止");
+            return;
+        }
+
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {

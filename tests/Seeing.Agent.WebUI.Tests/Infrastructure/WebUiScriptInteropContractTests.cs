@@ -115,6 +115,57 @@ public class WebUiScriptInteropContractTests
     }
 
     [Fact]
+    public void ShutdownEndpoint_ShouldStopHostAfterResponseCompletes()
+    {
+        var program = File.ReadAllText(ProgramPath);
+
+        program.Should().Contain("context.Response.OnCompleted");
+        program.Should().NotContain("Task.Run(async ()");
+    }
+
+    [Fact]
+    public void SessionCommandDropdown_Override_ShouldRemainOverflowVisible()
+    {
+        var sessionCss = File.ReadAllText(Path.Combine(WebUiPath, "wwwroot", "css", "session-page.css"));
+        var todoCss = File.ReadAllText(Path.Combine(WebUiPath, "wwwroot", "css", "todo.css"))
+            .Replace("\r\n", "\n");
+
+        sessionCss.Should().Contain(".session-content-wrapper");
+        sessionCss.Should().Contain(".session-main-column");
+        todoCss.Should().Contain(".session-content-wrapper");
+        todoCss.Should().Contain(".session-main-column");
+        todoCss.Should().Contain("overflow: visible;");
+        todoCss.Should().NotContain(".session-main-column {\n    flex: 1;\n    min-width: 0;\n    min-height: 0;\n    display: flex;\n    flex-direction: column;\n    overflow: hidden;");
+        todoCss.Should().Contain(".session-input-container {\n    position: relative;\n    z-index: 1000;");
+        todoCss.Should().Contain(".command-dropdown {\n    z-index: 10000 !important;");
+    }
+
+    [Fact]
+    public void SessionCommandDropdown_ShouldBeAboveMessageStackingLayers()
+    {
+        var sessionCss = File.ReadAllText(Path.Combine(WebUiPath, "wwwroot", "css", "session-page.css"));
+        var todoCss = File.ReadAllText(Path.Combine(WebUiPath, "wwwroot", "css", "todo.css"))
+            .Replace("\r\n", "\n");
+
+        sessionCss.Should().Contain(".session-input-container");
+        sessionCss.Should().Contain("z-index: 20;");
+        todoCss.Should().Contain(".session-input-container");
+        todoCss.Should().Contain("z-index: 1000;");
+        todoCss.Should().Contain(".prompt-input-container,\n.command-autocomplete-wrapper");
+        todoCss.Should().Contain(".command-dropdown");
+        todoCss.Should().Contain("z-index: 10000 !important;");
+    }
+
+    [Fact]
+    public void SidebarShutdown_ShouldReserveCollapseTriggerSpace()
+    {
+        var sidebarCss = File.ReadAllText(Path.Combine(WebUiPath, "wwwroot", "css", "sidebar.css"));
+
+        sidebarCss.Should().Contain(".sider-shutdown");
+        sidebarCss.Should().Contain("margin-bottom: 48px;");
+    }
+
+    [Fact]
     public async Task WebUI_StaticAsset_AppJs_Should_Return_200()
     {
         // 集成验证：启动 WebUI 后，js/app.js 必须返回 200 且包含 isMobileBrowser。
@@ -152,6 +203,36 @@ public class WebUiScriptInteropContractTests
         finally { listener.Stop(); }
     }
 
+
+    [Fact]
+    public async Task WebUI_ShutdownEndpoint_ShouldStopCurrentProcess()
+    {
+        // 集成验证：关闭接口必须只关闭当前 WebUI 进程。
+        if (!File.Exists(WebUiExePath))
+            return;
+
+        var port = FindAvailablePort();
+        using var process = StartWebUi(port);
+        try
+        {
+            await WaitForServerAsync(port, TimeSpan.FromSeconds(30));
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var response = await http.PostAsync($"http://127.0.0.1:{port}/api/webui/shutdown", content: null);
+
+            response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            process.HasExited.Should().BeTrue("关闭接口应退出当前 WebUI 进程");
+            process.ExitCode.Should().Be(0, "正常关闭不应因 hosted service 停止异常而以失败退出码结束");
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
+            }
+        }
+    }
+
     private static System.Diagnostics.Process StartWebUi(int port)
     {
         var psi = new System.Diagnostics.ProcessStartInfo
@@ -164,6 +245,7 @@ public class WebUiScriptInteropContractTests
             CreateNoWindow = true,
             WorkingDirectory = Path.GetDirectoryName(WebUiExePath)!,
         };
+        psi.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
         var p = System.Diagnostics.Process.Start(psi)!;
         p.OutputDataReceived += (_, e) => { if (e.Data != null) Console.WriteLine($"[webui] {e.Data}"); };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) Console.Error.WriteLine($"[webui-err] {e.Data}"); };

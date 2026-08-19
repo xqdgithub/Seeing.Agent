@@ -42,14 +42,12 @@ internal static class OpenAiHttpHelper
         client.BaseAddress = new Uri(baseUrl + "/");
         client.Timeout = TimeSpan.FromMilliseconds(config.Timeout > 0 ? config.Timeout : 300000);
         client.DefaultRequestHeaders.Clear();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.ApiKey}");
+        if (!HttpHeaderHelper.Contains(config.Headers, "Authorization") &&
+            !string.IsNullOrEmpty(config.ApiKey))
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.ApiKey}");
         client.DefaultRequestHeaders.Add("Accept", "application/json");
 
-        if (config.Headers != null)
-        {
-            foreach (var (key, value) in config.Headers)
-                client.DefaultRequestHeaders.TryAddWithoutValidation(key, value);
-        }
+        HttpHeaderHelper.Apply(client, config.Headers);
 
         logger.LogDebug("OpenAI HTTP 客户端: BaseAddress={BaseAddress}, UseProxy={UseProxy}",
             client.BaseAddress, config.UseProxy);

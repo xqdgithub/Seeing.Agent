@@ -115,7 +115,8 @@
     min-height: 0;
     min-width: 0;
     display: flex;
-    overflow: hidden;
+    /* PromptInput 的命令候选列表需要向上溢出到消息区域 */
+    overflow: visible;
 }
 
 /* 消息 + 输入同列：与 Todo 面板并排，保证输入与对话共用同一居中基准 */
@@ -125,7 +126,8 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    /* 允许输入区的向上 absolute dropdown 穿过消息区域边界 */
+    overflow: visible;
 }
 
 /* ========== Messages Container ========== */
@@ -180,6 +182,8 @@
 
 /* ========== Input Container ========== */
 .session-input-container {
+    position: relative;
+    z-index: 20;
     padding: var(--space-4);
     background: var(--color-bg-container);
     border-top: 1px solid var(--color-border);
@@ -188,7 +192,8 @@
     min-width: var(--message-area-min-width);
     margin: 0 auto;
     width: 100%;
-    overflow: hidden;
+    /* command-dropdown 位于输入框上方，不能被输入容器自身裁剪 */
+    overflow: visible;
     box-sizing: border-box;
 }
 

@@ -122,6 +122,35 @@ aside.app-sider.ant-layout-sider {
     }
 }
 
+/* ========== 快速关闭 ========== */
+.sider-shutdown {
+    flex-shrink: 0;
+    /* AntDesign Sider 的折叠触发条位于底部，预留其高度避免覆盖关闭按钮 */
+    margin-bottom: 48px;
+    padding: 10px 8px 14px;
+    border-top: 1px solid #e8e8e8;
+}
+
+.sider-shutdown-button {
+    text-align: left;
+    color: #ff4d4f !important;
+}
+
+.sider-shutdown-button:hover:not(:disabled) {
+    background: #fff1f0 !important;
+    color: #cf1322 !important;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-shutdown-button {
+    text-align: center;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-shutdown-label {
+    display: none;
+}
+
 /* ========== 移动端侧边栏 ========== */
 /* 这些 class 仅由 AppSidebar.GetSiderClass() 在 AppState.IsMobile 时添加，无需 @media */
 .app-sider.sider-hidden {

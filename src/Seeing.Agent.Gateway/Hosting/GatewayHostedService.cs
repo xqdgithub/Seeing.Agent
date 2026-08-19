@@ -6,30 +6,27 @@ using Seeing.Agent.Configuration;
 namespace Seeing.Agent.Gateway.Hosting;
 
 /// <summary>
-/// 在宿主 <see cref="IHostApplicationLifetime.ApplicationStarted"/> 后自动启动 Gateway。
+/// 随宿主生命周期启动和停止 Gateway。
 /// 调用方应在 <c>app.Run()</c> 之前完成 <c>InitializeSeeingAgentAsync</c>。
 /// </summary>
 public sealed class GatewayHostedService : IHostedService
 {
     private readonly IGatewayServer _gatewayServer;
     private readonly GatewayOptions _options;
-    private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<GatewayHostedService> _logger;
 
     public GatewayHostedService(
         IGatewayServer gatewayServer,
         IOptions<GatewayOptions> options,
-        IHostApplicationLifetime lifetime,
         ILogger<GatewayHostedService> logger)
     {
         _gatewayServer = gatewayServer;
         _options = options.Value;
-        _lifetime = lifetime;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (!_options.Enabled || !_options.AutoStart)
         {
@@ -37,47 +34,19 @@ public sealed class GatewayHostedService : IHostedService
                 "Gateway 自动启动已跳过（Enabled={Enabled}, AutoStart={AutoStart}）",
                 _options.Enabled,
                 _options.AutoStart);
-            return Task.CompletedTask;
+            return;
         }
 
-        _lifetime.ApplicationStarted.Register(() =>
-        {
-            _ = StartGatewayAsync();
-        });
-
-        _lifetime.ApplicationStopping.Register(() =>
-        {
-            _ = StopGatewayAsync();
-        });
-
-        return Task.CompletedTask;
+        // 由 Host 等待启动完成，避免 ApplicationStarted fire-and-forget 任务与停止流程竞态。
+        await _gatewayServer.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public Task StopAsync(CancellationToken cancellationToken)
-        => _gatewayServer.StopAsync(cancellationToken);
-
-    private async Task StartGatewayAsync()
     {
-        try
-        {
-            await _gatewayServer.StartAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Gateway 自动启动失败");
-        }
-    }
+        if (!_gatewayServer.IsRunning)
+            return Task.CompletedTask;
 
-    private async Task StopGatewayAsync()
-    {
-        try
-        {
-            await _gatewayServer.StopAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Gateway 停止时出现异常");
-        }
+        return _gatewayServer.StopAsync(cancellationToken);
     }
 }

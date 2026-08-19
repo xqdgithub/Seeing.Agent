@@ -50,8 +50,21 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
                 return;
 
             EnsureLifecycleCts(cancellationToken);
-            await OpenSocketAndStartReceiveAsync(_lifecycleCts!.Token).ConfigureAwait(false);
-            await TrySendChannelRegisterAsync(_lifecycleCts.Token).ConfigureAwait(false);
+            try
+            {
+                await OpenSocketAndStartReceiveAsync(_lifecycleCts!.Token).ConfigureAwait(false);
+                await TrySendChannelRegisterAsync(_lifecycleCts.Token).ConfigureAwait(false);
+            }
+            catch (WebSocketException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Gateway 可能尚未监听：连接调用本身作为探测，失败后交给后台重连循环。
+                ScheduleReconnect();
+            }
+            catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // 某些运行时将 WebSocket 握手失败表现为 HttpRequestException。
+                ScheduleReconnect();
+            }
         }
         finally
         {

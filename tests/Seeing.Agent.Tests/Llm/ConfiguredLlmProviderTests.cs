@@ -31,6 +31,10 @@ public class ConfiguredLlmProviderTests
             Timeout = 1000,
             MaxRetries = 2,
             DefaultModel = "gpt-4o",
+            Headers = new Dictionary<string, string>
+            {
+                ["X-Provider-Header"] = "configured"
+            },
             Models = new Dictionary<string, ModelConfig> { ["gpt-4o"] = new() { Id = "gpt-4o" } }
         };
         var sut = CreateProvider(CreateFactory(Mock.Of<ILlmClient>()).Object, config);
@@ -42,6 +46,7 @@ public class ConfiguredLlmProviderTests
         values["Type"].Should().Be(nameof(ProviderType.OpenAI));
         values["BaseUrl"].Should().Be(config.BaseUrl);
         values["ApiKey"].Should().Be("sk-test");
+        values["Headers"].Should().BeEquivalentTo(config.Headers);
         values["Timeout"].Should().Be(1000);
         values["MaxRetries"].Should().Be(2);
         values["DefaultModel"].Should().Be("gpt-4o");
@@ -75,6 +80,10 @@ public class ConfiguredLlmProviderTests
                 ["Type"] = nameof(ProviderType.Anthropic),
                 ["BaseUrl"] = "https://example.com",
                 ["ApiKey"] = "k",
+                ["Headers"] = new Dictionary<string, string>
+                {
+                    ["X-Saved-Header"] = "saved"
+                },
                 ["Timeout"] = 5000,
                 ["MaxRetries"] = 9,
                 ["DefaultModel"] = "x"
@@ -85,6 +94,7 @@ public class ConfiguredLlmProviderTests
         saved.Should().NotBeNull();
         saved!.Name.Should().Be("Renamed");
         saved.Type.Should().Be(ProviderType.Anthropic);
+        saved.Headers.Should().Contain(new KeyValuePair<string, string>("X-Saved-Header", "saved"));
         saved.Models.Should().ContainKey("m");
         savedLevel.Should().Be(ConfigLevel.User);
     }

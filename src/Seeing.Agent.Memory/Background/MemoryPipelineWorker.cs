@@ -32,6 +32,7 @@ public sealed class MemoryPipelineWorker : BackgroundService
                     _logger.LogDebug("Pipeline skipped batch {Id}: {Reason}", batch.Id, result.Reason);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+
             {
                 break;
             }

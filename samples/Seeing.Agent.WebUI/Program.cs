@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+﻿using System.Net;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Permissions;
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Seeing.Agent.Acp.Extensions;
@@ -115,6 +116,36 @@ builder.Services.AddSingleton<CircuitTracker>();
 builder.Services.AddScoped<CircuitHandler, SeeingCircuitHandler>();
 
 var app = builder.Build();
+
+
+// 仅允许本机调用的快速关闭接口。使用 StopApplication 触发正常 Host 生命周期，
+// 不直接 Kill 进程，确保连接、后台任务和资源按 .NET Host 规则释放。
+var shutdownRequested = 0;
+app.MapPost("/api/webui/shutdown", (
+    HttpContext context,
+    IHostApplicationLifetime lifetime,
+    ILoggerFactory loggerFactory) =>
+{
+    var remoteAddress = context.Connection.RemoteIpAddress;
+    if (remoteAddress is null || !IPAddress.IsLoopback(remoteAddress))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    if (Interlocked.Exchange(ref shutdownRequested, 1) == 0)
+    {
+        loggerFactory.CreateLogger("WebUiShutdown")
+            .LogInformation("收到本机 WebUI 关闭请求");
+
+        context.Response.OnCompleted(() =>
+        {
+            loggerFactory.CreateLogger("WebUiShutdown")
+                .LogInformation("关闭响应已完成，触发 WebUI Host 停止");
+            lifetime.StopApplication();
+            return Task.CompletedTask;
+        });
+    }
+
+    return Results.Accepted();
+});
 
 // 初始化 Seeing.Agent 组件（Skills/MCP/Plugins）
 // 工作区自动根据配置解析：环境变量 > 项目自定义路径 > 全局默认 > 启动目录

@@ -98,9 +98,11 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     public async Task StopAsync(CancellationToken ct = default)
     {
-        await _lifecycleLock.WaitAsync(ct);
+        var lockTaken = false;
         try
         {
+            await _lifecycleLock.WaitAsync(ct);
+            lockTaken = true;
             if (!_started)
                 return;
 
@@ -109,9 +111,16 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             _started = false;
             _logger.LogInformation("ScheduleManager stopped");
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Host 停止超时后会取消共享令牌。此时进程已经进入终止清理阶段，
+            // 不应把正常的停止期限取消升级为 Generic Host 的 AggregateException。
+            _logger.LogWarning("ScheduleManager stop canceled by host shutdown deadline");
+        }
         finally
         {
-            _lifecycleLock.Release();
+            if (lockTaken)
+                _lifecycleLock.Release();
         }
     }
 

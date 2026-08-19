@@ -320,7 +320,16 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         {
             if (_scheduler != null && _scheduler.IsStarted)
             {
-                await _scheduler.Shutdown(true, ct);
+                try
+                {
+                    await _scheduler.Shutdown(true, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    _logger.LogWarning("Quartz scheduler graceful shutdown canceled; forcing immediate shutdown");
+                    await _scheduler.Shutdown(false, CancellationToken.None);
+                }
+
                 _logger.LogInformation("Quartz scheduler stopped");
             }
         }

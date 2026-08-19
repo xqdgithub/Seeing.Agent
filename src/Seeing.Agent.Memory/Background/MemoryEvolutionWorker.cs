@@ -45,6 +45,7 @@ public sealed class MemoryEvolutionWorker : BackgroundService
         });
 
         var idleLoop = IdleLoopAsync(stoppingToken);
+
         var endLoop = SessionEndLoopAsync(stoppingToken);
         await Task.WhenAll(idleLoop, endLoop);
     }

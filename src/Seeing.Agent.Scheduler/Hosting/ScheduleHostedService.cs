@@ -41,6 +41,15 @@ public sealed class ScheduleHostedService : IHostedService
         await _manager.StartAsync(cancellationToken);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) =>
-        _manager.StopAsync(cancellationToken);
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _manager.StopAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning("Scheduler stop canceled by host shutdown deadline");
+        }
+    }
 }

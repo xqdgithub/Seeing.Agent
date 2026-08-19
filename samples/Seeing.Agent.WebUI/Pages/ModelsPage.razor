@@ -1,4 +1,5 @@
 @page "/models"
+@using System.Text.Json
 @using AntDesign
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Llm
@@ -88,6 +89,14 @@
                                 <FormItem Label="名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
                                 <FormItem Label="Base URL"><Input @bind-Value="@_currentProvider.BaseUrl" /></FormItem>
                                 <FormItem Label="API Key"><Input Password @bind-Value="@_currentProvider.ApiKey" /></FormItem>
+                                <FormItem Label="自定义 Headers（JSON）">
+                                    <TextArea Rows="6" @bind-Value="@_headersJson"
+                                              Placeholder="{ &quot;Authorization&quot;: &quot;Bearer ...&quot; }"
+                                              Style="font-family: monospace;" />
+                                    <div style="color: #888; font-size: 12px; margin-top: 4px;">
+                                        每个键值会透传到 Provider 请求；同名内置请求头将被覆盖。请勿提交无效 JSON。
+                                    </div>
+                                </FormItem>
                                 <div style="margin-top: 12px;">
                                     <Button Type="@ButtonType.Primary" Loading="_savingProviderConfig" OnClick="SaveProviderConfigAsync">
                                         保存配置
@@ -295,6 +304,7 @@
     private readonly AddModelForm _addModelForm = new();
     private IEnumerable<ModelType> _addModelTypes = new[] { ModelType.Text };
     private string _testModelId = "";
+    private string _headersJson = "{}";
 
     private IConfigurableLlmProvider? _configurable;
     private IReadOnlyList<ConfigFieldSchema>? _schemaFields;
@@ -347,6 +357,7 @@
         _schemaValues = new();
         _configurable = null;
         _currentProvider = null;
+        _headersJson = "{}";
 
         _selectedProviderId = id;
         _selectedProviderKeys = new[] { id };
@@ -374,12 +385,14 @@
             {
                 // ConfiguredLlmProvider: schema null → handcrafted form（编辑副本，不脏写 live 配置）
                 _currentProvider = CloneProviderConfig(schemaNullConfig);
+                _headersJson = SerializeHeaders(_currentProvider.Headers);
             }
         }
         else if (_currentProviderInfo?.Source == ProviderSource.Configured &&
                  ConfigManager.GetSection<Dictionary<string, ProviderConfig>>("Providers").TryGetValue(id, out var configured))
         {
             _currentProvider = CloneProviderConfig(configured);
+            _headersJson = SerializeHeaders(_currentProvider.Headers);
         }
 
         RefreshModelRows();
@@ -440,6 +453,7 @@
                     ["Type"] = _currentProvider.Type.ToString(),
                     ["BaseUrl"] = _currentProvider.BaseUrl,
                     ["ApiKey"] = _currentProvider.ApiKey,
+                    ["Headers"] = ParseHeaders(),
                     ["Timeout"] = _currentProvider.Timeout,
                     ["MaxRetries"] = _currentProvider.MaxRetries,
                     ["DefaultModel"] = _currentProvider.DefaultModel
@@ -653,6 +667,40 @@
         await SelectProviderAsync(id);
     }
 
+    private static Dictionary<string, string>? ParseHeaders(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("Headers 必须是 JSON 对象，例如 {\"Authorization\":\"Bearer ...\"}。");
+
+            var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            if (headers is null)
+                throw new InvalidOperationException("Headers JSON 不能为空。");
+
+            if (headers.Keys.Any(string.IsNullOrWhiteSpace))
+                throw new InvalidOperationException("Headers 名称不能为空。");
+
+            return headers;
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("Headers 必须是有效的 JSON 对象。", ex);
+        }
+    }
+
+    private Dictionary<string, string>? ParseHeaders()
+        => ParseHeaders(_headersJson);
+
+    private static string SerializeHeaders(IReadOnlyDictionary<string, string>? headers)
+        => headers is null
+            ? "{}"
+            : JsonSerializer.Serialize(headers, new JsonSerializerOptions { WriteIndented = true });
+
     private static ProviderConfig CloneProviderConfig(ProviderConfig config) => new()
     {
         Id = config.Id,
@@ -660,6 +708,8 @@
         Name = config.Name,
         BaseUrl = config.BaseUrl,
         ApiKey = config.ApiKey,
+        Proxy = config.Proxy,
+        UseProxy = config.UseProxy,
         DefaultModel = config.DefaultModel,
         Timeout = config.Timeout,
         MaxRetries = config.MaxRetries,
