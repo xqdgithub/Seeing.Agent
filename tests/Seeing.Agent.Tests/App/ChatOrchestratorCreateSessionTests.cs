@@ -9,6 +9,7 @@ using Seeing.Agent.App;
 using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Internal;
 using Seeing.Agent.Commands;
+using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Models;
@@ -137,7 +138,8 @@ public class ChatOrchestratorCreateSessionTests
             options: new ExecutionOptions(),
             seeingAgentOptions: Mock.Of<Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions>>(
                 m => m.CurrentValue == new SeeingAgentOptions()),
-            logger: NullLogger<ExecutionJobService>.Instance);
+            logger: NullLogger<ExecutionJobService>.Instance,
+            compressionService: new CompressionService(null!, Mock.Of<ISessionManager>(), new CompressionOptions()));
 
         return new ChatOrchestrator(
             executionJobService: executionJobService,

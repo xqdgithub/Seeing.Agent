@@ -15,6 +15,7 @@ using Seeing.Agent.App.Events;
 using Seeing.Agent.App.Internal;
 using Seeing.Agent.App.Models;
 using Seeing.Agent.Commands;
+using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Events;
@@ -41,6 +42,7 @@ public class ExecutionJobService : IDisposable
     private readonly IExecutionEventPublisher _eventPublisher;
     private readonly ExecutionOptions _options;
     private readonly IOptionsMonitor<SeeingAgentOptions> _seeingAgentOptions;
+    private readonly CompressionService _compressionService;
     private readonly ILogger<ExecutionJobService> _logger;
     private readonly Timer _cleanupTimer;
     private readonly IAgentLoopScheduler? _loopScheduler;
@@ -56,6 +58,7 @@ public class ExecutionJobService : IDisposable
         ExecutionOptions options,
         IOptionsMonitor<SeeingAgentOptions> seeingAgentOptions,
         ILogger<ExecutionJobService> logger,
+        CompressionService compressionService,
         IAgentLoopScheduler? loopScheduler = null,
         IBackgroundTaskManager? backgroundTasks = null)
     {
@@ -63,6 +66,7 @@ public class ExecutionJobService : IDisposable
         _eventPublisher = eventPublisher;
         _options = options ?? new ExecutionOptions();
         _seeingAgentOptions = seeingAgentOptions;
+        _compressionService = compressionService ?? throw new ArgumentNullException(nameof(compressionService));
         _logger = logger;
         _loopScheduler = loopScheduler;
         _backgroundTasks = backgroundTasks;
@@ -356,6 +360,17 @@ public class ExecutionJobService : IDisposable
         try
         {
             var session = await sessionManager.EnsureSessionAsync(record.SessionId);
+
+            // 自动压缩门控：TokenBudget 标记 + 配置开启时，每轮 Agent 循环开始前触发压缩
+            var autoCompaction = _seeingAgentOptions.CurrentValue.TokenBudget?.AutoCompactionEnabled == true;
+            if (autoCompaction &&
+                session.PendingCompaction &&
+                session.Messages.Count > 0)
+            {
+                var outcome = await _compressionService.CompressAsync(session.Id, reason: "auto");
+                await PublishCompactionEventsAsync(session.Id, outcome);
+                session.PendingCompaction = false;
+            }
 
             // Build execution context with background permission channel
             var context = await BuildExecutionContextAsync(
@@ -933,13 +948,49 @@ public class ExecutionJobService : IDisposable
                 SessionId = sessionId,
                 CommandName = cmdName,
                 Success = result.Success,
-                Message = result.Success ? result.Message : result.ErrorMessage
+                Message = result.Success ? result.Message : result.ErrorMessage,
+                NavigationTarget = result.GetNavigationTarget(),
+                NeedsRefresh = result.NeedsRefresh
             };
             yield break;
         }
 
         // 继续执行 Agent
         yield return null;
+    }
+
+    /// <summary>
+    /// 发布压缩事件（Started → Completed/Failed）
+    /// </summary>
+    private Task PublishCompactionEventsAsync(string sessionId, CompressionOutcome outcome)
+    {
+        _eventPublisher.Publish(sessionId, new CompactionStartedEvent
+        {
+            SessionId = sessionId,
+            Reason = "auto"
+        });
+
+        if (outcome.Success)
+        {
+            _eventPublisher.Publish(sessionId, new CompactionCompletedEvent
+            {
+                SessionId = sessionId,
+                TokensBefore = outcome.TokensBefore,
+                TokensAfter = outcome.TokensAfter,
+                MessagesRemoved = outcome.MessagesRemoved,
+                Summary = outcome.Summary
+            });
+        }
+        else
+        {
+            _eventPublisher.Publish(sessionId, new CompactionFailedEvent
+            {
+                SessionId = sessionId,
+                ErrorMessage = outcome.ErrorMessage
+            });
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>

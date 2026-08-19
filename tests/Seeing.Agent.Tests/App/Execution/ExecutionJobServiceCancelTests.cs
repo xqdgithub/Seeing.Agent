@@ -10,6 +10,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Models;
+using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Instructions;
@@ -134,7 +135,8 @@ public class ExecutionJobServiceCancelTests
             publisher,
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
-            NullLogger<ExecutionJobService>.Instance);
+            NullLogger<ExecutionJobService>.Instance,
+            new CompressionService(null!, Mock.Of<ISessionManager>(), new CompressionOptions()));
 
         return new Fixture(service, provider);
     }

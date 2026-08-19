@@ -7,6 +7,7 @@ using Moq;
 using Seeing.Agent.App.Events;
 using Seeing.Agent.App.Execution;
 using Seeing.Agent.App.Models;
+using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
@@ -133,7 +134,8 @@ public class ExecutionJobServiceInstructionTests
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(
                 monitor => monitor.CurrentValue == new SeeingAgentOptions()),
-            NullLogger<ExecutionJobService>.Instance);
+            NullLogger<ExecutionJobService>.Instance,
+            new CompressionService(null!, Mock.Of<ISessionManager>(), new CompressionOptions()));
 
         return new Fixture(service, provider);
     }

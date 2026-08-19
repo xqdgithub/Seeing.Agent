@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.App.Execution;
+using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Permission;
 using Seeing.Session.Core;
@@ -93,6 +94,7 @@ public class ExecutionJobServicePermissionChannelTests
             Mock.Of<IExecutionEventPublisher>(),
             new ExecutionOptions(),
             optionsMonitor.Object,
-            NullLogger<ExecutionJobService>.Instance);
+            NullLogger<ExecutionJobService>.Instance,
+            new CompressionService(null!, Mock.Of<ISessionManager>(), new CompressionOptions()));
     }
 }

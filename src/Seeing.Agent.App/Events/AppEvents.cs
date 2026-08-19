@@ -68,6 +68,9 @@ public record CommandResultEvent : IMessageEvent
     
     /// <summary>导航目标（可选）</summary>
     public string? NavigationTarget { get; init; }
+
+    /// <summary>是否需要前端刷新时间线（压缩等变更会话内容的命令）</summary>
+    public bool NeedsRefresh { get; init; }
 }
 
 /// <summary>
