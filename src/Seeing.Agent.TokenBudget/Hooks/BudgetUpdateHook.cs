@@ -1,7 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Models;
@@ -11,9 +9,6 @@ using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Agent.TokenBudget.Api.Responses;
 using Seeing.TokenEstimation;
-
-// Alias to disambiguate from Seeing.TokenBudget.CompressionResult
-using SessionCompressionResult = Seeing.Session.Core.CompressionResult;
 
 namespace Seeing.Agent.TokenBudget;
 
@@ -161,26 +156,6 @@ public class BudgetUpdateHook : IHookHandler
                     Level = status.Level
                 };
                 payload.SetMutable("budgetWarningEvent", warningEvent);
-            }
-
-            // 如果有压缩结果，构建压缩事件
-            if (payload.Mutable.TryGetValue("compactionResult", out var compactionResultObj) &&
-                compactionResultObj is SessionCompressionResult compactionResult)
-            {
-                // 获取压缩策略
-                var options = innerScope.ServiceProvider.GetRequiredService<IOptions<SeeingAgentOptions>>();
-                var strategy = options.Value.TokenBudget.CompactionStrategy.ToString();
-
-                var compactionEvent = new CompactionEvent
-                {
-                    SessionId = payload.SessionId,
-                    Strategy = strategy,
-                    TokensBefore = compactionResult.TokensBefore,
-                    TokensAfter = compactionResult.TokensAfter,
-                    MessagesRemoved = compactionResult.MessagesRemoved,
-                    Success = compactionResult.Success
-                };
-                payload.SetMutable("compactionEvent", compactionEvent);
             }
 
             return HookResult.Success;

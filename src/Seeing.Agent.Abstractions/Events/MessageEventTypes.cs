@@ -70,9 +70,6 @@ public static class MessageEventType
     /// <summary>预算状态更新</summary>
     public const string BudgetStatus = "budget.status";
 
-    /// <summary>压缩执行</summary>
-    public const string Compaction = "compaction";
-
     /// <summary>预算警告</summary>
     public const string BudgetWarning = "budget.warning";
 
@@ -84,6 +81,24 @@ public static class MessageEventType
 
     /// <summary>会话模式更新</summary>
     public const string ModeUpdate = "mode.update";
+}
+
+/// <summary>
+/// CompactionEvents 专用常量（点分，与子项目①约定一致）
+/// </summary>
+public static class CompactionEventTypes
+{
+    /// <summary>压缩开始</summary>
+    public const string Started = "compaction.started";
+
+    /// <summary>压缩增量进度</summary>
+    public const string Delta = "compaction.delta";
+
+    /// <summary>压缩完成</summary>
+    public const string Completed = "compaction.completed";
+
+    /// <summary>压缩失败</summary>
+    public const string Failed = "compaction.failed";
 }
 
 /// <summary>

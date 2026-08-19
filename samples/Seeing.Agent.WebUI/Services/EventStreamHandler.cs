@@ -217,10 +217,6 @@ namespace Seeing.Agent.WebUI.Services
                     HandleBudgetWarning((BudgetWarningEvent)evt);
                     break;
 
-                case MessageEventType.Compaction:
-                    HandleCompaction((CompactionEvent)evt);
-                    break;
-
                 // App 层扩展事件类型
                 case AppEventTypeConstants.SkillContent:
                     HandleSkillContent((SkillContentEvent)evt);
@@ -702,15 +698,6 @@ namespace Seeing.Agent.WebUI.Services
         private void HandleBudgetWarning(BudgetWarningEvent evt)
         {
             // 警告事件可以显示通知，但不需要更新状态（状态由 BudgetStatusEvent 更新）
-            // OnStateChanged 会触发 UI 刷新
-        }
-
-        /// <summary>
-        /// 处理压缩事件
-        /// </summary>
-        private void HandleCompaction(CompactionEvent evt)
-        {
-            // 压缩完成，状态已由 BudgetStatusEvent 更新
             // OnStateChanged 会触发 UI 刷新
         }
 

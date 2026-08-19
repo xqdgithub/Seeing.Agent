@@ -27,7 +27,6 @@ public class MessageEventTypeStringTests
     [InlineData(MessageEventType.Error, "error")]
     [InlineData(MessageEventType.CommandResult, "command.result")]
     [InlineData(MessageEventType.BudgetStatus, "budget.status")]
-    [InlineData(MessageEventType.Compaction, "compaction")]
     [InlineData(MessageEventType.BudgetWarning, "budget.warning")]
     [InlineData(MessageEventType.Navigate, "navigate")]
     [InlineData(MessageEventType.TodoUpdate, "todo.update")]
