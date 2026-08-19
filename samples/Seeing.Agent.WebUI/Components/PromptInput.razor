@@ -11,6 +11,7 @@
 @using System.Threading
 @using System.Text
 @using Seeing.Agent.TokenBudget.Api.Responses
+@using Seeing.Session.Core
 @inject IJSRuntime JSRuntime
 @inject AppState AppState
 @inject SkillManager SkillManager
@@ -130,26 +131,31 @@
     <!-- Slot 扩展点 -->
     <SlotHost SlotName="message_toolbar" />
     
-    <!-- 底部提示栏：帮助文字 + Token Budget -->
-    @* 移动端不显示底部提示栏（帮助文字作为 placeholder，Token 预算隐藏） *@
-    @if (!AppState.IsMobile)
-    {
+    <!-- 底部提示栏：Token 预算（左） + 自动批准开关（右）；移动端仅显示自动批准 -->
     <div class="prompt-footer">
-        @if (!string.IsNullOrEmpty(HelpText))
-        {
-            <span class="prompt-help-text">
-                @HelpText
-            </span>
-        }
-        @if (BudgetStatus != null && BudgetStatus.MaxTokens > 0)
+        @if (!AppState.IsMobile && BudgetStatus != null && BudgetStatus.MaxTokens > 0)
         {
             <div class="prompt-token-budget">
                 <ChatTokenStatusBar Status="BudgetStatus" 
                                     OnCompactRequested="OnCompactRequested" />
             </div>
         }
+        <div class="prompt-auto-approve">
+            <Segmented TValue="SessionAutoApprove"
+                       Value="@AutoApprove"
+                       ValueChanged="@OnAutoApproveChanged"
+                       Size="@SegmentedSize.Small"
+                       Disabled="@AutoApproveDisabled">
+                <SegmentedItem TValue="SessionAutoApprove" Value="@SessionAutoApprove.FollowGlobal" Label="默认" />
+                <SegmentedItem TValue="SessionAutoApprove" Value="@SessionAutoApprove.Enabled"
+                               Class="@(AutoApprove == SessionAutoApprove.FollowGlobal && GlobalAutoApprove ? "seg-affected" : null)"
+                               Label="自动" />
+                <SegmentedItem TValue="SessionAutoApprove" Value="@SessionAutoApprove.Disabled"
+                               Class="@(AutoApprove == SessionAutoApprove.FollowGlobal && !GlobalAutoApprove ? "seg-affected" : null)"
+                               Label="确认" />
+            </Segmented>
+        </div>
     </div>
-    }
 </div>
 
 @code {
@@ -246,6 +252,30 @@
     /// </summary>
     [Parameter]
     public EventCallback OnCompactRequested { get; set; }
+
+    /// <summary>
+    /// 会话级自动批准策略（三态）
+    /// </summary>
+    [Parameter]
+    public SessionAutoApprove AutoApprove { get; set; } = SessionAutoApprove.FollowGlobal;
+
+    /// <summary>
+    /// 自动批准策略变更回调
+    /// </summary>
+    [Parameter]
+    public EventCallback<SessionAutoApprove> OnAutoApproveChanged { get; set; }
+
+    /// <summary>
+    /// 全局自动批准当前值（用于「跟随全局」段展示开/关）
+    /// </summary>
+    [Parameter]
+    public bool GlobalAutoApprove { get; set; }
+
+    /// <summary>
+    /// 是否禁用自动批准开关（子会话只读）
+    /// </summary>
+    [Parameter]
+    public bool AutoApproveDisabled { get; set; }
 
     /// <summary>
     /// 是否自动聚焦输入框

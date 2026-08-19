@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Session.Core;
 namespace Seeing.Agent.App.Models;
 
 /// <summary>
@@ -42,4 +43,10 @@ public record ChatOptions
     /// </para>
     /// </summary>
     public Seeing.Agent.Abstractions.Permissions.IPermissionChannel? PermissionChannel { get; init; }
+
+    /// <summary>
+    /// 会话级自动批准策略（默认跟随全局配置）。
+    /// <para>优先于全局 <c>Permission.AutoApproveAll</c>；<see cref="SessionAutoApprove.Enabled"/> 强制自动批准，<see cref="SessionAutoApprove.Disabled"/> 强制交互式确认。</para>
+    /// </summary>
+    public SessionAutoApprove AutoApprove { get; init; } = SessionAutoApprove.FollowGlobal;
 }

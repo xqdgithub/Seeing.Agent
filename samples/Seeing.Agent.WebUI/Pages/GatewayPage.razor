@@ -5,7 +5,6 @@
 @using Seeing.Agent.WebUI.Components
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
-@inject IHttpClientFactory HttpClientFactory
 @inject IMessageService MessageService
 @inject IGatewayServer GatewayServer
 
@@ -158,8 +157,7 @@
     {
         try
         {
-            var client = HttpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(3);
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
             var url = $"http://{_gateway.BindAddress}:{_gateway.Port}/api/gateway/health";
             var response = await client.GetAsync(url);
             _healthy = response.IsSuccessStatusCode;

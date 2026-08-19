@@ -532,10 +532,12 @@ public class ExecutionJobService : IDisposable
             throw new InvalidOperationException($"Agent '{agentId}' is disabled");
 
         // 权限通道选择优先级：
-        // 1. AutoApproveAll=true 时使用 AutoApproveInstance（全局配置优先）
-        // 2. 调用方传递的 PermissionChannel（WebUI 传递 BlazorPermissionChannel）
-        // 3. 否则使用 DenyAllPermissionChannel（立即拒绝）
-        var permissionChannel = ResolvePermissionChannel(record.Options?.PermissionChannel);
+        // 1. 会话级 Enabled 时使用 AutoApproveInstance（强制自动批准）
+        // 2. 会话级 Disabled 时强制使用调用方通道（WebUI 交互式），否则 DenyAll
+        // 3. 会话级 FollowGlobal 时走全局配置：AutoApproveAll=true 用 AutoApproveInstance，否则调用方通道/DenyAll
+        var permissionChannel = ResolvePermissionChannel(
+            record.Options?.PermissionChannel,
+            record.Options?.AutoApprove ?? SessionAutoApprove.FollowGlobal);
 
         var sessionModelRef = modelManager.GetSessionModelRef(session);
         var sessionModelRefOrNull = string.IsNullOrEmpty(sessionModelRef) ? null : sessionModelRef;
@@ -567,18 +569,45 @@ public class ExecutionJobService : IDisposable
     /// 根据配置解析权限通道。
     /// <para>
     /// 优先级：
-    /// 1. AutoApproveAll=true 时使用 AutoApproveInstance（全局配置优先）
-    /// 2. 调用方传递的 PermissionChannel（WebUI 传递 BlazorPermissionChannel）
-    /// 3. 否则使用 DenyAllPermissionChannel（立即拒绝，不等待超时）
+    /// 1. 会话级 Enabled 时使用 AutoApproveInstance（强制自动批准）
+    /// 2. 会话级 Disabled 时强制使用调用方通道（WebUI 传递 BlazorPermissionChannel），无调用方则 DenyAll
+    /// 3. 会话级 FollowGlobal 时走全局配置：AutoApproveAll=true 用 AutoApproveInstance，否则调用方通道/DenyAll
     /// </para>
     /// </summary>
     /// <param name="callerChannel">调用方传递的权限通道（可选）</param>
-    private IPermissionChannel ResolvePermissionChannel(IPermissionChannel? callerChannel)
+    /// <param name="autoApprove">会话级自动批准策略（默认跟随全局）</param>
+    internal IPermissionChannel ResolvePermissionChannel(
+        IPermissionChannel? callerChannel,
+        SessionAutoApprove autoApprove)
     {
-        // 全局配置 AutoApproveAll=true 优先级最高
-        var autoApprove = _seeingAgentOptions.CurrentValue.Permission?.AutoApproveAll ?? false;
+        // 会话级强制自动批准
+        if (autoApprove == SessionAutoApprove.Enabled)
+        {
+            _logger.LogInformation(
+                "Using AutoApprove permission channel (session-level AutoApprove=Enabled)");
+            return DefaultPermissionChannel.AutoApproveInstance;
+        }
 
-        if (autoApprove)
+        // 会话级强制交互式确认：优先调用方通道，否则拒绝
+        if (autoApprove == SessionAutoApprove.Disabled)
+        {
+            if (callerChannel != null)
+            {
+                _logger.LogInformation(
+                    "Using caller-provided permission channel (session-level AutoApprove=Disabled, {ChannelType})",
+                    callerChannel.GetType().Name);
+                return callerChannel;
+            }
+
+            _logger.LogInformation(
+                "Using DenyAll permission channel (session-level AutoApprove=Disabled, no caller channel)");
+            return DenyAllPermissionChannel.Instance;
+        }
+
+        // 跟随全局配置：AutoApproveAll=true 优先级最高
+        var autoApproveAll = _seeingAgentOptions.CurrentValue.Permission?.AutoApproveAll ?? false;
+
+        if (autoApproveAll)
         {
             _logger.LogInformation(
                 "Using AutoApprove permission channel (AutoApproveAll=true, overriding caller channel)");

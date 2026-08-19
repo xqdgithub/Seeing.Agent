@@ -96,5 +96,20 @@ namespace Seeing.Session.Tests
             c.ChannelId.Should().Be("qq");
             c.UserId.Should().Be("u1");
         }
+
+        [Fact]
+        public void AutoApprove_ShouldDefaultToFollowGlobal()
+        {
+            SessionData.Create().AutoApprove.Should().Be(SessionAutoApprove.FollowGlobal);
+        }
+
+        [Fact]
+        public void Clone_CopiesAutoApprove()
+        {
+            var s = SessionData.Create();
+            s.AutoApprove = SessionAutoApprove.Enabled;
+            var c = s.Clone();
+            c.AutoApprove.Should().Be(SessionAutoApprove.Enabled);
+        }
     }
 }

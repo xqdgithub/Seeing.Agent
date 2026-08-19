@@ -11,6 +11,7 @@
 @using Seeing.Agent.Tools
 @using Seeing.Agent.Skills
 @using Seeing.Agent.Configuration
+@using Microsoft.Extensions.Options
 @using Seeing.Agent.Llm
 @using Seeing.Session.Management
 @using Seeing.Session.Compression
@@ -44,6 +45,7 @@
 @inject ISessionEventPublisher SessionEventPublisher
 @inject Seeing.Agent.Core.Background.IBackgroundTaskManager BackgroundTaskManager
 @inject Services.MessageTimelineStore Timeline
+@inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -374,6 +376,10 @@
                                       SessionState="SessionState"
                                       CancellationTokenSource="@SessionState.CancellationTokenSource"
                                       BudgetStatus="SessionState.BudgetStatus"
+                                      AutoApprove="@CurrentAutoApprove"
+                                      OnAutoApproveChanged="@OnAutoApproveChanged"
+                                      GlobalAutoApprove="_globalAutoApprove"
+                                      AutoApproveDisabled="@IsSubAgentView"
                                       OnCompactRequested="OnCompactRequested"
                                       OnSubmitCallback="@OnSubmitMessage"
                                       OnCancelCallback="@OnCancelExecution" />
@@ -565,6 +571,8 @@
     private string? _loadedSessionId;
     private IDisposable? _budgetSubscription;
     private IDisposable? _sessionEventSubscription;
+    private IDisposable? _seeingAgentOptionsSubscription;
+    private bool _globalAutoApprove;
     /// <summary>上次已渲染到 UI 的标题（与 SessionData 引用就地更新解耦）。</summary>
     private string? _renderedTitle;
 
@@ -577,6 +585,14 @@
 
         // 订阅 AppState 变更事件，确保移动端/桌面端切换时同步重渲染
         AppState.OnChange += OnAppStateChange;
+
+        // 会话级自动批准：读取全局默认值 + 订阅热更
+        _globalAutoApprove = SeeingAgentOptions.CurrentValue.Permission?.AutoApproveAll ?? false;
+        _seeingAgentOptionsSubscription = SeeingAgentOptions.OnChange((opts, name) =>
+        {
+            _globalAutoApprove = opts.Permission?.AutoApproveAll ?? false;
+            _ = InvokeAsync(StateHasChanged);
+        });
         
         // 加载 Agent 和模型选项列表（不设置选中值）
         await LoadOptionsAsync();
@@ -1371,6 +1387,32 @@
     }
 
     /// <summary>
+    /// 当前会话的自动批准策略（三态）
+    /// </summary>
+    private SessionAutoApprove CurrentAutoApprove
+    {
+        get => SessionState.CurrentSession?.AutoApprove ?? SessionAutoApprove.FollowGlobal;
+        set
+        {
+            if (SessionState.CurrentSession != null)
+                SessionState.CurrentSession.AutoApprove = value;
+        }
+    }
+
+    /// <summary>
+    /// 自动批准策略变更：写回会话并持久化
+    /// </summary>
+    private async Task OnAutoApproveChanged(SessionAutoApprove value)
+    {
+        if (SessionState.CurrentSession == null)
+            return;
+
+        SessionState.CurrentSession.AutoApprove = value;
+        SessionState.CurrentSession.UpdatedAt = DateTime.Now;
+        await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+    }
+
+    /// <summary>
     /// 提交消息处理（使用 Submit + SubscribeEvents 模式）
     /// </summary>
     private async Task OnSubmitMessage(PromptSubmitEventArgs args)
@@ -1424,7 +1466,9 @@
             ModeId = SessionState.SelectedAcpMode,
             WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot,
             // 传递权限通道，支持交互式确认
-            PermissionChannel = PermissionChannel
+            PermissionChannel = PermissionChannel,
+            // 会话级自动批准策略（三态）
+            AutoApprove = SessionState.CurrentSession?.AutoApprove ?? SessionAutoApprove.FollowGlobal
         };
 
         try
@@ -2004,6 +2048,7 @@
         SessionState.CancelExecution();
         _budgetSubscription?.Dispose();
         _sessionEventSubscription?.Dispose();
+        _seeingAgentOptionsSubscription?.Dispose();
 
         var sessionId = SessionState.SessionId;
         if (!string.IsNullOrEmpty(sessionId))

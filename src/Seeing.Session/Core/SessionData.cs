@@ -19,6 +19,19 @@ namespace Seeing.Session.Core
         Error = 5
     }
 
+    /// <summary>
+    /// 会话级自动批准策略
+    /// </summary>
+    public enum SessionAutoApprove
+    {
+        /// <summary>跟随全局配置（默认）</summary>
+        FollowGlobal = 0,
+        /// <summary>强制自动批准</summary>
+        Enabled = 1,
+        /// <summary>强制交互式确认</summary>
+        Disabled = 2
+    }
+
     public class SessionData
     {
         // === 身份信息 ===
@@ -58,6 +71,9 @@ namespace Seeing.Session.Core
 
         /// <summary>子 Agent 会话权限快照（可序列化；续跑复用不重算）</summary>
         public List<SessionPermissionRule> PermissionSnapshot { get; set; } = new();
+
+        /// <summary>会话级自动批准策略（默认跟随全局配置）</summary>
+        public SessionAutoApprove AutoApprove { get; set; } = SessionAutoApprove.FollowGlobal;
 
         // === 消息历史 ===
         public List<SessionMessage> Messages { get; set; } = new();
@@ -219,6 +235,7 @@ namespace Seeing.Session.Core
                 ChannelId = ChannelId,
                 UserId = UserId,
                 Kind = Kind,
+                AutoApprove = AutoApprove,
                 PermissionSnapshot = PermissionSnapshot.Select(r => new SessionPermissionRule
                 {
                     Kind = r.Kind,

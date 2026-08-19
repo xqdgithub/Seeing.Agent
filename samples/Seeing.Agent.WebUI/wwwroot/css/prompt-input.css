@@ -52,21 +52,25 @@
 /* ========== 底部提示栏 ========== */
 .prompt-footer {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     margin-top: var(--space-2);
     padding: 0 var(--space-1);
     gap: var(--space-3);
 }
 
-.prompt-help-text {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-tertiary);
+.prompt-token-budget {
+    flex-shrink: 0;
+    margin-right: auto;
+}
+
+.prompt-auto-approve {
     flex-shrink: 0;
 }
 
-.prompt-token-budget {
-    flex-shrink: 0;
+.prompt-auto-approve .seg-affected {
+    color: var(--color-primary) !important;
+    opacity: 0.75;
 }
 
 /* ========== 旧样式兼容 ========== */
