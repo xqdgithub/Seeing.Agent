@@ -1,0 +1,74 @@
+samples/Seeing.Agent.Cli/Program.cs
+  s_f4389ea7236cbf::t_06f17545017f28 15-16
+src/Seeing.Agent.Abstractions/Llm/ProviderConfig.cs
+  s_f4389ea7236cbf::t_6d2be17b65e145 43-53
+samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj
+  s_f4389ea7236cbf::t_27a64488d289d0 42
+  s_f4389ea7236cbf::t_d1c5cb3fea7991 36-38,40-41,43-44,46-49,51-74
+samples/Seeing.Agent.Cli/Services/PortAllocator.cs
+  s_f4389ea7236cbf::t_44e3800fd5a00c 10-14,16-19,26-42
+  s_f4389ea7236cbf::t_f01eac44a04c46 22,24
+  s_f4389ea7236cbf::t_ca8efd3b5af98a 23
+src/Seeing.Agent/Llm/ModelConfigManager.cs
+  s_f4389ea7236cbf::t_3dbbcefcd7141c 534-535
+tests/Seeing.Agent.Cli.Tests/PortAllocatorTests.cs
+  s_f4389ea7236cbf::t_5efdf7db7d26ec 52-67
+src/Seeing.Agent/Llm/ProviderManager.cs
+  s_f4389ea7236cbf::t_1f81059444c0cf 360-361,388-389
+tests/Seeing.Agent.Cli.Tests/WebUiLaunchTests.cs
+  s_f4389ea7236cbf::t_b5541908d79356 1-28
+samples/Seeing.Agent.Cli/Services/ServiceProcessManager.cs
+  s_f4389ea7236cbf::t_2895d603d2949e 44-63
+  s_f4389ea7236cbf::t_e96f3a0f26fb7e 166-167,172-174,180,183
+  s_f4389ea7236cbf::t_e90138aca2e005 193-196
+  s_f4389ea7236cbf::t_0193c95c5c4a3a 21-22,26,33,81-124
+  s_f4389ea7236cbf::t_43878ce72d06ec 199-202,207-223
+  s_f4389ea7236cbf::t_a959c054084e7e 175-179,181-182
+  s_f4389ea7236cbf::t_7451a621e36d16 132-144
+src/Seeing.Agent/Llm/ConfiguredLlmProvider.cs
+  s_f4389ea7236cbf::t_181414b956b35f 62-63,153-158,187-218,270-271
+samples/Seeing.Agent.Cli/Commands/StartCommand.cs
+  s_f4389ea7236cbf::t_d047555f6de5cb 10-16,18-25,27-32,36,39,41-42,44-51,53-64,66-68,70-108,112-115,117,121-125,127-133,135,137-144,146,148,150-156,158-166
+  s_f4389ea7236cbf::t_a7970fda882af6 37-38
+src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs
+  s_f4389ea7236cbf::t_7c337c5d1f3674 713,728-730,735-737,744
+src/Seeing.Agent/Properties/AssemblyInfo.cs
+  s_f4389ea7236cbf::t_c0381b66796901 1-3
+src/Seeing.Agent/Llm/Clients/LlmHttpClientFactory.cs
+  s_f4389ea7236cbf::t_cb8fd886b68657 41-61
+  s_f4389ea7236cbf::t_4db14eb53bbc5f 1-40,62-63
+NuGet.Config
+  s_f4389ea7236cbf::t_25c4b30ff2b30f 1-7
+samples/Seeing.Agent.Cli/Services/BrowserLauncher.cs
+  s_f4389ea7236cbf::t_b46b34f0192cde 1-51
+src/Seeing.Agent/Llm/Clients/OpenAiChatClient.cs
+  s_f4389ea7236cbf::t_ceaebe66caa91e 31-32,35-41
+tests/Seeing.Agent.Cli.Tests/CliCommandTests.cs
+  s_f4389ea7236cbf::t_c4b6825345cd14 3-41
+  s_f4389ea7236cbf::t_70216d95523b1b 1-2
+tests/Seeing.Agent.Tests/Llm/Clients/LlmHttpClientFactoryTests.cs
+  s_f4389ea7236cbf::t_27ddf6960c5e07 1-25,42-124
+  s_f4389ea7236cbf::t_913c01988f948a 26-41
+src/Seeing.Agent/Llm/Clients/OpenAiHttpHelper.cs
+  s_f4389ea7236cbf::t_fc70bba4ae240b 22,26-29,31-41,54-55
+samples/Seeing.Agent.Cli/Services/WebUiLaunch.cs
+  s_f4389ea7236cbf::t_a8930fa83b36f5 1-25
+src/Seeing.Agent/Llm/Clients/OpenAiResponsesClient.cs
+  s_f4389ea7236cbf::t_1d960cdaad51b8 31-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.40-trip",
+  "base_commit_sha": "77c0fda0bc554517ecb9e6d1bbcb831ece991c7f",
+  "prompts": {},
+  "sessions": {
+    "s_f4389ea7236cbf": {
+      "agent_id": {
+        "tool": "kiro-cli",
+        "id": "591fa1f0-4ed8-45b9-9269-9827bf446a81",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
