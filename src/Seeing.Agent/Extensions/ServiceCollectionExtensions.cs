@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
+using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Agents;
@@ -38,6 +39,7 @@ using Seeing.Agent.Llm.Clients;
 using Seeing.Agent.MCP;
 using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
 using Seeing.Agent.Skills.OnlineParsers;
@@ -404,6 +406,11 @@ namespace Seeing.Agent.Extensions
                     globalStore: sp.GetService<GlobalSessionStore>()));
             services.AddSingleton<ISessionManager>(sp =>
                 sp.GetRequiredService<SessionManager>());
+
+            // 压缩组件（主库唯一注册点，TokenBudget 扩展不重复注册）
+            services.AddSingleton<ISummarizer, LlmSummarizer>();
+            services.AddSingleton<CompressionService>();
+            services.AddSingleton<CompressionOptions>();
 
             // 在线技能解析器
             services.AddSingleton<OnlineSkillParserAggregator>();
