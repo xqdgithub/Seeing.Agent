@@ -230,6 +230,20 @@ namespace Seeing.Agent.WebUI.Services
                     HandleModeUpdate((ModeUpdateEvent)evt);
                     break;
 
+                // 压缩事件（compaction.* 字符串类型）
+                case CompactionEventTypes.Started:
+                case CompactionEventTypes.Delta:
+                    // 进度事件：前端状态由 SessionState.IsCompacting 承载，无需额外处理
+                    break;
+
+                case CompactionEventTypes.Completed:
+                    // 会话内容已变更：时间线全量刷新由 Session.razor 消费
+                    break;
+
+                case CompactionEventTypes.Failed:
+                    // 错误提示由 Session.razor 消费
+                    break;
+
                 default:
                     break;
             }

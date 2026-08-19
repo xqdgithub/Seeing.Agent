@@ -13,8 +13,6 @@ using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
-using Seeing.Session.Compression;
-using Seeing.Session.Compression.Strategies;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Extensions;
 using Seeing.Provider.DeepSeek;
@@ -37,11 +35,6 @@ builder.Services.AddSeeingAgent(builder.Configuration);
 builder.Services.AddSeeingAcp();
 builder.Services.AddSeeingScheduler();
 builder.Services.AddTokenBudgetIntegration(builder.Configuration);
-
-// === ISummarizer for LLM-based compression ===
-builder.Services.AddSingleton<ISummarizer, LlmSummarizer>();
-builder.Services.AddSingleton<SummarizingStrategy>();
-builder.Services.AddSingleton<HybridStrategy>();
 
 builder.Services.AddSeeingGatewayServer(builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();
@@ -68,7 +61,6 @@ builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<MessageTimelineStore>();
 builder.Services.AddScoped<EventStreamHandler>();
 builder.Services.AddScoped<ErrorHandlingService>();
-builder.Services.AddScoped<SessionCompactionService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SeeingConfigService>();
 builder.Services.AddSingleton<ISeeingConfigService>(sp => sp.GetRequiredService<SeeingConfigService>());

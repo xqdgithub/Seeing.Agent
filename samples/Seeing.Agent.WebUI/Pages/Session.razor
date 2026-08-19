@@ -14,7 +14,6 @@
 @using Microsoft.Extensions.Options
 @using Seeing.Agent.Llm
 @using Seeing.Session.Management
-@using Seeing.Session.Compression
 @using Seeing.Agent.App
 @using Seeing.Agent.App.Events
 @using Seeing.Agent.App.Models
@@ -37,7 +36,6 @@
 @inject SkillManager SkillManager
 @inject ILlmService LlmService
 @inject IModelManager ModelManager
-@inject Services.SessionCompactionService CompactionService
 @inject Services.CommandListService CommandListService
 @inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
 @inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
@@ -1077,86 +1075,6 @@
     }
     
     /// <summary>
-    /// 压缩会话上下文（AI 摘要 + fallback）
-    /// </summary>
-    private async Task CompactSessionAsync()
-    {
-        if (SessionState.CurrentSession == null)
-        {
-            MessageService.Warning("没有活动会话");
-            return;
-        }
-        
-        var messages = SessionState.Messages;
-        if (messages.Count <= 10)
-        {
-            MessageService.Info($"消息数量较少（{messages.Count} 条），无需压缩");
-            return;
-        }
-
-        SessionState.IsCompacting = true;
-        StateHasChanged();
-
-        try
-        {
-            var result = await CompactionService.CompactAsync(
-                SessionState.Messages, 
-                SessionState.SessionId, 
-                SessionState.CancellationToken);
-
-            if (result.Success)
-            {
-                SessionState.CurrentSession.Messages.Clear();
-                SessionState.CurrentSession.Messages.Add(result.SummaryMessage!);
-                SessionState.CurrentSession.Messages.AddRange(result.TailMessages!);
-                // Session 由 ChatOrchestrator 管理，这里只更新本地状态
-                ResetTimelineFromSession();
-                MessageService.Success(string.Format("已压缩 {0} 条消息", result.CompressedCount));
-            }
-            else
-            {
-                if (!CompactionService.IsAiCompactionAvailable)
-                {
-                    MessageService.Warning(result.Message ?? "未配置 LLM 模型，无法使用 AI 压缩");
-                }
-                else
-                {
-                    await FallbackCompactAsync();
-                    MessageService.Warning(result.Error ?? result.Message ?? "压缩失败");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            await FallbackCompactAsync();
-            MessageService.Warning($"压缩失败: {ex.Message}");
-        }
-        finally
-        {
-            SessionState.IsCompacting = false;
-            StateHasChanged();
-        }
-    }
-
-    /// <summary>
-    /// Fallback：简单截断压缩（使用 SessionCompressor）
-    /// </summary>
-    private async Task FallbackCompactAsync()
-    {
-        var compressor = new SessionCompressor(keepLastN: 10);
-        var messages = SessionState.CurrentSession!.Messages;
-        var originalCount = messages.Count;
-        var compressed = compressor.Compress(messages);
-        messages.Clear();
-        messages.AddRange(compressed);
-        var discarded = compressor.GetDiscardedCount(originalCount);
-        if (discarded > 0)
-            messages.Insert(0, SessionMessage.SystemMessage(string.Format("已截断 {0} 条旧消息", discarded)));
-        // Session 由 ChatOrchestrator 管理，这里只更新本地状态
-        ResetTimelineFromSession();
-    }
-    
-    /// <summary>
     /// 显示帮助信息
     /// </summary>
     private void ShowHelp()
@@ -1604,6 +1522,35 @@
                     if (!string.IsNullOrEmpty(navEvt.Target))
                         NavigationManager.NavigateTo(navEvt.Target);
                 }
+                else if (evt is CommandResultEvent commandEvt)
+                {
+                    // 命令结果：压缩等命令要求全量刷新时间线；导航命令走 NavigationTarget
+                    if (commandEvt.NeedsRefresh)
+                    {
+                        ResetTimelineFromSession();
+                        ReconcileTimelineFromSession();
+                        await InvokeAsync(StateHasChanged);
+                    }
+
+                    if (!string.IsNullOrEmpty(commandEvt.NavigationTarget))
+                    {
+                        NavigationManager.NavigateTo(commandEvt.NavigationTarget);
+                    }
+                }
+                else if (evt is CompactionCompletedEvent)
+                {
+                    // 压缩完成：会话内容已变更，全量重建时间线
+                    ResetTimelineFromSession();
+                    ReconcileTimelineFromSession();
+                    await InvokeAsync(StateHasChanged);
+                }
+                else if (evt is CompactionFailedEvent failedEvt)
+                {
+                    if (!string.IsNullOrEmpty(failedEvt.ErrorMessage))
+                    {
+                        MessageService.Error(string.Format("压缩失败: {0}", failedEvt.ErrorMessage));
+                    }
+                }
                 else
                 {
                     // Unknown event: incremental sync only — never mid-stream Reset
@@ -1978,61 +1925,21 @@
     }
     
     /// <summary>
-    /// 手动触发压缩
+    /// 手动触发压缩 - 通过命令通道发送 /compact（由主库 CompressionService 执行）
     /// </summary>
     private async Task OnCompactRequested()
     {
         if (SessionState.CurrentSession == null) return;
 
-        try
+        if (SessionState.IsExecuting)
         {
-            SessionState.IsCompacting = true;
-            await InvokeAsync(StateHasChanged);
-
-            var result = await CompactionService.CompactAsync(
-                SessionState.CurrentSession.Messages,
-                SessionState.CurrentSession.Id);
-
-            if (result.Success && result.SummaryMessage != null && result.TailMessages != null)
-            {
-                // 替换消息列表
-                SessionState.CurrentSession.Messages.Clear();
-                SessionState.CurrentSession.Messages.Add(result.SummaryMessage);
-                foreach (var msg in result.TailMessages)
-                {
-                    SessionState.CurrentSession.Messages.Add(msg);
-                }
-
-                // 清除缓存
-                SessionState.CurrentSession.ClearUsageCache();
-
-                // 保存 Session
-                await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
-
-                // 更新 Token 预算状态
-                UpdateBudgetStatus();
-
-                MessageService.Success(string.Format("已压缩 {0} 条消息", result.CompressedCount));
-                ResetTimelineFromSession();
-            }
-            else if (!string.IsNullOrEmpty(result.Message))
-            {
-                MessageService.Info(result.Message);
-            }
-            else if (!string.IsNullOrEmpty(result.Error))
-            {
-                MessageService.Error(string.Format("压缩失败: {0}", result.Error));
-            }
+            MessageService.Warning("当前会话正在执行，请稍后再压缩");
+            return;
         }
-        catch (Exception ex)
-        {
-            MessageService.Error(string.Format("压缩失败: {0}", ex.Message));
-        }
-        finally
-        {
-            SessionState.IsCompacting = false;
-            await InvokeAsync(StateHasChanged);
-        }
+
+        // 复用提交链路：ChatOrchestrator 识别 /compact 命令 → shouldContinue:false 终止循环
+        // → CommandResultEvent(NeedsRefresh=true) → ConsumeEventStreamAsync 刷新时间线
+        await OnSubmitMessage(new PromptSubmitEventArgs { Text = "/compact" });
     }
     
     /// <summary>
