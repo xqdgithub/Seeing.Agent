@@ -96,16 +96,6 @@
             }
             @if (!AppState.IsMobile && !IsSubAgentView && _optionsReady && SessionState.CurrentSession != null)
             {
-                <div class="subagent-meta" title="出站绑定" style="margin-left: 8px;">
-                    <span class="subagent-meta-chip">
-                        <span class="subagent-meta-label">Channel</span>
-                        <span class="subagent-meta-value">@FormatOutbound(SessionState.CurrentSession.ChannelId)</span>
-                    </span>
-                    <span class="subagent-meta-chip">
-                        <span class="subagent-meta-label">User</span>
-                        <span class="subagent-meta-value">@FormatOutbound(SessionState.CurrentSession.UserId)</span>
-                    </span>
-                </div>
                 <Tooltip Title="编辑出站绑定">
                     <Button Type="@ButtonType.Text"
                             Size="@ButtonSize.Small"
@@ -1878,9 +1868,6 @@
     {
         RenameModalVisible = false;
     }
-
-    private static string FormatOutbound(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? "未绑定" : value;
 
     private static string? NormalizeOutbound(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
