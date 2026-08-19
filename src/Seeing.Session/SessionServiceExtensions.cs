@@ -1,7 +1,6 @@
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Session.Compression;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Management;
@@ -60,7 +59,6 @@ public static class SessionServiceExtensions
 
             return new SessionManager(
                 store: store,
-                compressor: sp.GetService<ICompressionStrategy>(),
                 hookManager: sp.GetService<IHookManager>(),
                 eventPublisher: sp.GetService<ISessionEventPublisher>(),
                 logger: sp.GetService<ILogger<SessionManager>>(),

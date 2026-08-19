@@ -24,12 +24,6 @@ public class TokenBudgetConfig
     public ThresholdConfig CompactionThreshold { get; set; } = new() { Percentage = 90 };
 
     /// <summary>
-    /// Strategy to use for compaction.
-    /// Default: SlidingWindow.
-    /// </summary>
-    public CompactionStrategyType CompactionStrategy { get; set; } = CompactionStrategyType.SlidingWindow;
-
-    /// <summary>
     /// Number of tokens to keep when using sliding window compaction.
     /// Default: 20000.
     /// </summary>

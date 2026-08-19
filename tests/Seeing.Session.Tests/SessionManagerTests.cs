@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Seeing.Session.Compression;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Management;
@@ -19,18 +18,15 @@ namespace Seeing.Session.Tests
     public class SessionManagerTests
     {
         private readonly Mock<ISessionStore> _mockStore;
-        private readonly Mock<ICompressionStrategy> _mockCompressor;
         private readonly SessionHookManager _hookManager;
         private readonly SessionManager _sessionManager;
 
         public SessionManagerTests()
         {
             _mockStore = new Mock<ISessionStore>();
-            _mockCompressor = new Mock<ICompressionStrategy>();
             _hookManager = new SessionHookManager(new NullLogger<SessionHookManager>());
             _sessionManager = new SessionManager(
                 store: _mockStore.Object,
-                compressor: _mockCompressor.Object,
                 hookManager: _hookManager,
                 logger: new NullLogger<SessionManager>());
         }
@@ -425,7 +421,7 @@ namespace Seeing.Session.Tests
         // === Compress 测试 ===
 
         [Fact]
-        public void Compress_ShouldCallCompressorCompress()
+        public void Compress_ShouldReturnOriginalMessagesWithoutModifying()
         {
             // Arrange
             var session = _sessionManager.Create();
@@ -433,24 +429,17 @@ namespace Seeing.Session.Tests
             session.AddMessage(SessionMessage.UserMessage("Hello"));
             session.AddMessage(SessionMessage.AssistantMessage("Response"));
 
-            var compressedMessages = new List<SessionMessage>
-            {
-                SessionMessage.SystemMessage("System prompt"),
-                SessionMessage.UserMessage("Hello")
-            };
-            _mockCompressor.Setup(c => c.Compress(It.IsAny<IReadOnlyList<SessionMessage>>()))
-                .Returns(compressedMessages);
-
             // Act
             var result = _sessionManager.Compress(session.Id);
 
-            // Assert
-            result.Should().HaveCount(2);
-            _mockCompressor.Verify(c => c.Compress(It.IsAny<IReadOnlyList<SessionMessage>>()), Times.Once);
+            // Assert - 压缩已移交主库，原样返回且不修改消息
+            result.Should().HaveCount(3);
+            session.Messages.Should().HaveCount(3);
+            session.Messages[1].Content.Should().Be("Hello");
         }
 
         [Fact]
-        public void Compress_ShouldUpdateSessionMessages()
+        public void Compress_ShouldNotUpdateSessionMessages()
         {
             // Arrange
             var session = _sessionManager.Create();
@@ -460,19 +449,11 @@ namespace Seeing.Session.Tests
                 session.AddMessage(SessionMessage.UserMessage($"Message {i}"));
             }
 
-            var compressedMessages = new List<SessionMessage>
-            {
-                SessionMessage.SystemMessage("System"),
-                SessionMessage.UserMessage("Message 29")
-            };
-            _mockCompressor.Setup(c => c.Compress(It.IsAny<IReadOnlyList<SessionMessage>>()))
-                .Returns(compressedMessages);
-
             // Act
             _sessionManager.Compress(session.Id);
 
-            // Assert
-            session.Messages.Should().HaveCount(2);
+            // Assert - 压缩不再修改会话消息
+            session.Messages.Should().HaveCount(31);
             session.Messages[0].Role.Should().Be(MessageRole.System);
         }
 

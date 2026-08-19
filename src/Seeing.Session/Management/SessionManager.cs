@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Session.Compression;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Storage;
@@ -22,7 +21,6 @@ namespace Seeing.Session.Management
     public class SessionManager : ISessionManager
     {
         private readonly ISessionStore? _store;
-        private readonly ICompressionStrategy? _compressor;
         private readonly IHookManager? _hookManager;
         private readonly ISessionEventPublisher? _eventPublisher;
         private readonly ILogger<SessionManager>? _logger;
@@ -44,7 +42,6 @@ namespace Seeing.Session.Management
         /// 创建 SessionManager 实例
         /// </summary>
         /// <param name="store">会话存储（可选）</param>
-        /// <param name="compressor">压缩策略（可选，默认 SlidingWindowCompression）</param>
         /// <param name="hookManager">Hook 管理器（可选）</param>
         /// <param name="eventPublisher">事件发布器（可选，用于 UI 更新）</param>
         /// <param name="logger">日志（可选）</param>
@@ -55,7 +52,6 @@ namespace Seeing.Session.Management
         /// <param name="globalStore">全局 Session 存储（可选）</param>
         public SessionManager(
             ISessionStore? store = null,
-            ICompressionStrategy? compressor = null,
             IHookManager? hookManager = null,
             ISessionEventPublisher? eventPublisher = null,
             ILogger<SessionManager>? logger = null,
@@ -66,7 +62,6 @@ namespace Seeing.Session.Management
             GlobalSessionStore? globalStore = null)
         {
             _store = store;
-            _compressor = compressor ?? new SlidingWindowCompression();
             _hookManager = hookManager;
             _eventPublisher = eventPublisher;
             _logger = logger;
@@ -293,10 +288,10 @@ namespace Seeing.Session.Management
         }
 
         /// <summary>
-        /// 压缩会话消息
+        /// 压缩会话消息（压缩逻辑已移交主库 CompressionService，此处仅保留兼容签名）
         /// </summary>
         /// <param name="id">会话 ID</param>
-        /// <returns>压缩后保留的消息列表</returns>
+        /// <returns>当前消息列表（原样返回，不再执行压缩）</returns>
         public IReadOnlyList<SessionMessage> Compress(string id)
         {
             var session = Get(id);
@@ -306,40 +301,10 @@ namespace Seeing.Session.Management
                 return Array.Empty<SessionMessage>();
             }
 
-            if (_compressor == null)
-            {
-                _logger?.LogWarning("未配置 CompressionStrategy，无法压缩: {SessionId}", id);
-                return session.Messages;
-            }
-
-            var original = session.Messages;
-            if (original.Count == 0)
-            {
-                return original;
-            }
-
-            var compressed = _compressor.Compress(original);
-
-            // 更新会话消息
-            session.Messages.Clear();
-            session.Messages.AddRange(compressed);
-
-            // 触发 Compressed Hook（非阻塞）
-            _hookManager?.TriggerFireAndForget(
-                HookPoints.Compressed,
-                session.Id,
-                result: new Dictionary<string, object?>
-                {
-                    ["session"] = session,
-                    ["originalCount"] = original.Count,
-                    ["compressedCount"] = compressed.Count
-                });
-
             _logger?.LogInformation(
-                "压缩会话消息: {SessionId}, 原始: {OriginalCount}, 保留: {CompressedCount}",
-                id, original.Count, compressed.Count);
+                "压缩已移交主库 CompressionService，此处不再执行: {SessionId}", id);
 
-            return compressed;
+            return session.Messages;
         }
 
         // === 新增接口方法实现 ===

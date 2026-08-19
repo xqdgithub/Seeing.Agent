@@ -398,7 +398,6 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<SessionManager>(sp =>
                 new SessionManager(
                     store: sp.GetRequiredService<ISessionStore>(),
-                    compressor: sp.GetService<Seeing.Session.Compression.ICompressionStrategy>(),
                     hookManager: sp.GetService<Seeing.Session.Hooks.IHookManager>(),
                     eventPublisher: sp.GetRequiredService<ISessionEventPublisher>(),
                     logger: sp.GetService<ILogger<SessionManager>>(),
