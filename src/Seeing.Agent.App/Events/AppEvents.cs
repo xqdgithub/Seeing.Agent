@@ -5,24 +5,18 @@ using Seeing.Session.Core;
 namespace Seeing.Agent.App.Events;
 
 /// <summary>
-/// App 层事件类型（扩展值范围：1000+，避免与 Core 层冲突）
+/// App 层事件类型字符串常量（不并入 Abstractions，保持 Abstractions 不感知 App 层应用事件）
 /// </summary>
-public enum AppEventType
+public static class AppEventTypeConstants
 {
     /// <summary>Session 更新</summary>
-    SessionUpdated = 1000,
-    
-    /// <summary>命令执行结果</summary>
-    CommandResult = 1001,
-    
-    /// <summary>导航请求</summary>
-    Navigate = 1002,
-    
+    public const string SessionUpdated = "session.updated";
+
     /// <summary>Skill 内容展开</summary>
-    SkillContent = 1003,
+    public const string SkillContent = "skill.content";
 
     /// <summary>Session 标题变更</summary>
-    SessionTitleChanged = 1004,
+    public const string SessionTitleChanged = "session.title.changed";
 }
 
 /// <summary>
@@ -33,7 +27,7 @@ public record SessionUpdatedEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
-    public MessageEventType Type => (MessageEventType)AppEventType.SessionUpdated;
+    public string Type => AppEventTypeConstants.SessionUpdated;
     
     /// <summary>更新后的 Session 数据</summary>
     public required SessionData Session { get; init; }
@@ -47,7 +41,7 @@ public record SessionTitleChangedEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
-    public MessageEventType Type => (MessageEventType)AppEventType.SessionTitleChanged;
+    public string Type => AppEventTypeConstants.SessionTitleChanged;
 
     /// <summary>更新后的标题</summary>
     public required string Title { get; init; }
@@ -61,7 +55,7 @@ public record CommandResultEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
-    public MessageEventType Type => (MessageEventType)AppEventType.CommandResult;
+    public string Type => MessageEventType.CommandResult;
     
     /// <summary>命令名称</summary>
     public required string CommandName { get; init; }
@@ -84,7 +78,7 @@ public record NavigateEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
-    public MessageEventType Type => (MessageEventType)AppEventType.Navigate;
+    public string Type => MessageEventType.Navigate;
     
     /// <summary>导航目标路径</summary>
     public required string Target { get; init; }
@@ -98,7 +92,7 @@ public record SkillContentEvent : IMessageEvent
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
-    public MessageEventType Type => (MessageEventType)AppEventType.SkillContent;
+    public string Type => AppEventTypeConstants.SkillContent;
     
     /// <summary>原始命令内容</summary>
     public required string OriginalContent { get; init; }
