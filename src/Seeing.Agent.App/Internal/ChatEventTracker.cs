@@ -117,6 +117,7 @@ internal class ChatEventTracker
                     ToolCallStatus.Success => "success",
                     ToolCallStatus.Failed => "failed",
                     ToolCallStatus.Rejected => "rejected",
+                    ToolCallStatus.Cancelled => "cancelled",
                     _ => existing.Status
                 };
                 if (toolCall.Output != null)

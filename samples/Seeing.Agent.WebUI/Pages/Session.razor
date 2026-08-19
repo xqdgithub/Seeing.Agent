@@ -1286,10 +1286,19 @@
         {
             SessionState.SetSession(sessionData);
             _renderedTitle = sessionData.Title;
-            await EnsureDefaultAgentSelectionAsync();
-            
-            // 转换消息为 UI 显示用的 MessageViewModel
+
+            // 先重建 Timeline，确保切换会话立即展示目标会话消息；
+            // 避免默认 Agent/Model 解析异常中断会话切换。
             ResetTimelineFromSession();
+
+            try
+            {
+                await EnsureDefaultAgentSelectionAsync();
+            }
+            catch
+            {
+                // 默认 Agent/Model 解析失败不应阻断会话加载
+            }
             
             // 更新当前会话 ID
             AppState.CurrentSessionId = sessionId;

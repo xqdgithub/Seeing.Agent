@@ -37,6 +37,7 @@ public static class SessionStreamEventApplier
                 return tool.Status is ToolCallStatus.Success
                     or ToolCallStatus.Failed
                     or ToolCallStatus.Rejected
+                    or ToolCallStatus.Cancelled
                     or ToolCallStatus.Pending;
 
             default:
@@ -161,6 +162,7 @@ public static class SessionStreamEventApplier
             ToolCallStatus.Success => "success",
             ToolCallStatus.Failed => "failed",
             ToolCallStatus.Rejected => "rejected",
+            ToolCallStatus.Cancelled => "cancelled",
             _ => tc.Status
         };
 

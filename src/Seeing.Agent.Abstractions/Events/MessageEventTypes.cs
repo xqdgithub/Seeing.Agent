@@ -245,7 +245,10 @@ public enum ToolCallStatus
     Failed,
 
     /// <summary>被拒绝</summary>
-    Rejected
+    Rejected,
+
+    /// <summary>已取消（用户取消或超时等导致未完成）</summary>
+    Cancelled
 }
 
 /// <summary>

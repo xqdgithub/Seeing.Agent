@@ -828,6 +828,7 @@ namespace Seeing.Agent.WebUI.Services
             ToolCallStatus.Success => "success",
             ToolCallStatus.Failed => "failed",
             ToolCallStatus.Rejected => "rejected",
+            ToolCallStatus.Cancelled => "cancelled",
             _ => "unknown"
         };
 

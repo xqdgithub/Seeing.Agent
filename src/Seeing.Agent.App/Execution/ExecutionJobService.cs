@@ -431,7 +431,7 @@ public class ExecutionJobService : IDisposable
             try
             {
                 var liveSession = sessionManager.Get(record.SessionId);
-                if (IncompleteTaskMarker.MarkCancelled(liveSession, "用户取消") > 0)
+                if (IncompleteToolCallMarker.MarkCancelled(liveSession, "用户取消") > 0)
                     await sessionManager.SaveAsync(record.SessionId);
             }
             catch (Exception ex)
@@ -639,7 +639,7 @@ public class ExecutionJobService : IDisposable
     {
         StreamCompleteEvent => true,
         ToolCallEvent { Status: ToolCallStatus.Pending or ToolCallStatus.Success
-            or ToolCallStatus.Failed or ToolCallStatus.Rejected } => true,
+            or ToolCallStatus.Failed or ToolCallStatus.Rejected or ToolCallStatus.Cancelled } => true,
         TaskStartedEvent or TaskCompletedEvent or TaskFailedEvent => true,
         LoopCompleteEvent or LoopCancelledEvent or ErrorEvent => true,
         _ => false
@@ -793,7 +793,7 @@ public class ExecutionJobService : IDisposable
     /// <summary>
     /// Builds history from session.
     /// </summary>
-    private static List<ChatMessage> BuildHistoryFromSession(SessionData session)
+    internal static List<ChatMessage> BuildHistoryFromSession(SessionData session)
     {
         var history = new List<ChatMessage>();
 
@@ -803,7 +803,8 @@ public class ExecutionJobService : IDisposable
             {
                 Role = msg.Role,
                 Content = msg.Content,
-                ReasoningContent = msg.ReasoningContent
+                ReasoningContent = msg.ReasoningContent,
+                ToolCallId = msg.ToolCallId
             };
 
             if (msg.Parts != null && msg.Parts.Count > 0)
@@ -834,6 +835,22 @@ public class ExecutionJobService : IDisposable
             }
 
             history.Add(chatMessage);
+
+            // 工具结果在会话中内嵌于 assistant 消息的 ToolCalls[].Result，
+            // 此处展开为独立的 tool 消息，满足 OpenAI 对 assistant(tool_calls)
+            // 后必须紧跟对应 tool 消息的要求，否则重建历史会触发 400。
+            if (msg.ToolCalls is { Count: > 0 })
+            {
+                foreach (var tc in msg.ToolCalls)
+                {
+                    history.Add(new ChatMessage
+                    {
+                        Role = ChatRole.Tool,
+                        ToolCallId = tc.Id,
+                        Content = tc.Result ?? tc.Error ?? string.Empty
+                    });
+                }
+            }
         }
 
         return history;

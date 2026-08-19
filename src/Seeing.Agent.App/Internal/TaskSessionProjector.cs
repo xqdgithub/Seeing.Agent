@@ -71,6 +71,7 @@ public static class TaskSessionProjector
             ToolCallStatus.Success => "success",
             ToolCallStatus.Failed => "failed",
             ToolCallStatus.Rejected => "rejected",
+            ToolCallStatus.Cancelled => "cancelled",
             _ => tc.Status
         };
 

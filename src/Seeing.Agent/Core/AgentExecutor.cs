@@ -454,15 +454,17 @@ public class AgentExecutor : IAgentExecutor
             {
                 yield return toolEvent;
 
-                // 将工具结果添加到消息历史
-                if (toolEvent is ToolCallEvent { Status: ToolCallStatus.Success or ToolCallStatus.Failed } tcEvent
-                    && tcEvent.Output != null)
+                // 将工具结果添加到消息历史：所有终态（成功/失败/拒绝/取消）都必须追加
+                // 对应的 tool 消息，否则下一轮 LLM 会因缺少 tool 响应而报 400。
+                if (toolEvent is ToolCallEvent tcEvent &&
+                    tcEvent.Status is ToolCallStatus.Success or ToolCallStatus.Failed
+                        or ToolCallStatus.Rejected or ToolCallStatus.Cancelled)
                 {
                     history.Add(new ChatMessage
                     {
                         Role = ChatRole.Tool,
                         ToolCallId = tcEvent.ToolCallId,
-                        Content = tcEvent.Output
+                        Content = tcEvent.Output ?? tcEvent.Error ?? string.Empty
                     });
                 }
             }
@@ -616,11 +618,46 @@ public class AgentExecutor : IAgentExecutor
         ValueTask EmitAsync(IMessageEvent evt) =>
             new(writer.WriteAsync(evt, cancellationToken).AsTask());
 
-        var complete = await ExecuteSingleToolCallAsync(
-            tc, agent, context, permissionChannel, loopId, EmitAsync, cancellationToken)
-            .ConfigureAwait(false);
+        ToolCallEvent complete;
+        try
+        {
+            complete = await ExecuteSingleToolCallAsync(
+                tc, agent, context, permissionChannel, loopId, EmitAsync, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            complete = BuildTerminalEvent(tc, name, context, loopId, ToolCallStatus.Cancelled, "已取消");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AgentExecutor] 工具执行异常未捕获: {ToolName}", name);
+            complete = BuildTerminalEvent(tc, name, context, loopId, ToolCallStatus.Failed, ex.Message);
+        }
 
-        await writer.WriteAsync(complete, cancellationToken).ConfigureAwait(false);
+        // 使用 CancellationToken.None 确保终态事件即使在被取消时也能写出
+        await writer.WriteAsync(complete, CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private static ToolCallEvent BuildTerminalEvent(
+        ToolCall tc,
+        string name,
+        AgentContext context,
+        string loopId,
+        ToolCallStatus status,
+        string error)
+    {
+        return new ToolCallEvent
+        {
+            SessionId = context.SessionId,
+            LoopId = loopId,
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = tc.Id,
+            ToolName = name,
+            Arguments = ParseArguments(tc.Function?.Arguments),
+            Status = status,
+            Error = error
+        };
     }
 
     /// <summary>
@@ -665,6 +702,21 @@ public class AgentExecutor : IAgentExecutor
         {
             result = await _tools.ExecuteAsync(
                 tc, context.SessionId, cancellationToken, emitAsync, permissionChannel).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new ToolCallEvent
+            {
+                SessionId = context.SessionId,
+                LoopId = loopId,
+                Type = MessageEventType.ToolCallComplete,
+                ToolCallId = tc.Id,
+                ToolName = name,
+                Arguments = arguments,
+                Status = ToolCallStatus.Cancelled,
+                Error = "已取消",
+                Duration = DateTime.Now - startTime
+            };
         }
         catch (Exception ex)
         {
