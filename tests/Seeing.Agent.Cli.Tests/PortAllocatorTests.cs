@@ -49,4 +49,19 @@ public class PortAllocatorTests
             listener.Stop();
         }
     }
+    [Fact]
+    public void IsAvailable_WhenPreferredInUse_ShouldReturnFalse()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 25300);
+        listener.Start();
+        try
+        {
+            var allocator = new PortAllocator();
+            allocator.IsAvailable(25300).Should().BeFalse();
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
 }

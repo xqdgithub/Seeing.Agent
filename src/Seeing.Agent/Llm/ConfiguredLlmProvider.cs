@@ -59,6 +59,8 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             ["Type"] = _config.Type.ToString(),
             ["BaseUrl"] = _config.BaseUrl,
             ["ApiKey"] = _config.ApiKey,
+            ["Proxy"] = _config.Proxy,
+            ["UseProxy"] = _config.UseProxy,
             ["Timeout"] = _config.Timeout,
             ["MaxRetries"] = _config.MaxRetries,
             ["DefaultModel"] = _config.DefaultModel
@@ -148,6 +150,12 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         if (TryGetString(values, "ApiKey", out var apiKey))
             config.ApiKey = apiKey;
 
+        if (TryGetString(values, "Proxy", out var proxy))
+            config.Proxy = proxy;
+
+        if (TryGetBool(values, "UseProxy", out var useProxy))
+            config.UseProxy = useProxy;
+
         if (TryGetInt(values, "Timeout", out var timeout))
             config.Timeout = timeout;
 
@@ -174,6 +182,38 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             _ => raw.ToString()
         };
         return true;
+    }
+
+    private static bool TryGetBool(
+        IReadOnlyDictionary<string, object?> values,
+        string key,
+        out bool result)
+    {
+        result = default;
+        if (!values.TryGetValue(key, out var raw) || raw is null)
+            return false;
+
+        switch (raw)
+        {
+            case bool value:
+                result = value;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.True }:
+                result = true;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.False }:
+                result = false;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.String } je
+                when bool.TryParse(je.GetString(), out var fromJsonString):
+                result = fromJsonString;
+                return true;
+            case string value when bool.TryParse(value, out var fromString):
+                result = fromString;
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static bool TryGetInt(
@@ -227,6 +267,8 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             Name = config.Name,
             BaseUrl = config.BaseUrl,
             ApiKey = config.ApiKey,
+            Proxy = config.Proxy,
+            UseProxy = config.UseProxy,
             DefaultModel = config.DefaultModel,
             Timeout = config.Timeout,
             MaxRetries = config.MaxRetries,

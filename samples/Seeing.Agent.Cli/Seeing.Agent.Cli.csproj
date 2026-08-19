@@ -33,12 +33,45 @@
   <!--
     WebUI 解耦发布：
     1. Cli 不直接引用 WebUI 项目（无代码依赖），避免 WebUI 内容文件(appsettings.json)回流导致重复冲突。
-    2. Publish 时自动把 WebUI 发布到 Cli 相同的输出目录，供 `start webui` 独立进程启动，减少手动操作。
+    2. WebUI 先发布到每次全新创建的 staging 目录，再强制覆盖到 Cli 发布目录。
+    3. 使用 Rebuild，避免 Provider/Seeing.Agent 的旧 bin 输出被增量 Publish 复用。
+    4. 通过 manifest 删除上一次 WebUI 发布后已不存在的文件，避免旧 Provider 残留。
   -->
+  <PropertyGroup>
+    <WebUIPublishStagingDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\webui-publish\</WebUIPublishStagingDir>
+    <WebUIPublishManifest>$(PublishDir)\.seeing-webui-files.txt</WebUIPublishManifest>
+  </PropertyGroup>
+
   <Target Name="PublishWebUIForCli" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <!-- 清理 staging，确保本次发布不继承任何旧 WebUI/Provider 文件。 -->
+    <RemoveDir Directories="$(WebUIPublishStagingDir)" Condition="Exists('$(WebUIPublishStagingDir)')" />
+    <MakeDir Directories="$(WebUIPublishStagingDir)" />
+
     <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj"
-             Targets="Publish"
-             Properties="Configuration=$(Configuration);PublishDir=$(PublishDir);SelfContained=false;RuntimeIdentifier=" />
+             Targets="Rebuild;Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(WebUIPublishStagingDir);SelfContained=false;RuntimeIdentifier=;BuildProjectReferences=true" />
+
+    <ItemGroup>
+      <WebUIPublishFiles Include="$(WebUIPublishStagingDir)**\*" />
+    </ItemGroup>
+
+    <!-- 删除上一次 WebUI 发布产生、但本次已不再存在的文件。 -->
+    <ReadLinesFromFile File="$(WebUIPublishManifest)" Condition="Exists('$(WebUIPublishManifest)')">
+      <Output TaskParameter="Lines" ItemName="PreviousWebUIFiles" />
+    </ReadLinesFromFile>
+    <Delete Files="@(PreviousWebUIFiles->'$(PublishDir)%(Identity)')"
+            Condition="@(PreviousWebUIFiles) != ''" />
+
+    <!-- SkipUnchangedFiles=false + OverwriteReadOnlyFiles=true 确保新程序集覆盖旧程序集。 -->
+    <Copy SourceFiles="@(WebUIPublishFiles)"
+          DestinationFiles="@(WebUIPublishFiles->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="false"
+          OverwriteReadOnlyFiles="true" />
+
+    <WriteLinesToFile File="$(WebUIPublishManifest)"
+                      Lines="@(WebUIPublishFiles->'%(RecursiveDir)%(Filename)%(Extension)')"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
   </Target>
 
 </Project>

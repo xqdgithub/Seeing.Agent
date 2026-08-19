@@ -12,6 +12,8 @@ internal class Program
         // Subcommands will be added in following tasks
         rootCommand.Subcommands.Add(InstallCommand.Create());
         rootCommand.Subcommands.Add(StartCommand.Create());
+        rootCommand.Subcommands.Add(StartCommand.CreateWeb());
+        rootCommand.Subcommands.Add(StartCommand.CreateGateway());
         rootCommand.Subcommands.Add(StopCommand.Create());
         rootCommand.Subcommands.Add(StatusCommand.Create());
         rootCommand.Subcommands.Add(ConfigCommand.Create());

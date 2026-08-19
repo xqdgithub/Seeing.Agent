@@ -28,11 +28,17 @@ public class OpenAiChatClient : ILlmClient
         if (string.IsNullOrEmpty(config.ApiKey))
             throw new ArgumentException("ApiKey is required", nameof(config));
 
-        // 已配置 BaseAddress 的 HttpClient（如单测 mock handler）直接使用；
-        // 否则创建专用客户端，避免污染命名 HttpClient 连接池。
+        // 保留调用方传入的 handler（包括 Provider 专用代理）；
+        // 单测等已配置 BaseAddress 的 HttpClient 也继续直接复用。
         _httpClient = httpClient.BaseAddress != null
             ? httpClient
-            : OpenAiHttpHelper.CreateHttpClient(config, logger);
+            : ConfigureFactoryClient(httpClient, config, logger);
+    }
+
+    private static HttpClient ConfigureFactoryClient(HttpClient httpClient, ProviderConfig config, ILogger logger)
+    {
+        OpenAiHttpHelper.ConfigureHttpClient(httpClient, config, logger);
+        return httpClient;
     }
 
     public async Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken ct = default)

@@ -357,6 +357,8 @@ public class ProviderManager : IProviderManager, IDisposable
         => previous.Type != current.Type ||
            !string.Equals(previous.ApiKey, current.ApiKey, StringComparison.Ordinal) ||
            !string.Equals(previous.BaseUrl, current.BaseUrl, StringComparison.Ordinal) ||
+           !string.Equals(previous.Proxy, current.Proxy, StringComparison.Ordinal) ||
+           previous.UseProxy != current.UseProxy ||
            previous.Timeout != current.Timeout ||
            !DictionaryEqual(previous.Headers, current.Headers) ||
            !string.Equals(previous.Name, current.Name, StringComparison.Ordinal) ||
@@ -383,6 +385,8 @@ public class ProviderManager : IProviderManager, IDisposable
             Name = config.Name,
             BaseUrl = config.BaseUrl,
             ApiKey = config.ApiKey,
+            Proxy = config.Proxy,
+            UseProxy = config.UseProxy,
             DefaultModel = config.DefaultModel,
             Timeout = config.Timeout,
             MaxRetries = config.MaxRetries,

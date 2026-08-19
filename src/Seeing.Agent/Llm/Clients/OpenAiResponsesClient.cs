@@ -28,7 +28,16 @@ public class OpenAiResponsesClient : ILlmClient
         if (string.IsNullOrEmpty(config.ApiKey))
             throw new ArgumentException("ApiKey is required", nameof(config));
 
-        _httpClient = OpenAiHttpHelper.CreateHttpClient(config, logger);
+        // 复用工厂传入的 HttpClient，不能在这里 new HttpClient()，否则会绕过 Provider 代理。
+        _httpClient = httpClient.BaseAddress != null
+            ? httpClient
+            : ConfigureFactoryClient(httpClient, config, logger);
+    }
+
+    private static HttpClient ConfigureFactoryClient(HttpClient httpClient, ProviderConfig config, ILogger logger)
+    {
+        OpenAiHttpHelper.ConfigureHttpClient(httpClient, config, logger);
+        return httpClient;
     }
 
     public async Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken ct = default)

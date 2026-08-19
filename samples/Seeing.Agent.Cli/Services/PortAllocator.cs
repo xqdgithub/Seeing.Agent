@@ -7,13 +7,39 @@ public sealed class PortAllocator
 {
     public int NextAvailable(int preferred, int maxAttempts = 100)
     {
-        for (var port = preferred; port < preferred + maxAttempts; port++)
+        ValidatePort(preferred);
+        if (maxAttempts <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxAttempts));
+
+        for (var offset = 0; offset < maxAttempts; offset++)
         {
-            if (!IsInUse(port)) return port;
+            var candidate = (long)preferred + offset;
+            if (candidate > IPEndPoint.MaxPort) break;
+
+            if (IsAvailable((int)candidate)) return (int)candidate;
         }
 
+        var lastPort = (int)Math.Min(
+            IPEndPoint.MaxPort,
+            (long)preferred + maxAttempts - 1);
         throw new InvalidOperationException(
-            $"在 {preferred}~{preferred + maxAttempts - 1} 范围内找不到可用端口");
+            $"在 {preferred}~{lastPort} 范围内找不到可用端口");
+    }
+
+    /// <summary>
+    /// 检查端口是否可以被 WebUI 绑定。该检查与实际启动之间仍可能存在竞态，
+    /// 因此调用方还必须处理子进程绑定失败的情况。
+    /// </summary>
+    public bool IsAvailable(int port)
+    {
+        ValidatePort(port);
+        return !IsInUse(port);
+    }
+
+    private static void ValidatePort(int port)
+    {
+        if (port is < IPEndPoint.MinPort or > IPEndPoint.MaxPort)
+            throw new ArgumentOutOfRangeException(nameof(port));
     }
 
     private static bool IsInUse(int port)

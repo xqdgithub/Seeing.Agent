@@ -40,6 +40,17 @@ public class ProviderConfig
     [JsonPropertyName("apiKey")]
     public string? ApiKey { get; set; }
 
+    /// <summary>
+    /// 应用代理地址。为空时在 UseProxy=true 的情况下使用操作系统默认代理。
+    /// 当前支持 http 和 https 代理地址，不支持 socks。
+    /// </summary>
+    [JsonPropertyName("proxy")]
+    public string? Proxy { get; set; }
+
+    /// <summary>是否使用代理；默认启用，Proxy 为空时使用操作系统默认代理</summary>
+    [JsonPropertyName("useProxy")]
+    public bool UseProxy { get; set; } = true;
+
     /// <summary>默认模型</summary>
     [JsonPropertyName("default_model")]
     public string? DefaultModel { get; set; }

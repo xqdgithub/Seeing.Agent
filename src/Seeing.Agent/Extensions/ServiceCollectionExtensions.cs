@@ -708,12 +708,10 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         internal class DefaultLlmClientFactory : ILlmClientFactory
         {
-            private readonly IHttpClientFactory _httpClientFactory;
             private readonly ILoggerFactory _loggerFactory;
 
-            public DefaultLlmClientFactory(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
+            public DefaultLlmClientFactory(ILoggerFactory loggerFactory)
             {
-                _httpClientFactory = httpClientFactory;
                 _loggerFactory = loggerFactory;
             }
 
@@ -727,22 +725,23 @@ namespace Seeing.Agent.Extensions
 
             public ILlmClient Create(ProviderConfig config)
             {
-                // 使用命名 HttpClient 以支持连接池配置
-                var httpClient = _httpClientFactory.CreateClient("LlmClient");
+                ArgumentNullException.ThrowIfNull(config);
+                // 每个 Provider 使用自己的 handler，确保 Proxy/UseProxy 在创建时生效。
+                var httpClient = LlmHttpClientFactory.Create(config);
 
                 return config.Type switch
                 {
                     ProviderType.OpenAI => new OpenAiChatClient(
-                    config,
-                    _httpClientFactory.CreateClient("LlmClient"),
-                    _loggerFactory.CreateLogger<OpenAiChatClient>()),
+                        config,
+                        httpClient,
+                        _loggerFactory.CreateLogger<OpenAiChatClient>()),
                     ProviderType.Anthropic => new AnthropicClient(
                         config,
                         httpClient,
                         _loggerFactory.CreateLogger<AnthropicClient>()),
                     _ => throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}")
                 };
-}
+            }
         }
 }
 

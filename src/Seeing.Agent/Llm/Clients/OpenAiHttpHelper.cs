@@ -19,13 +19,26 @@ internal static class OpenAiHttpHelper
     };
 
     /// <summary>
-    /// 创建并配置 HttpClient（Bearer Auth、BaseAddress、自定义 Headers）
+    /// 创建并配置独立 HttpClient（用于没有 DI 工厂的模型目录客户端）。
     /// </summary>
     public static HttpClient CreateHttpClient(ProviderConfig config, ILogger logger)
     {
-        var client = new HttpClient();
-        var baseUrl = (config.BaseUrl ?? "https://api.openai.com/v1").TrimEnd('/');
+        var client = LlmHttpClientFactory.Create(config);
+        ConfigureHttpClient(client, config, logger);
+        return client;
+    }
 
+    /// <summary>
+    /// 在已有 HttpClient 上应用 OpenAI 请求配置，不替换其 handler。
+    /// 这保证 DI 工厂创建的代理 handler 能够被 OpenAI 客户端复用。
+    /// </summary>
+    public static void ConfigureHttpClient(HttpClient client, ProviderConfig config, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        var baseUrl = (config.BaseUrl ?? "https://api.openai.com/v1").TrimEnd('/');
         client.BaseAddress = new Uri(baseUrl + "/");
         client.Timeout = TimeSpan.FromMilliseconds(config.Timeout > 0 ? config.Timeout : 300000);
         client.DefaultRequestHeaders.Clear();
@@ -38,8 +51,8 @@ internal static class OpenAiHttpHelper
                 client.DefaultRequestHeaders.TryAddWithoutValidation(key, value);
         }
 
-        logger.LogDebug("OpenAI HTTP 客户端: BaseAddress={BaseAddress}", client.BaseAddress);
-        return client;
+        logger.LogDebug("OpenAI HTTP 客户端: BaseAddress={BaseAddress}, UseProxy={UseProxy}",
+            client.BaseAddress, config.UseProxy);
     }
 
     /// <summary>

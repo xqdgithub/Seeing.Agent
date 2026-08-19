@@ -531,6 +531,8 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             Name = config.Name,
             BaseUrl = config.BaseUrl,
             ApiKey = config.ApiKey,
+            Proxy = config.Proxy,
+            UseProxy = config.UseProxy,
             DefaultModel = config.DefaultModel,
             Timeout = config.Timeout,
             MaxRetries = config.MaxRetries,
