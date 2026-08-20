@@ -332,6 +332,9 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             Modalities = model.Modalities,
             Limit = model.Limit,
             Options = model.Options,
-            Pricing = model.Pricing
+            Pricing = model.Pricing,
+            Metadata = model.Metadata is null
+                ? null
+                : new Dictionary<string, object?>(model.Metadata)
         };
 }

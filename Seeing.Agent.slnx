@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/plugs/providers/">
     <Project Path="plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />
+    <Project Path="plugs/providers/Seeing.Provider.OpenCodeZen/Seeing.Provider.OpenCodeZen.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Seeing.Agent.Abstractions/Seeing.Agent.Abstractions.csproj" />
@@ -32,6 +33,7 @@
     <Project Path="tests/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
     <Project Path="tests/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />
+    <Project Path="tests/Seeing.Provider.OpenCodeZen.Tests/Seeing.Provider.OpenCodeZen.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
     <Project Path="tests/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />

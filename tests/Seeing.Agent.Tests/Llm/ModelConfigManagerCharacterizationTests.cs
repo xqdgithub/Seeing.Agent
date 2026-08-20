@@ -59,6 +59,49 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
     }
 
     [Fact]
+    public async Task GetModels_PreservesMetadataOnClone()
+    {
+        // 配置驱动的模型经过 CloneModelConfig 克隆，扩展元数据（如 isFree）必须保留
+        var providerModel = new ModelConfig
+        {
+            Id = "free-model",
+            Metadata = new Dictionary<string, object?>
+            {
+                [ModelMetadataKeys.IsFree] = true
+            }
+        };
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["opencode-zen"] = new ProviderConfig
+            {
+                Id = "opencode-zen",
+                Type = ProviderType.OpenAI,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["free-model"] = providerModel
+                }
+            }
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        var cached = sut.GetModel("opencode-zen/free-model");
+
+        cached.Should().NotBeNull();
+        cached!.Metadata.Should().ContainKey(ModelMetadataKeys.IsFree);
+
+        // JSON round-trip 后值为 JsonElement；统一按 truthy 校验
+        var freeValue = cached.Metadata![ModelMetadataKeys.IsFree];
+        if (freeValue is JsonElement element)
+            element.ValueKind.Should().Be(JsonValueKind.True);
+        else
+            freeValue.Should().Be(true);
+    }
+
+    [Fact]
     public async Task GetModel_BareId_FallsBackToAnyProvider()
     {
         var providerModel = new ModelConfig { Id = "provider-only-model" };

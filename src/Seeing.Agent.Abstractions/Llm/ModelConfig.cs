@@ -38,6 +38,12 @@ public class ModelConfig
     /// <summary>定价信息（可选）</summary>
     [JsonPropertyName("pricing")]
     public ModelPricing? Pricing { get; set; }
+
+    /// <summary>
+    /// 扩展元数据（插件可写入任意键值，供 UI 等消费，如免费模型标记 isFree=true）
+    /// </summary>
+    [JsonPropertyName("metadata")]
+    public Dictionary<string, object?>? Metadata { get; set; }
 }
 
 /// <summary>

@@ -163,6 +163,16 @@
                             <PropertyColumn Property="c => c.Name" Title="名称" />
                             <PropertyColumn Property="c => c.Provider" Title="Provider" />
                             <PropertyColumn Property="c => c.TypesDisplay" Title="类型" />
+                            <Column TData="ModelRow" Title="免费" Width="90">
+                                @if (context.IsFree)
+                                {
+                                    <Tag Color="@("green")">免费</Tag>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </Column>
                             <PropertyColumn Property="c => c.Context" Title="上下文" />
                             <PropertyColumn Property="c => c.Output" Title="输出" />
                             <ActionColumn Title="操作">
@@ -415,7 +425,8 @@
                     Context = m.Value.Limit.Context,
                     Output = m.Value.Limit.Output,
                     IsDefault = isDefault,
-                    TypesDisplay = string.Join(", ", effective)
+                    TypesDisplay = string.Join(", ", effective),
+                    IsFree = IsFreeModel(m.Value)
                 };
             })
             .ToList();
@@ -425,6 +436,29 @@
             _testModelId = "";
         else if (_modelRows.All(m => m.Id != _testModelId))
             _testModelId = _modelRows[0].Id;
+    }
+
+    /// <summary>
+    /// 从模型扩展元数据读取免费标记（支持 bool 与 JSON 反序列化的 JsonElement/字符串）。
+    /// </summary>
+    private static bool IsFreeModel(Seeing.Agent.Abstractions.Llm.ModelConfig config)
+    {
+        if (config.Metadata is null ||
+            !config.Metadata.TryGetValue(Seeing.Agent.Abstractions.Llm.ModelMetadataKeys.IsFree, out var value) ||
+            value is null)
+        {
+            return false;
+        }
+
+        return value switch
+        {
+            bool b => b,
+            JsonElement { ValueKind: JsonValueKind.True } => true,
+            JsonElement { ValueKind: JsonValueKind.String } element
+                when bool.TryParse(element.GetString(), out var parsed) => parsed,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => false
+        };
     }
 
     private async Task SaveProviderConfigAsync()
@@ -727,6 +761,7 @@
         public int Context { get; set; }
         public int Output { get; set; }
         public bool IsDefault { get; set; }
+        public bool IsFree { get; set; }
         public string TypesDisplay { get; set; } = "Text";
     }
 

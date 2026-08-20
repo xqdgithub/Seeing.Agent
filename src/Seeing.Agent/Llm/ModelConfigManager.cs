@@ -390,7 +390,10 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             Modalities = config.Modalities,
             Limit = config.Limit,
             Options = config.Options,
-            Pricing = config.Pricing
+            Pricing = config.Pricing,
+            Metadata = config.Metadata is null
+                ? null
+                : new Dictionary<string, object?>(config.Metadata)
         };
 
     private void ReplaceCache(IReadOnlyDictionary<string, ModelConfig> models)
