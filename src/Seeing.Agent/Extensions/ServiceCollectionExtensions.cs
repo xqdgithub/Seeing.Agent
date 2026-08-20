@@ -591,7 +591,13 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<WorkspaceProvider>();
             services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
 
-            // 5.1 Todo 存储（端口-适配器：基于 Session Context 的默认实现）
+            // 5.1 统一重载编排器（订阅配置/工作区变更，调度所有 IReloadHandler）
+            services.AddSingleton<ReloadOrchestrator>();
+            // 插件推送与动态注册入口：均指向编排器，扩展包只引用 Abstractions 接口
+            services.AddSingleton<IReloadSignalBus>(sp => sp.GetRequiredService<ReloadOrchestrator>());
+            services.AddSingleton<IReloadHandlerRegistry>(sp => sp.GetRequiredService<ReloadOrchestrator>());
+
+            // 5.2 Todo 存储（端口-适配器：基于 Session Context 的默认实现）
             services.AddSingleton<ITodoStore, SessionContextTodoStore>();
 
             // 6. Agent / Model 默认解析
