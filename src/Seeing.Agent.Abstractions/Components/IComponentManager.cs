@@ -34,6 +34,15 @@ public interface IComponentLoader
         IServiceProvider services,
         string workspaceRoot,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 重载组件（默认转调 <see cref="LoadAsync"/>；需要真正重载语义的加载器必须覆盖）
+    /// </summary>
+    Task<ComponentLoadResult> ReloadAsync(
+        IServiceProvider services,
+        string workspaceRoot,
+        CancellationToken cancellationToken = default)
+        => LoadAsync(services, workspaceRoot, cancellationToken);
 }
 
 /// <summary>
