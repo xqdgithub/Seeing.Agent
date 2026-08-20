@@ -35,8 +35,8 @@ public class ShellOptionsTests
     }
 
     [Fact]
-    public void Defaults_EnableCommandGuard_ShouldBeTrue()
+    public void Defaults_EnableCommandGuard_ShouldBeFalse()
     {
-        new ShellOptions().EnableCommandGuard.Should().BeTrue();
+        new ShellOptions().EnableCommandGuard.Should().BeFalse();
     }
 }

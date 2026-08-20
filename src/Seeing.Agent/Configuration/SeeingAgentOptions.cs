@@ -253,7 +253,7 @@ namespace Seeing.Agent.Configuration
             "> /etc/", "> /boot/", "> /sys/",
         };
 
-        /// <summary>是否启用危险命令拦截（默认 true）</summary>
-        public bool EnableCommandGuard { get; set; } = true;
+        /// <summary>是否启用危险命令拦截（默认关闭：临时全部放行，待重新设计合理校验后恢复）</summary>
+        public bool EnableCommandGuard { get; set; } = false;
     }
 }

@@ -7,7 +7,7 @@ namespace Seeing.Agent.Tests.Tools;
 
 public class DangerousCommandGuardTests
 {
-    private static ShellOptions Default() => new();
+    private static ShellOptions Default() => new() { EnableCommandGuard = true };
 
     [Theory]
     [InlineData("rm file.txt")]
