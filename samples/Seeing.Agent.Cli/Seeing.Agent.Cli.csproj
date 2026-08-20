@@ -48,7 +48,7 @@
     <MakeDir Directories="$(WebUIPublishStagingDir)" />
 
     <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj"
-             Targets="Rebuild;Publish"
+             Targets="Restore;Rebuild;Publish"
              Properties="Configuration=$(Configuration);PublishDir=$(WebUIPublishStagingDir);SelfContained=false;RuntimeIdentifier=;BuildProjectReferences=true" />
 
     <ItemGroup>
