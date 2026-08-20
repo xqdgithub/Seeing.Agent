@@ -707,15 +707,23 @@
             Attachments = Attachments.ToList()
         };
 
-        InputText = "";
-        Attachments.Clear();
-
         try
         {
             if (OnSubmitCallback.HasDelegate)
             {
                 await OnSubmitCallback.InvokeAsync(submitArgs);
             }
+
+            // 回调拒绝本次提交（如模型校验失败）：恢复输入内容，不丢失用户已输入
+            if (submitArgs.IsRejected)
+            {
+                InputText = submitArgs.Text;
+                Attachments = submitArgs.Attachments.ToList();
+                return;
+            }
+
+            InputText = "";
+            Attachments.Clear();
         }
         finally
         {

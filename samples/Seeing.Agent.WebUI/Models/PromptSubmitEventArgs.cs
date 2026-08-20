@@ -14,6 +14,11 @@ public class PromptSubmitEventArgs
     /// 附件列表
     /// </summary>
     public List<AttachmentViewModel> Attachments { get; set; } = new();
+
+    /// <summary>
+    /// 回调是否拒绝了本次提交（拒绝时 PromptInput 会恢复输入内容）
+    /// </summary>
+    public bool IsRejected { get; set; }
 }
 
 /// <summary>

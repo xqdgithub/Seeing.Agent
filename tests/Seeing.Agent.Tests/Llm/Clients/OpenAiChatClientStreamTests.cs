@@ -121,6 +121,28 @@ public class OpenAiChatClientStreamTests
         return new OpenAiChatClient(config, http, NullLogger.Instance);
     }
 
+    [Fact]
+    public void Constructor_WithoutApiKeyOrAuthorizationHeader_AllowsAnonymousGateway()
+    {
+        // OpenCode Zen 等免费匿名网关无需认证：无 ApiKey 且无 Authorization 头也应可构造
+        using var http = new HttpClient(new SseHttpHandler("data: [DONE]\n\n"))
+        {
+            BaseAddress = new Uri("http://localhost/v1/")
+        };
+
+        var client = new OpenAiChatClient(
+            new ProviderConfig
+            {
+                Id = "opencode-zen",
+                Type = ProviderType.OpenAI,
+                BaseUrl = "http://localhost/v1"
+            },
+            http,
+            NullLogger.Instance);
+
+        client.ProviderId.Should().Be("opencode-zen");
+    }
+
     private static async Task<List<StreamUpdate>> CollectAsync(OpenAiChatClient client)
     {
         var request = new ChatRequest

@@ -194,17 +194,8 @@ public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvi
     {
         try
         {
-            Dictionary<string, string>? headers = null;
-            if (string.IsNullOrWhiteSpace(_apiKey))
-            {
-                // OpenCode Zen 免费模型无需 API Key，但 OpenAiChatClient 要求存在 Authorization 头；
-                // 服务端对免费模型不校验 Key，用占位头满足客户端校验。
-                headers = new Dictionary<string, string>
-                {
-                    ["Authorization"] = "Bearer opencode-zen"
-                };
-            }
-
+            // 服务端按 User-Agent 识别 opencode 客户端以豁免免费模型限流；
+            // 免费模型无需 API Key：仅带识别 UA（非认证头），不发送 Authorization。
             return CreateBuiltInClient(_factory, new ProviderConfig
             {
                 Id = Id,
@@ -212,7 +203,10 @@ public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvi
                 Name = Name,
                 BaseUrl = OpenCodeZenModelsClient.DefaultBaseUrl,
                 ApiKey = _apiKey,
-                Headers = headers
+                Headers = new Dictionary<string, string>
+                {
+                    ["User-Agent"] = "opencode"
+                }
             });
         }
         catch (Exception ex)

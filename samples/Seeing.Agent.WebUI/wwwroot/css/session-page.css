@@ -293,3 +293,9 @@
     max-width: 100%;
     min-width: 0;
 }
+
+/* ========== 模型选择器无效状态（发送时校验失败） ========== */
+.model-select-invalid .ant-select-selector {
+    border-color: var(--color-error) !important;
+    box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.2) !important;
+}

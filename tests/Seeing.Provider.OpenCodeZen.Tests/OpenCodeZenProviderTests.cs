@@ -168,7 +168,7 @@ public class OpenCodeZenProviderTests
     }
 
     [Fact]
-    public async Task CreateClient_WithoutApiKey_InjectsPlaceholderAuthorizationHeader()
+    public async Task CreateClient_WithoutApiKey_SendsRecognitionUserAgentOnly()
     {
         ProviderConfig? createdConfig = null;
         var factory = new Mock<ILlmClientFactory>();
@@ -185,7 +185,9 @@ public class OpenCodeZenProviderTests
 
         createdConfig.Should().NotBeNull();
         createdConfig!.ApiKey.Should().BeNull();
-        createdConfig.Headers.Should().ContainKey("Authorization");
+        // 免认证：不发送 Authorization，仅带识别 UA 以豁免免费模型限流
+        createdConfig.Headers.Should().NotContainKey("Authorization");
+        createdConfig.Headers.Should().Contain("User-Agent", "opencode");
         createdConfig.BaseUrl.Should().Be(OpenCodeZenModelsClient.DefaultBaseUrl);
         createdConfig.Type.Should().Be(ProviderType.OpenAI);
     }
@@ -214,7 +216,7 @@ public class OpenCodeZenProviderTests
             _ = sut.GetClient();
 
             createdConfig!.ApiKey.Should().Be("sk-zen");
-            createdConfig.Headers.Should().BeNull();
+            createdConfig.Headers.Should().Contain("User-Agent", "opencode");
         }
         finally
         {

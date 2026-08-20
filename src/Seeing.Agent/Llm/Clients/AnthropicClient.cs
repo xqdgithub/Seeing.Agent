@@ -35,9 +35,7 @@ public class AnthropicClient : ILlmClient
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _httpClient = httpClient;
 
-        if (string.IsNullOrEmpty(config.ApiKey) &&
-            !HttpHeaderHelper.Contains(config.Headers, "x-api-key"))
-            throw new ArgumentException("ApiKey or an x-api-key header is required", nameof(config));
+        // 允许匿名网关：ApiKey 与 x-api-key 头均可缺省，缺失时直接不发送认证头
 
         // 配置 HTTP 客户端
         var baseUrl = config.BaseUrl ?? "https://api.anthropic.com";
