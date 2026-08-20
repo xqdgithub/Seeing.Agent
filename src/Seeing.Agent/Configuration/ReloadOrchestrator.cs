@@ -22,6 +22,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     private bool _pendingFullReload;
     private bool _running;
     private bool _debouncePending;
+    private bool _startedRound;
     private bool _disposed;
 
     public ReloadOrchestrator(
@@ -168,8 +169,15 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
                 _pendingFullReload = true;   // 执行期间重入：合并为一次待处理
                 return;
             }
-            if (_debouncePending) return;    // 去抖等待期间重入：合并进本次窗口，无需再启动
+            if (_debouncePending)
+            {
+                // 去抖等待期（本轮尚未执行）重入：合并进本次窗口
+                // 收尾间隙（本轮已执行完但循环未退出）重入：置待处理，由循环收尾驱动下一轮，避免触发丢失
+                if (_startedRound) _pendingFullReload = true;
+                return;
+            }
             _debouncePending = true;
+            _startedRound = false;
         }
 
         _ = DebouncedFullReloadAsync();
@@ -183,7 +191,11 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
             {
                 await Task.Delay(DebounceWindow);   // 去抖窗口：合并连续全量触发
 
-                lock (_stateLock) _running = true;
+                lock (_stateLock)
+                {
+                    _running = true;
+                    _startedRound = true;
+                }
                 try
                 {
                     await ReloadAsync(new WorkspaceChange
@@ -204,7 +216,11 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
             {
                 // 防止异常导致去抖循环永久失效：记录并重置状态
                 _logger.LogError(ex, "全量重载循环异常，终止本轮");
-                lock (_stateLock) _debouncePending = false;
+                lock (_stateLock)
+                {
+                    _debouncePending = false;
+                    _startedRound = false;
+                }
                 return;
             }
 
@@ -213,6 +229,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
                 if (!_pendingFullReload)
                 {
                     _debouncePending = false;
+                    _startedRound = false;
                     break;
                 }
                 _pendingFullReload = false;
@@ -238,8 +255,11 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_stateLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
         _configStore.ConfigChanged -= OnConfigChanged;
         _workspace.WorkspaceRootChanged -= OnWorkspaceChanged;
         _gate.Dispose();

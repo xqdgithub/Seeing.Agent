@@ -68,9 +68,12 @@ public class ReloadOrchestratorTests
             new Mock<IConfigSectionStore>().Object, new Mock<IWorkspaceProvider>().Object,
             NullLogger<ReloadOrchestrator>.Instance);
 
-        orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } }).GetAwaiter().GetResult();
+        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } });
 
         good.Received.Should().Contain("X");
+        var badResult = results.Should().ContainSingle(r => r.ComponentId == "bad").Subject;
+        badResult.Success.Should().BeFalse();
+        badResult.Error.Should().Be("boom");
     }
 
     [Fact]
@@ -95,6 +98,34 @@ public class ReloadOrchestratorTests
 
         await Task.Delay(500);
         lock (handler.Received) handler.Received.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task 执行期间重入_合并为待处理_执行后补跑一轮()
+    {
+        var (orch, handler) = CreateOrchestrator(out var configStore, out _);
+        var firstRound = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rounds = 0;
+
+        handler.OnConfig = _ =>
+        {
+            var round = Interlocked.Increment(ref rounds);
+            if (round == 1)
+            {
+                // 第一轮执行期间：触发全量事件（执行期重入）
+                configStore.Raise(x => x.ConfigChanged += null,
+                    new ConfigChangedEventArgs { ChangedSections = Array.Empty<string>() });
+                firstRound.TrySetResult();
+            }
+            return Task.CompletedTask;
+        };
+
+        configStore.Raise(x => x.ConfigChanged += null,
+            new ConfigChangedEventArgs { ChangedSections = Array.Empty<string>() });
+
+        await firstRound.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(500); // 等待 dirty 补跑的第二轮完成
+        rounds.Should().BeGreaterThanOrEqualTo(2);
     }
 
     [Fact]
