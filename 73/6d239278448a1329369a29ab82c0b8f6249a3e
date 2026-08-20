@@ -1,0 +1,19 @@
+samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj
+  s_5b57807444d3aa::t_7eeb8d1c5775ec 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.40-trip",
+  "base_commit_sha": "736d239278448a1329369a29ab82c0b8f6249a3e",
+  "prompts": {},
+  "sessions": {
+    "s_5b57807444d3aa": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fe1615bd2ffeDOFRjrIWK8KBYL",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
