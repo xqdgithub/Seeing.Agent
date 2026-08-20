@@ -36,8 +36,8 @@ namespace Seeing.Session.Storage
             _jsonOptions = new JsonSerializerOptions
             {
                 WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-PropertyNameCaseInsensitive = true
+PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true
             };
 
             EnsureDirectoryExists();
