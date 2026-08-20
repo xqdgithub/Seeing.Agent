@@ -212,6 +212,15 @@ namespace Seeing.Session.Management
         public IReadOnlyList<SessionData> List() => _sessionDataCache.Values.ToList();
 
         /// <summary>
+        /// 清空内存会话缓存（用于工作区切换等场景，下次访问时从存储重新加载）
+        /// </summary>
+        public void ClearCache()
+        {
+            _sessionDataCache.Clear();
+            _logger?.LogDebug("会话内存缓存已清空");
+        }
+
+        /// <summary>
         /// 保存会话到存储
         /// </summary>
         /// <param name="id">会话 ID</param>
