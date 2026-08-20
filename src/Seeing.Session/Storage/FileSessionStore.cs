@@ -10,9 +10,9 @@ namespace Seeing.Session.Storage
     /// 基于文件系统的会话存储实现
     /// 使用 JSON 文件存储会话数据，兼容 WebUI 的 ~/.seeing/sessions/*.json 格式
     /// </summary>
-    public class FileSessionStore : ISessionStore, IDisposable
+    public class FileSessionStore : ISessionStore, IRelocatableSessionStore, IDisposable
     {
-        private readonly string _baseDirectory;
+        private volatile string _baseDirectory;
         private readonly ILogger<FileSessionStore>? _logger;
         private readonly JsonSerializerOptions _jsonOptions;
 
@@ -37,10 +37,21 @@ namespace Seeing.Session.Storage
             {
                 WriteIndented = true,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                PropertyNameCaseInsensitive = true
+PropertyNameCaseInsensitive = true
             };
 
             EnsureDirectoryExists();
+        }
+
+        /// <inheritdoc/>
+        public void SetBaseDirectory(string baseDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(baseDirectory))
+                throw new ArgumentException("基础目录不能为空", nameof(baseDirectory));
+
+            _baseDirectory = baseDirectory;
+            EnsureDirectoryExists();
+            _logger?.LogInformation("会话存储目录已切换: {Directory}", _baseDirectory);
         }
 
         /// <summary>
