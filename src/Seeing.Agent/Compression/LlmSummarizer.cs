@@ -154,22 +154,35 @@ public class LlmSummarizer : ISummarizer
         // 新历史 = 摘要消息（替代被压缩部分，信息不丢失） + 保留的最后一轮消息
         // 全量压缩：压缩结果即真实状态，活跃列表只含最新摘要 + 最后一条 user 及其后回复
         // （保留完整轮次可避免切断 assistant tool_call 与 tool 响应的配对，防止消息错乱）
-        var lastUserIndex = messages.FindLastIndex(m => m.Role == MessageRole.User);
+        // 命令消息（/compact 等）不构成对话内容：必须压缩进历史，绝不允许出现在摘要之后
+        var lastCommandIndex = messages.FindLastIndex(IsCommandMessage);
+        var lastUserIndex = messages.FindLastIndex(m => m.Role == MessageRole.User && !IsCommandMessage(m));
         // 兜底：活跃消息无 user（如压缩后无新消息再次压缩、或纯 assistant 残留）时，
         // 至少跳过活跃段首（通常为旧摘要），保证新摘要插入旧摘要之后成为新的压缩真相，
         // 避免每次重复全量摘要却永不生效（摘要位置即真相，最后一个摘要才有效）
-        var keepFrom = lastUserIndex > 0 ? lastUserIndex : (lastUserIndex < 0 ? 1 : 0);
+        var keepFrom = lastCommandIndex >= 0
+            ? lastCommandIndex + 1
+            : (lastUserIndex > 0 ? lastUserIndex : (lastUserIndex < 0 ? 1 : 0));
         var compactedCount = keepFrom;
 
         var resultMessages = new List<SessionMessage> { SessionMessage.AssistantMessage(summary) };
-        resultMessages.AddRange(messages.Skip(keepFrom));
+        resultMessages.AddRange(messages.Skip(keepFrom).Where(m => !IsCommandMessage(m)));
 
         return new SummarizeResult(
             Summary: summary,
             ResultMessages: resultMessages,
             SummaryTokenCount: Math.Max(1, (summary.Length) / 4),
-            MessagesRemoved: compactedCount);
+            MessagesRemoved: compactedCount,
+            Reasoning: reasoningBuilder.ToString().Trim());
     }
+
+    /// <summary>
+    /// 命令消息（内容以 / 开头的用户输入，如 /compact）不构成对话内容：
+    /// 不参与保留轮次，压缩时一律归入历史，防止单独展示在摘要之后
+    /// </summary>
+    private static bool IsCommandMessage(SessionMessage message)
+        => !string.IsNullOrEmpty(message.Content)
+           && message.Content.TrimStart().StartsWith('/');
 
     /// <summary>
     /// 构建压缩指令（锚定摘要模式，对齐 opencode buildPrompt）：

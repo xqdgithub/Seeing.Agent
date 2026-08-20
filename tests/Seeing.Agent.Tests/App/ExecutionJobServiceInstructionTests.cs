@@ -14,6 +14,7 @@ using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
+using Seeing.Session.Management;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App;
@@ -135,7 +136,7 @@ public class ExecutionJobServiceInstructionTests
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(
                 monitor => monitor.CurrentValue == new SeeingAgentOptions()),
             NullLogger<ExecutionJobService>.Instance,
-            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>()));
+            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
 
         return new Fixture(service, provider);
     }

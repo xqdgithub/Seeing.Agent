@@ -382,8 +382,8 @@ public class ExecutionJobService : IDisposable
             var context = await BuildExecutionContextAsync(
                 session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider);
 
-            // 旁路生成标题（不阻塞主对话）
-            if (record.Options?.SkipUserMessagePersist != true)
+            // 旁路生成标题（不阻塞主对话；命令不生成标题）
+            if (record.Options?.SkipUserMessagePersist != true && !IsCommandInput(record.Input?.Text))
             {
                 var titleSource = ResolveTitleSourceText(record.Input);
                 if (!string.IsNullOrWhiteSpace(titleSource))
@@ -403,7 +403,7 @@ public class ExecutionJobService : IDisposable
             // 命令要求结束本轮（shouldContinue=false / shouldExit）时短路，不再执行 Agent：
             // 避免把命令文本作为普通消息发送给大模型（如 /compact 后仍发起 LLM 请求导致失败）
             var commandConsumedExecution = false;
-            if (inputText != null && inputText.StartsWith('/') && inputText.Length > 1 && !inputText.StartsWith("//"))
+            if (IsCommandInput(inputText))
             {
                 CommandResultEvent? lastCommandEvent = null;
                 await foreach (var cmdEvent in ProcessCommandAsync(
@@ -793,6 +793,30 @@ public class ExecutionJobService : IDisposable
     }
 
     /// <summary>
+    /// 判定是否为命令输入（/ 开头、至少一个有效字符、非 // 转义）。
+    /// </summary>
+    private static bool IsCommandInput(string? text)
+        => text != null
+           && text.Length > 1
+           && text[0] == '/'
+           && !text.StartsWith("//", StringComparison.Ordinal);
+
+    /// <summary>
+    /// 移除命令消息（按输入文本匹配最后一条 user 消息，命令文本不得残留在会话中）。
+    /// </summary>
+    private static void RemoveCommandMessage(SessionData session, string? inputText)
+    {
+        for (var i = session.Messages.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(session.Messages[i].Content, inputText, StringComparison.Ordinal))
+            {
+                session.Messages.RemoveAt(i);
+                return;
+            }
+        }
+    }
+
+    /// <summary>
     /// Builds user message from input.
     /// </summary>
     private static SessionMessage BuildUserMessage(ChatInput input)
@@ -939,42 +963,25 @@ public class ExecutionJobService : IDisposable
             yield break;
         }
 
-        // 直接执行命令
+        // 直接执行命令（薄上下文：仅信息传递，命令自包含会话操作，宿主不做写同步）
         var cmdContext = new CommandContext
         {
             CommandName = cmdName,
-            RawInput = input,
             Input = input,
             Arguments = input.Contains(' ') ? input.Substring(input.IndexOf(' ') + 1) : "",
             SessionId = sessionId,
             WorkspaceRoot = context.WorkspaceRoot,
-            History = context.History,
             CancellationToken = cancellationToken
         };
 
-        // 命令执行前定位本次 user 消息：提交时刚追加的最后一条（会话串行队列内无并发写入）。
-        // 显式关联而非事后 LastOrDefault 猜测，避免 SkipUserMessagePersist（未落盘）或压缩后误改旧消息
-        SessionMessage? commandUserMessage = null;
-        if (session.Messages.Count > 0 && session.Messages[^1].Role == MessageRole.User)
-        {
-            commandUserMessage = session.Messages[^1];
-        }
-
         var result = await command.ExecuteAsync(cmdContext, cancellationToken);
 
-        // Input 改写契约：命令改写 Input = 本次输入以改写后内容为准（落盘 + 后续历史）。
-        // 框架层仅负责把改写同步到本次 user 消息（skill 展开等场景生效的唯一通路）；
-        // 本次输入未落盘（SkipUserMessagePersist）时无对应消息，不静默改写旧消息
-        if (result.Success && cmdContext.Input != cmdContext.RawInput)
+        // 命令产生操作结果声明是否移除命令消息（默认移除），由宿主统一处理；
+        // 命令可返回 false 保留（如 Skill 展开后把命令消息替换为技能内容）。
+        // 未知命令不在此路径（command==null 时文本保留并作为普通消息透传）。
+        if (result.RemoveCommandMessage)
         {
-            if (commandUserMessage != null)
-            {
-                commandUserMessage.Content = cmdContext.Input;
-            }
-            else
-            {
-                _logger.LogDebug("命令 {Command} 改写了 Input，但本次输入未落盘，跳过消息同步（仅影响命令上下文）", cmdName);
-            }
+            RemoveCommandMessage(session, input);
         }
 
         // 根据 CommandResult 决定是否继续

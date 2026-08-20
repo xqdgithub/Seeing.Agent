@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Agents;
 using System.Text;
@@ -7,6 +7,7 @@ using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Skills;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.App.Commands;
 
@@ -17,10 +18,12 @@ namespace Seeing.Agent.App.Commands;
 public class SkillCommands
 {
     private readonly SkillManager _skillManager;
+    private readonly ISessionManager _sessionManager;
 
-    public SkillCommands(SkillManager skillManager)
+    public SkillCommands(SkillManager skillManager, ISessionManager sessionManager)
     {
         _skillManager = skillManager;
+        _sessionManager = sessionManager;
     }
 
     /// <summary>
@@ -33,7 +36,7 @@ public class SkillCommands
         Category = CommandCategory.Tools,
         Type = CommandType.Skill,
         SupportedRuntimes = new[] { AgentRuntime.Native })]
-    public Task<CommandResult> LoadSkill(CommandContext context, CancellationToken ct = default)
+    public async Task<CommandResult> LoadSkill(CommandContext context, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(context.Arguments))
         {
@@ -41,7 +44,7 @@ public class SkillCommands
             var skills = _skillManager.GetAllSkillInfos().Values.ToList();
             if (skills.Count == 0)
             {
-                return Task.FromResult(CommandResult.Ok("No skills available. Add skills to .agents/skills/ or ~/.agents/skills/"));
+                return CommandResult.Ok("No skills available. Add skills to .agents/skills/ or ~/.agents/skills/");
             }
 
             var list = "**Available Skills**\n\n";
@@ -51,7 +54,7 @@ public class SkillCommands
             }
             list += "\nUse `/skill <name>` to load a skill.";
 
-            return Task.FromResult(CommandResult.Ok(list));
+            return CommandResult.Ok(list);
         }
 
         // 解析技能名称和参数
@@ -63,20 +66,27 @@ public class SkillCommands
         var skillInfo = _skillManager.GetSkillInfo(skillName);
         if (skillInfo == null)
         {
-            return Task.FromResult(CommandResult.Fail($"Skill not found: {skillName}"));
+            return CommandResult.Fail($"Skill not found: {skillName}");
         }
 
         // 获取技能内容
         var content = skillInfo.Content;
         if (string.IsNullOrEmpty(content))
         {
-            return Task.FromResult(CommandResult.Fail($"Skill content is empty: {skillName}"));
+            return CommandResult.Fail($"Skill content is empty: {skillName}");
         }
 
-        // 处理模板并修改 Input
-        context.Input = SkillTemplateProcessor.Process(content, skillArgs, skillName);
+        // 处理模板并写入本次 user 消息（命令自包含会话操作：宿主 finally 统一保存）
+        var expanded = SkillTemplateProcessor.Process(content, skillArgs, skillName);
+        var session = await _sessionManager.GetOrLoadAsync(context.SessionId, ct);
+        // 定位本次 user 消息：串行队列内提交时刚追加；Role 校验防 SkipUserMessagePersist 误改旧消息
+        if (session.Messages.Count > 0 && session.Messages[^1].Role == MessageRole.User)
+        {
+            session.Messages[^1].Content = expanded;
+        }
 
-        return Task.FromResult(CommandResult.Ok($"Loaded skill: {skillName}"));
+        return CommandResult.Ok($"Loaded skill: {skillName}", needsRefresh: true)
+            .WithCommandMessageRetained();
     }
 
     /// <summary>
@@ -303,15 +313,15 @@ public static class SkillTemplateProcessor
 /// </summary>
 public class DynamicSkillCommand : ICommand
 {
-    private readonly SkillManager _skillManager;
+    private readonly ISessionManager _sessionManager;
     private readonly string _skillName;
     private readonly SkillInfo _skillInfo;
 
     public CommandMetadata Metadata { get; }
 
-    public DynamicSkillCommand(SkillManager skillManager, SkillInfo skillInfo)
+    public DynamicSkillCommand(ISessionManager sessionManager, SkillInfo skillInfo)
     {
-        _skillManager = skillManager;
+        _sessionManager = sessionManager;
         _skillName = skillInfo.Name;
         _skillInfo = skillInfo;
         
@@ -336,10 +346,16 @@ public class DynamicSkillCommand : ICommand
             return CommandResult.Fail($"Skill content is empty: {_skillName}");
         }
 
-        // 使用模板处理器处理内容，修改 Input
-        context.Input = SkillTemplateProcessor.Process(content, context.Arguments ?? "", _skillName);
+        // 使用模板处理器处理内容并写入本次 user 消息（命令自包含会话操作）
+        var expanded = SkillTemplateProcessor.Process(content, context.Arguments ?? "", _skillName);
+        var session = await _sessionManager.GetOrLoadAsync(context.SessionId, cancellationToken);
+        if (session.Messages.Count > 0 && session.Messages[^1].Role == MessageRole.User)
+        {
+            session.Messages[^1].Content = expanded;
+        }
 
-        return CommandResult.Ok($"Loaded skill: {_skillName}");
+        return CommandResult.Ok($"Loaded skill: {_skillName}", needsRefresh: true)
+            .WithCommandMessageRetained();
     }
 }
 

@@ -65,7 +65,10 @@ public class CompressionService
 
             // 摘要消息插入到被压缩部分之后、保留消息之前；标记 IsSummary 供 UI 特殊展示。
             // 被压缩的旧消息不删除也不做标记：摘要消息的位置即压缩真相（摘要之前 = 已压缩历史，仍保留展示）
-            var summaryMessage = SessionMessage.AssistantMessage(result.Summary);
+            // 思考过程一并保存（若摘要器返回），UI 摘要条可展开查看
+            var summaryMessage = string.IsNullOrWhiteSpace(result.Reasoning)
+                ? SessionMessage.AssistantMessage(result.Summary)
+                : SessionMessage.AssistantMessageWithReasoning(result.Summary, result.Reasoning);
             summaryMessage.IsSummary = true;
             var insertIndex = activeStart + result.MessagesRemoved;
             // 并发保护：摘要期间可能被追加消息或重复压缩，校验插入索引仍落在合法范围，越界则就近回退

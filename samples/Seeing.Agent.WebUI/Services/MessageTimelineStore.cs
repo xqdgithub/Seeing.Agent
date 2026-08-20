@@ -157,6 +157,12 @@ public sealed class MessageTimelineStore
         if (msg == null || !string.Equals(msg.Role, "assistant", StringComparison.OrdinalIgnoreCase))
             return;
 
+        // 摘要消息（压缩产物）独立渲染为 Compaction 条目，绝不归入 Loop：
+        // 压缩完成后摘要可能是最后一条 assistant，流式 sync（执行 finally 等）若将其加入 Loop
+        // 会把摘要错误渲染为助手消息并排到最新位置（刷新后全量重建走 ResolveKind 才正确）
+        if (msg.IsSummary)
+            return;
+
         var incoming = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete);
         var item = ResolveAssistantTurnForSync(incoming, createIfMissing: true);
         if (item?.Turn == null)

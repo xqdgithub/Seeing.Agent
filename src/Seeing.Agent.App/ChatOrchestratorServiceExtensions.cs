@@ -10,6 +10,7 @@ using Seeing.Agent.App.Internal;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Session.Core;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Skills;
@@ -106,12 +107,13 @@ public static class ChatOrchestratorServiceExtensions
 
         // 动态注册所有 skill 命令（Native 和 ACP 两个版本）
         var skillManager = services.GetService<SkillManager>();
-        if (skillManager != null)
+        var sessionManager = services.GetService<ISessionManager>();
+        if (skillManager != null && sessionManager != null)
         {
             foreach (var skillInfo in skillManager.GetAllSkillInfos().Values)
             {
                 // Native 版本 - 扩展为详情
-                var nativeCommand = new DynamicSkillCommand(skillManager, skillInfo);
+                var nativeCommand = new DynamicSkillCommand(sessionManager, skillInfo);
                 registry.Register(nativeCommand);
 
                 // ACP 版本 - 透传给 ACP 后端

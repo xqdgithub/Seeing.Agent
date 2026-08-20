@@ -1,0 +1,48 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+@* 压缩摘要条（渲染点）：横贯整行的块，内部显示压缩信息；点击 header 展开可查看摘要生成时的思考过程 + 完整结果 *@
+<div class="compaction-summary-message" style="margin: 12px 0; padding: 12px 14px; background: var(--ant-info-bg); border: 1px solid var(--ant-color-border-secondary, rgba(22,119,255,.18)); border-left: 4px solid var(--color-primary); border-radius: 6px;">
+    <div class="compaction-summary-header" onclick="@ToggleExpanded" role="button"
+         style="cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+        <span style="display: inline-block; transition: transform .2s; transform: rotate(@(IsExpanded ? 90 : 0)deg); font-size: 10px;">▶</span>
+        <Icon Type="@IconType.Outline.FileText" />
+        <span style="font-weight: 600;">压缩摘要</span>
+        @if (HasReasoning)
+        {
+            <span style="font-size: 12px; color: var(--ant-text-color-secondary);">（思考过程，点击展开）</span>
+        }
+    </div>
+
+    @if (IsExpanded && HasReasoning)
+    {
+        @* 思考区：复用全局 reasoning 样式，纯文本渲染（摘要思考不注入 HTML，防注入） *@
+        <div class="content-block-reasoning reasoning-section expanded" style="margin-top: 8px;">
+            <div class="reasoning-header">
+                <span class="reasoning-icon">
+                    <Icon Type="@IconType.Outline.Bulb" Theme="@IconThemeType.Outline" />
+                </span>
+                <span class="reasoning-label">摘要思考</span>
+            </div>
+            <div class="reasoning-content">
+                <div class="reasoning-content-scroll" style="font-size: 12px; color: var(--color-text-tertiary); max-height: 400px; overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; word-break: break-word;">
+                    @Message.Reasoning
+                </div>
+            </div>
+        </div>
+    }
+
+    <div style="white-space: pre-wrap; word-break: break-word; @(IsExpanded ? "margin-top: 8px;" : "margin-top: 4px;")">
+        @Message.Content
+    </div>
+</div>
+
+@code {
+    [Parameter] public MessageViewModel Message { get; set; } = null!;
+
+    private bool IsExpanded { get; set; }
+
+    private bool HasReasoning => !string.IsNullOrEmpty(Message.Reasoning);
+
+    private void ToggleExpanded() => IsExpanded = !IsExpanded;
+}

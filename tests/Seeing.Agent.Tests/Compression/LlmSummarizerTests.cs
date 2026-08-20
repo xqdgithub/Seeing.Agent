@@ -451,6 +451,74 @@ public class LlmSummarizerTests
             .WithMessage("上游服务不可用");
     }
 
+    [Fact]
+    public async Task SummarizeAsync_WhenLastMessageIsCommand_ShouldCompactCommandIntoHistory()
+    {
+        // 最后一条是 /compact 命令：命令不构成对话内容，必须压缩进历史，不得出现在摘要之后
+        var session = CreateSession(
+            SessionMessage.UserMessage("问题一"),
+            SessionMessage.AssistantMessage("回答一"),
+            SessionMessage.UserMessage("/compact"));
+        var sessionManager = SetupSessionManager(session, out var textCompletion, out _);
+
+        var summarizer = new LlmSummarizer(
+            textCompletion.Object,
+            sessionManager: sessionManager.Object);
+        var request = new SummarizeRequest(session.Id);
+
+        var result = await summarizer.SummarizeAsync(request);
+
+        result.MessagesRemoved.Should().Be(3, "命令消息一并压缩进历史，摘要成为最后一条");
+        result.ResultMessages.Should().HaveCount(1, "保留段不得再包含命令消息");
+        result.ResultMessages[0].Content.Should().Contain("摘要");
+        result.ResultMessages.Should().NotContain(m => m.Content == "/compact");
+    }
+
+    [Fact]
+    public async Task SummarizeAsync_WhenAllMessagesAreCommands_ShouldCompactAll()
+    {
+        var session = CreateSession(
+            SessionMessage.UserMessage("/compact"),
+            SessionMessage.UserMessage("/compact"),
+            SessionMessage.UserMessage("/compact"));
+        var sessionManager = SetupSessionManager(session, out var textCompletion, out _);
+
+        var summarizer = new LlmSummarizer(
+            textCompletion.Object,
+            sessionManager: sessionManager.Object);
+        var request = new SummarizeRequest(session.Id);
+
+        var result = await summarizer.SummarizeAsync(request);
+
+        result.MessagesRemoved.Should().Be(3, "全命令会话：全部压缩，摘要成为唯一内容");
+        result.ResultMessages.Should().HaveCount(1);
+        result.ResultMessages[0].Content.Should().Contain("摘要");
+    }
+
+    [Fact]
+    public async Task SummarizeAsync_WhenCommandBeforeLastTurn_ShouldKeepTurnAndDropCommand()
+    {
+        // 命令在对话中间：保留段跳过命令，命令不在摘要之后
+        var session = CreateSession(
+            SessionMessage.UserMessage("问题一"),
+            SessionMessage.AssistantMessage("回答一"),
+            SessionMessage.UserMessage("/compact"),
+            SessionMessage.UserMessage("问题二"));
+        var sessionManager = SetupSessionManager(session, out var textCompletion, out _);
+
+        var summarizer = new LlmSummarizer(
+            textCompletion.Object,
+            sessionManager: sessionManager.Object);
+        var request = new SummarizeRequest(session.Id);
+
+        var result = await summarizer.SummarizeAsync(request);
+
+        result.MessagesRemoved.Should().Be(3, "命令与命令前的消息压缩，保留最后一条真实 user 消息");
+        result.ResultMessages.Should().HaveCount(2);
+        result.ResultMessages[1].Content.Should().Be("问题二");
+        result.ResultMessages.Should().NotContain(m => m.Content == "/compact");
+    }
+
     private static async IAsyncEnumerable<StreamUpdate> ThrowStream()
     {
         throw new HttpRequestException("上游服务不可用");

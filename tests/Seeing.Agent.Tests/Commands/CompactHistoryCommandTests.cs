@@ -7,6 +7,7 @@ using Seeing.Agent.App.Commands.BuiltIn;
 using Seeing.Agent.App.Execution;
 using Seeing.Agent.Compression;
 using Seeing.Session.Core;
+using Seeing.Session.Management;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Commands;
@@ -35,7 +36,7 @@ public class CompactHistoryCommandTests
             .ReturnsAsync(new SummarizeResult("摘要文本", new[] { SessionMessage.UserMessage("a") }, 50, MessagesRemoved: 1));
 
         var compression = new CompressionService(summarizer.Object, sessionManager.Object);
-        var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>());
+        var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>());
         var commands = new BuiltInCommands(sessionManager.Object, Mock.Of<ICommandRegistry>(), runner);
 
         // Act

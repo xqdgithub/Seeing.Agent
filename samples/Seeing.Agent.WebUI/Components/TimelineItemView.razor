@@ -18,18 +18,11 @@ else if (Item.Message != null)
     }
     else if (Item.Kind == TimelineModel.TimelineItemKind.Compaction)
     {
-        <div class="compaction-summary-message" style="margin: 8px 0; padding: 12px; background: var(--ant-info-bg); border-radius: 6px;">
-            <Icon Type="@IconType.Outline.FileText" Style="margin-right: 8px;" />
-            @* 文本渲染：LLM 摘要内容不得作为 HTML 直接注入（防注入与布局破坏） *@
-            <span style="white-space: pre-wrap; word-break: break-word;">@Item.Message.Content</span>
-        </div>
-    }
-    else if (Item.Message.IsCompacted)
-    {
-        <CompactedMessageItem Message="@Item.Message" />
+        <CompactionSummaryItem Message="@Item.Message" />
     }
     else
     {
+        // 历史消息（含 IsCompacted）原样渲染：压缩后的历史不做任何折叠/分组处理
         <ChatMessageItem Message="@Item.Message" OnToolClick="@OnToolClick" />
     }
 }

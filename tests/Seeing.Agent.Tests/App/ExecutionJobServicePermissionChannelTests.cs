@@ -9,6 +9,7 @@ using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Permission;
 using Seeing.Session.Core;
+using Seeing.Session.Management;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App;
@@ -95,6 +96,6 @@ public class ExecutionJobServicePermissionChannelTests
             new ExecutionOptions(),
             optionsMonitor.Object,
             NullLogger<ExecutionJobService>.Instance,
-            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>()));
+            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
     }
 }

@@ -21,7 +21,7 @@ public static class CommandResultExtensions
             ? new Dictionary<string, object>(result.Metadata)
             : new Dictionary<string, object>();
         metadata[ModifiedHistoryKey] = history;
-        return CommandResult.WithData(result.Message, metadata);
+        return CloneWithMetadata(result, metadata);
     }
 
     /// <summary>
@@ -33,8 +33,40 @@ public static class CommandResultExtensions
             ? new Dictionary<string, object>(result.Metadata)
             : new Dictionary<string, object>();
         metadata[NavigationTargetKey] = target;
-        return CommandResult.WithData(result.Message, metadata);
+        return CloneWithMetadata(result, metadata);
     }
+
+    /// <summary>
+    /// 保留命令消息（默认移除）：命令实现可在 ExecuteAsync 中替换/保留消息内容（如 Skill 展开）。
+    /// </summary>
+    public static CommandResult WithCommandMessageRetained(this CommandResult result)
+        => new()
+        {
+            Success = result.Success,
+            Message = result.Message,
+            ErrorMessage = result.ErrorMessage,
+            ShouldExit = result.ShouldExit,
+            NeedsRefresh = result.NeedsRefresh,
+            ShouldContinue = result.ShouldContinue,
+            RemoveCommandMessage = false,
+            Metadata = result.Metadata
+        };
+
+    /// <summary>
+    /// 复制结果并合并新 Metadata，保留全部字段（Success/ShouldContinue/ShouldExit/RemoveCommandMessage 等）。
+    /// </summary>
+    private static CommandResult CloneWithMetadata(CommandResult result, Dictionary<string, object> metadata)
+        => new()
+        {
+            Success = result.Success,
+            Message = result.Message,
+            ErrorMessage = result.ErrorMessage,
+            ShouldExit = result.ShouldExit,
+            NeedsRefresh = result.NeedsRefresh,
+            ShouldContinue = result.ShouldContinue,
+            RemoveCommandMessage = result.RemoveCommandMessage,
+            Metadata = metadata
+        };
 
     /// <summary>
     /// 获取修改后的 History

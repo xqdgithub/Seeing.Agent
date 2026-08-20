@@ -424,4 +424,41 @@ public class MessageTimelineStoreTests
         store.Items[1].Key.Should().Be("u2");
         store.Items[1].Message!.Content.Should().Be("again");
     }
+
+    [Fact]
+    public void SyncAssistantMessage_SummaryMessage_ShouldNotCreateTurn()
+    {
+        // 压缩完成后摘要可能是最后一条 assistant 消息；流式 sync（执行 finally 等）若把它
+        // 加入 Loop 会把摘要错误渲染为助手消息并排到最新位置（刷新后全量重建才正确）。
+        var store = new MessageTimelineStore();
+        var summary = Msg("sum1", "assistant", "摘要内容", loopId: "L9");
+        summary.IsSummary = true;
+
+        store.SyncAssistantMessage(summary, "s1", isComplete: true);
+
+        store.Items.Should().BeEmpty("摘要消息不归入 Loop，独立渲染为 Compaction 条目");
+    }
+
+    [Fact]
+    public void SyncAssistantMessage_AfterSummary_ShouldKeepSummaryOutOfTurn()
+    {
+        var store = new MessageTimelineStore();
+        var summary = Msg("sum1", "assistant", "摘要内容");
+        summary.IsSummary = true;
+        store.ResetFromSession(
+        [
+            Msg("u1", "user", "hi"),
+            summary,
+            Msg("a1", "assistant", "最后回复", loopId: "L2"),
+        ], "s1");
+
+        store.SyncAssistantMessage(summary, "s1", isComplete: true);
+
+        store.Items.Should().HaveCount(3);
+        store.Items[0].Kind.Should().Be(TimelineItemKind.User);
+        store.Items[1].Kind.Should().Be(TimelineItemKind.Compaction);
+        store.Items[2].Kind.Should().Be(TimelineItemKind.AssistantTurn);
+        store.Items[2].Turn!.Messages.Should().ContainSingle(m => m.Content == "最后回复");
+        store.Items[2].Turn!.Messages.Should().NotContain(m => m.Content == "摘要内容");
+    }
 }

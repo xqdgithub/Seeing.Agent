@@ -218,7 +218,8 @@ public class ExecutionJobServiceCompactionTests
             NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(
                 new CompressionService(summarizer, sessionManager.Object),
-                publisher));
+                publisher,
+                sessionManager.Object));
 
         return new Fixture(service, provider);
     }

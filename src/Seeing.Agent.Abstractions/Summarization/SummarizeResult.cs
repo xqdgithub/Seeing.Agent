@@ -11,4 +11,5 @@ public sealed record SummarizeResult(
     string Summary,
     IReadOnlyList<SessionMessage> ResultMessages,
     int SummaryTokenCount,
-    int MessagesRemoved);
+    int MessagesRemoved,
+    string? Reasoning = null);

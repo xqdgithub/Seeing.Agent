@@ -15,7 +15,7 @@ namespace Seeing.Agent.Abstractions.Commands
         /// <summary>系统命令：立即执行，返回结果，不进入 Agent</summary>
         System = 1,
         
-        /// <summary>Skill 命令：替换 History 后继续执行 Agent</summary>
+        /// <summary>Skill 命令：展开输入后继续执行 Agent</summary>
         Skill = 2
     }
 
@@ -111,15 +111,8 @@ namespace Seeing.Agent.Abstractions.Commands
         /// <summary>命令名称</summary>
         public string CommandName { get; init; } = "";
 
-        /// <summary>原始输入（包含命令名，只读）</summary>
-        public string RawInput { get; init; } = "";
-
-        /// <summary>
-        /// 当前输入（可修改，默认等于 RawInput）。
-        /// <para>改写契约：命令改写 Input 后，宿主会把改写内容同步为本次 user 消息（落盘 + 后续发给 Agent 的历史）。
-        /// 若本次输入未落盘（SkipUserMessagePersist），改写仅作用于命令上下文，不落盘。</para>
-        /// </summary>
-        public string Input { get; set; } = "";
+        /// <summary>当前输入（包含命令名，只读）</summary>
+        public string Input { get; init; } = "";
 
         /// <summary>命令参数（不含命令名）</summary>
         public string Arguments { get; init; } = "";
@@ -141,9 +134,6 @@ namespace Seeing.Agent.Abstractions.Commands
 
         /// <summary>目标 Agent（从命令元数据传递）</summary>
         public string? TargetAgent { get; init; }
-
-        /// <summary>消息历史（只读，用于参考）</summary>
-        public IReadOnlyList<ChatMessage>? History { get; init; }
 
         /// <summary>附加数据（用于扩展）</summary>
         public Dictionary<string, object> Data { get; } = new();
@@ -175,6 +165,14 @@ namespace Seeing.Agent.Abstractions.Commands
         /// <para>true = 继续执行 Agent（透传或 Skill 展开）</para>
         /// </summary>
         public bool ShouldContinue { get; init; } = true;
+
+        /// <summary>
+        /// 命令执行后是否移除命令消息（用户输入的命令文本），默认 true。
+        /// <para>true：命令文本不是用户消息，由宿主从会话移除，不残留历史/时间线。</para>
+        /// <para>false：保留命令消息（命令实现可在 ExecuteAsync 中替换/保留内容，
+        /// 如 Skill 命令把命令消息展开为技能内容）。</para>
+        /// </summary>
+        public bool RemoveCommandMessage { get; init; } = true;
 
         /// <summary>附加数据</summary>
         public Dictionary<string, object>? Metadata { get; init; }

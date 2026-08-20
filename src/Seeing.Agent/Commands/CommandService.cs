@@ -84,16 +84,16 @@ namespace Seeing.Agent.Commands
                 return CommandResult.Fail("命令执行被 Hook 中断");
             }
 
-            // 应用 Hook 修改后的参数
+// 应用 Hook 修改后的参数
             if (output.TryGetValue("arguments", out var modifiedArgs) && modifiedArgs is string args)
             {
                 // 创建新的上下文（因为 Arguments 是 init-only）
                 context = new CommandContext
                 {
                     CommandName = context.CommandName,
-                    RawInput = context.RawInput,
+                    Input = context.Input,
                     Arguments = args,
-SessionId = context.SessionId ?? string.Empty,
+                    SessionId = context.SessionId ?? string.Empty,
                     MessageId = context.MessageId ?? string.Empty,
                     Services = context.Services,
                     CancellationToken = context.CancellationToken,

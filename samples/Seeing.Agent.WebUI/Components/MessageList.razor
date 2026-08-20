@@ -33,6 +33,12 @@
                     var item = Items[i];
                     <TimelineItemView @key="item.Key" Item="@item" OnToolClick="@OnToolClickHandler" />
                 }
+
+                @if (CompactionInProgress)
+                {
+                    @* 压缩进行中：渲染在消息列表末尾（最终摘要条的实际位置），与最终结果展示逻辑一致 *@
+                    <CompactionProgressItem Reasoning="@CompactionReasoning" Content="@CompactionProgress" />
+                }
             }
         </div>
 
@@ -70,6 +76,18 @@
 
     [Parameter]
     public bool AutoScroll { get; set; } = true;
+
+    /// <summary>压缩进行中：在列表末尾渲染流式进度条目（与最终摘要条位置一致）</summary>
+    [Parameter]
+    public bool CompactionInProgress { get; set; }
+
+    /// <summary>压缩思考增量（流式拼接）</summary>
+    [Parameter]
+    public string? CompactionReasoning { get; set; }
+
+    /// <summary>压缩正文增量（流式拼接）</summary>
+    [Parameter]
+    public string? CompactionProgress { get; set; }
 
     protected override void OnInitialized()
     {

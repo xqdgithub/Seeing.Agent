@@ -1,0 +1,41 @@
+@using AntDesign
+
+@* 压缩进行中条目：显示在消息列表末尾（最终摘要条的实际位置），与最终结果展示逻辑一致；
+   思考区流式中自动展开；完成后由最终摘要条（CompactionSummaryItem，思考默认收起）替换 *@
+<div class="compaction-summary-message" style="margin: 12px 0; padding: 12px 14px; background: var(--ant-info-bg); border: 1px solid var(--ant-color-border-secondary, rgba(22,119,255,.18)); border-left: 4px solid var(--color-primary); border-radius: 6px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+        <Spin Size="@SpinSize.Small" />
+        <span style="font-weight: 600;">正在生成摘要…</span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Reasoning))
+    {
+        @* 思考区：流式中自动展开，实时展示摘要生成思考 *@
+        <div class="content-block-reasoning reasoning-section expanded" style="margin-bottom: 8px;">
+            <div class="reasoning-header">
+                <span class="reasoning-icon">
+                    <Icon Type="@IconType.Outline.Bulb" Theme="@IconThemeType.Outline" />
+                </span>
+                <span class="reasoning-label">思考中</span>
+            </div>
+            <div class="reasoning-content">
+                <div class="reasoning-content-scroll" style="font-size: 12px; color: var(--color-text-tertiary); max-height: 400px; overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; word-break: break-word;">
+                    @Reasoning
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(Content))
+    {
+        <div style="white-space: pre-wrap; word-break: break-word; color: var(--ant-text-color-secondary); max-height: 240px; overflow-y: auto;">
+            @Content
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Reasoning { get; set; }
+
+    [Parameter] public string? Content { get; set; }
+}
