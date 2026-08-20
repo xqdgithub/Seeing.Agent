@@ -1,12 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <!-- Disable Central Package Versions for test project to avoid CPM conflicts -->
+<!-- Disable Central Package Versions for test project to avoid CPM conflicts -->
   <PropertyGroup>
     <EnableCentralPackageVersions>false</EnableCentralPackageVersions>
   </PropertyGroup>

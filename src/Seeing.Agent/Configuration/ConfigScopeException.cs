@@ -37,9 +37,12 @@ public sealed class ConfigScopeException : InvalidOperationException
         string? reason)
     {
         var levelName = attemptedLevel == ConfigLevel.User ? "用户级" : "项目级";
-        var scopeDesc = expectedScope == ConfigScope.ProjectOnly 
-            ? "仅支持项目级" 
-            : "支持用户级和项目级";
+        var scopeDesc = expectedScope switch
+        {
+            ConfigScope.ProjectOnly => "仅支持项目级",
+            ConfigScope.UserOnly => "仅支持用户级",
+            _ => "支持用户级和项目级"
+        };
         
         return $"配置节 '{sectionName}' {scopeDesc}保存，无法保存到{levelName}。原因：{reason ?? "该配置与项目上下文绑定"}";
     }

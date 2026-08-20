@@ -82,8 +82,10 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 displayName: "Provider 配置", displayOrder: 4),
             ["AgentModels"] = new("AgentModels", "seeing.json", ConfigScope.Both,
                 typeof(Dictionary<string, string>), displayName: "Agent 模型绑定", displayOrder: 5),
-            ["Acp"] = new("Acp", "seeing.json", ConfigScope.Both, 
-                typeof(AcpOptions), displayName: "ACP 配置", displayOrder: 6),
+            ["Acp"] = new("Acp", "seeing.json", ConfigScope.UserOnly, 
+                typeof(AcpOptions),
+                scopeReason: "ACP 后端命令与环境为用户级私有配置，项目级配置无意义",
+                displayName: "ACP 配置", displayOrder: 6),
             ["Plugins"] = new("Plugins", "seeing.json", ConfigScope.Both, 
                 typeof(List<PluginSpec>), displayName: "插件列表", displayOrder: 7),
             ["PluginEnabled"] = new("PluginEnabled", "seeing.json", ConfigScope.Both, 
@@ -148,6 +150,9 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         UserSeeingAgent = userSeeing;
         ProjectSeeingAgent = projectSeeing;
         SeeingAgent = MergeDeep.Merge(userSeeing ?? new(), projectSeeing ?? new());
+
+        // Acp 为 UserOnly：合并结果强制使用用户级（项目级 Acp 不参与合并）
+        SeeingAgent.Acp = userSeeing?.Acp ?? new AcpOptions();
 
         // 加载独立配置文件
         foreach (var meta in _sectionRegistry.Values.Where(m => m.FileName != "seeing.json"))
@@ -299,6 +304,14 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         if (level == ConfigLevel.User && string.Equals(sectionName, "Providers", StringComparison.Ordinal))
         {
             await RemoveSeeingAgentKeysAsync(ConfigLevel.Project, ["Providers", "ProviderModels"], ct)
+                .ConfigureAwait(false);
+        }
+
+        // Acp 为 UserOnly：任何用户级 Acp 写入后，同步清理项目级残留的 Acp 键，
+        // 避免下次加载时被吸收合并导致"删除复活"。
+        if (level == ConfigLevel.User && string.Equals(sectionName, "Acp", StringComparison.Ordinal))
+        {
+            await RemoveSeeingAgentKeysAsync(ConfigLevel.Project, ["Acp"], ct)
                 .ConfigureAwait(false);
         }
         

@@ -26,19 +26,10 @@
     </Extra>
     <ChildContent>
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;"
-               Message="页面展示的是合并后的生效配置（项目级覆盖用户级）。后端编辑/添加/删除后会自动保存到下方所选级别。" />
-        @if (_sourceInfo.HasUserSection && _saveLevel == ConfigLevel.Project)
-        {
-            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 12px;"
-                   Message="@($"用户级配置也存在：{_sourceInfo.UserConfigPath}。保存到项目级后，项目文件中的同名字段会覆盖用户级。")" />
-        }
+               Message="ACP 配置为用户级私有配置（后端命令与环境变量与用户环境绑定），统一保存在用户级配置文件。" />
         <div class="config-path-info" style="margin-bottom: 16px;">
             <span>保存到：</span>
-            <Select TItemValue="ConfigLevel" TItem="ConfigLevel" @bind-Value="_saveLevel" Style="width: 160px;">
-                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
-                <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
-            </Select>
-            <Text Type="@TextElementType.Secondary">@ConfigService.GetConfigPath(_saveLevel)</Text>
+            <Text Type="@TextElementType.Secondary">@ConfigService.GetConfigPath(ConfigLevel.User)</Text>
         </div>
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
                Message="Passthrough Agent 命名规则：acp-{backendId}。启用 ACP 后可通过 acp 工具委派执行。" />
@@ -112,8 +103,6 @@
 @code {
     private AcpOptions _acp = new();
     private List<BackendRow> _backends = new();
-    private AcpConfigSourceInfo _sourceInfo = new();
-    private ConfigLevel _saveLevel = ConfigLevel.Project;
     private bool _loading;
     private bool _saving;
     private bool _modalVisible;
@@ -140,8 +129,7 @@
         try
         {
             _acp = await ConfigService.LoadEffectiveAcpAsync();
-            _sourceInfo = ConfigService.GetAcpConfigSourceInfo();
-            
+
             // 初始化超时配置
             _requestTimeoutMinutes = (int)_acp.RequestTimeout.TotalMinutes;
             _idleTimeoutMinutes = (int)_acp.IdleTimeout.TotalMinutes;
@@ -159,8 +147,6 @@
     {
         var userBackends = (await ConfigService.LoadLevelSectionAsync<AcpOptions>(ConfigLevel.User, "Acp"))?.Backends
             ?? new Dictionary<string, AcpBackendConfig>();
-        var projectBackends = (await ConfigService.LoadLevelSectionAsync<AcpOptions>(ConfigLevel.Project, "Acp"))?.Backends
-            ?? new Dictionary<string, AcpBackendConfig>();
 
         var agents = await AgentRegistry.GetAgentsAsync();
         _backends = _acp.Backends.Select(kv => new BackendRow
@@ -171,7 +157,7 @@
             ArgsText = string.Join(" ", kv.Value.Args ?? new List<string>()),
             EnvCount = kv.Value.Environment?.Count ?? 0,
             LinkedAgents = agents.Count(a => a.AcpBackend == kv.Key || a.Name == $"acp-{kv.Key}"),
-            Source = GetBackendSource(kv.Key, userBackends, projectBackends)
+            Source = GetBackendSource(kv.Key, userBackends)
         }).ToList();
     }
 
@@ -185,9 +171,9 @@
         try
         {
             var payload = BuildSavePayload();
-            await ConfigService.SaveAcpSectionAsync(_saveLevel, payload);
+            await ConfigService.SaveAcpSectionAsync(payload);
             await AcpReloader.ReloadAsync();
-            MessageService.Success($"ACP 配置已保存到{GetLevelLabel(_saveLevel)}");
+            MessageService.Success("ACP 配置已保存到用户级");
             await LoadAsync();
         }
         catch (Exception ex)
@@ -321,23 +307,10 @@
 
     private static string GetBackendSource(
         string backendId,
-        IReadOnlyDictionary<string, AcpBackendConfig> userBackends,
-        IReadOnlyDictionary<string, AcpBackendConfig> projectBackends)
+        IReadOnlyDictionary<string, AcpBackendConfig> userBackends)
     {
-        var inUser = userBackends.ContainsKey(backendId);
-        var inProject = projectBackends.ContainsKey(backendId);
-
-        return (inUser, inProject) switch
-        {
-            (true, true) => "项目覆盖",
-            (false, true) => "项目",
-            (true, false) => "用户",
-            _ => "生效"
-        };
+        return userBackends.ContainsKey(backendId) ? "用户" : "生效";
     }
-
-    private static string GetLevelLabel(ConfigLevel level) =>
-        level == ConfigLevel.User ? "用户级" : "项目级";
 
     private sealed class BackendRow
     {

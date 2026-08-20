@@ -63,22 +63,10 @@ public sealed class SeeingConfigService : ISeeingConfigService
         return Task.FromResult(_configManager.GetSection<AcpOptions>("Acp"));
     }
 
-    /// <summary>获取 ACP 配置来源信息</summary>
-    public AcpConfigSourceInfo GetAcpConfigSourceInfo()
+    /// <summary>保存 ACP 配置到用户级（ACP 为 UserOnly，仅支持用户级）</summary>
+    public async Task SaveAcpSectionAsync(AcpOptions options, CancellationToken ct = default)
     {
-        var info = _configManager.GetSourceInfo("Acp");
-        return new AcpConfigSourceInfo
-        {
-            HasUserSection = info.HasUserLevel,
-            UserConfigPath = info.UserPath ?? "",
-            ProjectConfigPath = info.ProjectPath
-        };
-    }
-
-    /// <summary>保存 ACP 配置节</summary>
-    public async Task SaveAcpSectionAsync(ConfigLevel level, AcpOptions options, CancellationToken ct = default)
-    {
-        await _configManager.SaveSectionAsync("Acp", options, level, ct);
+        await _configManager.SaveSectionAsync("Acp", options, ConfigLevel.User, ct);
     }
 
     // ===== 通用节操作 =====
@@ -148,12 +136,4 @@ public sealed class SeeingConfigService : ISeeingConfigService
     {
         await _configManager.ReloadAsync(ct);
     }
-}
-
-/// <summary>ACP 配置来源信息</summary>
-public sealed class AcpConfigSourceInfo
-{
-    public bool HasUserSection { get; init; }
-    public string UserConfigPath { get; init; } = "";
-    public string ProjectConfigPath { get; init; } = "";
 }

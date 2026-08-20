@@ -108,7 +108,7 @@ public static class ConfigCommand
             return;
         }
 
-        var level = ConfigLevel.Project;
+        var level = meta.Scope == ConfigScope.UserOnly ? ConfigLevel.User : ConfigLevel.Project;
         var raw = await config.GetRawJsonAsync(level, meta.FileName);
         var rootProp = meta.FileName == "seeing.json" ? "SeeingAgent" : null;
 
