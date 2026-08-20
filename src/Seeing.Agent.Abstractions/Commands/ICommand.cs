@@ -114,7 +114,11 @@ namespace Seeing.Agent.Abstractions.Commands
         /// <summary>原始输入（包含命令名，只读）</summary>
         public string RawInput { get; init; } = "";
 
-        /// <summary>当前输入（可修改，默认等于 RawInput）</summary>
+        /// <summary>
+        /// 当前输入（可修改，默认等于 RawInput）。
+        /// <para>改写契约：命令改写 Input 后，宿主会把改写内容同步为本次 user 消息（落盘 + 后续发给 Agent 的历史）。
+        /// 若本次输入未落盘（SkipUserMessagePersist），改写仅作用于命令上下文，不落盘。</para>
+        /// </summary>
         public string Input { get; set; } = "";
 
         /// <summary>命令参数（不含命令名）</summary>
@@ -183,9 +187,13 @@ namespace Seeing.Agent.Abstractions.Commands
         public static CommandResult Exit(string? message = null)
             => new() { Success = true, ShouldExit = true, Message = message };
 
-        /// <summary>创建错误结果</summary>
-        public static CommandResult Fail(string errorMessage, string? message = null)
-            => new() { Success = false, ErrorMessage = errorMessage, Message = message };
+        /// <summary>
+        /// 创建错误结果
+        /// <para>默认 shouldContinue:false - 命令失败即终止 Agent 循环并上报错误，
+        /// 避免失败文本透传给 Agent 造成"需由宿主程序处理"式误回复</para>
+        /// </summary>
+        public static CommandResult Fail(string errorMessage, string? message = null, bool shouldContinue = false)
+            => new() { Success = false, ErrorMessage = errorMessage, Message = message, ShouldContinue = shouldContinue };
 
         /// <summary>创建带数据的结果</summary>
         public static CommandResult WithData(string? message, Dictionary<string, object> data)

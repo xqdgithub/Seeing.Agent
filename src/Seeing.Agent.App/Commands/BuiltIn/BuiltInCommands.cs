@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
 using Seeing.Agent.Compression;
+using Seeing.Agent.App.Execution;
 using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
 
@@ -16,16 +17,16 @@ public class BuiltInCommands
 {
     private readonly ISessionManager _sessionManager;
     private readonly ICommandRegistry _commandRegistry;
-    private readonly CompressionService _compressionService;
+    private readonly CompactionRunner _compactionRunner;
 
     public BuiltInCommands(
         ISessionManager sessionManager,
         ICommandRegistry commandRegistry,
-        CompressionService compressionService)
+        CompactionRunner compactionRunner)
     {
         _sessionManager = sessionManager;
         _commandRegistry = commandRegistry;
-        _compressionService = compressionService;
+        _compactionRunner = compactionRunner;
     }
 
     /// <summary>
@@ -48,7 +49,7 @@ public class BuiltInCommands
         }
 
         // 新会话 ID 由调用方创建，这里只标记需要新建
-        return CommandResult.Ok($"会话已创建: {title}")
+        return CommandResult.Ok($"会话已创建: {title}", shouldContinue: false)
             .WithNavigation($"/session/new?title={Uri.EscapeDataString(title)}");
     }
 
@@ -80,7 +81,7 @@ public class BuiltInCommands
         session.ClearMessages();
         await _sessionManager.SaveAsync(context.SessionId);
 
-        return CommandResult.Ok("会话历史已清除", needsRefresh: true);
+        return CommandResult.Ok("会话历史已清除", needsRefresh: true, shouldContinue: false);
     }
 
     /// <summary>
@@ -134,7 +135,7 @@ public class BuiltInCommands
                 }
             }
 
-            return CommandResult.Ok(details);
+            return CommandResult.Ok(details, shouldContinue: false);
         }
 
         // 显示命令列表，按分类分组
@@ -159,7 +160,7 @@ public class BuiltInCommands
 
         help += "Type /help [command] for detailed information.";
 
-        return CommandResult.Ok(help);
+        return CommandResult.Ok(help, shouldContinue: false);
     }
 
     /// <summary>
@@ -179,8 +180,8 @@ public class BuiltInCommands
             return CommandResult.Fail("No active session");
         }
 
-        // 走主库 CompressionService 执行压缩（保留条数由 CompressionOptions 控制）
-        var outcome = await _compressionService.CompressAsync(
+        // 统一压缩入口（Started 先于 Delta 发布，UI 进度时序正确）
+        var outcome = await _compactionRunner.RunAsync(
             context.SessionId,
             reason: "manual",
             cancellationToken: ct);

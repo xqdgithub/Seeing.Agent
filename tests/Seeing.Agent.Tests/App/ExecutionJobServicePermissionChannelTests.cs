@@ -95,6 +95,6 @@ public class ExecutionJobServicePermissionChannelTests
             new ExecutionOptions(),
             optionsMonitor.Object,
             NullLogger<ExecutionJobService>.Instance,
-            new CompressionService(null!, Mock.Of<ISessionManager>(), new CompressionOptions()));
+            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>()));
     }
 }

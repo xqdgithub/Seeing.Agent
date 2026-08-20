@@ -8,24 +8,37 @@ namespace Seeing.Agent.Tests.Summarization;
 public class SummarizerContractTests
 {
     [Fact]
-    public void SummarizeRequest_ShouldCarryMessagesAndOptions()
+    public void SummarizeRequest_ShouldCarrySessionIdAndReason()
     {
-        var messages = new List<SessionMessage> { SessionMessage.UserMessage("hi") };
-        var request = new SummarizeRequest(messages, MaxOutputTokens: 2000, KeepRecentCount: 10);
+        var request = new SummarizeRequest("s1", Reason: "manual");
 
-        request.Messages.Should().BeEquivalentTo(messages);
-        request.MaxOutputTokens.Should().Be(2000);
-        request.KeepRecentCount.Should().Be(10);
+        request.SessionId.Should().Be("s1");
+        request.Reason.Should().Be("manual");
     }
 
     [Fact]
-    public void SummarizeResult_ShouldCarrySummaryAndTrimmedList()
+    public void SummarizeRequest_Reason_ShouldDefaultToAuto()
     {
-        var trimmed = new List<SessionMessage>();
-        var result = new SummarizeResult("summary", trimmed, SummaryTokenCount: 300);
+        var request = new SummarizeRequest("s1");
+
+        request.Reason.Should().Be("auto");
+    }
+
+    [Fact]
+    public void SummarizeRequest_ShouldExposeLastSummaryContextKey()
+    {
+        SummarizeRequest.LastSummaryContextKey.Should().Be("LastCompactionSummary");
+    }
+
+    [Fact]
+    public void SummarizeResult_ShouldCarrySummaryAndResultMessages()
+    {
+        var resultMessages = new List<SessionMessage>();
+        var result = new SummarizeResult("summary", resultMessages, SummaryTokenCount: 300, MessagesRemoved: 5);
 
         result.Summary.Should().Be("summary");
-        result.TrimmedMessages.Should().BeSameAs(trimmed);
+        result.ResultMessages.Should().BeSameAs(resultMessages);
         result.SummaryTokenCount.Should().Be(300);
+        result.MessagesRemoved.Should().Be(5);
     }
 }

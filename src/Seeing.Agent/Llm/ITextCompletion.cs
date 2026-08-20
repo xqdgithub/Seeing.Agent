@@ -35,4 +35,19 @@ public interface ITextCompletion
         string? model = null,
         int? maxTokens = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// 流式完成一次文本补全（逐增量返回，含正文与推理内容，供进度展示场景使用）。
+    /// </summary>
+    /// <param name="systemPrompt">系统提示</param>
+    /// <param name="messages">用户提示</param>
+    /// <param name="model">模型 ID；空则使用配置的 DefaultModel</param>
+    /// <param name="maxTokens">生成上限；null 则使用实现默认值（当前 2048）</param>
+    /// <param name="ct">取消令牌</param>
+    IAsyncEnumerable<StreamUpdate> StreamCompleteAsync(
+        string systemPrompt,
+        List<ChatMessage> messages,
+        string? model = null,
+        int? maxTokens = null,
+        CancellationToken ct = default);
 }

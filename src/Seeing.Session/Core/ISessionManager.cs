@@ -38,9 +38,6 @@ namespace Seeing.Session.Core
         /// <summary>从存储加载会话</summary>
         Task<SessionData?> LoadAsync(string id);
 
-        /// <summary>压缩会话消息</summary>
-        IReadOnlyList<SessionMessage> Compress(string id);
-
         // === 新增方法 ===
 
         /// <summary>添加消息到会话</summary>

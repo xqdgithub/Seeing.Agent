@@ -35,7 +35,10 @@ public static class MessageViewModelFactory
                 .ToList();
         }
 
-        viewModel.IsCompactionSummary = msg.Metadata?.TryGetValue("is_compaction_summary", out _) == true;
+        // 压缩摘要消息：优先读取新属性 IsSummary，兼容旧的 Metadata 标记
+        viewModel.IsCompactionSummary = msg.IsSummary
+            || msg.Metadata?.TryGetValue("is_compaction_summary", out _) == true;
+        // IsCompacted 不在此设置：由时间线构建时按"摘要位置"推导（摘要之前 = 已压缩历史）
 
         if (SystemReminderRenderer.TryParse(msg.Content ?? "", out var reminderParts))
         {

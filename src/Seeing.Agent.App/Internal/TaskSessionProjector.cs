@@ -221,7 +221,8 @@ public static class TaskSessionProjector
         var existing = session.Messages
             .AsEnumerable()
             .Reverse()
-            .FirstOrDefault(m => m.Role == "assistant"
+            // 排除摘要消息（IsSummary）：后台任务 toolcall 不得挂到摘要上，否则污染压缩真相
+            .FirstOrDefault(m => !m.IsSummary && m.Role == "assistant"
                 && (string.IsNullOrEmpty(loopId) || m.LoopId == loopId));
 
         if (existing != null)

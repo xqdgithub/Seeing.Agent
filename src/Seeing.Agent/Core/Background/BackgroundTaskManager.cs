@@ -2,7 +2,9 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Extensions;using Seeing.Session.Core;
+using Seeing.Agent.Abstractions.Extensions;
+using Seeing.Agent.Llm;
+using Seeing.Session.Core;
 using System.Collections.Concurrent;
 using System.Reactive.Subjects;
 using System.Text;
@@ -306,7 +308,12 @@ public class BackgroundTaskManager : IBackgroundTaskManager, IHostedService
                 var def = await _agentRegistry.GetAgentAsync(args.AgentName)
                     ?? throw new InvalidOperationException($"Agent '{args.AgentName}' 不存在");
 
-                var messages = new List<ChatMessage> { args.Input };
+                // 子会话已有历史（含压缩摘要锚点）时加载，统一走 GetActiveMessages 契约，避免上下文丢失
+                var session = _sessionManager?.Get(args.Context.SessionId);
+                var messages = session is { Messages.Count: > 0 }
+                    ? ChatMessageHistoryBuilder.BuildHistory(session.GetActiveMessages())
+                    : new List<ChatMessage>();
+                messages.Add(args.Input);
                 await foreach (var evt in _executor.ExecuteAsync(def, messages, args.Context, cancellationToken))
                 {
                     if (cancellationToken.IsCancellationRequested)

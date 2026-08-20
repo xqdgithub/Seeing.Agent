@@ -39,8 +39,9 @@ public class ExecutionJobServiceCompactionTests
         summarizer.Setup(s => s.SummarizeAsync(It.IsAny<SummarizeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SummarizeResult(
                 "摘要文本",
-                new[] { SessionMessage.UserMessage("问题一") },
-                100));
+                new[] { SessionMessage.AssistantMessage("摘要文本"), SessionMessage.AssistantMessage("回答一") },
+                100,
+                MessagesRemoved: 1));
 
         var published = new ConcurrentQueue<(string SessionId, IMessageEvent Event)>();
         var publisher = new Mock<IExecutionEventPublisher>();
@@ -84,8 +85,17 @@ public class ExecutionJobServiceCompactionTests
             .SingleOrDefault(e => e.MessagesRemoved == 1);
         completed.Should().NotBeNull();
         session.PendingCompaction.Should().BeFalse();
-        session.Messages.Should().HaveCount(1);
+        // 完整历史保留：被压缩部分原样保留 + 摘要消息插入（摘要位置即压缩真相）
+        session.Messages.Should().HaveCount(3);
         session.Messages[0].Content.Should().Be("问题一");
+        session.Messages[1].Content.Should().Be("摘要文本");
+        session.Messages[1].IsSummary.Should().BeTrue("摘要消息标记 IsSummary");
+        session.Messages[2].Content.Should().Be("回答一");
+        // 传递给 LLM 的统一消息来源只含摘要 + 保留消息
+        var active = session.GetActiveMessages();
+        active.Should().HaveCount(2);
+        active[0].Content.Should().Be("摘要文本");
+        active[1].Content.Should().Be("回答一");
     }
 
     [Fact]
@@ -206,7 +216,9 @@ public class ExecutionJobServiceCompactionTests
             new ExecutionOptions(),
             optionsMonitor,
             NullLogger<ExecutionJobService>.Instance,
-            new CompressionService(summarizer, sessionManager.Object, new CompressionOptions()));
+            new CompactionRunner(
+                new CompressionService(summarizer, sessionManager.Object),
+                publisher));
 
         return new Fixture(service, provider);
     }

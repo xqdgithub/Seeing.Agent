@@ -111,9 +111,11 @@ public class TaskStatusTool : ToolBase
         if (session == null || session.Kind != SessionKind.SubAgent)
             return Success("not_found", $"task_id: {taskId}\nstate: not_found");
 
-        var lastAssistant = session.Messages
+        // 任务状态基于活跃消息（已压缩的旧回复不参与状态判定）
+        var activeMessages = session.GetActiveMessages();
+        var lastAssistant = activeMessages
             .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase));
-        var lastError = session.Messages
+        var lastError = activeMessages
             .LastOrDefault(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase)
                                 && m.Content?.Contains("error", StringComparison.OrdinalIgnoreCase) == true);
 

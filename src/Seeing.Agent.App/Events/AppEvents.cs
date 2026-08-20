@@ -71,6 +71,12 @@ public record CommandResultEvent : IMessageEvent
 
     /// <summary>是否需要前端刷新时间线（压缩等变更会话内容的命令）</summary>
     public bool NeedsRefresh { get; init; }
+
+    /// <summary>
+    /// 是否继续执行 Agent（false = 命令要求结束本轮：shouldContinue=false 或 shouldExit）。
+    /// 宿主据此短路：不再把命令文本作为普通消息发送给大模型。
+    /// </summary>
+    public bool ShouldContinue { get; init; } = true;
 }
 
 /// <summary>

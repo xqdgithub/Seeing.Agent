@@ -62,6 +62,12 @@ public static class ChatOrchestratorServiceExtensions
         services.AddSingleton<IExecutionEventPublisher, ExecutionEventPublisher>();
         services.AddSingleton<ISessionEventBus, ExecutionSessionEventBus>();
 
+        // 压缩进度事件适配器：LlmSummarizer 经 ICompactionEventSink 发布进度 → 执行事件流（WebUI 实时展示）
+        services.AddSingleton<Seeing.Agent.Abstractions.Events.ICompactionEventSink, Events.CompactionEventSink>();
+
+        // 统一压缩入口：Started → 压缩 → Completed/Failed 事件序列（自动门控 / /compact 命令共用）
+        services.AddSingleton<CompactionRunner>();
+
         // 注册执行任务服务（Singleton，后台执行）
         services.AddSingleton<ExecutionJobService>();
 

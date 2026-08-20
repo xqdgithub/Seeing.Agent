@@ -1,8 +1,10 @@
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.App.Commands.BuiltIn;
+using Seeing.Agent.App.Execution;
 using Seeing.Agent.Compression;
 using Seeing.Session.Core;
 using Xunit;
@@ -30,10 +32,11 @@ public class CompactHistoryCommandTests
 
         var summarizer = new Mock<ISummarizer>();
         summarizer.Setup(s => s.SummarizeAsync(It.IsAny<SummarizeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SummarizeResult("摘要文本", new[] { SessionMessage.UserMessage("a") }, 50));
+            .ReturnsAsync(new SummarizeResult("摘要文本", new[] { SessionMessage.UserMessage("a") }, 50, MessagesRemoved: 1));
 
-        var compression = new CompressionService(summarizer.Object, sessionManager.Object, new CompressionOptions());
-        var commands = new BuiltInCommands(sessionManager.Object, Mock.Of<ICommandRegistry>(), compression);
+        var compression = new CompressionService(summarizer.Object, sessionManager.Object);
+        var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>());
+        var commands = new BuiltInCommands(sessionManager.Object, Mock.Of<ICommandRegistry>(), runner);
 
         // Act
         var result = await commands.CompactHistory(new CommandContext

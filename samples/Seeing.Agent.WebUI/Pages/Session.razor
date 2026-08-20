@@ -313,6 +313,40 @@
             }
             else
             {
+                <!-- 压缩进度提示（摘要生成流式实时展示，含思考与正文，类似正常助手消息） -->
+                @if (_compactionInProgress)
+                {
+                    <div style="margin: 12px 16px 0; padding: 12px 16px; background: var(--ant-info-bg); border-radius: 8px; display: flex; gap: 12px; align-items: flex-start;">
+                        <Spin Size="@SpinSize.Small" />
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 600; margin-bottom: 4px;">正在生成摘要…</div>
+                            @if (!string.IsNullOrEmpty(_compactionReasoning))
+                            {
+                                <div class="content-block-reasoning reasoning-section @(_compactionReasoningExpanded ? "expanded" : "collapsed")" style="margin-bottom: 8px;">
+                                    <div class="reasoning-header" onclick="@(() => _compactionReasoningExpanded = !_compactionReasoningExpanded)" onclick:stopPropagation="true">
+                                        <span class="reasoning-toggle-icon">▶</span>
+                                        <span class="reasoning-icon">
+                                            <Icon Type="@IconType.Outline.Loading" Theme="@IconThemeType.Outline" Spin="true" />
+                                        </span>
+                                        <span class="reasoning-label">思考中</span>
+                                    </div>
+                                    <div class="reasoning-content">
+                                        <div class="reasoning-content-scroll" style="font-size: 12px; color: var(--color-text-tertiary); max-height: 200px; overflow-y: auto; word-break: break-word;">
+                                            @_compactionReasoning
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(_compactionProgress))
+                            {
+                                <div style="white-space: pre-wrap; word-break: break-word; color: var(--ant-text-color-secondary); max-height: 160px; overflow-y: auto;">
+                                    @_compactionProgress
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
                 <MessageList AutoScroll="true"
                              OnToolClick="@OnToolClick" />
             }
@@ -561,6 +595,14 @@
     private IDisposable? _sessionEventSubscription;
     private IDisposable? _seeingAgentOptionsSubscription;
     private bool _globalAutoApprove;
+    /// <summary>压缩进行中标志（压缩耗时较长，页面需实时反馈）</summary>
+    private bool _compactionInProgress;
+    /// <summary>压缩进度实时文本（摘要正文增量拼接）</summary>
+    private string? _compactionProgress;
+    /// <summary>压缩进度推理文本（思考过程增量拼接，类似正常助手消息的思考区）</summary>
+    private string? _compactionReasoning;
+    /// <summary>压缩思考区是否展开（流式中默认展开，可折叠）</summary>
+    private bool _compactionReasoningExpanded;
     /// <summary>上次已渲染到 UI 的标题（与 SessionData 引用就地更新解耦）。</summary>
     private string? _renderedTitle;
 
@@ -1202,6 +1244,12 @@
 
         if (sessionData != null)
         {
+            // 切换会话：清理上一会话遗留的压缩进度状态（压缩进行中切走时无 Completed 事件清除）
+            _compactionInProgress = false;
+            _compactionProgress = null;
+            _compactionReasoning = null;
+            _compactionReasoningExpanded = false;
+
             SessionState.SetSession(sessionData);
             _renderedTitle = sessionData.Title;
 
@@ -1537,15 +1585,43 @@
                         NavigationManager.NavigateTo(commandEvt.NavigationTarget);
                     }
                 }
+                else if (evt is CompactionStartedEvent)
+                {
+                    // 压缩开始：显示进度条区域，等待 summarizing 增量
+                    _compactionInProgress = true;
+                    _compactionProgress = string.Empty;
+                    _compactionReasoning = string.Empty;
+                    _compactionReasoningExpanded = true;
+                    await InvokeAsync(StateHasChanged);
+                }
+                else if (evt is CompactionDeltaEvent compactionDeltaEvt)
+                {
+                    // 压缩进度：实时拼接摘要生成内容（正文 + 思考），页面不长时间无响应
+                    if (!string.IsNullOrEmpty(compactionDeltaEvt.ContentDelta))
+                    {
+                        _compactionProgress += compactionDeltaEvt.ContentDelta;
+                    }
+                    if (!string.IsNullOrEmpty(compactionDeltaEvt.ReasoningDelta))
+                    {
+                        _compactionReasoning += compactionDeltaEvt.ReasoningDelta;
+                    }
+                    await InvokeAsync(StateHasChanged);
+                }
                 else if (evt is CompactionCompletedEvent)
                 {
                     // 压缩完成：会话内容已变更，全量重建时间线
+                    _compactionInProgress = false;
+                    _compactionProgress = null;
+                    _compactionReasoning = null;
                     ResetTimelineFromSession();
                     ReconcileTimelineFromSession();
                     await InvokeAsync(StateHasChanged);
                 }
                 else if (evt is CompactionFailedEvent failedEvt)
                 {
+                    _compactionInProgress = false;
+                    _compactionProgress = null;
+                    _compactionReasoning = null;
                     if (!string.IsNullOrEmpty(failedEvt.ErrorMessage))
                     {
                         MessageService.Error(string.Format("压缩失败: {0}", failedEvt.ErrorMessage));

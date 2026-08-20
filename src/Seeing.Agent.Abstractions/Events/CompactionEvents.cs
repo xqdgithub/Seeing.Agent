@@ -36,6 +36,12 @@ public sealed record CompactionDeltaEvent : IMessageEvent
 
     /// <summary>进度阶段（summarizing/trimming/…）</summary>
     public string Stage { get; init; } = string.Empty;
+
+    /// <summary>摘要生成的内容增量（流式输出，供 UI 实时展示）</summary>
+    public string? ContentDelta { get; init; }
+
+    /// <summary>摘要生成的推理增量（思考过程，供 UI 实时展示，不进入摘要正文）</summary>
+    public string? ReasoningDelta { get; init; }
 }
 
 /// <summary>压缩完成</summary>

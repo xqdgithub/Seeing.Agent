@@ -42,7 +42,7 @@ public class ExecutionJobService : IDisposable
     private readonly IExecutionEventPublisher _eventPublisher;
     private readonly ExecutionOptions _options;
     private readonly IOptionsMonitor<SeeingAgentOptions> _seeingAgentOptions;
-    private readonly CompressionService _compressionService;
+    private readonly CompactionRunner _compactionRunner;
     private readonly ILogger<ExecutionJobService> _logger;
     private readonly Timer _cleanupTimer;
     private readonly IAgentLoopScheduler? _loopScheduler;
@@ -58,7 +58,7 @@ public class ExecutionJobService : IDisposable
         ExecutionOptions options,
         IOptionsMonitor<SeeingAgentOptions> seeingAgentOptions,
         ILogger<ExecutionJobService> logger,
-        CompressionService compressionService,
+        CompactionRunner compactionRunner,
         IAgentLoopScheduler? loopScheduler = null,
         IBackgroundTaskManager? backgroundTasks = null)
     {
@@ -66,7 +66,7 @@ public class ExecutionJobService : IDisposable
         _eventPublisher = eventPublisher;
         _options = options ?? new ExecutionOptions();
         _seeingAgentOptions = seeingAgentOptions;
-        _compressionService = compressionService ?? throw new ArgumentNullException(nameof(compressionService));
+        _compactionRunner = compactionRunner ?? throw new ArgumentNullException(nameof(compactionRunner));
         _logger = logger;
         _loopScheduler = loopScheduler;
         _backgroundTasks = backgroundTasks;
@@ -367,8 +367,14 @@ public class ExecutionJobService : IDisposable
                 session.PendingCompaction &&
                 session.Messages.Count > 0)
             {
-                var outcome = await _compressionService.CompressAsync(session.Id, reason: "auto");
-                await PublishCompactionEventsAsync(session.Id, outcome);
+                // 统一入口：Started 先于摘要 Delta 发布，UI 进度时序正确
+                var compactionOutcome = await _compactionRunner.RunAsync(session.Id, reason: "auto");
+                // 失败防抖：不保留标记，避免每轮循环反复触发耗时的压缩尝试拖慢对话
+                if (!compactionOutcome.Success)
+                {
+                    _logger.LogWarning("自动压缩失败，跳过本轮重试: {SessionId} {Error}",
+                        session.Id, compactionOutcome.ErrorMessage);
+                }
                 session.PendingCompaction = false;
             }
 
@@ -394,44 +400,57 @@ public class ExecutionJobService : IDisposable
 
             // Process command if applicable
             var inputText = record.Input?.Text;
+            // 命令要求结束本轮（shouldContinue=false / shouldExit）时短路，不再执行 Agent：
+            // 避免把命令文本作为普通消息发送给大模型（如 /compact 后仍发起 LLM 请求导致失败）
+            var commandConsumedExecution = false;
             if (inputText != null && inputText.StartsWith('/') && inputText.Length > 1 && !inputText.StartsWith("//"))
             {
+                CommandResultEvent? lastCommandEvent = null;
                 await foreach (var cmdEvent in ProcessCommandAsync(
                     record.SessionId, inputText, session, context, commandRegistry, queue.CurrentCancellationToken))
                 {
                     if (cmdEvent != null)
                     {
                         _eventPublisher.Publish(record.SessionId, cmdEvent);
+                        // 短路判定仅看命令结果事件（ProcessCommandAsync 只 yield 命令结果或 null）
+                        if (cmdEvent is CommandResultEvent commandResult)
+                        {
+                            lastCommandEvent = commandResult;
+                        }
                     }
                 }
+                commandConsumedExecution = lastCommandEvent != null && !lastCommandEvent.ShouldContinue;
             }
 
-            // Build history
-            var messages = BuildHistoryFromSession(session);
-
-            // 服务端负责将事件投影到 Session 并落盘；UI 只订阅展示
-            var eventTracker = new ChatEventTracker();
-
-            // Execute agent
-            await foreach (var evt in executionRouter.ExecuteAsync(
-                context.Agent,
-                messages,
-                BuildAgentContext(context, queue.CurrentCancellationToken),
-                queue.CurrentCancellationToken))
+            if (!commandConsumedExecution)
             {
-                // Check for cancellation
-                if (queue.CurrentCancellationToken.IsCancellationRequested)
-                    throw new OperationCanceledException();
+                // Build history
+                var messages = BuildHistoryFromSession(session);
 
-                var liveSession = sessionManager.Get(record.SessionId) ?? session;
-                eventTracker.ApplyEvent(liveSession, evt);
-                TaskSessionProjector.Apply(liveSession, evt);
+                // 服务端负责将事件投影到 Session 并落盘；UI 只订阅展示
+                var eventTracker = new ChatEventTracker();
 
-                // 先投影再发布，保证 UI 读到的是已写入的 SessionData
-                _eventPublisher.Publish(record.SessionId, evt);
+                // Execute agent
+                await foreach (var evt in executionRouter.ExecuteAsync(
+                    context.Agent,
+                    messages,
+                    BuildAgentContext(context, queue.CurrentCancellationToken),
+                    queue.CurrentCancellationToken))
+                {
+                    // Check for cancellation
+                    if (queue.CurrentCancellationToken.IsCancellationRequested)
+                        throw new OperationCanceledException();
 
-                if (ShouldPersistEvent(evt))
-                    await sessionManager.SaveAsync(record.SessionId);
+                    var liveSession = sessionManager.Get(record.SessionId) ?? session;
+                    eventTracker.ApplyEvent(liveSession, evt);
+                    TaskSessionProjector.Apply(liveSession, evt);
+
+                    // 先投影再发布，保证 UI 读到的是已写入的 SessionData
+                    _eventPublisher.Publish(record.SessionId, evt);
+
+                    if (ShouldPersistEvent(evt))
+                        await sessionManager.SaveAsync(record.SessionId);
+                }
             }
 
             // Mark as completed
@@ -812,7 +831,8 @@ public class ExecutionJobService : IDisposable
     {
         var history = new List<ChatMessage>();
 
-        foreach (var msg in session.Messages)
+        // 统一消息来源：仅活跃消息（已压缩标记的旧消息保留展示但不传递给 LLM）
+        foreach (var msg in session.GetActiveMessages())
         {
             var chatMessage = new ChatMessage
             {
@@ -932,12 +952,29 @@ public class ExecutionJobService : IDisposable
             CancellationToken = cancellationToken
         };
 
+        // 命令执行前定位本次 user 消息：提交时刚追加的最后一条（会话串行队列内无并发写入）。
+        // 显式关联而非事后 LastOrDefault 猜测，避免 SkipUserMessagePersist（未落盘）或压缩后误改旧消息
+        SessionMessage? commandUserMessage = null;
+        if (session.Messages.Count > 0 && session.Messages[^1].Role == MessageRole.User)
+        {
+            commandUserMessage = session.Messages[^1];
+        }
+
         var result = await command.ExecuteAsync(cmdContext, cancellationToken);
 
-        // 如果 Input 被修改，更新消息内容
-        if (result.Success && cmdContext.Input != cmdContext.RawInput && session.Messages.Count > 0)
+        // Input 改写契约：命令改写 Input = 本次输入以改写后内容为准（落盘 + 后续历史）。
+        // 框架层仅负责把改写同步到本次 user 消息（skill 展开等场景生效的唯一通路）；
+        // 本次输入未落盘（SkipUserMessagePersist）时无对应消息，不静默改写旧消息
+        if (result.Success && cmdContext.Input != cmdContext.RawInput)
         {
-            session.Messages[^1].Content = cmdContext.Input;
+            if (commandUserMessage != null)
+            {
+                commandUserMessage.Content = cmdContext.Input;
+            }
+            else
+            {
+                _logger.LogDebug("命令 {Command} 改写了 Input，但本次输入未落盘，跳过消息同步（仅影响命令上下文）", cmdName);
+            }
         }
 
         // 根据 CommandResult 决定是否继续
@@ -950,47 +987,15 @@ public class ExecutionJobService : IDisposable
                 Success = result.Success,
                 Message = result.Success ? result.Message : result.ErrorMessage,
                 NavigationTarget = result.GetNavigationTarget(),
-                NeedsRefresh = result.NeedsRefresh
+                NeedsRefresh = result.NeedsRefresh,
+                // 短路标志：宿主据此跳过 Agent 执行，不再把命令文本发给大模型
+                ShouldContinue = result.ShouldContinue && !result.ShouldExit
             };
             yield break;
         }
 
         // 继续执行 Agent
         yield return null;
-    }
-
-    /// <summary>
-    /// 发布压缩事件（Started → Completed/Failed）
-    /// </summary>
-    private Task PublishCompactionEventsAsync(string sessionId, CompressionOutcome outcome)
-    {
-        _eventPublisher.Publish(sessionId, new CompactionStartedEvent
-        {
-            SessionId = sessionId,
-            Reason = "auto"
-        });
-
-        if (outcome.Success)
-        {
-            _eventPublisher.Publish(sessionId, new CompactionCompletedEvent
-            {
-                SessionId = sessionId,
-                TokensBefore = outcome.TokensBefore,
-                TokensAfter = outcome.TokensAfter,
-                MessagesRemoved = outcome.MessagesRemoved,
-                Summary = outcome.Summary
-            });
-        }
-        else
-        {
-            _eventPublisher.Publish(sessionId, new CompactionFailedEvent
-            {
-                SessionId = sessionId,
-                ErrorMessage = outcome.ErrorMessage
-            });
-        }
-
-        return Task.CompletedTask;
     }
 
     /// <summary>

@@ -1,13 +1,12 @@
 namespace Seeing.Agent.Compression;
 
 /// <summary>
-/// 压缩选项 - 映射自 TokenBudgetConfig（保留字段作来源）
+/// 压缩选项
 /// </summary>
 public sealed class CompressionOptions
 {
-    /// <summary>摘要目标 token 数（默认 4000）</summary>
-    public int SummaryTargetTokens { get; set; } = 4000;
-
-    /// <summary>保留最近消息条数（默认 10）</summary>
-    public int KeepRecentMessages { get; set; } = 10;
+    /// <summary>
+    /// 摘要输出 token 上限（null = 不限制，避免摘要被截断导致压缩不完整；显式配置后生效）
+    /// </summary>
+    public int? SummaryTargetTokens { get; set; } = null;
 }

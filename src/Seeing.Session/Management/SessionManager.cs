@@ -287,26 +287,6 @@ namespace Seeing.Session.Management
             return data;
         }
 
-        /// <summary>
-        /// 压缩会话消息（压缩逻辑已移交主库 CompressionService，此处仅保留兼容签名）
-        /// </summary>
-        /// <param name="id">会话 ID</param>
-        /// <returns>当前消息列表（原样返回，不再执行压缩）</returns>
-        public IReadOnlyList<SessionMessage> Compress(string id)
-        {
-            var session = Get(id);
-            if (session == null)
-            {
-                _logger?.LogWarning("会话不存在，无法压缩: {SessionId}", id);
-                return Array.Empty<SessionMessage>();
-            }
-
-            _logger?.LogInformation(
-                "压缩已移交主库 CompressionService，此处不再执行: {SessionId}", id);
-
-            return session.Messages;
-        }
-
         // === 新增接口方法实现 ===
 
         /// <summary>

@@ -177,7 +177,8 @@ public static class SessionStreamEventApplier
         return session.Messages
             .AsEnumerable()
             .Reverse()
-            .FirstOrDefault(m => m.Role == "assistant"
+            // 排除摘要消息（IsSummary）：摘要承载压缩历史，新一轮流式不得写入其中，否则污染压缩真相
+            .FirstOrDefault(m => !m.IsSummary && m.Role == "assistant"
                 && (string.IsNullOrEmpty(loopId) || m.LoopId == loopId
                     || string.IsNullOrEmpty(m.LoopId)));
     }

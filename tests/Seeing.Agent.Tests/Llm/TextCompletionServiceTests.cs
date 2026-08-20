@@ -94,6 +94,41 @@ public class TextCompletionServiceTests
             It.Is<ChatRequest>(r => r.Messages.Count == 1 && r.MaxTokens == 32),
             It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task StreamCompleteAsync_ShouldPassthroughContentAndReasoning()
+    {
+        var llm = new Mock<ILlmService>(MockBehavior.Strict);
+        llm.Setup(x => x.CompleteRawStreamAsync("m1", It.IsAny<ChatRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(StreamUpdates(
+                new StreamUpdate { ContentDelta = "正文一" },
+                new StreamUpdate { ReasoningDelta = "思考一" },
+                new StreamUpdate { ContentDelta = "正文二", ReasoningDelta = "思考二" }));
+
+        var options = new SeeingAgentOptions { DefaultModel = "m1" };
+        var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
+        var svc = new TextCompletionService(llm.Object, optionsMonitor);
+
+        var updates = new List<StreamUpdate>();
+        await foreach (var update in svc.StreamCompleteAsync("sys", new List<ChatMessage>()))
+        {
+            updates.Add(update);
+        }
+
+        updates.Should().HaveCount(3, "流式透传完整增量，不丢弃推理内容");
+        updates[0].ContentDelta.Should().Be("正文一");
+        updates[1].ReasoningDelta.Should().Be("思考一");
+        updates[2].ContentDelta.Should().Be("正文二");
+        updates[2].ReasoningDelta.Should().Be("思考二");
+    }
+
+    private static async IAsyncEnumerable<StreamUpdate> StreamUpdates(params StreamUpdate[] values)
+    {
+        foreach (var value in values)
+        {
+            yield return value;
+        }
+    }
 }
 
 public class OptionsProviderEndpointLookupTests : IDisposable

@@ -41,7 +41,7 @@ public class SessionCommands
         var title = context.Arguments.Trim();
         var newSession = await _sessionManager.ForkAsync(context.SessionId, label: title, ct: ct);
 
-        return CommandResult.Ok($"会话已分叉: {newSession.Id}")
+        return CommandResult.Ok($"会话已分叉: {newSession.Id}", shouldContinue: false)
             .WithNavigation($"/session/{newSession.Id}");
     }
 }

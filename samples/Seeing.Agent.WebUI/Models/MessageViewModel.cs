@@ -77,6 +77,11 @@ public class MessageViewModel
     public bool IsCompactionSummary { get; set; }
 
     /// <summary>
+    /// 是否已被压缩替代（历史保留可查看，但不传递给 LLM，UI 折叠展示）
+    /// </summary>
+    public bool IsCompacted { get; set; }
+
+    /// <summary>
     /// 是否为系统提醒（Job / Task 回调等注入的 user 消息）
     /// </summary>
     public bool IsSystemReminder { get; set; }

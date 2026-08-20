@@ -20,8 +20,13 @@ else if (Item.Message != null)
     {
         <div class="compaction-summary-message" style="margin: 8px 0; padding: 12px; background: var(--ant-info-bg); border-radius: 6px;">
             <Icon Type="@IconType.Outline.FileText" Style="margin-right: 8px;" />
-            @((MarkupString)Item.Message.Content.Replace("\n", "<br/>"))
+            @* 文本渲染：LLM 摘要内容不得作为 HTML 直接注入（防注入与布局破坏） *@
+            <span style="white-space: pre-wrap; word-break: break-word;">@Item.Message.Content</span>
         </div>
+    }
+    else if (Item.Message.IsCompacted)
+    {
+        <CompactedMessageItem Message="@Item.Message" />
     }
     else
     {

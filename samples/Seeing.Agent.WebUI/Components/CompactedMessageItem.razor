@@ -1,0 +1,21 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+<Collapse>
+    <Panel>
+        <PanelHeader>
+            <span style="color: var(--ant-text-color-secondary); font-size: 13px;">
+                <Icon Type="@IconType.Outline.Folder" Style="margin-right: 6px;" />
+                已压缩消息（已替代为摘要，不参与后续对话）
+            </span>
+        </PanelHeader>
+        <PanelContent>
+            <ChatMessageItem Message="@Message" OnToolClick="OnToolClick" />
+        </PanelContent>
+    </Panel>
+</Collapse>
+
+@code {
+    [Parameter] public MessageViewModel Message { get; set; } = null!;
+    [Parameter] public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+}

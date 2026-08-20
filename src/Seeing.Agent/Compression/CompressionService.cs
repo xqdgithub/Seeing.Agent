@@ -13,18 +13,15 @@ public class CompressionService
 {
     private readonly ISummarizer? _summarizer;
     private readonly ISessionManager _sessionManager;
-    private readonly CompressionOptions _options;
     private readonly ILogger<CompressionService> _logger;
 
     public CompressionService(
         ISummarizer? summarizer,
         ISessionManager sessionManager,
-        CompressionOptions options,
         ILogger<CompressionService>? logger = null)
     {
         _summarizer = summarizer;
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
-        _options = options ?? new CompressionOptions();
         _logger = logger ?? NullLogger<CompressionService>.Instance;
     }
 
@@ -46,34 +43,47 @@ public class CompressionService
         }
 
         var session = await _sessionManager.GetOrLoadAsync(sessionId, cancellationToken);
-        var messages = session.Messages.ToList();
+        // 活跃消息（不含历史已压缩标记）作为压缩输入，与摘要器输入保持一致
+        var messages = session.GetActiveMessages();
         if (messages.Count == 0)
         {
             return new CompressionOutcome { Success = false, ErrorMessage = "会话无消息，无需压缩" };
         }
 
+        // 调用前快照被压缩段起点：摘要 LLM 耗时数秒，期间后台任务可能并发追加消息，
+        // 若在 SummarizeAsync 之后才计算会错位（新消息被误归入已压缩历史）
+        var activeStart = session.Messages.Count - messages.Count;
+
         try
         {
-            var request = new SummarizeRequest(
-                messages,
-                MaxOutputTokens: _options.SummaryTargetTokens,
-                KeepRecentCount: _options.KeepRecentMessages);
+            var request = new SummarizeRequest(session.Id, Reason: reason);
 
             var result = await _summarizer.SummarizeAsync(request, cancellationToken);
 
-            session.Messages.Clear();
-            session.Messages.AddRange(result.TrimmedMessages);
+            // 锚定摘要：将本次摘要写回会话上下文，供下次压缩合并更新
+            session.SetContext(SummarizeRequest.LastSummaryContextKey, result.Summary);
+
+            // 摘要消息插入到被压缩部分之后、保留消息之前；标记 IsSummary 供 UI 特殊展示。
+            // 被压缩的旧消息不删除也不做标记：摘要消息的位置即压缩真相（摘要之前 = 已压缩历史，仍保留展示）
+            var summaryMessage = SessionMessage.AssistantMessage(result.Summary);
+            summaryMessage.IsSummary = true;
+            var insertIndex = activeStart + result.MessagesRemoved;
+            // 并发保护：摘要期间可能被追加消息或重复压缩，校验插入索引仍落在合法范围，越界则就近回退
+            if (insertIndex < 0) insertIndex = 0;
+            if (insertIndex > session.Messages.Count) insertIndex = session.Messages.Count;
+            session.Messages.Insert(insertIndex, summaryMessage);
+
             session.UpdatedAt = DateTime.Now;
             await _sessionManager.SaveAndNotifyAsync(session.Id, persist: true, cancellationToken);
 
-            _logger.LogInformation("压缩完成: {SessionId} 移除 {Count} 条", sessionId, messages.Count - result.TrimmedMessages.Count);
+            _logger.LogInformation("压缩完成: {SessionId} 移除 {Count} 条", sessionId, result.MessagesRemoved);
 
             return new CompressionOutcome
             {
                 Success = true,
                 TokensBefore = EstimateTokens(messages),
-                TokensAfter = EstimateTokens(result.TrimmedMessages) + result.SummaryTokenCount,
-                MessagesRemoved = messages.Count - result.TrimmedMessages.Count,
+                TokensAfter = EstimateTokens(result.ResultMessages),
+                MessagesRemoved = result.MessagesRemoved,
                 Summary = result.Summary,
                 Strategy = "LlmSummarizer"
             };

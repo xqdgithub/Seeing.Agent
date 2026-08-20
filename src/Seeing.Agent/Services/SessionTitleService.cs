@@ -154,7 +154,9 @@ namespace Seeing.Agent.Services
                     return null;
                 }
 
-                var realUserCount = CountIntentionalUserMessages(session.Messages);
+                // 标题生成基于活跃消息（已压缩的旧消息不参与标题决策与输入）
+                var activeMessages = session.GetActiveMessages();
+                var realUserCount = CountIntentionalUserMessages(activeMessages);
 
                 if (!ShouldEnsure(
                         options.Enabled,
@@ -241,51 +243,10 @@ namespace Seeing.Agent.Services
         /// 为标题补全构建会话上下文：保留全文语义，但去掉 tool 轨迹并合并连续同角色，避免 Provider 校验失败。
         /// </summary>
         internal static List<ChatMessage> BuildTitleHistory(SessionData session)
-        {
-            var history = new List<ChatMessage>();
-
-            foreach (var msg in session.Messages)
-            {
-                if (msg.Role.Equals(ChatRole.Tool, StringComparison.OrdinalIgnoreCase) ||
-                    msg.Role.Equals("tool", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                var content = ExtractTextContent(msg);
-                if (string.IsNullOrWhiteSpace(content))
-                    continue;
-
-                var role = string.IsNullOrWhiteSpace(msg.Role) ? ChatRole.User : msg.Role;
-                if (history.Count > 0 &&
-                    history[^1].Role.Equals(role, StringComparison.OrdinalIgnoreCase))
-                {
-                    history[^1].Content = $"{history[^1].Content}\n{content}";
-                    continue;
-                }
-
-                history.Add(new ChatMessage
-                {
-                    Role = role,
-                    Content = content
-                });
-            }
-
-            return history;
-        }
-
-        private static string ExtractTextContent(SessionMessage msg)
-        {
-            if (!string.IsNullOrWhiteSpace(msg.Content))
-                return msg.Content;
-
-            if (msg.Parts is { Count: > 0 })
-            {
-                var parts = msg.Parts
-                    .Where(p => !string.IsNullOrWhiteSpace(p.Text))
-                    .Select(p => p.Text!);
-                return string.Join("\n", parts);
-            }
-
-            return string.Empty;
-        }
+            => ChatMessageHistoryBuilder.BuildHistory(
+                session.GetActiveMessages(),
+                skipToolMessages: true,
+                skipEmptyContent: true,
+                mergeConsecutiveRoles: true);
     }
 }

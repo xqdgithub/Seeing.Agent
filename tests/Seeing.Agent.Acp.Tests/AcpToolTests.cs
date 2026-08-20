@@ -167,8 +167,6 @@ public sealed class FakeSessionManager : ISessionManager
     public Task<SessionData?> LoadAsync(string id) =>
         Task.FromResult(Get(id));
 
-    public IReadOnlyList<SessionMessage> Compress(string id) => Array.Empty<SessionMessage>();
-
     public Task AddMessageAsync(string sessionId, SessionMessage message, CancellationToken ct = default) =>
         Task.CompletedTask;
 

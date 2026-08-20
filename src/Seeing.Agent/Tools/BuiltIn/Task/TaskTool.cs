@@ -362,7 +362,12 @@ public class TaskTool : ToolBase
             agentContext.Metadata[AgentContextKeys.RequestModelId] = session.SelectedModel;
         }
 
-        var messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = prompt } };
+        // 续跑/多轮：子会话已有历史（含压缩摘要锚点）时加载，统一走 GetActiveMessages 契约，
+        // 避免子任务续跑上下文丢失；首次创建（空会话）仅传当前指令
+        var messages = session is { Messages.Count: > 0 }
+            ? ChatMessageHistoryBuilder.BuildHistory(session.GetActiveMessages())
+            : new List<ChatMessage>();
+        messages.Add(new ChatMessage { Role = ChatRole.User, Content = prompt });
 
         _loopScheduler.SetLoopBusy(sessionId, true);
         try

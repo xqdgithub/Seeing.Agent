@@ -102,9 +102,10 @@ public class TokenBudgetManager : ITokenBudgetManager
             breakdown.BySource.ToolDefinitions = toolTokens.Value;
         }
 
-        // Snapshot messages before estimating them. Session messages are updated by the
+        // Snapshot active messages before estimating them. Session messages are updated by the
         // execution/event pipeline while a budget update may be running.
-        foreach (var message in session.Messages.ToList())
+        // 仅估算活跃消息（传给 LLM 的量）：已压缩的旧消息不参与上下文，避免高估误触发压缩
+        foreach (var message in session.GetActiveMessages())
         {
             var messageTokens = EstimateMessageTokens(message);
 

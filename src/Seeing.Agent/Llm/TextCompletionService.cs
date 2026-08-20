@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
+using System.Runtime.CompilerServices;
 
 namespace Seeing.Agent.Llm;
 
@@ -71,5 +72,33 @@ public sealed class TextCompletionService : ITextCompletion
                 response.Message.ReasoningContent?.Length ?? 0);
         }
         return text;
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<StreamUpdate> StreamCompleteAsync(
+        string systemPrompt,
+        List<ChatMessage> messages,
+        string? model = null,
+        int? maxTokens = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var modelId = model ?? _options.CurrentValue.DefaultModel;
+        if (string.IsNullOrWhiteSpace(modelId))
+            throw new InvalidOperationException("No model configured for text completion (DefaultModel is empty).");
+
+        var request = new ChatRequest
+        {
+            Model = modelId,
+            SystemPrompt = systemPrompt,
+            Temperature = 0,
+            MaxTokens = maxTokens is > 0 ? maxTokens.Value : DefaultMaxTokens,
+            Messages = messages
+        };
+
+        // 透传完整增量（正文 + 推理内容），由调用方决定如何展示
+        await foreach (var update in _llm.CompleteRawStreamAsync(modelId, request, ct).ConfigureAwait(false))
+        {
+            yield return update;
+        }
     }
 }

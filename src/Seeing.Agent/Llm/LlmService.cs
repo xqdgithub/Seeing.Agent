@@ -36,6 +36,11 @@ public interface ILlmService
     /// </summary>
     Task<ChatResponse> CompleteRawAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 发送流式聊天请求（不触发 chat.* / llm.* Hook）。供摘要、标题生成等旁路流式补全使用。
+    /// </summary>
+    IAsyncEnumerable<StreamUpdate> CompleteRawStreamAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>发送流式聊天请求</summary>
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
 
@@ -108,6 +113,23 @@ public class LlmService : ILlmService
         var (client, apiModelId) = PrepareClientRequest(modelId, request);
         _logger.LogDebug("发送旁路聊天请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
         return await client.CompleteAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 旁路流式补全（无 Hook）：逐增量透传客户端流式响应。
+    /// </summary>
+    public async IAsyncEnumerable<StreamUpdate> CompleteRawStreamAsync(
+        string modelId,
+        ChatRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var (client, apiModelId) = PrepareClientRequest(modelId, request);
+        _logger.LogDebug("发送旁路流式请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
+
+        await foreach (var update in client.CompleteStreamAsync(request, cancellationToken).ConfigureAwait(false))
+        {
+            yield return update;
+        }
     }
 
     /// <summary>

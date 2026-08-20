@@ -279,6 +279,10 @@ namespace Seeing.Session.Core
         [JsonPropertyName("reply_to")]
         public string? ReplyTo { get; set; }
 
+        /// <summary>是否为压缩摘要消息（压缩产物，UI 特殊展示；摘要存在即"已压缩"的真相来源）</summary>
+        [JsonPropertyName("is_summary")]
+        public bool IsSummary { get; set; }
+
         /// <summary>额外元数据</summary>
         [JsonPropertyName("metadata")]
         public Dictionary<string, object>? Metadata { get; set; }
@@ -329,6 +333,7 @@ namespace Seeing.Session.Core
                         OutputTokens = TokenUsage.OutputTokens
                     },
                 ReplyTo = ReplyTo,
+                IsSummary = IsSummary,
                 Metadata = Metadata == null ? null : new Dictionary<string, object>(Metadata)
             };
         }

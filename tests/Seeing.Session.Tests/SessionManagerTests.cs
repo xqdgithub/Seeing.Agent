@@ -418,68 +418,6 @@ namespace Seeing.Session.Tests
             result.Should().BeNull();
         }
 
-        // === Compress 测试 ===
-
-        [Fact]
-        public void Compress_ShouldReturnOriginalMessagesWithoutModifying()
-        {
-            // Arrange
-            var session = _sessionManager.Create();
-            session.AddMessage(SessionMessage.SystemMessage("System prompt"));
-            session.AddMessage(SessionMessage.UserMessage("Hello"));
-            session.AddMessage(SessionMessage.AssistantMessage("Response"));
-
-            // Act
-            var result = _sessionManager.Compress(session.Id);
-
-            // Assert - 压缩已移交主库，原样返回且不修改消息
-            result.Should().HaveCount(3);
-            session.Messages.Should().HaveCount(3);
-            session.Messages[1].Content.Should().Be("Hello");
-        }
-
-        [Fact]
-        public void Compress_ShouldNotUpdateSessionMessages()
-        {
-            // Arrange
-            var session = _sessionManager.Create();
-            session.AddMessage(SessionMessage.SystemMessage("System"));
-            for (int i = 0; i < 30; i++)
-            {
-                session.AddMessage(SessionMessage.UserMessage($"Message {i}"));
-            }
-
-            // Act
-            _sessionManager.Compress(session.Id);
-
-            // Assert - 压缩不再修改会话消息
-            session.Messages.Should().HaveCount(31);
-            session.Messages[0].Role.Should().Be(MessageRole.System);
-        }
-
-        [Fact]
-        public void Compress_WithInvalidId_ShouldReturnEmpty()
-        {
-            // Act
-            var result = _sessionManager.Compress("invalid-id");
-
-            // Assert
-            result.Should().BeEmpty();
-        }
-
-        [Fact]
-        public void Compress_WhenSessionHasNoMessages_ShouldReturnEmpty()
-        {
-            // Arrange
-            var session = _sessionManager.Create();
-
-            // Act
-            var result = _sessionManager.Compress(session.Id);
-
-            // Assert
-            result.Should().BeEmpty();
-        }
-
         [Fact]
         public void SessionManager_WithNullDependencies_ShouldWorkForBasicOperations()
         {

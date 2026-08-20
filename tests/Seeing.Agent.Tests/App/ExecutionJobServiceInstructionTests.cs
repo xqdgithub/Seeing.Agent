@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -135,7 +135,7 @@ public class ExecutionJobServiceInstructionTests
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(
                 monitor => monitor.CurrentValue == new SeeingAgentOptions()),
             NullLogger<ExecutionJobService>.Instance,
-            new CompressionService(null!, Mock.Of<ISessionManager>(), new CompressionOptions()));
+            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>()));
 
         return new Fixture(service, provider);
     }

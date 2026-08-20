@@ -58,12 +58,25 @@ public sealed class MessageTimelineStore
         var loopIndex = 0;
         Dictionary<string, TimelineItem>? assistantByKey = null;
 
-        foreach (var msg in deduped)
+        // 压缩真相 = 摘要消息位置：最后一个摘要之前的消息均为已压缩历史（折叠展示）
+        var lastSummaryIndex = -1;
+        for (var i = deduped.Count - 1; i >= 0; i--)
         {
+            if (deduped[i].IsSummary)
+            {
+                lastSummaryIndex = i;
+                break;
+            }
+        }
+
+        for (var i = 0; i < deduped.Count; i++)
+        {
+            var msg = deduped[i];
             if (string.Equals(msg.Role, "tool", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
+            vm.IsCompacted = lastSummaryIndex >= 0 && i < lastSummaryIndex;
             var kind = ResolveKind(vm);
 
             if (kind == TimelineItemKind.AssistantTurn)
@@ -325,11 +338,25 @@ public sealed class MessageTimelineStore
     /// </summary>
     public void ReconcileAppendFromSession(IEnumerable<SessionMessage> messages, string sessionId)
     {
+        var materialized = messages.ToList();
+        // 增量路径同样按摘要位置推导折叠态：压缩后未全量重置时，已展示的摘要前消息需转为折叠展示
+        var lastSummaryIndex = -1;
+        for (var i = materialized.Count - 1; i >= 0; i--)
+        {
+            if (materialized[i].IsSummary)
+            {
+                lastSummaryIndex = i;
+                break;
+            }
+        }
+
         var knownIds = CollectKnownMessageIds();
         var added = false;
+        var indexInSession = -1;
 
-        foreach (var msg in messages)
+        foreach (var msg in materialized)
         {
+            indexInSession++;
             if (string.Equals(msg.Role, "tool", StringComparison.OrdinalIgnoreCase))
                 continue;
 
@@ -339,10 +366,23 @@ public sealed class MessageTimelineStore
                 msg.Id = Guid.NewGuid().ToString("N")[..12];
 
             var id = msg.Id!;
+            var isCompacted = lastSummaryIndex >= 0 && indexInSession < lastSummaryIndex;
+
             if (knownIds.Contains(id))
+            {
+                // 已知消息：压缩发生（摘要出现/移动）时同步更新折叠态
+                var existing = FindItemForMessageId(id);
+                if (existing?.Message != null && existing.Message.IsCompacted != isCompacted)
+                {
+                    existing.Message.IsCompacted = isCompacted;
+                    existing.Touch();
+                    added = true;
+                }
                 continue;
+            }
 
             var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
+            vm.IsCompacted = isCompacted;
             var kind = ResolveKind(vm);
 
             if (kind == TimelineItemKind.AssistantTurn)
@@ -368,6 +408,27 @@ public sealed class MessageTimelineStore
             RefreshTailHint();
             RaiseChanged();
         }
+    }
+
+    /// <summary>
+    /// 在时间线中按消息 Id 查找对应的展示项（含 Loop 组内的消息）。
+    /// </summary>
+    private TimelineItem? FindItemForMessageId(string id)
+    {
+        foreach (var item in _items)
+        {
+            if (string.Equals(item.Message?.Id, id, StringComparison.Ordinal))
+                return item;
+
+            if (item.Turn?.Messages == null)
+                continue;
+            foreach (var m in item.Turn.Messages)
+            {
+                if (string.Equals(m.Id, id, StringComparison.Ordinal))
+                    return item;
+            }
+        }
+        return null;
     }
 
     private void RefreshTailHint()

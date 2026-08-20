@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
@@ -139,7 +139,7 @@ public class ChatOrchestratorCreateSessionTests
             seeingAgentOptions: Mock.Of<Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions>>(
                 m => m.CurrentValue == new SeeingAgentOptions()),
             logger: NullLogger<ExecutionJobService>.Instance,
-            compressionService: new CompressionService(null!, Mock.Of<ISessionManager>(), new CompressionOptions()));
+            compactionRunner: new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>()));
 
         return new ChatOrchestrator(
             executionJobService: executionJobService,

@@ -78,6 +78,38 @@ namespace Seeing.Session.Core
         // === 消息历史 ===
         public List<SessionMessage> Messages { get; set; } = new();
 
+        /// <summary>
+        /// 获取活跃消息列表：应传递给 LLM 的统一消息来源。
+        /// <para>以最后一个摘要消息（<see cref="SessionMessage.IsSummary"/>）为唯一压缩真相：
+        /// 摘要及其之后均为活跃（压缩结果即真实状态），摘要之前均为已压缩历史。
+        /// 无需额外标记——位置约束天然可靠，不受分支共享、旧数据缺失标记等影响。</para>
+        /// <para>无摘要时（未压缩过或摘要被移除）返回全部消息。</para>
+        /// <para>完整历史（含已压缩部分）仍通过 <see cref="Messages"/> 展示。</para>
+        /// </summary>
+        public List<SessionMessage> GetActiveMessages()
+        {
+            // 先做快照（List 拷贝走 CopyTo 快速路径，无版本检查）：并发追加消息（事件管道）时不抛异常，
+            // 与 TokenBudget 估算并发执行的场景一致
+            var snapshot = new List<SessionMessage>(Messages);
+
+            var lastSummaryIndex = -1;
+            for (var i = snapshot.Count - 1; i >= 0; i--)
+            {
+                if (snapshot[i].IsSummary)
+                {
+                    lastSummaryIndex = i;
+                    break;
+                }
+            }
+
+            if (lastSummaryIndex < 0)
+            {
+                return snapshot;
+            }
+
+            return snapshot.Skip(lastSummaryIndex).ToList();
+        }
+
         // === 扩展上下文（用于存储其他运行时数据） ===
         public Dictionary<string, object> Context { get; set; } = new();
 
