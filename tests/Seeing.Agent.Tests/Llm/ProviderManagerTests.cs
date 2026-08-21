@@ -24,7 +24,7 @@ public class ProviderManagerTests : IDisposable
         Path.Combine(Path.GetTempPath(), "provider-manager-" + Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public async Task ConfigChanged_ApiKeyChange_RecreatesConfiguredProvider()
+    public async Task ProviderReloadHandler_配置变更触发刷新()
     {
         var providers = new Dictionary<string, ProviderConfig>
         {
@@ -44,12 +44,20 @@ public class ProviderManagerTests : IDisposable
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             NullLogger<ProviderManager>.Instance);
+        var handler = new ProviderReloadHandler(sut);
 
         _ = sut.GetClient("provider");
-        await sut.SaveProviderAsync(
-            "provider",
-            PredefinedProviders.OpenAI("sk-changed"),
-            ct: TestContext.Current.CancellationToken);
+        await configManager.SaveSectionAsync(
+            "Providers",
+            new Dictionary<string, ProviderConfig>
+            {
+                ["provider"] = PredefinedProviders.OpenAI("sk-changed")
+            },
+            ConfigLevel.User,
+            TestContext.Current.CancellationToken);
+        await handler.ReloadAsync(
+            new ConfigChange { ChangedSections = new[] { "Providers" } },
+            TestContext.Current.CancellationToken);
 
         sut.GetClient("provider").Should().BeSameAs(secondClient);
         factory.Verify(candidate => candidate.Create(It.IsAny<ProviderConfig>()), Times.Exactly(2));

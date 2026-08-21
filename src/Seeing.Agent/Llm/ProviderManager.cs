@@ -35,9 +35,6 @@ public class ProviderManager : IProviderManager, IDisposable
         _registry = registry;
         _logger = logger;
 
-        // 监听配置变更
-        _configManager.ConfigChanged += OnConfigChanged;
-
         RegisterConfiguredProviders();
         _registry.ProvidersChanged += OnProvidersChanged;
 
@@ -208,19 +205,6 @@ public class ProviderManager : IProviderManager, IDisposable
 
     #region 私有方法
 
-    /// <summary>配置变更处理</summary>
-    private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
-    {
-        var needsRefresh = e.ChangedSections.Length == 0 ||
-                           e.ChangedSections.Contains("Providers");
-
-        if (needsRefresh)
-        {
-            _logger.LogDebug("配置变更，重建配置驱动 Provider: {Sections}", string.Join(", ", e.ChangedSections));
-            RefreshConfiguredProviders();
-        }
-    }
-
     private void OnProvidersChanged(object? sender, ProvidersChangedEventArgs e)
     {
         foreach (var providerId in _configuredProviderConfigs.Keys.ToArray())
@@ -245,7 +229,7 @@ public class ProviderManager : IProviderManager, IDisposable
             RegisterConfiguredProvider(providerId, providerConfig);
     }
 
-    private void RefreshConfiguredProviders()
+    internal void RefreshConfiguredProviders()
     {
         var currentProviders = ConfiguredProviders;
         foreach (var providerId in _configuredProviders.Keys.Except(currentProviders.Keys).ToArray())
@@ -399,7 +383,6 @@ public class ProviderManager : IProviderManager, IDisposable
 
     public void Dispose()
     {
-        _configManager.ConfigChanged -= OnConfigChanged;
         _registry.ProvidersChanged -= OnProvidersChanged;
     }
 }
