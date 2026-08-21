@@ -213,7 +213,12 @@ public static async Task<string> GetWeather(
 dotnet build Seeing.Agent.slnx
 
 # 测试
-dotnet test tests/Seeing.Agent.Tests
+# 注意：测试项目启用了 UseMicrosoftTestingPlatformRunner（MTP），但 MTP 在此环境下
+# 无法发现测试（"Zero tests ran"）。一律改用 VSTest 直接运行已构建的程序集：
+dotnet build tests/Seeing.Agent.Tests
+dotnet vstest tests/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll
+# 指定测试类（VSTest 过滤语法）：
+dotnet vstest tests/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll --TestCaseFilter:"FullyQualifiedName~AgentModeFilterTests"
 dotnet test tests/Seeing.Session.Tests
 
 # 打包 NuGet
