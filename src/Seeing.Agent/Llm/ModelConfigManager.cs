@@ -509,6 +509,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         await _configManager
             .SaveSectionAsync("Providers", providers, ModelStoreLevel, ct)
             .ConfigureAwait(false);
+
+        // 自订阅已迁移为 ReloadHandler，保存后需显式入队刷新模型目录
+        EnqueueRefresh("configuration");
         return true;
     }
 
