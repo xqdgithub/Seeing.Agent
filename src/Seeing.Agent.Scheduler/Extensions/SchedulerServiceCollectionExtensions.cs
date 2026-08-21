@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Quartz;
@@ -49,6 +50,9 @@ public static class SchedulerServiceCollectionExtensions
         // 配置提供者（需要在 Quartz 配置之前注册）
         services.AddSingleton<SchedulerOptionsProvider>();
         services.AddSingleton<ISchedulerOptionsProvider>(sp => sp.GetRequiredService<SchedulerOptionsProvider>());
+
+        // 配置重载处理器（依赖 SchedulerOptionsProvider，必须在其后注册）
+        services.AddSingleton<IReloadHandler, SchedulerReloadHandler>();
 
         // 持久化
         services.AddSingleton<IScheduleRepository, JsonScheduleRepository>();
@@ -118,6 +122,9 @@ public static class SchedulerServiceCollectionExtensions
             return provider;
         });
         services.AddSingleton<ISchedulerOptionsProvider>(sp => sp.GetRequiredService<SchedulerOptionsProvider>());
+
+        // 配置重载处理器（依赖 SchedulerOptionsProvider，必须在其后注册）
+        services.AddSingleton<IReloadHandler, SchedulerReloadHandler>();
 
         // 持久化
         services.AddSingleton<IScheduleRepository, JsonScheduleRepository>();
