@@ -8,13 +8,12 @@ namespace Seeing.Agent.Gateway.Channels;
 
 /// <summary>
 /// 在宿主启动后自动启动已启用的 ChannelHost，宿主停止时优雅关闭所有 ChannelHost。
-/// 监听 <see cref="IConfigSectionStore.ConfigChanged"/> 实现热重载：启用/禁用 Channel 时自动启停对应进程。
+/// 配置热重载（启用/禁用 Channel 时自动启停对应进程）由 <see cref="ChannelHostReloadHandler"/> 协调。
 /// </summary>
-public sealed class ChannelHostHostedService : IHostedService, IDisposable
+public sealed class ChannelHostHostedService : IHostedService
 {
     private readonly ChannelHostManager _manager;
     private readonly ChannelHostConfigStore _configStore;
-    private readonly IConfigSectionStore _configSectionStore;
     private readonly IGatewayServer _gatewayServer;
     private readonly GatewayOptions _gatewayOptions;
     private readonly IHostApplicationLifetime _lifetime;
@@ -23,7 +22,6 @@ public sealed class ChannelHostHostedService : IHostedService, IDisposable
     public ChannelHostHostedService(
         ChannelHostManager manager,
         ChannelHostConfigStore configStore,
-        IConfigSectionStore configSectionStore,
         IGatewayServer gatewayServer,
         IOptions<GatewayOptions> gatewayOptions,
         IHostApplicationLifetime lifetime,
@@ -31,7 +29,6 @@ public sealed class ChannelHostHostedService : IHostedService, IDisposable
     {
         _manager = manager;
         _configStore = configStore;
-        _configSectionStore = configSectionStore;
         _gatewayServer = gatewayServer;
         _gatewayOptions = gatewayOptions.Value;
         _lifetime = lifetime;
@@ -40,8 +37,6 @@ public sealed class ChannelHostHostedService : IHostedService, IDisposable
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _configSectionStore.ConfigChanged += OnConfigChanged;
-
         _lifetime.ApplicationStarted.Register(() =>
         {
             _ = StartEnabledAsync();
@@ -62,20 +57,7 @@ public sealed class ChannelHostHostedService : IHostedService, IDisposable
         }
     }
 
-    public void Dispose()
-    {
-        _configSectionStore.ConfigChanged -= OnConfigChanged;
-    }
-
-    private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
-    {
-        if (e.ContainsSection("GatewayClients") || e.ContainsSection("Gateway"))
-        {
-            _ = ReconcileAsync();
-        }
-    }
-
-    private async Task ReconcileAsync()
+    internal async Task ReconcileAsync()
     {
         try
         {

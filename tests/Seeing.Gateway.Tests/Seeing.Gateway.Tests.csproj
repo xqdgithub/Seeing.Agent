@@ -22,10 +22,12 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Moq" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Seeing.Gateway\Seeing.Gateway.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />
   </ItemGroup>
 
 </Project>
