@@ -74,9 +74,6 @@ namespace Seeing.Agent.Core
             _modelManager = modelManager;
             _providerRegistry = providerRegistry;
             _llmService = llmService;
-
-            // 订阅配置热重载事件
-            _configStore.ConfigChanged += OnConfigChanged;
         }
 
         /// <inheritdoc/>
@@ -101,30 +98,10 @@ namespace Seeing.Agent.Core
         }
 
         /// <summary>
-        /// UnifiedConfigManager 配置变更处理
+        /// 重新应用 AgentModels 模型绑定（由 <see cref="AgentRuntimeReloadHandler"/> 经编排器触发；
+        /// 全量重载（空节）与 AgentModels 变更均走此路径）
         /// </summary>
-        private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
-        {
-            if (e.ChangedSections.Length == 0)
-                return;
-
-            // 关注 DefaultAgent 和 AgentModels 变更
-            foreach (var section in e.ChangedSections)
-            {
-                if (section is "DefaultAgent")
-                {
-                    _logger.LogInformation("[AgentRuntimeManager] 默认 Agent 已变更: {Agent}",
-                        _optionsMonitor.CurrentValue.DefaultAgent);
-                }
-                else if (section is "AgentModels")
-                {
-                    _logger.LogInformation("[AgentRuntimeManager] AgentModels 已更新，重新应用模型配置");
-                    _ = ApplyAgentModelsAsync();
-                }
-            }
-        }
-
-        private async Task ApplyAgentModelsAsync()
+        internal async Task ApplyAgentModelsAsync()
         {
             var options = _optionsMonitor.CurrentValue;
             if (options.AgentModels is not { Count: > 0 }) return;
