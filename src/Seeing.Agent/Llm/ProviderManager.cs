@@ -162,6 +162,9 @@ public class ProviderManager : IProviderManager, IDisposable
             .ConfigureAwait(false);
         await _configManager.ReloadAsync(ct).ConfigureAwait(false);
 
+        // 自订阅已迁移为 ReloadHandler，保存后需显式刷新配置驱动 Provider
+        RefreshConfiguredProviders();
+
         _logger.LogInformation("已保存 Provider 配置: {ProviderId} (User)", providerId);
     }
 
@@ -197,6 +200,9 @@ public class ProviderManager : IProviderManager, IDisposable
         await _configManager.SaveSectionAsync("Providers", providersAtLevel, ConfigLevel.User, ct)
             .ConfigureAwait(false);
         await _configManager.ReloadAsync(ct).ConfigureAwait(false);
+
+        // 自订阅已迁移为 ReloadHandler，删除后需显式刷新配置驱动 Provider
+        RefreshConfiguredProviders();
 
         _logger.LogInformation("已删除 Provider 配置: {ProviderId} (User)", providerId);
     }
