@@ -30,9 +30,6 @@ public sealed class SchedulerOptionsProvider : ISchedulerOptionsProvider
     {
         _configManager = configManager;
         _logger = logger;
-        
-        // 订阅配置变更
-        _configManager.ConfigChanged += OnConfigChanged;
     }
 
     /// <summary>当前配置</summary>
@@ -51,13 +48,5 @@ public sealed class SchedulerOptionsProvider : ISchedulerOptionsProvider
     {
         await _configManager.SaveSectionAsync("Scheduler", options, ConfigLevel.Project, ct);
         Reload();
-    }
-
-    private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
-    {
-        if (e.ContainsSection("Scheduler"))
-        {
-            Reload();
-        }
     }
 }
