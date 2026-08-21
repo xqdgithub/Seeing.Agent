@@ -9,8 +9,9 @@ namespace Seeing.Agent.Memory.Configuration;
 
 /// <summary>
 /// 从 <see cref="IConfigSectionStore"/> 提供 <see cref="MemoryOptions"/>（IOptions / IOptionsMonitor）。
+/// <para>配置变更重载由 <see cref="MemoryReloadHandler"/> 负责，本类不再订阅 <see cref="IConfigSectionStore"/>。</para>
 /// </summary>
-public sealed class MemoryOptionsProvider : IOptionsMonitor<MemoryOptions>, IMemoryOptionsStore, IDisposable
+public sealed class MemoryOptionsProvider : IOptionsMonitor<MemoryOptions>, IMemoryOptionsStore
 {
     private readonly IConfigSectionStore _store;
     private readonly ILogger<MemoryOptionsProvider>? _logger;
@@ -24,7 +25,6 @@ public sealed class MemoryOptionsProvider : IOptionsMonitor<MemoryOptions>, IMem
         _store = store;
         _logger = logger;
         Reload();
-        _store.ConfigChanged += OnConfigChanged;
     }
 
     public MemoryOptions CurrentValue => _current;
@@ -52,17 +52,6 @@ public sealed class MemoryOptionsProvider : IOptionsMonitor<MemoryOptions>, IMem
             _current.Enabled,
             _current.IsEmbeddingConfigured);
         _listeners?.Invoke(_current, Options.DefaultName);
-    }
-
-    private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
-    {
-        if (e.ContainsSection(ConfigSectionMemoryOptionsStore.SectionName))
-            Reload();
-    }
-
-    public void Dispose()
-    {
-        _store.ConfigChanged -= OnConfigChanged;
     }
 
     private sealed class ChangeSubscription(Action unsubscribe) : IDisposable
