@@ -16,7 +16,9 @@ public static class ChannelHostServiceExtensions
     {
         services.AddSingleton<ChannelHostConfigStore>();
         services.AddSingleton<ChannelHostManager>();
-        services.AddHostedService<ChannelHostHostedService>();
+        // 同时注册具体类，供 ChannelHostReloadHandler 注入；HostedService 复用同一实例
+        services.AddSingleton<ChannelHostHostedService>();
+        services.AddHostedService(sp => sp.GetRequiredService<ChannelHostHostedService>());
 
         // 配置重载处理器（依赖 ChannelHostHostedService，必须在其后注册）
         services.AddSingleton<IReloadHandler, ChannelHostReloadHandler>();
