@@ -35,7 +35,7 @@ namespace Seeing.Session.Storage
             _baseDirectory = baseDirectory ?? GetDefaultSessionDirectory();
             _jsonOptions = new JsonSerializerOptions
             {
-WriteIndented = true,
+                WriteIndented = true,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true
             };

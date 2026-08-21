@@ -16,14 +16,10 @@ public sealed class AgentRuntimeReloadHandler : ReloadHandlerBase<ConfigChange>
     protected override async Task ReloadAsync(ConfigChange change, CancellationToken ct)
     {
         // 全量重载（ChangedSections 为空）或涉及 AgentModels 时重新应用模型绑定
+        // 默认 Agent（DefaultAgent 节）经 IOptionsMonitor 实时读取，无需重载动作
         if (change.ChangedSections.Count == 0 || change.ChangedSections.Contains("AgentModels"))
         {
             await _manager.ApplyAgentModelsAsync();
-        }
-
-        // 默认 Agent 变更（原日志行为保留）
-        if (change.ChangedSections.Count > 0 && change.ChangedSections.Contains("DefaultAgent"))
-        {
         }
     }
 }
