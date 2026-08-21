@@ -98,6 +98,14 @@ namespace Seeing.Agent.Configuration
         }
 
         /// <summary>
+        /// 重新发现并应用 Agent MD 配置（工作区切换后调用）
+        /// </summary>
+        public async Task ReloadMdOverridesAsync(CancellationToken ct = default)
+        {
+            await ApplyMdOverridesAsync();
+        }
+
+        /// <summary>
         /// 加载所有 MD 配置并应用到 AgentStore
         /// </summary>
         private async Task ApplyMdOverridesAsync()
