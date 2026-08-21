@@ -35,22 +35,23 @@ namespace Seeing.Agent.Tests.Tools
 
             var schemas = invoker.GetToolSchemasForMode(AgentMode.Primary);
 
-            schemas.Should().HaveCount(10);
+            schemas.Should().HaveCount(11);
             var ids = schemas.Select(s => s.Function.Name).ToList();
-            ids.Should().Contain(new[] { "write", "edit", "bash", "question", "plan_enter", "read", "grep", "glob", "webfetch", "websearch" });
+            ids.Should().Contain(new[] { "write", "edit", "bash", "question", "plan_enter", "read", "grep", "glob", "webfetch", "websearch", "task" });
         }
 
         [Fact]
-        public void SubAgentMode_ShouldOnlyIncludeSubAgentTools()
+        public void SubAgentMode_ShouldIncludeAllToolsExceptTask()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(PrimaryTools));
 
             var subSchemas = invoker.GetToolSchemasForMode(AgentMode.SubAgent);
-            subSchemas.Should().HaveCount(5);
+            subSchemas.Should().HaveCount(10);
             var ids = subSchemas.Select(s => s.Function.Name).ToList();
             ids.Should().Contain(new[] { "read", "grep", "glob", "webfetch", "websearch" });
-            ids.Should().NotContain(new[] { "write", "edit", "bash", "question", "plan_enter" });
+            ids.Should().Contain(new[] { "write", "edit", "bash", "question", "plan_enter" });
+            ids.Should().NotContain("task");
         }
 
         [Fact]
@@ -60,7 +61,7 @@ namespace Seeing.Agent.Tests.Tools
             invoker.RegisterToolsFromType(typeof(PrimaryTools));
 
             var allSchemas = invoker.GetToolSchemasForMode(AgentMode.All);
-            allSchemas.Should().HaveCount(10);
+            allSchemas.Should().HaveCount(11);
         }
 
         [Fact]
@@ -97,5 +98,7 @@ namespace Seeing.Agent.Tests.Tools
         public static string WebFetch(string s) => s;
         [Tool("WebSearch tool", Name = "websearch")]
         public static string WebSearch(string s) => s;
+        [Tool("Task tool", Name = "task")]
+        public static int Task(int v) => v;
     }
 }

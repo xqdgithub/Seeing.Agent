@@ -334,9 +334,9 @@ namespace Seeing.Agent.Core.BuiltInAgents
                     PermissionRuleEntry.Deny(PermissionKind.Tool, "edit", 100),
                     PermissionRuleEntry.Deny(PermissionKind.Tool, "write", 100),
                     PermissionRuleEntry.Deny(PermissionKind.Tool, "bash", 100),
-                    // 禁用任务和 todo
+                    // 允许 todo 管理（禁用嵌套委派任务）
+                    PermissionRuleEntry.Allow(PermissionKind.Tool, "todowrite", 0),
                     PermissionRuleEntry.Deny(PermissionKind.Tool, "task", 100),
-                    PermissionRuleEntry.Deny(PermissionKind.Tool, "todowrite", 100),
                     // 禁用 MCP 工具
                     PermissionRuleEntry.Deny(PermissionKind.McpTool, "*", 100),
                 },

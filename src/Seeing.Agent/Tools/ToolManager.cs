@@ -67,7 +67,13 @@ namespace Seeing.Agent.Tools
             "memory_search", "memory_write", "memory_read"
         }, System.StringComparer.OrdinalIgnoreCase);
 
-        // SubAgent specific tools
+        // SubAgent 仅禁用嵌套委派工具
+        private static readonly HashSet<string> SubAgentExcludedTools = new HashSet<string>(new[]
+        {
+            "task"
+        }, System.StringComparer.OrdinalIgnoreCase);
+
+        // Primary 模式下的固定工具集（历史行为保留）
         private static readonly HashSet<string> SubAgentTools = new HashSet<string>(new[]
         {
             "read", "grep", "glob", "webfetch", "websearch"
@@ -85,7 +91,10 @@ namespace Seeing.Agent.Tools
             HashSet<string> allowed = mode switch
             {
                 AgentMode.Primary => new HashSet<string>(PrimaryTools.Union(SubAgentTools), StringComparer.OrdinalIgnoreCase),
-                AgentMode.SubAgent => new HashSet<string>(SubAgentTools, StringComparer.OrdinalIgnoreCase),
+                AgentMode.SubAgent => new HashSet<string>(
+                    allSchemas.Select(s => s.Function.Name)
+                        .Where(n => !SubAgentExcludedTools.Contains(n)),
+                    StringComparer.OrdinalIgnoreCase),
                 AgentMode.All => new HashSet<string>(allSchemas.Select(s => s.Function.Name), StringComparer.OrdinalIgnoreCase),
                 _ => new HashSet<string>(PrimaryTools.Union(SubAgentTools), StringComparer.OrdinalIgnoreCase)
             };

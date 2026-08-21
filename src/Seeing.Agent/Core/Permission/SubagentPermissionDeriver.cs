@@ -56,18 +56,7 @@ public static class SubagentPermissionDeriver
                 result.Add(Clone(rule));
         }
 
-        // 3–4. 默认 deny todowrite / task（子未显式 Allow 时）
-        if (!AllowsTool(subagent, "todowrite"))
-        {
-            result.Add(new SessionPermissionRule
-            {
-                Kind = nameof(PermissionKind.Tool),
-                Pattern = "todowrite",
-                Effect = nameof(PermissionEffect.Deny),
-                Priority = 100
-            });
-        }
-
+        // 3. 默认 deny task（子未显式 Allow 时，防止嵌套委派子代理）
         if (!AllowsTool(subagent, "task"))
         {
             result.Add(new SessionPermissionRule

@@ -33,7 +33,7 @@ public class SubagentPermissionDeriverTests
         snap.Should().Contain(r => r.Pattern == "edit" && r.Effect == "Deny");
         snap.Should().Contain(r => r.Pattern == "write" && r.Effect == "Deny");
         snap.Should().Contain(r => r.Pattern == "task" && r.Effect == "Deny");
-        snap.Should().Contain(r => r.Pattern == "todowrite" && r.Effect == "Deny");
+        snap.Should().NotContain(r => r.Pattern == "todowrite" && r.Effect == "Deny");
     }
 
     [Fact]
