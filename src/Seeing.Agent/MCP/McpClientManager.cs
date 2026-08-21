@@ -708,9 +708,11 @@ namespace Seeing.Agent.MCP
 
         public async Task InitializeAsync(IReadOnlyDictionary<string, McpServerConfig> configs, CancellationToken cancellationToken = default)
         {
-            // 使用 Interlocked.CompareExchange 确保原子性
+            // 使用 Interlocked.CompareExchange 确保原子性；已初始化时先重置，支持工作区切换后重新初始化
             if (Interlocked.CompareExchange(ref _initialized, true, false))
-                return;
+            {
+                await ResetAllAsync(cancellationToken);
+            }
 
             var beforeInput = new Dictionary<string, object?> { ["configCount"] = configs.Count };
             await _hookManager.TriggerBlockingAsync(HookRegistry.McpBeforeInitialize, "", beforeInput, null, cancellationToken);
@@ -745,6 +747,39 @@ namespace Seeing.Agent.MCP
             _reconnector.Start(_shutdownCts.Token);
 
             _logger.LogInformation("MCP Manager 已初始化，共 {Count} 个服务器配置", configs.Count);
+        }
+
+        /// <summary>
+        /// 重置全部 MCP 状态并断开所有连接（供重新初始化前调用）
+        /// </summary>
+        public async Task ResetAllAsync(CancellationToken cancellationToken = default)
+        {
+            _reconnector.Stop();
+
+            foreach (var name in _coordinators.Keys.ToList())
+            {
+                try
+                {
+                    if (_coordinators.TryGetValue(name, out var coordinator))
+                        await coordinator.DisconnectAsync(cancellationToken);
+                    await _toolRegistry.UnregisterAllToolsAsync(name);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "重置 MCP Server {Name} 失败", name);
+                }
+            }
+
+            lock (_stateLock)
+            {
+                _coordinators.Clear();
+                _configs.Clear();
+                _statuses.Clear();
+            }
+
+            _processMonitor.Stop();
+            _reconnector.Start(_shutdownCts.Token);
+            _logger.LogInformation("MCP 状态已重置");
         }
 
         public async Task ShutdownAsync(CancellationToken cancellationToken = default)
