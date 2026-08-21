@@ -721,6 +721,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<IReloadHandler, AgentRuntimeReloadHandler>();
             services.AddSingleton<IReloadHandler, AgentManagerReloadHandler>();
             services.AddSingleton<IReloadHandler, SessionReloadHandler>();
+            services.AddSingleton<IReloadHandler>(sp => sp.GetRequiredService<ComponentManager>());
         }
 
         /// <summary>
