@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -36,6 +37,7 @@ public static class AcpServiceCollectionExtensions
     {
         services.AddSingleton<IAcpBackendRegistry, AcpBackendRegistry>();
         services.AddSingleton<IAcpConfigurationReloader, AcpConfigurationReloader>();
+        services.AddSingleton<IReloadHandler, AcpReloadHandler>();
         services.AddSingleton<AcpPermissionBridge>();
         services.AddSingleton<AcpFileSystemBridge>();
         services.AddSingleton<AcpTerminalBridge>();
