@@ -602,6 +602,8 @@ namespace Seeing.Agent.Extensions
             // 插件推送与动态注册入口：均指向编排器，扩展包只引用 Abstractions 接口
             services.AddSingleton<IReloadSignalBus>(sp => sp.GetRequiredService<ReloadOrchestrator>());
             services.AddSingleton<IReloadHandlerRegistry>(sp => sp.GetRequiredService<ReloadOrchestrator>());
+            // 宿主启动时构造编排器（惰性单例需显式解析，否则不订阅变更事件）
+            services.AddHostedService<ReloadOrchestratorStarter>();
 
             // 5.2 Todo 存储（端口-适配器：基于 Session Context 的默认实现）
             services.AddSingleton<ITodoStore, SessionContextTodoStore>();
@@ -679,7 +681,9 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ICommandRegistry, CommandRegistry>();
 
             // 组件管理器（统一管理 Skills/MCP/Plugins/Rules）
-            services.AddSingleton<IComponentManager, ComponentManager>();
+            // 同时注册具体类，供 ReloadHandler 注入；接口复用同一实例
+            services.AddSingleton<ComponentManager>();
+            services.AddSingleton<IComponentManager>(sp => sp.GetRequiredService<ComponentManager>());
         }
 
         /// <summary>

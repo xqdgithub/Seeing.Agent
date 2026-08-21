@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 
@@ -263,5 +264,24 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
         _configStore.ConfigChanged -= OnConfigChanged;
         _workspace.WorkspaceRootChanged -= OnWorkspaceChanged;
         _gate.Dispose();
+    }
+}
+
+/// <summary>
+/// 触发编排器构造的宿主服务：ReloadOrchestrator 为惰性单例，
+/// 需在宿主启动时显式解析一次，使其订阅配置/工作区变更事件
+/// </summary>
+internal sealed class ReloadOrchestratorStarter : IHostedService
+{
+    private readonly ReloadOrchestrator _orchestrator;
+
+    public ReloadOrchestratorStarter(ReloadOrchestrator orchestrator) => _orchestrator = orchestrator;
+
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        _orchestrator.Dispose();
+        return Task.CompletedTask;
     }
 }
