@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Abstractions.Configuration;
 
 namespace Seeing.Agent.Gateway.Channels;
 
@@ -16,6 +17,9 @@ public static class ChannelHostServiceExtensions
         services.AddSingleton<ChannelHostConfigStore>();
         services.AddSingleton<ChannelHostManager>();
         services.AddHostedService<ChannelHostHostedService>();
+
+        // 配置重载处理器（依赖 ChannelHostHostedService，必须在其后注册）
+        services.AddSingleton<IReloadHandler, ChannelHostReloadHandler>();
         return services;
     }
 }
