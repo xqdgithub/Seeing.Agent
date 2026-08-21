@@ -100,6 +100,9 @@ namespace Seeing.Agent.Extensions
 
             RegisterLlmServices(services);
 
+            // 统一重载 Handler 注册（依赖各 Manager，须在各 Manager 注册之后）
+            RegisterReloadHandlers(services);
+
             // 配置 LLM 专用的 HttpClient，解决 SSL 连接池陈旧连接问题
             services.AddHttpClient("LlmClient")
                 .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
@@ -144,6 +147,9 @@ namespace Seeing.Agent.Extensions
             RegisterCoreServices(services);
 
             RegisterLlmServices(services);
+
+            // 统一重载 Handler 注册（依赖各 Manager，须在各 Manager 注册之后）
+            RegisterReloadHandlers(services);
 
             // 配置 LLM 专用的 HttpClient，解决 SSL 连接池陈旧连接问题
             services.AddHttpClient("LlmClient")
@@ -701,6 +707,20 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ILlmService, LlmService>();
             services.AddSingleton<ITextCompletion, TextCompletionService>();
             services.AddSingleton<IProviderEndpointLookup, OptionsProviderEndpointLookup>();
+        }
+
+        /// <summary>
+        /// 注册统一重载 Handler（组件迁移自 ConfigChanged 自订阅）
+        /// </summary>
+        private static void RegisterReloadHandlers(IServiceCollection services)
+        {
+            // 统一重载 Handler 注册（组件迁移自 ConfigChanged 自订阅）
+            // 注意：依赖各 Manager，必须在 RegisterCoreServices + RegisterLlmServices 之后调用
+            services.AddSingleton<IReloadHandler, ProviderReloadHandler>();
+            services.AddSingleton<IReloadHandler, ModelReloadHandler>();
+            services.AddSingleton<IReloadHandler, AgentRuntimeReloadHandler>();
+            services.AddSingleton<IReloadHandler, AgentManagerReloadHandler>();
+            services.AddSingleton<IReloadHandler, SessionReloadHandler>();
         }
 
         /// <summary>
