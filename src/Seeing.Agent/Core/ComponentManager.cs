@@ -30,8 +30,14 @@ namespace Seeing.Agent.Core;
     /// - 项目级：./.seeing/（覆盖同名）
     /// </para>
 /// </summary>
-public class ComponentManager : IComponentManager
+public class ComponentManager : IComponentManager, IReloadHandler
 {
+    /// <inheritdoc/>
+    public string ComponentId => "components";
+
+    /// <inheritdoc/>
+    public IReadOnlyList<Type> ChangeTypes { get; } = new[] { typeof(WorkspaceChange), typeof(ConfigChange) };
+
     private readonly IServiceProvider _services;
     private readonly ILogger<ComponentManager> _logger;
     private readonly ConcurrentDictionary<string, IComponentLoader> _loaders = new();
@@ -123,7 +129,11 @@ public class ComponentManager : IComponentManager
 
         try
         {
-            var result = await loader.LoadAsync(_services, workspaceRoot, cancellationToken);
+            // 已成功加载过的类型走重载路径（清理旧状态后重新发现），否则走首次加载路径
+            var previouslyLoaded = _loadStatus.TryGetValue(type, out var previous) && previous.Success;
+            var result = previouslyLoaded
+                ? await loader.ReloadAsync(_services, workspaceRoot, cancellationToken)
+                : await loader.LoadAsync(_services, workspaceRoot, cancellationToken);
             _loadStatus[type] = result;
 
             if (result.Success)
@@ -145,6 +155,35 @@ public class ComponentManager : IComponentManager
             };
             _loadStatus[type] = result;
             return result;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task ReloadAsync(IReloadSignal change, CancellationToken ct = default)
+    {
+        var workspaceRoot = _services.GetRequiredService<IWorkspaceProvider>().WorkspaceRoot;
+
+        if (change is WorkspaceChange)
+        {
+            // 工作区切换：全量重载（各 Loader 走 ReloadAsync 清理旧状态后重新发现）
+            await LoadAllAsync(workspaceRoot, ct);
+        }
+        else if (change is ConfigChange cfg)
+        {
+            // 配置变更：空节数组表示全量重载
+            if (cfg.ChangedSections.Count == 0)
+            {
+                await LoadAllAsync(workspaceRoot, ct);
+                return;
+            }
+
+            // 按变更配置节分发到对应 Loader
+            foreach (var section in cfg.ChangedSections)
+            {
+                if (section == "Skills") await LoadAsync("Skill", workspaceRoot, ct);
+                else if (section == "Mcp") await LoadAsync("Mcp", workspaceRoot, ct);
+                else if (section is "Plugins" or "PluginEnabled") await LoadAsync("Plugin", workspaceRoot, ct);
+            }
         }
     }
 }
@@ -208,6 +247,18 @@ internal class SkillLoader : IComponentLoader
         }
         return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(workspaceRoot, path));
     }
+
+    /// <inheritdoc/>
+    public async Task<ComponentLoadResult> ReloadAsync(
+        IServiceProvider services,
+        string workspaceRoot,
+        CancellationToken cancellationToken = default)
+    {
+        // 先清空旧技能（已删除的技能信息也会被移除），再重挂载目录并重新发现
+        var skillManager = services.GetRequiredService<SkillManager>();
+        skillManager.ClearSkillInfos();
+        return await LoadAsync(services, workspaceRoot, cancellationToken);
+    }
 }
 
 /// <summary>MCP 加载器</summary>
@@ -241,6 +292,41 @@ internal class McpLoader : IComponentLoader
 
         // 注意：工具注册已由 McpClientManager 内部处理（通过 McpToolRegistry）
         // 不需要在此手动注册
+
+        return new ComponentLoadResult
+        {
+            Type = Type,
+            Success = true,
+            Count = configs.Count,
+            Details = configs.Select(c => c.Name).ToList()
+        };
+    }
+
+    /// <inheritdoc/>
+    public async Task<ComponentLoadResult> ReloadAsync(
+        IServiceProvider services,
+        string workspaceRoot,
+        CancellationToken cancellationToken = default)
+    {
+        var mcpManager = services.GetRequiredService<McpClientManager>();
+        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger<McpLoader>();
+        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
+
+        // 重新加载配置（读取磁盘最新配置）
+        var configs = McpConfigLoader.LoadDefault(workspaceProvider, logger);
+
+        // 转换为字典格式（跳过空名称，与 LoadAsync 保持一致）
+        var configDict = new Dictionary<string, McpServerConfig>();
+        foreach (var config in configs)
+        {
+            if (!string.IsNullOrEmpty(config.Name))
+                configDict[config.Name] = config;
+        }
+
+        // 重置全部连接后重新初始化（幂等，清理旧状态再按最新配置加载）
+        await mcpManager.ResetAllAsync(cancellationToken);
+        await mcpManager.InitializeAsync(configDict, cancellationToken);
 
         return new ComponentLoadResult
         {
@@ -318,6 +404,18 @@ internal class PluginLoader : IComponentLoader
             Count = extensionManager.GetAll().Count,
             Details = extensionManager.GetAll().Select(e => e.Id).ToList()
         };
+    }
+
+    /// <inheritdoc/>
+    public async Task<ComponentLoadResult> ReloadAsync(
+        IServiceProvider services,
+        string workspaceRoot,
+        CancellationToken cancellationToken = default)
+    {
+        // 先卸载全部插件（释放资源并清空注册状态），再按最新配置重新加载
+        var extensionManager = services.GetRequiredService<ExtensionManager>();
+        await extensionManager.DisposeAllAsync();
+        return await LoadAsync(services, workspaceRoot, cancellationToken);
     }
 
     private static string? FindPluginsAssembly()
