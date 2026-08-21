@@ -166,6 +166,69 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             .TryGetProperty("added-model", out _)
             .Should().BeTrue();
 
+        // Manager 不再自订阅 ConfigChanged，需通过 ReloadHandler 触发目录刷新
+        var handler = new ModelReloadHandler(sut);
+        await handler.ReloadAsync(
+            new ConfigChange { ChangedSections = new[] { "Providers" } },
+            TestContext.Current.CancellationToken);
+
+        await WaitUntilAsync(
+            () => sut.GetModels().ContainsKey("openai/added-model"),
+            TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task ModelReloadHandler_配置变更入队刷新()
+    {
+        // Arrange: 构造 manager（复用现有基建）
+        var providerModel = new ModelConfig { Id = "initial-model" };
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Type = ProviderType.OpenAI,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["initial-model"] = providerModel
+                }
+            }
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+        var handler = new ModelReloadHandler(sut);
+
+        // 等待初始目录刷新完成，确保后续断言不受构造时 EnqueueRefresh 干扰
+        await WaitUntilAsync(
+            () => sut.GetModels().ContainsKey("openai/initial-model"),
+            TimeSpan.FromSeconds(5));
+
+        // 外部修改配置：新增一个模型（Manager 不再自订阅 ConfigChanged，缓存保持旧目录）
+        var updated = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Type = ProviderType.OpenAI,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["initial-model"] = providerModel,
+                    ["added-model"] = new ModelConfig { Id = "added-model" }
+                }
+            }
+        };
+        await configManager.SaveSectionAsync(
+            "Providers", updated, ConfigLevel.User, TestContext.Current.CancellationToken);
+
+        // Act: 调 handler.ReloadAsync 触发刷新
+        await handler.ReloadAsync(
+            new ConfigChange { ChangedSections = new[] { "Providers" } },
+            TestContext.Current.CancellationToken);
+
+        // Assert: 队列收到刷新请求，模型目录包含新增模型
         await WaitUntilAsync(
             () => sut.GetModels().ContainsKey("openai/added-model"),
             TimeSpan.FromSeconds(5));

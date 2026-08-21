@@ -45,8 +45,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         _registry = registry;
         _logger = logger;
 
-        // 监听配置变更
-        _configManager.ConfigChanged += OnConfigChanged;
+        // 监听 Provider 注册表变更（配置变更由 ModelReloadHandler 经编排器触发）
         _registry.ProvidersChanged += OnProvidersChanged;
 
         // 初始目录只同步读取 Providers[*].Models，不依赖注册表装配时序。
@@ -263,20 +262,10 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
     #region 私有方法
 
-    /// <summary>配置变更处理</summary>
-    private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
-    {
-        var needsRefresh = e.ChangedSections.Length == 0 ||
-                           e.ChangedSections.Contains("Providers");
-
-        if (needsRefresh)
-            EnqueueRefresh("configuration");
-    }
-
     private void OnProvidersChanged(object? sender, ProvidersChangedEventArgs e)
         => EnqueueRefresh("provider-registry");
 
-    private void EnqueueRefresh(string source)
+    internal void EnqueueRefresh(string source)
     {
         long version;
         lock (_cacheLock)
@@ -600,7 +589,6 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
     private async Task AwaitRefreshWorkerShutdownAsync()
     {
-        _configManager.ConfigChanged -= OnConfigChanged;
         _registry.ProvidersChanged -= OnProvidersChanged;
         _refreshQueue.Writer.TryComplete();
         _disposeCts.Cancel();
