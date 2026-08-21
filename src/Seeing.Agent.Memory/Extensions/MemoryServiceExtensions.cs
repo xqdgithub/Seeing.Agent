@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Tools;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,9 @@ public static class MemoryServiceExtensions
     {
         services.TryAddSingleton<MemoryOptionsProvider>();
         services.TryAddSingleton<IMemoryOptionsStore>(sp => sp.GetRequiredService<MemoryOptionsProvider>());
+
+        // 配置重载处理器（依赖 MemoryOptionsProvider，必须在其后注册）
+        services.AddSingleton<IReloadHandler, MemoryReloadHandler>();
         services.TryAddSingleton<IOptions<MemoryOptions>>(sp =>
             new MemoryOptionsAccessor(sp.GetRequiredService<MemoryOptionsProvider>()));
         services.TryAddSingleton<IOptionsMonitor<MemoryOptions>>(sp =>
