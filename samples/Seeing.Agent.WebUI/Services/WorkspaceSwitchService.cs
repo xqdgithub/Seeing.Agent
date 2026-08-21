@@ -1,6 +1,4 @@
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Skills;
-using Seeing.Agent.Tools;
 
 namespace Seeing.Agent.WebUI.Services;
 
@@ -14,21 +12,15 @@ public class WorkspaceSwitchService
 {
     private readonly IWorkspaceProvider _workspace;
     private readonly ISeeingConfigService _configService;
-    private readonly ToolManager _toolInvoker;
-    private readonly SkillManager _skillManager;
     private readonly ILogger<WorkspaceSwitchService> _logger;
 
     public WorkspaceSwitchService(
         IWorkspaceProvider workspace,
         ISeeingConfigService configService,
-        ToolManager toolInvoker,
-        SkillManager skillManager,
         ILogger<WorkspaceSwitchService> logger)
     {
         _workspace = workspace;
         _configService = configService;
-        _toolInvoker = toolInvoker;
-        _skillManager = skillManager;
         _logger = logger;
     }
 
@@ -63,15 +55,11 @@ public class WorkspaceSwitchService
         {
             _logger.LogInformation("切换工作区: {Old} -> {New}", oldWorkspace, newWorkspaceRoot);
 
-            // 1. 更新工作区根目录（会触发 WorkspaceRootChanged 事件）
+            // 1. 更新工作区根目录（触发 WorkspaceRootChanged → 编排器全量重载）
             _workspace.SetWorkspaceRoot(newWorkspaceRoot);
 
-            // 2. 重新加载配置
+            // 2. 重新加载配置（编排器对全量变更去抖合并，此处仅刷新配置快照）
             await _configService.ReloadAsync(cancellationToken);
-
-            // 3. 重新加载 Skill 和 Tool 状态
-            await _toolInvoker.LoadToolStateAsync(cancellationToken);
-            await _skillManager.LoadSkillStateAsync(cancellationToken);
 
             _logger.LogInformation("工作区切换完成: {Path}", newWorkspaceRoot);
             return true;
@@ -107,10 +95,8 @@ public class WorkspaceSwitchService
     {
         await _workspace.SetWorkspaceOptionsAsync(options, cancellationToken);
         
-        // 重新加载配置
+        // 重新加载配置（编排器对全量变更去抖合并，此处仅刷新配置快照）
         await _configService.ReloadAsync(cancellationToken);
-        await _toolInvoker.LoadToolStateAsync(cancellationToken);
-        await _skillManager.LoadSkillStateAsync(cancellationToken);
     }
 
     /// <summary>

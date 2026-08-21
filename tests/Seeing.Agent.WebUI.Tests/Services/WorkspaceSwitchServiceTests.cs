@@ -1,10 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Hooks;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Skills;
-using Seeing.Agent.Tools;
 using Seeing.Agent.WebUI.Services;
 using Xunit;
 
@@ -17,8 +14,6 @@ public class WorkspaceSwitchServiceTests : IDisposable
 {
     private readonly Mock<IWorkspaceProvider> _workspaceMock;
     private readonly Mock<ISeeingConfigService> _configServiceMock;
-    private readonly Mock<ToolManager> _toolInvokerMock;
-    private readonly Mock<SkillManager> _skillManagerMock;
     private readonly Mock<ILogger<WorkspaceSwitchService>> _loggerMock;
     private readonly string _testDirectory;
 
@@ -26,19 +21,6 @@ public class WorkspaceSwitchServiceTests : IDisposable
     {
         _workspaceMock = new Mock<IWorkspaceProvider>();
         _configServiceMock = new Mock<ISeeingConfigService>();
-        _toolInvokerMock = new Mock<ToolManager>(
-            MockBehavior.Loose,
-            new Mock<ILogger<ToolManager>>().Object,
-            new Mock<Seeing.Agent.Abstractions.Hooks.IHookManager>().Object,
-            null,
-            null,
-            null,
-            null,
-            null);
-        _skillManagerMock = new Mock<SkillManager>(
-            MockBehavior.Loose,
-            new Mock<ILogger<SkillManager>>().Object,
-            null);
         _loggerMock = new Mock<ILogger<WorkspaceSwitchService>>();
         
         _testDirectory = Path.Combine(Path.GetTempPath(), $"workspace_test_{Guid.NewGuid():N}");
@@ -60,8 +42,6 @@ public class WorkspaceSwitchServiceTests : IDisposable
         return new WorkspaceSwitchService(
             _workspaceMock.Object,
             _configServiceMock.Object,
-            _toolInvokerMock.Object,
-            _skillManagerMock.Object,
             _loggerMock.Object);
     }
 
@@ -76,6 +56,22 @@ public class WorkspaceSwitchServiceTests : IDisposable
         var result = await service.SwitchWorkspaceAsync(newPath);
 
         // Assert
+        result.Should().BeTrue();
+        _workspaceMock.Verify(x => x.SetWorkspaceRoot(newPath), Times.Once);
+        _configServiceMock.Verify(x => x.ReloadAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SwitchWorkspaceAsync_不再手动加载ToolSkill状态()
+    {
+        // Arrange
+        var service = CreateService();
+        var newPath = _testDirectory;
+
+        // Act
+        var result = await service.SwitchWorkspaceAsync(newPath);
+
+        // Assert: 仅 SetWorkspaceRoot + ReloadAsync 被调用（工具/技能状态由编排器 Handler 处理）
         result.Should().BeTrue();
         _workspaceMock.Verify(x => x.SetWorkspaceRoot(newPath), Times.Once);
         _configServiceMock.Verify(x => x.ReloadAsync(It.IsAny<CancellationToken>()), Times.Once);
