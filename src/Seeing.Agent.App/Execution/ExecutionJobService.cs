@@ -433,11 +433,14 @@ public class ExecutionJobService : IDisposable
                 // Execute agent
                 // 取消不再主动 throw：执行器（事件流水线）会产出终态事件（工具 Cancelled / LoopCancelledEvent），
                 // 这些事件必须在取消后仍被处理与发布。OCE 由下方 catch 兜底（执行器未转换为事件的极端情况）。
+                // 快照取消令牌：避免 BuildAgentContext 与 ExecuteAsync 两次读取 CurrentCancellationToken 读到不同值
+                // （取消推进队列后令牌可能已更换，导致上下文与执行器使用的令牌不一致）。
+                var execToken = queue.CurrentCancellationToken;
                 await foreach (var evt in executionRouter.ExecuteAsync(
                     context.Agent,
                     messages,
-                    BuildAgentContext(context, queue.CurrentCancellationToken),
-                    queue.CurrentCancellationToken))
+                    BuildAgentContext(context, execToken),
+                    execToken))
                 {
                     var liveSession = sessionManager.Get(record.SessionId) ?? session;
                     eventTracker.ApplyEvent(liveSession, evt);
@@ -451,9 +454,14 @@ public class ExecutionJobService : IDisposable
                 }
             }
 
-            // Mark as completed
-            record.Status = ExecutionStatus.Completed;
-            _logger.LogInformation("Execution {ExecutionId} completed successfully", record.ExecutionId);
+            // 执行器以终态事件正常结束时：若本执行已被取消（CancelAsync 已置 Cancelled 并推进队列）或
+            // 队列已推进（取消竞态下 status 尚未同步），保留取消态；否则标记完成。
+            if (record.Status != ExecutionStatus.Cancelled &&
+                queue.CurrentExecution?.ExecutionId != record.ExecutionId)
+                record.Status = ExecutionStatus.Cancelled;
+            else if (record.Status != ExecutionStatus.Cancelled)
+                record.Status = ExecutionStatus.Completed;
+            _logger.LogInformation("Execution {ExecutionId} completed with status {Status}", record.ExecutionId, record.Status);
         }
         catch (OperationCanceledException)
         {

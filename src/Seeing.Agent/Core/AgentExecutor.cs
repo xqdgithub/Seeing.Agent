@@ -597,14 +597,15 @@ public class AgentExecutor : IAgentExecutor
     }
 
     /// <summary>
-    /// 工具终态事件排空时限：防止个别不响应取消的工具无限阻塞 Loop 终态。
+    /// 工具终态事件排空时限（仅取消路径兜底）：防止个别不响应取消的工具无限阻塞 Loop 终态。
+    /// 正常路径不设超时。测试可通过 internal setter 缩短以加速回归。
     /// </summary>
-    private static readonly TimeSpan s_toolDrainTimeout = TimeSpan.FromSeconds(10);
+    internal static TimeSpan ToolDrainTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// 执行工具调用 - 直接写入事件流。
     /// 关键：消费端用 CancellationToken.None 排空，取消后工具终态事件（Cancelled/Success/Failed）完整送达；
-    /// 排空受 s_toolDrainTimeout 保护，避免被不响应取消的工具无限阻塞。
+    /// 排空受 ToolDrainTimeout 保护，避免被不响应取消的工具无限阻塞。
     /// </summary>
     private async Task ExecuteToolCallsAsync(
         List<ToolCall> toolCalls,
@@ -647,30 +648,42 @@ public class AgentExecutor : IAgentExecutor
             TaskScheduler.Default);
 
         // 排空转发：把每个工具终态事件写入 outbound，并同步追加 tool 历史。
-        var forward = ForwardToolEventsAsync(channel.Reader, writer, history, cancellationToken);
+        var forward = ForwardToolEventsAsync(channel.Reader, writer, history);
 
-        var drain = Task.WhenAll(forward, allDone);
-        var winner = await Task.WhenAny(drain, Task.Delay(s_toolDrainTimeout, CancellationToken.None));
-        if (!ReferenceEquals(winner, drain))
+        if (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning(
-                "[AgentExecutor] 工具终态事件排空超时({TimeoutSeconds}s)，跳过剩余工具事件",
-                s_toolDrainTimeout.TotalSeconds);
-            channel.Writer.TryComplete();
+            // 取消路径：用有限排空时间兜底，避免被不响应取消的工具无限阻塞终态。
+            var drain = Task.WhenAll(forward, allDone);
+            var winner = await Task.WhenAny(drain, Task.Delay(ToolDrainTimeout, CancellationToken.None));
+            if (!ReferenceEquals(winner, drain))
+            {
+                _logger.LogWarning(
+                    "[AgentExecutor] 工具终态事件排空超时({TimeoutSeconds}s)，跳过剩余工具事件",
+                    ToolDrainTimeout.TotalSeconds);
+                channel.Writer.TryComplete();
+                try { await forward.ConfigureAwait(false); } catch { /* 个别事件丢弃为已知边界 */ }
+                return; // 不等待不响应取消的工具（任务泄漏为已知边界，与修复前一致）
+            }
+            // 排空成功：forward 与 allDone 均已结束
         }
-
-        // RunToolCallWithEventsAsync 内部已捕获 OCE/异常，allDone 不会 fault
-        await allDone.ConfigureAwait(false);
+        else
+        {
+            // 正常路径无超时（与修复前一致）：等全部工具完成并转发完毕，
+            // 保证 tool 历史完整写入，避免下一轮 LLM 因缺 tool 消息报 400。
+            // RunToolCallWithEventsAsync 内部已捕获 OCE/异常，allDone 不会 fault。
+            await allDone.ConfigureAwait(false);
+            await forward.ConfigureAwait(false);
+        }
     }
 
     /// <summary>
     /// 转发工具事件并同步追加 tool 历史（所有终态都必须有对应的 tool 消息，否则下一轮 LLM 报 400）。
+    /// 转发本身不因取消中断：消费端统一用 CancellationToken.None 排空。
     /// </summary>
     private static async Task ForwardToolEventsAsync(
         ChannelReader<IMessageEvent> reader,
         ChannelWriter<IMessageEvent> outbound,
-        List<ChatMessage> history,
-        CancellationToken cancellationToken)
+        List<ChatMessage> history)
     {
         await foreach (var evt in reader.ReadAllAsync(CancellationToken.None))
         {
@@ -687,7 +700,6 @@ public class AgentExecutor : IAgentExecutor
                 });
             }
         }
-        _ = cancellationToken; // 保留签名占位：转发本身不因取消中断
     }
 
     private async Task RunToolCallWithEventsAsync(
