@@ -597,7 +597,14 @@ public class AgentExecutor : IAgentExecutor
     }
 
     /// <summary>
-    /// 执行工具调用 - 写入事件流。
+    /// 工具终态事件排空时限：防止个别不响应取消的工具无限阻塞 Loop 终态。
+    /// </summary>
+    private static readonly TimeSpan s_toolDrainTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// 执行工具调用 - 直接写入事件流。
+    /// 关键：消费端用 CancellationToken.None 排空，取消后工具终态事件（Cancelled/Success/Failed）完整送达；
+    /// 排空受 s_toolDrainTimeout 保护，避免被不响应取消的工具无限阻塞。
     /// </summary>
     private async Task ExecuteToolCallsAsync(
         List<ToolCall> toolCalls,
@@ -639,12 +646,35 @@ public class AgentExecutor : IAgentExecutor
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
 
-        await foreach (var evt in channel.Reader.ReadAllAsync(cancellationToken))
-        {
-            await writer.WriteAsync(evt, cancellationToken);
+        // 排空转发：把每个工具终态事件写入 outbound，并同步追加 tool 历史。
+        var forward = ForwardToolEventsAsync(channel.Reader, writer, history, cancellationToken);
 
-            // 将工具结果添加到消息历史：所有终态（成功/失败/拒绝/取消）都必须追加
-            // 对应的 tool 消息，否则下一轮 LLM 会因缺少 tool 响应而报 400。
+        var drain = Task.WhenAll(forward, allDone);
+        var winner = await Task.WhenAny(drain, Task.Delay(s_toolDrainTimeout, CancellationToken.None));
+        if (!ReferenceEquals(winner, drain))
+        {
+            _logger.LogWarning(
+                "[AgentExecutor] 工具终态事件排空超时({TimeoutSeconds}s)，跳过剩余工具事件",
+                s_toolDrainTimeout.TotalSeconds);
+            channel.Writer.TryComplete();
+        }
+
+        // RunToolCallWithEventsAsync 内部已捕获 OCE/异常，allDone 不会 fault
+        await allDone.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 转发工具事件并同步追加 tool 历史（所有终态都必须有对应的 tool 消息，否则下一轮 LLM 报 400）。
+    /// </summary>
+    private static async Task ForwardToolEventsAsync(
+        ChannelReader<IMessageEvent> reader,
+        ChannelWriter<IMessageEvent> outbound,
+        List<ChatMessage> history,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var evt in reader.ReadAllAsync(CancellationToken.None))
+        {
+            await outbound.WriteAsync(evt, CancellationToken.None);
             if (evt is ToolCallEvent tcEvent &&
                 tcEvent.Status is ToolCallStatus.Success or ToolCallStatus.Failed
                     or ToolCallStatus.Rejected or ToolCallStatus.Cancelled)
@@ -657,8 +687,7 @@ public class AgentExecutor : IAgentExecutor
                 });
             }
         }
-
-        await allDone.ConfigureAwait(false);
+        _ = cancellationToken; // 保留签名占位：转发本身不因取消中断
     }
 
     private async Task RunToolCallWithEventsAsync(
@@ -803,6 +832,41 @@ public class AgentExecutor : IAgentExecutor
             };
         }
 
+        if (!result.Success)
+        {
+            // 取消优先于失败：工具内部吞掉 OCE 返回 Failure（如 TaskTool 子任务取消）时，
+            // 只要本 Loop 已请求取消，终态就应标记为 Cancelled，避免 UI 显示为 Failed。
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return new ToolCallEvent
+                {
+                    SessionId = context.SessionId,
+                    LoopId = loopId,
+                    Type = MessageEventType.ToolCallComplete,
+                    ToolCallId = tc.Id,
+                    ToolName = name,
+                    Arguments = arguments,
+                    Status = ToolCallStatus.Cancelled,
+                    Error = result.Error ?? "已取消",
+                    Duration = DateTime.Now - startTime
+                };
+            }
+
+            return new ToolCallEvent
+            {
+                SessionId = context.SessionId,
+                LoopId = loopId,
+                Type = MessageEventType.ToolCallComplete,
+                ToolCallId = tc.Id,
+                ToolName = name,
+                Arguments = arguments,
+                Status = ToolCallStatus.Failed,
+                Output = result.Output,
+                Error = result.Error,
+                Duration = DateTime.Now - startTime
+            };
+        }
+
         return new ToolCallEvent
         {
             SessionId = context.SessionId,
@@ -811,7 +875,7 @@ public class AgentExecutor : IAgentExecutor
             ToolCallId = tc.Id,
             ToolName = name,
             Arguments = arguments,
-            Status = result.Success ? ToolCallStatus.Success : ToolCallStatus.Failed,
+            Status = ToolCallStatus.Success,
             Output = result.Output,
             Error = result.Error,
             Duration = DateTime.Now - startTime
