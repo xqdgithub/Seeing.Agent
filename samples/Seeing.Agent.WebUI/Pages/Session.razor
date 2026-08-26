@@ -1757,13 +1757,21 @@
 
     /// <summary>
     /// 取消执行处理（使用新的 Cancel API）
+    /// <para>
+    /// 原子化：先立即落本地终态（不依赖后续可能抛异常的调用），
+    /// 后端取消与任务标记为尽力而为，异常不影响 UI 状态。
+    /// </para>
     /// </summary>
     private async Task OnCancelExecution()
     {
-        // 取消本地 CancellationToken
-        SessionState.CancelExecution();
-
+        // 1) 立即清本地执行态（原子、无 await）
+        var executionId = SessionState.CurrentExecutionId;
         var sessionId = SessionState.SessionId;
+        SessionState.CancelExecution();
+        SessionState.ExecutionStatus = ExecutionStatus.Cancelled;
+        SessionState.CurrentExecutionId = null;
+
+        // 2) 后端取消（尽力而为）
         if (!string.IsNullOrEmpty(sessionId))
         {
             try
@@ -1776,17 +1784,28 @@
             }
         }
 
-        await EventStreamHandler.MarkIncompleteTasksCancelledAsync("用户取消");
-
-        // 取消当前执行
-        if (!string.IsNullOrEmpty(SessionState.CurrentExecutionId))
+        try
         {
-            ChatOrchestrator.Cancel(SessionState.CurrentExecutionId);
+            await EventStreamHandler.MarkIncompleteTasksCancelledAsync("用户取消");
+        }
+        catch
+        {
+            // ignore
         }
 
-        // 无论后端 Cancel 是否成功，都清掉「执行中」徽标，避免 UI 卡住
-        SessionState.ExecutionStatus = ExecutionStatus.Cancelled;
-        SessionState.CurrentExecutionId = null;
+        if (!string.IsNullOrEmpty(executionId))
+        {
+            try
+            {
+                ChatOrchestrator.Cancel(executionId);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        // 3) 收尾（无论后端结果如何都要执行）
         SessionState.CompleteExecution();
 
         if (SessionState.CurrentSession != null)
