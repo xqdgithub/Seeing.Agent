@@ -99,7 +99,7 @@ Seeing.Agent/
 | 循环检测防护 | `src/Seeing.Agent/Core/Detection/LoopDetector.cs` | 防止 LLM 无限循环 |
 | 文件系统安全 | `src/Seeing.Agent/Tools/BuiltIn/FileSystemHelper.cs` | 路径白名单、输出限制 |
 | 配置深度合并 | `src/Seeing.Agent/Core/Configuration/MergeDeep.cs` | 递归合并算法 |
-| 工具装饰器链 | `src/Seeing.Agent/Decorators/ToolDecoratorRegistry.cs` | 超时→重试→缓存（由 ToolManager 在 RegisterTool() 时通过 `IToolDecoratorRegistry.Apply()` 生效） |
+| 工具装饰器链 | `src/Seeing.Agent/Decorators/ToolDecoratorRegistry.cs` | 重试→缓存（由 ToolManager 在 RegisterTool() 时通过 `IToolDecoratorRegistry.Apply()` 生效；超时由工具自身 + AgentExecutor 全局兜底负责） |
 | 内置 Agent | `src/Seeing.Agent/Core/BuiltInAgents/BuiltInAgents.cs` | build/plan/explore/general/title/summary |
 | ACP 集成 | `src/Seeing.Agent.Acp/` | Passthrough 透传 + acp 工具委派，`IAgentExecutor` 执行器 |
 
@@ -171,9 +171,10 @@ public static async Task<string> GetWeather(
 
 ### 工具装饰器链
 - **注册**: `IToolDecoratorRegistry` 在 DI 中注册为 Singleton，`ToolManager` 在 `RegisterTool()` 时自动 `Apply()` 装饰器
-- **链顺序**: TimeoutToolDecorator（最外层）→ RetryToolDecorator（中间层）→ CachedToolDecorator（最内层，可选）
-- **默认**: 30 秒超时 → 3 次重试（1s 间隔指数退避）→ 5 分钟缓存
+- **链顺序**: RetryToolDecorator（最外层）→ CachedToolDecorator（最内层，可选）
+- **默认**: 3 次重试（1s 间隔指数退避）→ 5 分钟缓存
 - **重试异常**: `TimeoutException`, `HttpRequestException`, `TaskCanceledException`, `IOException`
+- **超时职责**: 不注册 TimeoutToolDecorator。超时由工具自身负责（如 BashTool timeout 参数、WebSearchTool 内部超时）；全局兜底超时由 `SeeingAgentOptions.ToolExecutionTimeout` 配置，在 `AgentExecutor` 最外层施加并统一报告"执行超时"
 
 ## ANTI-PATTERNS
 
@@ -237,7 +238,7 @@ dotnet run --project samples/Seeing.Agent.Cli
 - **中央包管理**: 启用
 - **外部子仓库**: `CommandLineUtils/`、`command-line-api/` 非本项目代码
 - **日志规范**: 结构化日志 `{PropertyName}` 格式
-- **装饰器链**: 超时（最外层）→ 重试 → 缓存（最内层）
+- **装饰器链**: 重试（最外层）→ 缓存（最内层）；超时由工具自身 + AgentExecutor 全局兜底负责
 - **循环检测**: SHA256 参数哈希，连续 3 次警告，5 次终止
 - **解决方案格式**: `.slnx`（VS 2022 17.13+ 新格式）
 - **测试命名**: `{方法}_{场景}_Should{预期结果}` 或 AAA 注释分区

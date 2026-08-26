@@ -491,19 +491,16 @@ namespace Seeing.Agent.Extensions
             // 时间工具
             services.AddSingleton<ITool, CurrentTimeTool>();
 
-            // ========== 注册装饰器链（超时→重试→缓存）==========
+            // ========== 注册装饰器链（重试→缓存）==========
+            // 说明：不再注册 TimeoutToolDecorator。超时由各工具自身负责（如 BashTool 的 timeout 参数、
+            // WebSearchTool 内部超时等），全局兜底超时由 AgentExecutor 最外层按配置施加，避免一刀切误伤
+            // 长耗时工具（如 TaskTool 子代理、bash 长命令）。
             services.AddSingleton<IToolDecoratorRegistry>(sp =>
             {
                 var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
                 var cache = sp.GetService<IMemoryCache>();
 
                 var registry = new ToolDecoratorRegistry(sp);
-
-                // 最外层：超时装饰器（30 秒默认）
-                registry.Register(tool => new TimeoutToolDecorator(
-                    tool,
-                    TimeSpan.FromSeconds(30),
-                    loggerFactory.CreateLogger<TimeoutToolDecorator>()));
 
                 // 中间层：重试装饰器（3 次，1 秒间隔，指数退避）
                 registry.Register(tool => new RetryToolDecorator(

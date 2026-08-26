@@ -93,13 +93,6 @@ else
                     <div class="tool-call-section">
                         <div class="tool-call-section-header">
                             <span class="tool-call-section-title is-success">结果</span>
-                            <RadioGroup TValue="string"
-                                        @bind-Value="_resultViewMode"
-                                        ButtonStyle="@RadioButtonStyle.Solid"
-                                        Size="@InputSize.Small">
-                                <Radio Value="@("readable")">可读</Radio>
-                                <Radio Value="@("raw")">原始</Radio>
-                            </RadioGroup>
                             <Space Size="@SpaceSize.Small" Class="tool-call-section-actions">
                                 <SpaceItem>
                                     <Button Size="@ButtonSize.Small"
@@ -126,13 +119,6 @@ else
                     <div class="tool-call-section">
                         <div class="tool-call-section-header">
                             <span class="tool-call-section-title is-error">错误</span>
-                            <RadioGroup TValue="string"
-                                        @bind-Value="_errorViewMode"
-                                        ButtonStyle="@RadioButtonStyle.Solid"
-                                        Size="@InputSize.Small">
-                                <Radio Value="@("readable")">可读</Radio>
-                                <Radio Value="@("raw")">原始</Radio>
-                            </RadioGroup>
                             <Space Size="@SpaceSize.Small" Class="tool-call-section-actions">
                                 <SpaceItem>
                                     <Button Size="@ButtonSize.Small"
@@ -172,8 +158,6 @@ else
 
     private bool _isExpanded;
     private string _paramViewMode = "kv";
-    private string _resultViewMode = "readable";
-    private string _errorViewMode = "readable";
     private bool _resultExpanded;
     private bool _errorExpanded;
     private IReadOnlyList<ToolCallParameterEntry> _paramEntries = Array.Empty<ToolCallParameterEntry>();
@@ -198,8 +182,6 @@ else
             _resultExpanded = false;
             _errorExpanded = false;
             _paramViewMode = "kv";
-            _resultViewMode = "readable";
-            _errorViewMode = "readable";
             _lastParametersSource = null;
         }
 
@@ -256,14 +238,10 @@ else
     }
 
     private string GetResultDisplayText() =>
-        _resultViewMode == "raw"
-            ? ToolCall.Result ?? ""
-            : ToolCallDisplayFormatter.FormatReadableContent(ToolCall.Result);
+        ToolCall.Result ?? "";
 
     private string GetErrorDisplayText() =>
-        _errorViewMode == "raw"
-            ? ToolCall.Error ?? ""
-            : ToolCallDisplayFormatter.FormatReadableContent(ToolCall.Error);
+        ToolCall.Error ?? "";
 
     private async Task CopyParametersAsync()
     {

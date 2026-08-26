@@ -175,7 +175,11 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                RedirectStandardInput = true
+                RedirectStandardInput = true,
+                // 统一按 UTF-8 编解码子进程 stdin/stdout，避免中文乱码
+                StandardInputEncoding = Encoding.UTF8,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
 
             // 设置环境变量
@@ -219,7 +223,17 @@ var timedOut = false;
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            await process.StandardInput.WriteLineAsync(command);
+            // 对 PowerShell 统一 UTF-8 编解码：使其以 UTF-8 读取 stdin 命令、以 UTF-8 解码子进程（如 python）
+            // 输出并编码自身输出，与 .NET 端 Standard*Encoding=UTF8 对齐，避免中文乱码
+            var shellName = _shellService.GetShellName(shell);
+            var commandToRun = command;
+            if (shellName is "powershell" or "pwsh")
+            {
+                commandToRun = "[Console]::InputEncoding = [System.Text.Encoding]::UTF8;" +
+                               "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;" + command;
+            }
+
+            await process.StandardInput.WriteLineAsync(commandToRun);
             process.StandardInput.Close();
 
             // 初始元数据

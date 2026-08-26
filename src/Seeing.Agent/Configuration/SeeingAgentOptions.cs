@@ -67,6 +67,15 @@ namespace Seeing.Agent.Configuration
         /// <summary>Shell 配置（危险命令拦截与 Shell 优先级）</summary>
         public ShellOptions Shell { get; set; } = new();
 
+        /// <summary>
+        /// 工具执行全局兜底超时（默认 null 关闭）
+        /// <para>
+        /// 启用后，AgentExecutor 最外层对每个工具调用施加该超时，超时统一报告为"执行超时"。
+        /// 仅用于兜底第三方无内部超时的工具；内置工具（bash/web/git/MCP）均有自身超时。
+        /// </para>
+        /// </summary>
+        public TimeSpan? ToolExecutionTimeout { get; set; }
+
         /// <summary>会话标题自动生成配置</summary>
         public TitleGenerationOptions TitleGeneration { get; set; } = new();
     }
