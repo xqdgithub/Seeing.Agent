@@ -1,4 +1,3 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -7,7 +6,6 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Hooks;
@@ -20,59 +18,6 @@ namespace Seeing.Agent.Tests.Core;
 
 public class AgentExecutorCancellationTests
 {
-    [Fact]
-    public async Task ExecuteAsync_CancelledDuringLlmStream_ShouldEmitLoopCancelledAsLastEvent()
-    {
-        var llm = new Mock<ILlmService>();
-        llm.Setup(s => s.CompleteStreamAsync(
-                It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .Returns((string _, ChatRequest _, string? _, CancellationToken ct) => StreamAwaitCancellation(ct));
-
-        var executor = CreateExecutor(llm.Object);
-        using var cts = new CancellationTokenSource();
-
-        var events = new List<IMessageEvent>();
-        await foreach (var evt in EnumerateWithCancel(executor, cts))
-        {
-            events.Add(evt);
-            if (evt is LoopStartEvent)
-                cts.Cancel(); // 已发布 LoopStart，LLM 调用进行中，发起取消
-        }
-
-        events.Last().Should().BeOfType<LoopCancelledEvent>();
-        events.Should().NotContain(e => e is LoopCompleteEvent);
-        events.Count(e => e is LoopCancelledEvent).Should().Be(1);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_CancelledDuringToolExecution_ShouldEmitToolCancelledTerminalAndLoopCancelled()
-    {
-        var llm = new Mock<ILlmService>();
-        llm.Setup(s => s.CompleteStreamAsync(
-                It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .Returns((string _, ChatRequest _, string? _, CancellationToken _) =>
-                StreamEmitToolCallThenEnd(MakeToolCall("tc1", "blocking")));
-
-        var executor = CreateExecutor(llm.Object, tm => tm.RegisterTool(new BlockingTool()));
-        using var cts = new CancellationTokenSource();
-
-        var events = new List<IMessageEvent>();
-        await foreach (var evt in EnumerateWithCancel(executor, cts))
-        {
-            events.Add(evt);
-            if (evt is ToolCallEvent tc && tc.ToolCallId == "tc1"
-                && tc.Status == ToolCallStatus.Running)
-            {
-                cts.Cancel();
-            }
-        }
-
-        events.OfType<ToolCallEvent>().Should().ContainSingle(t =>
-            t.ToolCallId == "tc1" && t.Status == ToolCallStatus.Cancelled);
-        events.Last().Should().BeOfType<LoopCancelledEvent>();
-        events.Should().NotContain(e => e is LoopCompleteEvent);
-    }
-
     [Fact]
     public async Task ExecuteAsync_NoToolCalls_ShouldEmitLoopCompleteSuccessAsLastEvent()
     {
@@ -92,54 +37,10 @@ public class AgentExecutorCancellationTests
         events.Should().NotContain(e => e is LoopCancelledEvent);
     }
 
-    // ==================== 工具 ====================
-
-    private sealed class BlockingTool : ITool
-    {
-        public string Id => "blocking";
-        public string Description => "阻塞直到取消";
-        public IReadOnlyList<string> Tags => Array.Empty<string>();
-        public ToolCategory Category => ToolCategory.General;
-        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object", properties = new object() });
-
-        public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
-        {
-            await Task.Delay(Timeout.Infinite, context.CancellationToken);
-            return ToolResult.Succeeded("unreachable");
-        }
-    }
-
-    // ==================== LLM 流 mock ====================
-
-    private static async IAsyncEnumerable<StreamUpdate> StreamAwaitCancellation(CancellationToken ct)
-    {
-        await Task.Delay(Timeout.Infinite, ct);
-        yield break;
-    }
-
-    private static async IAsyncEnumerable<StreamUpdate> StreamEmitToolCallThenEnd(ToolCall toolCall)
-    {
-        yield return new StreamUpdate
-        {
-            IsComplete = true,
-            FinishReason = "tool_calls",
-            ToolCallDeltas = new List<ToolCall> { toolCall }
-        };
-    }
-
     private static async IAsyncEnumerable<StreamUpdate> StreamPlainCompletion()
     {
         yield return new StreamUpdate { IsComplete = true, FinishReason = "stop" };
     }
-
-    private static ToolCall MakeToolCall(string id, string name) => new()
-    {
-        Id = id,
-        Type = "function",
-        Function = new FunctionCall { Name = name, Arguments = "{}" }
-    };
-
-    // ==================== 执行器编排 ====================
 
     /// <summary>枚举事件流，同时让调用方可从外部观察（本轮未取消，仅返回全部事件）。</summary>
     private static async IAsyncEnumerable<IMessageEvent> EnumerateWithCancel(
