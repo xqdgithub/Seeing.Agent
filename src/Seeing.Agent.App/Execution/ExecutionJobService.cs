@@ -519,9 +519,11 @@ public class ExecutionJobService : IDisposable
             {
                 _ = ProcessExecutionAsync(nextExecution);
             }
-            else
+            else if (queue.CurrentExecution == null && !queue.HasQueued)
             {
-                // 队列为空才清理事件缓冲，避免清掉下一项已发布的事件
+                // 仅当队列完全空闲才清理事件缓冲：
+                // CancelAsync 已把 current 推进到下一项时，CompleteAsync 会返回 null，
+                // 此时不得清缓冲，否则会丢下一项已发布的事件。
                 _eventPublisher.ClearBuffer(record.SessionId);
             }
         }
