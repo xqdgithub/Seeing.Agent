@@ -89,7 +89,7 @@ public class AgentExecutor : IAgentExecutor
         AgentContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // 检查禁用状态
+        // 检查禁用状态（保持原行为：直接产出错误，无需走事件流水线）
         if (agent.Disabled)
         {
             yield return new ErrorEvent
@@ -105,6 +105,42 @@ public class AgentExecutor : IAgentExecutor
             context.CancellationToken, cancellationToken);
         var effectiveToken = linkedCts.Token;
 
+        // AgentExecutor 为 Singleton：每次执行重置 Loop 局部状态，避免跨执行泄漏
+        _todoEmptyReminded = false;
+        _incompleteReminded = false;
+        _totalToolCallsExecuted = 0;
+
+        // 事件流水线：生产者保证「LoopStart → 恰一个终态事件」；取消/异常在生产者侧转换为终态事件。
+        // 与 ACP 执行器（EventYieldingSink + runTask）同一模式，消费侧只需正常读取。
+        var outbound = Channel.CreateUnbounded<IMessageEvent>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+
+        var producer = RunProducerAsync(agent, messages, context, effectiveToken, outbound.Writer);
+
+        try
+        {
+            await foreach (var evt in outbound.Reader.ReadAllAsync(CancellationToken.None))
+                yield return evt;
+        }
+        finally
+        {
+            // 生产者内部已兜底终态事件；此处仅防御性等待，避免异常从 finally 逃逸
+            try { await producer; }
+            catch { _logger.LogWarning("[AgentExecutor] 生产者异常已由内部兜底，忽略"); }
+        }
+    }
+
+    /// <summary>
+    /// 事件生产者：负责整条 Loop 事件流的产出与「终态不变量」。
+    /// 取消（OCE）→ LoopCancelledEvent；未知异常 → ErrorEvent + LoopCompleteEvent(失败)。
+    /// </summary>
+    private async Task RunProducerAsync(
+        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
+        IReadOnlyList<ChatMessage> messages,
+        AgentContext context,
+        CancellationToken effectiveToken,
+        ChannelWriter<IMessageEvent> writer)
+    {
         // ========== 生成 LoopId（一次完整对话循环的唯一标识）==========
         var loopId = Guid.NewGuid().ToString("N");
         var loopStartTime = DateTime.Now;
@@ -112,385 +148,397 @@ public class AgentExecutor : IAgentExecutor
         TokenUsage? totalUsage = null;
         string? errorMessage = null;
 
-        // AgentExecutor 为 Singleton：每次执行重置 Loop 局部状态，避免跨执行泄漏
-        _todoEmptyReminded = false;
-        _incompleteReminded = false;
-        _totalToolCallsExecuted = 0;
-
-        // ========== 发布 LoopStart 事件 ==========
-        yield return new LoopStartEvent
-        {
-            SessionId = context.SessionId,
-            LoopId = loopId,
-            UserInput = messages.LastOrDefault()?.Content
-        };
-
         var maxSteps = agent.MaxSteps ?? 32;
         var history = messages.ToList();
 
         // Ask 全局串行：并行工具不得并发弹出多个 Ask
-        var permissionChannel = context.PermissionChannel ?? Seeing.Agent.Core.Permission.DefaultPermissionChannel.Instance;
+        var permissionChannel = context.PermissionChannel
+            ?? Seeing.Agent.Core.Permission.DefaultPermissionChannel.Instance;
 
         // SubAgent：合并 Session PermissionSnapshot 作为本 Loop 权限真相源
         context.PermissionContext = PermissionIntegrity.FromAgentContext(
             context, ResolvePolicy(agent, context), agent.Name);
 
-        for (var step = 0; step < maxSteps; step++)
+        try
         {
-            effectiveToken.ThrowIfCancellationRequested();
-            totalSteps = step + 1;
-
-            // === 循环开始检查：上一轮遗留的 paused todo ===
-            if (step == 0 && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
-            {
-                var todoList = await LoadTodoList(context.SessionId);
-                if (todoList.HasPaused())
-                {
-                    var reminder = BuildTodoReminderMessage(
-                        SystemReminder.Kinds.TodoPaused,
-                        todoList.FormatBrief());
-                    if (reminder != null)
-                        history.Add(reminder);
-                }
-            }
-
-            // ========== 发布 StreamStart 事件（标记新轮次开始）==========
-            yield return new StreamStartEvent
+            // ========== 发布 LoopStart 事件 ==========
+            await writer.WriteAsync(new LoopStartEvent
             {
                 SessionId = context.SessionId,
                 LoopId = loopId,
-                Step = step
-            };
-
-            // === TodoEmpty 检查：已执行多步但未创建 todo ===
-            if (step >= 2 && !_todoEmptyReminded
-                && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
-            {
-                var todoList = await LoadTodoList(context.SessionId);
-                if (todoList.IsEmpty())
-                {
-                    var reminder = BuildTodoReminderMessage(
-                        SystemReminder.Kinds.TodoEmpty,
-                        "请评估当前任务是否需要使用 TodoWrite 规划。");
-                    if (reminder != null)
-                        history.Add(reminder);
-                    _todoEmptyReminded = true;
-                }
-            }
-
-            // 构建请求（异步注入动态上下文）
-            var request = await BuildRequestAsync(agent, history, context).ConfigureAwait(false);
-
-            // 调用 LLM（流式）
-            ChatMessage? assistantMessage = null;
-            var streamingContent = new StringBuilder();
-            var streamingReasoning = new StringBuilder();
-            List<ToolCall>? accumulatedToolCalls = null;
-            TokenUsage? lastUsage = null;
-
-            // 使用 Channel 模式捕获 LLM 流式异常
-            var llmChannel = System.Threading.Channels.Channel.CreateUnbounded<StreamUpdate>();
-            Exception? llmException = null;
-
-            var llmTask = Task.Run(async () =>
-            {
-                try
-                {
-                    await foreach (var update in _llm.CompleteStreamAsync(
-                        ResolveModelId(agent, context),
-                        request,
-                        context.SessionId,
-                        effectiveToken))
-                    {
-                        await llmChannel.Writer.WriteAsync(update, effectiveToken).ConfigureAwait(false);
-                    }
-                    llmChannel.Writer.Complete();
-                }
-                catch (OperationCanceledException ex) when (ex.CancellationToken == effectiveToken)
-                {
-                    // 用户主动取消，不作为错误
-                    _logger.LogInformation("[AgentExecutor] LLM 请求被取消");
-                    llmChannel.Writer.Complete();
-                }
-                catch (LlmRetryExhaustedException ex)
-                {
-                    // 重试耗尽
-                    llmException = ex;
-                    _logger.LogError(ex, "[AgentExecutor] LLM 重试耗尽: {Message}", ex.Message);
-                    llmChannel.Writer.Complete(ex);
-                }
-                catch (LlmTimeoutException ex)
-                {
-                    // 超时
-                    llmException = ex;
-                    _logger.LogError(ex, "[AgentExecutor] LLM 请求超时");
-                    llmChannel.Writer.Complete(ex);
-                }
-                catch (LlmStreamingException ex)
-                {
-                    // 流式错误
-                    llmException = ex;
-                    _logger.LogError(ex, "[AgentExecutor] LLM 流式错误: {Message}", ex.Message);
-                    llmChannel.Writer.Complete(ex);
-                }
-                catch (LlmException ex)
-                {
-                    // 其他 LLM 错误
-                    llmException = ex;
-                    _logger.LogError(ex, "[AgentExecutor] LLM 错误: {Message}", ex.Message);
-                    llmChannel.Writer.Complete(ex);
-                }
-                catch (IOException ex)
-                {
-                    // 网络连接错误
-                    llmException = new LlmConnectionException("网络连接错误", ex);
-                    _logger.LogError(ex, "[AgentExecutor] 网络连接错误");
-                    llmChannel.Writer.Complete(llmException);
-                }
-                catch (Exception ex)
-                {
-                    // 未知错误
-                    llmException = new LlmException($"LLM 调用失败: {ex.Message}", ex);
-                    _logger.LogError(ex, "[AgentExecutor] LLM 调用失败");
-                    llmChannel.Writer.Complete(llmException);
-                }
+                UserInput = history.LastOrDefault()?.Content
             }, effectiveToken);
 
-            // 从 channel 读取流式更新
-            await foreach (var update in llmChannel.Reader.ReadAllAsync(effectiveToken))
+            for (var step = 0; step < maxSteps; step++)
             {
-                // ========== 处理思考过程增量 ==========
-                if (!string.IsNullOrEmpty(update.ReasoningDelta))
+                effectiveToken.ThrowIfCancellationRequested();
+                totalSteps = step + 1;
+
+                // === 循环开始检查：上一轮遗留的 paused todo ===
+                if (step == 0 && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
                 {
-                    streamingReasoning.Append(update.ReasoningDelta);
-
-                    yield return new StreamDeltaEvent
+                    var todoList = await LoadTodoList(context.SessionId);
+                    if (todoList.HasPaused())
                     {
-                        SessionId = context.SessionId,
-                        LoopId = loopId,
-                        ReasoningDelta = update.ReasoningDelta
-                    };
-                }
-
-                // ========== 处理正文内容增量 ==========
-                if (!string.IsNullOrEmpty(update.ContentDelta))
-                {
-                    streamingContent.Append(update.ContentDelta);
-
-                    yield return new StreamDeltaEvent
-                    {
-                        SessionId = context.SessionId,
-                        LoopId = loopId,
-                        ContentDelta = update.ContentDelta
-                    };
-                }
-
-                // 累积工具调用
-                if (update.ToolCallDeltas != null && update.ToolCallDeltas.Count > 0)
-                {
-                    accumulatedToolCalls ??= new List<ToolCall>();
-                    accumulatedToolCalls.AddRange(update.ToolCallDeltas);
-                }
-
-                // 记录 Usage
-                if (update.Usage != null)
-                {
-                    lastUsage = update.Usage;
-                    // 累加到总 Usage
-                    if (totalUsage == null)
-                    {
-                        totalUsage = new TokenUsage
-                        {
-                            InputTokens = update.Usage.InputTokens,
-                            OutputTokens = update.Usage.OutputTokens
-                        };
-                    }
-                    else
-                    {
-                        totalUsage = totalUsage with
-                        {
-                            InputTokens = totalUsage.InputTokens + update.Usage.InputTokens,
-                            OutputTokens = totalUsage.OutputTokens + update.Usage.OutputTokens
-                        };
+                        var reminder = BuildTodoReminderMessage(
+                            SystemReminder.Kinds.TodoPaused,
+                            todoList.FormatBrief());
+                        if (reminder != null)
+                            history.Add(reminder);
                     }
                 }
 
-                if (update.IsComplete)
+                // ========== 发布 StreamStart 事件（标记新轮次开始）==========
+                await writer.WriteAsync(new StreamStartEvent
                 {
-                    assistantMessage = BuildAssistantMessage(
-                        update,
-                        streamingContent.ToString(),
-                        streamingReasoning.ToString(),
-                        accumulatedToolCalls);
-                }
-            }
+                    SessionId = context.SessionId,
+                    LoopId = loopId,
+                    Step = step
+                }, effectiveToken);
 
-            // 确保后台任务完成
-            await llmTask.ConfigureAwait(false);
-
-            // 处理 LLM 异常
-            if (llmException != null)
-            {
-                errorMessage = llmException.Message;
-
-                // 触发 chat.on_error Hook
-                _hooks.TriggerFireAndForget(
-                    HookRegistry.ChatOnError,
-                    context.SessionId,
-                    new Dictionary<string, object?>
+                // === TodoEmpty 检查：已执行多步但未创建 todo ===
+                if (step >= 2 && !_todoEmptyReminded
+                    && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
+                {
+                    var todoList = await LoadTodoList(context.SessionId);
+                    if (todoList.IsEmpty())
                     {
-                        ["modelId"] = ResolveModelId(agent, context),
-                        ["error"] = llmException,
-                        ["source"] = llmException is LlmException lle ? lle.Source : "unknown"
-                    });
+                        var reminder = BuildTodoReminderMessage(
+                            SystemReminder.Kinds.TodoEmpty,
+                            "请评估当前任务是否需要使用 TodoWrite 规划。");
+                        if (reminder != null)
+                            history.Add(reminder);
+                        _todoEmptyReminded = true;
+                    }
+                }
 
-                yield return new ErrorEvent
+                // 构建请求（异步注入动态上下文；token 改用 effectiveToken）
+                var request = await BuildRequestAsync(agent, history, context, effectiveToken).ConfigureAwait(false);
+
+                // 调用 LLM（流式）
+                ChatMessage? assistantMessage = null;
+                var streamingContent = new StringBuilder();
+                var streamingReasoning = new StringBuilder();
+                List<ToolCall>? accumulatedToolCalls = null;
+                TokenUsage? lastUsage = null;
+
+                // 使用 Channel 模式捕获 LLM 流式异常
+                var llmChannel = System.Threading.Channels.Channel.CreateUnbounded<StreamUpdate>();
+                Exception? llmException = null;
+
+                var llmTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await foreach (var update in _llm.CompleteStreamAsync(
+                            ResolveModelId(agent, context),
+                            request,
+                            context.SessionId,
+                            effectiveToken))
+                        {
+                            await llmChannel.Writer.WriteAsync(update, effectiveToken).ConfigureAwait(false);
+                        }
+                        llmChannel.Writer.Complete();
+                    }
+                    catch (OperationCanceledException ex) when (ex.CancellationToken == effectiveToken)
+                    {
+                        // 用户主动取消，不作为错误
+                        _logger.LogInformation("[AgentExecutor] LLM 请求被取消");
+                        llmChannel.Writer.Complete();
+                    }
+                    catch (LlmRetryExhaustedException ex)
+                    {
+                        llmException = ex;
+                        _logger.LogError(ex, "[AgentExecutor] LLM 重试耗尽: {Message}", ex.Message);
+                        llmChannel.Writer.Complete(ex);
+                    }
+                    catch (LlmTimeoutException ex)
+                    {
+                        llmException = ex;
+                        _logger.LogError(ex, "[AgentExecutor] LLM 请求超时");
+                        llmChannel.Writer.Complete(ex);
+                    }
+                    catch (LlmStreamingException ex)
+                    {
+                        llmException = ex;
+                        _logger.LogError(ex, "[AgentExecutor] LLM 流式错误: {Message}", ex.Message);
+                        llmChannel.Writer.Complete(ex);
+                    }
+                    catch (LlmException ex)
+                    {
+                        llmException = ex;
+                        _logger.LogError(ex, "[AgentExecutor] LLM 错误: {Message}", ex.Message);
+                        llmChannel.Writer.Complete(ex);
+                    }
+                    catch (IOException ex)
+                    {
+                        llmException = new LlmConnectionException("网络连接错误", ex);
+                        _logger.LogError(ex, "[AgentExecutor] 网络连接错误");
+                        llmChannel.Writer.Complete(llmException);
+                    }
+                    catch (Exception ex)
+                    {
+                        llmException = new LlmException($"LLM 调用失败: {ex.Message}", ex);
+                        _logger.LogError(ex, "[AgentExecutor] LLM 调用失败");
+                        llmChannel.Writer.Complete(llmException);
+                    }
+                }, effectiveToken);
+
+                // 从 channel 读取流式更新
+                await foreach (var update in llmChannel.Reader.ReadAllAsync(effectiveToken))
+                {
+                    // ========== 处理思考过程增量 ==========
+                    if (!string.IsNullOrEmpty(update.ReasoningDelta))
+                    {
+                        streamingReasoning.Append(update.ReasoningDelta);
+                        await writer.WriteAsync(new StreamDeltaEvent
+                        {
+                            SessionId = context.SessionId,
+                            LoopId = loopId,
+                            ReasoningDelta = update.ReasoningDelta
+                        }, effectiveToken);
+                    }
+
+                    // ========== 处理正文内容增量 ==========
+                    if (!string.IsNullOrEmpty(update.ContentDelta))
+                    {
+                        streamingContent.Append(update.ContentDelta);
+                        await writer.WriteAsync(new StreamDeltaEvent
+                        {
+                            SessionId = context.SessionId,
+                            LoopId = loopId,
+                            ContentDelta = update.ContentDelta
+                        }, effectiveToken);
+                    }
+
+                    // 累积工具调用
+                    if (update.ToolCallDeltas != null && update.ToolCallDeltas.Count > 0)
+                    {
+                        accumulatedToolCalls ??= new List<ToolCall>();
+                        accumulatedToolCalls.AddRange(update.ToolCallDeltas);
+                    }
+
+                    // 记录 Usage
+                    if (update.Usage != null)
+                    {
+                        lastUsage = update.Usage;
+                        if (totalUsage == null)
+                        {
+                            totalUsage = new TokenUsage
+                            {
+                                InputTokens = update.Usage.InputTokens,
+                                OutputTokens = update.Usage.OutputTokens
+                            };
+                        }
+                        else
+                        {
+                            totalUsage = totalUsage with
+                            {
+                                InputTokens = totalUsage.InputTokens + update.Usage.InputTokens,
+                                OutputTokens = totalUsage.OutputTokens + update.Usage.OutputTokens
+                            };
+                        }
+                    }
+
+                    if (update.IsComplete)
+                    {
+                        assistantMessage = BuildAssistantMessage(
+                            update,
+                            streamingContent.ToString(),
+                            streamingReasoning.ToString(),
+                            accumulatedToolCalls);
+                    }
+                }
+
+                // 确保后台任务完成
+                await llmTask.ConfigureAwait(false);
+
+                // 取消优先：取消后不再把「空响应」误报为错误，交由外层 catch 发布 LoopCancelledEvent
+                if (effectiveToken.IsCancellationRequested)
+                    throw new OperationCanceledException(effectiveToken);
+
+                // 处理 LLM 异常
+                if (llmException != null)
+                {
+                    errorMessage = llmException.Message;
+
+                    _hooks.TriggerFireAndForget(
+                        HookRegistry.ChatOnError,
+                        context.SessionId,
+                        new Dictionary<string, object?>
+                        {
+                            ["modelId"] = ResolveModelId(agent, context),
+                            ["error"] = llmException,
+                            ["source"] = llmException is LlmException lle ? lle.Source : "unknown"
+                        });
+
+                    await writer.WriteAsync(new ErrorEvent
+                    {
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        Message = llmException.Message,
+                        Exception = llmException,
+                        Source = "llm"
+                    }, CancellationToken.None);
+
+                    await writer.WriteAsync(new LoopCompleteEvent
+                    {
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        TotalSteps = totalSteps,
+                        Duration = DateTime.Now - loopStartTime,
+                        Success = false,
+                        Error = errorMessage
+                    }, CancellationToken.None);
+                    return;
+                }
+
+                if (assistantMessage == null)
+                {
+                    _logger.LogWarning("[AgentExecutor] LLM 返回空响应");
+                    errorMessage = "LLM 返回空响应";
+
+                    await writer.WriteAsync(new ErrorEvent
+                    {
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        Message = "LLM 返回空响应",
+                        Source = "llm"
+                    }, CancellationToken.None);
+
+                    await writer.WriteAsync(new LoopCompleteEvent
+                    {
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        TotalSteps = totalSteps,
+                        Duration = DateTime.Now - loopStartTime,
+                        Success = false,
+                        Error = errorMessage
+                    }, CancellationToken.None);
+                    return;
+                }
+
+                history.Add(assistantMessage);
+
+                // ========== 发布 StreamComplete 事件 ==========
+                await writer.WriteAsync(new StreamCompleteEvent
                 {
                     SessionId = context.SessionId,
                     LoopId = loopId,
-                    Message = llmException.Message,
-                    Exception = llmException,
-                    Source = "llm"
-                };
+                    Message = assistantMessage,
+                    Usage = lastUsage
+                }, effectiveToken);
 
-                // 发布 LoopComplete 事件（失败）
-                yield return new LoopCompleteEvent
+                // 无工具调用则检查 todo 状态
+                if (assistantMessage.ToolCalls == null || assistantMessage.ToolCalls.Count == 0)
                 {
-                    SessionId = context.SessionId,
-                    LoopId = loopId,
-                    TotalSteps = totalSteps,
-                    Duration = DateTime.Now - loopStartTime,
-                    Success = false,
-                    Error = errorMessage
-                };
-                yield break;
+                    // === 退出检查：未完成 todo ===
+                    if (_todoStore != null && !string.IsNullOrEmpty(context.SessionId))
+                    {
+                        var todoList = await LoadTodoList(context.SessionId);
+                        if (todoList.HasIncompletePendingOrInProgress())
+                        {
+                            if (!_incompleteReminded)
+                            {
+                                var reminder = BuildTodoReminderMessage(
+                                    SystemReminder.Kinds.TodoIncomplete,
+                                    todoList.FormatBrief());
+                                if (reminder != null)
+                                    history.Add(reminder);
+                                _incompleteReminded = true;
+                                continue; // 不退出，再给一轮
+                            }
+                            // 第二次仍然未完成 → 信任 agent，允许退出
+                        }
+                    }
+
+                    // 发布 LoopComplete 事件（成功）
+                    await writer.WriteAsync(new LoopCompleteEvent
+                    {
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        TotalSteps = totalSteps,
+                        Duration = DateTime.Now - loopStartTime,
+                        Success = true,
+                        Usage = totalUsage
+                    }, CancellationToken.None);
+                    return;
+                }
+
+                // 累计工具调用次数
+                if (assistantMessage.ToolCalls != null)
+                    _totalToolCallsExecuted += assistantMessage.ToolCalls.Count;
+
+                // ========== 执行工具调用（内部排空，保证终态送达）==========
+                await ExecuteToolCallsAsync(
+                    assistantMessage.ToolCalls ?? new List<ToolCall>(),
+                    agent,
+                    context,
+                    permissionChannel,
+                    loopId,
+                    writer,
+                    history,
+                    effectiveToken);
             }
 
-            if (assistantMessage == null)
-            {
-                _logger.LogWarning("[AgentExecutor] LLM 返回空响应");
-                errorMessage = "LLM 返回空响应";
+            // 达到最大步数
+            errorMessage = $"达到最大步数 {maxSteps}，已停止";
 
-                yield return new ErrorEvent
-                {
-                    SessionId = context.SessionId,
-                    LoopId = loopId,
-                    Message = "LLM 返回空响应",
-                    Source = "llm"
-                };
-
-                // 发布 LoopComplete 事件（失败）
-                yield return new LoopCompleteEvent
-                {
-                    SessionId = context.SessionId,
-                    LoopId = loopId,
-                    TotalSteps = totalSteps,
-                    Duration = DateTime.Now - loopStartTime,
-                    Success = false,
-                    Error = errorMessage
-                };
-                yield break;
-            }
-
-            history.Add(assistantMessage);
-
-            // ========== 发布 StreamComplete 事件 ==========
-            yield return new StreamCompleteEvent
+            await writer.WriteAsync(new ErrorEvent
             {
                 SessionId = context.SessionId,
                 LoopId = loopId,
-                Message = assistantMessage,
-                Usage = lastUsage
-            };
+                Message = errorMessage,
+                Source = "agent"
+            }, CancellationToken.None);
 
-            // 无工具调用则检查 todo 状态
-            if (assistantMessage.ToolCalls == null || assistantMessage.ToolCalls.Count == 0)
+            await writer.WriteAsync(new LoopCompleteEvent
             {
-                // === 退出检查：未完成 todo ===
-                if (_todoStore != null && !string.IsNullOrEmpty(context.SessionId))
-                {
-                    var todoList = await LoadTodoList(context.SessionId);
-                    if (todoList.HasIncompletePendingOrInProgress())
-                    {
-                        if (!_incompleteReminded)
-                        {
-                            var reminder = BuildTodoReminderMessage(
-                                SystemReminder.Kinds.TodoIncomplete,
-                                todoList.FormatBrief());
-                            if (reminder != null)
-                                history.Add(reminder);
-                            _incompleteReminded = true;
-                            continue; // 不退出，再给一轮
-                        }
-                        // 第二次仍然未完成 → 信任 agent，允许退出
-                    }
-                }
-
-                // 发布 LoopComplete 事件（成功）
-                yield return new LoopCompleteEvent
-                {
-                    SessionId = context.SessionId,
-                    LoopId = loopId,
-                    TotalSteps = totalSteps,
-                    Duration = DateTime.Now - loopStartTime,
-                    Success = true,
-                    Usage = totalUsage
-                };
-                yield break;
-            }
-
-            // 累计工具调用次数
-            if (assistantMessage.ToolCalls != null)
-                _totalToolCallsExecuted += assistantMessage.ToolCalls.Count;
-
-            // ========== 执行工具调用 ==========
-            await foreach (var toolEvent in ExecuteToolCallsAsync(
-                assistantMessage.ToolCalls ?? new List<ToolCall>(),
-                agent,
-                context,
-                permissionChannel,
-                loopId,
-                effectiveToken))
-            {
-                yield return toolEvent;
-
-                // 将工具结果添加到消息历史：所有终态（成功/失败/拒绝/取消）都必须追加
-                // 对应的 tool 消息，否则下一轮 LLM 会因缺少 tool 响应而报 400。
-                if (toolEvent is ToolCallEvent tcEvent &&
-                    tcEvent.Status is ToolCallStatus.Success or ToolCallStatus.Failed
-                        or ToolCallStatus.Rejected or ToolCallStatus.Cancelled)
-                {
-                    history.Add(new ChatMessage
-                    {
-                        Role = ChatRole.Tool,
-                        ToolCallId = tcEvent.ToolCallId,
-                        Content = tcEvent.Output ?? tcEvent.Error ?? string.Empty
-                    });
-                }
-            }
+                SessionId = context.SessionId,
+                LoopId = loopId,
+                TotalSteps = totalSteps,
+                Duration = DateTime.Now - loopStartTime,
+                Success = false,
+                Error = errorMessage
+            }, CancellationToken.None);
         }
-
-        // 达到最大步数
-        errorMessage = $"达到最大步数 {maxSteps}，已停止";
-
-        yield return new ErrorEvent
+        catch (OperationCanceledException) when (effectiveToken.IsCancellationRequested)
         {
-            SessionId = context.SessionId,
-            LoopId = loopId,
-            Message = errorMessage,
-            Source = "agent"
-        };
-
-        // 发布 LoopComplete 事件（失败）
-        yield return new LoopCompleteEvent
+            _logger.LogInformation("[AgentExecutor] Loop 已取消，发布 LoopCancelledEvent");
+            await writer.WriteAsync(new LoopCancelledEvent
+            {
+                SessionId = context.SessionId,
+                LoopId = loopId,
+                Reason = "user",
+                CompletedSteps = totalSteps,
+                PartialUsage = totalUsage
+            }, CancellationToken.None);
+        }
+        catch (Exception ex)
         {
-            SessionId = context.SessionId,
-            LoopId = loopId,
-            TotalSteps = totalSteps,
-            Duration = DateTime.Now - loopStartTime,
-            Success = false,
-            Error = errorMessage
-        };
+            _logger.LogError(ex, "[AgentExecutor] Loop 未捕获异常，发布 Error + LoopComplete(失败)");
+            await writer.WriteAsync(new ErrorEvent
+            {
+                SessionId = context.SessionId,
+                LoopId = loopId,
+                Message = ex.Message,
+                Exception = ex,
+                Source = "agent"
+            }, CancellationToken.None);
+            await writer.WriteAsync(new LoopCompleteEvent
+            {
+                SessionId = context.SessionId,
+                LoopId = loopId,
+                TotalSteps = totalSteps,
+                Duration = DateTime.Now - loopStartTime,
+                Success = false,
+                Error = ex.Message
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            writer.Complete();
+        }
     }
 
     /// <summary>
@@ -499,7 +547,8 @@ public class AgentExecutor : IAgentExecutor
     private async Task<ChatRequest> BuildRequestAsync(
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         List<ChatMessage> messages,
-        AgentContext context)
+        AgentContext context,
+        CancellationToken cancellationToken)
     {
         var toolSchemas = GetToolSchemas(agent);
 
@@ -518,7 +567,7 @@ public class AgentExecutor : IAgentExecutor
                 Platform = Environment.OSVersion.Platform.ToString(),
                 Tools = toolSchemas.Select(ts => ts.Function).ToList(),
             };
-            systemPrompt = await _promptBuilder.BuildAsync(promptContext, context.CancellationToken).ConfigureAwait(false);
+            systemPrompt = await _promptBuilder.BuildAsync(promptContext, cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(systemPrompt))
                 systemPrompt = null;
         }
@@ -548,20 +597,22 @@ public class AgentExecutor : IAgentExecutor
     }
 
     /// <summary>
-    /// 执行工具调用 - 返回事件流
+    /// 执行工具调用 - 写入事件流。
     /// </summary>
-    private async IAsyncEnumerable<IMessageEvent> ExecuteToolCallsAsync(
+    private async Task ExecuteToolCallsAsync(
         List<ToolCall> toolCalls,
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
         IPermissionChannel permissionChannel,
         string loopId,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+        ChannelWriter<IMessageEvent> writer,
+        List<ChatMessage> history,
+        CancellationToken cancellationToken)
     {
         // 先全部 Pending，再并行执行；执行中通过 Channel 交错 Running / Emit / Complete
         foreach (var tc in toolCalls)
         {
-            yield return new ToolCallEvent
+            await writer.WriteAsync(new ToolCallEvent
             {
                 SessionId = context.SessionId,
                 LoopId = loopId,
@@ -570,7 +621,7 @@ public class AgentExecutor : IAgentExecutor
                 ToolName = tc.Function?.Name ?? "",
                 Arguments = ParseArguments(tc.Function?.Arguments),
                 Status = ToolCallStatus.Pending
-            };
+            }, cancellationToken);
         }
 
         var channel = Channel.CreateUnbounded<IMessageEvent>(
@@ -589,7 +640,23 @@ public class AgentExecutor : IAgentExecutor
             TaskScheduler.Default);
 
         await foreach (var evt in channel.Reader.ReadAllAsync(cancellationToken))
-            yield return evt;
+        {
+            await writer.WriteAsync(evt, cancellationToken);
+
+            // 将工具结果添加到消息历史：所有终态（成功/失败/拒绝/取消）都必须追加
+            // 对应的 tool 消息，否则下一轮 LLM 会因缺少 tool 响应而报 400。
+            if (evt is ToolCallEvent tcEvent &&
+                tcEvent.Status is ToolCallStatus.Success or ToolCallStatus.Failed
+                    or ToolCallStatus.Rejected or ToolCallStatus.Cancelled)
+            {
+                history.Add(new ChatMessage
+                {
+                    Role = ChatRole.Tool,
+                    ToolCallId = tcEvent.ToolCallId,
+                    Content = tcEvent.Output ?? tcEvent.Error ?? string.Empty
+                });
+            }
+        }
 
         await allDone.ConfigureAwait(false);
     }
