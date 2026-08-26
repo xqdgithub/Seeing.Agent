@@ -431,16 +431,14 @@ public class ExecutionJobService : IDisposable
                 var eventTracker = new ChatEventTracker();
 
                 // Execute agent
+                // 取消不再主动 throw：执行器（事件流水线）会产出终态事件（工具 Cancelled / LoopCancelledEvent），
+                // 这些事件必须在取消后仍被处理与发布。OCE 由下方 catch 兜底（执行器未转换为事件的极端情况）。
                 await foreach (var evt in executionRouter.ExecuteAsync(
                     context.Agent,
                     messages,
                     BuildAgentContext(context, queue.CurrentCancellationToken),
                     queue.CurrentCancellationToken))
                 {
-                    // Check for cancellation
-                    if (queue.CurrentCancellationToken.IsCancellationRequested)
-                        throw new OperationCanceledException();
-
                     var liveSession = sessionManager.Get(record.SessionId) ?? session;
                     eventTracker.ApplyEvent(liveSession, evt);
                     TaskSessionProjector.Apply(liveSession, evt);
