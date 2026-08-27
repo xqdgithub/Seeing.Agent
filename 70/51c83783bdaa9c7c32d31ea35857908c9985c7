@@ -1,0 +1,26 @@
+tests/Seeing.Agent.WebUI.Tests/Services/MessageTimelineStoreTests.cs
+  s_e889762db1a288::t_2c455ce58fa167 443-481
+samples/Seeing.Agent.WebUI/Services/MessageTimelineStore.cs
+  s_e889762db1a288::t_9aa847d9e98049 713-730
+samples/Seeing.Agent.WebUI/Pages/Session.razor
+  s_e889762db1a288::t_af0f156fce4422 1241-1245
+  s_e889762db1a288::t_5ddf40567c4297 769,772-773
+  s_e889762db1a288::t_00bbf248a499e9 1506-1513
+  s_e889762db1a288::t_3ab6f57fcfa326 618,620,633-652
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.43-trip",
+  "base_commit_sha": "7051c83783bdaa9c7c32d31ea35857908c9985c7",
+  "prompts": {},
+  "sessions": {
+    "s_e889762db1a288": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fbdc9c4edffeS1x2PjOh1PN264",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
