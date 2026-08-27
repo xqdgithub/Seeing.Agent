@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Seeing.Agent.App.Execution;
+using Seeing.Agent.Execution;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App.Execution;

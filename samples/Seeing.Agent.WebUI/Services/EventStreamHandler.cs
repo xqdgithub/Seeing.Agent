@@ -93,11 +93,6 @@ namespace Seeing.Agent.WebUI.Services
         private readonly Dictionary<string, int> _toolCallPositions = new();
 
         /// <summary>
-        /// Task 卡片索引：taskId → SessionToolCall（后台完成后仍可按 taskId 更新）
-        /// </summary>
-        private readonly Dictionary<string, SessionToolCall> _taskIndex = new(StringComparer.Ordinal);
-
-        /// <summary>
         /// 待处理的权限请求
         /// </summary>
         private readonly Dictionary<string, PermissionRequestViewModel> _pendingPermissions = new();
@@ -175,22 +170,6 @@ namespace Seeing.Agent.WebUI.Services
                 case MessageEventType.ToolCallRunning:
                 case MessageEventType.ToolCallComplete:
                     HandleToolCall((ToolCallEvent)evt);
-                    break;
-
-                case MessageEventType.TaskStarted:
-                    HandleTaskStarted((TaskStartedEvent)evt);
-                    break;
-
-                case MessageEventType.TaskProgress:
-                    HandleTaskProgress((TaskProgressEvent)evt);
-                    break;
-
-                case MessageEventType.TaskCompleted:
-                    HandleTaskCompleted((TaskCompletedEvent)evt);
-                    break;
-
-                case MessageEventType.TaskFailed:
-                    HandleTaskFailed((TaskFailedEvent)evt);
                     break;
 
                 case MessageEventType.PermissionRequest:
@@ -299,7 +278,6 @@ namespace Seeing.Agent.WebUI.Services
             // 清空当前助手消息，准备接收新的 Loop
             _currentAssistantMessage = null;
             _toolCallPositions.Clear();
-            // 不清空 _taskIndex：后台 Task 可能在 Loop 结束后仍推送 Progress/Completed
             _currentStep = 0;  // ✅ 重置 step，新 Loop 从 0 开始
 
             // 清空累积缓冲区
@@ -440,7 +418,8 @@ namespace Seeing.Agent.WebUI.Services
             }
 
             // task 工具：从参数/输出补齐 Task 卡片字段，避免完成后退化成普通工具调用
-            EnrichTaskToolCall(toolCall);
+            TryFillTaskFieldsFromArguments(toolCall);
+            TryFillTaskIdFromResult(toolCall);
 
             // 处理 todowrite 工具：提取 Todo 列表并更新 SessionState
             if (evt.ToolName?.ToLowerInvariant() == "todowrite" &&
@@ -449,34 +428,6 @@ namespace Seeing.Agent.WebUI.Services
             {
                 UpdateTodoList(evt.SessionId, evt.Output);
             }
-        }
-
-        /// <summary>
-        /// 从参数/结果补齐 Task 子代理卡片字段，并写入索引
-        /// </summary>
-        private void EnrichTaskToolCall(SessionToolCall toolCall)
-        {
-            if (toolCall == null)
-                return;
-
-            var isTask = string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase)
-                || !string.IsNullOrEmpty(toolCall.TaskId)
-                || (!string.IsNullOrEmpty(toolCall.Result) &&
-                    toolCall.Result.Contains("task_id:", StringComparison.OrdinalIgnoreCase))
-                || (!string.IsNullOrEmpty(toolCall.Arguments) &&
-                    toolCall.Arguments.Contains("subagent_type", StringComparison.OrdinalIgnoreCase));
-
-            if (!isTask)
-                return;
-
-            if (string.IsNullOrEmpty(toolCall.Name))
-                toolCall.Name = "task";
-
-            TryFillTaskFieldsFromArguments(toolCall);
-            TryFillTaskIdFromResult(toolCall);
-
-            if (!string.IsNullOrEmpty(toolCall.TaskId))
-                _taskIndex[toolCall.TaskId] = toolCall;
         }
 
         private static void TryFillTaskFieldsFromArguments(SessionToolCall toolCall)
@@ -556,67 +507,6 @@ namespace Seeing.Agent.WebUI.Services
             {
                 // 解析失败，忽略
             }
-        }
-
-        private void HandleTaskStarted(TaskStartedEvent evt)
-        {
-            // 服务端 TaskSessionProjector 已写入字段；UI 只刷新卡片索引
-            var toolCall = ResolveTaskToolCall(evt.OriginToolCallId, evt.TaskId);
-            if (toolCall != null)
-                _taskIndex[evt.TaskId] = toolCall;
-        }
-
-        private void HandleTaskProgress(TaskProgressEvent evt)
-        {
-            var toolCall = ResolveTaskToolCall(evt.OriginToolCallId, evt.TaskId);
-            if (toolCall != null)
-                _taskIndex[evt.TaskId] = toolCall;
-        }
-
-        private void HandleTaskCompleted(TaskCompletedEvent evt)
-        {
-            var toolCall = ResolveTaskToolCall(evt.OriginToolCallId, evt.TaskId);
-            if (toolCall != null)
-                _taskIndex[evt.TaskId] = toolCall;
-        }
-
-        private void HandleTaskFailed(TaskFailedEvent evt)
-        {
-            var toolCall = ResolveTaskToolCall(evt.OriginToolCallId, evt.TaskId);
-            if (toolCall != null)
-                _taskIndex[evt.TaskId] = toolCall;
-        }
-
-        private SessionToolCall? ResolveTaskToolCall(string? originToolCallId, string taskId)
-        {
-            if (!string.IsNullOrEmpty(originToolCallId) &&
-                _currentAssistantMessage?.ToolCalls != null)
-            {
-                var byOrigin = _currentAssistantMessage.ToolCalls.Find(t => t.Id == originToolCallId);
-                if (byOrigin != null)
-                    return byOrigin;
-            }
-
-            if (_taskIndex.TryGetValue(taskId, out var indexed))
-                return indexed;
-
-            return FindTaskToolCallInSession(taskId);
-        }
-
-        private SessionToolCall? FindTaskToolCallInSession(string taskId)
-        {
-            var messages = _sessionState.CurrentSession?.Messages;
-            if (messages == null)
-                return null;
-
-            foreach (var msg in messages)
-            {
-                var match = msg.ToolCalls?.FirstOrDefault(t => t.TaskId == taskId);
-                if (match != null)
-                    return match;
-            }
-
-            return null;
         }
 
         /// <summary>
@@ -907,7 +797,6 @@ namespace Seeing.Agent.WebUI.Services
             _toolCallPositions.Clear();
             _accumulatedReasoning.Clear();
             _accumulatedContent.Clear();
-            _taskIndex.Clear();
         }
 
         /// <summary>
@@ -926,12 +815,7 @@ namespace Seeing.Agent.WebUI.Services
                 tc.Status = "cancelled";
                 tc.Error = reason;
                 count++;
-                if (!string.IsNullOrEmpty(tc.TaskId))
-                    _taskIndex[tc.TaskId] = tc;
             }
-
-            foreach (var tc in _taskIndex.Values.ToList())
-                Mark(tc);
 
             if (_currentAssistantMessage?.ToolCalls != null)
             {
@@ -1001,7 +885,6 @@ namespace Seeing.Agent.WebUI.Services
 
                     tc.Status = "cancelled";
                     tc.Error = reason;
-                    _taskIndex[taskId] = tc;
                     count++;
                 }
             }

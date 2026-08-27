@@ -1,17 +1,17 @@
 ﻿using Seeing.Agent.Abstractions.Tools;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
-using Seeing.Agent.Core.Background;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Execution;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Tools.BuiltIn.SubTask;
 
 /// <summary>
 /// 查询后台 task 状态；wait=true 时可阻塞至完成或超时。
-/// Job 不存在时回落到 Child Session 消息摘要（§4.4）。
+/// 执行记录不存在时回落到 Child Session 消息摘要（§4.4）。
 /// </summary>
 [ToolCapability(ToolCapabilityKeys.TimeoutSkip, "true")]
 [ToolCapability(ToolCapabilityKeys.CacheEnabled, "false")]
@@ -54,57 +54,62 @@ public class TaskStatusTool : ToolBase
         if (arguments.TryGetProperty("timeout_ms", out var t) && t.TryGetInt32(out var ms) && ms > 0)
             timeoutMs = ms;
 
-        // 运行期解析后台任务管理器，避免与 ToolManager 的构造期循环依赖
-        var backgroundTasks = context.Services?.GetService(typeof(IBackgroundTaskManager)) as IBackgroundTaskManager;
+        // 运行期解析执行引擎，避免与 ToolManager 的构造期循环依赖
+        var execService = context.Services?.GetService(typeof(ExecutionJobService)) as ExecutionJobService;
+        if (execService == null)
+            return Failure("执行引擎不可用，无法查询任务状态");
 
-        BackgroundTaskInfo? info;
+        var overview = execService.GetOverview(taskId);
+        var current = overview.CurrentExecution;
+
+        // 无活跃/排队执行：回落到子会话消息摘要（兼容已完成落盘会话与旧后台任务）
+        if (current == null && overview.QueueLength == 0)
+            return await FallbackFromSessionAsync(taskId);
+
         if (wait)
         {
-            if (backgroundTasks == null)
-                return Failure("后台任务管理器不可用，无法等待任务");
-
-            // 传入 context.CancellationToken：父 Loop 取消时 wait 立即返回 Cancelled，而非继续轮询到超时
+            // 取消优先：父 Loop 取消时 wait 立即返回，而非继续轮询到超时
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
+            cts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
             try
             {
-                info = await backgroundTasks.WaitAsync(taskId, timeoutMs, context.CancellationToken);
+                await execService.WaitForExecutionAsync(current!.ExecutionId, cts.Token);
             }
             catch (OperationCanceledException)
             {
-                return Failure("已取消");
+                if (context.CancellationToken.IsCancellationRequested)
+                    return Failure("已取消");
+                return Success("timeout", $"task_id: {taskId}\nstate: timeout");
             }
-            if (info == null)
-            {
-                var current = await backgroundTasks.GetAsync(taskId);
-                if (current == null)
-                    return await FallbackFromSessionAsync(taskId);
-                if (current.Status is BackgroundTaskStatus.Pending or BackgroundTaskStatus.Running)
-                    return Success("timeout", $"task_id: {taskId}\nstate: timeout");
-                info = current;
-            }
-        }
-        else
-        {
-            info = backgroundTasks == null ? null : await backgroundTasks.GetAsync(taskId);
-            if (info == null)
+
+            current = execService.GetExecution(current!.ExecutionId);
+            if (current == null)
                 return await FallbackFromSessionAsync(taskId);
         }
 
-        var state = MapJobState(info.Status);
+        var state = MapExecutionState(current!.Status);
         var sb = new StringBuilder();
         sb.AppendLine($"task_id: {taskId}");
         sb.AppendLine($"state: {state}");
-        if (!string.IsNullOrEmpty(info.Result))
+
+        var session = _sessionManager.Get(taskId) ?? await _sessionManager.LoadAsync(taskId);
+        var lastAssistant = session?.GetActiveMessages()
+            .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+                                && !m.IsSummary);
+
+        if (current.Status == ExecutionStatus.Completed && lastAssistant != null &&
+            !string.IsNullOrEmpty(lastAssistant.Content))
         {
             sb.AppendLine();
             sb.AppendLine("<task_result>");
-            sb.AppendLine(info.Result);
+            sb.AppendLine(lastAssistant.Content);
             sb.AppendLine("</task_result>");
         }
-        else if (!string.IsNullOrEmpty(info.Error))
+        else if (!string.IsNullOrEmpty(current.ErrorMessage))
         {
             sb.AppendLine();
             sb.AppendLine("<task_error>");
-            sb.AppendLine(info.Error);
+            sb.AppendLine(current.ErrorMessage);
             sb.AppendLine("</task_error>");
         }
 
@@ -165,13 +170,14 @@ public class TaskStatusTool : ToolBase
         });
     }
 
-    private static string MapJobState(BackgroundTaskStatus status) => status switch
+    private static string MapExecutionState(ExecutionStatus status) => status switch
     {
-        BackgroundTaskStatus.Pending => "running",
-        BackgroundTaskStatus.Running => "running",
-        BackgroundTaskStatus.Completed => "completed",
-        BackgroundTaskStatus.Failed => "error",
-        BackgroundTaskStatus.Cancelled => "cancelled",
+        ExecutionStatus.Pending => "running",
+        ExecutionStatus.Queued => "running",
+        ExecutionStatus.Running => "running",
+        ExecutionStatus.Completed => "completed",
+        ExecutionStatus.Failed => "error",
+        ExecutionStatus.Cancelled => "cancelled",
         _ => "running"
     };
 }

@@ -1,4 +1,4 @@
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// Configuration options for the execution engine.

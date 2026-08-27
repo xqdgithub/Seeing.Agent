@@ -1,6 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Events;
 
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// Publisher for execution events, supporting multiple subscribers per session.

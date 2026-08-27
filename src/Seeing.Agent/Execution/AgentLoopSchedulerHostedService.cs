@@ -1,15 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.App.Execution;
-using Seeing.Agent.App.Models;
+using Seeing.Agent.Models;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// 将 IAgentLoopScheduler ResumeHandler 接到 ExecutionJobService；

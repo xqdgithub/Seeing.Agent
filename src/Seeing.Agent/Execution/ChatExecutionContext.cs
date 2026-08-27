@@ -4,7 +4,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Models;
 
-namespace Seeing.Agent.App.Internal;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// 聊天执行上下文 - 内部使用的完整执行上下文

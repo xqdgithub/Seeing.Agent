@@ -11,9 +11,8 @@ using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.App.Events;
-using Seeing.Agent.App.Internal;
-using Seeing.Agent.App.Models;
+using Seeing.Agent.Events;
+using Seeing.Agent.Models;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
@@ -21,13 +20,12 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Services;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// Background execution service that manages execution jobs independently of UI connections.
@@ -46,7 +44,6 @@ public class ExecutionJobService : IDisposable
     private readonly ILogger<ExecutionJobService> _logger;
     private readonly Timer _cleanupTimer;
     private readonly IAgentLoopScheduler? _loopScheduler;
-    private readonly IBackgroundTaskManager? _backgroundTasks;
     private bool _disposed;
 
     /// <summary>
@@ -59,8 +56,7 @@ public class ExecutionJobService : IDisposable
         IOptionsMonitor<SeeingAgentOptions> seeingAgentOptions,
         ILogger<ExecutionJobService> logger,
         CompactionRunner compactionRunner,
-        IAgentLoopScheduler? loopScheduler = null,
-        IBackgroundTaskManager? backgroundTasks = null)
+        IAgentLoopScheduler? loopScheduler = null)
     {
         _serviceProvider = serviceProvider;
         _eventPublisher = eventPublisher;
@@ -69,7 +65,6 @@ public class ExecutionJobService : IDisposable
         _compactionRunner = compactionRunner ?? throw new ArgumentNullException(nameof(compactionRunner));
         _logger = logger;
         _loopScheduler = loopScheduler;
-        _backgroundTasks = backgroundTasks;
 
         // Setup cleanup timer
         _cleanupTimer = new Timer(
@@ -169,7 +164,7 @@ public class ExecutionJobService : IDisposable
             if (options?.SkipUserMessagePersist != true)
             {
                 var userMessage = BuildUserMessage(input);
-                session.Messages.Add(userMessage);
+                session.AddMessage(userMessage);
             }
 
             await sessionManager.SaveAsync(sessionId);
@@ -223,18 +218,6 @@ public class ExecutionJobService : IDisposable
 
         var cancelled = Task.Run(() => queue.CancelAsync(executionId)).GetAwaiter().GetResult();
 
-        // 无论队列取消是否成功，都级联取消该会话下未完成的后台 Task
-        try
-        {
-            var btm = _backgroundTasks
-                ?? _serviceProvider.GetService(typeof(IBackgroundTaskManager)) as IBackgroundTaskManager;
-            Task.Run(() => btm?.CancelBySessionAsync(record.SessionId)).GetAwaiter().GetResult();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "取消会话后台任务失败: {SessionId}", record.SessionId);
-        }
-
         if (cancelled)
         {
             _logger.LogInformation("Execution {ExecutionId} cancelled", executionId);
@@ -261,6 +244,67 @@ public class ExecutionJobService : IDisposable
         }
 
         return cancelled;
+    }
+
+    /// <summary>
+    /// 取消会话级联取消：取消指定会话及其所有子会话（ParentSessionId 匹配）下未终态的执行。
+    /// 参考 <see cref="Cancel(string)"/> 的队列推进逻辑：取消当前项后提升下一排队项，
+    /// 循环直至无活跃/排队执行，因此本方法会清空该会话的执行队列。
+    /// </summary>
+    /// <param name="sessionId">父会话或子会话 ID</param>
+    /// <param name="ct">取消令牌</param>
+    /// <returns>已取消的执行数量</returns>
+    public async Task<int> CancelBySessionAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return 0;
+
+        var sessionIds = new List<string> { sessionId };
+
+        // 收集所有子会话（通过 _serviceProvider 解析 ISessionManager 查询）
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+            var children = await sessionManager.ListChildrenAsync(sessionId, ct: ct);
+            foreach (var child in children)
+                sessionIds.Add(child.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "取消会话执行时枚举子会话失败，仅取消会话自身: {SessionId}", sessionId);
+        }
+
+        var count = 0;
+        foreach (var id in sessionIds)
+        {
+            if (!_sessionQueues.TryGetValue(id, out var queue))
+                continue;
+
+            // 循环取消当前项（CancelAsync 会推进队列），直至无活跃执行
+            while (true)
+            {
+                var current = queue.CurrentExecution;
+                if (current == null || current.IsTerminal)
+                    break;
+                if (await queue.CancelAsync(current.ExecutionId))
+                    count++;
+            }
+
+            // 队列中残余的排队项（理论为 0，防御性兜底）
+            foreach (var queued in queue.GetQueuedExecutions())
+            {
+                if (queued.IsTerminal)
+                    continue;
+                if (await queue.CancelAsync(queued.ExecutionId))
+                    count++;
+            }
+        }
+
+        if (count > 0)
+            _logger.LogInformation("已取消会话相关执行: SessionId={SessionId}, Count={Count}", sessionId, count);
+
+        return count;
     }
 
     /// <summary>
@@ -444,7 +488,6 @@ public class ExecutionJobService : IDisposable
                 {
                     var liveSession = sessionManager.Get(record.SessionId) ?? session;
                     eventTracker.ApplyEvent(liveSession, evt);
-                    TaskSessionProjector.Apply(liveSession, evt);
 
                     // 先投影再发布，保证 UI 读到的是已写入的 SessionData
                     _eventPublisher.Publish(record.SessionId, evt);
@@ -682,7 +725,6 @@ public class ExecutionJobService : IDisposable
         StreamCompleteEvent => true,
         ToolCallEvent { Status: ToolCallStatus.Pending or ToolCallStatus.Success
             or ToolCallStatus.Failed or ToolCallStatus.Rejected or ToolCallStatus.Cancelled } => true,
-        TaskStartedEvent or TaskCompletedEvent or TaskFailedEvent => true,
         LoopCompleteEvent or LoopCancelledEvent or ErrorEvent => true,
         _ => false
     };
@@ -814,14 +856,8 @@ public class ExecutionJobService : IDisposable
     /// </summary>
     private static void RemoveCommandMessage(SessionData session, string? inputText)
     {
-        for (var i = session.Messages.Count - 1; i >= 0; i--)
-        {
-            if (string.Equals(session.Messages[i].Content, inputText, StringComparison.Ordinal))
-            {
-                session.Messages.RemoveAt(i);
-                return;
-            }
-        }
+        session.RemoveLastMessage(m =>
+            string.Equals(m.Content, inputText, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -1103,6 +1139,22 @@ public class ExecutionJobService : IDisposable
         var snapshot = _sessionQueues.ToArray();
         foreach (var (_, queue) in snapshot)
         {
+            // 停止清理：取消全部未终态执行（替代 BackgroundTaskManager.StopAsync → CancelAll）
+            try
+            {
+                while (true)
+                {
+                    var current = queue.CurrentExecution;
+                    if (current == null || current.IsTerminal)
+                        break;
+                    queue.CancelAsync(current.ExecutionId).GetAwaiter().GetResult();
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
             queue.Dispose();
         }
         _sessionQueues.Clear();

@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.App.Events;
+using Seeing.Agent.Events;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Gateway.Permission;
 using Seeing.Gateway.Models;

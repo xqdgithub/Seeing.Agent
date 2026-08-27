@@ -4,7 +4,7 @@ using System.Text.Json;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Session.Core;
 
-namespace Seeing.Agent.App.Internal;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// 聊天事件跟踪器 - 跟踪事件并更新 Session 数据
@@ -127,11 +127,15 @@ internal class ChatEventTracker
                 break;
 
             case ErrorEvent error:
-                session.Messages.Add(SessionMessage.SystemMessage($"错误: {error.Message}"));
+                session.AddMessage(SessionMessage.SystemMessage($"错误: {error.Message}"));
                 break;
 
             case LoopCancelledEvent cancelled:
-                session.Messages.Add(SessionMessage.SystemMessage($"对话已取消: {cancelled.Reason}"));
+                session.AddMessage(SessionMessage.SystemMessage($"对话已取消: {cancelled.Reason}"));
+                break;
+
+            case ModeUpdateEvent modeUpdate:
+                session.SelectedAcpMode = modeUpdate.ModeId;
                 break;
         }
     }
@@ -166,7 +170,7 @@ internal class ChatEventTracker
         _currentAssistantMessage.Id = string.Format("{0}_step{1}", loopPrefix, _currentStep);
         _currentAssistantMessage.Step = _currentStep;
         _currentAssistantMessage.LoopId = _currentLoopId;
-        session.Messages.Add(_currentAssistantMessage);
+        session.AddMessage(_currentAssistantMessage);
     }
 
     private static string FormatArguments(object? arguments)

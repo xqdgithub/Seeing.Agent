@@ -77,10 +77,4 @@ public record GatewayEventData
 
     /// <summary>Loop 取消时已完成的步数</summary>
     public int? CompletedSteps { get; init; }
-
-    /// <summary>子代理名称</summary>
-    public string? SubAgentName { get; init; }
-
-    /// <summary>子会话 ID</summary>
-    public string? SubSessionId { get; init; }
 }

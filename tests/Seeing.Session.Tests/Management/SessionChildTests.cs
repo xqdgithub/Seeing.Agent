@@ -84,7 +84,7 @@ namespace Seeing.Session.Tests.Management
 
             var child = await mgr.CreateChildAsync(
                 parent.Id, "explore", "task", Array.Empty<SessionPermissionRule>());
-            child.Messages.Add(new SessionMessage
+            child.AddMessage(new SessionMessage
             {
                 Id = "m1",
                 Role = "user",

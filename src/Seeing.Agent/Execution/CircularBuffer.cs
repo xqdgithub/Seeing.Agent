@@ -1,4 +1,4 @@
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// A circular buffer that holds a fixed number of items.

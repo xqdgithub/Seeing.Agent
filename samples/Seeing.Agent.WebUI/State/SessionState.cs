@@ -1,4 +1,4 @@
-using Seeing.Agent.App.Execution;
+using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Api.Responses;
@@ -124,7 +124,7 @@ namespace Seeing.Agent.WebUI.State
         /// <summary>
         /// 消息列表（从 CurrentSession.Messages 获取）
         /// </summary>
-        public List<SessionMessage> Messages => CurrentSession?.Messages ?? new List<SessionMessage>();
+        public IReadOnlyList<SessionMessage> Messages => CurrentSession?.Messages ?? new List<SessionMessage>();
 
         /// <summary>
         /// 是否正在执行
@@ -168,14 +168,14 @@ namespace Seeing.Agent.WebUI.State
         /// </summary>
         public bool HasActiveExecution =>
             IsExecuting
-            || ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Running
-            || ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Pending
-            || ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Queued;
+            || ExecutionStatus == global::Seeing.Agent.Execution.ExecutionStatus.Running
+            || ExecutionStatus == global::Seeing.Agent.Execution.ExecutionStatus.Pending
+            || ExecutionStatus == global::Seeing.Agent.Execution.ExecutionStatus.Queued;
 
         /// <summary>
         /// 是否在排队中
         /// </summary>
-        public bool IsQueued => ExecutionStatus == global::Seeing.Agent.App.Execution.ExecutionStatus.Queued;
+        public bool IsQueued => ExecutionStatus == global::Seeing.Agent.Execution.ExecutionStatus.Queued;
 
         #endregion
 

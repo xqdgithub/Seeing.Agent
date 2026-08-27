@@ -14,9 +14,9 @@ public class CompressionServiceTests
     public async Task CompressAsync_ShouldSummarizeThenReplaceHistory()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
-        session.Messages.Add(SessionMessage.AssistantMessage("b"));
-        session.Messages.Add(SessionMessage.UserMessage("c"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.AssistantMessage("b"));
+        session.AddMessage(SessionMessage.UserMessage("c"));
 
         SummarizeRequest? capturedRequest = null;
         var summarizer = new Mock<ISummarizer>();
@@ -69,10 +69,10 @@ public class CompressionServiceTests
         var session = SessionData.Create();
         var oldSummary = SessionMessage.AssistantMessage("旧摘要");
         oldSummary.IsSummary = true;
-        session.Messages.Add(oldSummary);
-        session.Messages.Add(SessionMessage.UserMessage("a"));
-        session.Messages.Add(SessionMessage.AssistantMessage("b"));
-        session.Messages.Add(SessionMessage.UserMessage("c"));
+        session.AddMessage(oldSummary);
+        session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.AssistantMessage("b"));
+        session.AddMessage(SessionMessage.UserMessage("c"));
 
         var summarizer = new Mock<ISummarizer>();
         summarizer.Setup(s => s.SummarizeAsync(It.IsAny<SummarizeRequest>(), It.IsAny<CancellationToken>()))
@@ -110,12 +110,12 @@ public class CompressionServiceTests
     {
         // 并发保护：摘要生成（LLM 耗时）期间后台任务追加消息时，插入索引基于调用前快照并校验边界
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
-        session.Messages.Add(SessionMessage.AssistantMessage("b"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.AssistantMessage("b"));
 
         var summarizer = new Mock<ISummarizer>();
         summarizer.Setup(s => s.SummarizeAsync(It.IsAny<SummarizeRequest>(), It.IsAny<CancellationToken>()))
-            .Callback(() => session.Messages.Add(SessionMessage.UserMessage("并发消息")))
+            .Callback(() => session.AddMessage(SessionMessage.UserMessage("并发消息")))
             .ReturnsAsync(new SummarizeResult(
                 "摘要",
                 new[] { SessionMessage.AssistantMessage("摘要") },
@@ -158,8 +158,8 @@ public class CompressionServiceTests
     public async Task CompressAsync_ShouldPersistSummaryAsAnchor_ForNextCompaction()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
-        session.Messages.Add(SessionMessage.AssistantMessage("b"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.AssistantMessage("b"));
 
         var summarizer = new Mock<ISummarizer>();
         summarizer.Setup(s => s.SummarizeAsync(It.IsAny<SummarizeRequest>(), It.IsAny<CancellationToken>()))
@@ -190,8 +190,8 @@ public class CompressionServiceTests
         var session = SessionData.Create();
         var oldSummary = SessionMessage.AssistantMessage("旧摘要");
         oldSummary.IsSummary = true;
-        session.Messages.Add(oldSummary);
-        session.Messages.Add(SessionMessage.AssistantMessage("残留"));
+        session.AddMessage(oldSummary);
+        session.AddMessage(SessionMessage.AssistantMessage("残留"));
 
         var summarizer = new Mock<ISummarizer>();
         summarizer.Setup(s => s.SummarizeAsync(It.IsAny<SummarizeRequest>(), It.IsAny<CancellationToken>()))

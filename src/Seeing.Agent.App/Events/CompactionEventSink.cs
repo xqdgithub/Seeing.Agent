@@ -1,5 +1,5 @@
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.App.Execution;
+using Seeing.Agent.Execution;
 
 namespace Seeing.Agent.App.Events;
 

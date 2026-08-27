@@ -9,8 +9,8 @@ using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Summarization;
-using Seeing.Agent.App.Execution;
-using Seeing.Agent.App.Models;
+using Seeing.Agent.Execution;
+using Seeing.Agent.Models;
 using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
@@ -31,8 +31,8 @@ public class ExecutionJobServiceCompactionTests
     {
         // Arrange
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("问题一"));
-        session.Messages.Add(SessionMessage.AssistantMessage("回答一"));
+        session.AddMessage(SessionMessage.UserMessage("问题一"));
+        session.AddMessage(SessionMessage.AssistantMessage("回答一"));
         session.PendingCompaction = true;
 
         var summarizer = new Mock<ISummarizer>();
@@ -103,7 +103,7 @@ public class ExecutionJobServiceCompactionTests
     {
         // Arrange
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("问题一"));
+        session.AddMessage(SessionMessage.UserMessage("问题一"));
         session.PendingCompaction = false;
 
         var summarizer = new Mock<ISummarizer>();

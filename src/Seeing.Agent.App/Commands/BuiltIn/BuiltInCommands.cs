@@ -3,7 +3,7 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Attributes;
 using Seeing.Agent.Compression;
-using Seeing.Agent.App.Execution;
+using Seeing.Agent.Execution;
 using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
 

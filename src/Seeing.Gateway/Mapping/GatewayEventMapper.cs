@@ -35,9 +35,6 @@ public static class GatewayEventMapper
             LoopCompleteEvent e => WithMeta(e, MapLoopComplete(e)),
             LoopCancelledEvent e => WithMeta(e, MapLoopCancelled(e)),
             ErrorEvent e => WithMeta(e, MapError(e)),
-            TaskStartedEvent e => WithMeta(e, MapTaskStarted(e)),
-            TaskCompletedEvent e => WithMeta(e, MapTaskCompleted(e)),
-            TaskFailedEvent e => WithMeta(e, MapTaskFailed(e)),
             _ => throw new NotSupportedException($"Unsupported message event type: {source.Type}")
         };
     }
@@ -266,47 +263,6 @@ public static class GatewayEventMapper
         {
             Error = e.Message,
             ErrorSource = e.Source
-        }
-    };
-
-    private static GatewayEvent MapTaskStarted(TaskStartedEvent e) => new()
-    {
-        Object = GatewayEventObject.Content,
-        Status = GatewayEventStatus.InProgress,
-        SessionId = e.SessionId,
-        LoopId = e.LoopId,
-        Data = new GatewayEventData
-        {
-            SubAgentName = e.AgentName,
-            SubSessionId = e.TaskId,
-            Text = e.Description
-        }
-    };
-
-    private static GatewayEvent MapTaskCompleted(TaskCompletedEvent e) => new()
-    {
-        Object = GatewayEventObject.Content,
-        Status = GatewayEventStatus.Completed,
-        SessionId = e.SessionId,
-        LoopId = e.LoopId,
-        Data = new GatewayEventData
-        {
-            SubSessionId = e.TaskId,
-            Text = e.ResultText,
-            Duration = e.Duration
-        }
-    };
-
-    private static GatewayEvent MapTaskFailed(TaskFailedEvent e) => new()
-    {
-        Object = GatewayEventObject.Content,
-        Status = GatewayEventStatus.Failed,
-        SessionId = e.SessionId,
-        LoopId = e.LoopId,
-        Data = new GatewayEventData
-        {
-            SubSessionId = e.TaskId,
-            Error = e.Error
         }
     };
 }

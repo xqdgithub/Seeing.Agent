@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.App.Execution;
+using Seeing.Agent.Execution;
 using Seeing.Session.Core;
 using Xunit;
 
@@ -12,7 +12,7 @@ public class ExecutionJobServiceBuildHistoryTests
     public void BuildHistoryFromSession_AssistantToolCallsWithResults_ShouldEmitFollowingToolMessages()
     {
         var session = SessionData.Create();
-        session.Messages.Add(new SessionMessage
+        session.AddMessage(new SessionMessage
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
@@ -22,7 +22,7 @@ public class ExecutionJobServiceBuildHistoryTests
                 new() { Id = "call_2", Name = "glob", Result = "匹配结果B", Status = "success" }
             }
         });
-        session.Messages.Add(SessionMessage.UserMessage("继续"));
+        session.AddMessage(SessionMessage.UserMessage("继续"));
 
         var history = ExecutionJobService.BuildHistoryFromSession(session);
 
@@ -45,7 +45,7 @@ public class ExecutionJobServiceBuildHistoryTests
     public void BuildHistoryFromSession_ExistingToolMessage_ShouldPreserveToolCallId()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.ToolMessage("结果", "call_x", "read"));
+        session.AddMessage(SessionMessage.ToolMessage("结果", "call_x", "read"));
 
         var history = ExecutionJobService.BuildHistoryFromSession(session);
 
@@ -59,7 +59,7 @@ public class ExecutionJobServiceBuildHistoryTests
     public void BuildHistoryFromSession_ToolCallWithError_ShouldEmitToolMessageWithError()
     {
         var session = SessionData.Create();
-        session.Messages.Add(new SessionMessage
+        session.AddMessage(new SessionMessage
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
@@ -81,7 +81,7 @@ public class ExecutionJobServiceBuildHistoryTests
     public void BuildHistoryFromSession_ToolCallWithoutResult_ShouldEmitEmptyToolMessage()
     {
         var session = SessionData.Create();
-        session.Messages.Add(new SessionMessage
+        session.AddMessage(new SessionMessage
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,

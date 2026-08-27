@@ -61,7 +61,7 @@ public class LlmSummarizerTests
     private static SessionData CreateSession(params SessionMessage[] messages)
     {
         var session = SessionData.Create();
-        session.Messages.AddRange(messages);
+        session.AddMessages(messages);
         return session;
     }
 

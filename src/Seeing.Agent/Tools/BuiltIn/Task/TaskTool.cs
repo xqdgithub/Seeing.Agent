@@ -4,25 +4,20 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core;
 using Seeing.Agent.Core.Abstractions;
-using Seeing.Agent.Core.Background;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Core.Events;
-using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Core.Scheduling;
-using Seeing.Agent.Core.Session;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Execution;
+using Seeing.Agent.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Tools.BuiltIn.SubTask;
 
 /// <summary>
-/// 子任务工具 — Session-first：创建/续跑 Child Session 并执行专用 Agent。
+/// 子任务工具 — Session-first：创建/续跑 Child Session 并提交给执行引擎执行。
 /// </summary>
 [ToolCapability(ToolCapabilityKeys.TimeoutSkip, "true")]
 [ToolCapability(ToolCapabilityKeys.CacheEnabled, "false")]
@@ -31,22 +26,16 @@ public class TaskTool : ToolBase
     private readonly ISessionManager _sessionManager;
     private readonly IAgentRegistry _agentRegistry;
     private readonly IAgentLoopScheduler _loopScheduler;
-    private readonly ITaskEventProjector _projector;
-    private readonly ISessionEventBus? _eventBus;
 
     public TaskTool(
         ILogger<TaskTool> logger,
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
-        IAgentLoopScheduler loopScheduler,
-        ITaskEventProjector projector,
-        ISessionEventBus? eventBus = null) : base(logger)
+        IAgentLoopScheduler loopScheduler) : base(logger)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;
         _loopScheduler = loopScheduler;
-        _projector = projector;
-        _eventBus = eventBus;
     }
 
     public override string Id => "task";
@@ -95,11 +84,12 @@ public class TaskTool : ToolBase
         if (agentInfo.Disabled)
             return Failure($"Agent '{subagentType}' 已禁用");
 
-        // 运行期解析后台任务管理器，避免 ToolManager → TaskTool → BackgroundTaskManager
+        // 运行期解析执行引擎，避免 ToolManager → TaskTool → ExecutionJobService
         // → IAgentExecutor → AgentExecutor → ToolManager 的构造期循环依赖
-        var backgroundTasks = context.Services?.GetService(typeof(IBackgroundTaskManager)) as IBackgroundTaskManager;
+        var execService = context.Services?.GetService(typeof(ExecutionJobService)) as ExecutionJobService;
+        if (execService == null)
+            return Failure("执行引擎不可用，无法创建子任务");
 
-        TaskProjectionContext? ctxProj = null;
         try
         {
             SessionData session;
@@ -115,12 +105,9 @@ public class TaskTool : ToolBase
                 if (!string.Equals(session.ParentSessionId, context.SessionId, StringComparison.Ordinal))
                     return Failure($"task_id '{taskId}' 不属于当前父会话");
 
-                var existing = backgroundTasks == null ? null : await backgroundTasks.GetAsync(session.Id);
-                if (existing?.Status is BackgroundTaskStatus.Pending or BackgroundTaskStatus.Running)
-                    return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
-
-                // 快速失败：已有进行中的 Loop 直接拒绝（真正的原子抢占在 RunAgentAsync 内）
-                if (_loopScheduler.IsLoopBusy(session.Id))
+                // 快速失败：已有进行中的 Loop 或活跃执行直接拒绝（真正的原子抢占在执行引擎队列内）
+                if (_loopScheduler.IsLoopBusy(session.Id) ||
+                    execService.GetOverview(session.Id).HasActiveExecution)
                     return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
             }
             else
@@ -151,16 +138,6 @@ public class TaskTool : ToolBase
                 }
             }
 
-            ctxProj = new TaskProjectionContext(
-                context.SessionId,
-                session.Id,
-                context.CallId,
-                background,
-                agentInfo.Name,
-                description);
-
-            await EmitParentAsync(context, _projector.CreateStarted(ctxProj));
-
             context.MetadataSink?.SetMetadata(description, new Dictionary<string, object>
             {
                 ["sessionId"] = session.Id,
@@ -181,97 +158,124 @@ public class TaskTool : ToolBase
                 CreatedAt = DateTime.UtcNow
             });
 
+            var submitOptions = new ChatOptions
+            {
+                AgentId = agentInfo.Name,
+                ModelId = session.SelectedModel,
+                SkipUserMessagePersist = true,
+                // 子代理工具调用默认自动批准（与旧 RunAgentAsync 的 AutoApproveInstance 语义一致）
+                AutoApprove = SessionAutoApprove.Enabled
+            };
+
             if (background)
             {
                 var parentSessionId = context.SessionId;
-                var proj = ctxProj;
                 var desc = description;
                 var childId = session.Id;
-                var agentName = agentInfo.Name;
 
-                await (backgroundTasks ?? throw new InvalidOperationException(
-                    "无法解析后台任务管理器（IBackgroundTaskManager）"))
-                    .StartAsync(new BackgroundTaskLaunchArgs
+                var submitResult = await execService.SubmitAsync(session.Id,
+                    new ChatInput { Text = userPrompt }, submitOptions);
+                if (!submitResult.Success || string.IsNullOrEmpty(submitResult.ExecutionId))
+                    return Failure(submitResult.Error ?? "子任务提交执行失败");
+
+                var executionId = submitResult.ExecutionId;
+
+                // 后台监听完成 → 通知父会话（复用现有 synthetic 注入语义）
+                _ = Task.Run(async () =>
                 {
-                    TaskId = childId,
-                    AgentName = agentName,
-                    Description = desc,
-                    Input = new ChatMessage { Role = ChatRole.User, Content = userPrompt },
-                    Context = new AgentContext
+                    var finalStatus = ExecutionStatus.Pending;
+                    string? errorMessage = null;
+                    try
                     {
-                        SessionId = childId,
-                        MessageId = context.MessageId,
-                        ParentSessionId = parentSessionId,
-                        CancellationToken = CancellationToken.None
-                    },
-                    LoopRunner = async ct =>
-                    {
-                        try
+                        await foreach (var evt in execService.SubscribeEvents(childId, CancellationToken.None))
                         {
-                            var text = await RunAgentAsync(
-                                agentName, childId, userPrompt, context, proj, ct);
-                            var completedBody =
-                                $"Background task completed: {desc}\ntask_id: {childId}\nstate: completed\n\n<task_result>\n{text}\n</task_result>";
-                            await _loopScheduler.InjectSyntheticAsync(
-                                parentSessionId,
-                                SystemReminderRenderer.Wrap(
-                                    completedBody,
-                                    SystemReminder.Sources.Task,
-                                    SystemReminder.Kinds.Completed,
-                                    taskId: childId),
-                                BuildReminderMeta(childId, "completed", SystemReminder.Kinds.Completed),
-                                ct);
-                            await EmitParentAsync(context, _projector.CreateCompleted(proj, text));
-                            await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, ct);
-                            return text;
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            var cancelledBody =
-                                $"Background task cancelled: {desc}\ntask_id: {childId}\nstate: cancelled";
-                            await _loopScheduler.InjectSyntheticAsync(
-                                parentSessionId,
-                                SystemReminderRenderer.Wrap(
-                                    cancelledBody,
-                                    SystemReminder.Sources.Task,
-                                    SystemReminder.Kinds.Cancelled,
-                                    taskId: childId),
-                                BuildReminderMeta(childId, "cancelled", SystemReminder.Kinds.Cancelled),
-                                CancellationToken.None);
-                            await EmitParentAsync(context,
-                                _projector.CreateFailed(proj, "子任务被取消", cancelled: true));
-                            await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, CancellationToken.None);
-                            throw;
-                        }
-                        catch (Exception ex)
-                        {
-                            var failedBody =
-                                $"Background task failed: {desc}\ntask_id: {childId}\nstate: error\n\n<task_error>\n{ex.Message}\n</task_error>";
-                            await _loopScheduler.InjectSyntheticAsync(
-                                parentSessionId,
-                                SystemReminderRenderer.Wrap(
-                                    failedBody,
-                                    SystemReminder.Sources.Task,
-                                    SystemReminder.Kinds.Failed,
-                                    taskId: childId),
-                                BuildReminderMeta(childId, "error", SystemReminder.Kinds.Failed),
-                                CancellationToken.None);
-                            await EmitParentAsync(context,
-                                _projector.CreateFailed(proj, ex.Message));
-                            await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, CancellationToken.None);
-                            throw;
+                            if (evt is ExecutionCompleteEvent ce && ce.ExecutionId == executionId)
+                            {
+                                finalStatus = ce.Status;
+                                break;
+                            }
+                            if (evt is LoopCancelledEvent)
+                            {
+                                finalStatus = ExecutionStatus.Cancelled;
+                                break;
+                            }
+                            if (evt is ErrorEvent err)
+                            {
+                                finalStatus = ExecutionStatus.Failed;
+                                errorMessage = err.Message;
+                                break;
+                            }
                         }
                     }
-                });
+                    catch
+                    {
+                        // ignore
+                    }
 
-                // 父会话取消/关闭时级联取消后台子任务
+                    try
+                    {
+                        switch (finalStatus)
+                        {
+                            case ExecutionStatus.Completed:
+                                var outputText = ReadChildResult(childId);
+                                var completedBody =
+                                    $"Background task completed: {desc}\ntask_id: {childId}\nstate: completed\n\n<task_result>\n{outputText}\n</task_result>";
+                                await _loopScheduler.InjectSyntheticAsync(
+                                    parentSessionId,
+                                    SystemReminderRenderer.Wrap(
+                                        completedBody,
+                                        SystemReminder.Sources.Task,
+                                        SystemReminder.Kinds.Completed,
+                                        taskId: childId),
+                                    BuildReminderMeta(childId, "completed", SystemReminder.Kinds.Completed),
+                                    CancellationToken.None);
+                                break;
+
+                            case ExecutionStatus.Cancelled:
+                                var cancelledBody =
+                                    $"Background task cancelled: {desc}\ntask_id: {childId}\nstate: cancelled";
+                                await _loopScheduler.InjectSyntheticAsync(
+                                    parentSessionId,
+                                    SystemReminderRenderer.Wrap(
+                                        cancelledBody,
+                                        SystemReminder.Sources.Task,
+                                        SystemReminder.Kinds.Cancelled,
+                                        taskId: childId),
+                                    BuildReminderMeta(childId, "cancelled", SystemReminder.Kinds.Cancelled),
+                                    CancellationToken.None);
+                                break;
+
+                            default:
+                                var failedBody =
+                                    $"Background task failed: {desc}\ntask_id: {childId}\nstate: error\n\n<task_error>\n{errorMessage ?? "未知错误"}\n</task_error>";
+                                await _loopScheduler.InjectSyntheticAsync(
+                                    parentSessionId,
+                                    SystemReminderRenderer.Wrap(
+                                        failedBody,
+                                        SystemReminder.Sources.Task,
+                                        SystemReminder.Kinds.Failed,
+                                        taskId: childId),
+                                    BuildReminderMeta(childId, "error", SystemReminder.Kinds.Failed),
+                                    CancellationToken.None);
+                                break;
+                        }
+
+                        await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, CancellationToken.None);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }, CancellationToken.None);
+
+                // 父会话取消/关闭时级联取消后台子执行
                 if (context.CancellationToken.CanBeCanceled)
                 {
                     context.CancellationToken.Register(() =>
                     {
                         try
                         {
-                            _ = backgroundTasks?.CancelAsync(childId);
+                            execService.Cancel(executionId);
                         }
                         catch
                         {
@@ -284,17 +288,34 @@ public class TaskTool : ToolBase
                     "Background task started. Continue your current work and call task_status when you need the result."));
             }
 
-            var outputText = await RunAgentAsync(
-                agentInfo.Name, session.Id, userPrompt, context, ctxProj, context.CancellationToken);
+            var result = await execService.SubmitAsync(session.Id,
+                new ChatInput { Text = userPrompt }, submitOptions);
+            if (!result.Success || string.IsNullOrEmpty(result.ExecutionId))
+                return Failure(result.Error ?? "子任务提交执行失败");
+
+            // 父 Loop 取消时级联取消子执行
+            if (context.CancellationToken.CanBeCanceled)
+            {
+                context.CancellationToken.Register(() =>
+                {
+                    try
+                    {
+                        execService.Cancel(result.ExecutionId);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                });
+            }
+
+            await execService.WaitForExecutionAsync(result.ExecutionId, context.CancellationToken);
 
             // 父 Loop 已取消：子任务虽完成，但终态应标记为 Cancelled，避免父已取消却收到 Completed
             if (context.CancellationToken.IsCancellationRequested)
-            {
-                await EmitParentAsync(context, _projector.CreateFailed(ctxProj, "子任务被取消", cancelled: true));
                 return Failure("子任务被取消");
-            }
 
-            await EmitParentAsync(context, _projector.CreateCompleted(ctxProj, outputText));
+            var outputText = ReadChildResult(session.Id);
 
             return Success(description, BuildOutput(session.Id, "completed", outputText),
                 new Dictionary<string, object>
@@ -305,120 +326,25 @@ public class TaskTool : ToolBase
         }
         catch (OperationCanceledException)
         {
-            if (ctxProj != null)
-                await EmitParentAsync(context, _projector.CreateFailed(ctxProj, "子任务被取消", cancelled: true));
             return Failure("子任务被取消");
         }
         catch (Exception ex)
         {
-            if (ctxProj != null)
-                await EmitParentAsync(context, _projector.CreateFailed(ctxProj, ex.Message));
             return Failure(ex, "子任务执行失败");
         }
     }
 
-    private async ValueTask EmitParentAsync(ToolContext context, IMessageEvent evt)
+    /// <summary>
+    /// 读取子会话最终结果（最后一条非摘要 assistant 消息的内容）。
+    /// </summary>
+    private string ReadChildResult(string childId)
     {
-        try
-        {
-            if (context.EventSink is not null)
-                await context.EventSink.EmitAsync(evt);
-        }
-        catch
-        {
-            // Channel 可能已关闭（后台完成后）
-        }
-
-        try
-        {
-            var bus = _eventBus
-                ?? context.Services?.GetService(typeof(ISessionEventBus)) as ISessionEventBus;
-            bus?.Publish(evt.SessionId, evt);
-        }
-        catch
-        {
-            // 总线可选
-        }
-    }
-
-    private async Task<string> RunAgentAsync(
-        string agentName,
-        string sessionId,
-        string prompt,
-        ToolContext parentContext,
-        TaskProjectionContext projCtx,
-        CancellationToken ct)
-    {
-        var agent = await _agentRegistry.GetAgentAsync(agentName)
-            ?? throw new InvalidOperationException($"无法创建 Agent 实例: {agentName}");
-
-        var session = _sessionManager.Get(sessionId);
-        var agentContext = new AgentContext
-        {
-            SessionId = sessionId,
-            MessageId = $"msg_{Guid.NewGuid():N}",
-            CancellationToken = ct,
-            ParentSessionId = parentContext.SessionId,
-            PermissionChannel = parentContext.PermissionChannel
-                ?? DefaultPermissionChannel.AutoApproveInstance,
-            Metadata = new Dictionary<string, object>
-            {
-                ["parentSessionId"] = parentContext.SessionId
-            }
-        };
-
-        if (!string.IsNullOrEmpty(session?.SelectedModel))
-        {
-            agentContext.Metadata[AgentContextKeys.RequestModelId] = session.SelectedModel;
-        }
-
-        // 续跑/多轮：子会话已有历史（含压缩摘要锚点）时加载，统一走 GetActiveMessages 契约，
-        // 避免子任务续跑上下文丢失；首次创建（空会话）仅传当前指令
-        var messages = session is { Messages.Count: > 0 }
-            ? ChatMessageHistoryBuilder.BuildHistory(session.GetActiveMessages())
-            : new List<ChatMessage>();
-        messages.Add(new ChatMessage { Role = ChatRole.User, Content = prompt });
-
-        // 原子抢占 Loop 忙碌标记：同一 child session 的并发提交/续跑只有一个能真正执行，
-        // 其余在 TrySetLoopBusy 处直接拒绝（try 前抢占，finally 释放）。
-        if (!_loopScheduler.TrySetLoopBusy(sessionId))
-            throw new InvalidOperationException($"Task {sessionId} is already running. Use task_status to check progress.");
-
-        try
-        {
-            var executor = parentContext.Services?.GetService(typeof(IAgentExecutor)) as IAgentExecutor
-                ?? throw new InvalidOperationException("无法解析 Agent 执行器（IAgentExecutor）");
-            var def = agent;
-            var outputBuilder = new StringBuilder();
-            await foreach (var evt in executor.ExecuteAsync(def, messages, agentContext, ct))
-            {
-                foreach (var projected in _projector.Project(evt, projCtx))
-                    await EmitParentAsync(parentContext, projected);
-
-                // 子会话无 EventStreamHandler：在此投影并落盘助手/工具消息
-                var childSession = _sessionManager.Get(sessionId);
-                if (SessionStreamEventApplier.Apply(childSession, evt))
-                    await _sessionManager.SaveAsync(sessionId);
-
-                if (evt is StreamCompleteEvent complete &&
-                    complete.Message.Role == ChatRole.Assistant &&
-                    !string.IsNullOrEmpty(complete.Message.Content))
-                {
-                    outputBuilder.Clear();
-                    outputBuilder.Append(complete.Message.Content);
-                }
-
-                if (evt is ErrorEvent error)
-                    throw new InvalidOperationException(error.Message);
-            }
-
-            var text = outputBuilder.ToString().Trim();
-            return string.IsNullOrEmpty(text) ? "子任务执行完成，无输出内容。" : text;
-        }
-        finally
-        {
-            _loopScheduler.SetLoopBusy(sessionId, false);
-        }
+        var childSession = _sessionManager.Get(childId);
+        var lastAssistant = childSession?.GetActiveMessages()
+            .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+                                && !m.IsSummary);
+        var text = lastAssistant?.Content?.Trim();
+        return string.IsNullOrEmpty(text) ? "子任务执行完成，无输出内容。" : text;
     }
 
     private static Dictionary<string, string> BuildReminderMeta(

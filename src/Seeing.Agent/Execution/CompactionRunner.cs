@@ -1,11 +1,10 @@
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.App.Execution;
 using Seeing.Agent.Compression;
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// 压缩执行器：统一所有压缩入口（自动门控 / /compact 命令 / API）的事件序列，
@@ -68,14 +67,14 @@ public class CompactionRunner
                 if (session != null)
                 {
                     // 移除历史压缩失败消息，防止失败累积污染后续 LLM 上下文
-                    session.Messages.RemoveAll(m =>
+                    session.RemoveMessages(m =>
                         m.Role == MessageRole.System &&
                         (m.Content?.StartsWith("压缩失败", StringComparison.Ordinal) ?? false));
 
                     var message = string.IsNullOrWhiteSpace(outcome.ErrorMessage)
                         ? "压缩失败"
                         : $"压缩失败: {outcome.ErrorMessage}";
-                    session.Messages.Add(SessionMessage.SystemMessage(message));
+                    session.AddMessage(SessionMessage.SystemMessage(message));
                     await _sessionManager.SaveAndNotifyAsync(sessionId);
                 }
             }

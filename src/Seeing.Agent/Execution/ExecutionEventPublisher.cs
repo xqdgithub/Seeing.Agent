@@ -4,7 +4,7 @@ using System.Threading.Channels;
 using Seeing.Agent.Abstractions.Events;
 using Microsoft.Extensions.Logging;
 
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// Implementation of execution event publisher using Channel per session.

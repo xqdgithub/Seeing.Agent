@@ -1,6 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.App.Models;
-using Seeing.Agent.App.Execution;
+using Seeing.Agent.Models;
+using Seeing.Agent.Execution;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.App;
@@ -32,6 +32,14 @@ public interface IChatOrchestrator
     /// <param name="executionId">执行 ID</param>
     /// <returns>是否成功取消</returns>
     bool Cancel(string executionId);
+
+    /// <summary>
+    /// 取消会话及其所有子会话下未终态的执行（会话级级联取消）。
+    /// </summary>
+    /// <param name="sessionId">父会话或子会话 ID</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>已取消的执行数量</returns>
+    Task<int> CancelBySessionAsync(string sessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 获取会话执行状态概览

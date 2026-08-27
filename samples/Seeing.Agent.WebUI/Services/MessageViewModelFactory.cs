@@ -13,6 +13,7 @@ public static class MessageViewModelFactory
         var viewModel = new MessageViewModel
         {
             Id = msg.Id ?? Guid.NewGuid().ToString("N")[..8],
+            SessionId = msg.SessionId ?? sessionId,
             LoopId = msg.LoopId,
             Step = msg.Step,
             Role = msg.Role,

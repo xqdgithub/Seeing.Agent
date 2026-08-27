@@ -30,7 +30,16 @@ namespace Seeing.Session.Management
                 return false;
             }
 
-            var messageIndex = session.Messages.FindIndex(m => m.Id == messageId);
+            var messageIndex = -1;
+            for (var i = 0; i < session.Messages.Count; i++)
+            {
+                if (session.Messages[i].Id == messageId)
+                {
+                    messageIndex = i;
+                    break;
+                }
+            }
+
             if (messageIndex < 0)
             {
                 _logger.LogWarning("Message not found: {MessageId} in session {SessionId}", messageId, sessionId);
@@ -41,7 +50,7 @@ namespace Seeing.Session.Management
             var messagesToKeep = messageIndex + 1;
             var removedCount = session.Messages.Count - messagesToKeep;
 
-            session.Messages = session.Messages.Take(messagesToKeep).ToList();
+            session.ReplaceMessages(session.Messages.Take(messagesToKeep));
             session.UpdatedAt = DateTime.Now;
             session.LastActiveAt = DateTime.Now;
 
@@ -75,7 +84,7 @@ namespace Seeing.Session.Management
             var actualCount = Math.Min(count, session.Messages.Count);
             if (actualCount == 0) return 0;
 
-            session.Messages = session.Messages.Take(session.Messages.Count - actualCount).ToList();
+            session.ReplaceMessages(session.Messages.Take(session.Messages.Count - actualCount));
             session.UpdatedAt = DateTime.Now;
 
             await _sessionManager.SaveAsync(sessionId);

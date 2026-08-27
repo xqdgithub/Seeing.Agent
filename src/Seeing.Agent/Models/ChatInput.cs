@@ -1,4 +1,4 @@
-namespace Seeing.Agent.App.Models;
+namespace Seeing.Agent.Models;
 
 /// <summary>
 /// 聊天输入 - 用户发送的内容

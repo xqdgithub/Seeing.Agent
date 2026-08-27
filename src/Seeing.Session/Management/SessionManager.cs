@@ -399,7 +399,6 @@ namespace Seeing.Session.Management
             child.PartitionId = parent.PartitionId;
             // 默认继承父委派时模型；子 Agent 自带 Model 时由 TaskTool 覆盖
             child.SelectedModel = parent.SelectedModel;
-            child.Messages = new List<SessionMessage>();
             child.PermissionSnapshot = permissionSnapshot?
                 .Select(r => new SessionPermissionRule
                 {

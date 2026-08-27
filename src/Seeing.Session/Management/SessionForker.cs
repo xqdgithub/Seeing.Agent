@@ -57,12 +57,23 @@ namespace Seeing.Session.Management
 
             if (atMessageId != null)
             {
-                var messageIndex = sourceSession.Messages.FindIndex(m => m.Id == atMessageId);
+                var messageIndex = -1;
+                for (var i = 0; i < sourceSession.Messages.Count; i++)
+                {
+                    if (sourceSession.Messages[i].Id == atMessageId)
+                    {
+                        messageIndex = i;
+                        break;
+                    }
+                }
+
                 if (messageIndex >= 0)
                 {
                     for (int i = 0; i < messageIndex; i++)
                     {
-                        forkedSession.Messages.Add(CloneMessage(sourceSession.Messages[i]));
+                        var clone = CloneMessage(sourceSession.Messages[i]);
+                        clone.SessionId = forkedSession.Id;
+                        forkedSession.AddMessage(clone);
                     }
                 }
             }
@@ -70,7 +81,9 @@ namespace Seeing.Session.Management
             {
                 foreach (var msg in sourceSession.Messages)
                 {
-                    forkedSession.Messages.Add(CloneMessage(msg));
+                    var clone = CloneMessage(msg);
+                    clone.SessionId = forkedSession.Id;
+                    forkedSession.AddMessage(clone);
                 }
             }
 

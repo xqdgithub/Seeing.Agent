@@ -8,9 +8,9 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.App.Events;
-using Seeing.Agent.App.Execution;
-using Seeing.Agent.App.Models;
+using Seeing.Agent.Events;
+using Seeing.Agent.Execution;
+using Seeing.Agent.Models;
 using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
@@ -32,7 +32,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
     {
         // Arrange
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
 
         var command = new Mock<ICommand>();
         command.Setup(c => c.Metadata)
@@ -99,7 +99,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
     {
         // Arrange
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
 
         var command = new Mock<ICommand>();
         command.Setup(c => c.Metadata)
@@ -164,7 +164,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
         // 命令不是用户消息：消费成功后命令文本必须从会话移除，不得残留在历史/时间线
         // Arrange
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
 
         var command = new Mock<ICommand>();
         command.Setup(c => c.Metadata)
@@ -225,7 +225,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
         // 未知命令透传 Agent，文本必须保留为普通用户消息
         // Arrange
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
 
         var commandRegistry = new Mock<ICommandRegistry>();
         commandRegistry.Setup(r => r.GetCommand("unknown", AgentRuntime.Native))

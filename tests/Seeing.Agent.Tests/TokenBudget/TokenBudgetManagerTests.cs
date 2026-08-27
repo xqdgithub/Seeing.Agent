@@ -32,7 +32,7 @@ public class TokenBudgetManagerTests
             Options.Create(new SeeingAgentOptions()),
             tokenCounter.Object);
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("first"));
+        session.AddMessage(SessionMessage.UserMessage("first"));
 
         try
         {
@@ -40,7 +40,7 @@ public class TokenBudgetManagerTests
             firstEstimateStarted.Wait();
 
             // Simulate ChatEventTracker appending a message while budget calculation is running.
-            session.Messages.Add(SessionMessage.AssistantMessage("added concurrently"));
+            session.AddMessage(SessionMessage.AssistantMessage("added concurrently"));
             allowEstimation.Set();
 
             var act = () => calculation.GetAwaiter().GetResult();

@@ -51,7 +51,7 @@ public sealed class InstructionManager : IInstructionManager
                 ? ProjectInstructions.Reasons.CwdChange
                 : ProjectInstructions.Reasons.ContentChange;
 
-        session.Messages.Add(
+        session.AddMessage(
             ProjectInstructionsRenderer.CreateUserMessage(normalizedCwd, reason, changed));
         InstructionFingerprintStore.MergeAndSave(session, normalizedCwd, changed);
 

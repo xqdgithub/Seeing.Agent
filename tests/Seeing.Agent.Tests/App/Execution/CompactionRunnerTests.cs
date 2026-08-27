@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Summarization;
-using Seeing.Agent.App.Execution;
+using Seeing.Agent.Execution;
 using Seeing.Agent.Compression;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
@@ -42,7 +42,7 @@ public class CompactionRunnerTests
     public async Task RunAsync_ShouldPublishStartedBeforeCompressionAndCompletedAfter()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
         var (compression, _, sessionManager) = CreateCompression(session);
 
         var events = new List<string>();
@@ -76,7 +76,7 @@ public class CompactionRunnerTests
     public async Task RunAsync_WhenCompressionFails_ShouldPublishFailedAfterStarted()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
         var (compression, _, sessionManager) = CreateCompression(session, fail: true);
 
         var events = new List<string>();
@@ -105,7 +105,7 @@ public class CompactionRunnerTests
     public async Task RunAsync_WhenCompressionFails_ShouldWriteSystemMessageAndPersist()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
         var (compression, _, sessionManager) = CreateCompression(session, fail: true);
 
         var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>(), sessionManager.Object);
@@ -138,7 +138,7 @@ public class CompactionRunnerTests
     public async Task RunAsync_WhenCompressionFails_ShouldPersistBeforePublishingFailedEvent()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
         var (compression, _, sessionManager) = CreateCompression(session, fail: true);
 
         var order = new List<string>();
@@ -162,7 +162,7 @@ public class CompactionRunnerTests
     public async Task RunAsync_WhenCompressionFailsWithEmptyError_ShouldWriteFallbackMessage()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
         var summarizer = new Mock<ISummarizer>();
         summarizer.Setup(s => s.SummarizeAsync(It.IsAny<SummarizeRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException(""));
@@ -184,8 +184,8 @@ public class CompactionRunnerTests
     public async Task RunAsync_WhenCompressionFailsRepeatedly_ShouldReplacePreviousFailureMessage()
     {
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
-        session.Messages.Add(SessionMessage.SystemMessage("压缩失败: 第一次错误"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.SystemMessage("压缩失败: 第一次错误"));
         var (compression, _, sessionManager) = CreateCompression(session, fail: true);
 
         var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>(), sessionManager.Object);

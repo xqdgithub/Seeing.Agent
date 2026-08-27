@@ -1,6 +1,6 @@
 using Seeing.Session.Core;
 
-namespace Seeing.Agent.App.Internal;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// 将未完成的工具调用（pending/running）标记为已取消（服务端落盘用）。

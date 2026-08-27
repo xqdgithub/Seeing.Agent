@@ -101,6 +101,25 @@ public class SessionForkerTests
         forked.Messages.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ForkAsync_ShouldRewriteMessageSessionIdToForkedSession()
+    {
+        // Arrange：源消息经 AddMessage 补写 SessionId = 源会话
+        var (manager, forker) = CreateForker();
+        var original = manager.Create();
+        original.AddMessage(new SessionMessage { Role = "user", Content = "Hello" });
+        original.AddMessage(new SessionMessage { Role = "assistant", Content = "Hi" });
+        original.Messages.Should().OnlyContain(m => m.SessionId == original.Id);
+
+        // Act
+        var forked = await forker.ForkAsync(original.Id);
+
+        // Assert：fork 消息应改写为新会话 Id，而非保留源归属
+        forked.Messages.Should().HaveCount(2);
+        forked.Messages.Should().OnlyContain(m => m.SessionId == forked.Id,
+            "fork 复制消息应改写归属为新会话 Id，避免消息大屏按 SessionId 分组时 fork 会话丢失消息");
+    }
+
     private static (SessionManager, SessionForker) CreateForker()
     {
         var logger = new Mock<ILogger<SessionManager>>();

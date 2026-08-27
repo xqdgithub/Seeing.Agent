@@ -76,7 +76,23 @@ namespace Seeing.Session.Core
         public SessionAutoApprove AutoApprove { get; set; } = SessionAutoApprove.FollowGlobal;
 
         // === 消息历史 ===
-        public List<SessionMessage> Messages { get; set; } = new();
+        private List<SessionMessage> _messages = new();
+
+        /// <summary>
+        /// 消息列表（只读视图）。写入请使用 <see cref="AddMessage"/> 等统一编辑 API，
+        /// 它们会为消息补写 <see cref="SessionMessage.SessionId"/> 归属。
+        /// <para>保留 public setter：System.Text.Json 反序列化旧会话文件需要。</para>
+        /// </summary>
+        public IReadOnlyList<SessionMessage> Messages
+        {
+            get => _messages;
+            set
+            {
+                _messages = value is List<SessionMessage> list
+                    ? list
+                    : value?.ToList() ?? new List<SessionMessage>();
+            }
+        }
 
         /// <summary>
         /// 获取活跃消息列表：应传递给 LLM 的统一消息来源。
@@ -88,9 +104,9 @@ namespace Seeing.Session.Core
         /// </summary>
         public List<SessionMessage> GetActiveMessages()
         {
-            // 先做快照（List 拷贝走 CopyTo 快速路径，无版本检查）：并发追加消息（事件管道）时不抛异常，
+            // 先做快照（内部 List 拷贝走 CopyTo 快速路径，无版本检查）：并发追加消息（事件管道）时不抛异常，
             // 与 TokenBudget 估算并发执行的场景一致
-            var snapshot = new List<SessionMessage>(Messages);
+            var snapshot = new List<SessionMessage>(_messages);
 
             var lastSummaryIndex = -1;
             for (var i = snapshot.Count - 1; i >= 0; i--)
@@ -184,7 +200,115 @@ namespace Seeing.Session.Core
         // === 操作方法 ===
         public void AddMessage(SessionMessage message)
         {
-            Messages.Add(message ?? throw new ArgumentNullException(nameof(message)));
+            if (message == null) throw new ArgumentNullException(nameof(message));
+            if (string.IsNullOrEmpty(message.SessionId))
+                message.SessionId = Id;
+            _messages.Add(message);
+            UpdatedAt = DateTime.Now;
+            LastActiveAt = DateTime.Now;
+        }
+
+        /// <summary>
+        /// 批量添加消息（写入时补写 <see cref="SessionMessage.SessionId"/>）。
+        /// </summary>
+        public void AddMessages(IEnumerable<SessionMessage> messages)
+        {
+            if (messages == null) throw new ArgumentNullException(nameof(messages));
+
+            var added = false;
+            foreach (var message in messages)
+            {
+                if (message == null) throw new ArgumentNullException(nameof(messages));
+                message.SessionId ??= Id;
+                _messages.Add(message);
+                added = true;
+            }
+
+            if (!added)
+                return;
+
+            UpdatedAt = DateTime.Now;
+            LastActiveAt = DateTime.Now;
+        }
+
+        /// <summary>
+        /// 在指定位置插入消息（写入时补写 <see cref="SessionMessage.SessionId"/>）。
+        /// </summary>
+        public void InsertMessage(int index, SessionMessage message)
+        {
+            if (message == null) throw new ArgumentNullException(nameof(message));
+            message.SessionId ??= Id;
+            _messages.Insert(index, message);
+            UpdatedAt = DateTime.Now;
+            LastActiveAt = DateTime.Now;
+        }
+
+        /// <summary>
+        /// 按引用移除指定消息；返回是否移除。
+        /// </summary>
+        public bool RemoveMessage(SessionMessage message)
+        {
+            if (message == null) throw new ArgumentNullException(nameof(message));
+            if (!_messages.Remove(message))
+                return false;
+
+            UpdatedAt = DateTime.Now;
+            return true;
+        }
+
+        /// <summary>
+        /// 从尾部查找第一条匹配的消息并移除；返回是否移除。
+        /// </summary>
+        public bool RemoveLastMessage(Predicate<SessionMessage> match)
+        {
+            if (match == null) throw new ArgumentNullException(nameof(match));
+
+            for (var i = _messages.Count - 1; i >= 0; i--)
+            {
+                if (!match(_messages[i]))
+                    continue;
+
+                _messages.RemoveAt(i);
+                UpdatedAt = DateTime.Now;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 移除所有匹配的消息；返回移除数量。
+        /// </summary>
+        public int RemoveMessages(Predicate<SessionMessage> match)
+        {
+            if (match == null) throw new ArgumentNullException(nameof(match));
+
+            var removed = _messages.RemoveAll(match);
+            if (removed > 0)
+                UpdatedAt = DateTime.Now;
+
+            return removed;
+        }
+
+        /// <summary>
+        /// 清空并批量替换消息；全部消息改写 <see cref="SessionMessage.SessionId"/> 为当前会话 Id。
+        /// <para>用于 Fork/分支/回滚等赋值场景：替换后消息强归属当前会话。</para>
+        /// </summary>
+        public void ReplaceMessages(IEnumerable<SessionMessage> messages)
+        {
+            if (messages == null) throw new ArgumentNullException(nameof(messages));
+
+            // 先物化输入再清空：调用方可能传入基于本会话 Messages 的惰性序列
+            // （如回滚场景 session.Messages.Take(n)），若先 Clear 再枚举会清空全部消息。
+            var materialized = messages.ToList();
+            _messages.Clear();
+            foreach (var message in materialized)
+            {
+                if (message == null) throw new ArgumentNullException(nameof(messages));
+                message.SessionId = Id;
+                _messages.Add(message);
+            }
+
             UpdatedAt = DateTime.Now;
             LastActiveAt = DateTime.Now;
         }
@@ -222,7 +346,7 @@ namespace Seeing.Session.Core
 
         public void ClearMessages()
         {
-            Messages.Clear();
+            _messages.Clear();
             Metadata.Remove(SessionMetadataKeys.InstructionFingerprints);
             // 清空会话应同时去掉运行时上下文（如 todos），否则下次首条消息会因未完成 todo 再续一轮
             Context.Clear();
@@ -275,7 +399,7 @@ namespace Seeing.Session.Core
                     Effect = r.Effect,
                     Priority = r.Priority
                 }).ToList(),
-                Messages = Messages.Select(m => m.Clone()).ToList(),
+                _messages = Messages.Select(m => m.Clone()).ToList(),
                 Context = new Dictionary<string, object>(Context),
                 Metadata = new Dictionary<string, string>(Metadata),
                 State = new Dictionary<string, string>(State),

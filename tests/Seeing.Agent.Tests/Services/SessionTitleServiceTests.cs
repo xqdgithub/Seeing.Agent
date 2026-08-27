@@ -85,12 +85,12 @@ namespace Seeing.Agent.Tests.Services
         public void BuildTitleHistory_merges_consecutive_users_and_skips_tool()
         {
             var session = SessionData.Create();
-            session.Messages.Add(
+            session.AddMessage(
                 SessionMessage.UserMessage("<project-instructions>")
                     .WithMetadata(ProjectInstructions.MetadataKeys.ProjectInstructions, true));
-            session.Messages.Add(SessionMessage.UserMessage("implement rate limiting"));
-            session.Messages.Add(SessionMessage.AssistantMessage("ok"));
-            session.Messages.Add(new SessionMessage
+            session.AddMessage(SessionMessage.UserMessage("implement rate limiting"));
+            session.AddMessage(SessionMessage.AssistantMessage("ok"));
+            session.AddMessage(new SessionMessage
             {
                 Role = "tool",
                 Content = "tool output",
@@ -120,7 +120,7 @@ namespace Seeing.Agent.Tests.Services
             var session = SessionData.Create();
             session.Title = "新会话";
             session.Kind = SessionKind.Root;
-            session.Messages.Add(SessionMessage.UserMessage("debug 500 errors in production"));
+            session.AddMessage(SessionMessage.UserMessage("debug 500 errors in production"));
 
             var sm = new Mock<ISessionManager>();
             sm.Setup(x => x.Get(session.Id)).Returns(session);
@@ -159,7 +159,7 @@ namespace Seeing.Agent.Tests.Services
             var session = SessionData.Create();
             session.Title = "新会话";
             session.Kind = SessionKind.Root;
-            session.Messages.Add(SessionMessage.UserMessage("hi"));
+            session.AddMessage(SessionMessage.UserMessage("hi"));
 
             var sm = new Mock<ISessionManager>();
             sm.Setup(x => x.Get(session.Id)).Returns(session);
@@ -208,10 +208,10 @@ namespace Seeing.Agent.Tests.Services
             var session = SessionData.Create();
             session.Title = "新会话";
             session.Kind = SessionKind.Root;
-            session.Messages.Add(
+            session.AddMessage(
                 SessionMessage.UserMessage("<project-instructions>")
                     .WithMetadata(ProjectInstructions.MetadataKeys.ProjectInstructions, true));
-            session.Messages.Add(SessionMessage.UserMessage("fix rate limiting"));
+            session.AddMessage(SessionMessage.UserMessage("fix rate limiting"));
 
             var sm = new Mock<ISessionManager>();
             sm.Setup(x => x.Get(session.Id)).Returns(session);
@@ -245,7 +245,7 @@ namespace Seeing.Agent.Tests.Services
             session.Title = "旧标题";
             session.Kind = SessionKind.Root;
             for (var i = 0; i < 10; i++)
-                session.Messages.Add(SessionMessage.UserMessage($"msg-{i}"));
+                session.AddMessage(SessionMessage.UserMessage($"msg-{i}"));
 
             var sm = new Mock<ISessionManager>();
             sm.Setup(x => x.Get(session.Id)).Returns(session);

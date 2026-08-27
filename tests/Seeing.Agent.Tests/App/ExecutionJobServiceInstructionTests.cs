@@ -5,8 +5,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.App.Events;
-using Seeing.Agent.App.Execution;
-using Seeing.Agent.App.Models;
+using Seeing.Agent.Execution;
+using Seeing.Agent.Models;
 using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Instructions;
@@ -105,7 +105,7 @@ public class ExecutionJobServiceInstructionTests
             .Setup(manager => manager.InjectIfNeededAsync(
                 expectedSession, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback<SessionData, string, string, CancellationToken>((session, _, _, _) =>
-                session.Messages.Add(SessionMessage.UserMessage("injected instructions")))
+                session.AddMessage(SessionMessage.UserMessage("injected instructions")))
             .ReturnsAsync(new InstructionInjectResult { Injected = true });
         return instructionManager;
     }

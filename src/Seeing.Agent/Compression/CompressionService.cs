@@ -74,7 +74,7 @@ public class CompressionService
             // 并发保护：摘要期间可能被追加消息或重复压缩，校验插入索引仍落在合法范围，越界则就近回退
             if (insertIndex < 0) insertIndex = 0;
             if (insertIndex > session.Messages.Count) insertIndex = session.Messages.Count;
-            session.Messages.Insert(insertIndex, summaryMessage);
+            session.InsertMessage(insertIndex, summaryMessage);
 
             session.UpdatedAt = DateTime.Now;
             await _sessionManager.SaveAndNotifyAsync(session.Id, persist: true, cancellationToken);

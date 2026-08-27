@@ -17,7 +17,6 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.BuiltInAgents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Configuration;
@@ -30,7 +29,6 @@ using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Todo;
-using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Llm;
@@ -486,9 +484,7 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<ILogger<TaskTool>>(),
                 sp.GetRequiredService<ISessionManager>(),
                 sp.GetRequiredService<IAgentRegistry>(),
-                sp.GetRequiredService<IAgentLoopScheduler>(),
-                sp.GetRequiredService<ITaskEventProjector>(),
-                sp.GetService<ISessionEventBus>()));
+                sp.GetRequiredService<IAgentLoopScheduler>()));
             services.AddSingleton<ITool>(sp => new TaskStatusTool(
                 sp.GetRequiredService<ILogger<TaskStatusTool>>(),
                 sp.GetRequiredService<ISessionManager>()));
@@ -689,12 +685,7 @@ namespace Seeing.Agent.Extensions
             // 命令执行服务（触发 command.execute.before Hook）
             services.AddSingleton<ICommandService, CommandService>();
 
-            // 后台任务管理器（HostedService：进程优雅停止时 CancelAll）
-            services.AddSingleton<BackgroundTaskManager>();
-            services.AddSingleton<IBackgroundTaskManager>(sp => sp.GetRequiredService<BackgroundTaskManager>());
-            services.AddHostedService(sp => sp.GetRequiredService<BackgroundTaskManager>());
             services.AddSingleton<IAgentLoopScheduler, AgentLoopScheduler>();
-            services.AddSingleton<ITaskEventProjector, TaskEventProjector>();
 
             // 命令注册表（插件加载与扩展命令注册需要）
             services.AddSingleton<ICommandRegistry, CommandRegistry>();

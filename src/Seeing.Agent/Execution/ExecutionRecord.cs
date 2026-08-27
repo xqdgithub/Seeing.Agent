@@ -1,6 +1,6 @@
-using Seeing.Agent.App.Models;
+using Seeing.Agent.Models;
 
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// Represents a record of an execution request, tracking its state throughout its lifecycle.

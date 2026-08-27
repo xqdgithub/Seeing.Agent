@@ -16,8 +16,9 @@
 @using Seeing.Session.Management
 @using Seeing.Agent.App
 @using Seeing.Agent.App.Events
-@using Seeing.Agent.App.Models
-@using Seeing.Agent.App.Execution
+@using Seeing.Agent.Events
+@using Seeing.Agent.Models
+@using Seeing.Agent.Execution
 @using Seeing.Agent.Core.Events
 @using Seeing.Agent.Core.Reminders
 @using Seeing.Agent.Core.Instructions
@@ -41,7 +42,6 @@
 @inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
 @inject ISessionManager SessionManager
 @inject ISessionEventPublisher SessionEventPublisher
-@inject Seeing.Agent.Core.Background.IBackgroundTaskManager BackgroundTaskManager
 @inject Services.MessageTimelineStore Timeline
 @inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @implements IDisposable
@@ -770,7 +770,7 @@
         var fromHandler = EventStreamHandler.GetCurrentAssistantMessage();
         if (fromHandler != null
             && string.Equals(fromHandler.Role, "assistant", StringComparison.OrdinalIgnoreCase)
-            && Services.MessageTimelineStore.BelongsToSession(fromHandler, messages))
+            && Services.MessageTimelineStore.BelongsToSession(fromHandler, SessionState.SessionId, messages))
         {
             _currentStreamingMessageId = fromHandler.Id ?? _currentStreamingMessageId;
             return fromHandler;
@@ -1168,6 +1168,9 @@
         {
             await LoadSessionByIdAsync(SessionId);
             _loadedSessionId = SessionId;
+
+            // 切换到正在执行的会话（含子会话）：恢复执行状态并订阅事件流，实时渲染最新消息
+            RestoreExecutionFromOverview(SessionId);
         }
     }
 
@@ -1554,8 +1557,7 @@
                     }
                 }
                 else if (evt is StreamStartEvent or ToolCallEvent or StreamCompleteEvent
-                         or LoopStartEvent or SubAgentEvent
-                         or TaskStartedEvent or TaskProgressEvent or TaskCompletedEvent or TaskFailedEvent
+                         or LoopStartEvent
                          or PermissionRequestEvent or PermissionResponseEvent
                          or TodoUpdateEvent or ModeUpdateEvent)
                 {
@@ -1799,7 +1801,7 @@
         {
             try
             {
-                await BackgroundTaskManager.CancelBySessionAsync(sessionId);
+                await ChatOrchestrator.CancelBySessionAsync(sessionId);
             }
             catch
             {
@@ -1846,13 +1848,8 @@
     {
         try
         {
-            var n = await EventStreamHandler.ReconcileOrphanTaskCardsAsync(async taskId =>
-            {
-                var info = await BackgroundTaskManager.GetAsync(taskId);
-                return info != null &&
-                       (info.Status == Seeing.Agent.Core.Background.BackgroundTaskStatus.Pending ||
-                        info.Status == Seeing.Agent.Core.Background.BackgroundTaskStatus.Running);
-            });
+            var n = await EventStreamHandler.ReconcileOrphanTaskCardsAsync(taskId =>
+                Task.FromResult(ChatOrchestrator.GetOverview(taskId)?.HasActiveExecution == true));
 
             if (n > 0)
                 ResetTimelineFromSession();
@@ -2071,7 +2068,7 @@
         {
             try
             {
-                BackgroundTaskManager.CancelBySessionAsync(sessionId).GetAwaiter().GetResult();
+                ChatOrchestrator.CancelBySessionAsync(sessionId).GetAwaiter().GetResult();
             }
             catch
             {

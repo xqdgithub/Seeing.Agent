@@ -221,6 +221,15 @@ namespace Seeing.Session.Core
         public string? Id { get; set; }
 
         /// <summary>
+        /// 消息所属会话 ID（消息当前所在会话；Fork/分支复制时改写为新会话 Id）
+        /// <para>
+        /// 用于消息与会话的强归属：旧会话文件无此字段时为 null，回退按消息 Id 推断。
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("session_id")]
+        public string? SessionId { get; set; }
+
+        /// <summary>
         /// Agent Loop ID（一次完整对话循环的唯一标识）
         /// <para>
         /// 用于关联一次 Agent 交互中产生的所有消息，便于前端按对话单元渲染。
@@ -305,6 +314,7 @@ namespace Seeing.Session.Core
             return new SessionMessage
             {
                 Id = Id,
+                SessionId = SessionId,
                 LoopId = LoopId,
                 Step = Step,
                 Role = Role,

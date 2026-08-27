@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Seeing.Agent.App.Internal;
+using Seeing.Agent.Execution;
 using Seeing.Session.Core;
 using Xunit;
 
@@ -11,7 +11,7 @@ public class IncompleteToolCallMarkerTests
     public void MarkCancelled_RunningNonTaskToolCall_ShouldMarkCancelled()
     {
         var session = SessionData.Create();
-        session.Messages.Add(new SessionMessage
+        session.AddMessage(new SessionMessage
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
@@ -32,7 +32,7 @@ public class IncompleteToolCallMarkerTests
     public void MarkCancelled_PendingTaskToolCall_ShouldMarkCancelled()
     {
         var session = SessionData.Create();
-        session.Messages.Add(new SessionMessage
+        session.AddMessage(new SessionMessage
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
@@ -53,7 +53,7 @@ public class IncompleteToolCallMarkerTests
     public void MarkCancelled_TerminalToolCalls_ShouldLeaveUntouched()
     {
         var session = SessionData.Create();
-        session.Messages.Add(new SessionMessage
+        session.AddMessage(new SessionMessage
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
@@ -77,7 +77,7 @@ public class IncompleteToolCallMarkerTests
     public void MarkCancelled_MixedStatuses_ShouldOnlyMarkIncomplete()
     {
         var session = SessionData.Create();
-        session.Messages.Add(new SessionMessage
+        session.AddMessage(new SessionMessage
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,

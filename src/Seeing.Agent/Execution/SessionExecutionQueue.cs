@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace Seeing.Agent.App.Execution;
+namespace Seeing.Agent.Execution;
 
 /// <summary>
 /// Manages execution queue for a single session.

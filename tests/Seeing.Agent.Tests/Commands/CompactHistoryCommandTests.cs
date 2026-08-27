@@ -4,7 +4,7 @@ using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.App.Commands.BuiltIn;
-using Seeing.Agent.App.Execution;
+using Seeing.Agent.Execution;
 using Seeing.Agent.Compression;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
@@ -22,8 +22,8 @@ public class CompactHistoryCommandTests
     {
         // Arrange
         var session = SessionData.Create();
-        session.Messages.Add(SessionMessage.UserMessage("a"));
-        session.Messages.Add(SessionMessage.AssistantMessage("b"));
+        session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.AssistantMessage("b"));
 
         var sessionManager = new Mock<ISessionManager>();
         sessionManager.Setup(m => m.GetOrLoadAsync(session.Id, It.IsAny<CancellationToken>()))

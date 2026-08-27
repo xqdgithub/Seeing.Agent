@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json;
 using FluentAssertions;
 using Seeing.Session.Core;
 using Xunit;
@@ -200,7 +201,7 @@ namespace Seeing.Session.Tests
 
             data.GetActiveMessages().Should().HaveCount(3, "摘要存在时从摘要位置起算");
 
-            data.Messages.RemoveAt(0);
+            data.RemoveMessage(data.Messages[0]);
 
             var active = data.GetActiveMessages();
 
@@ -236,7 +237,7 @@ namespace Seeing.Session.Tests
                 var i = 0;
                 while (!cts.IsCancellationRequested)
                 {
-                    data.Messages.Add(SessionMessage.AssistantMessage($"回答 {i++}"));
+                    data.AddMessage(SessionMessage.AssistantMessage($"回答 {i++}"));
                     if (i > 200) break;
                 }
             });
@@ -252,6 +253,153 @@ namespace Seeing.Session.Tests
             Task.WaitAll(appender, reader);
 
             data.GetActiveMessages().Should().NotBeEmpty();
+        }
+
+        // === SessionId 归属 ===
+
+        [Fact]
+        public void AddMessage_ShouldAssignSessionId()
+        {
+            var data = SessionData.Create();
+            var msg = SessionMessage.UserMessage("hi");
+
+            data.AddMessage(msg);
+
+            msg.SessionId.Should().Be(data.Id);
+        }
+
+        [Fact]
+        public void AddMessage_ShouldNotOverrideExistingSessionId()
+        {
+            var data = SessionData.Create();
+            var msg = SessionMessage.UserMessage("hi");
+            msg.SessionId = "other-session";
+
+            data.AddMessage(msg);
+
+            msg.SessionId.Should().Be("other-session");
+        }
+
+        [Fact]
+        public void AddMessages_ShouldAssignSessionId_ForAll()
+        {
+            var data = SessionData.Create();
+            data.AddMessages(new[]
+            {
+                SessionMessage.UserMessage("a"),
+                SessionMessage.UserMessage("b")
+            });
+
+            data.Messages.Should().HaveCount(2);
+            data.Messages.All(m => m.SessionId == data.Id).Should().BeTrue();
+        }
+
+        [Fact]
+        public void InsertMessage_ShouldAssignSessionId()
+        {
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("a"));
+            var msg = SessionMessage.UserMessage("b");
+
+            data.InsertMessage(0, msg);
+
+            msg.SessionId.Should().Be(data.Id);
+            data.Messages[0].Content.Should().Be("b");
+        }
+
+        [Fact]
+        public void ReplaceMessages_ShouldRewriteAllSessionIds()
+        {
+            var source = SessionData.Create();
+            source.AddMessage(SessionMessage.UserMessage("a"));
+            var clone = source.Messages[0].Clone();
+            clone.SessionId.Should().Be(source.Id);
+
+            var target = SessionData.Create();
+            target.ReplaceMessages(new[] { clone });
+
+            target.Messages.Should().ContainSingle();
+            target.Messages[0].SessionId.Should().Be(target.Id, "ReplaceMessages 全部改写为当前会话 Id");
+        }
+
+        [Fact]
+        public void ReplaceMessages_WithLazySequenceFromSelf_ShouldNotClearAll()
+        {
+            // 回归：回滚场景传入基于自身 Messages 的惰性序列（session.Messages.Take(n)），
+            // ReplaceMessages 必须先物化再清空，否则源被清空后序列枚举为空导致全部消息丢失
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("a"));
+            data.AddMessage(SessionMessage.UserMessage("b"));
+            data.AddMessage(SessionMessage.UserMessage("c"));
+
+            data.ReplaceMessages(data.Messages.Take(2));
+
+            data.Messages.Select(m => m.Content).Should().Equal("a", "b");
+            data.Messages.Should().HaveCount(2, "回滚应保留前 2 条而非清空全部");
+        }
+
+        [Fact]
+        public void RemoveLastMessage_ShouldRemoveLastMatchingFromTail()
+        {
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("a"));
+            data.AddMessage(SessionMessage.UserMessage("b"));
+            data.AddMessage(SessionMessage.UserMessage("a"));
+
+            var removed = data.RemoveLastMessage(m => m.Content == "a");
+
+            removed.Should().BeTrue();
+            data.Messages.Select(m => m.Content).Should().Equal("a", "b");
+        }
+
+        [Fact]
+        public void RemoveLastMessage_NoMatch_ShouldReturnFalse()
+        {
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("a"));
+
+            data.RemoveLastMessage(m => m.Content == "zzz").Should().BeFalse();
+            data.Messages.Should().HaveCount(1);
+        }
+
+        [Fact]
+        public void Clone_ShouldPreserveMessageSessionId()
+        {
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("hi"));
+
+            var clone = data.Clone();
+
+            clone.Messages[0].SessionId.Should().Be(data.Id);
+        }
+
+        [Fact]
+        public void SerializeRoundTrip_ShouldPreserveSessionId()
+        {
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("hi"));
+
+            var json = JsonSerializer.Serialize(data);
+            var round = JsonSerializer.Deserialize<SessionData>(json);
+
+            round!.Messages[0].SessionId.Should().Be(data.Id);
+        }
+
+        [Fact]
+        public void DeserializeLegacyJson_WithoutSessionId_ShouldBeNull()
+        {
+            // 模拟旧会话文件（CamelCase + CaseInsensitive，与 FileSessionStore 一致）
+            var json = """{"id":"ses_x","title":"T","messages":[{"id":"m1","role":"user","content":"hi"}]}""";
+            var options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true
+            };
+
+            var data = JsonSerializer.Deserialize<SessionData>(json, options);
+
+            data!.Messages.Should().ContainSingle();
+            data.Messages[0].SessionId.Should().BeNull();
         }
     }
 }

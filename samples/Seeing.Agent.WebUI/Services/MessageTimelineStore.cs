@@ -711,7 +711,8 @@ public sealed class MessageTimelineStore
     }
 
     /// <summary>
-    /// 判断消息是否属于指定会话的消息集合（按 Id 匹配）。
+    /// 判断消息是否属于指定会话（优先按强归属 <see cref="SessionMessage.SessionId"/> 精确匹配；
+    /// 无 SessionId 时回退按消息 Id 在会话消息集合中匹配）。
     /// <para>
     /// 会话切换后 EventStreamHandler 可能残留上一会话（父会话）的流式消息指针，
     /// 渲染前必须校验消息归属，避免把父会话内容渲染进当前（子）会话时间线。
@@ -719,9 +720,18 @@ public sealed class MessageTimelineStore
     /// </summary>
     public static bool BelongsToSession(
         SessionMessage? message,
+        string? sessionId,
         IReadOnlyList<SessionMessage>? sessionMessages)
     {
-        if (message == null || string.IsNullOrEmpty(message.Id) || sessionMessages == null)
+        if (message == null || sessionMessages == null)
+            return false;
+
+        // 优先用强归属字段精确匹配（同 Id 但 SessionId 不同 → 不属于当前会话）
+        if (!string.IsNullOrEmpty(message.SessionId))
+            return string.Equals(message.SessionId, sessionId, StringComparison.Ordinal);
+
+        // 无 SessionId（旧数据）时回退按 Id 在会话消息集合中匹配
+        if (string.IsNullOrEmpty(message.Id))
             return false;
 
         return sessionMessages.Any(m =>

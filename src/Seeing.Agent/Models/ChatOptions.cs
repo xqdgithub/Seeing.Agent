@@ -1,6 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Session.Core;
-namespace Seeing.Agent.App.Models;
+namespace Seeing.Agent.Models;
 
 /// <summary>
 /// 聊天选项 - 可选的执行配置

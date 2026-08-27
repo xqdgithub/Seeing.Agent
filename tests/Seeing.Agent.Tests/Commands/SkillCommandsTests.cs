@@ -35,7 +35,7 @@ public class SkillCommandsTests
     {
         // Arrange
         var session = new SessionData { Id = "s1" };
-        session.Messages.Add(SessionMessage.UserMessage("/skill demo"));
+        session.AddMessage(SessionMessage.UserMessage("/skill demo"));
         var skill = new SkillInfo
         {
             Name = "demo",
@@ -62,7 +62,7 @@ public class SkillCommandsTests
     {
         // Arrange
         var session = new SessionData { Id = "s1" };
-        session.Messages.Add(SessionMessage.AssistantMessage("old"));
+        session.AddMessage(SessionMessage.AssistantMessage("old"));
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "content" };
         var skillManager = CreateSkillManager(skill);
         var sessionManager = CreateSessionManager(session);
@@ -80,7 +80,7 @@ public class SkillCommandsTests
     {
         // Arrange
         var session = new SessionData { Id = "s1" };
-        session.Messages.Add(SessionMessage.UserMessage("/demo"));
+        session.AddMessage(SessionMessage.UserMessage("/demo"));
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
         var sessionManager = CreateSessionManager(session);
         var command = new DynamicSkillCommand(sessionManager.Object, skill);

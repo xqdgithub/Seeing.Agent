@@ -4,9 +4,8 @@ using Seeing.Agent.Abstractions.Agents;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App.Events;
-using Seeing.Agent.App.Execution;
-using Seeing.Agent.App.Internal;
-using Seeing.Agent.App.Models;
+using Seeing.Agent.Execution;
+using Seeing.Agent.Models;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
@@ -79,6 +78,12 @@ public class ChatOrchestrator : IChatOrchestrator
     public bool Cancel(string executionId)
     {
         return _executionJobService.Cancel(executionId);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> CancelBySessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        return _executionJobService.CancelBySessionAsync(sessionId, cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -211,7 +216,7 @@ public class ChatOrchestrator : IChatOrchestrator
         newSession.WorkingDirectory = sourceSession.WorkingDirectory;
         newSession.SelectedModel = sourceSession.SelectedModel;
         // 深拷贝消息（元素共享会导致分支后原会话压缩标记污染分支会话的活跃消息）
-        newSession.Messages = sourceSession.Messages.Select(m => m.Clone()).ToList();
+        newSession.ReplaceMessages(sourceSession.Messages.Select(m => m.Clone()));
         if (sourceSession.Metadata.TryGetValue(SessionMetadataKeys.InstructionFingerprints, out var fingerprints)
             && !string.IsNullOrEmpty(fingerprints))
         {

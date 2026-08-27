@@ -4,8 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App;
 using Seeing.Agent.App.Events;
-using Seeing.Agent.App.Execution;
-using Seeing.Agent.App.Models;
+using Seeing.Agent.Execution;
+using Seeing.Agent.Models;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Gateway.Permission;
@@ -319,7 +319,7 @@ public sealed class GatewayOrchestratorV2
     {
         if (runState.Session != null)
         {
-            runState.Session.Messages.Add(SessionMessage.SystemMessage("⚠️ 执行已取消"));
+            runState.Session.AddMessage(SessionMessage.SystemMessage("⚠️ 执行已取消"));
             await _services.GetRequiredService<ISessionManager>().SaveAsync(sessionId);
         }
 
@@ -336,7 +336,7 @@ public sealed class GatewayOrchestratorV2
     {
         if (runState.Session != null)
         {
-            runState.Session.Messages.Add(SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}"));
+            runState.Session.AddMessage(SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}"));
             await _services.GetRequiredService<ISessionManager>().SaveAsync(sessionId);
         }
 
