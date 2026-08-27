@@ -69,11 +69,11 @@ builder.Services.AddScoped<CircuitContext>();
 builder.Services.AddSingleton<SessionEventStreamRouter>();
 builder.Services.AddScoped<TaskCardAggregator>();
 
-// EventStreamHandler：Task7 起改为经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建。
-// 当前 Session.razor / PermissionHost.razor 仍 @inject EventStreamHandler（Task7 才改），
-// 暂保留"占位"Scoped 注册（sessionId 为空串），承载 PermissionHost/BlazorPermissionChannel
-// 依赖的全局权限请求事件分发，并避免 DI ValidateOnBuild 因构造参数 System.String 无法解析而启动失败。
-// 此占位注册将在 Task7 接管后移除。
+// EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
+// 此处保留的 Scoped 注册作为"全局权限事件总线"占位实例（sessionId 为空串）：
+// BlazorPermissionChannel.RequestAsync 经它 ProcessEventAsync 触发 OnPermissionRequest，
+// PermissionHost 订阅该实例弹权限窗（主渲染 handler 的权限事件无人订阅，无副作用）。
+// 此注册为权限链路必需，不可移除。
 builder.Services.AddScoped<EventStreamHandler>(sp =>
     new EventStreamHandler(string.Empty, sp.GetRequiredService<ISessionManager>()));
 builder.Services.AddScoped<ErrorHandlingService>();
