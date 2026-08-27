@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.App;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Services;
 
@@ -13,6 +14,16 @@ namespace Seeing.Agent.WebUI.Services;
 /// 再将事件广播给该会话的全部消费者；支持引用快照去重（skipSet 按 Loop 创建时构建）
 /// 与 replay 补历史。消费者经 IServiceScopeFactory 创建为 Scoped，Router 维护
 /// circuit → (scope, consumer) 映射，circuit 关闭时统一释放。
+/// <para>
+/// 每 (circuit, session) 可注册多个不同消费者类型：首个 GetOrCreateConsumer 登记的
+/// 类型为该会话「主 consumer」（如渲染 handler），其余为辅助 consumer（如 TaskCardAggregator）。
+/// 主 consumer 摘除（页面会话切换/关闭）时释放其 scope；辅助 consumer 摘除子会话或
+/// Rebind 切换父会话时仅移除订阅、不释放实例，供后续复用。
+/// </para>
+/// <para>
+/// EventStreamHandler 需运行时 sessionId 构造，GetOrCreateConsumer 对其走「按会话工厂」
+/// 直接 new（绕过 DI 占位注册的空 sessionId 实例），不挂 scope。
+/// </para>
 /// </summary>
 public sealed class SessionEventStreamRouter : IDisposable
 {
@@ -21,9 +32,18 @@ public sealed class SessionEventStreamRouter : IDisposable
     private readonly ILogger<SessionEventStreamRouter> _logger;
 
     private readonly ConcurrentDictionary<string, SessionSubscription> _subscriptions = new();
+
+    /// <summary>经 DI 解析的 Scoped 消费者 → 其 scope（circuit 关闭 / 主 consumer 摘除时释放）</summary>
+    private readonly ConcurrentDictionary<IStreamConsumer, IServiceScope> _consumerScopes = new();
+
+    /// <summary>消费者 → circuit 归属（DetachAllForCircuit 据此统一释放）</summary>
     private readonly ConcurrentDictionary<IStreamConsumer, string> _consumerCircuit = new();
-    private readonly ConcurrentDictionary<(string circuit, string session), IServiceScope> _scopes = new();
-    private readonly ConcurrentDictionary<string, (string circuit, IStreamConsumer consumer)> _consumerBySession = new();
+
+    /// <summary>幂等复用键：(session, consumerType) → consumer（同会话同类型复用实例）</summary>
+    private readonly ConcurrentDictionary<(string session, Type type), IStreamConsumer> _consumersByKey = new();
+
+    /// <summary>每会话主 consumer（首个 GetOrCreateConsumer 登记；摘除主 consumer 时释放其 scope）</summary>
+    private readonly ConcurrentDictionary<string, IStreamConsumer> _mainConsumerBySession = new();
 
     private bool _disposed;
 
@@ -70,54 +90,68 @@ public sealed class SessionEventStreamRouter : IDisposable
     }
 
     /// <summary>
-    /// 按 circuit 创建 Scoped 消费者并登记映射。幂等：同会话已存在 consumer 时直接复用
+    /// 按 circuit 创建 Scoped 消费者并登记映射。幂等：同 (session, type) 已存在 consumer 时直接复用
     /// （不新建 scope），避免同 circuit 重访会话导致 scope 泄漏。调用方随后需自行 AttachConsumer。
+    /// 首个登记的 consumer 为该会话「主 consumer」（DetachConsumer 摘除时释放其 scope）；
+    /// EventStreamHandler 走按会话工厂直接构造（sessionId 运行时确定），不挂 scope。
     /// </summary>
     public T GetOrCreateConsumer<T>(string sessionId, string circuitId) where T : IStreamConsumer
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        // 幂等：同会话已有 consumer 时复用（不新建 scope）
-        if (_consumerBySession.TryGetValue(sessionId, out var existing))
-            return (T)existing.consumer;
+        var key = (sessionId, typeof(T));
+        if (_consumersByKey.TryGetValue(key, out var existing))
+            return (T)existing;
 
-        var scope = _scopeFactory.CreateScope();
-        var consumer = scope.ServiceProvider.GetRequiredService<T>();
+        var consumer = CreateConsumer<T>(sessionId);
         _consumerCircuit[consumer] = circuitId;
 
-        // 竞争窗口：另一线程刚登记同会话 → 释放新建 scope，复用既有实例
-        if (!_consumerBySession.TryAdd(sessionId, (circuitId, consumer)))
-        {
-            try
-            {
-                scope.Dispose();
-            }
-            catch
-            {
-                // 释放失败不阻断
-            }
-            return (T)_consumerBySession[sessionId].consumer;
-        }
+        // 主 consumer：每会话首个登记。辅助 consumer（如 TaskCardAggregator）摘除子会话 /
+        // Rebind 切换父会话时 Detach 旧父不得释放其实例，因此仅主 consumer 摘除才释放 scope。
+        _mainConsumerBySession.TryAdd(sessionId, consumer);
 
-        // 极端情况：同 (circuit, session) 已存在不同 scope → 先释放旧 scope 再覆盖
-        if (_scopes.TryRemove((circuitId, sessionId), out var oldScope))
+        // 竞争窗口：另一线程刚登记同 (session, type) → 释放新建资源，复用既有实例
+        if (!_consumersByKey.TryAdd(key, consumer))
         {
-            try
-            {
-                oldScope.Dispose();
-            }
-            catch
-            {
-                // 释放失败不阻断
-            }
+            ReleaseConsumer(consumer);
+            return (T)_consumersByKey[key];
         }
-        _scopes[(circuitId, sessionId)] = scope;
         return consumer;
     }
 
     /// <summary>
+    /// 创建消费者实例。EventStreamHandler 需运行时 sessionId 构造，绕过 DI 占位注册
+    /// （空 sessionId）按会话工厂直接 new；其余消费者从新建 scope 解析并登记 scope 供释放。
+    /// </summary>
+    private T CreateConsumer<T>(string sessionId) where T : IStreamConsumer
+    {
+        if (typeof(T) == typeof(EventStreamHandler))
+        {
+            // ISessionManager 为 Singleton；临时 scope 仅用于解析该依赖。
+            using var temp = _scopeFactory.CreateScope();
+            return (T)(object)new EventStreamHandler(
+                sessionId, temp.ServiceProvider.GetRequiredService<ISessionManager>());
+        }
+
+        var scope = _scopeFactory.CreateScope();
+        try
+        {
+            var consumer = scope.ServiceProvider.GetRequiredService<T>();
+            _consumerScopes[consumer] = scope;
+            return consumer;
+        }
+        catch
+        {
+            scope.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// 摘除单个消费者；若该会话订阅已空则释放订阅。
-    /// 仅当摘除的是该 consumer 的主会话（GetOrCreateConsumer 登记的 (circuit, session)）时释放 scope。
+    /// 仅当摘除的是该会话的主 consumer（GetOrCreateConsumer 首个登记的 (session, type)）时
+    /// 释放其 scope；辅助/多会话 consumer（如 TaskCardAggregator）摘除子会话或 Rebind 切换
+    /// 父会话时只移除订阅、保留实例，否则实例被 Dispose 后无法复用（ObjectDisposedException）。
     /// </summary>
     public void DetachConsumer(string sessionId, IStreamConsumer consumer)
     {
@@ -133,19 +167,16 @@ public sealed class SessionEventStreamRouter : IDisposable
         if (!removed)
             return;
 
-        // 仅释放主会话 scope：多会话 consumer（如 TaskCardAggregator）摘除子会话时
-        // 不得移除其 circuit 映射，否则父会话 scope 将无法在关闭/摘除时释放（泄漏）。
-        if (_consumerBySession.TryGetValue(sessionId, out var entry)
-            && ReferenceEquals(entry.consumer, consumer))
+        // 仅释放主 consumer 的 scope（含其 circuit 幂等映射）
+        if (_mainConsumerBySession.TryGetValue(sessionId, out var main)
+            && ReferenceEquals(main, consumer))
         {
-            _consumerBySession.TryRemove(sessionId, out _);
-            _consumerCircuit.TryRemove(consumer, out _);
-            ReleaseScope(entry.circuit, sessionId);
+            ReleaseConsumer(consumer);
         }
     }
 
     /// <summary>
-    /// 释放该 circuit 下全部 scope 并摘除其消费者（circuit 关闭时调用）。
+    /// 释放该 circuit 下全部 consumer 的 scope 并摘除其订阅（circuit 关闭时调用）。
     /// </summary>
     public void DetachAllForCircuit(string circuitId)
     {
@@ -156,7 +187,7 @@ public sealed class SessionEventStreamRouter : IDisposable
                 if (_consumerCircuit.TryGetValue(consumer, out var c) && c == circuitId
                     && sub.Consumers.TryRemove(consumer, out _))
                 {
-                    _consumerCircuit.TryRemove(consumer, out _);
+                    ReleaseConsumer(consumer);
                 }
             }
 
@@ -164,17 +195,42 @@ public sealed class SessionEventStreamRouter : IDisposable
                 ReleaseSubscription(sessionId, sub);
         }
 
-        foreach (var key in _scopes.Keys.ToArray())
+        // 兜底：清理仅 GetOrCreate 未 Attach 或遗漏的该 circuit consumer
+        foreach (var (consumer, _) in _consumerScopes.ToArray())
         {
-            if (key.circuit == circuitId)
-                ReleaseScope(key.circuit, key.session);
+            if (_consumerCircuit.TryGetValue(consumer, out var c) && c == circuitId)
+                ReleaseConsumer(consumer);
+        }
+    }
+
+    /// <summary>
+    /// 释放消费者资源：scope + circuit/幂等/主槽映射（不可再复用）。
+    /// </summary>
+    private void ReleaseConsumer(IStreamConsumer consumer)
+    {
+        _consumerCircuit.TryRemove(consumer, out _);
+        if (_consumerScopes.TryRemove(consumer, out var scope))
+        {
+            try
+            {
+                scope.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "释放消费者 scope 失败: {Type}", consumer.GetType().Name);
+            }
         }
 
-        // 反查表同步清理
-        foreach (var (sessionId, entry) in _consumerBySession.ToArray())
+        foreach (var (sessionId, main) in _mainConsumerBySession.ToArray())
         {
-            if (entry.circuit == circuitId)
-                _consumerBySession.TryRemove(sessionId, out _);
+            if (ReferenceEquals(main, consumer))
+                _mainConsumerBySession.TryRemove(sessionId, out _);
+        }
+
+        foreach (var (key, value) in _consumersByKey.ToArray())
+        {
+            if (ReferenceEquals(value, consumer))
+                _consumersByKey.TryRemove(key, out _);
         }
     }
 
@@ -249,21 +305,6 @@ public sealed class SessionEventStreamRouter : IDisposable
         }
     }
 
-    private void ReleaseScope(string circuitId, string sessionId)
-    {
-        if (_scopes.TryRemove((circuitId, sessionId), out var scope))
-        {
-            try
-            {
-                scope.Dispose();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "释放会话 scope 失败: {CircuitId}/{SessionId}", circuitId, sessionId);
-            }
-        }
-    }
-
     private void ReleaseSubscription(string sessionId, SessionSubscription sub)
     {
         if (!_subscriptions.TryRemove(sessionId, out _))
@@ -295,7 +336,7 @@ public sealed class SessionEventStreamRouter : IDisposable
         foreach (var (sessionId, sub) in _subscriptions.ToArray())
             ReleaseSubscription(sessionId, sub);
 
-        foreach (var scope in _scopes.Values.ToArray())
+        foreach (var scope in _consumerScopes.Values.ToArray())
         {
             try
             {
@@ -306,9 +347,10 @@ public sealed class SessionEventStreamRouter : IDisposable
                 // 释放失败不阻断整体清理
             }
         }
-        _scopes.Clear();
+        _consumerScopes.Clear();
         _consumerCircuit.Clear();
-        _consumerBySession.Clear();
+        _consumersByKey.Clear();
+        _mainConsumerBySession.Clear();
     }
 
     private sealed class SessionSubscription

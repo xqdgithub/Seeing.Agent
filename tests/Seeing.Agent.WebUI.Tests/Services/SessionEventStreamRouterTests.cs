@@ -21,6 +21,14 @@ public class SessionEventStreamRouterTests
         public void OnStreamEnd() => StreamEnded = true;
     }
 
+    private sealed class FakeConsumer2 : IStreamConsumer
+    {
+        public string SessionId { get; }
+        public FakeConsumer2(string sessionId) => SessionId = sessionId;
+        public void OnEvent(IMessageEvent evt) { }
+        public void OnStreamEnd() { }
+    }
+
     private static SessionEventStreamRouter CreateRouter(
         Mock<IChatOrchestrator> orchestrator, IServiceScopeFactory? scopeFactory = null)
         => new(orchestrator.Object, scopeFactory ?? Mock.Of<IServiceScopeFactory>(),
@@ -133,5 +141,65 @@ public class SessionEventStreamRouterTests
         second.Should().BeSameAs(first);
         scopeFactory.Verify(f => f.CreateScope(), Times.Once);
         scope.Verify(s => s.Dispose(), Times.Never);
+    }
+
+    [Fact]
+    public void GetOrCreateConsumer_SameSessionDifferentTypes_ShouldReturnDistinctInstances()
+    {
+        // 同 (session, circuit) 下不同消费者类型并存（渲染 handler + TaskCardAggregator）：
+        // 同类型幂等复用，不同类型各自独立 scope/实例。
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        sp.Setup(s => s.GetService(It.IsAny<Type>())).Returns<Type>(t =>
+            t == typeof(FakeConsumer)
+                ? new FakeConsumer("s1")
+                : new FakeConsumer2("s1"));
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var orchestrator = new Mock<IChatOrchestrator>();
+        using var router = CreateRouter(orchestrator, scopeFactory.Object);
+
+        var first = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
+        var second = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
+        var other = router.GetOrCreateConsumer<FakeConsumer2>("s1", "circuit-1");
+
+        second.Should().BeSameAs(first);
+        other.Should().NotBeSameAs(first);
+        scopeFactory.Verify(f => f.CreateScope(), Times.Exactly(2));
+    }
+
+    [Fact]
+    public void DetachConsumer_NonMainConsumer_ShouldNotReleaseScope()
+    {
+        // 辅助 consumer（非主）摘除（Rebind 切换父会话/子会话终态）只移除订阅，
+        // 不释放 scope，实例可继续复用（避免 ObjectDisposedException）。
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        sp.Setup(s => s.GetService(It.IsAny<Type>())).Returns<Type>(t =>
+            t == typeof(FakeConsumer)
+                ? new FakeConsumer("s1")
+                : new FakeConsumer2("s1"));
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var orchestrator = new Mock<IChatOrchestrator>();
+        using var router = CreateRouter(orchestrator, scopeFactory.Object);
+
+        // 主 consumer：FakeConsumer；辅助 consumer：FakeConsumer2
+        var main = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
+        var helper = router.GetOrCreateConsumer<FakeConsumer2>("s1", "circuit-1");
+        router.AttachConsumer("s1", main);
+        router.AttachConsumer("s1", helper);
+
+        router.DetachConsumer("s1", helper);
+        // 辅助 consumer 摘除：scope 不释放（实例复用语义），主 consumer scope 仍保留
+        scope.Verify(s => s.Dispose(), Times.Never);
+
+        // 主 consumer 摘除：scope 释放
+        router.DetachConsumer("s1", main);
+        scope.Verify(s => s.Dispose(), Times.Once);
     }
 }

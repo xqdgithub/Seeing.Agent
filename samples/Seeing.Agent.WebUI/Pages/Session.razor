@@ -24,7 +24,8 @@
 @using Seeing.Agent.Core.Instructions
 @inject SessionState SessionState
 @inject AppState AppState
-@inject EventStreamHandler EventStreamHandler
+@inject Services.SessionEventStreamRouter Router
+@inject Services.CircuitContext CircuitContext
 @inject ErrorHandlingService ErrorHandlingService
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
@@ -583,6 +584,19 @@
     /// <summary>上次已渲染到 UI 的标题（与 SessionData 引用就地更新解耦）。</summary>
     private string? _renderedTitle;
 
+    /// <summary>当前会话的渲染 handler（经 Router 按会话创建，订阅其 OnStateChanged）</summary>
+    private EventStreamHandler? _handler;
+    /// <summary>当前会话的任务卡片聚合器（经 Router 获取，聚合子会话 TaskSteps）</summary>
+    private TaskCardAggregator? _aggregator;
+    /// <summary>当前已绑定的事件流会话 ID（handler/aggregator 绑定目标）</summary>
+    private string? _boundSessionId;
+    /// <summary>handler 事件回调包装（async Task 方法不能直接赋给 Action 委托，需 lambda 桥接以便退订）</summary>
+    private Action<IMessageEvent>? _onHandlerChangedCallback;
+    /// <summary>流式 delta 节流字符计数（仅 StreamDelta 走节流，其余事件立即同步）</summary>
+    private int _streamCharCount;
+    /// <summary>流式 delta 代码块深度（``` 成对增减，代码块内阈值放大、块边界强制刷新）</summary>
+    private int _currentCodeBlockDepth;
+
     /// <summary>
     /// 组件初始化
     /// </summary>
@@ -616,6 +630,9 @@
             await LoadSessionByIdAsync(SessionId);
             _loadedSessionId = SessionId;
 
+            // 建立事件流绑定（Router 已订阅父会话流，页面不再自写 await foreach 消费循环）
+            EnsureStreamBinding(SessionId);
+
             // 检查是否有正在进行的执行（页面刷新恢复）
             RestoreExecutionFromOverview(SessionId);
         }
@@ -623,6 +640,8 @@
         {
             await LoadSessionAsync();
             _loadedSessionId = SessionState.CurrentSession?.Id;
+            if (!string.IsNullOrEmpty(_loadedSessionId))
+                EnsureStreamBinding(_loadedSessionId!);
         }
         
         // Subscribe to Budget status updates
@@ -631,8 +650,8 @@
     }
 
     /// <summary>
-    /// 从 ExecutionJobService 恢复会话执行状态；有活跃执行时订阅其事件流。
-    /// 用于页面刷新恢复与切换会话恢复，保证"继续打开的会话"能实时渲染最新消息。
+    /// 从 ExecutionJobService 恢复会话执行状态（仅恢复展示态，不再自起订阅）。
+    /// 事件流订阅已由 EnsureStreamBinding 经 Router 建立，用于页面刷新恢复与切换会话恢复。
     /// </summary>
     private void RestoreExecutionFromOverview(string sessionId)
     {
@@ -644,12 +663,6 @@
         SessionState.ExecutionStatus = overview.CurrentExecution.Status;
         SessionState.QueuePosition = overview.CurrentExecution.QueuePosition;
         SessionState.CurrentExecutionId = overview.CurrentExecution.ExecutionId;
-
-        // 如果有活跃执行，恢复订阅事件流
-        if (overview.HasActiveExecution)
-        {
-            _ = ConsumeEventStreamAsync(overview.CurrentExecution.ExecutionId);
-        }
     }
 
     private void SubscribeToBudgetUpdates()
@@ -756,7 +769,7 @@
 
     private void CompleteCurrentTimelineTurn()
     {
-        var loopId = EventStreamHandler.GetCurrentLoopId()
+        var loopId = _handler?.GetCurrentLoopId()
             ?? ResolveCurrentStreamingAssistantMessage()?.LoopId;
         Timeline.CompleteTurn(loopId);
     }
@@ -767,7 +780,7 @@
     private SessionMessage? ResolveCurrentStreamingAssistantMessage()
     {
         var messages = SessionState.CurrentSession?.Messages;
-        var fromHandler = EventStreamHandler.GetCurrentAssistantMessage();
+        var fromHandler = _handler?.GetCurrentAssistantMessage();
         if (fromHandler != null
             && string.Equals(fromHandler.Role, "assistant", StringComparison.OrdinalIgnoreCase)
             && Services.MessageTimelineStore.BelongsToSession(fromHandler, SessionState.SessionId, messages))
@@ -1169,7 +1182,9 @@
             await LoadSessionByIdAsync(SessionId);
             _loadedSessionId = SessionId;
 
-            // 切换到正在执行的会话（含子会话）：恢复执行状态并订阅事件流，实时渲染最新消息
+            // 切换到正在执行的会话（含子会话）：重新绑定事件流（Router 已订阅，无需自起循环）
+            // 并恢复执行状态，实时渲染最新消息
+            EnsureStreamBinding(SessionId);
             RestoreExecutionFromOverview(SessionId);
         }
     }
@@ -1241,10 +1256,10 @@
             _compactionProgress = null;
             _compactionReasoning = null;
 
-            // 切换会话：清理上一会话残留的流式状态（EventStreamHandler 的流式消息指针 /
+            // 切换会话：清理上一会话残留的流式状态（handler 的流式消息指针 /
             // LoopId / Task 索引），避免父会话消息指针被渲染进当前会话时间线
             _currentStreamingMessageId = string.Empty;
-            EventStreamHandler.ClearCache();
+            _handler?.ClearCache();
 
             SessionState.SetSession(sessionData);
             _renderedTitle = sessionData.Title;
@@ -1481,9 +1496,7 @@
             SessionState.CurrentExecutionId = result.ExecutionId;
             
             await InvokeAsync(StateHasChanged);
-
-            // 订阅事件流
-            _ = ConsumeEventStreamAsync(result.ExecutionId!);
+            // 事件流订阅已由 EnsureStreamBinding 经 Router 建立，无需手动消费循环
         }
         catch (Exception ex)
         {
@@ -1495,203 +1508,202 @@
     }
 
     /// <summary>
-    /// 消费事件流（后台任务）
+    /// 建立/切换当前会话的事件流绑定：
+    /// 页面经 Router 获取当前会话的渲染 handler 与任务卡片聚合器，订阅其回调；
+    /// 订阅循环由 Router 统一维护，页面不再自写 await foreach 消费循环。
+    /// 会话切换时解绑旧 handler 并绑定新 handler。
     /// </summary>
-    private async Task ConsumeEventStreamAsync(string executionId)
+    private void EnsureStreamBinding(string sessionId)
     {
-        var charCount = 0;
-        var _currentCodeBlockDepth = 0;
+        if (string.IsNullOrEmpty(sessionId))
+            return;
 
-        try
+        if (string.Equals(_boundSessionId, sessionId, StringComparison.Ordinal) && _handler != null)
+            return; // 已绑定当前会话
+
+        // 解绑旧会话
+        if (_handler != null)
         {
-            await foreach (var evt in ChatOrchestrator.SubscribeEvents(SessionState.SessionId, CancellationToken.None))
+            if (_onHandlerChangedCallback != null)
             {
-                // 会话切换后，旧会话执行流的事件仍会送达本订阅：仅渲染属于当前 UI 会话的事件，
-                // 避免父会话消息被写进当前（子）会话时间线
-                if (!string.IsNullOrEmpty(evt.SessionId)
-                    && !string.Equals(evt.SessionId, SessionState.SessionId, StringComparison.Ordinal))
-                {
-                    continue;
-                }
+                _handler.OnStateChanged -= _onHandlerChangedCallback;
+                _onHandlerChangedCallback = null;
+            }
+            Router.DetachConsumer(_handler.SessionId, _handler);
+        }
+        if (_aggregator != null)
+        {
+            _aggregator.AssistantChanged -= OnAggregatorAssistantChanged;
+        }
 
-                // 检查是否是当前执行的事件
-                if (evt is ExecutionCompleteEvent completeEvt && completeEvt.ExecutionId == executionId)
+        var circuitId = CircuitContext.Id ?? "";
+        _handler = Router.GetOrCreateConsumer<EventStreamHandler>(sessionId, circuitId);
+        _handler.ClearCache();
+        // async Task 方法不能直接赋给 Action 委托（CS0407），用 lambda 桥接并保留引用以便退订
+        _onHandlerChangedCallback = evt => _ = OnHandlerChanged(evt);
+        _handler.OnStateChanged += _onHandlerChangedCallback;
+        Router.AttachConsumer(sessionId, _handler);
+
+        _aggregator = Router.GetOrCreateConsumer<TaskCardAggregator>(sessionId, circuitId);
+        _aggregator.Rebind(sessionId);
+        _aggregator.AssistantChanged += OnAggregatorAssistantChanged;
+
+        _boundSessionId = sessionId;
+    }
+
+    /// <summary>
+    /// handler 状态变更回调（承接原 ConsumeEventStreamAsync 的事件 → UI 反应）。
+    /// 仅 StreamDelta 走节流，其余事件立即同步；不得在此调用 handler.ProcessEventAsync
+    /// （handler 已由 Router 消费流并内部处理事件、写 SessionData）。
+    /// </summary>
+    private async Task OnHandlerChanged(IMessageEvent evt)
+    {
+        if (evt == null)
+            return;
+
+        // 只处理当前绑定会话的事件（防御：handler 已按会话绑定，理论上不会收到其他会话事件）
+        if (!string.IsNullOrEmpty(evt.SessionId)
+            && !string.Equals(evt.SessionId, SessionState.SessionId, StringComparison.Ordinal))
+            return;
+
+        switch (evt)
+        {
+            case ExecutionCompleteEvent completeEvt:
+                // 执行态清理：handler 已按 ExecutionId 匹配维护 ExecutionStatus；
+                // 排队场景 exec2 仍在跑时 handler.IsStreamActive=true，页面不清执行态（已知边界）。
+                if (_handler != null && !_handler.IsStreamActive)
                 {
-                    // 立即结束执行态；晚到标题由会话级 SessionEvent 订阅更新，不阻塞本循环
                     SessionState.ExecutionStatus = completeEvt.Status;
                     SessionState.CurrentExecutionId = null;
                     SessionState.CompleteExecution();
-                    SyncTimelineAssistantFromStream(isComplete: true);
-                    CompleteCurrentTimelineTurn();
-                    ReconcileTimelineFromSession();
-                    await SyncTitleFromSessionAsync();
-                    await InvokeAsync(StateHasChanged);
-                    break;
                 }
-
-                // 处理事件 - 由 EventStreamHandler 统一处理（必须 await，否则 Task 字段可能未写入就刷新）
-                await EventStreamHandler.ProcessEventAsync(evt);
-
-                if (evt is StreamDeltaEvent deltaEvt)
+                SyncTimelineAssistantFromStream(isComplete: true);
+                CompleteCurrentTimelineTurn();
+                ReconcileTimelineFromSession();
+                await SyncTitleFromSessionAsync();
+                break;
+            case LoopCompleteEvent:
+                SyncTimelineAssistantFromStream(isComplete: true);
+                CompleteCurrentTimelineTurn();
+                break;
+            case LoopCancelledEvent:
+            case ErrorEvent:
+                SyncTimelineAssistantFromStream(isComplete: true);
+                CompleteCurrentTimelineTurn();
+                ReconcileTimelineFromSession();
+                break;
+            case StreamDeltaEvent deltaEvt:
+                // 节流（保留原逻辑：代码块内放宽阈值，块边界强制刷新）
+                HandleStreamDeltaThrottled(deltaEvt);
+                break;
+            case StreamStartEvent:
+            case ToolCallEvent:
+            case StreamCompleteEvent:
+            case LoopStartEvent:
+            case PermissionRequestEvent:
+            case PermissionResponseEvent:
+            case TodoUpdateEvent:
+            case ModeUpdateEvent:
+                SyncTimelineAssistantFromStream(isComplete: false);
+                break;
+            case SessionTitleChangedEvent titleEvt:
+                if (string.Equals(SessionState.CurrentSession?.Id, titleEvt.SessionId, StringComparison.Ordinal))
+                    ApplyTitleToUi(titleEvt.Title);
+                break;
+            case SessionUpdatedEvent:
+                // Whitelist: structural session rewrite
+                ResetTimelineFromSession();
+                break;
+            case NavigateEvent navEvt:
+                if (!string.IsNullOrEmpty(navEvt.Target))
+                    NavigationManager.NavigateTo(navEvt.Target);
+                break;
+            case CommandResultEvent commandEvt:
+                // 命令结果：压缩等命令要求全量刷新时间线；导航命令走 NavigationTarget
+                if (commandEvt.NeedsRefresh)
                 {
-                    var contentLen = deltaEvt.ContentDelta?.Length ?? 0;
-                    var reasoningLen = deltaEvt.ReasoningDelta?.Length ?? 0;
-                    charCount += contentLen + reasoningLen;
-
-                    var inCodeBlock = _currentCodeBlockDepth > 0;
-                    var contentDelta = deltaEvt.ContentDelta;
-                    var hasNewline = contentDelta?.Contains("\n") == true;
-                    var threshold = inCodeBlock ? 20 : 8;
-
-                    if (contentDelta?.Contains("```") == true)
-                    {
-                        _currentCodeBlockDepth += contentDelta.Count(c => c == '`') / 3;
-                        _currentCodeBlockDepth = Math.Max(0, _currentCodeBlockDepth % 2 == 0 ? 0 : 1);
-                        threshold = 0;
-                    }
-
-                    if (charCount >= threshold || hasNewline || threshold == 0)
-                    {
-                        SyncTimelineAssistantFromStream(isComplete: false);
-                        charCount = 0;
-                    }
-                }
-                else if (evt is StreamStartEvent or ToolCallEvent or StreamCompleteEvent
-                         or LoopStartEvent
-                         or PermissionRequestEvent or PermissionResponseEvent
-                         or TodoUpdateEvent or ModeUpdateEvent)
-                {
-                    SyncTimelineAssistantFromStream(isComplete: false);
-                }
-                else if (evt is LoopCompleteEvent)
-                {
-                    SyncTimelineAssistantFromStream(isComplete: true);
-                    CompleteCurrentTimelineTurn();
-                }
-                else if (evt is LoopCancelledEvent or ErrorEvent)
-                {
-                    SyncTimelineAssistantFromStream(isComplete: true);
-                    CompleteCurrentTimelineTurn();
-                    ReconcileTimelineFromSession();
-                }
-                else if (evt is SessionTitleChangedEvent titleEvt)
-                {
-                    if (string.Equals(SessionState.CurrentSession?.Id, titleEvt.SessionId, StringComparison.Ordinal))
-                        ApplyTitleToUi(titleEvt.Title);
-                }
-                else if (evt is SessionUpdatedEvent)
-                {
-                    // Whitelist: structural session rewrite
-                    ResetTimelineFromSession();
-                }
-                else if (evt is NavigateEvent navEvt)
-                {
-                    if (!string.IsNullOrEmpty(navEvt.Target))
-                        NavigationManager.NavigateTo(navEvt.Target);
-                }
-                else if (evt is CommandResultEvent commandEvt)
-                {
-                    // 命令结果：压缩等命令要求全量刷新时间线；导航命令走 NavigationTarget
-                    if (commandEvt.NeedsRefresh)
-                    {
-                        ResetTimelineFromSession();
-                        ReconcileTimelineFromSession();
-                        await InvokeAsync(StateHasChanged);
-                    }
-
-                    if (!string.IsNullOrEmpty(commandEvt.NavigationTarget))
-                    {
-                        NavigationManager.NavigateTo(commandEvt.NavigationTarget);
-                    }
-                }
-                else if (evt is CompactionStartedEvent)
-                {
-                    // 压缩开始：在列表末尾显示流式进度条目（与最终摘要条位置一致），等待 summarizing 增量
-                    _compactionInProgress = true;
-                    _compactionProgress = string.Empty;
-                    _compactionReasoning = string.Empty;
-                    await InvokeAsync(StateHasChanged);
-                }
-                else if (evt is CompactionDeltaEvent compactionDeltaEvt)
-                {
-                    // 压缩进度：实时拼接摘要生成内容（正文 + 思考），页面不长时间无响应
-                    if (!string.IsNullOrEmpty(compactionDeltaEvt.ContentDelta))
-                    {
-                        _compactionProgress += compactionDeltaEvt.ContentDelta;
-                    }
-                    if (!string.IsNullOrEmpty(compactionDeltaEvt.ReasoningDelta))
-                    {
-                        _compactionReasoning += compactionDeltaEvt.ReasoningDelta;
-                    }
-                    await InvokeAsync(StateHasChanged);
-                }
-                else if (evt is CompactionCompletedEvent)
-                {
-                    // 压缩完成：会话内容已变更，全量重建时间线
-                    _compactionInProgress = false;
-                    _compactionProgress = null;
-                    _compactionReasoning = null;
                     ResetTimelineFromSession();
                     ReconcileTimelineFromSession();
-                    await InvokeAsync(StateHasChanged);
                 }
-                else if (evt is CompactionFailedEvent failedEvt)
-                {
-                    _compactionInProgress = false;
-                    _compactionProgress = null;
-                    _compactionReasoning = null;
-                    ResetTimelineFromSession();
-                    ReconcileTimelineFromSession();
-                    if (!string.IsNullOrEmpty(failedEvt.ErrorMessage))
-                    {
-                        MessageService.Error(string.Format("压缩失败: {0}", failedEvt.ErrorMessage));
-                    }
-                }
-                else
-                {
-                    // Unknown event: incremental sync only — never mid-stream Reset
-                    SyncTimelineAssistantFromStream(isComplete: false);
-                    ReconcileTimelineFromSession();
-                }
-            }
+                if (!string.IsNullOrEmpty(commandEvt.NavigationTarget))
+                    NavigationManager.NavigateTo(commandEvt.NavigationTarget);
+                break;
+            case CompactionStartedEvent:
+                // 压缩开始：在列表末尾显示流式进度条目（与最终摘要条位置一致），等待 summarizing 增量
+                _compactionInProgress = true;
+                _compactionProgress = string.Empty;
+                _compactionReasoning = string.Empty;
+                break;
+            case CompactionDeltaEvent cde:
+                // 压缩进度：实时拼接摘要生成内容（正文 + 思考），页面不长时间无响应
+                if (!string.IsNullOrEmpty(cde.ContentDelta))
+                    _compactionProgress += cde.ContentDelta;
+                if (!string.IsNullOrEmpty(cde.ReasoningDelta))
+                    _compactionReasoning += cde.ReasoningDelta;
+                break;
+            case CompactionCompletedEvent:
+                // 压缩完成：会话内容已变更，全量重建时间线
+                _compactionInProgress = false;
+                _compactionProgress = null;
+                _compactionReasoning = null;
+                ResetTimelineFromSession();
+                ReconcileTimelineFromSession();
+                break;
+            case CompactionFailedEvent cfe:
+                _compactionInProgress = false;
+                _compactionProgress = null;
+                _compactionReasoning = null;
+                ResetTimelineFromSession();
+                ReconcileTimelineFromSession();
+                if (!string.IsNullOrEmpty(cfe.ErrorMessage))
+                    MessageService.Error(string.Format("压缩失败: {0}", cfe.ErrorMessage));
+                break;
+            default:
+                // Unknown event: incremental sync only — never mid-stream Reset
+                SyncTimelineAssistantFromStream(isComplete: false);
+                ReconcileTimelineFromSession();
+                break;
         }
-        catch (OperationCanceledException)
-        {
-            if (SessionState.ExecutionStatus == ExecutionStatus.Cancelled)
-            {
-                if (SessionState.CurrentSession != null)
-                {
-                    SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("执行已取消"));
-                }
-            }
 
-            SyncTimelineAssistantFromStream(isComplete: true);
-            CompleteCurrentTimelineTurn();
-            ReconcileTimelineFromSession();
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"执行失败: {ex.Message}";
-            if (SessionState.CurrentSession != null)
-            {
-                SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage($"执行出错: {ex.Message}"));
-            }
+        await InvokeAsync(StateHasChanged);
+    }
 
-            SyncTimelineAssistantFromStream(isComplete: true);
-            CompleteCurrentTimelineTurn();
-            ReconcileTimelineFromSession();
-        }
-        finally
+    /// <summary>
+    /// StreamDelta 节流同步：累积字符数达到阈值才刷新时间线
+    /// （普通 8、代码块内 20、块边界/换行强制刷新）。
+    /// </summary>
+    private void HandleStreamDeltaThrottled(StreamDeltaEvent deltaEvt)
+    {
+        var contentLen = deltaEvt.ContentDelta?.Length ?? 0;
+        var reasoningLen = deltaEvt.ReasoningDelta?.Length ?? 0;
+        _streamCharCount += contentLen + reasoningLen;
+
+        var inCodeBlock = _currentCodeBlockDepth > 0;
+        var contentDelta = deltaEvt.ContentDelta;
+        var hasNewline = contentDelta?.Contains("\n") == true;
+        var threshold = inCodeBlock ? 20 : 8;
+
+        if (contentDelta?.Contains("```") == true)
         {
-            SessionState.ExecutionStatus = null;
-            SessionState.CurrentExecutionId = null;
-            SessionState.CompleteExecution();
-            SyncTimelineAssistantFromStream(isComplete: true);
-            CompleteCurrentTimelineTurn();
-            ReconcileTimelineFromSession();
-            _currentStreamingMessageId = string.Empty;
-            await InvokeAsync(StateHasChanged);
+            _currentCodeBlockDepth += contentDelta.Count(c => c == '`') / 3;
+            _currentCodeBlockDepth = Math.Max(0, _currentCodeBlockDepth % 2 == 0 ? 0 : 1);
+            threshold = 0;
         }
+
+        if (_streamCharCount >= threshold || hasNewline || threshold == 0)
+        {
+            SyncTimelineAssistantFromStream(isComplete: false);
+            _streamCharCount = 0;
+        }
+    }
+
+    /// <summary>
+    /// 任务卡片聚合器回调：子会话 TaskSteps 变更 → 增量同步时间线。
+    /// </summary>
+    private void OnAggregatorAssistantChanged(SessionMessage msg)
+    {
+        Timeline.SyncAssistantMessage(msg, SessionState.SessionId ?? "");
+        _ = InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
@@ -1811,7 +1823,8 @@
 
         try
         {
-            await EventStreamHandler.MarkIncompleteTasksCancelledAsync("用户取消");
+            if (_handler != null)
+                await _handler.MarkIncompleteTasksCancelledAsync("用户取消");
         }
         catch
         {
@@ -1846,9 +1859,12 @@
 
     private async Task ReconcileIncompleteTasksAsync()
     {
+        if (_handler == null)
+            return;
+
         try
         {
-            var n = await EventStreamHandler.ReconcileOrphanTaskCardsAsync(taskId =>
+            var n = await _handler.ReconcileOrphanTaskCardsAsync(taskId =>
                 Task.FromResult(ChatOrchestrator.GetOverview(taskId)?.HasActiveExecution == true));
 
             if (n > 0)
@@ -2015,7 +2031,7 @@
             SessionState.CurrentSession.Title = "新会话";
             SessionState.CurrentTodoList = null;
             _currentStreamingMessageId = string.Empty;
-            EventStreamHandler.ClearCache();
+            _handler?.ClearCache();
 
             await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
             UpdateBudgetStatus();
@@ -2048,7 +2064,7 @@
         }
 
         // 复用提交链路：ChatOrchestrator 识别 /compact 命令 → shouldContinue:false 终止循环
-        // → CommandResultEvent(NeedsRefresh=true) → ConsumeEventStreamAsync 刷新时间线
+        // → CommandResultEvent(NeedsRefresh=true) → OnHandlerChanged 刷新时间线
         await OnSubmitMessage(new PromptSubmitEventArgs { Text = "/compact" });
     }
     
@@ -2062,6 +2078,22 @@
         _budgetSubscription?.Dispose();
         _sessionEventSubscription?.Dispose();
         _seeingAgentOptionsSubscription?.Dispose();
+
+        // 退订事件回调并摘除 handler 订阅（aggregator 的父会话订阅由 Rebind 自行切换；
+        // circuit 关闭时 SeeingCircuitHandler 统一 DetachAllForCircuit，此处不调用）
+        if (_handler != null)
+        {
+            if (_onHandlerChangedCallback != null)
+            {
+                _handler.OnStateChanged -= _onHandlerChangedCallback;
+                _onHandlerChangedCallback = null;
+            }
+            Router.DetachConsumer(_handler.SessionId, _handler);
+        }
+        if (_aggregator != null)
+        {
+            _aggregator.AssistantChanged -= OnAggregatorAssistantChanged;
+        }
 
         var sessionId = SessionState.SessionId;
         if (!string.IsNullOrEmpty(sessionId))
@@ -2078,7 +2110,8 @@
 
         try
         {
-            EventStreamHandler.MarkIncompleteTasksCancelledAsync("会话已关闭", persist: true)
+            // handler 已退订/detach，但其流式状态仍可用于标记未完成 Task（实例为直接构造，detach 后仍有效）
+            _handler?.MarkIncompleteTasksCancelledAsync("会话已关闭", persist: true)
                 .GetAwaiter().GetResult();
         }
         catch
