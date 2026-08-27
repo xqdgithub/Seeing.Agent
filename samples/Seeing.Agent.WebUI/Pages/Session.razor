@@ -1546,6 +1546,8 @@
 
         _aggregator = Router.GetOrCreateConsumer<TaskCardAggregator>(sessionId, circuitId);
         _aggregator.Rebind(sessionId);
+        // 页面刷新/会话切换恢复：重扫会话内所有 task 工具调用，重新挂载子会话订阅并补聚合 TaskSteps
+        _aggregator.Reconcile(sessionId);
         _aggregator.AssistantChanged += OnAggregatorAssistantChanged;
 
         _boundSessionId = sessionId;
