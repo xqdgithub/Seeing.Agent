@@ -1,0 +1,24 @@
+docs/superpowers/specs/2026-08-17-decoupling-refactor-design.md
+  s_e889762db1a288::t_8bcaeb9d29b9db 665
+  s_e889762db1a288::t_feb65bfa5151fe 650
+  s_e889762db1a288::t_7bca832c858916 649
+  s_e889762db1a288::t_a622ec42094b4a 4
+  s_e889762db1a288::t_697dea34c48972 588
+  s_e889762db1a288::t_ab2c3d729af819 644-645
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.43-trip",
+  "base_commit_sha": "593442bb6fdf9f720c1403d0cea10cac3deab967",
+  "prompts": {},
+  "sessions": {
+    "s_e889762db1a288": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fbdc9c4edffeS1x2PjOh1PN264",
+        "model": "mimo-v2.5-free"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
