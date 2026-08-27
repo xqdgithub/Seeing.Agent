@@ -225,7 +225,7 @@ public static async Task<string> GetWeather(
 | **P2** | 子代理 Task 卡片执行中无进度（旧设计无 UI 层聚合） | **已完成**（2026-08-27：SessionEventStreamRouter + TaskCardAggregator UI 层聚合，spec `2026-08-27-task-card-ui-aggregation-design.md`） |
 | **P3** | 刷新瞬时流尾弱化（skipSet 丢 buffer 流尾 delta，下一事件才渲染） | 已知边界（待集成测试确认） |
 | **P3** | 同会话排队 exec1+exec2 闪断（exec1 Complete 清态、exec2 Started 恢复） | 已知边界（本期容忍） |
-| **P3** | 页面 Dispose 级联取消含子会话（后台任务应继续为可选增强） | 已知边界（后续可选） |
+| **P3** | 页面 Dispose 级联取消含子会话（刷新即取消） | **已完成**（2026-08-27：Dispose 移除 `CancelBySessionAsync`/标记取消，仅清理 UI 订阅；主动取消与程序关闭仍取消） |
 | **P3** | `LoadChildrenFromStorageAsync` 未命中即全量 `ListAsync` 扫描 | 已知边界（建议加缓存 TTL） |
 
 ## 命令
