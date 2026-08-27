@@ -119,7 +119,9 @@ public class ToolOutputLimiterDecoratorTests
         var head = new string('A', 1024);
         var middle = new string('M', 50 * 1024);
         var tail = new string('Z', 1024);
-        var (_, decorator, _) = Create(new OutputTool { Result = head + middle + tail });
+        // 显式配置头尾预览大小，使"省略 51200 字符"断言不依赖默认值变化
+        var (_, decorator, _) = Create(new OutputTool { Result = head + middle + tail },
+            o => { o.PreviewHeadChars = 1024; o.PreviewTailChars = 1024; });
 
         var result = await ExecAsync(decorator);
 

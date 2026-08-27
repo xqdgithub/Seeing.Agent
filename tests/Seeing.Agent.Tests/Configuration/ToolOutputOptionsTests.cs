@@ -13,7 +13,7 @@ public class ToolOutputOptionsTests
 
         options.Enabled.Should().BeTrue();
         options.MaxInlineBytes.Should().Be(50 * 1024);
-        options.PreviewHeadChars.Should().Be(1024);
-        options.PreviewTailChars.Should().Be(1024);
+        options.PreviewHeadChars.Should().Be(4 * 1024);
+        options.PreviewTailChars.Should().Be(2 * 1024);
     }
 }
