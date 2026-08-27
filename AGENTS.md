@@ -89,7 +89,12 @@ Seeing.Agent/
 | 扩展插件生命周期 | `src/Seeing.Agent.Abstractions/Extensions/IExtensionManager.cs` | 插件加载/激活/停用 |
 | 契约类型总览 | `src/Seeing.Agent.Abstractions/` | 接口/DTO/注解/常量/事件声明（Events/Hooks/Tools/Agents/Extensions/Llm/Mcp/Permissions/Skills/Commands/Configuration/Todo/Components） |
 | 新增 Tool 工具 | `src/Seeing.Agent/Tools/Attributes/ToolAttributes.cs` | 使用 `[Tool]` 注解 |
-| 子 Agent / Task | `src/Seeing.Agent/Tools/BuiltIn/Task/TaskTool.cs` | Session-first：`task`/`task_status`；Child=`SessionKind.SubAgent` |
+| 子 Agent / Task | `src/Seeing.Agent/Tools/BuiltIn/Task/TaskTool.cs` | Session-first：`task`/`task_status`；Child=`SessionKind.SubAgent`；写 `Metadata[OriginToolCallId]=context.CallId` 供 UI 关联 |
+| 多流订阅基础设施 | `samples/Seeing.Agent.WebUI/Services/SessionEventStreamRouter.cs` + `IStreamConsumer.cs` + `CircuitContext.cs` | Singleton Router：每会话流只订阅一次、广播多消费者（handler+聚合器）；键 `(circuitId, sessionId, type)`；引用快照去重 skipSet + replay 补历史 |
+| EventStreamHandler（多实例） | `samples/Seeing.Agent.WebUI/Services/EventStreamHandler.cs` | 每会话实例（构造 `(string sessionId, ISessionManager)`），`OnStateChanged(IMessageEvent)` 上抛；`RestoreExecution` 恢复执行态 |
+| Task 卡片聚合 | `samples/Seeing.Agent.WebUI/Services/TaskCardAggregator.cs` | 每 circuit 一实例（按 circuitId 复用）；父流识别 task toolCall → 挂载子会话订阅 → 聚合 TaskSteps 写回父 toolCall（防抖落盘）；`Rebind`/`Reconcile`/`AssistantChanged` |
+| Task 卡片渲染 | `samples/Seeing.Agent.WebUI/Components/Messaging/TaskMessageComponent.razor` | 进度步骤 + 子会话 ID + "结果摘要"（完整 `ToolCall.Result`，不再截断）；`OpenChildSession` 打开子会话 |
+| Circuit 清理 | `samples/Seeing.Agent.WebUI/Services/SeeingCircuitHandler.cs` | `OnCircuitOpenedAsync` 写 `CircuitContext.Id`；`OnCircuitClosedAsync` → `Router.DetachAllForCircuit` |
 | 扩展生命周期钩子 | `src/Seeing.Agent/Core/Hooks/HookManager.cs` | 实现 `IHookHandler`，30+ 钩子点 |
 | 配置权限规则 | `src/Seeing.Agent/Core/Permission/PermissionService.cs` | PermissionRuleEntry + PermissionService |
 | 连接 MCP Server | `src/Seeing.Agent/MCP/McpClientManager.cs` | `ConnectAsync()`，支持 stdio/HTTP/SSE |
@@ -217,6 +222,11 @@ public static async Task<string> GetWeather(
 | **P1** | Todo 魔法键后门（TodoManager/TodoReadTool 孤儿） | **已完成**（ITodoStore 端口-适配器化，SessionContextTodoStore） |
 | **P1** | Seeing.Gateway 反向依赖主库 | **已完成**（协议层独立，仅依赖 Abstractions） |
 | **P1** | IExtension 巨型接口 + ConfigureServices 死契约 | **已完成**（按组件类型拆分 7 接口） |
+| **P2** | 子代理 Task 卡片执行中无进度（旧设计无 UI 层聚合） | **已完成**（2026-08-27：SessionEventStreamRouter + TaskCardAggregator UI 层聚合，spec `2026-08-27-task-card-ui-aggregation-design.md`） |
+| **P3** | 刷新瞬时流尾弱化（skipSet 丢 buffer 流尾 delta，下一事件才渲染） | 已知边界（待集成测试确认） |
+| **P3** | 同会话排队 exec1+exec2 闪断（exec1 Complete 清态、exec2 Started 恢复） | 已知边界（本期容忍） |
+| **P3** | 页面 Dispose 级联取消含子会话（后台任务应继续为可选增强） | 已知边界（后续可选） |
+| **P3** | `LoadChildrenFromStorageAsync` 未命中即全量 `ListAsync` 扫描 | 已知边界（建议加缓存 TTL） |
 
 ## 命令
 
