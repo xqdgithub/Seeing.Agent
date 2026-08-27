@@ -2,8 +2,8 @@ using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.App.Events;
+using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Models;
-using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Api.Responses;
 using Seeing.Agent.TokenBudget;
@@ -42,7 +42,7 @@ namespace Seeing.Agent.WebUI.Services
     }
 
     /// <summary>
-    /// 事件流处理器 - 处理 Core 层消息事件并更新 SessionState
+    /// 事件流处理器 - 处理 Core 层消息事件并更新会话流式状态
     /// <para>
     /// 已重构：使用 Core 层统一事件类型（IMessageEvent），支持工具状态流转
     /// </para>
@@ -50,11 +50,18 @@ namespace Seeing.Agent.WebUI.Services
     /// 支持 LoopId 分组：一次 Agent 交互中产生的所有事件通过 LoopId 关联，
     /// 便于前端按对话单元渲染。
     /// </para>
+    /// <para>
+    /// 多实例化：每个会话绑定一个实例（构造传入 sessionId），不再依赖全局 SessionState。
+    /// </para>
     /// </summary>
-    public class EventStreamHandler
+    public class EventStreamHandler : IStreamConsumer
     {
-        private readonly SessionState _sessionState;
         private readonly ISessionManager _sessionManager;
+
+        /// <summary>
+        /// 绑定的会话 ID（每会话一个实例）
+        /// </summary>
+        public string SessionId { get; }
 
         /// <summary>
         /// 当前助手消息（用于流式增量）
@@ -98,9 +105,37 @@ namespace Seeing.Agent.WebUI.Services
         private readonly Dictionary<string, PermissionRequestViewModel> _pendingPermissions = new();
 
         /// <summary>
-        /// UI 更新回调
+        /// 当前活跃执行 ID（ExecutionStarted/Complete 配对）
         /// </summary>
-        public event Action? OnStateChanged;
+        private string? _activeExecutionId;
+
+        /// <summary>
+        /// 当前执行状态（来自 ExecutionJobService 事件）
+        /// </summary>
+        public ExecutionStatus? ExecutionStatus { get; private set; }
+
+        /// <summary>
+        /// 是否有活跃执行流（Running / Pending / Queued）
+        /// </summary>
+        public bool IsStreamActive =>
+            ExecutionStatus is global::Seeing.Agent.Execution.ExecutionStatus.Running
+                or global::Seeing.Agent.Execution.ExecutionStatus.Pending
+                or global::Seeing.Agent.Execution.ExecutionStatus.Queued;
+
+        /// <summary>
+        /// 当前 Todo 列表（由 todowrite 工具 / TodoUpdateEvent 更新）
+        /// </summary>
+        public TodoListViewModel? CurrentTodoList { get; private set; }
+
+        /// <summary>
+        /// 当前 Token Budget 状态（由 BudgetStatusEvent 更新）
+        /// </summary>
+        public BudgetStatusResponse? CurrentBudgetStatus { get; private set; }
+
+        /// <summary>
+        /// UI 更新回调（携带触发事件；非事件流触发的刷新传 null）
+        /// </summary>
+        public event Action<IMessageEvent>? OnStateChanged;
 
         /// <summary>
         /// Loop 完成回调（用于 UI 渲染优化）
@@ -117,9 +152,9 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public event Action<PermissionResponseEvent>? OnPermissionResponse;
 
-        public EventStreamHandler(SessionState sessionState, ISessionManager sessionManager)
+        public EventStreamHandler(string sessionId, ISessionManager sessionManager)
         {
-            _sessionState = sessionState ?? throw new ArgumentNullException(nameof(sessionState));
+            SessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         }
 
@@ -138,19 +173,23 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public Task ProcessEventAsync(IMessageEvent evt)
         {
-            EnsureLiveSessionSynced();
+            EnsureCurrentSessionRef();
 
             switch (evt.Type)
             {
                 case MessageEventType.LoopStart:
                     // ExecutionStartedEvent 也复用 LoopStart 类型，不可按 Type 强转
-                    if (evt is LoopStartEvent loopStart)
+                    if (evt is ExecutionStartedEvent execStart)
+                        HandleExecutionStarted(execStart);
+                    else if (evt is LoopStartEvent loopStart)
                         HandleLoopStart(loopStart);
                     break;
 
                 case MessageEventType.LoopComplete:
                     // ExecutionCompleteEvent 也复用 LoopComplete 类型，不可按 Type 强转
-                    if (evt is LoopCompleteEvent loopComplete)
+                    if (evt is ExecutionCompleteEvent execComplete)
+                        HandleExecutionComplete(execComplete);
+                    else if (evt is LoopCompleteEvent loopComplete)
                         HandleLoopComplete(loopComplete);
                     break;
 
@@ -227,39 +266,52 @@ namespace Seeing.Agent.WebUI.Services
                     break;
             }
 
-            OnStateChanged?.Invoke();
+            OnStateChanged?.Invoke(evt);
             return Task.CompletedTask;
         }
 
         /// <summary>
-        /// 确保 UI SessionState 与 SessionManager 缓存是同一实例，避免 JobService Save 存到另一份对象
+        /// 获取绑定会话的当前实例（执行路径以 SessionManager 缓存为准）。
+        /// 若本地助手消息指针引用过期，重绑定到缓存实例的同 ID 消息。
         /// </summary>
-        private void EnsureLiveSessionSynced()
+        private SessionData? EnsureCurrentSessionRef()
         {
-            var uiSession = _sessionState.CurrentSession;
-            if (uiSession == null || string.IsNullOrEmpty(uiSession.Id))
-                return;
-
-            var cached = _sessionManager.Get(uiSession.Id);
+            var cached = _sessionManager.Get(SessionId);
             if (cached == null)
+                return null;
+
+            if (_currentAssistantMessage != null &&
+                !string.IsNullOrEmpty(_currentAssistantMessage.Id))
             {
-                _sessionManager.Register(uiSession);
-                return;
+                var same = cached.Messages.FirstOrDefault(m =>
+                    m.Id == _currentAssistantMessage.Id && m.Role == "assistant");
+                if (same != null && !ReferenceEquals(same, _currentAssistantMessage))
+                    _currentAssistantMessage = same;
             }
 
-            if (!ReferenceEquals(cached, uiSession))
-            {
-                // 执行路径以 SessionManager 缓存为准；把 UI 指针切回同一实例
-                _sessionState.CurrentSession = cached;
-                if (_currentAssistantMessage != null &&
-                    !string.IsNullOrEmpty(_currentAssistantMessage.Id))
-                {
-                    var same = cached.Messages.FirstOrDefault(m =>
-                        m.Id == _currentAssistantMessage.Id && m.Role == "assistant");
-                    if (same != null)
-                        _currentAssistantMessage = same;
-                }
-            }
+            return cached;
+        }
+
+        /// <summary>
+        /// 处理执行开始事件（ExecutionStartedEvent 复用 LoopStart 类型）
+        /// </summary>
+        private void HandleExecutionStarted(ExecutionStartedEvent evt)
+        {
+            _activeExecutionId = evt.ExecutionId;
+            ExecutionStatus = global::Seeing.Agent.Execution.ExecutionStatus.Running;
+        }
+
+        /// <summary>
+        /// 处理执行完成事件（ExecutionCompleteEvent 复用 LoopComplete 类型）。
+        /// 仅当 ExecutionId 与当前活跃执行匹配时才更新执行态并触发页面清理。
+        /// </summary>
+        private void HandleExecutionComplete(ExecutionCompleteEvent evt)
+        {
+            if (evt.ExecutionId != _activeExecutionId)
+                return;
+
+            _activeExecutionId = null;
+            ExecutionStatus = evt.Status;
         }
 
         /// <summary>
@@ -354,14 +406,15 @@ namespace Seeing.Agent.WebUI.Services
         {
             if (_currentAssistantMessage == null)
             {
-                // 如果没有当前消息，尝试从 SessionState 获取最后一条助手消息
-                if (_sessionState.CurrentSession?.Messages != null)
+                // 如果没有当前消息，尝试从绑定会话获取最后一条助手消息
+                var session = _sessionManager.Get(SessionId);
+                if (session?.Messages != null)
                 {
-                    _currentAssistantMessage = _sessionState.CurrentSession.Messages
+                    _currentAssistantMessage = session.Messages
                         .Where(m => m.Role == "assistant")
                         .LastOrDefault();
                 }
-                
+
                 if (_currentAssistantMessage == null)
                 {
                     return;
@@ -501,7 +554,7 @@ namespace Seeing.Agent.WebUI.Services
             {
                 var todoList = TodoListViewModel.FromJson(sessionId, output);
                 todoList.LastUpdated = DateTime.Now;
-                _sessionState.UpdateTodoList(todoList);
+                CurrentTodoList = todoList;
             }
             catch
             {
@@ -593,7 +646,7 @@ namespace Seeing.Agent.WebUI.Services
                 Message = $"Token usage: {evt.CurrentTokens}/{evt.MaxTokens}",
                 NeedsCompaction = evt.Level == BudgetLevel.Critical || evt.Level == BudgetLevel.Overflow
             };
-            _sessionState.UpdateBudgetStatus(status);
+            CurrentBudgetStatus = status;
         }
 
         /// <summary>
@@ -627,7 +680,7 @@ namespace Seeing.Agent.WebUI.Services
                 });
             }
 
-            _sessionState.UpdateTodoList(todoList);
+            CurrentTodoList = todoList;
         }
 
         /// <summary>
@@ -635,8 +688,10 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         private void HandleModeUpdate(ModeUpdateEvent evt)
         {
-            // 更新 Session 的 ACP Mode
-            _sessionState.SelectedAcpMode = evt.ModeId;
+            // 更新绑定会话的 ACP Mode
+            var session = _sessionManager.Get(SessionId);
+            if (session != null)
+                session.SelectedAcpMode = evt.ModeId;
         }
 
         /// <summary>
@@ -760,19 +815,20 @@ namespace Seeing.Agent.WebUI.Services
         /// <summary>
         /// 确保有当前助手消息（用于流式增量）
         /// </summary>
-        private void EnsureCurrentAssistantMessage(string sessionId)
+        private void EnsureCurrentAssistantMessage(string evtSessionId)
         {
             if (_currentAssistantMessage != null) return;
 
             // 服务端 ChatEventTracker 使用相同 ID 规则写入；UI 只绑定，不创建
-            var loopPrefix = !string.IsNullOrEmpty(_currentLoopId) ? _currentLoopId : sessionId;
+            var loopPrefix = !string.IsNullOrEmpty(_currentLoopId) ? _currentLoopId : evtSessionId;
             var messageId = $"{loopPrefix}_step{_currentStep}";
 
-            var existing = _sessionState.CurrentSession?.Messages?
+            var messages = _sessionManager.Get(SessionId)?.Messages;
+            var existing = messages?
                 .LastOrDefault(m => m.Id == messageId && m.Role == "assistant");
             if (existing == null)
             {
-                existing = _sessionState.CurrentSession?.Messages?
+                existing = messages?
                     .LastOrDefault(m => m.Role == "assistant"
                         && (string.IsNullOrEmpty(_currentLoopId) || m.LoopId == _currentLoopId));
             }
@@ -804,7 +860,7 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public Task<int> MarkIncompleteTasksCancelledAsync(string reason = "用户取消", bool persist = false)
         {
-            EnsureLiveSessionSynced();
+            var session = EnsureCurrentSessionRef();
             var count = 0;
 
             void Mark(SessionToolCall tc)
@@ -823,9 +879,9 @@ namespace Seeing.Agent.WebUI.Services
                     Mark(tc);
             }
 
-            if (_sessionState.CurrentSession?.Messages != null)
+            if (session?.Messages != null)
             {
-                foreach (var msg in _sessionState.CurrentSession.Messages)
+                foreach (var msg in session.Messages)
                 {
                     if (msg.ToolCalls == null)
                         continue;
@@ -836,7 +892,7 @@ namespace Seeing.Agent.WebUI.Services
 
             // persist 参数保留兼容；执行轨迹落盘一律由服务端负责
             _ = persist;
-            OnStateChanged?.Invoke();
+            OnStateChanged?.Invoke(null);
             return Task.FromResult(count);
         }
 
@@ -847,11 +903,12 @@ namespace Seeing.Agent.WebUI.Services
             Func<string, Task<bool>> isTaskStillActiveAsync,
             string reason = "任务已中断（进程关闭或取消）")
         {
-            if (_sessionState.CurrentSession?.Messages == null)
+            var session = _sessionManager.Get(SessionId);
+            if (session?.Messages == null)
                 return 0;
 
             var count = 0;
-            foreach (var msg in _sessionState.CurrentSession.Messages)
+            foreach (var msg in session.Messages)
             {
                 if (msg.ToolCalls == null)
                     continue;
@@ -889,10 +946,10 @@ namespace Seeing.Agent.WebUI.Services
                 }
             }
 
-            if (count > 0 && _sessionState.CurrentSession != null)
+            if (count > 0 && session != null)
             {
                 // 加载期孤儿修复：需写回存储（非执行流路径）
-                await _sessionManager.SaveAsync(_sessionState.CurrentSession.Id);
+                await _sessionManager.SaveAsync(session.Id);
             }
 
             return count;
@@ -957,6 +1014,29 @@ namespace Seeing.Agent.WebUI.Services
         public SessionMessage? GetCurrentAssistantMessage()
         {
             return _currentAssistantMessage;
+        }
+
+        /// <summary>
+        /// 事件流消费者入口（Router 广播回调）。fire-and-forget 处理事件。
+        /// </summary>
+        public void OnEvent(IMessageEvent evt)
+        {
+            try
+            {
+                _ = ProcessEventAsync(evt);
+            }
+            catch
+            {
+                // 消费者异常隔离：不中断事件流广播
+            }
+        }
+
+        /// <summary>
+        /// 事件流结束回调：清理自身流式状态
+        /// </summary>
+        public void OnStreamEnd()
+        {
+            ClearCache();
         }
 
         /// <summary>

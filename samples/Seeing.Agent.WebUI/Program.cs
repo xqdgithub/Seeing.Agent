@@ -61,7 +61,12 @@ builder.Services.AddScoped<IPermissionChannel>(sp =>
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<MessageTimelineStore>();
-builder.Services.AddScoped<EventStreamHandler>();
+// EventStreamHandler 多实例化：每会话一个实例（绑定 sessionId），本应删除直注册、
+// 由 Router 经 scope 按会话工厂创建（Task 7 接管）。
+// 此处暂保留"占位"Scoped 注册（sessionId 为空串），承载 PermissionHost/BlazorPermissionChannel
+// 依赖的全局权限请求事件分发，并避免 DI ValidateOnBuild 因构造参数 System.String 无法解析而启动失败。
+builder.Services.AddScoped<EventStreamHandler>(sp =>
+    new EventStreamHandler(string.Empty, sp.GetRequiredService<ISessionManager>()));
 builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SeeingConfigService>();
