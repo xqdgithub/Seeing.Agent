@@ -775,5 +775,34 @@ namespace Seeing.Session.Management
             _logger?.LogInformation("从存储加载 {Count} 个会话", sessions.Count);
             return sessions.OrderByDescending(s => s.UpdatedAt).ToList();
         }
+
+        /// <inheritdoc/>
+        public async Task<IReadOnlyList<SessionData>> LoadChildrenFromStorageAsync(
+            string parentId, CancellationToken ct = default)
+        {
+            if (_store == null)
+            {
+                _logger?.LogDebug("未配置存储，返回内存缓存中的子会话");
+                return await ListChildrenAsync(parentId, SessionKind.SubAgent, ct);
+            }
+
+            var result = new List<SessionData>();
+            var asyncEnumerable = await _store.ListAsync();
+            await foreach (var session in asyncEnumerable.WithCancellation(ct))
+            {
+                if (!string.Equals(session.ParentSessionId, parentId, StringComparison.Ordinal))
+                    continue;
+                if (session.Kind != SessionKind.SubAgent)
+                    continue;
+
+                // 缓存已存在则跳过，避免磁盘旧快照覆盖执行中活跃子会话的内存态
+                if (!_sessionDataCache.ContainsKey(session.Id))
+                    _sessionDataCache[session.Id] = session;
+                result.Add(_sessionDataCache[session.Id]);
+            }
+
+            _logger?.LogInformation("从存储加载父会话 {ParentId} 的子会话 {Count} 个", parentId, result.Count);
+            return result;
+        }
     }
 }

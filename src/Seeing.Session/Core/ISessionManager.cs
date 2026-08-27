@@ -91,6 +91,13 @@ namespace Seeing.Session.Core
         /// <returns>会话列表（已按更新时间降序排列）</returns>
         Task<IReadOnlyList<SessionData>> LoadAllFromStorageAsync(CancellationToken ct = default);
 
+        /// <summary>
+        /// 从存储加载指定父会话的全部子会话（Kind=SubAgent）并注册到缓存。
+        /// 用于冷缓存下 UI 关联子代理卡片；缓存已存在的会话跳过。
+        /// </summary>
+        Task<IReadOnlyList<SessionData>> LoadChildrenFromStorageAsync(
+            string parentId, CancellationToken ct = default);
+
         /// <summary>设置会话标题</summary>
         Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default);
 
