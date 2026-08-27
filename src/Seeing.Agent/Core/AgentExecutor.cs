@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
@@ -37,7 +36,6 @@ public class AgentExecutor : IAgentExecutor
     private readonly IHookManager _hooks;
     private readonly IAgentRegistry _registry;
     private readonly PromptBuilder _promptBuilder;
-    private readonly IOptionsMonitor<SeeingAgentOptions> _options;
     private readonly IModelManager _modelManager;
     private readonly ILogger<AgentExecutor> _logger;
     private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
@@ -54,7 +52,6 @@ public class AgentExecutor : IAgentExecutor
         IHookManager hooks,
         IAgentRegistry registry,
         PromptBuilder promptBuilder,
-        IOptionsMonitor<SeeingAgentOptions> options,
         IModelManager modelManager,
         ILogger<AgentExecutor> logger,
         Seeing.Session.Core.ISessionManager? sessionManager = null,
@@ -67,7 +64,6 @@ public class AgentExecutor : IAgentExecutor
         _hooks = hooks;
         _registry = registry;
         _promptBuilder = promptBuilder;
-        _options = options;
         _modelManager = modelManager;
         _logger = logger;
         _sessionManager = sessionManager;
@@ -806,21 +802,12 @@ public class AgentExecutor : IAgentExecutor
 
 
         ToolResult result;
-        // 全局兜底超时（默认关闭）：对单个工具调用施加，超时统一报告为"执行超时"
-        var globalTimeout = _options.CurrentValue.ToolExecutionTimeout;
-        using var toolTimeoutCts = (globalTimeout.HasValue && globalTimeout.Value > TimeSpan.Zero)
-            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
-            : null;
-        if (toolTimeoutCts != null)
-        {
-            toolTimeoutCts.CancelAfter(globalTimeout!.Value);
-        }
-        var execToken = toolTimeoutCts?.Token ?? cancellationToken;
-
+        // 工具执行的全局兜底超时已下沉到 ToolTimeoutDecorator（工具执行漏斗内，能力感知 + 全局配置热重载）。
+        // 此处仅处理取消：Loop 取消令牌贯通工具执行，工具抛 OCE 时统一报告"已取消"。
         try
         {
             result = await _tools.ExecuteAsync(
-                tc, context.SessionId, execToken, emitAsync, permissionChannel).ConfigureAwait(false);
+                tc, context.SessionId, cancellationToken, emitAsync, permissionChannel).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -834,24 +821,6 @@ public class AgentExecutor : IAgentExecutor
                 Arguments = arguments,
                 Status = ToolCallStatus.Cancelled,
                 Error = "已取消",
-                Duration = DateTime.Now - startTime
-            };
-        }
-        catch (OperationCanceledException) when (toolTimeoutCts is { IsCancellationRequested: true })
-        {
-            _logger.LogWarning("[AgentExecutor] 工具执行超过全局兜底超时: Tool={ToolName}, Timeout={Timeout}s",
-                name, globalTimeout!.Value.TotalSeconds);
-
-            return new ToolCallEvent
-            {
-                SessionId = context.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallComplete,
-                ToolCallId = tc.Id,
-                ToolName = name,
-                Arguments = arguments,
-                Status = ToolCallStatus.Failed,
-                Error = $"工具 {name} 执行超过全局超时 {globalTimeout!.Value.TotalSeconds} 秒",
                 Duration = DateTime.Now - startTime
             };
         }
@@ -869,27 +838,6 @@ public class AgentExecutor : IAgentExecutor
                 Arguments = arguments,
                 Status = ToolCallStatus.Failed,
                 Error = ex.Message,
-                Duration = DateTime.Now - startTime
-            };
-        }
-
-        // 工具内部吞掉取消并返回结果（如 BashTool 报"用户取消了命令"），但实际是全局兜底超时触发：
-        // 统一覆盖为"执行超时"，避免误报为取消原因。
-        if (toolTimeoutCts is { IsCancellationRequested: true } && !cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogWarning("[AgentExecutor] 工具返回结果但全局兜底超时已触发: Tool={ToolName}, Timeout={Timeout}s",
-                name, globalTimeout!.Value.TotalSeconds);
-
-            return new ToolCallEvent
-            {
-                SessionId = context.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallComplete,
-                ToolCallId = tc.Id,
-                ToolName = name,
-                Arguments = arguments,
-                Status = ToolCallStatus.Failed,
-                Error = $"工具 {name} 执行超过全局超时 {globalTimeout!.Value.TotalSeconds} 秒",
                 Duration = DateTime.Now - startTime
             };
         }

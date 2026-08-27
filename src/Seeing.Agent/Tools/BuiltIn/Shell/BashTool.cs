@@ -53,7 +53,7 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
                 timeout = new
                 {
                     type = "number",
-                    description = "可选的超时时间（毫秒），默认 120000（2 分钟）"
+                    description = "可选超时时间（正整数毫秒），默认 120000（2 分钟）"
                 },
                 workdir = new
                 {
@@ -116,9 +116,9 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell
                 description = command.Length > 50 ? command.Substring(0, 50) + "..." : command;
             }
 
-            if (timeout < 0)
+            if (timeout <= 0)
             {
-                return Failure($"无效的超时值: {timeout}。超时必须是正数。");
+                return Failure($"无效的超时值: {timeout}。超时必须是正整数毫秒（timeout=0 无意义）。");
             }
 
             _logger.LogInformation("执行命令: {Command}", command);

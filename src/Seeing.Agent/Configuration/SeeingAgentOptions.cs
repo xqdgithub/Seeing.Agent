@@ -70,8 +70,9 @@ namespace Seeing.Agent.Configuration
         /// <summary>
         /// 工具执行全局兜底超时（默认 null 关闭）
         /// <para>
-        /// 启用后，AgentExecutor 最外层对每个工具调用施加该超时，超时统一报告为"执行超时"。
+        /// 启用后，ToolTimeoutDecorator（工具执行漏斗内）对每个工具调用施加该超时，超时统一报告为"执行超时"。
         /// 仅用于兜底第三方无内部超时的工具；内置工具（bash/web/git/MCP）均有自身超时。
+        /// 工具可经能力声明豁免（timeout.skip=true）或指定自身上限（timeout.budget 毫秒）。
         /// </para>
         /// </summary>
         public TimeSpan? ToolExecutionTimeout { get; set; }

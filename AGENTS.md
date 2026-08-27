@@ -171,10 +171,21 @@ public static async Task<string> GetWeather(
 
 ### 工具装饰器链
 - **注册**: `IToolDecoratorRegistry` 在 DI 中注册为 Singleton，`ToolManager` 在 `RegisterTool()` 时自动 `Apply()` 装饰器
-- **链顺序**: RetryToolDecorator（最外层）→ CachedToolDecorator（最内层，可选）
-- **默认**: 3 次重试（1s 间隔指数退避）→ 5 分钟缓存
+- **链顺序**: RetryToolDecorator（最外层）→ ToolTimeoutDecorator → CachedToolDecorator（最内层，可选）
+- **默认**: 3 次重试（1s 间隔指数退避）→ 超时（能力感知，兜底全局 `ToolExecutionTimeout`）→ 缓存默认关闭（内置工具均不声明缓存，因读取磁盘/仓库即时状态易产生脏数据）
 - **重试异常**: `TimeoutException`, `HttpRequestException`, `TaskCanceledException`, `IOException`
-- **超时职责**: 不注册 TimeoutToolDecorator。超时由工具自身负责（如 BashTool timeout 参数、WebSearchTool 内部超时）；全局兜底超时由 `SeeingAgentOptions.ToolExecutionTimeout` 配置，在 `AgentExecutor` 最外层施加并统一报告"执行超时"
+- **超时职责**: `ToolTimeoutDecorator` 在工具执行漏斗内施加超时——读取工具能力 `timeout.skip=true`（豁免）或 `timeout.budget`（自身上限），未声明时回落到 `SeeingAgentOptions.ToolExecutionTimeout`（IOptionsMonitor 实时读取，支持热重载；默认 null 关闭）。超时返回 `Failure` + `Title="执行超时"` + `Metadata["timeout"]=true`，由上层统一渲染"执行超时"。
+
+### 工具能力元数据（Tool Capabilities）
+- **机制**: 工具通过 `IToolCapabilities.Capabilities`（`IReadOnlyDictionary<string,string>`）声明静态能力元数据。`ITool` 继承该接口，默认从类级 `[ToolCapability(key,value)]` 属性读取；`ToolBase` 子类可覆盖属性；`ToolDecorator` 透传内层能力。
+- **预定义键**（`ToolCapabilityKeys`）：`timeout.skip`（豁免全局兜底超时）、`timeout.budget`（按工具超时上限，毫秒）、`cache.enabled`（允许缓存，默认 false）、`cache.ttl`（缓存过期毫秒）、`cache.scope`（`session`/`global`，键含 SessionId 与否）。
+- **消费端**: `ToolTimeoutDecorator` 读 `timeout.skip`/`timeout.budget`；`CachedToolDecorator` 读 `cache.*`。
+- **扩展**: 新能力只需新增预定义键 + 消费端，现有工具零改动；新工具声明能力只需一个属性或 Attribute。
+
+### 工具取消契约
+- 工具须观察 `context.CancellationToken`；取消后不得再写父会话事件。
+- `BackgroundTaskManager.WaitAsync` 接受 `CancellationToken`，取消时抛 `OperationCanceledException`（而非等到超时）。
+- 取消路径下不响应取消的工具可能被 `ToolDrainTimeout`（10s）兜底跳过终态事件，其任务/进程泄漏为**已知边界**。
 
 ## ANTI-PATTERNS
 

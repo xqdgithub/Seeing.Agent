@@ -1,12 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Prompts;
@@ -86,9 +84,6 @@ public class AgentExecutorCancellationTests
         modelManager.Setup(m => m.ResolveNativeModel(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>()))
             .Returns("test-model");
 
-        var options = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        options.Setup(o => o.CurrentValue).Returns(new SeeingAgentOptions());
-
         return new AgentExecutor(
             llm,
             toolManager,
@@ -96,7 +91,6 @@ public class AgentExecutorCancellationTests
             hookManager,
             agentRegistry.Object,
             new PromptBuilder(agentRegistry.Object, null!),
-            options.Object,
             modelManager.Object,
             NullLogger<AgentExecutor>.Instance);
     }

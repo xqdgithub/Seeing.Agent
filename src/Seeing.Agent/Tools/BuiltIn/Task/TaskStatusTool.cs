@@ -13,6 +13,8 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask;
 /// 查询后台 task 状态；wait=true 时可阻塞至完成或超时。
 /// Job 不存在时回落到 Child Session 消息摘要（§4.4）。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.TimeoutSkip, "true")]
+[ToolCapability(ToolCapabilityKeys.CacheEnabled, "false")]
 public class TaskStatusTool : ToolBase
 {
     private readonly ISessionManager _sessionManager;
@@ -36,7 +38,7 @@ public class TaskStatusTool : ToolBase
         {
             task_id = new { type = "string", description = "任务 ID（Child Session Id）" },
             wait = new { type = "boolean", description = "是否阻塞等待完成（默认 false）" },
-            timeout_ms = new { type = "integer", description = "等待超时毫秒（默认 600000）" }
+            timeout_ms = new { type = "integer", description = "等待超时毫秒（默认 600000，正整数）" }
         },
         required = new[] { "task_id" }
     });
@@ -49,8 +51,8 @@ public class TaskStatusTool : ToolBase
 
         var wait = GetBoolArgument(arguments, "wait") ?? false;
         var timeoutMs = 600000;
-        if (arguments.TryGetProperty("timeout_ms", out var t) && t.TryGetInt32(out var ms))
-            timeoutMs = Math.Clamp(ms, 1, 600_000);
+        if (arguments.TryGetProperty("timeout_ms", out var t) && t.TryGetInt32(out var ms) && ms > 0)
+            timeoutMs = ms;
 
         // 运行期解析后台任务管理器，避免与 ToolManager 的构造期循环依赖
         var backgroundTasks = context.Services?.GetService(typeof(IBackgroundTaskManager)) as IBackgroundTaskManager;
@@ -61,7 +63,15 @@ public class TaskStatusTool : ToolBase
             if (backgroundTasks == null)
                 return Failure("后台任务管理器不可用，无法等待任务");
 
-            info = await backgroundTasks.WaitAsync(taskId, timeoutMs);
+            // 传入 context.CancellationToken：父 Loop 取消时 wait 立即返回 Cancelled，而非继续轮询到超时
+            try
+            {
+                info = await backgroundTasks.WaitAsync(taskId, timeoutMs, context.CancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return Failure("已取消");
+            }
             if (info == null)
             {
                 var current = await backgroundTasks.GetAsync(taskId);

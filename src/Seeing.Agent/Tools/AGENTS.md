@@ -84,5 +84,6 @@ toolInvoker.RegisterTool(new MyTool());
 
 - **内置工具**: Read/Write/Edit/Glob/Grep/Bash/WebFetch/WebSearch/Task/TodoWrite/Skill
 - **限制常量**: 2000 行 / 50KB / 100 Grep 匹配 / 100 Glob 文件
-- **装饰器链**: 重试（最外层）→ 缓存（最内层）；超时由工具自身 + AgentExecutor 全局兜底负责
+- **装饰器链**: 重试（最外层）→ 超时（`ToolTimeoutDecorator`，能力感知）→ 缓存（最内层，默认关闭）；超时由工具执行漏斗统一施加，工具可经 `timeout.skip`/`timeout.budget` 声明豁免或自身上限
+- **能力声明**: 工具经 `IToolCapabilities.Capabilities` 或类级 `[ToolCapability]` 声明能力；`timeout.skip` 豁免全局超时、`timeout.budget` 指定自身上限、`cache.enabled`/`cache.scope`/`cache.ttl` 控制缓存（键见 `ToolCapabilityKeys`）
 - **权限模式**: `AgentPermissionConfig.AllowedTools/DeniedTools` 白黑名单

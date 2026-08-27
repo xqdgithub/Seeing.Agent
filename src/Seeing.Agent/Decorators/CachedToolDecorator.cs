@@ -1,14 +1,23 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Models;
+using Seeing.Agent.Helpers;
 using System.Text.Json;
 
 namespace Seeing.Agent.Decorators
 {
     /// <summary>
-    /// 缓存装饰器 - 自动缓存工具执行结果
+    /// 缓存装饰器 - 按工具能力声明自动缓存工具执行结果
     /// </summary>
+    /// <remarks>
+    /// 缓存策略由工具通过 <see cref="IToolCapabilities.Capabilities"/> 声明：
+    /// <list type="bullet">
+    /// <item><see cref="ToolCapabilityKeys.CacheEnabled"/> = "true" 才缓存（默认不缓存，副作用工具天然安全）</item>
+    /// <item><see cref="ToolCapabilityKeys.CacheScope"/> = "session"(默认) 键含 SessionId，"global" 不含</item>
+    /// <item><see cref="ToolCapabilityKeys.CacheTtl"/> 毫秒值覆盖默认过期时间</item>
+    /// </list>
+    /// </remarks>
     public class CachedToolDecorator : ToolDecorator
     {
         private readonly IMemoryCache _cache;
@@ -36,8 +45,17 @@ namespace Seeing.Agent.Decorators
         /// <inheritdoc />
         public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
-            // 计算缓存键
-            var cacheKey = ComputeCacheKey(arguments);
+            // 能力声明：cache.enabled != "true" → 绕过缓存直接执行（默认不缓存）
+            if (!ToolCapabilityReader.GetBool(this, ToolCapabilityKeys.CacheEnabled))
+            {
+                return await base.ExecuteAsync(arguments, context);
+            }
+
+            var scope = ToolCapabilityReader.GetCacheScope(this);
+            var ttl = ToolCapabilityReader.GetDurationMs(this, ToolCapabilityKeys.CacheTtl) ?? _expiration;
+
+            // 计算缓存键（scope=session 时含 SessionId，避免跨会话串缓存）
+            var cacheKey = ComputeCacheKey(arguments, context.SessionId, scope);
 
             // 尝试从缓存获取
             if (_cache.TryGetValue<ToolResult>(cacheKey, out var cachedResult))
@@ -52,21 +70,23 @@ namespace Seeing.Agent.Decorators
             // 只缓存成功的结果
             if (result.Success)
             {
-                _cache.Set(cacheKey, result, _expiration);
-                _logger?.LogDebug("[Cache] 已缓存: ToolId={ToolId}, Expiration={Expiration}", Id, _expiration);
+                _cache.Set(cacheKey, result, ttl);
+                _logger?.LogDebug("[Cache] 已缓存: ToolId={ToolId}, Ttl={Ttl}", Id, ttl);
             }
 
             return result;
         }
 
         /// <summary>
-        /// 计算缓存键
+        /// 计算缓存键：tool:{Id}:{scope}:{sessionId}:{参数哈希}。scope=global 时省略 sessionId。
         /// </summary>
-        private string ComputeCacheKey(JsonElement arguments)
+        private string ComputeCacheKey(JsonElement arguments, string sessionId, string scope)
         {
-            // 使用工具 ID + 参数哈希作为缓存键
             var args = new ToolArguments(arguments);
-            return $"tool:{Id}:{args.ComputeHash()}";
+            var hash = args.ComputeHash();
+            return string.Equals(scope, "global", StringComparison.OrdinalIgnoreCase)
+                ? $"tool:{Id}:{scope}::{hash}"
+                : $"tool:{Id}:{scope}:{sessionId}:{hash}";
         }
 
         /// <summary>

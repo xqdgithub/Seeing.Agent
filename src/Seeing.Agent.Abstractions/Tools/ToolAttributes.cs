@@ -55,4 +55,50 @@
             Description = description;
         }
     }
+
+    /// <summary>
+    /// 工具能力声明（Attribute 语法）。
+    /// <para>
+    /// 可挂在工具类（类级，ToolBase 子类经默认 Capabilities 实现读取）或工具方法
+    /// （方法级，ToolDiscovery 读取后填入 ReflectedTool.Capabilities）。
+    /// 键见 <see cref="ToolCapabilityKeys"/>。
+    /// </para>
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true, Inherited = true)]
+    public sealed class ToolCapabilityAttribute : Attribute
+    {
+        /// <summary>能力键（kebab-case）</summary>
+        public string Key { get; }
+
+        /// <summary>能力值</summary>
+        public string Value { get; }
+
+        public ToolCapabilityAttribute(string key, string value)
+        {
+            Key = key;
+            Value = value;
+        }
+
+        /// <summary>
+        /// 从类型读取类级 [ToolCapability] 属性，合并为字典。无则返回 null。
+        /// 静态缓存避免重复反射。
+        /// </summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, IReadOnlyDictionary<string, string>?>
+            Cache = new();
+
+        public static IReadOnlyDictionary<string, string>? ReadFromType(Type type)
+        {
+            return Cache.GetOrAdd(type, static t =>
+            {
+                var attrs = t.GetCustomAttributes(typeof(ToolCapabilityAttribute), inherit: true);
+                if (attrs.Length == 0)
+                    return null;
+
+                var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (ToolCapabilityAttribute attr in attrs)
+                    dict[attr.Key] = attr.Value;
+                return dict;
+            });
+        }
+    }
 }

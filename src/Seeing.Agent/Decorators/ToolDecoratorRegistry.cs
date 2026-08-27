@@ -115,16 +115,9 @@ namespace Seeing.Agent.Decorators
             IServiceProvider? serviceProvider = null,
             TimeSpan? cacheExpiration = null,
             int maxRetries = 3,
-            TimeSpan? retryDelay = null,
-            TimeSpan? timeout = null)
+            TimeSpan? retryDelay = null)
         {
             var registry = new ToolDecoratorRegistry(serviceProvider);
-
-            // 超时装饰器（最先应用，最外层）
-            if (timeout.HasValue)
-            {
-                registry.Register(tool => new TimeoutToolDecorator(tool, timeout.Value));
-            }
 
             // 重试装饰器
             if (maxRetries > 1)

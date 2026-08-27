@@ -35,6 +35,11 @@ namespace Seeing.Agent.Decorators
         /// <inheritdoc />
         public virtual JsonElement ParametersSchema => Inner.ParametersSchema;
 
+        /// <summary>
+        /// 工具能力声明 - 透传内层工具，使装饰器链天然把最内层能力带给读取方。
+        /// </summary>
+        public virtual IReadOnlyDictionary<string, string>? Capabilities => Inner.Capabilities;
+
         /// <inheritdoc />
         public virtual async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {

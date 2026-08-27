@@ -48,6 +48,8 @@ public sealed class AgentLoopScheduler : IAgentLoopScheduler
 
     public bool IsLoopBusy(string sessionId) => _busy.ContainsKey(sessionId);
 
+    public bool TrySetLoopBusy(string sessionId) => _busy.TryAdd(sessionId, 1);
+
     public void RegisterResumeHandler(Func<string, CancellationToken, Task> handler) =>
         _resumeHandler = handler;
 

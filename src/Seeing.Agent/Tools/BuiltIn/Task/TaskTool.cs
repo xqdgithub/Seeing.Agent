@@ -24,6 +24,8 @@ namespace Seeing.Agent.Tools.BuiltIn.SubTask;
 /// <summary>
 /// 子任务工具 — Session-first：创建/续跑 Child Session 并执行专用 Agent。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.TimeoutSkip, "true")]
+[ToolCapability(ToolCapabilityKeys.CacheEnabled, "false")]
 public class TaskTool : ToolBase
 {
     private readonly ISessionManager _sessionManager;
@@ -117,6 +119,7 @@ public class TaskTool : ToolBase
                 if (existing?.Status is BackgroundTaskStatus.Pending or BackgroundTaskStatus.Running)
                     return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
 
+                // 快速失败：已有进行中的 Loop 直接拒绝（真正的原子抢占在 RunAgentAsync 内）
                 if (_loopScheduler.IsLoopBusy(session.Id))
                     return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
             }
@@ -284,6 +287,13 @@ public class TaskTool : ToolBase
             var outputText = await RunAgentAsync(
                 agentInfo.Name, session.Id, userPrompt, context, ctxProj, context.CancellationToken);
 
+            // 父 Loop 已取消：子任务虽完成，但终态应标记为 Cancelled，避免父已取消却收到 Completed
+            if (context.CancellationToken.IsCancellationRequested)
+            {
+                await EmitParentAsync(context, _projector.CreateFailed(ctxProj, "子任务被取消", cancelled: true));
+                return Failure("子任务被取消");
+            }
+
             await EmitParentAsync(context, _projector.CreateCompleted(ctxProj, outputText));
 
             return Success(description, BuildOutput(session.Id, "completed", outputText),
@@ -369,7 +379,11 @@ public class TaskTool : ToolBase
             : new List<ChatMessage>();
         messages.Add(new ChatMessage { Role = ChatRole.User, Content = prompt });
 
-        _loopScheduler.SetLoopBusy(sessionId, true);
+        // 原子抢占 Loop 忙碌标记：同一 child session 的并发提交/续跑只有一个能真正执行，
+        // 其余在 TrySetLoopBusy 处直接拒绝（try 前抢占，finally 释放）。
+        if (!_loopScheduler.TrySetLoopBusy(sessionId))
+            throw new InvalidOperationException($"Task {sessionId} is already running. Use task_status to check progress.");
+
         try
         {
             var executor = parentContext.Services?.GetService(typeof(IAgentExecutor)) as IAgentExecutor

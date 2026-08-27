@@ -14,6 +14,12 @@ public interface IAgentLoopScheduler
     bool IsLoopBusy(string sessionId);
 
     /// <summary>
+    /// 原子抢占 Loop 忙碌标记（TryAdd 语义）。
+    /// </summary>
+    /// <returns>成功抢占返回 true；该 Session 已有进行中 Loop（或标记已存在）返回 false。</returns>
+    bool TrySetLoopBusy(string sessionId);
+
+    /// <summary>
     /// 向会话注入 synthetic 消息（metadata 应含 synthetic=true）。
     /// </summary>
     Task InjectSyntheticAsync(

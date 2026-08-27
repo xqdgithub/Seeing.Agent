@@ -346,5 +346,52 @@ namespace Seeing.Agent.Tests.Background
             output.Should().NotBeNull();
             output.Should().Contain("Hello from agent");
         }
+
+        [Fact]
+        public async Task WaitAsync_CancellationRequested_ShouldThrowOCE()
+        {
+            // Arrange
+            SetupLongRunningAgent();
+
+            var args = new BackgroundTaskLaunchArgs
+            {
+                AgentName = "test-agent",
+                Input = new ChatMessage { Role = ChatRole.User, Content = "Hello" },
+                Context = new AgentContext { SessionId = "test-session", MessageId = "test-msg" }
+            };
+
+            var taskId = await _manager.StartAsync(args);
+            await Task.Delay(200); // 确保任务进入 Running
+
+            using var cts = new CancellationTokenSource(50);
+
+            // Act & Assert：取消令牌触发 → 抛 OCE，而非等待到超时
+            var act = async () => await _manager.WaitAsync(taskId, 600000, cts.Token);
+            await act.Should().ThrowAsync<OperationCanceledException>();
+        }
+
+        [Fact]
+        public async Task WaitAsync_CancellationAlreadyRequested_ShouldThrowImmediately()
+        {
+            // Arrange
+            SetupLongRunningAgent();
+
+            var args = new BackgroundTaskLaunchArgs
+            {
+                AgentName = "test-agent",
+                Input = new ChatMessage { Role = ChatRole.User, Content = "Hello" },
+                Context = new AgentContext { SessionId = "test-session", MessageId = "test-msg" }
+            };
+
+            var taskId = await _manager.StartAsync(args);
+            await Task.Delay(200); // 确保任务进入 Running
+
+            using var cts = new CancellationTokenSource();
+            cts.Cancel(); // 已取消
+
+            // Act & Assert：已取消令牌 → 立即抛 OCE，不等待
+            var act = async () => await _manager.WaitAsync(taskId, 600000, cts.Token);
+            await act.Should().ThrowAsync<OperationCanceledException>();
+        }
     }
 }

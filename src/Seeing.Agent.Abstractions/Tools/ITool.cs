@@ -35,7 +35,7 @@ namespace Seeing.Agent.Abstractions.Tools
     /// <summary>
     /// 工具接口 - LLM 可调用的工具
     /// </summary>
-    public interface ITool
+    public interface ITool : IToolCapabilities
     {
         /// <summary>工具 ID</summary>
         string Id { get; }

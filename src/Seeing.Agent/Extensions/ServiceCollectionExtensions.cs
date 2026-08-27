@@ -491,10 +491,12 @@ namespace Seeing.Agent.Extensions
             // 时间工具
             services.AddSingleton<ITool, CurrentTimeTool>();
 
-            // ========== 注册装饰器链（重试→缓存）==========
-            // 说明：不再注册 TimeoutToolDecorator。超时由各工具自身负责（如 BashTool 的 timeout 参数、
-            // WebSearchTool 内部超时等），全局兜底超时由 AgentExecutor 最外层按配置施加，避免一刀切误伤
-            // 长耗时工具（如 TaskTool 子代理、bash 长命令）。
+            // ========== 注册装饰器链（重试→超时→缓存）==========
+            // 超时由 ToolTimeoutDecorator 在工具执行漏斗内施加：读取工具能力声明
+            // （timeout.skip=true 豁免、timeout.budget 指定自身上限），未声明时回落到
+            // SeeingAgentOptions.ToolExecutionTimeout 全局兜底（IOptionsMonitor 实时读取）。
+            // 长耗时工具（如 TaskTool 子代理）经 timeout.skip=true 豁免。缓存仅对声明
+            // cache.enabled=true 的外部工具生效（见 ToolCapabilityKeys），内置工具均不缓存。
             services.AddSingleton<IToolDecoratorRegistry>(sp =>
             {
                 var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
@@ -502,12 +504,18 @@ namespace Seeing.Agent.Extensions
 
                 var registry = new ToolDecoratorRegistry(sp);
 
-                // 中间层：重试装饰器（3 次，1 秒间隔，指数退避）
+                // 最外层：重试装饰器（3 次，1 秒间隔，指数退避）
                 registry.Register(tool => new RetryToolDecorator(
                     tool,
                     maxRetries: 3,
                     delay: TimeSpan.FromSeconds(1),
                     logger: loggerFactory.CreateLogger<RetryToolDecorator>()));
+
+                // 中间层：超时装饰器（能力感知，调用时解析 timeout.skip/budget，兜底全局 ToolExecutionTimeout）
+                registry.Register(tool => new ToolTimeoutDecorator(
+                    tool,
+                    sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
+                    loggerFactory.CreateLogger<ToolTimeoutDecorator>()));
 
                 // 最内层：缓存装饰器（5 分钟过期）— 仅在 IMemoryCache 可用时
                 if (cache != null)

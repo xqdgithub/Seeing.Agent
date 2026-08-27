@@ -14,6 +14,8 @@ namespace Seeing.Agent.Core.Abstractions
     {
         protected readonly ILogger _logger;
 
+        private IReadOnlyDictionary<string, string>? _capabilities;
+
         /// <summary>
         /// 创建 Tool 基类实例
         /// </summary>
@@ -33,6 +35,13 @@ namespace Seeing.Agent.Core.Abstractions
 
         /// <summary>工具分类</summary>
         public virtual ToolCategory Category => ToolCategory.General;
+
+        /// <summary>
+        /// 工具能力声明（默认从类级 [ToolCapability] 属性读取，惰性缓存）。
+        /// 子类可整体覆盖，或直接以 [ToolCapability] 属性声明。
+        /// </summary>
+        public virtual IReadOnlyDictionary<string, string>? Capabilities =>
+            _capabilities ??= ToolCapabilityAttribute.ReadFromType(GetType());
 
         /// <summary>参数 Schema (JSON Schema)</summary>
         public virtual JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });

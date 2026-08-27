@@ -246,12 +246,15 @@ public class BackgroundTaskManager : IBackgroundTaskManager, IHostedService
     }
 
     /// <summary>
-    /// 等待任务完成
+    /// 等待任务完成。取消令牌触发时立即抛 OperationCanceledException（而非等待超时）。
     /// </summary>
-    public async Task<BackgroundTaskInfo?> WaitAsync(string taskId, int timeoutMs = 60000)
+    public async Task<BackgroundTaskInfo?> WaitAsync(
+        string taskId,
+        int timeoutMs = 60000,
+        CancellationToken cancellationToken = default)
     {
-        // 限制超时时间
-        timeoutMs = Math.Min(timeoutMs, 600000);
+        // timeoutMs 即调用方期望的最长等待，不设内部封顶——取消令牌已提供随时终止的能力，
+        // 静默截断反而会破坏合法的长等待（如 TaskStatusTool 的 wait=true 续跑 10 分钟以上）。
 
         if (!_tasks.TryGetValue(taskId, out var task))
         {
@@ -263,6 +266,9 @@ public class BackgroundTaskManager : IBackgroundTaskManager, IHostedService
 
         while (DateTimeOffset.Now - startTime < timeout)
         {
+            // 取消优先：外部取消（如父 Loop 取消）立即传播，而非继续轮询到超时
+            cancellationToken.ThrowIfCancellationRequested();
+
             // 检查任务状态
             if (!_tasks.TryGetValue(taskId, out var currentTask))
             {
@@ -275,7 +281,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager, IHostedService
                 return currentTask;
             }
 
-            await Task.Delay(1000);
+            await Task.Delay(1000, cancellationToken);
         }
 
         // 超时后返回当前状态

@@ -54,12 +54,13 @@ public interface IBackgroundTaskManager
     Task<IReadOnlyList<BackgroundTaskInfo>> ListAsync(BackgroundTaskStatus? status = null);
 
     /// <summary>
-    /// 等待任务完成（阻塞）
+    /// 等待任务完成（阻塞）。取消令牌触发时立即抛 OperationCanceledException。
     /// </summary>
     /// <param name="taskId">任务 ID</param>
-    /// <param name="timeoutMs">超时时间（毫秒），默认 60000，最大 600000</param>
+    /// <param name="timeoutMs">超时时间（毫秒），默认 60000，无内部封顶</param>
+    /// <param name="cancellationToken">取消令牌（默认 none）</param>
     /// <returns>任务信息</returns>
-    Task<BackgroundTaskInfo?> WaitAsync(string taskId, int timeoutMs = 60000);
+    Task<BackgroundTaskInfo?> WaitAsync(string taskId, int timeoutMs = 60000, CancellationToken cancellationToken = default);
 
     // === 新增方法 ===
 

@@ -168,4 +168,29 @@ public class BashToolCancellationTests
         result.Metadata["aborted"].Should().Be(true);
         result.Metadata["timedOut"].Should().Be(false);
     }
+
+    /// <summary>
+    /// timeout=0 或负数：应返回 Failure（0ms 无意义），而非立即超时的怪语义。
+    /// </summary>
+    [Fact]
+    public async Task BashTool_TimeoutZero_ShouldRejectInvalid()
+    {
+        var bash = CreateBashTool(out _);
+
+        var result = await bash.ExecuteAsync(BuildArgs("echo hi", timeout: 0), CreateContext());
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("无效的超时值");
+    }
+
+    [Fact]
+    public async Task BashTool_TimeoutNegative_ShouldRejectInvalid()
+    {
+        var bash = CreateBashTool(out _);
+
+        var result = await bash.ExecuteAsync(BuildArgs("echo hi", timeout: -100), CreateContext());
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("无效的超时值");
+    }
 }
