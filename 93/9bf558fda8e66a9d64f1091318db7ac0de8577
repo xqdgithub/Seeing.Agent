@@ -1,0 +1,66 @@
+src/Seeing.Agent/Tools/BuiltIn/FileSystem/ReadTool.cs
+  s_2d6af1044144cb::t_3d91a8ee813afb 11,16-17,19
+src/Seeing.Session/Storage/FileSessionStore.cs
+  s_2d6af1044144cb::t_3ebefda6cc7606 66
+  s_2d6af1044144cb::t_3595a51bee922a 22-24
+  s_2d6af1044144cb::t_1bb06df812e325 364-365
+  s_2d6af1044144cb::t_2f7ebddd5616f5 394-413
+  s_2d6af1044144cb::t_858e5fed27a1e3 49-51
+src/Seeing.Agent.Abstractions/Tools/ToolCapabilityKeys.cs
+  s_2d6af1044144cb::t_29c249d9239191 28-35
+src/Seeing.Agent/Output/SessionToolOutputStore.cs
+  s_2d6af1044144cb::t_22d5169776b0b6 1-41,45,50-53,55-86
+  s_2d6af1044144cb::t_5a3d63d3d70650 42-44,46-49,54
+src/Seeing.Session/Storage/IRelocatableSessionStore.cs
+  s_2d6af1044144cb::t_737e1e40589361 8-10
+src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs
+  s_2d6af1044144cb::t_c0f6ebc9c2f118 536-543
+  s_2d6af1044144cb::t_6e0611091f8bb5 416-421
+tests/Seeing.Agent.Tests/Decorators/ToolCapabilityReaderTests.cs
+  s_2d6af1044144cb::t_36481fdd2ba4f7 92-116
+tests/Seeing.Session.Tests/Storage/FileSessionStoreRefCleanupTests.cs
+  s_2d6af1044144cb::t_50cb7d6de21631 24,28
+  s_2d6af1044144cb::t_fe311d4151795f 1-23,25-27,29-35
+tests/Seeing.Session.Tests/Storage/FileSessionStoreBaseDirectoryTests.cs
+  s_2d6af1044144cb::t_407b8a5a646017 1-41
+src/Seeing.Agent/Configuration/SeeingAgentOptions.cs
+  s_2d6af1044144cb::t_776f618dcc6d18 80-81
+  s_2d6af1044144cb::t_1eeafd49041ec4 273-286,289,291
+tests/Seeing.Agent.Tests/Tools/BashToolCancellationTests.cs
+  s_2d6af1044144cb::t_00674265236111 196-223
+src/Seeing.Agent/Decorators/ToolOutputLimiterDecorator.cs
+  s_2d6af1044144cb::t_d7a4a82aca1cf8 6
+  s_2d6af1044144cb::t_7c3e20c815432a 1-5,7-52,55,64-142
+  s_2d6af1044144cb::t_2c737eb48c87e9 53-54,56-63
+tests/Seeing.Agent.Tests/Configuration/ToolOutputOptionsTests.cs
+  s_2d6af1044144cb::t_8019142cb61326 1-19
+tests/Seeing.Agent.Tests/Output/SessionToolOutputStoreTests.cs
+  s_2d6af1044144cb::t_1ddf9210a4fac5 91-136
+  s_2d6af1044144cb::t_8d8e7c211435f5 44-45
+  s_2d6af1044144cb::t_76286f33a839d8 1-43,46-90,137
+src/Seeing.Agent/Helpers/ToolCapabilityReader.cs
+  s_2d6af1044144cb::t_3111e63fea119c 39-47
+src/Seeing.Agent/Output/IToolOutputStore.cs
+  s_2d6af1044144cb::t_f5fda4e0b56322 1-17
+tests/Seeing.Agent.Tests/Decorators/ToolOutputLimiterDecoratorTests.cs
+  s_2d6af1044144cb::t_01c6df8fa69f79 120,126
+  s_2d6af1044144cb::t_fef9e87d80c819 22
+  s_2d6af1044144cb::t_54aec3c3f4896e 212-261
+  s_2d6af1044144cb::t_c667cce4ff34fc 1-21,23-119,121-125,127-211,262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.43-trip",
+  "base_commit_sha": "939bf558fda8e66a9d64f1091318db7ac0de8577",
+  "prompts": {},
+  "sessions": {
+    "s_2d6af1044144cb": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fbe62aa22ffeoiedMrM0cqZgFI",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
