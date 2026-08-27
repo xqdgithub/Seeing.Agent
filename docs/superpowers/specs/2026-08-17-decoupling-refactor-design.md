@@ -1,7 +1,7 @@
 # Seeing.Agent 解耦重构设计：Abstractions 契约包 + Agent 纯数据化 + Todo 端口-适配器
 
 **日期:** 2026-08-17
-**状态:** 已实施（2026-08-18 完成）
+**状态:** 已实施（2026-08-18 完成解耦重构 + 2026-08-27 完成会话归属/执行引擎下沉/Task 事件清理）
 
 ---
 
@@ -585,7 +585,7 @@ public interface ICommandExtension  { IEnumerable<ICommand> GetCommands(); }
 - `IExecutionPipeline`：**审查中**（有实现 ExecutionPipeline + DI 注册非孤儿；Pipeline 后缀待命名规范补充）
 - `ISkill`：**接口不存在**（ISkill.cs 仅含 SkillInfo 数据类；设计文档 §4.2 的「ISkill.cs」条目实为 SkillInfo，实施时以 SkillInfo.cs 命名迁移）
 - `ISessionEventBus`：**保留**（TaskTool 注入 + App 层 ExecutionSessionEventBus 适配，Bus 语义清晰）
-- `ITaskEventProjector`：**保留**（TaskTool 注入 + DI 注册，Child Loop 事件降采样职责单一）
+- `ITaskEventProjector`：**已删除**（2026-08-27 会话归属重构：Task 事件体系整体移除，Task 卡片由 UI 从工具调用归纳）
 
 **Phase 0a/1/2 执行说明：** 命名规范修订（§5.1 补充 Generator/Scheduler/Initializer/Pipeline 后缀）与「审查中」项定案放 Phase 2 前；`IAgentConfigManager` 删除随 §6.1 IAgentManager 删除任务一并落地（该接口无实现无消费，零改动成本）。
 
@@ -641,11 +641,13 @@ public interface ICommandExtension  { IEnumerable<ICommand> GetCommands(); }
 | Task 21 | 全量验证通过，收尾 §11 验收合规（清理 RequiresFactory/ConfigureServices/CreateSubAgentContext） | `2555dd6` |
 | Task 22 | 文档与规范落地（依赖方向 + 命名规范 + 结构树 + 已知问题勾选） | 本任务 |
 
+**Task 事件体系移除（2026-08-27 会话归属重构）**：Task 事件（TaskStartedEvent/TaskProgressEvent/TaskCompletedEvent/TaskFailedEvent/SubAgentEvent）+ TaskEventProjector + TaskSessionProjector + ITaskEventProjector + TaskProjectionContext + BackgroundTaskManager（含 IBackgroundTaskManager/IBackgroundTaskProgress/BackgroundTaskInfo/BackgroundTaskProgress）全部删除；SessionStreamEventApplier 删除；TaskTool 改为创建普通子会话走 ExecutionJobService；TaskStatusTool 查询执行状态；UI Task 卡片从工具调用事件归纳。详见 `fdd0437` 提交。
+
 ### 验证结论（§11 逐条）
 
 1. **Seeing.Gateway 编译通过且零主库 using**：✓（`dotnet build src/Seeing.Gateway -v q` 0 错误；正则 `using Seeing\.Agent\.(?!Abstractions)` 零匹配）
-2. **全量构建/测试绿**：✓（`dotnet build Seeing.Agent.slnx` 0 错误；`dotnet test Seeing.Agent.slnx --no-build` 仅 1 个已知基线失败 `Load_AbsorbsProjectProviderModelsBeforeRemovingProviders`，与本次重构无关）
-3. **删除项不存在**：✓（`AgentFactory`/`FromAgent`/`IAgent`/`AgentBase`/`AgentDecorator`/`ITodoManager`/`TodoReadTool`/`IAgentExecutionRouter`/`IAgentManager`/`GetAgentWithMergedConfigAsync`/`AgentStatus.RequiresFactory`/`AgentManager.AgentInfoWrapper`/`AgentContext.History`/`TotalSteps`/`TotalUsage`/`CreateSubAgentContext`/`IExtension.ConfigureServices` 全部清零；残留仅为注释引用与无关接口 `IGatewayChannelPlugin.ConfigureServices`）
+2. **全量构建/测试绿**：✓（`dotnet build Seeing.Agent.slnx` 0 错误；`dotnet test` 全绿：Session.Tests 97/97 + Agent.Tests 765/765 + WebUI.Tests 69/69 + Gateway.Tests 31/31 + Acp.Tests 45/45）
+3. **删除项不存在**：✓（`AgentFactory`/`FromAgent`/`IAgent`/`AgentBase`/`AgentDecorator`/`ITodoManager`/`TodoReadTool`/`IAgentExecutionRouter`/`IAgentManager`/`GetAgentWithMergedConfigAsync`/`AgentStatus.RequiresFactory`/`AgentManager.AgentInfoWrapper`/`AgentContext.History`/`TotalSteps`/`TotalUsage`/`CreateSubAgentContext`/`IExtension.ConfigureServices`/`ITaskEventProjector`/`TaskEventProjector`/`TaskProjectionContext`/`TaskSessionProjector`/`BackgroundTaskManager`/`IBackgroundTaskManager`/`IBackgroundTaskProgress`/`BackgroundTaskInfo`/`BackgroundTaskProgress`/`SessionStreamEventApplier`/`TaskStartedEvent`/`TaskProgressEvent`/`TaskCompletedEvent`/`TaskFailedEvent`/`SubAgentEvent`/`MessageEventType.TaskStarted`/`MessageEventType.TaskProgress`/`MessageEventType.TaskCompleted`/`MessageEventType.TaskFailed`/`MessageEventType.SubAgent`/`AppEvents.TaskStarted`/`AppEvents.TaskProgress`/`AppEvents.TaskCompleted`/`AppEvents.TaskFailed`/`AppEvents.SubAgent` 全部清零；残留仅为注释引用与无关接口 `IGatewayChannelPlugin.ConfigureServices`）
 4. **TodoWriteTool/LoadTodoList 无 ISessionManager 注入**：✓（改走 ITodoStore；AgentExecutor 保留 `_sessionManager` 仅用于 ResolvePolicy 权限快照）
 5. **命名规范**：✓（Task 3 审计表 + Phase 0 结论落地，§5.1 写入 AGENTS.md）
 6. **扩展包编译**：✓（Memory/Acp/DeepSeek 全部编译通过，引用 Abstractions）
@@ -660,3 +662,4 @@ public interface ICommandExtension  { IEnumerable<ICommand> GetCommands(); }
 | Task 8 CreateSubAgentContext 未删 | `PermissionIntegrity.CreateSubAgentContext` 零调用孤儿（唯一调用方随 Task 8 删除后遗留）；Task 21 收尾删除；`PermissionDelegationException` 按 Task 6 决定保守保留 |
 | Task 20 下游传递引用中断 | Seeing.Gateway 移除主库引用后，`Seeing.Gateway.QQ`/`Seeing.Gateway.WeCom`（扩展层，合法引用主库）及 `Seeing.Gateway.Tests` 的传递引用失效——QQ/WeCom csproj 显式添加主库 ProjectReference，测试删除冗余 `using Seeing.Agent.Llm;`，协议层独立性不受影响 |
 | 完成日期 | 计划文本写「2026-08-17 完成」，实际完成于 2026-08-18（状态与记录按实际日期） |
+| 会话归属重构 | 2026-08-27 完成：SessionMessage.SessionId 强归属 + Messages 封装 + 执行引擎下沉主库层 + Task 事件体系删除 + 子会话统一执行。commits: `fdd0437`（主重构）+ `7051c83`（切换流式修复）+ `0708c53`（测试期望修复） |
