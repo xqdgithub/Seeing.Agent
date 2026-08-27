@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-08-27-session-refactor-design.md
+  s_e889762db1a288::t_8a0ac79061acd7 1-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.43-trip",
+  "base_commit_sha": "c02dbff731a6a5122b2ae7ee9a94f396d04dd4c0",
+  "prompts": {},
+  "sessions": {
+    "s_e889762db1a288": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fbdc9c4edffeS1x2PjOh1PN264",
+        "model": "mimo-v2.5-free"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
