@@ -218,6 +218,10 @@ public sealed class FakeSessionManager : ISessionManager
         return Task.FromResult(list);
     }
 
+    public Task<IReadOnlyList<SessionData>> LoadChildrenFromStorageAsync(
+        string parentId, CancellationToken ct = default) =>
+        ListChildrenAsync(parentId, SessionKind.SubAgent, ct);
+
     public Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default) =>
         Task.FromResult(true);
 
