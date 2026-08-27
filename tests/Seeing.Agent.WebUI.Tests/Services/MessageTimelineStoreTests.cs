@@ -440,6 +440,46 @@ public class MessageTimelineStoreTests
     }
 
     [Fact]
+    public void BelongsToSession_ShouldReturnTrue_WhenMessageIdExistsInSession()
+    {
+        var sessionMessages = new List<SessionMessage>
+        {
+            Msg("a1", "assistant", "hello"),
+            Msg("u1", "user", "hi"),
+        };
+
+        MessageTimelineStore.BelongsToSession(Msg("a1", "assistant", "hello"), sessionMessages)
+            .Should().BeTrue("消息 Id 属于该会话消息集合");
+    }
+
+    [Fact]
+    public void BelongsToSession_ShouldReturnFalse_WhenMessageBelongsToAnotherSession()
+    {
+        // 父会话残留的流式消息指针：其 Id 不在子会话消息集合中，不得渲染进子会话时间线
+        var childSessionMessages = new List<SessionMessage>
+        {
+            Msg("child-a1", "assistant", "child content"),
+        };
+
+        MessageTimelineStore.BelongsToSession(
+            Msg("parent-a1", "assistant", "parent content"),
+            childSessionMessages)
+            .Should().BeFalse("父会话消息不应被渲染进当前（子）会话时间线");
+    }
+
+    [Fact]
+    public void BelongsToSession_ShouldReturnFalse_ForNullOrEmptyIdOrNullList()
+    {
+        var sessionMessages = new List<SessionMessage> { Msg("a1", "assistant", "x") };
+
+        MessageTimelineStore.BelongsToSession(null, sessionMessages).Should().BeFalse();
+        MessageTimelineStore.BelongsToSession(Msg("a1", "assistant", "x"), null).Should().BeFalse();
+        MessageTimelineStore.BelongsToSession(
+            new SessionMessage { Role = "assistant", Content = "no id" }, sessionMessages)
+            .Should().BeFalse();
+    }
+
+    [Fact]
     public void SyncAssistantMessage_AfterSummary_ShouldKeepSummaryOutOfTurn()
     {
         var store = new MessageTimelineStore();

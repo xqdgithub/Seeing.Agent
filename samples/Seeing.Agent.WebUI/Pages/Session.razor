@@ -615,22 +615,9 @@
         {
             await LoadSessionByIdAsync(SessionId);
             _loadedSessionId = SessionId;
-            
+
             // 检查是否有正在进行的执行（页面刷新恢复）
-            var overview = ChatOrchestrator.GetOverview(SessionId);
-            if (overview?.CurrentExecution != null)
-            {
-                // 恢复执行状态
-                SessionState.ExecutionStatus = overview.CurrentExecution.Status;
-                SessionState.QueuePosition = overview.CurrentExecution.QueuePosition;
-                SessionState.CurrentExecutionId = overview.CurrentExecution.ExecutionId;
-                
-                // 如果有活跃执行，恢复订阅事件流
-                if (overview.HasActiveExecution)
-                {
-                    _ = ConsumeEventStreamAsync(overview.CurrentExecution.ExecutionId);
-                }
-            }
+            RestoreExecutionFromOverview(SessionId);
         }
         else
         {
@@ -641,6 +628,28 @@
         // Subscribe to Budget status updates
         SubscribeToBudgetUpdates();
         SubscribeToSessionEvents();
+    }
+
+    /// <summary>
+    /// 从 ExecutionJobService 恢复会话执行状态；有活跃执行时订阅其事件流。
+    /// 用于页面刷新恢复与切换会话恢复，保证"继续打开的会话"能实时渲染最新消息。
+    /// </summary>
+    private void RestoreExecutionFromOverview(string sessionId)
+    {
+        var overview = ChatOrchestrator.GetOverview(sessionId);
+        if (overview?.CurrentExecution == null)
+            return;
+
+        // 恢复执行状态
+        SessionState.ExecutionStatus = overview.CurrentExecution.Status;
+        SessionState.QueuePosition = overview.CurrentExecution.QueuePosition;
+        SessionState.CurrentExecutionId = overview.CurrentExecution.ExecutionId;
+
+        // 如果有活跃执行，恢复订阅事件流
+        if (overview.HasActiveExecution)
+        {
+            _ = ConsumeEventStreamAsync(overview.CurrentExecution.ExecutionId);
+        }
     }
 
     private void SubscribeToBudgetUpdates()
@@ -757,15 +766,16 @@
     /// </summary>
     private SessionMessage? ResolveCurrentStreamingAssistantMessage()
     {
+        var messages = SessionState.CurrentSession?.Messages;
         var fromHandler = EventStreamHandler.GetCurrentAssistantMessage();
         if (fromHandler != null
-            && string.Equals(fromHandler.Role, "assistant", StringComparison.OrdinalIgnoreCase))
+            && string.Equals(fromHandler.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+            && Services.MessageTimelineStore.BelongsToSession(fromHandler, messages))
         {
             _currentStreamingMessageId = fromHandler.Id ?? _currentStreamingMessageId;
             return fromHandler;
         }
 
-        var messages = SessionState.CurrentSession?.Messages;
         if (messages == null)
             return null;
 
@@ -1228,6 +1238,11 @@
             _compactionProgress = null;
             _compactionReasoning = null;
 
+            // 切换会话：清理上一会话残留的流式状态（EventStreamHandler 的流式消息指针 /
+            // LoopId / Task 索引），避免父会话消息指针被渲染进当前会话时间线
+            _currentStreamingMessageId = string.Empty;
+            EventStreamHandler.ClearCache();
+
             SessionState.SetSession(sessionData);
             _renderedTitle = sessionData.Title;
 
@@ -1488,6 +1503,14 @@
         {
             await foreach (var evt in ChatOrchestrator.SubscribeEvents(SessionState.SessionId, CancellationToken.None))
             {
+                // 会话切换后，旧会话执行流的事件仍会送达本订阅：仅渲染属于当前 UI 会话的事件，
+                // 避免父会话消息被写进当前（子）会话时间线
+                if (!string.IsNullOrEmpty(evt.SessionId)
+                    && !string.Equals(evt.SessionId, SessionState.SessionId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
                 // 检查是否是当前执行的事件
                 if (evt is ExecutionCompleteEvent completeEvt && completeEvt.ExecutionId == executionId)
                 {

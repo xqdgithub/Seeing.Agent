@@ -710,6 +710,24 @@ public sealed class MessageTimelineStore
         }
     }
 
+    /// <summary>
+    /// 判断消息是否属于指定会话的消息集合（按 Id 匹配）。
+    /// <para>
+    /// 会话切换后 EventStreamHandler 可能残留上一会话（父会话）的流式消息指针，
+    /// 渲染前必须校验消息归属，避免把父会话内容渲染进当前（子）会话时间线。
+    /// </para>
+    /// </summary>
+    public static bool BelongsToSession(
+        SessionMessage? message,
+        IReadOnlyList<SessionMessage>? sessionMessages)
+    {
+        if (message == null || string.IsNullOrEmpty(message.Id) || sessionMessages == null)
+            return false;
+
+        return sessionMessages.Any(m =>
+            string.Equals(m.Id, message.Id, StringComparison.Ordinal));
+    }
+
     private static TimelineItemKind ResolveKind(MessageViewModel vm)
     {
         if (vm.IsSystemReminder)
