@@ -89,6 +89,31 @@ public class ToolCapabilityReaderTests
         ToolCapabilityReader.GetCacheScope(new CachingTool()).Should().Be("global");
     }
 
+    [ToolCapability(ToolCapabilityKeys.OutputMaxBytes, "30000")]
+    private sealed class OutputCappedTool : ITool
+    {
+        public string Id => "capped";
+        public string Description => "test";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+            => Task.FromResult(new ToolResult { Success = true });
+    }
+
+    [Fact]
+    public void GetInt_InvalidOrMissing_ShouldReturnNull()
+    {
+        ToolCapabilityReader.GetInt(new PlainTool(), ToolCapabilityKeys.OutputMaxBytes).Should().BeNull();
+        ToolCapabilityReader.GetInt(new OutputCappedTool(), ToolCapabilityKeys.CacheTtl).Should().BeNull();
+    }
+
+    [Fact]
+    public void GetInt_ValidValue_ShouldParse()
+    {
+        ToolCapabilityReader.GetInt(new OutputCappedTool(), ToolCapabilityKeys.OutputMaxBytes).Should().Be(30000);
+    }
+
     [Fact]
     public void Attribute_ShouldBeReadableByReader()
     {

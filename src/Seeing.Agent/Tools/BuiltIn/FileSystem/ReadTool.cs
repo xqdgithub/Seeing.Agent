@@ -8,12 +8,15 @@ using System.Text.Json;
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 {
     /// <summary>
-    /// 文件/目录读取工具
+    /// 读取文件/目录工具
     /// <para>
     /// 读取文件或目录的内容。支持 offset 和 limit 参数分页读取大文件。
     /// 自动检测和处理二进制文件、图片、PDF 文件。
     /// </para>
+    /// <para>自身已实现 2000 行/50KB 限制与 offset/limit 分页，声明 output.skip=true
+    /// 豁免全局输出限制，避免行号前缀导致的边界冗余落盘。</para>
     /// </summary>
+    [ToolCapability(ToolCapabilityKeys.OutputSkip, "true")]
     public class ReadTool : BuiltInToolBase
     {
         /// <summary>

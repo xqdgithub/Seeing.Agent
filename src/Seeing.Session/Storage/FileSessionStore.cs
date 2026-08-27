@@ -19,6 +19,9 @@ namespace Seeing.Session.Storage
         // 文件锁超时时间
         private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
 
+        /// <summary>会话引用资源目录后缀（工具输出落盘目录约定）</summary>
+        private const string RefDirectorySuffix = ".ref";
+
         // 文件锁字典（实例级别，随实例生命周期释放）
         private readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
         private readonly object _lockDictLock = new();
@@ -43,6 +46,9 @@ namespace Seeing.Session.Storage
             EnsureDirectoryExists();
         }
 
+        /// <summary>当前会话存储基础目录</summary>
+        public string? BaseDirectory => _baseDirectory;
+
         /// <inheritdoc/>
         public void SetBaseDirectory(string baseDirectory)
         {
@@ -57,7 +63,7 @@ namespace Seeing.Session.Storage
         /// <summary>
         /// 获取默认会话目录路径 (~/.seeing/sessions)
         /// </summary>
-        private static string GetDefaultSessionDirectory()
+        public static string GetDefaultSessionDirectory()
         {
             var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             return Path.Combine(homeDir, ".seeing", "sessions");
@@ -355,6 +361,8 @@ namespace Seeing.Session.Storage
         {
             ValidateSessionId(sessionId);
 
+            DeleteRefDirectory(sessionId);
+
             var filePath = GetSessionFilePath(sessionId);
 
             if (!File.Exists(filePath))
@@ -379,6 +387,27 @@ namespace Seeing.Session.Storage
             finally
             {
                 fileLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// 删除会话引用资源目录（{sessionId}.ref/），用于工具输出落盘等附属资源。
+        /// 目录不存在或删除失败时仅记录日志，不影响主流程。
+        /// </summary>
+        private void DeleteRefDirectory(string sessionId)
+        {
+            var refDir = Path.Combine(_baseDirectory, sessionId + RefDirectorySuffix);
+            try
+            {
+                if (Directory.Exists(refDir))
+                {
+                    Directory.Delete(refDir, recursive: true);
+                    _logger?.LogDebug("删除会话引用目录成功: {RefDir}", refDir);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "删除会话引用目录失败: {SessionId}, {RefDir}", sessionId, refDir);
             }
         }
 

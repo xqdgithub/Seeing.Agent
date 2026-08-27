@@ -413,6 +413,12 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ISessionManager>(sp =>
                 sp.GetRequiredService<SessionManager>());
 
+            // 工具输出落盘服务（超限工具输出写会话 ref 目录）
+            services.AddSingleton<Seeing.Agent.Output.IToolOutputStore>(sp =>
+                new Seeing.Agent.Output.SessionToolOutputStore(
+                    sp.GetRequiredService<ISessionStore>(),
+                    sp.GetService<ILogger<Seeing.Agent.Output.SessionToolOutputStore>>()));
+
             // 压缩组件（主库唯一注册点，TokenBudget 扩展不重复注册）
             services.AddSingleton<ISummarizer, LlmSummarizer>();
             services.AddSingleton<CompressionService>();
@@ -526,6 +532,14 @@ namespace Seeing.Agent.Extensions
                         TimeSpan.FromMinutes(5),
                         loggerFactory.CreateLogger<CachedToolDecorator>()));
                 }
+
+                // 最外层兜底：输出限制装饰器（后注册=最外层，处理最终返回给调用方的结果）
+                registry.Register(tool => new ToolOutputLimiterDecorator(
+                    tool,
+                    sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
+                    sp.GetRequiredService<Seeing.Agent.Output.IToolOutputStore>(),
+                    sp.GetRequiredService<Core.Permission.IWorkspaceWhitelist>(),
+                    loggerFactory.CreateLogger<ToolOutputLimiterDecorator>()));
 
                 return registry;
             });

@@ -193,4 +193,32 @@ public class BashToolCancellationTests
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("无效的超时值");
     }
+
+    /// <summary>
+    /// 生成 40KB 输出的跨平台命令
+    /// </summary>
+    private static string LargeOutputCommand =>
+        OperatingSystem.IsWindows()
+            ? "Write-Output ('x' * 40000)"
+            : "printf 'x%.0s' {1..40000}";
+
+    /// <summary>
+    /// Bash 超长输出：应完整传入（不再内部截断），交由 ToolOutputLimiterDecorator 统一限制；
+    /// 且不再向 metadata 写入冗余的 output 预览项（bash_output 仍保留）。
+    /// </summary>
+    [Fact]
+    public async Task BashTool_LargeOutput_ShouldPassFullOutput_AndDropRedundantMetadata()
+    {
+        var bash = CreateBashTool(out var shellService);
+        var shell = shellService.Object.GetAcceptableShell();
+        var name = shellService.Object.GetShellName(shell);
+        if (OperatingSystem.IsWindows() && name is not ("powershell" or "pwsh"))
+            return; // Windows 仅 PowerShell 环境验证（cmd 不支持字符串乘法语法）
+
+        var result = await bash.ExecuteAsync(BuildArgs(LargeOutputCommand), CreateContext());
+
+        result.Success.Should().BeTrue();
+        result.Output.Length.Should().BeGreaterThan(30_000);
+        result.Metadata.Should().NotContainKey("output");
+    }
 }

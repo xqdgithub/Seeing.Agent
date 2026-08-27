@@ -36,6 +36,15 @@ namespace Seeing.Agent.Helpers
             return string.IsNullOrEmpty(value) ? defaultValue : string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>读取整数能力值；解析失败或缺失返回 null。</summary>
+        public static int? GetInt(ITool? tool, string key)
+        {
+            var value = Get(tool, key);
+            if (string.IsNullOrEmpty(value) || !int.TryParse(value, out var result))
+                return null;
+            return result;
+        }
+
         /// <summary>读取毫秒时长能力值；解析失败或缺失返回 null。</summary>
         public static TimeSpan? GetDurationMs(ITool? tool, string key)
         {

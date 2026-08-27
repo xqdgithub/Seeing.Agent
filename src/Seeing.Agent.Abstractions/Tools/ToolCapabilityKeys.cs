@@ -25,6 +25,14 @@ namespace Seeing.Agent.Abstractions.Tools
         /// <summary>缓存键作用域（"global"/"session"，默认 session）。session 时键含 SessionId。</summary>
         public const string CacheScope = "cache.scope";
 
+        // === 输出限制能力键（ToolOutputLimiterDecorator 消费）===
+
+        /// <summary>豁免工具输出限制（"true"/"false"，默认 false）。工具自身已控制输出（如内置分页工具）时声明。</summary>
+        public const string OutputSkip = "output.skip";
+
+        /// <summary>工具输出落盘阈值上限（字节）。存在时覆盖全局 ToolOutput.MaxInlineBytes。</summary>
+        public const string OutputMaxBytes = "output.maxBytes";
+
         // === 预留键（本期定义但框架暂不消费，纳入规范供未来扩展）===
 
         /// <summary>跳过资源级权限检查（预留）。</summary>

@@ -5,6 +5,9 @@ namespace Seeing.Session.Storage
     /// </summary>
     public interface IRelocatableSessionStore : ISessionStore
     {
+        /// <summary>当前会话存储基础目录（可空：内存实现可能无目录）</summary>
+        string? BaseDirectory { get; }
+
         /// <summary>切换基础目录（切换后读写操作指向新目录）</summary>
         void SetBaseDirectory(string baseDirectory);
     }

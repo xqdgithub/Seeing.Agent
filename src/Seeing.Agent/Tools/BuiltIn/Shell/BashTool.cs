@@ -299,16 +299,10 @@ await WaitForExitAsync(process, CancellationToken.None);
                 output += "\n\n<bash_metadata>\n" + string.Join("\n", metadataLines) + "\n</bash_metadata>";
             }
 
-            // 截断输出以避免过长的数据
-            var truncatedOutput = output.Length > MaxMetadataLength
-                ? output.Substring(0, MaxMetadataLength) + "\n\n..."
-                : output;
-
             _logger.LogInformation("命令执行完成，退出码: {ExitCode}", process.ExitCode);
 
             return Success(description, output, new Dictionary<string, object>
             {
-                ["output"] = truncatedOutput,
                 ["exit"] = process.ExitCode,
                 ["description"] = description,
                 ["timedOut"] = timedOut,

@@ -77,6 +77,9 @@ namespace Seeing.Agent.Configuration
         /// </summary>
         public TimeSpan? ToolExecutionTimeout { get; set; }
 
+        /// <summary>工具输出限制配置（超限落盘到会话 ref 目录 + 头尾预览）</summary>
+        public ToolOutputOptions ToolOutput { get; set; } = new();
+
         /// <summary>会话标题自动生成配置</summary>
         public TitleGenerationOptions TitleGeneration { get; set; } = new();
     }
@@ -265,5 +268,25 @@ namespace Seeing.Agent.Configuration
 
         /// <summary>是否启用危险命令拦截（默认关闭：临时全部放行，待重新设计合理校验后恢复）</summary>
         public bool EnableCommandGuard { get; set; } = false;
+    }
+
+    /// <summary>
+    /// 工具输出限制选项
+    /// <para>工具输出超过 <see cref="MaxInlineBytes"/> 时：全文落盘到会话 ref 目录，
+    /// Output 替换为 &lt;persisted-output&gt; 头+尾预览，完整内容可经 read 工具读取。</para>
+    /// </summary>
+    public sealed class ToolOutputOptions
+    {
+        /// <summary>是否启用输出限制（默认 true）</summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>内联上限（UTF8 字节）。输出超过此值触发落盘+预览。对齐 FileSystemHelper.MaxBytes。</summary>
+        public int MaxInlineBytes { get; set; } = 50 * 1024;
+
+        /// <summary>预览头部字符数</summary>
+        public int PreviewHeadChars { get; set; } = 4*1024;
+
+        /// <summary>预览尾部字符数</summary>
+        public int PreviewTailChars { get; set; } = 2*1024;
     }
 }
