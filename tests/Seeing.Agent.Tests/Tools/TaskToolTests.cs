@@ -120,6 +120,37 @@ public class TaskToolTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_Foreground_ShouldWriteOriginToolCallIdToChildMetadata()
+    {
+        using var fixture = new TaskToolFixture(executor: BuildExecutor("final answer"));
+        var tool = new TaskTool(
+            NullLogger<TaskTool>.Instance,
+            fixture.SessionManager.Object,
+            fixture.AgentRegistry.Object,
+            fixture.LoopScheduler.Object);
+        var context = new ToolContext
+        {
+            SessionId = fixture.ParentId,
+            CallId = "call-origin-1",
+            Services = fixture.ToolProvider
+        };
+
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new
+            {
+                description = "explore auth",
+                prompt = "find auth config",
+                subagent_type = "explore"
+            }),
+            context);
+
+        result.Success.Should().BeTrue();
+        fixture.Child.Metadata.Should()
+            .ContainKey(SessionMetadataKeys.OriginToolCallId)
+            .WhoseValue.Should().Be("call-origin-1");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_UnknownAgent_ShouldReturnFailure()
     {
         using var fixture = new TaskToolFixture();

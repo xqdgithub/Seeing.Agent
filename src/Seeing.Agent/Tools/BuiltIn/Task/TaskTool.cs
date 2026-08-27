@@ -146,6 +146,13 @@ public class TaskTool : ToolBase
                 ["originToolCallId"] = context.CallId ?? string.Empty
             });
 
+            // 关联元数据：写入子会话，UI 据此精确匹配"父 task 工具调用 ↔ 子会话"（多子代理并行）
+            if (!session.Metadata.ContainsKey(SessionMetadataKeys.OriginToolCallId))
+            {
+                session.Metadata[SessionMetadataKeys.OriginToolCallId] = context.CallId ?? string.Empty;
+                await _sessionManager.SaveAsync(session.Id);
+            }
+
             var userPrompt = string.IsNullOrEmpty(command)
                 ? prompt
                 : $"[命令触发: {command}]\n\n{prompt}";
