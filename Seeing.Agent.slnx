@@ -30,6 +30,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Seeing.Agent.Acp.Tests/Seeing.Agent.Acp.Tests.csproj" />
+    <Project Path="tests/Seeing.Agent.App.Tests/Seeing.Agent.App.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
     <Project Path="tests/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />

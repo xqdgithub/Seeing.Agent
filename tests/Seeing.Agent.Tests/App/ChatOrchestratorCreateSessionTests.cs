@@ -147,7 +147,6 @@ public class ChatOrchestratorCreateSessionTests
             workspaceProvider: Mock.Of<IWorkspaceProvider>(),
             executionRouter: Mock.Of<IAgentExecutor>(),
             commandRegistry: Mock.Of<ICommandRegistry>(),
-            permissionChannel: Mock.Of<IPermissionChannel>(),
             agentSelectionResolver: selectionResolver,
             modelManager: modelManager,
             executionQueue: new ChatExecutionQueue(),

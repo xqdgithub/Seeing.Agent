@@ -40,8 +40,8 @@ public static class ChatOrchestratorServiceExtensions
         services.AddSingleton<AgentCommands>();
         services.AddSingleton<ToolsCommands>();
 
-        // 注册 ChatOrchestrator (Scoped because it depends on IPermissionChannel which is Scoped)
-        services.AddScoped<IChatOrchestrator, ChatOrchestrator>();
+        // 注册 ChatOrchestrator (Singleton：移除对 Scoped IPermissionChannel 的依赖后全部依赖均为 Singleton)
+        services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
 
         return services;
     }

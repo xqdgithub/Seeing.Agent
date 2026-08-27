@@ -1,5 +1,4 @@
 using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
@@ -31,7 +30,6 @@ public class ChatOrchestrator : IChatOrchestrator
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly IAgentExecutor _executionRouter;
     private readonly ICommandRegistry _commandRegistry;
-    private readonly IPermissionChannel _permissionChannel;
     private readonly AgentSelectionResolver _agentSelectionResolver;
     private readonly IModelManager _modelManager;
     private readonly ChatExecutionQueue _executionQueue;
@@ -45,7 +43,6 @@ public class ChatOrchestrator : IChatOrchestrator
         IWorkspaceProvider workspaceProvider,
         IAgentExecutor executionRouter,
         ICommandRegistry commandRegistry,
-        IPermissionChannel permissionChannel,
         AgentSelectionResolver agentSelectionResolver,
         IModelManager modelManager,
         ChatExecutionQueue executionQueue,
@@ -58,7 +55,6 @@ public class ChatOrchestrator : IChatOrchestrator
         _workspaceProvider = workspaceProvider;
         _executionRouter = executionRouter;
         _commandRegistry = commandRegistry;
-        _permissionChannel = permissionChannel;
         _agentSelectionResolver = agentSelectionResolver;
         _modelManager = modelManager;
         _executionQueue = executionQueue;
