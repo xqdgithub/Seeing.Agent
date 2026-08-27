@@ -164,6 +164,19 @@ namespace Seeing.Agent.WebUI.Services
         public string? GetCurrentLoopId() => _currentLoopId;
 
         /// <summary>
+        /// 恢复活跃执行 ID 与状态（页面刷新/切换产生新 handler 后，从 ExecutionJobService overview 恢复）。
+        /// 避免新 handler 的 <c>_activeExecutionId</c> 为 null 时，首个 ExecutionComplete 因 ExecutionId
+        /// 不匹配而被忽略，导致排队/多执行场景下执行态无法正确配对清理。
+        /// </summary>
+        public void RestoreExecution(
+            string executionId,
+            global::Seeing.Agent.Execution.ExecutionStatus status = global::Seeing.Agent.Execution.ExecutionStatus.Running)
+        {
+            _activeExecutionId = executionId;
+            ExecutionStatus = status;
+        }
+
+        /// <summary>
         /// 获取当前 Loop 信息
         /// </summary>
         public AgentLoopInfo? GetCurrentLoop() => _currentLoop;

@@ -6,6 +6,7 @@ using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.App;
 using Seeing.Agent.WebUI.Services;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 
@@ -201,5 +202,123 @@ public class SessionEventStreamRouterTests
         // 主 consumer 摘除：scope 释放
         router.DetachConsumer("s1", main);
         scope.Verify(s => s.Dispose(), Times.Once);
+    }
+
+    [Fact]
+    public void GetOrCreateConsumer_SameSessionDifferentCircuits_ShouldReturnDistinctInstances()
+    {
+        // C1：同会话不同 circuit（多标签页）各自持有独立实例与 scope，互不共享；
+        // 同 (session, circuit) 幂等复用。
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        sp.Setup(s => s.GetService(typeof(FakeConsumer))).Returns(() => new FakeConsumer("s1"));
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var orchestrator = new Mock<IChatOrchestrator>();
+        using var router = CreateRouter(orchestrator, scopeFactory.Object);
+
+        var circuit1 = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
+        var circuit2 = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-2");
+        var sameCircuit = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
+
+        circuit1.Should().NotBeSameAs(circuit2);
+        sameCircuit.Should().BeSameAs(circuit1);
+        scopeFactory.Verify(f => f.CreateScope(), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task DetachAllForCircuit_ShouldNotAffectOtherCircuitConsumers()
+    {
+        // C1：同会话双 circuit 各自独立 consumer；一方 circuit 关闭（DetachAllForCircuit）
+        // 只摘除并释放其自身 consumer，另一方订阅不受影响、事件照常送达。
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        sp.Setup(s => s.GetService(typeof(FakeConsumer))).Returns(() => new FakeConsumer("s1"));
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var channel = Channel.CreateUnbounded<IMessageEvent>();
+        var orchestrator = new Mock<IChatOrchestrator>();
+        orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
+            .Returns(channel.Reader.ReadAllAsync());
+        orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(new List<IMessageEvent>());
+
+        using var router = CreateRouter(orchestrator, scopeFactory.Object);
+
+        var c1 = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
+        var c2 = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-2");
+        router.AttachConsumer("s1", c1);
+        router.AttachConsumer("s1", c2);
+
+        // circuit-1 关闭：释放其 consumer（scope 至少释放一次）
+        router.DetachAllForCircuit("circuit-1");
+        scope.Verify(s => s.Dispose(), Times.AtLeastOnce);
+
+        // circuit-2 的 c2 订阅不受影响：事件照常送达
+        var evt = new LoopStartEvent { SessionId = "s1", LoopId = "l1" };
+        await channel.Writer.WriteAsync(evt);
+        await Task.Delay(200);
+        c2.Events.Should().Contain(e => ReferenceEquals(e, evt));
+    }
+
+    [Fact]
+    public async Task AttachConsumer_AfterStreamCompleted_ShouldRestartLoopAndDeliverEvents()
+    {
+        // I1：会话空闲清理（CompleteSession 模拟：channel 完成）后消费 loop 自然结束、
+        // Loop=null 但消费者仍挂载；再次 AttachConsumer（同页新提交重订阅）应重建 consume loop，
+        // 新执行事件可送达。
+        var channel1 = Channel.CreateUnbounded<IMessageEvent>();
+        var channel2 = Channel.CreateUnbounded<IMessageEvent>();
+        var channels = new Queue<Channel<IMessageEvent>>(new[] { channel1, channel2 });
+        var orchestrator = new Mock<IChatOrchestrator>();
+        orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
+            .Returns(() => channels.Dequeue().Reader.ReadAllAsync());
+        orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(new List<IMessageEvent>());
+
+        using var router = CreateRouter(orchestrator);
+        var consumer = new FakeConsumer("s1");
+        router.AttachConsumer("s1", consumer); // loop1 消费 channel1
+
+        await Task.Delay(100);
+        channel1.Writer.TryComplete(); // 模拟空闲清理：流完成
+        await Task.Delay(200);
+        consumer.StreamEnded.Should().BeTrue(); // loop 结束时广播流结束
+
+        // 同页新提交：再次 AttachConsumer → 应重启 loop（消费 channel2）
+        router.AttachConsumer("s1", consumer);
+
+        var evt = new LoopStartEvent { SessionId = "s1", LoopId = "l2" };
+        await channel2.Writer.WriteAsync(evt);
+        await Task.Delay(200);
+        consumer.Events.Should().Contain(e => ReferenceEquals(e, evt));
+        channels.Count.Should().Be(0); // 两次订阅均已建立
+    }
+
+    [Fact]
+    public void GetOrCreateConsumer_Aggregator_SameCircuitDifferentSessions_ShouldReuseInstance()
+    {
+        // I2（方案 A）：TaskCardAggregator 为 circuit 维度消费者——同 circuit 跨会话复用同一实例
+        // （页面经 Rebind 切换父会话），避免访问新会话累积聚合器实例与 scope；跨 circuit 仍隔离。
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        sp.Setup(s => s.GetService(typeof(TaskCardAggregator)))
+            .Returns(() => new TaskCardAggregator(null!, Mock.Of<ISessionManager>()));
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var orchestrator = new Mock<IChatOrchestrator>();
+        using var router = CreateRouter(orchestrator, scopeFactory.Object);
+
+        var a = router.GetOrCreateConsumer<TaskCardAggregator>("sessionA", "circuit-1");
+        var b = router.GetOrCreateConsumer<TaskCardAggregator>("sessionB", "circuit-1");
+        var c = router.GetOrCreateConsumer<TaskCardAggregator>("sessionA", "circuit-2");
+
+        a.Should().BeSameAs(b);    // 同 circuit 跨会话复用（不累积）
+        a.Should().NotBeSameAs(c); // 跨 circuit 隔离
+        scopeFactory.Verify(f => f.CreateScope(), Times.Exactly(2)); // 仅 circuit-1、circuit-2 各一次
     }
 }

@@ -30,6 +30,7 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
     private readonly ConcurrentDictionary<string, byte> _retrying = new();
     private System.Threading.Timer? _persistTimer;
     private bool _dirty;
+    private bool _disposed;
 
     public TaskCardAggregator(SessionEventStreamRouter router, ISessionManager sessionManager)
     {
@@ -365,9 +366,36 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+        _disposed = true;
+
+        // I3：先尽力 flush（防抖窗口内未落盘的 TaskSteps 不丢失），再释放锁与 Timer。
+        try
+        {
+            FlushPersistAsync().GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // 尽力而为：落盘失败不阻断释放
+        }
+
+        // 等待 in-flight flush（Timer 回调 / 终态触发）归还 _saveLock 后再释放，避免释放后的
+        // 锁被并发 Release 抛 ObjectDisposedException
+        try
+        {
+            _saveLock.Wait();
+            _saveLock.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已被并发路径释放，忽略
+        }
+
         _writeLock.Dispose();
         _saveLock.Dispose();
         _persistTimer?.Dispose();
+        _persistTimer = null;
     }
 
     private sealed class TaskCardState

@@ -1465,6 +1465,12 @@
 
         try
         {
+            // I1：会话空闲清理（CompleteSession）后消费 loop 已停止但消费者仍挂载；
+            // 提交前重新挂载 handler，使 loop 在事件产生前重建，避免新执行事件无 loop 消费。
+            // 正常情况（loop 存活）下为幂等跳过，无副作用。
+            if (_handler != null)
+                Router.AttachConsumer(SessionState.SessionId, _handler);
+
             // 防重复提交：已有执行则直接拒绝（避免 Enter/点击竞态打出两次 Loop）
             if (!SessionState.TryStartExecution())
             {
@@ -1543,6 +1549,13 @@
         _onHandlerChangedCallback = evt => _ = OnHandlerChanged(evt);
         _handler.OnStateChanged += _onHandlerChangedCallback;
         Router.AttachConsumer(sessionId, _handler);
+
+        // M3：页面刷新/会话切换产生的新 handler 无活跃执行 ID（_activeExecutionId=null），
+        // 从 ExecutionJobService overview 恢复当前非终态执行，避免首个 ExecutionComplete 因
+        // ExecutionId 不匹配被忽略（排队/多执行场景执行态无法正确配对清理）。
+        var overview = ChatOrchestrator.GetOverview(sessionId);
+        if (overview?.CurrentExecution != null && !overview.CurrentExecution.IsTerminal)
+            _handler.RestoreExecution(overview.CurrentExecution.ExecutionId, overview.CurrentExecution.Status);
 
         _aggregator = Router.GetOrCreateConsumer<TaskCardAggregator>(sessionId, circuitId);
         _aggregator.Rebind(sessionId);

@@ -369,4 +369,65 @@ public class TaskCardAggregatorTests
         child1Channel.Writer.TryComplete();
         child3Channel.Writer.TryComplete();
     }
+
+    [Fact]
+    public async Task Dispose_ShouldFlushDirtyTaskStepsBeforeReleasingLocks()
+    {
+        // I3：circuit 关闭（DetachAllForCircuit → ReleaseConsumer → aggregator.Dispose）时，
+        // 防抖窗口内未落盘的 TaskSteps 先 flush 到会话存储，再释放锁。
+        var parentId = "parent1";
+        var childId = "child1";
+        var parent = CreateParentWithTaskCall(parentId, "call-1");
+        var child = CreateChild(childId, parentId, "call-1");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var childChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = CreateSessionManagerMock(parent, child);
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
+        {
+            [parentId] = parentChannel,
+            [childId] = childChannel
+        });
+
+        // 经 Router DI 路径解析聚合器（关联 scope，circuit 关闭时统一释放并触发 flush）
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var router = new SessionEventStreamRouter(
+            orchestrator.Object, scopeFactory.Object, NullLogger<SessionEventStreamRouter>.Instance);
+        var aggregator = new TaskCardAggregator(router, sm.Object);
+        sp.Setup(s => s.GetService(typeof(TaskCardAggregator))).Returns(aggregator);
+
+        var agg = router.GetOrCreateConsumer<TaskCardAggregator>(parentId, "circuit-1");
+        agg.Should().BeSameAs(aggregator);
+        agg.Rebind(parentId);
+
+        // 父流 task 工具调用 → 挂载子流
+        await parentChannel.Writer.WriteAsync(new ToolCallEvent
+        {
+            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+        });
+        await Task.Delay(200);
+
+        // 子流事件 → 聚合 TaskSteps 并标记 dirty（防抖 1s 窗口内未落盘）
+        await childChannel.Writer.WriteAsync(new ToolCallEvent
+        {
+            SessionId = childId, Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "ct1", ToolName = "read", Status = ToolCallStatus.Success, Output = "ok"
+        });
+        await Task.Delay(100);
+        parent.Messages[0].ToolCalls[0].TaskSteps.Should().ContainSingle();
+
+        // circuit 关闭 → ReleaseConsumer → aggregator.Dispose → 先 flush 再释放锁
+        router.DetachAllForCircuit("circuit-1");
+
+        sm.Verify(m => m.SaveAsync(parentId), Times.AtLeastOnce);
+
+        parentChannel.Writer.TryComplete();
+        childChannel.Writer.TryComplete();
+        router.Dispose();
+    }
 }
