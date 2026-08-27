@@ -1,0 +1,21 @@
+tests/Seeing.Agent.Tests/Configuration/ToolOutputOptionsTests.cs
+  s_e889762db1a288::t_c31a96de71c4ee 16-17
+tests/Seeing.Agent.Tests/Decorators/ToolOutputLimiterDecoratorTests.cs
+  s_e889762db1a288::t_047ab5662f7e9b 122-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.43-trip",
+  "base_commit_sha": "0708c53232ef994bf684b7c727e9662ae4c0b5a9",
+  "prompts": {},
+  "sessions": {
+    "s_e889762db1a288": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fbdc9c4edffeS1x2PjOh1PN264",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
