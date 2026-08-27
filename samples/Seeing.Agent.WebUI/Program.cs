@@ -61,10 +61,19 @@ builder.Services.AddScoped<IPermissionChannel>(sp =>
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<MessageTimelineStore>();
-// EventStreamHandler 多实例化：每会话一个实例（绑定 sessionId），本应删除直注册、
-// 由 Router 经 scope 按会话工厂创建（Task 7 接管）。
-// 此处暂保留"占位"Scoped 注册（sessionId 为空串），承载 PermissionHost/BlazorPermissionChannel
+
+// 会话事件流路由（Singleton）：按会话统一订阅 + 按 circuit 关联 Scoped 消费者。
+// CircuitContext（Scoped）：载入 circuit.Id，供页面经 Router.GetOrCreateConsumer 关联消费者。
+// TaskCardAggregator（Scoped）：每父会话一实例，聚合子代理 TaskSteps。
+builder.Services.AddScoped<CircuitContext>();
+builder.Services.AddSingleton<SessionEventStreamRouter>();
+builder.Services.AddScoped<TaskCardAggregator>();
+
+// EventStreamHandler：Task7 起改为经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建。
+// 当前 Session.razor / PermissionHost.razor 仍 @inject EventStreamHandler（Task7 才改），
+// 暂保留"占位"Scoped 注册（sessionId 为空串），承载 PermissionHost/BlazorPermissionChannel
 // 依赖的全局权限请求事件分发，并避免 DI ValidateOnBuild 因构造参数 System.String 无法解析而启动失败。
+// 此占位注册将在 Task7 接管后移除。
 builder.Services.AddScoped<EventStreamHandler>(sp =>
     new EventStreamHandler(string.Empty, sp.GetRequiredService<ISessionManager>()));
 builder.Services.AddScoped<ErrorHandlingService>();

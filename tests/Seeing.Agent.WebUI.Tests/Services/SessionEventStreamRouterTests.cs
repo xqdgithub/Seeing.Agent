@@ -111,4 +111,27 @@ public class SessionEventStreamRouterTests
         router.DetachAllForCircuit("circuit-1");
         scope.Verify(s => s.Dispose(), Times.Once);
     }
+
+    [Fact]
+    public void GetOrCreateConsumer_SameSessionSameCircuit_ShouldReturnSameInstance()
+    {
+        // C2：幂等——连续两次同 (session, circuit) 返回同一实例，且只建一个 scope（不泄漏）
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        sp.Setup(s => s.GetService(typeof(FakeConsumer)))
+            .Returns(() => new FakeConsumer("s1"));
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var orchestrator = new Mock<IChatOrchestrator>();
+        using var router = CreateRouter(orchestrator, scopeFactory.Object);
+
+        var first = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
+        var second = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
+
+        second.Should().BeSameAs(first);
+        scopeFactory.Verify(f => f.CreateScope(), Times.Once);
+        scope.Verify(s => s.Dispose(), Times.Never);
+    }
 }
