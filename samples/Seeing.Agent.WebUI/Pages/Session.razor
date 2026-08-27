@@ -2110,29 +2110,12 @@
             _aggregator.AssistantChanged -= OnAggregatorAssistantChanged;
         }
 
-        var sessionId = SessionState.SessionId;
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            try
-            {
-                ChatOrchestrator.CancelBySessionAsync(sessionId).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
-        try
-        {
-            // handler 已退订/detach，但其流式状态仍可用于标记未完成 Task（实例为直接构造，detach 后仍有效）
-            _handler?.MarkIncompleteTasksCancelledAsync("会话已关闭", persist: true)
-                .GetAwaiter().GetResult();
-        }
-        catch
-        {
-            // ignore
-        }
+        // 2026-08-27 修复：Dispose 不再取消后端执行 / 标记未完成 Task 为取消。
+        // 刷新页面 / 导航离开 / 关闭标签都会触发 Blazor circuit 关闭 → Dispose；
+        // 原先在此调用 CancelBySessionAsync 会取消整个会话的后端执行（表现为"对话已取消: user"），
+        // 且 MarkIncompleteTasksCancelledAsync 会把仍进行中的子任务标记为取消。
+        // 现改为仅清理 UI 订阅：后端执行继续，重新打开会话经 Reconcile 恢复进度/结果。
+        // 用户主动取消仍走 OnCancelExecution（保留）。
     }
     
     /// <summary>
