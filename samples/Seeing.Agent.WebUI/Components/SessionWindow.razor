@@ -164,7 +164,7 @@
         <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main " : "")}{GetStatusBarClass()}")" @onclick="OnTileClick">
             <div class="conference-tile-header">
                 <span class="conference-tile-title">@SessionState.Title</span>
-                <Badge Status="@GetStatusBadge()" Text="@GetStatusText()" Class="conference-tile-status" />
+                <Badge Status="@GetStatusBadge()" />
             </div>
             <div class="conference-tile-body">
                 @GetLatestAssistantPreview()
@@ -1371,24 +1371,6 @@
         if (SessionState.ExecutionStatus is ExecutionStatus.Cancelled)
             return "conference-tile--cancelled";
         return "conference-tile--done";
-    }
-
-    /// <summary>Summary 模式：状态徽标文字（执行中/排队中/已完成/失败/已取消）</summary>
-    private string GetStatusText()
-    {
-        if (SessionState.IsQueued)
-            return "排队中";
-        if (SessionState.IsExecuting
-            || SessionState.ExecutionStatus is ExecutionStatus.Running
-                or ExecutionStatus.Pending)
-        {
-            return "执行中";
-        }
-        if (SessionState.ExecutionStatus is ExecutionStatus.Failed)
-            return "失败";
-        if (SessionState.ExecutionStatus is ExecutionStatus.Cancelled)
-            return "已取消";
-        return "已完成";
     }
 
     /// <summary>

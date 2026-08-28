@@ -121,13 +121,6 @@
     white-space: nowrap;
 }
 
-/* 卡片状态徽标（执行中/排队中/已完成/失败/已取消）：小号弱化文字，突出状态点 */
-.conference-tile-status .ant-badge-status-text {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-tertiary);
-    margin-left: var(--space-1);
-}
-
 .conference-tile-body {
     flex: 1;
     min-height: 0;
