@@ -1190,6 +1190,13 @@
             {
                 SessionManager.Delete(child.Id);
             }
+            // 通知大屏窗口注册表移除已删除子会话，避免 Summary 卡片残留空窗口
+            if (children.Count > 0)
+            {
+                var circuitId = CircuitContext.Id ?? "";
+                var registry = Router.GetOrCreateCircuitConsumer<Services.ConferenceRegistry>(circuitId);
+                registry.RemoveWindows(children.Select(c => c.Id));
+            }
 
             SessionState.CurrentSession.ClearMessages();
             SessionState.CurrentSession.Title = "新会话";

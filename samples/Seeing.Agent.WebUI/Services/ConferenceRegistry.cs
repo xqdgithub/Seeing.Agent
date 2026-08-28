@@ -98,6 +98,32 @@ public sealed class ConferenceRegistry : IStreamConsumer
             WindowsChanged?.Invoke();
     }
 
+    /// <summary>
+    /// 移除指定会话窗口（主会话被清空连带删除子会话时调用，避免大屏残留已删除子窗口）。
+    /// 仅移除与入参匹配的窗口，未命中不触发 WindowsChanged。
+    /// </summary>
+    public void RemoveWindows(IEnumerable<string> sessionIds)
+    {
+        if (sessionIds == null)
+            return;
+
+        var removed = false;
+        lock (_lock)
+        {
+            foreach (var id in sessionIds)
+            {
+                var node = _windows.FirstOrDefault(w => string.Equals(w.SessionId, id, StringComparison.Ordinal));
+                if (node != null)
+                {
+                    _windows.Remove(node);
+                    removed = true;
+                }
+            }
+        }
+        if (removed)
+            WindowsChanged?.Invoke();
+    }
+
     public void OnEvent(IMessageEvent evt)
     {
         if (evt == null || string.IsNullOrEmpty(evt.SessionId))

@@ -174,6 +174,65 @@ public class ConferenceRegistryTests
     }
 
     [Fact]
+    public async Task RemoveWindows_ShouldRemoveMatchingAndRaiseChanged()
+    {
+        var parentId = "parent1";
+        var child1 = CreateChild("child1", parentId, "call-1");
+        var child2 = CreateChild("child2", parentId, "call-2");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = new Mock<ISessionManager>();
+        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child1, child2 }));
+        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
+
+        using var router = CreateRouter(orchestrator);
+        var registry = new ConferenceRegistry(router, sm.Object,
+            new TaskSessionResolver(sm.Object));
+        var changed = 0;
+        registry.WindowsChanged += () => changed++;
+        registry.Rebind(parentId);
+        await Task.Delay(200);
+        registry.Windows.Should().HaveCount(2);
+
+        registry.RemoveWindows(new[] { "child1" });
+
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "child2");
+        registry.Windows.Should().NotContain(w => w.SessionId == "child1");
+        changed.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task RemoveWindows_UnknownIds_ShouldNotRaiseChanged()
+    {
+        var parentId = "parent1";
+        var child = CreateChild("child1", parentId, "call-1");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = new Mock<ISessionManager>();
+        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
+        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
+
+        using var router = CreateRouter(orchestrator);
+        var registry = new ConferenceRegistry(router, sm.Object,
+            new TaskSessionResolver(sm.Object));
+        var changed = 0;
+        registry.WindowsChanged += () => changed++;
+        registry.Rebind(parentId);
+        await Task.Delay(200);
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
+        var countAfterRebind = changed;
+
+        registry.RemoveWindows(new[] { "nonexistent" });
+
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
+        changed.Should().Be(countAfterRebind);
+    }
+
+    [Fact]
     public async Task Rebind_DifferentParent_ShouldClearOldAndEnumerateNew()
     {
         var parentA = "parentA";
