@@ -34,106 +34,62 @@
 
 <div Class="session-page-container">
     @* 会话窗口：会话加载/事件绑定/时间线/提交/取消/只读/Todo/压缩/budget/标题 全在此承载；
-       本页仅保留头部 UI（经 Header 模板读写 Context）与对话框。 *@
+       本页仅注入页级导航（经工具栏左右插槽读写 Context）与对话框。 *@
     <SessionWindow SessionId="@(SessionId ?? "")"
                    ViewMode="Services.SessionWindowMode.Full"
                    AggregatorSessionId="@(SessionId ?? "")"
                    GlobalSessionState="@GlobalSessionState">
-        <Header Context="ctx">
+        <ToolbarLeftActions Context="ctx">
             @{
                 // 幂等同步 AppState.CurrentSessionId（供首页"继续会话"导航定位）
                 SyncCurrentSessionId(ctx);
             }
-
-            <!-- 页级导航区：仅保留与页面路由/全局相关的操作；会话内信息与操作（标题/工作文件夹/Agent/模型/重命名/清空/出站绑定）由 SessionToolbar 内置工具栏承载 -->
-            <div Class="session-header">
-                <div Class="session-header-left">
-                    <Button Type="@ButtonType.Text"
-                            Size="@ButtonSize.Small"
-                            Icon="@IconType.Outline.Home"
-                            OnClick="@GoToHome">
-                        @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
-                        {
-                            <span>首页</span>
-                        }
-                    </Button>
-                    @if (!AppState.IsMobile)
-                    {
-                        <Divider Type="@DividerType.Vertical" />
-                    }
-                </div>
-                <div Class="session-header-right">
-                    @if (AppState.IsMobile)
-                    {
-                        @* 移动端：新建按钮 + 更多菜单（仅页级导航项） *@
+            <Button Type="@ButtonType.Text"
+                    Size="@ButtonSize.Small"
+                    Icon="@IconType.Outline.Home"
+                    OnClick="@GoToHome">
+                @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
+                {
+                    <span>首页</span>
+                }
+            </Button>
+        </ToolbarLeftActions>
+        <ToolbarRightActions Context="ctx">
+            <Space>
+                @if (!ctx.IsSubAgentView)
+                {
+                    <SpaceItem>
+                        <Tooltip Title="分支会话">
+                            <Button Type="@ButtonType.Text"
+                                    Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.Copy"
+                                    OnClick="@OnBranchSession" />
+                        </Tooltip>
+                    </SpaceItem>
+                }
+                <SpaceItem>
+                    <Tooltip Title="多 Agent 会议大屏">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.VideoCamera"
+                                OnClick="@GoToConference" />
+                    </Tooltip>
+                </SpaceItem>
+                <SpaceItem>
+                    <Tooltip Title="新建会话">
                         <Button Type="@ButtonType.Text"
                                 Size="@ButtonSize.Small"
                                 Icon="@IconType.Outline.Plus"
                                 OnClick="@CreateNewSessionAsync"
                                 Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Ellipsis"
-                                OnClick="@ToggleMobileHeader"
-                                Class="mobile-header-more-btn" />
-                    }
-                    else
-                    {
-                    <Space>
-                        @if (!ctx.IsSubAgentView)
-                        {
-                            <SpaceItem>
-                                <Tooltip Title="分支会话">
-                                    <Button Type="@ButtonType.Text"
-                                            Size="@ButtonSize.Small"
-                                            Icon="@IconType.Outline.Copy"
-                                            OnClick="@OnBranchSession" />
-                                </Tooltip>
-                            </SpaceItem>
-                        }
-                        <SpaceItem>
-                            <Tooltip Title="多 Agent 会议大屏">
-                                <Button Type="@ButtonType.Text"
-                                        Size="@ButtonSize.Small"
-                                        Icon="@IconType.Outline.VideoCamera"
-                                        OnClick="@GoToConference" />
-                            </Tooltip>
-                        </SpaceItem>
-                        <SpaceItem>
-                            <Tooltip Title="新建会话">
-                                <Button Type="@ButtonType.Text"
-                                        Size="@ButtonSize.Small"
-                                        Icon="@IconType.Outline.Plus"
-                                        OnClick="@CreateNewSessionAsync"
-                                        Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
-                            </Tooltip>
-                        </SpaceItem>
-                     </Space>
-                    }
-                </div>
-            </div>
-
-            @* 移动端溢出面板：仅保留页级导航项（会话内操作见内置工具栏） *@
-            @if (AppState.IsMobile && _showMobileHeaderPanel && !ctx.IsSubAgentView)
-            {
-                <div class="session-header-mobile-panel">
-                    <div class="mobile-panel-actions">
-                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.VideoCamera"
-                                OnClick="@GoToConference">大屏</Button>
-                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Plus"
-                                OnClick="@CreateNewSessionAsync"
-                                Disabled="@(ctx.IsExecuting)">新建</Button>
-                    </div>
-                </div>
-            }
-        </Header>
+                    </Tooltip>
+                </SpaceItem>
+            </Space>
+        </ToolbarRightActions>
     </SessionWindow>
 </div>
 
 @code {
-
-    /// <summary>移动端溢出面板显示状态</summary>
-    private bool _showMobileHeaderPanel;
 
     private bool _hasRendered;
 
@@ -237,12 +193,6 @@
         var id = GlobalSessionState.CurrentSession?.Id;
         if (string.IsNullOrEmpty(id)) return;
         NavigationManager.NavigateTo($"/conference/{id}");
-    }
-
-    /// <summary>移动端切换溢出面板</summary>
-    private void ToggleMobileHeader()
-    {
-        _showMobileHeaderPanel = !_showMobileHeaderPanel;
     }
 
     /// <summary>
