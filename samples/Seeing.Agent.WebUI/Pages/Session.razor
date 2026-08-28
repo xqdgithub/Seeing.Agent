@@ -22,388 +22,280 @@
 @using Seeing.Agent.Core.Events
 @using Seeing.Agent.Core.Reminders
 @using Seeing.Agent.Core.Instructions
-@inject SessionState SessionState
+@inject SessionState GlobalSessionState
 @inject AppState AppState
-@inject Services.SessionEventStreamRouter Router
-@inject Services.CircuitContext CircuitContext
-@inject ErrorHandlingService ErrorHandlingService
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 @inject IChatOrchestrator ChatOrchestrator
 @inject Abstractions.Agents.IAgentRegistry AgentRegistry
-@inject Core.AgentSelectionResolver AgentSelectionResolver
 @inject IWorkspaceProvider WorkspaceProvider
-@inject Seeing.Agent.Abstractions.Permissions.IPermissionChannel PermissionChannel
 @inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
 @inject ILlmService LlmService
-@inject IModelManager ModelManager
-@inject Services.CommandListService CommandListService
-@inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
-@inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
 @inject ISessionManager SessionManager
-@inject ISessionEventPublisher SessionEventPublisher
-@inject Services.MessageTimelineStore Timeline
-@inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @implements IDisposable
 
 <div Class="session-page-container">
-    <!-- 会话头部 -->
-    <div Class="session-header">
-        <div Class="session-header-left">
-            <Button Type="@ButtonType.Text"
-                    Size="@ButtonSize.Small"
-                    Icon="@IconType.Outline.Home"
-                    OnClick="@GoToHome">
-                @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
-                {
-                    <span>首页</span>
-                }
-            </Button>
-            @if (!AppState.IsMobile)
-            {
-                <Divider Type="@DividerType.Vertical" />
-            }
-            <Tooltip Title="@SessionState.Title">
-                <span Class="session-title">@SessionState.Title</span>
-            </Tooltip>
-            @if (IsSubAgentView)
-            {
-                <Badge Status="@BadgeStatus.Warning" Text="子会话（只读）" />
-            }
-            else if (SessionState.IsQueued)
-            {
-                <Badge Status="@BadgeStatus.Default" Text="@($"排队中 ({SessionState.QueuePosition})" )" />
-            }
-            else if (SessionState.HasActiveExecution)
-            {
-                <Badge Status="@BadgeStatus.Processing" Text="执行中" />
-            }
+    @* 会话窗口：会话加载/事件绑定/时间线/提交/取消/只读/Todo/压缩/budget/标题 全在此承载；
+       本页仅保留头部 UI（经 Header 模板读写 Context）与对话框。 *@
+    <SessionWindow SessionId="@(SessionId ?? "")"
+                   ViewMode="Services.SessionWindowMode.Full"
+                   AggregatorSessionId="@(SessionId ?? "")"
+                   GlobalSessionState="@GlobalSessionState">
+        <Header Context="ctx">
             @{
-                var currentWorkspace = !string.IsNullOrEmpty(SessionState.CurrentSession?.WorkingDirectory) 
-                    ? SessionState.CurrentSession.WorkingDirectory 
-                    : WorkspaceProvider.WorkspaceRoot;
+                // 捕获窗口上下文供本页 @code 方法读写（选择器值/标题/操作委托）
+                _windowContext = ctx;
+                // 幂等同步 AppState.CurrentSessionId（供首页"继续会话"导航定位）
+                SyncCurrentSessionId(ctx);
             }
-            @if (!AppState.IsMobile)
-            {
-                <Tooltip Title="@currentWorkspace">
-                    <span Class="session-workspace-badge">
-                        <Icon Type="@IconType.Outline.Folder" />
-                        @TruncateWorkspacePath(currentWorkspace)
-                    </span>
-                </Tooltip>
-            }
-            @if (!AppState.IsMobile && !IsSubAgentView && _optionsReady && SessionState.CurrentSession != null)
-            {
-                <Tooltip Title="编辑出站绑定">
+
+            <!-- 会话头部 -->
+            <div Class="session-header">
+                <div Class="session-header-left">
                     <Button Type="@ButtonType.Text"
                             Size="@ButtonSize.Small"
-                            Icon="@IconType.Outline.Api"
-                            OnClick="@OnEditOutbound" />
-                </Tooltip>
-            }
-            @if (IsSubAgentView && !string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
-            {
-                <Button Type="@ButtonType.Link"
-                        Size="@ButtonSize.Small"
-                        Icon="@IconType.Outline.ArrowLeft"
-                        OnClick="@ReturnToParentSession"
-                        Style="margin-left: 8px;">
-                    返回主会话
-                </Button>
-            }
-        </div>
-        <div Class="session-header-right">
-            @if (AppState.IsMobile)
-            {
-                @* 移动端：新建按钮 + 更多菜单 *@
-                <Button Type="@ButtonType.Text"
-                        Size="@ButtonSize.Small"
-                        Icon="@IconType.Outline.Plus"
-                        OnClick="@CreateNewSessionAsync"
-                        Disabled="@(SessionState.IsExecuting || IsSubAgentView)" />
-                <Button Type="@ButtonType.Text"
-                        Size="@ButtonSize.Small"
-                        Icon="@IconType.Outline.Ellipsis"
-                        OnClick="@ToggleMobileHeader"
-                        Class="mobile-header-more-btn" />
-            }
-            else
-            {
-            <Space>
-                <SpaceItem>
-                    @if (IsSubAgentView)
+                            Icon="@IconType.Outline.Home"
+                            OnClick="@GoToHome">
+                        @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
+                        {
+                            <span>首页</span>
+                        }
+                    </Button>
+                    @if (!AppState.IsMobile)
                     {
-                        <div class="subagent-meta" title="子代理（只读）">
-                            <span class="subagent-meta-chip">
-                                <span class="subagent-meta-label">Agent</span>
-                                <span class="subagent-meta-value">@(string.IsNullOrEmpty(_selectedAgent) ? "—" : _selectedAgent)</span>
+                        <Divider Type="@DividerType.Vertical" />
+                    }
+                    <Tooltip Title="@ctx.Title">
+                        <span Class="session-title">@ctx.Title</span>
+                    </Tooltip>
+                    @if (ctx.IsSubAgentView)
+                    {
+                        <Badge Status="@BadgeStatus.Warning" Text="子会话（只读）" />
+                    }
+                    else if (ctx.IsQueued)
+                    {
+                        <Badge Status="@BadgeStatus.Default" Text="@($"排队中 ({ctx.QueuePosition})" )" />
+                    }
+                    else if (ctx.HasActiveExecution)
+                    {
+                        <Badge Status="@BadgeStatus.Processing" Text="执行中" />
+                    }
+                    @{
+                        var currentWorkspace = !string.IsNullOrEmpty(ctx.CurrentSession?.WorkingDirectory)
+                            ? ctx.CurrentSession.WorkingDirectory
+                            : WorkspaceProvider.WorkspaceRoot;
+                    }
+                    @if (!AppState.IsMobile)
+                    {
+                        <Tooltip Title="@currentWorkspace">
+                            <span Class="session-workspace-badge">
+                                <Icon Type="@IconType.Outline.Folder" />
+                                @TruncateWorkspacePath(currentWorkspace)
                             </span>
-                            @if (!string.IsNullOrEmpty(_selectedModel))
-                            {
-                                <span class="subagent-meta-chip">
-                                    <span class="subagent-meta-label">Model</span>
-                                    <span class="subagent-meta-value">@_selectedModel</span>
-                                </span>
-                            }
-                        </div>
+                        </Tooltip>
                     }
-                    else if (_optionsReady)
+                    @if (!AppState.IsMobile && !ctx.IsSubAgentView && _optionsReady && ctx.CurrentSession != null)
                     {
-                        <Select TItemValue="string" TItem="string"
-                                Value="@_selectedAgent"
-                                ValueExpression="@(() => _selectedAgent)"
-                                ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
-                                DataSource="@_agentNames"
-                                Style="min-width: 120px;"
-                                Size="@InputSize.Small"
-                                Placeholder="智能体" />
+                        <Tooltip Title="编辑出站绑定">
+                            <Button Type="@ButtonType.Text"
+                                    Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.Api"
+                                    OnClick="@OnEditOutbound" />
+                        </Tooltip>
                     }
-                </SpaceItem>
-                @if (!IsSubAgentView && _optionsReady && _isAcpPassthrough)
-                {
-                    <SpaceItem>
-                        <Input Value="@_selectedAcpMode"
-                               ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
-                               Placeholder="Mode"
-                               Style="width: 80px;"
-                               Size="@InputSize.Small" />
-                    </SpaceItem>
-                    <SpaceItem>
-                        <Input Value="@_selectedModel"
-                               ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
-                               Placeholder="Provider/Model"
-                               Style="width: 160px;"
-                               Size="@InputSize.Small" />
-                    </SpaceItem>
-                }
-                else if (!IsSubAgentView && _optionsReady)
-                {
-                    <SpaceItem>
-                        <Select TItemValue="string" TItem="ModelViewModel"
-                                Value="@_selectedModel"
-                                ValueExpression="@(() => _selectedModel)"
-                                ValueChanged="@OnModelChanged"
-                                DataSource="@_models"
-                                ValueName="Id"
-                                LabelName="ModelName"
-                                GroupName="@nameof(ModelViewModel.ProviderName)"
-                                SortByGroup="SortDirection.Ascending"
-                                SortByLabel="SortDirection.Ascending"
-                                Style="min-width: 160px;"
-                                Size="@InputSize.Small"
-                                Placeholder="模型"
-                                Class="@(_modelInvalid ? "model-select-invalid" : null)"
-                                EnableSearch="true">
-                            <ItemTemplate Context="model">
-                                <span>@model.ModelName</span>
-                            </ItemTemplate>
-                        </Select>
-                    </SpaceItem>
-                }
-                <SpaceItem>
-                    <Tooltip Title="重命名会话">
-                        <Button Type="@ButtonType.Text"
+                    @if (ctx.IsSubAgentView && !string.IsNullOrEmpty(ctx.CurrentSession?.ParentSessionId))
+                    {
+                        <Button Type="@ButtonType.Link"
                                 Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Edit"
-                                OnClick="@OnRenameSession"
-                                Disabled="@IsSubAgentView" />
-                    </Tooltip>
-                </SpaceItem>
-                <SpaceItem>
-                    <Tooltip Title="@(IsSubAgentView ? "分叉为独立会话（可编辑）" : "分支会话")">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Copy"
-                                OnClick="@OnBranchSession" />
-                    </Tooltip>
-                </SpaceItem>
-                <SpaceItem>
-                    <Tooltip Title="新建会话">
+                                Icon="@IconType.Outline.ArrowLeft"
+                                OnClick="@ReturnToParentSession"
+                                Style="margin-left: 8px;">
+                            返回主会话
+                        </Button>
+                    }
+                </div>
+                <div Class="session-header-right">
+                    @if (AppState.IsMobile)
+                    {
+                        @* 移动端：新建按钮 + 更多菜单 *@
                         <Button Type="@ButtonType.Text"
                                 Size="@ButtonSize.Small"
                                 Icon="@IconType.Outline.Plus"
                                 OnClick="@CreateNewSessionAsync"
-                                Disabled="@(SessionState.IsExecuting || IsSubAgentView)" />
-                    </Tooltip>
-                </SpaceItem>
-                <SpaceItem>
-                    <Tooltip Title="清空会话">
+                                Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
                         <Button Type="@ButtonType.Text"
                                 Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Delete"
-                                OnClick="@OnClearSession"
-                                Disabled="@(SessionState.IsExecuting || IsSubAgentView)" />
-                    </Tooltip>
-                </SpaceItem>
-             </Space>
-            }
-        </div>
-    </div>
-
-    @* 移动端溢出面板：智能体/模型选择 + 操作按钮 *@
-    @if (AppState.IsMobile && _showMobileHeaderPanel && !IsSubAgentView)
-    {
-        <div class="session-header-mobile-panel">
-            <div class="mobile-panel-row">
-                @if (_optionsReady && !_isAcpPassthrough)
-                {
-                    <Select TItemValue="string" TItem="string"
-                            Value="@_selectedAgent"
-                            ValueExpression="@(() => _selectedAgent)"
-                            ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
-                            DataSource="@_agentNames"
-                            Style="flex:1; min-width: 0;"
-                            Size="@InputSize.Small"
-                            Placeholder="智能体" />
-                }
-                @if (_optionsReady && !_isAcpPassthrough)
-                {
-                    <Select TItemValue="string" TItem="ModelViewModel"
-                            Value="@_selectedModel"
-                            ValueExpression="@(() => _selectedModel)"
-                            ValueChanged="@OnModelChanged"
-                            DataSource="@_models"
-                            ValueName="Id"
-                            LabelName="ModelName"
-                            GroupName="@nameof(ModelViewModel.ProviderName)"
-                            SortByGroup="SortDirection.Ascending"
-                            SortByLabel="SortDirection.Ascending"
-                            Style="flex:1; min-width: 0;"
-                            Size="@InputSize.Small"
-                            Placeholder="模型"
-                            Class="@(_modelInvalid ? "model-select-invalid" : null)"
-                            EnableSearch="true">
-                        <ItemTemplate Context="model">
-                            <span>@model.ModelName</span>
-                        </ItemTemplate>
-                    </Select>
-                }
-            </div>
-            <div class="mobile-panel-actions">
-                <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Edit"
-                        OnClick="@OnRenameSession">重命名</Button>
-                <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Copy"
-                        OnClick="@OnBranchSession">分支</Button>
-                <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Delete"
-                        OnClick="@OnClearSession"
-                        Disabled="@(SessionState.IsExecuting)">清空</Button>
-            </div>
-        </div>
-    }
-
-    <!-- 主内容区域（消息列 + Todo 面板）；输入与消息同列，避免 Todo 出现时输入相对对话偏移 -->
-    <div Class="session-content-wrapper">
-        <div Class="session-main-column">
-            <!-- 消息列表区域 -->
-            <div Class="session-messages-container">
-            @if (ShowEmptyState)
-            {
-                <!-- 无会话状态：引导用户创建新会话 -->
-                <Empty Class="session-empty-state">
-                    <DescriptionTemplate>
-                        <div Class="empty-content">
-                            <Icon Type="@IconType.Outline.FileAdd" Class="empty-icon" Style="font-size: 48px;" />
-                            <p Style="font-size: 18px; margin-top: 16px;">暂无会话</p>
-                            <p Class="empty-hint">点击下方按钮或顶部工具栏的"新建会话"开始对话</p>
-                            <Button Type="@ButtonType.Primary"
-                                    Icon="@IconType.Outline.Plus"
-                                    OnClick="@CreateNewSessionAsync"
-                                    Style="margin-top: 16px;">
-                                新建会话
-                            </Button>
-                        </div>
-                    </DescriptionTemplate>
-                </Empty>
-            }
-            else
-            {
-                <MessageList AutoScroll="true"
-                             OnToolClick="@OnToolClick"
-                             CompactionInProgress="@_compactionInProgress"
-                             CompactionReasoning="@_compactionReasoning"
-                             CompactionProgress="@_compactionProgress" />
-            }
-            
-            <!-- 加载状态指示器 -->
-            @if (IsLoadingSession)
-            {
-                <div Class="loading-overlay">
-                    <Spin Size="@SpinSize.Large" Tip="加载会话..." />
-                </div>
-            }
-            </div>
-
-            <!-- 输入区域：仅在非空状态时显示；SubAgent 子会话只读 -->
-            @if (!ShowEmptyState)
-            {
-                <div Class="session-input-container">
-                    @if (IsSubAgentView)
-                    {
-                        <div class="subagent-readonly-banner" style="padding: 12px 16px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                            <Icon Type="@IconType.Outline.Eye" />
-                            <span style="flex: 1;">当前为 Task 子会话（只读）。可返回主会话，或分叉为独立会话后再继续对话。</span>
-                            @if (!string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
-                            {
-                                <Button Type="@ButtonType.Default"
-                                        Size="@ButtonSize.Small"
-                                        Icon="@IconType.Outline.ArrowLeft"
-                                        OnClick="@ReturnToParentSession">
-                                    返回主会话
-                                </Button>
-                            }
-                            <Button Type="@ButtonType.Primary"
-                                    Size="@ButtonSize.Small"
-                                    Icon="@IconType.Outline.Copy"
-                                    OnClick="@OnBranchSession">
-                                分叉为独立会话
-                            </Button>
-                        </div>
+                                Icon="@IconType.Outline.Ellipsis"
+                                OnClick="@ToggleMobileHeader"
+                                Class="mobile-header-more-btn" />
                     }
                     else
                     {
-                        <!-- Slot 扩展点: session_prompt -->
-                        <SlotHost SlotName="session_prompt" />
-                        
-                         <PromptInput IsProcessing="@SessionState.HasActiveExecution"
-                                      Placeholder="@GetPlaceholderText()"
-                                      HelpText="@GetHelpText()"
-                                      AvailableCommands="_availableCommands"
-                                      SessionState="SessionState"
-                                      CancellationTokenSource="@SessionState.CancellationTokenSource"
-                                      BudgetStatus="SessionState.BudgetStatus"
-                                      AutoApprove="@CurrentAutoApprove"
-                                      OnAutoApproveChanged="@OnAutoApproveChanged"
-                                      GlobalAutoApprove="_globalAutoApprove"
-                                      AutoApproveDisabled="@IsSubAgentView"
-                                      OnCompactRequested="OnCompactRequested"
-                                      OnSubmitCallback="@OnSubmitMessage"
-                                      OnCancelCallback="@OnCancelExecution" />
+                    <Space>
+                        <SpaceItem>
+                            @if (ctx.IsSubAgentView)
+                            {
+                                <div class="subagent-meta" title="子代理（只读）">
+                                    <span class="subagent-meta-chip">
+                                        <span class="subagent-meta-label">Agent</span>
+                                        <span class="subagent-meta-value">@(string.IsNullOrEmpty(ctx.SelectedAgent) ? "—" : ctx.SelectedAgent)</span>
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(ctx.SelectedModel))
+                                    {
+                                        <span class="subagent-meta-chip">
+                                            <span class="subagent-meta-label">Model</span>
+                                            <span class="subagent-meta-value">@ctx.SelectedModel</span>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                            else if (_optionsReady)
+                            {
+                                <Select TItemValue="string" TItem="string"
+                                        Value="@ctx.SelectedAgent"
+                                        ValueExpression="@(() => ctx.SelectedAgent)"
+                                        ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
+                                        DataSource="@_agentNames"
+                                        Style="min-width: 120px;"
+                                        Size="@InputSize.Small"
+                                        Placeholder="智能体" />
+                            }
+                        </SpaceItem>
+                        @if (!ctx.IsSubAgentView && _optionsReady && ctx.IsAcpPassthrough)
+                        {
+                            <SpaceItem>
+                                <Input Value="@ctx.SelectedAcpMode"
+                                       ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
+                                       Placeholder="Mode"
+                                       Style="width: 80px;"
+                                       Size="@InputSize.Small" />
+                            </SpaceItem>
+                            <SpaceItem>
+                                <Input Value="@ctx.SelectedModel"
+                                       ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
+                                       Placeholder="Provider/Model"
+                                       Style="width: 160px;"
+                                       Size="@InputSize.Small" />
+                            </SpaceItem>
+                        }
+                        else if (!ctx.IsSubAgentView && _optionsReady)
+                        {
+                            <SpaceItem>
+                                <Select TItemValue="string" TItem="ModelViewModel"
+                                        Value="@ctx.SelectedModel"
+                                        ValueExpression="@(() => ctx.SelectedModel)"
+                                        ValueChanged="@OnModelChanged"
+                                        DataSource="@_models"
+                                        ValueName="Id"
+                                        LabelName="ModelName"
+                                        GroupName="@nameof(ModelViewModel.ProviderName)"
+                                        SortByGroup="SortDirection.Ascending"
+                                        SortByLabel="SortDirection.Ascending"
+                                        Style="min-width: 160px;"
+                                        Size="@InputSize.Small"
+                                        Placeholder="模型"
+                                        Class="@(ctx.ModelInvalid ? "model-select-invalid" : null)"
+                                        EnableSearch="true">
+                                    <ItemTemplate Context="model">
+                                        <span>@model.ModelName</span>
+                                    </ItemTemplate>
+                                </Select>
+                            </SpaceItem>
+                        }
+                        <SpaceItem>
+                            <Tooltip Title="重命名会话">
+                                <Button Type="@ButtonType.Text"
+                                        Size="@ButtonSize.Small"
+                                        Icon="@IconType.Outline.Edit"
+                                        OnClick="@OnRenameSession"
+                                        Disabled="@ctx.IsSubAgentView" />
+                            </Tooltip>
+                        </SpaceItem>
+                        <SpaceItem>
+                            <Tooltip Title="@(ctx.IsSubAgentView ? "分叉为独立会话（可编辑）" : "分支会话")">
+                                <Button Type="@ButtonType.Text"
+                                        Size="@ButtonSize.Small"
+                                        Icon="@IconType.Outline.Copy"
+                                        OnClick="@OnBranchSession" />
+                            </Tooltip>
+                        </SpaceItem>
+                        <SpaceItem>
+                            <Tooltip Title="新建会话">
+                                <Button Type="@ButtonType.Text"
+                                        Size="@ButtonSize.Small"
+                                        Icon="@IconType.Outline.Plus"
+                                        OnClick="@CreateNewSessionAsync"
+                                        Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
+                            </Tooltip>
+                        </SpaceItem>
+                        <SpaceItem>
+                            <Tooltip Title="清空会话">
+                                <Button Type="@ButtonType.Text"
+                                        Size="@ButtonSize.Small"
+                                        Icon="@IconType.Outline.Delete"
+                                        OnClick="@OnClearSession"
+                                        Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
+                            </Tooltip>
+                        </SpaceItem>
+                     </Space>
                     }
                 </div>
-            }
-        </div>
-        
-        @* Todo 侧边面板（当有任务时显示） *@
-        @if (SessionState.CurrentTodoList != null && SessionState.CurrentTodoList.HasTasks)
-        {
-            <div Class="session-todo-panel">
-                <TodoPanel TodoList="@SessionState.CurrentTodoList" />
             </div>
-        }
-    </div>
-    
-    <!-- 错误提示 -->
-    @if (!string.IsNullOrEmpty(ErrorMessage))
-    {
-        <Alert Type="@AlertType.Error"
-               Message="@ErrorMessage"
-               ShowIcon="true"
-               Closable="true"
-               OnClose="@OnClearError"
-               Class="session-error-alert" />
-    }
-    
+
+            @* 移动端溢出面板：智能体/模型选择 + 操作按钮 *@
+            @if (AppState.IsMobile && _showMobileHeaderPanel && !ctx.IsSubAgentView)
+            {
+                <div class="session-header-mobile-panel">
+                    <div class="mobile-panel-row">
+                        @if (_optionsReady && !ctx.IsAcpPassthrough)
+                        {
+                            <Select TItemValue="string" TItem="string"
+                                    Value="@ctx.SelectedAgent"
+                                    ValueExpression="@(() => ctx.SelectedAgent)"
+                                    ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
+                                    DataSource="@_agentNames"
+                                    Style="flex:1; min-width: 0;"
+                                    Size="@InputSize.Small"
+                                    Placeholder="智能体" />
+                        }
+                        @if (_optionsReady && !ctx.IsAcpPassthrough)
+                        {
+                            <Select TItemValue="string" TItem="ModelViewModel"
+                                    Value="@ctx.SelectedModel"
+                                    ValueExpression="@(() => ctx.SelectedModel)"
+                                    ValueChanged="@OnModelChanged"
+                                    DataSource="@_models"
+                                    ValueName="Id"
+                                    LabelName="ModelName"
+                                    GroupName="@nameof(ModelViewModel.ProviderName)"
+                                    SortByGroup="SortDirection.Ascending"
+                                    SortByLabel="SortDirection.Ascending"
+                                    Style="flex:1; min-width: 0;"
+                                    Size="@InputSize.Small"
+                                    Placeholder="模型"
+                                    Class="@(ctx.ModelInvalid ? "model-select-invalid" : null)"
+                                    EnableSearch="true">
+                                <ItemTemplate Context="model">
+                                    <span>@model.ModelName</span>
+                                </ItemTemplate>
+                            </Select>
+                        }
+                    </div>
+                    <div class="mobile-panel-actions">
+                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Edit"
+                                OnClick="@OnRenameSession">重命名</Button>
+                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Copy"
+                                OnClick="@OnBranchSession">分支</Button>
+                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Delete"
+                                OnClick="@OnClearSession"
+                                Disabled="@(ctx.IsExecuting)">清空</Button>
+                    </div>
+                </div>
+            }
+        </Header>
+    </SessionWindow>
+
     <!-- 重命名对话框（仅在打开时渲染，避免隐藏 Modal 内 FormItem 初始化失败） -->
     @if (RenameModalVisible)
     {
@@ -451,22 +343,18 @@
     /// </summary>
     private const string OkText = "确定";
     private const string CancelText = "取消";
-    
+
+    /// <summary>Header 模板渲染时捕获的窗口上下文（窗口经 Context 暴露状态与操作，本页据此读写）</summary>
+    private Services.SessionWindowContext? _windowContext;
+
     /// <summary>
-    /// Agent/模型选择器相关
+    /// Agent/模型选择器选项列表（仅本页维护；选中值经 Context 读写，写回会话由窗口实现）
     /// </summary>
-    private string _selectedAgent = "";
     private List<string> _agentNames = new();
-    private string _selectedModel = "";
     private List<ModelViewModel> _models = new();
-    private string _selectedAcpMode = "";
-    private bool _isAcpPassthrough;
     private bool _optionsReady;
     private bool _showMobileHeaderPanel;
 
-    /// <summary>native 模型是否校验失败（标红提示，发送时校验）</summary>
-    private bool _modelInvalid;
-    
     /// <summary>
     /// 模型视图类 - 用于选择器显示
     /// </summary>
@@ -474,10 +362,10 @@
     {
         /// <summary>完整 ID（provider/model 格式）</summary>
         public string Id { get; init; } = "";
-        
+
         /// <summary>模型名称</summary>
         public string ModelName { get; init; } = "";
-        
+
         /// <summary>Provider 名称</summary>
         public string ProviderName { get; init; } = "";
     }
@@ -513,39 +401,10 @@
     }
 
     /// <summary>
-    /// 可用命令列表（从后端获取）
-    /// </summary>
-    private List<CommandItemViewModel> _availableCommands = new();
-
-    /// <summary>
-    /// 当前流式输出的消息 ID
-    /// </summary>
-    private string _currentStreamingMessageId = string.Empty;
-
-    /// <summary>
     /// 路由参数：会话 ID
     /// </summary>
     [Parameter]
     public string? SessionId { get; set; }
-
-    /// <summary>
-    /// 是否正在加载会话
-    /// </summary>
-    private bool IsLoadingSession { get; set; } = false;
-
-    /// <summary>
-    /// 是否显示空状态（无会话）
-    /// </summary>
-    private bool ShowEmptyState { get; set; } = false;
-
-    /// <summary>Task 子会话：只读查看，不可发送/修改</summary>
-    private bool IsSubAgentView =>
-        SessionState.CurrentSession?.Kind == SessionKind.SubAgent;
-
-    /// <summary>
-    /// 错误消息
-    /// </summary>
-    private string? ErrorMessage { get; set; }
 
     /// <summary>
     /// 重命名对话框可见性
@@ -564,307 +423,21 @@
 
     private OutboundEditForm OutboundForm { get; set; } = new();
 
-    /// <summary>
-    /// 当前选中的工具调用（用于详情显示）
-    /// </summary>
-    private ToolCallViewModel? SelectedToolCall { get; set; }
-
     private bool _hasRendered;
-    private string? _loadedSessionId;
-    private IDisposable? _budgetSubscription;
-    private IDisposable? _sessionEventSubscription;
-    private IDisposable? _seeingAgentOptionsSubscription;
-    private bool _globalAutoApprove;
-    /// <summary>压缩进行中标志（压缩耗时较长，页面需实时反馈）</summary>
-    private bool _compactionInProgress;
-    /// <summary>压缩进度实时文本（摘要正文增量拼接）</summary>
-    private string? _compactionProgress;
-    /// <summary>压缩进度推理文本（思考过程增量拼接，流式中在列表末尾自动展开展示）</summary>
-    private string? _compactionReasoning;
-    /// <summary>上次已渲染到 UI 的标题（与 SessionData 引用就地更新解耦）。</summary>
-    private string? _renderedTitle;
-
-    /// <summary>当前会话的渲染 handler（经 Router 按会话创建，订阅其 OnStateChanged）</summary>
-    private EventStreamHandler? _handler;
-    /// <summary>当前会话的任务卡片聚合器（经 Router 获取，聚合子会话 TaskSteps）</summary>
-    private TaskCardAggregator? _aggregator;
-    /// <summary>当前已绑定的事件流会话 ID（handler/aggregator 绑定目标）</summary>
-    private string? _boundSessionId;
-    /// <summary>handler 事件回调包装（async Task 方法不能直接赋给 Action 委托，需 lambda 桥接以便退订）</summary>
-    private Action<IMessageEvent>? _onHandlerChangedCallback;
-    /// <summary>流式 delta 节流字符计数（仅 StreamDelta 走节流，其余事件立即同步）</summary>
-    private int _streamCharCount;
-    /// <summary>流式 delta 代码块深度（``` 成对增减，代码块内阈值放大、块边界强制刷新）</summary>
-    private int _currentCodeBlockDepth;
 
     /// <summary>
-    /// 组件初始化
+    /// 组件初始化：加载选项列表（会话加载/事件绑定等由 SessionWindow 承载）
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        // MessageList subscribes to Timeline.Changed itself — Session does not refresh the whole page on every token.
-
         // 订阅 AppState 变更事件，确保移动端/桌面端切换时同步重渲染
         AppState.OnChange += OnAppStateChange;
 
-        // 会话级自动批准：读取全局默认值 + 订阅热更
-        _globalAutoApprove = SeeingAgentOptions.CurrentValue.Permission?.AutoApproveAll ?? false;
-        _seeingAgentOptionsSubscription = SeeingAgentOptions.OnChange((opts, name) =>
-        {
-            _globalAutoApprove = opts.Permission?.AutoApproveAll ?? false;
-            _ = InvokeAsync(StateHasChanged);
-        });
-        
         // 加载 Agent 和模型选项列表（不设置选中值）
         await LoadOptionsAsync();
-        
+
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
-        
-        // 加载命令列表（从后端）
-        LoadCommandsFromBackend();
-        
-        // 加载会话（选项就绪后再加载，避免 Select 在 DataSource 为空时渲染）
-        if (!string.IsNullOrEmpty(SessionId))
-        {
-            await LoadSessionByIdAsync(SessionId);
-            _loadedSessionId = SessionId;
-
-            // 建立事件流绑定（Router 已订阅父会话流，页面不再自写 await foreach 消费循环）
-            EnsureStreamBinding(SessionId);
-
-            // 检查是否有正在进行的执行（页面刷新恢复）
-            RestoreExecutionFromOverview(SessionId);
-        }
-        else
-        {
-            await LoadSessionAsync();
-            _loadedSessionId = SessionState.CurrentSession?.Id;
-            if (!string.IsNullOrEmpty(_loadedSessionId))
-                EnsureStreamBinding(_loadedSessionId!);
-        }
-        
-        // Subscribe to Budget status updates
-        SubscribeToBudgetUpdates();
-        SubscribeToSessionEvents();
-    }
-
-    /// <summary>
-    /// 从 ExecutionJobService 恢复会话执行状态（仅恢复展示态，不再自起订阅）。
-    /// 事件流订阅已由 EnsureStreamBinding 经 Router 建立，用于页面刷新恢复与切换会话恢复。
-    /// </summary>
-    private void RestoreExecutionFromOverview(string sessionId)
-    {
-        var overview = ChatOrchestrator.GetOverview(sessionId);
-        if (overview?.CurrentExecution == null)
-            return;
-
-        // 恢复执行状态
-        SessionState.ExecutionStatus = overview.CurrentExecution.Status;
-        SessionState.QueuePosition = overview.CurrentExecution.QueuePosition;
-        SessionState.CurrentExecutionId = overview.CurrentExecution.ExecutionId;
-    }
-
-    private void SubscribeToBudgetUpdates()
-    {
-        // Dispose previous subscription
-        _budgetSubscription?.Dispose();
-        
-        if (!string.IsNullOrEmpty(SessionState.SessionId))
-        {
-            _budgetSubscription = BudgetNotifier.Subscribe(SessionState.SessionId, status =>
-            {
-                SessionState.UpdateBudgetStatus(status);
-                _ = InvokeAsync(StateHasChanged);
-            });
-        }
-    }
-
-    /// <summary>
-    /// 会话级订阅：标题由 SetTitleAsync → SessionEvent.Updated 驱动，与 execution 生命周期解耦。
-    /// </summary>
-    private void SubscribeToSessionEvents()
-    {
-        _sessionEventSubscription?.Dispose();
-        _sessionEventSubscription = SessionEventPublisher.Events.Subscribe(new SessionEventObserver(OnSessionLifecycleEvent));
-    }
-
-    private void OnSessionLifecycleEvent(SessionEvent evt)
-    {
-        if (evt.Type != SessionEventType.Updated)
-            return;
-
-        var current = SessionState.CurrentSession;
-        if (current == null ||
-            !string.Equals(evt.SessionId, current.Id, StringComparison.Ordinal))
-            return;
-
-        var newTitle = evt.Data?.Title;
-        if (string.IsNullOrEmpty(newTitle))
-            newTitle = SessionManager.Get(evt.SessionId)?.Title;
-
-        ApplyTitleToUi(newTitle);
-    }
-
-    /// <summary>
-    /// 将标题同步到 UI。用 _renderedTitle 区分「引用已就地改写」与「需要重绘」。
-    /// </summary>
-    private void ApplyTitleToUi(string? newTitle)
-    {
-        if (string.IsNullOrEmpty(newTitle))
-            return;
-
-        var current = SessionState.CurrentSession;
-        if (current == null)
-            return;
-
-        current.Title = newTitle;
-        if (string.Equals(_renderedTitle, newTitle, StringComparison.Ordinal))
-            return;
-
-        _renderedTitle = newTitle;
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    private sealed class SessionEventObserver : IObserver<SessionEvent>
-    {
-        private readonly Action<SessionEvent> _onNext;
-
-        public SessionEventObserver(Action<SessionEvent> onNext) => _onNext = onNext;
-
-        public void OnNext(SessionEvent value) => _onNext(value);
-        public void OnError(Exception error) { }
-        public void OnCompleted() { }
-    }
-
-    /// <summary>
-    /// Full rebuild — whitelist only: load / switch session / compaction / SessionUpdated.
-    /// Always requests force pin so enter/switch lands at the latest messages.
-    /// </summary>
-    private void ResetTimelineFromSession()
-    {
-        var session = SessionState.CurrentSession;
-        if (session?.Messages is null)
-        {
-            Timeline.ResetFromSession([], SessionState.SessionId ?? "");
-            Timeline.RequestPinToBottom();
-            return;
-        }
-
-        Timeline.ResetFromSession(session.Messages, SessionState.SessionId ?? "");
-        Timeline.RequestPinToBottom();
-    }
-
-    /// <summary>
-    /// Append any session messages not yet in the timeline (user/system after submit or cancel).
-    /// </summary>
-    private void ReconcileTimelineFromSession()
-    {
-        var session = SessionState.CurrentSession;
-        if (session?.Messages is null)
-            return;
-
-        Timeline.ReconcileAppendFromSession(session.Messages, SessionState.SessionId ?? "");
-    }
-
-    private void CompleteCurrentTimelineTurn()
-    {
-        var loopId = _handler?.GetCurrentLoopId()
-            ?? ResolveCurrentStreamingAssistantMessage()?.LoopId;
-        Timeline.CompleteTurn(loopId);
-    }
-
-    /// <summary>
-    /// Resolve the assistant message currently being streamed (preserves timeline identity).
-    /// </summary>
-    private SessionMessage? ResolveCurrentStreamingAssistantMessage()
-    {
-        var messages = SessionState.CurrentSession?.Messages;
-        var fromHandler = _handler?.GetCurrentAssistantMessage();
-        if (fromHandler != null
-            && string.Equals(fromHandler.Role, "assistant", StringComparison.OrdinalIgnoreCase)
-            && Services.MessageTimelineStore.BelongsToSession(fromHandler, SessionState.SessionId, messages))
-        {
-            _currentStreamingMessageId = fromHandler.Id ?? _currentStreamingMessageId;
-            return fromHandler;
-        }
-
-        if (messages == null)
-            return null;
-
-        if (!string.IsNullOrEmpty(_currentStreamingMessageId))
-        {
-            var byId = messages.FirstOrDefault(m => m.Id == _currentStreamingMessageId);
-            if (byId != null
-                && string.Equals(byId.Role, "assistant", StringComparison.OrdinalIgnoreCase))
-                return byId;
-        }
-
-        return messages.LastOrDefault(m =>
-            string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase) && !m.IsSummary);
-    }
-
-    /// <summary>
-    /// In-place sync of the streaming assistant message (keeps ToolCall IsExpanded / Revision isolation).
-    /// Falls back to reconcile (never mid-stream full Reset).
-    /// </summary>
-    private void SyncTimelineAssistantFromStream(bool isComplete = false)
-    {
-        var msg = ResolveCurrentStreamingAssistantMessage();
-        if (msg == null)
-        {
-            ReconcileTimelineFromSession();
-            return;
-        }
-
-        _currentStreamingMessageId = msg.Id ?? _currentStreamingMessageId;
-        Timeline.SyncAssistantMessage(msg, SessionState.SessionId ?? "", isComplete);
-    }
-
-    /// <summary>
-    /// 计算并更新当前会话的 Token 预算状态
-    /// </summary>
-    private void UpdateBudgetStatus()
-    {
-        var session = SessionState.CurrentSession;
-        if (session == null) return;
-
-        try
-        {
-            // 使用 TokenBudgetManager 计算预算状态
-            var status = TokenBudgetManager.GetBudgetStatus(session, session.SelectedModel);
-
-            var response = new Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse
-            {
-                SessionId = session.Id,
-                CurrentTokens = status.CurrentTokens,
-                MaxTokens = status.MaxTokens,
-                AvailableTokens = status.AvailableTokens,
-                UsagePercentage = status.UsagePercentage,
-                Level = status.Level.ToString().ToLowerInvariant(),
-                NeedsCompaction = status.Level >= BudgetLevel.Critical,
-                Breakdown = null
-            };
-
-            SessionState.UpdateBudgetStatus(response);
-        }
-        catch (Exception)
-        {
-            // 忽略计算错误
-        }
-    }
-
-    /// <summary>
-    /// 根据当前 tokens 确定预算级别
-    /// </summary>
-    private static string DetermineLevel(int currentTokens, int maxTokens)
-    {
-        if (maxTokens <= 0) return "normal";
-        var percentage = 100.0 * currentTokens / maxTokens;
-        if (percentage >= 100) return "overflow";
-        if (percentage >= 90) return "critical";
-        if (percentage >= 80) return "warning";
-        return "normal";
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -884,86 +457,20 @@
             return;
         _ = InvokeAsync(StateHasChanged);
     }
-    
+
     /// <summary>
-    /// 同步选择器值（从 SessionState 获取）
+    /// 幂等同步 AppState.CurrentSessionId（供首页"继续会话"导航定位；无需事件订阅）
     /// </summary>
-    private void SyncSelectorValues()
+    private void SyncCurrentSessionId(Services.SessionWindowContext ctx)
     {
-        // 以会话落盘值为准；子代理常不在 Primary 下拉里，禁止回退成首项（如 acp-cursor）
-        var agent = SessionState.CurrentSession?.SelectedAgent
-            ?? SessionState.SelectedAgent
-            ?? "";
-
-        if (!string.IsNullOrEmpty(agent))
-            _selectedAgent = agent;
-        else
-            _selectedAgent = _agentNames.FirstOrDefault() ?? "";
-
-        RefreshAgentRuntime();
-
-        var model = (SessionState.SelectedModel ?? "").Trim();
-
-        if (IsSubAgentView)
+        var id = ctx.CurrentSession?.Id;
+        if (!string.IsNullOrEmpty(id)
+            && !string.Equals(AppState.CurrentSessionId, id, StringComparison.Ordinal))
         {
-            // 子会话只读：存什么展示什么，不做下拉匹配回退
-            _selectedModel = model;
+            AppState.CurrentSessionId = id;
         }
-        else if (_isAcpPassthrough)
-        {
-            _selectedModel = model;
-        }
-        else if (_models.Count == 0)
-        {
-            _selectedModel = model;
-        }
-        else if (string.IsNullOrEmpty(model))
-        {
-            // 新建/未选模型：展示 DefaultModel；仅当 DefaultModel 为空时才用目录首项
-            var defaultModel = (ModelManager.GetDefaultModel() ?? "").Trim();
-            _selectedModel = !string.IsNullOrEmpty(defaultModel)
-                ? defaultModel
-                : (_models.FirstOrDefault()?.Id ?? "");
-        }
-        else
-        {
-            // 保留会话值（含孤儿模型），勿回退成目录首项
-            _selectedModel = model;
-        }
-
-        _selectedAcpMode = SessionState.SelectedAcpMode ?? "";
-        _modelInvalid = false;
-        RequestRender();
     }
 
-    private void RefreshAgentRuntime()
-    {
-        if (string.IsNullOrWhiteSpace(_selectedAgent))
-        {
-            _isAcpPassthrough = false;
-            return;
-        }
-
-        var info = AppState.AvailableAgents.FirstOrDefault(a =>
-            string.Equals(a.Name, _selectedAgent, StringComparison.OrdinalIgnoreCase));
-
-        if (info == null)
-        {
-            // SubAgent / 隐藏 Agent 不在 Primary 列表：向注册表查询真实 Runtime
-            try
-            {
-                info = AgentRegistry.GetAgentAsync(_selectedAgent).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                info = null;
-            }
-        }
-
-        // TaskTool 子会话理论上只会是 Native；查不到时不要当成 ACP
-        _isAcpPassthrough = info?.Runtime == Seeing.Agent.Abstractions.Agents.AgentRuntime.AcpPassthrough;
-    }
-    
     /// <summary>
     /// 加载模型选项
     /// </summary>
@@ -983,7 +490,7 @@
         {
             _agentNames = new List<string>();
         }
-        
+
         // 加载模型选项
         try
         {
@@ -1003,89 +510,9 @@
         }
 
         _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
-        RefreshAgentRuntime();
-        // 注意：不在这里调用 SyncSelectorValues()，因为会话还没加载
-        // 选择器值会在 LoadSessionByIdAsync 或 LoadSessionAsync 完成后同步
-    }
-    
-    /// <summary>
-    /// Agent 选择变更
-    /// </summary>
-    private async Task OnAgentChanged(string value)
-    {
-        _selectedAgent = value ?? "";
-        SessionState.SelectedAgent = _selectedAgent;
-        
-        var wasAcpPassthrough = _isAcpPassthrough;
-        RefreshAgentRuntime();
-        
-        // 切换 Agent 后重新加载命令列表（按 Runtime 过滤）
-        LoadCommandsFromBackend();
-        
-        // 切换到 ACP Agent 时，清空 Provider 和 Model，让用户重新输入
-        if (!wasAcpPassthrough && _isAcpPassthrough)
-        {
-            _selectedModel = "";
-            _selectedAcpMode = "";
-            SessionState.SelectedModel = "";
-            SessionState.SelectedAcpMode = "";
-            
-            if (SessionState.CurrentSession != null)
-            {
-                SessionState.CurrentSession.SelectedModel = "";
-                SessionState.CurrentSession.SelectedAcpMode = "";
-            }
-        }
-        // 切换到 Native Agent 时，尝试恢复默认模型
-        else if (wasAcpPassthrough && !_isAcpPassthrough)
-        {
-            var defaultModel = ModelManager.GetDefaultModel()
-                ?? _models.FirstOrDefault()?.Id
-                ?? "";
-            _selectedModel = defaultModel;
-            SessionState.SelectedModel = defaultModel;
-
-            if (SessionState.CurrentSession != null)
-            {
-                SessionState.CurrentSession.SelectedModel = defaultModel;
-                SessionState.SelectedModel = defaultModel;
-            }
-        }
-        
-        // Agent 变更时也需要更新 session（通过 session.updated hook）
-        if (SessionState.CurrentSession != null)
-        {
-            SessionState.CurrentSession.SelectedAgent = _selectedAgent;
-            SessionState.CurrentSession.UpdatedAt = DateTime.Now;
-            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
-        }
+        // 注意：不在这里同步选中值；会话选中值经 SessionWindow.SyncContextState 回流到 Context
     }
 
-    /// <summary>
-    /// Native 模型选择变更
-    /// </summary>
-    private async Task OnModelChanged(string value)
-    {
-        _selectedModel = value ?? "";
-        _modelInvalid = false;
-
-        await SessionManager.SetModelAsync(SessionState.SessionId, _selectedModel);
-    }
-
-    private async Task OnAcpModelChanged(string? value)
-    {
-        _selectedModel = value ?? "";
-        
-        // 统一由 SessionManager 处理模型切换，Budget 会自动更新
-        await SessionManager.SetModelAsync(SessionState.SessionId, _selectedModel);
-    }
-
-    private void OnAcpModeChanged(string? value)
-    {
-        _selectedAcpMode = value ?? "";
-        SessionState.SelectedAcpMode = _selectedAcpMode;
-    }
-    
     /// <summary>
     /// 加载工具和技能数据（用于快速命令浮窗）
     /// </summary>
@@ -1102,55 +529,42 @@
             // 静默处理，不影响主流程
         }
     }
-    
+
     /// <summary>
-    /// 从后端加载命令列表
+    /// Agent 选择变更（委托窗口实现：写回会话并持久化）
     /// </summary>
-    private void LoadCommandsFromBackend()
+    private async Task OnAgentChanged(string value)
     {
-        try
-        {
-            _availableCommands = CommandListService.GetAvailableCommands(SessionState);
-        }
-        catch (Exception)
-        {
-            _availableCommands = new List<CommandItemViewModel>();
-        }
+        if (_windowContext?.SetAgentAsync != null)
+            await _windowContext.SetAgentAsync(value);
     }
-    
+
     /// <summary>
-    /// 显示帮助信息
+    /// Native 模型选择变更（委托窗口实现：写回会话）
     /// </summary>
-    private void ShowHelp()
+    private async Task OnModelChanged(string value)
     {
-        var helpText = @"可用命令:
-
-基础命令:
-  /help   - 显示帮助信息
-  /clear  - 清空当前会话消息
-
-会话命令:
-  /new    - 创建新会话
-  /fork   - 分支当前会话
-  /compact- 压缩会话上下文
-
-设置命令:
-  /model  - 跳转模型设置页面
-  /agent  - 跳转 Agent 设置页面
-  /mcp    - 跳转 MCP 管理页面
-  /skill  - 跳转技能列表页面
-  /init   - 跳转设置页面
-
-开发中:
-  /undo, /redo, /share, /terminal
-
-快捷键:
-  Enter        - 发送消息
-  Shift+Enter  - 换行";
-        
-        MessageService.Info(helpText);
+        if (_windowContext?.SetModelAsync != null)
+            await _windowContext.SetModelAsync(value);
     }
-    
+
+    /// <summary>
+    /// ACP Provider/Model 输入变更（委托窗口实现：写回会话）
+    /// </summary>
+    private async Task OnAcpModelChanged(string? value)
+    {
+        if (_windowContext?.SetModelAsync != null)
+            await _windowContext.SetModelAsync(value ?? "");
+    }
+
+    /// <summary>
+    /// ACP Mode 输入变更（委托窗口实现：写回会话）
+    /// </summary>
+    private void OnAcpModeChanged(string? value)
+    {
+        _windowContext?.SetAcpMode?.Invoke(value ?? "");
+    }
+
     /// <summary>
     /// 创建新会话
     /// </summary>
@@ -1167,797 +581,57 @@
             MessageService.Error(string.Format("创建会话失败: {0}", ex.Message));
         }
     }
-    
 
     /// <summary>
-    /// 参数变更时：仅在 SessionId 变化时加载；同 Id 禁止无条件 Reset。
+    /// 分支会话（委托窗口实现：含导航）
     /// </summary>
-    protected override async Task OnParametersSetAsync()
+    private async Task OnBranchSession()
     {
-        if (!_optionsReady)
-            return;
-
-        if (!string.IsNullOrEmpty(SessionId) && SessionId != _loadedSessionId)
-        {
-            await LoadSessionByIdAsync(SessionId);
-            _loadedSessionId = SessionId;
-
-            // 切换到正在执行的会话（含子会话）：重新绑定事件流（Router 已订阅，无需自起循环）
-            // 并恢复执行状态，实时渲染最新消息
-            EnsureStreamBinding(SessionId);
-            RestoreExecutionFromOverview(SessionId);
-        }
+        if (_windowContext?.BranchAsync != null)
+            await _windowContext.BranchAsync();
     }
 
     /// <summary>
-    /// 加载会话
+    /// 清空会话（委托窗口实现）
     /// </summary>
-    private async Task LoadSessionAsync()
+    private async Task OnClearSession()
     {
-        IsLoadingSession = true;
-
-        try
-        {
-            // 如果路由有指定会话 ID，加载该会话
-            if (!string.IsNullOrEmpty(SessionId))
-            {
-                await LoadSessionByIdAsync(SessionId);
-            }
-            else
-            {
-                // 无路由参数时，确保有会话可用
-                if (SessionState.CurrentSession == null)
-                {
-                    var sessions = await ChatOrchestrator.ListSessionsAsync();
-                    if (sessions.Count > 0)
-                    {
-                        // 加载最近的会话
-                        await LoadSessionByIdAsync(sessions.First().Id);
-                    }
-                    else
-                    {
-                        // 无任何会话，显示空状态
-                        ShowEmptyState = true;
-                    }
-                }
-                else
-                {
-                    // 已有当前会话，直接使用
-                    _renderedTitle = SessionState.CurrentSession?.Title;
-                    ResetTimelineFromSession();
-                    ShowEmptyState = false;
-                    SyncSelectorValues();
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = string.Format("加载会话失败: {0}", ex.Message);
-            ShowEmptyState = true;
-        }
-        finally
-        {
-            IsLoadingSession = false;
-            RequestRender();
-        }
+        if (_windowContext?.ClearAsync != null)
+            await _windowContext.ClearAsync();
     }
 
     /// <summary>
-    /// 根据 ID 加载会话
+    /// 从 Task 子会话返回主会话（委托窗口实现：含导航）
     /// </summary>
-    private async Task LoadSessionByIdAsync(string sessionId)
+    private void ReturnToParentSession()
     {
-        var sessionData = await ChatOrchestrator.GetSessionAsync(sessionId);
-
-        if (sessionData != null)
-        {
-            // 切换会话：清理上一会话遗留的压缩进度状态（压缩进行中切走时无 Completed 事件清除）
-            _compactionInProgress = false;
-            _compactionProgress = null;
-            _compactionReasoning = null;
-
-            // 切换会话：清理上一会话残留的流式状态（handler 的流式消息指针 /
-            // LoopId / Task 索引），避免父会话消息指针被渲染进当前会话时间线
-            _currentStreamingMessageId = string.Empty;
-            _handler?.ClearCache();
-
-            SessionState.SetSession(sessionData);
-            _renderedTitle = sessionData.Title;
-
-            // 先重建 Timeline，确保切换会话立即展示目标会话消息；
-            // 避免默认 Agent/Model 解析异常中断会话切换。
-            ResetTimelineFromSession();
-
-            try
-            {
-                await EnsureDefaultAgentSelectionAsync();
-            }
-            catch
-            {
-                // 默认 Agent/Model 解析失败不应阻断会话加载
-            }
-            
-            // 更新当前会话 ID
-            AppState.CurrentSessionId = sessionId;
-            
-            // 同步选择器显示值
-            SyncSelectorValues();
-            
-            // 通知 UI 更新
-            AppState.NotifyChange();
-            
-            // 显示空状态
-            ShowEmptyState = false;
-
-            // 和解：进程关闭后残留的「执行中」Task 卡片
-            await ReconcileIncompleteTasksAsync();
-            
-            // 计算并更新 Token 预算状态
-            UpdateBudgetStatus();
-        }
-        else
-        {
-            ErrorMessage = string.Format("找不到会话: {0}", sessionId);
-            ShowEmptyState = true;
-        }
+        _windowContext?.ReturnToParent?.Invoke();
     }
 
-    /// <summary>
-    /// 会话未指定 Agent/Model 时，按 .seeing 配置解析默认值并同步到 UI 状态。
-    /// Native：空 SelectedModel 回填 Agent.Model / DefaultModel；ACP 不回退 Native DefaultModel。
-    /// </summary>
-    private async Task EnsureDefaultAgentSelectionAsync()
-    {
-        if (SessionState.CurrentSession == null)
-            return;
-
-        var changed = false;
-
-        if (string.IsNullOrWhiteSpace(SessionState.CurrentSession.SelectedAgent))
-        {
-            var agentId = await AgentSelectionResolver.ResolveAgentIdAsync(
-                null,
-                null,
-                SessionState.CancellationToken);
-            SessionState.SelectedAgent = agentId;
-            _selectedAgent = agentId;
-            SessionState.CurrentSession.SelectedAgent = agentId;
-            changed = true;
-        }
-
-        RefreshAgentRuntime();
-
-        if (!_isAcpPassthrough && string.IsNullOrEmpty(SessionState.CurrentSession.SelectedModel))
-        {
-            var agentName = SessionState.CurrentSession.SelectedAgent;
-            if (ModelManager.SeedSessionModel(SessionState.CurrentSession, agentName))
-            {
-                SessionState.SelectedModel = SessionState.CurrentSession.SelectedModel;
-                changed = true;
-            }
-        }
-
-        if (changed)
-        {
-            SessionState.CurrentSession.UpdatedAt = DateTime.Now;
-            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
-        }
-    }
-
-    /// <summary>
-    /// 获取占位符文本
-    /// </summary>
-    private string GetPlaceholderText()
-    {
-        if (SessionState.IsExecuting)
-            return "正在处理...";
-        return $"向 {SessionState.SelectedAgent} Agent 发送消息...";
-    }
-
-    /// <summary>
-    /// 获取帮助文本
-    /// </summary>
-    private string GetHelpText()
-    {
-        return "Enter 发送 | Shift+Enter 换行 | 支持粘贴图片和拖放文件";
-    }
-
-    /// <summary>
-    /// 当前会话的自动批准策略（三态）
-    /// </summary>
-    private SessionAutoApprove CurrentAutoApprove
-    {
-        get => SessionState.CurrentSession?.AutoApprove ?? SessionAutoApprove.FollowGlobal;
-        set
-        {
-            if (SessionState.CurrentSession != null)
-                SessionState.CurrentSession.AutoApprove = value;
-        }
-    }
-
-    /// <summary>
-    /// 自动批准策略变更：写回会话并持久化
-    /// </summary>
-    private async Task OnAutoApproveChanged(SessionAutoApprove value)
-    {
-        if (SessionState.CurrentSession == null)
-            return;
-
-        SessionState.CurrentSession.AutoApprove = value;
-        SessionState.CurrentSession.UpdatedAt = DateTime.Now;
-        await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
-    }
-
-    /// <summary>
-    /// 提交消息处理（使用 Submit + SubscribeEvents 模式）
-    /// </summary>
-    private async Task OnSubmitMessage(PromptSubmitEventArgs args)
-    {
-        if (IsSubAgentView)
-        {
-            ErrorMessage = "子会话为只读，请先分叉为独立会话后再发送消息";
-            return;
-        }
-
-        // 验证输入
-        if (string.IsNullOrWhiteSpace(args.Text) && args.Attachments.Count == 0)
-        {
-            ErrorMessage = "请输入消息内容";
-            return;
-        }
-
-        // 确保有当前会话
-        if (SessionState.CurrentSession == null)
-        {
-            ErrorMessage = "请先创建或选择一个会话";
-            return;
-        }
-
-        // 清除错误消息
-        ErrorMessage = null;
-
-        // Native 模式：发送前校验当前选择的模型真实可用（为空或不在可用目录中 → 拦截并要求选择）
-        if (!_isAcpPassthrough)
-        {
-            var modelAvailable = !string.IsNullOrEmpty(_selectedModel)
-                && _models.Any(m => m.Id == _selectedModel);
-            if (!modelAvailable)
-            {
-                _modelInvalid = true;
-                ErrorMessage = string.IsNullOrEmpty(_selectedModel)
-                    ? "请先选择一个可用的模型"
-                    : $"当前模型不可用（{_selectedModel}），请重新选择";
-                args.IsRejected = true;
-                return;
-            }
-        }
-
-        // 构建输入
-        var input = new ChatInput { Text = args.Text };
-        
-        if (args.Attachments != null && args.Attachments.Count > 0)
-        {
-            input = new ChatInput
-            {
-                Text = args.Text,
-                Attachments = args.Attachments
-                    .Where(a => a.Status == AttachmentUploadStatus.Completed)
-                    .Select(a => new ChatAttachment
-                    {
-                        Base64Data = ExtractBase64Data(a.Base64Content),
-                        MimeType = a.FileType,
-                        FileName = a.FileName
-                    }).ToList()
-            };
-        }
-
-        var options = new ChatOptions
-        {
-            AgentId = SessionState.SelectedAgent,
-            ModelId = SessionState.SelectedModel,
-            ModeId = SessionState.SelectedAcpMode,
-            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot,
-            // 传递权限通道，支持交互式确认
-            PermissionChannel = PermissionChannel,
-            // 会话级自动批准策略（三态）
-            AutoApprove = SessionState.CurrentSession?.AutoApprove ?? SessionAutoApprove.FollowGlobal
-        };
-
-        try
-        {
-            // I1：会话空闲清理（CompleteSession）后消费 loop 已停止但消费者仍挂载；
-            // 提交前重新挂载 handler，使 loop 在事件产生前重建，避免新执行事件无 loop 消费。
-            // 正常情况（loop 存活）下为幂等跳过，无副作用。
-            if (_handler != null)
-                Router.AttachConsumer(SessionState.SessionId, _handler);
-
-            // 防重复提交：已有执行则直接拒绝（避免 Enter/点击竞态打出两次 Loop）
-            if (!SessionState.TryStartExecution())
-            {
-                ErrorMessage = "当前会话已有执行在进行中，请稍候";
-                return;
-            }
-
-            SessionState.ExecutionStatus = ExecutionStatus.Pending;
-            
-            // 提交执行（用户消息会立即保存）
-            var result = await ChatOrchestrator.SubmitAsync(SessionState.SessionId, input, options);
-            
-            if (!result.Success)
-            {
-                ErrorMessage = result.Error ?? "提交失败";
-                SessionState.CompleteExecution();
-                await InvokeAsync(StateHasChanged);
-                return;
-            }
-
-            // Append newly persisted user (and any other) messages without full Reset.
-            ReconcileTimelineFromSession();
-            Timeline.RequestPinToBottom();
-            _currentStreamingMessageId = string.Empty;
-
-            // 更新 UI 状态
-            SessionState.ExecutionStatus = result.Status;
-            SessionState.QueuePosition = result.QueuePosition;
-            SessionState.CurrentExecutionId = result.ExecutionId;
-            
-            await InvokeAsync(StateHasChanged);
-            // 事件流订阅已由 EnsureStreamBinding 经 Router 建立，无需手动消费循环
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"执行失败: {ex.Message}";
-            SessionState.CompleteExecution();
-            SessionState.ExecutionStatus = null;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    /// <summary>
-    /// 建立/切换当前会话的事件流绑定：
-    /// 页面经 Router 获取当前会话的渲染 handler 与任务卡片聚合器，订阅其回调；
-    /// 订阅循环由 Router 统一维护，页面不再自写 await foreach 消费循环。
-    /// 会话切换时解绑旧 handler 并绑定新 handler。
-    /// </summary>
-    private void EnsureStreamBinding(string sessionId)
-    {
-        if (string.IsNullOrEmpty(sessionId))
-            return;
-
-        if (string.Equals(_boundSessionId, sessionId, StringComparison.Ordinal) && _handler != null)
-            return; // 已绑定当前会话
-
-        // 解绑旧会话
-        if (_handler != null)
-        {
-            if (_onHandlerChangedCallback != null)
-            {
-                _handler.OnStateChanged -= _onHandlerChangedCallback;
-                _onHandlerChangedCallback = null;
-            }
-            Router.DetachConsumer(_handler.SessionId, _handler);
-        }
-        if (_aggregator != null)
-        {
-            _aggregator.AssistantChanged -= OnAggregatorAssistantChanged;
-        }
-
-        var circuitId = CircuitContext.Id ?? "";
-        _handler = Router.GetOrCreateConsumer<EventStreamHandler>(sessionId, circuitId);
-        _handler.ClearCache();
-        // async Task 方法不能直接赋给 Action 委托（CS0407），用 lambda 桥接并保留引用以便退订
-        _onHandlerChangedCallback = evt => _ = OnHandlerChanged(evt);
-        _handler.OnStateChanged += _onHandlerChangedCallback;
-        Router.AttachConsumer(sessionId, _handler);
-
-        // M3：页面刷新/会话切换产生的新 handler 无活跃执行 ID（_activeExecutionId=null），
-        // 从 ExecutionJobService overview 恢复当前非终态执行，避免首个 ExecutionComplete 因
-        // ExecutionId 不匹配被忽略（排队/多执行场景执行态无法正确配对清理）。
-        var overview = ChatOrchestrator.GetOverview(sessionId);
-        if (overview?.CurrentExecution != null && !overview.CurrentExecution.IsTerminal)
-            _handler.RestoreExecution(overview.CurrentExecution.ExecutionId, overview.CurrentExecution.Status);
-
-        _aggregator = Router.GetOrCreateCircuitConsumer<TaskCardAggregator>(circuitId);
-        _aggregator.Rebind(sessionId);
-        // 页面刷新/会话切换恢复：重扫会话内所有 task 工具调用，重新挂载子会话订阅并补聚合 TaskSteps
-        _aggregator.Reconcile(sessionId);
-        _aggregator.AssistantChanged += OnAggregatorAssistantChanged;
-
-        _boundSessionId = sessionId;
-    }
-
-    /// <summary>
-    /// handler 状态变更回调（承接原 ConsumeEventStreamAsync 的事件 → UI 反应）。
-    /// 仅 StreamDelta 走节流，其余事件立即同步；不得在此调用 handler.ProcessEventAsync
-    /// （handler 已由 Router 消费流并内部处理事件、写 SessionData）。
-    /// </summary>
-    private async Task OnHandlerChanged(IMessageEvent evt)
-    {
-        if (evt == null)
-            return;
-
-        // 只处理当前绑定会话的事件（防御：handler 已按会话绑定，理论上不会收到其他会话事件）
-        if (!string.IsNullOrEmpty(evt.SessionId)
-            && !string.Equals(evt.SessionId, SessionState.SessionId, StringComparison.Ordinal))
-            return;
-
-        switch (evt)
-        {
-            case ExecutionCompleteEvent completeEvt:
-                // 执行态清理：handler 已按 ExecutionId 匹配维护 ExecutionStatus；
-                // 排队场景 exec2 仍在跑时 handler.IsStreamActive=true，页面不清执行态（已知边界）。
-                if (_handler != null && !_handler.IsStreamActive)
-                {
-                    SessionState.ExecutionStatus = completeEvt.Status;
-                    SessionState.CurrentExecutionId = null;
-                    SessionState.CompleteExecution();
-                }
-                SyncTimelineAssistantFromStream(isComplete: true);
-                CompleteCurrentTimelineTurn();
-                ReconcileTimelineFromSession();
-                await SyncTitleFromSessionAsync();
-                break;
-            case LoopCompleteEvent:
-                SyncTimelineAssistantFromStream(isComplete: true);
-                CompleteCurrentTimelineTurn();
-                break;
-            case LoopCancelledEvent:
-            case ErrorEvent:
-                SyncTimelineAssistantFromStream(isComplete: true);
-                CompleteCurrentTimelineTurn();
-                ReconcileTimelineFromSession();
-                break;
-            case StreamDeltaEvent deltaEvt:
-                // 节流（保留原逻辑：代码块内放宽阈值，块边界强制刷新）
-                HandleStreamDeltaThrottled(deltaEvt);
-                break;
-            case StreamStartEvent:
-            case ToolCallEvent:
-            case StreamCompleteEvent:
-            case LoopStartEvent:
-            case PermissionRequestEvent:
-            case PermissionResponseEvent:
-            case TodoUpdateEvent:
-            case ModeUpdateEvent:
-                SyncTimelineAssistantFromStream(isComplete: false);
-                break;
-            case SessionTitleChangedEvent titleEvt:
-                if (string.Equals(SessionState.CurrentSession?.Id, titleEvt.SessionId, StringComparison.Ordinal))
-                    ApplyTitleToUi(titleEvt.Title);
-                break;
-            case SessionUpdatedEvent:
-                // Whitelist: structural session rewrite
-                ResetTimelineFromSession();
-                break;
-            case NavigateEvent navEvt:
-                if (!string.IsNullOrEmpty(navEvt.Target))
-                    NavigationManager.NavigateTo(navEvt.Target);
-                break;
-            case CommandResultEvent commandEvt:
-                // 命令结果：压缩等命令要求全量刷新时间线；导航命令走 NavigationTarget
-                if (commandEvt.NeedsRefresh)
-                {
-                    ResetTimelineFromSession();
-                    ReconcileTimelineFromSession();
-                }
-                if (!string.IsNullOrEmpty(commandEvt.NavigationTarget))
-                    NavigationManager.NavigateTo(commandEvt.NavigationTarget);
-                break;
-            case CompactionStartedEvent:
-                // 压缩开始：在列表末尾显示流式进度条目（与最终摘要条位置一致），等待 summarizing 增量
-                _compactionInProgress = true;
-                _compactionProgress = string.Empty;
-                _compactionReasoning = string.Empty;
-                break;
-            case CompactionDeltaEvent cde:
-                // 压缩进度：实时拼接摘要生成内容（正文 + 思考），页面不长时间无响应
-                if (!string.IsNullOrEmpty(cde.ContentDelta))
-                    _compactionProgress += cde.ContentDelta;
-                if (!string.IsNullOrEmpty(cde.ReasoningDelta))
-                    _compactionReasoning += cde.ReasoningDelta;
-                break;
-            case CompactionCompletedEvent:
-                // 压缩完成：会话内容已变更，全量重建时间线
-                _compactionInProgress = false;
-                _compactionProgress = null;
-                _compactionReasoning = null;
-                ResetTimelineFromSession();
-                ReconcileTimelineFromSession();
-                break;
-            case CompactionFailedEvent cfe:
-                _compactionInProgress = false;
-                _compactionProgress = null;
-                _compactionReasoning = null;
-                ResetTimelineFromSession();
-                ReconcileTimelineFromSession();
-                if (!string.IsNullOrEmpty(cfe.ErrorMessage))
-                    MessageService.Error(string.Format("压缩失败: {0}", cfe.ErrorMessage));
-                break;
-            default:
-                // Unknown event: incremental sync only — never mid-stream Reset
-                SyncTimelineAssistantFromStream(isComplete: false);
-                ReconcileTimelineFromSession();
-                break;
-        }
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    /// <summary>
-    /// StreamDelta 节流同步：累积字符数达到阈值才刷新时间线
-    /// （普通 8、代码块内 20、块边界/换行强制刷新）。
-    /// </summary>
-    private void HandleStreamDeltaThrottled(StreamDeltaEvent deltaEvt)
-    {
-        var contentLen = deltaEvt.ContentDelta?.Length ?? 0;
-        var reasoningLen = deltaEvt.ReasoningDelta?.Length ?? 0;
-        _streamCharCount += contentLen + reasoningLen;
-
-        var inCodeBlock = _currentCodeBlockDepth > 0;
-        var contentDelta = deltaEvt.ContentDelta;
-        var hasNewline = contentDelta?.Contains("\n") == true;
-        var threshold = inCodeBlock ? 20 : 8;
-
-        if (contentDelta?.Contains("```") == true)
-        {
-            _currentCodeBlockDepth += contentDelta.Count(c => c == '`') / 3;
-            _currentCodeBlockDepth = Math.Max(0, _currentCodeBlockDepth % 2 == 0 ? 0 : 1);
-            threshold = 0;
-        }
-
-        if (_streamCharCount >= threshold || hasNewline || threshold == 0)
-        {
-            SyncTimelineAssistantFromStream(isComplete: false);
-            _streamCharCount = 0;
-        }
-    }
-
-    /// <summary>
-    /// 任务卡片聚合器回调：子会话 TaskSteps 变更 → 增量同步时间线。
-    /// </summary>
-    private void OnAggregatorAssistantChanged(SessionMessage msg)
-    {
-        Timeline.SyncAssistantMessage(msg, SessionState.SessionId ?? "");
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    /// <summary>
-    /// 从 SessionManager 同步最新标题到 UI 状态。
-    /// </summary>
-    private Task SyncTitleFromSessionAsync()
-    {
-        if (SessionState.CurrentSession == null)
-            return Task.CompletedTask;
-
-        var live = SessionManager.Get(SessionState.CurrentSession.Id);
-        ApplyTitleToUi(live?.Title);
-        return Task.CompletedTask;
-    }
-
-
-
-    /// <summary>
-    /// 处理 IMessageEvent - 仅处理 UI 相关逻辑
-    /// 消息数据由 EventStreamHandler 统一管理
-    /// </summary>
-    private void HandleMessageEvent(IMessageEvent evt)
-    {
-        // 消息数据由 EventStreamHandler 处理
-        // 这里只处理 UI 相关的逻辑（如导航、刷新等）
-        
-        if (evt is NavigateEvent navEvt && !string.IsNullOrEmpty(navEvt.Target))
-        {
-            NavigationManager.NavigateTo(navEvt.Target);
-        }
-    }
-
-    /// <summary>
-    /// 查找工具调用的目标消息
-    /// </summary>
-    private SessionMessage? FindTargetMessageForToolCall(ToolCallEvent toolEvt)
-    {
-        if (SessionState.CurrentSession?.Messages == null)
-            return null;
-        
-        // 1. 优先使用 _currentStreamingMessageId
-        if (!string.IsNullOrEmpty(_currentStreamingMessageId))
-        {
-            var msg = SessionState.CurrentSession.Messages.FirstOrDefault(m => m.Id == _currentStreamingMessageId);
-            if (msg != null)
-                return msg;
-        }
-        
-        // 2. 使用 LoopId 查找
-        if (!string.IsNullOrEmpty(toolEvt.LoopId))
-        {
-            var msg = SessionState.CurrentSession.Messages
-                .Where(m => m.LoopId == toolEvt.LoopId && m.Role == "assistant")
-                .OrderByDescending(m => m.Step)
-                .FirstOrDefault();
-            if (msg != null)
-                return msg;
-        }
-        
-        // 3. 使用最后一条助手消息
-        return SessionState.CurrentSession.Messages
-            .Where(m => m.Role == "assistant")
-            .LastOrDefault();
-    }
-
-    /// <summary>
-    /// 从 Base64 字符串中提取纯 Base64 数据（去除 data: 前缀）
-    /// </summary>
-    private static string ExtractBase64Data(string? base64Content)
-    {
-        if (string.IsNullOrEmpty(base64Content))
-            return string.Empty;
-        
-        // 检查是否有 data: URL 前缀
-        const string dataPrefix = "data:";
-        if (base64Content.StartsWith(dataPrefix))
-        {
-            // 找到 base64, 的位置
-            var base64Index = base64Content.IndexOf(";base64,");
-            if (base64Index >= 0)
-            {
-                return base64Content.Substring(base64Index + 8);
-            }
-        }
-        
-        return base64Content;
-    }
-
-    /// <summary>
-    /// 取消执行处理（使用新的 Cancel API）
-    /// <para>
-    /// 原子化：先立即落本地终态（不依赖后续可能抛异常的调用），
-    /// 后端取消与任务标记为尽力而为，异常不影响 UI 状态。
-    /// </para>
-    /// </summary>
-    private async Task OnCancelExecution()
-    {
-        // 1) 立即清本地执行态（原子、无 await）
-        var executionId = SessionState.CurrentExecutionId;
-        var sessionId = SessionState.SessionId;
-        SessionState.CancelExecution();
-        SessionState.ExecutionStatus = ExecutionStatus.Cancelled;
-        SessionState.CurrentExecutionId = null;
-
-        // 2) 后端取消（尽力而为）
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            try
-            {
-                await ChatOrchestrator.CancelBySessionAsync(sessionId);
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
-        try
-        {
-            if (_handler != null)
-                await _handler.MarkIncompleteTasksCancelledAsync("用户取消");
-        }
-        catch
-        {
-            // ignore
-        }
-
-        if (!string.IsNullOrEmpty(executionId))
-        {
-            try
-            {
-                ChatOrchestrator.Cancel(executionId);
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
-        // 3) 收尾（无论后端结果如何都要执行）
-        SessionState.CompleteExecution();
-
-        if (SessionState.CurrentSession != null)
-        {
-            SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("用户取消了当前执行"));
-        }
-
-        SyncTimelineAssistantFromStream(isComplete: true);
-        CompleteCurrentTimelineTurn();
-        ReconcileTimelineFromSession();
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task ReconcileIncompleteTasksAsync()
-    {
-        if (_handler == null)
-            return;
-
-        try
-        {
-            var n = await _handler.ReconcileOrphanTaskCardsAsync(taskId =>
-                Task.FromResult(ChatOrchestrator.GetOverview(taskId)?.HasActiveExecution == true));
-
-            if (n > 0)
-                ResetTimelineFromSession();
-        }
-        catch
-        {
-            // ignore reconcile failures
-        }
-    }
-    
-    /// <summary>
-    /// 工具点击处理（Task 卡片「打开详情」→ 导航 Child Session）
-    /// </summary>
-    private void OnToolClick(ToolCallViewModel tool)
-    {
-        if (!string.IsNullOrEmpty(tool.TaskId))
-        {
-            NavigationManager.NavigateTo($"/session/{tool.TaskId}");
-            return;
-        }
-
-        SelectedToolCall = tool;
-    }
-    
-    /// <summary>
-    /// 返回首页
-    /// </summary>
-    private void GoToHome()
-    {
-        NavigationManager.NavigateTo("/home");
-    }
-
-    /// <summary>移动端切换溢出面板</summary>
-    private void ToggleMobileHeader()
-    {
-        _showMobileHeaderPanel = !_showMobileHeaderPanel;
-    }
-    
-    /// <summary>
-    /// 截断工作区路径显示
-    /// </summary>
-    private static string TruncateWorkspacePath(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return path;
-        if (path.Length <= 30) return path;
-        
-        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (parts.Length <= 2) return path;
-        
-        // 显示最后两级目录
-        return ".../" + string.Join("/", parts.TakeLast(2));
-    }
-    
     /// <summary>
     /// 重命名会话
     /// </summary>
     private void OnRenameSession()
     {
-        RenameForm.Title = SessionState.Title;
+        RenameForm.Title = _windowContext?.Title ?? "";
         RenameModalVisible = true;
     }
-    
+
     /// <summary>
     /// 确认重命名
     /// </summary>
     private async Task OnRenameConfirm()
     {
-        if (!string.IsNullOrWhiteSpace(RenameForm.Title) && SessionState.CurrentSession != null)
+        if (!string.IsNullOrWhiteSpace(RenameForm.Title))
         {
-            await ChatOrchestrator.RenameSessionAsync(SessionState.CurrentSession.Id, RenameForm.Title.Trim());
-            MessageService.Success("会话已重命名");
+            if (_windowContext?.RenameAsync != null)
+                await _windowContext.RenameAsync(RenameForm.Title.Trim());
         }
-        
+
         RenameModalVisible = false;
         await InvokeAsync(StateHasChanged);
     }
-    
+
     /// <summary>
     /// 取消重命名
     /// </summary>
@@ -1971,24 +645,26 @@
 
     private void OnEditOutbound()
     {
-        if (SessionState.CurrentSession == null) return;
+        var session = _windowContext?.CurrentSession;
+        if (session == null) return;
 
         OutboundForm = new OutboundEditForm
         {
-            ChannelId = SessionState.CurrentSession.ChannelId ?? "",
-            UserId = SessionState.CurrentSession.UserId ?? ""
+            ChannelId = session.ChannelId ?? "",
+            UserId = session.UserId ?? ""
         };
         OutboundModalVisible = true;
     }
 
     private async Task OnOutboundConfirm()
     {
-        if (SessionState.CurrentSession != null)
+        var session = _windowContext?.CurrentSession;
+        if (session != null)
         {
-            SessionState.CurrentSession.ChannelId = NormalizeOutbound(OutboundForm.ChannelId);
-            SessionState.CurrentSession.UserId = NormalizeOutbound(OutboundForm.UserId);
-            SessionState.CurrentSession.UpdatedAt = DateTime.Now;
-            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+            session.ChannelId = NormalizeOutbound(OutboundForm.ChannelId);
+            session.UserId = NormalizeOutbound(OutboundForm.UserId);
+            session.UpdatedAt = DateTime.Now;
+            await SessionManager.SaveAsync(session.Id);
             MessageService.Success("出站绑定已保存");
         }
 
@@ -2000,124 +676,44 @@
     {
         OutboundModalVisible = false;
     }
-    
-    /// <summary>
-    /// 分支会话（从 SubAgent 分叉为无 Parent 的独立 Root）
-    /// </summary>
-    private async Task OnBranchSession()
-    {
-        if (SessionState.CurrentSession == null) return;
 
-        var title = IsSubAgentView
-            ? string.Format("{0} (独立会话)", SessionState.Title)
-            : string.Format("{0} (分支)", SessionState.Title);
-        
-        var branchedSession = await ChatOrchestrator.BranchSessionAsync(SessionState.CurrentSession.Id, title);
-        
-        MessageService.Success(IsSubAgentView
-            ? "已分叉为独立会话，可继续对话"
-            : "会话已分支");
-        
-        NavigationManager.NavigateTo(string.Format("/session/{0}", branchedSession.Id));
+    /// <summary>
+    /// 返回首页
+    /// </summary>
+    private void GoToHome()
+    {
+        NavigationManager.NavigateTo("/home");
+    }
+
+    /// <summary>移动端切换溢出面板</summary>
+    private void ToggleMobileHeader()
+    {
+        _showMobileHeaderPanel = !_showMobileHeaderPanel;
     }
 
     /// <summary>
-    /// 从 Task 子会话返回主会话
+    /// 截断工作区路径显示
     /// </summary>
-    private void ReturnToParentSession()
+    private static string TruncateWorkspacePath(string path)
     {
-        var parentId = SessionState.CurrentSession?.ParentSessionId;
-        if (string.IsNullOrEmpty(parentId))
-            return;
+        if (string.IsNullOrEmpty(path)) return path;
+        if (path.Length <= 30) return path;
 
-        NavigationManager.NavigateTo($"/session/{parentId}");
+        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Length <= 2) return path;
+
+        // 显示最后两级目录
+        return ".../" + string.Join("/", parts.TakeLast(2));
     }
-    
-    /// <summary>
-    /// 清空会话
-    /// </summary>
-    private async Task OnClearSession()
-    {
-        if (IsSubAgentView) return;
 
-        if (SessionState.CurrentSession != null)
-        {
-            SessionState.CurrentSession.ClearMessages();
-            SessionState.CurrentSession.Title = "新会话";
-            SessionState.CurrentTodoList = null;
-            _currentStreamingMessageId = string.Empty;
-            _handler?.ClearCache();
-
-            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
-            UpdateBudgetStatus();
-            MessageService.Info("会话已清空");
-            ResetTimelineFromSession();
-        }
-
-        await InvokeAsync(StateHasChanged);
-    }
-    
-    /// <summary>
-    /// 清除错误消息
-    /// </summary>
-    private void OnClearError()
-    {
-        ErrorMessage = null;
-    }
-    
-    /// <summary>
-    /// 手动触发压缩 - 通过命令通道发送 /compact（由主库 CompressionService 执行）
-    /// </summary>
-    private async Task OnCompactRequested()
-    {
-        if (SessionState.CurrentSession == null) return;
-
-        if (SessionState.IsExecuting)
-        {
-            MessageService.Warning("当前会话正在执行，请稍后再压缩");
-            return;
-        }
-
-        // 复用提交链路：ChatOrchestrator 识别 /compact 命令 → shouldContinue:false 终止循环
-        // → CommandResultEvent(NeedsRefresh=true) → OnHandlerChanged 刷新时间线
-        await OnSubmitMessage(new PromptSubmitEventArgs { Text = "/compact" });
-    }
-    
     /// <summary>
     /// 释放资源（导航离开 / 电路断开）
     /// </summary>
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChange;
-        SessionState.CancelExecution();
-        _budgetSubscription?.Dispose();
-        _sessionEventSubscription?.Dispose();
-        _seeingAgentOptionsSubscription?.Dispose();
-
-        // 退订事件回调并摘除 handler 订阅（aggregator 的父会话订阅由 Rebind 自行切换；
-        // circuit 关闭时 SeeingCircuitHandler 统一 DetachAllForCircuit，此处不调用）
-        if (_handler != null)
-        {
-            if (_onHandlerChangedCallback != null)
-            {
-                _handler.OnStateChanged -= _onHandlerChangedCallback;
-                _onHandlerChangedCallback = null;
-            }
-            Router.DetachConsumer(_handler.SessionId, _handler);
-        }
-        if (_aggregator != null)
-        {
-            _aggregator.AssistantChanged -= OnAggregatorAssistantChanged;
-        }
-
-        // 2026-08-27 修复：Dispose 不再取消后端执行 / 标记未完成 Task 为取消。
-        // 刷新页面 / 导航离开 / 关闭标签都会触发 Blazor circuit 关闭 → Dispose；
-        // 原先在此调用 CancelBySessionAsync 会取消整个会话的后端执行（表现为"对话已取消: user"），
-        // 且 MarkIncompleteTasksCancelledAsync 会把仍进行中的子任务标记为取消。
-        // 现改为仅清理 UI 订阅：后端执行继续，重新打开会话经 Reconcile 恢复进度/结果。
-        // 用户主动取消仍走 OnCancelExecution（保留）。
     }
-    
+
     /// <summary>
     /// 重命名表单模型
     /// </summary>

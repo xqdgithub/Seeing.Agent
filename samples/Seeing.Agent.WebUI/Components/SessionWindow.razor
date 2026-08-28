@@ -1,0 +1,1347 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.State
+@using Seeing.Agent.WebUI.Shared
+@using Seeing.Agent.Abstractions.Events
+@using Services = Seeing.Agent.WebUI.Services
+@using Core = Seeing.Agent.Core
+@using Seeing.Session.Core
+@using Seeing.Agent.App
+@using Seeing.Agent.App.Events
+@using Seeing.Agent.Events
+@using Seeing.Agent.Execution
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Llm
+@using Seeing.Agent.Tools
+@using Seeing.Agent.Skills
+@using Seeing.Agent.Models
+@using Microsoft.Extensions.Options
+@inject AppState AppState
+@inject Services.SessionEventStreamRouter Router
+@inject Services.CircuitContext CircuitContext
+@inject NavigationManager NavigationManager
+@inject IMessageService MessageService
+@inject IChatOrchestrator ChatOrchestrator
+@inject Abstractions.Agents.IAgentRegistry AgentRegistry
+@inject Core.AgentSelectionResolver AgentSelectionResolver
+@inject IWorkspaceProvider WorkspaceProvider
+@inject Seeing.Agent.Abstractions.Permissions.IPermissionChannel PermissionChannel
+@inject ToolManager ToolInvoker
+@inject SkillManager SkillManager
+@inject ILlmService LlmService
+@inject IModelManager ModelManager
+@inject Services.CommandListService CommandListService
+@inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
+@inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
+@inject ISessionManager SessionManager
+@inject ISessionEventPublisher SessionEventPublisher
+@inject Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
+@implements IDisposable
+
+<div Class="@($"session-window session-window--{ModeCss}")">
+    @if (ViewMode == Services.SessionWindowMode.Full)
+    {
+        @if (Header != null)
+        {
+            @Header(Context)
+        }
+        <div Class="session-window-content">
+            @if (ShowEmptyState)
+            {
+                <Empty Class="session-empty-state">
+                    <DescriptionTemplate>
+                        <div Class="empty-content">
+                            <Icon Type="@IconType.Outline.FileAdd" Class="empty-icon" Style="font-size: 48px;" />
+                            <p Style="font-size: 18px; margin-top: 16px;">暂无会话</p>
+                            <p Class="empty-hint">点击下方按钮或顶部工具栏的"新建会话"开始对话</p>
+                            <Button Type="@ButtonType.Primary"
+                                    Icon="@IconType.Outline.Plus"
+                                    OnClick="@CreateNewSessionAsync"
+                                    Style="margin-top: 16px;">
+                                新建会话
+                            </Button>
+                        </div>
+                    </DescriptionTemplate>
+                </Empty>
+            }
+            else
+            {
+                <MessageList AutoScroll="true"
+                             Timeline="@Timeline"
+                             OnToolClick="@OnToolClick"
+                             CompactionInProgress="@_sync.CompactionInProgress"
+                             CompactionReasoning="@_sync.CompactionReasoning"
+                             CompactionProgress="@_sync.CompactionProgress" />
+            }
+
+            @* 加载状态指示器 *@
+            @if (IsLoadingSession)
+            {
+                <div Class="loading-overlay">
+                    <Spin Size="@SpinSize.Large" Tip="加载会话..." />
+                </div>
+            }
+        </div>
+
+        @if (!ShowEmptyState)
+        {
+            <div Class="session-input-container">
+                @if (IsSubAgentView)
+                {
+                    <div class="subagent-readonly-banner" style="padding: 12px 16px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <Icon Type="@IconType.Outline.Eye" />
+                        <span style="flex: 1;">当前为 Task 子会话（只读）。可返回主会话，或分叉为独立会话后再继续对话。</span>
+                        @if (!string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
+                        {
+                            <Button Type="@ButtonType.Default"
+                                    Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.ArrowLeft"
+                                    OnClick="@ReturnToParentSession">
+                                返回主会话
+                            </Button>
+                        }
+                        <Button Type="@ButtonType.Primary"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Copy"
+                                OnClick="@OnBranchSession">
+                            分叉为独立会话
+                        </Button>
+                    </div>
+                }
+                else
+                {
+                    <SlotHost SlotName="session_prompt" />
+                    <PromptInput IsProcessing="@SessionState.HasActiveExecution"
+                                 Placeholder="@GetPlaceholderText()"
+                                 HelpText="@GetHelpText()"
+                                 AvailableCommands="@_availableCommands"
+                                 SessionState="SessionState"
+                                 CancellationTokenSource="@SessionState.CancellationTokenSource"
+                                 BudgetStatus="SessionState.BudgetStatus"
+                                 AutoApprove="@CurrentAutoApprove"
+                                 OnAutoApproveChanged="@OnAutoApproveChanged"
+                                 GlobalAutoApprove="@_globalAutoApprove"
+                                 AutoApproveDisabled="@IsSubAgentView"
+                                 OnCompactRequested="OnCompactRequested"
+                                 OnSubmitCallback="@OnSubmitMessage"
+                                 OnCancelCallback="@OnCancelExecution" />
+                }
+            </div>
+        }
+
+        @if (SessionState.CurrentTodoList != null && SessionState.CurrentTodoList.HasTasks)
+        {
+            <div Class="session-todo-panel">
+                <TodoPanel TodoList="@SessionState.CurrentTodoList" />
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <Alert Type="@AlertType.Error" Message="@ErrorMessage" ShowIcon="true" Closable="true"
+                   OnClose="@OnClearError" Class="session-error-alert" />
+        }
+    }
+    else
+    {
+        @* Summary 模式：摘要卡片（标题/badge/执行状态/最新消息预览/运行中工具） *@
+        <div class="conference-tile" @onclick="OnTileClick">
+            <div class="conference-tile-header">
+                <span class="conference-tile-title">@SessionState.Title</span>
+                <Badge Status="@GetStatusBadge()" />
+            </div>
+            <div class="conference-tile-body">
+                @GetLatestAssistantPreview()
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+
+    // ---- 参数 ----
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+    [Parameter] public Services.SessionWindowMode ViewMode { get; set; } = Services.SessionWindowMode.Full;
+    [Parameter] public RenderFragment<Services.SessionWindowContext>? Header { get; set; }
+    [Parameter] public EventCallback<string> OnClick { get; set; }
+    [Parameter] public string? AggregatorSessionId { get; set; }
+    [Parameter] public Seeing.Agent.WebUI.State.SessionState? GlobalSessionState { get; set; }
+
+    // ---- 内部状态（每窗口自建） ----
+    public Services.SessionWindowContext Context { get; private set; } = new();
+    public SessionState SessionState { get; private set; } = new();
+    public Services.MessageTimelineStore Timeline { get; private set; } = new();
+    private Seeing.Agent.WebUI.State.SessionState? _globalSessionState;
+    private Services.SessionWindowTimelineSync _sync = null!;
+    private Services.EventStreamHandler? _handler;
+    private Services.TaskCardAggregator? _aggregator;
+    private string? _boundSessionId;
+    private Action<IMessageEvent>? _onHandlerChangedCallback;
+    private string? _loadedSessionId;
+    private string? _renderedTitle;
+    private Services.SessionWindowMode _lastViewMode = Services.SessionWindowMode.Full;
+    private IDisposable? _budgetSubscription;
+    private IDisposable? _sessionEventSubscription;
+    private IDisposable? _seeingAgentOptionsSubscription;
+    private bool _globalAutoApprove;
+    private List<CommandItemViewModel> _availableCommands = new();
+    private string _currentStreamingMessageId = string.Empty;
+    private bool _modelInvalid;
+    private string? ErrorMessage;
+    private bool ShowEmptyState;
+    private bool IsLoadingSession;
+
+    private string ModeCss => ViewMode == Services.SessionWindowMode.Full ? "full" : "summary";
+    private bool IsSubAgentView => SessionState.CurrentSession?.Kind == SessionKind.SubAgent;
+
+    /// <summary>
+    /// 组件初始化：加载命令列表、加载会话、建立事件流绑定、订阅预算与标题事件。
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        _globalSessionState = GlobalSessionState;
+
+        // 初始构建时间线同步器（会话 ID 可能随后经 LoadSessionByIdAsync 校正）
+        EnsureSyncForSession(SessionId);
+
+        // 会话级自动批准：读取全局默认值 + 订阅热更
+        _globalAutoApprove = SeeingAgentOptions.CurrentValue.Permission?.AutoApproveAll ?? false;
+        _seeingAgentOptionsSubscription = SeeingAgentOptions.OnChange((opts, name) =>
+        {
+            _globalAutoApprove = opts.Permission?.AutoApproveAll ?? false;
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+        // 加载命令列表（从后端）
+        await LoadCommandsFromBackend();
+
+        // 加载会话（选项就绪后再加载，避免 Select 在 DataSource 为空时渲染）
+        var effectiveSessionId = SessionId;
+        if (!string.IsNullOrEmpty(SessionId))
+        {
+            await LoadSessionByIdAsync(SessionId);
+            _loadedSessionId = SessionId;
+        }
+        else
+        {
+            // 无路由参数时，确保有会话可用（迁移自原 LoadSessionAsync）
+            effectiveSessionId = await LoadRecentOrEmptyAsync();
+        }
+
+        if (!string.IsNullOrEmpty(effectiveSessionId))
+        {
+            // 建立事件流绑定（Router 已订阅父会话流，页面不再自写 await foreach 消费循环）
+            EnsureStreamBinding(effectiveSessionId);
+
+            // 检查是否有正在进行的执行（页面刷新恢复）
+            RestoreExecutionFromOverview(effectiveSessionId);
+        }
+
+        // Subscribe to Budget status updates
+        SubscribeToBudgetUpdates();
+        SubscribeToSessionEvents();
+
+        Context.SessionId = effectiveSessionId ?? "";
+        Context.SetAgentAsync = OnAgentChanged;
+        Context.SetModelAsync = OnModelChanged;
+        Context.SetAcpMode = OnAcpModeChanged;
+        Context.RenameAsync = RenameSessionAsync;
+        Context.BranchAsync = OnBranchSession;
+        Context.ClearAsync = OnClearSession;
+        Context.ReturnToParent = ReturnToParentSession;
+        Context.GetWorkspace = GetWorkspace;
+    }
+
+    /// <summary>
+    /// 参数变更：ViewMode 变化时切换 Full/Summary 侧副作用；SessionId 变化时重载会话。
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_lastViewMode != ViewMode)
+        {
+            _lastViewMode = ViewMode;
+            if (ViewMode == Services.SessionWindowMode.Full)
+            {
+                EnsureAggregatorBinding();
+                SubscribeToBudgetUpdates();
+                if (SessionState.CurrentSession != null)
+                    _globalSessionState?.SetSession(SessionState.CurrentSession);
+            }
+            else
+            {
+                // 离开 Full：退订预算与聚合器回调（避免 Summary 模式持续聚合/渲染）
+                _budgetSubscription?.Dispose();
+                _budgetSubscription = null;
+                if (_aggregator != null)
+                {
+                    _aggregator.AssistantChanged -= OnAggregatorAssistantChanged;
+                    _aggregator = null;
+                }
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (!string.IsNullOrEmpty(SessionId) && SessionId != _loadedSessionId)
+        {
+            await LoadSessionByIdAsync(SessionId);
+            _loadedSessionId = SessionId;
+
+            // 切换到正在执行的会话（含子会话）：重新绑定事件流（Router 已订阅，无需自起循环）
+            // 并恢复执行状态，实时渲染最新消息
+            EnsureStreamBinding(SessionId);
+            RestoreExecutionFromOverview(SessionId);
+        }
+    }
+
+    /// <summary>
+    /// 无路由参数时加载最近会话；无任何会话则显示空状态。
+    /// </summary>
+    private async Task<string?> LoadRecentOrEmptyAsync()
+    {
+        var current = SessionState.CurrentSession;
+        if (current != null)
+        {
+            _renderedTitle = current.Title;
+            ResetTimelineFromSession();
+            ShowEmptyState = false;
+            SyncContextState();
+            return current.Id;
+        }
+
+        var sessions = await ChatOrchestrator.ListSessionsAsync();
+        if (sessions.Count > 0)
+        {
+            var id = sessions.First().Id;
+            await LoadSessionByIdAsync(id);
+            _loadedSessionId = id;
+            return id;
+        }
+
+        // 无任何会话，显示空状态
+        ShowEmptyState = true;
+        IsLoadingSession = false;
+        return null;
+    }
+
+    /// <summary>
+    /// 从 ExecutionJobService 恢复会话执行状态（仅恢复展示态，不再自起订阅）。
+    /// 事件流订阅已由 EnsureStreamBinding 经 Router 建立，用于页面刷新恢复与切换会话恢复。
+    /// </summary>
+    private void RestoreExecutionFromOverview(string sessionId)
+    {
+        var overview = ChatOrchestrator.GetOverview(sessionId);
+        if (overview?.CurrentExecution == null)
+            return;
+
+        // 恢复执行状态
+        SessionState.ExecutionStatus = overview.CurrentExecution.Status;
+        SessionState.QueuePosition = overview.CurrentExecution.QueuePosition;
+        SessionState.CurrentExecutionId = overview.CurrentExecution.ExecutionId;
+        SyncContextState();
+    }
+
+    private void SubscribeToBudgetUpdates()
+    {
+        // Dispose previous subscription
+        _budgetSubscription?.Dispose();
+
+        if (!string.IsNullOrEmpty(SessionState.SessionId))
+        {
+            _budgetSubscription = BudgetNotifier.Subscribe(SessionState.SessionId, status =>
+            {
+                SessionState.UpdateBudgetStatus(status);
+                _ = InvokeAsync(StateHasChanged);
+            });
+        }
+    }
+
+    /// <summary>
+    /// 会话级订阅：标题由 SetTitleAsync → SessionEvent.Updated 驱动，与 execution 生命周期解耦。
+    /// </summary>
+    private void SubscribeToSessionEvents()
+    {
+        _sessionEventSubscription?.Dispose();
+        _sessionEventSubscription = SessionEventPublisher.Events.Subscribe(new SessionEventObserver(OnSessionLifecycleEvent));
+    }
+
+    private void OnSessionLifecycleEvent(SessionEvent evt)
+    {
+        if (evt.Type != SessionEventType.Updated)
+            return;
+
+        var current = SessionState.CurrentSession;
+        if (current == null ||
+            !string.Equals(evt.SessionId, current.Id, StringComparison.Ordinal))
+            return;
+
+        var newTitle = evt.Data?.Title;
+        if (string.IsNullOrEmpty(newTitle))
+            newTitle = SessionManager.Get(evt.SessionId)?.Title;
+
+        ApplyTitleToUi(newTitle);
+    }
+
+    /// <summary>
+    /// 将标题同步到 UI。用 _renderedTitle 区分「引用已就地改写」与「需要重绘」；
+    /// 同时更新 _sync.Title 状态与 Context.Title，使 Full 头部与 Summary 摘要卡片同步。
+    /// </summary>
+    private void ApplyTitleToUi(string? newTitle)
+    {
+        if (string.IsNullOrEmpty(newTitle))
+            return;
+
+        var current = SessionState.CurrentSession;
+        if (current == null)
+            return;
+
+        current.Title = newTitle;
+        if (_sync != null)
+            _sync.Title = newTitle;
+        Context.Title = newTitle;
+        if (string.Equals(_renderedTitle, newTitle, StringComparison.Ordinal))
+            return;
+
+        _renderedTitle = newTitle;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private sealed class SessionEventObserver : IObserver<SessionEvent>
+    {
+        private readonly Action<SessionEvent> _onNext;
+
+        public SessionEventObserver(Action<SessionEvent> onNext) => _onNext = onNext;
+
+        public void OnNext(SessionEvent value) => _onNext(value);
+        public void OnError(Exception error) { }
+        public void OnCompleted() { }
+    }
+
+    // ---- 时间线同步（委托给 _sync 纯类分派） ----
+
+    /// <summary>重建/校正时间线同步器（会话 ID 变化时调用，内部过滤与消息归属均依赖它）</summary>
+    private void EnsureSyncForSession(string sessionId)
+    {
+        _sync = new Services.SessionWindowTimelineSync(
+            Timeline,
+            sessionId,
+            () => _ = InvokeAsync(StateHasChanged),
+            t => ApplyTitleToUi(t),
+            () => SessionState.CurrentSession?.Messages,
+            () => ResolveCurrentStreamingAssistantMessage(),
+            () => _handler?.GetCurrentLoopId());
+    }
+
+    private void ResetTimelineFromSession() => _sync.ResetFromSession();
+    private void ReconcileTimelineFromSession() => _sync.ReconcileAppendFromSession();
+    private void CompleteCurrentTimelineTurn() => _sync.CompleteTurn();
+    private void SyncTimelineAssistantFromStream(bool isComplete) => _sync.SyncAssistant(isComplete);
+
+    /// <summary>
+    /// Resolve the assistant message currently being streamed (preserves timeline identity).
+    /// </summary>
+    private SessionMessage? ResolveCurrentStreamingAssistantMessage()
+    {
+        var messages = SessionState.CurrentSession?.Messages;
+        var fromHandler = _handler?.GetCurrentAssistantMessage();
+        if (fromHandler != null
+            && string.Equals(fromHandler.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+            && Services.MessageTimelineStore.BelongsToSession(fromHandler, SessionState.SessionId, messages))
+        {
+            _currentStreamingMessageId = fromHandler.Id ?? _currentStreamingMessageId;
+            return fromHandler;
+        }
+
+        if (messages == null)
+            return null;
+
+        if (!string.IsNullOrEmpty(_currentStreamingMessageId))
+        {
+            var byId = messages.FirstOrDefault(m => m.Id == _currentStreamingMessageId);
+            if (byId != null
+                && string.Equals(byId.Role, "assistant", StringComparison.OrdinalIgnoreCase))
+                return byId;
+        }
+
+        return messages.LastOrDefault(m =>
+            string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase) && !m.IsSummary);
+    }
+
+    /// <summary>
+    /// 根据 ID 加载会话
+    /// </summary>
+    private async Task LoadSessionByIdAsync(string sessionId)
+    {
+        EnsureSyncForSession(sessionId);
+        IsLoadingSession = true;
+
+        var sessionData = await ChatOrchestrator.GetSessionAsync(sessionId);
+
+        if (sessionData == null)
+        {
+            ErrorMessage = $"找不到会话: {sessionId}";
+            ShowEmptyState = true;
+            IsLoadingSession = false;
+            return;
+        }
+
+        // 切换会话：清理上一会话遗留的压缩进度状态（压缩进行中切走时无 Completed 事件清除）
+        _sync.CompactionInProgress = false;
+        _sync.CompactionProgress = null;
+        _sync.CompactionReasoning = null;
+
+        // 切换会话：清理上一会话残留的流式状态（handler 的流式消息指针 /
+        // LoopId / Task 索引），避免父会话消息指针被渲染进当前会话时间线
+        _currentStreamingMessageId = string.Empty;
+        _handler?.ClearCache();
+
+        SessionState.SetSession(sessionData);
+
+        // 桥接仅 Full 模式写全局 SessionState（供 SecurityPage/MainLayout 等读取当前会话）
+        if (ViewMode == Services.SessionWindowMode.Full)
+            _globalSessionState?.SetSession(sessionData);
+
+        _renderedTitle = sessionData.Title;
+
+        // 先重建 Timeline，确保切换会话立即展示目标会话消息；
+        // 避免默认 Agent/Model 解析异常中断会话切换。
+        ResetTimelineFromSession();
+
+        try
+        {
+            await EnsureDefaultAgentSelectionAsync();
+        }
+        catch
+        {
+            // 默认 Agent/Model 解析失败不应阻断会话加载
+        }
+
+        SyncContextState();
+
+        // 显示空状态
+        ShowEmptyState = false;
+
+        // 和解：进程关闭后残留的「执行中」Task 卡片
+        await ReconcileIncompleteTasksAsync();
+
+        // 计算并更新 Token 预算状态
+        UpdateBudgetStatus();
+
+        IsLoadingSession = false;
+        Context.NotifySessionLoaded();
+    }
+
+    /// <summary>
+    /// 会话未指定 Agent/Model 时，按 .seeing 配置解析默认值并同步到 UI 状态。
+    /// Native：空 SelectedModel 回填 Agent.Model / DefaultModel；ACP 不回退 Native DefaultModel。
+    /// </summary>
+    private async Task EnsureDefaultAgentSelectionAsync()
+    {
+        if (SessionState.CurrentSession == null)
+            return;
+
+        var changed = false;
+
+        if (string.IsNullOrWhiteSpace(SessionState.CurrentSession.SelectedAgent))
+        {
+            var agentId = await AgentSelectionResolver.ResolveAgentIdAsync(
+                null,
+                null,
+                SessionState.CancellationToken);
+            SessionState.SelectedAgent = agentId;
+            SessionState.CurrentSession.SelectedAgent = agentId;
+            changed = true;
+        }
+
+        var agentName = SessionState.CurrentSession.SelectedAgent;
+        var isAcp = await IsAcpAgentAsync(agentName);
+        if (!isAcp && string.IsNullOrEmpty(SessionState.CurrentSession.SelectedModel))
+        {
+            if (ModelManager.SeedSessionModel(SessionState.CurrentSession, agentName))
+            {
+                SessionState.SelectedModel = SessionState.CurrentSession.SelectedModel;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            SessionState.CurrentSession.UpdatedAt = DateTime.Now;
+            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+        }
+    }
+
+    /// <summary>
+    /// 计算并更新当前会话的 Token 预算状态
+    /// </summary>
+    private void UpdateBudgetStatus()
+    {
+        var session = SessionState.CurrentSession;
+        if (session == null) return;
+
+        try
+        {
+            // 使用 TokenBudgetManager 计算预算状态
+            var status = TokenBudgetManager.GetBudgetStatus(session, session.SelectedModel);
+
+            var response = new Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse
+            {
+                SessionId = session.Id,
+                CurrentTokens = status.CurrentTokens,
+                MaxTokens = status.MaxTokens,
+                AvailableTokens = status.AvailableTokens,
+                UsagePercentage = status.UsagePercentage,
+                Level = status.Level.ToString().ToLowerInvariant(),
+                NeedsCompaction = status.Level >= BudgetLevel.Critical,
+                Breakdown = null
+            };
+
+            SessionState.UpdateBudgetStatus(response);
+        }
+        catch (Exception)
+        {
+            // 忽略计算错误
+        }
+    }
+
+    /// <summary>
+    /// 建立/切换当前会话的事件流绑定：
+    /// 窗口经 Router 获取当前会话的渲染 handler 与任务卡片聚合器，订阅其回调；
+    /// 订阅循环由 Router 统一维护，窗口不再自写 await foreach 消费循环。
+    /// 会话切换时解绑旧 handler 并绑定新 handler（聚合器经 EnsureAggregatorBinding 独立 Rebind）。
+    /// </summary>
+    private void EnsureStreamBinding(string sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return;
+
+        if (string.Equals(_boundSessionId, sessionId, StringComparison.Ordinal) && _handler != null)
+            return; // 已绑定当前会话
+
+        // 解绑旧会话
+        if (_handler != null)
+        {
+            if (_onHandlerChangedCallback != null)
+            {
+                _handler.OnStateChanged -= _onHandlerChangedCallback;
+                _onHandlerChangedCallback = null;
+            }
+            Router.DetachConsumer(_handler.SessionId, _handler);
+        }
+
+        var circuitId = CircuitContext.Id ?? "";
+        _handler = Router.GetOrCreateConsumer<Services.EventStreamHandler>(sessionId, circuitId);
+        _handler.ClearCache();
+        // async Task 方法不能直接赋给 Action 委托（CS0407），用 lambda 桥接并保留引用以便退订
+        _onHandlerChangedCallback = evt => _ = OnHandlerChanged(evt);
+        _handler.OnStateChanged += _onHandlerChangedCallback;
+        Router.AttachConsumer(sessionId, _handler);
+
+        // M3：页面刷新/会话切换产生的新 handler 无活跃执行 ID（_activeExecutionId=null），
+        // 从 ExecutionJobService overview 恢复当前非终态执行，避免首个 ExecutionComplete 因
+        // ExecutionId 不匹配被忽略（排队/多执行场景执行态无法正确配对清理）。
+        var overview = ChatOrchestrator.GetOverview(sessionId);
+        if (overview?.CurrentExecution != null && !overview.CurrentExecution.IsTerminal)
+            _handler.RestoreExecution(overview.CurrentExecution.ExecutionId, overview.CurrentExecution.Status);
+
+        EnsureAggregatorBinding();
+        _boundSessionId = sessionId;
+    }
+
+    /// <summary>
+    /// 绑定任务卡片聚合器（仅 Full 模式；聚合器为 circuit 维度实例，同 circuit 跨会话复用）。
+    /// </summary>
+    private void EnsureAggregatorBinding()
+    {
+        if (ViewMode != Services.SessionWindowMode.Full)
+            return;
+
+        var circuitId = CircuitContext.Id ?? "";
+        var aggId = AggregatorSessionId ?? SessionId;
+        _aggregator = Router.GetOrCreateCircuitConsumer<Services.TaskCardAggregator>(circuitId);
+        if (!string.Equals(_aggregator.ParentSessionId, aggId, StringComparison.Ordinal))
+        {
+            _aggregator.Rebind(aggId);
+            // 页面刷新/会话切换恢复：重扫会话内所有 task 工具调用，重新挂载子会话订阅并补聚合 TaskSteps
+            _aggregator.Reconcile(aggId);
+        }
+        _aggregator.AssistantChanged -= OnAggregatorAssistantChanged;
+        _aggregator.AssistantChanged += OnAggregatorAssistantChanged;
+    }
+
+    /// <summary>
+    /// handler 状态变更回调（承接原 ConsumeEventStreamAsync 的事件 → UI 反应）。
+    /// 时间线/压缩/标题等分派已移入 SessionWindowTimelineSync（_sync.ProcessEvent）；
+    /// 此处仅处理导航副作用与执行态清理。
+    /// </summary>
+    private async Task OnHandlerChanged(IMessageEvent evt)
+    {
+        if (evt == null)
+            return;
+
+        // 会话归属过滤（防御：handler 已按会话绑定，理论上不会收到其他会话事件）
+        if (!string.IsNullOrEmpty(evt.SessionId)
+            && !string.Equals(evt.SessionId, SessionState.SessionId, StringComparison.Ordinal))
+            return;
+
+        _sync.ProcessEvent(evt);
+
+        if (evt is ExecutionCompleteEvent completeEvt && _handler != null && !_handler.IsStreamActive)
+        {
+            SessionState.ExecutionStatus = completeEvt.Status;
+            SessionState.CurrentExecutionId = null;
+            SessionState.CompleteExecution();
+            SyncContextState();
+        }
+
+        if (evt is NavigateEvent navEvt && !string.IsNullOrEmpty(navEvt.Target))
+            NavigationManager.NavigateTo(navEvt.Target);
+        else if (evt is CommandResultEvent commandEvt && !string.IsNullOrEmpty(commandEvt.NavigationTarget))
+            NavigationManager.NavigateTo(commandEvt.NavigationTarget);
+        else if (evt is CompactionFailedEvent cfe && !string.IsNullOrEmpty(cfe.ErrorMessage))
+            MessageService.Error($"压缩失败: {cfe.ErrorMessage}");
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 任务卡片聚合器回调：子会话 TaskSteps 变更 → 增量同步时间线。
+    /// 仅当聚合器当前父会话与本窗口会话一致时才同步（聚合器为 circuit 共享实例）。
+    /// </summary>
+    private void OnAggregatorAssistantChanged(SessionMessage msg)
+    {
+        var aggId = AggregatorSessionId ?? SessionId;
+        if (!string.Equals(SessionId, aggId, StringComparison.Ordinal))
+            return;
+        Timeline.SyncAssistantMessage(msg, SessionId);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 同步窗口上下文快照（外层头部经 Header 模板读取）。
+    /// </summary>
+    private void SyncContextState()
+    {
+        var s = SessionState.CurrentSession;
+        Context.CurrentSession = s;
+        Context.Title = s?.Title ?? "新会话";
+        Context.IsSubAgentView = IsSubAgentView;
+        Context.IsQueued = SessionState.IsQueued;
+        Context.QueuePosition = SessionState.QueuePosition;
+        Context.HasActiveExecution = SessionState.HasActiveExecution;
+        Context.IsExecuting = SessionState.IsExecuting;
+        Context.SelectedAgent = SessionState.SelectedAgent;
+        Context.SelectedModel = SessionState.SelectedModel;
+        Context.SelectedAcpMode = SessionState.SelectedAcpMode;
+        Context.ExecutionStatus = SessionState.ExecutionStatus;
+        Context.CurrentTodoList = SessionState.CurrentTodoList;
+        Context.ModelInvalid = _modelInvalid;
+        Context.NotifyStateChanged();
+        _ = InvokeAsync(StateHasChanged); // 渲染自触发：外层头部读新值
+        _ = RefreshIsAcpAsync();
+    }
+
+    private async Task RefreshIsAcpAsync()
+    {
+        var agentId = SessionState.CurrentSession?.SelectedAgent;
+        if (string.IsNullOrWhiteSpace(agentId))
+        {
+            if (Context.IsAcpPassthrough)
+            {
+                Context.IsAcpPassthrough = false;
+                Context.NotifyStateChanged();
+                _ = InvokeAsync(StateHasChanged);
+            }
+            return;
+        }
+        var isAcp = await IsAcpAgentAsync(agentId);
+        if (Context.IsAcpPassthrough != isAcp)
+        {
+            Context.IsAcpPassthrough = isAcp;
+            Context.NotifyStateChanged();
+            _ = InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>查询 Agent 是否为 ACP 透传运行模式</summary>
+    private async Task<bool> IsAcpAgentAsync(string agentId)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+            return false;
+        try
+        {
+            var info = await AgentRegistry.GetAgentAsync(agentId);
+            return info?.Runtime == Seeing.Agent.Abstractions.Agents.AgentRuntime.AcpPassthrough;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Agent 选择变更：写回会话并持久化；ACP 切换时清空 SelectedModel/SelectedAcpMode。
+    /// </summary>
+    private async Task OnAgentChanged(string value)
+    {
+        var wasAcp = Context.IsAcpPassthrough;
+        SessionState.SelectedAgent = value;
+        if (SessionState.CurrentSession != null)
+        {
+            SessionState.CurrentSession.SelectedAgent = value;
+            SessionState.CurrentSession.UpdatedAt = DateTime.Now;
+            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+        }
+        await RefreshIsAcpAsync();
+
+        // 切换 Agent 后重新加载命令列表（按 Runtime 过滤）
+        _ = LoadCommandsFromBackend();
+
+        // 切换到 ACP Agent 时，清空 Provider 和 Model，让用户重新输入
+        if (!wasAcp && Context.IsAcpPassthrough)
+        {
+            SessionState.SelectedModel = "";
+            SessionState.SelectedAcpMode = "";
+            if (SessionState.CurrentSession != null)
+            {
+                SessionState.CurrentSession.SelectedModel = "";
+                SessionState.CurrentSession.SelectedAcpMode = "";
+            }
+        }
+
+        SyncContextState();
+    }
+
+    /// <summary>
+    /// Native 模型选择变更
+    /// </summary>
+    private async Task OnModelChanged(string value)
+    {
+        SessionState.SelectedModel = value ?? "";
+        _modelInvalid = false;
+
+        await SessionManager.SetModelAsync(SessionState.SessionId, value ?? "");
+        SyncContextState();
+    }
+
+    private void OnAcpModeChanged(string value)
+    {
+        SessionState.SelectedAcpMode = value ?? "";
+        SyncContextState();
+    }
+
+    /// <summary>
+    /// 提交消息处理（使用 Submit + SubscribeEvents 模式）。
+    /// Native 模式发送前校验模型真实可用（为空或不在可用目录中 → 拦截并要求选择）。
+    /// </summary>
+    private async Task OnSubmitMessage(PromptSubmitEventArgs args)
+    {
+        if (IsSubAgentView)
+        {
+            ErrorMessage = "子会话为只读，请先分叉为独立会话后再发送消息";
+            return;
+        }
+
+        // 验证输入
+        if (string.IsNullOrWhiteSpace(args.Text) && args.Attachments.Count == 0)
+        {
+            ErrorMessage = "请输入消息内容";
+            return;
+        }
+
+        // 确保有当前会话
+        if (SessionState.CurrentSession == null)
+        {
+            ErrorMessage = "请先创建或选择一个会话";
+            return;
+        }
+
+        // 清除错误消息
+        ErrorMessage = null;
+
+        // Native 模式：发送前校验当前选择的模型真实可用（为空或不在可用目录中 → 拦截并要求选择）
+        if (!Context.IsAcpPassthrough)
+        {
+            var modelAvailable = !string.IsNullOrEmpty(SessionState.SelectedModel)
+                && AppState.AvailableModels.ContainsKey(SessionState.SelectedModel);
+            if (!modelAvailable)
+            {
+                _modelInvalid = true;
+                Context.ModelInvalid = true;
+                Context.NotifyStateChanged();
+                ErrorMessage = string.IsNullOrEmpty(SessionState.SelectedModel)
+                    ? "请先选择一个可用的模型"
+                    : $"当前模型不可用（{SessionState.SelectedModel}），请重新选择";
+                args.IsRejected = true;
+                return;
+            }
+        }
+
+        // 构建输入
+        var input = new ChatInput { Text = args.Text };
+
+        if (args.Attachments != null && args.Attachments.Count > 0)
+        {
+            input = new ChatInput
+            {
+                Text = args.Text,
+                Attachments = args.Attachments
+                    .Where(a => a.Status == AttachmentUploadStatus.Completed)
+                    .Select(a => new ChatAttachment
+                    {
+                        Base64Data = ExtractBase64Data(a.Base64Content),
+                        MimeType = a.FileType,
+                        FileName = a.FileName
+                    }).ToList()
+            };
+        }
+
+        var options = new ChatOptions
+        {
+            AgentId = SessionState.SelectedAgent,
+            ModelId = SessionState.SelectedModel,
+            ModeId = SessionState.SelectedAcpMode,
+            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot,
+            // 传递权限通道，支持交互式确认
+            PermissionChannel = PermissionChannel,
+            // 会话级自动批准策略（三态）
+            AutoApprove = SessionState.CurrentSession?.AutoApprove ?? SessionAutoApprove.FollowGlobal
+        };
+
+        try
+        {
+            // I1：会话空闲清理（CompleteSession）后消费 loop 已停止但消费者仍挂载；
+            // 提交前重新挂载 handler，使 loop 在事件产生前重建，避免新执行事件无 loop 消费。
+            // 正常情况（loop 存活）下为幂等跳过，无副作用。
+            if (_handler != null)
+                Router.AttachConsumer(SessionState.SessionId, _handler);
+
+            // 防重复提交：已有执行则直接拒绝（避免 Enter/点击竞态打出两次 Loop）
+            if (!SessionState.TryStartExecution())
+            {
+                ErrorMessage = "当前会话已有执行在进行中，请稍候";
+                return;
+            }
+
+            SessionState.ExecutionStatus = ExecutionStatus.Pending;
+
+            // 提交执行（用户消息会立即保存）
+            var result = await ChatOrchestrator.SubmitAsync(SessionState.SessionId, input, options);
+
+            if (!result.Success)
+            {
+                ErrorMessage = result.Error ?? "提交失败";
+                SessionState.CompleteExecution();
+                SyncContextState();
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            // Append newly persisted user (and any other) messages without full Reset.
+            ReconcileTimelineFromSession();
+            Timeline.RequestPinToBottom();
+            _currentStreamingMessageId = string.Empty;
+
+            // 更新 UI 状态
+            SessionState.ExecutionStatus = result.Status;
+            SessionState.QueuePosition = result.QueuePosition;
+            SessionState.CurrentExecutionId = result.ExecutionId;
+
+            SyncContextState();
+            await InvokeAsync(StateHasChanged);
+            // 事件流订阅已由 EnsureStreamBinding 经 Router 建立，无需手动消费循环
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"执行失败: {ex.Message}";
+            SessionState.CompleteExecution();
+            SessionState.ExecutionStatus = null;
+            SyncContextState();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// 取消执行处理（使用新的 Cancel API）。
+    /// 原子化：先立即落本地终态（不依赖后续可能抛异常的调用），
+    /// 后端取消与任务标记为尽力而为，异常不影响 UI 状态。
+    /// </summary>
+    private async Task OnCancelExecution()
+    {
+        // 1) 立即清本地执行态（原子、无 await）
+        var executionId = SessionState.CurrentExecutionId;
+        var sessionId = SessionState.SessionId;
+        SessionState.CancelExecution();
+        SessionState.ExecutionStatus = ExecutionStatus.Cancelled;
+        SessionState.CurrentExecutionId = null;
+
+        // 2) 后端取消（尽力而为）
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            try
+            {
+                await ChatOrchestrator.CancelBySessionAsync(sessionId);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        try
+        {
+            if (_handler != null)
+                await _handler.MarkIncompleteTasksCancelledAsync("用户取消");
+        }
+        catch
+        {
+            // ignore
+        }
+
+        if (!string.IsNullOrEmpty(executionId))
+        {
+            try
+            {
+                ChatOrchestrator.Cancel(executionId);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        // 3) 收尾（无论后端结果如何都要执行）
+        SessionState.CompleteExecution();
+
+        if (SessionState.CurrentSession != null)
+        {
+            SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("用户取消了当前执行"));
+        }
+
+        SyncTimelineAssistantFromStream(isComplete: true);
+        CompleteCurrentTimelineTurn();
+        ReconcileTimelineFromSession();
+        SyncContextState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ReconcileIncompleteTasksAsync()
+    {
+        if (_handler == null)
+            return;
+
+        try
+        {
+            var n = await _handler.ReconcileOrphanTaskCardsAsync(taskId =>
+                Task.FromResult(ChatOrchestrator.GetOverview(taskId)?.HasActiveExecution == true));
+
+            if (n > 0)
+                ResetTimelineFromSession();
+        }
+        catch
+        {
+            // ignore reconcile failures
+        }
+    }
+
+    /// <summary>
+    /// 工具点击处理（Task 卡片「打开详情」→ 导航 Child Session）
+    /// </summary>
+    private void OnToolClick(ToolCallViewModel tool)
+    {
+        if (!string.IsNullOrEmpty(tool.TaskId))
+        {
+            NavigationManager.NavigateTo($"/session/{tool.TaskId}");
+            return;
+        }
+    }
+
+    /// <summary>
+    /// 创建新会话（Full 空状态按钮）
+    /// </summary>
+    private async Task CreateNewSessionAsync()
+    {
+        try
+        {
+            var session = await ChatOrchestrator.CreateSessionAsync(
+                workingDirectory: WorkspaceProvider.WorkspaceRoot);
+            NavigationManager.NavigateTo($"/session/{session.Id}");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"创建会话失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 重命名会话（不含对话框，由外层经 Context.RenameAsync 调用）
+    /// </summary>
+    private async Task RenameSessionAsync(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title) || SessionState.CurrentSession == null)
+            return;
+
+        await ChatOrchestrator.RenameSessionAsync(SessionState.CurrentSession.Id, title.Trim());
+        MessageService.Success("会话已重命名");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 分支会话（从 SubAgent 分叉为无 Parent 的独立 Root）
+    /// </summary>
+    private async Task OnBranchSession()
+    {
+        if (SessionState.CurrentSession == null) return;
+
+        var title = IsSubAgentView
+            ? $"{SessionState.Title} (独立会话)"
+            : $"{SessionState.Title} (分支)";
+
+        var branchedSession = await ChatOrchestrator.BranchSessionAsync(SessionState.CurrentSession.Id, title);
+
+        MessageService.Success(IsSubAgentView
+            ? "已分叉为独立会话，可继续对话"
+            : "会话已分支");
+
+        NavigationManager.NavigateTo($"/session/{branchedSession.Id}");
+    }
+
+    /// <summary>
+    /// 从 Task 子会话返回主会话
+    /// </summary>
+    private void ReturnToParentSession()
+    {
+        var parentId = SessionState.CurrentSession?.ParentSessionId;
+        if (string.IsNullOrEmpty(parentId))
+            return;
+
+        NavigationManager.NavigateTo($"/session/{parentId}");
+    }
+
+    /// <summary>
+    /// 清空会话
+    /// </summary>
+    private async Task OnClearSession()
+    {
+        if (IsSubAgentView) return;
+
+        if (SessionState.CurrentSession != null)
+        {
+            SessionState.CurrentSession.ClearMessages();
+            SessionState.CurrentSession.Title = "新会话";
+            SessionState.CurrentTodoList = null;
+            _currentStreamingMessageId = string.Empty;
+            _handler?.ClearCache();
+
+            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+            UpdateBudgetStatus();
+            MessageService.Info("会话已清空");
+            ResetTimelineFromSession();
+            _renderedTitle = "新会话";
+            Context.Title = "新会话";
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 清除错误消息
+    /// </summary>
+    private void OnClearError()
+    {
+        ErrorMessage = null;
+    }
+
+    /// <summary>
+    /// 手动触发压缩 - 通过命令通道发送 /compact（由主库 CompressionService 执行）
+    /// </summary>
+    private async Task OnCompactRequested()
+    {
+        if (SessionState.CurrentSession == null) return;
+
+        if (SessionState.IsExecuting)
+        {
+            MessageService.Warning("当前会话正在执行，请稍后再压缩");
+            return;
+        }
+
+        // 复用提交链路：ChatOrchestrator 识别 /compact 命令 → shouldContinue:false 终止循环
+        // → CommandResultEvent(NeedsRefresh=true) → OnHandlerChanged 刷新时间线
+        await OnSubmitMessage(new PromptSubmitEventArgs { Text = "/compact" });
+    }
+
+    /// <summary>
+    /// 获取占位符文本
+    /// </summary>
+    private string GetPlaceholderText()
+    {
+        if (SessionState.IsExecuting)
+            return "正在处理...";
+        return $"向 {SessionState.SelectedAgent} Agent 发送消息...";
+    }
+
+    /// <summary>
+    /// 获取帮助文本
+    /// </summary>
+    private string GetHelpText()
+    {
+        return "Enter 发送 | Shift+Enter 换行 | 支持粘贴图片和拖放文件";
+    }
+
+    /// <summary>
+    /// 当前会话的自动批准策略（三态）
+    /// </summary>
+    private SessionAutoApprove CurrentAutoApprove
+    {
+        get => SessionState.CurrentSession?.AutoApprove ?? SessionAutoApprove.FollowGlobal;
+        set
+        {
+            if (SessionState.CurrentSession != null)
+                SessionState.CurrentSession.AutoApprove = value;
+        }
+    }
+
+    /// <summary>
+    /// 自动批准策略变更：写回会话并持久化
+    /// </summary>
+    private async Task OnAutoApproveChanged(SessionAutoApprove value)
+    {
+        if (SessionState.CurrentSession == null)
+            return;
+
+        SessionState.CurrentSession.AutoApprove = value;
+        SessionState.CurrentSession.UpdatedAt = DateTime.Now;
+        await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+    }
+
+    /// <summary>
+    /// 从后端加载命令列表
+    /// </summary>
+    private async Task LoadCommandsFromBackend()
+    {
+        try
+        {
+            _availableCommands = await Task.Run(() => CommandListService.GetAvailableCommands(SessionState));
+        }
+        catch (Exception)
+        {
+            _availableCommands = new List<CommandItemViewModel>();
+        }
+    }
+
+    /// <summary>
+    /// Summary 模式：执行状态 → AntDesign BadgeStatus 映射
+    /// </summary>
+    private BadgeStatus GetStatusBadge()
+    {
+        if (SessionState.IsExecuting
+            || SessionState.ExecutionStatus is ExecutionStatus.Running
+                or ExecutionStatus.Pending
+                or ExecutionStatus.Queued)
+        {
+            return SessionState.IsQueued ? BadgeStatus.Default : BadgeStatus.Processing;
+        }
+        return BadgeStatus.Success;
+    }
+
+    /// <summary>
+    /// Summary 模式：最新 assistant 消息预览（截断约 120 字符）；
+    /// 为空则取运行中工具调用名。
+    /// </summary>
+    private string GetLatestAssistantPreview()
+    {
+        var messages = SessionState.CurrentSession?.Messages;
+        if (messages == null)
+            return "暂无消息";
+
+        var lastAssistant = messages.LastOrDefault(m =>
+            string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase) && !m.IsSummary);
+        if (lastAssistant != null && !string.IsNullOrWhiteSpace(lastAssistant.Content))
+        {
+            return lastAssistant.Content.Length <= 120
+                ? lastAssistant.Content
+                : lastAssistant.Content[..120] + "…";
+        }
+
+        var runningTool = messages
+            .SelectMany(m => m.ToolCalls ?? Enumerable.Empty<SessionToolCall>())
+            .FirstOrDefault(t => string.Equals(t.Status, "running", StringComparison.OrdinalIgnoreCase));
+        if (runningTool != null && !string.IsNullOrEmpty(runningTool.Name))
+            return $"正在执行工具: {runningTool.Name}";
+
+        return "暂无消息";
+    }
+
+    /// <summary>Summary 模式：工作区路径（预留；外层可经 Context.GetWorkspace 读取）</summary>
+    private string GetWorkspace()
+    {
+        return SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot;
+    }
+
+    /// <summary>Summary 模式：摘要卡片点击 → 通知外层（OnClick 回调携带 SessionId）</summary>
+    private async Task OnTileClick()
+    {
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(SessionId);
+    }
+
+    /// <summary>
+    /// 从 Base64 字符串中提取纯 Base64 数据（去除 data: 前缀）
+    /// </summary>
+    private static string ExtractBase64Data(string? base64Content)
+    {
+        if (string.IsNullOrEmpty(base64Content))
+            return string.Empty;
+
+        // 检查是否有 data: URL 前缀
+        const string dataPrefix = "data:";
+        if (base64Content.StartsWith(dataPrefix))
+        {
+            // 找到 base64, 的位置
+            var base64Index = base64Content.IndexOf(";base64,", StringComparison.Ordinal);
+            if (base64Index >= 0)
+            {
+                return base64Content.Substring(base64Index + 8);
+            }
+        }
+
+        return base64Content;
+    }
+
+    /// <summary>
+    /// 释放资源（导航离开 / 电路断开）
+    /// </summary>
+    public void Dispose()
+    {
+        SessionState.CancelExecution();
+        _budgetSubscription?.Dispose();
+        _sessionEventSubscription?.Dispose();
+        _seeingAgentOptionsSubscription?.Dispose();
+
+        // 退订事件回调并摘除 handler 订阅（aggregator 的父会话订阅由 Rebind 自行切换；
+        // circuit 关闭时 SeeingCircuitHandler 统一 DetachAllForCircuit，此处不调用）
+        if (_handler != null)
+        {
+            if (_onHandlerChangedCallback != null)
+            {
+                _handler.OnStateChanged -= _onHandlerChangedCallback;
+                _onHandlerChangedCallback = null;
+            }
+            Router.DetachConsumer(_handler.SessionId, _handler);
+        }
+        if (_aggregator != null)
+        {
+            _aggregator.AssistantChanged -= OnAggregatorAssistantChanged;
+        }
+
+        // 窗口自建 SessionState 释放执行锁与取消令牌源
+        SessionState.Dispose();
+
+        // 2026-08-27 修复：Dispose 不再取消后端执行 / 标记未完成 Task 为取消。
+        // 刷新页面 / 导航离开 / 关闭标签都会触发 Blazor circuit 关闭 → Dispose；
+        // 原先在此调用 CancelBySessionAsync 会取消整个会话的后端执行（表现为"对话已取消: user"），
+        // 且 MarkIncompleteTasksCancelledAsync 会把仍进行中的子任务标记为取消。
+        // 现改为仅清理 UI 订阅：后端执行继续，重新打开会话经 Reconcile 恢复进度/结果。
+        // 用户主动取消仍走 OnCancelExecution（保留）。
+    }
+}
