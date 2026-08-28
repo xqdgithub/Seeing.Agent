@@ -31,7 +31,7 @@ namespace Seeing.Agent.Execution;
 /// Background execution service that manages execution jobs independently of UI connections.
 /// Supports queuing per session, event streaming, and automatic cleanup.
 /// </summary>
-public class ExecutionJobService : IDisposable
+public class ExecutionJobService : IDisposable, IExecutionStatusProvider
 {
     private readonly ConcurrentDictionary<string, SessionExecutionQueue> _sessionQueues = new();
     private readonly ConcurrentDictionary<string, ExecutionRecord> _executions = new();

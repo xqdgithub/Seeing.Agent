@@ -31,6 +31,7 @@ using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
+using Seeing.Agent.Execution;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
@@ -484,7 +485,8 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<ILogger<TaskTool>>(),
                 sp.GetRequiredService<ISessionManager>(),
                 sp.GetRequiredService<IAgentRegistry>(),
-                sp.GetRequiredService<IAgentLoopScheduler>()));
+                sp.GetRequiredService<IAgentLoopScheduler>(),
+                sp.GetRequiredService<IExecutionStatusProvider>()));
             services.AddSingleton<ITool>(sp => new TaskStatusTool(
                 sp.GetRequiredService<ILogger<TaskStatusTool>>(),
                 sp.GetRequiredService<ISessionManager>()));

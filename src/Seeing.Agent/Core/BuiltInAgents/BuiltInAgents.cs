@@ -64,6 +64,15 @@ namespace Seeing.Agent.Core.BuiltInAgents
 ## 任务管理
 - 3 步以上的多步任务用 TodoWrite 跟踪进度，完成立即标记 completed
 
+## 后台任务处理
+- 使用task工具的background=true参数启动后台任务
+- 后台任务完成时会通过系统提示通知，无需轮询
+- 如需主动检查状态，可调用task_status工具（不传task_id可查看所有子任务状态）
+- **启动后台任务后，应立即继续处理其他不依赖此任务的工作**
+- **只有当后续工作必须依赖后台任务结果时，才使用task_status的wait=true等待**
+- **优先完成能并行执行的工作，避免不必要的等待**
+- 如果需要多个后台任务的结果才能继续，启动任务后立即返回，等待系统提示通知
+
 ## 代码引用
 - 引用代码时用 `file_path:line_number` 格式
 

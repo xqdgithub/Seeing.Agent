@@ -17,6 +17,11 @@
     border-radius: var(--radius-md, 8px);
     background: var(--color-system-bg, #fff7e6);
     box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.03));
+    transition: all 0.2s ease;
+}
+
+.system-reminder.is-collapsed {
+    padding-bottom: var(--space-2, 8px);
 }
 
 .system-reminder__header {
@@ -25,6 +30,10 @@
     justify-content: space-between;
     gap: var(--space-3, 12px);
     margin-bottom: var(--space-2, 8px);
+}
+
+.system-reminder.is-collapsed .system-reminder__header {
+    margin-bottom: 0;
 }
 
 .system-reminder__identity {
@@ -86,6 +95,13 @@
     border-color: rgba(0, 0, 0, 0.06);
 }
 
+.system-reminder__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    flex-shrink: 0;
+}
+
 .system-reminder__toggle {
     display: inline-flex;
     align-items: center;
@@ -113,6 +129,18 @@
     color: var(--color-text, rgba(0, 0, 0, 0.88));
     font-size: var(--font-size-sm, 14px);
     line-height: 1.6;
+    animation: system-reminder-fade-in 0.2s ease;
+}
+
+@keyframes system-reminder-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .system-reminder__task {

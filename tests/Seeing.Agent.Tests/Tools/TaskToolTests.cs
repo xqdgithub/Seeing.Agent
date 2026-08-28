@@ -108,7 +108,7 @@ public class TaskToolTests
 
         var (sessionId, text, _) = fixture.SyntheticInvocations.Single();
         sessionId.Should().Be(fixture.ParentId);
-        text.Should().Contain("Background task completed");
+        text.Should().Contain("后台任务已完成");
         text.Should().Contain($"task_id: {fixture.Child.Id}");
         text.Should().Contain("state: completed");
         text.Should().Contain("<task_result>");

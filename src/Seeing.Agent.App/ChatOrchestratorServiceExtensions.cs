@@ -70,6 +70,7 @@ public static class ChatOrchestratorServiceExtensions
 
         // 注册执行任务服务（Singleton，后台执行）
         services.AddSingleton<ExecutionJobService>();
+        services.AddSingleton<IExecutionStatusProvider>(sp => sp.GetRequiredService<ExecutionJobService>());
 
         // idle resume + Session 事件总线接线
         services.AddHostedService<AgentLoopSchedulerHostedService>();

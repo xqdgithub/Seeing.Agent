@@ -13,6 +13,7 @@ using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Execution;
 using Seeing.Agent.Models;
 using Seeing.Session.Core;
+using SessionStatus = Seeing.Session.Core.SessionStatus;
 
 namespace Seeing.Agent.Tools.BuiltIn.SubTask;
 
@@ -26,16 +27,19 @@ public class TaskTool : ToolBase
     private readonly ISessionManager _sessionManager;
     private readonly IAgentRegistry _agentRegistry;
     private readonly IAgentLoopScheduler _loopScheduler;
+    private readonly IExecutionStatusProvider _execStatusProvider;
 
     public TaskTool(
         ILogger<TaskTool> logger,
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
-        IAgentLoopScheduler loopScheduler) : base(logger)
+        IAgentLoopScheduler loopScheduler,
+        IExecutionStatusProvider execStatusProvider) : base(logger)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;
         _loopScheduler = loopScheduler;
+        _execStatusProvider = execStatusProvider;
     }
 
     public override string Id => "task";
@@ -47,7 +51,7 @@ public class TaskTool : ToolBase
         ["description"] = ("string", "任务简短描述（3-5 个词）", true, null),
         ["prompt"] = ("string", "Agent 要执行的任务内容", true, null),
         ["subagent_type"] = ("string", "专用 Agent 类型", true, null),
-        ["task_id"] = ("string", "任务 ID，用于继续之前的子任务（可选）", false, null),
+        ["task_id"] = ("string", "【重要】不传此参数 = 创建新任务；传入任务ID = 继续该任务。请勿传空字符串。", false, null),
         ["command"] = ("string", "触发此任务的命令（可选）", false, null),
         ["background"] = ("boolean", "是否在后台运行（可选，默认 false）", false, null),
         ["run_in_background"] = ("boolean", "background 的别名（一期兼容，后续移除）", false, null)
@@ -93,8 +97,12 @@ public class TaskTool : ToolBase
         try
         {
             SessionData session;
-            if (!string.IsNullOrEmpty(taskId))
+            if (arguments.TryGetProperty("task_id", out _))
             {
+                // 显式传入了 task_id 参数
+                if (string.IsNullOrEmpty(taskId))
+                    return Failure("task_id 参数不能为空字符串，不传此参数以创建新任务");
+
                 session = _sessionManager.Get(taskId)
                     ?? await _sessionManager.LoadAsync(taskId)
                     ?? throw new InvalidOperationException($"未找到 task_id: {taskId}");
@@ -225,8 +233,17 @@ public class TaskTool : ToolBase
                         {
                             case ExecutionStatus.Completed:
                                 var outputText = ReadChildResult(childId);
-                                var completedBody =
-                                    $"Background task completed: {desc}\ntask_id: {childId}\nstate: completed\n\n<task_result>\n{outputText}\n</task_result>";
+                                var statusSummary = await GetSubAgentStatusSummaryAsync(parentSessionId, childId);
+                                
+                                var completedBody = $"后台任务已完成: {desc}\ntask_id: {childId}\nstate: completed";
+                                
+                                if (!string.IsNullOrEmpty(statusSummary))
+                                {
+                                    completedBody += statusSummary;
+                                }
+                                
+                                completedBody += $"\n\n<task_result>\n{outputText}\n</task_result>";
+                                
                                 await _loopScheduler.InjectSyntheticAsync(
                                     parentSessionId,
                                     SystemReminderRenderer.Wrap(
@@ -292,7 +309,10 @@ public class TaskTool : ToolBase
                 }
 
                 return Success(description, BuildOutput(session.Id, "running",
-                    "Background task started. Continue your current work and call task_status when you need the result."));
+                    $"后台任务已启动，任务ID: {session.Id}。\n\n" +
+                    $"【重要】请继续处理其他不依赖此任务的工作。" +
+                    $"只有当后续工作必须依赖此任务结果时，才使用task_status的wait=true等待。" +
+                    $"系统会在任务完成时自动注入通知。"));
             }
 
             var result = await execService.SubmitAsync(session.Id,
@@ -342,16 +362,19 @@ public class TaskTool : ToolBase
     }
 
     /// <summary>
-    /// 读取子会话最终结果（最后一条非摘要 assistant 消息的内容）。
+    /// 读取子会话所有非摘要 assistant 消息的内容。
     /// </summary>
     private string ReadChildResult(string childId)
     {
         var childSession = _sessionManager.Get(childId);
-        var lastAssistant = childSession?.GetActiveMessages()
-            .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)
-                                && !m.IsSummary);
-        var text = lastAssistant?.Content?.Trim();
-        return string.IsNullOrEmpty(text) ? "子任务执行完成，无输出内容。" : text;
+        var allAssistants = childSession?.GetActiveMessages()
+            .Where(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+                        && !m.IsSummary)
+            .Select(m => m.Content?.Trim())
+            .Where(content => !string.IsNullOrEmpty(content));
+        
+        var result = string.Join("\n\n", allAssistants);
+        return string.IsNullOrEmpty(result) ? "子任务执行完成，无输出内容。" : result;
     }
 
     private static Dictionary<string, string> BuildReminderMeta(
@@ -365,6 +388,89 @@ public class TaskTool : ToolBase
             [SystemReminder.MetadataKeys.Kind] = reminderKind,
             [SystemReminder.MetadataKeys.TaskId] = childId
         };
+
+    /// <summary>
+    /// 获取父会话的所有子代理状态摘要
+    /// </summary>
+    private async Task<string> GetSubAgentStatusSummaryAsync(string parentSessionId, string currentChildId)
+    {
+        var children = await _sessionManager.ListChildrenAsync(parentSessionId, SessionKind.SubAgent);
+        if (children == null || children.Count <= 1)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("\n## 所有子代理状态");
+        
+        var allOthersCompleted = true;
+        var runningTasks = new List<(string Id, string Desc)>();
+        var completedTasks = new List<(string Id, string Desc)>();
+        var failedTasks = new List<(string Id, string Desc)>();
+
+        foreach (var child in children)
+        {
+            // 当前正在完成的子任务标记为已完成
+            if (string.Equals(child.Id, currentChildId, StringComparison.Ordinal))
+            {
+                completedTasks.Add((child.Id, child.Title ?? child.Id));
+                continue;
+            }
+
+            var overview = GetExecutionOverview(child.Id);
+            var state = child.Status switch
+            {
+                SessionStatus.Error => "failed",
+                SessionStatus.Active when overview.HasActiveExecution => "running",
+                SessionStatus.Active => "completed",
+                _ => "completed"
+            };
+
+            var taskDesc = child.Title ?? child.Id;
+            var taskInfo = (child.Id, taskDesc);
+            switch (state)
+            {
+                case "running":
+                    runningTasks.Add(taskInfo);
+                    allOthersCompleted = false;
+                    break;
+                case "completed":
+                    completedTasks.Add(taskInfo);
+                    break;
+                case "failed":
+                    failedTasks.Add(taskInfo);
+                    allOthersCompleted = false;
+                    break;
+            }
+        }
+
+        if (runningTasks.Count > 0)
+        {
+            sb.AppendLine($"运行中: {runningTasks.Count}");
+            foreach (var task in runningTasks)
+                sb.AppendLine($"  - {task.Desc} (ID: {task.Id})");
+        }
+        
+        if (completedTasks.Count > 0)
+        {
+            sb.AppendLine($"已完成: {completedTasks.Count}");
+            foreach (var task in completedTasks)
+                sb.AppendLine($"  - {task.Desc} (ID: {task.Id})");
+        }
+        
+        if (failedTasks.Count > 0)
+        {
+            sb.AppendLine($"失败: {failedTasks.Count}");
+            foreach (var task in failedTasks)
+                sb.AppendLine($"  - {task.Desc} (ID: {task.Id})");
+        }
+
+        if (allOthersCompleted)
+        {
+            sb.AppendLine();
+            sb.AppendLine("✅ 所有子代理任务已完成，可以继续处理父任务。");
+        }
+
+        return sb.ToString();
+    }
 
     private static string BuildOutput(string taskId, string state, string body) =>
         $"task_id: {taskId}\nstate: {state}\n\n<task_result>\n{body}\n</task_result>";
@@ -392,6 +498,14 @@ public class TaskTool : ToolBase
 
     private static bool HasConfiguredModel(AgentDefinition agent) =>
         agent.Model != null && !string.IsNullOrWhiteSpace(agent.Model.ModelId);
+
+    /// <summary>
+    /// 获取执行状态概览
+    /// </summary>
+    private SessionExecutionOverview GetExecutionOverview(string sessionId)
+    {
+        return _execStatusProvider.GetOverview(sessionId);
+    }
 
     private static JsonElement BuildObjectSchema(
         Dictionary<string, (string Type, string Description, bool Required, string[]? EnumValues)> properties)
