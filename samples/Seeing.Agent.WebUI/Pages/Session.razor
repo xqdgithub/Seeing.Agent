@@ -64,18 +64,6 @@
                     <Tooltip Title="@ctx.Title">
                         <span Class="session-title">@ctx.Title</span>
                     </Tooltip>
-                    @if (ctx.IsSubAgentView)
-                    {
-                        <Badge Status="@BadgeStatus.Warning" Text="子会话（只读）" />
-                    }
-                    else if (ctx.IsQueued)
-                    {
-                        <Badge Status="@BadgeStatus.Default" Text="@($"排队中 ({ctx.QueuePosition})" )" />
-                    }
-                    else if (ctx.HasActiveExecution)
-                    {
-                        <Badge Status="@BadgeStatus.Processing" Text="执行中" />
-                    }
                     @{
                         var currentWorkspace = !string.IsNullOrEmpty(ctx.CurrentSession?.WorkingDirectory)
                             ? ctx.CurrentSession.WorkingDirectory

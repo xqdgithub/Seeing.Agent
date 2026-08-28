@@ -187,6 +187,13 @@
     private bool OutboundModalVisible;
     private OutboundEditForm OutboundForm { get; set; } = new();
 
+    /// <summary>
+    /// 选项缓存：大屏切换主窗口会重建工具栏，复用内存选项避免重复查询（配置热重载时短暂旧值可接受）。
+    /// 缓存 30 秒过期，规避长驻内存的陈旧风险。
+    /// </summary>
+    private static readonly TimeSpan OptionCacheTtl = TimeSpan.FromSeconds(30);
+    private static (DateTime LoadedAt, List<string> Agents, List<ModelViewModel> Models)? s_optionCache;
+
     /// <summary>模型视图类 - 用于选择器显示</summary>
     private class ModelViewModel
     {
@@ -248,26 +255,38 @@
     private async Task LoadOptionsAsync()
     {
         _optionsReady = false;
+
+        // 命中缓存（30s 内）直接复用，避免大屏切换主窗口重建工具栏时重复查询
+        if (s_optionCache is { } cache && DateTime.UtcNow - cache.LoadedAt < OptionCacheTtl)
+        {
+            _agentNames = cache.Agents;
+            _models = cache.Models;
+            _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
+            return;
+        }
+
+        var agentNames = new List<string>();
         try
         {
             var agents = await AgentRegistry.GetPrimaryAgentsAsync();
-            _agentNames = agents
+            agentNames = agents
                 .Where(a => !string.IsNullOrEmpty(a.Name))
                 .Select(a => a.Name)
                 .ToList();
         }
         catch (Exception)
         {
-            _agentNames = new List<string>();
+            // 静默失败，选项保持为空
         }
 
+        var models = new List<ModelViewModel>();
         try
         {
             var availableModels = LlmService.GetAvailableModels();
             if (availableModels != null)
             {
                 AppState.AvailableModels = availableModels;
-                _models = availableModels
+                models = availableModels
                     .Where(m => !string.IsNullOrEmpty(m.Key))
                     .Select(m => ToModelViewModel(m.Key, m.Value))
                     .ToList();
@@ -275,10 +294,13 @@
         }
         catch (Exception)
         {
-            _models = new List<ModelViewModel>();
+            // 静默失败，选项保持为空
         }
 
+        _agentNames = agentNames;
+        _models = models;
         _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
+        s_optionCache = (DateTime.UtcNow, agentNames, models);
         await InvokeAsync(StateHasChanged);
     }
 
