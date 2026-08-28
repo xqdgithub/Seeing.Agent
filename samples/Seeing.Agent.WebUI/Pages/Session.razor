@@ -27,12 +27,9 @@
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 @inject IChatOrchestrator ChatOrchestrator
-@inject Abstractions.Agents.IAgentRegistry AgentRegistry
 @inject IWorkspaceProvider WorkspaceProvider
 @inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
-@inject ILlmService LlmService
-@inject ISessionManager SessionManager
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -44,13 +41,11 @@
                    GlobalSessionState="@GlobalSessionState">
         <Header Context="ctx">
             @{
-                // 捕获窗口上下文供本页 @code 方法读写（选择器值/标题/操作委托）
-                _windowContext = ctx;
                 // 幂等同步 AppState.CurrentSessionId（供首页"继续会话"导航定位）
                 SyncCurrentSessionId(ctx);
             }
 
-            <!-- 会话头部 -->
+            <!-- 页级导航区：仅保留与页面路由/全局相关的操作；会话内操作（Agent/模型/重命名/分支/清空/出站绑定）由 SessionToolbar 内置工具栏承载 -->
             <div Class="session-header">
                 <div Class="session-header-left">
                     <Button Type="@ButtonType.Text"
@@ -95,30 +90,11 @@
                             </span>
                         </Tooltip>
                     }
-                    @if (!AppState.IsMobile && !ctx.IsSubAgentView && _optionsReady && ctx.CurrentSession != null)
-                    {
-                        <Tooltip Title="编辑出站绑定">
-                            <Button Type="@ButtonType.Text"
-                                    Size="@ButtonSize.Small"
-                                    Icon="@IconType.Outline.Api"
-                                    OnClick="@OnEditOutbound" />
-                        </Tooltip>
-                    }
-                    @if (ctx.IsSubAgentView && !string.IsNullOrEmpty(ctx.CurrentSession?.ParentSessionId))
-                    {
-                        <Button Type="@ButtonType.Link"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.ArrowLeft"
-                                OnClick="@ReturnToParentSession"
-                                Style="margin-left: 8px;">
-                            返回主会话
-                        </Button>
-                    }
                 </div>
                 <div Class="session-header-right">
                     @if (AppState.IsMobile)
                     {
-                        @* 移动端：新建按钮 + 更多菜单 *@
+                        @* 移动端：新建按钮 + 更多菜单（仅页级导航项） *@
                         <Button Type="@ButtonType.Text"
                                 Size="@ButtonSize.Small"
                                 Icon="@IconType.Outline.Plus"
@@ -133,93 +109,6 @@
                     else
                     {
                     <Space>
-                        <SpaceItem>
-                            @if (ctx.IsSubAgentView)
-                            {
-                                <div class="subagent-meta" title="子代理（只读）">
-                                    <span class="subagent-meta-chip">
-                                        <span class="subagent-meta-label">Agent</span>
-                                        <span class="subagent-meta-value">@(string.IsNullOrEmpty(ctx.SelectedAgent) ? "—" : ctx.SelectedAgent)</span>
-                                    </span>
-                                    @if (!string.IsNullOrEmpty(ctx.SelectedModel))
-                                    {
-                                        <span class="subagent-meta-chip">
-                                            <span class="subagent-meta-label">Model</span>
-                                            <span class="subagent-meta-value">@ctx.SelectedModel</span>
-                                        </span>
-                                    }
-                                </div>
-                            }
-                            else if (_optionsReady)
-                            {
-                                <Select TItemValue="string" TItem="string"
-                                        Value="@ctx.SelectedAgent"
-                                        ValueExpression="@(() => ctx.SelectedAgent)"
-                                        ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
-                                        DataSource="@_agentNames"
-                                        Style="min-width: 120px;"
-                                        Size="@InputSize.Small"
-                                        Placeholder="智能体" />
-                            }
-                        </SpaceItem>
-                        @if (!ctx.IsSubAgentView && _optionsReady && ctx.IsAcpPassthrough)
-                        {
-                            <SpaceItem>
-                                <Input Value="@ctx.SelectedAcpMode"
-                                       ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
-                                       Placeholder="Mode"
-                                       Style="width: 80px;"
-                                       Size="@InputSize.Small" />
-                            </SpaceItem>
-                            <SpaceItem>
-                                <Input Value="@ctx.SelectedModel"
-                                       ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
-                                       Placeholder="Provider/Model"
-                                       Style="width: 160px;"
-                                       Size="@InputSize.Small" />
-                            </SpaceItem>
-                        }
-                        else if (!ctx.IsSubAgentView && _optionsReady)
-                        {
-                            <SpaceItem>
-                                <Select TItemValue="string" TItem="ModelViewModel"
-                                        Value="@ctx.SelectedModel"
-                                        ValueExpression="@(() => ctx.SelectedModel)"
-                                        ValueChanged="@OnModelChanged"
-                                        DataSource="@_models"
-                                        ValueName="Id"
-                                        LabelName="ModelName"
-                                        GroupName="@nameof(ModelViewModel.ProviderName)"
-                                        SortByGroup="SortDirection.Ascending"
-                                        SortByLabel="SortDirection.Ascending"
-                                        Style="min-width: 160px;"
-                                        Size="@InputSize.Small"
-                                        Placeholder="模型"
-                                        Class="@(ctx.ModelInvalid ? "model-select-invalid" : null)"
-                                        EnableSearch="true">
-                                    <ItemTemplate Context="model">
-                                        <span>@model.ModelName</span>
-                                    </ItemTemplate>
-                                </Select>
-                            </SpaceItem>
-                        }
-                        <SpaceItem>
-                            <Tooltip Title="重命名会话">
-                                <Button Type="@ButtonType.Text"
-                                        Size="@ButtonSize.Small"
-                                        Icon="@IconType.Outline.Edit"
-                                        OnClick="@OnRenameSession"
-                                        Disabled="@ctx.IsSubAgentView" />
-                            </Tooltip>
-                        </SpaceItem>
-                        <SpaceItem>
-                            <Tooltip Title="@(ctx.IsSubAgentView ? "分叉为独立会话（可编辑）" : "分支会话")">
-                                <Button Type="@ButtonType.Text"
-                                        Size="@ButtonSize.Small"
-                                        Icon="@IconType.Outline.Copy"
-                                        OnClick="@OnBranchSession" />
-                            </Tooltip>
-                        </SpaceItem>
                         <SpaceItem>
                             <Tooltip Title="多 Agent 会议大屏">
                                 <Button Type="@ButtonType.Text"
@@ -237,176 +126,34 @@
                                         Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
                             </Tooltip>
                         </SpaceItem>
-                        <SpaceItem>
-                            <Tooltip Title="清空会话">
-                                <Button Type="@ButtonType.Text"
-                                        Size="@ButtonSize.Small"
-                                        Icon="@IconType.Outline.Delete"
-                                        OnClick="@OnClearSession"
-                                        Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
-                            </Tooltip>
-                        </SpaceItem>
                      </Space>
                     }
                 </div>
             </div>
 
-            @* 移动端溢出面板：智能体/模型选择 + 操作按钮 *@
+            @* 移动端溢出面板：仅保留页级导航项（会话内操作见内置工具栏） *@
             @if (AppState.IsMobile && _showMobileHeaderPanel && !ctx.IsSubAgentView)
             {
                 <div class="session-header-mobile-panel">
-                    <div class="mobile-panel-row">
-                        @if (_optionsReady && !ctx.IsAcpPassthrough)
-                        {
-                            <Select TItemValue="string" TItem="string"
-                                    Value="@ctx.SelectedAgent"
-                                    ValueExpression="@(() => ctx.SelectedAgent)"
-                                    ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
-                                    DataSource="@_agentNames"
-                                    Style="flex:1; min-width: 0;"
-                                    Size="@InputSize.Small"
-                                    Placeholder="智能体" />
-                        }
-                        @if (_optionsReady && !ctx.IsAcpPassthrough)
-                        {
-                            <Select TItemValue="string" TItem="ModelViewModel"
-                                    Value="@ctx.SelectedModel"
-                                    ValueExpression="@(() => ctx.SelectedModel)"
-                                    ValueChanged="@OnModelChanged"
-                                    DataSource="@_models"
-                                    ValueName="Id"
-                                    LabelName="ModelName"
-                                    GroupName="@nameof(ModelViewModel.ProviderName)"
-                                    SortByGroup="SortDirection.Ascending"
-                                    SortByLabel="SortDirection.Ascending"
-                                    Style="flex:1; min-width: 0;"
-                                    Size="@InputSize.Small"
-                                    Placeholder="模型"
-                                    Class="@(ctx.ModelInvalid ? "model-select-invalid" : null)"
-                                    EnableSearch="true">
-                                <ItemTemplate Context="model">
-                                    <span>@model.ModelName</span>
-                                </ItemTemplate>
-                            </Select>
-                        }
-                    </div>
                     <div class="mobile-panel-actions">
-                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Edit"
-                                OnClick="@OnRenameSession">重命名</Button>
-                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Copy"
-                                OnClick="@OnBranchSession">分支</Button>
-                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Delete"
-                                OnClick="@OnClearSession"
-                                Disabled="@(ctx.IsExecuting)">清空</Button>
+                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.VideoCamera"
+                                OnClick="@GoToConference">大屏</Button>
+                        <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Plus"
+                                OnClick="@CreateNewSessionAsync"
+                                Disabled="@(ctx.IsExecuting)">新建</Button>
                     </div>
                 </div>
             }
         </Header>
     </SessionWindow>
-
-    <!-- 重命名对话框（仅在打开时渲染，避免隐藏 Modal 内 FormItem 初始化失败） -->
-    @if (RenameModalVisible)
-    {
-        <Modal Title="重命名会话"
-               Visible="true"
-               OnOk="@OnRenameConfirm"
-               OnCancel="@OnRenameCancel"
-               OkText="@OkText"
-               CancelText="@CancelText">
-            <Form Model="@RenameForm" Layout="@FormLayout.Horizontal">
-                <FormItem Label="会话标题">
-                    <Input @bind-Value="@RenameForm.Title"
-                           Placeholder="输入新的会话标题" />
-                </FormItem>
-            </Form>
-        </Modal>
-    }
-
-    @if (OutboundModalVisible)
-    {
-        <Modal Title="编辑出站绑定"
-               Visible="true"
-               OnOk="@OnOutboundConfirm"
-               OnCancel="@OnOutboundCancel"
-               OkText="@OkText"
-               CancelText="@CancelText">
-            <Form Model="@OutboundForm" Layout="@FormLayout.Horizontal">
-                <FormItem Label="ChannelId">
-                    <Input @bind-Value="@OutboundForm.ChannelId"
-                           Placeholder="如 qq / wecom，留空表示未绑定" />
-                </FormItem>
-                <FormItem Label="UserId">
-                    <Input @bind-Value="@OutboundForm.UserId"
-                           Placeholder="出站用户/对端 ID，可留空" />
-                </FormItem>
-            </Form>
-        </Modal>
-    }
 </div>
 
 @code {
 
-    /// <summary>
-    /// 常量文本（避免编码问题）
-    /// </summary>
-    private const string OkText = "确定";
-    private const string CancelText = "取消";
-
-    /// <summary>Header 模板渲染时捕获的窗口上下文（窗口经 Context 暴露状态与操作，本页据此读写）</summary>
-    private Services.SessionWindowContext? _windowContext;
-
-    /// <summary>
-    /// Agent/模型选择器选项列表（仅本页维护；选中值经 Context 读写，写回会话由窗口实现）
-    /// </summary>
-    private List<string> _agentNames = new();
-    private List<ModelViewModel> _models = new();
-    private bool _optionsReady;
+    /// <summary>移动端溢出面板显示状态</summary>
     private bool _showMobileHeaderPanel;
 
-    /// <summary>
-    /// 模型视图类 - 用于选择器显示
-    /// </summary>
-    private class ModelViewModel
-    {
-        /// <summary>完整 ID（provider/model 格式）</summary>
-        public string Id { get; init; } = "";
-
-        /// <summary>模型名称</summary>
-        public string ModelName { get; init; } = "";
-
-        /// <summary>Provider 名称</summary>
-        public string ProviderName { get; init; } = "";
-    }
-
-    private static ModelViewModel ToModelViewModel(string catalogKey, ModelConfig config)
-    {
-        var providerName = config.Provider;
-        var modelName = config.Id;
-        if (string.IsNullOrEmpty(modelName))
-            modelName = config.Name ?? catalogKey;
-
-        if (string.IsNullOrEmpty(providerName) || string.IsNullOrEmpty(modelName))
-        {
-            var slash = catalogKey.IndexOf('/');
-            if (slash > 0)
-            {
-                if (string.IsNullOrEmpty(providerName))
-                    providerName = catalogKey[..slash];
-                if (string.IsNullOrEmpty(modelName))
-                    modelName = catalogKey[(slash + 1)..];
-            }
-        }
-
-        if (string.IsNullOrEmpty(providerName))
-            providerName = "其他";
-
-        return new ModelViewModel
-        {
-            Id = catalogKey,
-            ModelName = modelName,
-            ProviderName = providerName
-        };
-    }
+    private bool _hasRendered;
 
     /// <summary>
     /// 路由参数：会话 ID
@@ -415,34 +162,13 @@
     public string? SessionId { get; set; }
 
     /// <summary>
-    /// 重命名对话框可见性
-    /// </summary>
-    private bool RenameModalVisible { get; set; } = false;
-
-    /// <summary>
-    /// 重命名表单
-    /// </summary>
-    private RenameSessionForm RenameForm { get; set; } = new();
-
-    /// <summary>
-    /// 出站绑定编辑对话框
-    /// </summary>
-    private bool OutboundModalVisible { get; set; }
-
-    private OutboundEditForm OutboundForm { get; set; } = new();
-
-    private bool _hasRendered;
-
-    /// <summary>
-    /// 组件初始化：加载选项列表（会话加载/事件绑定等由 SessionWindow 承载）
+    /// 组件初始化：会话加载/事件绑定/Agent 与模型选项等均由 SessionWindow + SessionToolbar 承载，
+    /// 本页仅订阅 AppState 变更与预载工具/技能数据。
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
         // 订阅 AppState 变更事件，确保移动端/桌面端切换时同步重渲染
         AppState.OnChange += OnAppStateChange;
-
-        // 加载 Agent 和模型选项列表（不设置选中值）
-        await LoadOptionsAsync();
 
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
@@ -480,48 +206,6 @@
     }
 
     /// <summary>
-    /// 加载模型选项
-    /// </summary>
-    private async Task LoadOptionsAsync()
-    {
-        _optionsReady = false;
-        // 加载 Agent 选项
-        try
-        {
-            var agents = await AgentRegistry.GetPrimaryAgentsAsync();
-            _agentNames = agents
-                .Where(a => !string.IsNullOrEmpty(a.Name))
-                .Select(a => a.Name)
-                .ToList();
-        }
-        catch (Exception)
-        {
-            _agentNames = new List<string>();
-        }
-
-        // 加载模型选项
-        try
-        {
-            var availableModels = LlmService.GetAvailableModels();
-            if (availableModels != null)
-            {
-                AppState.AvailableModels = availableModels;
-                _models = availableModels
-                    .Where(m => !string.IsNullOrEmpty(m.Key))
-                    .Select(m => ToModelViewModel(m.Key, m.Value))
-                    .ToList();
-            }
-        }
-        catch (Exception)
-        {
-            _models = new List<ModelViewModel>();
-        }
-
-        _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
-        // 注意：不在这里同步选中值；会话选中值经 SessionWindow.SyncContextState 回流到 Context
-    }
-
-    /// <summary>
     /// 加载工具和技能数据（用于快速命令浮窗）
     /// </summary>
     private async Task LoadToolsAndSkillsAsync()
@@ -539,41 +223,6 @@
     }
 
     /// <summary>
-    /// Agent 选择变更（委托窗口实现：写回会话并持久化）
-    /// </summary>
-    private async Task OnAgentChanged(string value)
-    {
-        if (_windowContext?.SetAgentAsync != null)
-            await _windowContext.SetAgentAsync(value);
-    }
-
-    /// <summary>
-    /// Native 模型选择变更（委托窗口实现：写回会话）
-    /// </summary>
-    private async Task OnModelChanged(string value)
-    {
-        if (_windowContext?.SetModelAsync != null)
-            await _windowContext.SetModelAsync(value);
-    }
-
-    /// <summary>
-    /// ACP Provider/Model 输入变更（委托窗口实现：写回会话）
-    /// </summary>
-    private async Task OnAcpModelChanged(string? value)
-    {
-        if (_windowContext?.SetModelAsync != null)
-            await _windowContext.SetModelAsync(value ?? "");
-    }
-
-    /// <summary>
-    /// ACP Mode 输入变更（委托窗口实现：写回会话）
-    /// </summary>
-    private void OnAcpModeChanged(string? value)
-    {
-        _windowContext?.SetAcpMode?.Invoke(value ?? "");
-    }
-
-    /// <summary>
     /// 创建新会话
     /// </summary>
     private async Task CreateNewSessionAsync()
@@ -588,101 +237,6 @@
         {
             MessageService.Error(string.Format("创建会话失败: {0}", ex.Message));
         }
-    }
-
-    /// <summary>
-    /// 分支会话（委托窗口实现：含导航）
-    /// </summary>
-    private async Task OnBranchSession()
-    {
-        if (_windowContext?.BranchAsync != null)
-            await _windowContext.BranchAsync();
-    }
-
-    /// <summary>
-    /// 清空会话（委托窗口实现）
-    /// </summary>
-    private async Task OnClearSession()
-    {
-        if (_windowContext?.ClearAsync != null)
-            await _windowContext.ClearAsync();
-    }
-
-    /// <summary>
-    /// 从 Task 子会话返回主会话（委托窗口实现：含导航）
-    /// </summary>
-    private void ReturnToParentSession()
-    {
-        _windowContext?.ReturnToParent?.Invoke();
-    }
-
-    /// <summary>
-    /// 重命名会话
-    /// </summary>
-    private void OnRenameSession()
-    {
-        RenameForm.Title = _windowContext?.Title ?? "";
-        RenameModalVisible = true;
-    }
-
-    /// <summary>
-    /// 确认重命名
-    /// </summary>
-    private async Task OnRenameConfirm()
-    {
-        if (!string.IsNullOrWhiteSpace(RenameForm.Title))
-        {
-            if (_windowContext?.RenameAsync != null)
-                await _windowContext.RenameAsync(RenameForm.Title.Trim());
-        }
-
-        RenameModalVisible = false;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    /// <summary>
-    /// 取消重命名
-    /// </summary>
-    private void OnRenameCancel()
-    {
-        RenameModalVisible = false;
-    }
-
-    private static string? NormalizeOutbound(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private void OnEditOutbound()
-    {
-        var session = _windowContext?.CurrentSession;
-        if (session == null) return;
-
-        OutboundForm = new OutboundEditForm
-        {
-            ChannelId = session.ChannelId ?? "",
-            UserId = session.UserId ?? ""
-        };
-        OutboundModalVisible = true;
-    }
-
-    private async Task OnOutboundConfirm()
-    {
-        var session = _windowContext?.CurrentSession;
-        if (session != null)
-        {
-            session.ChannelId = NormalizeOutbound(OutboundForm.ChannelId);
-            session.UserId = NormalizeOutbound(OutboundForm.UserId);
-            session.UpdatedAt = DateTime.Now;
-            await SessionManager.SaveAsync(session.Id);
-            MessageService.Success("出站绑定已保存");
-        }
-
-        OutboundModalVisible = false;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private void OnOutboundCancel()
-    {
-        OutboundModalVisible = false;
     }
 
     /// <summary>
@@ -730,19 +284,5 @@
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChange;
-    }
-
-    /// <summary>
-    /// 重命名表单模型
-    /// </summary>
-    private class RenameSessionForm
-    {
-        public string Title { get; set; } = "";
-    }
-
-    private sealed class OutboundEditForm
-    {
-        public string ChannelId { get; set; } = "";
-        public string UserId { get; set; } = "";
     }
 }
