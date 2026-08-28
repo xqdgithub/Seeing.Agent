@@ -5,7 +5,7 @@
 @using Seeing.Agent.WebUI.Services
 @using TimelineModel = Seeing.Agent.WebUI.Models.Timeline
 @inject IJSRuntime JSRuntime
-@inject MessageTimelineStore Timeline
+@inject MessageTimelineStore InjectedTimeline
 @implements IAsyncDisposable
 
 <div Class="message-list" @ref="@MessageListElement">
@@ -51,10 +51,6 @@
 @code {
     private ElementReference MessageListElement { get; set; }
 
-    private const string ContainerId = "message-list-container";
-    private const string ContentId = "message-list-content";
-    private const string ScrollAnchorId = "message-list-scroll-anchor";
-
     private bool _scrollManagerInitialized;
     private int _windowStart;
     private int _lastCount;
@@ -69,7 +65,21 @@
     private int _forcePinRetriesRemaining;
     private bool _subscribed;
 
-    private IReadOnlyList<TimelineModel.TimelineItem> Items => Timeline.Items;
+    private IReadOnlyList<TimelineModel.TimelineItem> Items => Store.Items;
+
+    /// <summary>可选：外部传入的时间线 store（参数优先，回退 DI 注入）</summary>
+    [Parameter]
+    public MessageTimelineStore? Timeline { get; set; }
+
+    /// <summary>可选：DOM Id 前缀（多实例留位，默认空串保持现状）</summary>
+    [Parameter]
+    public string? IdPrefix { get; set; }
+
+    private MessageTimelineStore Store => Timeline ?? InjectedTimeline;
+
+    private string ContainerId => $"{IdPrefix}message-list-container";
+    private string ContentId => $"{IdPrefix}message-list-content";
+    private string ScrollAnchorId => $"{IdPrefix}message-list-scroll-anchor";
 
     [Parameter]
     public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
@@ -91,8 +101,8 @@
 
     protected override void OnInitialized()
     {
-        Timeline.Changed += OnTimelineChanged;
-        Timeline.PinRequested += OnPinRequested;
+        Store.Changed += OnTimelineChanged;
+        Store.PinRequested += OnPinRequested;
         _subscribed = true;
         SyncWindowFromStore(forcePinOnGenerationBump: true);
     }
@@ -121,7 +131,7 @@
     {
         var items = Items;
         var firstKey = items.Count > 0 ? items[0].Key : null;
-        var generation = Timeline.Generation;
+        var generation = Store.Generation;
         var generationBumped = generation != _lastGeneration;
         var structuralReset = generationBumped
             || items.Count < _lastCount
@@ -213,8 +223,8 @@
             return;
         }
 
-        var tailKey = Timeline.TailKey ?? items[^1].Key;
-        var tailRevision = Timeline.TailKey != null ? Timeline.TailRevision : items[^1].Revision;
+        var tailKey = Store.TailKey ?? items[^1].Key;
+        var tailRevision = Store.TailKey != null ? Store.TailRevision : items[^1].Revision;
 
         var contentGrew = items.Count > _trackedRenderCount
             || tailKey != _trackedTailKey
@@ -297,8 +307,8 @@
     {
         if (_subscribed)
         {
-            Timeline.Changed -= OnTimelineChanged;
-            Timeline.PinRequested -= OnPinRequested;
+            Store.Changed -= OnTimelineChanged;
+            Store.PinRequested -= OnPinRequested;
             _subscribed = false;
         }
 
