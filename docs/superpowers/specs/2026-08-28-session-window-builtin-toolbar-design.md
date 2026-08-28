@@ -31,11 +31,11 @@
 
 | 决策点 | 选择 |
 |--------|------|
-| 内置操作范围 | 核心子集：Agent + 模型选择、重命名、分支、清空、出站绑定 |
+| 内置信息与操作范围 | 标题 + 工作文件夹徽标 + 状态徽标 + Agent/模型选择、重命名、清空、出站绑定 |
 | 显示模式 | 仅 Full 模式（Summary 纯只读） |
 | Session 页处理 | 统一迁移到内置工具栏（避免两套 UI） |
-| 页级导航保留 | 首页/标题/工作区徽标/大屏入口/新建会话（状态徽标由内置工具栏承载，避免双显） |
-| 边界场景 | 完整处理（出站绑定进工具栏；子会话只读按钮保留） |
+| 页级导航保留 | 首页/大屏入口/新建会话/分支（标题、工作区徽标、状态徽标均由内置工具栏承载） |
+| 边界场景 | 完整处理（出站绑定进工具栏；子会话只读按钮保留；分支移出工具栏回页头） |
 | 实现方案 | 方案 A：内置 + 可覆盖（Header 模板可覆盖默认工具栏区域） |
 
 ### 4.2 布局结构
@@ -44,42 +44,43 @@
 SessionWindow (Full 模式)
 ├── [可选] Header 模板（外层页提供页级导航区，无则跳过）
 ├── [内置] SessionToolbar（默认渲染）
-│   ├── 左：状态徽标 + Agent 选择器 + 模型选择器（ACP 透传时切 Mode/Model 双输入）
-│   └── 右：重命名 / 分支 / 清空 / 出站绑定 /（子会话时: 返回主会话）
+│   ├── 左：标题 + 工作文件夹徽标 + 状态徽标 + Agent 选择器 + 模型选择器（ACP 透传时切 Mode/Model 双输入）
+│   └── 右：重命名 / 清空 / 出站绑定 /（子会话时: 返回主会话 + 分叉为独立会话）
 ├── 消息区（现有）
 ├── 输入区（现有）
 └── Todo 侧栏（现有）
 ```
 
-- `Header` 模板语义变为**页级导航区**（放首页/标题/工作区/大屏入口等页级内容）
+- `Header` 模板语义变为**页级导航区**（放首页/大屏入口/新建/分支等页级内容）
 - 内置工具栏为**默认渲染**：外层提供 Header 则 Header 在上、工具栏在下叠加；不提供则仅工具栏
-- 工具栏操作复用已有的 `Context` 委托（`SetAgentAsync`/`SetModelAsync`/`SetAcpMode`/`RenameAsync`/`BranchAsync`/`ClearAsync`/`GetWorkspace`），**不改动窗口内部操作逻辑**
+- 工具栏操作复用已有的 `Context` 委托（`SetAgentAsync`/`SetModelAsync`/`SetAcpMode`/`RenameAsync`/`BranchAsync`/`ClearAsync`/`GetWorkspace`/`SaveOutboundAsync`），**不改动窗口内部操作逻辑**
 
 ### 4.3 SessionToolbar 组件
 
 新建 `samples/Seeing.Agent.WebUI/Components/SessionToolbar.razor`：
 
 **输入：**
-- `SessionWindowContext Context`（状态 + 操作委托）
-- `SessionWindowMode Mode`（仅 Full 渲染；Summary 返回 null）
+- `SessionWindowContext Context`（状态 + 操作委托，`[EditorRequired]` 必填）
+- `SessionWindowMode Mode`（仅 Full 渲染；Summary 不渲染）
 
 **职责：**
-- 自加载选项：Agent 名称列表（`AgentRegistry.GetPrimaryAgentsAsync()`）、模型列表（`LlmService.GetAvailableModels()` + `AppState.AvailableModels`）
+- 自加载选项：Agent 名称列表（`AgentRegistry.GetPrimaryAgentsAsync()`）、模型列表（`LlmService.GetAvailableModels()` + `AppState.AvailableModels`）；30s 静态缓存防大屏切换重建时重复查询
 - 渲染控件：
-  - 左侧：状态徽标（执行中/排队/子会话）+ Agent 选择器 + 模型选择器；`Context.IsAcpPassthrough` 时切换为 ACP Mode/Model 双输入框
-  - 右侧：重命名 / 分支 / 清空 / 出站绑定按钮；`IsSubAgentView` 时重命名/清空禁用，显示"返回主会话"
-- 重命名 Modal、出站绑定 Modal 由 Session.razor 迁入 SessionToolbar 内部
+  - 左侧：标题（`Context.Title`）+ 工作文件夹徽标（`Context.GetWorkspace()`）+ 状态徽标（执行中/排队/子会话）+ Agent 选择器 + 模型选择器；`Context.IsAcpPassthrough` 时切换为 ACP Mode/Model 双输入框
+  - 右侧：重命名 / 清空 / 出站绑定按钮；`IsSubAgentView` 时重命名/清空禁用，显示"返回主会话" + "分叉为独立会话"
+  - 分支按钮不在此（非会话强相关，归页级导航，回 Session 页头）
+- 重命名 Modal、出站绑定 Modal 由 Session.razor 迁入 SessionToolbar 内部；出站绑定经 `Context.SaveOutboundAsync` 委托持久化（保持纯 UI 契约）
 
 **SessionWindow 接入：** 在 Full 分支加 `<SessionToolbar Context="Context" Mode="ViewMode" />`。
 
 ### 4.4 Session.razor 改造
 
-- `<Header>` 模板精简为页级导航区：首页按钮、会话标题、工作区徽标、大屏入口（VideoCamera）、新建会话
-- 状态徽标（执行中/排队/子会话）不再在页头渲染（内置工具栏已承载，避免双显）
-- 移除：Agent 选择器、模型选择器、ACP Mode/Model 输入、重命名、分支、清空、出站绑定（全部由内置工具栏接管）
+- `<Header>` 模板精简为页级导航区：首页按钮、大屏入口（VideoCamera）、新建会话、分支会话
+- 标题、工作区徽标、状态徽标均不再在页头渲染（由内置工具栏承载）
+- 移除：Agent 选择器、模型选择器、ACP Mode/Model 输入、重命名、清空、出站绑定（全部由内置工具栏接管）
 - `_agentNames`/`_models` 加载逻辑移至 SessionToolbar；页面删除 `LoadOptionsAsync` 中的相关代码
 - 移除重命名/出站绑定 Modal 及对应方法（迁至 SessionToolbar）
-- 保留：`GoToHome`、`GoToConference`、`CreateNewSessionAsync`、`SyncCurrentSessionId`、移动端溢出面板（仅保留页级导航项）
+- 保留：`GoToHome`、`GoToConference`、`CreateNewSessionAsync`、`OnBranchSession`、`SyncCurrentSessionId`、移动端溢出面板（仅保留页级导航项）
 
 ### 4.5 Conference.razor 改造
 
@@ -108,7 +109,7 @@ SessionWindow (Full 模式)
 
 | 用例 | 预期 |
 |------|------|
-| T1 普通会话页 | 页头含 首页/标题/大屏入口/新建；工具栏含 Agent/模型/重命名/分支/清空 |
+| T1 普通会话页 | 页头含 首页/分支/大屏入口/新建；工具栏含 标题/工作文件夹/Agent/模型/重命名/清空 |
 | T2 切换 Agent/模型 | 会话持久化（刷新保留） |
 | T3 大屏 | 主窗口（Full）显示内置工具栏，Summary 卡片纯只读 |
 | T4 大屏切换主窗口 | 点击 Summary → 工具栏随激活会话变化 |
