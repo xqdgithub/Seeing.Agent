@@ -225,15 +225,19 @@
     }
 
     /// <summary>
-    /// 建立 registry 接线：按 circuit 获取/创建 Consumer、绑定主会话父流、订阅窗口集合变化。
+    /// 建立 registry 接线：按 circuit 获取/创建 Consumer、订阅窗口集合变化、绑定主会话父流。
+    /// 订阅必须先于 Rebind：Rebind 内 EnumerateAsync 的首段枚举为同步完成（ListChildrenAsync 返回已完成 Task），
+    /// 若订阅在后会丢失首次枚举的 WindowsChanged，导致侧栏初始不展示（需再次触发才出现）。
     /// 抽为私有方法供初始化与"初始缺失后换有效路由"复用（registry 为空时兜底创建）。
     /// </summary>
     private void InitRegistry(string mainId)
     {
         var circuitId = CircuitContext.Id ?? "";
         _registry = Router.GetOrCreateCircuitConsumer<ConferenceRegistry>(circuitId);
-        _registry.Rebind(mainId);
+        _registry.WindowsChanged -= OnWindowsChanged; // 防重复订阅
         _registry.WindowsChanged += OnWindowsChanged;
+        _registry.Rebind(mainId);
+        OnWindowsChanged(); // 同步当前窗口集合（兜底首次枚举）
     }
 
     protected override async Task OnParametersSetAsync()

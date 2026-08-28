@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Session.Core;
 
@@ -17,6 +18,7 @@ public sealed class ConferenceRegistry : IStreamConsumer
     private readonly SessionEventStreamRouter _router;
     private readonly ISessionManager _sessionManager;
     private readonly TaskSessionResolver _taskResolver;
+    private readonly ILogger<ConferenceRegistry>? _logger;
     private readonly List<WindowNode> _windows = new();
     private readonly object _lock = new();
 
@@ -30,11 +32,13 @@ public sealed class ConferenceRegistry : IStreamConsumer
     public ConferenceRegistry(
         SessionEventStreamRouter router,
         ISessionManager sessionManager,
-        TaskSessionResolver taskResolver)
+        TaskSessionResolver taskResolver,
+        ILogger<ConferenceRegistry>? logger = null)
     {
         _router = router ?? throw new ArgumentNullException(nameof(router));
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _taskResolver = taskResolver ?? throw new ArgumentNullException(nameof(taskResolver));
+        _logger = logger;
     }
 
     /// <summary>绑定主会话：摘除旧父订阅、清空集合、重新枚举并挂新父（同 circuit 换主会话路由时调用）</summary>
@@ -63,14 +67,16 @@ public sealed class ConferenceRegistry : IStreamConsumer
         try
         {
             var children = await _sessionManager.ListChildrenAsync(parentId, SessionKind.SubAgent);
+            _logger?.LogInformation("[ConferenceRegistry] 内存枚举父 {ParentId} 子会话 {Count} 个", parentId, children.Count);
             AddChildren(parentId, children);
 
             var diskChildren = await _sessionManager.LoadChildrenFromStorageAsync(parentId);
+            _logger?.LogInformation("[ConferenceRegistry] 磁盘枚举父 {ParentId} 子会话 {Count} 个", parentId, diskChildren.Count);
             AddChildren(parentId, diskChildren);
         }
-        catch
+        catch (Exception ex)
         {
-            // 枚举失败不阻断订阅（后续动态事件仍可补窗）
+            _logger?.LogWarning(ex, "[ConferenceRegistry] 枚举失败（后续动态事件仍可补窗）");
         }
     }
 
@@ -84,7 +90,10 @@ public sealed class ConferenceRegistry : IStreamConsumer
         {
             // 竞态防护：连续 Rebind 后旧枚举晚到，ParentSessionId 已变 → 丢弃
             if (!string.Equals(ParentSessionId, parentId, StringComparison.Ordinal))
+            {
+                _logger?.LogInformation("[ConferenceRegistry] 竞态丢弃：当前父 {Current} != 枚举父 {Target}", ParentSessionId, parentId);
                 return;
+            }
 
             foreach (var c in children)
             {
@@ -94,6 +103,7 @@ public sealed class ConferenceRegistry : IStreamConsumer
                 added = true;
             }
         }
+        _logger?.LogInformation("[ConferenceRegistry] AddChildren 新增 {Added} 个，当前窗口 {Total} 个", added, Windows.Count);
         if (added)
             WindowsChanged?.Invoke();
     }
