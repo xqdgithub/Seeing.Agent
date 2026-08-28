@@ -159,11 +159,12 @@
     }
     else
     {
-        @* Summary 模式：摘要卡片（标题/badge/执行状态/最新消息预览/运行中工具）；主会话加左边条淡蓝底样式 *@
-        <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main" : "")}")" @onclick="OnTileClick">
+        @* Summary 模式：摘要卡片（标题/状态徽标/执行状态/最新消息预览/运行中工具）；
+           左侧状态条随代理状态变色，主会话以淡蓝底区分 *@
+        <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main " : "")}{GetStatusBarClass()}")" @onclick="OnTileClick">
             <div class="conference-tile-header">
                 <span class="conference-tile-title">@SessionState.Title</span>
-                <Badge Status="@GetStatusBadge()" />
+                <Badge Status="@GetStatusBadge()" Text="@GetStatusText()" />
             </div>
             <div class="conference-tile-body">
                 @GetLatestAssistantPreview()
@@ -1325,18 +1326,59 @@
     }
 
     /// <summary>
-    /// Summary 模式：执行状态 → AntDesign BadgeStatus 映射
+    /// Summary 模式：执行状态 → AntDesign BadgeStatus 映射（全状态区分，修复失败/取消误显已完成）
     /// </summary>
     private BadgeStatus GetStatusBadge()
     {
+        if (SessionState.IsQueued)
+            return BadgeStatus.Default;
         if (SessionState.IsExecuting
             || SessionState.ExecutionStatus is ExecutionStatus.Running
-                or ExecutionStatus.Pending
-                or ExecutionStatus.Queued)
+                or ExecutionStatus.Pending)
         {
-            return SessionState.IsQueued ? BadgeStatus.Default : BadgeStatus.Processing;
+            return BadgeStatus.Processing;
         }
+        if (SessionState.ExecutionStatus is ExecutionStatus.Failed)
+            return BadgeStatus.Error;
+        if (SessionState.ExecutionStatus is ExecutionStatus.Cancelled)
+            return BadgeStatus.Warning;
         return BadgeStatus.Success;
+    }
+
+    /// <summary>Summary 模式：左侧状态条 class（颜色随代理状态）</summary>
+    private string GetStatusBarClass()
+    {
+        if (SessionState.IsQueued)
+            return "conference-tile--queued";
+        if (SessionState.IsExecuting
+            || SessionState.ExecutionStatus is ExecutionStatus.Running
+                or ExecutionStatus.Pending)
+        {
+            return "conference-tile--running";
+        }
+        if (SessionState.ExecutionStatus is ExecutionStatus.Failed)
+            return "conference-tile--failed";
+        if (SessionState.ExecutionStatus is ExecutionStatus.Cancelled)
+            return "conference-tile--cancelled";
+        return "conference-tile--done";
+    }
+
+    /// <summary>Summary 模式：状态徽标文字（执行中/排队中/已完成/失败/已取消）</summary>
+    private string GetStatusText()
+    {
+        if (SessionState.IsQueued)
+            return "排队中";
+        if (SessionState.IsExecuting
+            || SessionState.ExecutionStatus is ExecutionStatus.Running
+                or ExecutionStatus.Pending)
+        {
+            return "执行中";
+        }
+        if (SessionState.ExecutionStatus is ExecutionStatus.Failed)
+            return "失败";
+        if (SessionState.ExecutionStatus is ExecutionStatus.Cancelled)
+            return "已取消";
+        return "已完成";
     }
 
     /// <summary>

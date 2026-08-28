@@ -65,19 +65,40 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     cursor: pointer;
-    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
     overflow: hidden;
 }
 
-/* 主会话卡片：主题色左边条 + 淡蓝底，与子会话高区分 */
+/* 主会话卡片：淡蓝底区分（左侧状态条由代理状态决定，不再专属主会话） */
 .conference-tile--main {
-    border-left: 3px solid var(--color-primary);
     background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-container));
 }
 
+/* 左侧状态条：颜色随代理执行状态（hover 不覆盖左侧，保留状态色） */
+.conference-tile--running {
+    border-left: 3px solid var(--color-primary);
+}
+
+.conference-tile--queued {
+    border-left: 3px solid var(--color-border);
+}
+
+.conference-tile--done {
+    border-left: 3px solid var(--color-success);
+}
+
+.conference-tile--failed {
+    border-left: 3px solid var(--color-error);
+}
+
+.conference-tile--cancelled {
+    border-left: 3px solid var(--color-warning);
+}
+
 .conference-tile:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    /* hover 不动颜色（避免覆盖左侧状态条），改用阴影/上浮动画表达可点击 */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
 }
 
 .conference-tile-header {
