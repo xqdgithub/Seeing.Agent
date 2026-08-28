@@ -294,6 +294,26 @@
     min-width: 0;
 }
 
+/* ========== SessionWindow 外壳（会话页瘦身后的布局承接） ========== */
+.session-window {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 消息区：承接原 session-messages-container 的 flex 滚动职责（内嵌于 session-main-column） */
+.session-window--full .session-window-content {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
 /* ========== 模型选择器无效状态（发送时校验失败） ========== */
 .model-select-invalid .ant-select-selector {
     border-color: var(--color-error) !important;
