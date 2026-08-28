@@ -164,7 +164,7 @@
         <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main " : "")}{GetStatusBarClass()}")" @onclick="OnTileClick">
             <div class="conference-tile-header">
                 <span class="conference-tile-title">@SessionState.Title</span>
-                <Badge Status="@GetStatusBadge()" Text="@GetStatusText()" />
+                <Badge Status="@GetStatusBadge()" Text="@GetStatusText()" Class="conference-tile-status" />
             </div>
             <div class="conference-tile-body">
                 @GetLatestAssistantPreview()
@@ -1170,13 +1170,23 @@
     }
 
     /// <summary>
-    /// 从 Task 子会话返回主会话
+    /// 从 Task 子会话返回主会话。
+    /// 双栏场景（当前窗口是被切到主窗的子会话，EffectiveSessionId != AggregatorSessionId）：
+    /// 经 OnClick 回调切回主会话 active（原地切换，URL 不变）；
+    /// 否则（直接访问子会话 URL）导航到父会话页。
     /// </summary>
     private void ReturnToParentSession()
     {
         var parentId = SessionState.CurrentSession?.ParentSessionId;
         if (string.IsNullOrEmpty(parentId))
             return;
+
+        // 双栏原地切换：主窗展示子会话时 OnClick 已绑定外层 OnTileClick，回调主会话 id 切回
+        if (!IsMainSession && OnClick.HasDelegate && !string.IsNullOrEmpty(AggregatorSessionId))
+        {
+            _ = OnClick.InvokeAsync(AggregatorSessionId);
+            return;
+        }
 
         NavigationManager.NavigateTo($"/session/{parentId}");
     }
