@@ -804,6 +804,8 @@
 
     /// <summary>
     /// Agent 选择变更：写回会话并持久化；ACP 切换时清空 SelectedModel/SelectedAcpMode。
+    /// 先同步 Context（Select 受控值立即更新）再异步保存，避免保存期间 AntDesign Select
+    /// 收到旧受控值而回滚并触发旧值 change 事件（把新选择刷回去）。
     /// </summary>
     private async Task OnAgentChanged(string value)
     {
@@ -813,8 +815,14 @@
         {
             SessionState.CurrentSession.SelectedAgent = value;
             SessionState.CurrentSession.UpdatedAt = DateTime.Now;
-            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
         }
+
+        // 立即同步受控值，消除异步保存期间的 Select 回滚窗口
+        SyncContextState();
+
+        if (SessionState.CurrentSession != null)
+            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+
         await RefreshIsAcpAsync();
 
         // 切换 Agent 后重新加载命令列表（按 Runtime 过滤）
@@ -836,12 +844,16 @@
     }
 
     /// <summary>
-    /// Native 模型选择变更
+    /// Native 模型选择变更。先同步 Context（Select 受控值立即更新）再异步保存，
+    /// 避免保存期间 AntDesign Select 收到旧受控值而回滚并触发旧值 change 事件。
     /// </summary>
     private async Task OnModelChanged(string value)
     {
         SessionState.SelectedModel = value ?? "";
         _modelInvalid = false;
+
+        // 立即同步受控值，消除异步保存期间的 Select 回滚窗口
+        SyncContextState();
 
         await SessionManager.SetModelAsync(SessionState.SessionId, value ?? "");
         SyncContextState();
