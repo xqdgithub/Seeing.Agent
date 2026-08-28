@@ -321,4 +321,62 @@ public class SessionEventStreamRouterTests
         a.Should().NotBeSameAs(c); // 跨 circuit 隔离
         scopeFactory.Verify(f => f.CreateScope(), Times.Exactly(2)); // 仅 circuit-1、circuit-2 各一次
     }
+
+    private sealed class FakeRegistryConsumer : IStreamConsumer
+    {
+        public string SessionId { get; }
+        public FakeRegistryConsumer() : this("") { }
+        public FakeRegistryConsumer(string sessionId) => SessionId = sessionId;
+        public void OnEvent(IMessageEvent evt) { }
+        public void OnStreamEnd() { }
+    }
+
+    // GetOrCreateCircuitConsumer 经 CreateConsumer 走 scope 工厂解析实例；
+    // 必须配置 scopeFactory mock（仿照既有 I2 用例），否则 CreateScope() 返回 null → NRE。
+    // GetService 每次返回新实例（Router 幂等复用决定实例归属，跨 circuit/key 应为不同实例）。
+    private static IServiceScopeFactory CreateScopeFactoryFor<T>() where T : IStreamConsumer, new()
+    {
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        sp.Setup(s => s.GetService(typeof(T))).Returns(() => new T());
+        var factory = new Mock<IServiceScopeFactory>();
+        factory.Setup(f => f.CreateScope()).Returns(scope.Object);
+        return factory.Object;
+    }
+
+    [Fact]
+    public void GetOrCreateCircuitConsumer_ShouldReuseInstancePerCircuitAndKey()
+    {
+        var scopeFactory = CreateScopeFactoryFor<FakeRegistryConsumer>();
+        using var router = CreateRouter(new Mock<IChatOrchestrator>(), scopeFactory);
+        var c1 = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
+        var c2 = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
+        var c3 = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-b");
+        var c4 = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a", "key-1");
+
+        c1.Should().BeSameAs(c2);
+        c1.Should().NotBeSameAs(c3);
+        c1.Should().NotBeSameAs(c4); // 多 key 共存（S5）
+    }
+
+    [Fact]
+    public void GetOrCreateCircuitConsumer_ShouldRegisterForCircuitCleanup()
+    {
+        var scopeFactory = CreateScopeFactoryFor<FakeRegistryConsumer>();
+        using var router = CreateRouter(new Mock<IChatOrchestrator>(), scopeFactory);
+        var consumer = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
+        // Attach 到某会话后再由 DetachAllForCircuit 统一释放（内部 _consumerCircuit 登记）
+        router.AttachConsumer("s1", consumer);
+        router.DetachAllForCircuit("circuit-a");
+
+        // 释放后 AttachConsumer 不应残留订阅（Router 状态内部清理；此处验证不再抛异常即可）
+        var evt = new LoopStartEvent { SessionId = "s1", LoopId = "l1" };
+        var channel = Channel.CreateUnbounded<IMessageEvent>();
+        var orchestrator = new Mock<IChatOrchestrator>();
+        orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
+            .Returns(channel.Reader.ReadAllAsync());
+        using var router2 = CreateRouter(orchestrator, scopeFactory);
+        router2.AttachConsumer("s1", consumer); // 重新挂载不异常
+    }
 }

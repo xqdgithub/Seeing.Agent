@@ -60,8 +60,8 @@ public sealed class SessionEventStreamRouter : IDisposable
     /// <summary>幂等复用键（会话维度，C1 含 circuit）：(circuit, session, type) → consumer（同 circuit 同会话同类型复用实例）</summary>
     private readonly ConcurrentDictionary<(string circuit, string session, Type type), IStreamConsumer> _consumersByKey = new();
 
-    /// <summary>幂等复用键（circuit 维度，I2）：(circuit, type) → consumer（同 circuit 跨会话复用，如 TaskCardAggregator）</summary>
-    private readonly ConcurrentDictionary<(string circuit, Type type), IStreamConsumer> _circuitConsumersByKey = new();
+    /// <summary>幂等复用键（circuit 维度，I2）：(circuit, type, key) → consumer（同 circuit 跨会话复用；key 支持多实例）</summary>
+    private readonly ConcurrentDictionary<(string circuit, Type type, string key), IStreamConsumer> _circuitConsumersByKey = new();
 
     /// <summary>每 (circuit, session) 主 consumer（首个会话维度 consumer 登记；摘除主 consumer 时释放其 scope）</summary>
     private readonly ConcurrentDictionary<(string circuit, string session), IStreamConsumer> _mainConsumerBySession = new();
@@ -144,7 +144,7 @@ public sealed class SessionEventStreamRouter : IDisposable
 
         // I2：TaskCardAggregator 为 circuit 维度消费者，同 circuit 跨会话复用
         if (typeof(T) == typeof(TaskCardAggregator))
-            return (T)(object)GetOrCreateCircuitScopedConsumer(circuitId);
+            return (T)(object)GetOrCreateCircuitConsumer<TaskCardAggregator>(circuitId);
 
         var key = (circuitId, sessionId, typeof(T));
         if (_consumersByKey.TryGetValue(key, out var existing))
@@ -169,21 +169,24 @@ public sealed class SessionEventStreamRouter : IDisposable
     /// <summary>
     /// 获取/创建 circuit 维度的 Scoped 消费者（同 circuit 跨会话复用，I2 方案 A）。
     /// 不登记为任何 (circuit, session) 的主 consumer——仅在 circuit 关闭时统一释放。
+    /// key 为可选实例键（默认空串 = 单实例语义）；未来"每父会话一个聚合器"以父会话 Id 为 key。
     /// </summary>
-    private TaskCardAggregator GetOrCreateCircuitScopedConsumer(string circuitId)
+    public T GetOrCreateCircuitConsumer<T>(string circuitId, string? key = null) where T : IStreamConsumer
     {
-        var key = (circuitId, typeof(TaskCardAggregator));
-        if (_circuitConsumersByKey.TryGetValue(key, out var existing))
-            return (TaskCardAggregator)existing;
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var consumer = CreateConsumer<TaskCardAggregator>(string.Empty);
+        var registryKey = (circuitId, typeof(T), key ?? string.Empty);
+        if (_circuitConsumersByKey.TryGetValue(registryKey, out var existing))
+            return (T)existing;
+
+        var consumer = CreateConsumer<T>(string.Empty);
         _consumerCircuit[consumer] = circuitId;
 
-        // 竞争窗口：另一线程刚登记同 (circuit, type) → 释放新建资源，复用既有实例
-        if (!_circuitConsumersByKey.TryAdd(key, consumer))
+        // 竞争窗口：另一线程刚登记同 (circuit, type, key) → 释放新建资源，复用既有实例
+        if (!_circuitConsumersByKey.TryAdd(registryKey, consumer))
         {
             ReleaseConsumer(consumer);
-            return (TaskCardAggregator)_circuitConsumersByKey[key];
+            return (T)_circuitConsumersByKey[registryKey];
         }
         return consumer;
     }
