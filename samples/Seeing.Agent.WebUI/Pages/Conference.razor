@@ -1,0 +1,262 @@
+@page "/conference"
+@page "/conference/{SessionId}"
+@using AntDesign
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.State
+@using Seeing.Session.Core
+@inject SessionEventStreamRouter Router
+@inject CircuitContext CircuitContext
+@inject NavigationManager NavigationManager
+@inject ISessionManager SessionManager
+@inject SessionState GlobalSessionState
+@implements IDisposable
+
+<div class="conference-page">
+    <div class="conference-topbar">
+        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" Icon="@IconType.Outline.ArrowLeft"
+                OnClick="@GoToSession">返回会话页</Button>
+        <span class="conference-main-title">@GetMainTitle()</span>
+        <Badge Status="@BadgeStatus.Processing" Text="实时" />
+    </div>
+
+    @if (_mainMissing)
+    {
+        <Alert Type="@AlertType.Error"
+               Message="主会话不存在或已删除"
+               ShowIcon="true"
+               Class="conference-main-missing">
+            <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" OnClick="@GoToSessionList">返回会话列表</Button>
+        </Alert>
+    }
+    else
+    {
+        @* 单网格容器：所有窗口 @key=sessionId 稳定实例，主从交换仅变 ViewMode 参数（spec 5.1） *@
+        <div class="conference-grid">
+            @foreach (var node in AllWindows)
+            {
+                var isActive = string.Equals(node.SessionId, _activeSessionId, StringComparison.Ordinal);
+                <ErrorBoundary>
+                    <SessionWindow @key="@node.SessionId"
+                                   SessionId="@node.SessionId"
+                                   ViewMode="@(isActive ? SessionWindowMode.Full : SessionWindowMode.Summary)"
+                                   AggregatorSessionId="@_mainSessionId"
+                                   GlobalSessionState="@GlobalSessionState"
+                                   OnClick="@OnTileClick" />
+                </ErrorBoundary>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .conference-page {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        max-height: 100vh;
+        background: var(--color-bg-base);
+        overflow: hidden;
+    }
+
+    .conference-topbar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        background: var(--color-bg-container);
+        border-bottom: 1px solid var(--color-border);
+        flex-shrink: 0;
+    }
+
+    .conference-main-title {
+        flex: 1;
+        min-width: 0;
+        font-size: var(--font-size-lg);
+        font-weight: 600;
+        color: var(--color-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .conference-main-missing {
+        margin: var(--space-4);
+    }
+
+    .conference-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        grid-auto-rows: minmax(180px, auto);
+        gap: 8px;
+        padding: 8px;
+        flex: 1;
+        overflow: auto;
+    }
+    .conference-grid .session-window--full { grid-column: span 4; grid-row: span 3; }
+    .conference-grid .session-window--summary { grid-column: span 2; grid-row: span 1; }
+
+    /* Summary 摘要卡片（SessionWindow 摘要模式共享样式） */
+    .conference-tile {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        height: 100%;
+        padding: var(--space-3);
+        background: var(--color-bg-container);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+        overflow: hidden;
+    }
+
+    .conference-tile:hover {
+        border-color: var(--color-primary);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    }
+
+    .conference-tile-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+        min-width: 0;
+    }
+
+    .conference-tile-title {
+        min-width: 0;
+        font-size: var(--font-size-sm);
+        font-weight: 600;
+        color: var(--color-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .conference-tile-body {
+        flex: 1;
+        min-height: 0;
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+        line-height: 1.6;
+        overflow: hidden;
+    }
+</style>
+
+@code {
+    [Parameter] public string? SessionId { get; set; }
+
+    private string? _mainSessionId;
+    private string? _activeSessionId;
+    private ConferenceRegistry? _registry;
+    private IReadOnlyList<ConferenceRegistry.WindowNode> _windows = Array.Empty<ConferenceRegistry.WindowNode>();
+    private bool _mainMissing;
+
+    /// <summary>全部窗口：主会话（root）+ 子会话（registry.Windows）</summary>
+    private IReadOnlyList<ConferenceRegistry.WindowNode> AllWindows
+    {
+        get
+        {
+            var nodes = new List<ConferenceRegistry.WindowNode>();
+            if (!string.IsNullOrEmpty(_mainSessionId))
+            {
+                var main = SessionManager.Get(_mainSessionId);
+                nodes.Add(new ConferenceRegistry.WindowNode(_mainSessionId, null, SessionKind.Root, main?.Title ?? string.Empty));
+            }
+            nodes.AddRange(_windows);
+            return nodes;
+        }
+    }
+
+    private async Task OnTileClick(string sessionId)
+    {
+        _activeSessionId = sessionId;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void GoToSession()
+    {
+        if (!string.IsNullOrEmpty(_activeSessionId))
+            NavigationManager.NavigateTo($"/session/{_activeSessionId}");
+    }
+
+    private void GoToSessionList() => NavigationManager.NavigateTo("/session");
+
+    private string GetMainTitle()
+    {
+        var session = SessionManager.Get(_mainSessionId ?? "");
+        return session?.Title ?? "会议大屏";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var mainId = !string.IsNullOrEmpty(SessionId) ? SessionId
+            : (await SessionManager.LoadAllFromStorageAsync()).FirstOrDefault()?.Id;
+        if (string.IsNullOrEmpty(mainId))
+        {
+            _mainMissing = true;
+            return;
+        }
+
+        // 建议项 9：URL 指定但主会话已删除 → 错误态（缓存 → 存储兜底确认）
+        var main = SessionManager.Get(mainId);
+        if (main == null)
+        {
+            main = await SessionManager.LoadAsync(mainId);
+            if (main == null)
+            {
+                _mainMissing = true;
+                return;
+            }
+        }
+
+        _mainSessionId = mainId;
+        _activeSessionId = mainId;
+        var circuitId = CircuitContext.Id ?? "";
+
+        _registry = Router.GetOrCreateCircuitConsumer<ConferenceRegistry>(circuitId);
+        _registry.Rebind(mainId);
+        _registry.WindowsChanged += OnWindowsChanged;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(SessionId) && !string.Equals(SessionId, _mainSessionId, StringComparison.Ordinal))
+        {
+            _mainSessionId = SessionId;
+            _activeSessionId = SessionId;
+
+            // 计划复审建议 3：换路由重新校验主会话（缓存 → 存储兜底），重置错误态
+            var main = SessionManager.Get(SessionId);
+            if (main == null)
+            {
+                main = await SessionManager.LoadAsync(SessionId);
+                if (main == null)
+                {
+                    _mainMissing = true;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            _mainMissing = false;
+
+            _registry?.Rebind(SessionId);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnWindowsChanged()
+    {
+        _windows = _registry?.Windows ?? Array.Empty<ConferenceRegistry.WindowNode>();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (_registry != null)
+            _registry.WindowsChanged -= OnWindowsChanged;
+        // circuit 关闭由 SeeingCircuitHandler → Router.DetachAllForCircuit 统一释放
+    }
+}

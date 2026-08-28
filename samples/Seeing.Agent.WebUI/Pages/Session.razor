@@ -221,6 +221,14 @@
                             </Tooltip>
                         </SpaceItem>
                         <SpaceItem>
+                            <Tooltip Title="多 Agent 会议大屏">
+                                <Button Type="@ButtonType.Text"
+                                        Size="@ButtonSize.Small"
+                                        Icon="@IconType.Outline.VideoCamera"
+                                        OnClick="@GoToConference" />
+                            </Tooltip>
+                        </SpaceItem>
+                        <SpaceItem>
                             <Tooltip Title="新建会话">
                                 <Button Type="@ButtonType.Text"
                                         Size="@ButtonSize.Small"
@@ -683,6 +691,16 @@
     private void GoToHome()
     {
         NavigationManager.NavigateTo("/home");
+    }
+
+    /// <summary>
+    /// 前往多 Agent 会议大屏（SessionState 为全局 Scoped 实例，窗口桥接已写入当前会话）
+    /// </summary>
+    private void GoToConference()
+    {
+        var id = GlobalSessionState.CurrentSession?.Id;
+        if (string.IsNullOrEmpty(id)) return;
+        NavigationManager.NavigateTo($"/conference/{id}");
     }
 
     /// <summary>移动端切换溢出面板</summary>
