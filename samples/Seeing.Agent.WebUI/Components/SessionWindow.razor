@@ -262,6 +262,7 @@
         Context.ClearAsync = OnClearSession;
         Context.ReturnToParent = ReturnToParentSession;
         Context.GetWorkspace = GetWorkspace;
+        Context.SaveOutboundAsync = SaveOutboundAsync;
     }
 
     /// <summary>
@@ -1138,6 +1139,21 @@
             return;
 
         NavigationManager.NavigateTo($"/session/{parentId}");
+    }
+
+    /// <summary>
+    /// 保存出站绑定（ChannelId/UserId 已由工具栏规范化）
+    /// </summary>
+    private async Task SaveOutboundAsync(string? channelId, string? userId)
+    {
+        var session = SessionState.CurrentSession;
+        if (session == null) return;
+
+        session.ChannelId = channelId;
+        session.UserId = userId;
+        session.UpdatedAt = DateTime.Now;
+        await SessionManager.SaveAsync(session.Id);
+        MessageService.Success("出站绑定已保存");
     }
 
     /// <summary>

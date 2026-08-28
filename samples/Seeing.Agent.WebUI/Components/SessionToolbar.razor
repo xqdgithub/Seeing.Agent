@@ -8,7 +8,6 @@
 @inject AppState AppState
 @inject IAgentRegistry AgentRegistry
 @inject ILlmService LlmService
-@inject ISessionManager SessionManager
 @inject IMessageService MessageService
 @implements IDisposable
 
@@ -141,8 +140,8 @@
            Visible="true"
            OnOk="@OnRenameConfirm"
            OnCancel="@OnRenameCancel"
-           OkText="确定"
-           CancelText="取消">
+           OkText="@OkText"
+           CancelText="@CancelText">
         <Form Model="@RenameForm" Layout="@FormLayout.Horizontal">
             <FormItem Label="会话标题">
                 <Input @bind-Value="@RenameForm.Title"
@@ -158,8 +157,8 @@
            Visible="true"
            OnOk="@OnOutboundConfirm"
            OnCancel="@OnOutboundCancel"
-           OkText="确定"
-           CancelText="取消">
+           OkText="@OkText"
+           CancelText="@CancelText">
         <Form Model="@OutboundForm" Layout="@FormLayout.Horizontal">
             <FormItem Label="ChannelId">
                 <Input @bind-Value="@OutboundForm.ChannelId"
@@ -174,8 +173,11 @@
 }
 
 @code {
-    [Parameter] public Services.SessionWindowContext Context { get; set; } = new();
+    [Parameter, EditorRequired] public Services.SessionWindowContext Context { get; set; } = new();
     [Parameter] public Services.SessionWindowMode Mode { get; set; } = Services.SessionWindowMode.Full;
+
+    private const string OkText = "确定";
+    private const string CancelText = "取消";
 
     private List<string> _agentNames = new();
     private List<ModelViewModel> _models = new();
@@ -361,14 +363,11 @@
 
     private async Task OnOutboundConfirm()
     {
-        var session = Context.CurrentSession;
-        if (session != null)
+        if (Context.SaveOutboundAsync != null)
         {
-            session.ChannelId = NormalizeOutbound(OutboundForm.ChannelId);
-            session.UserId = NormalizeOutbound(OutboundForm.UserId);
-            session.UpdatedAt = DateTime.Now;
-            await SessionManager.SaveAsync(session.Id);
-            MessageService.Success("出站绑定已保存");
+            await Context.SaveOutboundAsync(
+                NormalizeOutbound(OutboundForm.ChannelId),
+                NormalizeOutbound(OutboundForm.UserId));
         }
 
         OutboundModalVisible = false;

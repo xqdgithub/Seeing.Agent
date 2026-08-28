@@ -48,6 +48,8 @@ public sealed class SessionWindowContext
     public Func<Task>? ClearAsync { get; internal set; }
     public Action? ReturnToParent { get; internal set; }
     public Func<string>? GetWorkspace { get; internal set; }
+    /// <summary>保存出站绑定（ChannelId/UserId 已由 UI 规范化，窗口实现负责持久化）</summary>
+    public Func<string?, string?, Task>? SaveOutboundAsync { get; internal set; }
 
     // ---- 事件 ----
     public event Action? StateChanged;
