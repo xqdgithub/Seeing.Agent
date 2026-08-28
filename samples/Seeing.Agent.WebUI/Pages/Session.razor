@@ -36,6 +36,19 @@
 @implements IDisposable
 
 <div Class="session-page-container">
+    @if (_mainMissing)
+    {
+        <Alert Type="@AlertType.Error"
+               Message="主会话不存在或已删除"
+               ShowIcon="true"
+               Closable="true"
+               OnClose="@OnCloseMainMissing"
+               Class="session-main-missing">
+            <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" OnClick="@GoToHome">返回首页</Button>
+        </Alert>
+    }
+    else
+    {
     @* 双栏布局：主区为 active 会话（Full + SessionToolbar 头部），侧栏为非 active 会话（Summary 卡片）；
        侧栏无窗口时隐藏，主窗全宽。头部仍用会话页 SessionToolbar（Agent/模型切换、页级导航插槽）。 *@
     <div class="session-dual-grid">
@@ -137,6 +150,7 @@
             </div>
         }
     </div>
+    }
 </div>
 
 @code {
@@ -152,6 +166,7 @@
     // ---- 双栏状态：主会话 + active 切换 + 侧栏窗口 ----
     private string? _mainSessionId;
     private string? _activeSessionId;
+    private bool _mainMissing;
     private ConferenceRegistry? _registry;
     private IReadOnlyList<ConferenceRegistry.WindowNode> _windows = Array.Empty<ConferenceRegistry.WindowNode>();
 
@@ -197,14 +212,27 @@
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
 
-        // 解析主会话：路由参数优先，否则最近会话（与 SessionWindow 无路由模式对齐）
+        // 解析主会话：路由参数优先，否则最近 Root 会话（ListSessionsAsync 仅返回 Root，避免子会话被误选为主会话）
         var mainId = !string.IsNullOrEmpty(SessionId)
             ? SessionId
-            : (await SessionManager.LoadAllFromStorageAsync()).FirstOrDefault()?.Id;
+            : (await ChatOrchestrator.ListSessionsAsync()).FirstOrDefault()?.Id;
         if (string.IsNullOrEmpty(mainId))
         {
             // 无任何会话：主窗由 SessionWindow 空态兜底（_activeSessionId 保持空）
             return;
+        }
+
+        // URL 指定但主会话已删除 → 错误态（缓存 → 存储兜底确认，与大屏一致）
+        var main = SessionManager.Get(mainId);
+        if (main == null)
+        {
+            main = await SessionManager.LoadAsync(mainId);
+            if (main == null)
+            {
+                _mainMissing = true;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
         }
 
         _mainSessionId = mainId;
@@ -215,7 +243,7 @@
     }
 
     /// <summary>
-    /// 路由参数变化：主会话切换时重绑 registry 父流。
+    /// 路由参数变化：主会话切换时重新校验主会话（缓存 → 存储兜底）并重绑 registry 父流。
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
@@ -227,11 +255,35 @@
 
         _mainSessionId = SessionId;
         _activeSessionId = SessionId;
+
+        // 换路由重新校验主会话（缓存 → 存储兜底），重置错误态
+        var main = SessionManager.Get(SessionId);
+        if (main == null)
+        {
+            main = await SessionManager.LoadAsync(SessionId);
+            if (main == null)
+            {
+                _mainMissing = true;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+        }
+        _mainMissing = false;
+
+        // 初始 _mainMissing 导致 registry 未建立（接线在 OnInitializedAsync 提前 return 后缺失）
+        // → 换有效路由时兜底接线；已存在则 Rebind 切换父流
         if (_registry == null)
             InitRegistry(SessionId);
         else
             _registry.Rebind(SessionId);
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>关闭主会话缺失错误提示（返回可操作态；registry 已失效，路由切换会重新校验接线）</summary>
+    private void OnCloseMainMissing()
+    {
+        _mainMissing = false;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
@@ -332,11 +384,11 @@
     }
 
     /// <summary>
-    /// 前往多 Agent 会议大屏（SessionState 为全局 Scoped 实例，窗口桥接已写入当前会话）
+    /// 前往多 Agent 会议大屏（跳转 URL 主会话而非当前 active，避免子会话被当作主会话）
     /// </summary>
     private void GoToConference()
     {
-        var id = GlobalSessionState.CurrentSession?.Id;
+        var id = _mainSessionId ?? GlobalSessionState.CurrentSession?.Id;
         if (string.IsNullOrEmpty(id)) return;
         NavigationManager.NavigateTo($"/conference/{id}");
     }

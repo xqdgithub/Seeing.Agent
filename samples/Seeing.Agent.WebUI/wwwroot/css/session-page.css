@@ -10,6 +10,11 @@
     overflow: hidden !important;
 }
 
+/* 主会话缺失错误提示 */
+.session-main-missing {
+    margin: var(--space-4);
+}
+
 /* ========== 会话页双栏布局（主窗 + 子会话侧栏） ========== */
 .session-dual-grid {
     display: flex;
