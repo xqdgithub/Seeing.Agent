@@ -30,20 +30,34 @@
     }
     else
     {
-        @* 单网格容器：所有窗口 @key=sessionId 稳定实例，主从交换仅变 ViewMode 参数（spec 5.1） *@
+        @* 双栏布局：Full 固定左侧（不随子窗口数量变化），Summary 右侧垂直堆叠 *@
         <div class="conference-grid">
-            @foreach (var node in AllWindows)
-            {
-                var isActive = string.Equals(node.SessionId, _activeSessionId, StringComparison.Ordinal);
-                <ErrorBoundary>
-                    <SessionWindow @key="@node.SessionId"
-                                   SessionId="@node.SessionId"
-                                   ViewMode="@(isActive ? SessionWindowMode.Full : SessionWindowMode.Summary)"
-                                   AggregatorSessionId="@_mainSessionId"
-                                   GlobalSessionState="@GlobalSessionState"
-                                   OnClick="@OnTileClick" />
-                </ErrorBoundary>
-            }
+            <div class="conference-main-area">
+                @foreach (var node in AllWindows.Where(n => string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal)))
+                {
+                    <ErrorBoundary>
+                        <SessionWindow @key="@node.SessionId"
+                                       SessionId="@node.SessionId"
+                                       ViewMode="@SessionWindowMode.Full"
+                                       AggregatorSessionId="@_mainSessionId"
+                                       GlobalSessionState="@GlobalSessionState"
+                                       OnClick="@OnTileClick" />
+                    </ErrorBoundary>
+                }
+            </div>
+            <div class="conference-side-area">
+                @foreach (var node in AllWindows.Where(n => !string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal)))
+                {
+                    <ErrorBoundary>
+                        <SessionWindow @key="@node.SessionId"
+                                       SessionId="@node.SessionId"
+                                       ViewMode="@SessionWindowMode.Summary"
+                                       AggregatorSessionId="@_mainSessionId"
+                                       GlobalSessionState="@GlobalSessionState"
+                                       OnClick="@OnTileClick" />
+                    </ErrorBoundary>
+                }
+            </div>
         </div>
     }
 </div>
@@ -84,16 +98,38 @@
     }
 
     .conference-grid {
-        display: grid;
-        grid-template-columns: repeat(6, 1fr);
-        grid-auto-rows: minmax(180px, auto);
+        display: flex;
         gap: 8px;
         padding: 8px;
         flex: 1;
-        overflow: auto;
+        overflow: hidden;
     }
-    .conference-grid .session-window--full { grid-column: span 4; grid-row: span 3; }
-    .conference-grid .session-window--summary { grid-column: span 2; grid-row: span 1; }
+
+    .conference-main-area {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .conference-main-area .session-window--full {
+        flex: 1;
+        min-height: 0;
+    }
+
+    .conference-side-area {
+        width: 320px;
+        min-width: 280px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow-y: auto;
+    }
+
+    .conference-side-area .session-window--summary {
+        flex-shrink: 0;
+        height: 200px;
+    }
 
     /* Summary 摘要卡片（SessionWindow 摘要模式共享样式） */
     .conference-tile {

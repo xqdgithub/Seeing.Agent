@@ -1147,15 +1147,26 @@
 
         if (SessionState.CurrentSession != null)
         {
+            var sessionId = SessionState.CurrentSession.Id;
+
+            // 先删除子会话（Task 工具创建的 SubAgent 会话），避免清空后大屏仍显示旧子窗口
+            var children = await SessionManager.ListChildrenAsync(sessionId, SessionKind.SubAgent);
+            foreach (var child in children)
+            {
+                SessionManager.Delete(child.Id);
+            }
+
             SessionState.CurrentSession.ClearMessages();
             SessionState.CurrentSession.Title = "新会话";
             SessionState.CurrentTodoList = null;
             _currentStreamingMessageId = string.Empty;
             _handler?.ClearCache();
 
-            await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+            await SessionManager.SaveAsync(sessionId);
             UpdateBudgetStatus();
-            MessageService.Info("会话已清空");
+            MessageService.Info(children.Count > 0
+                ? $"会话已清空（已同时删除 {children.Count} 个子会话）"
+                : "会话已清空");
             ResetTimelineFromSession();
             _renderedTitle = "新会话";
             Context.Title = "新会话";
