@@ -38,7 +38,8 @@ public class TaskToolTests
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
             fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object);
+            fixture.LoopScheduler.Object,
+            fixture.ExecService);
         var context = new ToolContext
         {
             SessionId = fixture.ParentId,
@@ -80,7 +81,8 @@ public class TaskToolTests
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
             fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object);
+            fixture.LoopScheduler.Object,
+            fixture.ExecService);
         var context = new ToolContext
         {
             SessionId = fixture.ParentId,
@@ -127,7 +129,8 @@ public class TaskToolTests
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
             fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object);
+            fixture.LoopScheduler.Object,
+            fixture.ExecService);
         var context = new ToolContext
         {
             SessionId = fixture.ParentId,
@@ -158,7 +161,8 @@ public class TaskToolTests
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
             fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object);
+            fixture.LoopScheduler.Object,
+            fixture.ExecService);
         var context = new ToolContext { SessionId = fixture.ParentId, Services = fixture.ToolProvider };
 
         var result = await tool.ExecuteAsync(
