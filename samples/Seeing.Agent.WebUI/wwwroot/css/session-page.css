@@ -11,25 +11,6 @@
 }
 
 /* ========== Session Header ========== */
-.session-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-bg-container);
-    border-bottom: 1px solid var(--color-border);
-    min-height: 48px;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-}
-
-.session-header-left {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
 .session-title {
     font-size: var(--font-size-lg);
     font-weight: 600;
@@ -63,11 +44,6 @@
 .session-workspace-badge .anticon {
     font-size: 12px;
     flex-shrink: 0;
-}
-
-.session-header-right {
-    display: flex;
-    align-items: center;
 }
 
 /* 子会话只读元信息：Agent / Model 分芯片展示 */
@@ -141,6 +117,20 @@
 }
 
 .session-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+}
+
+.session-toolbar-left-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+}
+
+.session-toolbar-right-actions {
     display: flex;
     align-items: center;
     gap: var(--space-1);
@@ -277,10 +267,6 @@
 
 /* ========== Responsive Adjustments ========== */
 @media (max-width: 768px) {
-    .session-header {
-        padding: var(--space-2) var(--space-3);
-    }
-    
     .session-title {
         font-size: var(--font-size-md);
     }
@@ -298,34 +284,7 @@
     }
 }
 
-/* ========== 移动端溢出面板 ========== */
-.session-header-mobile-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-bg-container);
-    border-bottom: 1px solid var(--color-border);
-    flex-shrink: 0;
-}
-
-.mobile-panel-row {
-    display: flex;
-    gap: var(--space-2);
-}
-
-.mobile-panel-actions {
-    display: flex;
-    gap: var(--space-1);
-    flex-wrap: wrap;
-}
-
-/* 移动端更多按钮 */
-.mobile-header-more-btn {
-    margin-left: var(--space-1);
-}
-
-/* 移动端全宽内容 */
+/* ========== 移动端全宽内容 ========== */
 .main-layout-content--mobile .session-input-container,
 .main-layout-content--mobile .message-list-container {
     max-width: 100%;
