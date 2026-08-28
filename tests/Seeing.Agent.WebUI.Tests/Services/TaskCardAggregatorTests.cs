@@ -77,7 +77,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object);
+        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
         var assistantChanged = false;
         aggregator.AssistantChanged += _ => assistantChanged = true;
         aggregator.Rebind(parentId); // 订阅父流
@@ -124,7 +124,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object);
+        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
         aggregator.Rebind(parentId);
 
         // 父流 task 工具调用 → 挂载子流
@@ -200,7 +200,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object);
+        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
         aggregator.Rebind(parentId);
 
         // 父流挂载两个子流
@@ -257,7 +257,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object);
+        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
         aggregator.Rebind(parentId);
 
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
@@ -330,7 +330,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object);
+        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
         aggregator.Rebind(parent1);
 
         // 先挂载 child1（验证父1 订阅有效）
@@ -397,7 +397,7 @@ public class TaskCardAggregatorTests
 
         var router = new SessionEventStreamRouter(
             orchestrator.Object, scopeFactory.Object, NullLogger<SessionEventStreamRouter>.Instance);
-        var aggregator = new TaskCardAggregator(router, sm.Object);
+        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
         sp.Setup(s => s.GetService(typeof(TaskCardAggregator))).Returns(aggregator);
 
         var agg = router.GetOrCreateConsumer<TaskCardAggregator>(parentId, "circuit-1");

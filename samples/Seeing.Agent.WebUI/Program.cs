@@ -68,6 +68,7 @@ builder.Services.AddScoped<MessageTimelineStore>();
 builder.Services.AddScoped<CircuitContext>();
 builder.Services.AddSingleton<SessionEventStreamRouter>();
 builder.Services.AddScoped<TaskCardAggregator>();
+builder.Services.AddScoped<TaskSessionResolver>();
 
 // EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
 // 此处保留的 Scoped 注册作为"全局权限事件总线"占位实例（sessionId 为空串）：

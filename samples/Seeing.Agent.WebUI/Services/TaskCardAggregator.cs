@@ -23,6 +23,7 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
 {
     private readonly SessionEventStreamRouter _router;
     private readonly ISessionManager _sessionManager;
+    private readonly TaskSessionResolver _taskResolver;
     private readonly ConcurrentDictionary<string, TaskCardState> _tasks = new();
     private readonly object _persistLock = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -32,10 +33,11 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
     private bool _dirty;
     private bool _disposed;
 
-    public TaskCardAggregator(SessionEventStreamRouter router, ISessionManager sessionManager)
+    public TaskCardAggregator(SessionEventStreamRouter router, ISessionManager sessionManager, TaskSessionResolver taskResolver)
     {
         _router = router;
         _sessionManager = sessionManager;
+        _taskResolver = taskResolver ?? throw new ArgumentNullException(nameof(taskResolver));
     }
 
     public string SessionId => ParentSessionId ?? string.Empty;
@@ -169,27 +171,8 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
         }
     }
 
-    private async Task<string?> ResolveTaskIdAsync(SessionToolCall toolCall)
-    {
-        if (!string.IsNullOrEmpty(toolCall.TaskId))
-            return toolCall.TaskId;
-
-        if (string.IsNullOrEmpty(ParentSessionId)) return null;
-
-        // 内存缓存枚举
-        var children = await _sessionManager.ListChildrenAsync(ParentSessionId, SessionKind.SubAgent);
-        var match = children?.FirstOrDefault(c =>
-            c.Metadata.TryGetValue(SessionMetadataKeys.OriginToolCallId, out var oid)
-            && string.Equals(oid, toolCall.Id, StringComparison.Ordinal));
-        if (match != null) return match.Id;
-
-        // 冷缓存兜底：磁盘枚举
-        var diskChildren = await _sessionManager.LoadChildrenFromStorageAsync(ParentSessionId);
-        match = diskChildren?.FirstOrDefault(c =>
-            c.Metadata.TryGetValue(SessionMetadataKeys.OriginToolCallId, out var oid)
-            && string.Equals(oid, toolCall.Id, StringComparison.Ordinal));
-        return match?.Id;
-    }
+    private Task<string?> ResolveTaskIdAsync(SessionToolCall toolCall)
+        => _taskResolver.ResolveTaskIdAsync(ParentSessionId ?? string.Empty, toolCall);
 
     /// <summary>
     /// 原子挂载：幂等 + 按 toolCall 引用防重，返回是否真正挂载（调用方随后在锁外 AttachConsumer）。

@@ -306,7 +306,7 @@ public class SessionEventStreamRouterTests
         var sp = new Mock<IServiceProvider>();
         scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
         sp.Setup(s => s.GetService(typeof(TaskCardAggregator)))
-            .Returns(() => new TaskCardAggregator(null!, Mock.Of<ISessionManager>()));
+            .Returns(() => new TaskCardAggregator(null!, Mock.Of<ISessionManager>(), new TaskSessionResolver(Mock.Of<ISessionManager>())));
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
