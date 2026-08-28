@@ -15,6 +15,12 @@
 {
     <div class="session-toolbar">
         <div class="session-toolbar-left">
+            @if (LeftActions != null)
+            {
+                <div class="session-toolbar-left-actions">
+                    @LeftActions(Context)
+                </div>
+            }
             @if (!string.IsNullOrEmpty(Context.Title))
             {
                 <Tooltip Title="@Context.Title">
@@ -148,6 +154,12 @@
                         OnClick="@OnClearSession"
                         Disabled="@(Context.IsExecuting || Context.IsSubAgentView)" />
             </Tooltip>
+            @if (RightActions != null)
+            {
+                <div class="session-toolbar-right-actions">
+                    @RightActions(Context)
+                </div>
+            }
         </div>
     </div>
 }
@@ -193,6 +205,8 @@
 @code {
     [Parameter, EditorRequired] public Services.SessionWindowContext Context { get; set; } = new();
     [Parameter] public Services.SessionWindowMode Mode { get; set; } = Services.SessionWindowMode.Full;
+    [Parameter] public RenderFragment<Services.SessionWindowContext>? LeftActions { get; set; }
+    [Parameter] public RenderFragment<Services.SessionWindowContext>? RightActions { get; set; }
 
     private const string OkText = "确定";
     private const string CancelText = "取消";
