@@ -46,8 +46,11 @@
         {
             @Header(Context)
         }
-        <!-- 内置工具栏：Agent/模型切换、重命名、分支、清空、出站绑定（仅 Full 模式） -->
-        <SessionToolbar Context="Context" Mode="ViewMode" />
+        <!-- 内置工具栏：Agent/模型切换、重命名、分支、清空、出站绑定（仅 Full 模式）；左右插槽由外层注入页级导航 -->
+        <SessionToolbar Context="Context"
+                        Mode="ViewMode"
+                        LeftActions="ToolbarLeftActions"
+                        RightActions="ToolbarRightActions" />
         <!-- 主内容区域（消息列 + Todo 面板）；输入与消息同列，避免 Todo 出现时输入相对对话偏移 -->
         <div Class="session-content-wrapper">
             <div Class="session-main-column">
@@ -175,6 +178,8 @@
     [Parameter] public string SessionId { get; set; } = string.Empty;
     [Parameter] public Services.SessionWindowMode ViewMode { get; set; } = Services.SessionWindowMode.Full;
     [Parameter] public RenderFragment<Services.SessionWindowContext>? Header { get; set; }
+    [Parameter] public RenderFragment<Services.SessionWindowContext>? ToolbarLeftActions { get; set; }
+    [Parameter] public RenderFragment<Services.SessionWindowContext>? ToolbarRightActions { get; set; }
     [Parameter] public EventCallback<string> OnClick { get; set; }
     [Parameter] public string? AggregatorSessionId { get; set; }
     [Parameter] public Seeing.Agent.WebUI.State.SessionState? GlobalSessionState { get; set; }
