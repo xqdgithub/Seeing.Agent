@@ -47,10 +47,10 @@ public sealed class ConferenceRegistry : IStreamConsumer
         lock (_lock)
         {
             _windows.Clear();
-            // UI 立即清空旧路由窗口（换父后即使枚举无新增也须触发，避免残留旧子窗口）；
-            // 枚举完成后经 AddChildren 增量补（added 逻辑不变）
-            WindowsChanged?.Invoke();
         }
+        // UI 立即清空旧路由窗口（换父后即使枚举无新增也须触发，避免残留旧子窗口）；
+        // 枚举完成后经 AddChildren 增量补（added 逻辑不变）
+        WindowsChanged?.Invoke();
 
         ParentSessionId = mainId;
         _ = EnumerateAsync(mainId);
@@ -79,13 +79,13 @@ public sealed class ConferenceRegistry : IStreamConsumer
         if (children == null)
             return;
 
+        var added = false;
         lock (_lock)
         {
             // 竞态防护：连续 Rebind 后旧枚举晚到，ParentSessionId 已变 → 丢弃
             if (!string.Equals(ParentSessionId, parentId, StringComparison.Ordinal))
                 return;
 
-            var added = false;
             foreach (var c in children)
             {
                 if (_windows.Any(w => string.Equals(w.SessionId, c.Id, StringComparison.Ordinal)))
@@ -93,9 +93,9 @@ public sealed class ConferenceRegistry : IStreamConsumer
                 _windows.Add(new WindowNode(c.Id, c.ParentSessionId, c.Kind, c.Title ?? string.Empty));
                 added = true;
             }
-            if (added)
-                WindowsChanged?.Invoke();
         }
+        if (added)
+            WindowsChanged?.Invoke();
     }
 
     public void OnEvent(IMessageEvent evt)
@@ -140,7 +140,8 @@ public sealed class ConferenceRegistry : IStreamConsumer
                 var child = _sessionManager.Get(taskId);
                 _windows.Add(new WindowNode(taskId, parentId, SessionKind.SubAgent, child?.Title ?? string.Empty));
             }
-            WindowsChanged?.Invoke();
+            WindowsChanged?.Invoke();  // 已在 lock 外触发
+            return;
         }
         catch
         {

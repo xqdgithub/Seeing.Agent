@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.App;
+using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
 
@@ -88,5 +89,129 @@ public class ConferenceRegistryTests
 
         changed.Should().BeGreaterThan(0);
         registry.Windows.Should().Contain(w => w.SessionId == "child1");
+    }
+
+    [Fact]
+    public async Task OnEvent_DuplicateTaskCall_ShouldNotAddDuplicateWindow()
+    {
+        var parentId = "parent1";
+        var child = CreateChild("child1", parentId, "call-1");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = new Mock<ISessionManager>();
+        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
+        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
+
+        using var router = CreateRouter(orchestrator);
+        var registry = new ConferenceRegistry(router, sm.Object,
+            new TaskSessionResolver(sm.Object));
+        registry.Rebind(parentId);
+        await Task.Delay(200);
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
+
+        await parentChannel.Writer.WriteAsync(new ToolCallEvent
+        {
+            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+        });
+        await Task.Delay(200);
+
+        registry.Windows.Count(w => w.SessionId == "child1").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Rebind_DiskFallback_ShouldEnumerateFromStorageWhenMemoryEmpty()
+    {
+        var parentId = "parent1";
+        var child = CreateChild("child1", parentId, "call-1");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = new Mock<ISessionManager>();
+        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
+
+        using var router = CreateRouter(orchestrator);
+        var registry = new ConferenceRegistry(router, sm.Object,
+            new TaskSessionResolver(sm.Object));
+        registry.Rebind(parentId);
+        await Task.Delay(200);
+
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
+    }
+
+    [Fact]
+    public async Task CompletionEvent_ShouldNotRemoveWindow()
+    {
+        var parentId = "parent1";
+        var child = CreateChild("child1", parentId, "call-1");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = new Mock<ISessionManager>();
+        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
+        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
+
+        using var router = CreateRouter(orchestrator);
+        var registry = new ConferenceRegistry(router, sm.Object,
+            new TaskSessionResolver(sm.Object));
+        registry.Rebind(parentId);
+        await Task.Delay(200);
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
+
+        await parentChannel.Writer.WriteAsync(new ExecutionCompleteEvent
+        {
+            SessionId = parentId, ExecutionId = "e1",
+            Status = Seeing.Agent.Execution.ExecutionStatus.Completed
+        });
+        await Task.Delay(200);
+
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
+    }
+
+    [Fact]
+    public async Task Rebind_DifferentParent_ShouldClearOldAndEnumerateNew()
+    {
+        var parentA = "parentA";
+        var parentB = "parentB";
+        var childA = CreateChild("childA", parentA, "call-a");
+        var childB = CreateChild("childB", parentB, "call-b");
+        var channelA = Channel.CreateUnbounded<IMessageEvent>();
+        var channelB = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = new Mock<ISessionManager>();
+        sm.Setup(m => m.ListChildrenAsync(parentA, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { childA }));
+        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentA, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        sm.Setup(m => m.ListChildrenAsync(parentB, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { childB }));
+        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentB, It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
+        {
+            [parentA] = channelA, [parentB] = channelB
+        });
+
+        using var router = CreateRouter(orchestrator);
+        var registry = new ConferenceRegistry(router, sm.Object,
+            new TaskSessionResolver(sm.Object));
+
+        var changeCount = 0;
+        registry.WindowsChanged += () => changeCount++;
+
+        registry.Rebind(parentA);
+        await Task.Delay(200);
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "childA");
+        var countAfterA = changeCount;
+
+        registry.Rebind(parentB);
+        await Task.Delay(200);
+        registry.Windows.Should().ContainSingle(w => w.SessionId == "childB");
+        registry.Windows.Should().NotContain(w => w.SessionId == "childA");
+        changeCount.Should().BeGreaterThan(countAfterA);
     }
 }
