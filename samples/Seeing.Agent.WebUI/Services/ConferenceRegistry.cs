@@ -45,7 +45,12 @@ public sealed class ConferenceRegistry : IStreamConsumer
             _router.DetachConsumer(ParentSessionId, this);
 
         lock (_lock)
+        {
             _windows.Clear();
+            // UI 立即清空旧路由窗口（换父后即使枚举无新增也须触发，避免残留旧子窗口）；
+            // 枚举完成后经 AddChildren 增量补（added 逻辑不变）
+            WindowsChanged?.Invoke();
+        }
 
         ParentSessionId = mainId;
         _ = EnumerateAsync(mainId);

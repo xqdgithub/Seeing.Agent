@@ -212,13 +212,21 @@
 
         _mainSessionId = mainId;
         _activeSessionId = mainId;
-        var circuitId = CircuitContext.Id ?? "";
+        InitRegistry(mainId);
 
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 建立 registry 接线：按 circuit 获取/创建 Consumer、绑定主会话父流、订阅窗口集合变化。
+    /// 抽为私有方法供初始化与"初始缺失后换有效路由"复用（registry 为空时兜底创建）。
+    /// </summary>
+    private void InitRegistry(string mainId)
+    {
+        var circuitId = CircuitContext.Id ?? "";
         _registry = Router.GetOrCreateCircuitConsumer<ConferenceRegistry>(circuitId);
         _registry.Rebind(mainId);
         _registry.WindowsChanged += OnWindowsChanged;
-
-        await InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnParametersSetAsync()
@@ -242,7 +250,12 @@
             }
             _mainMissing = false;
 
-            _registry?.Rebind(SessionId);
+            // 初始 _mainMissing 导致 registry 未建立（接线在 OnInitializedAsync 提前 return 后缺失）
+            // → 换有效路由时兜底接线；已存在则 Rebind 切换父流
+            if (_registry == null)
+                InitRegistry(SessionId);
+            else
+                _registry.Rebind(SessionId);
             await InvokeAsync(StateHasChanged);
         }
     }
