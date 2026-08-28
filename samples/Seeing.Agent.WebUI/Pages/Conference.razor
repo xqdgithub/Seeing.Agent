@@ -30,7 +30,7 @@
     }
     else
     {
-        @* 双栏布局：Full 固定左侧（不随子窗口数量变化），Summary 右侧垂直堆叠 *@
+        @* 双栏布局：Full 固定左侧（不随子窗口数量变化），Summary 右侧垂直堆叠；无子会话时隐藏侧栏主窗全宽 *@
         <div class="conference-grid">
             <div class="conference-main-area">
                 @foreach (var node in AllWindows.Where(n => string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal)))
@@ -45,19 +45,22 @@
                     </ErrorBoundary>
                 }
             </div>
-            <div class="conference-side-area">
-                @foreach (var node in AllWindows.Where(n => !string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal)))
-                {
-                    <ErrorBoundary>
-                        <SessionWindow @key="@node.SessionId"
-                                       SessionId="@node.SessionId"
-                                       ViewMode="@SessionWindowMode.Summary"
-                                       AggregatorSessionId="@_mainSessionId"
-                                       GlobalSessionState="@GlobalSessionState"
-                                       OnClick="@OnTileClick" />
-                    </ErrorBoundary>
-                }
-            </div>
+            @if (SideWindows.Count > 0)
+            {
+                <div class="conference-side-area">
+                    @foreach (var node in SideWindows)
+                    {
+                        <ErrorBoundary>
+                            <SessionWindow @key="@node.SessionId"
+                                           SessionId="@node.SessionId"
+                                           ViewMode="@SessionWindowMode.Summary"
+                                           AggregatorSessionId="@_mainSessionId"
+                                           GlobalSessionState="@GlobalSessionState"
+                                           OnClick="@OnTileClick" />
+                        </ErrorBoundary>
+                    }
+                </div>
+            }
         </div>
     }
 </div>
@@ -99,7 +102,6 @@
 
     .conference-grid {
         display: flex;
-        gap: 8px;
         padding: 8px;
         flex: 1;
         overflow: hidden;
@@ -110,6 +112,7 @@
         min-width: 0;
         display: flex;
         flex-direction: column;
+        padding-right: 8px;
     }
 
     .conference-main-area .session-window--full {
@@ -124,58 +127,14 @@
         flex-direction: column;
         gap: 8px;
         overflow-y: auto;
+        border-left: 1px solid var(--color-border);
+        padding-left: 8px;
     }
 
     .conference-side-area .session-window--summary {
-        flex-shrink: 0;
-        height: 200px;
-    }
-
-    /* Summary 摘要卡片（SessionWindow 摘要模式共享样式） */
-    .conference-tile {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-2);
-        height: 100%;
-        padding: var(--space-3);
-        background: var(--color-bg-container);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        cursor: pointer;
-        transition: box-shadow 0.2s ease, border-color 0.2s ease;
-        overflow: hidden;
-    }
-
-    .conference-tile:hover {
-        border-color: var(--color-primary);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-    }
-
-    .conference-tile-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--space-2);
-        min-width: 0;
-    }
-
-    .conference-tile-title {
-        min-width: 0;
-        font-size: var(--font-size-sm);
-        font-weight: 600;
-        color: var(--color-text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .conference-tile-body {
-        flex: 1;
-        min-height: 0;
-        font-size: var(--font-size-xs);
-        color: var(--color-text-secondary);
-        line-height: 1.6;
-        overflow: hidden;
+        /* 覆盖全局 .session-window { flex: 1 }（grow=1/basis=0%）：固定高度不拉伸 */
+        flex: 0 0 200px;
+        min-height: 200px;
     }
 </style>
 
@@ -201,6 +160,18 @@
             }
             nodes.AddRange(_windows);
             return nodes;
+        }
+    }
+
+    /// <summary>侧栏窗口：非 active 的会话，主会话（Root）置顶排第一</summary>
+    private IReadOnlyList<ConferenceRegistry.WindowNode> SideWindows
+    {
+        get
+        {
+            return AllWindows
+                .Where(n => !string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal))
+                .OrderBy(n => n.Kind == SessionKind.Root ? 0 : 1)
+                .ToArray();
         }
     }
 

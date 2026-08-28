@@ -159,8 +159,8 @@
     }
     else
     {
-        @* Summary 模式：摘要卡片（标题/badge/执行状态/最新消息预览/运行中工具） *@
-        <div class="conference-tile" @onclick="OnTileClick">
+        @* Summary 模式：摘要卡片（标题/badge/执行状态/最新消息预览/运行中工具）；主会话加左边条淡蓝底样式 *@
+        <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main" : "")}")" @onclick="OnTileClick">
             <div class="conference-tile-header">
                 <span class="conference-tile-title">@SessionState.Title</span>
                 <Badge Status="@GetStatusBadge()" />
@@ -168,6 +168,13 @@
             <div class="conference-tile-body">
                 @GetLatestAssistantPreview()
             </div>
+            @if (!IsMainSession && !string.IsNullOrEmpty(GetParentSessionTitle()))
+            {
+                <div class="conference-tile-parent">
+                    <Icon Type="@IconType.Outline.Link" />
+                    <span>父会话：@GetParentSessionTitle()</span>
+                </div>
+            }
         </div>
     }
 </div>
@@ -667,6 +674,21 @@
 
     /// <summary>窗口实际绑定的会话 ID（无路由参数时经 LoadRecentOrEmptyAsync 解析为真实 id）</summary>
     private string EffectiveSessionId => !string.IsNullOrEmpty(SessionId) ? SessionId : (_loadedSessionId ?? "");
+
+    /// <summary>Summary 模式：是否为聚合器主会话（用于侧栏卡片主/子会话样式区分）</summary>
+    private bool IsMainSession =>
+        !string.IsNullOrEmpty(AggregatorSessionId)
+        && string.Equals(EffectiveSessionId, AggregatorSessionId, StringComparison.Ordinal);
+
+    /// <summary>Summary 模式：父会话标题（子会话经 ParentSessionId 反查；主会话返回空不渲染）</summary>
+    private string GetParentSessionTitle()
+    {
+        var parentId = SessionState.CurrentSession?.ParentSessionId;
+        if (string.IsNullOrEmpty(parentId))
+            return string.Empty;
+        var parent = SessionManager.Get(parentId);
+        return parent?.Title ?? string.Empty;
+    }
 
     /// <summary>聚合器父会话 ID：外层可显式指定 AggregatorSessionId；否则回退窗口实际会话（含无路由场景）</summary>
     private string ResolveAggregatorSessionId()

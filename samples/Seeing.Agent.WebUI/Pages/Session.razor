@@ -30,63 +30,113 @@
 @inject IWorkspaceProvider WorkspaceProvider
 @inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
+@inject Services.SessionEventStreamRouter Router
+@inject Services.CircuitContext CircuitContext
+@inject ISessionManager SessionManager
 @implements IDisposable
 
 <div Class="session-page-container">
-    @* 会话窗口：会话加载/事件绑定/时间线/提交/取消/只读/Todo/压缩/budget/标题 全在此承载；
-       本页仅注入页级导航（经工具栏左右插槽读写 Context）与对话框。 *@
-    <SessionWindow SessionId="@(SessionId ?? "")"
-                   ViewMode="Services.SessionWindowMode.Full"
-                   AggregatorSessionId="@(SessionId ?? "")"
-                   GlobalSessionState="@GlobalSessionState">
-        <ToolbarLeftActions Context="ctx">
-            @{
-                // 幂等同步 AppState.CurrentSessionId（供首页"继续会话"导航定位）
-                SyncCurrentSessionId(ctx);
+    @* 双栏布局：主区为 active 会话（Full + SessionToolbar 头部），侧栏为非 active 会话（Summary 卡片）；
+       侧栏无窗口时隐藏，主窗全宽。头部仍用会话页 SessionToolbar（Agent/模型切换、页级导航插槽）。 *@
+    <div class="session-dual-grid">
+        <div class="session-main-area">
+            @if (string.IsNullOrEmpty(_activeSessionId))
+            {
+                @* 无可用会话：由 SessionWindow 无路由参数模式展示空态 *@
+                <SessionWindow SessionId=""
+                               ViewMode="Services.SessionWindowMode.Full"
+                               GlobalSessionState="@GlobalSessionState">
+                    <ToolbarLeftActions Context="ctx">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Home"
+                                OnClick="@GoToHome">
+                            @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
+                            {
+                                <span>首页</span>
+                            }
+                        </Button>
+                    </ToolbarLeftActions>
+                </SessionWindow>
             }
-            <Button Type="@ButtonType.Text"
-                    Size="@ButtonSize.Small"
-                    Icon="@IconType.Outline.Home"
-                    OnClick="@GoToHome">
-                @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
-                {
-                    <span>首页</span>
-                }
-            </Button>
-        </ToolbarLeftActions>
-        <ToolbarRightActions Context="ctx">
-            <Space>
-                @if (!ctx.IsSubAgentView)
-                {
-                    <SpaceItem>
-                        <Tooltip Title="分支会话">
+            else
+            {
+                @* 主窗：active 会话，@key 切换时重建加载新会话 *@
+                <ErrorBoundary>
+                    <SessionWindow @key="@_activeSessionId"
+                                   SessionId="@_activeSessionId"
+                                   ViewMode="Services.SessionWindowMode.Full"
+                                   AggregatorSessionId="@_mainSessionId"
+                                   GlobalSessionState="@GlobalSessionState"
+                                   OnClick="@OnTileClick">
+                        <ToolbarLeftActions Context="ctx">
+                            @{
+                                // 幂等同步 AppState.CurrentSessionId（供首页"继续会话"导航定位）
+                                SyncCurrentSessionId(ctx);
+                            }
                             <Button Type="@ButtonType.Text"
                                     Size="@ButtonSize.Small"
-                                    Icon="@IconType.Outline.Copy"
-                                    OnClick="@OnBranchSession" />
-                        </Tooltip>
-                    </SpaceItem>
+                                    Icon="@IconType.Outline.Home"
+                                    OnClick="@GoToHome">
+                                @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
+                                {
+                                    <span>首页</span>
+                                }
+                            </Button>
+                        </ToolbarLeftActions>
+                        <ToolbarRightActions Context="ctx">
+                            <Space>
+                                @if (!ctx.IsSubAgentView)
+                                {
+                                    <SpaceItem>
+                                        <Tooltip Title="分支会话">
+                                            <Button Type="@ButtonType.Text"
+                                                    Size="@ButtonSize.Small"
+                                                    Icon="@IconType.Outline.Copy"
+                                                    OnClick="@OnBranchSession" />
+                                        </Tooltip>
+                                    </SpaceItem>
+                                }
+                                <SpaceItem>
+                                    <Tooltip Title="多 Agent 会议大屏">
+                                        <Button Type="@ButtonType.Text"
+                                                Size="@ButtonSize.Small"
+                                                Icon="@IconType.Outline.VideoCamera"
+                                                OnClick="@GoToConference" />
+                                    </Tooltip>
+                                </SpaceItem>
+                                <SpaceItem>
+                                    <Tooltip Title="新建会话">
+                                        <Button Type="@ButtonType.Text"
+                                                Size="@ButtonSize.Small"
+                                                Icon="@IconType.Outline.Plus"
+                                                OnClick="@CreateNewSessionAsync"
+                                                Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
+                                    </Tooltip>
+                                </SpaceItem>
+                            </Space>
+                        </ToolbarRightActions>
+                    </SessionWindow>
+                </ErrorBoundary>
+            }
+        </div>
+        @if (SideWindows.Count > 0)
+        {
+            <div class="session-side-area">
+                @foreach (var node in SideWindows)
+                {
+                    <ErrorBoundary>
+                        <SessionWindow @key="@node.SessionId"
+                                       SessionId="@node.SessionId"
+                                       ViewMode="Services.SessionWindowMode.Summary"
+                                       AggregatorSessionId="@_mainSessionId"
+                                       GlobalSessionState="@GlobalSessionState"
+                                       OnClick="@OnTileClick" />
+                    </ErrorBoundary>
                 }
-                <SpaceItem>
-                    <Tooltip Title="多 Agent 会议大屏">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.VideoCamera"
-                                OnClick="@GoToConference" />
-                    </Tooltip>
-                </SpaceItem>
-                <SpaceItem>
-                    <Tooltip Title="新建会话">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Plus"
-                                OnClick="@CreateNewSessionAsync"
-                                Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
-                    </Tooltip>
-                </SpaceItem>
-            </Space>
-        </ToolbarRightActions>
-    </SessionWindow>
+            </div>
+        }
+    </div>
 </div>
 
 @code {
@@ -94,14 +144,50 @@
     private bool _hasRendered;
 
     /// <summary>
-    /// 路由参数：会话 ID
+    /// 路由参数：会话 ID（主会话）
     /// </summary>
     [Parameter]
     public string? SessionId { get; set; }
 
+    // ---- 双栏状态：主会话 + active 切换 + 侧栏窗口 ----
+    private string? _mainSessionId;
+    private string? _activeSessionId;
+    private ConferenceRegistry? _registry;
+    private IReadOnlyList<ConferenceRegistry.WindowNode> _windows = Array.Empty<ConferenceRegistry.WindowNode>();
+
+    /// <summary>侧栏窗口：非 active 的会话，主会话（Root）置顶排第一</summary>
+    private IReadOnlyList<ConferenceRegistry.WindowNode> SideWindows
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_mainSessionId))
+                return Array.Empty<ConferenceRegistry.WindowNode>();
+            return AllWindows
+                .Where(n => !string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal))
+                .OrderBy(n => n.Kind == SessionKind.Root ? 0 : 1)
+                .ToArray();
+        }
+    }
+
+    /// <summary>全部窗口：主会话（root）+ 子会话（registry.Windows）</summary>
+    private IReadOnlyList<ConferenceRegistry.WindowNode> AllWindows
+    {
+        get
+        {
+            var nodes = new List<ConferenceRegistry.WindowNode>();
+            if (!string.IsNullOrEmpty(_mainSessionId))
+            {
+                var main = SessionManager.Get(_mainSessionId);
+                nodes.Add(new ConferenceRegistry.WindowNode(_mainSessionId, null, SessionKind.Root, main?.Title ?? string.Empty));
+            }
+            nodes.AddRange(_windows);
+            return nodes;
+        }
+    }
+
     /// <summary>
     /// 组件初始化：会话加载/事件绑定/Agent 与模型选项等均由 SessionWindow + SessionToolbar 承载，
-    /// 本页仅订阅 AppState 变更与预载工具/技能数据。
+    /// 本页订阅 AppState 变更、预载工具/技能数据，并接线双栏子会话 registry。
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
@@ -110,6 +196,66 @@
 
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
+
+        // 解析主会话：路由参数优先，否则最近会话（与 SessionWindow 无路由模式对齐）
+        var mainId = !string.IsNullOrEmpty(SessionId)
+            ? SessionId
+            : (await SessionManager.LoadAllFromStorageAsync()).FirstOrDefault()?.Id;
+        if (string.IsNullOrEmpty(mainId))
+        {
+            // 无任何会话：主窗由 SessionWindow 空态兜底（_activeSessionId 保持空）
+            return;
+        }
+
+        _mainSessionId = mainId;
+        _activeSessionId = mainId;
+        InitRegistry(mainId);
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 路由参数变化：主会话切换时重绑 registry 父流。
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId))
+            return;
+        if (_mainSessionId != null
+            && string.Equals(SessionId, _mainSessionId, StringComparison.Ordinal))
+            return;
+
+        _mainSessionId = SessionId;
+        _activeSessionId = SessionId;
+        if (_registry == null)
+            InitRegistry(SessionId);
+        else
+            _registry.Rebind(SessionId);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 建立 registry 接线：按 circuit 获取/创建 Consumer、绑定主会话父流、订阅窗口集合变化。
+    /// </summary>
+    private void InitRegistry(string mainId)
+    {
+        var circuitId = CircuitContext.Id ?? "";
+        _registry = Router.GetOrCreateCircuitConsumer<ConferenceRegistry>(circuitId);
+        _registry.Rebind(mainId);
+        _registry.WindowsChanged += OnWindowsChanged;
+    }
+
+    private void OnWindowsChanged()
+    {
+        _windows = _registry?.Windows ?? Array.Empty<ConferenceRegistry.WindowNode>();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>点击侧栏卡片：原地切换主窗 active 会话（URL 不变，同大屏行为）</summary>
+    private async Task OnTileClick(string sessionId)
+    {
+        _activeSessionId = sessionId;
+        await InvokeAsync(StateHasChanged);
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -213,5 +359,8 @@
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChange;
+        if (_registry != null)
+            _registry.WindowsChanged -= OnWindowsChanged;
+        // circuit 关闭由 SeeingCircuitHandler → Router.DetachAllForCircuit 统一释放
     }
 }

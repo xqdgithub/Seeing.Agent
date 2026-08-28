@@ -10,6 +10,122 @@
     overflow: hidden !important;
 }
 
+/* ========== 会话页双栏布局（主窗 + 子会话侧栏） ========== */
+.session-dual-grid {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    padding: 8px;
+    overflow: hidden;
+}
+
+.session-main-area {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding-right: 8px;
+}
+
+.session-main-area .session-window--full {
+    flex: 1;
+    min-height: 0;
+}
+
+.session-side-area {
+    width: 320px;
+    min-width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    border-left: 1px solid var(--color-border);
+    padding-left: 8px;
+}
+
+.session-side-area .session-window--summary {
+    /* 覆盖全局 .session-window { flex: 1 }（grow=1/basis=0%）：固定高度不拉伸 */
+    flex: 0 0 200px;
+    min-height: 200px;
+}
+
+/* Summary 摘要卡片（SessionWindow 摘要模式共享样式，会话页/大屏共用） */
+.conference-tile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    height: 100%;
+    padding: var(--space-3);
+    background: var(--color-bg-container);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    overflow: hidden;
+}
+
+/* 主会话卡片：主题色左边条 + 淡蓝底，与子会话高区分 */
+.conference-tile--main {
+    border-left: 3px solid var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-container));
+}
+
+.conference-tile:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.conference-tile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-width: 0;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.conference-tile-title {
+    min-width: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.conference-tile-body {
+    flex: 1;
+    min-height: 0;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    overflow: hidden;
+}
+
+/* 子会话卡片：父会话关联小字行 */
+.conference-tile-parent {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-2);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.conference-tile-parent .anticon {
+    flex-shrink: 0;
+}
+
+.conference-tile-parent span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* ========== Session Header ========== */
 .session-title {
     font-size: var(--font-size-lg);
