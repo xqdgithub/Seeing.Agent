@@ -363,20 +363,21 @@ public class SessionEventStreamRouterTests
     [Fact]
     public void GetOrCreateCircuitConsumer_ShouldRegisterForCircuitCleanup()
     {
-        var scopeFactory = CreateScopeFactoryFor<FakeRegistryConsumer>();
-        using var router = CreateRouter(new Mock<IChatOrchestrator>(), scopeFactory);
-        var consumer = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
-        // Attach 到某会话后再由 DetachAllForCircuit 统一释放（内部 _consumerCircuit 登记）
-        router.AttachConsumer("s1", consumer);
+        var scope = new Mock<IServiceScope>();
+        var sp = new Mock<IServiceProvider>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        sp.Setup(s => s.GetService(typeof(FakeRegistryConsumer))).Returns(() => new FakeRegistryConsumer());
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        using var router = CreateRouter(new Mock<IChatOrchestrator>(), scopeFactory.Object);
+        var a = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
+        router.AttachConsumer("s1", a);
         router.DetachAllForCircuit("circuit-a");
 
-        // 释放后 AttachConsumer 不应残留订阅（Router 状态内部清理；此处验证不再抛异常即可）
-        var evt = new LoopStartEvent { SessionId = "s1", LoopId = "l1" };
-        var channel = Channel.CreateUnbounded<IMessageEvent>();
-        var orchestrator = new Mock<IChatOrchestrator>();
-        orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
-            .Returns(channel.Reader.ReadAllAsync());
-        using var router2 = CreateRouter(orchestrator, scopeFactory);
-        router2.AttachConsumer("s1", consumer); // 重新挂载不异常
+        scope.Verify(s => s.Dispose(), Times.Once);            // 清理生效：scope 被释放
+        var b = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
+        b.Should().NotBeSameAs(a);                             // 幂等键已移除 → 重建新实例
+        router.AttachConsumer("s1", b);                        // 重新挂载不异常
     }
 }
