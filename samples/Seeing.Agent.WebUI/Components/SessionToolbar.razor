@@ -1,0 +1,399 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.State
+@using Services = Seeing.Agent.WebUI.Services
+@using Seeing.Session.Core
+@using Seeing.Agent.Abstractions.Agents
+@using Seeing.Agent.Llm
+@using Seeing.Agent.Configuration
+@inject AppState AppState
+@inject IAgentRegistry AgentRegistry
+@inject ILlmService LlmService
+@inject ISessionManager SessionManager
+@inject IMessageService MessageService
+@implements IDisposable
+
+@if (Mode == Services.SessionWindowMode.Full)
+{
+    <div class="session-toolbar">
+        <div class="session-toolbar-left">
+            @if (Context.IsSubAgentView)
+            {
+                <Badge Status="@BadgeStatus.Warning" Text="子会话（只读）" />
+            }
+            else if (Context.IsQueued)
+            {
+                <Badge Status="@BadgeStatus.Default" Text="@($"排队中 ({Context.QueuePosition})" )" />
+            }
+            else if (Context.HasActiveExecution)
+            {
+                <Badge Status="@BadgeStatus.Processing" Text="执行中" />
+            }
+
+            @if (Context.IsSubAgentView)
+            {
+                <div class="subagent-meta" title="子代理（只读）">
+                    <span class="subagent-meta-chip">
+                        <span class="subagent-meta-label">Agent</span>
+                        <span class="subagent-meta-value">@(string.IsNullOrEmpty(Context.SelectedAgent) ? "—" : Context.SelectedAgent)</span>
+                    </span>
+                    @if (!string.IsNullOrEmpty(Context.SelectedModel))
+                    {
+                        <span class="subagent-meta-chip">
+                            <span class="subagent-meta-label">Model</span>
+                            <span class="subagent-meta-value">@Context.SelectedModel</span>
+                        </span>
+                    }
+                </div>
+            }
+            else if (_optionsReady && Context.CurrentSession != null)
+            {
+                <Select TItemValue="string" TItem="string"
+                        Value="@Context.SelectedAgent"
+                        ValueExpression="@(() => Context.SelectedAgent)"
+                        ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
+                        DataSource="@_agentNames"
+                        Style="min-width: 120px;"
+                        Size="@InputSize.Small"
+                        Placeholder="智能体" />
+            }
+            @if (!Context.IsSubAgentView && _optionsReady && Context.CurrentSession != null && Context.IsAcpPassthrough)
+            {
+                <Input Value="@Context.SelectedAcpMode"
+                       ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
+                       Placeholder="Mode"
+                       Style="width: 80px;"
+                       Size="@InputSize.Small" />
+                <Input Value="@Context.SelectedModel"
+                       ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
+                       Placeholder="Provider/Model"
+                       Style="width: 160px;"
+                       Size="@InputSize.Small" />
+            }
+            else if (!Context.IsSubAgentView && _optionsReady && Context.CurrentSession != null)
+            {
+                <Select TItemValue="string" TItem="ModelViewModel"
+                        Value="@Context.SelectedModel"
+                        ValueExpression="@(() => Context.SelectedModel)"
+                        ValueChanged="@OnModelChanged"
+                        DataSource="@_models"
+                        ValueName="Id"
+                        LabelName="ModelName"
+                        GroupName="@nameof(ModelViewModel.ProviderName)"
+                        SortByGroup="SortDirection.Ascending"
+                        SortByLabel="SortDirection.Ascending"
+                        Style="min-width: 160px;"
+                        Size="@InputSize.Small"
+                        Placeholder="模型"
+                        Class="@(Context.ModelInvalid ? "model-select-invalid" : null)"
+                        EnableSearch="true">
+                    <ItemTemplate Context="model">
+                        <span>@model.ModelName</span>
+                    </ItemTemplate>
+                </Select>
+            }
+        </div>
+        <div class="session-toolbar-right">
+            @if (Context.IsSubAgentView && !string.IsNullOrEmpty(Context.CurrentSession?.ParentSessionId))
+            {
+                <Button Type="@ButtonType.Text"
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.ArrowLeft"
+                        OnClick="@ReturnToParentSession">
+                    返回主会话
+                </Button>
+            }
+            <Tooltip Title="重命名会话">
+                <Button Type="@ButtonType.Text"
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.Edit"
+                        OnClick="@OnRenameSession"
+                        Disabled="@Context.IsSubAgentView" />
+            </Tooltip>
+            <Tooltip Title="@(Context.IsSubAgentView ? "分叉为独立会话（可编辑）" : "分支会话")">
+                <Button Type="@ButtonType.Text"
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.Copy"
+                        OnClick="@OnBranchSession" />
+            </Tooltip>
+            @if (!Context.IsSubAgentView)
+            {
+                <Tooltip Title="编辑出站绑定">
+                    <Button Type="@ButtonType.Text"
+                            Size="@ButtonSize.Small"
+                            Icon="@IconType.Outline.Api"
+                            OnClick="@OnEditOutbound" />
+                </Tooltip>
+            }
+            <Tooltip Title="清空会话">
+                <Button Type="@ButtonType.Text"
+                        Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.Delete"
+                        OnClick="@OnClearSession"
+                        Disabled="@(Context.IsExecuting || Context.IsSubAgentView)" />
+            </Tooltip>
+        </div>
+    </div>
+}
+
+@if (RenameModalVisible)
+{
+    <Modal Title="重命名会话"
+           Visible="true"
+           OnOk="@OnRenameConfirm"
+           OnCancel="@OnRenameCancel"
+           OkText="确定"
+           CancelText="取消">
+        <Form Model="@RenameForm" Layout="@FormLayout.Horizontal">
+            <FormItem Label="会话标题">
+                <Input @bind-Value="@RenameForm.Title"
+                       Placeholder="输入新的会话标题" />
+            </FormItem>
+        </Form>
+    </Modal>
+}
+
+@if (OutboundModalVisible)
+{
+    <Modal Title="编辑出站绑定"
+           Visible="true"
+           OnOk="@OnOutboundConfirm"
+           OnCancel="@OnOutboundCancel"
+           OkText="确定"
+           CancelText="取消">
+        <Form Model="@OutboundForm" Layout="@FormLayout.Horizontal">
+            <FormItem Label="ChannelId">
+                <Input @bind-Value="@OutboundForm.ChannelId"
+                       Placeholder="如 qq / wecom，留空表示未绑定" />
+            </FormItem>
+            <FormItem Label="UserId">
+                <Input @bind-Value="@OutboundForm.UserId"
+                       Placeholder="出站用户/对端 ID，可留空" />
+            </FormItem>
+        </Form>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Services.SessionWindowContext Context { get; set; } = new();
+    [Parameter] public Services.SessionWindowMode Mode { get; set; } = Services.SessionWindowMode.Full;
+
+    private List<string> _agentNames = new();
+    private List<ModelViewModel> _models = new();
+    private bool _optionsReady;
+    private bool RenameModalVisible;
+    private RenameSessionForm RenameForm { get; set; } = new();
+    private bool OutboundModalVisible;
+    private OutboundEditForm OutboundForm { get; set; } = new();
+
+    /// <summary>模型视图类 - 用于选择器显示</summary>
+    private class ModelViewModel
+    {
+        /// <summary>完整 ID（provider/model 格式）</summary>
+        public string Id { get; init; } = "";
+
+        /// <summary>模型名称</summary>
+        public string ModelName { get; init; } = "";
+
+        /// <summary>Provider 名称</summary>
+        public string ProviderName { get; init; } = "";
+    }
+
+    private static ModelViewModel ToModelViewModel(string catalogKey, ModelConfig config)
+    {
+        var providerName = config.Provider;
+        var modelName = config.Id;
+        if (string.IsNullOrEmpty(modelName))
+            modelName = config.Name ?? catalogKey;
+
+        if (string.IsNullOrEmpty(providerName) || string.IsNullOrEmpty(modelName))
+        {
+            var slash = catalogKey.IndexOf('/');
+            if (slash > 0)
+            {
+                if (string.IsNullOrEmpty(providerName))
+                    providerName = catalogKey[..slash];
+                if (string.IsNullOrEmpty(modelName))
+                    modelName = catalogKey[(slash + 1)..];
+            }
+        }
+
+        if (string.IsNullOrEmpty(providerName))
+            providerName = "其他";
+
+        return new ModelViewModel
+        {
+            Id = catalogKey,
+            ModelName = modelName,
+            ProviderName = providerName
+        };
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Context.StateChanged += OnContextStateChanged;
+        await LoadOptionsAsync();
+    }
+
+    /// <summary>
+    /// 订阅窗口状态变更：Context 的只读状态（SelectedAgent/SelectedModel/IsSubAgentView 等）
+    /// 由 SessionWindow 的 SyncContextState 刷新，此处收到通知后重渲染控件绑定值。
+    /// </summary>
+    private void OnContextStateChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadOptionsAsync()
+    {
+        _optionsReady = false;
+        try
+        {
+            var agents = await AgentRegistry.GetPrimaryAgentsAsync();
+            _agentNames = agents
+                .Where(a => !string.IsNullOrEmpty(a.Name))
+                .Select(a => a.Name)
+                .ToList();
+        }
+        catch (Exception)
+        {
+            _agentNames = new List<string>();
+        }
+
+        try
+        {
+            var availableModels = LlmService.GetAvailableModels();
+            if (availableModels != null)
+            {
+                AppState.AvailableModels = availableModels;
+                _models = availableModels
+                    .Where(m => !string.IsNullOrEmpty(m.Key))
+                    .Select(m => ToModelViewModel(m.Key, m.Value))
+                    .ToList();
+            }
+        }
+        catch (Exception)
+        {
+            _models = new List<ModelViewModel>();
+        }
+
+        _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnAgentChanged(string value)
+    {
+        if (Context.SetAgentAsync != null)
+            await Context.SetAgentAsync(value);
+    }
+
+    private async Task OnModelChanged(string value)
+    {
+        if (Context.SetModelAsync != null)
+            await Context.SetModelAsync(value);
+    }
+
+    private async Task OnAcpModelChanged(string? value)
+    {
+        if (Context.SetModelAsync != null)
+            await Context.SetModelAsync(value ?? "");
+    }
+
+    private void OnAcpModeChanged(string? value)
+    {
+        Context.SetAcpMode?.Invoke(value ?? "");
+    }
+
+    private void OnRenameSession()
+    {
+        RenameForm.Title = Context.Title ?? "";
+        RenameModalVisible = true;
+    }
+
+    private async Task OnRenameConfirm()
+    {
+        if (!string.IsNullOrWhiteSpace(RenameForm.Title))
+        {
+            if (Context.RenameAsync != null)
+                await Context.RenameAsync(RenameForm.Title.Trim());
+        }
+
+        RenameModalVisible = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRenameCancel()
+    {
+        RenameModalVisible = false;
+    }
+
+    private async Task OnBranchSession()
+    {
+        if (Context.BranchAsync != null)
+            await Context.BranchAsync();
+    }
+
+    private async Task OnClearSession()
+    {
+        if (Context.ClearAsync != null)
+            await Context.ClearAsync();
+    }
+
+    private void ReturnToParentSession()
+    {
+        Context.ReturnToParent?.Invoke();
+    }
+
+    private static string? NormalizeOutbound(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private void OnEditOutbound()
+    {
+        var session = Context.CurrentSession;
+        if (session == null) return;
+
+        OutboundForm = new OutboundEditForm
+        {
+            ChannelId = session.ChannelId ?? "",
+            UserId = session.UserId ?? ""
+        };
+        OutboundModalVisible = true;
+    }
+
+    private async Task OnOutboundConfirm()
+    {
+        var session = Context.CurrentSession;
+        if (session != null)
+        {
+            session.ChannelId = NormalizeOutbound(OutboundForm.ChannelId);
+            session.UserId = NormalizeOutbound(OutboundForm.UserId);
+            session.UpdatedAt = DateTime.Now;
+            await SessionManager.SaveAsync(session.Id);
+            MessageService.Success("出站绑定已保存");
+        }
+
+        OutboundModalVisible = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnOutboundCancel()
+    {
+        OutboundModalVisible = false;
+    }
+
+    public void Dispose()
+    {
+        Context.StateChanged -= OnContextStateChanged;
+    }
+
+    /// <summary>重命名表单模型</summary>
+    private class RenameSessionForm
+    {
+        public string Title { get; set; } = "";
+    }
+
+    private sealed class OutboundEditForm
+    {
+        public string ChannelId { get; set; } = "";
+        public string UserId { get; set; } = "";
+    }
+}

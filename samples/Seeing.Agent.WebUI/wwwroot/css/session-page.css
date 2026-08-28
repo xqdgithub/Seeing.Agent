@@ -109,6 +109,33 @@
     white-space: nowrap;
 }
 
+/* ========== 会话窗口内置工具栏（SessionToolbar） ========== */
+.session-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: var(--color-bg-container);
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.session-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.session-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+}
+
 /* ========== 主内容区域包装器 ========== */
 .session-content-wrapper {
     flex: 1;
