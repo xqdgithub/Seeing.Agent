@@ -129,6 +129,17 @@
     min-width: 0;
 }
 
+.session-toolbar-title {
+    max-width: min(28vw, 200px);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 .session-toolbar-right {
     display: flex;
     align-items: center;

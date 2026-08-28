@@ -15,6 +15,21 @@
 {
     <div class="session-toolbar">
         <div class="session-toolbar-left">
+            @if (!string.IsNullOrEmpty(Context.Title))
+            {
+                <Tooltip Title="@Context.Title">
+                    <span Class="session-toolbar-title">@Context.Title</span>
+                </Tooltip>
+            }
+            @if (Context.GetWorkspace != null)
+            {
+                <Tooltip Title="@Context.GetWorkspace()">
+                    <span Class="session-workspace-badge">
+                        <Icon Type="@IconType.Outline.Folder" />
+                        @TruncateWorkspacePath(Context.GetWorkspace())
+                    </span>
+                </Tooltip>
+            }
             @if (Context.IsSubAgentView)
             {
                 <Badge Status="@BadgeStatus.Warning" Text="子会话（只读）" />
@@ -108,12 +123,15 @@
                         OnClick="@OnRenameSession"
                         Disabled="@Context.IsSubAgentView" />
             </Tooltip>
-            <Tooltip Title="@(Context.IsSubAgentView ? "分叉为独立会话（可编辑）" : "分支会话")">
-                <Button Type="@ButtonType.Text"
-                        Size="@ButtonSize.Small"
-                        Icon="@IconType.Outline.Copy"
-                        OnClick="@OnBranchSession" />
-            </Tooltip>
+            @if (Context.IsSubAgentView)
+            {
+                <Tooltip Title="分叉为独立会话（可编辑）">
+                    <Button Type="@ButtonType.Text"
+                            Size="@ButtonSize.Small"
+                            Icon="@IconType.Outline.Copy"
+                            OnClick="@OnBranchSession" />
+                </Tooltip>
+            }
             @if (!Context.IsSubAgentView)
             {
                 <Tooltip Title="编辑出站绑定">
@@ -399,6 +417,21 @@
     private void OnOutboundCancel()
     {
         OutboundModalVisible = false;
+    }
+
+    /// <summary>
+    /// 截断工作区路径显示
+    /// </summary>
+    private static string TruncateWorkspacePath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+        if (path.Length <= 30) return path;
+
+        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Length <= 2) return path;
+
+        // 显示最后两级目录
+        return ".../" + string.Join("/", parts.TakeLast(2));
     }
 
     public void Dispose()

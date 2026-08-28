@@ -45,7 +45,7 @@
                 SyncCurrentSessionId(ctx);
             }
 
-            <!-- 页级导航区：仅保留与页面路由/全局相关的操作；会话内操作（Agent/模型/重命名/分支/清空/出站绑定）由 SessionToolbar 内置工具栏承载 -->
+            <!-- 页级导航区：仅保留与页面路由/全局相关的操作；会话内信息与操作（标题/工作文件夹/Agent/模型/重命名/清空/出站绑定）由 SessionToolbar 内置工具栏承载 -->
             <div Class="session-header">
                 <div Class="session-header-left">
                     <Button Type="@ButtonType.Text"
@@ -60,23 +60,6 @@
                     @if (!AppState.IsMobile)
                     {
                         <Divider Type="@DividerType.Vertical" />
-                    }
-                    <Tooltip Title="@ctx.Title">
-                        <span Class="session-title">@ctx.Title</span>
-                    </Tooltip>
-                    @{
-                        var currentWorkspace = !string.IsNullOrEmpty(ctx.CurrentSession?.WorkingDirectory)
-                            ? ctx.CurrentSession.WorkingDirectory
-                            : WorkspaceProvider.WorkspaceRoot;
-                    }
-                    @if (!AppState.IsMobile)
-                    {
-                        <Tooltip Title="@currentWorkspace">
-                            <span Class="session-workspace-badge">
-                                <Icon Type="@IconType.Outline.Folder" />
-                                @TruncateWorkspacePath(currentWorkspace)
-                            </span>
-                        </Tooltip>
                     }
                 </div>
                 <div Class="session-header-right">
@@ -97,6 +80,17 @@
                     else
                     {
                     <Space>
+                        @if (!ctx.IsSubAgentView)
+                        {
+                            <SpaceItem>
+                                <Tooltip Title="分支会话">
+                                    <Button Type="@ButtonType.Text"
+                                            Size="@ButtonSize.Small"
+                                            Icon="@IconType.Outline.Copy"
+                                            OnClick="@OnBranchSession" />
+                                </Tooltip>
+                            </SpaceItem>
+                        }
                         <SpaceItem>
                             <Tooltip Title="多 Agent 会议大屏">
                                 <Button Type="@ButtonType.Text"
@@ -252,18 +246,15 @@
     }
 
     /// <summary>
-    /// 截断工作区路径显示
+    /// 分支会话（导航到新会话页；子会话分叉为独立会话由工具栏承载）
     /// </summary>
-    private static string TruncateWorkspacePath(string path)
+    private async Task OnBranchSession()
     {
-        if (string.IsNullOrEmpty(path)) return path;
-        if (path.Length <= 30) return path;
+        var session = GlobalSessionState.CurrentSession;
+        if (session == null) return;
 
-        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (parts.Length <= 2) return path;
-
-        // 显示最后两级目录
-        return ".../" + string.Join("/", parts.TakeLast(2));
+        var branched = await ChatOrchestrator.BranchSessionAsync(session.Id, $"{session.Title} (分支)");
+        NavigationManager.NavigateTo($"/session/{branched.Id}");
     }
 
     /// <summary>
