@@ -515,4 +515,25 @@ public class MessageTimelineStoreTests
         store.Items[2].Turn!.Messages.Should().ContainSingle(m => m.Content == "最后回复");
         store.Items[2].Turn!.Messages.Should().NotContain(m => m.Content == "摘要内容");
     }
+
+    [Fact]
+    public void TwoInstances_ShouldBeIsolated()
+    {
+        var storeA = new MessageTimelineStore();
+        var storeB = new MessageTimelineStore();
+        var sessionA = SessionData.Create("p1", "general");
+        sessionA.Id = "sA";
+        sessionA.AddMessage(SessionMessage.UserMessage("A"));
+        var sessionB = SessionData.Create("p1", "general");
+        sessionB.Id = "sB";
+        sessionB.AddMessage(SessionMessage.UserMessage("B"));
+
+        storeA.ResetFromSession(sessionA.Messages, "sA");
+        storeB.ResetFromSession(sessionB.Messages, "sB");
+
+        storeA.Items.Should().Contain(i => i.Message != null && i.Message.Content == "A");
+        storeA.Items.Should().NotContain(i => i.Message != null && i.Message.Content == "B");
+        storeB.Items.Should().Contain(i => i.Message != null && i.Message.Content == "B");
+        storeB.Items.Should().NotContain(i => i.Message != null && i.Message.Content == "A");
+    }
 }

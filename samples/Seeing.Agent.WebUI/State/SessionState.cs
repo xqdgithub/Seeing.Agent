@@ -11,12 +11,17 @@ namespace Seeing.Agent.WebUI.State
     /// 会话数据（消息、Agent/Model 选择）由 SessionManager + SessionData 统一管理
     /// </para>
     /// </summary>
-    public class SessionState
+    public class SessionState : IDisposable
     {
         /// <summary>
         /// 执行锁 - 确保只有一个任务在执行
         /// </summary>
         private readonly SemaphoreSlim _executionLock = new SemaphoreSlim(1, 1);
+
+        /// <summary>
+        /// 是否已释放（防重入）
+        /// </summary>
+        private bool _disposed;
 
         /// <summary>
         /// 当前会话数据（由 SessionManager 管理）
@@ -240,6 +245,8 @@ namespace Seeing.Agent.WebUI.State
         /// </summary>
         public void CancelExecution()
         {
+            if (_disposed)
+                return;
             if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
             {
                 _cancellationTokenSource.Cancel();
@@ -288,6 +295,20 @@ namespace Seeing.Agent.WebUI.State
         {
             CancelExecution();
             IsCompleted = false;
+        }
+
+        /// <summary>
+        /// 释放执行锁与取消令牌源（窗口自建实例时由 SessionWindow.Dispose 调用；Scoped 实例随 scope 回收）。
+        /// 防重入：仅首次释放，避免 Dispose 后并发 CancelExecution 操作已释放的锁。
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            _executionLock.Dispose();
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
         }
     }
 }
