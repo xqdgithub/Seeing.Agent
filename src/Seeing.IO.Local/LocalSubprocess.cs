@@ -28,6 +28,9 @@ public sealed class LocalSubprocess : ISubprocess
     public bool HasExited => _process.HasExited;
 
     /// <inheritdoc />
+    public int ExitCode => _process.ExitCode;
+
+    /// <inheritdoc />
     public Task WaitForExitAsync(CancellationToken cancellationToken = default) =>
         _process.WaitForExitAsync(cancellationToken);
 

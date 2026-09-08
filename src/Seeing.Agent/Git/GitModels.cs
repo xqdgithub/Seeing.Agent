@@ -108,7 +108,7 @@ namespace Seeing.Agent.Git
     /// <summary>Git 配置</summary>
     public class GitOptions
     {
-        public string WorkingDirectory { get; set; } = Environment.CurrentDirectory;
+        public string? WorkingDirectory { get; set; }
         public string GitPath { get; set; } = "git";
         public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
         public bool AutoFetch { get; set; }

@@ -34,6 +34,7 @@ public class ExecutionWorldContractsTests
         t.GetProperty(nameof(ISubprocess.StandardOutput)).Should().NotBeNull();
         t.GetProperty(nameof(ISubprocess.StandardError)).Should().NotBeNull();
         t.GetProperty(nameof(ISubprocess.HasExited)).Should().NotBeNull();
+        t.GetProperty(nameof(ISubprocess.ExitCode)).Should().NotBeNull();
         t.GetMethod(nameof(ISubprocess.WaitForExitAsync), [typeof(CancellationToken)]).Should().NotBeNull();
         t.GetMethod(nameof(ISubprocess.Kill), [typeof(bool)]).Should().NotBeNull();
 

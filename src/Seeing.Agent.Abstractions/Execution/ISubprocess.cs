@@ -17,6 +17,9 @@ public interface ISubprocess : IDisposable
     /// <summary>进程是否已退出。</summary>
     bool HasExited { get; }
 
+    /// <summary>进程退出码；进程未退出时阻塞等待。</summary>
+    int ExitCode { get; }
+
     /// <summary>等待进程退出。</summary>
     Task WaitForExitAsync(CancellationToken cancellationToken = default);
 

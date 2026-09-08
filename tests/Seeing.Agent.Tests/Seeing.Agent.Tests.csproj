@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\src\Seeing.Agent.App\Seeing.Agent.App.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.TokenBudget\Seeing.Agent.TokenBudget.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.IO.Local\Seeing.IO.Local.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Session\Seeing.Session.csproj" />
   </ItemGroup>
 

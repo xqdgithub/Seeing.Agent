@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Git;
+using Seeing.IO.Local;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Git;
@@ -87,21 +88,30 @@ public class GitModelsTests
         // Assert
         options.GitPath.Should().Be("git");
         options.Timeout.Should().Be(TimeSpan.FromSeconds(30));
+        options.WorkingDirectory.Should().BeNull();
     }
 }
 
 public class GitServiceTests
 {
+    private static GitService CreateService(string workingDirectory)
+    {
+        var logger = new Mock<ILogger<GitService>>();
+        var world = new LocalExecutionWorld();
+        var options = new GitOptions { WorkingDirectory = workingDirectory };
+        return new GitService(
+            logger.Object,
+            world,
+            Mock.Of<IOptions<GitOptions>>(o => o.Value == options));
+    }
+
     [Fact]
     public async Task IsInRepositoryAsync_WhenNotInRepo_ShouldReturnFalse()
     {
         // Arrange
-        var logger = new Mock<ILogger<GitService>>();
         var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempPath);
-
-        var options = new GitOptions { WorkingDirectory = tempPath };
-        var service = new GitService(logger.Object, Mock.Of<IOptions<GitOptions>>(o => o.Value == options));
+        var service = CreateService(tempPath);
 
         // Act
         var result = await service.IsInRepositoryAsync();
@@ -117,12 +127,9 @@ public class GitServiceTests
     public async Task GetCurrentBranchAsync_WhenNotInRepo_ShouldReturnHead()
     {
         // Arrange
-        var logger = new Mock<ILogger<GitService>>();
         var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempPath);
-
-        var options = new GitOptions { WorkingDirectory = tempPath };
-        var service = new GitService(logger.Object, Mock.Of<IOptions<GitOptions>>(o => o.Value == options));
+        var service = CreateService(tempPath);
 
         // Act
         var branch = await service.GetCurrentBranchAsync();

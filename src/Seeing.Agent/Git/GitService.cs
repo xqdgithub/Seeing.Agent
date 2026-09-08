@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Diagnostics;
-using System.Text;
+using Seeing.Agent.Abstractions.Execution;
 using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Git
@@ -12,11 +11,16 @@ namespace Seeing.Agent.Git
     public class GitService : IGitService
     {
         private readonly ILogger<GitService> _logger;
+        private readonly IExecutionWorld _world;
         private readonly GitOptions _options;
 
-        public GitService(ILogger<GitService> logger, IOptions<GitOptions>? options = null)
+        public GitService(
+            ILogger<GitService> logger,
+            IExecutionWorld world,
+            IOptions<GitOptions>? options = null)
         {
             _logger = logger;
+            _world = world;
             _options = options?.Value ?? new GitOptions();
         }
 
@@ -190,42 +194,34 @@ namespace Seeing.Agent.Git
 
             try
             {
-                var startInfo = new ProcessStartInfo
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(_options.Timeout);
+
+                var token = timeoutCts.Token;
+                var spec = new SubprocessSpec
                 {
                     FileName = _options.GitPath,
                     Arguments = string.Join(" ", fullArgs.Select(EscapeArg)),
-                    WorkingDirectory = _options.WorkingDirectory,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    WorkingDirectory = _options.WorkingDirectory ?? _world.Cwd,
+                    CancellationToken = token,
                 };
 
-                using var process = new Process { StartInfo = startInfo };
-                var outputBuilder = new StringBuilder();
-                var errorBuilder = new StringBuilder();
+                using var process = _world.Subprocess.Start(spec);
 
-                process.OutputDataReceived += (_, e) => { if (e.Data != null) outputBuilder.AppendLine(e.Data); };
-                process.ErrorDataReceived += (_, e) => { if (e.Data != null) errorBuilder.AppendLine(e.Data); };
+                var stdoutTask = process.StandardOutput.ReadToEndAsync(token);
+                var stderrTask = process.StandardError.ReadToEndAsync(token);
 
-                process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                cts.CancelAfter(_options.Timeout);
-
-                await process.WaitForExitAsync(cts.Token);
+                await process.WaitForExitAsync(token);
 
                 return new GitResult
                 {
                     Success = process.ExitCode == 0,
                     ExitCode = process.ExitCode,
-                    StdOut = outputBuilder.ToString(),
-                    StdErr = errorBuilder.ToString()
+                    StdOut = await stdoutTask,
+                    StdErr = await stderrTask
                 };
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 return new GitResult
                 {
@@ -233,6 +229,10 @@ namespace Seeing.Agent.Git
                     ExitCode = -1,
                     Error = "Operation timed out"
                 };
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -296,7 +296,7 @@ namespace Seeing.Agent.Git
 
                 // Extract path (last field after spaces)
                 var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                var path = parts.Length > 8 ? parts[^1] : "";
+                var path = parts.Length > 8 ? parts[^1].Trim() : "";
                 return new GitFileStatus { Path = path, State = state, IsStaged = isStaged };
             }
             else if (line[0] == '2') // Renamed/copied entry
@@ -306,7 +306,7 @@ namespace Seeing.Agent.Git
                 {
                     return new GitFileStatus
                     {
-                        Path = parts[^1],
+                        Path = parts[^1].Trim(),
                         State = line[2] == 'R' ? GitFileState.Renamed : GitFileState.Copied,
                         IsStaged = true
                     };
