@@ -766,13 +766,15 @@ namespace Seeing.Agent.Extensions
                 _loggerFactory = loggerFactory;
             }
 
-            public IReadOnlyList<ProviderType> SupportedTypes { get; } = new[]
-            {
-                ProviderType.OpenAI,
-                ProviderType.Anthropic
-            };
+            public IReadOnlySet<string> SupportedTypes { get; } =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ProviderTypes.OpenAi,
+                    ProviderTypes.Anthropic
+                };
 
-            public bool SupportsType(ProviderType type) => SupportedTypes.Contains(type);
+            public bool SupportsType(string type) =>
+                !string.IsNullOrWhiteSpace(type) && SupportedTypes.Contains(type);
 
             public ILlmClient Create(ProviderConfig config)
             {
@@ -780,18 +782,23 @@ namespace Seeing.Agent.Extensions
                 // 每个 Provider 使用自己的 handler，确保 Proxy/UseProxy 在创建时生效。
                 var httpClient = LlmHttpClientFactory.Create(config);
 
-                return config.Type switch
+                if (string.Equals(config.Type, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase))
                 {
-                    ProviderType.OpenAI => new OpenAiChatClient(
+                    return new OpenAiChatClient(
                         config,
                         httpClient,
-                        _loggerFactory.CreateLogger<OpenAiChatClient>()),
-                    ProviderType.Anthropic => new AnthropicClient(
+                        _loggerFactory.CreateLogger<OpenAiChatClient>());
+                }
+
+                if (string.Equals(config.Type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new AnthropicClient(
                         config,
                         httpClient,
-                        _loggerFactory.CreateLogger<AnthropicClient>()),
-                    _ => throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}")
-                };
+                        _loggerFactory.CreateLogger<AnthropicClient>());
+                }
+
+                throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}");
             }
         }
 }

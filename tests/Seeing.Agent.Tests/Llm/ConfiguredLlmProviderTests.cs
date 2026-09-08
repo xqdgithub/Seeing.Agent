@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -25,7 +25,7 @@ public class ConfiguredLlmProviderTests
         {
             Id = "openai",
             Name = "OpenAI",
-            Type = ProviderType.OpenAI,
+            Type = ProviderTypes.OpenAi,
             BaseUrl = "https://api.openai.com/v1",
             ApiKey = "sk-test",
             Timeout = 1000,
@@ -43,7 +43,7 @@ public class ConfiguredLlmProviderTests
 
         values.Keys.Should().NotContain("Models");
         values["Name"].Should().Be("OpenAI");
-        values["Type"].Should().Be(nameof(ProviderType.OpenAI));
+        values["Type"].Should().Be(ProviderTypes.OpenAi);
         values["BaseUrl"].Should().Be(config.BaseUrl);
         values["ApiKey"].Should().Be("sk-test");
         values["Headers"].Should().BeEquivalentTo(config.Headers);
@@ -60,7 +60,7 @@ public class ConfiguredLlmProviderTests
         var config = new ProviderConfig
         {
             Id = "openai",
-            Type = ProviderType.OpenAI,
+            Type = ProviderTypes.OpenAi,
             Models = new Dictionary<string, ModelConfig> { ["m"] = new() { Id = "m" } }
         };
         var sut = CreateProvider(
@@ -77,7 +77,7 @@ public class ConfiguredLlmProviderTests
             new Dictionary<string, object?>
             {
                 ["Name"] = "Renamed",
-                ["Type"] = nameof(ProviderType.Anthropic),
+                ["Type"] = ProviderTypes.Anthropic,
                 ["BaseUrl"] = "https://example.com",
                 ["ApiKey"] = "k",
                 ["Headers"] = new Dictionary<string, string>
@@ -93,7 +93,7 @@ public class ConfiguredLlmProviderTests
 
         saved.Should().NotBeNull();
         saved!.Name.Should().Be("Renamed");
-        saved.Type.Should().Be(ProviderType.Anthropic);
+        saved.Type.Should().Be(ProviderTypes.Anthropic);
         saved.Headers.Should().Contain(new KeyValuePair<string, string>("X-Saved-Header", "saved"));
         saved.Models.Should().ContainKey("m");
         savedLevel.Should().Be(ConfigLevel.User);

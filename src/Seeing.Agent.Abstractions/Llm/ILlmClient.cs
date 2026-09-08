@@ -9,8 +9,8 @@ public interface ILlmClient
     /// <summary>Provider ID</summary>
     string ProviderId { get; }
 
-    /// <summary>Provider 类型</summary>
-    ProviderType ProviderType { get; }
+    /// <summary>Provider 类型（如 <see cref="ProviderTypes.OpenAi"/>）</summary>
+    string ProviderType { get; }
 
     /// <summary>
     /// 发送聊天补全请求
@@ -52,10 +52,10 @@ public interface ILlmClientFactory
     ILlmClient Create(ProviderConfig config);
 
     /// <summary>支持的 Provider 类型</summary>
-    IReadOnlyList<ProviderType> SupportedTypes { get; }
+    IReadOnlySet<string> SupportedTypes { get; }
 
     /// <summary>
-    /// 检查是否支持指定类型
+    /// 检查是否支持指定类型（大小写不敏感）
     /// </summary>
-    bool SupportsType(ProviderType type);
+    bool SupportsType(string type);
 }

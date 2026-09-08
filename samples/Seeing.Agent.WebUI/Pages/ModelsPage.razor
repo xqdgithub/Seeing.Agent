@@ -3,6 +3,7 @@
 @using AntDesign
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Llm
+@using Seeing.Agent.Abstractions.Llm
 @using Seeing.ConfigSchema
 @inject IProviderManager ProviderManager
 @inject IModelConfigManager ModelManager
@@ -81,9 +82,9 @@
                             <div>
                                 <FormItem Label="ID"><Input @bind-Value="@_currentProvider.Id" Disabled="true" /></FormItem>
                                 <FormItem Label="类型">
-                                    <Select TItemValue="ProviderType" TItem="ProviderType" @bind-Value="@_currentProvider.Type">
-                                        <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.OpenAI">OpenAI</SelectOption>
-                                        <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.Anthropic">Anthropic</SelectOption>
+                                    <Select TItemValue="string" TItem="string" @bind-Value="@_currentProvider.Type">
+                                        <SelectOption TItemValue="string" TItem="string" Value="@ProviderTypes.OpenAi">OpenAI</SelectOption>
+                                        <SelectOption TItemValue="string" TItem="string" Value="@ProviderTypes.Anthropic">Anthropic</SelectOption>
                                     </Select>
                                 </FormItem>
                                 <FormItem Label="名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
@@ -208,9 +209,9 @@
         <div>
             <FormItem Label="Provider ID"><Input @bind-Value="@_newProviderId" Placeholder="如 openai" /></FormItem>
             <FormItem Label="类型">
-                <Select TItemValue="ProviderType" TItem="ProviderType" @bind-Value="@_newProviderType">
-                    <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.OpenAI">OpenAI</SelectOption>
-                    <SelectOption TItemValue="ProviderType" TItem="ProviderType" Value="@ProviderType.Anthropic">Anthropic</SelectOption>
+                <Select TItemValue="string" TItem="string" @bind-Value="@_newProviderType">
+                    <SelectOption TItemValue="string" TItem="string" Value="@ProviderTypes.OpenAi">OpenAI</SelectOption>
+                    <SelectOption TItemValue="string" TItem="string" Value="@ProviderTypes.Anthropic">Anthropic</SelectOption>
                 </Select>
             </FormItem>
         </div>
@@ -305,7 +306,7 @@
     private bool _testing;
     private bool _addModalVisible;
     private string _newProviderId = "";
-    private ProviderType _newProviderType = ProviderType.OpenAI;
+    private string _newProviderType = ProviderTypes.OpenAi;
     private readonly AddProviderForm _addProviderForm = new();
     private string _editKey = "";
     private IEnumerable<ModelType> _editTypes = Array.Empty<ModelType>();

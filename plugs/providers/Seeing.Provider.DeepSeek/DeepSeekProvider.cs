@@ -170,7 +170,7 @@ public sealed class DeepSeekProvider : LlmProviderBase, IConfigurableLlmProvider
             return CreateBuiltInClient(_factory, new ProviderConfig
             {
                 Id = Id,
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 Name = Name,
                 BaseUrl = DeepSeekModelsClient.DefaultBaseUrl,
                 ApiKey = _apiKey

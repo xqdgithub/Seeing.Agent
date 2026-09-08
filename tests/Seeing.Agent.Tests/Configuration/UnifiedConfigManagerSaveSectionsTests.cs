@@ -34,7 +34,7 @@ public class UnifiedConfigManagerSaveSectionsTests
             ["openai"] = new()
             {
                 Id = "openai",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 BaseUrl = "https://api.openai.com/v1",
                 ApiKey = "sk-test"
             }

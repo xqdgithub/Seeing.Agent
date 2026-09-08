@@ -189,7 +189,7 @@ public class OpenCodeZenProviderTests
         createdConfig.Headers.Should().NotContainKey("Authorization");
         createdConfig.Headers.Should().Contain("User-Agent", "opencode");
         createdConfig.BaseUrl.Should().Be(OpenCodeZenModelsClient.DefaultBaseUrl);
-        createdConfig.Type.Should().Be(ProviderType.OpenAI);
+        createdConfig.Type.Should().Be(ProviderTypes.OpenAi);
     }
 
     [Fact]

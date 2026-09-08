@@ -17,7 +17,7 @@ public class OpenAiChatClient : ILlmClient
     private readonly ProviderConfig _config;
 
     public string ProviderId => _config.Id;
-    public ProviderType ProviderType => ProviderType.OpenAI;
+    public string ProviderType => ProviderTypes.OpenAi;
 
     public OpenAiChatClient(ProviderConfig config, HttpClient httpClient, ILogger logger)
     {

@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
@@ -34,7 +34,7 @@ public class ProviderManagerTests : IDisposable
         var firstClient = Mock.Of<ILlmClient>();
         var secondClient = Mock.Of<ILlmClient>();
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         factory.SetupSequence(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
             .Returns(firstClient)
             .Returns(secondClient);
@@ -73,7 +73,7 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
             factory.Object,
@@ -114,7 +114,7 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
             factory.Object,
@@ -172,7 +172,7 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
@@ -204,7 +204,7 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
@@ -293,7 +293,7 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         string? capturedApiKey = null;
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
             .Returns((ProviderConfig cfg) =>
             {
@@ -324,7 +324,7 @@ public class ProviderManagerTests : IDisposable
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var disposableClient = new DisposableClient();
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
             .Returns(disposableClient);
         using var sut = new ProviderManager(
@@ -348,7 +348,7 @@ public class ProviderManagerTests : IDisposable
             ["siliconflow"] = new ProviderConfig
             {
                 Id = "siliconflow",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 ApiKey = "sk-old",
                 Models = new Dictionary<string, ModelConfig>
                 {
@@ -358,7 +358,7 @@ public class ProviderManagerTests : IDisposable
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderType.OpenAI)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
@@ -373,7 +373,7 @@ public class ProviderManagerTests : IDisposable
             new ProviderConfig
             {
                 Id = "siliconflow",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 ApiKey = "sk-new",
                 Models = null
             },
@@ -440,7 +440,7 @@ public class ProviderManagerTests : IDisposable
 
         public string ProviderId => "provider";
 
-        public ProviderType ProviderType => ProviderType.OpenAI;
+        public string ProviderType => ProviderTypes.OpenAi;
 
         public Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();

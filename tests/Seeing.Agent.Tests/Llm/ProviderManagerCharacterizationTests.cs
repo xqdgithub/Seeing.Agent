@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -37,7 +37,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             ["openai"] = PredefinedProviders.OpenAI("sk-test")
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
-        var expectedClient = CreateClient(ProviderType.OpenAI);
+        var expectedClient = CreateClient(ProviderTypes.OpenAi);
         var factory = CreateFactory((_) => expectedClient);
         using var sut = new ProviderManager(
             configManager,
@@ -49,7 +49,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var client = sut.GetClient("openai");
 
         client.Should().BeSameAs(expectedClient);
-        client!.ProviderType.Should().Be(ProviderType.OpenAI);
+        client!.ProviderType.Should().Be(ProviderTypes.OpenAi);
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             ["openai"] = PredefinedProviders.OpenAI("sk-test")
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
-        var factory = CreateFactory((_) => CreateClient(ProviderType.OpenAI));
+        var factory = CreateFactory((_) => CreateClient(ProviderTypes.OpenAi));
         using var sut = new ProviderManager(
             configManager,
             factory.Object,
@@ -110,10 +110,10 @@ public class ProviderManagerCharacterizationTests : IDisposable
             ["provider"] = PredefinedProviders.OpenAI("sk-original")
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
-        var openAiClient = CreateClient(ProviderType.OpenAI, connectionResult: false);
-        var anthropicClient = CreateClient(ProviderType.Anthropic, connectionResult: true);
+        var openAiClient = CreateClient(ProviderTypes.OpenAi, connectionResult: false);
+        var anthropicClient = CreateClient(ProviderTypes.Anthropic, connectionResult: true);
         var factory = CreateFactory(config =>
-            config.Type == ProviderType.OpenAI ? openAiClient : anthropicClient);
+            config.Type == ProviderTypes.OpenAi ? openAiClient : anthropicClient);
         using var sut = new ProviderManager(
             configManager,
             factory.Object,
@@ -128,7 +128,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             new ProviderConfig
             {
                 Id = "provider",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 ApiKey = "sk-changed"
             },
             ct: TestContext.Current.CancellationToken);
@@ -147,7 +147,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             new ProviderConfig
             {
                 Id = "provider",
-                Type = ProviderType.Anthropic,
+                Type = ProviderTypes.Anthropic,
                 ApiKey = "sk-anthropic"
             },
             ct: TestContext.Current.CancellationToken);
@@ -196,13 +196,13 @@ public class ProviderManagerCharacterizationTests : IDisposable
     private static Mock<ILlmClientFactory> CreateFactory(Func<ProviderConfig, ILlmClient> createClient)
     {
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(It.IsAny<ProviderType>())).Returns(true);
+        factory.Setup(candidate => candidate.SupportsType(It.IsAny<string>())).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
             .Returns((ProviderConfig config) => createClient(config));
         return factory;
     }
 
-    private static ILlmClient CreateClient(ProviderType providerType, bool connectionResult = true)
+    private static ILlmClient CreateClient(string providerType, bool connectionResult = true)
     {
         var client = new Mock<ILlmClient>();
         client.SetupGet(candidate => candidate.ProviderType).Returns(providerType);

@@ -24,7 +24,7 @@ public class AnthropicClient : ILlmClient
     public string ProviderId => _config.Id;
 
     /// <summary>Provider 类型</summary>
-    public ProviderType ProviderType => ProviderType.Anthropic;
+    public string ProviderType => ProviderTypes.Anthropic;
 
     /// <summary>
     /// 创建 Anthropic 客户端

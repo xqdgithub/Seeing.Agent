@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -113,7 +113,7 @@ public class OpenAiChatClientStreamTests
         var config = new ProviderConfig
         {
             Id = "test-openai",
-            Type = ProviderType.OpenAI,
+            Type = ProviderTypes.OpenAi,
             ApiKey = "sk-test",
             BaseUrl = "http://localhost/v1"
         };
@@ -134,7 +134,7 @@ public class OpenAiChatClientStreamTests
             new ProviderConfig
             {
                 Id = "opencode-zen",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 BaseUrl = "http://localhost/v1"
             },
             http,

@@ -3,16 +3,15 @@
 namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
-/// Provider 类型
+/// Provider 类型标识常量（小写，用作路由键）
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ProviderType
+public static class ProviderTypes
 {
-    /// <summary>OpenAI</summary>
-    OpenAI,
+    /// <summary>OpenAI 兼容协议</summary>
+    public const string OpenAi = "openai";
 
-    /// <summary>Anthropic</summary>
-    Anthropic
+    /// <summary>Anthropic 协议</summary>
+    public const string Anthropic = "anthropic";
 }
 
 /// <summary>
@@ -24,9 +23,9 @@ public class ProviderConfig
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>Provider 类型</summary>
+    /// <summary>Provider 类型（如 <see cref="ProviderTypes.OpenAi"/>）</summary>
     [JsonPropertyName("type")]
-    public ProviderType Type { get; set; }
+    public string Type { get; set; } = string.Empty;
 
     /// <summary>Provider 显示名称</summary>
     [JsonPropertyName("name")]

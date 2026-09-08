@@ -56,7 +56,7 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         IReadOnlyDictionary<string, object?> values = new Dictionary<string, object?>
         {
             ["Name"] = _config.Name,
-            ["Type"] = _config.Type.ToString(),
+            ["Type"] = _config.Type,
             ["BaseUrl"] = _config.BaseUrl,
             ["ApiKey"] = _config.ApiKey,
             ["Proxy"] = _config.Proxy,
@@ -143,9 +143,8 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         if (TryGetString(values, "Name", out var name))
             config.Name = name;
 
-        if (TryGetString(values, "Type", out var typeName) &&
-            Enum.TryParse<ProviderType>(typeName, ignoreCase: true, out var type))
-            config.Type = type;
+        if (TryGetString(values, "Type", out var typeName) && !string.IsNullOrWhiteSpace(typeName))
+            config.Type = typeName;
 
         if (TryGetString(values, "BaseUrl", out var baseUrl))
             config.BaseUrl = baseUrl;

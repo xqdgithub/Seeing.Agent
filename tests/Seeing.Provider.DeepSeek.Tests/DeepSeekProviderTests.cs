@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using System.Net;
 using System.Text;
 using FluentAssertions;
@@ -56,7 +56,7 @@ public class DeepSeekProviderTests
                 {
                     createdKeys.Add(cfg.ApiKey);
                     cfg.BaseUrl.Should().Be(DeepSeekModelsClient.DefaultBaseUrl);
-                    cfg.Type.Should().Be(ProviderType.OpenAI);
+                    cfg.Type.Should().Be(ProviderTypes.OpenAi);
                     cfg.Id.Should().Be("deepseek");
                     return cfg.ApiKey == "sk-old" ? oldClient.Object : newClient.Object;
                 });

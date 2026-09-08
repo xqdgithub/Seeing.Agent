@@ -150,7 +150,7 @@ public static class PredefinedProviders
     public static ProviderConfig OpenAI(string? apiKey = null) => new()
     {
         Id = "openai",
-        Type = ProviderType.OpenAI,
+        Type = ProviderTypes.OpenAi,
         Name = "OpenAI",
         BaseUrl = "https://api.openai.com/v1",
         ApiKey = apiKey,
@@ -162,7 +162,7 @@ public static class PredefinedProviders
     public static ProviderConfig Anthropic(string? apiKey = null) => new()
     {
         Id = "anthropic",
-        Type = ProviderType.Anthropic,
+        Type = ProviderTypes.Anthropic,
         Name = "Anthropic",
         BaseUrl = "https://api.anthropic.com/v1",
         ApiKey = apiKey,

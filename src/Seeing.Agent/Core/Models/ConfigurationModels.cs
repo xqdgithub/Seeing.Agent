@@ -26,7 +26,7 @@ namespace Seeing.Agent.Core.Models
         public string Model { get; set; } = string.Empty;
 
         /// <summary>提供商类型</summary>
-        public ProviderType ProviderType { get; set; } = ProviderType.OpenAI;
+        public string ProviderType { get; set; } = ProviderTypes.OpenAi;
 
         /// <summary>是否支持工具调用</summary>
         public bool Tool { get; set; } = true;

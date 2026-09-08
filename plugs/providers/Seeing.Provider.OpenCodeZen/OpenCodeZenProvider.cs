@@ -199,7 +199,7 @@ public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvi
             return CreateBuiltInClient(_factory, new ProviderConfig
             {
                 Id = Id,
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 Name = Name,
                 BaseUrl = OpenCodeZenModelsClient.DefaultBaseUrl,
                 ApiKey = _apiKey,

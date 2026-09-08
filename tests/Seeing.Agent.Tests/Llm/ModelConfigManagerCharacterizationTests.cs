@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
@@ -39,7 +39,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             ["openai"] = new ProviderConfig
             {
                 Id = "openai",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 Models = new Dictionary<string, ModelConfig>
                 {
                     ["provider-model"] = providerModel
@@ -75,7 +75,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             ["opencode-zen"] = new ProviderConfig
             {
                 Id = "opencode-zen",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 Models = new Dictionary<string, ModelConfig>
                 {
                     ["free-model"] = providerModel
@@ -110,7 +110,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             ["openai"] = new ProviderConfig
             {
                 Id = "openai",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 Models = new Dictionary<string, ModelConfig>
                 {
                     ["provider-only-model"] = providerModel
@@ -138,7 +138,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             ["openai"] = new ProviderConfig
             {
                 Id = "openai",
-                Type = ProviderType.OpenAI
+                Type = ProviderTypes.OpenAi
             }
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
@@ -187,7 +187,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             ["openai"] = new ProviderConfig
             {
                 Id = "openai",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 Models = new Dictionary<string, ModelConfig>
                 {
                     ["initial-model"] = providerModel
@@ -212,7 +212,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             ["openai"] = new ProviderConfig
             {
                 Id = "openai",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 Models = new Dictionary<string, ModelConfig>
                 {
                     ["initial-model"] = providerModel,
@@ -255,7 +255,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             ["openai"] = new ProviderConfig
             {
                 Id = "openai",
-                Type = ProviderType.OpenAI,
+                Type = ProviderTypes.OpenAi,
                 Models = new Dictionary<string, ModelConfig>
                 {
                     ["keep-model"] = new() { Id = "keep-model", Provider = "openai" },
