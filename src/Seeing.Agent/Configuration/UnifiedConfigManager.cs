@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Llm;
-using Seeing.Agent.MCP;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Mcp;

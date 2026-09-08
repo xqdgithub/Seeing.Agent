@@ -1,9 +1,9 @@
-﻿using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Seeing.Agent.MCP.OAuth;
+using Seeing.Agent.Mcp.OAuth;
 using Xunit;
 
 namespace Seeing.Agent.Tests.MCP;

@@ -2,10 +2,10 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.MCP;
-using Seeing.Agent.MCP.Configuration;
-using Seeing.Agent.MCP.Factory;
-using Seeing.Agent.MCP.Policy;
+using Seeing.Agent.Mcp;
+using Seeing.Agent.Mcp.Configuration;
+using Seeing.Agent.Mcp.Factory;
+using Seeing.Agent.Mcp.Policy;
 using Seeing.Agent.Tools;
 using System.Net.Http;
 using Xunit;
@@ -151,12 +151,12 @@ public class McpClientManagerReinitializeTests
 
         public Task DisconnectAsync() => Task.CompletedTask;
 
-        public Task<IReadOnlyList<Seeing.Agent.MCP.Management.McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<Seeing.Agent.Mcp.Management.McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
         {
             var tools = Enumerable.Range(1, _toolCount)
-                .Select(i => new Seeing.Agent.MCP.Management.McpToolInfo { Name = $"tool_{i}", Description = "测试工具" })
+                .Select(i => new Seeing.Agent.Mcp.Management.McpToolInfo { Name = $"tool_{i}", Description = "测试工具" })
                 .ToList();
-            return Task.FromResult<IReadOnlyList<Seeing.Agent.MCP.Management.McpToolInfo>>(tools);
+            return Task.FromResult<IReadOnlyList<Seeing.Agent.Mcp.Management.McpToolInfo>>(tools);
         }
 
         public Task<McpToolResult> CallToolAsync(

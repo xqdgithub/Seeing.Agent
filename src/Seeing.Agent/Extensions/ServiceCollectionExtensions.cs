@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Client;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Compression;
@@ -41,17 +40,13 @@ using Seeing.Agent.Tools.Shell;
 using Seeing.Agent.Tools.Web;
 using Seeing.Agent.Tools.Git;
 using Seeing.Agent.Skills;
+using Seeing.Agent.Mcp;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
-using Seeing.Agent.MCP;
-using Seeing.Agent.MCP.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Summarization;
-using Seeing.Agent.MCP.Factory;
-using Seeing.Agent.MCP.Management;
 using System.Net.Http;
-using Seeing.Agent.MCP.Policy;
 using Seeing.Agent.Middlewares;
 using Seeing.Agent.Shell;
 using Seeing.Agent.Tools;
@@ -362,6 +357,10 @@ namespace Seeing.Agent.Extensions
             skillsModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(skillsModule);
 
+            // TEMP: Phase 3 — MCP 模块登记（ConfigureServices 在 ToolManager 注册后调用；见下方）
+            var mcpModule = new McpModule();
+            services.AddSingleton<ISeeingModule>(mcpModule);
+
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -558,48 +557,11 @@ namespace Seeing.Agent.Extensions
 
                 return invoker;
             });
+            services.AddSingleton<IToolManager>(sp => sp.GetRequiredService<ToolManager>());
 
-            // === MCP 服务注册 ===
-
-            // 1. 全局策略配置（从 IConfiguration 加载）
-            services.AddSingleton<McpGlobalPolicy>(sp =>
-            {
-                var config = sp.GetService<IConfiguration>()?.GetSection("SeeingAgent:Mcp");
-                return new McpGlobalPolicy
-                {
-                    ConnectionTimeout = TimeSpan.FromSeconds(config?.GetValue("ConnectionTimeoutSeconds", 30) ?? 30),
-                    OperationTimeout = TimeSpan.FromSeconds(config?.GetValue("OperationTimeoutSeconds", 60) ?? 60),
-                    BackgroundCheckInterval = TimeSpan.FromSeconds(config?.GetValue("BackgroundCheckIntervalSeconds", 10) ?? 10),
-                    MaxConcurrentConnections = config?.GetValue("MaxConcurrentConnections", 3) ?? 3,
-                    AutoStartOnAdd = config?.GetValue("AutoStartOnAdd", true) ?? true
-                };
-            });
-
-            // 2. 工厂注册表
-            services.AddSingleton<McpWrapperFactoryRegistry>(sp =>
-            {
-                var registry = new McpWrapperFactoryRegistry();
-                registry.Register(new Seeing.Agent.MCP.Factory.StdioWrapperFactory());
-                registry.Register(new Seeing.Agent.MCP.Factory.HttpWrapperFactory(HttpTransportMode.StreamableHttp));
-                registry.Register(new Seeing.Agent.MCP.Factory.HttpWrapperFactory(HttpTransportMode.Sse));
-                return registry;
-            });
-
-            // 3. 工具注册管理（内部服务）
-            services.AddSingleton<McpToolRegistry>(sp =>
-            {
-                var toolInvoker = sp.GetRequiredService<ToolManager>();
-                var hookManager = sp.GetRequiredService<Seeing.Agent.Abstractions.Hooks.IHookManager>();
-                var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<McpToolRegistry>();
-                return new McpToolRegistry(toolInvoker, hookManager, logger);
-            });
-
-            // 4. 进程监控（内部服务）
-            services.AddSingleton<McpProcessMonitor>(sp =>
-            {
-                var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<McpProcessMonitor>();
-                return new McpProcessMonitor(logger);
-            });
+            // TEMP: Phase 3 — MCP 模块（ConfigureServices 注册 IMcpManager 等；Activate 待 Host Shape）
+            // 在 IToolManager 注册之后调用，以便工厂可解析工具管理器。
+            mcpModule.ConfigureServices(services);
 
             // 5. 工作区路径提供者（统一管理配置目录）
             // 初始化时根据配置自动解析工作区
@@ -621,12 +583,7 @@ namespace Seeing.Agent.Extensions
             // 6. Agent / Model 默认解析
             services.AddSingleton<AgentSelectionResolver>();
 
-            // 6. MCP 配置持久化服务
-            services.AddSingleton<IMcpConfigPersistence, McpConfigPersistence>();
-
-            // 7. MCP 客户端管理器（实现 IMcpManager 接口）
-            services.AddSingleton<IMcpManager, McpClientManager>();
-            services.AddSingleton<McpClientManager>(sp => (McpClientManager)sp.GetRequiredService<IMcpManager>());
+            // MCP — 由 McpModule.ConfigureServices 注册（见上方模块登记）
 
             // 扩展系统
             services.AddSingleton<ExtensionLoader>();

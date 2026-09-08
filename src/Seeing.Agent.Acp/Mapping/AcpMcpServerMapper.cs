@@ -1,11 +1,11 @@
-﻿using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Mcp;
 using Acp.Types;
 using AcpMcpServerConfig = Acp.Types.McpServerConfig;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.MCP;
+using Seeing.Agent.Mcp;
 using SeeingMcpConfig = Seeing.Agent.Abstractions.Mcp.McpServerConfig;
 
 namespace Seeing.Agent.Acp.Mapping;

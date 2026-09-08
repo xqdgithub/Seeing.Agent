@@ -16,6 +16,9 @@ public interface IToolManager
     /// <summary>按 ID 获取工具</summary>
     ITool? GetTool(string id);
 
+    /// <summary>注册工具（同步；自动应用装饰器链）</summary>
+    void RegisterTool(ITool tool);
+
     /// <summary>注册工具（自动应用装饰器链）</summary>
     Task RegisterToolAsync(ITool tool, CancellationToken cancellationToken = default);
 

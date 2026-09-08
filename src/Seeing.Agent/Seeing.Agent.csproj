@@ -48,9 +48,6 @@
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Http.Polly" />
     
-    <!-- MCP 协议支持 -->
-    <PackageReference Include="ModelContextProtocol.Core" />
-    
     <!-- LLM SDK 支持 -->
     <PackageReference Include="YamlDotNet" />
     <!-- Reactive Extensions for IObservable support -->
@@ -65,6 +62,7 @@
     <ProjectReference Include="..\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
     <ProjectReference Include="..\Seeing.IO.Local\Seeing.IO.Local.csproj" />
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
