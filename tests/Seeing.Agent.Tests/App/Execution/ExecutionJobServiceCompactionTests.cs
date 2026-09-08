@@ -207,7 +207,8 @@ public class ExecutionJobServiceCompactionTests
         services.AddSingleton(agentRegistry.Object);
         services.AddSingleton(executor.Object);
         services.AddSingleton(new AgentSelectionResolver(runtimeManager.Object));
-        services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.WorkspaceRoot == "workspace-root"));
+        services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
+            services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
         services.AddSingleton(Mock.Of<ICommandRegistry>());
         var provider = services.BuildServiceProvider();
 

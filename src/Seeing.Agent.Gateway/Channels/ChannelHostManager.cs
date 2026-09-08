@@ -350,7 +350,7 @@ public sealed class ChannelHostManager
 
     private IEnumerable<string> GetSearchRoots()
     {
-        yield return _workspace.WorkspaceRoot;
+        yield return _workspace.GetProjectRoot();
 
         var dir = AppContext.BaseDirectory;
         for (var i = 0; i < 6 && !string.IsNullOrEmpty(dir); i++)

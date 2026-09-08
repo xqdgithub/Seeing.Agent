@@ -16,6 +16,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
     private readonly Mock<ISeeingConfigService> _configServiceMock;
     private readonly Mock<ILogger<WorkspaceSwitchService>> _loggerMock;
     private readonly string _testDirectory;
+    private readonly string _oldDirectory;
 
     public WorkspaceSwitchServiceTests()
     {
@@ -24,20 +25,23 @@ public class WorkspaceSwitchServiceTests : IDisposable
         _loggerMock = new Mock<ILogger<WorkspaceSwitchService>>();
         
         _testDirectory = Path.Combine(Path.GetTempPath(), $"workspace_test_{Guid.NewGuid():N}");
+        _oldDirectory = Path.Combine(Path.GetTempPath(), $"workspace_old_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testDirectory);
+        Directory.CreateDirectory(_oldDirectory);
     }
 
     public void Dispose()
     {
         if (Directory.Exists(_testDirectory))
-        {
             Directory.Delete(_testDirectory, true);
-        }
+        if (Directory.Exists(_oldDirectory))
+            Directory.Delete(_oldDirectory, true);
     }
 
     private WorkspaceSwitchService CreateService()
     {
-        _workspaceMock.Setup(x => x.WorkspaceRoot).Returns("/old");
+        _workspaceMock.Setup(x => x.ProjectSeeingDirectory)
+            .Returns(Path.Combine(_oldDirectory, ".seeing"));
         
         return new WorkspaceSwitchService(
             _workspaceMock.Object,
@@ -112,7 +116,8 @@ public class WorkspaceSwitchServiceTests : IDisposable
         // Arrange
         var newPath = _testDirectory;
         var service = CreateService();
-        _workspaceMock.Setup(x => x.WorkspaceRoot).Returns(newPath);
+        _workspaceMock.Setup(x => x.ProjectSeeingDirectory)
+            .Returns(Path.Combine(newPath, ".seeing"));
 
         // Act
         var result = await service.SwitchWorkspaceAsync(newPath);
@@ -139,8 +144,8 @@ public class WorkspaceSwitchServiceTests : IDisposable
 
         // Assert
         result.Should().BeFalse();
-        // 验证回滚
-        _workspaceMock.Verify(x => x.SetWorkspaceRoot("/old"), Times.Once);
+        // 验证回滚到切换前的项目根
+        _workspaceMock.Verify(x => x.SetWorkspaceRoot(_oldDirectory), Times.Once);
     }
 
     [Fact]
@@ -187,16 +192,19 @@ public class WorkspaceSwitchServiceTests : IDisposable
     }
 
     [Fact]
-    public void CurrentWorkspace_ShouldReturnWorkspaceRoot()
+    public void CurrentWorkspace_ShouldReturnProjectRoot()
     {
         // Arrange
         var service = CreateService();
-        _workspaceMock.Setup(x => x.WorkspaceRoot).Returns("/test/workspace");
+        var root = Path.Combine(_testDirectory, "ws");
+        Directory.CreateDirectory(root);
+        _workspaceMock.Setup(x => x.ProjectSeeingDirectory)
+            .Returns(Path.Combine(root, ".seeing"));
 
         // Act
         var current = service.CurrentWorkspace;
 
         // Assert
-        current.Should().Be("/test/workspace");
+        current.Should().Be(root);
     }
 }

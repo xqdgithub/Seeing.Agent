@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -106,10 +107,7 @@ public class AcpToolTests
             }
         });
         
-        var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(".");
-        workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
-        workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());
+        var world = Mock.Of<IExecutionWorld>(w => w.Cwd == ".");
 
         return new AcpTool(
             NullLogger<AcpTool>.Instance,
@@ -118,13 +116,12 @@ public class AcpToolTests
             new ContentBlockMapper(),
             Options.Create(new SeeingAgentOptions { Acp = new AcpOptions { Enabled = true } }),
             sessionManager ?? new FakeSessionManager(),
-            workspaceMock.Object);
+            world);
     }
 
     private static AcpBackendRegistry CreateBackendRegistry(SeeingAgentOptions options)
     {
         var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(".");
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());
 

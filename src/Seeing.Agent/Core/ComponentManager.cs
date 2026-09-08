@@ -161,7 +161,7 @@ public class ComponentManager : IComponentManager, IReloadHandler
     /// <inheritdoc/>
     public async Task ReloadAsync(IReloadSignal change, CancellationToken ct = default)
     {
-        var workspaceRoot = _services.GetRequiredService<IWorkspaceProvider>().WorkspaceRoot;
+        var workspaceRoot = _services.GetRequiredService<IWorkspaceProvider>().GetProjectRoot();
 
         if (change is WorkspaceChange)
         {
@@ -217,7 +217,7 @@ internal class SkillLoader : IComponentLoader
             foreach (var p in options.Value.Skills.Paths)
             {
                 if (!string.IsNullOrWhiteSpace(p))
-                    AddIfExists(skillManager, ExpandPath(p.Trim(), workspaceProvider.WorkspaceRoot));
+                    AddIfExists(skillManager, ExpandPath(p.Trim(), workspaceProvider.GetProjectRoot()));
             }
         }
 
@@ -359,8 +359,8 @@ internal class PluginLoader : IComponentLoader
         {
             Services = services,
             Configuration = configuration,
-            Directory = workspaceProvider.WorkspaceRoot,
-            WorkspaceRoot = workspaceProvider.WorkspaceRoot,
+            Directory = workspaceProvider.GetProjectRoot(),
+            WorkspaceRoot = workspaceProvider.GetProjectRoot(),
             HookManager = services.GetRequiredService<HookManager>(),
             ToolManager = services.GetRequiredService<ToolManager>(),
             PermissionService = services.GetRequiredService<IPermissionService>(),

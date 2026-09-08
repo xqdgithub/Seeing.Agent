@@ -87,6 +87,6 @@
         if (string.IsNullOrWhiteSpace(path))
             return ".seeing/gateway-clients/{channelId}.json";
 
-        return Path.GetRelativePath(WorkspaceProvider.WorkspaceRoot, path).Replace('\\', '/');
+        return Path.GetRelativePath(WorkspaceProvider.GetProjectRoot(), path).Replace('\\', '/');
     }
 }

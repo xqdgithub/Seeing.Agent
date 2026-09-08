@@ -84,7 +84,7 @@
                 {
                     var workspace = !string.IsNullOrEmpty(session.WorkingDirectory) 
                         ? session.WorkingDirectory 
-                        : WorkspaceProvider.WorkspaceRoot;
+                        : WorkspaceProvider.GetProjectRoot();
                     
                     <div Class="session-card-wrapper" @onclick="@(() => ViewSession(session.Id))">
                         <Card Size="@CardSize.Small" Hoverable="true" Class="session-card">
@@ -328,7 +328,7 @@
         try
         {
             var session = await ChatOrchestrator.CreateSessionAsync(
-                workingDirectory: WorkspaceProvider.WorkspaceRoot);
+                workingDirectory: WorkspaceProvider.GetProjectRoot());
             MessageService.Success("会话已创建");
             NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
         }

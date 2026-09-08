@@ -129,6 +129,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
             var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
             var instructionManager = scope.ServiceProvider.GetRequiredService<IInstructionManager>();
             var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
+            var executionWorld = scope.ServiceProvider.GetRequiredService<IExecutionWorld>();
             var session = await sessionManager.EnsureSessionAsync(sessionId);
             TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
 
@@ -137,7 +138,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
 
             var cwd = options?.WorkingDirectory
                 ?? session.WorkingDirectory
-                ?? workspaceProvider.WorkspaceRoot;
+                ?? executionWorld.Cwd;
             if (!string.Equals(session.WorkingDirectory, cwd, StringComparison.Ordinal))
             {
                 session.WorkingDirectory = cwd;
@@ -150,7 +151,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
                     await instructionManager.InjectIfNeededAsync(
                         session,
                         cwd,
-                        workspaceProvider.WorkspaceRoot,
+                        workspaceProvider.GetProjectRoot(),
                         CancellationToken.None);
                 }
                 catch (Exception ex)
@@ -383,6 +384,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
         var agentSelectionResolver = scope.ServiceProvider.GetRequiredService<AgentSelectionResolver>();
         var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
         var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
+        var executionWorld = scope.ServiceProvider.GetRequiredService<IExecutionWorld>();
         var commandRegistry = scope.ServiceProvider.GetRequiredService<ICommandRegistry>();
 
         var queue = _sessionQueues[record.SessionId];
@@ -425,7 +427,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
 
             // Build execution context with background permission channel
             var context = await BuildExecutionContextAsync(
-                session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider);
+                session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider, executionWorld);
 
             // 旁路生成标题（不阻塞主对话；命令不生成标题）
             if (record.Options?.SkipUserMessagePersist != true && !IsCommandInput(record.Input?.Text))
@@ -604,7 +606,8 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
         IAgentRegistry agentRegistry,
         AgentSelectionResolver agentSelectionResolver,
         IModelManager modelManager,
-        IWorkspaceProvider workspaceProvider)
+        IWorkspaceProvider workspaceProvider,
+        IExecutionWorld executionWorld)
     {
         var agentId = await agentSelectionResolver.ResolveAgentIdAsync(
             record.Options?.AgentId,
@@ -636,13 +639,18 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
             record.Options?.ModeId,
             session.SelectedAcpMode);
 
+        var projectRoot = workspaceProvider.GetProjectRoot();
+        var cwd = record.Options?.WorkingDirectory
+            ?? session.WorkingDirectory
+            ?? executionWorld.Cwd;
+
         return new ChatExecutionContext
         {
             SessionId = record.SessionId,
             Agent = agentDef,
             History = new List<ChatMessage>(),
-            WorkingDirectory = record.Options?.WorkingDirectory ?? workspaceProvider.WorkspaceRoot,
-            WorkspaceRoot = workspaceProvider.WorkspaceRoot,
+            WorkingDirectory = cwd,
+            WorkspaceRoot = projectRoot,
             PermissionChannel = permissionChannel,
             ChannelId = record.Options?.ChannelId,
             UserId = record.Options?.UserId,

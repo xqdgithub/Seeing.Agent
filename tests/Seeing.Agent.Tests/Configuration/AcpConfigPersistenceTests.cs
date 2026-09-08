@@ -63,7 +63,6 @@ public class AcpConfigPersistenceTests
         saved.Should().Contain("C:/saved.cmd");
 
         var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(tempDir);
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.Combine(tempDir, "project", ".seeing"));
 
@@ -116,7 +115,6 @@ public class AcpConfigPersistenceTests
             """);
 
         var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(tempDir);
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
 
@@ -141,7 +139,6 @@ public class AcpConfigPersistenceTests
         Directory.CreateDirectory(projectSeeing);
 
         var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(tempDir);
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
 

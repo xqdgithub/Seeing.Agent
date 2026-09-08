@@ -31,6 +31,8 @@ public class ReloadOrchestratorTests
     {
         configStore = new Mock<IConfigSectionStore>();
         workspace = new Mock<IWorkspaceProvider>();
+        workspace.Setup(x => x.StartupDirectory).Returns("/startup");
+        workspace.Setup(x => x.ProjectSeeingDirectory).Returns("/workspace/.seeing");
         var handler = new TrackingHandler();
         var orch = new ReloadOrchestrator(
             new[] { handler }, configStore.Object, workspace.Object,
@@ -63,9 +65,12 @@ public class ReloadOrchestratorTests
     {
         var bad = new TrackingHandler { ComponentId = "bad", OnConfig = _ => throw new InvalidOperationException("boom") };
         var good = new TrackingHandler();
+        var workspace = new Mock<IWorkspaceProvider>();
+        workspace.Setup(x => x.StartupDirectory).Returns("/startup");
+        workspace.Setup(x => x.ProjectSeeingDirectory).Returns("/workspace/.seeing");
         var orch = new ReloadOrchestrator(
             new IReloadHandler[] { bad, good },
-            new Mock<IConfigSectionStore>().Object, new Mock<IWorkspaceProvider>().Object,
+            new Mock<IConfigSectionStore>().Object, workspace.Object,
             NullLogger<ReloadOrchestrator>.Instance);
 
         var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } });

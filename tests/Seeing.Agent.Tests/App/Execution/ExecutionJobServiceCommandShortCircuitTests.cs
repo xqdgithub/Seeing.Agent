@@ -383,7 +383,8 @@ public class ExecutionJobServiceCommandShortCircuitTests
         services.AddSingleton(agentRegistry.Object);
         services.AddSingleton(executor);
         services.AddSingleton(new AgentSelectionResolver(runtimeManager.Object));
-        services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.WorkspaceRoot == "workspace-root"));
+        services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
+            services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
         services.AddSingleton(commandRegistry);
         var provider = services.BuildServiceProvider();
 

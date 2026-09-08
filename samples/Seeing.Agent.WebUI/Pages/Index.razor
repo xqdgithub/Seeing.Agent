@@ -293,7 +293,7 @@
         var newSession = await ChatOrchestrator.CreateSessionAsync(
             "新会话", 
             defaultAgent,
-            WorkspaceProvider.WorkspaceRoot);
+            WorkspaceProvider.GetProjectRoot());
         NavigationManager.NavigateTo(string.Format("/session/{0}", newSession.Id));
     }
     

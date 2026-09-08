@@ -128,7 +128,7 @@ public sealed class GatewayClientConfigService
         _channelHostConfigStore.GetRuntimeConfigPath(channelId);
 
     public void ReloadRegistry() =>
-        _registry.Reload(_workspaceProvider.WorkspaceRoot);
+        _registry.Reload(_workspaceProvider.GetProjectRoot());
 
     public async Task InstallPluginAsync(string sourceDllPath, CancellationToken ct = default)
     {

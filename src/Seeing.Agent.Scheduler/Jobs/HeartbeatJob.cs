@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using System.Text;
@@ -26,6 +27,7 @@ public class HeartbeatJob : IJob
     private readonly IAgentRegistry _agentRegistry;
     private readonly AgentSelectionResolver _selectionResolver;
     private readonly IWorkspaceProvider _workspace;
+    private readonly IExecutionWorld _world;
     private readonly ISessionManager _sessionManager;
     private readonly IServiceProvider _services;
     private readonly HookManager _hooks;
@@ -38,6 +40,7 @@ public class HeartbeatJob : IJob
         IAgentRegistry agentRegistry,
         AgentSelectionResolver selectionResolver,
         IWorkspaceProvider workspace,
+        IExecutionWorld world,
         ISessionManager sessionManager,
         IServiceProvider services,
         HookManager hooks,
@@ -49,6 +52,7 @@ public class HeartbeatJob : IJob
         _agentRegistry = agentRegistry;
         _selectionResolver = selectionResolver;
         _workspace = workspace;
+        _world = world;
         _sessionManager = sessionManager;
         _services = services;
         _hooks = hooks;
@@ -277,7 +281,8 @@ public class HeartbeatJob : IJob
         var agentDefinition = await _agentRegistry.GetAgentAsync(resolvedAgentId)
             ?? throw new InvalidOperationException($"Agent '{resolvedAgentId}' not found");
 
-        var workspaceRoot = _workspace.WorkspaceRoot;
+        var cwd = _world.Cwd;
+        var projectRoot = _workspace.GetProjectRoot();
 
         var messages = new List<ChatMessage>
         {
@@ -296,8 +301,8 @@ public class HeartbeatJob : IJob
             SessionId = sessionId,
             CancellationToken = ct,
             Services = _services,
-            WorkingDirectory = workspaceRoot,
-            WorkspaceRoot = workspaceRoot,
+            WorkingDirectory = cwd,
+            WorkspaceRoot = projectRoot,
             IsBackground = true,
             Metadata = new Dictionary<string, object>
             {

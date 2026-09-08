@@ -37,21 +37,20 @@ public enum WorkspaceResolutionSource
 }
 
 /// <summary>
-/// 工作区路径提供者 - 统一管理所有配置目录的获取逻辑
+/// 工作区路径提供者 - 统一管理配置目录的获取逻辑（非执行 cwd）。
 /// <para>
 /// 目录层级：
 /// - 用户级：~/.seeing/（基础配置）
-/// - 项目级：{WorkspaceRoot}/.seeing/（覆盖同名）
+/// - 项目级：{project}/.seeing/（覆盖同名）
+/// </para>
+/// <para>
+/// 工具 / 运行时 cwd 请使用 <c>IExecutionWorld.Cwd</c>。
+/// 需要项目根路径时用 <see cref="WorkspaceProviderExtensions.GetProjectRoot"/>。
 /// </para>
 /// </summary>
 public interface IWorkspaceProvider
 {
-    /// <summary>
-    /// 获取工作区根目录（唯一的工作目录获取入口）
-    /// </summary>
-    string WorkspaceRoot { get; }
-
-    /// <summary>更新工作区根目录（运行时临时切换，不持久化）</summary>
+    /// <summary>更新工作区根目录（运行时临时切换，不持久化；同时同步进程当前目录）</summary>
     void SetWorkspaceRoot(string workspaceRoot);
 
     /// <summary>
@@ -144,9 +143,6 @@ public class WorkspaceProvider : IWorkspaceProvider
         _logger = logger;
     }
 
-    /// <inheritdoc/>
-    public string WorkspaceRoot => _workspaceRoot;
-    
     /// <inheritdoc/>
     public string StartupDirectory => _startupDirectory;
     
@@ -312,6 +308,16 @@ public class WorkspaceProvider : IWorkspaceProvider
         
         _workspaceRoot = path;
         _resolutionSource = source;
+
+        // 同步进程 cwd，使 LocalExecutionWorld.Cwd 跟随工作区切换
+        try
+        {
+            Directory.SetCurrentDirectory(path);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "无法将进程当前目录切换到工作区: {Path}", path);
+        }
         
         _logger?.LogDebug("工作区已更新: {OldPath} -> {NewPath}, 来源: {OldSource} -> {NewSource}", 
             oldWorkspace, path, oldSource, source);

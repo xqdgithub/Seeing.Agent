@@ -67,7 +67,6 @@ public class AcpBackendRegistryTests
     private static AcpBackendRegistry CreateRegistry(SeeingAgentOptions options)
     {
         var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(".");
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());
 

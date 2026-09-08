@@ -176,7 +176,7 @@ using (var scope = app.Services.CreateScope())
     sp.UseTokenBudgetHooks();
 
     var workspaceProvider = sp.GetRequiredService<IWorkspaceProvider>();
-    sp.ReloadGatewayChannelRegistry(workspaceProvider.WorkspaceRoot);
+    sp.ReloadGatewayChannelRegistry(workspaceProvider.GetProjectRoot());
 }
 
 // 局域网 HTTP 分发默认关闭 HTTPS 跳转（SEEING_DISABLE_HTTPS_REDIRECTION=true 或配置 DisableHttpsRedirection）

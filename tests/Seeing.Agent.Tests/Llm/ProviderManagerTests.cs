@@ -405,7 +405,6 @@ public class ProviderManagerTests : IDisposable
         }
 
         var workspace = new Mock<IWorkspaceProvider>();
-        workspace.Setup(candidate => candidate.WorkspaceRoot).Returns(Path.Combine(_tempDirectory, "project"));
         workspace.Setup(candidate => candidate.UserSeeingDirectory).Returns(userSeeingDirectory);
         workspace.Setup(candidate => candidate.ProjectSeeingDirectory).Returns(projectSeeingDirectory);
 

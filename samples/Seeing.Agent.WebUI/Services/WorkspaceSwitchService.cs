@@ -44,7 +44,7 @@ public class WorkspaceSwitchService
             return false;
         }
 
-        var oldWorkspace = _workspace.WorkspaceRoot;
+        var oldWorkspace = _workspace.GetProjectRoot();
         if (string.Equals(oldWorkspace, newWorkspaceRoot, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogInformation("工作区未变更: {Path}", newWorkspaceRoot);
@@ -102,7 +102,7 @@ public class WorkspaceSwitchService
     /// <summary>
     /// 获取当前工作区路径
     /// </summary>
-    public string CurrentWorkspace => _workspace.WorkspaceRoot;
+    public string CurrentWorkspace => _workspace.GetProjectRoot();
 
     /// <summary>
     /// 获取启动目录

@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -60,7 +60,6 @@ public class AcpDynamicAgentRegistrarTests
     private static AcpBackendRegistry CreateBackendRegistry(SeeingAgentOptions options)
     {
         var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(".");
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());
 

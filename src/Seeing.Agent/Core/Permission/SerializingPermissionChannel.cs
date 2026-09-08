@@ -38,7 +38,7 @@ public sealed class SerializingPermissionChannel : IPermissionChannel
             request.PermissionKind.StartsWith("filesystem.", StringComparison.OrdinalIgnoreCase))
         {
             var inWorkspace = _workspace != null &&
-                FileSystemHelper.IsPathWithinDirectory(request.Resource, _workspace.WorkspaceRoot);
+                FileSystemHelper.IsPathWithinDirectory(request.Resource, _workspace.GetProjectRoot());
             var inWhitelist = _whitelist != null &&
                 _whitelist.Contains(request.SessionId ?? string.Empty, request.Resource);
             if (inWorkspace || inWhitelist)

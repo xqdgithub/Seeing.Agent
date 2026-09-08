@@ -965,7 +965,7 @@
             AgentId = SessionState.SelectedAgent,
             ModelId = SessionState.SelectedModel,
             ModeId = SessionState.SelectedAcpMode,
-            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot,
+            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.GetProjectRoot(),
             // 传递权限通道，支持交互式确认
             PermissionChannel = PermissionChannel,
             // 会话级自动批准策略（三态）
@@ -1128,7 +1128,7 @@
         try
         {
             var session = await ChatOrchestrator.CreateSessionAsync(
-                workingDirectory: WorkspaceProvider.WorkspaceRoot);
+                workingDirectory: WorkspaceProvider.GetProjectRoot());
             NavigationManager.NavigateTo($"/session/{session.Id}");
         }
         catch (Exception ex)
@@ -1405,7 +1405,7 @@
     /// <summary>Summary 模式：工作区路径（预留；外层可经 Context.GetWorkspace 读取）</summary>
     private string GetWorkspace()
     {
-        return SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.WorkspaceRoot;
+        return SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.GetProjectRoot();
     }
 
     /// <summary>Summary 模式：摘要卡片点击 → 通知外层（OnClick 回调携带 SessionId）</summary>

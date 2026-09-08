@@ -21,7 +21,6 @@ public class UnifiedConfigManagerSaveSectionsTests
         Directory.CreateDirectory(userSeeing);
 
         var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(tempDir);
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(userSeeing);
 
@@ -68,7 +67,6 @@ public class UnifiedConfigManagerSaveSectionsTests
         Directory.CreateDirectory(userSeeing);
 
         var workspaceMock = new Mock<IWorkspaceProvider>();
-        workspaceMock.Setup(w => w.WorkspaceRoot).Returns(tempDir);
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(userSeeing);
 

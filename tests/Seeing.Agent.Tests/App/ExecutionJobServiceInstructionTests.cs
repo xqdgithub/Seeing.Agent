@@ -127,7 +127,8 @@ public class ExecutionJobServiceInstructionTests
         services.AddSingleton(CreateModelManager());
         services.AddSingleton(instructionManager);
         services.AddSingleton(Mock.Of<IWorkspaceProvider>(
-            workspace => workspace.WorkspaceRoot == workspaceRoot));
+            workspace => workspace.ProjectSeeingDirectory == Path.Combine(workspaceRoot, ".seeing")));
+        services.AddSingleton(Mock.Of<IExecutionWorld>(world => world.Cwd == workspaceRoot));
         var provider = services.BuildServiceProvider();
 
         var service = new ExecutionJobService(

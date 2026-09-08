@@ -1,4 +1,4 @@
-﻿@page "/session"
+@page "/session"
 @page "/session/{SessionId}"
 @using AntDesign
 @using Microsoft.AspNetCore.Components.Web
@@ -371,7 +371,7 @@
         try
         {
             var session = await ChatOrchestrator.CreateSessionAsync(
-                workingDirectory: WorkspaceProvider.WorkspaceRoot);
+                workingDirectory: WorkspaceProvider.GetProjectRoot());
             NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
         }
         catch (Exception ex)

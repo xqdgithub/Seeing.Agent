@@ -848,7 +848,7 @@ namespace Seeing.Agent.Extensions
             }
 
             var componentManager = services.GetRequiredService<IComponentManager>();
-            var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().WorkspaceRoot;
+            var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().GetProjectRoot();
             var results = await componentManager.LoadAllAsync(workspaceRoot, cancellationToken);
 
             // 加载工具/技能禁用状态

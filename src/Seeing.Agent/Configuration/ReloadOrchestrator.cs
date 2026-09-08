@@ -202,7 +202,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
                     await ReloadAsync(new WorkspaceChange
                     {
                         OldWorkspace = _workspace.StartupDirectory,
-                        NewWorkspace = _workspace.WorkspaceRoot
+                        NewWorkspace = _workspace.GetProjectRoot()
                     });
 
                     // 工作区切换场景：配置随工作区变更，需再执行一轮配置全量重载

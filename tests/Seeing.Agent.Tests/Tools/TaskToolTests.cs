@@ -311,7 +311,8 @@ public class TaskToolTests
             services.AddSingleton(AgentRegistry.Object);
             services.AddSingleton<IAgentExecutor>(executor ?? BuildExecutor());
             services.AddSingleton(new AgentSelectionResolver(runtimeManager.Object));
-            services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.WorkspaceRoot == "workspace-root"));
+            services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
+            services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
             services.AddSingleton(Mock.Of<ICommandRegistry>());
             _provider = services.BuildServiceProvider();
 
@@ -524,7 +525,8 @@ public class TaskStatusToolTests
             services.AddSingleton(agentRegistry.Object);
             services.AddSingleton<IAgentExecutor>(executor ?? BuildExecutor());
             services.AddSingleton(new AgentSelectionResolver(runtimeManager.Object));
-            services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.WorkspaceRoot == "workspace-root"));
+            services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
+            services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
             services.AddSingleton(Mock.Of<ICommandRegistry>());
             _provider = services.BuildServiceProvider();
 

@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using System.Text;
@@ -25,6 +26,7 @@ public class AgentJob : IJob
     private readonly IAgentRegistry _agentRegistry;
     private readonly AgentSelectionResolver _selectionResolver;
     private readonly IWorkspaceProvider _workspace;
+    private readonly IExecutionWorld _world;
     private readonly IServiceProvider _services;
     private readonly HookManager _hooks;
     private readonly IScheduledJobDispatcher _dispatcher;
@@ -36,6 +38,7 @@ public class AgentJob : IJob
         IAgentRegistry agentRegistry,
         AgentSelectionResolver selectionResolver,
         IWorkspaceProvider workspace,
+        IExecutionWorld world,
         IServiceProvider services,
         HookManager hooks,
         IScheduledJobDispatcher dispatcher,
@@ -46,6 +49,7 @@ public class AgentJob : IJob
         _agentRegistry = agentRegistry;
         _selectionResolver = selectionResolver;
         _workspace = workspace;
+        _world = world;
         _services = services;
         _hooks = hooks;
         _dispatcher = dispatcher;
@@ -285,7 +289,8 @@ public class AgentJob : IJob
         var agentDefinition = await _agentRegistry.GetAgentAsync(resolvedAgentId)
             ?? throw new InvalidOperationException($"Agent '{resolvedAgentId}' not found");
 
-        var workspaceRoot = _workspace.WorkspaceRoot;
+        var cwd = _world.Cwd;
+        var projectRoot = _workspace.GetProjectRoot();
 
         var model = data.GetStringValue(JobDataKeys.Model);
         var mode = data.GetStringValue(JobDataKeys.Mode);
@@ -316,8 +321,8 @@ public class AgentJob : IJob
             SessionId = sessionId,
             CancellationToken = ct,
             Services = _services,
-            WorkingDirectory = workspaceRoot,
-            WorkspaceRoot = workspaceRoot,
+            WorkingDirectory = cwd,
+            WorkspaceRoot = projectRoot,
             IsBackground = true,
             Metadata = metadata
         };

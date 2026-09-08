@@ -100,7 +100,6 @@ public class SQLitePersistenceTests
             _workspaceRoot = workspaceDir;
         }
 
-        public string WorkspaceRoot => _workspaceRoot;
         public string StartupDirectory => _workspaceRoot;
         public string ProjectSeeingDirectory => _workspaceRoot;
         public string UserSeeingDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".seeing");

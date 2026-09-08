@@ -216,7 +216,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _workspacePath = WorkspaceProvider.WorkspaceRoot;
+        _workspacePath = WorkspaceProvider.GetProjectRoot();
         _options = await ConfigService.LoadProjectOptionsAsync();
         _scheduler = ConfigService.GetSchedulerOptions();
 
@@ -245,7 +245,7 @@
 
     private void LoadWorkspaceSettings()
     {
-        _workspacePath = WorkspaceProvider.WorkspaceRoot;
+        _workspacePath = WorkspaceProvider.GetProjectRoot();
         _globalWorkspacePath = WorkspaceSwitchService.GlobalWorkspaceRoot ?? "";
         _customWorkspacePath = _options.Workspace?.CustomPath ?? "";
         _workspaceUseGlobal = _options.Workspace?.UseGlobal ?? false;
@@ -281,7 +281,7 @@
     private async Task HandleWorkspaceChanged(string newWorkspace)
     {
         // 重新加载设置页面数据
-        _workspacePath = WorkspaceProvider.WorkspaceRoot;
+        _workspacePath = WorkspaceProvider.GetProjectRoot();
         _options = await ConfigService.LoadProjectOptionsAsync();
         BuildPluginRows();
         LoadWorkspaceSettings();
@@ -399,7 +399,7 @@
                     await WorkspaceSwitchService.SetWorkspaceOptionsAsync(workspaceOptions);
                     
                     // 更新显示
-                    _workspacePath = WorkspaceProvider.WorkspaceRoot;
+                    _workspacePath = WorkspaceProvider.GetProjectRoot();
                     break;
                 case "scheduler":
                     await ConfigService.SaveSchedulerOptionsAsync(s =>

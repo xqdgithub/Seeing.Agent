@@ -1,5 +1,6 @@
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
@@ -26,7 +27,7 @@ public sealed class AcpTool : ToolBase
     private readonly ContentBlockMapper _contentMapper;
     private readonly IOptions<SeeingAgentOptions> _options;
     private readonly ISessionManager _sessionManager;
-    private readonly IWorkspaceProvider _workspace;
+    private readonly IExecutionWorld _world;
     private readonly ConcurrentDictionary<string, BackgroundTaskState> _backgroundTasks = new();
 
     public AcpTool(
@@ -36,14 +37,14 @@ public sealed class AcpTool : ToolBase
         ContentBlockMapper contentMapper,
         IOptions<SeeingAgentOptions> options,
         ISessionManager sessionManager,
-        IWorkspaceProvider workspace) : base(logger)
+        IExecutionWorld world) : base(logger)
     {
         _sessionRunner = sessionRunner;
         _backendRegistry = backendRegistry;
         _contentMapper = contentMapper;
         _options = options;
         _sessionManager = sessionManager;
-        _workspace = workspace;
+        _world = world;
     }
 
     public override string Id => "acp";
@@ -107,7 +108,7 @@ public sealed class AcpTool : ToolBase
         }
 
         var session = await ResolveTaskSessionAsync(taskId);
-        var workingDirectory = cwd ?? session.WorkingDirectory ?? _workspace.WorkspaceRoot;
+        var workingDirectory = cwd ?? session.WorkingDirectory ?? _world.Cwd;
 
         if (runInBackground)
         {

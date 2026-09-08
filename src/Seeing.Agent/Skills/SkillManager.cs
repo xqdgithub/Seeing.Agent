@@ -58,8 +58,8 @@ namespace Seeing.Agent.Skills
             if (_workspace != null)
             {
                 AddDefaultDirectory(Path.Combine(_workspace.ProjectSeeingDirectory, "skills"));
-                AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, ".agents", "skills"));
-                AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, "skills"));
+                AddDefaultDirectory(Path.Combine(_workspace.GetProjectRoot(), ".agents", "skills"));
+                AddDefaultDirectory(Path.Combine(_workspace.GetProjectRoot(), "skills"));
             }
         }
 
@@ -123,8 +123,8 @@ namespace Seeing.Agent.Skills
                 if (_workspace != null)
                 {
                     AddDefaultDirectory(Path.Combine(_workspace.ProjectSeeingDirectory, "skills"));
-                    AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, ".agents", "skills"));
-                    AddDefaultDirectory(Path.Combine(_workspace.WorkspaceRoot, "skills"));
+                    AddDefaultDirectory(Path.Combine(_workspace.GetProjectRoot(), ".agents", "skills"));
+                    AddDefaultDirectory(Path.Combine(_workspace.GetProjectRoot(), "skills"));
                 }
             }
         }

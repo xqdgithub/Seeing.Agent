@@ -15,7 +15,7 @@ public static class GatewayChannelRegistryExtensions
 
     public static void ReloadGatewayChannelRegistry(this IServiceProvider services, string? workspaceRoot = null)
     {
-        workspaceRoot ??= services.GetRequiredService<IWorkspaceProvider>().WorkspaceRoot;
+        workspaceRoot ??= services.GetRequiredService<IWorkspaceProvider>().GetProjectRoot();
         services.GetRequiredService<GatewayChannelRegistry>().Reload(workspaceRoot);
     }
 }

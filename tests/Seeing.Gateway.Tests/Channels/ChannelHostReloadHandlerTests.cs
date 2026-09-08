@@ -34,7 +34,6 @@ public class ChannelHostReloadHandlerTests : IDisposable
         Directory.CreateDirectory(_tempDirectory);
 
         _workspace = new Mock<IWorkspaceProvider>();
-        _workspace.Setup(x => x.WorkspaceRoot).Returns(_tempDirectory);
         _workspace.Setup(x => x.ProjectSeeingDirectory).Returns(Path.Combine(_tempDirectory, ".seeing"));
         _workspace.Setup(x => x.UserSeeingDirectory).Returns(Path.Combine(_tempDirectory, "user", ".seeing"));
 
