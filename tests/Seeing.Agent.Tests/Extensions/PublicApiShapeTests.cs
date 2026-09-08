@@ -83,9 +83,13 @@ public class PublicApiShapeTests
 
         services.AddSeeingModule<StubModule>(registry);
 
-        services.Should().Contain(d =>
-            d.ServiceType == typeof(ISeeingModule) &&
-            d.ImplementationInstance is StubModule);
+        // Phase 8：经 factory 注入可选 IUiContributionRegistry，不再用 ImplementationInstance
+        var moduleDescriptor = services.Single(d => d.ServiceType == typeof(ISeeingModule));
+        moduleDescriptor.ImplementationFactory.Should().NotBeNull();
+        moduleDescriptor.ImplementationInstance.Should().BeNull();
+
+        using var sp = services.BuildServiceProvider();
+        sp.GetRequiredService<ISeeingModule>().Should().BeOfType<StubModule>();
 
         services.GetOrCreateConfigSectionRegistry().Should().BeSameAs(registry);
     }
