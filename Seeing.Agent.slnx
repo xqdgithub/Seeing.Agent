@@ -29,6 +29,7 @@
     <Project Path="src/Seeing.Agent.Mcp/Seeing.Agent.Mcp.csproj" />
     <Project Path="src/Seeing.Agent.Llm.OpenAI/Seeing.Agent.Llm.OpenAI.csproj" />
     <Project Path="src/Seeing.Agent.Llm.Anthropic/Seeing.Agent.Llm.Anthropic.csproj" />
+    <Project Path="src/Seeing.Agent.Agents.BuiltIn/Seeing.Agent.Agents.BuiltIn.csproj" />
     <Project Path="src/Seeing.Agent/Seeing.Agent.csproj" />
     <Project Path="src/Seeing.ConfigSchema/Seeing.ConfigSchema.csproj" />
     <Project Path="src/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
@@ -56,6 +57,7 @@
     <Project Path="tests/Seeing.Agent.Mcp.Tests/Seeing.Agent.Mcp.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Llm.OpenAI.Tests/Seeing.Agent.Llm.OpenAI.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Llm.Anthropic.Tests/Seeing.Agent.Llm.Anthropic.Tests.csproj" />
+    <Project Path="tests/Seeing.Agent.Agents.BuiltIn.Tests/Seeing.Agent.Agents.BuiltIn.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
     <Project Path="tests/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />
     <Project Path="tests/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />

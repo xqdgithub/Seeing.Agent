@@ -16,8 +16,8 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Core.BuiltInAgents;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Hooks;
@@ -371,6 +371,11 @@ namespace Seeing.Agent.Extensions
             anthropicLlmModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(anthropicLlmModule);
 
+            // TEMP: Phase 3 — 内置 Agent 模块（ConfigureServices 注册 AgentDefinition；Activate 待 Host Shape）
+            var agentsBuiltInModule = new AgentsBuiltInModule();
+            agentsBuiltInModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(agentsBuiltInModule);
+
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -408,8 +413,8 @@ namespace Seeing.Agent.Extensions
                 var discovery = sp.GetRequiredService<AgentDiscovery>();
                 var options = sp.GetService<IOptions<SeeingAgentOptions>>();
 
-                // 获取内置代理
-                var builtInAgents = BuiltInAgents.GetBuiltInAgents();
+                // 内置代理由 AgentsBuiltInModule.ConfigureServices 登记为 AgentDefinition
+                var builtInAgents = sp.GetServices<AgentDefinition>();
 
                 // 从文件系统发现代理
                 var discoveredAgents = discovery.DiscoverAgentsAsync().GetAwaiter().GetResult();

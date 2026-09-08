@@ -65,6 +65,7 @@
     <ProjectReference Include="..\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Llm.OpenAI\Seeing.Agent.Llm.OpenAI.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Llm.Anthropic\Seeing.Agent.Llm.Anthropic.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Agents.BuiltIn\Seeing.Agent.Agents.BuiltIn.csproj" />
     <ProjectReference Include="..\Seeing.IO.Local\Seeing.IO.Local.csproj" />
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
