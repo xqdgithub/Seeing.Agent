@@ -1,9 +1,12 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Prompts;
+using Seeing.Agent.Extensions;
 using Seeing.Agent.Modules;
 using Xunit;
 
@@ -75,29 +78,60 @@ public class LifecycleTests
     }
 
     [Fact]
+    public void AddSeeingModule_DuplicateId_WithoutReplace_Should_Refuse_At_Registration()
+    {
+        var services = new ServiceCollection();
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+
+        services.AddSeeingModule<StubFsModule>(registry, replace: false);
+        var act = () => services.AddSeeingModule<StubFsModule2>(registry, replace: false);
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*filesystem*");
+    }
+
+    [Fact]
     public void AfterReplace_Only_New_Provider_Is_Resolvable()
     {
-        // 无 ReplaceModule API 时：目录只保留替换后的实例 = 「Replace 后旧类型不可解析」
-        var replacement = new StubModule("io.local", typeof(NewWorld));
-        var catalog = new ModuleCatalog();
-        catalog.ReplaceAvailable(SettlementEngine.ToDescriptors([replacement]));
-        catalog.ReplaceEnabled(["io.local"]);
+        var services = new ServiceCollection();
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
 
-        var lifecycle = new ModuleLifecycleManager(catalog, [replacement]);
-        lifecycle.IsActivated("io.local").Should().BeFalse();
+        services.AddSeeingModule<StubOldWorldModule>(registry, replace: false);
+        services.ReplaceModule<StubNewWorldModule>(registry);
 
-        catalog.TryGet("io.local", out var descriptor).Should().BeTrue();
-        descriptor!.Id.Should().Be("io.local");
-
-        // 旧提供方类型从未进入目录/生命周期映射
-        var modulesField = typeof(ModuleLifecycleManager)
-            .GetField("_modulesById", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        var map = (System.Collections.IDictionary)modulesField!.GetValue(lifecycle)!;
-        map.Count.Should().Be(1);
-        map["io.local"].Should().BeSameAs(replacement);
-        ((StubModule)map["io.local"]!).ProviderType.Should().Be(typeof(NewWorld));
-        ((StubModule)map["io.local"]!).ProviderType.Should().NotBe(typeof(OldWorld));
+        using var sp = services.BuildServiceProvider();
+        var modules = sp.GetServices<ISeeingModule>().Where(m => m.Id == "io.local").ToList();
+        modules.Should().HaveCount(1);
+        modules[0].Should().BeOfType<StubNewWorldModule>();
     }
+
+    private sealed class StubFsModule : ISeeingModule
+    {
+        public string Id => "filesystem";
+        public IReadOnlyList<string> ProvidedTools => [];
+        public IReadOnlyList<string> ProvidedSeams => [];
+        public IReadOnlyList<string> DependsOn => [];
+        public void ConfigureServices(IServiceCollection services) { }
+        public Task ActivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeactivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class StubFsModule2 : StubFsModule;
+
+    private sealed class StubOldWorldModule : ISeeingModule
+    {
+        public string Id => "io.local";
+        public IReadOnlyList<string> ProvidedTools => [];
+        public IReadOnlyList<string> ProvidedSeams => ["executionWorld"];
+        public IReadOnlyList<string> DependsOn => [];
+        public void ConfigureServices(IServiceCollection services) { }
+        public Task ActivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeactivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class StubNewWorldModule : StubOldWorldModule;
+
 
     private static async Task<string> BuildPromptAsync(IPromptSectionContributor section)
     {
@@ -125,8 +159,6 @@ public class LifecycleTests
 
     private sealed class OldFs;
     private sealed class NewFs;
-    private sealed class OldWorld;
-    private sealed class NewWorld;
 
     private sealed class ToolAndSectionModule : ISeeingModule
     {
