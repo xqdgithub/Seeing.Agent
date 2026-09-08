@@ -119,9 +119,17 @@ public class SchedulerOptionsProviderTests
     private static (UnifiedConfigManager ConfigManager, SchedulerOptionsProvider Provider, SchedulerReloadHandler Handler) CreateReloadHandler(
         SchedulerTestWorkspace ws)
     {
-        var configManager = new UnifiedConfigManager(ws.Workspace, NullLogger<UnifiedConfigManager>.Instance);
+        var configManager = new UnifiedConfigManager(ws.Workspace, NullLogger<UnifiedConfigManager>.Instance, CreateSchedulerRegistry());
         var provider = new SchedulerOptionsProvider(configManager, NullLogger<SchedulerOptionsProvider>.Instance);
         var handler = new SchedulerReloadHandler(provider);
         return (configManager, provider, handler);
+    }
+
+    private static ConfigSectionRegistry CreateSchedulerRegistry()
+    {
+        var registry = ConfigSectionRegistry.CreateWithSpine();
+        registry.Register(new ConfigSectionMeta(
+            "Scheduler", "scheduler.json", ConfigScope.ProjectOnly, typeof(SchedulerOptions)));
+        return registry;
     }
 }

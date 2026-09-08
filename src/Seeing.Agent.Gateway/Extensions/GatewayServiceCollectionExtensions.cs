@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -23,6 +24,12 @@ public static class GatewayServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddSeeingGatewayServer(this IServiceCollection services)
     {
+        var registry = services.GetOrCreateConfigSectionRegistry();
+        registry.Register(new ConfigSectionMeta(
+            GatewayOptions.SectionName, "seeing.json", ConfigScope.ProjectOnly, typeof(GatewayOptions)));
+        registry.Register(new ConfigSectionMeta(
+            GatewayClientsOptions.SectionName, "seeing.json", ConfigScope.ProjectOnly, typeof(GatewayClientsOptions)));
+
         services.AddOptions<GatewayOptions>();
         services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
         services.AddSingleton<IValidateOptions<GatewayOptions>, GatewayOptionsValidator>();

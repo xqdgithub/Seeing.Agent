@@ -4,7 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Cli.Infrastructure;
 using Seeing.Agent.Configuration;
-using SeeingConfigScope = Seeing.Agent.Configuration.ConfigScope;
+using SeeingConfigScope = Seeing.Agent.Abstractions.Configuration.ConfigScope;
 
 namespace Seeing.Agent.Cli.Commands;
 
@@ -73,7 +73,7 @@ public static class ConfigCommand
         else
         {
             var sections = config.GetAllSections();
-            foreach (var (name, meta) in sections.OrderBy(s => s.Value.DisplayOrder))
+            foreach (var (name, _) in sections.OrderBy(s => s.Key))
             {
                 var info = config.GetSourceInfo(name);
                 Console.WriteLine($"[{name}] ({info.SourceDescription})");

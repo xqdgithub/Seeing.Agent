@@ -5,10 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Mcp;
 
 namespace Seeing.Agent.Configuration;
 
@@ -34,7 +31,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     
     private readonly IWorkspaceProvider _workspace;
     private readonly ILogger<UnifiedConfigManager> _logger;
-    private readonly Dictionary<string, ConfigSectionMeta> _sectionRegistry;
+    private readonly IConfigSectionRegistry _sectionRegistry;
     private readonly Dictionary<string, object> _cache = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new();
     private readonly object _lock = new();
@@ -57,90 +54,12 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     
     public UnifiedConfigManager(
         IWorkspaceProvider workspace,
-        ILogger<UnifiedConfigManager> logger)
+        ILogger<UnifiedConfigManager> logger,
+        IConfigSectionRegistry sectionRegistry)
     {
         _workspace = workspace;
         _logger = logger;
-        _sectionRegistry = BuildSectionRegistry();
-    }
-    
-    // ===== 配置节注册 =====
-    
-    /// <summary>
-    /// seeing.json 内由能力包拥有的嵌套节（不在 <see cref="SeeingAgentOptions"/> 上）。
-    /// Options 类型在各自包内；此处用 <see cref="object"/> 避免主库反向依赖。
-    /// </summary>
-    private static readonly HashSet<string> NestedModuleSections = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Acp", "Skills", "Gateway", "GatewayClients", "TokenBudget", "Shell"
-    };
-
-    private Dictionary<string, ConfigSectionMeta> BuildSectionRegistry()
-    {
-        return new Dictionary<string, ConfigSectionMeta>
-        {
-            // seeing.json 脊柱节（双层级）
-            ["DefaultModel"] = new("DefaultModel", "seeing.json", ConfigScope.Both, 
-                typeof(string), displayName: "默认模型", displayOrder: 2),
-            ["DefaultAgent"] = new("DefaultAgent", "seeing.json", ConfigScope.Both, 
-                typeof(string), displayName: "默认智能体", displayOrder: 3),
-            ["Providers"] = new("Providers", "providers.json", ConfigScope.UserOnly,
-                typeof(Dictionary<string, ProviderConfig>),
-                scopeReason: "Provider 连接与模型目录为用户级私有配置，独立文件承载",
-                displayName: "Provider 配置", displayOrder: 4),
-            ["AgentModels"] = new("AgentModels", "seeing.json", ConfigScope.Both,
-                typeof(Dictionary<string, string>), displayName: "Agent 模型绑定", displayOrder: 5),
-            // 能力包节：typeof(object)，具体 Options 在各自包
-            ["Acp"] = new("Acp", "seeing.json", ConfigScope.UserOnly, 
-                typeof(object),
-                scopeReason: "ACP 后端命令与环境为用户级私有配置，项目级配置无意义",
-                displayName: "ACP 配置", displayOrder: 6),
-            ["Plugins"] = new("Plugins", "seeing.json", ConfigScope.Both, 
-                typeof(List<PluginSpec>), displayName: "插件列表", displayOrder: 7),
-            ["PluginEnabled"] = new("PluginEnabled", "seeing.json", ConfigScope.Both, 
-                typeof(Dictionary<string, bool>), displayName: "插件启用状态", displayOrder: 8),
-            ["Skills"] = new("Skills", "seeing.json", ConfigScope.Both, 
-                typeof(object), displayName: "技能配置", displayOrder: 9),
-            
-            // seeing.json 内的配置（仅项目级）
-            ["Gateway"] = new("Gateway", "seeing.json", ConfigScope.ProjectOnly, 
-                typeof(object), 
-                scopeReason: "Gateway 服务端口绑定与项目运行环境相关", 
-                displayName: "Gateway 配置", displayOrder: 10),
-            ["GatewayClients"] = new("GatewayClients", "seeing.json", ConfigScope.ProjectOnly, 
-                typeof(object), 
-                scopeReason: "Gateway Client 配置与项目运行环境相关", 
-                displayName: "Gateway Clients 配置", displayOrder: 11),
-            ["Permission"] = new("Permission", "seeing.json", ConfigScope.ProjectOnly, 
-                typeof(PermissionOptions), 
-                scopeReason: "权限策略与项目安全上下文绑定", 
-                displayName: "权限配置", displayOrder: 12),
-            ["Workspace"] = new("Workspace", "seeing.json", ConfigScope.ProjectOnly, 
-                typeof(WorkspaceOptions), 
-                scopeReason: "工作区配置与项目运行环境绑定", 
-                displayName: "工作区配置", displayOrder: 13),
-            
-            // 独立配置文件（仅项目级）
-            ["Scheduler"] = new("Scheduler", "scheduler.json", ConfigScope.ProjectOnly, 
-                typeof(object),
-                scopeReason: "任务调度与项目工作流绑定，避免循环依赖", 
-                displayName: "调度器配置", displayOrder: 14),
-            
-            // 独立配置文件（双层级）
-            ["Mcp"] = new("Mcp", "mcp.json", ConfigScope.Both, 
-                typeof(Dictionary<string, McpServerConfig>), displayName: "MCP 服务器", displayOrder: 15),
-            ["Memory"] = new("Memory", "memory.json", ConfigScope.Both, 
-                typeof(object),  // Memory 在独立模块中定义
-                displayName: "Memory 配置", displayOrder: 16),
-            ["TokenBudget"] = new("TokenBudget", "seeing.json", ConfigScope.Both,
-                typeof(object), displayName: "Token 预算配置", displayOrder: 17),
-            ["GlobalWorkspaceRoot"] = new("GlobalWorkspaceRoot", "seeing.json", ConfigScope.UserOnly,
-                typeof(string),
-                scopeReason: "全局默认工作区为用户级偏好，独立于项目",
-                displayName: "全局默认工作区", displayOrder: 18),
-            ["Shell"] = new("Shell", "seeing.json", ConfigScope.Both,
-                typeof(ShellOptions), displayName: "Shell 配置", displayOrder: 19),
-        };
+        _sectionRegistry = sectionRegistry ?? throw new ArgumentNullException(nameof(sectionRegistry));
     }
     
     // ===== 配置加载 =====
@@ -161,10 +80,10 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         SeeingAgent = MergeDeep.Merge(userSeeing ?? new(), projectSeeing ?? new());
 
         // 能力包嵌套节 → _cache（不进入 SeeingAgentOptions）
-        await LoadNestedModuleSectionsToCacheAsync(ct);
+        await LoadSeeingJsonSectionsToCacheAsync(ct);
 
         // 加载独立配置文件
-        foreach (var meta in _sectionRegistry.Values.Where(m => m.FileName != "seeing.json"))
+        foreach (var meta in _sectionRegistry.Sections.Where(m => m.FileName != "seeing.json"))
         {
             await LoadSectionToCacheAsync(meta, ct);
         }
@@ -173,15 +92,12 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         OnConfigChanged(Array.Empty<string>());
     }
 
-    private async Task LoadNestedModuleSectionsToCacheAsync(CancellationToken ct)
+    private async Task LoadSeeingJsonSectionsToCacheAsync(CancellationToken ct)
     {
-        foreach (var sectionName in NestedModuleSections)
+        foreach (var meta in _sectionRegistry.Sections.Where(m => m.FileName == "seeing.json"))
         {
-            if (!_sectionRegistry.TryGetValue(sectionName, out var meta))
-                continue;
-
-            var userNode = await LoadSeeingNestedNodeAsync(ConfigLevel.User, sectionName, ct);
-            var projectNode = await LoadSeeingNestedNodeAsync(ConfigLevel.Project, sectionName, ct);
+            var userNode = await LoadSeeingNestedNodeAsync(ConfigLevel.User, meta.Key, ct);
+            var projectNode = await LoadSeeingNestedNodeAsync(ConfigLevel.Project, meta.Key, ct);
 
             JsonNode? merged = meta.Scope switch
             {
@@ -196,7 +112,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 continue;
 
             lock (_lock)
-                _cache[sectionName] = merged;
+                _cache[meta.Key] = merged;
         }
     }
 
@@ -269,15 +185,6 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     {
         lock (_lock)
         {
-            // seeing.json 脊柱节从 SeeingAgent 属性获取
-            if (_sectionRegistry.TryGetValue(sectionName, out var meta) &&
-                meta.FileName == "seeing.json" &&
-                !NestedModuleSections.Contains(sectionName))
-            {
-                return GetFromSeeingAgent<T>(sectionName) ?? new T();
-            }
-            
-            // 能力包嵌套节 + 独立配置文件：从缓存获取
             if (_cache.TryGetValue(sectionName, out var value))
             {
                 if (value is T typed)
@@ -301,16 +208,15 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         ConfigLevel level,
         CancellationToken ct = default) where T : class
     {
-        if (!_sectionRegistry.TryGetValue(sectionName, out var meta))
+        if (!_sectionRegistry.TryGet(sectionName, out var meta))
             return null;
         
         ValidateScope(meta, level);
         
-        if (meta.FileName == "seeing.json" && NestedModuleSections.Contains(sectionName))
+        if (meta.FileName == "seeing.json")
             return await LoadSeeingNestedAsync<T>(level, sectionName, ct);
 
-        return await LoadFileAsync<T>(level, meta.FileName, 
-            meta.FileName == "seeing.json" ? "SeeingAgent" : null, ct);
+        return await LoadFileAsync<T>(level, meta.FileName, null, ct);
     }
 
     private async Task<T?> LoadSeeingNestedAsync<T>(
@@ -325,7 +231,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     /// <summary>检查指定级别的配置是否存在</summary>
     public bool HasSectionAtLevel(string sectionName, ConfigLevel level)
     {
-        if (!_sectionRegistry.TryGetValue(sectionName, out var meta))
+        if (!_sectionRegistry.TryGet(sectionName, out var meta))
             return false;
         
         var path = GetFilePath(level, meta.FileName);
@@ -351,7 +257,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             ProjectPath = meta.Scope != ConfigScope.UserOnly
                 ? GetFilePath(ConfigLevel.Project, meta.FileName) ?? string.Empty : string.Empty,
             Scope = meta.Scope,
-            ScopeReason = meta.ScopeReason
+            ScopeReason = null
         };
     }
     
@@ -364,7 +270,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         ConfigLevel level = ConfigLevel.Project,
         CancellationToken ct = default) where T : class
     {
-        if (!_sectionRegistry.TryGetValue(sectionName, out var meta))
+        if (!_sectionRegistry.TryGet(sectionName, out var meta))
             throw new ArgumentException($"未注册的配置节: {sectionName}");
         
         ValidateScope(meta, level);
@@ -402,13 +308,13 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         // 验证所有配置节
         foreach (var name in sections.Keys)
         {
-            if (_sectionRegistry.TryGetValue(name, out var meta))
+            if (_sectionRegistry.TryGet(name, out var meta))
                 ValidateScope(meta, level);
         }
         
         // 按文件分组保存
         var byFile = sections.GroupBy(
-            kv => _sectionRegistry.TryGetValue(kv.Key, out var m) ? m.FileName : "seeing.json");
+            kv => _sectionRegistry.TryGet(kv.Key, out var m) ? m.FileName : "seeing.json");
         
         foreach (var group in byFile)
         {
@@ -429,10 +335,16 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     
     /// <summary>获取配置节元信息</summary>
     public ConfigSectionMeta? GetSectionMeta(string sectionName)
-        => _sectionRegistry.TryGetValue(sectionName, out var meta) ? meta : null;
+        => _sectionRegistry.TryGet(sectionName, out var meta) ? meta : null;
     
     /// <summary>获取所有配置节注册信息</summary>
-    public IReadOnlyDictionary<string, ConfigSectionMeta> GetAllSections() => _sectionRegistry;
+    public IReadOnlyDictionary<string, ConfigSectionMeta> GetAllSections()
+    {
+        var dict = new Dictionary<string, ConfigSectionMeta>(StringComparer.OrdinalIgnoreCase);
+        foreach (var meta in _sectionRegistry.Sections)
+            dict[meta.Key] = meta;
+        return dict;
+    }
     
     // ===== IOptions 兼容 =====
     
@@ -506,12 +418,12 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     {
         if (meta.Scope == ConfigScope.ProjectOnly && level == ConfigLevel.User)
         {
-            throw new ConfigScopeException(meta.SectionName, level, meta.Scope, meta.ScopeReason);
+            throw new ConfigScopeException(meta.Key, level, meta.Scope);
         }
 
         if (meta.Scope == ConfigScope.UserOnly && level == ConfigLevel.Project)
         {
-            throw new ConfigScopeException(meta.SectionName, level, meta.Scope, meta.ScopeReason);
+            throw new ConfigScopeException(meta.Key, level, meta.Scope);
         }
     }
     
@@ -559,7 +471,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 var json = await File.ReadAllTextAsync(path, ct);
                 var node = JsonNode.Parse(json);
                 if (node != null)
-                    _cache[meta.SectionName] = node;
+                    _cache[meta.Key] = node;
             }
             catch (Exception ex)
             {
@@ -576,7 +488,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             {
                 var node = JsonNode.Parse(await File.ReadAllTextAsync(userPath, ct));
                 if (node != null)
-                    _cache[meta.SectionName] = node;
+                    _cache[meta.Key] = node;
             }
             catch (Exception ex)
             {
@@ -619,7 +531,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             {
                 // 合并两个 JsonNode
                 var merged = MergeJsonNodes(userNode ?? new JsonObject(), projectNode ?? new JsonObject());
-                _cache[meta.SectionName] = merged;
+                _cache[meta.Key] = merged;
             }
         }
     }
@@ -782,71 +694,25 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         return Path.Combine(dir, fileName);
     }
     
-    private T? GetFromSeeingAgent<T>(string sectionName) where T : class
-    {
-        return sectionName switch
-        {
-            "DefaultModel" => SeeingAgent.DefaultModel as T,
-            "DefaultAgent" => SeeingAgent.DefaultAgent as T,
-            "Plugins" => SeeingAgent.Plugins as T,
-            "PluginEnabled" => SeeingAgent.PluginEnabled as T,
-            "Permission" => SeeingAgent.Permission as T,
-            "Workspace" => SeeingAgent.Workspace as T,
-            "AgentModels" => SeeingAgent.AgentModels as T,
-            "GlobalWorkspaceRoot" => SeeingAgent.GlobalWorkspaceRoot as T,
-            _ => null
-        };
-    }
-    
     private void UpdateCache(string sectionName, object value, ConfigLevel level)
     {
+        _ = level;
         lock (_lock)
         {
-            // seeing.json 脊柱节更新 SeeingAgent；能力包节只进 _cache
-            if (_sectionRegistry.TryGetValue(sectionName, out var meta) &&
-                meta.FileName == "seeing.json" &&
-                !NestedModuleSections.Contains(sectionName))
-            {
-                UpdateSeeingAgentProperty(sectionName, value, level);
-            }
-            
             _cache[sectionName] = value;
-        }
-    }
-    
-    private void UpdateSeeingAgentProperty(string sectionName, object value, ConfigLevel level)
-    {
-        switch (sectionName)
-        {
-            case "DefaultModel":
-                SeeingAgent.DefaultModel = value as string;
-                break;
-            case "DefaultAgent":
-                SeeingAgent.DefaultAgent = value as string;
-                break;
-            case "Plugins":
-                if (value is List<PluginSpec> plugins)
-                    SeeingAgent.Plugins = plugins;
-                break;
-            case "PluginEnabled":
-                if (value is Dictionary<string, bool> enabled)
-                    SeeingAgent.PluginEnabled = enabled;
-                break;
-            case "Permission":
-                if (value is PermissionOptions permission)
-                    SeeingAgent.Permission = permission;
-                break;
-            case "Workspace":
-                if (value is WorkspaceOptions workspace)
-                    SeeingAgent.Workspace = workspace;
-                break;
-            case "AgentModels":
-                if (value is Dictionary<string, string> agentModels)
-                    SeeingAgent.AgentModels = agentModels;
-                break;
-            case "GlobalWorkspaceRoot":
-                SeeingAgent.GlobalWorkspaceRoot = value as string;
-                break;
+
+            // 脊柱 Options：按属性名同步到 SeeingAgent（无 switch 到 god-object 字段列表）
+            var prop = typeof(SeeingAgentOptions).GetProperty(sectionName);
+            if (prop is { CanWrite: true } &&
+                value is not null &&
+                prop.PropertyType.IsInstanceOfType(value))
+            {
+                prop.SetValue(SeeingAgent, value);
+            }
+            else if (prop is { CanWrite: true } && value is string s && prop.PropertyType == typeof(string))
+            {
+                prop.SetValue(SeeingAgent, s);
+            }
         }
     }
     

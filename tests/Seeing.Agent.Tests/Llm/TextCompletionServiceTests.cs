@@ -204,9 +204,7 @@ public class OptionsProviderEndpointLookupTests : IDisposable
         workspace.Setup(candidate => candidate.UserSeeingDirectory).Returns(userSeeingDirectory);
         workspace.Setup(candidate => candidate.ProjectSeeingDirectory).Returns(projectSeeingDirectory);
 
-        var manager = new UnifiedConfigManager(
-            workspace.Object,
-            NullLogger<UnifiedConfigManager>.Instance);
+        var manager = new UnifiedConfigManager(workspace.Object, NullLogger<UnifiedConfigManager>.Instance, ConfigSectionRegistry.CreateWithSpine());
         await manager.LoadAsync();
         return manager;
     }

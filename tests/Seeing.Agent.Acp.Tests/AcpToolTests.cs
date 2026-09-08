@@ -123,9 +123,7 @@ public class AcpToolTests
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());
 
-        var configManager = new UnifiedConfigManager(
-            workspaceMock.Object,
-            NullLogger<UnifiedConfigManager>.Instance);
+        var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, AcpTestConfigRegistry.CreateAcpRegistry());
 
         // Set the Acp options
         configManager.SetSectionInMemory("Acp", acp);

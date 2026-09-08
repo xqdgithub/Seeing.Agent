@@ -37,6 +37,9 @@ public static class AcpServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddSeeingAcp(this IServiceCollection services)
     {
+        services.GetOrCreateConfigSectionRegistry().Register(
+            new ConfigSectionMeta(AcpOptions.SectionName, "seeing.json", ConfigScope.UserOnly, typeof(AcpOptions)));
+
         services.AddOptions<AcpOptions>();
         services.AddSingleton<AcpOptionsMonitor>();
         services.AddSingleton<IOptions<AcpOptions>>(sp => sp.GetRequiredService<AcpOptionsMonitor>());

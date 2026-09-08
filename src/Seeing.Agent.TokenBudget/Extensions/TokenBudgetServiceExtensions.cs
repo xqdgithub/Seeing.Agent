@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
@@ -27,6 +28,10 @@ public static class TokenBudgetServiceExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.GetOrCreateConfigSectionRegistry().Register(
+            new ConfigSectionMeta(
+                TokenBudgetOptions.SectionName, "seeing.json", ConfigScope.Both, typeof(TokenBudgetOptions)));
+
         // Configuration — TokenBudgetOptions from seeing.json via IConfigSectionStore
         services.AddOptions<TokenBudgetOptions>();
         services.AddSingleton<TokenBudgetOptionsMonitor>();

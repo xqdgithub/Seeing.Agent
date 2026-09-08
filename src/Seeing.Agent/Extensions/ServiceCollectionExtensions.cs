@@ -72,14 +72,16 @@ namespace Seeing.Agent.Extensions
         {
             _ = configuration;
 
-            // 注册 UnifiedConfigManager
+            // 共享配置节注册表（脊柱节）；能力包在各自 ConfigureServices 中 Register
+            services.GetOrCreateConfigSectionRegistry();
+
+            // 注册 UnifiedConfigManager（不在 factory 内同步 Load；由 InitializeSeeingAgentAsync 加载）
             services.AddSingleton<UnifiedConfigManager>(sp =>
             {
                 var workspace = sp.GetRequiredService<IWorkspaceProvider>();
                 var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
-                var manager = new UnifiedConfigManager(workspace, logger);
-                manager.LoadAsync().GetAwaiter().GetResult();
-                return manager;
+                var registry = sp.GetRequiredService<IConfigSectionRegistry>();
+                return new UnifiedConfigManager(workspace, logger, registry);
             });
             services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
             
@@ -117,12 +119,16 @@ namespace Seeing.Agent.Extensions
             this IServiceCollection services,
             Action<SeeingAgentOptions> configure)
         {
-            // 注册 UnifiedConfigManager
+            // 共享配置节注册表（脊柱节）
+            services.GetOrCreateConfigSectionRegistry();
+
+            // 注册 UnifiedConfigManager（不在 factory 内同步 Load）
             services.AddSingleton<UnifiedConfigManager>(sp =>
             {
                 var workspace = sp.GetRequiredService<IWorkspaceProvider>();
                 var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
-                var manager = new UnifiedConfigManager(workspace, logger);
+                var registry = sp.GetRequiredService<IConfigSectionRegistry>();
+                var manager = new UnifiedConfigManager(workspace, logger, registry);
                 configure(manager.GetSeeingAgentOptions());
                 return manager;
             });
@@ -271,14 +277,15 @@ namespace Seeing.Agent.Extensions
 
             if (!services.Any(d => d.ServiceType == typeof(UnifiedConfigManager)))
             {
+                services.GetOrCreateConfigSectionRegistry();
+
                 services.AddSingleton<UnifiedConfigManager>(sp =>
                 {
                     var workspace = sp.GetRequiredService<IWorkspaceProvider>();
                     var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
-                    var manager = new UnifiedConfigManager(workspace, logger);
-                manager.LoadAsync().GetAwaiter().GetResult();
-                return manager;
-            });
+                    var registry = sp.GetRequiredService<IConfigSectionRegistry>();
+                    return new UnifiedConfigManager(workspace, logger, registry);
+                });
                 services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
                 
             // IOptions 兼容 + IOptionsMonitor 支持热重载
@@ -327,6 +334,8 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ISeeingModule>(webModule);
 
             // TEMP: Phase 3 — Shell 工具模块（ConfigureServices 注册 ITool + IShellService；Activate 待 Host Shape）
+            services.GetOrCreateConfigSectionRegistry().Register(
+                new ConfigSectionMeta("Shell", "seeing.json", ConfigScope.Both, typeof(ShellOptions)));
             services.AddOptions<ShellOptions>();
             services.TryAddSingleton(sp =>
                 new ConfigSectionOptionsMonitor<ShellOptions>(
@@ -350,6 +359,12 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ISeeingModule>(gitModule);
 
             // TEMP: Phase 3 — Skills 模块（ConfigureServices 注册 SkillManager + parsers + skill；Activate 待 Host Shape）
+            services.GetOrCreateConfigSectionRegistry().Register(
+                new ConfigSectionMeta(
+                    Seeing.Agent.Skills.Configuration.SkillsOptions.SectionName,
+                    "seeing.json",
+                    ConfigScope.Both,
+                    typeof(Seeing.Agent.Skills.Configuration.SkillsOptions)));
             services.AddOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>();
             services.TryAddSingleton(sp =>
                 new ConfigSectionOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>(
@@ -364,6 +379,13 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ISeeingModule>(skillsModule);
 
             // TEMP: Phase 3 — MCP 模块登记（ConfigureServices 在 ToolManager 注册后调用；见下方）
+            // Mcp 包仅依赖 Abstractions，节注册由主库代办
+            services.GetOrCreateConfigSectionRegistry().Register(
+                new ConfigSectionMeta(
+                    "Mcp",
+                    "mcp.json",
+                    ConfigScope.Both,
+                    typeof(Dictionary<string, Seeing.Agent.Abstractions.Mcp.McpServerConfig>)));
             var mcpModule = new McpModule();
             services.AddSingleton<ISeeingModule>(mcpModule);
 
@@ -735,14 +757,15 @@ namespace Seeing.Agent.Extensions
 
                 if (configManager != null)
                 {
+                    // 配置必须先于工作区解析加载（factory 不再同步 Load）
+                    await configManager.LoadAsync(cancellationToken);
                     workspaceProvider.SetDependencies(configManager, workspaceLogger);
                     await workspaceProvider.InitializeAsync(cancellationToken);
                 }
             }
-
-            if (services.GetService<UnifiedConfigManager>() is { } configManager2)
+            else if (services.GetService<UnifiedConfigManager>() is { } configOnly)
             {
-                await configManager2.ReloadAsync(cancellationToken);
+                await configOnly.LoadAsync(cancellationToken);
             }
 
             var componentManager = services.GetRequiredService<IComponentManager>();

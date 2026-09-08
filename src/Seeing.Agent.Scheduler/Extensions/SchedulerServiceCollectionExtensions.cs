@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Quartz;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Commands;
 using Seeing.Agent.Scheduler.Configuration;
@@ -48,6 +49,9 @@ public static class SchedulerServiceCollectionExtensions
     /// <summary>注册 Seeing.Agent.Scheduler 全部服务</summary>
     public static IServiceCollection AddSeeingScheduler(this IServiceCollection services)
     {
+        services.GetOrCreateConfigSectionRegistry().Register(
+            new ConfigSectionMeta("Scheduler", "scheduler.json", ConfigScope.ProjectOnly, typeof(SchedulerOptions)));
+
         // 配置提供者（需要在 Quartz 配置之前注册）
         services.AddSingleton<SchedulerOptionsProvider>();
         services.AddSingleton<ISchedulerOptionsProvider>(sp => sp.GetRequiredService<SchedulerOptionsProvider>());

@@ -244,7 +244,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         var workspace = new Mock<IWorkspaceProvider>();
         workspace.SetupGet(item => item.UserSeeingDirectory).Returns(user);
         workspace.SetupGet(item => item.ProjectSeeingDirectory).Returns(project);
-        var manager = new UnifiedConfigManager(workspace.Object, NullLogger<UnifiedConfigManager>.Instance);
+        var manager = new UnifiedConfigManager(workspace.Object, NullLogger<UnifiedConfigManager>.Instance, ConfigSectionRegistry.CreateWithSpine());
         await manager.LoadAsync();
         return manager;
     }

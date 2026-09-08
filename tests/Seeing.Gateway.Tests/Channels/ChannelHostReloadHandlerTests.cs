@@ -37,7 +37,7 @@ public class ChannelHostReloadHandlerTests : IDisposable
         _workspace.Setup(x => x.ProjectSeeingDirectory).Returns(Path.Combine(_tempDirectory, ".seeing"));
         _workspace.Setup(x => x.UserSeeingDirectory).Returns(Path.Combine(_tempDirectory, "user", ".seeing"));
 
-        var configManager = new UnifiedConfigManager(_workspace.Object, NullLogger<UnifiedConfigManager>.Instance);
+        var configManager = new UnifiedConfigManager(_workspace.Object, NullLogger<UnifiedConfigManager>.Instance, ConfigSectionRegistry.CreateWithSpine());
         var registry = new GatewayChannelRegistry(
             NullLogger<GatewayChannelRegistry>.Instance,
             configManager);

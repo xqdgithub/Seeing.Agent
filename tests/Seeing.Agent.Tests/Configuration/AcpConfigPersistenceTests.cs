@@ -67,9 +67,7 @@ public class AcpConfigPersistenceTests
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(Path.Combine(tempDir, "project", ".seeing"));
 
-        var configManager = new UnifiedConfigManager(
-            workspaceMock.Object,
-            NullLogger<UnifiedConfigManager>.Instance);
+        var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, TestConfigSectionRegistry.WithAcp());
 
         await configManager.LoadAsync();
 
@@ -119,9 +117,7 @@ public class AcpConfigPersistenceTests
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
 
-        var configManager = new UnifiedConfigManager(
-            workspaceMock.Object,
-            NullLogger<UnifiedConfigManager>.Instance);
+        var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, TestConfigSectionRegistry.WithAcp());
 
         await configManager.LoadAsync();
 
@@ -143,9 +139,7 @@ public class AcpConfigPersistenceTests
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
 
-        var configManager = new UnifiedConfigManager(
-            workspaceMock.Object,
-            NullLogger<UnifiedConfigManager>.Instance);
+        var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, TestConfigSectionRegistry.WithAcp());
 
         await configManager.LoadAsync();
 

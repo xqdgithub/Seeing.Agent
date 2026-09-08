@@ -24,9 +24,7 @@ public class UnifiedConfigManagerSaveSectionsTests
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(userSeeing);
 
-        var configManager = new UnifiedConfigManager(
-            workspaceMock.Object,
-            NullLogger<UnifiedConfigManager>.Instance);
+        var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, ConfigSectionRegistry.CreateWithSpine());
 
         var providers = new Dictionary<string, ProviderConfig>
         {
@@ -70,9 +68,7 @@ public class UnifiedConfigManagerSaveSectionsTests
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
         workspaceMock.Setup(w => w.ProjectSeeingDirectory).Returns(userSeeing);
 
-        var configManager = new UnifiedConfigManager(
-            workspaceMock.Object,
-            NullLogger<UnifiedConfigManager>.Instance);
+        var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, ConfigSectionRegistry.CreateWithSpine());
 
         var errors = new ConcurrentQueue<Exception>();
         var tasks = Enumerable.Range(0, 10).Select(i => Task.Run(async () =>

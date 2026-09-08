@@ -32,6 +32,13 @@ public static class MemoryServiceExtensions
         this IServiceCollection services,
         string? connectionString = null)
     {
+        services.GetOrCreateConfigSectionRegistry().Register(
+            new ConfigSectionMeta(
+                ConfigSectionMemoryOptionsStore.SectionName,
+                "memory.json",
+                ConfigScope.Both,
+                typeof(MemoryOptions)));
+
         services.TryAddSingleton<MemoryOptionsProvider>();
         services.TryAddSingleton<IMemoryOptionsStore>(sp => sp.GetRequiredService<MemoryOptionsProvider>());
 
