@@ -19,7 +19,7 @@ namespace Seeing.Agent.Abstractions.Configuration
         /// <summary>
         /// 插件选项（可选）
         /// <para>
-        /// 传递给 IExtension.InitializeAsync 的自定义配置
+        /// 传递给插件初始化的自定义配置
         /// </para>
         /// </summary>
         public Dictionary<string, object>? Options { get; set; }

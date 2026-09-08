@@ -7,12 +7,13 @@ using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Abstractions.Tools;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools
 {
     /// <summary>
-    /// AgentMode 基于 Tool 的过滤测试
+    /// Agent 工具 Schema 筛选：Mode 不再硬编码工具集；DeniedTools 负责 SubAgent 禁 task。
     /// </summary>
     public class AgentModeFilterTests
     {
@@ -28,47 +29,53 @@ namespace Seeing.Agent.Tests.Tools
         }
 
         [Fact]
-        public void PrimaryMode_ShouldIncludePrimaryAndSubAgentTools()
+        public void ToolManager_ShouldNotHavePrimaryOrSubAgentHardcodedSets()
         {
-            var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(PrimaryTools));
-
-            var schemas = invoker.GetToolSchemasForMode(AgentMode.Primary);
-
-            schemas.Should().HaveCount(11);
-            var ids = schemas.Select(s => s.Function.Name).ToList();
-            ids.Should().Contain(new[] { "write", "edit", "bash", "question", "plan_enter", "read", "grep", "glob", "webfetch", "websearch", "task" });
+            var type = typeof(ToolManager);
+            var flags = BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
+            type.GetField("PrimaryTools", flags).Should().BeNull();
+            type.GetField("SubAgentTools", flags).Should().BeNull();
+            type.GetField("SubAgentExcludedTools", flags).Should().BeNull();
         }
 
         [Fact]
-        public void SubAgentMode_ShouldIncludeAllToolsExceptTask()
+        public void GetToolSchemasForMode_ShouldReturnAllRegisteredTools_RegardlessOfMode()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(PrimaryTools));
+            invoker.RegisterToolsFromType(typeof(SampleTools));
 
-            var subSchemas = invoker.GetToolSchemasForMode(AgentMode.SubAgent);
-            subSchemas.Should().HaveCount(10);
-            var ids = subSchemas.Select(s => s.Function.Name).ToList();
-            ids.Should().Contain(new[] { "read", "grep", "glob", "webfetch", "websearch" });
-            ids.Should().Contain(new[] { "write", "edit", "bash", "question", "plan_enter" });
-            ids.Should().NotContain("task");
+            foreach (var mode in new[] { AgentMode.Primary, AgentMode.SubAgent, AgentMode.All })
+            {
+                var schemas = invoker.GetToolSchemasForMode(mode);
+                schemas.Should().HaveCount(11);
+                schemas.Select(s => s.Function.Name).Should().Contain("task");
+            }
         }
 
         [Fact]
-        public void AllMode_ShouldIncludeAllTools()
+        public async Task GetToolSchemasForAgentAsync_SubAgentWithDeniedTask_ExcludesTask()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(PrimaryTools));
+            invoker.RegisterToolsFromType(typeof(SampleTools));
 
-            var allSchemas = invoker.GetToolSchemasForMode(AgentMode.All);
-            allSchemas.Should().HaveCount(11);
+            var agent = new AgentDefinition
+            {
+                Name = "explore",
+                Mode = AgentMode.SubAgent,
+                DeniedTools = new List<string> { "task" }
+            };
+
+            var schemas = await invoker.GetToolSchemasForAgentAsync(agent);
+            schemas.Should().HaveCount(10);
+            schemas.Select(s => s.Function.Name).Should().NotContain("task");
+            schemas.Select(s => s.Function.Name).Should().Contain(new[] { "read", "write", "bash" });
         }
 
         [Fact]
-        public void Default_ShouldBePrimary()
+        public void Default_ShouldMatchPrimary_AllTools()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(PrimaryTools));
+            invoker.RegisterToolsFromType(typeof(SampleTools));
 
             var defaultSchemas = invoker.GetToolSchemasForMode();
             var primarySchemas = invoker.GetToolSchemasForMode(AgentMode.Primary);
@@ -76,7 +83,7 @@ namespace Seeing.Agent.Tests.Tools
         }
     }
 
-    public static class PrimaryTools
+    public static class SampleTools
     {
         [Tool("Write tool", Name = "write")]
         public static int Write(int v) => v;

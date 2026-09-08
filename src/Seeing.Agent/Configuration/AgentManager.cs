@@ -68,6 +68,7 @@ namespace Seeing.Agent.Configuration
             {
                 foreach (var agent in builtInAgents)
                 {
+                    EnsureSubAgentDeniesTask(agent);
                     Task.Run(async () => await _agentStore.RegisterAsync(agent)).GetAwaiter().GetResult();
                 }
             }
@@ -237,8 +238,27 @@ namespace Seeing.Agent.Configuration
         /// <inheritdoc/>
         public async Task RegisterAgentAsync(AgentDefinition agentInfo)
         {
+            EnsureSubAgentDeniesTask(agentInfo);
             await _agentStore.RegisterAsync(agentInfo);
             _logger.LogInformation("注册代理: {Name}, Mode: {Mode}", agentInfo.Name, agentInfo.Mode);
+        }
+
+        /// <summary>
+        /// SubAgent 禁止嵌套委派：若 DeniedTools 缺少 <c>task</c> 则自动注入并告警。
+        /// </summary>
+        private void EnsureSubAgentDeniesTask(AgentDefinition agent)
+        {
+            if (agent.Mode != AgentMode.SubAgent)
+                return;
+
+            agent.DeniedTools ??= new List<string>();
+            if (agent.DeniedTools.Any(t => string.Equals(t, "task", StringComparison.OrdinalIgnoreCase)))
+                return;
+
+            agent.DeniedTools.Add("task");
+            _logger.LogWarning(
+                "SubAgent '{Name}' 未声明 DeniedTools=task，已自动注入以禁止嵌套委派",
+                agent.Name);
         }
 
         /// <inheritdoc/>
@@ -553,6 +573,7 @@ maxSteps: 50
             {
                 // 已有原始定义，直接合并
                 var merged = AgentDefinitionExtensions.Merge(originalAgent, config);
+                EnsureSubAgentDeniesTask(merged);
                 await _agentStore.RegisterAsync(merged);
             }
             else
@@ -563,6 +584,7 @@ maxSteps: 50
                 {
                     _originalAgents[name] = currentAgent;
                     var merged = AgentDefinitionExtensions.Merge(currentAgent, config);
+                    EnsureSubAgentDeniesTask(merged);
                     await _agentStore.RegisterAsync(merged);
                 }
                 else
@@ -592,6 +614,7 @@ maxSteps: 50
                         DeniedTools = config.DeniedTools ?? new(),
                         AcpBackend = config.AcpBackend
                     };
+                    EnsureSubAgentDeniesTask(newAgent);
                     await _agentStore.RegisterAsync(newAgent);
                 }
             }

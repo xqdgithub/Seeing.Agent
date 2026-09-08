@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Extensions;
 using Seeing.ConfigSchema;
 using Seeing.Gateway.Plugins;
 using Seeing.Gateway.WeCom;
@@ -21,17 +20,14 @@ public sealed class GatewayChannelRegistry
     public const string BuiltinQQSpec = "builtin:qq";
 
     private readonly ILogger<GatewayChannelRegistry> _logger;
-    private readonly ExtensionLoader _extensionLoader;
     private readonly UnifiedConfigManager _configManager;
     private IReadOnlyList<GatewayChannelTypeInfo> _types = Array.Empty<GatewayChannelTypeInfo>();
 
     public GatewayChannelRegistry(
         ILogger<GatewayChannelRegistry> logger,
-        ExtensionLoader extensionLoader,
         UnifiedConfigManager configManager)
     {
         _logger = logger;
-        _extensionLoader = extensionLoader;
         _configManager = configManager;
     }
 
@@ -188,7 +184,7 @@ public sealed class GatewayChannelRegistry
         if (spec.StartsWith("builtin:", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"内置插件不应通过文件路径解析: {spec}");
 
-        return Task.Run(() => _extensionLoader.ResolveTarget(spec)).GetAwaiter().GetResult();
+        return PluginSpecPathResolver.Resolve(spec);
     }
 
     private static string ResolveBuiltinAssemblyPath<T>() =>

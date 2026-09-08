@@ -9,9 +9,8 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Extensions;using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Extensions;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Skills.Configuration;
@@ -24,12 +23,12 @@ using System.Collections.Concurrent;
 namespace Seeing.Agent.Core;
 
 /// <summary>
-/// 组件管理器 - 统一管理 Skills/MCP/Plugins/Rules 的发现和加载
+/// 组件管理器 - 统一管理 Skills/MCP 的发现和加载
 /// <para>
-    /// 配置层级：
-    /// - 用户级：~/.seeing/（基础配置）
-    /// - 项目级：./.seeing/（覆盖同名）
-    /// </para>
+/// 配置层级：
+/// - 用户级：~/.seeing/（基础配置）
+/// - 项目级：./.seeing/（覆盖同名）
+/// </para>
 /// </summary>
 public class ComponentManager : IComponentManager, IReloadHandler
 {
@@ -58,8 +57,7 @@ public class ComponentManager : IComponentManager, IReloadHandler
     {
         _loaders["Skill"] = new SkillLoader();
         _loaders["Mcp"] = new McpLoader();
-        _loaders["Plugin"] = new PluginLoader();
-        // Rule loader removed - rules are now managed through PermissionService
+        // Plugin loader removed — IExtension/PluginLoader path deleted (modular modules replace it)
     }
 
     /// <inheritdoc/>
@@ -84,8 +82,8 @@ public class ComponentManager : IComponentManager, IReloadHandler
 
         var results = new List<ComponentLoadResult>();
 
-        // 按顺序加载：Skill → MCP → Plugin → Rule → 自定义
-        var order = new[] { "Skill", "Mcp", "Plugin", "Rule" };
+        // 按顺序加载：Skill → MCP → 自定义
+        var order = new[] { "Skill", "Mcp" };
 
         foreach (var type in order)
         {
@@ -183,7 +181,6 @@ public class ComponentManager : IComponentManager, IReloadHandler
             {
                 if (section == "Skills") await LoadAsync("Skill", workspaceRoot, ct);
                 else if (section == "Mcp") await LoadAsync("Mcp", workspaceRoot, ct);
-                else if (section is "Plugins" or "PluginEnabled") await LoadAsync("Plugin", workspaceRoot, ct);
             }
         }
     }
@@ -337,101 +334,6 @@ internal class McpLoader : IComponentLoader
             Count = configs.Count,
             Details = configs.Select(c => c.Name).ToList()
         };
-    }
-}
-
-/// <summary>插件加载器</summary>
-internal class PluginLoader : IComponentLoader
-{
-    public string Type => "Plugin";
-
-    public async Task<ComponentLoadResult> LoadAsync(
-        IServiceProvider services,
-        string workspaceRoot,
-        CancellationToken cancellationToken = default)
-    {
-        var extensionManager = services.GetRequiredService<ExtensionManager>();
-        var options = services.GetService<IOptions<SeeingAgentOptions>>();
-        var configuration = services.GetRequiredService<IConfiguration>();
-        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
-        var logger = loggerFactory.CreateLogger<PluginLoader>();
-        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
-
-        var context = new ExtensionContext
-        {
-            Services = services,
-            Configuration = configuration,
-            Directory = workspaceProvider.GetProjectRoot(),
-            WorkspaceRoot = workspaceProvider.GetProjectRoot(),
-            HookManager = services.GetRequiredService<HookManager>(),
-            ToolManager = services.GetRequiredService<ToolManager>(),
-            PermissionService = services.GetRequiredService<IPermissionService>(),
-            AgentRegistry = services.GetRequiredService<IAgentRegistry>(),
-            McpClientManager = services.GetRequiredService<McpClientManager>(),
-            SkillManager = services.GetRequiredService<ISkillManager>(),
-            CommandRegistry = services.GetRequiredService<ICommandRegistry>()
-        };
-
-        var pluginSpecs = options?.Value?.Plugins ?? new List<PluginSpec>();
-        var enabledOverrides = options?.Value?.PluginEnabled ?? new Dictionary<string, bool>();
-
-        // 自动查找内置插件
-        if (pluginSpecs.Count == 0)
-        {
-            var pluginsDll = FindPluginsAssembly();
-            if (pluginsDll != null)
-            {
-                logger.LogInformation("自动加载内置插件: {Path}", pluginsDll);
-                pluginSpecs = new List<PluginSpec> { new PluginSpec { Spec = pluginsDll } };
-            }
-        }
-
-        if (pluginSpecs.Count == 0)
-        {
-            return new ComponentLoadResult
-            {
-                Type = Type,
-                Success = true,
-                Count = 0,
-                Details = new List<string> { "无插件配置" }
-            };
-        }
-
-        await extensionManager.InitializeAsync(pluginSpecs, enabledOverrides, context, cancellationToken);
-
-        return new ComponentLoadResult
-        {
-            Type = Type,
-            Success = true,
-            Count = extensionManager.GetAll().Count,
-            Details = extensionManager.GetAll().Select(e => e.Id).ToList()
-        };
-    }
-
-    /// <inheritdoc/>
-    public async Task<ComponentLoadResult> ReloadAsync(
-        IServiceProvider services,
-        string workspaceRoot,
-        CancellationToken cancellationToken = default)
-    {
-        // 先卸载全部插件（释放资源并清空注册状态），再按最新配置重新加载
-        var extensionManager = services.GetRequiredService<ExtensionManager>();
-        await extensionManager.DisposeAllAsync();
-        return await LoadAsync(services, workspaceRoot, cancellationToken);
-    }
-
-    private static string? FindPluginsAssembly()
-    {
-        var fileName = "Seeing.Agent.Plugins.dll";
-        var candidates = new[] { AppContext.BaseDirectory, AppDomain.CurrentDomain.BaseDirectory };
-
-        foreach (var dir in candidates)
-        {
-            var path = Path.Combine(dir, fileName);
-            if (File.Exists(path))
-                return path;
-        }
-        return null;
     }
 }
 

@@ -4,17 +4,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Extensions;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Mcp.Factory;
@@ -27,20 +23,19 @@ using Xunit;
 namespace Seeing.Agent.Tests.Core;
 
 /// <summary>
-/// ComponentManager 三个内置 Loader（Skill/MCP/Plugin）的 ReloadAsync
+/// ComponentManager 内置 Loader（Skill/MCP）的 ReloadAsync
 /// 与 ComponentManager 作为 IReloadHandler 的分发行为测试
 /// </summary>
 public class ComponentManagerReloadTests
 {
     [Fact]
-    public async Task ComponentManager_工作区切换触发三Loader重载()
+    public async Task ComponentManager_工作区切换触发两Loader重载()
     {
         // Arrange
         using var workspace = new TempWorkspace();
         var componentManager = CreateComponentManager(workspace.Root, out var services);
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
-        var pluginLoader = RegisterRecordingLoader(componentManager, "Plugin");
 
         // 首次加载成功后，重载应走各 Loader 的 ReloadAsync
         await componentManager.LoadAllAsync(workspace.Root);
@@ -55,7 +50,6 @@ public class ComponentManagerReloadTests
         // Assert
         skillLoader.ReloadCalls.Should().Be(1);
         mcpLoader.ReloadCalls.Should().Be(1);
-        pluginLoader.ReloadCalls.Should().Be(1);
     }
 
     [Fact]
@@ -66,7 +60,6 @@ public class ComponentManagerReloadTests
         var componentManager = CreateComponentManager(workspace.Root, out _);
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
-        var pluginLoader = RegisterRecordingLoader(componentManager, "Plugin");
         await componentManager.LoadAllAsync(workspace.Root);
 
         // Act
@@ -75,7 +68,6 @@ public class ComponentManagerReloadTests
         // Assert
         skillLoader.ReloadCalls.Should().Be(1);
         mcpLoader.ReloadCalls.Should().Be(1);
-        pluginLoader.ReloadCalls.Should().Be(1);
     }
 
     [Fact]
@@ -86,7 +78,6 @@ public class ComponentManagerReloadTests
         var componentManager = CreateComponentManager(workspace.Root, out _);
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
-        var pluginLoader = RegisterRecordingLoader(componentManager, "Plugin");
         await componentManager.LoadAllAsync(workspace.Root);
 
         // Act
@@ -95,7 +86,6 @@ public class ComponentManagerReloadTests
         // Assert
         skillLoader.ReloadCalls.Should().Be(1);
         mcpLoader.ReloadCalls.Should().Be(0);
-        pluginLoader.ReloadCalls.Should().Be(0);
     }
 
     [Fact]
@@ -106,7 +96,6 @@ public class ComponentManagerReloadTests
         var componentManager = CreateComponentManager(workspace.Root, out _);
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
-        var pluginLoader = RegisterRecordingLoader(componentManager, "Plugin");
         await componentManager.LoadAllAsync(workspace.Root);
 
         // Act
@@ -115,21 +104,22 @@ public class ComponentManagerReloadTests
         // Assert
         skillLoader.ReloadCalls.Should().Be(0);
         mcpLoader.ReloadCalls.Should().Be(1);
-        pluginLoader.ReloadCalls.Should().Be(0);
     }
 
     [Theory]
     [InlineData("Plugins")]
     [InlineData("PluginEnabled")]
-    public async Task ComponentManager_配置变更Plugins节只重载插件Loader(string section)
+    public async Task ComponentManager_配置变更Plugins节不再触发PluginLoader(string section)
     {
         // Arrange
         using var workspace = new TempWorkspace();
         var componentManager = CreateComponentManager(workspace.Root, out _);
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
+        // 手动注册 Plugin 录音器：验证 Plugins 节变更不会再分发到它
         var pluginLoader = RegisterRecordingLoader(componentManager, "Plugin");
         await componentManager.LoadAllAsync(workspace.Root);
+        pluginLoader.ReloadCalls.Should().Be(0);
 
         // Act
         await componentManager.ReloadAsync(new ConfigChange { ChangedSections = new[] { section } });
@@ -137,7 +127,7 @@ public class ComponentManagerReloadTests
         // Assert
         skillLoader.ReloadCalls.Should().Be(0);
         mcpLoader.ReloadCalls.Should().Be(0);
-        pluginLoader.ReloadCalls.Should().Be(1);
+        pluginLoader.ReloadCalls.Should().Be(0);
     }
 
     [Fact]
@@ -158,6 +148,7 @@ public class ComponentManagerReloadTests
         skillLoader.LoadCalls.Should().Be(1);
         skillLoader.ReloadCalls.Should().Be(1);
     }
+
 
     [Fact]
     public async Task SkillLoader_重载清理已删除技能并重新发现()
@@ -269,22 +260,6 @@ public class ComponentManagerReloadTests
         }
     }
 
-    [Fact]
-    public async Task PluginLoader_重载成功无插件配置()
-    {
-        // Arrange
-        using var workspace = new TempWorkspace();
-        using var provider = CreatePluginLoaderServices(workspace.Root);
-        var loader = new PluginLoader();
-
-        // Act：无插件配置时重载不应抛异常，且返回成功
-        var result = await loader.ReloadAsync(provider, workspace.Root);
-
-        // Assert
-        result.Success.Should().BeTrue();
-        result.Error.Should().BeNull();
-    }
-
     private static ComponentManager CreateComponentManager(string workspaceRoot, out ServiceProvider services)
     {
         var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
@@ -299,32 +274,6 @@ public class ComponentManagerReloadTests
         var loader = new RecordingLoader(type);
         manager.RegisterLoader(loader);
         return loader;
-    }
-
-    private static ServiceProvider CreatePluginLoaderServices(string workspaceRoot)
-    {
-        var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
-        var hookManager = new HookManager(loggerFactory.CreateLogger<HookManager>());
-        var toolManager = new ToolManager(loggerFactory.CreateLogger<ToolManager>(), hookManager);
-        var mcpManager = CreateMcpManager(loggerFactory);
-
-        var services = new ServiceCollection();
-        services.AddSingleton<ILoggerFactory>(loggerFactory);
-        services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
-        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
-        services.AddSingleton(Options.Create(new SeeingAgentOptions()));
-        services.AddSingleton<IWorkspaceProvider>(new WorkspaceProvider(workspaceRoot));
-        services.AddSingleton(hookManager);
-        services.AddSingleton(toolManager);
-        services.AddSingleton(mcpManager);
-        services.AddSingleton(new ExtensionManager(
-            loggerFactory.CreateLogger<ExtensionManager>(),
-            new ExtensionLoader(loggerFactory.CreateLogger<ExtensionLoader>())));
-        services.AddSingleton<IPermissionService>(new Mock<IPermissionService>().Object);
-        services.AddSingleton<IAgentRegistry>(new Mock<IAgentRegistry>().Object);
-        services.AddSingleton<ISkillManager>(new Mock<ISkillManager>().Object);
-        services.AddSingleton<ICommandRegistry>(new Mock<ICommandRegistry>().Object);
-        return services.BuildServiceProvider();
     }
 
     private static McpClientManager CreateMcpManager(ILoggerFactory loggerFactory)

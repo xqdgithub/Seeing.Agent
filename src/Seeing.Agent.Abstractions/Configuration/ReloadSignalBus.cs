@@ -19,8 +19,7 @@ public interface IReloadSignalBus
 }
 
 /// <summary>
-/// 重载处理器注册表：供运行时动态加载的插件（ExtensionManager 加载的 DLL）
-/// 在 InitializeAsync 时注册/注销自己的 Handler；静态 DI 注册仍是推荐路径
+/// 重载处理器注册表：供模块/扩展包在激活时注册/注销 Handler；静态 DI 注册仍是推荐路径
 /// </summary>
 public interface IReloadHandlerRegistry
 {

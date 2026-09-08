@@ -1,15 +1,14 @@
 using FluentAssertions;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Channels;
 using Seeing.Agent.Gateway.Hosting;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Seeing.Gateway.Tests.Channels;
@@ -41,7 +40,6 @@ public class ChannelHostReloadHandlerTests : IDisposable
         var configManager = new UnifiedConfigManager(_workspace.Object, NullLogger<UnifiedConfigManager>.Instance);
         var registry = new GatewayChannelRegistry(
             NullLogger<GatewayChannelRegistry>.Instance,
-            new ExtensionLoader(NullLogger<ExtensionLoader>.Instance),
             configManager);
         registry.Reload(_tempDirectory);
 

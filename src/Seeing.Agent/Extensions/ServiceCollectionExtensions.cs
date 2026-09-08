@@ -2,7 +2,6 @@
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.Abstractions.Extensions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -596,11 +595,6 @@ namespace Seeing.Agent.Extensions
 
             // MCP — 由 McpModule.ConfigureServices 注册（见上方模块登记）
 
-            // 扩展系统
-            services.AddSingleton<ExtensionLoader>();
-            services.AddSingleton<ExtensionManager>();
-            services.AddSingleton<IExtensionManager>(sp => sp.GetRequiredService<ExtensionManager>());
-
             // 执行上下文相关
             services.AddSingleton<IMetadataStore, ConcurrentMetadataStore>();
 
@@ -651,7 +645,7 @@ namespace Seeing.Agent.Extensions
             // 命令注册表（插件加载与扩展命令注册需要）
             services.AddSingleton<ICommandRegistry, CommandRegistry>();
 
-            // 组件管理器（统一管理 Skills/MCP/Plugins/Rules）
+            // 组件管理器（统一管理 Skills/MCP）
             // 同时注册具体类，供 ReloadHandler 注入；接口复用同一实例
             services.AddSingleton<ComponentManager>();
             services.AddSingleton<IComponentManager>(sp => sp.GetRequiredService<ComponentManager>());
@@ -721,7 +715,7 @@ namespace Seeing.Agent.Extensions
     public static class SeeingAgentInitializationExtensions
     {
         /// <summary>
-        /// 初始化 Seeing.Agent - 通过 ComponentManager 加载 Skills/MCP/Plugins/Rules
+        /// 初始化 Seeing.Agent - 通过 ComponentManager 加载 Skills/MCP
         /// </summary>
         /// <param name="services">服务提供者</param>
         /// <param name="cancellationToken">取消令牌</param>

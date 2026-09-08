@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Extensions;
 
 namespace Seeing.Agent.Gateway.Channels;
 

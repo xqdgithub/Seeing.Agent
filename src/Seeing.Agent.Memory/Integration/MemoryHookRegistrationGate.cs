@@ -1,7 +1,7 @@
 namespace Seeing.Agent.Memory.Integration;
 
 /// <summary>
-/// Bootstrap 与 <see cref="MemoryExtension"/> 共用的 Hook 注册闸门，保证进程内只注册一次。
+/// Bootstrap 与 Memory DI 注册路径共用的 Hook 注册闸门，保证进程内只注册一次。
 /// </summary>
 internal static class MemoryHookRegistrationGate
 {

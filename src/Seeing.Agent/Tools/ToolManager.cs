@@ -61,52 +61,17 @@ namespace Seeing.Agent.Tools
             _permissionPolicy = permissionPolicy;
         }
 
-        // Primary tools that are allowed in Primary mode
-        private static readonly HashSet<string> PrimaryTools = new HashSet<string>(new[]
-        {
-            "write", "edit", "bash", "question", "plan_enter", "acp", "acp_status", "task", "task_status",
-            "memory_search", "memory_write", "memory_read"
-        }, System.StringComparer.OrdinalIgnoreCase);
-
-        // SubAgent 仅禁用嵌套委派工具
-        private static readonly HashSet<string> SubAgentExcludedTools = new HashSet<string>(new[]
-        {
-            "task"
-        }, System.StringComparer.OrdinalIgnoreCase);
-
-        // Primary 模式下的固定工具集（历史行为保留）
-        private static readonly HashSet<string> SubAgentTools = new HashSet<string>(new[]
-        {
-            "read", "grep", "glob", "webfetch", "websearch"
-        }, System.StringComparer.OrdinalIgnoreCase);
-
         /// <summary>
-        /// Get tool schemas filtered by AgentMode (async)
+        /// Get all tool schemas. Mode no longer filters tools; use Agent Allowed/Denied instead.
         /// </summary>
-        public async Task<List<FunctionToolSchema>> GetToolSchemasForModeAsync(AgentMode mode)
+        public Task<List<FunctionToolSchema>> GetToolSchemasForModeAsync(AgentMode mode)
         {
-            // Retrieve all schemas first, including hooks processing
-            var allSchemas = await GetToolSchemasAsync().ConfigureAwait(false);
-
-            // Build allowed set based on mode
-            HashSet<string> allowed = mode switch
-            {
-                AgentMode.Primary => new HashSet<string>(PrimaryTools.Union(SubAgentTools), StringComparer.OrdinalIgnoreCase),
-                AgentMode.SubAgent => new HashSet<string>(
-                    allSchemas.Select(s => s.Function.Name)
-                        .Where(n => !SubAgentExcludedTools.Contains(n)),
-                    StringComparer.OrdinalIgnoreCase),
-                AgentMode.All => new HashSet<string>(allSchemas.Select(s => s.Function.Name), StringComparer.OrdinalIgnoreCase),
-                _ => new HashSet<string>(PrimaryTools.Union(SubAgentTools), StringComparer.OrdinalIgnoreCase)
-            };
-
-            // Filter schemas by allowed tool IDs
-            return allSchemas.Where(s => allowed.Contains(s.Function.Name)).ToList();
+            _ = mode;
+            return GetToolSchemasAsync();
         }
 
         /// <summary>
-        /// Get tool schemas filtered by AgentMode (sync version)
-        /// Default mode is Primary
+        /// Get all tool schemas (sync). Mode is ignored.
         /// </summary>
         public List<FunctionToolSchema> GetToolSchemasForMode(AgentMode mode)
         {
@@ -114,7 +79,7 @@ namespace Seeing.Agent.Tools
         }
 
         /// <summary>
-        /// Overload: default to Primary mode
+        /// Overload: returns all registered tool schemas
         /// </summary>
         public List<FunctionToolSchema> GetToolSchemasForMode()
         {
@@ -122,14 +87,14 @@ namespace Seeing.Agent.Tools
         }
 
         /// <summary>
-        /// 按 Agent 的 <see cref="AgentDefinition.Mode"/> 与 Allowed/Denied 工具列表筛选 Schema（异步）
+        /// 按 Agent 的 Allowed/Denied 工具列表筛选 Schema（异步）。Mode 不再硬编码过滤工具集。
         /// </summary>
         public async Task<List<FunctionToolSchema>> GetToolSchemasForAgentAsync(AgentDefinition agent)
         {
             if (agent == null)
                 throw new ArgumentNullException(nameof(agent));
 
-            var baseList = await GetToolSchemasForModeAsync(agent.Mode).ConfigureAwait(false);
+            var baseList = await GetToolSchemasAsync().ConfigureAwait(false);
             return FilterSchemasByAgentToolLists(baseList, agent.AllowedTools, agent.DeniedTools);
         }
 

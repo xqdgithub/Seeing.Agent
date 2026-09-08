@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Extensions;
 using DefaultPermissionChannelAlias = Seeing.Agent.Core.Permission.DefaultPermissionChannel;
 
 using Seeing.Agent.Abstractions.Permissions;

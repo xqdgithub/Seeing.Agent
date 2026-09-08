@@ -5,7 +5,6 @@ using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
-using Seeing.Agent.Abstractions.Extensions;
 using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Acp.Extensions;
 
