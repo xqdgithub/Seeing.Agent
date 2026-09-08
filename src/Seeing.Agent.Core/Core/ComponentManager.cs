@@ -1,34 +1,16 @@
-using Seeing.Agent.Abstractions.Mcp;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Components;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Mcp;
-using Seeing.Agent.Skills;
-using Seeing.Agent.Skills.Configuration;
-using Seeing.Agent.Tools;
 using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Components;
-using Seeing.Agent.Abstractions.Skills;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core;
 
 /// <summary>
-/// 组件管理器 - 统一管理 Skills/MCP 的发现和加载
-/// <para>
-/// 配置层级：
-/// - 用户级：~/.seeing/（基础配置）
-/// - 项目级：./.seeing/（覆盖同名）
-/// </para>
+/// 组件管理器 - 统一调度已登记的 <see cref="IComponentLoader"/>（Skills/MCP 等由能力模块登记）。
 /// </summary>
 public class ComponentManager : IComponentManager, IReloadHandler
 {
@@ -43,21 +25,22 @@ public class ComponentManager : IComponentManager, IReloadHandler
     private readonly ConcurrentDictionary<string, IComponentLoader> _loaders = new();
     private readonly ConcurrentDictionary<string, ComponentLoadResult> _loadStatus = new();
 
-    public ComponentManager(IServiceProvider services, ILogger<ComponentManager> logger)
+    public ComponentManager(
+        IServiceProvider services,
+        ILogger<ComponentManager> logger,
+        IEnumerable<IComponentLoader>? loaders = null)
     {
         _services = services;
         _logger = logger;
 
-        // 注册内置加载器
-        RegisterBuiltInLoaders();
-    }
+        if (loaders is null)
+            return;
 
-    /// <summary>注册内置加载器</summary>
-    private void RegisterBuiltInLoaders()
-    {
-        _loaders["Skill"] = new SkillLoader();
-        _loaders["Mcp"] = new McpLoader();
-        // Plugin loader removed — IExtension/PluginLoader path deleted (modular modules replace it)
+        foreach (var loader in loaders)
+        {
+            _loaders[loader.Type] = loader;
+            _logger.LogInformation("登记组件加载器: {Type}", loader.Type);
+        }
     }
 
     /// <inheritdoc/>
@@ -82,19 +65,18 @@ public class ComponentManager : IComponentManager, IReloadHandler
 
         var results = new List<ComponentLoadResult>();
 
-        // 按顺序加载：Skill → MCP → 自定义
+        // 优先顺序：Skill → MCP → 其余
         var order = new[] { "Skill", "Mcp" };
 
         foreach (var type in order)
         {
-            if (_loaders.TryGetValue(type, out var loader))
+            if (_loaders.TryGetValue(type, out _))
             {
                 var result = await LoadAsync(type, workspaceRoot, cancellationToken);
                 results.Add(result);
             }
         }
 
-        // 加载自定义组件
         var customTypes = _loaders.Keys.Except(order).ToList();
         foreach (var type in customTypes)
         {
@@ -128,7 +110,6 @@ public class ComponentManager : IComponentManager, IReloadHandler
 
         try
         {
-            // 已成功加载过的类型走重载路径（清理旧状态后重新发现），否则走首次加载路径
             var previouslyLoaded = _loadStatus.TryGetValue(type, out var previous) && previous.Success;
             var result = previouslyLoaded
                 ? await loader.ReloadAsync(_services, workspaceRoot, cancellationToken)
@@ -164,19 +145,16 @@ public class ComponentManager : IComponentManager, IReloadHandler
 
         if (change is WorkspaceChange)
         {
-            // 工作区切换：全量重载（各 Loader 走 ReloadAsync 清理旧状态后重新发现）
             await LoadAllAsync(workspaceRoot, ct);
         }
         else if (change is ConfigChange cfg)
         {
-            // 配置变更：空节数组表示全量重载
             if (cfg.ChangedSections.Count == 0)
             {
                 await LoadAllAsync(workspaceRoot, ct);
                 return;
             }
 
-            // 按变更配置节分发到对应 Loader
             foreach (var section in cfg.ChangedSections)
             {
                 if (section == "Skills") await LoadAsync("Skill", workspaceRoot, ct);
@@ -185,156 +163,3 @@ public class ComponentManager : IComponentManager, IReloadHandler
         }
     }
 }
-
-#region 内置加载器
-
-/// <summary>技能加载器</summary>
-internal class SkillLoader : IComponentLoader
-{
-    public string Type => "Skill";
-
-    public async Task<ComponentLoadResult> LoadAsync(
-        IServiceProvider services,
-        string workspaceRoot,
-        CancellationToken cancellationToken = default)
-    {
-        var skillManager = services.GetRequiredService<SkillManager>();
-        var skillsOptions = services.GetService<IOptionsMonitor<SkillsOptions>>()?.CurrentValue
-            ?? services.GetService<IOptions<SkillsOptions>>()?.Value;
-        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
-        var logger = loggerFactory.CreateLogger<SkillLoader>();
-        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
-
-        skillManager.ResetSearchDirectoriesToDefault();
-
-        // 用户级 ~/.seeing/skills
-        AddIfExists(skillManager, Path.Combine(workspaceProvider.UserSeeingDirectory, "skills"));
-
-        // 配置中的额外路径
-        if (skillsOptions?.Paths != null)
-        {
-            foreach (var p in skillsOptions.Paths)
-            {
-                if (!string.IsNullOrWhiteSpace(p))
-                    AddIfExists(skillManager, ExpandPath(p.Trim(), workspaceProvider.GetProjectRoot()));
-            }
-        }
-
-        await skillManager.DiscoverSkillsAsync(cancellationToken);
-
-        return new ComponentLoadResult
-        {
-            Type = Type,
-            Success = true,
-            Count = skillManager.GetAllSkillInfos().Count,
-            Details = skillManager.GetAllSkillInfos().Keys.ToList()
-        };
-    }
-
-    private static void AddIfExists(SkillManager manager, string dir)
-    {
-        if (Directory.Exists(dir))
-            manager.AddSearchDirectory(dir);
-    }
-
-    private static string ExpandPath(string path, string workspaceRoot)
-    {
-        if (path.StartsWith("~"))
-        {
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            return Path.GetFullPath(Path.Combine(home, path.Substring(1).TrimStart('/', '\\')));
-        }
-        return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(workspaceRoot, path));
-    }
-
-    /// <inheritdoc/>
-    public async Task<ComponentLoadResult> ReloadAsync(
-        IServiceProvider services,
-        string workspaceRoot,
-        CancellationToken cancellationToken = default)
-    {
-        // 先清空旧技能（已删除的技能信息也会被移除），再重挂载目录并重新发现
-        var skillManager = services.GetRequiredService<SkillManager>();
-        skillManager.ClearSkillInfos();
-        return await LoadAsync(services, workspaceRoot, cancellationToken);
-    }
-}
-
-/// <summary>MCP 加载器</summary>
-internal class McpLoader : IComponentLoader
-{
-    public string Type => "Mcp";
-
-    public async Task<ComponentLoadResult> LoadAsync(
-        IServiceProvider services,
-        string workspaceRoot,
-        CancellationToken cancellationToken = default)
-    {
-        var mcpManager = services.GetRequiredService<McpClientManager>();
-        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
-        var logger = loggerFactory.CreateLogger<McpLoader>();
-        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
-
-        // 加载配置（不阻塞）
-        var configs = McpConfigLoader.LoadDefault(workspaceProvider, logger);
-
-        // 转换为字典格式
-        var configDict = new Dictionary<string, McpServerConfig>();
-        foreach (var config in configs)
-        {
-            if (!string.IsNullOrEmpty(config.Name))
-                configDict[config.Name] = config;
-        }
-
-        // 非阻塞初始化（后台启动连接）
-        await mcpManager.InitializeAsync(configDict, cancellationToken);
-
-        // 注意：工具注册已由 McpClientManager 内部处理（通过 McpToolRegistry）
-        // 不需要在此手动注册
-
-        return new ComponentLoadResult
-        {
-            Type = Type,
-            Success = true,
-            Count = configs.Count,
-            Details = configs.Select(c => c.Name).ToList()
-        };
-    }
-
-    /// <inheritdoc/>
-    public async Task<ComponentLoadResult> ReloadAsync(
-        IServiceProvider services,
-        string workspaceRoot,
-        CancellationToken cancellationToken = default)
-    {
-        var mcpManager = services.GetRequiredService<McpClientManager>();
-        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
-        var logger = loggerFactory.CreateLogger<McpLoader>();
-        var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
-
-        // 重新加载配置（读取磁盘最新配置）
-        var configs = McpConfigLoader.LoadDefault(workspaceProvider, logger);
-
-        // 转换为字典格式（跳过空名称，与 LoadAsync 保持一致）
-        var configDict = new Dictionary<string, McpServerConfig>();
-        foreach (var config in configs)
-        {
-            if (!string.IsNullOrEmpty(config.Name))
-                configDict[config.Name] = config;
-        }
-
-        // 重置全部连接后重新初始化（幂等，清理旧状态再按最新配置加载）
-        await mcpManager.ResetAllAsync(cancellationToken);
-        await mcpManager.InitializeAsync(configDict, cancellationToken);
-
-        return new ComponentLoadResult
-        {
-            Type = Type,
-            Success = true,
-            Count = configs.Count,
-            Details = configs.Select(c => c.Name).ToList()
-        };
-    }
-}
-
-#endregion

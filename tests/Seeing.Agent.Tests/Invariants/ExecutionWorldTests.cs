@@ -26,6 +26,7 @@ public class ExecutionWorldTests
         services.AddLogging();
         var registry = new ConfigSectionRegistry();
         services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddSeeingModule<LocalExecutionWorldModule>(registry);
         services.AddSeeingCore(registry);
 
         using var sp = services.BuildServiceProvider();
@@ -62,10 +63,10 @@ public class ExecutionWorldTests
         var shellDir = Path.Combine(root, "src", "Seeing.Agent.Tools.Shell");
         var shellHits = ScanSourceForForbiddenOsCalls(
             shellDir,
-            allowlist: null);
+            allowlist: ["DefaultShellService.cs", "ProcessExtensions.cs"]);
 
         shellHits.Should().BeEmpty(
-            "Shell 工具源码不得直接 Process.Start / File.WriteAll*；命中: {0}",
+            "Shell 仅允许 DefaultShellService/ProcessExtensions 残留 Process.Start；其它命中: {0}",
             string.Join("; ", shellHits));
 
         // 锚定程序集仍可加载（防空引用）

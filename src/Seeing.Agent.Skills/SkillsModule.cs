@@ -1,12 +1,16 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Skills.Configuration;
 using Seeing.Agent.Skills.OnlineParsers;
 
 namespace Seeing.Agent.Skills;
@@ -51,8 +55,17 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
-        // Interim: register SkillManager + parsers + skill tool so existing discovery still works
-        // without Activate until Host Shape lands.
+        TryRegisterConfigSection(services);
+        services.AddOptions<SkillsOptions>();
+        services.TryAddSingleton(sp =>
+            new ConfigSectionOptionsMonitor<SkillsOptions>(
+                sp.GetRequiredService<IConfigSectionStore>(),
+                SkillsOptions.SectionName));
+        services.TryAddSingleton<IOptionsMonitor<SkillsOptions>>(sp =>
+            sp.GetRequiredService<ConfigSectionOptionsMonitor<SkillsOptions>>());
+        services.TryAddSingleton<IOptions<SkillsOptions>>(sp =>
+            sp.GetRequiredService<ConfigSectionOptionsMonitor<SkillsOptions>>());
+
         services.AddSingleton<OnlineSkillParserAggregator>();
 
         services.AddSingleton<SkillManager>(sp =>
@@ -64,6 +77,7 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
         services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
         services.AddSingleton<IPromptSectionContributor>(sp => sp.GetRequiredService<SkillManager>());
         services.AddSingleton<ITool, SkillTool>();
+        services.AddSingleton<IComponentLoader, SkillLoader>();
     }
 
     /// <inheritdoc />
@@ -85,5 +99,22 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
     {
         _ui?.Unregister(Id);
         return Task.CompletedTask;
+    }
+
+    private static void TryRegisterConfigSection(IServiceCollection services)
+    {
+        foreach (var descriptor in services)
+        {
+            if (descriptor.ServiceType == typeof(IConfigSectionRegistry) &&
+                descriptor.ImplementationInstance is IConfigSectionRegistry registry)
+            {
+                registry.Register(new ConfigSectionMeta(
+                    SkillsOptions.SectionName,
+                    "seeing.json",
+                    ConfigScope.Both,
+                    typeof(SkillsOptions)));
+                return;
+            }
+        }
     }
 }

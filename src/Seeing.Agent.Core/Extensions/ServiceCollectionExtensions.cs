@@ -1,7 +1,6 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
-using Seeing.Agent.Abstractions.Skills;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,10 +15,10 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
@@ -32,17 +31,11 @@ using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
-using Seeing.IO.Local;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Modules;
-using Seeing.Agent.Skills;
-using Seeing.Agent.Mcp;
 using Seeing.Agent.Llm;
-using Seeing.Agent.Llm.OpenAI;
-using Seeing.Agent.Llm.Anthropic;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Summarization;
 using System.Net.Http;
 using Seeing.Agent.Middlewares;
@@ -181,10 +174,21 @@ namespace Seeing.Agent.Extensions
             module.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(sp =>
             {
-                var ui = sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>();
-                var ctor = typeof(TModule).GetConstructor([typeof(Seeing.Agent.Abstractions.Ui.IUiContributionRegistry)]);
-                if (ctor is not null)
-                    return (TModule)ctor.Invoke([ui])!;
+                var agentStoreCtor = typeof(TModule).GetConstructor([typeof(IAgentStore)]);
+                if (agentStoreCtor is not null)
+                {
+                    var store = sp.GetService<IAgentStore>();
+                    if (store is not null)
+                        return (TModule)agentStoreCtor.Invoke([store])!;
+                }
+
+                var uiCtor = typeof(TModule).GetConstructor([typeof(IUiContributionRegistry)]);
+                if (uiCtor is not null)
+                {
+                    var ui = sp.GetService<IUiContributionRegistry>();
+                    return (TModule)uiCtor.Invoke([ui])!;
+                }
+
                 return new TModule();
             });
             return services;
@@ -357,13 +361,7 @@ namespace Seeing.Agent.Extensions
             services.TryAddSingleton<ModuleLifecycleManager>();
             services.TryAddSingleton<ModuleReloadOptions>();
 
-            // io.local — 登记为 ISeeingModule，供结算 DependsOn（filesystem/shell/git）满足
-            var localIoModule = new LocalExecutionWorldModule();
-            localIoModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(localIoModule);
-            services.TryAddSingleton<IExecutionWorld, LocalExecutionWorld>();
-
-            // Shell 配置节（工具能力包由宿主 AddSeeingModule 登记；节元数据留在脊柱）
+            // Shell 配置节（ShellOptions 在 Abstractions；工具能力包由宿主 AddSeeingModule 登记）
             services.GetOrCreateConfigSectionRegistry().Register(
                 new ConfigSectionMeta("Shell", "seeing.json", ConfigScope.Both, typeof(ShellOptions)));
             services.AddOptions<ShellOptions>();
@@ -374,51 +372,6 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<ConfigSectionOptionsMonitor<ShellOptions>>());
             services.TryAddSingleton<IOptions<ShellOptions>>(sp =>
                 sp.GetRequiredService<ConfigSectionOptionsMonitor<ShellOptions>>());
-
-            // TEMP: Phase 3 — Skills 模块（ConfigureServices 注册 SkillManager + parsers + skill；Activate 待 Host Shape）
-            services.GetOrCreateConfigSectionRegistry().Register(
-                new ConfigSectionMeta(
-                    Seeing.Agent.Skills.Configuration.SkillsOptions.SectionName,
-                    "seeing.json",
-                    ConfigScope.Both,
-                    typeof(Seeing.Agent.Skills.Configuration.SkillsOptions)));
-            services.AddOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>();
-            services.TryAddSingleton(sp =>
-                new ConfigSectionOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>(
-                    sp.GetRequiredService<IConfigSectionStore>(),
-                    Seeing.Agent.Skills.Configuration.SkillsOptions.SectionName));
-            services.TryAddSingleton<IOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>(sp =>
-                sp.GetRequiredService<ConfigSectionOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>());
-            services.TryAddSingleton<IOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>>(sp =>
-                sp.GetRequiredService<ConfigSectionOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>());
-            var skillsModule = new SkillsModule();
-            skillsModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(sp =>
-                new SkillsModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
-
-            // TEMP: Phase 3 — MCP 模块登记（ConfigureServices 在 ToolManager 注册后调用；见下方）
-            // Mcp 包仅依赖 Abstractions，节注册由主库代办
-            services.GetOrCreateConfigSectionRegistry().Register(
-                new ConfigSectionMeta(
-                    "Mcp",
-                    "mcp.json",
-                    ConfigScope.Both,
-                    typeof(Dictionary<string, Seeing.Agent.Abstractions.Mcp.McpServerConfig>)));
-            var mcpModule = new McpModule();
-            services.AddSingleton<ISeeingModule>(sp =>
-                new McpModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
-
-            // TEMP: Phase 3 — LLM 工厂模块（ConfigureServices 注册 ILlmClientFactory；Activate 待 Host Shape）
-            var openAiLlmModule = new OpenAiLlmModule();
-            openAiLlmModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(openAiLlmModule);
-
-            var anthropicLlmModule = new AnthropicLlmModule();
-            anthropicLlmModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(anthropicLlmModule);
-
-            services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
-            services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
             // 权限服务（新系统 - 统一权限检查入口）
             services.AddPermissionService();
@@ -440,17 +393,12 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<AgentStore>();
             services.AddSingleton<IAgentStore>(sp => sp.GetRequiredService<AgentStore>());
 
-            // TEMP: Phase 5 T8 — 内置 Agent 两阶段注册（须在 IAgentStore 之后登记工厂）
-            new AgentsBuiltInModule().ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(sp =>
-                new AgentsBuiltInModule(sp.GetRequiredService<IAgentStore>()));
-
             // Agent 运行时管理器（运行时设置）
             services.AddSingleton<AgentRuntimeManager>();
             services.AddSingleton<IAgentRuntimeManager>(sp => sp.GetRequiredService<AgentRuntimeManager>());
 
             // Agent 管理器（统一管理注册、发现、配置）
-            // 两阶段：构造时 store 为空；内置人格由 Initialize → AgentsBuiltInModule.ActivateAsync 写入
+            // 两阶段：构造时 store 为空；内置人格由宿主 AddSeeingModule<AgentsBuiltInModule> → ActivateAsync 写入
             services.AddSingleton<AgentManager>(sp =>
             {
                 var logger = sp.GetRequiredService<ILogger<AgentManager>>();
@@ -514,17 +462,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<CompressionService>();
             services.AddSingleton<CompressionOptions>();
 
-            // 技能 / 在线解析器 / skill 工具 — 由 SkillsModule.ConfigureServices 注册（见上方模块登记）
-
-            // 文件系统 / Shell / Web / Basic / Git 工具 — 由宿主 AddSeeingModule<T> 登记，不再由脊柱装载
-
-            // 网络工具 — 由 WebModule.ConfigureServices 注册（见上方模块登记）
-
-            // Git 工具 — 由 GitModule.ConfigureServices 注册（见上方模块登记）
-
-            // 任务和 Todo 工具 — 由 Seeing.Agent.Hosting.AddChatOrchestrator 注册
-
-            // 基础工具 — 由 BasicModule.ConfigureServices 注册（见上方模块登记）
+            // 能力包工具 / Skills / MCP / LLM / Agents.BuiltIn — 由宿主 AddSeeingModule<T> 登记
 
             // ========== 注册装饰器链（重试→超时→缓存）==========
             // 超时由 ToolTimeoutDecorator 在工具执行漏斗内施加：读取工具能力声明
@@ -599,10 +537,6 @@ namespace Seeing.Agent.Extensions
             });
             services.AddSingleton<IToolManager>(sp => sp.GetRequiredService<ToolManager>());
 
-            // TEMP: Phase 3 — MCP 模块（ConfigureServices 注册 IMcpManager 等；Activate 待 Host Shape）
-            // 在 IToolManager 注册之后调用，以便工厂可解析工具管理器。
-            mcpModule.ConfigureServices(services);
-
             // 5. 工作区路径提供者（统一管理配置目录）
             // 初始化时根据配置自动解析工作区
             services.AddSingleton<WorkspaceProvider>();
@@ -622,8 +556,6 @@ namespace Seeing.Agent.Extensions
 
             // 6. Agent / Model 默认解析
             services.AddSingleton<AgentSelectionResolver>();
-
-            // MCP — 由 McpModule.ConfigureServices 注册（见上方模块登记）
 
             // 执行上下文相关
             services.AddSingleton<IMetadataStore, ConcurrentMetadataStore>();
@@ -803,40 +735,13 @@ namespace Seeing.Agent.Extensions
             var componentManager = services.GetRequiredService<IComponentManager>();
             var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().GetProjectRoot();
 
-            // Interim: apply Skills.Paths from SkillsOptions before discovery
-            var skillManager = services.GetService<SkillManager>();
-            if (skillManager != null)
-            {
-                var skillsOptions = services.GetService<IOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>()
-                    ?? services.GetService<IOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>>() as IOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>;
-                var skills = skillsOptions?.CurrentValue
-                    ?? services.GetService<IOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>>()?.Value;
-                if (skills?.Paths != null)
-                {
-                    foreach (var path in skills.Paths)
-                    {
-                        skillManager.AddSearchDirectory(path);
-                    }
-                }
-
-                if (skills?.Urls != null && skills.Urls.Count > 0)
-                {
-                    logger?.LogWarning("远程技能 URL 暂不支持，已跳过 {Count} 个 URL", skills.Urls.Count);
-                }
-            }
-
             var results = await componentManager.LoadAllAsync(workspaceRoot, cancellationToken);
 
-            // 加载工具/技能禁用状态
+            // 加载工具禁用状态（技能状态由 SkillLoader 在模块登记时处理）
             var toolInvoker = services.GetService<ToolManager>();
             if (toolInvoker != null)
             {
                 await toolInvoker.LoadToolStateAsync(cancellationToken);
-            }
-
-            if (skillManager != null)
-            {
-                await skillManager.LoadSkillStateAsync(cancellationToken);
             }
 
             return results;

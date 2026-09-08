@@ -12,7 +12,7 @@ using Xunit;
 namespace Seeing.Agent.Tests.Invariants;
 
 /// <summary>
-/// Spec §8：Core 零工具 — 只 <c>AddSeeingCore()</c> 时不应装载能力包工具；schema 对空结算集为空。
+/// Spec §8：Core 零工具 — 只 <c>AddSeeingCore()</c> 时不应装载任何 ITool；schema 对空结算集为空。
 /// </summary>
 public class CoreZeroToolsTests
 {
@@ -22,7 +22,8 @@ public class CoreZeroToolsTests
         "bash", "grep", "glob",
         "git_status", "git_diff", "git_log", "git_commit",
         "web_fetch", "web_search",
-        "current_time", "todo_write", "task", "task_status"
+        "current_time", "todo_write", "task", "task_status",
+        "skill"
     ];
 
     [Fact]
@@ -39,13 +40,8 @@ public class CoreZeroToolsTests
 
         var ids = tools.GetTools().Select(t => t.Id).ToArray();
 
-        // 能力包工具不得由脊柱单独装载（删除「AddSeeingAgent 后必有 ReadTool」）
         ids.Should().NotContain(CapabilityToolIds);
-
-        // TEMP: SkillsModule 仍在 AddSeeingCore ConfigureServices 登记 SkillTool；
-        // 最终目标 GetTools() 完全为空。当前允许仅残留 skill。
-        ids.Should().OnlyContain(id =>
-            string.Equals(id, "skill", StringComparison.OrdinalIgnoreCase));
+        ids.Should().BeEmpty("AddSeeingCore alone must register zero ITool");
 
         var schemas = await tools.GetToolSchemasAsync(
             Array.Empty<string>(),
@@ -64,10 +60,6 @@ public class CoreZeroToolsTests
         services.AddSeeingCore(registry);
 
         services.Where(d => d.ServiceType == typeof(ITool))
-            .Select(d => d.ImplementationType?.Name)
-            .Should()
-            .NotContain("ReadTool")
-            .And.NotContain("WriteTool")
-            .And.NotContain("BashTool");
+            .Should().BeEmpty("AddSeeingCore alone must not register any ITool");
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using ModelContextProtocol.Client;
+using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Mcp;
@@ -53,10 +54,9 @@ public sealed class McpModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
+        TryRegisterConfigSection(services);
         services.AddOptions<McpOptions>();
 
-        // Interim: register MCP stack so existing discovery still works
-        // without Activate until Host Shape lands.
         services.AddSingleton<McpGlobalPolicy>(sp =>
         {
             var options = sp.GetService<Microsoft.Extensions.Options.IOptions<McpOptions>>()?.Value
@@ -101,6 +101,7 @@ public sealed class McpModule : ISeeingModule, IUiContribution
         services.AddSingleton<IMcpConfigPersistence, McpConfigPersistence>();
         services.AddSingleton<IMcpManager, McpClientManager>();
         services.AddSingleton<McpClientManager>(sp => (McpClientManager)sp.GetRequiredService<IMcpManager>());
+        services.AddSingleton<IComponentLoader, McpLoader>();
     }
 
     /// <inheritdoc />
@@ -122,5 +123,22 @@ public sealed class McpModule : ISeeingModule, IUiContribution
     {
         _ui?.Unregister(Id);
         return Task.CompletedTask;
+    }
+
+    private static void TryRegisterConfigSection(IServiceCollection services)
+    {
+        foreach (var descriptor in services)
+        {
+            if (descriptor.ServiceType == typeof(IConfigSectionRegistry) &&
+                descriptor.ImplementationInstance is IConfigSectionRegistry registry)
+            {
+                registry.Register(new ConfigSectionMeta(
+                    "Mcp",
+                    "mcp.json",
+                    ConfigScope.Both,
+                    typeof(Dictionary<string, McpServerConfig>)));
+                return;
+            }
+        }
     }
 }

@@ -28,6 +28,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
   </ItemGroup>
 

@@ -34,6 +34,10 @@
     <ProjectReference Include="..\..\src\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Agents.BuiltIn\Seeing.Agent.Agents.BuiltIn.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Llm.OpenAI\Seeing.Agent.Llm.OpenAI.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Llm.Anthropic\Seeing.Agent.Llm.Anthropic.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />

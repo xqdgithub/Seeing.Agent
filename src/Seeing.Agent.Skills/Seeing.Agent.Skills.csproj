@@ -14,6 +14,7 @@
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="YamlDotNet" />
     <ProjectReference Include="..\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
   </ItemGroup>
 

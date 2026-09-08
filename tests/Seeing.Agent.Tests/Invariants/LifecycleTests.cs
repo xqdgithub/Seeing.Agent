@@ -106,7 +106,7 @@ public class LifecycleTests
         modules[0].Should().BeOfType<StubNewWorldModule>();
     }
 
-    private sealed class StubFsModule : ISeeingModule
+    private class StubFsModule : ISeeingModule
     {
         public string Id => "filesystem";
         public IReadOnlyList<string> ProvidedTools => [];
@@ -119,7 +119,7 @@ public class LifecycleTests
 
     private sealed class StubFsModule2 : StubFsModule;
 
-    private sealed class StubOldWorldModule : ISeeingModule
+    private class StubOldWorldModule : ISeeingModule
     {
         public string Id => "io.local";
         public IReadOnlyList<string> ProvidedTools => [];
