@@ -1,6 +1,7 @@
 ﻿using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json.Serialization;
+using FunctionSchema = Seeing.Agent.Abstractions.Llm.FunctionSchema;
 
 namespace Seeing.Agent.Core.Models
 {
@@ -92,24 +93,4 @@ namespace Seeing.Agent.Core.Models
         public FunctionSchema Function { get; set; } = new();
     }
 
-    /// <summary>
-    /// 函数 Schema
-    /// </summary>
-    public record FunctionSchema
-    {
-        [JsonPropertyName("name")]
-        public string Name { get; set; } = string.Empty;
-
-        [JsonIgnore]
-        public string RealName { get; set; } = string.Empty;
-
-        [JsonIgnore]
-        public string ServerName { get; set; } = string.Empty;
-
-        [JsonPropertyName("description")]
-        public string? Description { get; set; }
-
-        [JsonPropertyName("parameters")]
-        public System.Text.Json.JsonElement? Parameters { get; set; }
-    }
 }

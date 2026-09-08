@@ -1,5 +1,6 @@
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Skills;
 using System.Text;
 using System.Text.Json;

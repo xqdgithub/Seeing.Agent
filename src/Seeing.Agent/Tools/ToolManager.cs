@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Decorators;

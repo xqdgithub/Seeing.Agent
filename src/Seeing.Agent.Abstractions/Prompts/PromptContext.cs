@@ -1,8 +1,8 @@
-﻿using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Models;
-
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Skills;
-namespace Seeing.Agent.Core.Prompts;
+
+namespace Seeing.Agent.Abstractions.Prompts;
 
 /// <summary>
 /// 提示词构建上下文 - 包含工具、代理、技能等信息
@@ -13,7 +13,7 @@ public class PromptContext
     public IEnumerable<FunctionSchema>? Tools { get; set; }
 
     /// <summary>可用代理列表</summary>
-    public IEnumerable<Seeing.Agent.Abstractions.Agents.AgentDefinition>? Agents { get; set; }
+    public IEnumerable<AgentDefinition>? Agents { get; set; }
 
     /// <summary>可用技能列表</summary>
     public IEnumerable<SkillInfo>? Skills { get; set; }

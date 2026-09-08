@@ -12,6 +12,7 @@ using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Core.Prompts;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Llm;

@@ -1,8 +1,9 @@
 ﻿using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Agents;
-using FluentAssertions;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Core.Prompts;
+using FluentAssertions;
 using System.Text.Json;
 using Xunit;
 

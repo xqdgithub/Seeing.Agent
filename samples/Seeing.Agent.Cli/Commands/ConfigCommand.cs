@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Cli.Infrastructure;
 using Seeing.Agent.Configuration;
+using SeeingConfigScope = Seeing.Agent.Configuration.ConfigScope;
 
 namespace Seeing.Agent.Cli.Commands;
 
@@ -65,7 +66,7 @@ public static class ConfigCommand
             Console.WriteLine($"  来源: {info.SourceDescription}");
             Console.WriteLine($"  范围: {info.Scope}");
 
-            if (info.Scope != ConfigScope.ProjectOnly)
+            if (info.Scope != SeeingConfigScope.ProjectOnly)
                 Console.WriteLine($"  用户级: {info.UserPath ?? "(无)"}");
             Console.WriteLine($"  项目级: {info.ProjectPath}");
         }
@@ -108,7 +109,7 @@ public static class ConfigCommand
             return;
         }
 
-        var level = meta.Scope == ConfigScope.UserOnly ? ConfigLevel.User : ConfigLevel.Project;
+        var level = meta.Scope == SeeingConfigScope.UserOnly ? ConfigLevel.User : ConfigLevel.Project;
         var raw = await config.GetRawJsonAsync(level, meta.FileName);
         var rootProp = meta.FileName == "seeing.json" ? "SeeingAgent" : null;
 

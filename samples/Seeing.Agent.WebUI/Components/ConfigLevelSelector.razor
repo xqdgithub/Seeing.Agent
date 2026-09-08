@@ -1,9 +1,9 @@
 @using AntDesign
-@using Seeing.Agent.Configuration
+@using SeeingConfigScope = Seeing.Agent.Configuration.ConfigScope
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
 
-@if (_scope is ConfigScope.ProjectOnly && !string.IsNullOrWhiteSpace(SectionName))
+@if (_scope is SeeingConfigScope.ProjectOnly && !string.IsNullOrWhiteSpace(SectionName))
 {
     <span style="margin-right: 8px;">保存到：</span>
     <Tag Color="@("blue")">项目级</Tag>
@@ -35,7 +35,7 @@ else
     [Parameter] public bool ShowOverlapWarning { get; set; } = true;
 
     private ConfigLevel _selectedLevel;
-    private ConfigScope _scope = ConfigScope.Both;
+    private SeeingConfigScope _scope = SeeingConfigScope.Both;
     private string? _scopeReason;
     private bool _hasUserSection;
 
