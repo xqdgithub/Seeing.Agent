@@ -30,4 +30,9 @@ public interface IExecutionSubmitter
     /// 等待指定执行进入终态。
     /// </summary>
     Task WaitForExecutionAsync(string executionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 取消进程内全部未终态执行（热重载强制切换等）。
+    /// </summary>
+    Task<int> CancelAllInFlightAsync(CancellationToken cancellationToken = default);
 }

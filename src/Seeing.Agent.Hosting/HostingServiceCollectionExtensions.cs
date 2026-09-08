@@ -92,6 +92,7 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton<ExecutionJobService>();
         services.AddSingleton<IExecutionSubmitter>(sp => sp.GetRequiredService<ExecutionJobService>());
         services.AddSingleton<IExecutionStatusProvider>(sp => sp.GetRequiredService<ExecutionJobService>());
+        services.AddSingleton<IExecutionInFlightBoundary>(sp => sp.GetRequiredService<ExecutionJobService>());
 
         // idle resume + Session 事件总线接线
         services.AddHostedService<AgentLoopSchedulerHostedService>();

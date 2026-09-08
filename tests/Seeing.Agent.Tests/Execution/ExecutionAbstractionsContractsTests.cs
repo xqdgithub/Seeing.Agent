@@ -16,6 +16,8 @@ public class ExecutionAbstractionsContractsTests
             !.ReturnType.Should().Be(typeof(SessionExecutionOverview));
         type.GetMethod(nameof(IExecutionStatusProvider.GetExecution), [typeof(string)])
             !.ReturnType.Should().Be(typeof(ExecutionRecord));
+        type.GetMethod(nameof(IExecutionStatusProvider.HasAnyActiveExecution), Type.EmptyTypes)
+            !.ReturnType.Should().Be(typeof(bool));
     }
 
     [Fact]
@@ -38,6 +40,20 @@ public class ExecutionAbstractionsContractsTests
             !.ReturnType.Should().Be(typeof(Task<int>));
         type.GetMethod(nameof(IExecutionSubmitter.WaitForExecutionAsync), [typeof(string), typeof(CancellationToken)])
             !.ReturnType.Should().Be(typeof(Task));
+        type.GetMethod(nameof(IExecutionSubmitter.CancelAllInFlightAsync), [typeof(CancellationToken)])
+            !.ReturnType.Should().Be(typeof(Task<int>));
+    }
+
+    [Fact]
+    public void IExecutionInFlightBoundary_ShouldDeclareProbeAndCancel()
+    {
+        var type = typeof(IExecutionInFlightBoundary);
+        type.GetMethod(nameof(IExecutionInFlightBoundary.HasInFlight), Type.EmptyTypes)
+            !.ReturnType.Should().Be(typeof(bool));
+        type.GetMethod(nameof(IExecutionInFlightBoundary.ListInFlightExecutionIds), Type.EmptyTypes)
+            .Should().NotBeNull();
+        type.GetMethod(nameof(IExecutionInFlightBoundary.CancelAllInFlightAsync), [typeof(CancellationToken)])
+            !.ReturnType.Should().Be(typeof(Task<int>));
     }
 
     [Fact]

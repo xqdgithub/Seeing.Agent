@@ -33,7 +33,7 @@ namespace Seeing.Agent.Hosting.Execution;
 /// Background execution service that manages execution jobs independently of UI connections.
 /// Supports queuing per session, event streaming, and automatic cleanup.
 /// </summary>
-public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecutionSubmitter
+public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecutionSubmitter, IExecutionInFlightBoundary
 {
     private readonly ConcurrentDictionary<string, SessionExecutionQueue> _sessionQueues = new();
     private readonly ConcurrentDictionary<string, ExecutionRecord> _executions = new();
@@ -350,6 +350,56 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     public ExecutionRecord? GetExecution(string executionId)
     {
         return _executions.TryGetValue(executionId, out var record) ? record : null;
+    }
+
+    /// <inheritdoc />
+    public bool HasAnyActiveExecution()
+    {
+        foreach (var queue in _sessionQueues.Values)
+        {
+            if (queue.HasActiveExecution || queue.HasQueued)
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    public bool HasInFlight() => HasAnyActiveExecution();
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> ListInFlightExecutionIds()
+    {
+        var ids = new List<string>();
+        foreach (var queue in _sessionQueues.Values)
+        {
+            var current = queue.CurrentExecution;
+            if (current is { IsTerminal: false })
+                ids.Add(current.ExecutionId);
+
+            foreach (var queued in queue.GetQueuedExecutions())
+            {
+                if (!queued.IsTerminal)
+                    ids.Add(queued.ExecutionId);
+            }
+        }
+
+        return ids;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> CancelAllInFlightAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var count = 0;
+        foreach (var id in ListInFlightExecutionIds())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await CancelAsync(id, cancellationToken).ConfigureAwait(false))
+                count++;
+        }
+
+        return count;
     }
 
     /// <summary>
@@ -930,6 +980,15 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         // 统一消息来源：仅活跃消息（已压缩标记的旧消息保留展示但不传递给 LLM）
         foreach (var msg in session.GetActiveMessages())
         {
+            // schema_snapshot 元数据消息不进入模型历史
+            if (msg.Metadata != null &&
+                msg.Metadata.ContainsKey(ChatEventTracker.SchemaSnapshotMetadataKey) &&
+                string.IsNullOrEmpty(msg.Content) &&
+                (msg.ToolCalls == null || msg.ToolCalls.Count == 0))
+            {
+                continue;
+            }
+
             var chatMessage = new ChatMessage
             {
                 Role = msg.Role,

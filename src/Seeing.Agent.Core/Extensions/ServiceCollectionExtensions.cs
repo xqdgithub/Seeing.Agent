@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Skills;
@@ -348,6 +348,7 @@ namespace Seeing.Agent.Extensions
             services.TryAddSingleton<IModuleCatalog>(sp => sp.GetRequiredService<ModuleCatalog>());
             services.TryAddSingleton<SettlementEngine>();
             services.TryAddSingleton<ModuleLifecycleManager>();
+            services.TryAddSingleton<ModuleReloadOptions>();
 
             // io.local — 登记为 ISeeingModule，供结算 DependsOn（filesystem/shell/git）满足
             var localIoModule = new LocalExecutionWorldModule();
@@ -712,6 +713,20 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<IReloadHandler, AgentManagerReloadHandler>();
             services.AddSingleton<IReloadHandler, SessionReloadHandler>();
             services.AddSingleton<IReloadHandler>(sp => sp.GetRequiredService<ComponentManager>());
+            // 进程级模块结算热重载（在途边界；IExecutionInFlightBoundary 由 Hosting 可选登记）
+            services.AddSingleton<ModuleSettlementReloadHandler>(sp =>
+                new ModuleSettlementReloadHandler(
+                    sp.GetRequiredService<SettlementEngine>(),
+                    sp.GetRequiredService<ModuleLifecycleManager>(),
+                    sp.GetRequiredService<ModuleCatalog>(),
+                    sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
+                    sp.GetServices<ISeeingModule>(),
+                    sp.GetRequiredService<ModuleReloadOptions>(),
+                    sp.GetService<ProcessSettlementOptions>(),
+                    sp.GetService<IExecutionInFlightBoundary>(),
+                    sp.GetService<ILogger<ModuleSettlementReloadHandler>>()));
+            services.AddSingleton<IReloadHandler>(sp =>
+                sp.GetRequiredService<ModuleSettlementReloadHandler>());
         }
 
         /// <summary>

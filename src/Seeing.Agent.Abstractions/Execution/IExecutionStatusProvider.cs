@@ -14,4 +14,9 @@ public interface IExecutionStatusProvider
     /// 获取指定执行记录
     /// </summary>
     ExecutionRecord? GetExecution(string executionId);
+
+    /// <summary>
+    /// 进程内是否存在任意未终态执行（含排队）。
+    /// </summary>
+    bool HasAnyActiveExecution();
 }

@@ -17,6 +17,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     private readonly ILogger<ReloadOrchestrator> _logger;
     private readonly IConfigSectionStore _configStore;
     private readonly IWorkspaceProvider _workspace;
+    private readonly Seeing.Agent.Modules.ModuleReloadOptions? _moduleReloadOptions;
     private readonly Dictionary<Type, List<IReloadHandler>> _routes;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _stateLock = new();
@@ -26,15 +27,31 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     private bool _startedRound;
     private bool _disposed;
 
+    /// <summary>
+    /// 模块 Deactivate 在途策略（与 <see cref="Seeing.Agent.Modules.ModuleReloadOptions.ForceCancelInFlight"/> 同步）。
+    /// true = 强制取消在途；false = 推迟 Deactivate（默认）。
+    /// </summary>
+    public bool ForceCancelInFlightOnModuleReload
+    {
+        get => _moduleReloadOptions?.ForceCancelInFlight ?? false;
+        set
+        {
+            if (_moduleReloadOptions is not null)
+                _moduleReloadOptions.ForceCancelInFlight = value;
+        }
+    }
+
     public ReloadOrchestrator(
         IEnumerable<IReloadHandler> handlers,
         IConfigSectionStore configStore,
         IWorkspaceProvider workspace,
-        ILogger<ReloadOrchestrator> logger)
+        ILogger<ReloadOrchestrator> logger,
+        Seeing.Agent.Modules.ModuleReloadOptions? moduleReloadOptions = null)
     {
         _logger = logger;
         _configStore = configStore;
         _workspace = workspace;
+        _moduleReloadOptions = moduleReloadOptions;
 
         _routes = new Dictionary<Type, List<IReloadHandler>>();
         foreach (var handler in handlers)
