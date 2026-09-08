@@ -188,6 +188,32 @@
     flex-shrink: 0;
 }
 
+.session-scenario-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-secondary);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    margin-left: var(--space-2);
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.session-scenario-badge .anticon {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.session-scenario-switcher {
+    margin-left: var(--space-1);
+}
+
 /* 子会话只读元信息：Agent / Model 分芯片展示 */
 .subagent-meta {
     display: inline-flex;

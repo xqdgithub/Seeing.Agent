@@ -14,6 +14,7 @@
 @using Seeing.Agent.Abstractions.Execution
 @using Seeing.Agent.Execution
 @using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Scenarios
 @using Seeing.Agent.Llm
 @using Seeing.Agent.Tools
 @using Seeing.Agent.Skills
@@ -49,6 +50,7 @@
             @Header(Context)
         }
         <!-- 内置工具栏：Agent/模型切换、重命名、分支、清空、出站绑定（仅 Full 模式）；左右插槽由外层注入页级导航 -->
+        <CascadingValue Name="SessionScenario" Value="@SessionState.CurrentSession?.Scenario">
         <SessionToolbar Context="Context"
                         Mode="ViewMode"
                         LeftActions="ToolbarLeftActions"
@@ -123,7 +125,8 @@
                         }
                         else
                         {
-                            <SlotHost SlotName="session_prompt" />
+                            <SlotHost SlotName="session_prompt"
+                                      SessionScenario="@SessionState.CurrentSession?.Scenario" />
                             <PromptInput IsProcessing="@SessionState.HasActiveExecution"
                                          Placeholder="@GetPlaceholderText()"
                                          HelpText="@GetHelpText()"
@@ -158,6 +161,7 @@
             <Alert Type="@AlertType.Error" Message="@ErrorMessage" ShowIcon="true" Closable="true"
                    OnClose="@OnClearError" Class="session-error-alert" />
         }
+        </CascadingValue>
     }
     else
     {
@@ -271,6 +275,7 @@
         Context.SessionId = effectiveSessionId ?? "";
         Context.SetAgentAsync = OnAgentChanged;
         Context.SetModelAsync = OnModelChanged;
+        Context.SetScenarioAsync = OnScenarioChanged;
         Context.SetAcpMode = OnAcpModeChanged;
         Context.RenameAsync = RenameSessionAsync;
         Context.BranchAsync = OnBranchSession;
@@ -559,7 +564,7 @@
     }
 
     /// <summary>
-    /// 会话未指定 Agent/Model 时，按 .seeing 配置解析默认值并同步到 UI 状态。
+    /// 会话未指定 Agent/Model 时，按会话有效场景 defaultAgent（再回退配置 DefaultAgent）解析并同步到 UI。
     /// Native：空 SelectedModel 回填 Agent.Model / DefaultModel；ACP 不回退 Native DefaultModel。
     /// </summary>
     private async Task EnsureDefaultAgentSelectionAsync()
@@ -571,10 +576,18 @@
 
         if (string.IsNullOrWhiteSpace(SessionState.CurrentSession.SelectedAgent))
         {
-            var agentId = await AgentSelectionResolver.ResolveAgentIdAsync(
-                null,
-                null,
-                SessionState.CancellationToken);
+            var processScenario = SeeingAgentOptions.CurrentValue.Scenario;
+            var effective = Services.SessionShellVisibility.ResolveEffectiveScenario(
+                SessionState.CurrentSession.Scenario,
+                processScenario);
+            var scenarioDefault = Services.SessionShellVisibility.ResolveDefaultAgent(effective);
+
+            var agentId = !string.IsNullOrWhiteSpace(scenarioDefault)
+                ? scenarioDefault!
+                : await AgentSelectionResolver.ResolveAgentIdAsync(
+                    null,
+                    null,
+                    SessionState.CancellationToken);
             SessionState.SelectedAgent = agentId;
             SessionState.CurrentSession.SelectedAgent = agentId;
             changed = true;
@@ -789,6 +802,10 @@
         Context.ExecutionStatus = SessionState.ExecutionStatus;
         Context.CurrentTodoList = SessionState.CurrentTodoList;
         Context.ModelInvalid = _modelInvalid;
+        Context.SessionScenario = s?.Scenario;
+        Context.EffectiveScenario = Services.SessionShellVisibility.ResolveEffectiveScenario(
+            s?.Scenario,
+            SeeingAgentOptions.CurrentValue.Scenario);
         Context.NotifyStateChanged();
         _ = InvokeAsync(StateHasChanged); // 渲染自触发：外层头部读新值
         _ = RefreshIsAcpAsync();
@@ -871,6 +888,36 @@
         }
 
         SyncContextState();
+    }
+
+    /// <summary>
+    /// 会话级 Scenario 切换：只写 session.Scenario 并应用场景 defaultAgent；
+    /// 不触碰进程级 Activate；仅对下一次 Submit 生效。
+    /// </summary>
+    private async Task OnScenarioChanged(string? value)
+    {
+        if (SessionState.CurrentSession == null)
+            return;
+
+        var trimmed = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        SessionState.CurrentSession.Scenario = trimmed;
+
+        var effective = Services.SessionShellVisibility.ResolveEffectiveScenario(
+            trimmed,
+            SeeingAgentOptions.CurrentValue.Scenario);
+        var defaultAgent = Services.SessionShellVisibility.ResolveDefaultAgent(effective);
+        if (!string.IsNullOrWhiteSpace(defaultAgent))
+        {
+            SessionState.SelectedAgent = defaultAgent;
+            SessionState.CurrentSession.SelectedAgent = defaultAgent;
+        }
+
+        SessionState.CurrentSession.UpdatedAt = DateTime.Now;
+        SyncContextState();
+        await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+        SyncContextState();
+        _ = LoadCommandsFromBackend();
+        await RefreshIsAcpAsync();
     }
 
     /// <summary>

@@ -1,14 +1,17 @@
 @using AntDesign
+@using Microsoft.Extensions.Options
 @using Seeing.Agent.WebUI.State
 @using Services = Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @using Seeing.Agent.Abstractions.Agents
 @using Seeing.Agent.Llm
 @using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Scenarios
 @inject AppState AppState
 @inject IAgentRegistry AgentRegistry
 @inject ILlmService LlmService
 @inject IMessageService MessageService
+@inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @implements IDisposable
 
 @if (Mode == Services.SessionWindowMode.Full)
@@ -35,6 +38,27 @@
                         @TruncateWorkspacePath(Context.GetWorkspace())
                     </span>
                 </Tooltip>
+            }
+            @if (!Context.IsSubAgentView && Context.CurrentSession != null)
+            {
+                <Tooltip Title="@ScenarioBadgeTooltip">
+                    <span Class="session-scenario-badge" data-testid="session-scenario-badge">
+                        <Icon Type="@IconType.Outline.Appstore" />
+                        @(EffectiveScenarioDisplay)
+                    </span>
+                </Tooltip>
+                <Select TItemValue="string"
+                        TItem="ScenarioOption"
+                        Value="@ScenarioSelectValue"
+                        ValueChanged="EventCallback.Factory.Create<string?>(this, OnScenarioChanged)"
+                        DataSource="@_scenarioOptions"
+                        ValueName="@nameof(ScenarioOption.Value)"
+                        LabelName="@nameof(ScenarioOption.Label)"
+                        Style="min-width: 110px;"
+                        Size="@InputSize.Small"
+                        Placeholder="跟随进程"
+                        AllowClear="true"
+                        Class="session-scenario-switcher" />
             }
             @if (Context.IsSubAgentView)
             {
@@ -213,11 +237,30 @@
 
     private List<string> _agentNames = new();
     private List<ModelViewModel> _models = new();
+    private readonly List<ScenarioOption> _scenarioOptions = BuiltInScenarios.All
+        .Select(s => new ScenarioOption(s.Name, s.Name))
+        .ToList();
     private bool _optionsReady;
     private bool RenameModalVisible;
     private RenameSessionForm RenameForm { get; set; } = new();
     private bool OutboundModalVisible;
     private OutboundEditForm OutboundForm { get; set; } = new();
+
+    private string? ProcessScenario => SeeingAgentOptions.CurrentValue.Scenario;
+
+    private string? EffectiveScenario =>
+        Services.SessionShellVisibility.ResolveEffectiveScenario(Context.SessionScenario, ProcessScenario);
+
+    private string EffectiveScenarioDisplay =>
+        string.IsNullOrWhiteSpace(EffectiveScenario) ? "—" : EffectiveScenario!;
+
+    private string ScenarioBadgeTooltip =>
+        Context.SessionScenario is null
+            ? $"会话场景：跟随进程（{EffectiveScenarioDisplay}）"
+            : $"会话场景：{Context.SessionScenario}（仅影响下一次 Submit）";
+
+    /// <summary>Select 绑定值：null 表示跟随进程（session.Scenario=null）。</summary>
+    private string? ScenarioSelectValue => Context.SessionScenario;
 
     /// <summary>
     /// 选项缓存：大屏切换主窗口会重建工具栏，复用内存选项避免重复查询（配置热重载时短暂旧值可接受）。
@@ -342,6 +385,12 @@
             await Context.SetAgentAsync(value);
     }
 
+    private async Task OnScenarioChanged(string? value)
+    {
+        if (Context.SetScenarioAsync != null)
+            await Context.SetScenarioAsync(string.IsNullOrWhiteSpace(value) ? null : value);
+    }
+
     private async Task OnModelChanged(string value)
     {
         if (Context.SetModelAsync != null)
@@ -464,4 +513,6 @@
         public string ChannelId { get; set; } = "";
         public string UserId { get; set; } = "";
     }
+
+    private sealed record ScenarioOption(string Value, string Label);
 }

@@ -40,9 +40,17 @@ public sealed class SessionWindowContext
     /// <summary>Native 模型是否校验失败（发送时校验，外层头部据此标红模型下拉框）</summary>
     public bool ModelInvalid { get; internal set; }
 
+    /// <summary>会话级 Scenario 原始值（null = 跟随进程级）。</summary>
+    public string? SessionScenario { get; internal set; }
+
+    /// <summary>有效场景名（session.Scenario ?? 进程级）。</summary>
+    public string? EffectiveScenario { get; internal set; }
+
     // ---- 操作（窗口内实现） ----
     public Func<string, Task>? SetAgentAsync { get; internal set; }
     public Func<string, Task>? SetModelAsync { get; internal set; }
+    /// <summary>切换会话级 Scenario（null/空 = 跟随进程）；只影响下一次 Submit。</summary>
+    public Func<string?, Task>? SetScenarioAsync { get; internal set; }
     public Action<string>? SetAcpMode { get; internal set; }
     public Func<string, Task>? RenameAsync { get; internal set; }
     public Func<Task>? BranchAsync { get; internal set; }
