@@ -92,9 +92,9 @@ namespace Seeing.Agent.Tools.FileSystem
                     return Task.FromResult(Failure($"目录不存在: {searchPath}"));
                 }
 
-                // 托管枚举 + IFileSystem 读内容；ripgrep 经 ISubprocess 加速为后续 Important
-                var matches = FileSystemHelper.GrepSearch(
-                    _world.FileSystem,
+                // Prefer ripgrep via ISubprocess when available; else managed walk + IFileSystem.
+                var matches = RipgrepSearch.Grep(
+                    _world,
                     searchPath,
                     pattern,
                     includePattern,

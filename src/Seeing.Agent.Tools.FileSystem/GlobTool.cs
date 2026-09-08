@@ -96,8 +96,8 @@ namespace Seeing.Agent.Tools.FileSystem
 
             _logger.LogInformation("Glob 搜索: pattern={Pattern}, path={Path}", pattern, searchPath);
 
-            // 执行搜索（纯托管枚举；ripgrep/fd 经 ISubprocess 加速为后续 Important）
-            var files = FileSystemHelper.GlobSearch(_world.FileSystem, searchPath, pattern, DefaultLimit);
+            // Prefer ripgrep --files via ISubprocess when available; else managed glob walk.
+            var files = RipgrepSearch.Glob(_world, searchPath, pattern, DefaultLimit);
 
             // 构建输出
             var outputLines = new List<string>();
