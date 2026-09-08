@@ -689,7 +689,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<IShellEnvironmentService, ShellEnvironmentService>();
 
             // Shell 服务（跨平台 Shell 选择和进程管理）
-            services.AddSingleton<IShellService, ShellService>();
+            services.AddSingleton<IShellService, DefaultShellService>();
 
             // 命令执行服务（触发 command.execute.before Hook）
             services.AddSingleton<ICommandService, CommandService>();
