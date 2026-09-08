@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Scheduler.Hosting;
 using Seeing.Agent.Scheduler.Skills;
 using Seeing.Agent.Skills;
 using Xunit;
@@ -24,6 +25,7 @@ public class SchedulerSkillRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<SkillManager>();
+        services.AddSingleton<SchedulerModuleActivity>();
         services.AddHostedService<SchedulerSkillRegistrationHostedService>();
 
         await using var provider = services.BuildServiceProvider();
@@ -51,6 +53,7 @@ public class SchedulerSkillRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<SchedulerModuleActivity>();
         services.AddHostedService<SchedulerSkillRegistrationHostedService>();
 
         await using var provider = services.BuildServiceProvider();

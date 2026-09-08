@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -369,6 +370,7 @@ public class SchedulerIntegrationTests
             .AddSingleton<AgentSelectionResolver>(sp =>
                 new AgentSelectionResolver(new Mock<IAgentRuntimeManager>().Object))
             .AddSingleton<IWorkspaceProvider>(ws.Workspace)
+            .AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == ws.Workspace.GetProjectRoot()))
             .AddSingleton<ISessionManager>(sessionManager)
             .AddSingleton<HookManager>(hooks)
             .AddSingleton(dispatcher)

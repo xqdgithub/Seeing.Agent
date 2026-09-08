@@ -22,10 +22,13 @@ public class ConfigSectionRegistryConsumptionTests
             "DefaultAgent",
             "DefaultModel",
             "GlobalWorkspaceRoot",
+            "Modules",
             "Permission",
             "PluginEnabled",
             "Plugins",
             "Providers",
+            "Scenario",
+            "Seams",
             "TitleGeneration",
             "ToolOutput",
             "Workspace");

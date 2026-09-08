@@ -85,6 +85,7 @@ namespace Seeing.Session.Core
 
         // === 消息历史 ===
         private List<SessionMessage> _messages = new();
+        private readonly object _messagesGate = new();
 
         /// <summary>
         /// 消息列表（只读视图）。写入请使用 <see cref="AddMessage"/> 等统一编辑 API，
@@ -96,9 +97,12 @@ namespace Seeing.Session.Core
             get => _messages;
             set
             {
-                _messages = value is List<SessionMessage> list
-                    ? list
-                    : value?.ToList() ?? new List<SessionMessage>();
+                lock (_messagesGate)
+                {
+                    _messages = value is List<SessionMessage> list
+                        ? list
+                        : value?.ToList() ?? new List<SessionMessage>();
+                }
             }
         }
 
@@ -112,9 +116,10 @@ namespace Seeing.Session.Core
         /// </summary>
         public List<SessionMessage> GetActiveMessages()
         {
-            // 先做快照（内部 List 拷贝走 CopyTo 快速路径，无版本检查）：并发追加消息（事件管道）时不抛异常，
-            // 与 TokenBudget 估算并发执行的场景一致
-            var snapshot = new List<SessionMessage>(_messages);
+            // 锁内快照：避免与并发 AddMessage 竞态（List 构造走 CopyTo，无版本检查但仍可能因增长抛 ArgumentException）
+            List<SessionMessage> snapshot;
+            lock (_messagesGate)
+                snapshot = new List<SessionMessage>(_messages);
 
             var lastSummaryIndex = -1;
             for (var i = snapshot.Count - 1; i >= 0; i--)
@@ -222,7 +227,8 @@ namespace Seeing.Session.Core
             if (message == null) throw new ArgumentNullException(nameof(message));
             if (string.IsNullOrEmpty(message.SessionId))
                 message.SessionId = Id;
-            _messages.Add(message);
+            lock (_messagesGate)
+                _messages.Add(message);
             UpdatedAt = DateTime.Now;
             LastActiveAt = DateTime.Now;
         }
@@ -235,12 +241,15 @@ namespace Seeing.Session.Core
             if (messages == null) throw new ArgumentNullException(nameof(messages));
 
             var added = false;
-            foreach (var message in messages)
+            lock (_messagesGate)
             {
-                if (message == null) throw new ArgumentNullException(nameof(messages));
-                message.SessionId ??= Id;
-                _messages.Add(message);
-                added = true;
+                foreach (var message in messages)
+                {
+                    if (message == null) throw new ArgumentNullException(nameof(messages));
+                    message.SessionId ??= Id;
+                    _messages.Add(message);
+                    added = true;
+                }
             }
 
             if (!added)
@@ -257,7 +266,8 @@ namespace Seeing.Session.Core
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
             message.SessionId ??= Id;
-            _messages.Insert(index, message);
+            lock (_messagesGate)
+                _messages.Insert(index, message);
             UpdatedAt = DateTime.Now;
             LastActiveAt = DateTime.Now;
         }
@@ -268,8 +278,11 @@ namespace Seeing.Session.Core
         public bool RemoveMessage(SessionMessage message)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
-            if (!_messages.Remove(message))
-                return false;
+            lock (_messagesGate)
+            {
+                if (!_messages.Remove(message))
+                    return false;
+            }
 
             UpdatedAt = DateTime.Now;
             return true;
@@ -282,14 +295,17 @@ namespace Seeing.Session.Core
         {
             if (match == null) throw new ArgumentNullException(nameof(match));
 
-            for (var i = _messages.Count - 1; i >= 0; i--)
+            lock (_messagesGate)
             {
-                if (!match(_messages[i]))
-                    continue;
+                for (var i = _messages.Count - 1; i >= 0; i--)
+                {
+                    if (!match(_messages[i]))
+                        continue;
 
-                _messages.RemoveAt(i);
-                UpdatedAt = DateTime.Now;
-                return true;
+                    _messages.RemoveAt(i);
+                    UpdatedAt = DateTime.Now;
+                    return true;
+                }
             }
 
             return false;
@@ -302,7 +318,9 @@ namespace Seeing.Session.Core
         {
             if (match == null) throw new ArgumentNullException(nameof(match));
 
-            var removed = _messages.RemoveAll(match);
+            int removed;
+            lock (_messagesGate)
+                removed = _messages.RemoveAll(match);
             if (removed > 0)
                 UpdatedAt = DateTime.Now;
 
@@ -320,12 +338,15 @@ namespace Seeing.Session.Core
             // 先物化输入再清空：调用方可能传入基于本会话 Messages 的惰性序列
             // （如回滚场景 session.Messages.Take(n)），若先 Clear 再枚举会清空全部消息。
             var materialized = messages.ToList();
-            _messages.Clear();
-            foreach (var message in materialized)
+            lock (_messagesGate)
             {
-                if (message == null) throw new ArgumentNullException(nameof(messages));
-                message.SessionId = Id;
-                _messages.Add(message);
+                _messages.Clear();
+                foreach (var message in materialized)
+                {
+                    if (message == null) throw new ArgumentNullException(nameof(messages));
+                    message.SessionId = Id;
+                    _messages.Add(message);
+                }
             }
 
             UpdatedAt = DateTime.Now;
