@@ -28,7 +28,7 @@ using Xunit;
 namespace Seeing.Agent.Tests.Tools;
 
 /// <summary>
-/// TaskTool：子会话 = 普通会话，创建子会话 + 提交执行引擎（ExecutionJobService）。
+/// TaskTool：子会话 = 普通会话，创建子会话 + 提交执行引擎（IExecutionSubmitter）。
 /// </summary>
 public class TaskToolTests
 {
@@ -41,12 +41,13 @@ public class TaskToolTests
             fixture.SessionManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
-            fixture.ExecService);
+            fixture.ExecService,
+            fixture.ExecService,
+            fixture.EventPublisher);
         var context = new ToolContext
         {
             SessionId = fixture.ParentId,
-            CallId = "call-1",
-            Services = fixture.ToolProvider
+            CallId = "call-1"
         };
 
         var result = await tool.ExecuteAsync(
@@ -84,12 +85,13 @@ public class TaskToolTests
             fixture.SessionManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
-            fixture.ExecService);
+            fixture.ExecService,
+            fixture.ExecService,
+            fixture.EventPublisher);
         var context = new ToolContext
         {
             SessionId = fixture.ParentId,
-            CallId = "call-1",
-            Services = fixture.ToolProvider
+            CallId = "call-1"
         };
 
         var result = await tool.ExecuteAsync(
@@ -124,6 +126,21 @@ public class TaskToolTests
     }
 
     [Fact]
+    public void TaskTool_ShouldNotReferenceExecutionJobService()
+    {
+        var sourcePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "Seeing.Agent.Hosting", "Tools", "TaskTool.cs"));
+
+        File.Exists(sourcePath).Should().BeTrue($"TaskTool source not found at {sourcePath}");
+
+        var source = File.ReadAllText(sourcePath);
+        source.Should().NotContain("ExecutionJobService");
+        source.Should().NotContain("GetService(typeof(");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_Foreground_ShouldWriteOriginToolCallIdToChildMetadata()
     {
         using var fixture = new TaskToolFixture(executor: BuildExecutor("final answer"));
@@ -132,12 +149,13 @@ public class TaskToolTests
             fixture.SessionManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
-            fixture.ExecService);
+            fixture.ExecService,
+            fixture.ExecService,
+            fixture.EventPublisher);
         var context = new ToolContext
         {
             SessionId = fixture.ParentId,
-            CallId = "call-origin-1",
-            Services = fixture.ToolProvider
+            CallId = "call-origin-1"
         };
 
         var result = await tool.ExecuteAsync(
@@ -164,8 +182,10 @@ public class TaskToolTests
             fixture.SessionManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
-            fixture.ExecService);
-        var context = new ToolContext { SessionId = fixture.ParentId, Services = fixture.ToolProvider };
+            fixture.ExecService,
+            fixture.ExecService,
+            fixture.EventPublisher);
+        var context = new ToolContext { SessionId = fixture.ParentId };
 
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new
@@ -224,7 +244,7 @@ public class TaskToolTests
         public Mock<IAgentRegistry> AgentRegistry { get; }
         public Mock<IAgentLoopScheduler> LoopScheduler { get; }
         public ExecutionJobService ExecService { get; }
-        public ServiceProvider ToolProvider { get; }
+        public IExecutionEventPublisher EventPublisher { get; }
         public ConcurrentBag<(string SessionId, string Text, IDictionary<string, string>? Metadata)> SyntheticInvocations { get; } = new();
         private readonly ServiceProvider _provider;
 
@@ -320,6 +340,7 @@ public class TaskToolTests
             var publisher = new ExecutionEventPublisher(
                 new ExecutionOptions(),
                 NullLogger<ExecutionEventPublisher>.Instance);
+            EventPublisher = publisher;
 
             ExecService = new ExecutionJobService(
                 _provider,
@@ -331,16 +352,11 @@ public class TaskToolTests
                     new CompressionService(null!, Mock.Of<ISessionManager>()),
                     Mock.Of<IExecutionEventPublisher>(),
                     Mock.Of<ISessionManager>()));
-
-            ToolProvider = new ServiceCollection()
-                .AddSingleton(ExecService)
-                .BuildServiceProvider();
         }
 
         public void Dispose()
         {
             ExecService.Dispose();
-            ToolProvider.Dispose();
             _provider.Dispose();
         }
     }
@@ -360,10 +376,14 @@ public class TaskStatusToolTests
         await WaitUntilAsync(() =>
             fixture.ExecService.GetOverview(fixture.Child.Id).CurrentExecution?.Status == ExecutionStatus.Running);
 
-        var tool = new TaskStatusTool(NullLogger<TaskStatusTool>.Instance, fixture.SessionManager.Object);
+        var tool = new TaskStatusTool(
+            NullLogger<TaskStatusTool>.Instance,
+            fixture.SessionManager.Object,
+            fixture.ExecService,
+            fixture.ExecService);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { task_id = fixture.Child.Id }),
-            new ToolContext { SessionId = fixture.ParentId, Services = fixture.ToolProvider });
+            new ToolContext { SessionId = fixture.ParentId });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain($"task_id: {fixture.Child.Id}");
@@ -377,10 +397,14 @@ public class TaskStatusToolTests
         await fixture.SubmitAsync();
         await fixture.WaitCompletedAsync();
 
-        var tool = new TaskStatusTool(NullLogger<TaskStatusTool>.Instance, fixture.SessionManager.Object);
+        var tool = new TaskStatusTool(
+            NullLogger<TaskStatusTool>.Instance,
+            fixture.SessionManager.Object,
+            fixture.ExecService,
+            fixture.ExecService);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { task_id = fixture.Child.Id }),
-            new ToolContext { SessionId = fixture.ParentId, Services = fixture.ToolProvider });
+            new ToolContext { SessionId = fixture.ParentId });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("state: completed");
@@ -394,10 +418,14 @@ public class TaskStatusToolTests
         using var fixture = new TaskStatusToolFixture(executor: BuildExecutor("waited output", delayMs: 400));
         await fixture.SubmitAsync();
 
-        var tool = new TaskStatusTool(NullLogger<TaskStatusTool>.Instance, fixture.SessionManager.Object);
+        var tool = new TaskStatusTool(
+            NullLogger<TaskStatusTool>.Instance,
+            fixture.SessionManager.Object,
+            fixture.ExecService,
+            fixture.ExecService);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { task_id = fixture.Child.Id, wait = true, timeout_ms = 5000 }),
-            new ToolContext { SessionId = fixture.ParentId, Services = fixture.ToolProvider });
+            new ToolContext { SessionId = fixture.ParentId });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("state: completed");
@@ -467,7 +495,6 @@ public class TaskStatusToolTests
         public SessionData Child { get; }
         public Mock<ISessionManager> SessionManager { get; }
         public ExecutionJobService ExecService { get; }
-        public ServiceProvider ToolProvider { get; }
         private readonly ServiceProvider _provider;
 
         public TaskStatusToolFixture(IAgentExecutor? executor = null)
@@ -545,10 +572,6 @@ public class TaskStatusToolTests
                     new CompressionService(null!, Mock.Of<ISessionManager>()),
                     Mock.Of<IExecutionEventPublisher>(),
                     Mock.Of<ISessionManager>()));
-
-            ToolProvider = new ServiceCollection()
-                .AddSingleton(ExecService)
-                .BuildServiceProvider();
         }
 
         public Task SubmitAsync()
@@ -576,7 +599,6 @@ public class TaskStatusToolTests
         public void Dispose()
         {
             ExecService.Dispose();
-            ToolProvider.Dispose();
             _provider.Dispose();
         }
     }

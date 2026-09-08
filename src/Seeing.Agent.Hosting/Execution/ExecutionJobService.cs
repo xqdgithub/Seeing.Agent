@@ -33,7 +33,7 @@ namespace Seeing.Agent.Hosting.Execution;
 /// Background execution service that manages execution jobs independently of UI connections.
 /// Supports queuing per session, event streaming, and automatic cleanup.
 /// </summary>
-public class ExecutionJobService : IDisposable, IExecutionStatusProvider
+public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecutionSubmitter
 {
     private readonly ConcurrentDictionary<string, SessionExecutionQueue> _sessionQueues = new();
     private readonly ConcurrentDictionary<string, ExecutionRecord> _executions = new();
@@ -87,8 +87,14 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
     /// <param name="input">The user input.</param>
     /// <param name="options">Execution options (agent, model, etc.).</param>
     /// <returns>The submission result with execution ID and status.</returns>
-    public async Task<ExecutionSubmitResult> SubmitAsync(string sessionId, ChatInput input, ChatOptions? options)
+    public async Task<ExecutionSubmitResult> SubmitAsync(
+        string sessionId,
+        ChatInput input,
+        ChatOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (string.IsNullOrEmpty(sessionId))
             return ExecutionSubmitResult.Failed("Session ID is required");
 
@@ -201,6 +207,13 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider
         _logger.LogInformation("Execution {ExecutionId} submitted with status {Status}", executionId, record.Status);
 
         return result;
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CancelAsync(string executionId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Cancel(executionId));
     }
 
     /// <summary>

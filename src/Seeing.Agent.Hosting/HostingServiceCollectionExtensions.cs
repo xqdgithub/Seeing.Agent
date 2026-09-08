@@ -53,10 +53,14 @@ public static class HostingServiceCollectionExtensions
             sp.GetRequiredService<ISessionManager>(),
             sp.GetRequiredService<IAgentRegistry>(),
             sp.GetRequiredService<IAgentLoopScheduler>(),
-            sp.GetRequiredService<IExecutionStatusProvider>()));
+            sp.GetRequiredService<IExecutionSubmitter>(),
+            sp.GetRequiredService<IExecutionStatusProvider>(),
+            sp.GetRequiredService<IExecutionEventPublisher>()));
         services.AddSingleton<ITool>(sp => new TaskStatusTool(
             sp.GetRequiredService<ILogger<TaskStatusTool>>(),
-            sp.GetRequiredService<ISessionManager>()));
+            sp.GetRequiredService<ISessionManager>(),
+            sp.GetRequiredService<IExecutionSubmitter>(),
+            sp.GetRequiredService<IExecutionStatusProvider>()));
         services.AddSingleton<ITool, TodoWriteTool>();
 
         return services;
@@ -86,6 +90,7 @@ public static class HostingServiceCollectionExtensions
 
         // 注册执行任务服务（Singleton，后台执行）
         services.AddSingleton<ExecutionJobService>();
+        services.AddSingleton<IExecutionSubmitter>(sp => sp.GetRequiredService<ExecutionJobService>());
         services.AddSingleton<IExecutionStatusProvider>(sp => sp.GetRequiredService<ExecutionJobService>());
 
         // idle resume + Session 事件总线接线

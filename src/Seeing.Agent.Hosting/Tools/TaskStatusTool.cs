@@ -1,11 +1,9 @@
 using Seeing.Agent.Abstractions.Tools;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting.Tools;
@@ -19,12 +17,18 @@ namespace Seeing.Agent.Hosting.Tools;
 public class TaskStatusTool : ToolBase
 {
     private readonly ISessionManager _sessionManager;
+    private readonly IExecutionSubmitter _executionSubmitter;
+    private readonly IExecutionStatusProvider _execStatusProvider;
 
     public TaskStatusTool(
         ILogger<TaskStatusTool> logger,
-        ISessionManager sessionManager) : base(logger)
+        ISessionManager sessionManager,
+        IExecutionSubmitter executionSubmitter,
+        IExecutionStatusProvider execStatusProvider) : base(logger)
     {
         _sessionManager = sessionManager;
+        _executionSubmitter = executionSubmitter;
+        _execStatusProvider = execStatusProvider;
     }
 
     public override string Id => "task_status";
@@ -52,18 +56,13 @@ public class TaskStatusTool : ToolBase
         if (arguments.TryGetProperty("timeout_ms", out var t) && t.TryGetInt32(out var ms) && ms > 0)
             timeoutMs = ms;
 
-        // 运行期解析执行引擎，避免与 ToolManager 的构造期循环依赖
-        var execService = context.Services?.GetService(typeof(ExecutionJobService)) as ExecutionJobService;
-        if (execService == null)
-            return Failure("执行引擎不可用，无法查询任务状态");
-
         // 如果没有传task_id，返回所有子任务状态
         if (string.IsNullOrEmpty(taskId))
         {
-            return await GetChildTasksStatusAsync(context.SessionId, execService);
+            return await GetChildTasksStatusAsync(context.SessionId);
         }
 
-        var overview = execService.GetOverview(taskId);
+        var overview = _execStatusProvider.GetOverview(taskId);
         var current = overview.CurrentExecution;
 
         // 无活跃/排队执行：回落到子会话消息摘要（兼容已完成落盘会话与旧后台任务）
@@ -77,7 +76,7 @@ public class TaskStatusTool : ToolBase
             cts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
             try
             {
-                await execService.WaitForExecutionAsync(current!.ExecutionId, cts.Token);
+                await _executionSubmitter.WaitForExecutionAsync(current!.ExecutionId, cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -86,7 +85,7 @@ public class TaskStatusTool : ToolBase
                 return Success("timeout", $"task_id: {taskId}\nstate: timeout");
             }
 
-            current = execService.GetExecution(current!.ExecutionId);
+            current = _execStatusProvider.GetExecution(current!.ExecutionId);
             if (current == null)
                 return await FallbackFromSessionAsync(taskId);
         }
@@ -194,7 +193,7 @@ public class TaskStatusTool : ToolBase
     /// <summary>
     /// 获取当前会话所有子任务的状态摘要
     /// </summary>
-    private async Task<ToolResult> GetChildTasksStatusAsync(string parentSessionId, ExecutionJobService execService)
+    private async Task<ToolResult> GetChildTasksStatusAsync(string parentSessionId)
     {
         var children = await _sessionManager.ListChildrenAsync(parentSessionId, SessionKind.SubAgent);
         if (children == null || children.Count == 0)
@@ -213,7 +212,7 @@ public class TaskStatusTool : ToolBase
 
         foreach (var child in children)
         {
-            var overview = execService.GetOverview(child.Id);
+            var overview = _execStatusProvider.GetOverview(child.Id);
             var current = overview.CurrentExecution;
             
             string state;

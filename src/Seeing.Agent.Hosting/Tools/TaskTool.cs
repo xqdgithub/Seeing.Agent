@@ -2,7 +2,6 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Agents;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Abstractions.Events;
@@ -12,6 +11,7 @@ using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Execution;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Core;
 using SessionStatus = Seeing.Session.Core.SessionStatus;
@@ -28,19 +28,25 @@ public class TaskTool : ToolBase
     private readonly ISessionManager _sessionManager;
     private readonly IAgentRegistry _agentRegistry;
     private readonly IAgentLoopScheduler _loopScheduler;
+    private readonly IExecutionSubmitter _executionSubmitter;
     private readonly IExecutionStatusProvider _execStatusProvider;
+    private readonly IExecutionEventPublisher _eventPublisher;
 
     public TaskTool(
         ILogger<TaskTool> logger,
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
         IAgentLoopScheduler loopScheduler,
-        IExecutionStatusProvider execStatusProvider) : base(logger)
+        IExecutionSubmitter executionSubmitter,
+        IExecutionStatusProvider execStatusProvider,
+        IExecutionEventPublisher eventPublisher) : base(logger)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;
         _loopScheduler = loopScheduler;
+        _executionSubmitter = executionSubmitter;
         _execStatusProvider = execStatusProvider;
+        _eventPublisher = eventPublisher;
     }
 
     public override string Id => "task";
@@ -89,12 +95,6 @@ public class TaskTool : ToolBase
         if (agentInfo.Disabled)
             return Failure($"Agent '{subagentType}' 已禁用");
 
-        // 运行期解析执行引擎，避免 ToolManager → TaskTool → ExecutionJobService
-        // → IAgentExecutor → AgentExecutor → ToolManager 的构造期循环依赖
-        var execService = context.Services?.GetService(typeof(ExecutionJobService)) as ExecutionJobService;
-        if (execService == null)
-            return Failure("执行引擎不可用，无法创建子任务");
-
         try
         {
             SessionData session;
@@ -116,7 +116,7 @@ public class TaskTool : ToolBase
 
                 // 快速失败：已有进行中的 Loop 或活跃执行直接拒绝（真正的原子抢占在执行引擎队列内）
                 if (_loopScheduler.IsLoopBusy(session.Id) ||
-                    execService.GetOverview(session.Id).HasActiveExecution)
+                    _execStatusProvider.GetOverview(session.Id).HasActiveExecution)
                     return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
             }
             else
@@ -189,8 +189,8 @@ public class TaskTool : ToolBase
                 var desc = description;
                 var childId = session.Id;
 
-                var submitResult = await execService.SubmitAsync(session.Id,
-                    new ChatInput { Text = userPrompt }, submitOptions);
+                var submitResult = await _executionSubmitter.SubmitAsync(session.Id,
+                    new ChatInput { Text = userPrompt }, submitOptions, context.CancellationToken);
                 if (!submitResult.Success || string.IsNullOrEmpty(submitResult.ExecutionId))
                     return Failure(submitResult.Error ?? "子任务提交执行失败");
 
@@ -203,7 +203,7 @@ public class TaskTool : ToolBase
                     string? errorMessage = null;
                     try
                     {
-                        await foreach (var evt in execService.SubscribeEvents(childId, CancellationToken.None))
+                        await foreach (var evt in _eventPublisher.SubscribeAsync(childId, CancellationToken.None))
                         {
                             if (evt is ExecutionCompleteEvent ce && ce.ExecutionId == executionId)
                             {
@@ -300,7 +300,7 @@ public class TaskTool : ToolBase
                     {
                         try
                         {
-                            execService.Cancel(executionId);
+                            _ = _executionSubmitter.CancelAsync(executionId);
                         }
                         catch
                         {
@@ -316,8 +316,8 @@ public class TaskTool : ToolBase
                     $"系统会在任务完成时自动注入通知。"));
             }
 
-            var result = await execService.SubmitAsync(session.Id,
-                new ChatInput { Text = userPrompt }, submitOptions);
+            var result = await _executionSubmitter.SubmitAsync(session.Id,
+                new ChatInput { Text = userPrompt }, submitOptions, context.CancellationToken);
             if (!result.Success || string.IsNullOrEmpty(result.ExecutionId))
                 return Failure(result.Error ?? "子任务提交执行失败");
 
@@ -328,7 +328,7 @@ public class TaskTool : ToolBase
                 {
                     try
                     {
-                        execService.Cancel(result.ExecutionId);
+                        _ = _executionSubmitter.CancelAsync(result.ExecutionId);
                     }
                     catch
                     {
@@ -337,7 +337,7 @@ public class TaskTool : ToolBase
                 });
             }
 
-            await execService.WaitForExecutionAsync(result.ExecutionId, context.CancellationToken);
+            await _executionSubmitter.WaitForExecutionAsync(result.ExecutionId, context.CancellationToken);
 
             // 父 Loop 已取消：子任务虽完成，但终态应标记为 Cancelled，避免父已取消却收到 Completed
             if (context.CancellationToken.IsCancellationRequested)
