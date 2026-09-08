@@ -60,6 +60,8 @@ public class UiContributionRegistryTests
         ModulePageRouteBinder.BindExistingPages(registry);
 
         registry.Routes["/skills"].ComponentType.Should().Be(typeof(SkillsPage));
+        registry.Routes.Should().ContainKey("/skills/{SkillName}");
+        registry.Routes["/skills/{SkillName}"].ComponentType.Should().Be(typeof(SkillDetailPage));
     }
 
     [Fact]

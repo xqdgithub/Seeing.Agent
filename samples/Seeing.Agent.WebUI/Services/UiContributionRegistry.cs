@@ -48,6 +48,9 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
         get { lock (_gate) return _routes; }
     }
 
+    /// <summary>路由表或贡献集合变更时触发（供 ModuleRouter / 侧栏刷新）。</summary>
+    public event EventHandler? Changed;
+
     /// <inheritdoc />
     public void Register(IUiContribution contribution)
     {
@@ -59,6 +62,8 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
             _byModuleId[contribution.ModuleId] = contribution;
             RebuildUnlocked();
         }
+
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <inheritdoc />
@@ -66,12 +71,16 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(moduleId);
 
+        var removed = false;
         lock (_gate)
         {
-            if (!_byModuleId.Remove(moduleId))
-                return;
-            RebuildUnlocked();
+            removed = _byModuleId.Remove(moduleId);
+            if (removed)
+                RebuildUnlocked();
         }
+
+        if (removed)
+            Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void RebuildUnlocked()

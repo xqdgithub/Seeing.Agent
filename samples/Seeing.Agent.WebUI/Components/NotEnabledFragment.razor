@@ -1,0 +1,52 @@
+@namespace Seeing.Agent.WebUI.Components
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Agent.Core.Scenarios
+@using Seeing.Agent.WebUI.Services
+@inject NavigationManager Navigation
+
+<div class="not-enabled-fragment" style="padding: 48px 24px; max-width: 640px; margin: 0 auto;">
+    <PageTitle>未启用 - @(FeatureTitle ?? "功能")</PageTitle>
+    <Alert Type="@AlertType.Info"
+           ShowIcon="true"
+           Message="@($"当前场景未启用「{FeatureTitle ?? "该功能"}」")"
+           Description="@BuildDescription()"
+           Style="margin-bottom: 24px;" />
+    <Space>
+        <Button Type="@ButtonType.Primary" OnClick="GoSettings">切换场景（前往设置）</Button>
+        <Button OnClick="GoHome">返回首页</Button>
+    </Space>
+</div>
+
+@code {
+    /// <summary>功能显示名（如「记忆」「MCP」）。</summary>
+    [Parameter] public string? FeatureTitle { get; set; }
+
+    /// <summary>提供该页的模块 id。</summary>
+    [Parameter] public string? ModuleId { get; set; }
+
+    private string BuildDescription()
+    {
+        var module = string.IsNullOrWhiteSpace(ModuleId) ? "相关模块" : $"模块 {ModuleId}";
+        var scenarios = SuggestScenarios();
+        if (scenarios.Count == 0)
+            return $"{module} 未在当前场景启用。请切换到包含该能力的场景后重试。";
+
+        return $"{module} 未在当前场景启用。可切换到包含它的场景：{string.Join(" / ", scenarios)}。";
+    }
+
+    private IReadOnlyList<string> SuggestScenarios()
+    {
+        if (string.IsNullOrWhiteSpace(ModuleId))
+            return [];
+
+        return BuiltInScenarios.All
+            .Where(s => s.Modules.Any(m => string.Equals(m, ModuleId, StringComparison.OrdinalIgnoreCase)))
+            .Select(s => s.Name)
+            .ToArray();
+    }
+
+    private void GoSettings() => Navigation.NavigateTo("/settings");
+
+    private void GoHome() => Navigation.NavigateTo("/");
+}

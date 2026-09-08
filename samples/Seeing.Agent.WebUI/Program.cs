@@ -65,7 +65,8 @@ builder.Services.AddSeeingCore(registry);
 
 // === Web Host Shape：Circuit + BlazorPermissionChannel ===
 builder.Services.AddSeeingHostingWeb();
-builder.Services.AddSingleton<IUiContributionRegistry, UiContributionRegistry>();
+builder.Services.AddSingleton<UiContributionRegistry>();
+builder.Services.AddSingleton<IUiContributionRegistry>(sp => sp.GetRequiredService<UiContributionRegistry>());
 
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
@@ -172,9 +173,12 @@ using (var scope = app.Services.CreateScope())
     // 初始化核心组件（自动解析工作区）
     await sp.InitializeSeeingAsync();
 
-    // 将模块 Nav 路由绑定到现有 Page 组件类型（@page 仍保留至 T2/T3）
+    // 壳层 *Page + 模块 Nav 绑定 ComponentType，供 ModuleRouter 渲染
     if (sp.GetService<IUiContributionRegistry>() is { } uiRegistry)
+    {
+        uiRegistry.Register(new CoreShellUiContribution());
         ModulePageRouteBinder.BindExistingPages(uiRegistry);
+    }
 
     // 初始化命令发现
     sp.InitializeCommands();

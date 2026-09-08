@@ -1,0 +1,95 @@
+@namespace Seeing.Agent.WebUI.Components
+@using Microsoft.AspNetCore.Components.Routing
+@using Seeing.Agent.Abstractions.Modules
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.Shared
+@inject UiContributionRegistry Registry
+@inject NavigationManager Navigation
+@inject IModuleCatalog Catalog
+@implements IDisposable
+
+@if (_resolution.Kind == ModuleRouteKind.Found && _resolution.ComponentType is not null)
+{
+    <LayoutView Layout="@typeof(MainLayout)">
+        <DynamicComponent @key="_locationKey"
+                          Type="@_resolution.ComponentType"
+                          Parameters="@ToParameterDictionary(_resolution.Parameters)" />
+    </LayoutView>
+}
+else if (_resolution.Kind == ModuleRouteKind.NotEnabled)
+{
+    <LayoutView Layout="@typeof(MainLayout)">
+        <NotEnabledFragment FeatureTitle="@_resolution.FeatureTitle" ModuleId="@_resolution.ModuleId" />
+    </LayoutView>
+}
+else
+{
+    @* 壳页（Index/Session/Settings/…）仍可保留 @page，由 AppAssembly 回退 *@
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <NotEnabledFragment FeatureTitle="页面" ModuleId="@null" />
+            </LayoutView>
+        </NotFound>
+    </Router>
+}
+
+@code {
+    private ModuleRouteResolution _resolution = new(ModuleRouteKind.Fallback);
+    private string _locationKey = "/";
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        Registry.Changed += OnRegistryChanged;
+        ResolveCurrent();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        ResolveCurrent();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRegistryChanged(object? sender, EventArgs e)
+    {
+        _ = InvokeAsync(() =>
+        {
+            ResolveCurrent();
+            StateHasChanged();
+        });
+    }
+
+    private void ResolveCurrent()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        _locationKey = ModuleRouteResolver.NormalizePath(relative);
+        _resolution = ModuleRouteResolver.Resolve(_locationKey, Registry, Catalog);
+    }
+
+    private static IDictionary<string, object>? ToParameterDictionary(
+        IReadOnlyDictionary<string, object?>? source)
+    {
+        if (source is null || source.Count == 0)
+            return null;
+
+        var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in source)
+        {
+            if (value is not null)
+                result[key] = value;
+        }
+
+        return result.Count == 0 ? null : result;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        Registry.Changed -= OnRegistryChanged;
+    }
+}
