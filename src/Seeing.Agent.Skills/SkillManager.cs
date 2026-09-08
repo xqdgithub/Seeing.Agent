@@ -79,8 +79,6 @@ namespace Seeing.Agent.Skills
                 return Task.FromResult<string?>("暂无可用技能。");
 
             var sb = new StringBuilder();
-            sb.AppendLine("## 可用技能");
-            sb.AppendLine();
             sb.AppendLine("以下技能可供使用：");
             sb.AppendLine();
 
@@ -95,7 +93,7 @@ namespace Seeing.Agent.Skills
                 sb.AppendLine();
             }
 
-            return Task.FromResult<string?>(sb.ToString());
+            return Task.FromResult<string?>(sb.ToString().TrimEnd());
         }
 
         /// <summary>

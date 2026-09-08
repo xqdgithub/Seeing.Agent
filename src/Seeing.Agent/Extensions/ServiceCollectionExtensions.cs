@@ -24,6 +24,7 @@ using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Todo;
@@ -722,6 +723,9 @@ namespace Seeing.Agent.Extensions
         public static IServiceCollection AddPromptBuilder(this IServiceCollection services)
         {
             services.AddSingleton<IInstructionManager, InstructionManager>();
+            services.AddSingleton<IPromptSectionContributor, ToolsPromptSectionContributor>();
+            services.AddSingleton<IPromptSectionContributor, AgentsPromptSectionContributor>();
+            services.AddSingleton<IPromptSectionContributor, EnvironmentPromptSectionContributor>();
             services.AddSingleton<PromptBuilder>();
 
             return services;

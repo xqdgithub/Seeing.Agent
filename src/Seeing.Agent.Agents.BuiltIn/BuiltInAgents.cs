@@ -76,6 +76,14 @@ public static class BuiltInAgents
 
 ## 安全
 - 不生成或猜测 URL（除非确定是编程用途）；无法帮助时简短说明并提供替代方案
+
+## Tools
+
+## Skills
+
+## Agents
+
+## Environment
 """,
             PermissionRules =
             [
@@ -152,6 +160,14 @@ public static class BuiltInAgents
 ## 验收标准
 - [ ] [标准 1]
 ```
+
+## Tools
+
+## Skills
+
+## Agents
+
+## Environment
 """,
             AllowedTools =
             [
@@ -228,6 +244,12 @@ public static class BuiltInAgents
 ## 输出
 - 返回绝对路径，并说明每个发现的相关性
 - 不使用表情符号，不创建或修改任何文件
+
+## Tools
+
+## Skills
+
+## Environment
 """,
             DeniedTools = ["task"],
             PermissionRules =
@@ -288,6 +310,12 @@ public static class BuiltInAgents
 
 ## 输出风格
 - 清晰简洁地报告发现，用结构化格式呈现复杂信息
+
+## Tools
+
+## Skills
+
+## Environment
 """,
             DeniedTools = ["task"],
             PermissionRules =

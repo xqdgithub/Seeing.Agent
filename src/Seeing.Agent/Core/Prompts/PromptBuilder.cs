@@ -1,46 +1,38 @@
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Prompts;
-using Seeing.Agent.Abstractions.Skills;
 using System.Text;
-using System.Text.Json;
 
 namespace Seeing.Agent.Core.Prompts;
 
 /// <summary>
-/// 提示词构建器 - 统一构建系统提示词
+/// 提示词构建器 — 统一构建系统提示词。
 /// <para>
-/// 支持的占位符：
-/// - {{tools}} - 工具列表
-/// - {{agents}} - 代理列表
-/// - {{skills}} - 技能列表
-/// - {{environment}} - 环境信息（工作目录、平台、时间）
-/// - 自定义变量 {{variable_name}}
+/// 通过 <see cref="IPromptSectionContributor"/> 向固定锚点标题注入分节内容：
+/// <c>## Tools</c> / <c>## Skills</c> / <c>## Agents</c> / <c>## Environment</c>。
+/// 另支持自定义变量 <c>{{variable_name}}</c> 与内置变量（model、session_id 等）。
 /// </para>
 /// </summary>
 public class PromptBuilder
 {
-    private const string ToolsPlaceholder = "{{tools}}";
-    private const string AgentsPlaceholder = "{{agents}}";
-    private const string SkillsPlaceholder = "{{skills}}";
-    private const string EnvironmentPlaceholder = "{{environment}}";
-    private readonly IAgentRegistry _agentRegistry;
-    private readonly ISkillManager _skillManager;
+    /// <summary>分节名 → 锚点标题（须与内置 Agent prompt 中的标题一致）。</summary>
+    internal static readonly IReadOnlyDictionary<string, string> SectionAnchors =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PromptSectionNames.Tools] = "## Tools",
+            [PromptSectionNames.Skills] = "## Skills",
+            [PromptSectionNames.Agents] = "## Agents",
+            [PromptSectionNames.Environment] = "## Environment",
+        };
 
-    public PromptBuilder(
-        IAgentRegistry agentRegistry,
-        ISkillManager skillManager)
+    private readonly IReadOnlyList<IPromptSectionContributor> _contributors;
+
+    public PromptBuilder(IEnumerable<IPromptSectionContributor> contributors)
     {
-        _agentRegistry = agentRegistry;
-        _skillManager = skillManager;
+        _contributors = contributors?.ToList() ?? [];
     }
 
     /// <summary>
     /// 构建完整的系统提示词
     /// </summary>
-    /// <param name="context">提示词构建上下文</param>
-    /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>构建后的完整提示词</returns>
     public async Task<string> BuildAsync(PromptContext context, CancellationToken cancellationToken = default)
     {
         var basePrompt = context.Agent?.SystemPrompt;
@@ -50,186 +42,144 @@ public class PromptBuilder
             return string.Empty;
         }
 
-        var result = basePrompt;
+        var result = await InjectSectionsAsync(basePrompt, context, cancellationToken).ConfigureAwait(false);
 
-        // 2. 替换工具占位符
-        if (result.Contains(ToolsPlaceholder) && context.Tools != null)
-        {
-            result = result.Replace(ToolsPlaceholder, BuildToolSection(context.Tools));
-        }
-
-        // 3. 替换代理占位符
-        if (result.Contains(AgentsPlaceholder))
-        {
-            var agents = await _agentRegistry.GetAgentsAsync();
-            result = result.Replace(AgentsPlaceholder, BuildAgentSection(agents, context.Agent?.Name));
-        }
-
-        // 4. 替换技能占位符
-        if (result.Contains(SkillsPlaceholder))
-        {
-            var skills = _skillManager.GetAllSkillInfos().Values.ToList();
-            result = result.Replace(SkillsPlaceholder, BuildSkillSection(skills));
-        }
-
-        // 5. 替换环境信息占位符
-        if (result.Contains(EnvironmentPlaceholder))
-        {
-            result = result.Replace(EnvironmentPlaceholder, BuildEnvironmentSection(context));
-        }
-
-        // 6. 替换自定义变量
         foreach (var (key, value) in context.Variables)
         {
             result = result.Replace($"{{{{{key}}}}}", value);
         }
 
-        // 7. 替换内置变量
         result = ReplaceBuiltinVariables(result, context);
 
         return result.Trim();
     }
 
     /// <summary>
-    /// 同步构建（向后兼容）
-    /// <para>注意：不支持 {{agents}}（需异步）占位符</para>
+    /// 同步构建（向后兼容）。内部调用 <see cref="BuildAsync"/>。
     /// </summary>
     public string Build(string basePrompt, PromptContext context)
     {
         if (string.IsNullOrEmpty(basePrompt))
             return string.Empty;
 
-        var result = basePrompt;
+        var previousAgent = context.Agent;
+        var previousPrompt = previousAgent?.SystemPrompt;
+        if (previousAgent == null)
+            context.Agent = new Seeing.Agent.Abstractions.Agents.AgentDefinition { SystemPrompt = basePrompt };
+        else
+            previousAgent.SystemPrompt = basePrompt;
 
-        if (context.Tools != null)
-            result = result.Replace(ToolsPlaceholder, BuildToolSection(context.Tools));
-
-        if (context.Agents != null)
-            result = result.Replace(AgentsPlaceholder, BuildAgentSection(context.Agents, null));
-
-        if (context.Skills != null)
-            result = result.Replace(SkillsPlaceholder, BuildSkillSection(context.Skills.ToList()));
-
-        // 环境信息同步可用
-        result = result.Replace(EnvironmentPlaceholder, BuildEnvironmentSection(context));
-
-        foreach (var (key, value) in context.Variables)
-            result = result.Replace($"{{{{{key}}}}}", value);
-
-        result = ReplaceBuiltinVariables(result, context);
-
-        return result.Trim();
+        try
+        {
+            return BuildAsync(context).GetAwaiter().GetResult();
+        }
+        finally
+        {
+            if (previousAgent == null)
+                context.Agent = null;
+            else
+                previousAgent.SystemPrompt = previousPrompt;
+        }
     }
 
-    #region 内容构建方法（保持内聚）
-
-    private string BuildToolSection(IEnumerable<FunctionSchema> tools)
+    private async Task<string> InjectSectionsAsync(
+        string prompt,
+        PromptContext context,
+        CancellationToken cancellationToken)
     {
-        var toolList = tools.ToList();
-        if (toolList.Count == 0)
-            return "暂无可用工具。";
+        var bySection = _contributors
+            .GroupBy(c => c.SectionName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(c => c.Order).ToList(),
+                StringComparer.OrdinalIgnoreCase);
 
-        var sb = new StringBuilder();
-        sb.AppendLine("## 可用工具");
-        sb.AppendLine();
-        sb.AppendLine("以下工具可供调用：");
-        sb.AppendLine();
+        var injections = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var tool in toolList)
+        foreach (var (sectionName, contributors) in bySection)
         {
-            sb.AppendLine($"### {tool.Name}");
-            if (!string.IsNullOrEmpty(tool.Description))
-                sb.AppendLine(tool.Description);
-            sb.AppendLine();
+            if (!SectionAnchors.TryGetValue(sectionName, out var heading))
+                continue;
 
-            if (tool.Parameters.HasValue)
+            if (!ContainsHeading(prompt, heading))
+                continue;
+
+            var parts = new List<string>();
+            foreach (var contributor in contributors)
             {
-                var parameters = tool.Parameters.Value;
-                if (parameters.ValueKind == JsonValueKind.Object &&
-                    parameters.TryGetProperty("properties", out var properties))
-                {
-                    sb.AppendLine("**参数：**");
-                    foreach (var prop in properties.EnumerateObject())
-                    {
-                        sb.AppendLine($"- `{prop.Name}`: {GetPropertyDescription(prop.Value)}");
-                    }
-                    sb.AppendLine();
-                }
+                var part = await contributor.BuildAsync(context, cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(part))
+                    parts.Add(part.TrimEnd());
             }
+
+            if (parts.Count > 0)
+                injections[heading] = string.Join("\n\n", parts);
         }
 
-        return sb.ToString();
+        return ApplyInjections(prompt, injections);
     }
 
-    private string BuildAgentSection(IEnumerable<Seeing.Agent.Abstractions.Agents.AgentDefinition> agents, string? currentAgentName)
+    internal static bool ContainsHeading(string prompt, string heading)
     {
-        var agentList = agents.ToList();
-        var subAgents = agentList
-            .Where(a => a.Mode == AgentMode.SubAgent && a.Name != currentAgentName)
-            .ToList();
-
-        if (subAgents.Count == 0)
-            return "暂无可用子代理。";
-
-        var sb = new StringBuilder();
-        sb.AppendLine("## 可用代理");
-        sb.AppendLine();
-        sb.AppendLine("以下代理可供委托：");
-        sb.AppendLine();
-
-        foreach (var agent in subAgents)
+        foreach (var line in prompt.Replace("\r\n", "\n").Split('\n'))
         {
-            var desc = agent.Description ?? "无描述";
-            var shortDesc = desc.Split('.')[0];
-            sb.AppendLine($"- **{agent.Name}**: {shortDesc}");
+            if (string.Equals(line.Trim(), heading, StringComparison.Ordinal))
+                return true;
         }
 
-        return sb.ToString();
+        return false;
     }
 
-    private string BuildSkillSection(List<SkillInfo> skills)
+    /// <summary>
+    /// 将分节内容注入到对应 H2 锚点标题下方（直到下一个 H2 或文末）。
+    /// </summary>
+    internal static string ApplyInjections(string prompt, IReadOnlyDictionary<string, string> injections)
     {
-        if (skills.Count == 0)
-            return "暂无可用技能。";
+        if (injections.Count == 0)
+            return prompt;
 
+        var normalized = prompt.Replace("\r\n", "\n");
+        var lines = normalized.Split('\n');
         var sb = new StringBuilder();
-        sb.AppendLine("## 可用技能");
-        sb.AppendLine();
-        sb.AppendLine("以下技能可供使用：");
-        sb.AppendLine();
 
-        foreach (var skill in skills)
+        for (var i = 0; i < lines.Length; i++)
         {
-            sb.AppendLine($"### {skill.Name}");
-            sb.AppendLine(skill.Description);
+            var line = lines[i];
+            sb.Append(line);
+            if (i < lines.Length - 1 || normalized.EndsWith('\n'))
+                sb.Append('\n');
 
-            if (skill.Tags.Count > 0)
-                sb.AppendLine($"**标签**: {string.Join(", ", skill.Tags)}");
+            var trimmed = line.Trim();
+            if (!injections.TryGetValue(trimmed, out var content))
+                continue;
 
-            sb.AppendLine();
+            // 跳过锚点下现有内容，直至下一个 H2
+            var j = i + 1;
+            while (j < lines.Length)
+            {
+                var next = lines[j].TrimStart();
+                if (next.StartsWith("## ", StringComparison.Ordinal) &&
+                    !next.StartsWith("###", StringComparison.Ordinal))
+                {
+                    break;
+                }
+
+                j++;
+            }
+
+            sb.Append('\n');
+            sb.Append(content);
+            sb.Append('\n');
+            if (j < lines.Length)
+                sb.Append('\n');
+
+            i = j - 1;
         }
 
-        return sb.ToString();
+        return sb.ToString().TrimEnd('\n') + (normalized.EndsWith('\n') ? "\n" : string.Empty);
     }
 
-    private string BuildEnvironmentSection(PromptContext context)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("<env>");
-        sb.AppendLine($"Working directory: {context.WorkingDirectory ?? "unknown"}");
-        if (!string.IsNullOrEmpty(context.WorkspaceRoot))
-            sb.AppendLine($"Workspace root: {context.WorkspaceRoot}");
-        if (!string.IsNullOrEmpty(context.Platform))
-            sb.AppendLine($"Platform: {context.Platform}");
-        sb.AppendLine($"Today's date: {context.Timestamp:yyyy-MM-dd}");
-        if (!string.IsNullOrEmpty(context.ModelName))
-            sb.AppendLine($"Model: {context.ModelName}");
-        sb.AppendLine("</env>");
-
-        return sb.ToString();
-    }
-
-    private string ReplaceBuiltinVariables(string prompt, PromptContext context)
+    private static string ReplaceBuiltinVariables(string prompt, PromptContext context)
     {
         var result = prompt;
 
@@ -246,29 +196,4 @@ public class PromptBuilder
 
         return result;
     }
-
-    private static string GetPropertyDescription(JsonElement property)
-    {
-        if (property.ValueKind != JsonValueKind.Object)
-            return "未知类型";
-
-        var sb = new StringBuilder();
-
-        if (property.TryGetProperty("type", out var typeElement))
-            sb.Append(typeElement.GetString() ?? "unknown");
-
-        if (property.TryGetProperty("description", out var descElement))
-        {
-            var desc = descElement.GetString();
-            if (!string.IsNullOrEmpty(desc))
-                sb.Append($" - {desc}");
-        }
-
-        if (property.TryGetProperty("required", out var requiredElement) && requiredElement.GetBoolean())
-            sb.Append(" (必需)");
-
-        return sb.ToString();
-    }
-
-    #endregion
 }

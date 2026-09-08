@@ -8,6 +8,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Prompts;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools;
 using Xunit;
@@ -90,7 +91,7 @@ public class AgentExecutorCancellationTests
             permission.Object,
             hookManager,
             agentRegistry.Object,
-            new PromptBuilder(agentRegistry.Object, null!),
+            new PromptBuilder(Array.Empty<IPromptSectionContributor>()),
             modelManager.Object,
             NullLogger<AgentExecutor>.Instance);
     }
