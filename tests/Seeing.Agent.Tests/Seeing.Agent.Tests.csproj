@@ -27,8 +27,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Seeing.Agent.Tools.Basic\Seeing.Agent.Tools.Basic.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Tools.FileSystem\Seeing.Agent.Tools.FileSystem.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Tools.Shell\Seeing.Agent.Tools.Shell.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
-    <ProjectReference Include="..\..\src\Seeing.Agent\Seeing.Agent.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Agents.BuiltIn\Seeing.Agent.Agents.BuiltIn.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />

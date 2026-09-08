@@ -4,14 +4,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Seeing.Agent</RootNamespace>
-    <AssemblyName>Seeing.Agent</AssemblyName>
+    <RootNamespace>Seeing.Agent.Core</RootNamespace>
+    <AssemblyName>Seeing.Agent.Core</AssemblyName>
     
     <!-- NuGet 包信息 -->
-    <PackageId>Seeing.Agent</PackageId>
+    <PackageId>Seeing.Agent.Core</PackageId>
     <Version>1.0.0</Version>
     <Authors>Seeing.Agent Team</Authors>
-    <Description>A complete AI Agent framework with Skill, SubAgent, Rules, Hook and Extension support</Description>
+    <Description>Seeing Agent spine core: config, execution, permissions, hooks — capability packages register via AddSeeingModule</Description>
     <PackageTags>AI;Agent;LLM;Skill;Tool;Hook;MCP</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -55,12 +55,6 @@
     <!-- DPAPI support for secure token storage -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <ProjectReference Include="..\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
-    <ProjectReference Include="..\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
-    <ProjectReference Include="..\Seeing.Agent.Tools.Basic\Seeing.Agent.Tools.Basic.csproj" />
-    <ProjectReference Include="..\Seeing.Agent.Tools.FileSystem\Seeing.Agent.Tools.FileSystem.csproj" />
-    <ProjectReference Include="..\Seeing.Agent.Tools.Shell\Seeing.Agent.Tools.Shell.csproj" />
-    <ProjectReference Include="..\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />
-    <ProjectReference Include="..\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Llm.OpenAI\Seeing.Agent.Llm.OpenAI.csproj" />

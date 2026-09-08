@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Tools.FileSystem;
 
 namespace Seeing.Agent.Core.Permission;
 
@@ -38,7 +37,7 @@ public sealed class SessionWorkspaceWhitelist : IWorkspaceWhitelist
 
         foreach (var dir in dirs.Keys)
         {
-            if (FileSystemHelper.IsPathWithinDirectory(path, dir))
+            if (PathSafety.IsPathWithinDirectory(path, dir))
                 return true;
         }
         return false;

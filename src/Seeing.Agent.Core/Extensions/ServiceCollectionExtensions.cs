@@ -34,11 +34,6 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.IO.Local;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Tools.Basic;
-using Seeing.Agent.Tools.FileSystem;
-using Seeing.Agent.Tools.Shell;
-using Seeing.Agent.Tools.Web;
-using Seeing.Agent.Tools.Git;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Llm;
@@ -348,17 +343,7 @@ namespace Seeing.Agent.Extensions
             // TEMP: Phase 2 — 本地执行世界，待模块结算落地后改由 LocalExecutionWorldModule Activate
             services.TryAddSingleton<IExecutionWorld, LocalExecutionWorld>();
 
-            // TEMP: Phase 3 — FileSystem 工具模块（ConfigureServices 注册 ITool；Activate 待 Host Shape）
-            var fileSystemModule = new FileSystemModule();
-            fileSystemModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(fileSystemModule);
-
-            // TEMP: Phase 3 — Web 工具模块（ConfigureServices 注册 ITool；Activate 待 Host Shape）
-            var webModule = new WebModule();
-            webModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(webModule);
-
-            // TEMP: Phase 3 — Shell 工具模块（ConfigureServices 注册 ITool + IShellService；Activate 待 Host Shape）
+            // Shell 配置节（工具能力包由宿主 AddSeeingModule 登记；节元数据留在脊柱）
             services.GetOrCreateConfigSectionRegistry().Register(
                 new ConfigSectionMeta("Shell", "seeing.json", ConfigScope.Both, typeof(ShellOptions)));
             services.AddOptions<ShellOptions>();
@@ -369,19 +354,6 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<ConfigSectionOptionsMonitor<ShellOptions>>());
             services.TryAddSingleton<IOptions<ShellOptions>>(sp =>
                 sp.GetRequiredService<ConfigSectionOptionsMonitor<ShellOptions>>());
-            var shellModule = new ShellModule();
-            shellModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(shellModule);
-
-            // TEMP: Phase 3 — Basic 工具模块（ConfigureServices 注册 ITool；Activate 待 Host Shape）
-            var basicModule = new BasicModule();
-            basicModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(basicModule);
-
-            // TEMP: Phase 3 — Git 工具模块（ConfigureServices 注册 IGitService + ITool；Activate 待 Host Shape）
-            var gitModule = new GitModule();
-            gitModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(gitModule);
 
             // TEMP: Phase 3 — Skills 模块（ConfigureServices 注册 SkillManager + parsers + skill；Activate 待 Host Shape）
             services.GetOrCreateConfigSectionRegistry().Register(
@@ -522,8 +494,7 @@ namespace Seeing.Agent.Extensions
 
             // 技能 / 在线解析器 / skill 工具 — 由 SkillsModule.ConfigureServices 注册（见上方模块登记）
 
-            // 文件系统工具 — 由 FileSystemModule.ConfigureServices 注册（见上方模块登记）
-            // Shell 工具 — 由 ShellModule.ConfigureServices 注册（见上方模块登记）
+            // 文件系统 / Shell / Web / Basic / Git 工具 — 由宿主 AddSeeingModule<T> 登记，不再由脊柱装载
 
             // 网络工具 — 由 WebModule.ConfigureServices 注册（见上方模块登记）
 

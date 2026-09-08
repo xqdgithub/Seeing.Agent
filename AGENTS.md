@@ -244,7 +244,7 @@ dotnet vstest tests/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll 
 dotnet test tests/Seeing.Session.Tests
 
 # 打包 NuGet
-dotnet pack src/Seeing.Agent -c Release
+dotnet pack src/Seeing.Agent.Core -c Release
 dotnet pack src/Seeing.Session -c Release
 
 # 运行示例

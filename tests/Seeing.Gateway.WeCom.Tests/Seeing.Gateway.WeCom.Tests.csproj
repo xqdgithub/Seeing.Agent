@@ -27,7 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Seeing.Gateway.WeCom\Seeing.Gateway.WeCom.csproj" />
-    <ProjectReference Include="..\..\src\Seeing.Agent\Seeing.Agent.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
   </ItemGroup>
 
 </Project>

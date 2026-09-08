@@ -1,7 +1,6 @@
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Tools.FileSystem;
-
 using Seeing.Agent.Abstractions.Permissions;
+
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>
@@ -38,7 +37,7 @@ public sealed class SerializingPermissionChannel : IPermissionChannel
             request.PermissionKind.StartsWith("filesystem.", StringComparison.OrdinalIgnoreCase))
         {
             var inWorkspace = _workspace != null &&
-                FileSystemHelper.IsPathWithinDirectory(request.Resource, _workspace.GetProjectRoot());
+                PathSafety.IsPathWithinDirectory(request.Resource, _workspace.GetProjectRoot());
             var inWhitelist = _whitelist != null &&
                 _whitelist.Contains(request.SessionId ?? string.Empty, request.Resource);
             if (inWorkspace || inWhitelist)

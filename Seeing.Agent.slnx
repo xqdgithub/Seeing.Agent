@@ -30,7 +30,7 @@
     <Project Path="src/Seeing.Agent.Llm.OpenAI/Seeing.Agent.Llm.OpenAI.csproj" />
     <Project Path="src/Seeing.Agent.Llm.Anthropic/Seeing.Agent.Llm.Anthropic.csproj" />
     <Project Path="src/Seeing.Agent.Agents.BuiltIn/Seeing.Agent.Agents.BuiltIn.csproj" />
-    <Project Path="src/Seeing.Agent/Seeing.Agent.csproj" />
+    <Project Path="src/Seeing.Agent.Core/Seeing.Agent.Core.csproj" />
     <Project Path="src/Seeing.ConfigSchema/Seeing.ConfigSchema.csproj" />
     <Project Path="src/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
     <Project Path="src/Seeing.Gateway.QQ/Seeing.Gateway.QQ.csproj" />

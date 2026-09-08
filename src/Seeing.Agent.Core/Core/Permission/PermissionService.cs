@@ -444,7 +444,7 @@ public class PermissionService : IPermissionService, IDisposable
         if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(parentPath))
             return false;
 
-        return Seeing.Agent.Tools.FileSystem.FileSystemHelper.IsPathWithinDirectory(path, parentPath);
+        return PathSafety.IsPathWithinDirectory(path, parentPath);
     }
 
     private static string NormalizePath(string filePath, string workingDirectory)

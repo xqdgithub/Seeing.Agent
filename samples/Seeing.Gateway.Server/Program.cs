@@ -8,11 +8,21 @@ using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Channels;
 using Seeing.Agent.Gateway.Extensions;
 using Seeing.Agent.Scheduler.Extensions;
+using Seeing.Agent.Tools.Basic;
+using Seeing.Agent.Tools.FileSystem;
+using Seeing.Agent.Tools.Git;
+using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.Web;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 var registry = new ConfigSectionRegistry();
 builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
+builder.Services.AddSeeingModule<FileSystemModule>(registry);
+builder.Services.AddSeeingModule<WebModule>(registry);
+builder.Services.AddSeeingModule<ShellModule>(registry);
+builder.Services.AddSeeingModule<BasicModule>(registry);
+builder.Services.AddSeeingModule<GitModule>(registry);
 builder.Services.AddSeeingAcp(registry);
 builder.Services.AddSeeingScheduler(registry);
 builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);

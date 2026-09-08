@@ -8,7 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
-    <ProjectReference Include="..\..\..\src\Seeing.Agent\Seeing.Agent.csproj" />
+    <ProjectReference Include="..\..\..\src\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
     <ProjectReference Include="..\..\..\src\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
   </ItemGroup>
   <ItemGroup>
