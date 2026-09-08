@@ -36,6 +36,8 @@ using Seeing.Agent.Execution;
 using Seeing.IO.Local;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Tools.FileSystem;
+using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.Web;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
@@ -49,15 +51,14 @@ using Seeing.Agent.Skills.OnlineParsers;
 using System.Net.Http;
 using Seeing.Agent.MCP.Policy;
 using Seeing.Agent.Middlewares;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Shell;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn;
-using Seeing.Agent.Tools.BuiltIn.Shell;
 using Seeing.Agent.Tools.BuiltIn.SubTask;
 using Seeing.Agent.Tools.BuiltIn.Time;
 using Seeing.Agent.Tools.BuiltIn.Todo;
-using Seeing.Agent.Tools.BuiltIn.Web;
 using Seeing.Agent.Todo;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
@@ -334,6 +335,19 @@ namespace Seeing.Agent.Extensions
             var fileSystemModule = new FileSystemModule();
             fileSystemModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(fileSystemModule);
+
+            // TEMP: Phase 3 — Web 工具模块（ConfigureServices 注册 ITool；Activate 待 Host Shape）
+            var webModule = new WebModule();
+            webModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(webModule);
+
+            // TEMP: Phase 3 — Shell 工具模块（ConfigureServices 注册 ITool + IShellService；Activate 待 Host Shape）
+            services.TryAddSingleton<IOptionsMonitor<ShellOptions>>(sp =>
+                new ShellOptionsMonitor(sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>()));
+            var shellModule = new ShellModule();
+            shellModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(shellModule);
+
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -470,21 +484,10 @@ namespace Seeing.Agent.Extensions
             // 技能工具（让 LLM 加载技能内容）
             services.AddSingleton<ITool, SkillTool>();
 
-            // 文件系统工具 — 由 FileSystemModule.ConfigureServices 注册（见下方模块登记）
+            // 文件系统工具 — 由 FileSystemModule.ConfigureServices 注册（见上方模块登记）
+            // Shell 工具 — 由 ShellModule.ConfigureServices 注册（见上方模块登记）
 
-            // Shell 工具
-            services.AddSingleton<ITool, BashTool>();
-
-            // 网络工具（需要 HttpClient）
-            services.AddSingleton<ITool>(sp => new WebFetchTool(
-                sp.GetRequiredService<ILogger<WebFetchTool>>(),
-                sp.GetRequiredService<IHttpClientFactory>().CreateClient()));
-            services.AddSingleton<ITool>(sp => new WebSearchTool(
-                sp.GetRequiredService<ILogger<WebSearchTool>>(),
-                sp.GetRequiredService<IHttpClientFactory>().CreateClient()));
-            services.AddSingleton<ITool>(sp => new CodeSearchTool(
-                sp.GetRequiredService<ILogger<CodeSearchTool>>(),
-                sp.GetRequiredService<IHttpClientFactory>().CreateClient()));
+            // 网络工具 — 由 WebModule.ConfigureServices 注册（见上方模块登记）
 
             // 任务和 Todo 工具
             services.AddSingleton<ITool>(sp => new TaskTool(
@@ -686,9 +689,6 @@ namespace Seeing.Agent.Extensions
 
             // Shell 环境服务（触发 shell.env Hook）
             services.AddSingleton<IShellEnvironmentService, ShellEnvironmentService>();
-
-            // Shell 服务（跨平台 Shell 选择和进程管理）
-            services.AddSingleton<IShellService, DefaultShellService>();
 
             // 命令执行服务（触发 command.execute.before Hook）
             services.AddSingleton<ICommandService, CommandService>();

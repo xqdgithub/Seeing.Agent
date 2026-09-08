@@ -60,6 +60,8 @@
     <ProjectReference Include="..\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Tools.FileSystem\Seeing.Agent.Tools.FileSystem.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Tools.Shell\Seeing.Agent.Tools.Shell.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />
     <ProjectReference Include="..\Seeing.IO.Local\Seeing.IO.Local.csproj" />
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />

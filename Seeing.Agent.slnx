@@ -21,6 +21,7 @@
     <Project Path="src/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
     <Project Path="src/Seeing.Agent.Tools.FileSystem/Seeing.Agent.Tools.FileSystem.csproj" />
     <Project Path="src/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
+    <Project Path="src/Seeing.Agent.Tools.Web/Seeing.Agent.Tools.Web.csproj" />
     <Project Path="src/Seeing.Agent/Seeing.Agent.csproj" />
     <Project Path="src/Seeing.ConfigSchema/Seeing.ConfigSchema.csproj" />
     <Project Path="src/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
@@ -40,6 +41,7 @@
     <Project Path="tests/Seeing.Provider.OpenCodeZen.Tests/Seeing.Provider.OpenCodeZen.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tools.FileSystem.Tests/Seeing.Agent.Tools.FileSystem.Tests.csproj" />
+    <Project Path="tests/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
     <Project Path="tests/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />
     <Project Path="tests/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />
