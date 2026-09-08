@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Permission;

@@ -5,6 +5,7 @@ using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Filesystem;
 using Seeing.Agent.Acp.Permission;
 using Seeing.Agent.Acp.Terminal;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Acp.Client;
@@ -18,7 +19,7 @@ public sealed class SeeingAcpClientFactory
     private readonly AcpPermissionBridge _permissionBridge;
     private readonly AcpFileSystemBridge _fileSystemBridge;
     private readonly AcpTerminalBridge _terminalBridge;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
     private readonly ILoggerFactory _loggerFactory;
 
     public SeeingAcpClientFactory(
@@ -26,7 +27,7 @@ public sealed class SeeingAcpClientFactory
         AcpPermissionBridge permissionBridge,
         AcpFileSystemBridge fileSystemBridge,
         AcpTerminalBridge terminalBridge,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILoggerFactory loggerFactory)
     {
         _backendRegistry = backendRegistry;

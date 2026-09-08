@@ -14,6 +14,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
+using Seeing.Agent.Skills.Configuration;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
@@ -201,7 +202,8 @@ internal class SkillLoader : IComponentLoader
         CancellationToken cancellationToken = default)
     {
         var skillManager = services.GetRequiredService<SkillManager>();
-        var options = services.GetService<IOptions<SeeingAgentOptions>>();
+        var skillsOptions = services.GetService<IOptionsMonitor<SkillsOptions>>()?.CurrentValue
+            ?? services.GetService<IOptions<SkillsOptions>>()?.Value;
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<SkillLoader>();
         var workspaceProvider = services.GetService<IWorkspaceProvider>() ?? new WorkspaceProvider(workspaceRoot);
@@ -212,9 +214,9 @@ internal class SkillLoader : IComponentLoader
         AddIfExists(skillManager, Path.Combine(workspaceProvider.UserSeeingDirectory, "skills"));
 
         // 配置中的额外路径
-        if (options?.Value?.Skills?.Paths != null)
+        if (skillsOptions?.Paths != null)
         {
-            foreach (var p in options.Value.Skills.Paths)
+            foreach (var p in skillsOptions.Paths)
             {
                 if (!string.IsNullOrWhiteSpace(p))
                     AddIfExists(skillManager, ExpandPath(p.Trim(), workspaceProvider.GetProjectRoot()));

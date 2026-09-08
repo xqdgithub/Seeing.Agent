@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Gateway.Channels;

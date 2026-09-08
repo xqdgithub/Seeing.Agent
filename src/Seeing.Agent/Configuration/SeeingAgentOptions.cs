@@ -1,13 +1,11 @@
-﻿using Seeing.Agent.Core.Models;
+﻿using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Llm;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.Configuration
 {
     /// <summary>
-    /// Seeing.Agent 配置选项
+    /// Seeing.Agent 脊柱配置选项（modules/seams/agents/permission/models/workspace + 核心工具/标题）。
+    /// 子系统 Options（Gateway/Acp/TokenBudget/Skills/Shell/Mcp 等）已迁至各自能力包。
     /// </summary>
     public class SeeingAgentOptions
     {
@@ -17,20 +15,8 @@ namespace Seeing.Agent.Configuration
         /// <summary>默认 Agent</summary>
         public string? DefaultAgent { get; set; }
 
-        /// <summary>技能配置</summary>
-        public SkillsConfig Skills { get; set; } = new();
-
         /// <summary>权限配置</summary>
         public PermissionOptions Permission { get; set; } = new();
-
-        /// <summary>Gateway 配置</summary>
-        public GatewayOptions Gateway { get; set; } = new();
-
-        /// <summary>Gateway Client（Channel Bridge）管理配置</summary>
-        public GatewayClientsOptions GatewayClients { get; set; } = new();
-
-        /// <summary>ACP 集成配置</summary>
-        public AcpOptions Acp { get; set; } = new();
 
         /// <summary>
         /// 插件列表
@@ -60,12 +46,6 @@ namespace Seeing.Agent.Configuration
 
         /// <summary>工作区配置</summary>
         public WorkspaceOptions Workspace { get; set; } = new();
-
-        /// <summary>Token 预算全局配置</summary>
-        public TokenBudgetOptions TokenBudget { get; set; } = new();
-
-        /// <summary>Shell 配置（危险命令拦截与 Shell 优先级）</summary>
-        public ShellOptions Shell { get; set; } = new();
 
         /// <summary>
         /// 工具执行全局兜底超时（默认 null 关闭）
@@ -118,62 +98,6 @@ namespace Seeing.Agent.Configuration
     }
 
     /// <summary>
-    /// 技能配置
-    /// </summary>
-    public class SkillsConfig
-    {
-        /// <summary>本地技能路径列表</summary>
-        public List<string> Paths { get; set; } = new();
-
-        /// <summary>远程技能 URL 列表（index.json 格式）</summary>
-        public List<string> Urls { get; set; } = new();
-    }
-
-    /// <summary>
-    /// ACP 集成配置
-    /// </summary>
-    public class AcpOptions
-    {
-        /// <summary>是否启用 ACP 集成</summary>
-        public bool Enabled { get; set; }
-
-        /// <summary>默认 ACP 后端标识</summary>
-        public string? DefaultBackend { get; set; }
-
-        /// <summary>请求超时</summary>
-        public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromMinutes(5);
-
-        /// <summary>空闲超时（子进程无使用后多久终止）</summary>
-        public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(30);
-
-        /// <summary>
-        /// Session 销毁后的宽限期。
-        /// <para>在此期间，同一 session 再次请求可复用 ACP 客户端进程和 ACP Session，提高响应速度。</para>
-        /// <para>设置为 TimeSpan.Zero 可禁用宽限期（立即终止进程）。</para>
-        /// <para>默认值：5 分钟</para>
-        /// </summary>
-        public TimeSpan SessionGracePeriod { get; set; } = TimeSpan.FromMinutes(5);
-
-        /// <summary>ACP 后端配置（key 为后端标识）</summary>
-        public Dictionary<string, AcpBackendConfig> Backends { get; set; } = new();
-    }
-
-    /// <summary>
-    /// 单个 ACP 后端配置
-    /// </summary>
-    public class AcpBackendConfig
-    {
-        /// <summary>启动命令</summary>
-        public string? Command { get; set; }
-
-        /// <summary>命令参数</summary>
-        public List<string>? Args { get; set; }
-
-        /// <summary>环境变量</summary>
-        public Dictionary<string, string>? Environment { get; set; }
-    }
-
-    /// <summary>
     /// 工作区配置选项（项目级）
     /// </summary>
     public class WorkspaceOptions
@@ -193,57 +117,6 @@ namespace Seeing.Agent.Configuration
     }
 
     /// <summary>
-    /// Token 预算配置选项
-    /// </summary>
-    public class TokenBudgetOptions
-    {
-        /// <summary>
-        /// 用户配置的会话上下文最大大小（可选）
-        /// 设置后会与模型 context limit 取较小值
-        /// </summary>
-        public int? MaxContextTokens { get; set; }
-
-        /// <summary>
-        /// 无模型时的默认上下文大小
-        /// 默认 200000 (200K)
-        /// </summary>
-        public int DefaultMaxContextTokens { get; set; } = 200000;
-
-        /// <summary>警告阈值</summary>
-        public ThresholdOptions WarningThreshold { get; set; } = new() { Percentage = 80 };
-
-        /// <summary>压缩阈值</summary>
-        public ThresholdOptions CompactionThreshold { get; set; } = new() { Percentage = 90 };
-
-        /// <summary>滑动窗口保留 Token 数</summary>
-        public int SlidingWindowKeepTokens { get; set; } = 20000;
-
-        /// <summary>摘要目标 Token 数</summary>
-        public int SummaryTargetTokens { get; set; } = 4000;
-
-        /// <summary>是否启用自动压缩</summary>
-        public bool AutoCompactionEnabled { get; set; } = true;
-    }
-
-    /// <summary>
-    /// 阈值配置选项
-    /// </summary>
-    public class ThresholdOptions
-    {
-        /// <summary>
-        /// Threshold as percentage of max tokens (0-100).
-        /// Takes precedence over AbsoluteTokens if both are set.
-        /// </summary>
-        public int? Percentage { get; set; }
-
-        /// <summary>
-        /// Threshold as absolute token count.
-        /// Ignored if Percentage is also set.
-        /// </summary>
-        public int? AbsoluteTokens { get; set; }
-    }
-
-    /// <summary>
     /// 工具输出限制选项
     /// <para>工具输出超过 <see cref="MaxInlineBytes"/> 时：全文落盘到会话 ref 目录，
     /// Output 替换为 &lt;persisted-output&gt; 头+尾预览，完整内容可经 read 工具读取。</para>
@@ -257,9 +130,9 @@ namespace Seeing.Agent.Configuration
         public int MaxInlineBytes { get; set; } = 50 * 1024;
 
         /// <summary>预览头部字符数</summary>
-        public int PreviewHeadChars { get; set; } = 4*1024;
+        public int PreviewHeadChars { get; set; } = 4 * 1024;
 
         /// <summary>预览尾部字符数</summary>
-        public int PreviewTailChars { get; set; } = 2*1024;
+        public int PreviewTailChars { get; set; } = 2 * 1024;
     }
 }

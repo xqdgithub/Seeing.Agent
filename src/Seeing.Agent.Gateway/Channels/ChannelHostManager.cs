@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Gateway.Channels;

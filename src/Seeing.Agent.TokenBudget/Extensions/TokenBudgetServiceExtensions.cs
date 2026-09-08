@@ -27,19 +27,26 @@ public static class TokenBudgetServiceExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Configuration
+        // Configuration — TokenBudgetOptions from seeing.json via IConfigSectionStore
+        services.AddOptions<TokenBudgetOptions>();
+        services.AddSingleton<TokenBudgetOptionsMonitor>();
+        services.AddSingleton<IOptions<TokenBudgetOptions>>(sp => sp.GetRequiredService<TokenBudgetOptionsMonitor>());
+        services.AddSingleton<IOptionsMonitor<TokenBudgetOptions>>(sp => sp.GetRequiredService<TokenBudgetOptionsMonitor>());
+        services.AddSingleton<IValidateOptions<TokenBudgetOptions>, TokenBudgetOptionsValidator>();
+
+        // Legacy GlobalTokenBudgetOptions bind (appsettings) kept for compatibility
         services.Configure<GlobalTokenBudgetOptions>(
             configuration.GetSection(GlobalTokenBudgetOptions.SectionName));
         
         // Token estimation
         services.AddSingleton<ITokenCounter, CharBasedTokenCounter>();
         
-        // Budget management - 需要 ILlmService 和 SeeingAgentOptions
+        // Budget management
         services.AddSingleton<ITokenBudgetConfigResolver, TokenBudgetConfigResolver>();
         services.AddSingleton<ITokenBudgetManager>(sp =>
         {
             var llmService = sp.GetRequiredService<ILlmService>();
-            var options = sp.GetRequiredService<IOptions<SeeingAgentOptions>>();
+            var options = sp.GetRequiredService<IOptionsMonitor<TokenBudgetOptions>>();
             var tokenCounter = sp.GetService<ITokenCounter>();
             return new TokenBudgetManager(llmService, options, tokenCounter);
         });

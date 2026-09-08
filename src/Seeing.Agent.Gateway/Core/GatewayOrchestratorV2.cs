@@ -8,6 +8,7 @@ using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Execution;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Gateway.Permission;

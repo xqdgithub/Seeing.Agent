@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Acp.Session;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Session.Core;
 using Xunit;
@@ -152,13 +153,9 @@ public class AcpConnectionGracePeriodTests
     }
 
     [Fact]
-    public void SeeingAgentOptions_Acp_HasGracePeriod()
+    public void AcpOptions_HasGracePeriod()
     {
-        // Arrange & Act
-        var options = new SeeingAgentOptions();
-
-        // Assert
-        Assert.NotNull(options.Acp);
-        Assert.Equal(TimeSpan.FromMinutes(5), options.Acp.SessionGracePeriod);
+        var options = new AcpOptions();
+        Assert.Equal(TimeSpan.FromMinutes(5), options.SessionGracePeriod);
     }
 }

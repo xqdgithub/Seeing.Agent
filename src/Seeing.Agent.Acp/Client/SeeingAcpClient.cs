@@ -8,6 +8,7 @@ using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Filesystem;
 using Seeing.Agent.Acp.Permission;
 using Seeing.Agent.Acp.Terminal;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Acp.Client;
@@ -32,7 +33,7 @@ public sealed class SeeingAcpClient : SubprocessClient
         AcpPermissionBridge permissionBridge,
         AcpFileSystemBridge fileSystemBridge,
         AcpTerminalBridge terminalBridge,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger<SeeingAcpClient>? logger = null,
         IAcpUpdateSink? updateSink = null,
         AcpPermissionContext? permissionContext = null,
@@ -164,7 +165,7 @@ public sealed class SeeingAcpClient : SubprocessClient
 
     private static SubprocessClientOptions BuildOptions(
         AcpBackendDescriptor backend,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger? logger)
     {
         var startInfo = new System.Diagnostics.ProcessStartInfo
@@ -179,7 +180,7 @@ public sealed class SeeingAcpClient : SubprocessClient
         {
             StartInfo = startInfo,
             Logger = logger,
-            RequestTimeout = options.Value.Acp.RequestTimeout,
+            RequestTimeout = options.CurrentValue.RequestTimeout,
             DefaultStartTimeout = Configuration.AcpOptionsDefaults.DefaultStartTimeout,
             DefaultStopTimeout = Configuration.AcpOptionsDefaults.DefaultStopTimeout
         };

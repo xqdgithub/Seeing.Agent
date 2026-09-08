@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Xunit;
 
@@ -12,16 +13,13 @@ public class AcpBackendRegistryTests
     [Fact]
     public void GetBackend_WithValidConfig_ShouldReturnDescriptor()
     {
-        var registry = CreateRegistry(new SeeingAgentOptions
+        var registry = CreateRegistry(new AcpOptions
         {
-            Acp = new AcpOptions
+            Enabled = true,
+            DefaultBackend = "opencode",
+            Backends = new Dictionary<string, AcpBackendConfig>
             {
-                Enabled = true,
-                DefaultBackend = "opencode",
-                Backends = new Dictionary<string, AcpBackendConfig>
-                {
-                    ["opencode"] = new() { Command = "opencode", Args = new List<string> { "acp" } }
-                }
+                ["opencode"] = new() { Command = "opencode", Args = new List<string> { "acp" } }
             }
         });
 
@@ -35,17 +33,14 @@ public class AcpBackendRegistryTests
     [Fact]
     public void ResolveDefault_ShouldUseConfiguredDefault()
     {
-        var registry = CreateRegistry(new SeeingAgentOptions
+        var registry = CreateRegistry(new AcpOptions
         {
-            Acp = new AcpOptions
+            Enabled = true,
+            DefaultBackend = "codex",
+            Backends = new Dictionary<string, AcpBackendConfig>
             {
-                Enabled = true,
-                DefaultBackend = "codex",
-                Backends = new Dictionary<string, AcpBackendConfig>
-                {
-                    ["codex"] = new() { Command = "codex" },
-                    ["opencode"] = new() { Command = "opencode" }
-                }
+                ["codex"] = new() { Command = "codex" },
+                ["opencode"] = new() { Command = "opencode" }
             }
         });
 
@@ -55,16 +50,13 @@ public class AcpBackendRegistryTests
     [Fact]
     public void GetBackend_WhenDisabled_ShouldThrow()
     {
-        var registry = CreateRegistry(new SeeingAgentOptions
-        {
-            Acp = new AcpOptions { Enabled = false }
-        });
+        var registry = CreateRegistry(new AcpOptions { Enabled = false });
 
         var act = () => registry.GetBackend("any");
         act.Should().Throw<InvalidOperationException>();
     }
 
-    private static AcpBackendRegistry CreateRegistry(SeeingAgentOptions options)
+    private static AcpBackendRegistry CreateRegistry(AcpOptions acp)
     {
         var workspaceMock = new Mock<IWorkspaceProvider>();
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
@@ -74,8 +66,7 @@ public class AcpBackendRegistryTests
             workspaceMock.Object,
             NullLogger<UnifiedConfigManager>.Instance);
 
-        // Set the Acp options
-        configManager.GetSeeingAgentOptions().Acp = options.Acp;
+        configManager.SetSectionInMemory("Acp", acp);
 
         return new AcpBackendRegistry(configManager, NullLogger<AcpBackendRegistry>.Instance);
     }

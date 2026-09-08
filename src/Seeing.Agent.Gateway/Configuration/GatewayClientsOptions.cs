@@ -1,15 +1,16 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
-
 using Seeing.Agent.Abstractions.Configuration;
 
-namespace Seeing.Agent.Configuration;
+namespace Seeing.Agent.Gateway.Configuration;
 
 /// <summary>
 /// Gateway Client（Channel Bridge）管理配置（JSON: SeeingAgent:GatewayClients）
 /// </summary>
 public class GatewayClientsOptions
 {
+    public const string SectionName = "GatewayClients";
+
     public GatewayClientDefaults Defaults { get; set; } = new();
 
     public List<PluginSpec> Plugins { get; set; } = new();

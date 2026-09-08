@@ -5,9 +5,11 @@ using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Client;
 using Seeing.Agent.Acp.Commands;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Filesystem;
 using Seeing.Agent.Acp.Hosting;
@@ -35,6 +37,11 @@ public static class AcpServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddSeeingAcp(this IServiceCollection services)
     {
+        services.AddOptions<AcpOptions>();
+        services.AddSingleton<AcpOptionsMonitor>();
+        services.AddSingleton<IOptions<AcpOptions>>(sp => sp.GetRequiredService<AcpOptionsMonitor>());
+        services.AddSingleton<IOptionsMonitor<AcpOptions>>(sp => sp.GetRequiredService<AcpOptionsMonitor>());
+
         services.AddSingleton<IAcpBackendRegistry, AcpBackendRegistry>();
         services.AddSingleton<IAcpConfigurationReloader, AcpConfigurationReloader>();
         services.AddSingleton<IReloadHandler, AcpReloadHandler>();

@@ -138,6 +138,7 @@ public class ExecutionJobServiceInstructionTests
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(
                 monitor => monitor.CurrentValue == new SeeingAgentOptions()),
+            Mock.Of<IConfigSectionStore>(),
             NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
 

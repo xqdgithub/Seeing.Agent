@@ -1,6 +1,7 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Extensions;
 using Seeing.Agent.Gateway.Hosting;

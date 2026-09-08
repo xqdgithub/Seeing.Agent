@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Acp.Tools;
 using Seeing.Agent.Acp.Transport;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
 using Seeing.Agent.Abstractions.Extensions;
@@ -47,12 +48,12 @@ public sealed class AcpExtension : IExtension, IToolExtension
         var loggerFactory = context.Services.GetRequiredService<ILoggerFactory>();
         _logger = loggerFactory.CreateLogger<AcpExtension>();
 
-        var options = context.Services.GetRequiredService<IOptions<SeeingAgentOptions>>().Value;
+        var options = context.Services.GetRequiredService<IOptionsMonitor<AcpOptions>>().CurrentValue;
         _connectionManager = context.Services.GetService<AcpConnectionManager>();
         _acpTool = context.Services.GetService<AcpTool>();
         _acpStatusTool = context.Services.GetService<AcpStatusTool>();
 
-        if (!options.Acp.Enabled)
+        if (!options.Enabled)
         {
             _logger.LogInformation("{Name} loaded; ACP is disabled in configuration", Name);
             return Task.CompletedTask;
@@ -71,7 +72,7 @@ public sealed class AcpExtension : IExtension, IToolExtension
             "{Name} extension active ({BackendCount} backend(s)); " +
             "agent/hook/router registration is handled by AddSeeingAcp hosted services",
             Name,
-            options.Acp.Backends.Count);
+            options.Backends.Count);
 
         return Task.CompletedTask;
     }

@@ -1,3 +1,4 @@
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Channels;
 

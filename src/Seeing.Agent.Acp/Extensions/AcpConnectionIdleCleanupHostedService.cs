@@ -2,6 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Transport;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Acp.Extensions;
@@ -14,12 +15,12 @@ internal sealed class AcpConnectionIdleCleanupHostedService : BackgroundService
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(1);
 
     private readonly AcpConnectionManager _connectionManager;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
     private readonly ILogger<AcpConnectionIdleCleanupHostedService> _logger;
 
     public AcpConnectionIdleCleanupHostedService(
         AcpConnectionManager connectionManager,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger<AcpConnectionIdleCleanupHostedService> logger)
     {
         _connectionManager = connectionManager;
@@ -29,13 +30,13 @@ internal sealed class AcpConnectionIdleCleanupHostedService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_options.Value.Acp.Enabled)
+        if (!_options.CurrentValue.Enabled)
             return;
 
         _logger.LogDebug(
             "ACP idle lease cleanup started (interval={Interval}, idleTimeout={IdleTimeout})",
             CleanupInterval,
-            _options.Value.Acp.IdleTimeout);
+            _options.CurrentValue.IdleTimeout);
 
         using var timer = new PeriodicTimer(CleanupInterval);
         try

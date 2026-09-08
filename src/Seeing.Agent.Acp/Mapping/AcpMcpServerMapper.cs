@@ -4,6 +4,7 @@ using AcpMcpServerConfig = Acp.Types.McpServerConfig;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Mcp;
 using SeeingMcpConfig = Seeing.Agent.Abstractions.Mcp.McpServerConfig;
@@ -17,13 +18,13 @@ public sealed class AcpMcpServerMapper
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IWorkspaceProvider _workspaceProvider;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
     private readonly ILogger<AcpMcpServerMapper> _logger;
 
     public AcpMcpServerMapper(
         IServiceProvider serviceProvider,
         IWorkspaceProvider workspaceProvider,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger<AcpMcpServerMapper> logger)
     {
         _serviceProvider = serviceProvider;
@@ -36,7 +37,7 @@ public sealed class AcpMcpServerMapper
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!_options.Value.Acp.Enabled)
+        if (!_options.CurrentValue.Enabled)
             return Task.FromResult(new List<AcpMcpServerConfig>());
 
         var result = new List<AcpMcpServerConfig>();

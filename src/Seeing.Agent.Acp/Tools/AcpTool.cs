@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Mapping;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Core.Models;
@@ -25,7 +26,7 @@ public sealed class AcpTool : ToolBase
     private readonly IAcpSessionRunner _sessionRunner;
     private readonly IAcpBackendRegistry _backendRegistry;
     private readonly ContentBlockMapper _contentMapper;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
     private readonly ISessionManager _sessionManager;
     private readonly IExecutionWorld _world;
     private readonly ConcurrentDictionary<string, BackgroundTaskState> _backgroundTasks = new();
@@ -35,7 +36,7 @@ public sealed class AcpTool : ToolBase
         IAcpSessionRunner sessionRunner,
         IAcpBackendRegistry backendRegistry,
         ContentBlockMapper contentMapper,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ISessionManager sessionManager,
         IExecutionWorld world) : base(logger)
     {
@@ -63,7 +64,7 @@ public sealed class AcpTool : ToolBase
 
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
-        if (!_options.Value.Acp.Enabled)
+        if (!_options.CurrentValue.Enabled)
             return Failure("ACP 集成未启用");
 
         var description = GetStringArgument(arguments, "description");

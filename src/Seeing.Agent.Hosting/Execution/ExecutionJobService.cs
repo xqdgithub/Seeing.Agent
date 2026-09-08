@@ -42,6 +42,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     private readonly IExecutionEventPublisher _eventPublisher;
     private readonly ExecutionOptions _options;
     private readonly IOptionsMonitor<SeeingAgentOptions> _seeingAgentOptions;
+    private readonly IConfigSectionStore _configStore;
     private readonly CompactionRunner _compactionRunner;
     private readonly ILogger<ExecutionJobService> _logger;
     private readonly Timer _cleanupTimer;
@@ -56,6 +57,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         IExecutionEventPublisher eventPublisher,
         ExecutionOptions options,
         IOptionsMonitor<SeeingAgentOptions> seeingAgentOptions,
+        IConfigSectionStore configStore,
         ILogger<ExecutionJobService> logger,
         CompactionRunner compactionRunner,
         IAgentLoopScheduler? loopScheduler = null)
@@ -64,6 +66,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         _eventPublisher = eventPublisher;
         _options = options ?? new ExecutionOptions();
         _seeingAgentOptions = seeingAgentOptions;
+        _configStore = configStore;
         _compactionRunner = compactionRunner ?? throw new ArgumentNullException(nameof(compactionRunner));
         _logger = logger;
         _loopScheduler = loopScheduler;
@@ -423,7 +426,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             var session = await sessionManager.EnsureSessionAsync(record.SessionId);
 
             // 自动压缩门控：TokenBudget 标记 + 配置开启时，每轮 Agent 循环开始前触发压缩
-            var autoCompaction = _seeingAgentOptions.CurrentValue.TokenBudget?.AutoCompactionEnabled == true;
+            var autoCompaction = _configStore.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget").AutoCompactionEnabled;
             if (autoCompaction &&
                 session.PendingCompaction &&
                 session.Messages.Count > 0)
@@ -1224,4 +1227,9 @@ public class ExecutionHistoryEntry
     public DateTime StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public string? ErrorMessage { get; set; }
+}
+/// <summary>Peek DTO for TokenBudget.AutoCompactionEnabled without referencing TokenBudget package.</summary>
+internal sealed class TokenBudgetAutoCompactionPeek
+{
+    public bool AutoCompactionEnabled { get; set; } = true;
 }

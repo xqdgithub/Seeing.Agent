@@ -14,6 +14,7 @@ using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Execution;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Compression;
+using Seeing.Agent.TokenBudget.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Instructions;
@@ -53,13 +54,12 @@ public class ExecutionJobServiceCompactionTests
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
         var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue)
-            .Returns(new SeeingAgentOptions
-            {
-                TokenBudget = new TokenBudgetOptions { AutoCompactionEnabled = true }
-            });
+        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
+        var configStore = new Mock<IConfigSectionStore>();
+        configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
+            .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = true });
 
-        using var fixture = CreateFixture(session, publisher.Object, summarizer.Object, optionsMonitor.Object);
+        using var fixture = CreateFixture(session, publisher.Object, summarizer.Object, optionsMonitor.Object, configStore.Object);
         var service = fixture.Service;
 
         // Act
@@ -117,13 +117,12 @@ public class ExecutionJobServiceCompactionTests
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
         var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue)
-            .Returns(new SeeingAgentOptions
-            {
-                TokenBudget = new TokenBudgetOptions { AutoCompactionEnabled = true }
-            });
+        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
+        var configStore = new Mock<IConfigSectionStore>();
+        configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
+            .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = true });
 
-        using var fixture = CreateFixture(session, publisher.Object, summarizer.Object, optionsMonitor.Object);
+        using var fixture = CreateFixture(session, publisher.Object, summarizer.Object, optionsMonitor.Object, configStore.Object);
         var service = fixture.Service;
 
         // Act
@@ -163,7 +162,7 @@ public class ExecutionJobServiceCompactionTests
         SessionData session,
         IExecutionEventPublisher publisher,
         ISummarizer summarizer,
-        IOptionsMonitor<SeeingAgentOptions> optionsMonitor)
+        IOptionsMonitor<SeeingAgentOptions> optionsMonitor, IConfigSectionStore configStore)
     {
         var sessionManager = new Mock<ISessionManager>();
         sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>()))
@@ -218,6 +217,7 @@ public class ExecutionJobServiceCompactionTests
             publisher,
             new ExecutionOptions(),
             optionsMonitor,
+            configStore,
             NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(
                 new CompressionService(summarizer, sessionManager.Object),

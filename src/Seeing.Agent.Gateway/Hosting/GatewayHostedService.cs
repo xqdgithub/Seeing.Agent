@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Gateway.Hosting;

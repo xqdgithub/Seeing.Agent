@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Configuration;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Acp.Backends;
@@ -21,7 +22,7 @@ public sealed class AcpBackendRegistry : IAcpBackendRegistry
         _logger = logger;
     }
 
-    private AcpOptions Acp => _configManager.GetSeeingAgentOptions().Acp;
+    private AcpOptions Acp => _configManager.GetSection<AcpOptions>("Acp");
 
     /// <inheritdoc />
     public AcpBackendDescriptor GetBackend(string backendId)
@@ -78,7 +79,7 @@ public sealed class AcpBackendRegistry : IAcpBackendRegistry
         return descriptor is { Enabled: true };
     }
 
-    private AcpBackendDescriptor? TryCreateDescriptor(string id, CoreAcpBackendConfig config)
+    private AcpBackendDescriptor? TryCreateDescriptor(string id, AcpBackendConfig config)
     {
         if (string.IsNullOrWhiteSpace(config.Command))
         {

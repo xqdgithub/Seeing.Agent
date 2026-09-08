@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.TokenBudget.Configuration;
 using Seeing.Session.Core;
 using Seeing.TokenEstimation;
 
@@ -14,7 +14,7 @@ namespace Seeing.Agent.TokenBudget;
 public class TokenBudgetManager : ITokenBudgetManager
 {
     private readonly ILlmService _llmService;
-    private readonly SeeingAgentOptions _options;
+    private readonly IOptionsMonitor<TokenBudgetOptions> _options;
     private readonly ITokenCounter _tokenCounter;
 
     /// <summary>
@@ -22,19 +22,21 @@ public class TokenBudgetManager : ITokenBudgetManager
     /// </summary>
     public TokenBudgetManager(
         ILlmService llmService,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<TokenBudgetOptions> options,
         ITokenCounter? tokenCounter = null)
     {
         _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
-        _options = options.Value;
+        _options = options ?? throw new ArgumentNullException(nameof(options));
         _tokenCounter = tokenCounter ?? new CharBasedTokenCounter();
     }
+
+    private TokenBudgetOptions Options => _options.CurrentValue;
 
     /// <inheritdoc />
     public int GetEffectiveMaxContextTokens(string? modelId)
     {
-        var userMaxContext = _options.TokenBudget.MaxContextTokens;
-        var defaultMaxContext = _options.TokenBudget.DefaultMaxContextTokens;
+        var userMaxContext = Options.MaxContextTokens;
+        var defaultMaxContext = Options.DefaultMaxContextTokens;
 
         int? modelContextLimit = null;
         if (!string.IsNullOrEmpty(modelId))
@@ -65,13 +67,13 @@ public class TokenBudgetManager : ITokenBudgetManager
         {
             WarningThreshold = new ThresholdConfig 
             { 
-                Percentage = _options.TokenBudget.WarningThreshold.Percentage,
-                AbsoluteTokens = _options.TokenBudget.WarningThreshold.AbsoluteTokens
+                Percentage = Options.WarningThreshold.Percentage,
+                AbsoluteTokens = Options.WarningThreshold.AbsoluteTokens
             },
             CompactionThreshold = new ThresholdConfig 
             { 
-                Percentage = _options.TokenBudget.CompactionThreshold.Percentage,
-                AbsoluteTokens = _options.TokenBudget.CompactionThreshold.AbsoluteTokens
+                Percentage = Options.CompactionThreshold.Percentage,
+                AbsoluteTokens = Options.CompactionThreshold.AbsoluteTokens
             },
         };
 

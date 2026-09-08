@@ -1,6 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
@@ -13,11 +14,11 @@ namespace Seeing.Agent.Acp.Execution;
 public sealed class AcpAgentExecutor : IAgentExecutorImplementation
 {
     private readonly AcpPassthroughExecutor _passthroughExecutor;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
 
     public AcpAgentExecutor(
         AcpPassthroughExecutor passthroughExecutor,
-        IOptions<SeeingAgentOptions> options)
+        IOptionsMonitor<AcpOptions> options)
     {
         _passthroughExecutor = passthroughExecutor;
         _options = options;
@@ -32,7 +33,7 @@ public sealed class AcpAgentExecutor : IAgentExecutorImplementation
         AgentContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (!_options.Value.Acp.Enabled)
+        if (!_options.CurrentValue.Enabled)
         {
             yield return new ErrorEvent
             {

@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Extensions;
 using Seeing.ConfigSchema;

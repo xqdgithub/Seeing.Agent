@@ -1,9 +1,10 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Channels;
 using Seeing.Gateway.Client;

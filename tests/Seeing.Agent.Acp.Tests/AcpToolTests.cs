@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Execution;
 using System.Text.Json;
@@ -10,6 +10,7 @@ using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Acp.Tools;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
@@ -95,15 +96,12 @@ public class AcpToolTests
         runner ??= Mock.Of<IAcpSessionRunner>();
         sessionManager ??= new FakeSessionManager();
 
-        var registry = CreateBackendRegistry(new SeeingAgentOptions
+        var registry = CreateBackendRegistry(new AcpOptions
         {
-            Acp = new AcpOptions
+            Enabled = true,
+            Backends = new Dictionary<string, AcpBackendConfig>
             {
-                Enabled = true,
-                Backends = new Dictionary<string, AcpBackendConfig>
-                {
-                    ["opencode"] = new() { Command = "opencode" }
-                }
+                ["opencode"] = new() { Command = "opencode" }
             }
         });
         
@@ -114,12 +112,12 @@ public class AcpToolTests
             runner,
             registry,
             new ContentBlockMapper(),
-            Options.Create(new SeeingAgentOptions { Acp = new AcpOptions { Enabled = true } }),
+            Mock.Of<IOptionsMonitor<AcpOptions>>(m => m.CurrentValue == new AcpOptions { Enabled = true }),
             sessionManager ?? new FakeSessionManager(),
             world);
     }
 
-    private static AcpBackendRegistry CreateBackendRegistry(SeeingAgentOptions options)
+    private static AcpBackendRegistry CreateBackendRegistry(AcpOptions acp)
     {
         var workspaceMock = new Mock<IWorkspaceProvider>();
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
@@ -130,7 +128,7 @@ public class AcpToolTests
             NullLogger<UnifiedConfigManager>.Instance);
 
         // Set the Acp options
-        configManager.GetSeeingAgentOptions().Acp = options.Acp;
+        configManager.SetSectionInMemory("Acp", acp);
 
         return new AcpBackendRegistry(configManager, NullLogger<AcpBackendRegistry>.Instance);
     }

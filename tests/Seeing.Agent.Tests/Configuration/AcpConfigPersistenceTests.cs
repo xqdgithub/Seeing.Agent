@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Xunit;
 
@@ -72,7 +73,7 @@ public class AcpConfigPersistenceTests
 
         await configManager.LoadAsync();
 
-        configManager.GetSeeingAgentOptions().Acp.Backends["cursor"].Command.Should().Be("C:/saved.cmd");
+        configManager.GetSection<AcpOptions>("Acp").Backends["cursor"].Command.Should().Be("C:/saved.cmd");
 
         Directory.Delete(tempDir, recursive: true);
     }
@@ -124,7 +125,7 @@ public class AcpConfigPersistenceTests
 
         await configManager.LoadAsync();
 
-        configManager.GetSeeingAgentOptions().Acp.Backends["cursor"].Command.Should().Be("C:/user.cmd");
+        configManager.GetSection<AcpOptions>("Acp").Backends["cursor"].Command.Should().Be("C:/user.cmd");
 
         Directory.Delete(tempDir, recursive: true);
     }

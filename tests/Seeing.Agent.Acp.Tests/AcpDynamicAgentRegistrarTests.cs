@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Hosting;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Models;
 using Xunit;
@@ -24,23 +25,20 @@ public class AcpDynamicAgentRegistrarTests
             .Callback<AgentDefinition>(registered.Add)
             .Returns(Task.CompletedTask);
 
-        var backendRegistry = CreateBackendRegistry(new SeeingAgentOptions
+        var backendRegistry = CreateBackendRegistry(new AcpOptions
         {
-            Acp = new AcpOptions
+            Enabled = true,
+            Backends = new Dictionary<string, AcpBackendConfig>
             {
-                Enabled = true,
-                Backends = new Dictionary<string, AcpBackendConfig>
-                {
-                    ["opencode"] = new() { Command = "opencode", Args = new List<string> { "acp" } },
-                    ["codex"] = new() { Command = "codex", Args = new List<string> { "acp" } }
-                }
+                ["opencode"] = new() { Command = "opencode", Args = new List<string> { "acp" } },
+                ["codex"] = new() { Command = "codex", Args = new List<string> { "acp" } }
             }
         });
 
         await AcpDynamicAgentRegistrar.RegisterAsync(
             registry.Object,
             backendRegistry,
-            Options.Create(new SeeingAgentOptions { Acp = new AcpOptions { Enabled = true } }),
+            Mock.Of<IOptionsMonitor<AcpOptions>>(m => m.CurrentValue == new AcpOptions { Enabled = true }),
             NullLogger.Instance);
 
         registered.Should().HaveCount(2);
@@ -57,7 +55,7 @@ public class AcpDynamicAgentRegistrarTests
         AcpDynamicAgentRegistrar.GetAgentName("opencode").Should().Be("acp-opencode");
     }
 
-    private static AcpBackendRegistry CreateBackendRegistry(SeeingAgentOptions options)
+    private static AcpBackendRegistry CreateBackendRegistry(AcpOptions acp)
     {
         var workspaceMock = new Mock<IWorkspaceProvider>();
         workspaceMock.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
@@ -68,7 +66,7 @@ public class AcpDynamicAgentRegistrarTests
             NullLogger<UnifiedConfigManager>.Instance);
 
         // Set the Acp options
-        configManager.GetSeeingAgentOptions().Acp = options.Acp;
+        configManager.SetSectionInMemory("Acp", acp);
 
         return new AcpBackendRegistry(configManager, NullLogger<AcpBackendRegistry>.Instance);
     }

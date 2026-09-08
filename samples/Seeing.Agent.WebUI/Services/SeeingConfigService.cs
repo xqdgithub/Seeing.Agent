@@ -1,5 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.WebUI.Services;
@@ -67,6 +69,21 @@ public sealed class SeeingConfigService : ISeeingConfigService
     public async Task SaveAcpSectionAsync(AcpOptions options, CancellationToken ct = default)
     {
         await _configManager.SaveSectionAsync("Acp", options, ConfigLevel.User, ct);
+    }
+
+    // ===== Gateway =====
+
+    /// <summary>加载合并后的 Gateway 配置</summary>
+    public Task<GatewayOptions> LoadEffectiveGatewayAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult(_configManager.GetSection<GatewayOptions>("Gateway"));
+    }
+
+    /// <summary>加载指定级别的 Gateway 配置</summary>
+    public async Task<GatewayOptions> LoadGatewayAtLevelAsync(ConfigLevel level, CancellationToken ct = default)
+    {
+        return await _configManager.GetSectionAtLevelAsync<GatewayOptions>("Gateway", level, ct)
+            ?? new GatewayOptions();
     }
 
     // ===== 通用节操作 =====

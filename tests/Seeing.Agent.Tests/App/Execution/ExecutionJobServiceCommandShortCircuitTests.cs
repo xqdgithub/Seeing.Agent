@@ -394,6 +394,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
             publisher,
             new ExecutionOptions(),
             optionsMonitor,
+            Mock.Of<IConfigSectionStore>(),
             NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(
                 new CompressionService(null!, sessionManager.Object),

@@ -138,6 +138,7 @@ public class ChatOrchestratorCreateSessionTests
             options: new ExecutionOptions(),
             seeingAgentOptions: Mock.Of<Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions>>(
                 m => m.CurrentValue == new SeeingAgentOptions()),
+            configStore: Mock.Of<IConfigSectionStore>(),
             logger: NullLogger<ExecutionJobService>.Instance,
             compactionRunner: new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Hosting;
 using Seeing.Agent.Gateway.Scheduling;
@@ -22,6 +23,10 @@ public static class GatewayServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddSeeingGatewayServer(this IServiceCollection services)
     {
+        services.AddOptions<GatewayOptions>();
+        services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
+        services.AddSingleton<IValidateOptions<GatewayOptions>, GatewayOptionsValidator>();
+
         services.AddSingleton<GatewayConnectionManager>();
         services.AddSingleton<GatewayScheduleDispatcher>();
         services.AddSingleton<IScheduledJobDispatcher>(sp => sp.GetRequiredService<GatewayScheduleDispatcher>());

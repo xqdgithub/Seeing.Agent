@@ -20,6 +20,7 @@ using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Policy;
 using Seeing.Agent.Skills;
+using Seeing.Agent.Skills.Configuration;
 using Seeing.Agent.Tools;
 using Xunit;
 
@@ -172,13 +173,13 @@ public class ComponentManagerReloadTests
 
         var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
         var skillManager = new SkillManager(loggerFactory.CreateLogger<SkillManager>());
-        var options = Options.Create(new SeeingAgentOptions
-        {
-            Skills = new SkillsConfig { Paths = new List<string> { skillsDir } }
-        });
+        var options = Options.Create(new SkillsOptions { Paths = new List<string> { skillsDir } });
         var services = new ServiceCollection()
             .AddSingleton(skillManager)
-            .AddSingleton<IOptions<SeeingAgentOptions>>(options)
+            .AddSingleton<IOptions<SkillsOptions>>(options)
+            .AddSingleton<IOptionsMonitor<SkillsOptions>>(
+                Mock.Of<IOptionsMonitor<SkillsOptions>>(m => m.CurrentValue == options.Value))
+            .AddSingleton(Options.Create(new SeeingAgentOptions()))
             .AddSingleton<ILoggerFactory>(loggerFactory)
             .AddSingleton<IWorkspaceProvider>(new WorkspaceProvider(workspace.Root))
             .BuildServiceProvider();

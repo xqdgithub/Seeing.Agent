@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Channels;

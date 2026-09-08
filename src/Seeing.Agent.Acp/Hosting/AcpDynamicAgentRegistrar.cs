@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Models;
 
@@ -21,11 +22,11 @@ public static class AcpDynamicAgentRegistrar
     public static async Task RegisterAsync(
         IAgentRegistry agentRegistry,
         IAcpBackendRegistry backendRegistry,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
-        if (!options.Value.Acp.Enabled)
+        if (!options.CurrentValue.Enabled)
         {
             logger.LogDebug("ACP disabled, skipping dynamic agent registration");
             return;

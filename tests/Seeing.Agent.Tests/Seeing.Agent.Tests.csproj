@@ -29,6 +29,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent\Seeing.Agent.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.TokenBudget\Seeing.Agent.TokenBudget.csproj" />

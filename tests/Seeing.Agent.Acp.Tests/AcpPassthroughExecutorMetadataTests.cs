@@ -1,10 +1,11 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Mapping;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
@@ -24,22 +25,23 @@ public class AcpPassthroughExecutorMetadataTests
             return Task.FromResult(new AcpRunResult { Success = true, Text = "ok" });
         });
 
+        var acpOptions = new AcpOptions
+        {
+            Enabled = true,
+            DefaultBackend = "opencode",
+            Backends = new Dictionary<string, AcpBackendConfig>
+            {
+                ["opencode"] = new() { Command = "opencode.cmd", Args = ["acp"] }
+            }
+        };
+        var optionsMonitor = new Mock<IOptionsMonitor<AcpOptions>>();
+        optionsMonitor.Setup(m => m.CurrentValue).Returns(acpOptions);
+
         var executor = new AcpPassthroughExecutor(
             sessionRunner,
             new ContentBlockMapper(),
             new AcpEventMapper(),
-            Options.Create(new SeeingAgentOptions
-            {
-                Acp = new AcpOptions
-                {
-                    Enabled = true,
-                    DefaultBackend = "opencode",
-                    Backends = new Dictionary<string, AcpBackendConfig>
-                    {
-                        ["opencode"] = new() { Command = "opencode.cmd", Args = ["acp"] }
-                    }
-                }
-            }),
+            optionsMonitor.Object,
             NullLogger<AcpPassthroughExecutor>.Instance);
 
         var context = new AgentContext

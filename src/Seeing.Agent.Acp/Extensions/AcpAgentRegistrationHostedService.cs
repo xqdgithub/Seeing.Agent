@@ -1,7 +1,8 @@
-﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
 using Seeing.Agent.Abstractions.Extensions;
@@ -15,13 +16,13 @@ internal sealed class AcpAgentRegistrationHostedService : IHostedService
 {
     private readonly IAgentRegistry _agentRegistry;
     private readonly IAcpBackendRegistry _backendRegistry;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
     private readonly ILogger<AcpAgentRegistrationHostedService> _logger;
 
     public AcpAgentRegistrationHostedService(
         IAgentRegistry agentRegistry,
         IAcpBackendRegistry backendRegistry,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger<AcpAgentRegistrationHostedService> logger)
     {
         _agentRegistry = agentRegistry;

@@ -1,5 +1,6 @@
 @page "/security"
 @using AntDesign
+@using Seeing.Agent.Gateway.Configuration
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Permission
 @using Seeing.Agent.WebUI.Components
@@ -99,7 +100,7 @@
     {
         var options = await ConfigService.LoadProjectOptionsAsync();
         _permission = options.Permission;
-        _gateway = options.Gateway;
+        _gateway = await ConfigService.LoadEffectiveGatewayAsync();
         await LoadAgentRulesAsync();
     }
 

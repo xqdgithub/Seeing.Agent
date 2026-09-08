@@ -36,18 +36,25 @@ public sealed class McpModule : ISeeingModule
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
+        services.AddOptions<McpOptions>();
+
         // Interim: register MCP stack so existing discovery still works
         // without Activate until Host Shape lands.
         services.AddSingleton<McpGlobalPolicy>(sp =>
         {
-            var config = sp.GetService<IConfiguration>()?.GetSection("SeeingAgent:Mcp");
+            var options = sp.GetService<Microsoft.Extensions.Options.IOptions<McpOptions>>()?.Value
+                ?? new McpOptions();
+            var config = sp.GetService<IConfiguration>()?.GetSection(McpOptions.ConfigurationSection);
+            if (config is not null)
+                config.Bind(options);
+
             return new McpGlobalPolicy
             {
-                ConnectionTimeout = TimeSpan.FromSeconds(config?.GetValue("ConnectionTimeoutSeconds", 30) ?? 30),
-                OperationTimeout = TimeSpan.FromSeconds(config?.GetValue("OperationTimeoutSeconds", 60) ?? 60),
-                BackgroundCheckInterval = TimeSpan.FromSeconds(config?.GetValue("BackgroundCheckIntervalSeconds", 10) ?? 10),
-                MaxConcurrentConnections = config?.GetValue("MaxConcurrentConnections", 3) ?? 3,
-                AutoStartOnAdd = config?.GetValue("AutoStartOnAdd", true) ?? true
+                ConnectionTimeout = TimeSpan.FromSeconds(options.ConnectionTimeoutSeconds),
+                OperationTimeout = TimeSpan.FromSeconds(options.OperationTimeoutSeconds),
+                BackgroundCheckInterval = TimeSpan.FromSeconds(options.BackgroundCheckIntervalSeconds),
+                MaxConcurrentConnections = options.MaxConcurrentConnections,
+                AutoStartOnAdd = options.AutoStartOnAdd
             };
         });
 

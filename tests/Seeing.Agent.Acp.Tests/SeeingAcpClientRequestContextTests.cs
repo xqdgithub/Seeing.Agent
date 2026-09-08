@@ -11,7 +11,7 @@ using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Filesystem;
 using Seeing.Agent.Acp.Permission;
 using Seeing.Agent.Acp.Terminal;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Acp.Configuration;
 using Xunit;
 
 namespace Seeing.Agent.Acp.Tests;
@@ -48,7 +48,7 @@ public class SeeingAcpClientRequestContextTests
             Command = "cmd.exe"
         };
 
-        var options = Options.Create(new SeeingAgentOptions());
+        var options = Mock.Of<IOptionsMonitor<AcpOptions>>(m => m.CurrentValue == new AcpOptions());
         var services = new ServiceCollection();
         var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
 

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.TokenBudget.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Llm;
 using Seeing.Agent.TokenBudget;
@@ -29,7 +30,7 @@ public class TokenBudgetManagerTests
 
         var manager = new TokenBudgetManager(
             Mock.Of<ILlmService>(),
-            Options.Create(new SeeingAgentOptions()),
+            Mock.Of<IOptionsMonitor<TokenBudgetOptions>>(m => m.CurrentValue == new TokenBudgetOptions()),
             tokenCounter.Object);
         var session = SessionData.Create();
         session.AddMessage(SessionMessage.UserMessage("first"));

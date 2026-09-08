@@ -139,6 +139,7 @@ public class ExecutionJobServiceCancelTests
             publisher,
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
+            Mock.Of<IConfigSectionStore>(),
             NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
 

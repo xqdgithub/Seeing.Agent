@@ -1,6 +1,7 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
 using Seeing.Agent.Abstractions.Extensions;
@@ -20,13 +21,13 @@ public sealed class AcpConfigurationReloader : IAcpConfigurationReloader
 {
     private readonly IAgentRegistry _agentRegistry;
     private readonly IAcpBackendRegistry _backendRegistry;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
     private readonly ILogger<AcpConfigurationReloader> _logger;
 
     public AcpConfigurationReloader(
         IAgentRegistry agentRegistry,
         IAcpBackendRegistry backendRegistry,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger<AcpConfigurationReloader> logger)
     {
         _agentRegistry = agentRegistry;

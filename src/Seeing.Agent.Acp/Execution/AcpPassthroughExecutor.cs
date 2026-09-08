@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Mapping;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Models;
@@ -19,14 +20,14 @@ public sealed class AcpPassthroughExecutor
     private readonly IAcpSessionRunner _sessionRunner;
     private readonly ContentBlockMapper _contentMapper;
     private readonly AcpEventMapper _eventMapper;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
     private readonly ILogger<AcpPassthroughExecutor> _logger;
 
     public AcpPassthroughExecutor(
         IAcpSessionRunner sessionRunner,
         ContentBlockMapper contentMapper,
         AcpEventMapper eventMapper,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger<AcpPassthroughExecutor> logger)
     {
         _sessionRunner = sessionRunner;
@@ -42,7 +43,7 @@ public sealed class AcpPassthroughExecutor
         AgentContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (!_options.Value.Acp.Enabled)
+        if (!_options.CurrentValue.Enabled)
         {
             yield return new ErrorEvent
             {
@@ -55,7 +56,7 @@ public sealed class AcpPassthroughExecutor
 
         var loopId = Guid.NewGuid().ToString("N");
         var loopStart = DateTime.Now;
-        var backendId = agent.AcpBackend ?? _options.Value.Acp.DefaultBackend
+        var backendId = agent.AcpBackend ?? _options.CurrentValue.DefaultBackend
             ?? throw new InvalidOperationException("ACP backend is not configured for passthrough agent.");
 
         _logger.LogInformation(

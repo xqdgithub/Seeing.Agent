@@ -1,7 +1,7 @@
 namespace Seeing.Agent.Acp.Configuration;
 
 /// <summary>
-/// ACP 后端配置扩展（基础字段见 <see cref="Seeing.Agent.Configuration.AcpBackendConfig"/>）。
+/// ACP 后端配置扩展视图（从 <see cref="AcpBackendConfig"/> 解析）。
 /// </summary>
 public sealed class AcpBackendSettings
 {
@@ -27,7 +27,7 @@ public sealed class AcpBackendSettings
     /// <summary>认证方法 ID（可选）</summary>
     public string? AuthMethodId { get; init; }
 
-    public static AcpBackendSettings FromCore(string id, CoreAcpBackendConfig config, bool enabled = true) =>
+    public static AcpBackendSettings FromCore(string id, AcpBackendConfig config, bool enabled = true) =>
         new()
         {
             Id = id,

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Client;
 using Seeing.Agent.Acp.Session;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Acp.Transport;
@@ -32,7 +33,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
 
     private readonly SeeingAcpClientFactory _clientFactory;
     private readonly AcpSessionStore _sessionStore;
-    private readonly IOptions<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<AcpOptions> _options;
     private readonly ILogger<AcpConnectionManager> _logger;
     private readonly ConcurrentDictionary<string, LeaseEntry> _leases = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _promptGates = new();
@@ -40,7 +41,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
     public AcpConnectionManager(
         SeeingAcpClientFactory clientFactory,
         AcpSessionStore sessionStore,
-        IOptions<SeeingAgentOptions> options,
+        IOptionsMonitor<AcpOptions> options,
         ILogger<AcpConnectionManager> logger)
     {
         _clientFactory = clientFactory;
@@ -144,7 +145,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
     /// <param name="mapping">ACP Session 映射</param>
     public void ScheduleGracefulRelease(string leaseKey, string seeingSessionId, AcpSessionMapping mapping)
     {
-        var gracePeriod = _options.Value.Acp.SessionGracePeriod;
+        var gracePeriod = _options.CurrentValue.SessionGracePeriod;
         if (gracePeriod <= TimeSpan.Zero)
         {
             // 宽限期禁用，立即释放
@@ -238,7 +239,7 @@ public sealed class AcpConnectionManager : IAsyncDisposable
 
     public async Task EvictIdleLeasesAsync(CancellationToken cancellationToken = default)
     {
-        var idleTimeout = _options.Value.Acp.IdleTimeout;
+        var idleTimeout = _options.CurrentValue.IdleTimeout;
         if (idleTimeout <= TimeSpan.Zero)
             return;
 

@@ -88,9 +88,6 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<SeeingAgentOptionsMonitor>();
             services.AddSingleton<IOptions<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
             services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
-            services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
-            services.AddSingleton<IValidateOptions<GatewayOptions>, GatewayOptionsValidator>();
-            services.AddSingleton<IValidateOptions<TokenBudgetOptions>, TokenBudgetOptionsValidator>();
 
             RegisterCoreServices(services);
 
@@ -136,9 +133,6 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<SeeingAgentOptionsMonitor>();
             services.AddSingleton<IOptions<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
             services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
-            services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
-            services.AddSingleton<IValidateOptions<GatewayOptions>, GatewayOptionsValidator>();
-            services.AddSingleton<IValidateOptions<TokenBudgetOptions>, TokenBudgetOptionsValidator>();
 
             RegisterCoreServices(services);
 
@@ -292,7 +286,6 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<SeeingAgentOptionsMonitor>();
             services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
             services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
-                services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
             }
             else if (!services.Any(d => d.ServiceType == typeof(IConfigSectionStore)))
             {
@@ -335,8 +328,14 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ISeeingModule>(webModule);
 
             // TEMP: Phase 3 — Shell 工具模块（ConfigureServices 注册 ITool + IShellService；Activate 待 Host Shape）
+            services.AddOptions<ShellOptions>();
+            services.TryAddSingleton(sp =>
+                new ConfigSectionOptionsMonitor<ShellOptions>(
+                    sp.GetRequiredService<IConfigSectionStore>(), "Shell"));
             services.TryAddSingleton<IOptionsMonitor<ShellOptions>>(sp =>
-                new ShellOptionsMonitor(sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>()));
+                sp.GetRequiredService<ConfigSectionOptionsMonitor<ShellOptions>>());
+            services.TryAddSingleton<IOptions<ShellOptions>>(sp =>
+                sp.GetRequiredService<ConfigSectionOptionsMonitor<ShellOptions>>());
             var shellModule = new ShellModule();
             shellModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(shellModule);
@@ -352,6 +351,15 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<ISeeingModule>(gitModule);
 
             // TEMP: Phase 3 — Skills 模块（ConfigureServices 注册 SkillManager + parsers + skill；Activate 待 Host Shape）
+            services.AddOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>();
+            services.TryAddSingleton(sp =>
+                new ConfigSectionOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>(
+                    sp.GetRequiredService<IConfigSectionStore>(),
+                    Seeing.Agent.Skills.Configuration.SkillsOptions.SectionName));
+            services.TryAddSingleton<IOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>(sp =>
+                sp.GetRequiredService<ConfigSectionOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>());
+            services.TryAddSingleton<IOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>>(sp =>
+                sp.GetRequiredService<ConfigSectionOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>());
             var skillsModule = new SkillsModule();
             skillsModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(skillsModule);
@@ -746,22 +754,25 @@ namespace Seeing.Agent.Extensions
             var componentManager = services.GetRequiredService<IComponentManager>();
             var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().GetProjectRoot();
 
-            // Interim: apply Skills.Paths from SeeingAgentOptions before discovery (SkillsOptions Phase 4)
+            // Interim: apply Skills.Paths from SkillsOptions before discovery
             var skillManager = services.GetService<SkillManager>();
             if (skillManager != null)
             {
-                var options = services.GetService<IOptions<SeeingAgentOptions>>();
-                if (options?.Value?.Skills?.Paths != null)
+                var skillsOptions = services.GetService<IOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>()
+                    ?? services.GetService<IOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>>() as IOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>;
+                var skills = skillsOptions?.CurrentValue
+                    ?? services.GetService<IOptions<Seeing.Agent.Skills.Configuration.SkillsOptions>>()?.Value;
+                if (skills?.Paths != null)
                 {
-                    foreach (var path in options.Value.Skills.Paths)
+                    foreach (var path in skills.Paths)
                     {
                         skillManager.AddSearchDirectory(path);
                     }
                 }
 
-                if (options?.Value?.Skills?.Urls != null && options.Value.Skills.Urls.Count > 0)
+                if (skills?.Urls != null && skills.Urls.Count > 0)
                 {
-                    logger?.LogWarning("远程技能 URL 暂不支持，已跳过 {Count} 个 URL", options.Value.Skills.Urls.Count);
+                    logger?.LogWarning("远程技能 URL 暂不支持，已跳过 {Count} 个 URL", skills.Urls.Count);
                 }
             }
 
