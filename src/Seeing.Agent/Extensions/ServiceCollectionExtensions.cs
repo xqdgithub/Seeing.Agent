@@ -39,6 +39,7 @@ using Seeing.Agent.Tools.Basic;
 using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Shell;
 using Seeing.Agent.Tools.Web;
+using Seeing.Agent.Tools.Git;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
@@ -352,6 +353,11 @@ namespace Seeing.Agent.Extensions
             basicModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(basicModule);
 
+            // TEMP: Phase 3 — Git 工具模块（ConfigureServices 注册 IGitService + ITool；Activate 待 Host Shape）
+            var gitModule = new GitModule();
+            gitModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(gitModule);
+
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -492,6 +498,8 @@ namespace Seeing.Agent.Extensions
             // Shell 工具 — 由 ShellModule.ConfigureServices 注册（见上方模块登记）
 
             // 网络工具 — 由 WebModule.ConfigureServices 注册（见上方模块登记）
+
+            // Git 工具 — 由 GitModule.ConfigureServices 注册（见上方模块登记）
 
             // 任务和 Todo 工具
             services.AddSingleton<ITool>(sp => new TaskTool(

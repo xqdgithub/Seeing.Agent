@@ -2,7 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Seeing.Agent.Git;
+using Seeing.Agent.Tools.Git;
 using Seeing.IO.Local;
 using Xunit;
 
