@@ -1,12 +1,77 @@
 @using Microsoft.AspNetCore.Components
-@* SlotHost renders a named slot if registered in SlotRegistry *@
-@code {
-  [Parameter] public required string SlotName {get;set;}
-}
-<div>
-  @{ var fragment = Seeing.Agent.WebUI.State.SlotRegistry.GetSlot(SlotName); }
-  @if (fragment != null)
-  {
-     @fragment
-  }
+@using Microsoft.Extensions.Options
+@using Seeing.Agent.Abstractions.Modules
+@using Seeing.Agent.Abstractions.Ui
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.State
+@inject IUiContributionRegistry Registry
+@inject IModuleCatalog? Catalog
+@inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
+@implements IDisposable
+
+@* SlotHost：命名插槽由 IUiContribution 登记；可见性 = IModuleCatalog + 会话 Scenario；保留 SlotRegistry 回退 *@
+<div class="slot-host" data-slot="@SlotName">
+    @foreach (var slot in _visible)
+    {
+        @if (slot.ComponentType is not null && slot.ComponentType != typeof(object))
+        {
+            <DynamicComponent Type="@slot.ComponentType" />
+        }
+    }
+    @{
+        var legacy = SlotRegistry.GetSlot(SlotName);
+    }
+    @if (legacy != null)
+    {
+        @legacy
+    }
 </div>
+
+@code {
+    [Parameter] public required string SlotName { get; set; }
+
+    /// <summary>会话级 Scenario（null = 跟随进程级）。可由父组件显式传入或 CascadingValue。</summary>
+    [Parameter] public string? SessionScenario { get; set; }
+
+    [CascadingParameter(Name = "SessionScenario")]
+    private string? CascadedSessionScenario { get; set; }
+
+    private IReadOnlyList<SlotContribution> _visible = [];
+    private UiContributionRegistry? _typedRegistry;
+
+    protected override void OnInitialized()
+    {
+        _typedRegistry = Registry as UiContributionRegistry;
+        if (_typedRegistry is not null)
+            _typedRegistry.Changed += OnRegistryChanged;
+        Refresh();
+    }
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void OnRegistryChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(() =>
+        {
+            Refresh();
+            StateHasChanged();
+        });
+
+    private void Refresh()
+    {
+        var sessionScenario = SessionScenario ?? CascadedSessionScenario;
+        var processScenario = SeeingAgentOptions.CurrentValue.Scenario;
+        _visible = SessionShellVisibility.FilterSlotsForSession(
+            Registry.Slots,
+            SlotName,
+            Catalog,
+            sessionScenario,
+            processScenario);
+    }
+
+    public void Dispose()
+    {
+        if (_typedRegistry is not null)
+            _typedRegistry.Changed -= OnRegistryChanged;
+    }
+}

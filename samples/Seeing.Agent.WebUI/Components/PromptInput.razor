@@ -128,8 +128,9 @@
         </div>
     </div>
     
-    <!-- Slot 扩展点 -->
-    <SlotHost SlotName="message_toolbar" />
+    <!-- Slot 扩展点：按会话 Scenario + IModuleCatalog 过滤 IUiContribution 插槽 -->
+    <SlotHost SlotName="message_toolbar"
+              SessionScenario="@(SessionState?.CurrentSession?.Scenario)" />
     
     <!-- 底部提示栏：Token 预算（左） + 自动批准开关（右）；移动端仅显示自动批准 -->
     <div class="prompt-footer">
