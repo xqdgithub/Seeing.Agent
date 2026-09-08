@@ -11,6 +11,8 @@ public sealed class ModuleCatalog : IModuleCatalog
     private Dictionary<string, ModuleDescriptor> _available =
         new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _enabled = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> _boundSeams =
+        new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, string?> _unhealthy =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -41,6 +43,16 @@ public sealed class ModuleCatalog : IModuleCatalog
         {
             lock (_gate)
                 return new Dictionary<string, string?>(_unhealthy, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>独占 seam 绑定（seam 名 → 提供方模块 id）。</summary>
+    public IReadOnlyDictionary<string, string> BoundSeams
+    {
+        get
+        {
+            lock (_gate)
+                return new Dictionary<string, string>(_boundSeams, StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -114,5 +126,21 @@ public sealed class ModuleCatalog : IModuleCatalog
 
         lock (_gate)
             _enabled = next;
+    }
+
+    /// <summary>由结算引擎写入独占 seam 绑定。</summary>
+    internal void ReplaceBoundSeams(IReadOnlyDictionary<string, string> boundSeams)
+    {
+        ArgumentNullException.ThrowIfNull(boundSeams);
+        var next = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (seam, moduleId) in boundSeams)
+        {
+            if (string.IsNullOrWhiteSpace(seam) || string.IsNullOrWhiteSpace(moduleId))
+                continue;
+            next[seam.Trim()] = moduleId.Trim();
+        }
+
+        lock (_gate)
+            _boundSeams = next;
     }
 }

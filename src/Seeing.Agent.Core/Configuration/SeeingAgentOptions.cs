@@ -22,6 +22,12 @@ namespace Seeing.Agent.Configuration
         /// <summary>进程级模块装配覆盖（seeing.json <c>modules</c>）。</summary>
         public ModulesOptions Modules { get; set; } = new();
 
+        /// <summary>
+        /// 进程级 seam 绑定覆盖（seeing.json <c>seams</c>）：seam 名 → 提供方模块 id
+        /// （如 <c>executionWorld</c>→<c>io.local</c>）。覆盖 scenario seams；禁止用逻辑名 switch。
+        /// </summary>
+        public Dictionary<string, string> Seams { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>权限配置</summary>
         public PermissionOptions Permission { get; set; } = new();
 

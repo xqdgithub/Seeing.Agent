@@ -867,7 +867,9 @@ namespace Seeing.Agent.Extensions
                 HostDefaultScenario = settlementOptions?.HostDefaultScenario,
                 UserEnabled = modulesOptions.Enabled,
                 UserDisabled = modulesOptions.Disabled,
+                UserSeams = seeing?.Seams,
                 ResolveScenarioModules = name => BuiltInScenarios.TryGet(name)?.Modules,
+                ResolveScenarioSeams = name => BuiltInScenarios.TryGet(name)?.Seams,
             };
 
             var result = await engine.SettleAsync(input, cancellationToken).ConfigureAwait(false);

@@ -31,4 +31,16 @@ public sealed class SettlementInput
 
     /// <summary>用户 modules.disabled。</summary>
     public IReadOnlyList<string>? UserDisabled { get; init; }
+
+    /// <summary>
+    /// 用户 <c>seams</c> 覆盖（seam 名 → 提供方模块 id）。覆盖 scenario seams。
+    /// null = 仅使用 scenario seams。
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? UserSeams { get; init; }
+
+    /// <summary>
+    /// 可选场景 seams 查找缝；返回 null 表示未知场景或无 seams。
+    /// 可与 <see cref="Scenarios"/> 并存；委托优先于从场景字典推断。
+    /// </summary>
+    public Func<string, IReadOnlyDictionary<string, string>?>? ResolveScenarioSeams { get; init; }
 }

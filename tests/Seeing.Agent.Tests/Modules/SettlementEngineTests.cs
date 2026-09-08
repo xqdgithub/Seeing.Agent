@@ -13,6 +13,12 @@ public class SettlementEngineTests
         params string[] dependsOn)
         => new(id, Array.Empty<string>(), Array.Empty<string>(), dependsOn);
 
+    private static ModuleDescriptor DescSeam(
+        string id,
+        string[] providedSeams,
+        params string[] dependsOn)
+        => new(id, Array.Empty<string>(), providedSeams, dependsOn);
+
     private static SettlementEngine CreateEngine(out ModuleCatalog catalog)
     {
         catalog = new ModuleCatalog();
@@ -160,6 +166,180 @@ public class SettlementEngineTests
         var result = await engine.SettleAsync(input);
 
         result.Enabled.Should().BeEquivalentTo(["a", "b"]);
+    }
+
+    [Fact]
+    public async Task SettleAsync_同一seam多提供方启用_应拒启()
+    {
+        var engine = CreateEngine(out var catalog);
+        var input = new SettlementInput
+        {
+            Available =
+            [
+                DescSeam("io.local", ["executionWorld"]),
+                DescSeam("io.sandbox", ["executionWorld"]),
+            ],
+            UserEnabled = ["io.local", "io.sandbox"],
+        };
+
+        var act = async () => await engine.SettleAsync(input);
+
+        await act.Should().ThrowAsync<SettlementException>()
+            .WithMessage("*executionWorld*多个*");
+
+        catalog.IsAvailable("io.local").Should().BeTrue();
+        catalog.Enabled.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SettleAsync_permissionChannel多提供方启用_应拒启()
+    {
+        var engine = CreateEngine(out _);
+        var input = new SettlementInput
+        {
+            Available =
+            [
+                DescSeam("permission.blazor", ["permissionChannel"]),
+                DescSeam("permission.deny-all", ["permissionChannel"]),
+            ],
+            UserEnabled = ["permission.blazor", "permission.deny-all"],
+            // 即使用户写了逻辑名，也只按模块 id 绑定，不做 blazor/deny-all switch
+            UserSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["permissionChannel"] = "permission.blazor",
+            },
+        };
+
+        var act = async () => await engine.SettleAsync(input);
+
+        await act.Should().ThrowAsync<SettlementException>()
+            .WithMessage("*permissionChannel*多个*");
+    }
+
+    [Fact]
+    public async Task SettleAsync_seam未绑定却有消费方_应拒启()
+    {
+        var engine = CreateEngine(out var catalog);
+        var input = new SettlementInput
+        {
+            Available =
+            [
+                DescSeam("io.local", ["executionWorld"]),
+                Desc("filesystem", "io.local"),
+            ],
+            UserEnabled = ["io.local", "filesystem"],
+            // 无 UserSeams / scenario seams → executionWorld 未绑定
+        };
+
+        var act = async () => await engine.SettleAsync(input);
+
+        await act.Should().ThrowAsync<SettlementException>()
+            .WithMessage("*executionWorld*未绑定*消费方*");
+
+        catalog.Enabled.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SettleAsync_seams按模块id绑定executionWorld_应成功()
+    {
+        var engine = CreateEngine(out var catalog);
+        var input = new SettlementInput
+        {
+            Available =
+            [
+                DescSeam("io.local", ["executionWorld"]),
+                DescSeam("io.sandbox", ["executionWorld"]),
+                Desc("filesystem", "io.local"),
+            ],
+            UserEnabled = ["io.local", "filesystem"],
+            UserSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executionWorld"] = "io.local",
+            },
+        };
+
+        var result = await engine.SettleAsync(input);
+
+        result.Enabled.Should().BeEquivalentTo(["filesystem", "io.local"]);
+        result.BoundSeams.Should().ContainKey("executionWorld")
+            .WhoseValue.Should().Be("io.local");
+        catalog.BoundSeams["executionWorld"].Should().Be("io.local");
+    }
+
+    [Fact]
+    public async Task SettleAsync_seams按模块id绑定permissionChannel_应成功()
+    {
+        var engine = CreateEngine(out _);
+        var input = new SettlementInput
+        {
+            Available =
+            [
+                DescSeam("permission.web", ["permissionChannel"]),
+            ],
+            UserEnabled = ["permission.web"],
+            UserSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["permissionChannel"] = "permission.web",
+            },
+        };
+
+        var result = await engine.SettleAsync(input);
+
+        result.BoundSeams.Should().ContainKey("permissionChannel")
+            .WhoseValue.Should().Be("permission.web");
+    }
+
+    [Fact]
+    public async Task SettleAsync_scenarioSeams被UserSeams覆盖()
+    {
+        var engine = CreateEngine(out _);
+        var input = new SettlementInput
+        {
+            Available =
+            [
+                DescSeam("io.local", ["executionWorld"]),
+                DescSeam("io.sandbox", ["executionWorld"]),
+                Desc("filesystem", "io.sandbox"),
+            ],
+            ConfiguredScenario = "code",
+            UserEnabled = ["io.sandbox", "filesystem"],
+            ResolveScenarioSeams = _ => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executionWorld"] = "io.local",
+            },
+            UserSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executionWorld"] = "io.sandbox",
+            },
+        };
+
+        var result = await engine.SettleAsync(input);
+
+        result.BoundSeams["executionWorld"].Should().Be("io.sandbox");
+    }
+
+    [Fact]
+    public async Task SettleAsync_seams指向未提供该seam的模块_应拒启()
+    {
+        var engine = CreateEngine(out _);
+        var input = new SettlementInput
+        {
+            Available =
+            [
+                DescSeam("io.local", ["executionWorld"]),
+                Desc("filesystem", "io.local"),
+            ],
+            UserEnabled = ["io.local", "filesystem"],
+            UserSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executionWorld"] = "filesystem",
+            },
+        };
+
+        var act = async () => await engine.SettleAsync(input);
+
+        await act.Should().ThrowAsync<SettlementException>()
+            .WithMessage("*executionWorld*filesystem*提供方*");
     }
 
     [Fact]
