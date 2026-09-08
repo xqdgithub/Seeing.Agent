@@ -1,0 +1,342 @@
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Reminders;
+using System.Text;
+using Microsoft.Extensions.Logging;
+using Quartz;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Scheduling;
+using Seeing.Agent.Scheduler.Abstractions;
+using Seeing.Agent.Scheduler.Engine;
+using Seeing.Agent.Scheduler.Models;
+using Seeing.Session.Core;
+
+namespace Seeing.Agent.Scheduler.Jobs;
+
+/// <summary>心跳任务 Job</summary>
+[DisallowConcurrentExecution]
+public class HeartbeatJob : IJob
+{
+    private readonly IAgentExecutor _executionRouter;
+    private readonly IAgentRegistry _agentRegistry;
+    private readonly IAgentSelectionResolver _selectionResolver;
+    private readonly IWorkspaceProvider _workspace;
+    private readonly IExecutionWorld _world;
+    private readonly ISessionManager _sessionManager;
+    private readonly IServiceProvider _services;
+    private readonly IHookManager _hooks;
+    private readonly ISystemReminderRenderer _reminders;
+    private readonly IScheduledJobDispatcher _dispatcher;
+    private readonly IJobExecutionListener? _listener;
+    private readonly ILogger<HeartbeatJob> _logger;
+
+    public HeartbeatJob(
+        IAgentExecutor executionRouter,
+        IAgentRegistry agentRegistry,
+        IAgentSelectionResolver selectionResolver,
+        IWorkspaceProvider workspace,
+        IExecutionWorld world,
+        ISessionManager sessionManager,
+        IServiceProvider services,
+        IHookManager hooks,
+        ISystemReminderRenderer reminders,
+        IScheduledJobDispatcher dispatcher,
+        IEnumerable<IJobExecutionListener> listeners,
+        ILogger<HeartbeatJob> logger)
+    {
+        _executionRouter = executionRouter;
+        _agentRegistry = agentRegistry;
+        _selectionResolver = selectionResolver;
+        _workspace = workspace;
+        _world = world;
+        _sessionManager = sessionManager;
+        _services = services;
+        _hooks = hooks;
+        _reminders = reminders;
+        _dispatcher = dispatcher;
+        _listener = listeners.FirstOrDefault();
+        _logger = logger;
+    }
+
+    public async Task Execute(IJobExecutionContext context)
+    {
+        var data = context.MergedJobDataMap;
+        var jobId = SchedulerConstants.HeartbeatJobId;
+        var sessionId = data.GetStringValue(JobDataKeys.SessionId) ?? "main";
+        
+        // 使用类型安全的扩展方法读取（自动从字符串转换）
+        var timeoutSeconds = data.GetIntValue(JobDataKeys.TimeoutSeconds, SchedulerConstants.DefaultTimeoutSeconds);
+
+        var ct = context.CancellationToken;
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        // 检查活跃时段
+        var activeHours = data.GetJsonValue<ActiveHoursOptions>(JobDataKeys.ActiveHours);
+        if (activeHours != null && !ActiveHoursChecker.IsInActiveHours(activeHours))
+        {
+            _logger.LogDebug("Heartbeat skipped: outside active hours");
+            context.Result = new JobExecutionResult
+            {
+                Success = true,
+                Output = "Skipped: outside active hours",
+                Source = ScheduleSources.Heartbeat,
+                SessionId = sessionId
+            };
+
+            _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
+            {
+                ["source"] = ScheduleSources.Heartbeat,
+                ["sessionId"] = sessionId,
+                ["success"] = true,
+                ["error"] = "Outside active hours"
+            });
+            return;
+        }
+
+        // 触发心跳前 Hook
+        var hookResult = await _hooks.TriggerBlockingAsync(
+            HookRegistry.SchedulerHeartbeatBefore,
+            sessionId,
+            new Dictionary<string, object?>
+            {
+                ["source"] = ScheduleSources.Heartbeat,
+                ["sessionId"] = sessionId
+            },
+            cancellationToken: timeoutCts.Token);
+
+        if (!hookResult.Continue)
+        {
+            _logger.LogWarning("Heartbeat blocked by hook: {Error}", hookResult.Error?.Message);
+            context.Result = new JobExecutionResult
+            {
+                Success = false,
+                Error = hookResult.Error?.Message ?? "Blocked by hook",
+                Source = ScheduleSources.Heartbeat,
+                SessionId = sessionId
+            };
+
+            _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
+            {
+                ["source"] = ScheduleSources.Heartbeat,
+                ["sessionId"] = sessionId,
+                ["success"] = false,
+                ["error"] = "Blocked by hook"
+            });
+            return;
+        }
+
+        try
+        {
+            // 获取 Prompt（必填）
+            var queryText = data.GetStringValue(JobDataKeys.Prompt)?.Trim();
+            
+            if (string.IsNullOrEmpty(queryText))
+            {
+                _logger.LogWarning("Heartbeat skipped: prompt is empty or not configured");
+                context.Result = new JobExecutionResult
+                {
+                    Success = false,
+                    Error = "Heartbeat prompt is required but not configured",
+                    Source = ScheduleSources.Heartbeat,
+                    SessionId = sessionId
+                };
+
+                _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
+                {
+                    ["source"] = ScheduleSources.Heartbeat,
+                    ["sessionId"] = sessionId,
+                    ["success"] = false,
+                    ["error"] = "Prompt not configured"
+                });
+                
+                if (_listener != null)
+                {
+                    await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
+                }
+                return;
+            }
+
+            // 解析目标 Session
+            var target = data.GetStringValue(JobDataKeys.HeartbeatTarget) ?? HeartbeatTargets.Main;
+            sessionId = await ResolveTargetSessionIdAsync(target, sessionId, timeoutCts.Token);
+
+            // 执行 Agent
+            var agentId = data.GetStringValue(JobDataKeys.AgentId);
+            var result = await ExecuteAgentAsync(queryText, agentId, sessionId, timeoutCts.Token);
+
+            // 投递结果（非 main 目标）
+            if (result.Success && !string.IsNullOrEmpty(result.Output) &&
+                !string.Equals(target, HeartbeatTargets.Main, StringComparison.OrdinalIgnoreCase))
+            {
+                var wrappedQuery = _reminders.TryParse(queryText, out _)
+                    ? queryText
+                    : _reminders.Wrap(
+                        queryText,
+                        SystemReminder.Sources.Job,
+                        SystemReminder.Kinds.Heartbeat);
+                await _dispatcher.DispatchAsync(new DispatchRequest
+                {
+                    Source = ScheduleSources.Heartbeat,
+                    TaskType = ScheduleTaskTypes.Agent,
+                    Content = result.Output,
+                    UserInput = wrappedQuery,
+                    SessionId = sessionId
+                }, timeoutCts.Token);
+            }
+
+            context.Result = result;
+
+            // 触发心跳后 Hook
+            _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
+            {
+                ["source"] = ScheduleSources.Heartbeat,
+                ["sessionId"] = sessionId,
+                ["success"] = result.Success
+            });
+
+            // 通知监听器
+            if (_listener != null)
+            {
+                await _listener.OnJobExecutedAsync(jobId, result, timeoutCts.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Heartbeat job cancelled");
+            context.Result = new JobExecutionResult
+            {
+                Success = false,
+                Error = "Cancelled",
+                Source = ScheduleSources.Heartbeat,
+                SessionId = sessionId
+            };
+
+            if (_listener != null)
+            {
+                await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Heartbeat execution failed: {Message}", ex.Message);
+            context.Result = new JobExecutionResult
+            {
+                Success = false,
+                Error = $"{ex.GetType().Name}: {ex.Message}",
+                Source = ScheduleSources.Heartbeat,
+                SessionId = sessionId
+            };
+
+            // 触发心跳后 Hook
+            _hooks.TriggerFireAndForget(HookRegistry.SchedulerHeartbeatAfter, sessionId, new Dictionary<string, object?>
+            {
+                ["source"] = ScheduleSources.Heartbeat,
+                ["sessionId"] = sessionId,
+                ["success"] = false,
+                ["error"] = ex.Message
+            });
+
+            // 通知监听器 - 确保在异常时也调用
+            if (_listener != null)
+            {
+                try
+                {
+                    await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
+                }
+                catch (Exception listenerEx)
+                {
+                    _logger.LogError(listenerEx, "Error in job execution listener");
+                }
+            }
+        }
+    }
+
+    private async Task<string> ResolveTargetSessionIdAsync(string target, string defaultSessionId, CancellationToken ct)
+    {
+        if (string.Equals(target, HeartbeatTargets.Last, StringComparison.OrdinalIgnoreCase))
+        {
+            var sessions = await _sessionManager.ListAllAsync(null, ct);
+            var last = sessions.OrderByDescending(s => s.LastActiveAt).FirstOrDefault();
+            if (last != null)
+                return last.Id;
+        }
+
+        if (string.Equals(target, HeartbeatTargets.Inbox, StringComparison.OrdinalIgnoreCase))
+            return "_inbox";
+
+        return defaultSessionId;
+    }
+
+    private async Task<JobExecutionResult> ExecuteAgentAsync(
+        string prompt,
+        string? agentId,
+        string sessionId,
+        CancellationToken ct)
+    {
+        var resolvedAgentId = await _selectionResolver.ResolveAgentIdAsync(agentId, null, ct);
+        var agentDefinition = await _agentRegistry.GetAgentAsync(resolvedAgentId)
+            ?? throw new InvalidOperationException($"Agent '{resolvedAgentId}' not found");
+
+        var cwd = _world.Cwd;
+        var projectRoot = _workspace.GetProjectRoot();
+
+        var messages = new List<ChatMessage>
+        {
+            new()
+            {
+                Role = ChatRole.User,
+                Content = _reminders.Wrap(
+                    prompt,
+                    SystemReminder.Sources.Job,
+                    SystemReminder.Kinds.Heartbeat)
+            }
+        };
+
+        var context = new AgentContext
+        {
+            SessionId = sessionId,
+            CancellationToken = ct,
+            Services = _services,
+            WorkingDirectory = cwd,
+            WorkspaceRoot = projectRoot,
+            IsBackground = true,
+            Metadata = new Dictionary<string, object>
+            {
+                ["source"] = ScheduleSources.Heartbeat
+            }
+        };
+
+        var output = new StringBuilder();
+        var hasError = false;
+        string? errorMessage = null;
+
+        await foreach (var evt in _executionRouter.ExecuteAsync(agentDefinition, messages, context, ct))
+        {
+            switch (evt)
+            {
+                case StreamCompleteEvent complete when !string.IsNullOrEmpty(complete.Message.Content):
+                    output.AppendLine(complete.Message.Content);
+                    break;
+                case ErrorEvent error:
+                    hasError = true;
+                    errorMessage = error.Message;
+                    break;
+            }
+        }
+
+        return new JobExecutionResult
+        {
+            Success = !hasError,
+            Output = output.ToString().Trim(),
+            Error = errorMessage,
+            TaskType = ScheduleTaskTypes.Agent,
+            Source = ScheduleSources.Heartbeat,
+            Agent = resolvedAgentId,
+            SessionId = sessionId
+        };
+    }
+}

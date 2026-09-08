@@ -102,6 +102,18 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
                         if (!string.IsNullOrWhiteSpace(navItem.Route))
                             routes[navItem.Route] = navItem;
                         break;
+                    case RouteContribution routeItem:
+                        if (!string.IsNullOrWhiteSpace(routeItem.Route))
+                        {
+                            // Routes 值类型仍为 NavContribution，供 ModuleRouteResolver 消费；不进侧栏。
+                            routes[routeItem.Route] = new NavContribution(
+                                routeItem.Route,
+                                routeItem.Title,
+                                Icon: "",
+                                Requires: routeItem.Requires ?? [],
+                                ComponentType: routeItem.ComponentType);
+                        }
+                        break;
                     case SettingsCardContribution settingsItem:
                         settings.Add(settingsItem);
                         break;

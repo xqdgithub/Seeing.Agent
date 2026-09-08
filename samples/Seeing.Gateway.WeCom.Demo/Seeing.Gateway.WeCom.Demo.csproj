@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Seeing.Gateway.WeCom\Seeing.Gateway.WeCom.csproj" />
+    <ProjectReference Include="..\..\src\gateway\Seeing.Gateway.WeCom\Seeing.Gateway.WeCom.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,44 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Configuration;
+
+using Seeing.Agent.Abstractions.Agents;
+namespace Seeing.Agent.Acp.Hosting;
+
+/// <summary>
+/// 在 ACP 配置变更后重新注册 Passthrough Agent。
+/// </summary>
+public interface IAcpConfigurationReloader
+{
+    Task ReloadAsync(CancellationToken cancellationToken = default);
+}
+
+/// <inheritdoc />
+public sealed class AcpConfigurationReloader : IAcpConfigurationReloader
+{
+    private readonly IAgentRegistry _agentRegistry;
+    private readonly IAcpBackendRegistry _backendRegistry;
+    private readonly IOptionsMonitor<AcpOptions> _options;
+    private readonly ILogger<AcpConfigurationReloader> _logger;
+
+    public AcpConfigurationReloader(
+        IAgentRegistry agentRegistry,
+        IAcpBackendRegistry backendRegistry,
+        IOptionsMonitor<AcpOptions> options,
+        ILogger<AcpConfigurationReloader> logger)
+    {
+        _agentRegistry = agentRegistry;
+        _backendRegistry = backendRegistry;
+        _options = options;
+        _logger = logger;
+    }
+
+    public Task ReloadAsync(CancellationToken cancellationToken = default) =>
+        AcpDynamicAgentRegistrar.RegisterAsync(
+            _agentRegistry,
+            _backendRegistry,
+            _options,
+            _logger,
+            cancellationToken);
+}

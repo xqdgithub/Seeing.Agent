@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Seeing.Agent.Core.Instructions;
+using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;

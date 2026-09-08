@@ -4,7 +4,9 @@
 @using Services = Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @using Seeing.Agent.Abstractions.Agents
+@using Seeing.Agent.Core.Llm
 @using Seeing.Agent.Llm
+@using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Scenarios
 @inject AppState AppState
@@ -12,6 +14,7 @@
 @inject ILlmService LlmService
 @inject IMessageService MessageService
 @inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
+@inject IScenarioCatalog ScenarioCatalog
 @implements IDisposable
 
 @if (Mode == Services.SessionWindowMode.Full)
@@ -237,9 +240,7 @@
 
     private List<string> _agentNames = new();
     private List<ModelViewModel> _models = new();
-    private readonly List<ScenarioOption> _scenarioOptions = BuiltInScenarios.All
-        .Select(s => new ScenarioOption(s.Name, s.Name))
-        .ToList();
+    private List<ScenarioOption> _scenarioOptions = [];
     private bool _optionsReady;
     private bool RenameModalVisible;
     private RenameSessionForm RenameForm { get; set; } = new();
@@ -336,6 +337,7 @@
         {
             _agentNames = cache.Agents;
             _models = cache.Models;
+            RefreshScenarioOptions();
             _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
             return;
         }
@@ -351,8 +353,10 @@
         }
         catch (Exception)
         {
-            // 静默失败，选项保持为空
+            // ignore
         }
+
+        RefreshScenarioOptions();
 
         var models = new List<ModelViewModel>();
         try
@@ -377,6 +381,14 @@
         _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
         s_optionCache = (DateTime.UtcNow, agentNames, models);
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshScenarioOptions()
+    {
+        _scenarioOptions = ScenarioCatalog.ListAll()
+            .Select(s => new ScenarioOption(s.Name, s.Name))
+            .Prepend(new ScenarioOption("", "跟随进程"))
+            .ToList();
     }
 
     private async Task OnAgentChanged(string value)

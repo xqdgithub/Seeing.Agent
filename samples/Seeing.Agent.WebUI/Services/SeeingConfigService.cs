@@ -1,5 +1,6 @@
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Acp.Configuration;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Scheduler.Models;
@@ -106,20 +107,27 @@ public sealed class SeeingConfigService : ISeeingConfigService
         await _configManager.SaveSectionAsync(sectionName, value, ConfigLevel.Project, ct);
     }
 
-    /// <summary>批量保存配置节到指定级别</summary>
+    /// <summary>批量保存配置节到指定级别。值为 null 的键会从 seeing.json 的 SeeingAgent 中移除（用于清空 Scenario 等）。</summary>
     public async Task SaveLevelSectionsAsync(
         ConfigLevel level,
         Dictionary<string, object?> sections,
         CancellationToken ct = default)
     {
         var dict = new Dictionary<string, object>();
+        var remove = new List<string>();
         foreach (var (key, value) in sections)
         {
-            if (value != null)
+            if (value is null)
+                remove.Add(key);
+            else
                 dict[key] = value;
         }
-        
-        await _configManager.SaveSectionsAsync(level, dict, ct);
+
+        if (dict.Count > 0)
+            await _configManager.SaveSectionsAsync(level, dict, ct);
+
+        if (remove.Count > 0)
+            await _configManager.RemoveSeeingAgentKeysAsync(level, remove, ct);
     }
 
     // ===== 原始 JSON =====

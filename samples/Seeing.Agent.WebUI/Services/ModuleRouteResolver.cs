@@ -12,7 +12,7 @@ public enum ModuleRouteKind
     /// <summary>已知模块页但未启用 / 未登记。</summary>
     NotEnabled,
 
-    /// <summary>交给 AppAssembly 默认 Router（壳页等仍保留 @page）。</summary>
+    /// <summary>registry 与已知模块表均未命中（ModuleRouter 渲染友好未找到提示）。</summary>
     Fallback,
 }
 
@@ -25,7 +25,7 @@ public sealed record ModuleRouteResolution(
     string? ModuleId = null);
 
 /// <summary>
-/// 将相对路径解析为 registry 组件 / NotEnabled / AppAssembly 回退。
+/// 将相对路径解析为 registry 组件 / NotEnabled / 未知路径 Fallback。
 /// </summary>
 public static class ModuleRouteResolver
 {

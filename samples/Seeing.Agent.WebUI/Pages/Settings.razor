@@ -1,9 +1,11 @@
-@page "/settings"
 @using AntDesign
 @using Seeing.Agent.Abstractions.Modules
 @using Seeing.Agent.Abstractions.Ui
+@using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Models
+@using Seeing.Agent.Core.Scenarios
+@using Seeing.Agent.Core.Llm
 @using Seeing.Agent.Llm
 @using Seeing.Agent.WebUI.Components
 @using Seeing.Agent.WebUI.Services
@@ -15,6 +17,7 @@
 @inject IMessageService MessageService
 @inject UiContributionRegistry Registry
 @inject IModuleCatalog Catalog
+@inject IScenarioCatalog ScenarioCatalog
 @implements IDisposable
 
 <PageTitle>系统设置 - Seeing.Agent</PageTitle>
@@ -50,6 +53,22 @@
                                               Value="@a.Name" Label="@a.Display" />
                             }
                         </Select>
+                    </FormItem>
+                    <FormItem Label="进程场景">
+                        <Select TItemValue="string" TItem="ScenarioOption"
+                                @bind-Value="@_options.Scenario"
+                                Placeholder="选择进程级场景（详细模块/CRUD 见「场景」页签）"
+                                AllowClear="true"
+                                Style="width: 100%;">
+                            @foreach (var s in _scenarioOptions)
+                            {
+                                <SelectOption TItemValue="string" TItem="ScenarioOption"
+                                              Value="@s.Value" Label="@s.Label" />
+                            }
+                        </Select>
+                        <div style="margin-top: 4px; font-size: 12px; color: #888;">
+                            快速切换当前 scenario。查看模块清单、新建/编辑/删除自定义场景请打开上方「场景」页签。
+                        </div>
                     </FormItem>
                     <FormItem Label="默认模型">
                         <Select TItemValue="string" TItem="ModelOption"
@@ -160,6 +179,7 @@
     private List<PluginRow> _pluginRows = new();
     private List<AgentOption> _availableAgents = new();
     private List<ModelOption> _availableModels = new();
+    private List<ScenarioOption> _scenarioOptions = [];
     private IReadOnlyList<SettingsCardContribution> _visibleCards = Array.Empty<SettingsCardContribution>();
     private WorkspaceSelectorModal? _workspaceSelectorModal;
     private WorkspaceSelectorModal? _globalWorkspaceSelectorModal;
@@ -177,6 +197,9 @@
 
         _workspacePath = WorkspaceProvider.GetProjectRoot();
         _options = await ConfigService.LoadProjectOptionsAsync();
+        _scenarioOptions = ScenarioCatalog.ListAll()
+            .Select(s => new ScenarioOption(s.Name, $"{s.Name}（默认 Agent: {s.DefaultAgent}，{s.Modules.Count} 模块）"))
+            .ToList();
 
         BuildPluginRows();
 
@@ -291,7 +314,8 @@
                     await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>
                     {
                         ["DefaultAgent"] = _options.DefaultAgent,
-                        ["DefaultModel"] = _options.DefaultModel
+                        ["DefaultModel"] = _options.DefaultModel,
+                        ["Scenario"] = string.IsNullOrWhiteSpace(_options.Scenario) ? null : _options.Scenario.Trim()
                     });
                     
                     // 保存工作区配置
@@ -337,4 +361,6 @@
         public string Key { get; set; } = "";
         public string Display { get; set; } = "";
     }
+
+    private sealed record ScenarioOption(string Value, string Label);
 }

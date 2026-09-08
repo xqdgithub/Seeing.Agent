@@ -9,7 +9,10 @@ public sealed record ModuleRouteBinding(
     Type ComponentType,
     string ModuleId,
     string Title,
-    string Icon);
+    string Icon,
+    string? Group = null,
+    string? GroupIcon = null,
+    int Order = 0);
 
 /// <summary>
 /// 将已登记模块的 Nav 路由绑定到 Page 组件类型；并提供已知模块路由表供未启用直链提示。
@@ -19,23 +22,40 @@ public static class ModulePageRouteBinder
     /// <summary>能力模块页（含详情子路由）。壳页见 <see cref="CoreShellUiContribution"/>。</summary>
     public static IReadOnlyList<ModuleRouteBinding> KnownModuleRoutes { get; } =
     [
-        new("/memory", typeof(MemoryPage), "memory", "记忆", "database"),
-        new("/memory/settings", typeof(MemorySettingsPage), "memory", "记忆设置", "setting"),
-        new("/memory/browse", typeof(MemoryBrowsePage), "memory", "记忆浏览", "folder"),
-        new("/memory/graph", typeof(MemoryGraphPage), "memory", "知识图谱", "apartment"),
-        new("/memory/stats", typeof(MemoryStatsPage), "memory", "记忆统计", "bar-chart"),
-        new("/memory/detail/{*FilePath}", typeof(MemoryDetailPage), "memory", "记忆详情", "file"),
-        new("/cron-jobs", typeof(CronJobsPage), "scheduler", "定时任务", "clock-circle"),
-        new("/cron-jobs/{JobId}", typeof(JobDetailPage), "scheduler", "任务详情", "clock-circle"),
-        new("/heartbeat", typeof(HeartbeatPage), "scheduler", "心跳", "heart"),
-        new("/mcp", typeof(McpPage), "mcp", "MCP", "api"),
-        new("/acp", typeof(AcpPage), "acp", "ACP", "robot"),
-        new("/gateway", typeof(GatewayPage), "gateway", "Gateway", "global"),
-        new("/gateway-clients", typeof(GatewayClientsPage), "gateway", "Gateway 客户端", "api"),
-        new("/skills", typeof(SkillsPage), "skills", "技能", "star"),
-        new("/skills/create", typeof(SkillCreatePage), "skills", "创建技能", "star"),
-        new("/skills/{SkillName}", typeof(SkillDetailPage), "skills", "技能详情", "star"),
-        new("/tools", typeof(ToolsPage), "basic", "工具", "tool"),
+        new("/memory", typeof(MemoryPage), "memory", "记忆", "database",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 50),
+        new("/memory/settings", typeof(MemorySettingsPage), "memory", "记忆设置", "setting",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 51),
+        new("/memory/browse", typeof(MemoryBrowsePage), "memory", "记忆浏览", "folder",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 52),
+        new("/memory/graph", typeof(MemoryGraphPage), "memory", "知识图谱", "apartment",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 53),
+        new("/memory/stats", typeof(MemoryStatsPage), "memory", "记忆统计", "bar-chart",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 54),
+        new("/memory/detail/{*FilePath}", typeof(MemoryDetailPage), "memory", "记忆详情", "file",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 55),
+        new("/cron-jobs", typeof(CronJobsPage), "scheduler", "定时任务", "clock-circle",
+            NavGroups.Control, NavGroups.ControlIcon, 20),
+        new("/cron-jobs/{JobId}", typeof(JobDetailPage), "scheduler", "任务详情", "clock-circle",
+            NavGroups.Control, NavGroups.ControlIcon, 21),
+        new("/heartbeat", typeof(HeartbeatPage), "scheduler", "心跳", "heart",
+            NavGroups.Control, NavGroups.ControlIcon, 30),
+        new("/mcp", typeof(McpPage), "mcp", "MCP", "api",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 30),
+        new("/acp", typeof(AcpPage), "acp", "ACP", "robot",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 40),
+        new("/gateway", typeof(GatewayPage), "gateway", "Gateway", "global",
+            NavGroups.Settings, NavGroups.SettingsIcon, 40),
+        new("/gateway-clients", typeof(GatewayClientsPage), "gateway", "Gateway 客户端", "api",
+            NavGroups.Settings, NavGroups.SettingsIcon, 50),
+        new("/skills", typeof(SkillsPage), "skills", "技能", "star",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 10),
+        new("/skills/create", typeof(SkillCreatePage), "skills", "创建技能", "star",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 11),
+        new("/skills/{SkillName}", typeof(SkillDetailPage), "skills", "技能详情", "star",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 12),
+        new("/tools", typeof(ToolsPage), "basic", "工具", "tool",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 20),
     ];
 
     /// <summary>
@@ -71,7 +91,13 @@ public static class ModulePageRouteBinder
             {
                 if (byRoute.TryGetValue(known.Template, out var existing))
                 {
-                    enriched.Add(existing with { ComponentType = known.ComponentType });
+                    enriched.Add(existing with
+                    {
+                        ComponentType = known.ComponentType,
+                        Group = string.IsNullOrWhiteSpace(existing.Group) ? known.Group : existing.Group,
+                        GroupIcon = string.IsNullOrWhiteSpace(existing.GroupIcon) ? known.GroupIcon : existing.GroupIcon,
+                        Order = existing.Order != 0 ? existing.Order : known.Order,
+                    });
                     byRoute.Remove(known.Template);
                 }
                 else
@@ -81,7 +107,10 @@ public static class ModulePageRouteBinder
                         known.Title,
                         known.Icon,
                         [moduleId],
-                        ComponentType: known.ComponentType));
+                        ComponentType: known.ComponentType,
+                        Group: known.Group,
+                        GroupIcon: known.GroupIcon,
+                        Order: known.Order));
                 }
             }
 

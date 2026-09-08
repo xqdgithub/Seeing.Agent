@@ -1,8 +1,17 @@
 # Seeing.Agent
 
-一个完整的 AI Agent 框架，支持 Skill、SubAgent、Rules、Hook、Extension 和 MCP 系统。
+一个完整的 AI Agent 框架，支持 Skill、SubAgent、Rules、Hook、MCP 与可组合模块（Scenario / Host Shape）。
 
 [![NuGet](https://img.shields.io/nuget/v/Seeing.Agent.Core.svg)](https://www.nuget.org/packages/Seeing.Agent.Core/)
+
+## 文档
+
+| 文档 | 说明 |
+|------|------|
+| **[架构与开发规范](docs/architecture/README.md)** | 分层、模块地图、配置/热重载、规范、扩展、合规审查（日常必读） |
+| [模块化设计规格](docs/superpowers/specs/2026-09-08-modular-architecture-design.md) | 目标架构规格 |
+| [合规审查现状](docs/architecture/06-compliance-audit.md) | 方向性债已关闭；防回潮扫描 |
+| [AGENTS.md](AGENTS.md) | 仓库知识库 / WHERE TO LOOK |
 
 ## 特性
 
@@ -13,7 +22,7 @@
 - 🎯 **Skill 技能** - 可复用的能力单元，支持参数传递和上下文
 - 🔗 **Hook 钩子** - 18+ 生命周期钩子点，可扩展干预
 - 🛡️ **Rules 规则** - 权限控制引擎，支持 Allow/Deny/Ask 三种动作
-- 📦 **Extension 扩展** - 简洁的 DI 注册入口
+- 📦 **模块化扩展** - `AddSeeingModule` + Scenario / Host Shape；UI 经贡献注册表
 
 ## 安装
 
@@ -280,13 +289,13 @@ Seeing.Agent/
 ├── Configuration/     # SeeingAgentOptions
 └── Extensions/        # ServiceCollectionExtensions
 
-Gateway 兼容层（Agent 外部通讯）→ 详见 [docs/gateway/README.md](docs/gateway/README.md)
-├── src/Seeing.Gateway/           # 协议模型与事件映射
-├── src/Seeing.Gateway.Client/      # HTTP/SSE + WebSocket 客户端 SDK
-├── src/Seeing.Agent.Gateway/       # Server 插件（独立 Kestrel）
-├── src/Seeing.Gateway.WeCom/       # 企业微信 Channel Bridge
+Gateway 兼容层（Agent 外部通讯）→ 详见 [docs/gateway/README.md](docs/gateway/README.md)（若无则见 `docs/architecture/02-modules.md`）
+├── src/gateway/Seeing.Gateway/           # 协议模型与事件映射
+├── src/gateway/Seeing.Gateway.Client/    # HTTP/SSE + WebSocket 客户端 SDK
+├── src/gateway/Seeing.Agent.Gateway/     # Server 插件（独立 Kestrel）
+├── src/gateway/Seeing.Gateway.WeCom/     # 企业微信 Channel Bridge
 ├── samples/Seeing.Gateway.Console.Demo/
-├── samples/Seeing.Gateway.Server/    # 无头 Agent+Gateway 宿主（推荐）
+├── samples/Seeing.Gateway.Server/        # 无头 Agent+Gateway 宿主（推荐）
 └── samples/Seeing.Gateway.WeCom.Demo/
 ```
 
@@ -335,12 +344,13 @@ Seeing.Agent 从 **用户级** `~/.seeing/seeing.json` 与 **项目级** `./.see
 
 | 文档 | 说明 |
 |------|------|
-| [Gateway 总览](docs/gateway/README.md) | 架构、快速启动、协议要点 |
-| [Seeing.Gateway](src/Seeing.Gateway/README.md) | 协议 DTO 与事件映射 |
-| [Seeing.Gateway.Client](src/Seeing.Gateway.Client/README.md) | Client SDK（HTTP SSE / WebSocket） |
-| [Seeing.Agent.Gateway](src/Seeing.Agent.Gateway/README.md) | Server 集成（`AddSeeingGatewayServer`）与 API |
+| [Gateway 总览](docs/gateway/README.md) | 路径、启动、分层硬规则 |
+| [架构 · 模块地图（含 Gateway）](docs/architecture/02-modules.md) | Gateway 族依赖与模块 id |
+| [Seeing.Gateway](src/gateway/Seeing.Gateway/README.md) | 协议 DTO 与事件映射 |
+| [Seeing.Gateway.Client](src/gateway/Seeing.Gateway.Client/README.md) | Client SDK（HTTP SSE / WebSocket） |
+| [Seeing.Agent.Gateway](src/gateway/Seeing.Agent.Gateway/README.md) | Server 集成（`AddSeeingGatewayServer`）与 API |
 | [Gateway Server](samples/Seeing.Gateway.Server/README.md) | 无头 Agent+Gateway 宿主（推荐） |
-| [Seeing.Gateway.WeCom](src/Seeing.Gateway.WeCom/README.md) | 企业微信 Bridge |
+| [Seeing.Gateway.WeCom](src/gateway/Seeing.Gateway.WeCom/README.md) | 企业微信 Bridge |
 | [Console Demo](samples/Seeing.Gateway.Console.Demo/README.md) | 本地 Gateway 联调 |
 | [WeCom Demo](samples/Seeing.Gateway.WeCom.Demo/README.md) | 企微端到端联调 |
 

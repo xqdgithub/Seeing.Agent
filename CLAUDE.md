@@ -11,11 +11,14 @@ dotnet build
 # Run all tests
 dotnet test
 
-# Run a specific test project
-dotnet test tests/Seeing.Agent.Tests
+# Run a specific test project (paths after src/tests categorization)
+dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll
 
-# Run a single test (filter by fully-qualified name)
-dotnet test tests/Seeing.Agent.Tests --filter "FullyQualifiedName~ClassName.TestMethod"
+# Run a single test (VSTest filter)
+dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll --TestCaseFilter:"FullyQualifiedName~ClassName.TestMethod"
+
+# Invariants
+dotnet vstest tests/spine/Seeing.Agent.Invariants.Tests/bin/Debug/net10.0/Seeing.Agent.Invariants.Tests.dll
 
 # Run the Blazor WebUI (primary dev app; also starts Gateway server on :8765)
 dotnet run --project samples/Seeing.Agent.WebUI
@@ -28,18 +31,31 @@ Target framework: **net10.0**. Package versions are managed centrally via `Direc
 
 ## Architecture
 
+**Canonical docs:** [`docs/architecture/README.md`](docs/architecture/README.md) (overview, modules, config/lifecycle, standards, extension, compliance audit).  
+**Design spec:** `docs/superpowers/specs/2026-09-08-modular-architecture-design.md`.
+
+### Disk layout (assembly names unchanged)
+
+```
+src/primitives|abstractions|spine|hosting|capabilities|gateway/
+tests/          mirrored (+ apps|plugs)
+```
+
 ### Solution Layering
 
 ```
-Seeing.Agent.Core (spine)     ← config, execution, permissions, hooks, MCP, LLM
-  ↑ capability modules        ← Tools.*, Memory, Scheduler, Acp, Gateway (via AddSeeingModule / AddSeeing*)
-  ↑
-Seeing.Agent.App (orchestra)  ← ChatOrchestrator, ExecutionJobService, command system
-  ↑
-Seeing.Agent.WebUI (Blazor)   ← the main sample application
+Seeing.Agent.Abstractions     ← contracts only   (src/abstractions)
+Seeing.Agent.Core         ← spine             (src/spine)
+Seeing.Agent.Hosting      ← ExecutionJobService, Task/Todo (src/hosting)
+capability modules        ← Tools.*, Skills, Mcp… (src/capabilities)
+Host Shape                ← Web/Headless/Embed/Gateway (src/hosting)
+Gateway family            ← src/gateway
+samples/WebUI             ← composes modules + UI
 ```
 
-**Supporting libraries** (all target `net10.0`, reference `Seeing.Agent.Core` / Abstractions as needed):
+**Do not** put tools back into Core. **Do not** use `AddSeeingAgent`. Call `InitializeSeeingAsync` before `Host.StartAsync`. **Do not** add new projects flat under `src/`.
+
+**Supporting libraries** (all target `net10.0`; capability packages must depend on Abstractions only — compliance status in `docs/architecture/06-compliance-audit.md`):
 
 | Project | Purpose |
 |---------|---------|
@@ -60,7 +76,7 @@ Seeing.Agent.WebUI (Blazor)   ← the main sample application
 | `Seeing.Gateway.WeCom` / `.QQ` | Channel bridges for WeCom and QQ |
 | `samples/Seeing.Gateway.ChannelHost` | Out-of-process channel host for gateway channels |
 
-### Core Concepts (All in `src/Seeing.Agent.Core/`)
+### Core Concepts (primarily under `src/spine/Seeing.Agent.Core/` + `src/abstractions/`)
 
 - **`IAgent`** (`Core/Interfaces/IAgent.cs`) — All agents implement this. Has metadata (Name, Mode, SystemPrompt, Model, PermissionRules) and `ExecuteAsync` returning `IAsyncEnumerable<ChatMessage>`.
 - **`ITool`** (`Core/Interfaces/ITool.cs`) — Tools implement `Id`, `Description`, `ParametersSchema` (JSON Schema), and `ExecuteAsync(JsonElement arguments, ToolContext context)`. Also supports `[Tool]`/`[ToolParam]` attribute-based discovery.
@@ -129,7 +145,7 @@ sp.InitializeCommands();            // slash-command discovery
 sp.UseTokenBudgetHooks();           // wire up hook handlers
 ```
 
-### Git Integration (`src/Seeing.Agent.Tools.Git/`)
+### Git Integration (`src/capabilities/Seeing.Agent.Tools.Git/`)
 
 - `IGitService` wraps git CLI operations.
 - Built-in tools: `GitStatusTool`, `GitDiffTool`, `GitLogTool`, `GitCommitTool` — all implementing `ITool`.

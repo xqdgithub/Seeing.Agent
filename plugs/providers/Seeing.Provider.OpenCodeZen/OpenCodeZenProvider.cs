@@ -2,7 +2,6 @@ using Seeing.Agent.Abstractions.Configuration;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.ConfigSchema;
 
@@ -11,13 +10,13 @@ namespace Seeing.Provider.OpenCodeZen;
 /// <summary>
 /// OpenCode Zen LLM Provider：OpenAI 兼容网关，免费模型无需 API Key。
 /// </summary>
-public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvider, IAsyncDisposable
+public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider, IAsyncDisposable
 {
     public const string ExtensionId = "seeing.provider.opencodezen";
     public static readonly TimeSpan ModelsCacheTtl = TimeSpan.FromMinutes(5);
 
     private readonly OpenCodeZenConfigStore _store;
-    private readonly ILlmClientFactory _factory;
+    private readonly ILlmClientFactory[] _factories;
     private readonly IProviderRegistry _registry;
     private readonly OpenCodeZenModelsClient _modelsClient;
     private readonly ILogger<OpenCodeZenProvider> _logger;
@@ -30,21 +29,23 @@ public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvi
 
     public OpenCodeZenProvider(
         OpenCodeZenConfigStore store,
-        ILlmClientFactory factory,
+        IEnumerable<ILlmClientFactory> factories,
         IProviderRegistry registry,
         OpenCodeZenModelsClient modelsClient,
         ILogger<OpenCodeZenProvider> logger)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _factories = factories?.ToArray() ?? throw new ArgumentNullException(nameof(factories));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _modelsClient = modelsClient ?? throw new ArgumentNullException(nameof(modelsClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public override string Id => "opencode-zen";
+    public string Id => "opencode-zen";
 
-    public override string? Name => "OpenCode Zen";
+    public string? Name => "OpenCode Zen";
+
+    public int MaxRetries => 3;
 
     public async Task WarmupAsync(CancellationToken ct = default)
     {
@@ -55,7 +56,7 @@ public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvi
         }
     }
 
-    public override ILlmClient GetClient()
+    public ILlmClient GetClient()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
@@ -70,8 +71,8 @@ public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvi
     /// 拉取 OpenCode Zen 全量模型目录（免认证），并应用内置预置与用户自定义覆盖。
     /// 未配置 API Key 时仅返回免费模型。
     /// </summary>
-    public override async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
-        CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
+        CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
@@ -169,9 +170,9 @@ public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvi
         _registry.Register(this, ExtensionId);
     }
 
-    public override Task<bool> TestConnectionAsync(
+    public Task<bool> TestConnectionAsync(
         string modelId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
         => GetClient().TestConnectionAsync(modelId, cancellationToken);
 
     public async ValueTask DisposeAsync()
@@ -196,7 +197,8 @@ public sealed class OpenCodeZenProvider : LlmProviderBase, IConfigurableLlmProvi
         {
             // 服务端按 User-Agent 识别 opencode 客户端以豁免免费模型限流；
             // 免费模型无需 API Key：仅带识别 UA（非认证头），不发送 Authorization。
-            return CreateBuiltInClient(_factory, new ProviderConfig
+            var factory = LlmClientFactoryResolver.Require(_factories, ProviderTypes.OpenAi);
+            return factory.Create(new ProviderConfig
             {
                 Id = Id,
                 Type = ProviderTypes.OpenAi,

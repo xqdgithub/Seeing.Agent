@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Agent.Gateway</RootNamespace>
+    <AssemblyName>Seeing.Agent.Gateway</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Seeing.Gateway.WeCom\Seeing.Gateway.WeCom.csproj" />
+    <ProjectReference Include="..\Seeing.Gateway.QQ\Seeing.Gateway.QQ.csproj" />
+    <ProjectReference Include="..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\..\primitives\Seeing.Session\Seeing.Session.csproj" />
+    <ProjectReference Include="..\Seeing.Gateway\Seeing.Gateway.csproj" />
+    <ProjectReference Include="..\Seeing.Gateway.Client\Seeing.Gateway.Client.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+  </ItemGroup>
+
+</Project>

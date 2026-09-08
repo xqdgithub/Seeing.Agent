@@ -5,8 +5,9 @@ using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Web;
 using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Agent.Hosting.Web.Permissions;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Extensions;
+using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Gateway.Channels;
 using Seeing.Agent.Gateway.Extensions;
 using Seeing.Agent.Memory.Extensions;
@@ -17,11 +18,11 @@ using Seeing.Agent.Llm.OpenAI;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
 using Seeing.IO.Local;
-using Seeing.Agent.Tools.Basic;
-using Seeing.Agent.Tools.FileSystem;
-using Seeing.Agent.Tools.Git;
-using Seeing.Agent.Tools.Shell;
-using Seeing.Agent.Tools.Web;
+using Seeing.Agent.Core.Tools.Basic;
+using Seeing.Agent.Core.Tools.FileSystem;
+using Seeing.Agent.Core.Tools.Git;
+using Seeing.Agent.Core.Tools.Shell;
+using Seeing.Agent.Core.Tools.Web;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.WebUI.Services;
@@ -58,6 +59,8 @@ builder.Services.AddSeeingModule<SkillsModule>(registry);
 builder.Services.AddSeeingModule<McpModule>(registry);
 builder.Services.AddSeeingModule<OpenAiLlmModule>(registry);
 builder.Services.AddSeeingModule<AnthropicLlmModule>(registry);
+builder.Services.AddSeeingModule<DeepSeekLlmModule>(registry);
+builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
 builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
 builder.Services.AddSeeingAcp(registry);
 builder.Services.AddSeeingScheduler(registry);
@@ -67,8 +70,6 @@ builder.Services.AddGatewayChannelRegistry();
 
 // === Memory 服务（混合检索、图谱、成本控制）===
 builder.Services.AddMemoryServices(registry);
-builder.Services.AddDeepSeekProvider();
-builder.Services.AddOpenCodeZenProvider();
 
 builder.Services.AddSeeingCore(registry);
 

@@ -10,13 +10,15 @@
 @using Seeing.Agent.Hosting
 @using Seeing.Agent.Hosting.Execution
 @using Seeing.Agent.Hosting.Events
-@using Seeing.Agent.Events
+@using Seeing.Agent.Core.Events
 @using Seeing.Agent.Abstractions.Execution
-@using Seeing.Agent.Execution
+@using Seeing.Agent.Core.Execution
+@using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Scenarios
+@using Seeing.Agent.Core.Llm
 @using Seeing.Agent.Llm
-@using Seeing.Agent.Tools
+@using Seeing.Agent.Core.Tools
 @using Seeing.Agent.Skills
 @using Seeing.Agent.Abstractions.Models
 @using Microsoft.Extensions.Options
@@ -40,6 +42,7 @@
 @inject ISessionManager SessionManager
 @inject ISessionEventPublisher SessionEventPublisher
 @inject Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
+@inject Seeing.Agent.Core.Scenarios.IScenarioCatalog ScenarioCatalog
 @implements IDisposable
 
 <div Class="@($"session-window session-window--{ModeCss}")">
@@ -580,7 +583,7 @@
             var effective = Services.SessionShellVisibility.ResolveEffectiveScenario(
                 SessionState.CurrentSession.Scenario,
                 processScenario);
-            var scenarioDefault = Services.SessionShellVisibility.ResolveDefaultAgent(effective);
+            var scenarioDefault = Services.SessionShellVisibility.ResolveDefaultAgent(effective, ScenarioCatalog);
 
             var agentId = !string.IsNullOrWhiteSpace(scenarioDefault)
                 ? scenarioDefault!
@@ -905,7 +908,7 @@
         var effective = Services.SessionShellVisibility.ResolveEffectiveScenario(
             trimmed,
             SeeingAgentOptions.CurrentValue.Scenario);
-        var defaultAgent = Services.SessionShellVisibility.ResolveDefaultAgent(effective);
+        var defaultAgent = Services.SessionShellVisibility.ResolveDefaultAgent(effective, ScenarioCatalog);
         if (!string.IsNullOrWhiteSpace(defaultAgent))
         {
             SessionState.SelectedAgent = defaultAgent;

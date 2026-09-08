@@ -1,7 +1,8 @@
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Modules;
+using Seeing.Agent.Core.Modules;
 
 namespace Seeing.Agent.WebUI.Services;
 

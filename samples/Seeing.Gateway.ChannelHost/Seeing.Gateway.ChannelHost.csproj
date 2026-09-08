@@ -15,9 +15,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Seeing.Gateway/Seeing.Gateway.csproj" />
-    <ProjectReference Include="../../src/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
-    <ProjectReference Include="../../src/Seeing.Gateway.QQ/Seeing.Gateway.QQ.csproj" />
+    <ProjectReference Include="..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
+    <ProjectReference Include="..\..\src\gateway\Seeing.Gateway\Seeing.Gateway.csproj" />
+    <ProjectReference Include="..\..\src\gateway\Seeing.Gateway.WeCom\Seeing.Gateway.WeCom.csproj" />
+    <ProjectReference Include="..\..\src\gateway\Seeing.Gateway.QQ\Seeing.Gateway.QQ.csproj" />
   </ItemGroup>
 
 </Project>

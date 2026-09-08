@@ -4,8 +4,9 @@
 @using Microsoft.JSInterop
 @using Seeing.Agent.Abstractions.Modules
 @using Seeing.Agent.Abstractions.Ui
+@using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
-@using Seeing.Agent.Modules
+@using Seeing.Agent.Core.Modules
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Agent.WebUI.State
 @implements IDisposable
@@ -45,6 +46,7 @@
     <Menu Mode="@MenuMode.Inline"
           Theme="@MenuTheme.Light"
           SelectedKeys="@_selectedKeys"
+          @bind-OpenKeys="_openKeys"
           Class="sider-menu">
 
         <MenuItem Key="chat" OnClick="@(() => NavigateTo(GetChatPath()))">
@@ -52,13 +54,36 @@
             <span>聊天</span>
         </MenuItem>
 
-        @foreach (var item in _visibleNav)
+        @foreach (var item in _ungroupedNav)
         {
             var key = NavKey(item);
             <MenuItem @key="key" Key="@key" OnClick="@(() => NavigateTo(ResolveNavPath(item)))">
                 <Icon Type="@item.Icon" />
                 <span>@item.Title</span>
             </MenuItem>
+        }
+
+        @foreach (var group in _groupedNav)
+        {
+            <SubMenu @key="group.Key" Key="@group.Key">
+                <TitleTemplate>
+                    @if (!string.IsNullOrWhiteSpace(group.Icon))
+                    {
+                        <Icon Type="@group.Icon" />
+                    }
+                    <span>@group.Title</span>
+                </TitleTemplate>
+                <ChildContent>
+                    @foreach (var item in group.Items)
+                    {
+                        var key = NavKey(item);
+                        <MenuItem @key="key" Key="@key" OnClick="@(() => NavigateTo(ResolveNavPath(item)))">
+                            <Icon Type="@item.Icon" />
+                            <span>@item.Title</span>
+                        </MenuItem>
+                    }
+                </ChildContent>
+            </SubMenu>
         }
     </Menu>
 
@@ -84,7 +109,15 @@
     [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
 
     private string[] _selectedKeys = Array.Empty<string>();
+    private string[] _openKeys =
+    [
+        NavGroups.Control,
+        NavGroups.Workspace,
+        NavGroups.Settings,
+    ];
     private IReadOnlyList<NavContribution> _visibleNav = Array.Empty<NavContribution>();
+    private IReadOnlyList<NavContribution> _ungroupedNav = Array.Empty<NavContribution>();
+    private IReadOnlyList<NavGroupView> _groupedNav = Array.Empty<NavGroupView>();
     private bool _shutdownRequested;
     private IDisposable? _optionsSubscription;
 
@@ -146,6 +179,52 @@
             AgentOptions.CurrentValue, SettlementOptions);
         _visibleNav = UiContributionVisibility.FilterSidebarNav(
             Registry.NavItems, Catalog, scenario);
+
+        _ungroupedNav = _visibleNav
+            .Where(n => string.IsNullOrWhiteSpace(n.Group))
+            .OrderBy(n => n.Order)
+            .ThenBy(n => n.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // 固定分组顺序：控制中心 → 工作区 → 设置 → 其它命名分组
+        var preferred = new[] { NavGroups.Control, NavGroups.Workspace, NavGroups.Settings };
+        var byGroup = _visibleNav
+            .Where(n => !string.IsNullOrWhiteSpace(n.Group))
+            .GroupBy(n => n.Group!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var groups = new List<NavGroupView>();
+        foreach (var name in preferred)
+        {
+            if (!byGroup.Remove(name, out var items))
+                continue;
+            groups.Add(ToGroupView(name, items));
+        }
+
+        foreach (var kv in byGroup.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+            groups.Add(ToGroupView(kv.Key, kv.Value));
+
+        _groupedNav = groups;
+    }
+
+    private static NavGroupView ToGroupView(string title, List<NavContribution> items)
+    {
+        var icon = items
+            .Select(i => i.GroupIcon)
+            .FirstOrDefault(i => !string.IsNullOrWhiteSpace(i));
+        var ordered = items
+            .OrderBy(i => i.Order)
+            .ThenBy(i => i.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return new NavGroupView(title, icon, ordered);
+    }
+
+    private sealed record NavGroupView(
+        string Title,
+        string? Icon,
+        IReadOnlyList<NavContribution> Items)
+    {
+        public string Key => Title;
     }
 
     private void UpdateSelectedKey()

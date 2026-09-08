@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj" />
+    <Project Path="samples/Seeing.Agent.Embed.Demo/Seeing.Agent.Embed.Demo.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
     <Project Path="samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" />
     <Project Path="samples/Seeing.Gateway.Console.Demo/Seeing.Gateway.Console.Demo.csproj" />
@@ -11,66 +12,90 @@
     <Project Path="plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />
     <Project Path="plugs/providers/Seeing.Provider.OpenCodeZen/Seeing.Provider.OpenCodeZen.csproj" />
   </Folder>
-  <Folder Name="/src/">
-    <Project Path="src/Seeing.Agent.Abstractions/Seeing.Agent.Abstractions.csproj" />
-    <Project Path="src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
-    <Project Path="src/Seeing.Agent.Hosting/Seeing.Agent.Hosting.csproj" />
-    <Project Path="src/Seeing.Agent.Hosting.Web/Seeing.Agent.Hosting.Web.csproj" />
-    <Project Path="src/Seeing.Agent.Hosting.Headless/Seeing.Agent.Hosting.Headless.csproj" />
-    <Project Path="src/Seeing.Agent.Hosting.Gateway/Seeing.Agent.Hosting.Gateway.csproj" />
-    <Project Path="src/Seeing.Agent.Gateway/Seeing.Agent.Gateway.csproj" />
-    <Project Path="src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
-    <Project Path="src/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
-    <Project Path="src/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
-    <Project Path="src/Seeing.Agent.Tools.Basic/Seeing.Agent.Tools.Basic.csproj" />
-    <Project Path="src/Seeing.Agent.Tools.FileSystem/Seeing.Agent.Tools.FileSystem.csproj" />
-    <Project Path="src/Seeing.Agent.Tools.Shell/Seeing.Agent.Tools.Shell.csproj" />
-    <Project Path="src/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
-    <Project Path="src/Seeing.Agent.Tools.Web/Seeing.Agent.Tools.Web.csproj" />
-    <Project Path="src/Seeing.Agent.Tools.Git/Seeing.Agent.Tools.Git.csproj" />
-    <Project Path="src/Seeing.Agent.Skills/Seeing.Agent.Skills.csproj" />
-    <Project Path="src/Seeing.Agent.Mcp/Seeing.Agent.Mcp.csproj" />
-    <Project Path="src/Seeing.Agent.Llm.OpenAI/Seeing.Agent.Llm.OpenAI.csproj" />
-    <Project Path="src/Seeing.Agent.Llm.Anthropic/Seeing.Agent.Llm.Anthropic.csproj" />
-    <Project Path="src/Seeing.Agent.Agents.BuiltIn/Seeing.Agent.Agents.BuiltIn.csproj" />
-    <Project Path="src/Seeing.Agent.Core/Seeing.Agent.Core.csproj" />
-    <Project Path="src/Seeing.ConfigSchema/Seeing.ConfigSchema.csproj" />
-    <Project Path="src/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
-    <Project Path="src/Seeing.Gateway.QQ/Seeing.Gateway.QQ.csproj" />
-    <Project Path="src/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
-    <Project Path="src/Seeing.Gateway/Seeing.Gateway.csproj" />
-    <Project Path="src/Seeing.IO.Local/Seeing.IO.Local.csproj" />
-    <Project Path="src/Seeing.Session/Seeing.Session.csproj" />
-    <Project Path="src/Seeing.TokenEstimation/Seeing.TokenEstimation.csproj" />
+  <Folder Name="/src/primitives/">
+    <Project Path="src/primitives/Seeing.ConfigSchema/Seeing.ConfigSchema.csproj" />
+    <Project Path="src/primitives/Seeing.Session/Seeing.Session.csproj" />
+    <Project Path="src/primitives/Seeing.TokenEstimation/Seeing.TokenEstimation.csproj" />
   </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Seeing.Agent.Acp.Tests/Seeing.Agent.Acp.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Hosting.Tests/Seeing.Agent.Hosting.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
-    <Project Path="tests/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />
-    <Project Path="tests/Seeing.Provider.OpenCodeZen.Tests/Seeing.Provider.OpenCodeZen.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Tools.Basic.Tests/Seeing.Agent.Tools.Basic.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Tools.FileSystem.Tests/Seeing.Agent.Tools.FileSystem.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Tools.Shell.Tests/Seeing.Agent.Tools.Shell.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Tools.Git.Tests/Seeing.Agent.Tools.Git.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Skills.Tests/Seeing.Agent.Skills.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Mcp.Tests/Seeing.Agent.Mcp.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Llm.OpenAI.Tests/Seeing.Agent.Llm.OpenAI.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Llm.Anthropic.Tests/Seeing.Agent.Llm.Anthropic.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Agents.BuiltIn.Tests/Seeing.Agent.Agents.BuiltIn.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
-    <Project Path="tests/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />
-    <Project Path="tests/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />
-    <Project Path="tests/Seeing.Gateway.QQ.Tests/Seeing.Gateway.QQ.Tests.csproj" />
-    <Project Path="tests/Seeing.Gateway.Tests/Seeing.Gateway.Tests.csproj" />
-    <Project Path="tests/Seeing.Gateway.WeCom.Tests/Seeing.Gateway.WeCom.Tests.csproj" />
-    <Project Path="tests/Seeing.Session.Tests/Seeing.Session.Tests.csproj" />
-    <Project Path="tests/Seeing.TokenEstimation.Tests/Seeing.TokenEstimation.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
-    <Project Path="tests/Seeing.IO.Local.Tests/Seeing.IO.Local.Tests.csproj" />
+  <Folder Name="/src/abstractions/">
+    <Project Path="src/abstractions/Seeing.Agent.Abstractions/Seeing.Agent.Abstractions.csproj" />
+  </Folder>
+  <Folder Name="/src/spine/">
+    <Project Path="src/spine/Seeing.Agent.Core/Seeing.Agent.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/hosting/">
+    <Project Path="src/hosting/Seeing.Agent.Hosting/Seeing.Agent.Hosting.csproj" />
+    <Project Path="src/hosting/Seeing.Agent.Hosting.Embed/Seeing.Agent.Hosting.Embed.csproj" />
+    <Project Path="src/hosting/Seeing.Agent.Hosting.Gateway/Seeing.Agent.Hosting.Gateway.csproj" />
+    <Project Path="src/hosting/Seeing.Agent.Hosting.Headless/Seeing.Agent.Hosting.Headless.csproj" />
+    <Project Path="src/hosting/Seeing.Agent.Hosting.Web/Seeing.Agent.Hosting.Web.csproj" />
+  </Folder>
+  <Folder Name="/src/capabilities/">
+    <Project Path="src/capabilities/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Agents.BuiltIn/Seeing.Agent.Agents.BuiltIn.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Llm.Anthropic/Seeing.Agent.Llm.Anthropic.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Llm.OpenAI/Seeing.Agent.Llm.OpenAI.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Mcp/Seeing.Agent.Mcp.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Skills/Seeing.Agent.Skills.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.Basic/Seeing.Agent.Tools.Basic.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.FileSystem/Seeing.Agent.Tools.FileSystem.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.Git/Seeing.Agent.Tools.Git.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.Shell/Seeing.Agent.Tools.Shell.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.Web/Seeing.Agent.Tools.Web.csproj" />
+    <Project Path="src/capabilities/Seeing.IO.Local/Seeing.IO.Local.csproj" />
+  </Folder>
+  <Folder Name="/src/gateway/">
+    <Project Path="src/gateway/Seeing.Agent.Gateway/Seeing.Agent.Gateway.csproj" />
+    <Project Path="src/gateway/Seeing.Gateway/Seeing.Gateway.csproj" />
+    <Project Path="src/gateway/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
+    <Project Path="src/gateway/Seeing.Gateway.QQ/Seeing.Gateway.QQ.csproj" />
+    <Project Path="src/gateway/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
+  </Folder>
+  <Folder Name="/tests/primitives/">
+    <Project Path="tests/primitives/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />
+    <Project Path="tests/primitives/Seeing.Session.Tests/Seeing.Session.Tests.csproj" />
+    <Project Path="tests/primitives/Seeing.TokenEstimation.Tests/Seeing.TokenEstimation.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/spine/">
+    <Project Path="tests/spine/Seeing.Agent.Invariants.Tests/Seeing.Agent.Invariants.Tests.csproj" />
+    <Project Path="tests/spine/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/hosting/">
+    <Project Path="tests/hosting/Seeing.Agent.Hosting.Tests/Seeing.Agent.Hosting.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/capabilities/">
+    <Project Path="tests/capabilities/Seeing.Agent.Acp.Tests/Seeing.Agent.Acp.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Agents.BuiltIn.Tests/Seeing.Agent.Agents.BuiltIn.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Llm.Anthropic.Tests/Seeing.Agent.Llm.Anthropic.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Llm.OpenAI.Tests/Seeing.Agent.Llm.OpenAI.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Mcp.Tests/Seeing.Agent.Mcp.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Skills.Tests/Seeing.Agent.Skills.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Basic.Tests/Seeing.Agent.Tools.Basic.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.FileSystem.Tests/Seeing.Agent.Tools.FileSystem.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Git.Tests/Seeing.Agent.Tools.Git.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Shell.Tests/Seeing.Agent.Tools.Shell.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.IO.Local.Tests/Seeing.IO.Local.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/gateway/">
+    <Project Path="tests/gateway/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />
+    <Project Path="tests/gateway/Seeing.Gateway.QQ.Tests/Seeing.Gateway.QQ.Tests.csproj" />
+    <Project Path="tests/gateway/Seeing.Gateway.Tests/Seeing.Gateway.Tests.csproj" />
+    <Project Path="tests/gateway/Seeing.Gateway.WeCom.Tests/Seeing.Gateway.WeCom.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/apps/">
+    <Project Path="tests/apps/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
+    <Project Path="tests/apps/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/plugs/">
+    <Project Path="tests/plugs/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />
+    <Project Path="tests/plugs/Seeing.Provider.OpenCodeZen.Tests/Seeing.Provider.OpenCodeZen.Tests.csproj" />
   </Folder>
   <Folder Name="/解决方案项/" />
 </Solution>

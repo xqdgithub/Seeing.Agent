@@ -1,11 +1,27 @@
 # Seeing.Agent 项目知识库
 
-**生成时间:** 2026-07-31
-**Branch:** master
+**生成时间:** 2026-07-31（架构文档增量深化：2026-09-08）
+**Branch:** feature/modular-architecture（以当前分支为准）
 **目标框架:** .NET 10.0
 **语言:** C#
 
 ---
+
+## 架构与开发规范（必读）
+
+正式模块化文档在 **`docs/architecture/`**：
+
+- [文档索引](docs/architecture/README.md)
+- [系统架构](docs/architecture/01-overview.md)
+- [模块地图](docs/architecture/02-modules.md)
+- [配置·结算·热重载](docs/architecture/03-configuration-lifecycle.md)
+- [开发规范与反模式](docs/architecture/04-development-standards.md)
+- [扩展指南](docs/architecture/05-extension-guide.md)
+- [合规审查 / 现状债](docs/architecture/06-compliance-audit.md)
+
+设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
+
+**硬规则摘要：** Core 瘦脊柱（零工具）；能力经 `AddSeeingModule`；`InitializeSeeingAsync` 在 Host.Start 前；schema 只在 ExecutionJobService 计算；能力包目标只依赖 Abstractions。
 
 ## 概述
 
@@ -15,98 +31,57 @@
 
 ```
 Seeing.Agent/
-├── Seeing.Agent.slnx              # 解决方案（VS 2022 17.13+ 新格式）
-├── global.json                    # SDK 版本锁定：10.0.102
-├── Directory.Build.props          # 启用中央包管理 (CPM)
-├── Directory.Packages.props       # 包版本集中定义
-│
+├── Seeing.Agent.slnx
+├── docs/architecture/             # 架构与开发规范（日常必读）
+├── docs/superpowers/specs/        # 模块化设计规格
 ├── src/
-│   ├── Seeing.Agent/              # 主 NuGet 库（**260** 个 C# 文件）
-│   ├── Seeing.Agent.Abstractions/ # 零实现契约包（接口/DTO/注解/常量/事件声明，仅引用原语层 Seeing.Session）
-│   ├── Seeing.Agent.Acp/          # ACP 集成
-│   ├── Seeing.Agent.App/          # 应用层 / Chat 编排器
-│   ├── Seeing.Agent.Gateway/      # Gateway 集成
-│   ├── Seeing.Agent.Memory/       # 记忆系统
-│   ├── Seeing.Agent.Scheduler/    # 调度器
-│   ├── Seeing.Agent.TokenBudget/  # Token 预算管理
-│   ├── Seeing.Gateway/            # Gateway 核心协议
-│   ├── Seeing.Gateway.Client/     # Gateway 客户端
-│   ├── Seeing.Gateway.QQ/         # QQ Gateway 通道
-│   ├── Seeing.Gateway.WeCom/      # 企业微信 Gateway 通道
-│   ├── Seeing.Session/            # 独立会话管理包（**46** 个文件）
-│   └── Seeing.TokenEstimation/    # Token 估算
-│
-├── tests/
-│   ├── Seeing.Agent.Tests/        # 单元测试（**65** 个文件）
-│   ├── Seeing.Agent.Acp.Tests/    # ACP 测试
-│   ├── Seeing.Agent.Memory.Tests/ # Memory 测试
-│   ├── Seeing.Agent.Scheduler.Tests/ # Scheduler 测试
-│   ├── Seeing.Agent.WebUI.Tests/  # WebUI 测试
-│   ├── Seeing.Gateway.Tests/      # Gateway 测试
-│   ├── Seeing.Gateway.Client.Tests/ # Gateway Client 测试
-│   ├── Seeing.Gateway.QQ.Tests/   # QQ 通道测试
-│   ├── Seeing.Gateway.WeCom.Tests/ # WeCom 通道测试
-│   ├── Seeing.Session.Tests/      # Session 测试
-│   └── Seeing.TokenEstimation.Tests/ # Token 估算测试
-│
-├── samples/
-│   ├── Seeing.Agent.WebUI/        # Blazor Web 界面示例
-│   ├── Seeing.Agent.Cli/          # 命令行管理工具
-│   ├── Seeing.Gateway.Server/     # Gateway 服务端
-│   ├── Seeing.Gateway.ChannelHost/ # 通道宿主
-│   ├── Seeing.Gateway.Console.Demo/ # 控制台演示
-│   └── Seeing.Gateway.WeCom.Demo/ # 企业微信演示
-│
-├── docs/superpowers/
-│   ├── plans/                     # 实施计划
-│   └── specs/                     # 设计规格
-│
-├── CommandLineUtils/              # [外部] McMaster 命令行库
-└── command-line-api/              # [外部] dotnet 命令行 API
+│   ├── primitives/                # Session, TokenEstimation, ConfigSchema
+│   ├── abstractions/              # Seeing.Agent.Abstractions
+│   ├── spine/                     # Seeing.Agent.Core
+│   ├── hosting/                   # Hosting + Web/Headless/Embed/Gateway
+│   ├── capabilities/              # Tools.*, Skills, Mcp, Llm.*, Agents, Scheduler, Memory, Acp, TokenBudget, IO.Local
+│   └── gateway/                   # Seeing.Gateway*, Seeing.Agent.Gateway
+├── tests/                         # 与 src 同名分类镜像（另含 apps/、plugs/）
+├── samples/  Seeing.Agent.WebUI, Gateway.Server, Cli, …
+└── plugs/providers/
 ```
 
-## 依赖方向规范（三层）
+> 程序集名未改；仅磁盘路径分类。WHERE TO LOOK 中路径请按上表映射（如 Core → `src/spine/Seeing.Agent.Core/`）。
+
+## 依赖方向规范（四层）
 
 | 层 | 项目 | 说明 |
 |----|------|------|
-| 原语层 | `Seeing.Session`、`Seeing.TokenEstimation` | 零依赖或仅 BCL |
-| 主库层 | `Seeing.Agent` | 依赖原语层 + Abstractions |
-| 扩展层 | `Seeing.Agent.*`、`Seeing.Gateway*`、`plugs/providers/*` | 只引用 Abstractions 接口与契约 + 原语层 |
+| 原语层 | `Seeing.Session`、`Seeing.TokenEstimation`、`Seeing.ConfigSchema` | 零依赖或仅 BCL |
+| 契约层 | `Seeing.Agent.Abstractions` | 接口/DTO/注解/常量；允许引用原语层 |
+| 脊柱层 | `Seeing.Agent.Core`、`Seeing.Agent.Hosting*` | Core 瘦脊柱；Hosting 编排；Host Shape 不拉可选能力 |
+| 能力/扩展层 | `Seeing.Agent.Tools.*`、`Skills`/`Mcp`/`Llm.*`、`Scheduler`/`Memory`/`Acp`、`Seeing.Gateway*` | **只**引用 Abstractions + 原语（+ Tools.Support）；复扫见 `docs/architecture/06-compliance-audit.md` |
 
-- **依赖只能向下**：禁止反向引用（扩展层 → 主库层 → Abstractions → 原语层）
-- **Abstractions 零实现纪律**：只放接口/DTO/注解/常量/事件声明，禁止实现逻辑；唯一豁免是允许引用原语层 `Seeing.Session`（`AgentDefinition.BudgetConfig` 依赖 `TokenBudgetConfig`）
-- **扩展包禁止引用主库具体类**，只能引用 Abstractions 接口与契约
-- **协议层独立**：`Seeing.Gateway`（核心协议包）禁止引用主库，仅依赖 Abstractions；`Seeing.Agent.Gateway`（集成包）允许引用主库
+- **依赖只能向下**：禁止能力包反向依赖 Core 具体类型
+- **Abstractions 零实现纪律**：只放接口/DTO/注解/常量/事件声明
+- **协议层独立**：`Seeing.Gateway` 仅依赖 Abstractions；`Seeing.Agent.Gateway` 为集成包
+- **日常必遵细节**（热重载 / schema 单点 / Activate 挂载）：以 `docs/architecture/03–05` 为准
 
 ## WHERE TO LOOK
 
 | 任务 | 位置 | 说明 |
 |------|------|------|
-| 新增 Agent 实现 | `src/Seeing.Agent/Core/BuiltInAgents/BuiltInAgents.cs` | AgentDefinition 纯数据定义（无基类继承；自定义行为通过 Hook/工具/子代理组合表达） |
-| Agent 执行入口 | `src/Seeing.Agent.Abstractions/Agents/IAgentExecutor.cs` | 定义 + 消息入参 → 流式事件；默认实现 `NativeAgentExecutor`，ACP 走 `AcpAgentExecutor` |
-| Agent 注册 / 运行时 | `src/Seeing.Agent.Abstractions/Agents/IAgentRegistry.cs`、`IAgentRuntimeManager.cs` | 注册/查询/权限筛选 + 默认 Agent / 模型绑定（拆分自 IAgentManager） |
-| Todo 存取 | `src/Seeing.Agent.Abstractions/Todo/ITodoStore.cs` + `src/Seeing.Agent/Todo/SessionContextTodoStore.cs` | 端口-适配器，替代 Session 魔法键直写 |
-| 扩展插件生命周期 | `src/Seeing.Agent.Abstractions/Extensions/IExtensionManager.cs` | 插件加载/激活/停用 |
-| 契约类型总览 | `src/Seeing.Agent.Abstractions/` | 接口/DTO/注解/常量/事件声明（Events/Hooks/Tools/Agents/Extensions/Llm/Mcp/Permissions/Skills/Commands/Configuration/Todo/Components） |
-| 新增 Tool 工具 | `src/Seeing.Agent/Tools/Attributes/ToolAttributes.cs` | 使用 `[Tool]` 注解 |
-| 子 Agent / Task | `src/Seeing.Agent/Tools/BuiltIn/Task/TaskTool.cs` | Session-first：`task`/`task_status`；Child=`SessionKind.SubAgent`；写 `Metadata[OriginToolCallId]=context.CallId` 供 UI 关联 |
-| 多流订阅基础设施 | `samples/Seeing.Agent.WebUI/Services/SessionEventStreamRouter.cs` + `IStreamConsumer.cs` + `CircuitContext.cs` | Singleton Router：每会话流只订阅一次、广播多消费者（handler+聚合器）；键 `(circuitId, sessionId, type)`；引用快照去重 skipSet + replay 补历史 |
-| EventStreamHandler（多实例） | `samples/Seeing.Agent.WebUI/Services/EventStreamHandler.cs` | 每会话实例（构造 `(string sessionId, ISessionManager)`），`OnStateChanged(IMessageEvent)` 上抛；`RestoreExecution` 恢复执行态 |
-| Task 卡片聚合 | `samples/Seeing.Agent.WebUI/Services/TaskCardAggregator.cs` | 每 circuit 一实例（按 circuitId 复用）；父流识别 task toolCall → 挂载子会话订阅 → 聚合 TaskSteps 写回父 toolCall（防抖落盘）；`Rebind`/`Reconcile`/`AssistantChanged` |
-| Task 卡片渲染 | `samples/Seeing.Agent.WebUI/Components/Messaging/TaskMessageComponent.razor` | 进度步骤 + 子会话 ID + "结果摘要"（完整 `ToolCall.Result`，不再截断）；`OpenChildSession` 打开子会话 |
-| Circuit 清理 | `samples/Seeing.Agent.WebUI/Services/SeeingCircuitHandler.cs` | `OnCircuitOpenedAsync` 写 `CircuitContext.Id`；`OnCircuitClosedAsync` → `Router.DetachAllForCircuit` |
-| 扩展生命周期钩子 | `src/Seeing.Agent/Core/Hooks/HookManager.cs` | 实现 `IHookHandler`，30+ 钩子点 |
-| 配置权限规则 | `src/Seeing.Agent/Core/Permission/PermissionService.cs` | PermissionRuleEntry + PermissionService |
-| 连接 MCP Server | `src/Seeing.Agent/MCP/McpClientManager.cs` | `ConnectAsync()`，支持 stdio/HTTP/SSE |
-| DI 注册入口 | `src/Seeing.Agent.Core/Extensions/ServiceCollectionExtensions.cs` | `ConfigSectionRegistry` → `AddSeeingModule*` / 扩展包 `AddSeeing*` → `AddSeeingCore(registry)` → `InitializeSeeingAsync`（Host 启动前） |
-| 会话管理 | `src/Seeing.Session/Management/SessionManager.cs` | 独立包，生命周期管理 |
-| 扩展插件开发 | `src/Seeing.Agent/Extensions/ExtensionLoader.cs` | 实现 `IExtension`/`IToolExtension` 等拆分接口（Abstractions.Extensions） |
-| 循环检测防护 | `src/Seeing.Agent/Core/Detection/LoopDetector.cs` | 防止 LLM 无限循环 |
-| 文件系统安全 | `src/Seeing.Agent/Tools/BuiltIn/FileSystemHelper.cs` | 路径白名单、输出限制 |
-| 配置深度合并 | `src/Seeing.Agent/Core/Configuration/MergeDeep.cs` | 递归合并算法 |
-| 工具装饰器链 | `src/Seeing.Agent/Decorators/ToolDecoratorRegistry.cs` | 重试→缓存（由 ToolManager 在 RegisterTool() 时通过 `IToolDecoratorRegistry.Apply()` 生效；超时由工具自身 + AgentExecutor 全局兜底负责） |
-| 内置 Agent | `src/Seeing.Agent/Core/BuiltInAgents/BuiltInAgents.cs` | build/plan/explore/general/title/summary |
-| ACP 集成 | `src/Seeing.Agent.Acp/` | Passthrough 透传 + acp 工具委派，`IAgentExecutor` 执行器 |
+| 架构 / 规范 / 扩展 | `docs/architecture/` | 日常开发必读；合规债见 06 |
+| 新增内置 Agent | `src/capabilities/Seeing.Agent.Agents.BuiltIn/` | AgentDefinition 纯数据；经模块 Activate |
+| Agent 执行入口 | `src/abstractions/Seeing.Agent.Abstractions/Agents/IAgentExecutor.cs` | Native / ACP 分流 |
+| 编排 / schema 单点 | `src/hosting/Seeing.Agent.Hosting/`（`ExecutionJobService`） | 工具 schema 只在此计算 |
+| Todo 存取 | `src/abstractions/.../Todo/` + Hosting 适配器 | 端口-适配器 |
+| 模块生命周期 | `src/abstractions/.../Modules/` + `src/spine/.../SettlementEngine` | 结算 / Activate / Deactivate |
+| 契约类型总览 | `src/abstractions/Seeing.Agent.Abstractions/` | Events/Hooks/Tools/Agents/… |
+| 新增 Tool | `src/capabilities/Seeing.Agent.Tools.*` + `[Tool]` | 经 `AddSeeingModule`；Activate 挂载 |
+| 子 Agent / Task | `src/hosting/Seeing.Agent.Hosting/` Task 工具 | Session-first |
+| 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
+| Hook | `src/spine/Seeing.Agent.Core/` HookManager | `HookPoints.*` 常量 |
+| 权限 | `src/spine/Seeing.Agent.Core/` PermissionService | Allow/Deny/Ask |
+| MCP | `src/capabilities/Seeing.Agent.Mcp/` | 能力模块，非 Core |
+| DI 注册入口 | Core `AddSeeingCore` + 各包 `AddSeeingModule*` | `InitializeSeeingAsync` 在 Host.Start 前 |
+| 会话管理 | `src/primitives/Seeing.Session/` | 独立包 |
+| ACP | `src/capabilities/Seeing.Agent.Acp/` | 能力模块 |
 
 ## CONVENTIONS（仅非标准）
 
@@ -194,8 +169,16 @@ public static async Task<string> GetWeather(
 
 ## ANTI-PATTERNS
 
+完整清单与评审检查表见 [`docs/architecture/04-development-standards.md`](docs/architecture/04-development-standards.md)。
+
 | 禁止 | 原因 |
 |------|------|
+| **在 Core 加工具 / 能力包引用** | 破坏瘦脊柱；用 `AddSeeingModule` |
+| **使用已删除的 `AddSeeingAgent`** | 改用 `AddSeeingCore(registry)` + 显式模块 |
+| **能力包引用 Core 具体类型** | 只依赖 Abstractions（复扫见 `docs/architecture/06`） |
+| **在 `ConfigureServices` 永久挂死工具且无法 Deactivate** | enabled 与 DI/schema 不一致；目标 Activate 挂载 |
+| **schema 在 executor / 多处重复计算** | 只在 `ExecutionJobService` 算一次 |
+| **SeeingAgent 配置写进 appsettings.json** | 只用 `~/.seeing` / `.seeing/seeing.json` |
 | **混用路径分隔符** | `\\` 和 `/` 混用破坏跨平台 |
 | **WebUI 项目禁用 CPM** | 破坏包版本一致性 |
 | **静默吞异常** | `Activator.CreateInstance` 失败需记录 |
@@ -205,8 +188,11 @@ public static async Task<string> GetWeather(
 | **权限通道未配置** | 默认拒绝所有，需显式配置 |
 | **同步包装阻塞 async** | `.GetAwaiter().GetResult()` 死锁风险 |
 
-## 已知问题
+## 已知问题 / 架构债
 
+模块化合规债以 **[`docs/architecture/06-compliance-audit.md`](docs/architecture/06-compliance-audit.md)** 为准（P0：扩展包去 Core 引用、工具 Activate 挂载、Hosting→Skills 硬引用）。
+
+以下为历史条目摘要（部分已关闭）：
 | 优先级 | 问题 | 状态 |
 |--------|------|------|
 | **P0** | 装饰器链未注册 DI | 修复中（Phase 2） |
@@ -237,15 +223,15 @@ dotnet build Seeing.Agent.slnx
 # 测试
 # 注意：测试项目启用了 UseMicrosoftTestingPlatformRunner（MTP），但 MTP 在此环境下
 # 无法发现测试（"Zero tests ran"）。一律改用 VSTest 直接运行已构建的程序集：
-dotnet build tests/Seeing.Agent.Tests
-dotnet vstest tests/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll
+dotnet build tests/spine/Seeing.Agent.Tests
+dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll
 # 指定测试类（VSTest 过滤语法）：
-dotnet vstest tests/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll --TestCaseFilter:"FullyQualifiedName~AgentModeFilterTests"
-dotnet test tests/Seeing.Session.Tests
+dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll --TestCaseFilter:"FullyQualifiedName~AgentModeFilterTests"
+dotnet test tests/primitives/Seeing.Session.Tests
 
 # 打包 NuGet
-dotnet pack src/Seeing.Agent.Core -c Release
-dotnet pack src/Seeing.Session -c Release
+dotnet pack src/spine/Seeing.Agent.Core -c Release
+dotnet pack src/primitives/Seeing.Session -c Release
 
 # 运行示例
 dotnet run --project samples/Seeing.Agent.WebUI

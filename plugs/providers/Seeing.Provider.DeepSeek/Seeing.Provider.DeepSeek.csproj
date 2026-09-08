@@ -7,13 +7,11 @@
     <AssemblyName>Seeing.Provider.DeepSeek</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
-    <ProjectReference Include="..\..\..\src\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
-    <ProjectReference Include="..\..\..\src\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
+    <ProjectReference Include="..\..\..\src\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\src\primitives\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 </Project>

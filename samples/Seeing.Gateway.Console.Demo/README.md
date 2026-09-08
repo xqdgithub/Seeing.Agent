@@ -81,5 +81,5 @@ dotnet run --project samples/Seeing.Gateway.Console.Demo -- --transport ws
 
 - [Gateway 总览](../../docs/gateway/README.md)
 - [Gateway Server](../Seeing.Gateway.Server/README.md)
-- [Client SDK](../../src/Seeing.Gateway.Client/README.md)
-- [Server 集成](../../src/Seeing.Agent.Gateway/README.md)
+- [Client SDK](../../src/gateway/Seeing.Gateway.Client/README.md)
+- [Server 集成](../../src/gateway/Seeing.Agent.Gateway/README.md)

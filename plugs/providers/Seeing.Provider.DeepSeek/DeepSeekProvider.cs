@@ -1,20 +1,19 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.ConfigSchema;
 
 namespace Seeing.Provider.DeepSeek;
 
-public sealed class DeepSeekProvider : LlmProviderBase, IConfigurableLlmProvider, IAsyncDisposable
+public sealed class DeepSeekProvider : ILlmProvider, IConfigurableLlmProvider, IAsyncDisposable
 {
     public const string ExtensionId = "seeing.provider.deepseek";
     public static readonly TimeSpan ModelsCacheTtl = TimeSpan.FromMinutes(5);
 
     private readonly DeepSeekConfigStore _store;
-    private readonly ILlmClientFactory _factory;
+    private readonly IReadOnlyList<ILlmClientFactory> _factories;
     private readonly IProviderRegistry _registry;
     private readonly DeepSeekModelsClient _modelsClient;
     private readonly ILogger<DeepSeekProvider> _logger;
@@ -27,21 +26,23 @@ public sealed class DeepSeekProvider : LlmProviderBase, IConfigurableLlmProvider
 
     public DeepSeekProvider(
         DeepSeekConfigStore store,
-        ILlmClientFactory factory,
+        IEnumerable<ILlmClientFactory> factories,
         IProviderRegistry registry,
         DeepSeekModelsClient modelsClient,
         ILogger<DeepSeekProvider> logger)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _factories = (factories ?? throw new ArgumentNullException(nameof(factories))).ToArray();
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _modelsClient = modelsClient ?? throw new ArgumentNullException(nameof(modelsClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public override string Id => "deepseek";
+    public string Id => "deepseek";
 
-    public override string? Name => "DeepSeek";
+    public string? Name => "DeepSeek";
+
+    public int MaxRetries => 3;
 
     public async Task WarmupAsync(CancellationToken ct = default)
     {
@@ -52,7 +53,7 @@ public sealed class DeepSeekProvider : LlmProviderBase, IConfigurableLlmProvider
         }
     }
 
-    public override ILlmClient GetClient()
+    public ILlmClient GetClient()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
@@ -63,8 +64,8 @@ public sealed class DeepSeekProvider : LlmProviderBase, IConfigurableLlmProvider
         }
     }
 
-    public override async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
-        CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
+        CancellationToken cancellationToken = default)
     {
         string? apiKey;
         lock (_gate)
@@ -134,9 +135,9 @@ public sealed class DeepSeekProvider : LlmProviderBase, IConfigurableLlmProvider
         _registry.Register(this, ExtensionId);
     }
 
-    public override Task<bool> TestConnectionAsync(
+    public Task<bool> TestConnectionAsync(
         string modelId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
@@ -167,7 +168,8 @@ public sealed class DeepSeekProvider : LlmProviderBase, IConfigurableLlmProvider
     {
         try
         {
-            return CreateBuiltInClient(_factory, new ProviderConfig
+            var factory = LlmClientFactoryResolver.Require(_factories, ProviderTypes.OpenAi);
+            return factory.Create(new ProviderConfig
             {
                 Id = Id,
                 Type = ProviderTypes.OpenAi,

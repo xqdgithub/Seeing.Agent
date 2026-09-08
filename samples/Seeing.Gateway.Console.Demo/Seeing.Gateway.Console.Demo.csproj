@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Seeing.Gateway.Client\Seeing.Gateway.Client.csproj" />
+    <ProjectReference Include="..\..\src\gateway\Seeing.Gateway.Client\Seeing.Gateway.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>

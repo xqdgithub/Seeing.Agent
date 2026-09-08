@@ -1,11 +1,10 @@
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Hosting.Events;
-using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Hosting.Web.Permissions;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Execution;
+using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Core.Llm;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Api.Responses;
@@ -256,7 +255,7 @@ namespace Seeing.Agent.WebUI.Services
                     break;
 
                 // App 层扩展事件类型
-                case AppEventTypeConstants.SkillContent:
+                case MessageEventType.SkillContent:
                     HandleSkillContent((SkillContentEvent)evt);
                     break;
 
@@ -745,27 +744,27 @@ namespace Seeing.Agent.WebUI.Services
             var message = evt.Message;
 
             // 根据异常类型提供更友好的消息
-            if (evt.Exception is Llm.LlmRetryExhaustedException retryEx)
+            if (evt.Exception is LlmRetryExhaustedException retryEx)
             {
                 return $"请求在 {retryEx.MaxRetries} 次重试后仍然失败。请稍后重试或检查网络连接。";
             }
 
-            if (evt.Exception is Llm.LlmTimeoutException timeoutEx)
+            if (evt.Exception is LlmTimeoutException timeoutEx)
             {
                 return $"请求超时 ({timeoutEx.Timeout.TotalSeconds:F1}秒)。请稍后重试。";
             }
 
-            if (evt.Exception is Llm.LlmStreamingException streamEx)
+            if (evt.Exception is LlmStreamingException streamEx)
             {
                 return $"流式响应中断: {streamEx.Message}。请重新发起请求。";
             }
 
-            if (evt.Exception is Llm.LlmConnectionException)
+            if (evt.Exception is LlmConnectionException)
             {
                 return "网络连接错误。请检查网络连接后重试。";
             }
 
-            if (evt.Exception is Llm.LlmException llmEx)
+            if (evt.Exception is LlmException llmEx)
             {
                 return $"LLM 服务错误: {llmEx.Message}";
             }

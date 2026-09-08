@@ -17,11 +17,15 @@ public static class SessionShellVisibility
             : sessionScenario.Trim();
 
     /// <summary>取场景预设的 defaultAgent；未知场景返回 null。</summary>
-    public static string? ResolveDefaultAgent(string? effectiveScenario)
+    public static string? ResolveDefaultAgent(
+        string? effectiveScenario,
+        IScenarioCatalog? catalog = null)
     {
         if (string.IsNullOrWhiteSpace(effectiveScenario))
             return null;
-        return BuiltInScenarios.TryGet(effectiveScenario.Trim())?.DefaultAgent;
+        var name = effectiveScenario.Trim();
+        return catalog?.Get(name)?.DefaultAgent
+               ?? BuiltInScenarios.TryGet(name)?.DefaultAgent;
     }
 
     /// <summary>
@@ -48,13 +52,14 @@ public static class SessionShellVisibility
         string slotName,
         IModuleCatalog? catalog,
         string? sessionScenario,
-        string? processScenario)
+        string? processScenario,
+        IScenarioCatalog? scenarioCatalog = null)
     {
         ArgumentNullException.ThrowIfNull(slots);
         ArgumentException.ThrowIfNullOrWhiteSpace(slotName);
 
         var effective = ResolveEffectiveScenario(sessionScenario, processScenario);
-        var sessionModules = ResolveScenarioModuleSet(effective);
+        var sessionModules = ResolveScenarioModuleSet(effective, scenarioCatalog);
 
         return slots
             .Where(s => string.Equals(s.Name, slotName, StringComparison.OrdinalIgnoreCase))
@@ -117,12 +122,15 @@ public static class SessionShellVisibility
         return true;
     }
 
-    private static IReadOnlySet<string>? ResolveScenarioModuleSet(string? effectiveScenario)
+    private static IReadOnlySet<string>? ResolveScenarioModuleSet(
+        string? effectiveScenario,
+        IScenarioCatalog? scenarioCatalog)
     {
         if (string.IsNullOrWhiteSpace(effectiveScenario))
             return null;
 
-        var def = BuiltInScenarios.TryGet(effectiveScenario.Trim());
+        var name = effectiveScenario.Trim();
+        var def = scenarioCatalog?.Get(name) ?? BuiltInScenarios.TryGet(name);
         if (def is null)
             return null;
 

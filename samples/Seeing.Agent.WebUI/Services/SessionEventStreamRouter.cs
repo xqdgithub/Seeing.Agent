@@ -2,8 +2,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Session.Core;
 

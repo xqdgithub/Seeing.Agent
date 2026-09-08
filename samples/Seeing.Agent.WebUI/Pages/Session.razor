@@ -1,5 +1,3 @@
-@page "/session"
-@page "/session/{SessionId}"
 @using AntDesign
 @using Microsoft.AspNetCore.Components.Web
 @using Seeing.Agent.WebUI.Models
@@ -8,18 +6,20 @@
 @using Core = Seeing.Agent.Core
 @using Seeing.Session.Core
 @using Seeing.Agent.WebUI.State
-@using Seeing.Agent.Tools
+@using Seeing.Agent.Core.Tools
 @using Seeing.Agent.Skills
+@using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @using Microsoft.Extensions.Options
+@using Seeing.Agent.Core.Llm
 @using Seeing.Agent.Llm
 @using Seeing.Session.Management
 @using Seeing.Agent.Hosting
 @using Seeing.Agent.Hosting.Events
-@using Seeing.Agent.Events
+@using Seeing.Agent.Core.Events
 @using Seeing.Agent.Abstractions.Models
 @using Seeing.Agent.Abstractions.Execution
-@using Seeing.Agent.Execution
+@using Seeing.Agent.Core.Execution
 @using Seeing.Agent.Core.Events
 @using Seeing.Agent.Core.Reminders
 @using Seeing.Agent.Core.Instructions

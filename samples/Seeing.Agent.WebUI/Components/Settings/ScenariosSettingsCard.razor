@@ -1,0 +1,414 @@
+@using System.Text.Json
+@using AntDesign
+@using Microsoft.Extensions.Options
+@using Seeing.Agent.Abstractions.Modules
+@using Seeing.Agent.Core.Configuration
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Core.Scenarios
+@using Seeing.Agent.WebUI.Services
+@inject SeeingConfigService ConfigService
+@inject IScenarioCatalog ScenarioCatalog
+@inject IModuleCatalog ModuleCatalog
+@inject IOptionsMonitor<SeeingAgentOptions> AgentOptions
+@inject IMessageService MessageService
+@implements IDisposable
+
+<Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
+       Message="场景决定进程启用哪些模块、默认 Agent、seams 与禁用工具。内置场景可查看并「另存为」自定义；自定义场景可完整 CRUD。当前进程场景写入 seeing.json 的 Scenario，热重载后重新结算。" />
+
+<div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+    <span>当前进程场景：</span>
+    <Select TItemValue="string" TItem="string"
+            Value="@_activeScenario"
+            ValueChanged="OnActiveScenarioChanged"
+            Placeholder="Host 默认 / 清空"
+            AllowClear="true"
+            Style="width: 220px;"
+            Disabled="@_busy">
+        @foreach (var name in _allNames)
+        {
+            <SelectOption TItemValue="string" TItem="string" Value="@name" Label="@name" />
+        }
+    </Select>
+    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="StartCreate" Disabled="@_busy">
+        新建场景
+    </Button>
+    <Button Icon="@IconType.Outline.Reload" OnClick="Refresh" Disabled="@_busy">刷新</Button>
+</div>
+
+<Table TItem="ScenarioRow" DataSource="@_rows" RowKey="r => r.Name" Loading="@_busy" Size="@TableSize.Middle">
+    <PropertyColumn Property="c => c.Name" Title="名称" Width="140" />
+    <PropertyColumn Property="c => c.Kind" Title="类型" Width="100" />
+    <PropertyColumn Property="c => c.DefaultAgent" Title="默认 Agent" Width="120" />
+    <PropertyColumn Property="c => c.ModuleSummary" Title="模块" />
+    <ActionColumn Title="操作" Width="260">
+        <Space>
+            <Button Size="@ButtonSize.Small" OnClick="() => ViewOrEdit(context)">详情</Button>
+            @if (context.IsActive)
+            {
+                <Tag Color="@("blue")">当前</Tag>
+            }
+            else
+            {
+                <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => ActivateAsync(context.Name)">启用</Button>
+            }
+            <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => CloneAsCustom(context)">另存为</Button>
+            @if (!context.IsBuiltIn || context.HasOverride)
+            {
+                <Button Size="@ButtonSize.Small" Danger OnClick="() => ConfirmDelete(context)" Disabled="@(context.IsBuiltIn && !context.HasOverride)">
+                    @(context.IsBuiltIn ? "清除覆盖" : "删除")
+                </Button>
+            }
+        </Space>
+    </ActionColumn>
+</Table>
+
+<Modal Title="@_editorTitle"
+       Visible="@_editorVisible"
+       OnOk="SaveEditorAsync"
+       OnCancel="CloseEditor"
+       ConfirmLoading="@_busy"
+       Width="720"
+       DestroyOnClose="true">
+    <Form Layout="@FormLayout.Vertical" Model="@_editModel">
+        <FormItem Label="场景名">
+            <Input @bind-Value="@_editModel.Name" Disabled="@(!_editIsNew)" Placeholder="小写字母/数字/连字符，如 my-research" />
+        </FormItem>
+        <FormItem Label="默认 Agent">
+            <Input @bind-Value="@_editModel.DefaultAgent" Placeholder="general / build / explore …" />
+        </FormItem>
+        <FormItem Label="模块（勾选进程目录中可用的模块）">
+            <div style="max-height: 220px; overflow: auto; border: 1px solid #f0f0f0; padding: 8px; border-radius: 6px;">
+                @foreach (var id in _availableModuleIds)
+                {
+                    <div>
+                        <Checkbox Checked="@_editModel.SelectedModules.Contains(id)"
+                                  CheckedChanged="@(v => ToggleModule(id, v))">
+                            @id
+                            @if (!ModuleCatalog.IsEnabled(id))
+                            {
+                                <span style="color:#999; margin-left:6px;">（当前未启用）</span>
+                            }
+                        </Checkbox>
+                    </div>
+                }
+            </div>
+            <div style="margin-top: 6px; font-size: 12px; color: #888;">
+                也可手写额外模块 id（逗号分隔，结算时不在目录则告警忽略）：
+            </div>
+            <Input @bind-Value="@_editModel.ExtraModulesCsv" Placeholder="例如 experimental.foo" Style="margin-top: 4px;" />
+        </FormItem>
+        <FormItem Label="Seams（JSON 对象，可选）">
+            <TextArea @bind-Value="@_editModel.SeamsJson" Rows="3"
+                      Placeholder='{"executionWorld":"io.local"}' />
+        </FormItem>
+        <FormItem Label="禁用工具（逗号分隔）">
+            <Input @bind-Value="@_editModel.ToolsDisabledCsv" Placeholder="bash, delete" />
+        </FormItem>
+        @if (_editIsBuiltInBase)
+        {
+            <Alert Type="@AlertType.Warning" ShowIcon="true"
+                   Message="保存将把该内置场景的覆盖写入 seeing.json Scenarios；删除覆盖可恢复内置默认。" />
+        }
+    </Form>
+</Modal>
+
+@code {
+    private bool _busy;
+    private bool _editorVisible;
+    private bool _editIsNew;
+    private bool _editIsBuiltInBase;
+    private string _editorTitle = "场景";
+    private string? _activeScenario;
+    private List<string> _allNames = [];
+    private List<ScenarioRow> _rows = [];
+    private List<string> _availableModuleIds = [];
+    private EditorModel _editModel = new();
+    private IDisposable? _optSub;
+
+    protected override void OnInitialized()
+    {
+        _optSub = AgentOptions.OnChange(_ => InvokeAsync(Refresh));
+        Refresh();
+    }
+
+    public void Dispose() => _optSub?.Dispose();
+
+    private void Refresh()
+    {
+        _activeScenario = string.IsNullOrWhiteSpace(AgentOptions.CurrentValue.Scenario)
+            ? null
+            : AgentOptions.CurrentValue.Scenario.Trim();
+
+        _availableModuleIds = ModuleCatalog.Available
+            .Select(d => d.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var list = ScenarioCatalog.ListAll();
+        _allNames = list.Select(s => s.Name).ToList();
+        _rows = list.Select(s =>
+        {
+            var builtin = ScenarioCatalog.IsBuiltInName(s.Name);
+            var over = ScenarioCatalog.HasConfiguredOverride(s.Name);
+            return new ScenarioRow(
+                s.Name,
+                KindLabel(builtin, over),
+                s.DefaultAgent,
+                string.Join(", ", s.Modules),
+                builtin,
+                over,
+                string.Equals(_activeScenario, s.Name, StringComparison.OrdinalIgnoreCase));
+        }).ToList();
+    }
+
+    private static string KindLabel(bool builtin, bool over) =>
+        builtin ? (over ? "内置·已覆盖" : "内置") : "自定义";
+
+    private async Task OnActiveScenarioChanged(string? value)
+    {
+        _activeScenario = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        await PersistActiveScenarioAsync();
+    }
+
+    private async Task ActivateAsync(string name)
+    {
+        _activeScenario = name;
+        await PersistActiveScenarioAsync();
+    }
+
+    private async Task PersistActiveScenarioAsync()
+    {
+        _busy = true;
+        try
+        {
+            await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+            {
+                ["Scenario"] = _activeScenario
+            });
+            MessageService.Success(_activeScenario is null
+                ? "已清空进程场景（回退 Host 默认）"
+                : $"进程场景已切换为 {_activeScenario}");
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void StartCreate()
+    {
+        _editIsNew = true;
+        _editIsBuiltInBase = false;
+        _editorTitle = "新建场景";
+        _editModel = new EditorModel
+        {
+            Name = "",
+            DefaultAgent = "general",
+            SelectedModules = ModuleCatalog.Enabled.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SeamsJson = """{"executionWorld":"io.local"}""",
+            ToolsDisabledCsv = "",
+            ExtraModulesCsv = "",
+        };
+        _editorVisible = true;
+    }
+
+    private void ViewOrEdit(ScenarioRow row)
+    {
+        var def = ScenarioCatalog.Get(row.Name);
+        if (def is null)
+            return;
+
+        _editIsNew = false;
+        _editIsBuiltInBase = row.IsBuiltIn;
+        _editorTitle = row.IsBuiltIn && !row.HasOverride
+            ? $"查看内置场景 · {row.Name}（保存即覆盖）"
+            : $"编辑场景 · {row.Name}";
+
+        var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selected = def.Modules.Where(available.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var extra = def.Modules.Where(m => !available.Contains(m)).ToArray();
+
+        _editModel = new EditorModel
+        {
+            Name = def.Name,
+            DefaultAgent = def.DefaultAgent,
+            SelectedModules = selected,
+            ExtraModulesCsv = string.Join(", ", extra),
+            SeamsJson = JsonSerializer.Serialize(def.Seams),
+            ToolsDisabledCsv = string.Join(", ", def.ToolsDisabled),
+        };
+        _editorVisible = true;
+    }
+
+    private void CloneAsCustom(ScenarioRow row)
+    {
+        var def = ScenarioCatalog.Get(row.Name);
+        if (def is null)
+            return;
+
+        _editIsNew = true;
+        _editIsBuiltInBase = false;
+        _editorTitle = "另存为自定义场景";
+        var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _editModel = new EditorModel
+        {
+            Name = row.IsBuiltIn ? $"{row.Name}-custom" : $"{row.Name}-copy",
+            DefaultAgent = def.DefaultAgent,
+            SelectedModules = def.Modules.Where(available.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            ExtraModulesCsv = string.Join(", ", def.Modules.Where(m => !available.Contains(m))),
+            SeamsJson = JsonSerializer.Serialize(def.Seams),
+            ToolsDisabledCsv = string.Join(", ", def.ToolsDisabled),
+        };
+        _editorVisible = true;
+    }
+
+    private void CloseEditor() => _editorVisible = false;
+
+    private void ToggleModule(string id, bool on)
+    {
+        if (on) _editModel.SelectedModules.Add(id);
+        else _editModel.SelectedModules.Remove(id);
+    }
+
+    private async Task SaveEditorAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editModel.Name))
+        {
+            MessageService.Error("场景名不能为空");
+            return;
+        }
+
+        var name = _editModel.Name.Trim();
+        if (_editIsNew && ScenarioCatalog.ListAll().Any(s =>
+                string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            MessageService.Error($"场景名 '{name}' 已存在，请换名或编辑现有项");
+            return;
+        }
+
+        Dictionary<string, string> seams;
+        try
+        {
+            seams = string.IsNullOrWhiteSpace(_editModel.SeamsJson)
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(_editModel.SeamsJson)
+                  ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"Seams JSON 无效: {ex.Message}");
+            return;
+        }
+
+        var modules = _editModel.SelectedModules.ToList();
+        foreach (var part in (_editModel.ExtraModulesCsv ?? "")
+                     .Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!modules.Contains(part, StringComparer.OrdinalIgnoreCase))
+                modules.Add(part.Trim());
+        }
+
+        var toolsDisabled = (_editModel.ToolsDisabledCsv ?? "")
+            .Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var cfg = new ScenarioConfig
+        {
+            Modules = modules,
+            DefaultAgent = string.IsNullOrWhiteSpace(_editModel.DefaultAgent) ? "general" : _editModel.DefaultAgent.Trim(),
+            Seams = new Dictionary<string, string>(seams, StringComparer.OrdinalIgnoreCase),
+            ToolsDisabled = toolsDisabled,
+        };
+
+        _busy = true;
+        try
+        {
+            var options = await ConfigService.LoadProjectOptionsAsync();
+            options.Scenarios ??= new Dictionary<string, ScenarioConfig>(StringComparer.OrdinalIgnoreCase);
+            options.Scenarios[name] = cfg;
+            await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+            {
+                ["Scenarios"] = options.Scenarios
+            });
+            MessageService.Success($"场景 '{name}' 已保存");
+            _editorVisible = false;
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ConfirmDelete(ScenarioRow row)
+    {
+        _busy = true;
+        try
+        {
+            var options = await ConfigService.LoadProjectOptionsAsync();
+            if (options.Scenarios is null || !options.Scenarios.Remove(row.Name))
+            {
+                MessageService.Warning("配置中无该场景条目");
+                return;
+            }
+
+            await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+            {
+                ["Scenarios"] = options.Scenarios.Count == 0 ? null : options.Scenarios
+            });
+
+            if (string.Equals(_activeScenario, row.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                _activeScenario = null;
+                await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+                {
+                    ["Scenario"] = null
+                });
+            }
+
+            MessageService.Success(row.IsBuiltIn ? $"已清除 '{row.Name}' 的配置覆盖" : $"已删除场景 '{row.Name}'");
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed record ScenarioRow(
+        string Name,
+        string Kind,
+        string DefaultAgent,
+        string ModuleSummary,
+        bool IsBuiltIn,
+        bool HasOverride,
+        bool IsActive);
+
+    private sealed class EditorModel
+    {
+        public string Name { get; set; } = "";
+        public string DefaultAgent { get; set; } = "general";
+        public HashSet<string> SelectedModules { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string ExtraModulesCsv { get; set; } = "";
+        public string SeamsJson { get; set; } = "";
+        public string ToolsDisabledCsv { get; set; } = "";
+    }
+}

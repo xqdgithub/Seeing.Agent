@@ -98,6 +98,11 @@ StyleCopReport.xml
 *.svclog
 *.scc
 .*/
+!.github/
+!.github/pull_request_template.md
+.github/prompts/
+.github/skills/
+.github/workflows/
 # Chutzpah Test files
 _Chutzpah*
 

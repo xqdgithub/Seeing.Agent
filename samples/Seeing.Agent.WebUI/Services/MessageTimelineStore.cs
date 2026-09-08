@@ -74,6 +74,9 @@ public sealed class MessageTimelineStore
             var msg = deduped[i];
             if (string.Equals(msg.Role, "tool", StringComparison.OrdinalIgnoreCase))
                 continue;
+            // 历史空 system 仅承载 schema_snapshot（旧版 ChatEventTracker），不展示
+            if (IsSchemaSnapshotCarrier(msg))
+                continue;
 
             var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
             vm.IsCompacted = lastSummaryIndex >= 0 && i < lastSummaryIndex;
@@ -364,6 +367,8 @@ public sealed class MessageTimelineStore
         {
             indexInSession++;
             if (string.Equals(msg.Role, "tool", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (IsSchemaSnapshotCarrier(msg))
                 continue;
 
             // Persist an Id when missing so subsequent reconciles / refresh stay stable.
@@ -754,6 +759,20 @@ public sealed class MessageTimelineStore
             "assistant" => TimelineItemKind.AssistantTurn,
             _ => TimelineItemKind.User
         };
+    }
+
+    /// <summary>
+    /// 旧版执行器会插入空 system 消息仅承载 schema_snapshot；不展示、不 reconcile。
+    /// </summary>
+    private static bool IsSchemaSnapshotCarrier(SessionMessage msg)
+    {
+        if (!string.Equals(msg.Role, MessageRole.System, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (!string.IsNullOrEmpty(msg.Content))
+            return false;
+        if (msg.Parts is { Count: > 0 })
+            return false;
+        return msg.Metadata?.ContainsKey("schema_snapshot") == true;
     }
 
     private void RaiseChanged() => Changed?.Invoke();

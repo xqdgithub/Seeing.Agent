@@ -103,5 +103,5 @@ WeCom 收到消息: UserId=xxx, SessionId=wecom_xxx, Parts=1
 ## 相关文档
 
 - [Gateway 总览](../../docs/gateway/README.md)
-- [WeCom Bridge 包](../../src/Seeing.Gateway.WeCom/README.md)
+- [WeCom Bridge 包](../../src/gateway/Seeing.Gateway.WeCom/README.md)
 - [Gateway Server](../Seeing.Gateway.Server/README.md)
