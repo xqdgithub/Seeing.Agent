@@ -137,7 +137,8 @@ public class TaskTool : ToolBase
                     context.SessionId,
                     agentInfo.Name,
                     $"{description} (@{agentInfo.Name})",
-                    snapshot);
+                    snapshot,
+                    parent?.Scenario);
 
                 // 子 Agent 配置了默认模型则覆盖；否则保留 CreateChild 继承的主会话模型
                 if (HasConfiguredModel(agentInfo))

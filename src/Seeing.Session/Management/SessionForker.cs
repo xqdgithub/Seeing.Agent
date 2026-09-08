@@ -53,6 +53,26 @@ namespace Seeing.Session.Management
 
             forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
             forkedSession.SelectedModel = sourceSession.SelectedModel;
+            forkedSession.Scenario = sourceSession.Scenario;
+            forkedSession.ScenarioOverride = sourceSession.ScenarioOverride is null
+                ? null
+                : new SessionScenarioOverride
+                {
+                    Modules = sourceSession.ScenarioOverride.Modules is null
+                        ? null
+                        : new SessionModulesOverride
+                        {
+                            Enabled = sourceSession.ScenarioOverride.Modules.Enabled is null
+                                ? null
+                                : new List<string>(sourceSession.ScenarioOverride.Modules.Enabled)
+                        },
+                    Tools = sourceSession.ScenarioOverride.Tools is null
+                        ? null
+                        : new SessionToolsOverride
+                        {
+                            Disabled = new List<string>(sourceSession.ScenarioOverride.Tools.Disabled)
+                        }
+                };
             CopyInstructionFingerprints(sourceSession, forkedSession);
 
             if (atMessageId != null)

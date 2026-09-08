@@ -54,6 +54,14 @@ namespace Seeing.Session.Core
         /// <summary>ACP 透传 session mode（如 build / ask）</summary>
         public string SelectedAcpMode { get; set; } = string.Empty;
 
+        /// <summary>
+        /// 会话级场景名。null = 结算时回退进程级 scenario（存量会话缺字段反序列化为 null，不报错、不强制写值）。
+        /// </summary>
+        public string? Scenario { get; set; }
+
+        /// <summary>可选的会话级模块/工具裁剪（只能收窄进程级已启用集）。</summary>
+        public SessionScenarioOverride? ScenarioOverride { get; set; }
+
         // === 工作目录 ===
         public string? WorkingDirectory { get; set; }
 
@@ -181,7 +189,11 @@ namespace Seeing.Session.Core
         public int MessageCount => Messages.Count;
 
         // === 工厂方法 ===
-        public static SessionData Create(string? partitionId = null, string? selectedAgent = null)
+        /// <param name="scenario">会话级场景名；null = 进程级回退。</param>
+        public static SessionData Create(
+            string? partitionId = null,
+            string? selectedAgent = null,
+            string? scenario = null)
         {
             var id = $"ses_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N").Substring(0, 8)}";
             return new SessionData
@@ -190,12 +202,19 @@ namespace Seeing.Session.Core
                 Title = $"Session {id}",
                 PartitionId = partitionId ?? "default",
                 SelectedAgent = selectedAgent ?? string.Empty,
+                Scenario = scenario,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now,
                 LastActiveAt = DateTime.Now,
                 Status = SessionStatus.Created
             };
         }
+
+        /// <summary>
+        /// 解析生效的 scenario 名：会话级优先；null 时回退进程级（结算时使用）。
+        /// </summary>
+        public string? ResolveScenario(string? processLevelScenario) =>
+            Scenario ?? processLevelScenario;
 
         // === 操作方法 ===
         public void AddMessage(SessionMessage message)
@@ -386,6 +405,8 @@ namespace Seeing.Session.Core
                 SelectedAgent = SelectedAgent,
                 SelectedModel = SelectedModel,
                 SelectedAcpMode = SelectedAcpMode,
+                Scenario = Scenario,
+                ScenarioOverride = CloneScenarioOverride(ScenarioOverride),
                 WorkingDirectory = WorkingDirectory,
                 Status = Status,
                 ChannelId = ChannelId,
@@ -414,6 +435,30 @@ namespace Seeing.Session.Core
                 CachedInputTokens = CachedInputTokens,
                 CachedOutputTokens = CachedOutputTokens,
                 CachedUsageUpdatedAt = CachedUsageUpdatedAt
+            };
+        }
+
+        private static SessionScenarioOverride? CloneScenarioOverride(SessionScenarioOverride? source)
+        {
+            if (source is null)
+                return null;
+
+            return new SessionScenarioOverride
+            {
+                Modules = source.Modules is null
+                    ? null
+                    : new SessionModulesOverride
+                    {
+                        Enabled = source.Modules.Enabled is null
+                            ? null
+                            : new List<string>(source.Modules.Enabled)
+                    },
+                Tools = source.Tools is null
+                    ? null
+                    : new SessionToolsOverride
+                    {
+                        Disabled = new List<string>(source.Tools.Disabled)
+                    }
             };
         }
     }

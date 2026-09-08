@@ -126,6 +126,53 @@ public class TaskToolTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_CreateChild_ShouldPassParentScenario()
+    {
+        using var fixture = new TaskToolFixture(executor: BuildExecutor("ok"));
+        var parent = new SessionData
+        {
+            Id = fixture.ParentId,
+            Kind = SessionKind.Root,
+            Scenario = "code"
+        };
+        fixture.SessionManager.Setup(s => s.Get(fixture.ParentId)).Returns(parent);
+
+        string? capturedScenario = "unset";
+        fixture.SessionManager
+            .Setup(s => s.CreateChildAsync(
+                fixture.ParentId,
+                "explore",
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<SessionPermissionRule>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, string, string, IReadOnlyList<SessionPermissionRule>, string?, CancellationToken>(
+                (_, _, _, _, scenario, _) => capturedScenario = scenario)
+            .ReturnsAsync(fixture.Child);
+
+        var tool = new TaskTool(
+            NullLogger<TaskTool>.Instance,
+            fixture.SessionManager.Object,
+            fixture.AgentRegistry.Object,
+            fixture.LoopScheduler.Object,
+            fixture.ExecService,
+            fixture.ExecService,
+            fixture.EventPublisher);
+
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new
+            {
+                description = "explore auth",
+                prompt = "find auth",
+                subagent_type = "explore"
+            }),
+            new ToolContext { SessionId = fixture.ParentId, CallId = "call-sc" });
+
+        result.Success.Should().BeTrue();
+        capturedScenario.Should().Be("code");
+    }
+
+    [Fact]
     public void TaskTool_ShouldNotReferenceExecutionJobService()
     {
         var sourcePath = Path.GetFullPath(Path.Combine(
@@ -273,6 +320,7 @@ public class TaskToolTests
                     agentDef.Name,
                     It.IsAny<string>(),
                     It.IsAny<IReadOnlyList<SessionPermissionRule>>(),
+                    It.IsAny<string?>(),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Child);
             SessionManager.Setup(s => s.AddMessageAsync(

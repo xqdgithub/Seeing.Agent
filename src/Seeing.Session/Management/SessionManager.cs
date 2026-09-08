@@ -77,10 +77,14 @@ namespace Seeing.Session.Management
         /// </summary>
         /// <param name="partitionId">分区 ID（可选）</param>
         /// <param name="selectedAgent">选中的 Agent ID（可选）</param>
+        /// <param name="scenario">会话级场景名；null = 进程级回退</param>
         /// <returns>新创建的 SessionData</returns>
-        public SessionData Create(string? partitionId = null, string? selectedAgent = null)
+        public SessionData Create(
+            string? partitionId = null,
+            string? selectedAgent = null,
+            string? scenario = null)
         {
-            var session = SessionData.Create(partitionId, selectedAgent);
+            var session = SessionData.Create(partitionId, selectedAgent, scenario);
             _sessionDataCache[session.Id] = session;
 
             // 触发 Created Hook（非阻塞）
@@ -89,8 +93,8 @@ namespace Seeing.Session.Management
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
 
-            _logger?.LogInformation("创建会话: {SessionId}, Partition: {PartitionId}, Agent: {Agent}",
-                session.Id, partitionId ?? "default", selectedAgent ?? "(default)");
+            _logger?.LogInformation("创建会话: {SessionId}, Partition: {PartitionId}, Agent: {Agent}, Scenario: {Scenario}",
+                session.Id, partitionId ?? "default", selectedAgent ?? "(default)", scenario ?? "(process)");
             return session;
         }
 
@@ -385,12 +389,13 @@ namespace Seeing.Session.Management
             string agentName,
             string title,
             IReadOnlyList<SessionPermissionRule> permissionSnapshot,
+            string? scenario = null,
             CancellationToken ct = default)
         {
             var parent = Get(parentId)
                 ?? throw new InvalidOperationException($"Parent session not found: {parentId}");
 
-            var child = SessionData.Create(parent.PartitionId, agentName);
+            var child = SessionData.Create(parent.PartitionId, agentName, scenario);
             child.Kind = SessionKind.SubAgent;
             child.ParentSessionId = parentId;
             child.Title = title;
@@ -414,8 +419,8 @@ namespace Seeing.Session.Management
             await SaveAsync(child.Id);
 
             _logger?.LogInformation(
-                "创建子 Agent 会话: {ChildId} <- {ParentId}, Agent: {Agent}",
-                child.Id, parentId, agentName);
+                "创建子 Agent 会话: {ChildId} <- {ParentId}, Agent: {Agent}, Scenario: {Scenario}",
+                child.Id, parentId, agentName, scenario ?? "(process)");
 
             return child;
         }

@@ -12,7 +12,8 @@ namespace Seeing.Session.Core
     public interface ISessionManager
     {
         /// <summary>创建新会话</summary>
-        SessionData Create(string? partitionId = null, string? selectedAgent = null);
+        /// <param name="scenario">会话级场景名；null = 进程级回退。</param>
+        SessionData Create(string? partitionId = null, string? selectedAgent = null, string? scenario = null);
 
         /// <summary>确保会话存在（缓存 → 存储 → 创建）</summary>
         Task<SessionData> EnsureSessionAsync(
@@ -53,11 +54,13 @@ namespace Seeing.Session.Core
         /// <summary>
         /// 创建子 Agent 会话（Kind=SubAgent，空历史，写入权限快照）
         /// </summary>
+        /// <param name="scenario">会话级场景名；调用方（如 TaskTool）应显式传 parent.Scenario；null = 进程级回退。</param>
         Task<SessionData> CreateChildAsync(
             string parentId,
             string agentName,
             string title,
             IReadOnlyList<SessionPermissionRule> permissionSnapshot,
+            string? scenario = null,
             CancellationToken ct = default);
 
         /// <summary>列出根会话（Kind=Root 且未归档）</summary>

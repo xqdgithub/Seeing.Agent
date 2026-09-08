@@ -136,9 +136,9 @@ public sealed class FakeSessionManager : ISessionManager
 {
     private readonly Dictionary<string, SessionData> _sessions = new();
 
-    public SessionData Create(string? partitionId = null, string? selectedAgent = null)
+    public SessionData Create(string? partitionId = null, string? selectedAgent = null, string? scenario = null)
     {
-        var session = SessionData.Create(partitionId, selectedAgent);
+        var session = SessionData.Create(partitionId, selectedAgent, scenario);
         _sessions[session.Id] = session;
         return session;
     }
@@ -171,12 +171,13 @@ public sealed class FakeSessionManager : ISessionManager
         string agentName,
         string title,
         IReadOnlyList<SessionPermissionRule> permissionSnapshot,
+        string? scenario = null,
         CancellationToken ct = default)
     {
         var parent = Get(parentId)
             ?? throw new InvalidOperationException($"Parent session not found: {parentId}");
 
-        var child = SessionData.Create(parent.PartitionId, agentName);
+        var child = SessionData.Create(parent.PartitionId, agentName, scenario);
         child.Kind = SessionKind.SubAgent;
         child.ParentSessionId = parentId;
         child.Title = title;
