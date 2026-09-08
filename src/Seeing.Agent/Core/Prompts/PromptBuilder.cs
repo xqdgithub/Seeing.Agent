@@ -1,7 +1,6 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Prompts;
-using Seeing.Agent.Skills;
 using Seeing.Agent.Abstractions.Skills;
 using System.Text;
 using System.Text.Json;
@@ -26,11 +25,11 @@ public class PromptBuilder
     private const string SkillsPlaceholder = "{{skills}}";
     private const string EnvironmentPlaceholder = "{{environment}}";
     private readonly IAgentRegistry _agentRegistry;
-    private readonly SkillManager _skillManager;
+    private readonly ISkillManager _skillManager;
 
     public PromptBuilder(
         IAgentRegistry agentRegistry,
-        SkillManager skillManager)
+        ISkillManager skillManager)
     {
         _agentRegistry = agentRegistry;
         _skillManager = skillManager;

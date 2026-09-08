@@ -1,13 +1,14 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Skills;
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Prompts;
+
 namespace Seeing.Agent.Skills
 {
     /// <summary>
@@ -16,12 +17,12 @@ namespace Seeing.Agent.Skills
     /// 技能是上下文提供者，不是可执行单元。技能内容通过 SkillTool 注入到 LLM 上下文中。
     /// </para>
     /// </summary>
-    public class SkillManager : ISkillManager
+    public class SkillManager : ISkillManager, IPromptSectionContributor
     {
         private readonly ILogger<SkillManager> _logger;
         private readonly ConcurrentDictionary<string, SkillInfo> _skillInfos = new();
         private readonly List<string> _skillDirectories = new();
-        private readonly IWorkspaceProvider? _workspace;
+        private readonly ISeeingDirectories? _directories;
         private readonly object _skillStateLock = new();
         private HashSet<string> _userDisabledSkills = new(StringComparer.OrdinalIgnoreCase);
         private HashSet<string> _projectDisabledSkills = new(StringComparer.OrdinalIgnoreCase);
@@ -41,10 +42,16 @@ namespace Seeing.Agent.Skills
         /// </summary>
         private const int MaxNameLength = 64;
 
-        public SkillManager(ILogger<SkillManager> logger, IWorkspaceProvider? workspace = null)
+        /// <inheritdoc />
+        public string SectionName => PromptSectionNames.Skills;
+
+        /// <inheritdoc />
+        public int Order => 200;
+
+        public SkillManager(ILogger<SkillManager> logger, ISeeingDirectories? directories = null)
         {
             _logger = logger;
-            _workspace = workspace;
+            _directories = directories;
 
             // 用户目录（跨平台支持）
             var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -54,13 +61,52 @@ namespace Seeing.Agent.Skills
                 AddDefaultDirectory(Path.Combine(userProfile, ".seeing", "skills"));
             }
 
-            // 项目目录（通过 workspace provider 获取，无条件添加）
-            if (_workspace != null)
+            // 项目目录（通过配置目录契约获取，无条件添加）
+            if (_directories != null)
             {
-                AddDefaultDirectory(Path.Combine(_workspace.ProjectSeeingDirectory, "skills"));
-                AddDefaultDirectory(Path.Combine(_workspace.GetProjectRoot(), ".agents", "skills"));
-                AddDefaultDirectory(Path.Combine(_workspace.GetProjectRoot(), "skills"));
+                var projectRoot = GetProjectRoot(_directories);
+                AddDefaultDirectory(Path.Combine(_directories.ProjectSeeingDirectory, "skills"));
+                AddDefaultDirectory(Path.Combine(projectRoot, ".agents", "skills"));
+                AddDefaultDirectory(Path.Combine(projectRoot, "skills"));
             }
+        }
+
+        /// <inheritdoc />
+        public Task<string?> BuildAsync(PromptContext context, CancellationToken cancellationToken = default)
+        {
+            var skills = GetAllSkillInfos().Values.ToList();
+            if (skills.Count == 0)
+                return Task.FromResult<string?>("暂无可用技能。");
+
+            var sb = new StringBuilder();
+            sb.AppendLine("## 可用技能");
+            sb.AppendLine();
+            sb.AppendLine("以下技能可供使用：");
+            sb.AppendLine();
+
+            foreach (var skill in skills)
+            {
+                sb.AppendLine($"### {skill.Name}");
+                sb.AppendLine(skill.Description);
+
+                if (skill.Tags.Count > 0)
+                    sb.AppendLine($"**标签**: {string.Join(", ", skill.Tags)}");
+
+                sb.AppendLine();
+            }
+
+            return Task.FromResult<string?>(sb.ToString());
+        }
+
+        /// <summary>
+        /// 项目根目录（配置归属根，即 <c>{root}/.seeing</c> 的父目录）。
+        /// </summary>
+        private static string GetProjectRoot(ISeeingDirectories directories)
+        {
+            var seeing = directories.ProjectSeeingDirectory.TrimEnd(
+                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var parent = Path.GetDirectoryName(seeing);
+            return string.IsNullOrEmpty(parent) ? seeing : parent;
         }
 
         /// <summary>
@@ -119,12 +165,13 @@ namespace Seeing.Agent.Skills
                     AddDefaultDirectory(Path.Combine(userProfile, ".seeing", "skills"));
                 }
 
-                // 项目目录（通过 workspace provider 获取，无条件添加）
-                if (_workspace != null)
+                // 项目目录（通过配置目录契约获取，无条件添加）
+                if (_directories != null)
                 {
-                    AddDefaultDirectory(Path.Combine(_workspace.ProjectSeeingDirectory, "skills"));
-                    AddDefaultDirectory(Path.Combine(_workspace.GetProjectRoot(), ".agents", "skills"));
-                    AddDefaultDirectory(Path.Combine(_workspace.GetProjectRoot(), "skills"));
+                    var projectRoot = GetProjectRoot(_directories);
+                    AddDefaultDirectory(Path.Combine(_directories.ProjectSeeingDirectory, "skills"));
+                    AddDefaultDirectory(Path.Combine(projectRoot, ".agents", "skills"));
+                    AddDefaultDirectory(Path.Combine(projectRoot, "skills"));
                 }
             }
         }
@@ -309,10 +356,10 @@ namespace Seeing.Agent.Skills
         /// <summary>加载技能禁用状态（双层级）</summary>
         public async Task LoadSkillStateAsync(CancellationToken ct = default)
         {
-            if (_workspace == null) return;
+            if (_directories == null) return;
 
-            var userPath = Path.Combine(_workspace.UserSeeingDirectory, "skill-state.json");
-            var projectPath = Path.Combine(_workspace.ProjectSeeingDirectory, "skill-state.json");
+            var userPath = Path.Combine(_directories.UserSeeingDirectory, "skill-state.json");
+            var projectPath = Path.Combine(_directories.ProjectSeeingDirectory, "skill-state.json");
 
             var userDisabled = await LoadDisabledSetAsync(userPath, ct);
             var projectDisabled = await LoadDisabledSetAsync(projectPath, ct);
@@ -330,7 +377,7 @@ namespace Seeing.Agent.Skills
         /// <summary>设置技能启用/禁用状态</summary>
         public async Task SetSkillEnabledAsync(string skillName, bool enabled, CancellationToken ct = default)
         {
-            if (_workspace == null) return;
+            if (_directories == null) return;
 
             ConfigLevel level;
             lock (_skillStateLock)
@@ -345,11 +392,11 @@ namespace Seeing.Agent.Skills
         /// <summary>保存技能禁用状态到指定级别</summary>
         private async Task SaveSkillStateAsync(string skillName, bool enabled, ConfigLevel level, CancellationToken ct)
         {
-            if (_workspace == null) return;
+            if (_directories == null) return;
 
             var filePath = level == ConfigLevel.User
-                ? Path.Combine(_workspace.UserSeeingDirectory, "skill-state.json")
-                : Path.Combine(_workspace.ProjectSeeingDirectory, "skill-state.json");
+                ? Path.Combine(_directories.UserSeeingDirectory, "skill-state.json")
+                : Path.Combine(_directories.ProjectSeeingDirectory, "skill-state.json");
 
             HashSet<string> targetSet;
             lock (_skillStateLock)

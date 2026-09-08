@@ -1,11 +1,9 @@
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Skills;
 using Seeing.Agent.Abstractions.Skills;
 using System.Text.Json;
 
-namespace Seeing.Agent.Tools
+namespace Seeing.Agent.Skills
 {
     /// <summary>
     /// 技能工具 - 让 LLM 加载技能内容注入上下文
@@ -105,25 +103,25 @@ namespace Seeing.Agent.Tools
             return JsonSerializer.SerializeToElement(schema);
         }
 
-        public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             // 获取技能名称
             if (!arguments.TryGetProperty("name", out var nameProp))
             {
-                return Failure("Missing required parameter: name");
+                return Task.FromResult(Failure("Missing required parameter: name"));
             }
 
             var skillName = nameProp.GetString();
             if (string.IsNullOrEmpty(skillName))
             {
-                return Failure("Parameter 'name' must be a non-empty string");
+                return Task.FromResult(Failure("Parameter 'name' must be a non-empty string"));
             }
 
             // 检查技能是否启用
             if (!_skillManager.IsSkillEnabled(skillName))
             {
                 _logger.LogWarning("尝试加载已禁用的技能: {SkillName}", skillName);
-                return Failure($"Skill '{skillName}' is disabled. Enable it in the Skills settings.");
+                return Task.FromResult(Failure($"Skill '{skillName}' is disabled. Enable it in the Skills settings."));
             }
 
             // 获取技能信息
@@ -131,7 +129,7 @@ namespace Seeing.Agent.Tools
             if (skill == null)
             {
                 var available = string.Join(", ", _skillManager.GetAllSkillInfos().Keys);
-                return Failure($"Skill \"{skillName}\" not found. Available skills: {(string.IsNullOrEmpty(available) ? "none" : available)}");
+                return Task.FromResult(Failure($"Skill \"{skillName}\" not found. Available skills: {(string.IsNullOrEmpty(available) ? "none" : available)}"));
             }
 
             _logger.LogInformation("Loading skill: {Name}", skillName);
@@ -142,7 +140,7 @@ namespace Seeing.Agent.Tools
             // 构建技能内容输出
             var output = BuildSkillContent(skill, skillFiles);
 
-            return new ToolResult
+            return Task.FromResult(new ToolResult
             {
                 Success = true,
                 Title = $"Loaded skill: {skill.Name}",
@@ -153,7 +151,7 @@ namespace Seeing.Agent.Tools
                     ["dir"] = skill.DirectoryPath,
                     ["fileCount"] = skillFiles.Count
                 }
-            };
+            });
         }
 
         /// <summary>

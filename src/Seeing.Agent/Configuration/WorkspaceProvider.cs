@@ -48,20 +48,10 @@ public enum WorkspaceResolutionSource
 /// 需要项目根路径时用 <see cref="WorkspaceProviderExtensions.GetProjectRoot"/>。
 /// </para>
 /// </summary>
-public interface IWorkspaceProvider
+public interface IWorkspaceProvider : ISeeingDirectories
 {
     /// <summary>更新工作区根目录（运行时临时切换，不持久化；同时同步进程当前目录）</summary>
     void SetWorkspaceRoot(string workspaceRoot);
-
-    /// <summary>
-    /// 获取用户级 .seeing 目录路径
-    /// </summary>
-    string UserSeeingDirectory { get; }
-
-    /// <summary>
-    /// 获取项目级 .seeing 目录路径
-    /// </summary>
-    string ProjectSeeingDirectory { get; }
 
     /// <summary>
     /// 获取指定级别的配置目录路径

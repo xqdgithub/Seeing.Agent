@@ -40,6 +40,7 @@ using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Shell;
 using Seeing.Agent.Tools.Web;
 using Seeing.Agent.Tools.Git;
+using Seeing.Agent.Skills;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
@@ -49,12 +50,10 @@ using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.MCP.Factory;
 using Seeing.Agent.MCP.Management;
-using Seeing.Agent.Skills.OnlineParsers;
 using System.Net.Http;
 using Seeing.Agent.MCP.Policy;
 using Seeing.Agent.Middlewares;
 using Seeing.Agent.Shell;
-using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn;
 using Seeing.Agent.Tools.BuiltIn.SubTask;
@@ -358,6 +357,11 @@ namespace Seeing.Agent.Extensions
             gitModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(gitModule);
 
+            // TEMP: Phase 3 — Skills 模块（ConfigureServices 注册 SkillManager + parsers + skill；Activate 待 Host Shape）
+            var skillsModule = new SkillsModule();
+            skillsModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(skillsModule);
+
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -460,39 +464,7 @@ namespace Seeing.Agent.Extensions
             services.AddSingleton<CompressionService>();
             services.AddSingleton<CompressionOptions>();
 
-            // 在线技能解析器
-            services.AddSingleton<OnlineSkillParserAggregator>();
-
-            // 技能管理器（集成配置的 Skills.Paths）
-            services.AddSingleton<SkillManager>(sp =>
-            {
-                var logger = sp.GetRequiredService<ILogger<SkillManager>>();
-                var workspace = sp.GetService<IWorkspaceProvider>();
-                var options = sp.GetService<IOptions<SeeingAgentOptions>>();
-                var manager = new SkillManager(logger, workspace: workspace);
-
-                // 应用配置中的 Skills.Paths
-                if (options?.Value?.Skills?.Paths != null)
-                {
-                    foreach (var path in options.Value.Skills.Paths)
-                    {
-                        manager.AddSearchDirectory(path);
-                    }
-                }
-
-                // 远程技能 URL 暂不支持，记录警告
-                if (options?.Value?.Skills?.Urls != null && options.Value.Skills.Urls.Count > 0)
-                {
-                    logger.LogWarning("远程技能 URL 暂不支持，已跳过 {Count} 个 URL", options.Value.Skills.Urls.Count);
-                }
-
-                return manager;
-            });
-            // 技能管理器接口映射（必须与具体类同处注册，避免 AddLlmProviders 分支跳过导致缺失）
-            services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
-
-            // 技能工具（让 LLM 加载技能内容）
-            services.AddSingleton<ITool, SkillTool>();
+            // 技能 / 在线解析器 / skill 工具 — 由 SkillsModule.ConfigureServices 注册（见上方模块登记）
 
             // 文件系统工具 — 由 FileSystemModule.ConfigureServices 注册（见上方模块登记）
             // Shell 工具 — 由 ShellModule.ConfigureServices 注册（见上方模块登记）
@@ -633,6 +605,7 @@ namespace Seeing.Agent.Extensions
             // 初始化时根据配置自动解析工作区
             services.AddSingleton<WorkspaceProvider>();
             services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
+            services.AddSingleton<ISeeingDirectories>(sp => sp.GetRequiredService<IWorkspaceProvider>());
 
             // 5.1 统一重载编排器（订阅配置/工作区变更，调度所有 IReloadHandler）
             services.AddSingleton<ReloadOrchestrator>();
@@ -859,6 +832,26 @@ namespace Seeing.Agent.Extensions
 
             var componentManager = services.GetRequiredService<IComponentManager>();
             var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().GetProjectRoot();
+
+            // Interim: apply Skills.Paths from SeeingAgentOptions before discovery (SkillsOptions Phase 4)
+            var skillManager = services.GetService<SkillManager>();
+            if (skillManager != null)
+            {
+                var options = services.GetService<IOptions<SeeingAgentOptions>>();
+                if (options?.Value?.Skills?.Paths != null)
+                {
+                    foreach (var path in options.Value.Skills.Paths)
+                    {
+                        skillManager.AddSearchDirectory(path);
+                    }
+                }
+
+                if (options?.Value?.Skills?.Urls != null && options.Value.Skills.Urls.Count > 0)
+                {
+                    logger?.LogWarning("远程技能 URL 暂不支持，已跳过 {Count} 个 URL", options.Value.Skills.Urls.Count);
+                }
+            }
+
             var results = await componentManager.LoadAllAsync(workspaceRoot, cancellationToken);
 
             // 加载工具/技能禁用状态
@@ -868,7 +861,6 @@ namespace Seeing.Agent.Extensions
                 await toolInvoker.LoadToolStateAsync(cancellationToken);
             }
 
-            var skillManager = services.GetService<SkillManager>();
             if (skillManager != null)
             {
                 await skillManager.LoadSkillStateAsync(cancellationToken);
