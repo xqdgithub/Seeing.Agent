@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Models;
+using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Scheduling;

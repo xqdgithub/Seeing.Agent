@@ -10,8 +10,9 @@ using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.Core.Scheduling;
+using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Execution;
-using Seeing.Agent.Models;
 using Seeing.Session.Core;
 using SessionStatus = Seeing.Session.Core.SessionStatus;
 

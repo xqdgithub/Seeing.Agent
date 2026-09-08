@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Execution;
+namespace Seeing.Agent.Abstractions.Execution;
 
 /// <summary>
 /// Represents the status of an execution request.

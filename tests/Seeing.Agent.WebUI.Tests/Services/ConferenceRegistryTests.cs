@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.App;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
@@ -166,7 +167,7 @@ public class ConferenceRegistryTests
         await parentChannel.Writer.WriteAsync(new ExecutionCompleteEvent
         {
             SessionId = parentId, ExecutionId = "e1",
-            Status = Seeing.Agent.Execution.ExecutionStatus.Completed
+            Status = Seeing.Agent.Abstractions.Execution.ExecutionStatus.Completed
         });
         await Task.Delay(200);
 

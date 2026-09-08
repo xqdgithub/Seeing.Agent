@@ -2,6 +2,7 @@ using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Todo;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;

@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
@@ -173,14 +174,14 @@ namespace Seeing.Agent.WebUI.State
         /// </summary>
         public bool HasActiveExecution =>
             IsExecuting
-            || ExecutionStatus == global::Seeing.Agent.Execution.ExecutionStatus.Running
-            || ExecutionStatus == global::Seeing.Agent.Execution.ExecutionStatus.Pending
-            || ExecutionStatus == global::Seeing.Agent.Execution.ExecutionStatus.Queued;
+            || ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Running
+            || ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Pending
+            || ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Queued;
 
         /// <summary>
         /// 是否在排队中
         /// </summary>
-        public bool IsQueued => ExecutionStatus == global::Seeing.Agent.Execution.ExecutionStatus.Queued;
+        public bool IsQueued => ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Queued;
 
         #endregion
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.App.Commands;
 using Seeing.Agent.App.Commands.BuiltIn;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;

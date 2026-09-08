@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Models;
+using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Execution;
 using Seeing.Session.Core;
 

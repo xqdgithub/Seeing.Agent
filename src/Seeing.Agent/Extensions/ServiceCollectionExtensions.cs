@@ -31,6 +31,7 @@ using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;

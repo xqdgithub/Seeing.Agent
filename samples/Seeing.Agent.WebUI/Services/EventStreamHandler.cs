@@ -2,6 +2,7 @@ using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.App.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
@@ -118,9 +119,9 @@ namespace Seeing.Agent.WebUI.Services
         /// 是否有活跃执行流（Running / Pending / Queued）
         /// </summary>
         public bool IsStreamActive =>
-            ExecutionStatus is global::Seeing.Agent.Execution.ExecutionStatus.Running
-                or global::Seeing.Agent.Execution.ExecutionStatus.Pending
-                or global::Seeing.Agent.Execution.ExecutionStatus.Queued;
+            ExecutionStatus is global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Running
+                or global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Pending
+                or global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Queued;
 
         /// <summary>
         /// 当前 Todo 列表（由 todowrite 工具 / TodoUpdateEvent 更新）
@@ -170,7 +171,7 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public void RestoreExecution(
             string executionId,
-            global::Seeing.Agent.Execution.ExecutionStatus status = global::Seeing.Agent.Execution.ExecutionStatus.Running)
+            global::Seeing.Agent.Abstractions.Execution.ExecutionStatus status = global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Running)
         {
             _activeExecutionId = executionId;
             ExecutionStatus = status;
@@ -311,7 +312,7 @@ namespace Seeing.Agent.WebUI.Services
         private void HandleExecutionStarted(ExecutionStartedEvent evt)
         {
             _activeExecutionId = evt.ExecutionId;
-            ExecutionStatus = global::Seeing.Agent.Execution.ExecutionStatus.Running;
+            ExecutionStatus = global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Running;
         }
 
         /// <summary>

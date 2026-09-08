@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Execution;
+namespace Seeing.Agent.Abstractions.Execution;
 
 /// <summary>
 /// Overview of execution state for a session.

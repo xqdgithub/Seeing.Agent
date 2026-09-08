@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Execution;
+namespace Seeing.Agent.Abstractions.Execution;
 
 /// <summary>
 /// 执行状态查询接口 - 用于查询后台任务的执行状态

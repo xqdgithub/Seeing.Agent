@@ -1,6 +1,6 @@
-using Seeing.Agent.Models;
+using Seeing.Agent.Abstractions.Models;
 
-namespace Seeing.Agent.Execution;
+namespace Seeing.Agent.Abstractions.Execution;
 
 /// <summary>
 /// Represents a record of an execution request, tracking its state throughout its lifecycle.
@@ -75,7 +75,7 @@ public class ExecutionRecord
     /// <summary>
     /// Whether this execution is in a terminal state.
     /// </summary>
-    public bool IsTerminal => Status is ExecutionStatus.Completed 
-        or ExecutionStatus.Failed 
+    public bool IsTerminal => Status is ExecutionStatus.Completed
+        or ExecutionStatus.Failed
         or ExecutionStatus.Cancelled;
 }
