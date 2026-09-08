@@ -1,7 +1,6 @@
 ﻿using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json.Serialization;
-using FunctionSchema = Seeing.Agent.Abstractions.Llm.FunctionSchema;
 
 namespace Seeing.Agent.Core.Models
 {
@@ -79,18 +78,6 @@ namespace Seeing.Agent.Core.Models
 
         [JsonPropertyName("parameters")]
         public object? Parameters { get; set; }
-    }
-
-    /// <summary>
-    /// 函数工具 Schema
-    /// </summary>
-    public record FunctionToolSchema
-    {
-        [JsonPropertyName("type")]
-        public string Type { get; set; } = "function";
-
-        [JsonPropertyName("function")]
-        public FunctionSchema Function { get; set; } = new();
     }
 
 }

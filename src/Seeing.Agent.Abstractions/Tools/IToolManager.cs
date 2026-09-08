@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
@@ -23,6 +24,15 @@ public interface IToolManager
 
     /// <summary>启用/禁用工具</summary>
     Task SetToolEnabledAsync(string toolId, bool enabled, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 按「层1∩层2已结算 tool id 集」+ Agent Allowed/Denied（层3）生成 schema。
+    /// 唯一计算点在 ExecutionJobService；本方法不做会话级结算。
+    /// </summary>
+    Task<IReadOnlyList<FunctionToolSchema>> GetToolSchemasAsync(
+        IReadOnlyCollection<string> settledToolIds,
+        AgentDefinition agent,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 执行工具调用（权限检查由 AgentExecutor 统一处理）

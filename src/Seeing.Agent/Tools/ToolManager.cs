@@ -141,6 +141,24 @@ namespace Seeing.Agent.Tools
             return Task.Run(() => GetToolSchemasForAgentAsync(agent)).GetAwaiter().GetResult();
         }
 
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<FunctionToolSchema>> GetToolSchemasAsync(
+            IReadOnlyCollection<string> settledToolIds,
+            AgentDefinition agent,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(settledToolIds);
+            ArgumentNullException.ThrowIfNull(agent);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var settled = new HashSet<string>(settledToolIds, StringComparer.OrdinalIgnoreCase);
+            var all = await GetToolSchemasAsync().ConfigureAwait(false);
+            var layer12 = all.Where(s =>
+                s.Function != null &&
+                settled.Contains(s.Function.Name)).ToList();
+            return FilterSchemasByAgentToolLists(layer12, agent.AllowedTools, agent.DeniedTools);
+        }
+
         private static List<FunctionToolSchema> FilterSchemasByAgentToolLists(
             List<FunctionToolSchema> schemas,
             IList<string>? allowedNullable,
