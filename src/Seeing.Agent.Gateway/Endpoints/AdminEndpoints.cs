@@ -4,8 +4,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Gateway.Core;
-using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Gateway.Endpoints;
@@ -33,11 +33,11 @@ public static class AdminEndpoints
     private static async Task<IResult> GetStatusAsync(
         HttpContext httpContext,
         GatewayRunTracker runTracker,
-        ISessionManager sessionManager,
-        IScheduleManager? scheduleManager)
+        ISessionManager sessionManager)
     {
+        var scheduleStatus = httpContext.RequestServices.GetService<IScheduleStatusQuery>();
         var uptime = DateTime.UtcNow - _startTime;
-        var schedulerRunning = scheduleManager?.IsStarted ?? false;
+        var schedulerRunning = scheduleStatus?.IsStarted ?? false;
         var sessions = sessionManager.List();
 
         return Results.Ok(new
@@ -76,18 +76,19 @@ public static class AdminEndpoints
     }
 
     private static async Task<IResult> GetJobsAsync(
-        IScheduleManager? scheduleManager,
+        HttpContext httpContext,
         CancellationToken ct)
     {
-        if (scheduleManager == null)
+        var scheduleStatus = httpContext.RequestServices.GetService<IScheduleStatusQuery>();
+        if (scheduleStatus == null)
             return Results.Ok(Array.Empty<object>());
 
-        var statuses = await scheduleManager.GetAllJobStatusesAsync(ct);
+        var statuses = await scheduleStatus.GetAllJobStatusesAsync(ct);
         var result = statuses.Select(s => new
         {
             id = s.JobId,
             name = s.JobName ?? s.JobId,
-            state = s.State.ToString(),
+            state = s.State,
             previousFireTime = s.PreviousFireTime,
             nextFireTime = s.NextFireTime,
             lastError = s.LastError

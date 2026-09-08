@@ -12,6 +12,7 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Reminders;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Session.Core;

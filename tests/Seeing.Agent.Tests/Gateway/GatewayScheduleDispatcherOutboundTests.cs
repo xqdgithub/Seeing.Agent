@@ -2,7 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Gateway.Scheduling;
-using Seeing.Agent.Scheduler.Models;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Gateway.Protocol;
 using Seeing.Session.Core;
 using Xunit;

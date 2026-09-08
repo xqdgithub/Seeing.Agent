@@ -11,11 +11,7 @@ public interface IScheduleRepository
     Task<IReadOnlyList<JobExecutionRecord>> GetHistoryAsync(string jobId, int limit, int offset = 0, CancellationToken ct = default);
 }
 
-/// <summary>结果投递抽象</summary>
-public interface IScheduledJobDispatcher
-{
-    Task<DispatchResult> DispatchAsync(DispatchRequest request, CancellationToken ct = default);
-}
+// IScheduledJobDispatcher / DispatchRequest / DispatchResult → Seeing.Agent.Abstractions.Scheduling
 
 /// <summary>任务执行监听器</summary>
 public interface IJobExecutionListener

@@ -254,25 +254,3 @@ public class JobExecutionResult
     public string? DispatchSessionId { get; init; }
 }
 
-/// <summary>投递请求</summary>
-public class DispatchRequest
-{
-    public required string Source { get; init; }
-    public required string TaskType { get; init; }
-    public required string Content { get; init; }
-    public string? UserInput { get; init; }
-    public string? Channel { get; init; }
-    public string? UserId { get; init; }
-    public string? SessionId { get; init; }
-    public Dictionary<string, object>? Metadata { get; init; }
-}
-
-/// <summary>投递结果</summary>
-public class DispatchResult
-{
-    public bool Success { get; init; } = true;
-    public string? Error { get; init; }
-
-    public static DispatchResult Ok() => new();
-    public static DispatchResult Fail(string error) => new() { Success = false, Error = error };
-}

@@ -11,7 +11,7 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Endpoints;
 using Seeing.Agent.Gateway.Permission;
-using Seeing.Agent.Scheduler.Abstractions;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Session.Core;
 
 using Seeing.Agent.Abstractions.Agents;
@@ -94,7 +94,9 @@ public sealed class GatewayHost : IAsyncDisposable
         builder.Services.AddSingleton(sessionService);
         // Register root-level services for admin endpoints
         builder.Services.AddSingleton(_rootServices.GetRequiredService<ISessionManager>());
-        builder.Services.AddSingleton(_rootServices.GetRequiredService<IScheduleManager>());
+        var scheduleStatus = _rootServices.GetService<IScheduleStatusQuery>();
+        if (scheduleStatus is not null)
+            builder.Services.AddSingleton(scheduleStatus);
         builder.Services.AddSingleton(sp => new GatewayWebSocketHandler(
             orchestrator,
             permissionChannel,

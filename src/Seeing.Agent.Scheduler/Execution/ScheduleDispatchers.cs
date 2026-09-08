@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Core.Reminders;
-using Seeing.Agent.Scheduler.Abstractions;
-using Seeing.Agent.Scheduler.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Scheduler.Execution;

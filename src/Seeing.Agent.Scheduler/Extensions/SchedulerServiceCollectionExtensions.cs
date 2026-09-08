@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -96,6 +97,8 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<ScheduleManager>();
         services.AddSingleton<IScheduleManager>(sp => sp.GetRequiredService<ScheduleManager>());
         services.AddSingleton<IJobExecutionListener>(sp => sp.GetRequiredService<ScheduleManager>());
+        services.AddSingleton<IScheduleStatusQuery>(sp =>
+            new ScheduleStatusQueryAdapter(sp.GetRequiredService<IScheduleManager>()));
 
         // 投递器
         services.AddSingleton<LogScheduleDispatcher>();
@@ -210,6 +213,8 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<ScheduleManager>();
         services.AddSingleton<IScheduleManager>(sp => sp.GetRequiredService<ScheduleManager>());
         services.AddSingleton<IJobExecutionListener>(sp => sp.GetRequiredService<ScheduleManager>());
+        services.AddSingleton<IScheduleStatusQuery>(sp =>
+            new ScheduleStatusQueryAdapter(sp.GetRequiredService<IScheduleManager>()));
 
         // 投递器
         services.AddSingleton<LogScheduleDispatcher>();

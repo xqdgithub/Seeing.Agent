@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Scheduling;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -9,7 +10,6 @@ using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Hosting;
 using Seeing.Agent.Gateway.Scheduling;
-using Seeing.Agent.Scheduler.Abstractions;
 
 namespace Seeing.Agent.Gateway.Extensions;
 
