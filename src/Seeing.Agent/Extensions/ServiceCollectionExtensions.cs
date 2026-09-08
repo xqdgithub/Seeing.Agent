@@ -624,8 +624,9 @@ namespace Seeing.Agent.Extensions
             // Agent 执行器（统一执行引擎）
             services.AddSingleton<AgentExecutor>();
 
-            // Agent 执行器契约（Native 默认实现，ACP 包可替换）
-            services.AddSingleton<IAgentExecutor, NativeAgentExecutor>();
+            // Native 实现 + Router 门面（ACP 等包追加 IAgentExecutorImplementation，不替换 IAgentExecutor）
+            services.AddSingleton<IAgentExecutorImplementation, NativeAgentExecutor>();
+            services.AddSingleton<IAgentExecutor, AgentExecutorRouter>();
 
             services.AddSingleton<
                 Seeing.Agent.Services.ISessionTitleService,

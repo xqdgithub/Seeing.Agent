@@ -7,7 +7,7 @@ namespace Seeing.Agent.Core
     /// <summary>
     /// 原生执行器 - 将执行委托给 <see cref="AgentExecutor"/>
     /// </summary>
-    public class NativeAgentExecutor : IAgentExecutor
+    public class NativeAgentExecutor : IAgentExecutorImplementation
     {
         private readonly AgentExecutor _executor;
 
@@ -15,6 +15,9 @@ namespace Seeing.Agent.Core
         {
             _executor = executor;
         }
+
+        /// <inheritdoc/>
+        public AgentRuntime SupportedRuntime => AgentRuntime.Native;
 
         /// <inheritdoc/>
         public IAsyncEnumerable<IMessageEvent> ExecuteAsync(
