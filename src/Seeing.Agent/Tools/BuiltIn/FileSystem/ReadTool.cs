@@ -1,8 +1,10 @@
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Abstractions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Tools.BuiltIn;
+using System.Text;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.BuiltIn.FileSystem
@@ -19,11 +21,14 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
     [ToolCapability(ToolCapabilityKeys.OutputSkip, "true")]
     public class ReadTool : BuiltInToolBase
     {
+        private readonly IFileSystem _fileSystem;
+
         /// <summary>
         /// 创建 ReadTool 实例
         /// </summary>
-        public ReadTool(ILogger<ReadTool> logger) : base(logger)
+        public ReadTool(ILogger<ReadTool> logger, IFileSystem fileSystem) : base(logger)
         {
+            _fileSystem = fileSystem;
         }
 
         public override string Id => "read";
@@ -70,35 +75,29 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
 
         public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
-            // 获取 filePath 参数
             var filePath = GetStringArgument(arguments, "filePath");
             if (string.IsNullOrEmpty(filePath))
             {
                 return Failure("缺少必需参数: filePath");
             }
 
-            // 获取 offset 和 limit 参数
             var offset = GetIntArgument(arguments, "offset") ?? 1;
             var limit = GetIntArgument(arguments, "limit") ?? FileSystemHelper.DefaultReadLimit;
 
-            // 验证 offset
             if (offset < 1)
             {
                 return Failure("offset 必须大于或等于 1");
             }
 
-            // 确保路径是绝对路径
             if (!Path.IsPathRooted(filePath))
             {
-                filePath = Path.GetFullPath(filePath);
+                filePath = _fileSystem.GetFullPath(filePath);
             }
 
             _logger.LogInformation("读取文件: {FilePath}, offset={Offset}, limit={Limit}", filePath, offset, limit);
 
-            // 检查路径是否存在
-            if (!File.Exists(filePath) && !Directory.Exists(filePath))
+            if (!_fileSystem.Exists(filePath))
             {
-                // 尝试查找相似文件
                 var suggestions = FileSystemHelper.FindSimilarFiles(filePath);
                 if (suggestions.Count > 0)
                 {
@@ -107,22 +106,48 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                 return Failure($"文件不存在: {filePath}");
             }
 
-            // 处理目录
-            if (Directory.Exists(filePath))
+            if (IsDirectory(filePath))
             {
                 return ReadDirectory(filePath, offset, limit);
             }
 
-            // 处理文件
-            return ReadFile(filePath, offset, limit, context);
+            return await ReadFileAsync(filePath, offset, limit, context);
         }
 
-        /// <summary>
-        /// 读取目录内容
-        /// </summary>
+        private bool IsDirectory(string path)
+        {
+            if (!_fileSystem.Exists(path))
+            {
+                return false;
+            }
+
+            try
+            {
+                using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
+                _ = enumerator.MoveNext();
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
         private ToolResult ReadDirectory(string filePath, int offset, int limit)
         {
-            var entries = FileSystemHelper.GetDirectoryEntries(filePath);
+            var entries = new List<string>();
+
+            foreach (var dir in _fileSystem.EnumerateDirectories(filePath, "*", recursive: false))
+            {
+                entries.Add(Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) + "/");
+            }
+
+            foreach (var file in _fileSystem.EnumerateFiles(filePath, "*", recursive: false))
+            {
+                entries.Add(Path.GetFileName(file));
+            }
+
+            entries.Sort(StringComparer.OrdinalIgnoreCase);
 
             var start = offset - 1;
             var sliced = entries.Skip(start).Take(limit).ToList();
@@ -164,40 +189,31 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             );
         }
 
-        /// <summary>
-        /// 读取文件内容
-        /// </summary>
-        private ToolResult ReadFile(string filePath, int offset, int limit, ToolContext context)
+        private async Task<ToolResult> ReadFileAsync(string filePath, int offset, int limit, ToolContext context)
         {
-            // 检查文件类型
             var mime = FileSystemHelper.GetMimeType(filePath);
             var isImage = FileSystemHelper.IsImage(filePath);
             var isPdf = FileSystemHelper.IsPdf(filePath);
 
-            // 处理图片和 PDF
             if (isImage || isPdf)
             {
                 return ReadBinaryFile(filePath, mime, isImage ? "图片" : "PDF");
             }
 
-            // 检查是否为二进制文件
             if (FileSystemHelper.IsBinaryByExtension(filePath) ||
                 FileSystemHelper.IsBinaryByContent(filePath))
             {
                 return Failure($"无法读取二进制文件: {filePath}");
             }
 
-            // 读取文本文件
             var (lines, totalLines, truncated, truncatedByBytes) =
-                FileSystemHelper.ReadFileWithLimit(filePath, offset, limit);
+                await ReadTextFileWithLimitAsync(filePath, offset, limit, context.CancellationToken);
 
-            // 检查 offset 是否超出范围
             if (totalLines < offset && !(totalLines == 0 && offset == 1))
             {
                 return Failure($"offset {offset} 超出文件范围（文件共 {totalLines} 行）");
             }
 
-            // 构建带行号的输出
             var outputLines = new List<string>
             {
                 $"路径: {filePath}",
@@ -244,9 +260,59 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
             );
         }
 
-        /// <summary>
-        /// 读取二进制文件（图片/PDF）并返回附件
-        /// </summary>
+        private static async Task<(List<string> Lines, int TotalLines, bool Truncated, bool TruncatedByBytes)> ReadTextFileWithLimitAsync(
+            IFileSystem fileSystem,
+            string filePath,
+            int offset,
+            int limit,
+            CancellationToken cancellationToken)
+        {
+            var lines = new List<string>();
+            var totalLines = 0;
+            var bytes = 0;
+            var truncated = false;
+            var truncatedByBytes = false;
+            var startLine = offset - 1;
+
+            await foreach (var line in fileSystem.ReadLinesAsync(filePath, cancellationToken))
+            {
+                totalLines++;
+
+                if (totalLines <= startLine)
+                {
+                    continue;
+                }
+
+                if (lines.Count >= limit)
+                {
+                    truncated = true;
+                    continue;
+                }
+
+                var truncatedLine = FileSystemHelper.TruncateLine(line);
+                var lineSize = Encoding.UTF8.GetByteCount(truncatedLine) + (lines.Count > 0 ? 1 : 0);
+
+                if (bytes + lineSize > FileSystemHelper.MaxBytes)
+                {
+                    truncatedByBytes = true;
+                    truncated = true;
+                    break;
+                }
+
+                lines.Add(truncatedLine);
+                bytes += lineSize;
+            }
+
+            return (lines, totalLines, truncated, truncatedByBytes);
+        }
+
+        private Task<(List<string> Lines, int TotalLines, bool Truncated, bool TruncatedByBytes)> ReadTextFileWithLimitAsync(
+            string filePath,
+            int offset,
+            int limit,
+            CancellationToken cancellationToken) =>
+            ReadTextFileWithLimitAsync(_fileSystem, filePath, offset, limit, cancellationToken);
+
         private ToolResult ReadBinaryFile(string filePath, string mime, string typeLabel)
         {
             try
@@ -276,7 +342,6 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
                     }
                 };
 
-                // 将 base64 数据存储在 metadata 中
                 result.Metadata["dataUrl"] = dataUrl;
 
                 return result;
