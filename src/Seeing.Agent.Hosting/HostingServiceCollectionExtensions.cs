@@ -126,21 +126,15 @@ public static class HostingServiceCollectionExtensions
             }
         }
 
-        // 动态注册所有 skill 命令（Native 和 ACP 两个版本）
-        // ACP 命令类留在 Hosting（不引用 Acp 包）；Acp 模块可在后续 Phase 自行注册
+        // 动态注册 Native skill 命令；ACP 版本由 InitializeAcpCommands 注册
         var skillManager = services.GetService<SkillManager>();
         var sessionManager = services.GetService<ISessionManager>();
         if (skillManager != null && sessionManager != null)
         {
             foreach (var skillInfo in skillManager.GetAllSkillInfos().Values)
             {
-                // Native 版本 - 扩展为详情
                 var nativeCommand = new DynamicSkillCommand(sessionManager, skillInfo);
                 registry.Register(nativeCommand);
-
-                // ACP 版本 - 透传给 ACP 后端（本地命令类型，无 Acp ProjectReference）
-                var acpCommand = new AcpDynamicSkillCommand(skillInfo.Name, skillInfo.Description);
-                registry.Register(acpCommand);
             }
         }
 

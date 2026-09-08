@@ -20,6 +20,7 @@ using Seeing.Agent.Acp.Tools;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Commands.Discovery;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Skills;
 
 namespace Seeing.Agent.Acp.Extensions;
 
@@ -84,6 +85,16 @@ public static class AcpServiceCollectionExtensions
         {
             var commands = discovery.DiscoverFromType(acpCommands.GetType(), acpCommands);
             registry.RegisterAll(commands);
+        }
+
+        // 动态注册 ACP skill 透传命令
+        var skillManager = services.GetService<SkillManager>();
+        if (skillManager != null)
+        {
+            foreach (var skillInfo in skillManager.GetAllSkillInfos().Values)
+            {
+                registry.Register(new AcpDynamicSkillCommand(skillInfo.Name, skillInfo.Description));
+            }
         }
 
         return services;
