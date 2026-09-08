@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 
 namespace Seeing.Agent.Abstractions.Agents;
@@ -59,4 +60,10 @@ public class AgentContext
 
     /// <summary>父代理名称（子代理时设置）</summary>
     public string? ParentAgentName { get; init; }
+
+    /// <summary>
+    /// 本轮工具 schema（由 <c>ExecutionJobService</c> 唯一计算后传入；executor 不得自算）。
+    /// null 表示调用方未提供（非 Hosting 入口的遗留路径）。
+    /// </summary>
+    public IReadOnlyList<FunctionToolSchema>? ToolSchemas { get; set; }
 }

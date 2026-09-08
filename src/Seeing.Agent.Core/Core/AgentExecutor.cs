@@ -546,7 +546,8 @@ public class AgentExecutor : IAgentExecutor
         AgentContext context,
         CancellationToken cancellationToken)
     {
-        var toolSchemas = GetToolSchemas(agent);
+        // schema 唯一计算点在 ExecutionJobService；此处只读 context.ToolSchemas
+        var toolSchemas = context.ToolSchemas ?? (IReadOnlyList<FunctionToolSchema>)Array.Empty<FunctionToolSchema>();
 
         // 使用 PromptBuilder 构建系统提示词
         string? systemPrompt = null;
@@ -967,23 +968,6 @@ public class AgentExecutor : IAgentExecutor
         throw new InvalidOperationException(
             $"Agent '{agent.Name}' 未配置模型，且未设置全局默认模型 (SeeingAgent:DefaultModel)。" +
             $"请在 Agent 定义中设置 Model，或在配置中设置 DefaultModel。");
-    }
-
-    /// <summary>
-    /// 获取工具 Schema
-    /// </summary>
-    private List<FunctionToolSchema> GetToolSchemas(Seeing.Agent.Abstractions.Agents.AgentDefinition agent)
-    {
-        // 基于 Agent 的 Mode 和 Allowed/Denied 列表过滤
-        var agentInfo = new AgentDefinition
-        {
-            Name = agent.Name,
-            Mode = agent.Mode,
-            AllowedTools = agent.AllowedTools.ToList(),
-            DeniedTools = agent.DeniedTools.ToList()
-        };
-
-        return _tools.GetToolSchemasForAgent(agentInfo);
     }
 
     /// <summary>

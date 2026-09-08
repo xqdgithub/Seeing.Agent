@@ -344,9 +344,32 @@ namespace Seeing.Session.Core
                     },
                 ReplyTo = ReplyTo,
                 IsSummary = IsSummary,
-                Metadata = Metadata == null ? null : new Dictionary<string, object>(Metadata)
+                Metadata = Metadata == null ? null : DeepCloneMetadata(Metadata)
             };
         }
+
+        private static Dictionary<string, object> DeepCloneMetadata(Dictionary<string, object> source)
+        {
+            var clone = new Dictionary<string, object>(source.Count, StringComparer.Ordinal);
+            foreach (var (key, value) in source)
+                clone[key] = DeepCloneMetadataValue(value);
+            return clone;
+        }
+
+        private static object DeepCloneMetadataValue(object value) => value switch
+        {
+            null => null!,
+            string s => s,
+            IDictionary<string, object> dict =>
+                dict.ToDictionary(kv => kv.Key, kv => DeepCloneMetadataValue(kv.Value), StringComparer.Ordinal),
+            IReadOnlyDictionary<string, object> rod =>
+                rod.ToDictionary(kv => kv.Key, kv => DeepCloneMetadataValue(kv.Value), StringComparer.Ordinal),
+            IList<object> list => list.Select(DeepCloneMetadataValue).ToList(),
+            IList<string> strings => strings.ToList(),
+            IEnumerable<string> enumerable when value is not string => enumerable.ToList(),
+            ICloneable cloneable => cloneable.Clone(),
+            _ => value
+        };
 
         /// <summary>获取有效内容段</summary>
         public IReadOnlyList<SessionContentPart> GetEffectiveParts()

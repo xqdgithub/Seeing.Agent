@@ -3,6 +3,9 @@ using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Prompts;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Permission;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -22,6 +25,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Scheduling;
+using Seeing.Agent.Modules;
 using Seeing.Agent.Services;
 using Seeing.Agent.Execution;
 using Seeing.Session.Core;
@@ -495,8 +499,10 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             }
 
             // Build execution context with background permission channel
+            // 会话级结算 + schema 在此快照；本轮中途改 session.Scenario 不影响已算结果
             var context = await BuildExecutionContextAsync(
-                session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider, executionWorld);
+                session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider, executionWorld,
+                scope.ServiceProvider);
 
             // 旁路生成标题（不阻塞主对话；命令不生成标题）
             if (record.Options?.SkipUserMessagePersist != true && !IsCommandInput(record.Input?.Text))
@@ -545,6 +551,23 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
 
                 // 服务端负责将事件投影到 Session 并落盘；UI 只订阅展示
                 var eventTracker = new ChatEventTracker();
+
+                // schema 快照事件：与随后 ChatRequest.Tools 同源（context.ToolSchemas）
+                var schemaSnapshot = new SchemaSnapshotEvent
+                {
+                    SessionId = record.SessionId,
+                    ExecutionId = record.ExecutionId,
+                    ToolIds = context.ToolSchemas?
+                        .Where(s => s.Function != null)
+                        .Select(s => s.Function.Name)
+                        .ToArray()
+                        ?? Array.Empty<string>(),
+                    SectionIds = context.SectionIds
+                };
+                eventTracker.ApplyEvent(session, schemaSnapshot);
+                _eventPublisher.Publish(record.SessionId, schemaSnapshot);
+                if (ShouldPersistEvent(schemaSnapshot))
+                    await sessionManager.SaveAsync(record.SessionId);
 
                 // Execute agent
                 // 取消不再主动 throw：执行器（事件流水线）会产出终态事件（工具 Cancelled / LoopCancelledEvent），
@@ -676,7 +699,8 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         AgentSelectionResolver agentSelectionResolver,
         IModelManager modelManager,
         IWorkspaceProvider workspaceProvider,
-        IExecutionWorld executionWorld)
+        IExecutionWorld executionWorld,
+        IServiceProvider services)
     {
         var agentId = await agentSelectionResolver.ResolveAgentIdAsync(
             record.Options?.AgentId,
@@ -713,6 +737,9 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             ?? session.WorkingDirectory
             ?? executionWorld.Cwd;
 
+        var (settlement, toolSchemas, sectionIds) = await SettleSessionAndSchemasAsync(
+            session, agentDef, services).ConfigureAwait(false);
+
         return new ChatExecutionContext
         {
             SessionId = record.SessionId,
@@ -724,8 +751,69 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             ChannelId = record.Options?.ChannelId,
             UserId = record.Options?.UserId,
             AcpModeId = acpModeId,
-            RequestModelId = requestModelId
+            RequestModelId = requestModelId,
+            Settlement = settlement,
+            ToolSchemas = toolSchemas,
+            SectionIds = sectionIds
         };
+    }
+
+    /// <summary>
+    /// 会话级结算 + schema 唯一计算。无 <see cref="IModuleCatalog"/> 时 settled 为空集（schema 亦空）。
+    /// </summary>
+    private async Task<(SessionSettlementSnapshot? Settlement, IReadOnlyList<FunctionToolSchema> ToolSchemas, IReadOnlyList<string> SectionIds)>
+        SettleSessionAndSchemasAsync(
+            SessionData session,
+            AgentDefinition agent,
+            IServiceProvider services)
+    {
+        var catalog = services.GetService<IModuleCatalog>();
+        var toolManager = services.GetService<IToolManager>();
+        var options = _seeingAgentOptions.CurrentValue;
+        var processScenario = options.Scenario
+            ?? services.GetService<ProcessSettlementOptions>()?.HostDefaultScenario;
+
+        SessionSettlementSnapshot? settlement = null;
+        IReadOnlyList<string> settledToolIds = Array.Empty<string>();
+
+        if (catalog != null)
+        {
+            settlement = SessionSettlement.Compute(
+                session,
+                catalog,
+                processScenario,
+                options.Modules?.Tools?.Disabled);
+            settledToolIds = settlement.SettledToolIds;
+
+            _logger.LogDebug(
+                "会话级结算: session={SessionId}, scenario={Scenario}, modules={ModuleCount}, tools={ToolCount}",
+                session.Id,
+                settlement.ScenarioName,
+                settlement.EnabledModules.Count,
+                settlement.SettledToolIds.Count);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "IModuleCatalog 未注册，跳过会话级结算（schema 空集）: {SessionId}",
+                session.Id);
+        }
+
+        IReadOnlyList<FunctionToolSchema> toolSchemas = Array.Empty<FunctionToolSchema>();
+        if (toolManager != null)
+        {
+            toolSchemas = await toolManager.GetToolSchemasAsync(settledToolIds, agent)
+                .ConfigureAwait(false);
+        }
+
+        var sectionIds = services.GetServices<IPromptSectionContributor>()
+            .Select(c => c.SectionName)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return (settlement, toolSchemas, sectionIds);
     }
 
     /// <summary>
@@ -800,6 +888,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     /// </summary>
     private static bool ShouldPersistEvent(IMessageEvent evt) => evt switch
     {
+        SchemaSnapshotEvent => true,
         StreamCompleteEvent => true,
         ToolCallEvent { Status: ToolCallStatus.Pending or ToolCallStatus.Success
             or ToolCallStatus.Failed or ToolCallStatus.Rejected or ToolCallStatus.Cancelled } => true,
@@ -980,15 +1069,6 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         // 统一消息来源：仅活跃消息（已压缩标记的旧消息保留展示但不传递给 LLM）
         foreach (var msg in session.GetActiveMessages())
         {
-            // schema_snapshot 元数据消息不进入模型历史
-            if (msg.Metadata != null &&
-                msg.Metadata.ContainsKey(ChatEventTracker.SchemaSnapshotMetadataKey) &&
-                string.IsNullOrEmpty(msg.Content) &&
-                (msg.ToolCalls == null || msg.ToolCalls.Count == 0))
-            {
-                continue;
-            }
-
             var chatMessage = new ChatMessage
             {
                 Role = msg.Role,
@@ -1057,7 +1137,8 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             WorkingDirectory = context.WorkingDirectory ?? context.WorkspaceRoot ?? "",
             WorkspaceRoot = context.WorkspaceRoot ?? "",
             PermissionChannel = context.PermissionChannel,
-            CancellationToken = cancellationToken
+            CancellationToken = cancellationToken,
+            ToolSchemas = context.ToolSchemas ?? Array.Empty<FunctionToolSchema>()
         };
 
         // 传递请求级模型选择到 Metadata（适用于 Native Agent 和 ACP Passthrough）

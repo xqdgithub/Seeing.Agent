@@ -14,9 +14,12 @@ namespace Seeing.Agent.Hosting.Execution;
 /// </summary>
 internal class ChatEventTracker
 {
+    public const string SchemaSnapshotMetadataKey = "schema_snapshot";
+
     private SessionMessage? _currentAssistantMessage;
     private string? _currentLoopId;
     private int _currentStep;
+    private Dictionary<string, object>? _pendingSchemaSnapshot;
 
     /// <summary>
     /// 应用事件到 Session
@@ -25,6 +28,17 @@ internal class ChatEventTracker
     {
         switch (evt)
         {
+            case SchemaSnapshotEvent schemaSnapshot:
+                _pendingSchemaSnapshot = BuildSchemaSnapshotPayload(schemaSnapshot);
+                // 立即落一条带 metadata 的消息，保证 Fork / 落盘可重建（不依赖后续 Stream）
+                var snapshotMessage = SessionMessage.SystemMessage(string.Empty);
+                snapshotMessage.Metadata = new Dictionary<string, object>
+                {
+                    [SchemaSnapshotMetadataKey] = DeepCloneObject(_pendingSchemaSnapshot)
+                };
+                session.AddMessage(snapshotMessage);
+                break;
+
             case LoopStartEvent loopStart:
                 _currentLoopId = loopStart.LoopId;
                 _currentAssistantMessage = null;
@@ -158,6 +172,7 @@ internal class ChatEventTracker
         _currentAssistantMessage = null;
         _currentLoopId = null;
         _currentStep = 0;
+        _pendingSchemaSnapshot = null;
     }
 
     private void EnsureAssistantMessage(SessionData session, string sessionId)
@@ -170,7 +185,45 @@ internal class ChatEventTracker
         _currentAssistantMessage.Id = string.Format("{0}_step{1}", loopPrefix, _currentStep);
         _currentAssistantMessage.Step = _currentStep;
         _currentAssistantMessage.LoopId = _currentLoopId;
+        if (_pendingSchemaSnapshot != null)
+        {
+            _currentAssistantMessage.Metadata ??= new Dictionary<string, object>();
+            _currentAssistantMessage.Metadata[SchemaSnapshotMetadataKey] =
+                DeepCloneObject(_pendingSchemaSnapshot);
+        }
+
         session.AddMessage(_currentAssistantMessage);
+    }
+
+    private static Dictionary<string, object> BuildSchemaSnapshotPayload(SchemaSnapshotEvent snapshot)
+    {
+        return new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["executionId"] = snapshot.ExecutionId,
+            ["toolIds"] = snapshot.ToolIds.ToList(),
+            ["sectionIds"] = snapshot.SectionIds.ToList()
+        };
+    }
+
+    internal static object DeepCloneObject(object value) => value switch
+    {
+        null => null!,
+        string s => s,
+        IDictionary<string, object> dict => DeepCloneDictionary(dict),
+        IReadOnlyDictionary<string, object> rod => DeepCloneDictionary(rod),
+        IList<object> list => list.Select(DeepCloneObject).ToList(),
+        IList<string> strings => strings.ToList(),
+        IEnumerable<string> enumerable when value is not string => enumerable.ToList(),
+        ICloneable cloneable => cloneable.Clone(),
+        _ => value
+    };
+
+    private static Dictionary<string, object> DeepCloneDictionary(IEnumerable<KeyValuePair<string, object>> source)
+    {
+        var clone = new Dictionary<string, object>(StringComparer.Ordinal);
+        foreach (var (key, val) in source)
+            clone[key] = DeepCloneObject(val);
+        return clone;
     }
 
     private static string FormatArguments(object? arguments)
