@@ -342,12 +342,16 @@ public class TaskToolTests
                 NullLogger<ExecutionEventPublisher>.Instance);
             EventPublisher = publisher;
 
+            var configStore = new Mock<IConfigSectionStore>();
+            configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
+                .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
+
             ExecService = new ExecutionJobService(
                 _provider,
                 publisher,
                 new ExecutionOptions(),
                 Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
-                Mock.Of<IConfigSectionStore>(),
+                configStore.Object,
                 NullLogger<ExecutionJobService>.Instance,
                 new CompactionRunner(
                     new CompressionService(null!, Mock.Of<ISessionManager>()),
@@ -563,12 +567,16 @@ public class TaskStatusToolTests
                 new ExecutionOptions(),
                 NullLogger<ExecutionEventPublisher>.Instance);
 
+            var configStore = new Mock<IConfigSectionStore>();
+            configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
+                .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
+
             ExecService = new ExecutionJobService(
                 _provider,
                 publisher,
                 new ExecutionOptions(),
                 Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
-                Mock.Of<IConfigSectionStore>(),
+                configStore.Object,
                 NullLogger<ExecutionJobService>.Instance,
                 new CompactionRunner(
                     new CompressionService(null!, Mock.Of<ISessionManager>()),

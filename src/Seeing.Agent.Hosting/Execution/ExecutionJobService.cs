@@ -426,7 +426,9 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             var session = await sessionManager.EnsureSessionAsync(record.SessionId);
 
             // 自动压缩门控：TokenBudget 标记 + 配置开启时，每轮 Agent 循环开始前触发压缩
-            var autoCompaction = _configStore.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget").AutoCompactionEnabled;
+            // GetSection 契约应返回非 null；防御性 ?. 避免测试/错误 mock 返回 null 时整轮执行 NRE 短路
+            var autoCompaction = _configStore.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget")
+                ?.AutoCompactionEnabled == true;
             if (autoCompaction &&
                 session.PendingCompaction &&
                 session.Messages.Count > 0)

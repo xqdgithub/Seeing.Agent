@@ -389,12 +389,16 @@ public class ExecutionJobServiceCommandShortCircuitTests
         services.AddSingleton(commandRegistry);
         var provider = services.BuildServiceProvider();
 
+        var configStore = new Mock<IConfigSectionStore>();
+        configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
+            .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
+
         var service = new ExecutionJobService(
             provider,
             publisher,
             new ExecutionOptions(),
             optionsMonitor,
-            Mock.Of<IConfigSectionStore>(),
+            configStore.Object,
             NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(
                 new CompressionService(null!, sessionManager.Object),

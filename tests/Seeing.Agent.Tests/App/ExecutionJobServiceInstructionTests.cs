@@ -132,13 +132,17 @@ public class ExecutionJobServiceInstructionTests
         services.AddSingleton(Mock.Of<IExecutionWorld>(world => world.Cwd == workspaceRoot));
         var provider = services.BuildServiceProvider();
 
+        var configStore = new Mock<IConfigSectionStore>();
+        configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
+            .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
+
         var service = new ExecutionJobService(
             provider,
             Mock.Of<IExecutionEventPublisher>(),
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(
                 monitor => monitor.CurrentValue == new SeeingAgentOptions()),
-            Mock.Of<IConfigSectionStore>(),
+            configStore.Object,
             NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
 

@@ -134,12 +134,16 @@ public class ExecutionJobServiceCancelTests
         services.AddSingleton(Mock.Of<ICommandRegistry>());
         var provider = services.BuildServiceProvider();
 
+        var configStore = new Mock<IConfigSectionStore>();
+        configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
+            .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
+
         var service = new ExecutionJobService(
             provider,
             publisher,
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
-            Mock.Of<IConfigSectionStore>(),
+            configStore.Object,
             NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
 

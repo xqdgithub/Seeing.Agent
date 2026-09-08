@@ -143,11 +143,12 @@ public class TaskStatusTool : ToolBase
             .LastOrDefault(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase)
                                 && m.Content?.Contains("error", StringComparison.OrdinalIgnoreCase) == true);
 
+        // 无活跃执行时回落：有 assistant 输出即视为已完成（子会话常保持 Active）
         var state = session.Status switch
         {
             SessionStatus.Error => "error",
-            SessionStatus.Active => "running",
             _ when !string.IsNullOrEmpty(result) => "completed",
+            SessionStatus.Active => "running",
             _ => "running"
         };
 
@@ -219,10 +220,10 @@ public class TaskStatusTool : ToolBase
             
             if (current == null && overview.QueueLength == 0)
             {
+                // 与 TaskTool 摘要一致：无活跃执行时 Active 视为已完成
                 state = child.Status switch
                 {
                     SessionStatus.Error => "error",
-                    SessionStatus.Active => "running",
                     _ => "completed"
                 };
             }
