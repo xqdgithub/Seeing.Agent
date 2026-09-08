@@ -399,11 +399,6 @@ namespace Seeing.Agent.Extensions
             anthropicLlmModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(anthropicLlmModule);
 
-            // TEMP: Phase 3 — 内置 Agent 模块（ConfigureServices 注册 AgentDefinition；Activate 待 Host Shape）
-            var agentsBuiltInModule = new AgentsBuiltInModule();
-            agentsBuiltInModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(agentsBuiltInModule);
-
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -420,44 +415,39 @@ namespace Seeing.Agent.Extensions
             // 提示词构建服务
             services.AddPromptBuilder();
 
-            // Agent 发现服务
+            // Agent 发现服务（MD 发现仍用于测试/其他调用方；注册路径不再同步 Discover）
             services.AddSingleton<AgentDiscovery>();
 
             // Agent 存储（纯存储操作）
             services.AddSingleton<AgentStore>();
             services.AddSingleton<IAgentStore>(sp => sp.GetRequiredService<AgentStore>());
 
+            // TEMP: Phase 5 T8 — 内置 Agent 两阶段注册（须在 IAgentStore 之后登记工厂）
+            new AgentsBuiltInModule().ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(sp =>
+                new AgentsBuiltInModule(sp.GetRequiredService<IAgentStore>()));
+
             // Agent 运行时管理器（运行时设置）
             services.AddSingleton<AgentRuntimeManager>();
             services.AddSingleton<IAgentRuntimeManager>(sp => sp.GetRequiredService<AgentRuntimeManager>());
 
             // Agent 管理器（统一管理注册、发现、配置）
+            // 两阶段：构造时 store 为空；内置人格由 Initialize → AgentsBuiltInModule.ActivateAsync 写入
             services.AddSingleton<AgentManager>(sp =>
             {
                 var logger = sp.GetRequiredService<ILogger<AgentManager>>();
                 var agentStore = sp.GetRequiredService<IAgentStore>();
                 var runtimeManager = sp.GetRequiredService<IAgentRuntimeManager>();
                 var workspaceProvider = sp.GetRequiredService<IWorkspaceProvider>();
-                var discovery = sp.GetRequiredService<AgentDiscovery>();
                 var options = sp.GetService<IOptions<SeeingAgentOptions>>();
 
-                // 内置代理由 AgentsBuiltInModule.ConfigureServices 登记为 AgentDefinition
-                var builtInAgents = sp.GetServices<AgentDefinition>();
-
-                // 从文件系统发现代理
-                var discoveredAgents = discovery.DiscoverAgentsAsync().GetAwaiter().GetResult();
-                var allAgents = builtInAgents.Concat(discoveredAgents);
-
-                var manager = new AgentManager(
+                return new AgentManager(
                     logger,
                     agentStore,
                     runtimeManager,
                     workspaceProvider,
-                    allAgents,
                     defaultAgent: options?.Value?.DefaultAgent,
                     options: options);
-
-                return manager;
             });
             // 兼容旧接口
             services.AddSingleton<IAgentRegistry>(sp => sp.GetRequiredService<AgentManager>());
@@ -770,6 +760,12 @@ namespace Seeing.Agent.Extensions
             else if (services.GetService<UnifiedConfigManager>() is { } configOnly)
             {
                 await configOnly.LoadAsync(cancellationToken);
+            }
+
+            // 模块 Activate（含 agents.builtin → IAgentStore）须在 AgentManager.StartAsync 之前
+            foreach (var module in services.GetServices<ISeeingModule>())
+            {
+                await module.ActivateAsync(cancellationToken);
             }
 
             var componentManager = services.GetRequiredService<IComponentManager>();

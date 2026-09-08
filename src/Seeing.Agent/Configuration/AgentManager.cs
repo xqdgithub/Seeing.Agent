@@ -44,7 +44,6 @@ namespace Seeing.Agent.Configuration
             IAgentStore agentStore,
             IAgentRuntimeManager runtimeManager,
             IWorkspaceProvider workspaceProvider,
-            IEnumerable<AgentDefinition>? builtInAgents = null,
             string? defaultAgent = null,
             IOptions<SeeingAgentOptions>? options = null)
         {
@@ -63,17 +62,8 @@ namespace Seeing.Agent.Configuration
                 .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
                 .Build();
 
-            // 注册内置代理
-            if (builtInAgents != null)
-            {
-                foreach (var agent in builtInAgents)
-                {
-                    EnsureSubAgentDeniesTask(agent);
-                    Task.Run(async () => await _agentStore.RegisterAsync(agent)).GetAwaiter().GetResult();
-                }
-            }
-
-            // 备份原始 Agent 定义（用于 MD 删除后恢复）
+            // 两阶段注册：构造时 store 为空；内置人格由 AgentsBuiltInModule.ActivateAsync 写入。
+            // 若 Activate 已先于本构造执行，则在此备份已有定义供 MD 删除后恢复。
             foreach (var agent in Task.Run(async () => await _agentStore.GetAllAsync()).GetAwaiter().GetResult())
             {
                 _originalAgents[agent.Name] = agent;

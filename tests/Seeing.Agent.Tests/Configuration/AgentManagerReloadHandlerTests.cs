@@ -72,8 +72,7 @@ public class AgentManagerReloadHandlerTests : IDisposable
             NullLogger<AgentManager>.Instance,
             store.Object,
             runtime.Object,
-            workspace.Object,
-            builtInAgents: new[] { builtIn });
+            workspace.Object);
 
         var handler = new AgentManagerReloadHandler(manager);
 
@@ -122,8 +121,7 @@ public class AgentManagerReloadHandlerTests : IDisposable
             NullLogger<AgentManager>.Instance,
             store.Object,
             runtime.Object,
-            workspace.Object,
-            builtInAgents: new[] { builtIn });
+            workspace.Object);
 
         var handler = new AgentManagerReloadHandler(manager);
 
@@ -154,7 +152,6 @@ public class AgentManagerReloadHandlerTests : IDisposable
             NullLogger<AgentManager>.Instance,
             store.Object,
             runtime.Object,
-            workspace.Object,
-            builtInAgents: new[] { builtIn });
+            workspace.Object);
     }
 }

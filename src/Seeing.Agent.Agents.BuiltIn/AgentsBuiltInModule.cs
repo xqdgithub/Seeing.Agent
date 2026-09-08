@@ -11,6 +11,19 @@ public sealed class AgentsBuiltInModule : ISeeingModule
 {
     private static readonly IReadOnlyList<string> s_providedSeams = ["agents"];
 
+    private readonly IAgentStore? _agentStore;
+
+    /// <summary>无 store 的实例仅用于 ConfigureServices（登记 DI）。</summary>
+    public AgentsBuiltInModule() : this(null)
+    {
+    }
+
+    /// <summary>Activate 阶段注入的 store，用于两阶段注册。</summary>
+    public AgentsBuiltInModule(IAgentStore? agentStore)
+    {
+        _agentStore = agentStore;
+    }
+
     /// <inheritdoc />
     public string Id => "agents.builtin";
 
@@ -26,17 +39,24 @@ public sealed class AgentsBuiltInModule : ISeeingModule
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
-        // Interim (pre Host Shape / Phase 5 two-phase AgentManager):
-        // register definitions so AgentManager can resolve IEnumerable via GetServices.
-        // ActivateAsync will RegisterAsync on IAgentStore once the host supplies a scope.
-        foreach (var agent in BuiltInAgents.GetBuiltInAgents())
-        {
-            services.AddSingleton(agent);
-        }
+        // Built-in AgentDefinition 改由 ActivateAsync → IAgentStore.RegisterAsync 注册（两阶段）。
     }
 
     /// <inheritdoc />
-    public Task ActivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public async Task ActivateAsync(CancellationToken cancellationToken = default)
+    {
+        if (_agentStore is null)
+        {
+            throw new InvalidOperationException(
+                "AgentsBuiltInModule.ActivateAsync requires IAgentStore. Resolve the module via DI with IAgentStore.");
+        }
+
+        foreach (var agent in BuiltInAgents.GetBuiltInAgents())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await _agentStore.RegisterAsync(agent);
+        }
+    }
 
     /// <inheritdoc />
     public Task DeactivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
