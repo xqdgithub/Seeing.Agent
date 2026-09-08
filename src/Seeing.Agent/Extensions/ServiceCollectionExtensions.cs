@@ -42,8 +42,9 @@ using Seeing.Agent.Tools.Git;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Llm.OpenAI;
+using Seeing.Agent.Llm.Anthropic;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.Clients;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Summarization;
 using System.Net.Http;
@@ -361,6 +362,15 @@ namespace Seeing.Agent.Extensions
             var mcpModule = new McpModule();
             services.AddSingleton<ISeeingModule>(mcpModule);
 
+            // TEMP: Phase 3 — LLM 工厂模块（ConfigureServices 注册 ILlmClientFactory；Activate 待 Host Shape）
+            var openAiLlmModule = new OpenAiLlmModule();
+            openAiLlmModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(openAiLlmModule);
+
+            var anthropicLlmModule = new AnthropicLlmModule();
+            anthropicLlmModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(anthropicLlmModule);
+
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -650,8 +660,8 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         private static void RegisterLlmServices(IServiceCollection services)
         {
-            // LLM 客户端工厂
-            services.AddSingleton<ILlmClientFactory, DefaultLlmClientFactory>();
+            // ILlmClientFactory 由 OpenAiLlmModule / AnthropicLlmModule 注册；
+            // ProviderManager 聚合 IEnumerable<ILlmClientFactory>。
 
             // ModelManager 依赖 IAgentStore（非 IAgentRegistry），避免环：
             // ModelManager → AgentManager → AgentRuntimeManager → IModelManager
@@ -699,54 +709,6 @@ namespace Seeing.Agent.Extensions
             return services;
         }
     }
-
-        /// <summary>
-        /// 默认 LLM 客户端工厂
-        /// </summary>
-        internal class DefaultLlmClientFactory : ILlmClientFactory
-        {
-            private readonly ILoggerFactory _loggerFactory;
-
-            public DefaultLlmClientFactory(ILoggerFactory loggerFactory)
-            {
-                _loggerFactory = loggerFactory;
-            }
-
-            public IReadOnlySet<string> SupportedTypes { get; } =
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ProviderTypes.OpenAi,
-                    ProviderTypes.Anthropic
-                };
-
-            public bool SupportsType(string type) =>
-                !string.IsNullOrWhiteSpace(type) && SupportedTypes.Contains(type);
-
-            public ILlmClient Create(ProviderConfig config)
-            {
-                ArgumentNullException.ThrowIfNull(config);
-                // 每个 Provider 使用自己的 handler，确保 Proxy/UseProxy 在创建时生效。
-                var httpClient = LlmHttpClientFactory.Create(config);
-
-                if (string.Equals(config.Type, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase))
-                {
-                    return new OpenAiChatClient(
-                        config,
-                        httpClient,
-                        _loggerFactory.CreateLogger<OpenAiChatClient>());
-                }
-
-                if (string.Equals(config.Type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase))
-                {
-                    return new AnthropicClient(
-                        config,
-                        httpClient,
-                        _loggerFactory.CreateLogger<AnthropicClient>());
-                }
-
-                throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}");
-            }
-        }
 }
 
 namespace Seeing.Agent.Extensions

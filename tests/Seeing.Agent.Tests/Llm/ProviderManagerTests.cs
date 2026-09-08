@@ -40,7 +40,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(secondClient);
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             NullLogger<ProviderManager>.Instance);
@@ -76,7 +76,7 @@ public class ProviderManagerTests : IDisposable
         factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
             NullLogger<ProviderManager>.Instance);
@@ -117,7 +117,7 @@ public class ProviderManagerTests : IDisposable
         factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
             NullLogger<ProviderManager>.Instance);
@@ -146,7 +146,7 @@ public class ProviderManagerTests : IDisposable
         registry.Register(provider.Object, ownerExtensionId: "test-extension");
         using var sut = new ProviderManager(
             configManager,
-            Mock.Of<ILlmClientFactory>(),
+            [ Mock.Of<ILlmClientFactory>() ],
             Mock.Of<IModelConfigManager>(),
             registry,
             NullLogger<ProviderManager>.Instance);
@@ -177,7 +177,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
             NullLogger<ProviderManager>.Instance);
@@ -209,7 +209,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
             NullLogger<ProviderManager>.Instance);
@@ -228,7 +228,7 @@ public class ProviderManagerTests : IDisposable
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         using var sut = new ProviderManager(
             configManager,
-            Mock.Of<ILlmClientFactory>(),
+            [ Mock.Of<ILlmClientFactory>() ],
             Mock.Of<IModelConfigManager>(),
             registry,
             NullLogger<ProviderManager>.Instance);
@@ -247,7 +247,7 @@ public class ProviderManagerTests : IDisposable
         registry.Register(new TestProvider("ext"), ownerExtensionId: "test-extension");
         using var sut = new ProviderManager(
             configManager,
-            Mock.Of<ILlmClientFactory>(),
+            [ Mock.Of<ILlmClientFactory>() ],
             Mock.Of<IModelConfigManager>(),
             registry,
             NullLogger<ProviderManager>.Instance);
@@ -268,7 +268,7 @@ public class ProviderManagerTests : IDisposable
         var logger = new ListLogger<ProviderManager>();
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
             logger);
@@ -302,7 +302,7 @@ public class ProviderManagerTests : IDisposable
             });
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             NullLogger<ProviderManager>.Instance);
@@ -329,7 +329,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(disposableClient);
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
             NullLogger<ProviderManager>.Instance);
@@ -363,7 +363,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             NullLogger<ProviderManager>.Instance);
@@ -419,6 +419,112 @@ public class ProviderManagerTests : IDisposable
     {
         if (Directory.Exists(_tempDirectory))
             Directory.Delete(_tempDirectory, recursive: true);
+    }
+
+    [Fact]
+    public async Task ResolveFactory_TwoFactories_SupportsTypeIsCaseInsensitive()
+    {
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
+        var openAi = new Mock<ILlmClientFactory>();
+        openAi.SetupGet(f => f.SupportedTypes)
+            .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.OpenAi });
+        openAi.Setup(f => f.SupportsType(It.IsAny<string>()))
+            .Returns((string type) => string.Equals(type, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
+        var anthropic = new Mock<ILlmClientFactory>();
+        anthropic.SetupGet(f => f.SupportedTypes)
+            .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.Anthropic });
+        anthropic.Setup(f => f.SupportsType(It.IsAny<string>()))
+            .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
+
+        using var sut = new ProviderManager(
+            configManager,
+            [openAi.Object, anthropic.Object],
+            Mock.Of<IModelConfigManager>(),
+            new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            NullLogger<ProviderManager>.Instance);
+
+        sut.ResolveFactory("OpenAI").Should().BeSameAs(openAi.Object);
+        sut.ResolveFactory("openai").Should().BeSameAs(openAi.Object);
+        sut.ResolveFactory("Anthropic").Should().BeSameAs(anthropic.Object);
+    }
+
+    [Fact]
+    public async Task ResolveFactory_SameTypeMultipleFactories_FirstWins()
+    {
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
+        var first = new Mock<ILlmClientFactory>();
+        first.Setup(f => f.SupportsType(ProviderTypes.OpenAi)).Returns(true);
+        var second = new Mock<ILlmClientFactory>();
+        second.Setup(f => f.SupportsType(ProviderTypes.OpenAi)).Returns(true);
+
+        using var sut = new ProviderManager(
+            configManager,
+            [first.Object, second.Object],
+            Mock.Of<IModelConfigManager>(),
+            new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            NullLogger<ProviderManager>.Instance);
+
+        sut.ResolveFactory(ProviderTypes.OpenAi).Should().BeSameAs(first.Object);
+    }
+
+    [Fact]
+    public async Task GetClient_WithoutOpenAiFactory_AnthropicPathStillWorks()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["claude"] = PredefinedProviders.Anthropic("sk-anthropic")
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        var expected = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.Anthropic);
+        var anthropic = new Mock<ILlmClientFactory>();
+        anthropic.Setup(f => f.SupportsType(It.IsAny<string>()))
+            .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
+        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>())).Returns(expected);
+
+        using var sut = new ProviderManager(
+            configManager,
+            [anthropic.Object],
+            Mock.Of<IModelConfigManager>(),
+            new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            NullLogger<ProviderManager>.Instance);
+
+        sut.GetClient("claude").Should().BeSameAs(expected);
+        anthropic.Verify(f => f.Create(It.IsAny<ProviderConfig>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetClient_OpenAiAndAnthropicFactories_IndependentPaths()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = PredefinedProviders.OpenAI("sk-openai"),
+            ["claude"] = PredefinedProviders.Anthropic("sk-anthropic")
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        var openAiClient = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.OpenAi);
+        var anthropicClient = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.Anthropic);
+
+        var openAi = new Mock<ILlmClientFactory>();
+        openAi.Setup(f => f.SupportsType(It.IsAny<string>()))
+            .Returns((string type) => string.Equals(type, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
+        openAi.Setup(f => f.Create(It.IsAny<ProviderConfig>())).Returns(openAiClient);
+
+        var anthropic = new Mock<ILlmClientFactory>();
+        anthropic.Setup(f => f.SupportsType(It.IsAny<string>()))
+            .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
+        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>())).Returns(anthropicClient);
+
+        using var sut = new ProviderManager(
+            configManager,
+            [openAi.Object, anthropic.Object],
+            Mock.Of<IModelConfigManager>(),
+            new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            NullLogger<ProviderManager>.Instance);
+
+        sut.GetClient("openai").Should().BeSameAs(openAiClient);
+        sut.GetClient("claude").Should().BeSameAs(anthropicClient);
+        openAi.Verify(f => f.Create(It.Is<ProviderConfig>(c => c.Type == ProviderTypes.OpenAi)), Times.Once);
+        anthropic.Verify(f => f.Create(It.Is<ProviderConfig>(c => c.Type == ProviderTypes.Anthropic)), Times.Once);
     }
 
     private sealed class TestProvider(string id) : LlmProviderBase

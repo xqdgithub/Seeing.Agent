@@ -1,7 +1,7 @@
 using Seeing.Agent.Abstractions.Llm;
 using System.Net;
 
-namespace Seeing.Agent.Llm.Clients;
+namespace Seeing.Agent.Llm.Anthropic.Clients;
 
 /// <summary>
 /// 为单个 Provider 创建带连接池和代理配置的 HTTP handler。

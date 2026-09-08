@@ -1,7 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json.Serialization;
 
-namespace Seeing.Agent.Llm.Clients;
+namespace Seeing.Agent.Llm.OpenAI.Clients;
 
 #region Chat Completions 请求
 

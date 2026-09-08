@@ -1,11 +1,11 @@
-﻿using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Seeing.Agent.Llm.Clients;
+namespace Seeing.Agent.Llm.Anthropic.Clients;
 
 /// <summary>
 /// Anthropic 客户端 - 使用 HTTP API 发送请求

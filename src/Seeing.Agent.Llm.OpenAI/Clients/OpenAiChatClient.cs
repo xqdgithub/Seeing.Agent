@@ -1,10 +1,10 @@
-﻿using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
-namespace Seeing.Agent.Llm.Clients;
+namespace Seeing.Agent.Llm.OpenAI.Clients;
 
 /// <summary>
 /// OpenAI Chat Completions API 客户端（原生 HTTP 实现）。

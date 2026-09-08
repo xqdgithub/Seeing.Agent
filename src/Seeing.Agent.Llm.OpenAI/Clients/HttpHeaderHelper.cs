@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Llm.Clients;
+namespace Seeing.Agent.Llm.OpenAI.Clients;
 
 /// <summary>
 /// 应用 Provider 自定义请求头。自定义值覆盖同名内置请求头，

@@ -1,11 +1,11 @@
-﻿using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Seeing.Agent.Llm.Clients;
+namespace Seeing.Agent.Llm.OpenAI.Clients;
 
 /// <summary>
 /// OpenAI 兼容接口共用 HTTP + SSE 解析辅助

@@ -41,7 +41,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory((_) => expectedClient);
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             NullLogger<ProviderManager>.Instance);
@@ -63,7 +63,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory((_) => CreateClient(ProviderTypes.OpenAi));
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             NullLogger<ProviderManager>.Instance);
@@ -88,7 +88,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory(config => CreateClient(config.Type));
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             NullLogger<ProviderManager>.Instance);
@@ -116,7 +116,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             config.Type == ProviderTypes.OpenAi ? openAiClient : anthropicClient);
         using var sut = new ProviderManager(
             configManager,
-            factory.Object,
+            [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             NullLogger<ProviderManager>.Instance);

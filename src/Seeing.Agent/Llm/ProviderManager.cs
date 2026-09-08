@@ -11,7 +11,7 @@ namespace Seeing.Agent.Llm;
 public class ProviderManager : IProviderManager, IDisposable
 {
     private readonly UnifiedConfigManager _configManager;
-    private readonly ILlmClientFactory _clientFactory;
+    private readonly ILlmClientFactory[] _clientFactories;
     private readonly IModelConfigManager _modelManager;
     private readonly IProviderRegistry _registry;
     private readonly ILogger<ProviderManager> _logger;
@@ -24,13 +24,13 @@ public class ProviderManager : IProviderManager, IDisposable
 
     public ProviderManager(
         UnifiedConfigManager configManager,
-        ILlmClientFactory clientFactory,
+        IEnumerable<ILlmClientFactory> clientFactories,
         IModelConfigManager modelManager,
         IProviderRegistry registry,
         ILogger<ProviderManager> logger)
     {
         _configManager = configManager;
-        _clientFactory = clientFactory;
+        _clientFactories = clientFactories?.ToArray() ?? [];
         _modelManager = modelManager;
         _registry = registry;
         _logger = logger;
@@ -39,9 +39,16 @@ public class ProviderManager : IProviderManager, IDisposable
         _registry.ProvidersChanged += OnProvidersChanged;
 
         _logger.LogInformation(
-            "ProviderManager 已初始化，{Count} 个配置驱动 Provider 已注册",
-            _configuredProviders.Count);
+            "ProviderManager 已初始化，{Count} 个配置驱动 Provider 已注册（{FactoryCount} 个工厂）",
+            _configuredProviders.Count,
+            _clientFactories.Length);
     }
+
+    /// <summary>
+    /// 解析支持指定类型的首个工厂（同类型多工厂时 first wins）。
+    /// </summary>
+    internal ILlmClientFactory? ResolveFactory(string type)
+        => _clientFactories.FirstOrDefault(factory => factory.SupportsType(type));
 
     #region 查询
 
@@ -284,7 +291,8 @@ public class ProviderManager : IProviderManager, IDisposable
         var ownedConfig = CloneConfig(config);
         ownedConfig.Id = providerId;
 
-        if (!_clientFactory.SupportsType(ownedConfig.Type))
+        var clientFactory = ResolveFactory(ownedConfig.Type);
+        if (clientFactory is null)
         {
             _logger.LogWarning("不支持的 Provider 类型: {ProviderId} ({Type})", providerId, ownedConfig.Type);
             return;
@@ -303,7 +311,7 @@ public class ProviderManager : IProviderManager, IDisposable
 
         var provider = new ConfiguredLlmProvider(
             ownedConfig,
-            _clientFactory,
+            clientFactory,
             _logger,
             saveAsync: (cfg, level, token) => SaveProviderAsync(cfg.Id, cfg, level, token));
         _registry.Register(provider, ownerExtensionId: null);

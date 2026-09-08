@@ -1,7 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Llm;
 using Microsoft.Extensions.Logging;
 
-namespace Seeing.Agent.Llm.Clients;
+namespace Seeing.Agent.Llm.OpenAI.Clients;
 
 /// <summary>
 /// OpenAI List Models API 客户端（GET /v1/models）

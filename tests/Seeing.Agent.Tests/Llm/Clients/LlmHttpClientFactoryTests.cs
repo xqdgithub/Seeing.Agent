@@ -2,8 +2,10 @@ using System.Net;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.Clients;
+using Seeing.Agent.Llm.Anthropic.Clients;
+using Seeing.Agent.Llm.OpenAI.Clients;
 using Xunit;
+using OpenAiHttpFactory = Seeing.Agent.Llm.OpenAI.Clients.LlmHttpClientFactory;
 
 namespace Seeing.Agent.Tests.Llm.Clients;
 
@@ -12,7 +14,7 @@ public class LlmHttpClientFactoryTests
     [Fact]
     public void CreateHandler_WithProviderProxy_UsesExplicitWebProxy()
     {
-        using var handler = LlmHttpClientFactory.CreateHandler(new ProviderConfig
+        using var handler = OpenAiHttpFactory.CreateHandler(new ProviderConfig
         {
             Proxy = "http://proxy.example:8080"
         });
@@ -25,7 +27,7 @@ public class LlmHttpClientFactoryTests
     [Fact]
     public void CreateHandler_WithProxyCredentials_StoresCredentialsWithoutUserInfoInAddress()
     {
-        using var handler = LlmHttpClientFactory.CreateHandler(new ProviderConfig
+        using var handler = OpenAiHttpFactory.CreateHandler(new ProviderConfig
         {
             Proxy = "https://proxy-user:p%40ssword@proxy.example:8443"
         });
@@ -41,7 +43,7 @@ public class LlmHttpClientFactoryTests
     [Fact]
     public void CreateHandler_WithoutProviderProxy_UsesSystemProxyByDefault()
     {
-        using var handler = LlmHttpClientFactory.CreateHandler(new ProviderConfig());
+        using var handler = OpenAiHttpFactory.CreateHandler(new ProviderConfig());
 
         handler.UseProxy.Should().BeTrue();
         handler.Proxy.Should().BeNull();
@@ -50,7 +52,7 @@ public class LlmHttpClientFactoryTests
     [Fact]
     public void CreateHandler_WhenProxyDisabled_DoesNotUseAnyProxy()
     {
-        using var handler = LlmHttpClientFactory.CreateHandler(new ProviderConfig
+        using var handler = OpenAiHttpFactory.CreateHandler(new ProviderConfig
         {
             UseProxy = false,
             Proxy = "http://proxy.example:8080"
@@ -63,7 +65,7 @@ public class LlmHttpClientFactoryTests
     [Fact]
     public void CreateHandler_WithSocksProxy_RejectsUnsupportedScheme()
     {
-        var act = () => LlmHttpClientFactory.CreateHandler(new ProviderConfig
+        var act = () => OpenAiHttpFactory.CreateHandler(new ProviderConfig
         {
             Proxy = "socks5://127.0.0.1:1080"
         });
