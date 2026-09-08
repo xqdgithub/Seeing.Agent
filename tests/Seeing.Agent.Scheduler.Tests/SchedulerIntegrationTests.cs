@@ -1,5 +1,6 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Scheduling;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
