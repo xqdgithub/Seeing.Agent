@@ -25,6 +25,7 @@
     <Project Path="src/Seeing.Gateway.QQ/Seeing.Gateway.QQ.csproj" />
     <Project Path="src/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
     <Project Path="src/Seeing.Gateway/Seeing.Gateway.csproj" />
+    <Project Path="src/Seeing.IO.Local/Seeing.IO.Local.csproj" />
     <Project Path="src/Seeing.Session/Seeing.Session.csproj" />
     <Project Path="src/Seeing.TokenEstimation/Seeing.TokenEstimation.csproj" />
   </Folder>
@@ -45,6 +46,7 @@
     <Project Path="tests/Seeing.Session.Tests/Seeing.Session.Tests.csproj" />
     <Project Path="tests/Seeing.TokenEstimation.Tests/Seeing.TokenEstimation.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
+    <Project Path="tests/Seeing.IO.Local.Tests/Seeing.IO.Local.Tests.csproj" />
   </Folder>
   <Folder Name="/解决方案项/" />
 </Solution>
