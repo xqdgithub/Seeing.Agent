@@ -1,13 +1,13 @@
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 
-namespace Seeing.Agent.Tools.BuiltIn.Shell;
+namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
 /// 危险命令检测器 - 基于 <see cref="ShellOptions"/> 的可配置命令安全检测。
 /// 只拦截灾难性操作，普通删除与绝对路径重定向不再拦截。
 /// 采用令牌化解析：剥离 sudo/env 与所有选项令牌后提取命令名，删除目标按令牌精确判断。
 /// </summary>
-internal static class DangerousCommandGuard
+public static class DangerousCommandGuard
 {
     /// <summary>检查命令是否危险。安全返回 null，否则返回拒绝原因。</summary>
     public static string? Check(string command, ShellOptions options)

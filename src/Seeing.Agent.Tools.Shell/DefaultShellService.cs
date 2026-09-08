@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace Seeing.Agent.Tools.BuiltIn.Shell;
+namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
 /// 默认 Shell 服务实现。
@@ -12,12 +12,12 @@ namespace Seeing.Agent.Tools.BuiltIn.Shell;
 public sealed class DefaultShellService : IShellService
 {
     private readonly ILogger<DefaultShellService> _logger;
-    private readonly IOptionsMonitor<SeeingAgentOptions> _options;
+    private readonly IOptionsMonitor<ShellOptions> _options;
     private string? _acceptableShell;
 
     private static readonly HashSet<string> Blacklist = new(StringComparer.OrdinalIgnoreCase) { "fish", "nu" };
 
-    public DefaultShellService(ILogger<DefaultShellService> logger, IOptionsMonitor<SeeingAgentOptions> options)
+    public DefaultShellService(ILogger<DefaultShellService> logger, IOptionsMonitor<ShellOptions> options)
     {
         _logger = logger;
         _options = options;
@@ -70,7 +70,7 @@ public sealed class DefaultShellService : IShellService
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            foreach (var name in _options.CurrentValue.Shell.PreferredShells)
+            foreach (var name in _options.CurrentValue.PreferredShells)
             {
                 var found = name.ToLowerInvariant() switch
                 {

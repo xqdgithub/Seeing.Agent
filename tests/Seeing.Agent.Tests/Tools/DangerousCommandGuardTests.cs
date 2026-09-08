@@ -1,6 +1,6 @@
 using FluentAssertions;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Tools.BuiltIn.Shell;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Tools.Shell;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools;

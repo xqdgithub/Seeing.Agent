@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Configuration;

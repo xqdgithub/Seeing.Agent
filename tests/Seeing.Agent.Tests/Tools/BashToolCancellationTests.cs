@@ -2,10 +2,10 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Shell;
-using Seeing.Agent.Tools.BuiltIn.Shell;
+using Seeing.Agent.Tools.Shell;
 using Seeing.IO.Local;
 using System.Text.Json;
 using Xunit;
@@ -19,8 +19,8 @@ public class BashToolCancellationTests
 
     private static BashTool CreateBashTool(out IShellService shellService)
     {
-        var options = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        options.Setup(o => o.CurrentValue).Returns(new SeeingAgentOptions());
+        var options = new Mock<IOptionsMonitor<ShellOptions>>();
+        options.Setup(o => o.CurrentValue).Returns(new ShellOptions());
         shellService = new DefaultShellService(NullLogger<DefaultShellService>.Instance, options.Object);
         var shellEnv = new Mock<IShellEnvironmentService>();
         shellEnv.Setup(s => s.GetEnvironmentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))

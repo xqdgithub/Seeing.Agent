@@ -2,11 +2,10 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Shell;
-using Seeing.Agent.Tools.BuiltIn.Shell;
+using Seeing.Agent.Tools.Shell;
 using System.Text;
 using System.Text.Json;
 using Xunit;
@@ -65,8 +64,8 @@ public class BashToolSubprocessTests
         string preparedCommand = "echo hi",
         string arguments = "-c 'echo hi'")
     {
-        var options = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        options.Setup(o => o.CurrentValue).Returns(new SeeingAgentOptions());
+        var options = new Mock<IOptionsMonitor<ShellOptions>>();
+        options.Setup(o => o.CurrentValue).Returns(new ShellOptions());
 
         var shellService = new Mock<IShellService>();
         shellService.Setup(s => s.SelectShell()).Returns(shellPath);
