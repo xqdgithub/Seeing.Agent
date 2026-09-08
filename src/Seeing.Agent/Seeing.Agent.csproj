@@ -59,6 +59,7 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <ProjectReference Include="..\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Tools.Basic\Seeing.Agent.Tools.Basic.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Tools.FileSystem\Seeing.Agent.Tools.FileSystem.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Tools.Shell\Seeing.Agent.Tools.Shell.csproj" />
     <ProjectReference Include="..\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />

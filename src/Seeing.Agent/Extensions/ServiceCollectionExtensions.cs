@@ -35,6 +35,7 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.IO.Local;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Tools.Basic;
 using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Shell;
 using Seeing.Agent.Tools.Web;
@@ -56,7 +57,6 @@ using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn;
 using Seeing.Agent.Tools.BuiltIn.SubTask;
-using Seeing.Agent.Tools.BuiltIn.Time;
 using Seeing.Agent.Tools.BuiltIn.Todo;
 using Seeing.Agent.Todo;
 using Seeing.Session.Core;
@@ -347,6 +347,11 @@ namespace Seeing.Agent.Extensions
             shellModule.ConfigureServices(services);
             services.AddSingleton<ISeeingModule>(shellModule);
 
+            // TEMP: Phase 3 — Basic 工具模块（ConfigureServices 注册 ITool；Activate 待 Host Shape）
+            var basicModule = new BasicModule();
+            basicModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(basicModule);
+
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -500,8 +505,7 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<ISessionManager>()));
             services.AddSingleton<ITool, TodoWriteTool>();
 
-            // 时间工具
-            services.AddSingleton<ITool, CurrentTimeTool>();
+            // 基础工具 — 由 BasicModule.ConfigureServices 注册（见上方模块登记）
 
             // ========== 注册装饰器链（重试→超时→缓存）==========
             // 超时由 ToolTimeoutDecorator 在工具执行漏斗内施加：读取工具能力声明

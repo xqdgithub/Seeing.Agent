@@ -19,6 +19,7 @@
     <Project Path="src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
     <Project Path="src/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
     <Project Path="src/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
+    <Project Path="src/Seeing.Agent.Tools.Basic/Seeing.Agent.Tools.Basic.csproj" />
     <Project Path="src/Seeing.Agent.Tools.FileSystem/Seeing.Agent.Tools.FileSystem.csproj" />
     <Project Path="src/Seeing.Agent.Tools.Shell/Seeing.Agent.Tools.Shell.csproj" />
     <Project Path="src/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
@@ -41,6 +42,7 @@
     <Project Path="tests/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />
     <Project Path="tests/Seeing.Provider.OpenCodeZen.Tests/Seeing.Provider.OpenCodeZen.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
+    <Project Path="tests/Seeing.Agent.Tools.Basic.Tests/Seeing.Agent.Tools.Basic.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tools.FileSystem.Tests/Seeing.Agent.Tools.FileSystem.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tools.Shell.Tests/Seeing.Agent.Tools.Shell.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />

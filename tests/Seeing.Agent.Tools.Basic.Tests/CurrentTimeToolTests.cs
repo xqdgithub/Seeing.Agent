@@ -1,11 +1,10 @@
-﻿using Seeing.Agent.Abstractions.Tools;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Agent.Tools.BuiltIn.Time;
+using Seeing.Agent.Abstractions.Tools;
 using Xunit;
 
-namespace Seeing.Agent.Tests.Tools;
+namespace Seeing.Agent.Tools.Basic.Tests;
 
 public class CurrentTimeToolTests
 {
