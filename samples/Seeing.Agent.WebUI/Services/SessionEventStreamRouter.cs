@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Hosting;
+using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Services;
@@ -43,7 +44,7 @@ namespace Seeing.Agent.WebUI.Services;
 /// 先调用其 Dispose（TaskCardAggregator 借此落盘防抖窗口内未持久化的 TaskSteps）。
 /// </para>
 /// </summary>
-public sealed class SessionEventStreamRouter : IDisposable
+public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposable
 {
     private readonly IChatOrchestrator _orchestrator;
     private readonly IServiceScopeFactory _scopeFactory;

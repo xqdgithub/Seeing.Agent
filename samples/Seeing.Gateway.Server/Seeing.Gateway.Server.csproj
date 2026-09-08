@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Hosting.Gateway\Seeing.Agent.Hosting.Gateway.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Session\Seeing.Session.csproj" />
   </ItemGroup>

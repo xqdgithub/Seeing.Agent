@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Hosting.Events;
 using Seeing.Agent.Hosting.Execution;
+using Seeing.Agent.Hosting.Web.Permissions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Models;
@@ -56,7 +57,7 @@ namespace Seeing.Agent.WebUI.Services
     /// 多实例化：每个会话绑定一个实例（构造传入 sessionId），不再依赖全局 SessionState。
     /// </para>
     /// </summary>
-    public class EventStreamHandler : IStreamConsumer
+    public class EventStreamHandler : IStreamConsumer, IPermissionEventSink
     {
         private readonly ISessionManager _sessionManager;
 
@@ -186,6 +187,10 @@ namespace Seeing.Agent.WebUI.Services
         /// <summary>
         /// 处理 Core 层消息事件（仅驱动 UI 展示；会话落盘由 ExecutionJobService 完成）
         /// </summary>
+        /// <inheritdoc />
+        public Task PublishAsync(PermissionRequestEvent evt, CancellationToken ct = default)
+            => ProcessEventAsync(evt);
+
         public Task ProcessEventAsync(IMessageEvent evt)
         {
             EnsureCurrentSessionRef();

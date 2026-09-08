@@ -2,7 +2,7 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Acp.Extensions;
-using Seeing.Agent.Hosting;
+using Seeing.Agent.Hosting.Headless;
 using Seeing.Agent.Gateway.Extensions;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Scheduler.Extensions;
@@ -28,7 +28,7 @@ public static class CliServiceBootstrap
         builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);
         builder.Services.AddMemoryServices(registry);
         builder.Services.AddSeeingCore(registry);
-        builder.Services.AddChatOrchestrator();
+        builder.Services.AddSeeingHostingHeadless();
 
         var host = builder.Build();
 

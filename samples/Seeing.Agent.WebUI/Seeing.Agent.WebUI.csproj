@@ -20,6 +20,7 @@
     <ProjectReference Include="../../src/Seeing.Agent.Tools.Web/Seeing.Agent.Tools.Web.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Tools.Git/Seeing.Agent.Tools.Git.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Hosting/Seeing.Agent.Hosting.csproj" />
+    <ProjectReference Include="../../src/Seeing.Agent.Hosting.Web/Seeing.Agent.Hosting.Web.csproj" />
     <ProjectReference Include="../../src/Seeing.Session/Seeing.Session.csproj" />
     <ProjectReference Include="../../src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
     <ProjectReference Include="../../plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />

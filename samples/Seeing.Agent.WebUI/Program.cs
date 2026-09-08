@@ -1,10 +1,10 @@
 using System.Net;
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Configuration;
-using Microsoft.AspNetCore.Components.Server.Circuits;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Hosting;
+using Seeing.Agent.Hosting.Web;
+using Seeing.Agent.Hosting.Web.Circuits;
+using Seeing.Agent.Hosting.Web.Permissions;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Channels;
@@ -62,16 +62,9 @@ builder.Services.AddSeeingCore(registry);
 // === Session 管理：由 AddSeeingCore 统一注册 ISessionStore + SessionManager + ISessionManager + ISessionEventPublisher ===
 // 勿再调用 AddSessionManager() / 重复注册 ISessionEventPublisher，避免双实例分裂
 
-// === WebUI 服务 ===
-builder.Services.AddScoped<BlazorPermissionChannel>();
-// BlazorPermissionChannel 包 SerializingPermissionChannel（记忆层 + 工作区检查 + 串行化）
-builder.Services.AddScoped<IPermissionChannel>(sp =>
-{
-    var memory = sp.GetRequiredService<Seeing.Agent.Core.Permission.IPermissionMemory>();
-    var workspace = sp.GetService<Seeing.Agent.Configuration.IWorkspaceProvider>();
-    var inner = sp.GetRequiredService<BlazorPermissionChannel>();
-    return new Seeing.Agent.Core.Permission.SerializingPermissionChannel(inner, memory, workspace);
-});
+// === Web Host Shape：Circuit + BlazorPermissionChannel ===
+builder.Services.AddSeeingHostingWeb();
+
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<MessageTimelineStore>();
@@ -79,19 +72,20 @@ builder.Services.AddScoped<MessageTimelineStore>();
 // 会话事件流路由（Singleton）：按会话统一订阅 + 按 circuit 关联 Scoped 消费者。
 // CircuitContext（Scoped）：载入 circuit.Id，供页面经 Router.GetOrCreateConsumer 关联消费者。
 // TaskCardAggregator（Scoped）：每父会话一实例，聚合子代理 TaskSteps。
-builder.Services.AddScoped<CircuitContext>();
 builder.Services.AddSingleton<SessionEventStreamRouter>();
+builder.Services.AddSingleton<ICircuitResourceCleanup>(sp => sp.GetRequiredService<SessionEventStreamRouter>());
 builder.Services.AddScoped<TaskCardAggregator>();
 builder.Services.AddScoped<TaskSessionResolver>();
 builder.Services.AddScoped<ConferenceRegistry>();
 
 // EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
 // 此处保留的 Scoped 注册作为"全局权限事件总线"占位实例（sessionId 为空串）：
-// BlazorPermissionChannel.RequestAsync 经它 ProcessEventAsync 触发 OnPermissionRequest，
+// BlazorPermissionChannel.RequestAsync 经它 PublishAsync 触发 OnPermissionRequest，
 // PermissionHost 订阅该实例弹权限窗（主渲染 handler 的权限事件无人订阅，无副作用）。
 // 此注册为权限链路必需，不可移除。
 builder.Services.AddScoped<EventStreamHandler>(sp =>
     new EventStreamHandler(string.Empty, sp.GetRequiredService<ISessionManager>()));
+builder.Services.AddScoped<IPermissionEventSink>(sp => sp.GetRequiredService<EventStreamHandler>());
 builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SeeingConfigService>();
@@ -134,10 +128,6 @@ builder.Services.AddMessageRendering();
 
 // AntDesign 2.0 配置
 builder.Services.AddAntDesign();
-
-// Circuit 生命周期管理（JSDisconnectedException 防护）
-builder.Services.AddSingleton<CircuitTracker>();
-builder.Services.AddScoped<CircuitHandler, SeeingCircuitHandler>();
 
 var app = builder.Build();
 
