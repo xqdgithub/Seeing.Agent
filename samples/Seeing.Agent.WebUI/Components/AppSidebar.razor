@@ -1,12 +1,22 @@
 @using AntDesign
 @using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.Extensions.Options
 @using Microsoft.JSInterop
+@using Seeing.Agent.Abstractions.Modules
+@using Seeing.Agent.Abstractions.Ui
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Modules
+@using Seeing.Agent.WebUI.Services
 @using Seeing.Agent.WebUI.State
 @implements IDisposable
 @inject AppState AppState
 @inject NavigationManager NavigationManager
-@inject Microsoft.JSInterop.IJSRuntime JSRuntime
+@inject IJSRuntime JSRuntime
 @inject IMessageService MessageService
+@inject UiContributionRegistry Registry
+@inject IModuleCatalog Catalog
+@inject IOptionsMonitor<SeeingAgentOptions> AgentOptions
+@inject ProcessSettlementOptions SettlementOptions
 
 <Sider Class="@GetSiderClass()"
        Width="240"
@@ -35,7 +45,6 @@
     <Menu Mode="@MenuMode.Inline"
           Theme="@MenuTheme.Light"
           SelectedKeys="@_selectedKeys"
-          @bind-OpenKeys="_openKeys"
           Class="sider-menu">
 
         <MenuItem Key="chat" OnClick="@(() => NavigateTo(GetChatPath()))">
@@ -43,92 +52,14 @@
             <span>聊天</span>
         </MenuItem>
 
-        <SubMenu Key="control">
-            <TitleTemplate>
-                <Icon Type="@IconType.Outline.Control" />
-                <span>控制中心</span>
-            </TitleTemplate>
-            <ChildContent>
-                <MenuItem Key="sessions" OnClick="@(() => NavigateTo("/sessions"))">
-                    <Icon Type="@IconType.Outline.Team" />
-                    <span>会话</span>
-                </MenuItem>
-                <MenuItem Key="cron-jobs" OnClick="@(() => NavigateTo("/cron-jobs"))">
-                    <Icon Type="@IconType.Outline.ClockCircle" />
-                    <span>定时任务</span>
-                </MenuItem>
-                <MenuItem Key="heartbeat" OnClick="@(() => NavigateTo("/heartbeat"))">
-                    <Icon Type="@IconType.Outline.Heart" />
-                    <span>心跳</span>
-                </MenuItem>
-            </ChildContent>
-        </SubMenu>
-
-        <SubMenu Key="workspace">
-            <TitleTemplate>
-                <Icon Type="@IconType.Outline.Folder" />
-                <span>工作区</span>
-            </TitleTemplate>
-            <ChildContent>
-                <MenuItem Key="skills" OnClick="@(() => NavigateTo("/skills"))">
-                    <Icon Type="@IconType.Outline.Star" />
-                    <span>技能</span>
-                </MenuItem>
-                <MenuItem Key="tools" OnClick="@(() => NavigateTo("/tools"))">
-                    <Icon Type="@IconType.Outline.Tool" />
-                    <span>工具</span>
-                </MenuItem>
-                <MenuItem Key="mcp" OnClick="@(() => NavigateTo("/mcp"))">
-                    <Icon Type="@IconType.Outline.Api" />
-                    <span>MCP</span>
-                </MenuItem>
-                <MenuItem Key="acp" OnClick="@(() => NavigateTo("/acp"))">
-                    <Icon Type="@IconType.Outline.Robot" />
-                    <span>ACP</span>
-                </MenuItem>
-                <MenuItem Key="memory" OnClick="@(() => NavigateTo("/memory"))">
-                    <Icon Type="@IconType.Outline.Database" />
-                    <span>记忆</span>
-                </MenuItem>
-            </ChildContent>
-        </SubMenu>
-
-        <SubMenu Key="settings">
-            <TitleTemplate>
-                <Icon Type="@IconType.Outline.Setting" />
-                <span>设置</span>
-            </TitleTemplate>
-            <ChildContent>
-                <MenuItem Key="agents" OnClick="@(() => NavigateTo("/agents"))">
-                    <Icon Type="@IconType.Outline.UsergroupAdd" />
-                    <span>智能体管理</span>
-                </MenuItem>
-                <MenuItem Key="agent-config" OnClick="@(() => NavigateTo("/agent-config"))">
-                    <Icon Type="@IconType.Outline.Edit" />
-                    <span>智能体配置</span>
-                </MenuItem>
-                <MenuItem Key="models" OnClick="@(() => NavigateTo("/models"))">
-                    <Icon Type="@IconType.Outline.CloudServer" />
-                    <span>模型</span>
-                </MenuItem>
-                <MenuItem Key="gateway" OnClick="@(() => NavigateTo("/gateway"))">
-                    <Icon Type="@IconType.Outline.Global" />
-                    <span>Gateway</span>
-                </MenuItem>
-                <MenuItem Key="gateway-clients" OnClick="@(() => NavigateTo("/gateway-clients"))">
-                    <Icon Type="@IconType.Outline.Api" />
-                    <span>Gateway 客户端</span>
-                </MenuItem>
-                <MenuItem Key="security" OnClick="@(() => NavigateTo("/security"))">
-                    <Icon Type="@IconType.Outline.Lock" />
-                    <span>安全</span>
-                </MenuItem>
-                <MenuItem Key="settings-page" OnClick="@(() => NavigateTo("/settings"))">
-                    <Icon Type="@IconType.Outline.Tool" />
-                    <span>系统设置</span>
-                </MenuItem>
-            </ChildContent>
-        </SubMenu>
+        @foreach (var item in _visibleNav)
+        {
+            var key = NavKey(item);
+            <MenuItem @key="key" Key="@key" OnClick="@(() => NavigateTo(ResolveNavPath(item)))">
+                <Icon Type="@item.Icon" />
+                <span>@item.Title</span>
+            </MenuItem>
+        }
     </Menu>
 
     <div class="sider-shutdown">
@@ -153,29 +84,9 @@
     [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
 
     private string[] _selectedKeys = Array.Empty<string>();
-    private string[] _openKeys = new[] { "control", "workspace", "settings" };
-
-    /// <summary>菜单项到所属 SubMenu 的映射</summary>
-    private static readonly Dictionary<string, string> KeyToSubMenu = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["sessions"] = "control",
-        ["cron-jobs"] = "control",
-        ["heartbeat"] = "control",
-        ["skills"] = "workspace",
-        ["tools"] = "workspace",
-        ["mcp"] = "workspace",
-        ["acp"] = "workspace",
-        ["memory"] = "workspace",
-        ["agents"] = "settings",
-        ["agent-config"] = "settings",
-        ["models"] = "settings",
-        ["gateway"] = "settings",
-        ["gateway-clients"] = "settings",
-        ["security"] = "settings",
-        ["settings-page"] = "settings",
-    };
-
+    private IReadOnlyList<NavContribution> _visibleNav = Array.Empty<NavContribution>();
     private bool _shutdownRequested;
+    private IDisposable? _optionsSubscription;
 
     /// <summary>有效折叠状态：移动端 overlay 模式时强制展开 Sider</summary>
     private bool EffectiveCollapsed =>
@@ -215,6 +126,9 @@
     {
         AppState.OnChange += OnAppStateChange;
         NavigationManager.LocationChanged += OnLocationChanged;
+        Registry.Changed += OnRegistryChanged;
+        _optionsSubscription = AgentOptions.OnChange(_ => RefreshNav());
+        RefreshNav();
         UpdateSelectedKey();
     }
 
@@ -222,6 +136,16 @@
     {
         AppState.OnChange -= OnAppStateChange;
         NavigationManager.LocationChanged -= OnLocationChanged;
+        Registry.Changed -= OnRegistryChanged;
+        _optionsSubscription?.Dispose();
+    }
+
+    private void RefreshNav()
+    {
+        var scenario = UiContributionVisibility.ResolveProcessScenario(
+            AgentOptions.CurrentValue, SettlementOptions);
+        _visibleNav = UiContributionVisibility.FilterSidebarNav(
+            Registry.NavItems, Catalog, scenario);
     }
 
     private void UpdateSelectedKey()
@@ -229,22 +153,27 @@
         var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
         var segment = path.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
 
-        _selectedKeys = segment switch
+        if (segment is "" or "home" or "session")
         {
-            "" or "home" => new[] { "chat" },
-            "session" => new[] { "chat" },
-            "settings" => new[] { "settings-page" },
-            _ => new[] { segment }
-        };
-
-        if (!string.IsNullOrEmpty(segment) && KeyToSubMenu.TryGetValue(segment, out var subMenuKey))
-        {
-            if (!_openKeys.Contains(subMenuKey))
-            {
-                _openKeys = _openKeys.Concat(new[] { subMenuKey }).ToArray();
-            }
+            _selectedKeys = ["chat"];
+            return;
         }
+
+        var match = _visibleNav.FirstOrDefault(n =>
+        {
+            var route = n.Route.Trim('/');
+            return path.Equals(route, StringComparison.OrdinalIgnoreCase)
+                   || path.StartsWith(route + "/", StringComparison.OrdinalIgnoreCase);
+        });
+
+        _selectedKeys = match is null ? [segment] : [NavKey(match)];
     }
+
+    private static string NavKey(NavContribution item) =>
+        item.Route.Trim('/').Replace('/', '-');
+
+    private string ResolveNavPath(NavContribution item) =>
+        string.IsNullOrWhiteSpace(item.Route) ? "/" : item.Route;
 
     private async Task RequestShutdown()
     {
@@ -268,6 +197,14 @@
         UpdateSelectedKey();
         InvokeAsync(StateHasChanged);
     }
+
+    private void OnRegistryChanged(object? sender, EventArgs e) =>
+        InvokeAsync(() =>
+        {
+            RefreshNav();
+            UpdateSelectedKey();
+            StateHasChanged();
+        });
 
     private void OnAppStateChange() => InvokeAsync(StateHasChanged);
 

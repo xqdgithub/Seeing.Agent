@@ -59,13 +59,8 @@ public static class ModulePageRouteBinder
                 .Where(n => n.Requires.Any(r => string.Equals(r, moduleId, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
 
-            var settings = registry.SettingsCards
-                .Where(s => s.Requires.Any(r => string.Equals(r, moduleId, StringComparison.OrdinalIgnoreCase)))
-                .Cast<object>();
-            var slots = registry.Slots
-                .Where(s => s.Requires.Any(r => string.Equals(r, moduleId, StringComparison.OrdinalIgnoreCase)))
-                .Cast<object>();
-
+            // 只重绑 Nav→ComponentType。SettingsCard/Slot 由各自 ModuleId 贡献者持有，
+            // 勿按 Requires 从扁平表回填，否则会把壳层卡片复制进能力模块导致重复。
             var byRoute = existingNav.ToDictionary(
                 n => n.Route,
                 StringComparer.OrdinalIgnoreCase);
@@ -99,9 +94,7 @@ public static class ModulePageRouteBinder
                 return (object)(n with { ComponentType = type ?? n.ComponentType });
             }));
 
-            registry.Register(new BoundUiContribution(
-                moduleId,
-                enriched.Concat(settings).Concat(slots).ToList()));
+            registry.Register(new BoundUiContribution(moduleId, enriched));
         }
     }
 

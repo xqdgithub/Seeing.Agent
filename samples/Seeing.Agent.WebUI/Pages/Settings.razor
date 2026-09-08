@@ -1,22 +1,21 @@
 @page "/settings"
 @using AntDesign
+@using Seeing.Agent.Abstractions.Modules
+@using Seeing.Agent.Abstractions.Ui
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Models
 @using Seeing.Agent.Llm
-@using Seeing.Agent.Scheduler
-@using Seeing.Agent.Scheduler.Abstractions
-@using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Components
-@using Seeing.Agent.WebUI.Components.Scheduler
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
 @inject AgentManager AgentManager
 @inject IModelConfigManager ModelManager
 @inject IWorkspaceProvider WorkspaceProvider
 @inject WorkspaceSwitchService WorkspaceSwitchService
-@inject IScheduleManager ScheduleManager
-@inject SchedulerStatusService StatusService
 @inject IMessageService MessageService
+@inject UiContributionRegistry Registry
+@inject IModuleCatalog Catalog
+@implements IDisposable
 
 <PageTitle>系统设置 - Seeing.Agent</PageTitle>
 
@@ -33,8 +32,8 @@
                     <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
                     <SelectOption TItemValue="ConfigLevel" TItem="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
                 </Select>
+                <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveCurrentTab">保存</Button>
             }
-            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveCurrentTab">保存</Button>
         </Space>
     </Extra>
     <ChildContent>
@@ -115,55 +114,14 @@
                     </FormItem>
                 </Form>
             </TabPane>
-            <TabPane Key="scheduler" Tab="调度器">
-                <SchedulerStatusPanel Status="@_schedulerStatus" 
-                                      ShowControls="true"
-                                      OnStart="StartScheduler"
-                                      OnStop="StopScheduler"
-                                      OnReload="ReloadScheduler"
-                                      IsLoading="@_schedulerLoading" />
-                
-                <Divider />
-                
-                <Alert Type="@AlertType.Info" ShowIcon="true" 
-                       Message="调度器使用 Quartz.NET 框架，支持持久化和任务恢复"
-                       Style="margin-bottom: 16px;" />
-                
-                <Form Layout="@FormLayout.Vertical" Model="@_scheduler" Context="schedulerForm">
-                    <FormItem Label="启用调度器">
-                        <Switch @bind-Checked="@_scheduler.Enabled" />
-                    </FormItem>
-                    <FormItem Label="时区">
-                        <Input @bind-Value="@_scheduler.Timezone" Placeholder="Asia/Shanghai" />
-                    </FormItem>
-                    <FormItem Label="最大并发任务">
-                        <InputNumber @bind-Value="@_scheduler.MaxConcurrentJobs" Min="1" Max="20" Style="width: 100%;" />
-                    </FormItem>
-                    
-                    <Divider Orientation="@DividerOrientation.Left">持久化配置</Divider>
-                    
-                    <FormItem Label="启用持久化">
-                        <Switch @bind-Checked="@_scheduler.Persistence.Enabled" />
-                        <span style="margin-left: 8px; color: #888;">启用后任务状态将保存到数据库，应用重启后自动恢复</span>
-                    </FormItem>
-                    @if (_scheduler.Persistence.Enabled)
-                    {
-                        <FormItem Label="存储类型">
-                            <Select TItemValue="string" TItem="string" @bind-Value="@_scheduler.Persistence.Provider" Context="providerSelect">
-                                <SelectOption TItemValue="string" TItem="string" Value="@("sqlite")">SQLite（推荐）</SelectOption>
-                                <SelectOption TItemValue="string" TItem="string" Value="@("memory")">内存（仅测试）</SelectOption>
-                            </Select>
-                        </FormItem>
-                        @if (_scheduler.Persistence.Provider == "sqlite")
-                        {
-                            <FormItem Label="数据库路径">
-                                <Input @bind-Value="@_scheduler.Persistence.ConnectionString" 
-                                       Placeholder="Data Source=.seeing/quartz.db" />
-                            </FormItem>
-                        }
-                    }
-                </Form>
-            </TabPane>
+
+            @foreach (var card in _visibleCards)
+            {
+                <TabPane @key="card.Route" Key="@card.Route" Tab="@card.Title">
+                    <DynamicComponent Type="@card.ComponentType" />
+                </TabPane>
+            }
+
             <TabPane Key="plugins" Tab="插件">
                 @if (_options.Plugins.Count == 0 && _options.PluginEnabled.Count == 0)
                 {
@@ -198,13 +156,11 @@
     private string _activeTab = "general";
     private ConfigLevel _saveLevel = ConfigLevel.Project;
     private SeeingAgentOptions _options = new();
-    private SchedulerOptions _scheduler = new();
-    private SchedulerStatus _schedulerStatus = new();
     private string _workspacePath = "";
     private List<PluginRow> _pluginRows = new();
     private List<AgentOption> _availableAgents = new();
     private List<ModelOption> _availableModels = new();
-    private bool _schedulerLoading;
+    private IReadOnlyList<SettingsCardContribution> _visibleCards = Array.Empty<SettingsCardContribution>();
     private WorkspaceSelectorModal? _workspaceSelectorModal;
     private WorkspaceSelectorModal? _globalWorkspaceSelectorModal;
     private WorkspaceSelectorModal? _customWorkspaceSelectorModal;
@@ -216,9 +172,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Registry.Changed += OnRegistryChanged;
+        RefreshCards();
+
         _workspacePath = WorkspaceProvider.GetProjectRoot();
         _options = await ConfigService.LoadProjectOptionsAsync();
-        _scheduler = ConfigService.GetSchedulerOptions();
 
         BuildPluginRows();
 
@@ -238,10 +196,24 @@
 
         // 加载工作区配置
         LoadWorkspaceSettings();
-
-        // 加载调度器状态
-        await LoadSchedulerStatusAsync();
     }
+
+    public void Dispose()
+    {
+        Registry.Changed -= OnRegistryChanged;
+    }
+
+    private void RefreshCards()
+    {
+        _visibleCards = UiContributionVisibility.FilterSettingsCards(Registry.SettingsCards, Catalog);
+    }
+
+    private void OnRegistryChanged(object? sender, EventArgs e) =>
+        InvokeAsync(() =>
+        {
+            RefreshCards();
+            StateHasChanged();
+        });
 
     private void LoadWorkspaceSettings()
     {
@@ -249,18 +221,6 @@
         _globalWorkspacePath = WorkspaceSwitchService.GlobalWorkspaceRoot ?? "";
         _customWorkspacePath = _options.Workspace?.CustomPath ?? "";
         _workspaceUseGlobal = _options.Workspace?.UseGlobal ?? false;
-    }
-
-    private async Task LoadSchedulerStatusAsync()
-    {
-        try
-        {
-            _schedulerStatus = await StatusService.GetStatusAsync();
-        }
-        catch
-        {
-            _schedulerStatus = new SchedulerStatus { IsRunning = false };
-        }
     }
 
     private void ShowWorkspaceSelector()
@@ -297,67 +257,11 @@
         MessageService.Success($"全局默认工作区已设置: {newWorkspace}");
     }
 
-    private async Task HandleCustomWorkspaceChanged(string newWorkspace)
+    private Task HandleCustomWorkspaceChanged(string newWorkspace)
     {
         _customWorkspacePath = newWorkspace;
         StateHasChanged();
-    }
-
-    private async Task StartScheduler()
-    {
-        _schedulerLoading = true;
-        try
-        {
-            await StatusService.StartAsync();
-            await LoadSchedulerStatusAsync();
-            MessageService.Success("调度器已启动");
-        }
-        catch (Exception ex)
-        {
-            MessageService.Error($"启动失败: {ex.Message}");
-        }
-        finally
-        {
-            _schedulerLoading = false;
-        }
-    }
-
-    private async Task StopScheduler()
-    {
-        _schedulerLoading = true;
-        try
-        {
-            await StatusService.StopAsync();
-            await LoadSchedulerStatusAsync();
-            MessageService.Info("调度器已停止");
-        }
-        catch (Exception ex)
-        {
-            MessageService.Error($"停止失败: {ex.Message}");
-        }
-        finally
-        {
-            _schedulerLoading = false;
-        }
-    }
-
-    private async Task ReloadScheduler()
-    {
-        _schedulerLoading = true;
-        try
-        {
-            await ScheduleManager.ReloadHeartbeatAsync();
-            await LoadSchedulerStatusAsync();
-            MessageService.Success("配置已重载");
-        }
-        catch (Exception ex)
-        {
-            MessageService.Error($"重载失败: {ex.Message}");
-        }
-        finally
-        {
-            _schedulerLoading = false;
-        }
+        return Task.CompletedTask;
     }
 
     private void BuildPluginRows()
@@ -400,18 +304,6 @@
                     
                     // 更新显示
                     _workspacePath = WorkspaceProvider.GetProjectRoot();
-                    break;
-                case "scheduler":
-                    await ConfigService.SaveSchedulerOptionsAsync(s =>
-                    {
-                        s.Enabled = _scheduler.Enabled;
-                        s.Timezone = _scheduler.Timezone;
-                        s.MaxConcurrentJobs = _scheduler.MaxConcurrentJobs;
-                        s.Persistence = _scheduler.Persistence;
-                    });
-                    
-                    // 重载调度器
-                    await ScheduleManager.ReloadHeartbeatAsync();
                     break;
                 case "plugins":
                     await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>

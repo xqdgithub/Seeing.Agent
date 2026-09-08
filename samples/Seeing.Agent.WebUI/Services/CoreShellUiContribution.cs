@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.WebUI.Components.Scheduler;
 using Seeing.Agent.WebUI.Pages;
 
 namespace Seeing.Agent.WebUI.Services;
@@ -16,10 +17,17 @@ public sealed class CoreShellUiContribution : IUiContribution
     /// <inheritdoc />
     public IReadOnlyList<object> Contribute() =>
     [
-        new NavContribution("/sessions", "会话列表", "unordered-list", [], ComponentType: typeof(SessionsPage)),
-        new NavContribution("/agents", "Agents", "team", [], ComponentType: typeof(AgentsPage)),
-        new NavContribution("/agent-config", "Agent 配置", "setting", [], ComponentType: typeof(AgentConfigPage)),
-        new NavContribution("/models", "模型", "cloud", [], ComponentType: typeof(ModelsPage)),
-        new NavContribution("/security", "安全", "safety", [], ComponentType: typeof(SecurityPage)),
+        new NavContribution("/sessions", "会话", "team", [], ComponentType: typeof(SessionsPage)),
+        new NavContribution("/agents", "智能体管理", "usergroup-add", [], ComponentType: typeof(AgentsPage)),
+        new NavContribution("/agent-config", "智能体配置", "edit", [], ComponentType: typeof(AgentConfigPage)),
+        new NavContribution("/models", "模型", "cloud-server", [], ComponentType: typeof(ModelsPage)),
+        new NavContribution("/security", "安全", "lock", [], ComponentType: typeof(SecurityPage)),
+        new NavContribution("/settings", "系统设置", "tool", [], ComponentType: typeof(Settings)),
+        // 设置页模块卡片：Requires 由 Settings 按 IModuleCatalog 过滤；ComponentType 仅 WebUI 可知
+        new SettingsCardContribution(
+            "/settings/scheduler",
+            "调度器",
+            typeof(SchedulerSettingsCard),
+            ["scheduler"]),
     ];
 }
