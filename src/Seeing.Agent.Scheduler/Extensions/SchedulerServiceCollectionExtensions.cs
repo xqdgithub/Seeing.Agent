@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -107,6 +108,11 @@ public static class SchedulerServiceCollectionExtensions
 
         services.AddSeeingSchedulerTools();
 
+        services.AddSingleton<SchedulerModuleActivity>();
+        services.AddSingleton<ISeeingModule>(sp => new SchedulerModule(
+            sp.GetRequiredService<SchedulerModuleActivity>(),
+            sp.GetRequiredService<IScheduleManager>()));
+
         // Hosted Service（管理调度器生命周期）
         services.AddHostedService<ScheduleHostedService>();
         services.AddHostedService<SchedulerCommandRegistrationHostedService>();
@@ -214,6 +220,11 @@ public static class SchedulerServiceCollectionExtensions
         }));
 
         services.AddSeeingSchedulerTools();
+
+        services.AddSingleton<SchedulerModuleActivity>();
+        services.AddSingleton<ISeeingModule>(sp => new SchedulerModule(
+            sp.GetRequiredService<SchedulerModuleActivity>(),
+            sp.GetRequiredService<IScheduleManager>()));
 
         // Hosted Service（管理调度器生命周期）
         services.AddHostedService<ScheduleHostedService>();

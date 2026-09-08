@@ -1,6 +1,7 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -56,7 +57,16 @@ public static class AcpServiceCollectionExtensions
         services.AddSingleton<AcpFileSystemBridge>();
         services.AddSingleton<AcpTerminalBridge>();
         services.AddSingleton<SeeingAcpClientFactory>();
-        services.AddSingleton<AcpConnectionManager>();
+        services.AddSingleton<AcpModuleActivity>();
+        services.AddSingleton<Func<AcpConnectionManager>>(sp =>
+            () => ActivatorUtilities.CreateInstance<AcpConnectionManager>(sp));
+        // 进程内仍共享一个 manager 实例供消费者注入；工厂供 Module Activate 自管新建。
+        services.AddSingleton<AcpConnectionManager>(sp =>
+            sp.GetRequiredService<Func<AcpConnectionManager>>()());
+        services.AddSingleton<ISeeingModule>(sp => new AcpModule(
+            sp.GetRequiredService<AcpModuleActivity>(),
+            sp.GetRequiredService<Func<AcpConnectionManager>>(),
+            sp.GetRequiredService<AcpConnectionManager>()));
         services.AddSingleton<AcpLifecycleService>();
         services.AddSingleton<AcpSessionStore>();
         services.AddSingleton<AcpTaskStore>();

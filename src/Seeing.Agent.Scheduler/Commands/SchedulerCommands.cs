@@ -1,8 +1,10 @@
 ﻿using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Modules;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Commands;
 using Seeing.Agent.Scheduler.Abstractions;
+using Seeing.Agent.Scheduler.Hosting;
 using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.Scheduler.Commands;
@@ -10,22 +12,36 @@ namespace Seeing.Agent.Scheduler.Commands;
 /// <summary>启动时注册 cron 命令</summary>
 internal sealed class SchedulerCommandRegistrationHostedService : IHostedService
 {
+    public const string ModuleId = "scheduler";
+
     private readonly ICommandRegistry _registry;
     private readonly IScheduleManager _manager;
+    private readonly SchedulerModuleActivity _activity;
+    private readonly IModuleCatalog? _catalog;
     private readonly ILogger<SchedulerCommandRegistrationHostedService> _logger;
 
     public SchedulerCommandRegistrationHostedService(
         ICommandRegistry registry,
         IScheduleManager manager,
-        ILogger<SchedulerCommandRegistrationHostedService> logger)
+        SchedulerModuleActivity activity,
+        ILogger<SchedulerCommandRegistrationHostedService> logger,
+        IModuleCatalog? catalog = null)
     {
         _registry = registry;
         _manager = manager;
+        _activity = activity;
         _logger = logger;
+        _catalog = catalog;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        if (_catalog is not null && !_catalog.IsEnabled(ModuleId))
+            return Task.CompletedTask;
+
+        if (!_activity.IsActive && _catalog is not null)
+            return Task.CompletedTask;
+
         _registry.Register(new CronListCommand(_manager));
         _registry.Register(new CronRunCommand(_manager));
         _registry.Register(new HeartbeatRunCommand(_manager));

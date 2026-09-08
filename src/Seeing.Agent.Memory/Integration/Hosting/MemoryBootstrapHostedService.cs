@@ -2,6 +2,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Integration;
 using Seeing.Agent.Memory.Integration.Tools;
 using Seeing.Agent.Tools;
@@ -13,6 +14,8 @@ namespace Seeing.Agent.Memory.Integration.Hosting;
 /// </summary>
 internal sealed class MemoryBootstrapHostedService : IHostedService
 {
+    public const string ModuleId = "memory";
+
     private readonly IHookManager _hookManager;
     private readonly ToolManager _toolInvoker;
     private readonly MemorySearchTool _searchTool;
@@ -22,6 +25,8 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
     private readonly ToolMemoryHandler _tool;
     private readonly AgentTurnMemoryHandler _agentTurn;
     private readonly MemoryRecallHandler _recall;
+    private readonly MemoryModuleActivity _activity;
+    private readonly IModuleCatalog? _catalog;
     private readonly ILogger<MemoryBootstrapHostedService> _logger;
 
     public MemoryBootstrapHostedService(
@@ -34,7 +39,9 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
         ToolMemoryHandler tool,
         AgentTurnMemoryHandler agentTurn,
         MemoryRecallHandler recall,
-        ILogger<MemoryBootstrapHostedService> logger)
+        MemoryModuleActivity activity,
+        ILogger<MemoryBootstrapHostedService> logger,
+        IModuleCatalog? catalog = null)
     {
         _hookManager = hookManager;
         _toolInvoker = toolInvoker;
@@ -45,11 +52,22 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
         _tool = tool;
         _agentTurn = agentTurn;
         _recall = recall;
+        _activity = activity;
         _logger = logger;
+        _catalog = catalog;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        if (_catalog is not null && !_catalog.IsEnabled(ModuleId))
+        {
+            _logger.LogDebug("Memory module disabled; Bootstrap HostedService no-op");
+            return Task.CompletedTask;
+        }
+
+        if (!_activity.IsActive && _catalog is not null)
+            return Task.CompletedTask;
+
         RegisterToolIfMissing(_searchTool);
         RegisterToolIfMissing(_writeTool);
         RegisterToolIfMissing(_readTool);

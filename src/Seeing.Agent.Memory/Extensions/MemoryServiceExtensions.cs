@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using System.IO;
 using Microsoft.Data.Sqlite;
@@ -72,10 +73,26 @@ public static class MemoryServiceExtensions
         {
             var resolved = ResolveConnectionString(sp, connectionString);
             var connection = new SqliteConnection(resolved);
+            // 测试/无 Module 生命周期路径仍即时 Open；MemoryModule.Deactivate 可 Close，Activate 再 Open。
             connection.Open();
             return connection;
         });
+        services.TryAddSingleton<Func<SqliteConnection>>(sp =>
+        {
+            return () =>
+            {
+                var resolved = ResolveConnectionString(sp, connectionString);
+                var connection = new SqliteConnection(resolved);
+                connection.Open();
+                return connection;
+            };
+        });
         services.TryAddSingleton<SqliteConnectionGate>();
+        services.TryAddSingleton<MemoryModuleActivity>();
+        services.AddSingleton<ISeeingModule>(sp => new MemoryModule(
+            sp.GetRequiredService<MemoryModuleActivity>(),
+            sp.GetRequiredService<Func<SqliteConnection>>(),
+            sp.GetRequiredService<SqliteConnection>()));
 
         services.TryAddSingleton<IFileStore, Core.Storage.LocalFileStore>();
 

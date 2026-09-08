@@ -18,4 +18,8 @@
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.Acp.Tests" />
+  </ItemGroup>
+
 </Project>

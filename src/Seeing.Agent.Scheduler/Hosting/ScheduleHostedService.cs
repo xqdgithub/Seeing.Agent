@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
@@ -9,31 +10,51 @@ namespace Seeing.Agent.Scheduler.Hosting;
 /// <summary>随 Generic Host 启停调度器</summary>
 public sealed class ScheduleHostedService : IHostedService
 {
+    public const string ModuleId = "scheduler";
+
     private readonly IScheduleManager _manager;
     private readonly QuartzSchedulerEngine _engine;
     private readonly ISchedulerOptionsProvider _optionsProvider;
+    private readonly SchedulerModuleActivity _activity;
+    private readonly IModuleCatalog? _catalog;
     private readonly ILogger<ScheduleHostedService> _logger;
 
     public ScheduleHostedService(
         IScheduleManager manager,
         QuartzSchedulerEngine engine,
         ISchedulerOptionsProvider optionsProvider,
-        ILogger<ScheduleHostedService> logger)
+        SchedulerModuleActivity activity,
+        ILogger<ScheduleHostedService> logger,
+        IModuleCatalog? catalog = null)
     {
         _manager = manager;
         _engine = engine;
         _optionsProvider = optionsProvider;
+        _activity = activity;
         _logger = logger;
+        _catalog = catalog;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        if (_catalog is not null && !_catalog.IsEnabled(ModuleId))
+        {
+            _logger.LogDebug("Scheduler module disabled, hosted service skipping start");
+            return;
+        }
+
         _optionsProvider.Reload();
         var options = _optionsProvider.Current;
-        
+
         if (!options.Enabled)
         {
             _logger.LogDebug("Scheduler disabled, hosted service skipping start");
+            return;
+        }
+
+        if (!_activity.IsActive && _catalog is not null)
+        {
+            _logger.LogDebug("Scheduler module not activated, hosted service skipping start");
             return;
         }
 

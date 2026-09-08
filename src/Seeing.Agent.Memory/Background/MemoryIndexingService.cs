@@ -1,7 +1,9 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Abstractions;
+using Seeing.Agent.Memory.Integration.Hosting;
 
 namespace Seeing.Agent.Memory.Background;
 
@@ -10,8 +12,13 @@ namespace Seeing.Agent.Memory.Background;
 /// </summary>
 public class MemoryIndexingService : BackgroundService
 {
+    public const string ModuleId = "memory";
+    internal const string DeactivateSentinelPath = "__memory_index_deactivate__";
+
     private readonly IFileStore _fileStore;
     private readonly IMemoryIndex _index;
+    private readonly MemoryModuleActivity _moduleActivity;
+    private readonly IModuleCatalog? _catalog;
     private readonly ILogger<MemoryIndexingService>? _logger;
     private readonly Channel<FileChangeEventArgs> _changes =
         Channel.CreateUnbounded<FileChangeEventArgs>(new UnboundedChannelOptions
@@ -24,18 +31,38 @@ public class MemoryIndexingService : BackgroundService
     public MemoryIndexingService(
         IFileStore fileStore,
         IMemoryIndex index,
-        ILogger<MemoryIndexingService>? logger = null)
+        MemoryModuleActivity moduleActivity,
+        ILogger<MemoryIndexingService>? logger = null,
+        IModuleCatalog? catalog = null)
     {
         _fileStore = fileStore ?? throw new ArgumentNullException(nameof(fileStore));
         _index = index ?? throw new ArgumentNullException(nameof(index));
+        _moduleActivity = moduleActivity ?? throw new ArgumentNullException(nameof(moduleActivity));
         _logger = logger;
+        _catalog = catalog;
 
         // 变更入队串行处理，避免并发打共享 SqliteConnection
         _subscription = _fileStore.Changes.Subscribe(change =>
         {
+            if (!_moduleActivity.IsActive)
+                return;
             if (!_changes.Writer.TryWrite(change))
                 _logger?.LogWarning("索引变更队列已关闭，丢弃: {Path}", change.Path);
         });
+
+        _moduleActivity.RegisterWake(() =>
+            _changes.Writer.TryWrite(new FileChangeEventArgs(DeactivateSentinelPath, FileChangeType.Deleted)));
+    }
+
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (_catalog is not null && !_catalog.IsEnabled(ModuleId))
+        {
+            _logger?.LogDebug("Memory module disabled; IndexingService HostedService no-op");
+            return Task.CompletedTask;
+        }
+
+        return base.StartAsync(cancellationToken);
     }
 
     /// <inheritdoc />
@@ -46,7 +73,7 @@ public class MemoryIndexingService : BackgroundService
         try
         {
             var files = await _fileStore.ListAsync(ct: stoppingToken);
-            if (files.Count > 0)
+            if (files.Count > 0 && _moduleActivity.IsActive)
             {
                 await _index.IndexBatchAsync(files, stoppingToken);
                 _logger?.LogInformation("初始索引完成: {Count} 个文件", files.Count);
@@ -61,6 +88,9 @@ public class MemoryIndexingService : BackgroundService
         {
             await foreach (var change in _changes.Reader.ReadAllAsync(stoppingToken))
             {
+                if (change.Path == DeactivateSentinelPath || !_moduleActivity.IsActive)
+                    break;
+
                 try
                 {
                     await HandleChangeAsync(change);
@@ -72,7 +102,6 @@ public class MemoryIndexingService : BackgroundService
                 catch (Exception ex)
                 {
                     _logger?.LogError(ex, "处理文件变更失败: {Path}", change.Path);
-
                 }
             }
         }

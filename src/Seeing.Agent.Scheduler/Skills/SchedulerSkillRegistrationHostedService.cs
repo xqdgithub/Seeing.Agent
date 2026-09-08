@@ -1,9 +1,11 @@
 ﻿using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Modules;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Scheduler.Hosting;
 using Seeing.Agent.Skills;
 
 namespace Seeing.Agent.Scheduler.Skills;
@@ -11,23 +13,37 @@ namespace Seeing.Agent.Scheduler.Skills;
 /// <summary>启动时从嵌入资源注册 scheduler cron Skills。</summary>
 public sealed class SchedulerSkillRegistrationHostedService : IHostedService
 {
+    public const string ModuleId = "scheduler";
+
     private static readonly Regex FrontmatterRegex = new(
         @"^---[\r]?[\n](.*?)[\r]?[\n]---[\r]?[\n]?",
         RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.Compiled);
 
     private readonly IServiceProvider _services;
+    private readonly SchedulerModuleActivity _activity;
+    private readonly IModuleCatalog? _catalog;
     private readonly ILogger<SchedulerSkillRegistrationHostedService> _logger;
 
     public SchedulerSkillRegistrationHostedService(
         IServiceProvider services,
-        ILogger<SchedulerSkillRegistrationHostedService> logger)
+        SchedulerModuleActivity activity,
+        ILogger<SchedulerSkillRegistrationHostedService> logger,
+        IModuleCatalog? catalog = null)
     {
         _services = services;
+        _activity = activity;
         _logger = logger;
+        _catalog = catalog;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        if (_catalog is not null && !_catalog.IsEnabled(ModuleId))
+            return Task.CompletedTask;
+
+        if (!_activity.IsActive && _catalog is not null)
+            return Task.CompletedTask;
+
         var skillManager = _services.GetService<SkillManager>();
         if (skillManager is null)
         {
