@@ -12,6 +12,23 @@ public static class ProviderTypes
 
     /// <summary>Anthropic 协议</summary>
     public const string Anthropic = "anthropic";
+
+    /// <summary>
+    /// 将存量 PascalCase（如 <c>OpenAI</c>/<c>Anthropic</c>）及任意大小写变体
+    /// 归一为规范小写路由键；未知类型原样保留（仅 Trim）。
+    /// </summary>
+    public static string Normalize(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+            return string.Empty;
+
+        var trimmed = type.Trim();
+        if (string.Equals(trimmed, OpenAi, StringComparison.OrdinalIgnoreCase))
+            return OpenAi;
+        if (string.Equals(trimmed, Anthropic, StringComparison.OrdinalIgnoreCase))
+            return Anthropic;
+        return trimmed;
+    }
 }
 
 /// <summary>
@@ -19,13 +36,19 @@ public static class ProviderTypes
 /// </summary>
 public class ProviderConfig
 {
+    private string _type = string.Empty;
+
     /// <summary>Provider ID（如 openai, anthropic）</summary>
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>Provider 类型（如 <see cref="ProviderTypes.OpenAi"/>）</summary>
+    /// <summary>Provider 类型（如 <see cref="ProviderTypes.OpenAi"/>）；反序列化时自动归一化为小写</summary>
     [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
+    public string Type
+    {
+        get => _type;
+        set => _type = ProviderTypes.Normalize(value);
+    }
 
     /// <summary>Provider 显示名称</summary>
     [JsonPropertyName("name")]

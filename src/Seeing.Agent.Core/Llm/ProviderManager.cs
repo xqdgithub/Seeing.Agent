@@ -153,6 +153,7 @@ public class ProviderManager : IProviderManager, IDisposable
         var providersAtLevel = await LoadProvidersAtLevelAsync(ConfigLevel.User, ct).ConfigureAwait(false);
         var saved = CloneConfig(config);
         saved.Id = providerId;
+        saved.Type = ProviderTypes.Normalize(saved.Type);
         // 连接保存时若未带 Models，保留用户级已有模型，避免冲掉目录
         if (saved.Models is null || saved.Models.Count == 0)
         {
@@ -290,6 +291,7 @@ public class ProviderManager : IProviderManager, IDisposable
     {
         var ownedConfig = CloneConfig(config);
         ownedConfig.Id = providerId;
+        ownedConfig.Type = ProviderTypes.Normalize(ownedConfig.Type);
 
         var clientFactory = ResolveFactory(ownedConfig.Type);
         if (clientFactory is null)
@@ -379,7 +381,7 @@ public class ProviderManager : IProviderManager, IDisposable
         => new()
         {
             Id = config.Id,
-            Type = config.Type,
+            Type = ProviderTypes.Normalize(config.Type),
             Name = config.Name,
             BaseUrl = config.BaseUrl,
             ApiKey = config.ApiKey,
