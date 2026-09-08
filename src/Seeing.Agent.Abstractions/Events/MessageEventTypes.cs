@@ -61,6 +61,9 @@ public static class MessageEventType
 
     /// <summary>会话模式更新</summary>
     public const string ModeUpdate = "mode.update";
+
+    /// <summary>Schema 快照（工具与区块可用性）</summary>
+    public const string SchemaSnapshot = "schema.snapshot";
 }
 
 /// <summary>
