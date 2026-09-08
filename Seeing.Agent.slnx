@@ -14,7 +14,7 @@
   <Folder Name="/src/">
     <Project Path="src/Seeing.Agent.Abstractions/Seeing.Agent.Abstractions.csproj" />
     <Project Path="src/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
-    <Project Path="src/Seeing.Agent.App/Seeing.Agent.App.csproj" />
+    <Project Path="src/Seeing.Agent.Hosting/Seeing.Agent.Hosting.csproj" />
     <Project Path="src/Seeing.Agent.Gateway/Seeing.Agent.Gateway.csproj" />
     <Project Path="src/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
     <Project Path="src/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
@@ -42,7 +42,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Seeing.Agent.Acp.Tests/Seeing.Agent.Acp.Tests.csproj" />
-    <Project Path="tests/Seeing.Agent.App.Tests/Seeing.Agent.App.Tests.csproj" />
+    <Project Path="tests/Seeing.Agent.Hosting.Tests/Seeing.Agent.Hosting.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
     <Project Path="tests/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
     <Project Path="tests/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />

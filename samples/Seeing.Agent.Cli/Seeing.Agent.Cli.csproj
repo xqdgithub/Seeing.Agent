@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Seeing.Agent.App\Seeing.Agent.App.csproj" />
+    <ProjectReference Include="..\..\src\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />
     <ProjectReference Include="..\..\src\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />

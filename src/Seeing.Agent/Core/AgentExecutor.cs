@@ -18,7 +18,6 @@ using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Tools;
-using Seeing.Agent.Tools.BuiltIn.Todo;
 
 using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core;

@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Events;
 using Seeing.Agent.Execution;
+using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;

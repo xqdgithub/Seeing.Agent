@@ -52,8 +52,6 @@ using Seeing.Agent.Middlewares;
 using Seeing.Agent.Shell;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn;
-using Seeing.Agent.Tools.BuiltIn.SubTask;
-using Seeing.Agent.Tools.BuiltIn.Todo;
 using Seeing.Agent.Todo;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
@@ -487,17 +485,7 @@ namespace Seeing.Agent.Extensions
 
             // Git 工具 — 由 GitModule.ConfigureServices 注册（见上方模块登记）
 
-            // 任务和 Todo 工具
-            services.AddSingleton<ITool>(sp => new TaskTool(
-                sp.GetRequiredService<ILogger<TaskTool>>(),
-                sp.GetRequiredService<ISessionManager>(),
-                sp.GetRequiredService<IAgentRegistry>(),
-                sp.GetRequiredService<IAgentLoopScheduler>(),
-                sp.GetRequiredService<IExecutionStatusProvider>()));
-            services.AddSingleton<ITool>(sp => new TaskStatusTool(
-                sp.GetRequiredService<ILogger<TaskStatusTool>>(),
-                sp.GetRequiredService<ISessionManager>()));
-            services.AddSingleton<ITool, TodoWriteTool>();
+            // 任务和 Todo 工具 — 由 Seeing.Agent.Hosting.AddChatOrchestrator 注册
 
             // 基础工具 — 由 BasicModule.ConfigureServices 注册（见上方模块登记）
 

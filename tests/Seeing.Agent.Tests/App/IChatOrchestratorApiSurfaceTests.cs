@@ -1,4 +1,4 @@
-using Seeing.Agent.App;
+using Seeing.Agent.Hosting;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App;

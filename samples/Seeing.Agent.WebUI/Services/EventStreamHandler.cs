@@ -1,7 +1,8 @@
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.App.Events;
+using Seeing.Agent.Hosting.Events;
+using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.Agent.WebUI.Models;

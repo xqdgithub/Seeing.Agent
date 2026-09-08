@@ -18,9 +18,10 @@ using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
+using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Models;
-using Seeing.Agent.Tools.BuiltIn.SubTask;
+using Seeing.Agent.Hosting.Tools;
 using Seeing.Session.Core;
 using Xunit;
 

@@ -1,9 +1,9 @@
-﻿using System.Net;
+using System.Net;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Permissions;
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Seeing.Agent.Acp.Extensions;
-using Seeing.Agent.App;
+using Seeing.Agent.Hosting;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Channels;

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Execution;
+using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Services;

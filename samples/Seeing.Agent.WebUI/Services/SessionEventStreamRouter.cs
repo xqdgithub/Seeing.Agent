@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.App;
+using Seeing.Agent.Hosting;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Services;

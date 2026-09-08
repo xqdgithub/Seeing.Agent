@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.App.Commands;
+using Seeing.Agent.Hosting.Commands;
 using Seeing.Agent.Skills;
 using Seeing.Session.Core;
 using Xunit;

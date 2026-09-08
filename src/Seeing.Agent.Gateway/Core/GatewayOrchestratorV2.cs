@@ -1,9 +1,10 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.App;
-using Seeing.Agent.App.Events;
+using Seeing.Agent.Hosting;
+using Seeing.Agent.Hosting.Events;
+using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Execution;

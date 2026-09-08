@@ -3,7 +3,7 @@ using Moq;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Summarization;
-using Seeing.Agent.App.Commands.BuiltIn;
+using Seeing.Agent.Hosting.Commands.BuiltIn;
 using Seeing.Agent.Execution;
 using Seeing.Agent.Compression;
 using Seeing.Session.Core;

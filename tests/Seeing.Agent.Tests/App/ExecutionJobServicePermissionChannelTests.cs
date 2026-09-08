@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Execution;
+using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Permission;

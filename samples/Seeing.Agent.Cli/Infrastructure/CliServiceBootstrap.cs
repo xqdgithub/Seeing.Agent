@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Seeing.Agent.Acp.Extensions;
-using Seeing.Agent.App;
+using Seeing.Agent.Hosting;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Extensions;
 using Seeing.Agent.Memory.Extensions;

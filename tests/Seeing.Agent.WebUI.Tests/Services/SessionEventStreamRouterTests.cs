@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.App;
+using Seeing.Agent.Hosting;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
 

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
+using Seeing.Agent.Hosting.Execution;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App.Execution;

@@ -12,6 +12,7 @@ using Seeing.Agent.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Execution;
+using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Compression;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
