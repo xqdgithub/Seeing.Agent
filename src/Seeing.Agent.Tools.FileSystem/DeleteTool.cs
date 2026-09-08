@@ -1,10 +1,9 @@
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Tools.Support;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Abstractions;
-using Seeing.Agent.Core.Models;
 using System.Text.Json;
 
-namespace Seeing.Agent.Tools.BuiltIn.FileSystem;
+namespace Seeing.Agent.Tools.FileSystem;
 
 /// <summary>
 /// 文件/目录删除工具。目录默认递归删除。

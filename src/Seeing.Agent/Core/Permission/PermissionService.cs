@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Models;
@@ -444,7 +444,7 @@ public class PermissionService : IPermissionService, IDisposable
         if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(parentPath))
             return false;
 
-        return Seeing.Agent.Tools.BuiltIn.FileSystem.FileSystemHelper.IsPathWithinDirectory(path, parentPath);
+        return Seeing.Agent.Tools.FileSystem.FileSystemHelper.IsPathWithinDirectory(path, parentPath);
     }
 
     private static string NormalizePath(string filePath, string workingDirectory)

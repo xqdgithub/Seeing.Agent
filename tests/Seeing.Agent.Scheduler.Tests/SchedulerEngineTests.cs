@@ -1,4 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,7 +7,7 @@ using Quartz;
 using Quartz.Impl;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Abstractions;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Models;

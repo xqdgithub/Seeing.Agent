@@ -2,12 +2,12 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Seeing.Agent.Tools.BuiltIn.FileSystem
+namespace Seeing.Agent.Tools.FileSystem
 {
     /// <summary>
     /// 文件系统辅助类 - 提供文件操作的共享功能
     /// </summary>
-    internal static class FileSystemHelper
+    public static class FileSystemHelper
     {
         /// <summary>默认读取行数限制</summary>
         public const int DefaultReadLimit = 2000;
@@ -710,7 +710,7 @@ namespace Seeing.Agent.Tools.BuiltIn.FileSystem
     /// <summary>
     /// Grep 搜索匹配结果
     /// </summary>
-    internal class GrepMatch
+    public class GrepMatch
     {
         public string Path { get; set; } = string.Empty;
         public int LineNum { get; set; }

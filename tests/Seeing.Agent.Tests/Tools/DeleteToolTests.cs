@@ -1,10 +1,10 @@
-﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Tools;
 // tests/Seeing.Agent.Tests/Tools/DeleteToolTests.cs
 
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Agent.Tools.BuiltIn.FileSystem;
+using Seeing.Agent.Tools.FileSystem;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools;

@@ -3,7 +3,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Abstractions;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Shell;
 using System.Collections.Generic;

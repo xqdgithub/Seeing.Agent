@@ -34,6 +34,8 @@ using Seeing.Agent.Decorators;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.IO.Local;
+using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
@@ -51,7 +53,6 @@ using Seeing.Agent.Shell;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools;
 using Seeing.Agent.Tools.BuiltIn;
-using Seeing.Agent.Tools.BuiltIn.FileSystem;
 using Seeing.Agent.Tools.BuiltIn.Shell;
 using Seeing.Agent.Tools.BuiltIn.SubTask;
 using Seeing.Agent.Tools.BuiltIn.Time;
@@ -328,6 +329,11 @@ namespace Seeing.Agent.Extensions
         {
             // TEMP: Phase 2 — 本地执行世界，待模块结算落地后改由 LocalExecutionWorldModule Activate
             services.TryAddSingleton<IExecutionWorld, LocalExecutionWorld>();
+
+            // TEMP: Phase 3 — FileSystem 工具模块（ConfigureServices 注册 ITool；Activate 待 Host Shape）
+            var fileSystemModule = new FileSystemModule();
+            fileSystemModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(fileSystemModule);
             services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
             services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
 
@@ -464,14 +470,7 @@ namespace Seeing.Agent.Extensions
             // 技能工具（让 LLM 加载技能内容）
             services.AddSingleton<ITool, SkillTool>();
 
-            // 文件系统工具
-            services.AddSingleton<ITool, ReadTool>();
-            services.AddSingleton<ITool, WriteTool>();
-            services.AddSingleton<ITool, EditTool>();
-            services.AddSingleton<ITool, GlobTool>();
-            services.AddSingleton<ITool, GrepTool>();
-            services.AddSingleton<ITool, AddWorkspacePathTool>();
-            services.AddSingleton<ITool, DeleteTool>();
+            // 文件系统工具 — 由 FileSystemModule.ConfigureServices 注册（见下方模块登记）
 
             // Shell 工具
             services.AddSingleton<ITool, BashTool>();
@@ -543,7 +542,7 @@ namespace Seeing.Agent.Extensions
                     tool,
                     sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
                     sp.GetRequiredService<Seeing.Agent.Output.IToolOutputStore>(),
-                    sp.GetRequiredService<Core.Permission.IWorkspaceWhitelist>(),
+                    sp.GetRequiredService<IWorkspaceWhitelist>(),
                     loggerFactory.CreateLogger<ToolOutputLimiterDecorator>()));
 
                 return registry;
@@ -672,7 +671,7 @@ namespace Seeing.Agent.Extensions
 
                 // 进程级 Ask 串行 + 会话级记忆 + 工作区边界检查（宿主可再包一层，如 Blazor）
                 return new Core.Permission.SerializingPermissionChannel(inner, memory, workspace,
-                    sp.GetRequiredService<Core.Permission.IWorkspaceWhitelist>());
+                    sp.GetRequiredService<IWorkspaceWhitelist>());
             });
 
             // Agent 执行器（统一执行引擎）

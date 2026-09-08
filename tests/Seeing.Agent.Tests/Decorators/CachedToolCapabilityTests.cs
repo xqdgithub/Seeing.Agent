@@ -1,5 +1,5 @@
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Abstractions;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Decorators;
 using FluentAssertions;

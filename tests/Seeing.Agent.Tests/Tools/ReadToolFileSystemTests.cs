@@ -4,7 +4,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Tools.BuiltIn.FileSystem;
+using Seeing.Agent.Tools.FileSystem;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools;

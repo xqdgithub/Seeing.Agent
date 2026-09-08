@@ -4,7 +4,7 @@ using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Seeing.Agent.Core.Abstractions;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Core.Hooks;
