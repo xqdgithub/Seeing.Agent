@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Modules;
 
 namespace Seeing.Agent.Configuration;
 
@@ -37,6 +38,8 @@ public sealed class ConfigSectionRegistry : IConfigSectionRegistry
     {
         Register(new("DefaultModel", "seeing.json", ConfigScope.Both, typeof(string)));
         Register(new("DefaultAgent", "seeing.json", ConfigScope.Both, typeof(string)));
+        Register(new("Scenario", "seeing.json", ConfigScope.Both, typeof(string)));
+        Register(new("Modules", "seeing.json", ConfigScope.Both, typeof(ModulesOptions)));
         Register(new("Providers", "providers.json", ConfigScope.UserOnly,
             typeof(Dictionary<string, ProviderConfig>)));
         Register(new("AgentModels", "seeing.json", ConfigScope.Both,

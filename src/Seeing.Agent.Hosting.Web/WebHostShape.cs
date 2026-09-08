@@ -12,6 +12,9 @@ public sealed class HostShapeDescriptor
     /// 可承载模块类型（开放登记用字符串 id，如 tools.filesystem / memory / scheduler）。
     /// </summary>
     public required IReadOnlyList<string> CarriableModuleTypes { get; init; }
+
+    /// <summary>未配置 seeing.json scenario 时的进程级默认场景。</summary>
+    public string? DefaultScenario { get; init; }
 }
 
 /// <summary>Web Host Shape 常量与默认描述符。</summary>
@@ -45,5 +48,6 @@ public static class WebHostShape
     {
         Id = Id,
         CarriableModuleTypes = CarriableModuleTypes,
+        DefaultScenario = "full",
     };
 }

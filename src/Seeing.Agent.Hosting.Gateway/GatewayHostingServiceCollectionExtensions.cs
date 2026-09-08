@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Extensions;
+using Seeing.Agent.Modules;
 
 namespace Seeing.Agent.Hosting.Gateway;
 
@@ -20,7 +21,7 @@ public static class GatewayHostingServiceCollectionExtensions
         IConfigSectionRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
-        services.AddSingleton(GatewayHostShape.Descriptor);
+        RegisterShape(services);
         return services.AddSeeingGatewayServer(registry);
     }
 
@@ -33,7 +34,7 @@ public static class GatewayHostingServiceCollectionExtensions
         IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(registry);
-        services.AddSingleton(GatewayHostShape.Descriptor);
+        RegisterShape(services);
         return services.AddSeeingGatewayServer(registry, configuration);
     }
 
@@ -47,7 +48,16 @@ public static class GatewayHostingServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(configure);
-        services.AddSingleton(GatewayHostShape.Descriptor);
+        RegisterShape(services);
         return services.AddSeeingGatewayServer(registry, configure);
+    }
+
+    private static void RegisterShape(IServiceCollection services)
+    {
+        services.AddSingleton(GatewayHostShape.Descriptor);
+        services.AddSingleton(new ProcessSettlementOptions
+        {
+            HostDefaultScenario = GatewayHostShape.Descriptor.DefaultScenario,
+        });
     }
 }

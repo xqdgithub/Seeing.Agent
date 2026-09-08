@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Modules;
 
 namespace Seeing.Agent.Configuration
 {
@@ -14,6 +15,12 @@ namespace Seeing.Agent.Configuration
 
         /// <summary>默认 Agent</summary>
         public string? DefaultAgent { get; set; }
+
+        /// <summary>进程级场景名（seeing.json <c>scenario</c>）；null 回退 Host Shape 默认。</summary>
+        public string? Scenario { get; set; }
+
+        /// <summary>进程级模块装配覆盖（seeing.json <c>modules</c>）。</summary>
+        public ModulesOptions Modules { get; set; } = new();
 
         /// <summary>权限配置</summary>
         public PermissionOptions Permission { get; set; } = new();

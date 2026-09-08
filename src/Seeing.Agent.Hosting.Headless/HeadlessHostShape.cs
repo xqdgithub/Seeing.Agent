@@ -7,6 +7,9 @@ public sealed class HostShapeDescriptor
 {
     public required string Id { get; init; }
     public required IReadOnlyList<string> CarriableModuleTypes { get; init; }
+
+    /// <summary>未配置 seeing.json scenario 时的进程级默认场景。</summary>
+    public string? DefaultScenario { get; init; }
 }
 
 /// <summary>Headless Host Shape 常量与默认描述符。</summary>
@@ -39,5 +42,6 @@ public static class HeadlessHostShape
     {
         Id = Id,
         CarriableModuleTypes = CarriableModuleTypes,
+        DefaultScenario = "full",
     };
 }

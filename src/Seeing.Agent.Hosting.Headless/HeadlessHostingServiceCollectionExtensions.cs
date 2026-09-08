@@ -4,6 +4,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Execution;
 using Seeing.Agent.Hosting;
+using Seeing.Agent.Modules;
 
 namespace Seeing.Agent.Hosting.Headless;
 
@@ -23,6 +24,10 @@ public static class HeadlessHostingServiceCollectionExtensions
         Action<ExecutionOptions>? configureExecution = null)
     {
         services.AddSingleton(HeadlessHostShape.Descriptor);
+        services.AddSingleton(new ProcessSettlementOptions
+        {
+            HostDefaultScenario = HeadlessHostShape.Descriptor.DefaultScenario,
+        });
 
         // 无 UI：未显式注册 IPermissionChannel 时使用 DenyAll（后台/CLI 安全默认）
         services.TryAddSingleton<IPermissionChannel>(DenyAllPermissionChannel.Instance);

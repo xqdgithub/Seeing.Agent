@@ -34,6 +34,8 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
 using Seeing.IO.Local;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Modules;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Llm;
@@ -340,7 +342,17 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         private static void RegisterCoreServices(IServiceCollection services)
         {
-            // TEMP: Phase 2 — 本地执行世界，待模块结算落地后改由 LocalExecutionWorldModule Activate
+            // 进程级模块目录 / 结算 / 生命周期
+            // ProcessSettlementOptions 由 Host Shape 登记（HostDefaultScenario）；无宿主则保持未注册。
+            services.TryAddSingleton<ModuleCatalog>();
+            services.TryAddSingleton<IModuleCatalog>(sp => sp.GetRequiredService<ModuleCatalog>());
+            services.TryAddSingleton<SettlementEngine>();
+            services.TryAddSingleton<ModuleLifecycleManager>();
+
+            // io.local — 登记为 ISeeingModule，供结算 DependsOn（filesystem/shell/git）满足
+            var localIoModule = new LocalExecutionWorldModule();
+            localIoModule.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(localIoModule);
             services.TryAddSingleton<IExecutionWorld, LocalExecutionWorld>();
 
             // Shell 配置节（工具能力包由宿主 AddSeeingModule 登记；节元数据留在脊柱）
@@ -726,7 +738,7 @@ namespace Seeing.Agent.Extensions
     public static class SeeingAgentInitializationExtensions
     {
         /// <summary>
-        /// 初始化 Seeing — 工作区 → LoadAsync → 模块 Activate → ComponentManager 加载。
+        /// 初始化 Seeing — 工作区 → LoadAsync → 进程级结算 → 模块 Activate → ComponentManager 加载。
         /// 必须在 <c>Host.StartAsync</c> 之前显式调用。
         /// </summary>
         /// <param name="services">服务提供者</param>
@@ -739,10 +751,12 @@ namespace Seeing.Agent.Extensions
             var loggerFactory = services.GetService<ILoggerFactory>();
             var logger = loggerFactory?.CreateLogger(typeof(SeeingAgentInitializationExtensions));
 
+            UnifiedConfigManager? configManager = null;
+
             // 初始化工作区（自动根据配置解析）
             if (services.GetService<WorkspaceProvider>() is { } workspaceProvider)
             {
-                var configManager = services.GetService<UnifiedConfigManager>();
+                configManager = services.GetService<UnifiedConfigManager>();
                 var workspaceLogger = services.GetService<ILogger<WorkspaceProvider>>();
 
                 if (configManager != null)
@@ -755,14 +769,12 @@ namespace Seeing.Agent.Extensions
             }
             else if (services.GetService<UnifiedConfigManager>() is { } configOnly)
             {
+                configManager = configOnly;
                 await configOnly.LoadAsync(cancellationToken);
             }
 
-            // 模块 Activate（含 agents.builtin → IAgentStore）须在 AgentManager.StartAsync 之前
-            foreach (var module in services.GetServices<ISeeingModule>())
-            {
-                await module.ActivateAsync(cancellationToken);
-            }
+            // 进程级结算 → 仅 Activate 启用集（含 agents.builtin → IAgentStore；须在 AgentManager.StartAsync 之前）
+            await SettleAndActivateModulesAsync(services, configManager, logger, cancellationToken);
 
             var componentManager = services.GetRequiredService<IComponentManager>();
             var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().GetProjectRoot();
@@ -804,6 +816,53 @@ namespace Seeing.Agent.Extensions
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// 进程级结算后 Activate 启用集。无 <see cref="SettlementEngine"/> 时回退为激活全部模块（兼容极简宿主）。
+        /// </summary>
+        private static async Task SettleAndActivateModulesAsync(
+            IServiceProvider services,
+            UnifiedConfigManager? configManager,
+            ILogger? logger,
+            CancellationToken cancellationToken)
+        {
+            var engine = services.GetService<SettlementEngine>();
+            var lifecycle = services.GetService<ModuleLifecycleManager>();
+            var modules = services.GetServices<ISeeingModule>().ToList();
+
+            if (engine is null || lifecycle is null)
+            {
+                logger?.LogWarning(
+                    "SettlementEngine/ModuleLifecycleManager 未注册，回退为激活全部 {Count} 个 ISeeingModule",
+                    modules.Count);
+                foreach (var module in modules)
+                    await module.ActivateAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            var settlementOptions = services.GetService<ProcessSettlementOptions>();
+            var seeing = configManager?.GetSeeingAgentOptions();
+            var modulesOptions = seeing?.Modules ?? new ModulesOptions();
+
+            var input = new SettlementInput
+            {
+                Available = SettlementEngine.ToDescriptors(modules),
+                ConfiguredScenario = seeing?.Scenario,
+                HostDefaultScenario = settlementOptions?.HostDefaultScenario,
+                UserEnabled = modulesOptions.Enabled,
+                UserDisabled = modulesOptions.Disabled,
+                ResolveScenarioModules = name => BuiltInScenarios.TryGet(name)?.Modules,
+            };
+
+            var result = await engine.SettleAsync(input, cancellationToken).ConfigureAwait(false);
+            logger?.LogInformation(
+                "进程级结算完成：scenario={Scenario}, enabled={EnabledCount}, warnings={WarningCount}",
+                result.Scenario,
+                result.Enabled.Count,
+                result.Warnings.Count);
+
+            await lifecycle.ActivateAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>

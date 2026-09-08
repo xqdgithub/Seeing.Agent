@@ -5,6 +5,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Agent.Hosting.Web.Permissions;
+using Seeing.Agent.Modules;
 
 namespace Seeing.Agent.Hosting.Web;
 
@@ -27,6 +28,10 @@ public static class WebHostingServiceCollectionExtensions
     public static IServiceCollection AddSeeingHostingWeb(this IServiceCollection services)
     {
         services.AddSingleton(WebHostShape.Descriptor);
+        services.AddSingleton(new ProcessSettlementOptions
+        {
+            HostDefaultScenario = WebHostShape.Descriptor.DefaultScenario,
+        });
 
         services.AddScoped<CircuitContext>();
         services.AddSingleton<CircuitTracker>();
