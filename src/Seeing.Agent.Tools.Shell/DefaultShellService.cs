@@ -1,26 +1,31 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Configuration;
-using System.Diagnostics;
+using Seeing.Agent.Abstractions.Execution;
 using System.Runtime.InteropServices;
 
 namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
-/// 默认 Shell 服务实现。
+/// 默认 Shell 服务实现。可执行文件发现经 <see cref="IExecutionWorld.Subprocess"/>，不直接 Process.Start。
 /// </summary>
 public sealed class DefaultShellService : IShellService
 {
     private readonly ILogger<DefaultShellService> _logger;
     private readonly IOptionsMonitor<ShellOptions> _options;
+    private readonly IExecutionWorld _world;
     private string? _acceptableShell;
 
     private static readonly HashSet<string> Blacklist = new(StringComparer.OrdinalIgnoreCase) { "fish", "nu" };
 
-    public DefaultShellService(ILogger<DefaultShellService> logger, IOptionsMonitor<ShellOptions> options)
+    public DefaultShellService(
+        ILogger<DefaultShellService> logger,
+        IOptionsMonitor<ShellOptions> options,
+        IExecutionWorld world)
     {
         _logger = logger;
         _options = options;
+        _world = world;
     }
 
     public string SelectShell()
@@ -117,18 +122,16 @@ public sealed class DefaultShellService : IShellService
         try
         {
             var finder = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "where" : "which";
-            using var process = Process.Start(new ProcessStartInfo
+            using var process = _world.Subprocess.Start(new SubprocessSpec
             {
                 FileName = finder,
                 Arguments = name,
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                RedirectStandardOutput = true
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
             });
-            if (process == null) return null;
 
             var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(1000);
+            process.WaitForExitAsync().GetAwaiter().GetResult();
             if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
                 return output.Split('\n', '\r').FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.Trim();

@@ -62,10 +62,10 @@ public class ExecutionWorldTests
         var shellDir = Path.Combine(root, "src", "Seeing.Agent.Tools.Shell");
         var shellHits = ScanSourceForForbiddenOsCalls(
             shellDir,
-            allowlist: ["DefaultShellService.cs", "ProcessExtensions.cs"]);
+            allowlist: null);
 
         shellHits.Should().BeEmpty(
-            "Shell 仅允许 DefaultShellService/ProcessExtensions 残留 Process.Start；其它命中: {0}",
+            "Shell 工具源码不得直接 Process.Start / File.WriteAll*；命中: {0}",
             string.Join("; ", shellHits));
 
         // 锚定程序集仍可加载（防空引用）

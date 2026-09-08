@@ -21,11 +21,12 @@ public class BashToolCancellationTests
     {
         var options = new Mock<IOptionsMonitor<ShellOptions>>();
         options.Setup(o => o.CurrentValue).Returns(new ShellOptions());
-        shellService = new DefaultShellService(NullLogger<DefaultShellService>.Instance, options.Object);
+        var world = new LocalExecutionWorld();
+        shellService = new DefaultShellService(NullLogger<DefaultShellService>.Instance, options.Object, world);
         var shellEnv = new Mock<IShellEnvironmentService>();
         shellEnv.Setup(s => s.GetEnvironmentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, string>());
-        return new BashTool(NullLogger<BashTool>.Instance, new LocalExecutionWorld(), shellService, shellEnv.Object, options.Object);
+        return new BashTool(NullLogger<BashTool>.Instance, world, shellService, shellEnv.Object, options.Object);
     }
 
     private static ToolContext CreateContext(CancellationToken ct = default) => new() { SessionId = "s", CallId = "c", CancellationToken = ct };
