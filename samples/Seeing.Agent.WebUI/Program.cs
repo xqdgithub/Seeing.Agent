@@ -1,6 +1,7 @@
 using System.Net;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Configuration;
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Hosting;
@@ -32,20 +33,23 @@ builder.WebHost.UseStaticWebAssets();
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 
-builder.Services.AddSeeingAgent(builder.Configuration);
-builder.Services.AddSeeingAcp();
-builder.Services.AddSeeingScheduler();
-builder.Services.AddTokenBudgetIntegration(builder.Configuration);
-
-builder.Services.AddSeeingGatewayServer(builder.Configuration);
+// 共享配置节注册表：模块先于 Core 登记节
+var registry = new ConfigSectionRegistry();
+builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
+builder.Services.AddSeeingAcp(registry);
+builder.Services.AddSeeingScheduler(registry);
+builder.Services.AddTokenBudgetIntegration(registry, builder.Configuration);
+builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();
 
 // === Memory 服务（混合检索、图谱、成本控制）===
-builder.Services.AddMemoryServices();
+builder.Services.AddMemoryServices(registry);
 builder.Services.AddDeepSeekProvider();
 builder.Services.AddOpenCodeZenProvider();
 
-// === Session 管理：由 AddSeeingAgent 统一注册 ISessionStore + SessionManager + ISessionManager + ISessionEventPublisher ===
+builder.Services.AddSeeingCore(registry);
+
+// === Session 管理：由 AddSeeingCore 统一注册 ISessionStore + SessionManager + ISessionManager + ISessionEventPublisher ===
 // 勿再调用 AddSessionManager() / 重复注册 ISessionEventPublisher，避免双实例分裂
 
 // === WebUI 服务 ===
@@ -164,7 +168,7 @@ using (var scope = app.Services.CreateScope())
     var sp = scope.ServiceProvider;
 
     // 初始化核心组件（自动解析工作区）
-    await sp.InitializeSeeingAgentAsync();
+    await sp.InitializeSeeingAsync();
 
     // 初始化命令发现
     sp.InitializeCommands();

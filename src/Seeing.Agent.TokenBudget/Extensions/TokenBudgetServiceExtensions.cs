@@ -20,15 +20,20 @@ public static class TokenBudgetServiceExtensions
 {
     /// <summary>
     /// Adds token budget management services to the service collection.
+    /// Must be called before <c>AddSeeingCore</c>.
     /// </summary>
     /// <param name="services">The service collection to add services to.</param>
+    /// <param name="registry">Shared config section registry.</param>
     /// <param name="configuration">The configuration containing token budget settings.</param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddTokenBudgetManagement(
         this IServiceCollection services,
+        IConfigSectionRegistry registry,
         IConfiguration configuration)
     {
-        services.GetOrCreateConfigSectionRegistry().Register(
+        ArgumentNullException.ThrowIfNull(registry);
+        services.EnsureConfigSectionRegistry(registry);
+        registry.Register(
             new ConfigSectionMeta(
                 TokenBudgetOptions.SectionName, "seeing.json", ConfigScope.Both, typeof(TokenBudgetOptions)));
 
@@ -65,16 +70,19 @@ public static class TokenBudgetServiceExtensions
     /// <summary>
     /// Adds token budget integration services including compression strategies and services.
     /// This includes all services from AddTokenBudgetManagement plus compression infrastructure.
+    /// Must be called before <c>AddSeeingCore</c>.
     /// </summary>
     /// <param name="services">The service collection to add services to.</param>
+    /// <param name="registry">Shared config section registry.</param>
     /// <param name="configuration">The configuration containing token budget settings.</param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddTokenBudgetIntegration(
         this IServiceCollection services,
+        IConfigSectionRegistry registry,
         IConfiguration configuration)
     {
         // Register base token budget services
-        services.AddTokenBudgetManagement(configuration);
+        services.AddTokenBudgetManagement(registry, configuration);
 
         return services;
     }

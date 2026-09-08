@@ -1,8 +1,10 @@
 ﻿using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Configuration;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration.Tools;
@@ -28,7 +30,9 @@ public class MemoryToolRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<ITool>(new StubTool("read"));
-        services.AddMemoryServices("Data Source=:memory:");
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddMemoryServices(registry, "Data Source=:memory:");
 
         services.Should().Contain(d => d.ServiceType == typeof(MemorySearchTool));
         services.Should().Contain(d => d.ServiceType == typeof(MemoryWriteTool));

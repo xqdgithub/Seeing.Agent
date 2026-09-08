@@ -65,27 +65,29 @@ namespace Seeing.Agent.Extensions
     public static class ServiceCollectionExtensions
     {
         /// <summary>
-        /// 注册 Seeing.Agent 核心服务
+        /// 注册 Seeing 脊柱核心服务。须在能力包 <see cref="AddSeeingModule{T}"/> / AddSeeing* 薄封装之后调用。
         /// </summary>
-        public static IServiceCollection AddSeeingAgent(
+        /// <param name="services">服务集合</param>
+        /// <param name="registry">宿主共享的配置节注册表（模块与 Core 共用同一实例）</param>
+        public static IServiceCollection AddSeeingCore(
             this IServiceCollection services,
-            IConfiguration? configuration = null)
+            IConfigSectionRegistry registry)
         {
-            _ = configuration;
+            ArgumentNullException.ThrowIfNull(registry);
+            services.EnsureConfigSectionRegistry(registry);
+            if (registry is ConfigSectionRegistry concrete)
+                concrete.RegisterSpineSections();
 
-            // 共享配置节注册表（脊柱节）；能力包在各自 ConfigureServices 中 Register
-            services.GetOrCreateConfigSectionRegistry();
-
-            // 注册 UnifiedConfigManager（不在 factory 内同步 Load；由 InitializeSeeingAgentAsync 加载）
+            // 注册 UnifiedConfigManager（不在 factory 内同步 Load；由 InitializeSeeingAsync 加载）
             services.AddSingleton<UnifiedConfigManager>(sp =>
             {
                 var workspace = sp.GetRequiredService<IWorkspaceProvider>();
                 var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
-                var registry = sp.GetRequiredService<IConfigSectionRegistry>();
-                return new UnifiedConfigManager(workspace, logger, registry);
+                var sectionRegistry = sp.GetRequiredService<IConfigSectionRegistry>();
+                return new UnifiedConfigManager(workspace, logger, sectionRegistry);
             });
             services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
-            
+
             // IOptions 兼容 + IOptionsMonitor 支持热重载
             services.AddSingleton<SeeingAgentOptionsMonitor>();
             services.AddSingleton<IOptions<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
@@ -114,27 +116,31 @@ namespace Seeing.Agent.Extensions
         }
 
         /// <summary>
-        /// 注册 Seeing.Agent 核心服务（使用自定义配置）
+        /// 注册 Seeing 脊柱核心服务（使用自定义配置）。
         /// </summary>
-        public static IServiceCollection AddSeeingAgent(
+        public static IServiceCollection AddSeeingCore(
             this IServiceCollection services,
+            IConfigSectionRegistry registry,
             Action<SeeingAgentOptions> configure)
         {
-            // 共享配置节注册表（脊柱节）
-            services.GetOrCreateConfigSectionRegistry();
+            ArgumentNullException.ThrowIfNull(registry);
+            ArgumentNullException.ThrowIfNull(configure);
+            services.EnsureConfigSectionRegistry(registry);
+            if (registry is ConfigSectionRegistry concrete)
+                concrete.RegisterSpineSections();
 
             // 注册 UnifiedConfigManager（不在 factory 内同步 Load）
             services.AddSingleton<UnifiedConfigManager>(sp =>
             {
                 var workspace = sp.GetRequiredService<IWorkspaceProvider>();
                 var logger = sp.GetRequiredService<ILogger<UnifiedConfigManager>>();
-                var registry = sp.GetRequiredService<IConfigSectionRegistry>();
-                var manager = new UnifiedConfigManager(workspace, logger, registry);
+                var sectionRegistry = sp.GetRequiredService<IConfigSectionRegistry>();
+                var manager = new UnifiedConfigManager(workspace, logger, sectionRegistry);
                 configure(manager.GetSeeingAgentOptions());
                 return manager;
             });
             services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
-            
+
             // IOptions 兼容 + IOptionsMonitor 支持热重载
             services.AddSingleton<SeeingAgentOptionsMonitor>();
             services.AddSingleton<IOptions<SeeingAgentOptions>>(sp => sp.GetRequiredService<SeeingAgentOptionsMonitor>());
@@ -159,6 +165,24 @@ namespace Seeing.Agent.Extensions
 
             services.AddHttpClient();
 
+            return services;
+        }
+
+        /// <summary>
+        /// 登记能力模块：调用 <see cref="ISeeingModule.ConfigureServices"/> 并注册为 <see cref="ISeeingModule"/>。
+        /// 须在 <see cref="AddSeeingCore"/> 之前调用。
+        /// </summary>
+        public static IServiceCollection AddSeeingModule<TModule>(
+            this IServiceCollection services,
+            IConfigSectionRegistry registry)
+            where TModule : class, ISeeingModule, new()
+        {
+            ArgumentNullException.ThrowIfNull(registry);
+            services.EnsureConfigSectionRegistry(registry);
+
+            var module = new TModule();
+            module.ConfigureServices(services);
+            services.AddSingleton<ISeeingModule>(module);
             return services;
         }
 
@@ -731,12 +755,13 @@ namespace Seeing.Agent.Extensions
     public static class SeeingAgentInitializationExtensions
     {
         /// <summary>
-        /// 初始化 Seeing.Agent - 通过 ComponentManager 加载 Skills/MCP
+        /// 初始化 Seeing — 工作区 → LoadAsync → 模块 Activate → ComponentManager 加载。
+        /// 必须在 <c>Host.StartAsync</c> 之前显式调用。
         /// </summary>
         /// <param name="services">服务提供者</param>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>各组件加载结果</returns>
-        public static async Task<IReadOnlyList<ComponentLoadResult>> InitializeSeeingAgentAsync(
+        public static async Task<IReadOnlyList<ComponentLoadResult>> InitializeSeeingAsync(
             this IServiceProvider services,
             CancellationToken cancellationToken = default)
         {

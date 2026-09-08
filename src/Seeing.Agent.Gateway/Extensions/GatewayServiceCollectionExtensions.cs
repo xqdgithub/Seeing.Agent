@@ -19,12 +19,15 @@ public static class GatewayServiceCollectionExtensions
 {
     /// <summary>
     /// 注册 Gateway Server 服务（<see cref="IGatewayServer"/> + 自动启动 HostedService）。
-    /// 需先调用 <c>AddSeeingAgent</c>，并在 <c>app.Run()</c> 前执行 <c>InitializeSeeingAgentAsync</c>。
-    /// Gateway 配置来自 <c>.seeing/seeing.json</c>（由 AddSeeingAgent 注册）。
+    /// 须在 <c>AddSeeingCore</c> 之前调用，并在 <c>app.Run()</c> 前执行 <c>InitializeSeeingAsync</c>。
+    /// Gateway 配置来自 <c>.seeing/seeing.json</c>。
     /// </summary>
-    public static IServiceCollection AddSeeingGatewayServer(this IServiceCollection services)
+    public static IServiceCollection AddSeeingGatewayServer(
+        this IServiceCollection services,
+        IConfigSectionRegistry registry)
     {
-        var registry = services.GetOrCreateConfigSectionRegistry();
+        ArgumentNullException.ThrowIfNull(registry);
+        services.EnsureConfigSectionRegistry(registry);
         registry.Register(new ConfigSectionMeta(
             GatewayOptions.SectionName, "seeing.json", ConfigScope.ProjectOnly, typeof(GatewayOptions)));
         registry.Register(new ConfigSectionMeta(
@@ -47,15 +50,29 @@ public static class GatewayServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddSeeingGatewayServer(
         this IServiceCollection services,
-        IConfiguration configuration) => AddSeeingGatewayServer(services);
+        IConfigSectionRegistry registry,
+        IConfiguration configuration)
+    {
+        _ = configuration;
+        return AddSeeingGatewayServer(services, registry);
+    }
 
     /// <summary>
-    /// 使用委托配置 Gateway 选项。
+    /// 使用委托配置 Gateway 选项。须在 <c>AddSeeingCore</c> 之前调用。
     /// </summary>
     public static IServiceCollection AddSeeingGatewayServer(
         this IServiceCollection services,
+        IConfigSectionRegistry registry,
         Action<GatewayOptions> configure)
     {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(configure);
+        services.EnsureConfigSectionRegistry(registry);
+        registry.Register(new ConfigSectionMeta(
+            GatewayOptions.SectionName, "seeing.json", ConfigScope.ProjectOnly, typeof(GatewayOptions)));
+        registry.Register(new ConfigSectionMeta(
+            GatewayClientsOptions.SectionName, "seeing.json", ConfigScope.ProjectOnly, typeof(GatewayClientsOptions)));
+
         services.Configure(configure);
         services.AddSingleton<GatewayConnectionManager>();
         services.AddSingleton<GatewayScheduleDispatcher>();

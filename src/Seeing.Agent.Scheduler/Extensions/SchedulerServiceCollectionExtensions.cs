@@ -26,7 +26,7 @@ public static class SchedulerServiceCollectionExtensions
     /// <summary>
     /// 注册六个 cron ITool。
     /// 必须用 AddSingleton&lt;ITool&gt;，不能用 TryAddSingleton&lt;ITool&gt;
-    /// （AddSeeingAgent 已注册多个 ITool 时 TryAdd 会整条跳过）。
+    /// （AddSeeingCore 已注册多个 ITool 时 TryAdd 会整条跳过）。
     /// </summary>
     public static IServiceCollection AddSeeingSchedulerTools(this IServiceCollection services)
     {
@@ -46,10 +46,14 @@ public static class SchedulerServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>注册 Seeing.Agent.Scheduler 全部服务</summary>
-    public static IServiceCollection AddSeeingScheduler(this IServiceCollection services)
+    /// <summary>注册 Seeing.Agent.Scheduler 全部服务。须在 <c>AddSeeingCore</c> 之前调用。</summary>
+    public static IServiceCollection AddSeeingScheduler(
+        this IServiceCollection services,
+        IConfigSectionRegistry registry)
     {
-        services.GetOrCreateConfigSectionRegistry().Register(
+        ArgumentNullException.ThrowIfNull(registry);
+        services.EnsureConfigSectionRegistry(registry);
+        registry.Register(
             new ConfigSectionMeta("Scheduler", "scheduler.json", ConfigScope.ProjectOnly, typeof(SchedulerOptions)));
 
         // 配置提供者（需要在 Quartz 配置之前注册）
@@ -111,11 +115,18 @@ public static class SchedulerServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>注册 Seeing.Agent.Scheduler 全部服务（带配置）</summary>
+    /// <summary>注册 Seeing.Agent.Scheduler 全部服务（带配置）。须在 <c>AddSeeingCore</c> 之前调用。</summary>
     public static IServiceCollection AddSeeingScheduler(
         this IServiceCollection services,
+        IConfigSectionRegistry registry,
         Action<SchedulerOptions> configure)
     {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(configure);
+        services.EnsureConfigSectionRegistry(registry);
+        registry.Register(
+            new ConfigSectionMeta("Scheduler", "scheduler.json", ConfigScope.ProjectOnly, typeof(SchedulerOptions)));
+
         // 先应用配置
         var options = new SchedulerOptions();
         configure(options);

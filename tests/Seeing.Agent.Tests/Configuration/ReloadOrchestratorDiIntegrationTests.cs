@@ -10,7 +10,7 @@ using Xunit;
 namespace Seeing.Agent.Tests.Configuration;
 
 /// <summary>
-/// 验证 ReloadOrchestrator 在真实 AddSeeingAgent 组合中的可构造性：
+/// 验证 ReloadOrchestrator 在真实 AddSeeingCore 组合中的可构造性：
 /// 惰性单例需可解析、能收集全部 IReloadHandler、IReloadSignalBus 可用
 /// </summary>
 public class ReloadOrchestratorDiIntegrationTests
@@ -20,7 +20,9 @@ public class ReloadOrchestratorDiIntegrationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSeeingAgent();
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddSeeingCore(registry);
 
         var provider = services.BuildServiceProvider(new ServiceProviderOptions
         {
@@ -45,8 +47,8 @@ public class ReloadOrchestratorDiIntegrationTests
             var bus = provider.GetRequiredService<IReloadSignalBus>();
             bus.Should().BeSameAs(orchestrator);
 
-            var registry = provider.GetRequiredService<IReloadHandlerRegistry>();
-            registry.Should().BeSameAs(orchestrator);
+            var handlerRegistry = provider.GetRequiredService<IReloadHandlerRegistry>();
+            handlerRegistry.Should().BeSameAs(orchestrator);
         }
     }
 
@@ -55,7 +57,9 @@ public class ReloadOrchestratorDiIntegrationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSeeingAgent();
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddSeeingCore(registry);
 
         var provider = services.BuildServiceProvider(new ServiceProviderOptions
         {

@@ -1,11 +1,13 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Extensions;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Hosting;
-using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Extensions;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Scheduler.Extensions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Seeing.Agent.Cli.Infrastructure;
 
@@ -19,16 +21,18 @@ public static class CliServiceBootstrap
     {
         var builder = Host.CreateApplicationBuilder(args);
 
-        builder.Services.AddSeeingAgent(builder.Configuration);
-        builder.Services.AddSeeingAcp();
-        builder.Services.AddSeeingScheduler();
-        builder.Services.AddSeeingGatewayServer(builder.Configuration);
-        builder.Services.AddMemoryServices();
+        var registry = new ConfigSectionRegistry();
+        builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
+        builder.Services.AddSeeingAcp(registry);
+        builder.Services.AddSeeingScheduler(registry);
+        builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);
+        builder.Services.AddMemoryServices(registry);
+        builder.Services.AddSeeingCore(registry);
         builder.Services.AddChatOrchestrator();
 
         var host = builder.Build();
 
-        await host.Services.InitializeSeeingAgentAsync();
+        await host.Services.InitializeSeeingAsync();
 
         return host;
     }

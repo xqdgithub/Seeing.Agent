@@ -2,8 +2,10 @@ using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Extensions;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Extensions;
 using Xunit;
@@ -23,12 +25,14 @@ public class AcpExecutorRegistrationTests
     }
 
     [Fact]
-    public void AddSeeingAgent_Plus_Acp_Registers_One_IAgentExecutor_And_Multiple_Implementations()
+    public void AddSeeingCore_Plus_Acp_Registers_One_IAgentExecutor_And_Multiple_Implementations()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSeeingAgent();
-        services.AddSeeingAcp();
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddSeeingAcp(registry);
+        services.AddSeeingCore(registry);
 
         var executors = services.Where(d => d.ServiceType == typeof(IAgentExecutor)).ToList();
         executors.Should().HaveCount(1);

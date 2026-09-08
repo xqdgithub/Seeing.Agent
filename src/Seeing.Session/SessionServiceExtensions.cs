@@ -21,7 +21,7 @@ public static class SessionServiceExtensions
     /// <param name="customStore">自定义存储实现（优先于 storagePath）</param>
     /// <returns>服务集合</returns>
     /// <remarks>
-    /// 与 <c>AddSeeingAgent</c> 的关系：若已通过 AddSeeingAgent 注册了
+    /// 与 <c>AddSeeingCore</c> 的关系：若已通过 AddSeeingCore 注册了
     /// <see cref="ISessionManager"/>，本方法为 no-op，避免双实例分裂。
     /// <para>
     /// 使用方式：
@@ -42,7 +42,7 @@ public static class SessionServiceExtensions
         string? storagePath = null,
         ISessionStore? customStore = null)
     {
-        // AddSeeingAgent 已注册时不再覆盖，保证 I1：SessionManager 与 ISessionManager 同一引用
+        // AddSeeingCore 已注册时不再覆盖，保证 I1：SessionManager 与 ISessionManager 同一引用
         if (services.Any(d => d.ServiceType == typeof(ISessionManager)))
             return services;
 

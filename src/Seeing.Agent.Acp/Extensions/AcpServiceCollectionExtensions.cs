@@ -33,11 +33,15 @@ public static class AcpServiceCollectionExtensions
 {
     /// <summary>
     /// 注册 Seeing.Agent.Acp 全部服务，并追加 ACP <see cref="IAgentExecutorImplementation"/>。
-    /// 需在 <c>AddSeeingAgent</c> 之后调用（不替换 <see cref="IAgentExecutor"/> 门面）。
+    /// 须在 <c>AddSeeingCore</c> 之前调用（不替换 <see cref="IAgentExecutor"/> 门面）。
     /// </summary>
-    public static IServiceCollection AddSeeingAcp(this IServiceCollection services)
+    public static IServiceCollection AddSeeingAcp(
+        this IServiceCollection services,
+        IConfigSectionRegistry registry)
     {
-        services.GetOrCreateConfigSectionRegistry().Register(
+        ArgumentNullException.ThrowIfNull(registry);
+        services.EnsureConfigSectionRegistry(registry);
+        registry.Register(
             new ConfigSectionMeta(AcpOptions.SectionName, "seeing.json", ConfigScope.UserOnly, typeof(AcpOptions)));
 
         services.AddOptions<AcpOptions>();

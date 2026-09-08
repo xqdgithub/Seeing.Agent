@@ -8,7 +8,7 @@ namespace Seeing.Agent.Gateway.Hosting;
 
 /// <summary>
 /// 随宿主生命周期启动和停止 Gateway。
-/// 调用方应在 <c>app.Run()</c> 之前完成 <c>InitializeSeeingAgentAsync</c>。
+/// 调用方应在 <c>app.Run()</c> 之前完成 <c>InitializeSeeingAsync</c>。
 /// </summary>
 public sealed class GatewayHostedService : IHostedService
 {

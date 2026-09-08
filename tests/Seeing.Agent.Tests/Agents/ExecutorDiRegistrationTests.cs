@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Extensions;
 using Xunit;
@@ -10,11 +12,13 @@ namespace Seeing.Agent.Tests.Agents;
 public class ExecutorDiRegistrationTests
 {
     [Fact]
-    public void AddSeeingAgent_Registers_Exactly_One_IAgentExecutor_As_Router()
+    public void AddSeeingCore_Registers_Exactly_One_IAgentExecutor_As_Router()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSeeingAgent();
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddSeeingCore(registry);
 
         var executorDescriptors = services.Where(d => d.ServiceType == typeof(IAgentExecutor)).ToList();
         executorDescriptors.Should().HaveCount(1);
@@ -22,11 +26,13 @@ public class ExecutorDiRegistrationTests
     }
 
     [Fact]
-    public void AddSeeingAgent_Registers_Native_As_IAgentExecutorImplementation()
+    public void AddSeeingCore_Registers_Native_As_IAgentExecutorImplementation()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSeeingAgent();
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddSeeingCore(registry);
 
         var implementations = services
             .Where(d => d.ServiceType == typeof(IAgentExecutorImplementation))

@@ -30,9 +30,12 @@ public static class MemoryServiceExtensions
 {
     public static IServiceCollection AddMemoryServices(
         this IServiceCollection services,
+        IConfigSectionRegistry registry,
         string? connectionString = null)
     {
-        services.GetOrCreateConfigSectionRegistry().Register(
+        ArgumentNullException.ThrowIfNull(registry);
+        services.EnsureConfigSectionRegistry(registry);
+        registry.Register(
             new ConfigSectionMeta(
                 ConfigSectionMemoryOptionsStore.SectionName,
                 "memory.json",
@@ -163,7 +166,7 @@ public static class MemoryServiceExtensions
         services.TryAddSingleton<MemorySearchTool>();
         services.TryAddSingleton<MemoryWriteTool>();
         services.TryAddSingleton<MemoryReadTool>();
-        // 注意：不能用 TryAddSingleton<ITool> —— AddSeeingAgent 已注册多个 ITool，
+        // 注意：不能用 TryAddSingleton<ITool> —— AddSeeingCore 已注册多个 ITool，
         // TryAdd 会因 ServiceType 已存在而整条跳过，导致 memory 工具从未进入 ToolManager。
         services.AddSingleton<ITool>(sp => sp.GetRequiredService<MemorySearchTool>());
         services.AddSingleton<ITool>(sp => sp.GetRequiredService<MemoryWriteTool>());
@@ -179,10 +182,11 @@ public static class MemoryServiceExtensions
 
     public static IServiceCollection AddMemoryServices<TEmbedding>(
         this IServiceCollection services,
+        IConfigSectionRegistry registry,
         string? connectionString = null)
         where TEmbedding : class, IEmbeddingService
     {
-        services.AddMemoryServices(connectionString);
+        services.AddMemoryServices(registry, connectionString);
         services.TryAddSingleton<TEmbedding>();
         services.TryAddSingleton<IEmbeddingService>(sp =>
         {
