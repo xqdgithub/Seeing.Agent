@@ -5,14 +5,21 @@
 ## 推荐集成方式
 
 ```csharp
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Extensions;
 using Seeing.Agent.Gateway.Extensions;
+using Seeing.Agent.Tools.Basic;
 
-builder.Services.AddSeeingAgent(builder.Configuration);
-builder.Services.AddSeeingGatewayServer(builder.Configuration);
+var registry = new ConfigSectionRegistry();
+builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
+builder.Services.AddSeeingModule<BasicModule>(registry);
+// … 其他 AddSeeingModule* / AddSeeing* 扩展包
+builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);
+builder.Services.AddSeeingCore(registry);
 
 var host = builder.Build();
-await host.Services.InitializeSeeingAgentAsync(workspaceRoot);
+await host.Services.InitializeSeeingAsync(); // 必须在 Host.Start / Run 之前
 await host.RunAsync();
 ```
 
@@ -23,7 +30,7 @@ await host.RunAsync();
 | `IGatewayServer` / `GatewayServer` | 管理 `GatewayHost` 生命周期 |
 | `GatewayHostedService` | `ApplicationStarted` 后自动启动（需 `Enabled` + `AutoStart`） |
 
-**启动顺序**：必须先 `InitializeSeeingAgentAsync`，再 `Run()` / `RunAsync()`。
+**启动顺序**：`Build()` → `InitializeSeeingAsync()` → `Run()` / `RunAsync()`。
 
 ## 配置（`.seeing/seeing.json`）
 

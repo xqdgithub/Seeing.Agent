@@ -31,14 +31,15 @@ Target framework: **net10.0**. Package versions are managed centrally via `Direc
 ### Solution Layering
 
 ```
-Seeing.Agent (core lib)       ← IAgent, ITool, ISkill, IHookHandler, RuleEngine, MCP, Snapshot, LLM
+Seeing.Agent.Core (spine)     ← config, execution, permissions, hooks, MCP, LLM
+  ↑ capability modules        ← Tools.*, Memory, Scheduler, Acp, Gateway (via AddSeeingModule / AddSeeing*)
   ↑
 Seeing.Agent.App (orchestra)  ← ChatOrchestrator, ExecutionJobService, command system
   ↑
 Seeing.Agent.WebUI (Blazor)   ← the main sample application
 ```
 
-**Supporting libraries** (all target `net10.0`, reference `Seeing.Agent` as needed):
+**Supporting libraries** (all target `net10.0`, reference `Seeing.Agent.Core` / Abstractions as needed):
 
 | Project | Purpose |
 |---------|---------|
@@ -59,7 +60,7 @@ Seeing.Agent.WebUI (Blazor)   ← the main sample application
 | `Seeing.Gateway.WeCom` / `.QQ` | Channel bridges for WeCom and QQ |
 | `samples/Seeing.Gateway.ChannelHost` | Out-of-process channel host for gateway channels |
 
-### Core Concepts (All in `src/Seeing.Agent/`)
+### Core Concepts (All in `src/Seeing.Agent.Core/`)
 
 - **`IAgent`** (`Core/Interfaces/IAgent.cs`) — All agents implement this. Has metadata (Name, Mode, SystemPrompt, Model, PermissionRules) and `ExecuteAsync` returning `IAsyncEnumerable<ChatMessage>`.
 - **`ITool`** (`Core/Interfaces/ITool.cs`) — Tools implement `Id`, `Description`, `ParametersSchema` (JSON Schema), and `ExecuteAsync(JsonElement arguments, ToolContext context)`. Also supports `[Tool]`/`[ToolParam]` attribute-based discovery.
@@ -110,26 +111,25 @@ Seeing.Agent.WebUI (Blazor)   ← the main sample application
 
 ### DI Registration Pattern
 
-The main extension methods chain:
+Shared `ConfigSectionRegistry` — register capability modules **before** spine core; initialize **before** `Host.Start` / `app.Run`:
+
 ```csharp
-builder.Services.AddSeeingAgent(configuration);   // core
-builder.Services.AddSeeingAcp();                   // ACP
-builder.Services.AddSeeingScheduler();             // Quartz
-builder.Services.AddTokenBudgetIntegration();      // token tracking
-builder.Services.AddMemoryServices();              // memory/vector
-builder.Services.AddSeeingGatewayServer();         // gateway
-builder.Services.AddChatOrchestrator();            // execution engine
-builder.Services.AddExecutionEngine();             // background runner
+var registry = new ConfigSectionRegistry();
+builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
+builder.Services.AddSeeingModule<FileSystemModule>(registry);
+builder.Services.AddSeeingModule<BasicModule>(registry);
+// … other AddSeeingModule* / AddSeeing* (Acp, Scheduler, Memory, Gateway, TokenBudget)
+builder.Services.AddSeeingCore(registry);
 ```
 
-After building the service provider, call:
+After `Build()`, before the host starts:
 ```csharp
-sp.InitializeSeeingAgentAsync();   // skills, MCP, plugins
-sp.InitializeCommands();           // slash-command discovery
-sp.UseTokenBudgetHooks();          // wire up hook handlers
+await sp.InitializeSeeingAsync();   // load config, skills, MCP, plugins
+sp.InitializeCommands();            // slash-command discovery
+sp.UseTokenBudgetHooks();           // wire up hook handlers
 ```
 
-### Git Integration (`src/Seeing.Agent/Git/`)
+### Git Integration (`src/Seeing.Agent.Tools.Git/`)
 
 - `IGitService` wraps git CLI operations.
 - Built-in tools: `GitStatusTool`, `GitDiffTool`, `GitLogTool`, `GitCommitTool` — all implementing `ITool`.

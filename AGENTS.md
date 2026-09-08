@@ -9,7 +9,7 @@
 
 ## 概述
 
-完整的 AI Agent 框架，支持 Skill/Tool/Hook/Permission/MCP 集成。主库为 NuGet 包 (`Seeing.Agent`)，提供 Agent 编排、工具发现、权限控制等核心能力。**独立会话管理包** (`Seeing.Session`) 可单独使用。
+完整的 AI Agent 框架，支持 Skill/Tool/Hook/Permission/MCP 集成。主库为 NuGet 包 (`Seeing.Agent.Core`)，提供脊柱核心（配置、执行、权限、钩子）；能力包通过 `AddSeeingModule*` 按需组合。**独立会话管理包** (`Seeing.Session`) 可单独使用。
 
 ## 项目结构
 
@@ -98,7 +98,7 @@ Seeing.Agent/
 | 扩展生命周期钩子 | `src/Seeing.Agent/Core/Hooks/HookManager.cs` | 实现 `IHookHandler`，30+ 钩子点 |
 | 配置权限规则 | `src/Seeing.Agent/Core/Permission/PermissionService.cs` | PermissionRuleEntry + PermissionService |
 | 连接 MCP Server | `src/Seeing.Agent/MCP/McpClientManager.cs` | `ConnectAsync()`，支持 stdio/HTTP/SSE |
-| DI 注册入口 | `src/Seeing.Agent/Extensions/ServiceCollectionExtensions.cs` | `AddSeeingAgent()` |
+| DI 注册入口 | `src/Seeing.Agent.Core/Extensions/ServiceCollectionExtensions.cs` | `ConfigSectionRegistry` → `AddSeeingModule*` / 扩展包 `AddSeeing*` → `AddSeeingCore(registry)` → `InitializeSeeingAsync`（Host 启动前） |
 | 会话管理 | `src/Seeing.Session/Management/SessionManager.cs` | 独立包，生命周期管理 |
 | 扩展插件开发 | `src/Seeing.Agent/Extensions/ExtensionLoader.cs` | 实现 `IExtension`/`IToolExtension` 等拆分接口（Abstractions.Extensions） |
 | 循环检测防护 | `src/Seeing.Agent/Core/Detection/LoopDetector.cs` | 防止 LLM 无限循环 |

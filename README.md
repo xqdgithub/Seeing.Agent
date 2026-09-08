@@ -2,7 +2,7 @@
 
 一个完整的 AI Agent 框架，支持 Skill、SubAgent、Rules、Hook、Extension 和 MCP 系统。
 
-[![NuGet](https://img.shields.io/nuget/v/Seeing.Agent.svg)](https://www.nuget.org/packages/Seeing.Agent/)
+[![NuGet](https://img.shields.io/nuget/v/Seeing.Agent.Core.svg)](https://www.nuget.org/packages/Seeing.Agent.Core/)
 
 ## 特性
 
@@ -18,7 +18,7 @@
 ## 安装
 
 ```bash
-dotnet add package Seeing.Agent
+dotnet add package Seeing.Agent.Core
 ```
 
 ## 快速开始
@@ -26,17 +26,21 @@ dotnet add package Seeing.Agent
 ### 1. 注册服务
 
 ```csharp
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Extensions;
+using Seeing.Agent.Tools.Basic;
 
 // 配置来自 ~/.seeing/seeing.json 与项目级 .seeing/seeing.json（appsettings 不参与 SeeingAgent 节）
-services.AddSeeingAgent();
+var registry = new ConfigSectionRegistry();
+services.AddSingleton<IConfigSectionRegistry>(registry);
+services.AddSeeingModule<BasicModule>(registry);
+// 可选：AddSeeingAcp(registry)、AddMemoryServices(registry)、AddSeeingGatewayServer(registry, configuration) 等
+services.AddSeeingCore(registry);
 
-// 或使用代码配置（覆盖/补充 seeing.json）
-services.AddSeeingAgent(options => 
-{
-    options.DefaultModel = "gpt-4";
-    options.DefaultAgent = "sisyphus";
-});
+var host = builder.Build();
+await host.Services.InitializeSeeingAsync(); // 必须在 Host.Start / Run 之前
+await host.RunAsync();
 ```
 
 ### 2. 使用注解定义 Tool（推荐）

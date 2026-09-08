@@ -1,18 +1,23 @@
-# Seeing.Agent
+# Seeing.Agent.Core
 
-全功能 AI Agent 框架，提供 Agent 编排、工具发现、权限控制、MCP 协议集成等核心能力。
+脊柱核心库：配置、执行、权限、钩子、MCP 集成。内置工具与 UI 等能力拆为独立模块，通过 `AddSeeingModule*` 按需组合。
 
 ## 快速开始
 
 ```csharp
-// Program.cs
-builder.Services.AddSeeingAgent(options =>
-{
-    options.DefaultModel = "gpt-4o";
-});
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Extensions;
+using Seeing.Agent.Tools.Basic;
 
-// 注册自定义工具
-builder.Services.AddToolsFromType<MyTools>();
+var registry = new ConfigSectionRegistry();
+builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
+builder.Services.AddSeeingModule<BasicModule>(registry);
+builder.Services.AddSeeingCore(registry);
+
+var host = builder.Build();
+await host.Services.InitializeSeeingAsync(); // 必须在 Host.Start / Run 之前
+await host.RunAsync();
 ```
 
 ## 核心功能
