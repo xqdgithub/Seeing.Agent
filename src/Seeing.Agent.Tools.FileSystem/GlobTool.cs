@@ -85,19 +85,19 @@ namespace Seeing.Agent.Tools.FileSystem
             // 确保路径是绝对路径
             if (!Path.IsPathRooted(searchPath))
             {
-                searchPath = Path.GetFullPath(searchPath);
+                searchPath = _world.FileSystem.GetFullPath(searchPath);
             }
 
             // 检查目录是否存在
-            if (!Directory.Exists(searchPath))
+            if (!_world.FileSystem.Exists(searchPath))
             {
                 return Failure($"目录不存在: {searchPath}");
             }
 
             _logger.LogInformation("Glob 搜索: pattern={Pattern}, path={Path}", pattern, searchPath);
 
-            // 执行搜索
-            var files = FileSystemHelper.GlobSearch(searchPath, pattern, DefaultLimit);
+            // 执行搜索（纯托管枚举；ripgrep/fd 经 ISubprocess 加速为后续 Important）
+            var files = FileSystemHelper.GlobSearch(_world.FileSystem, searchPath, pattern, DefaultLimit);
 
             // 构建输出
             var outputLines = new List<string>();

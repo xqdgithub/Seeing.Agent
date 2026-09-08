@@ -96,7 +96,7 @@ namespace Seeing.Agent.Tools.FileSystem
 
             if (!_fileSystem.Exists(filePath))
             {
-                var suggestions = FileSystemHelper.FindSimilarFiles(filePath);
+                var suggestions = FileSystemHelper.FindSimilarFiles(_fileSystem, filePath);
                 if (suggestions.Count > 0)
                 {
                     return Failure($"文件不存在: {filePath}\n\n您是否指的是以下文件?\n{string.Join("\n", suggestions)}");
@@ -199,7 +199,7 @@ namespace Seeing.Agent.Tools.FileSystem
             }
 
             if (FileSystemHelper.IsBinaryByExtension(filePath) ||
-                FileSystemHelper.IsBinaryByContent(filePath))
+                FileSystemHelper.IsBinaryByContent(_fileSystem, filePath))
             {
                 return Failure($"无法读取二进制文件: {filePath}");
             }
@@ -315,7 +315,7 @@ namespace Seeing.Agent.Tools.FileSystem
         {
             try
             {
-                var bytes = File.ReadAllBytes(filePath);
+                var bytes = _fileSystem.ReadAllBytes(filePath);
                 var base64 = Convert.ToBase64String(bytes);
                 var dataUrl = $"data:{mime};base64,{base64}";
 

@@ -15,11 +15,16 @@ public class ExecutionWorldContractsTests
 
         t.GetMethod(nameof(IFileSystem.ReadAllText), [typeof(string)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.ReadAllTextAsync), [typeof(string), typeof(CancellationToken)]).Should().NotBeNull();
+        t.GetMethod(nameof(IFileSystem.ReadAllBytes), [typeof(string)]).Should().NotBeNull();
+        t.GetMethod(nameof(IFileSystem.ReadAllBytesAsync), [typeof(string), typeof(CancellationToken)]).Should().NotBeNull();
+        t.GetMethod(nameof(IFileSystem.OpenRead), [typeof(string)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.ReadLinesAsync), [typeof(string), typeof(CancellationToken)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.WriteAllText), [typeof(string), typeof(string)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.WriteAllTextAsync), [typeof(string), typeof(string), typeof(CancellationToken)]).Should().NotBeNull();
+        t.GetMethod(nameof(IFileSystem.CreateDirectory), [typeof(string)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.Exists), [typeof(string)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.Delete), [typeof(string)]).Should().NotBeNull();
+        t.GetMethod(nameof(IFileSystem.GetLastWriteTimeUtc), [typeof(string)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.EnumerateFiles), [typeof(string), typeof(string), typeof(bool)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.EnumerateDirectories), [typeof(string), typeof(string), typeof(bool)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.GetFullPath), [typeof(string)]).Should().NotBeNull();

@@ -11,7 +11,7 @@ namespace Seeing.Agent.Tests.Tools;
 
 public class DeleteToolTests
 {
-    private static DeleteTool CreateTool() => new(NullLogger<DeleteTool>.Instance);
+    private static DeleteTool CreateTool() => new(NullLogger<DeleteTool>.Instance, new Seeing.IO.Local.LocalFileSystem());
 
     [Fact]
     public async Task ExecuteAsync_DeleteFile_ShouldSucceed()

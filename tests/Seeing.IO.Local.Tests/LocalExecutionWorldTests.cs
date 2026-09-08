@@ -20,9 +20,16 @@ public class LocalExecutionWorldTests
             fs.WriteAllText(filePath, "hello");
             fs.Exists(filePath).Should().BeTrue();
             fs.ReadAllText(filePath).Should().Be("hello");
+            fs.ReadAllBytes(filePath).Should().Equal(System.Text.Encoding.UTF8.GetBytes("hello"));
             fs.GetFullPath(filePath).Should().Be(Path.GetFullPath(filePath));
             fs.EnumerateFiles(tempDir, "*.txt", recursive: false).Should().Contain(filePath);
             fs.EnumerateDirectories(tempDir, "*", recursive: false).Should().BeEmpty();
+            fs.GetLastWriteTimeUtc(filePath).Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
+
+            var subDir = Path.Combine(tempDir, "sub");
+            fs.CreateDirectory(subDir);
+            fs.Exists(subDir).Should().BeTrue();
+            fs.EnumerateDirectories(tempDir, "*", recursive: false).Should().Contain(subDir);
         }
         finally
         {

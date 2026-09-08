@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using Seeing.Agent.Abstractions.Execution;
 
 namespace Seeing.Agent.Tools.FileSystem
 {
@@ -102,17 +102,16 @@ namespace Seeing.Agent.Tools.FileSystem
         /// <summary>
         /// 检查是否为二进制文件（通过内容）
         /// </summary>
-        public static bool IsBinaryByContent(string filePath, int sampleSize = 4096)
+        public static bool IsBinaryByContent(IFileSystem fileSystem, string filePath, int sampleSize = 4096)
         {
-            if (!File.Exists(filePath)) return false;
-
-            var fileInfo = new FileInfo(filePath);
-            if (fileInfo.Length == 0) return false;
+            if (!fileSystem.Exists(filePath)) return false;
 
             try
             {
-                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-                var bytesToRead = Math.Min(sampleSize, (int)fileInfo.Length);
+                using var stream = fileSystem.OpenRead(filePath);
+                if (stream.Length == 0) return false;
+
+                var bytesToRead = (int)Math.Min(sampleSize, stream.Length);
                 var buffer = new byte[bytesToRead];
                 var bytesRead = stream.Read(buffer, 0, bytesToRead);
 
@@ -136,7 +135,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 }
 
                 // 如果超过30%为非打印字符，认为是二进制
-                return nonPrintableCount / bytesRead > 0.3;
+                return nonPrintableCount / (double)bytesRead > 0.3;
             }
             catch
             {
@@ -196,6 +195,7 @@ namespace Seeing.Agent.Tools.FileSystem
         /// 读取文件内容（带限制）
         /// </summary>
         public static (List<string> Lines, int TotalLines, bool Truncated, bool TruncatedByBytes) ReadFileWithLimit(
+            IFileSystem fileSystem,
             string filePath,
             int offset = 1,
             int limit = DefaultReadLimit)
@@ -206,7 +206,7 @@ namespace Seeing.Agent.Tools.FileSystem
             var truncated = false;
             var truncatedByBytes = false;
 
-            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            using var stream = fileSystem.OpenRead(filePath);
             using var reader = new StreamReader(stream, Encoding.UTF8);
 
             var startLine = offset - 1;
@@ -250,78 +250,22 @@ namespace Seeing.Agent.Tools.FileSystem
         /// <summary>
         /// 获取目录内容
         /// </summary>
-        public static List<string> GetDirectoryEntries(string directoryPath)
+        public static List<string> GetDirectoryEntries(IFileSystem fileSystem, string directoryPath)
         {
             var entries = new List<string>();
-            var dirInfo = new DirectoryInfo(directoryPath);
 
-            foreach (var item in dirInfo.GetFileSystemInfos())
+            foreach (var dir in fileSystem.EnumerateDirectories(directoryPath, "*", recursive: false))
             {
-                if (item is DirectoryInfo)
-                {
-                    entries.Add(item.Name + "/");
-                }
-                else if (item is FileInfo fileInfo)
-                {
-                    // 检查是否为符号链接且指向目录
-                    if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                    {
-                        try
-                        {
-                            var target = ResolveSymbolicLink(fileInfo.FullName);
-                            if (target != null && Directory.Exists(target))
-                            {
-                                entries.Add(item.Name + "/");
-                                continue;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            // ✅ 符号链接解析失败时记录，不再静默吞掉
-                            // 失败时当作普通文件处理是合理的业务逻辑
-                            Debug.WriteLine($"[FileSystemHelper] 无法解析符号链接 '{item.Name}': {ex.Message}");
-                        }
-                    }
-                    entries.Add(item.Name);
-                }
+                entries.Add(Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) + "/");
+            }
+
+            foreach (var file in fileSystem.EnumerateFiles(directoryPath, "*", recursive: false))
+            {
+                entries.Add(Path.GetFileName(file));
             }
 
             entries.Sort();
             return entries;
-        }
-
-        /// <summary>
-        /// 解析符号链接目标
-        /// </summary>
-        private static string? ResolveSymbolicLink(string path)
-        {
-            try
-            {
-                // Windows 上需要特殊处理
-                if (OperatingSystem.IsWindows())
-                {
-                    using var handle = File.OpenRead(path);
-                    // 无法直接获取目标，返回 null
-                    return null;
-                }
-                else
-                {
-                    return UnixResolveSymbolicLink(path);
-                }
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Unix 系统解析符号链接
-        /// </summary>
-        private static string? UnixResolveSymbolicLink(string path)
-        {
-            // 在非 Unix 系统上返回 null
-            return null;
         }
 
         /// <summary>
@@ -384,16 +328,16 @@ namespace Seeing.Agent.Tools.FileSystem
         /// <summary>
         /// 查找相似的文件名建议
         /// </summary>
-        public static List<string> FindSimilarFiles(string filePath, int maxSuggestions = 3)
+        public static List<string> FindSimilarFiles(IFileSystem fileSystem, string filePath, int maxSuggestions = 3)
         {
             try
             {
                 var dir = Path.GetDirectoryName(filePath) ?? "";
                 var fileName = Path.GetFileName(filePath);
 
-                if (!Directory.Exists(dir)) return new List<string>();
+                if (string.IsNullOrEmpty(dir) || !fileSystem.Exists(dir)) return new List<string>();
 
-                var entries = Directory.GetFiles(dir)
+                var entries = fileSystem.EnumerateFiles(dir, "*", recursive: false)
                     .Where(f =>
                     {
                         var name = Path.GetFileName(f);
@@ -471,7 +415,7 @@ namespace Seeing.Agent.Tools.FileSystem
         /// <summary>
         /// 递归搜索匹配 Glob 模式的文件
         /// </summary>
-        public static List<string> GlobSearch(string directory, string pattern, int limit = 100)
+        public static List<string> GlobSearch(IFileSystem fileSystem, string directory, string pattern, int limit = 100)
         {
             var files = new List<string>();
 
@@ -480,7 +424,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 // 处理不同类型的 glob 模式
                 var regexPattern = ConvertGlobToRegex(pattern);
 
-                SearchDirectory(directory, regexPattern, files, limit);
+                SearchDirectory(fileSystem, directory, regexPattern, files, limit);
             }
             catch (Exception)
             {
@@ -489,41 +433,40 @@ namespace Seeing.Agent.Tools.FileSystem
 
             // 按修改时间排序
             return files
-                .OrderByDescending(f => File.GetLastWriteTime(f))
+                .OrderByDescending(f => fileSystem.GetLastWriteTimeUtc(f))
                 .ToList();
         }
 
         /// <summary>
         /// 递归搜索目录
         /// </summary>
-        private static void SearchDirectory(string directory, string regexPattern, List<string> files, int limit)
+        private static void SearchDirectory(IFileSystem fileSystem, string directory, string regexPattern, List<string> files, int limit)
         {
             if (files.Count >= limit) return;
 
             try
             {
-                var dirInfo = new DirectoryInfo(directory);
-
                 // 搜索文件
-                foreach (var file in dirInfo.GetFiles())
+                foreach (var file in fileSystem.EnumerateFiles(directory, "*", recursive: false))
                 {
                     if (files.Count >= limit) break;
 
-                    if (Regex.IsMatch(file.FullName, regexPattern, RegexOptions.IgnoreCase))
+                    if (Regex.IsMatch(file, regexPattern, RegexOptions.IgnoreCase))
                     {
-                        files.Add(file.FullName);
+                        files.Add(file);
                     }
                 }
 
                 // 递归搜索子目录
-                foreach (var subDir in dirInfo.GetDirectories())
+                foreach (var subDir in fileSystem.EnumerateDirectories(directory, "*", recursive: false))
                 {
                     if (files.Count >= limit) break;
 
+                    var name = Path.GetFileName(subDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                     // 跳过隐藏目录（可选）
-                    if (subDir.Name.StartsWith(".")) continue;
+                    if (name.StartsWith(".")) continue;
 
-                    SearchDirectory(subDir.FullName, regexPattern, files, limit);
+                    SearchDirectory(fileSystem, subDir, regexPattern, files, limit);
                 }
             }
             catch (UnauthorizedAccessException)
@@ -534,12 +477,17 @@ namespace Seeing.Agent.Tools.FileSystem
             {
                 // 跳过不存在的目录
             }
+            catch (IOException)
+            {
+                // 跳过不可枚举目录
+            }
         }
 
         /// <summary>
         /// Grep 搜索 - 在文件内容中搜索正则表达式模式
         /// </summary>
         public static List<GrepMatch> GrepSearch(
+            IFileSystem fileSystem,
             string directory,
             string pattern,
             string? includePattern = null,
@@ -550,7 +498,7 @@ namespace Seeing.Agent.Tools.FileSystem
 
             try
             {
-                SearchDirectoryForContent(directory, regex, includePattern, matches, limit);
+                SearchDirectoryForContent(fileSystem, directory, regex, includePattern, matches, limit);
             }
             catch (Exception)
             {
@@ -568,6 +516,7 @@ namespace Seeing.Agent.Tools.FileSystem
         /// 在目录中搜索文件内容
         /// </summary>
         private static void SearchDirectoryForContent(
+            IFileSystem fileSystem,
             string directory,
             Regex regex,
             string? includePattern,
@@ -578,37 +527,37 @@ namespace Seeing.Agent.Tools.FileSystem
 
             try
             {
-                var dirInfo = new DirectoryInfo(directory);
                 var includeRegex = includePattern != null
                     ? new Regex(ConvertGlobToRegex(includePattern), RegexOptions.IgnoreCase | RegexOptions.Compiled)
                     : null;
 
                 // 搜索文件
-                foreach (var file in dirInfo.GetFiles())
+                foreach (var file in fileSystem.EnumerateFiles(directory, "*", recursive: false))
                 {
                     if (matches.Count >= limit) break;
 
                     // 检查 include 模式
-                    if (includeRegex != null && !includeRegex.IsMatch(file.FullName))
+                    if (includeRegex != null && !includeRegex.IsMatch(file))
                         continue;
 
                     // 跳过二进制文件
-                    if (IsBinaryByExtension(file.FullName) || IsBinaryByContent(file.FullName))
+                    if (IsBinaryByExtension(file) || IsBinaryByContent(fileSystem, file))
                         continue;
 
                     // 搜索文件内容
-                    SearchFileContent(file.FullName, regex, matches, limit);
+                    SearchFileContent(fileSystem, file, regex, matches, limit);
                 }
 
                 // 递归搜索子目录
-                foreach (var subDir in dirInfo.GetDirectories())
+                foreach (var subDir in fileSystem.EnumerateDirectories(directory, "*", recursive: false))
                 {
                     if (matches.Count >= limit) break;
 
+                    var name = Path.GetFileName(subDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                     // 跳过隐藏目录（可选）
-                    if (subDir.Name.StartsWith(".")) continue;
+                    if (name.StartsWith(".")) continue;
 
-                    SearchDirectoryForContent(subDir.FullName, regex, includePattern, matches, limit);
+                    SearchDirectoryForContent(fileSystem, subDir, regex, includePattern, matches, limit);
                 }
             }
             catch (UnauthorizedAccessException)
@@ -619,12 +568,17 @@ namespace Seeing.Agent.Tools.FileSystem
             {
                 // 跳过不存在的目录
             }
+            catch (IOException)
+            {
+                // 跳过不可枚举目录
+            }
         }
 
         /// <summary>
         /// 在单个文件中搜索内容
         /// </summary>
         private static void SearchFileContent(
+            IFileSystem fileSystem,
             string filePath,
             Regex regex,
             List<GrepMatch> matches,
@@ -632,24 +586,12 @@ namespace Seeing.Agent.Tools.FileSystem
         {
             try
             {
-                var fileInfo = new FileInfo(filePath);
-                var modTime = fileInfo.LastWriteTimeUtc.Ticks;
+                var modTime = fileSystem.GetLastWriteTimeUtc(filePath).Ticks;
 
-                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+                using var stream = fileSystem.OpenRead(filePath);
                 using var reader = new StreamReader(stream, Encoding.UTF8);
 
                 var lineNum = 0;
-                while (reader.ReadLine() != null)
-                {
-                    lineNum++;
-                    if (matches.Count >= limit) break;
-                }
-
-                // 重置流
-                stream.Position = 0;
-                reader.DiscardBufferedData();
-
-                lineNum = 0;
                 while (true)
                 {
                     var line = reader.ReadLine();

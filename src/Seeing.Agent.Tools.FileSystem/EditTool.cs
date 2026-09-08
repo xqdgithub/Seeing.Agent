@@ -1,7 +1,7 @@
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
 using Microsoft.Extensions.Logging;
-using System.Text;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.FileSystem
@@ -15,11 +15,14 @@ namespace Seeing.Agent.Tools.FileSystem
     /// </summary>
     public class EditTool : ToolBase
     {
+        private readonly IFileSystem _fileSystem;
+
         /// <summary>
         /// 创建 EditTool 实例
         /// </summary>
-        public EditTool(ILogger<EditTool> logger) : base(logger)
+        public EditTool(ILogger<EditTool> logger, IFileSystem fileSystem) : base(logger)
         {
+            _fileSystem = fileSystem;
         }
 
         public override string Id => "edit";
@@ -103,13 +106,13 @@ namespace Seeing.Agent.Tools.FileSystem
             // 确保路径是绝对路径
             if (!Path.IsPathRooted(filePath))
             {
-                filePath = Path.GetFullPath(filePath);
+                filePath = _fileSystem.GetFullPath(filePath);
             }
 
             _logger.LogInformation("编辑文件: {FilePath}", filePath);
 
             // 检查文件是否存在
-            if (!File.Exists(filePath))
+            if (!_fileSystem.Exists(filePath))
             {
                 // 如果 oldString 为空，可以创建新文件
                 if (oldString == "")
@@ -120,13 +123,13 @@ namespace Seeing.Agent.Tools.FileSystem
             }
 
             // 检查是否为目录
-            if (Directory.Exists(filePath))
+            if (IsDirectory(filePath))
             {
                 return Failure($"路径是目录而非文件: {filePath}");
             }
 
             // 读取文件内容
-            var oldContent = await ReadFileContentAsync(filePath);
+            var oldContent = await _fileSystem.ReadAllTextAsync(filePath, context.CancellationToken);
 
             // 执行替换
             string newContent;
@@ -145,7 +148,7 @@ namespace Seeing.Agent.Tools.FileSystem
             // 写入文件
             try
             {
-                await WriteFileContentAsync(filePath, newContent);
+                await _fileSystem.WriteAllTextAsync(filePath, newContent, context.CancellationToken);
             }
             catch (Exception ex)
             {
@@ -173,15 +176,15 @@ namespace Seeing.Agent.Tools.FileSystem
 
             // 确保目录存在
             var directory = Path.GetDirectoryName(filePath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            if (!string.IsNullOrEmpty(directory) && !_fileSystem.Exists(directory))
             {
-                Directory.CreateDirectory(directory);
+                _fileSystem.CreateDirectory(directory);
             }
 
             // 写入文件
             try
             {
-                await WriteFileContentAsync(filePath, content);
+                await _fileSystem.WriteAllTextAsync(filePath, content, context.CancellationToken);
             }
             catch (Exception ex)
             {
@@ -199,22 +202,18 @@ namespace Seeing.Agent.Tools.FileSystem
             );
         }
 
-        /// <summary>
-        /// 异步读取文件内容
-        /// </summary>
-        private async Task<string> ReadFileContentAsync(string filePath)
+        private bool IsDirectory(string path)
         {
-            using var reader = new StreamReader(filePath, Encoding.UTF8);
-            return await reader.ReadToEndAsync();
-        }
-
-        /// <summary>
-        /// 异步写入文件内容
-        /// </summary>
-        private async Task WriteFileContentAsync(string filePath, string content)
-        {
-            using var writer = new StreamWriter(filePath, false, Encoding.UTF8);
-            await writer.WriteAsync(content);
+            try
+            {
+                using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
+                _ = enumerator.MoveNext();
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or DirectoryNotFoundException)
+            {
+                return false;
+            }
         }
 
         /// <summary>

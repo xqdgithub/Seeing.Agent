@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
@@ -28,11 +29,16 @@ public class AddWorkspacePathTool : BuiltInToolBase
     });
 
     private readonly IWorkspaceWhitelist _whitelist;
+    private readonly IFileSystem _fileSystem;
 
-    public AddWorkspacePathTool(ILogger<AddWorkspacePathTool> logger, IWorkspaceWhitelist whitelist)
+    public AddWorkspacePathTool(
+        ILogger<AddWorkspacePathTool> logger,
+        IWorkspaceWhitelist whitelist,
+        IFileSystem fileSystem)
         : base(logger)
     {
         _whitelist = whitelist;
+        _fileSystem = fileSystem;
     }
 
     public override string Id => "add_workspace_path";
@@ -45,22 +51,37 @@ public class AddWorkspacePathTool : BuiltInToolBase
 
     public override IReadOnlyList<string> Tags => new[] { "built-in", "filesystem" };
 
-    public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+    public override Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
         var path = GetStringArgument(arguments, "path");
         if (string.IsNullOrEmpty(path))
-            return Failure("参数 path 不能为空");
+            return Task.FromResult(Failure("参数 path 不能为空"));
 
-        path = ResolvePath(path);
+        if (!Path.IsPathRooted(path))
+            path = _fileSystem.GetFullPath(Path.Combine(_workingDirectory, path));
 
-        if (!Directory.Exists(path))
-            return Failure($"目录不存在: {path}");
+        if (!_fileSystem.Exists(path) || !IsDirectory(path))
+            return Task.FromResult(Failure($"目录不存在: {path}"));
 
         if (string.IsNullOrEmpty(context.SessionId))
-            return Failure("当前上下文缺少会话 ID，无法扩展工作区白名单");
+            return Task.FromResult(Failure("当前上下文缺少会话 ID，无法扩展工作区白名单"));
 
         _whitelist.Add(context.SessionId, path);
 
-        return Success("路径已加入当前会话的工作区白名单", path);
+        return Task.FromResult(Success("路径已加入当前会话的工作区白名单", path));
+    }
+
+    private bool IsDirectory(string path)
+    {
+        try
+        {
+            using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
+            _ = enumerator.MoveNext();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            return false;
+        }
     }
 }

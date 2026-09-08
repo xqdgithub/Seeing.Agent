@@ -15,6 +15,16 @@ public sealed class LocalFileSystem : IFileSystem
         File.ReadAllTextAsync(path, cancellationToken);
 
     /// <inheritdoc />
+    public byte[] ReadAllBytes(string path) => File.ReadAllBytes(path);
+
+    /// <inheritdoc />
+    public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken = default) =>
+        File.ReadAllBytesAsync(path, cancellationToken);
+
+    /// <inheritdoc />
+    public Stream OpenRead(string path) => File.OpenRead(path);
+
+    /// <inheritdoc />
     public async IAsyncEnumerable<string> ReadLinesAsync(
         string path,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -33,6 +43,9 @@ public sealed class LocalFileSystem : IFileSystem
         File.WriteAllTextAsync(path, contents, cancellationToken);
 
     /// <inheritdoc />
+    public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+
+    /// <inheritdoc />
     public bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
 
     /// <inheritdoc />
@@ -49,6 +62,9 @@ public sealed class LocalFileSystem : IFileSystem
             Directory.Delete(path, recursive: true);
         }
     }
+
+    /// <inheritdoc />
+    public DateTime GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
 
     /// <inheritdoc />
     public IEnumerable<string> EnumerateFiles(string directory, string pattern, bool recursive)

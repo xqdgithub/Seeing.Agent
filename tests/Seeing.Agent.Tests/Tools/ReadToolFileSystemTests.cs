@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -89,38 +90,103 @@ public class ReadToolFileSystemTests
         result.Output.Should().NotContain("4: four");
     }
 
-    private sealed class InMemoryFileSystem : IFileSystem
+    [Fact]
+    public async Task ExecuteAsync_PngBinary_UsesReadAllBytesFromInjectedFileSystem()
     {
-        private readonly Dictionary<string, string> _files = new(StringComparer.OrdinalIgnoreCase);
-        private readonly HashSet<string> _directories = new(StringComparer.OrdinalIgnoreCase);
+        const string virtualPath = "/workspace/logo.png";
+        var pngBytes = new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D
+        };
+        var fileSystem = new InMemoryFileSystem();
+        fileSystem.AddBinaryFile(virtualPath, pngBytes);
 
-        public void AddFile(string path, string contents)
+        var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem);
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { filePath = virtualPath }),
+            new ToolContext());
+
+        result.Success.Should().BeTrue();
+        result.Metadata.Should().ContainKey("type").WhoseValue.Should().Be("binary");
+        result.Metadata.Should().ContainKey("mime").WhoseValue.Should().Be("image/png");
+        result.Metadata.Should().ContainKey("size").WhoseValue.Should().Be(pngBytes.Length);
+        result.Metadata.Should().ContainKey("dataUrl");
+        ((string)result.Metadata["dataUrl"]).Should().StartWith("data:image/png;base64,");
+    }
+
+    [Fact]
+    public async Task WriteTool_ExecuteAsync_UsesInjectedFileSystem()
+    {
+        const string virtualPath = "/workspace/out.txt";
+        var fileSystem = new InMemoryFileSystem();
+        fileSystem.AddDirectory("/workspace");
+
+        var tool = new WriteTool(NullLogger<WriteTool>.Instance, fileSystem);
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { filePath = virtualPath, content = "hello seam" }),
+            new ToolContext());
+
+        result.Success.Should().BeTrue();
+        fileSystem.ReadAllText(virtualPath).Should().Be("hello seam");
+    }
+
+    [Fact]
+    public async Task DeleteTool_ExecuteAsync_UsesInjectedFileSystem()
+    {
+        const string virtualPath = "/workspace/gone.txt";
+        var fileSystem = new InMemoryFileSystem();
+        fileSystem.AddFile(virtualPath, "x");
+
+        var tool = new DeleteTool(NullLogger<DeleteTool>.Instance, fileSystem);
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { path = virtualPath }),
+            new ToolContext());
+
+        result.Success.Should().BeTrue();
+        fileSystem.Exists(virtualPath).Should().BeFalse();
+    }
+
+    internal sealed class InMemoryFileSystem : IFileSystem
+    {
+        private readonly Dictionary<string, byte[]> _files = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _directories = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, DateTime> _timestamps = new(StringComparer.OrdinalIgnoreCase);
+
+        public void AddFile(string path, string contents) =>
+            AddBinaryFile(path, Encoding.UTF8.GetBytes(contents));
+
+        public void AddBinaryFile(string path, byte[] contents)
         {
             var normalized = Normalize(path);
             _files[normalized] = contents;
+            _timestamps[normalized] = DateTime.UtcNow;
             EnsureParentDirectories(normalized);
         }
 
         public void AddDirectory(string path) => _directories.Add(Normalize(path));
 
         public string ReadAllText(string path) =>
+            Encoding.UTF8.GetString(ReadAllBytes(path));
+
+        public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) =>
+            Task.FromResult(ReadAllText(path));
+
+        public byte[] ReadAllBytes(string path) =>
             _files.TryGetValue(Normalize(path), out var contents)
                 ? contents
                 : throw new FileNotFoundException(path);
 
-        public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) =>
-            Task.FromResult(ReadAllText(path));
+        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken = default) =>
+            Task.FromResult(ReadAllBytes(path));
+
+        public Stream OpenRead(string path) => new MemoryStream(ReadAllBytes(path), writable: false);
 
         public async IAsyncEnumerable<string> ReadLinesAsync(
             string path,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            if (!_files.TryGetValue(Normalize(path), out var contents))
-            {
-                throw new FileNotFoundException(path);
-            }
-
-            using var reader = new StringReader(contents);
+            using var reader = new StringReader(ReadAllText(path));
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -134,13 +200,21 @@ public class ReadToolFileSystemTests
             }
         }
 
-        public void WriteAllText(string path, string contents) => _files[Normalize(path)] = contents;
+        public void WriteAllText(string path, string contents)
+        {
+            var normalized = Normalize(path);
+            _files[normalized] = Encoding.UTF8.GetBytes(contents);
+            _timestamps[normalized] = DateTime.UtcNow;
+            EnsureParentDirectories(normalized);
+        }
 
         public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken = default)
         {
             WriteAllText(path, contents);
             return Task.CompletedTask;
         }
+
+        public void CreateDirectory(string path) => _directories.Add(Normalize(path));
 
         public bool Exists(string path)
         {
@@ -153,7 +227,11 @@ public class ReadToolFileSystemTests
             var normalized = Normalize(path);
             _files.Remove(normalized);
             _directories.Remove(normalized);
+            _timestamps.Remove(normalized);
         }
+
+        public DateTime GetLastWriteTimeUtc(string path) =>
+            _timestamps.TryGetValue(Normalize(path), out var ts) ? ts : DateTime.UtcNow;
 
         public IEnumerable<string> EnumerateFiles(string directory, string pattern, bool recursive)
         {

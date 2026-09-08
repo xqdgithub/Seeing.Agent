@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
 using Microsoft.Extensions.Logging;
@@ -10,8 +11,11 @@ namespace Seeing.Agent.Tools.FileSystem;
 /// </summary>
 public class DeleteTool : BuiltInToolBase
 {
-    public DeleteTool(ILogger<DeleteTool> logger) : base(logger)
+    private readonly IFileSystem _fileSystem;
+
+    public DeleteTool(ILogger<DeleteTool> logger, IFileSystem fileSystem) : base(logger)
     {
+        _fileSystem = fileSystem;
     }
 
     public override string Id => "delete";
@@ -42,33 +46,47 @@ public class DeleteTool : BuiltInToolBase
         return JsonSerializer.SerializeToElement(schema);
     }
 
-    public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+    public override Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
         var path = GetStringArgument(arguments, "path");
         if (string.IsNullOrEmpty(path))
-            return Failure("缺少必需参数: path");
+            return Task.FromResult(Failure("缺少必需参数: path"));
 
-        path = ResolvePath(path);
+        if (!Path.IsPathRooted(path))
+            path = _fileSystem.GetFullPath(path);
+        else
+            path = ResolvePath(path);
 
         _logger.LogInformation("删除路径: {Path}", path);
 
         try
         {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-                return Success($"目录已删除: {path}");
-            }
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-                return Success($"文件已删除: {path}");
-            }
-            return Failure($"路径不存在: {path}");
+            if (!_fileSystem.Exists(path))
+                return Task.FromResult(Failure($"路径不存在: {path}"));
+
+            var isDirectory = IsDirectory(path);
+            _fileSystem.Delete(path);
+            return Task.FromResult(Success(isDirectory
+                ? $"目录已删除: {path}"
+                : $"文件已删除: {path}"));
         }
         catch (Exception ex)
         {
-            return Failure(ex, "删除失败");
+            return Task.FromResult(Failure(ex, "删除失败"));
+        }
+    }
+
+    private bool IsDirectory(string path)
+    {
+        try
+        {
+            using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
+            _ = enumerator.MoveNext();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            return false;
         }
     }
 }
