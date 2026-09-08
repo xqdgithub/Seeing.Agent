@@ -2,6 +2,7 @@ using System.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Memory.Integration.Hosting;
 
 namespace Seeing.Agent.Memory;
@@ -9,7 +10,7 @@ namespace Seeing.Agent.Memory;
 /// <summary>
 /// Memory 能力模块 — id=<c>memory</c>；Sqlite 连接由 Activate/Deactivate 自管开关。
 /// </summary>
-public sealed class MemoryModule : ISeeingModule
+public sealed class MemoryModule : ISeeingModule, IUiContribution
 {
     private static readonly IReadOnlyList<string> s_providedTools =
         ["memory_search", "memory_write", "memory_read"];
@@ -17,6 +18,7 @@ public sealed class MemoryModule : ISeeingModule
     private readonly MemoryModuleActivity? _activity;
     private readonly Func<SqliteConnection>? _connectionFactory;
     private readonly SqliteConnection? _connection;
+    private readonly IUiContributionRegistry? _ui;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public MemoryModule()
@@ -27,15 +29,20 @@ public sealed class MemoryModule : ISeeingModule
     public MemoryModule(
         MemoryModuleActivity activity,
         Func<SqliteConnection> connectionFactory,
-        SqliteConnection connection)
+        SqliteConnection connection,
+        IUiContributionRegistry? uiRegistry = null)
     {
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _ui = uiRegistry;
     }
 
     /// <inheritdoc />
     public string Id => "memory";
+
+    /// <inheritdoc />
+    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -53,6 +60,13 @@ public sealed class MemoryModule : ISeeingModule
     }
 
     /// <inheritdoc />
+    public IReadOnlyList<object> Contribute() =>
+    [
+        new NavContribution("/memory", "记忆", "database", ["memory"]),
+        new NavContribution("/memory/settings", "记忆设置", "setting", ["memory"]),
+    ];
+
+    /// <inheritdoc />
     public Task ActivateAsync(CancellationToken cancellationToken = default)
     {
         if (_activity is null || _connectionFactory is null || _connection is null)
@@ -66,12 +80,15 @@ public sealed class MemoryModule : ISeeingModule
         if (_connection.State != ConnectionState.Open)
             _connection.Open();
         _activity.MarkActive();
+        _ui?.Register(this);
         return Task.CompletedTask;
     }
 
     /// <inheritdoc />
     public Task DeactivateAsync(CancellationToken cancellationToken = default)
     {
+        _ui?.Unregister(Id);
+
         if (_activity is null)
             return Task.CompletedTask;
 

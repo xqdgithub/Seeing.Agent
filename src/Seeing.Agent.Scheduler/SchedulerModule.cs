@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Hosting;
 
@@ -8,7 +9,7 @@ namespace Seeing.Agent.Scheduler;
 /// <summary>
 /// Scheduler 能力模块 — id=<c>scheduler</c>。
 /// </summary>
-public sealed class SchedulerModule : ISeeingModule
+public sealed class SchedulerModule : ISeeingModule, IUiContribution
 {
     private static readonly IReadOnlyList<string> s_providedTools =
     [
@@ -22,6 +23,7 @@ public sealed class SchedulerModule : ISeeingModule
 
     private readonly SchedulerModuleActivity? _activity;
     private readonly IScheduleManager? _manager;
+    private readonly IUiContributionRegistry? _ui;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public SchedulerModule()
@@ -29,14 +31,21 @@ public sealed class SchedulerModule : ISeeingModule
     }
 
     /// <summary>DI 解析用。</summary>
-    public SchedulerModule(SchedulerModuleActivity activity, IScheduleManager manager)
+    public SchedulerModule(
+        SchedulerModuleActivity activity,
+        IScheduleManager manager,
+        IUiContributionRegistry? uiRegistry = null)
     {
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _manager = manager ?? throw new ArgumentNullException(nameof(manager));
+        _ui = uiRegistry;
     }
 
     /// <inheritdoc />
     public string Id => "scheduler";
+
+    /// <inheritdoc />
+    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -54,6 +63,13 @@ public sealed class SchedulerModule : ISeeingModule
     }
 
     /// <inheritdoc />
+    public IReadOnlyList<object> Contribute() =>
+    [
+        new NavContribution("/cron-jobs", "定时任务", "clock-circle", ["scheduler"]),
+        new NavContribution("/heartbeat", "心跳", "heart", ["scheduler"]),
+    ];
+
+    /// <inheritdoc />
     public Task ActivateAsync(CancellationToken cancellationToken = default)
     {
         if (_activity is null)
@@ -64,12 +80,15 @@ public sealed class SchedulerModule : ISeeingModule
 
         cancellationToken.ThrowIfCancellationRequested();
         _activity.MarkActive();
+        _ui?.Register(this);
         return Task.CompletedTask;
     }
 
     /// <inheritdoc />
     public async Task DeactivateAsync(CancellationToken cancellationToken = default)
     {
+        _ui?.Unregister(Id);
+
         if (_activity is null)
             return;
 

@@ -6,6 +6,7 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Skills.OnlineParsers;
 
 namespace Seeing.Agent.Skills;
@@ -13,14 +14,30 @@ namespace Seeing.Agent.Skills;
 /// <summary>
 /// 技能模块 — 提供 SkillManager、在线解析器与 skill 工具。
 /// </summary>
-public sealed class SkillsModule : ISeeingModule
+public sealed class SkillsModule : ISeeingModule, IUiContribution
 {
     private static readonly IReadOnlyList<string> s_providedTools = ["skill"];
 
     private static readonly IReadOnlyList<string> s_providedSeams = ["skills"];
 
+    private readonly IUiContributionRegistry? _ui;
+
+    /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
+    public SkillsModule()
+    {
+    }
+
+    /// <summary>DI 解析用。</summary>
+    public SkillsModule(IUiContributionRegistry? uiRegistry)
+    {
+        _ui = uiRegistry;
+    }
+
     /// <inheritdoc />
     public string Id => "skills";
+
+    /// <inheritdoc />
+    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -50,8 +67,23 @@ public sealed class SkillsModule : ISeeingModule
     }
 
     /// <inheritdoc />
-    public Task ActivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public IReadOnlyList<object> Contribute() =>
+    [
+        new NavContribution("/skills", "技能", "star", ["skills"]),
+    ];
 
     /// <inheritdoc />
-    public Task DeactivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task ActivateAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ui?.Register(this);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task DeactivateAsync(CancellationToken cancellationToken = default)
+    {
+        _ui?.Unregister(Id);
+        return Task.CompletedTask;
+    }
 }

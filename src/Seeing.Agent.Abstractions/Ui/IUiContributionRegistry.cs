@@ -8,6 +8,9 @@ public interface IUiContributionRegistry
     /// <summary>登记模块 UI 贡献。</summary>
     void Register(IUiContribution contribution);
 
+    /// <summary>按模块 id 撤销 UI 贡献（Deactivate 对称卸载）。</summary>
+    void Unregister(string moduleId);
+
     /// <summary>全部导航项。</summary>
     IReadOnlyList<NavContribution> NavItems { get; }
 

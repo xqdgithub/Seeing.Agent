@@ -1,38 +1,35 @@
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
 
-namespace Seeing.Agent.Tools.Basic;
+namespace Seeing.Agent.Gateway;
 
 /// <summary>
-/// 基础工具模块 — 提供 current_time；并贡献 /tools 聚合页导航。
+/// Gateway 能力模块 — id=<c>gateway</c>；Web Host 登记 Gateway 管理页导航。
 /// </summary>
-public sealed class BasicModule : ISeeingModule, IUiContribution
+public sealed class GatewayModule : ISeeingModule, IUiContribution
 {
-    private static readonly IReadOnlyList<string> s_providedTools = ["current_time"];
-
     private readonly IUiContributionRegistry? _ui;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
-    public BasicModule()
+    public GatewayModule()
     {
     }
 
     /// <summary>DI 解析用。</summary>
-    public BasicModule(IUiContributionRegistry? uiRegistry)
+    public GatewayModule(IUiContributionRegistry? uiRegistry)
     {
         _ui = uiRegistry;
     }
 
     /// <inheritdoc />
-    public string Id => "basic";
+    public string Id => "gateway";
 
     /// <inheritdoc />
     public string ModuleId => Id;
 
     /// <inheritdoc />
-    public IReadOnlyList<string> ProvidedTools => s_providedTools;
+    public IReadOnlyList<string> ProvidedTools { get; } = Array.Empty<string>();
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedSeams { get; } = Array.Empty<string>();
@@ -43,15 +40,14 @@ public sealed class BasicModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
-        // Interim: register ITool implementations so existing ToolManager discovery still works
-        // without Activate until Host Shape lands.
-        services.AddSingleton<ITool, CurrentTimeTool>();
+        // 实际 DI 登记由 AddSeeingGatewayServer 完成。
     }
 
     /// <inheritdoc />
     public IReadOnlyList<object> Contribute() =>
     [
-        new NavContribution("/tools", "工具", "tool", ["basic"]),
+        new NavContribution("/gateway", "Gateway", "global", ["gateway"]),
+        new NavContribution("/gateway-clients", "Gateway 客户端", "api", ["gateway"]),
     ];
 
     /// <inheritdoc />

@@ -93,6 +93,11 @@ public class UiContributionContractsTests
             .And.Subject!.GetParameters().Should().ContainSingle()
             .Which.ParameterType.Should().Be(typeof(IUiContribution));
 
+        var unregister = registry.GetMethod(nameof(IUiContributionRegistry.Unregister));
+        unregister.Should().NotBeNull();
+        unregister!.GetParameters().Should().ContainSingle()
+            .Which.ParameterType.Should().Be(typeof(string));
+
         registry.GetProperty(nameof(IUiContributionRegistry.NavItems))!
             .PropertyType.Should().Be(typeof(IReadOnlyList<NavContribution>));
 
@@ -107,6 +112,14 @@ public class UiContributionContractsTests
 
         registry.GetProperty(nameof(IUiContributionRegistry.Routes))!
             .PropertyType.Should().Be(typeof(IReadOnlyDictionary<string, NavContribution>));
+    }
+
+    [Fact]
+    public void NavContribution_ComponentTypeShouldDefaultToNull()
+    {
+        var contribution = new NavContribution("/memory", "Memory", "database", ["memory"]);
+
+        contribution.ComponentType.Should().BeNull();
     }
 
     private sealed class FakeSettingsComponent;

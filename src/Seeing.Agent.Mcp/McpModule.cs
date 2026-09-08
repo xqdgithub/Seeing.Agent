@@ -7,6 +7,7 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Management;
@@ -17,12 +18,28 @@ namespace Seeing.Agent.Mcp;
 /// <summary>
 /// MCP 模块 — 提供 McpClientManager、传输工厂与配置持久化。
 /// </summary>
-public sealed class McpModule : ISeeingModule
+public sealed class McpModule : ISeeingModule, IUiContribution
 {
     private static readonly IReadOnlyList<string> s_providedSeams = ["mcp"];
 
+    private readonly IUiContributionRegistry? _ui;
+
+    /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
+    public McpModule()
+    {
+    }
+
+    /// <summary>DI 解析用。</summary>
+    public McpModule(IUiContributionRegistry? uiRegistry)
+    {
+        _ui = uiRegistry;
+    }
+
     /// <inheritdoc />
     public string Id => "mcp";
+
+    /// <inheritdoc />
+    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools { get; } = Array.Empty<string>();
@@ -87,8 +104,23 @@ public sealed class McpModule : ISeeingModule
     }
 
     /// <inheritdoc />
-    public Task ActivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public IReadOnlyList<object> Contribute() =>
+    [
+        new NavContribution("/mcp", "MCP", "api", ["mcp"]),
+    ];
 
     /// <inheritdoc />
-    public Task DeactivateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task ActivateAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ui?.Register(this);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task DeactivateAsync(CancellationToken cancellationToken = default)
+    {
+        _ui?.Unregister(Id);
+        return Task.CompletedTask;
+    }
 }

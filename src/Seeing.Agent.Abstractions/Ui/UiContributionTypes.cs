@@ -8,12 +8,14 @@ namespace Seeing.Agent.Abstractions.Ui;
 /// <param name="Icon">图标标识。</param>
 /// <param name="Requires">依赖的模块 id 列表。</param>
 /// <param name="Scenarios">可选场景白名单；省略表示模块启用即显示。</param>
+/// <param name="ComponentType">可选 Blazor 页面/组件类型（WebUI 侧渲染；能力包可不填）。</param>
 public record NavContribution(
     string Route,
     string Title,
     string Icon,
     IReadOnlyList<string> Requires,
-    IReadOnlyList<string>? Scenarios = null);
+    IReadOnlyList<string>? Scenarios = null,
+    Type? ComponentType = null);
 
 /// <summary>
 /// 设置页卡片贡献。

@@ -111,7 +111,8 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<SchedulerModuleActivity>();
         services.AddSingleton<ISeeingModule>(sp => new SchedulerModule(
             sp.GetRequiredService<SchedulerModuleActivity>(),
-            sp.GetRequiredService<IScheduleManager>()));
+            sp.GetRequiredService<IScheduleManager>(),
+            sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
 
         // Hosted Service（管理调度器生命周期）
         services.AddHostedService<ScheduleHostedService>();
@@ -224,7 +225,8 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<SchedulerModuleActivity>();
         services.AddSingleton<ISeeingModule>(sp => new SchedulerModule(
             sp.GetRequiredService<SchedulerModuleActivity>(),
-            sp.GetRequiredService<IScheduleManager>()));
+            sp.GetRequiredService<IScheduleManager>(),
+            sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
 
         // Hosted Service（管理调度器生命周期）
         services.AddHostedService<ScheduleHostedService>();

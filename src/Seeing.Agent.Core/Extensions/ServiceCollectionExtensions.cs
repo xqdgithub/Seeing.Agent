@@ -1,4 +1,4 @@
-using Seeing.Agent.Abstractions.Tools;
+﻿using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Skills;
@@ -179,7 +179,14 @@ namespace Seeing.Agent.Extensions
 
             var module = new TModule();
             module.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(module);
+            services.AddSingleton<ISeeingModule>(sp =>
+            {
+                var ui = sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>();
+                var ctor = typeof(TModule).GetConstructor([typeof(Seeing.Agent.Abstractions.Ui.IUiContributionRegistry)]);
+                if (ctor is not null)
+                    return (TModule)ctor.Invoke([ui])!;
+                return new TModule();
+            });
             return services;
         }
 
@@ -386,7 +393,8 @@ namespace Seeing.Agent.Extensions
                 sp.GetRequiredService<ConfigSectionOptionsMonitor<Seeing.Agent.Skills.Configuration.SkillsOptions>>());
             var skillsModule = new SkillsModule();
             skillsModule.ConfigureServices(services);
-            services.AddSingleton<ISeeingModule>(skillsModule);
+            services.AddSingleton<ISeeingModule>(sp =>
+                new SkillsModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
 
             // TEMP: Phase 3 — MCP 模块登记（ConfigureServices 在 ToolManager 注册后调用；见下方）
             // Mcp 包仅依赖 Abstractions，节注册由主库代办
@@ -397,7 +405,8 @@ namespace Seeing.Agent.Extensions
                     ConfigScope.Both,
                     typeof(Dictionary<string, Seeing.Agent.Abstractions.Mcp.McpServerConfig>)));
             var mcpModule = new McpModule();
-            services.AddSingleton<ISeeingModule>(mcpModule);
+            services.AddSingleton<ISeeingModule>(sp =>
+                new McpModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
 
             // TEMP: Phase 3 — LLM 工厂模块（ConfigureServices 注册 ILlmClientFactory；Activate 待 Host Shape）
             var openAiLlmModule = new OpenAiLlmModule();

@@ -92,7 +92,8 @@ public static class MemoryServiceExtensions
         services.AddSingleton<ISeeingModule>(sp => new MemoryModule(
             sp.GetRequiredService<MemoryModuleActivity>(),
             sp.GetRequiredService<Func<SqliteConnection>>(),
-            sp.GetRequiredService<SqliteConnection>()));
+            sp.GetRequiredService<SqliteConnection>(),
+            sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
 
         services.TryAddSingleton<IFileStore, Core.Storage.LocalFileStore>();
 

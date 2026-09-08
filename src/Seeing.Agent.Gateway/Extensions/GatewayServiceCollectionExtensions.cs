@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Modules;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -42,6 +43,8 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton<IScheduledJobDispatcher>(sp => sp.GetRequiredService<GatewayScheduleDispatcher>());
         services.AddSingleton<IGatewayServer, GatewayServer>();
         services.AddHostedService<GatewayHostedService>();
+        services.AddSingleton<ISeeingModule>(sp =>
+            new GatewayModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
         return services;
     }
 
@@ -79,6 +82,8 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton<IScheduledJobDispatcher>(sp => sp.GetRequiredService<GatewayScheduleDispatcher>());
         services.AddSingleton<IGatewayServer, GatewayServer>();
         services.AddHostedService<GatewayHostedService>();
+        services.AddSingleton<ISeeingModule>(sp =>
+            new GatewayModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
         return services;
     }
 }
