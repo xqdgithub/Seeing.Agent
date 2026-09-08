@@ -58,6 +58,7 @@
     <!-- DPAPI support for secure token storage -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <ProjectReference Include="..\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\Seeing.IO.Local\Seeing.IO.Local.csproj" />
     <ProjectReference Include="..\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
   </ItemGroup>

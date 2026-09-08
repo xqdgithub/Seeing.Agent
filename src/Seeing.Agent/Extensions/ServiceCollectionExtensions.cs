@@ -33,6 +33,7 @@ using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Decorators;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Execution;
+using Seeing.IO.Local;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Clients;
@@ -325,6 +326,11 @@ namespace Seeing.Agent.Extensions
         /// </summary>
         private static void RegisterCoreServices(IServiceCollection services)
         {
+            // TEMP: Phase 2 — 本地执行世界，待模块结算落地后改由 LocalExecutionWorldModule Activate
+            services.TryAddSingleton<IExecutionWorld, LocalExecutionWorld>();
+            services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
+            services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
+
             // 权限服务（新系统 - 统一权限检查入口）
             services.AddPermissionService();
 
