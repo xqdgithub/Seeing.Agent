@@ -5,6 +5,7 @@
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Models
 @using Seeing.Agent.Core.Scenarios
+@using Seeing.Agent.Core.CapabilitySets
 @using Seeing.Agent.Core.Llm
 @using Seeing.Agent.Llm
 @using Seeing.Agent.WebUI.Components
@@ -18,6 +19,7 @@
 @inject UiContributionRegistry Registry
 @inject IModuleCatalog Catalog
 @inject IScenarioCatalog ScenarioCatalog
+@inject ICapabilitySetCatalog CapabilitySetCatalog
 @implements IDisposable
 
 <PageTitle>系统设置 - Seeing.Agent</PageTitle>
@@ -43,6 +45,11 @@
         <Tabs @bind-ActiveKey="_activeTab">
             <TabPane Key="general" Tab="常规">
                 <Form Layout="@FormLayout.Vertical" Model="@_options">
+                    @if (_modulesEnabledWarning)
+                    {
+                        <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
+                               Message="检测到 Modules.Enabled：该字段已废除，结算会忽略。请到「启动能力」页签使用 Boot + 能力集；Modules.Disabled 仍可用作全局模块黑名单。" />
+                    }
                     <FormItem Label="默认智能体">
                         <Select TItemValue="string" TItem="AgentOption"
                                 @bind-Value="@_options.DefaultAgent"
@@ -54,10 +61,26 @@
                             }
                         </Select>
                     </FormItem>
-                    <FormItem Label="进程场景">
+                    <FormItem Label="启动能力 Boot">
+                        <Select TItemValue="string" TItem="string"
+                                @bind-Value="@_options.Boot"
+                                Placeholder="* / 能力集名（清空回退 Host 默认）"
+                                AllowClear="true"
+                                Style="width: 100%;">
+                            <SelectOption TItemValue="string" TItem="string" Value="@("*")" Label="@("*（全 Available）")" />
+                            @foreach (var name in _bootOptions)
+                            {
+                                <SelectOption TItemValue="string" TItem="string" Value="@name" Label="@name" />
+                            }
+                        </Select>
+                        <div style="margin-top: 4px; font-size: 12px; color: #888;">
+                            决定进程 Activate / bootEnabled。详细能力集 CRUD 见「启动能力」页签。
+                        </div>
+                    </FormItem>
+                    <FormItem Label="默认工作模式">
                         <Select TItemValue="string" TItem="ScenarioOption"
                                 @bind-Value="@_options.Scenario"
-                                Placeholder="选择进程级场景（详细模块/CRUD 见「场景」页签）"
+                                Placeholder="选择默认工作模式（会话滤镜；详细 CRUD 见「工作模式」页签）"
                                 AllowClear="true"
                                 Style="width: 100%;">
                             @foreach (var s in _scenarioOptions)
@@ -67,7 +90,7 @@
                             }
                         </Select>
                         <div style="margin-top: 4px; font-size: 12px; color: #888;">
-                            快速切换当前 scenario。查看模块清单、新建/编辑/删除自定义场景请打开上方「场景」页签。
+                            仅影响新会话默认工作模式与会话滤镜，不缩启动集。编辑模块清单请打开「工作模式」页签。
                         </div>
                     </FormItem>
                     <FormItem Label="默认模型">
@@ -180,6 +203,8 @@
     private List<AgentOption> _availableAgents = new();
     private List<ModelOption> _availableModels = new();
     private List<ScenarioOption> _scenarioOptions = [];
+    private List<string> _bootOptions = [];
+    private bool _modulesEnabledWarning;
     private IReadOnlyList<SettingsCardContribution> _visibleCards = Array.Empty<SettingsCardContribution>();
     private WorkspaceSelectorModal? _workspaceSelectorModal;
     private WorkspaceSelectorModal? _globalWorkspaceSelectorModal;
@@ -197,9 +222,11 @@
 
         _workspacePath = WorkspaceProvider.GetProjectRoot();
         _options = await ConfigService.LoadProjectOptionsAsync();
+        _modulesEnabledWarning = _options.Modules?.Enabled is { Count: > 0 };
         _scenarioOptions = ScenarioCatalog.ListAll()
             .Select(s => new ScenarioOption(s.Name, $"{s.Name}（默认 Agent: {s.DefaultAgent}，{s.Modules.Count} 模块）"))
             .ToList();
+        _bootOptions = CapabilitySetCatalog.ListAll().Select(s => s.Name).ToList();
 
         BuildPluginRows();
 
@@ -315,6 +342,7 @@
                     {
                         ["DefaultAgent"] = _options.DefaultAgent,
                         ["DefaultModel"] = _options.DefaultModel,
+                        ["Boot"] = string.IsNullOrWhiteSpace(_options.Boot) ? null : _options.Boot.Trim(),
                         ["Scenario"] = string.IsNullOrWhiteSpace(_options.Scenario) ? null : _options.Scenario.Trim()
                     });
                     

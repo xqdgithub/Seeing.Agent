@@ -106,10 +106,10 @@ public class UiContributionTests
         fragment.Should().Contain("返回首页");
     }
 
-    // ── 3. 侧栏只跟进程级 ────────────────────────────────────────────────────
+    // ── 3. 侧栏只跟 bootEnabled（Requires），不跟进程 Scenario 名 ─────────────
 
     [Fact]
-    public void Sidebar_Follows_Process_Scenario_Only_Not_Session()
+    public void Sidebar_Follows_BootEnabled_Not_Process_Scenario_Name()
     {
         var catalog = Enabled("memory", "scheduler", "git");
         var nav = new NavContribution[]
@@ -122,17 +122,19 @@ public class UiContributionTests
         var processFull = UiContributionVisibility.FilterSidebarNav(nav, catalog, "full");
         var processFullAgain = UiContributionVisibility.FilterSidebarNav(nav, catalog, "full");
 
-        // 同进程 scenario：侧栏稳定（切会话场景不得改变此结果）
-        processFull.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs");
+        // Scenarios 白名单不再硬藏；boot-enabled 的 git 始终可见
+        processFull.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs", "/git-only");
         processFullAgain.Select(n => n.Route).Should().Equal(processFull.Select(n => n.Route));
 
-        // 切进程场景 → 侧栏变
         var processCode = UiContributionVisibility.FilterSidebarNav(nav, catalog, "code");
         processCode.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs", "/git-only");
 
         var processResearch = UiContributionVisibility.FilterSidebarNav(nav, catalog, "research");
-        processResearch.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs");
-        processResearch.Should().NotContain(n => n.Route == "/git-only");
+        processResearch.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs", "/git-only");
+
+        // 模块未 boot-enabled 时仍隐藏
+        UiContributionVisibility.FilterSidebarNav(nav, Enabled("memory", "scheduler"), "full")
+            .Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs");
     }
 
     // ── 4. 会话壳跟会话级；进程 Activate 不变 ────────────────────────────────
@@ -205,12 +207,12 @@ public class UiContributionTests
         processNav.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs");
     }
 
-    // ── 5. UI 真相源唯一：页面可见性只读 IModuleCatalog + Scenario ───────────
+    // ── 5. UI 真相源唯一：侧栏只读 IModuleCatalog（bootEnabled）；Scenario 白名单仅会话壳 ─
 
     [Fact]
-    public void Page_Visibility_Single_Source_Of_Truth_Is_Catalog_Plus_Scenario()
+    public void Page_Visibility_Single_Source_Of_Truth_Is_Catalog_BootEnabled()
     {
-        // 行为：禁用模块 → 侧栏/设置/路由均不可见；场景白名单独立生效
+        // 行为：禁用模块 → 侧栏/设置不可见；Scenario 白名单不再硬藏侧栏
         var catalogSkillsOnly = Enabled("skills");
         var nav = new NavContribution[]
         {
@@ -223,8 +225,9 @@ public class UiContributionTests
         UiContributionVisibility.FilterSidebarNav(nav, catalogSkillsOnly, "full")
             .Select(n => n.Route).Should().BeEquivalentTo("/skills", "/sessions");
 
+        // memory boot-enabled 时，即使 processScenario=code，侧栏仍显示（白名单不生效于侧栏）
         UiContributionVisibility.FilterSidebarNav(nav, Enabled("memory"), "code")
-            .Select(n => n.Route).Should().Equal("/sessions"); // memory 场景白名单不含 code
+            .Select(n => n.Route).Should().BeEquivalentTo("/memory", "/sessions");
 
         UiContributionVisibility.FilterSidebarNav(nav, Enabled("memory"), "work")
             .Select(n => n.Route).Should().BeEquivalentTo("/memory", "/sessions");
@@ -237,7 +240,7 @@ public class UiContributionTests
         UiContributionVisibility.FilterSettingsCards(cards, catalogSkillsOnly)
             .Should().ContainSingle(c => c.Route == "/settings/demo");
 
-        // 源码：关键 UI 过滤入口只读 Catalog + Scenario，无硬编码模块白名单
+        // 源码：关键 UI 过滤入口只读 Catalog，无硬编码模块白名单
         var sidebar = File.ReadAllText(WebUiPath("Components", "AppSidebar.razor"));
         sidebar.Should().Contain("Catalog");
         sidebar.Should().Contain("FilterSidebarNav");

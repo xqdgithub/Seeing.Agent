@@ -10,10 +10,17 @@ namespace Seeing.Agent.Llm.OpenAI;
 public sealed class OpenAiLlmClientFactory : ILlmClientFactory
 {
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ILlmCallInterceptorRegistry? _interceptors;
+    private readonly ILlmClientDecoratorRegistry? _decorators;
 
-    public OpenAiLlmClientFactory(ILoggerFactory loggerFactory)
+    public OpenAiLlmClientFactory(
+        ILoggerFactory loggerFactory,
+        ILlmCallInterceptorRegistry? interceptors = null,
+        ILlmClientDecoratorRegistry? decorators = null)
     {
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _interceptors = interceptors;
+        _decorators = decorators;
     }
 
     /// <inheritdoc />
@@ -33,9 +40,12 @@ public sealed class OpenAiLlmClientFactory : ILlmClientFactory
             throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}");
 
         var httpClient = LlmHttpClientFactory.Create(config);
-        return new OpenAiChatClient(
+        ILlmClient client = new OpenAiChatClient(
             config,
             httpClient,
-            _loggerFactory.CreateLogger<OpenAiChatClient>());
+            _loggerFactory.CreateLogger<OpenAiChatClient>(),
+            _interceptors);
+
+        return _decorators?.Apply(client, config) ?? client;
     }
 }

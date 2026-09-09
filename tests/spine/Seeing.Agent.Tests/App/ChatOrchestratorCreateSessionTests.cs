@@ -1,6 +1,6 @@
 using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Configuration;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -11,7 +11,6 @@ using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Compression;
-using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
@@ -130,11 +129,51 @@ public class ChatOrchestratorCreateSessionTests
         session.SelectedModel.Should().Be("anthropic/claude-sonnet");
     }
 
+    [Fact]
+    public async Task CreateSessionAsync_ShouldMaterializeProcessDefaultScenario()
+    {
+        var sessionManager = new SessionManager(logger: NullLogger<SessionManager>.Instance);
+        var options = Options.Create(new SeeingAgentOptions
+        {
+            DefaultAgent = "build",
+            DefaultModel = "openai/gpt-4o",
+            Scenario = "code",
+        });
+
+        var registry = new Mock<IAgentRegistry>();
+        var runtime = new Mock<IAgentRuntimeManager>();
+        runtime.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("build");
+        var buildAgent = new AgentDefinition
+        {
+            Name = "build",
+            Runtime = AgentRuntime.Native
+        };
+        registry.Setup(r => r.GetAgentAsync("build")).ReturnsAsync(buildAgent);
+
+        var modelManager = CreateModelManager(options.Value, buildAgent);
+        var workMode = new Mock<IDefaultWorkModeProvider>();
+        workMode.Setup(w => w.GetDefaultScenario()).Returns("code");
+
+        var orchestrator = CreateOrchestrator(
+            sessionManager,
+            registry.Object,
+            new AgentSelectionResolver(runtime.Object),
+            modelManager,
+            workMode.Object);
+
+        var session = await orchestrator.CreateSessionAsync(title: "场景会话");
+
+        session.Scenario.Should().Be("code");
+        await sessionManager.SaveAsync(session.Id);
+        sessionManager.Get(session.Id)!.Scenario.Should().Be("code");
+    }
+
     private static ChatOrchestrator CreateOrchestrator(
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
         AgentSelectionResolver selectionResolver,
-        IModelManager modelManager)
+        IModelManager modelManager,
+        IDefaultWorkModeProvider? defaultWorkMode = null)
     {
         var executionJobService = new ExecutionJobService(
             serviceProvider: Mock.Of<IServiceProvider>(),
@@ -157,7 +196,8 @@ public class ChatOrchestratorCreateSessionTests
             modelManager: modelManager,
             executionQueue: new ChatExecutionQueue(),
             runTracker: new ChatRunTracker(),
-            logger: NullLogger<ChatOrchestrator>.Instance);
+            logger: NullLogger<ChatOrchestrator>.Instance,
+            defaultWorkMode: defaultWorkMode);
     }
 
     private static IModelManager CreateModelManager(

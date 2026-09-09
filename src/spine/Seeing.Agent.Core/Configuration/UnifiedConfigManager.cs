@@ -172,7 +172,10 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         }
     }
 
-    /// <summary>从 seeing.json 的 SeeingAgent 对象移除指定键并触发配置变更（用于清空 Scenario 等可选脊柱字段）。</summary>
+    /// <summary>
+    /// 从 seeing.json 的 SeeingAgent 对象移除指定键并触发配置变更
+    /// （用于清空 <c>Scenario</c> / <c>Boot</c> / <c>CapabilitySets</c> 等可选脊柱字段）。
+    /// </summary>
     public async Task RemoveSeeingAgentKeysAsync(
         ConfigLevel level,
         IReadOnlyList<string> keys,

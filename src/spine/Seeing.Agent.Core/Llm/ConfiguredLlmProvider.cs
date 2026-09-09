@@ -98,7 +98,7 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
     public override Task<bool> TestConnectionAsync(
         string modelId,
         CancellationToken cancellationToken)
-        => GetClient().TestConnectionAsync(modelId, cancellationToken);
+        => GetClient().TestConnectionAsync(modelId, call: null, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

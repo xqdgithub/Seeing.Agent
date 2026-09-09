@@ -1,7 +1,9 @@
+using Seeing.Agent.Core.CapabilitySets;
+
 namespace Seeing.Agent.Core.Scenarios;
 
 /// <summary>
-/// 内置场景预设。模块 id 为纯字符串；结算时与宿主 <c>IModuleCatalog.Available</c> 求交。
+/// 内置场景预设（工作模式）。模块列表编译期引用 <see cref="BuiltInCapabilitySets"/> 常量，禁止复制数组。
 /// </summary>
 public static class BuiltInScenarios
 {
@@ -13,114 +15,37 @@ public static class BuiltInScenarios
 
     private static readonly IReadOnlyList<string> s_noToolsDisabled = Array.Empty<string>();
 
-    private static readonly IReadOnlyList<string> s_providerModules =
-    [
-        "provider.deepseek",
-        "provider.opencodezen",
-    ];
-
-    private static readonly IReadOnlyList<string> s_minimalModules =
-    [
-        "io.local",
-        "agents.builtin",
-        "llm.openai",
-        "basic",
-        ..s_providerModules,
-    ];
-
-    private static readonly IReadOnlyList<string> s_codeModules =
-    [
-        "io.local",
-        "agents.builtin",
-        "llm.openai",
-        "basic",
-        "filesystem",
-        "shell",
-        "git",
-        "subagent",
-        ..s_providerModules,
-    ];
-
-    private static readonly IReadOnlyList<string> s_workModules =
-    [
-        "io.local",
-        "agents.builtin",
-        "llm.openai",
-        "basic",
-        "filesystem",
-        "web",
-        "memory",
-        "scheduler",
-        ..s_providerModules,
-    ];
-
-    private static readonly IReadOnlyList<string> s_researchModules =
-    [
-        "io.local",
-        "agents.builtin",
-        "llm.openai",
-        "basic",
-        "web",
-        "memory",
-        ..s_providerModules,
-    ];
-
-    /// <summary>
-    /// 当前仓库已实现的全部 <c>ISeeingModule</c> id（字符串，不引用能力包类型）。
-    /// <see cref="Full"/> 默认启用本表；结算时与宿主 available 求交，未引用的包告警忽略。
-    /// </summary>
-    private static readonly IReadOnlyList<string> s_fullModules =
-    [
-        "io.local",
-        "agents.builtin",
-        "llm.openai",
-        "llm.anthropic",
-        "basic",
-        "filesystem",
-        "shell",
-        "git",
-        "subagent",
-        "web",
-        "memory",
-        "scheduler",
-        "skills",
-        "mcp",
-        "acp",
-        "gateway",
-        ..s_providerModules,
-    ];
-
     public static ScenarioDefinition Minimal { get; } = new(
         Name: "minimal",
-        Modules: s_minimalModules,
+        Modules: BuiltInCapabilitySets.Minimal,
         DefaultAgent: "general",
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
     public static ScenarioDefinition Code { get; } = new(
         Name: "code",
-        Modules: s_codeModules,
+        Modules: BuiltInCapabilitySets.Code,
         DefaultAgent: "build",
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
     public static ScenarioDefinition Work { get; } = new(
         Name: "work",
-        Modules: s_workModules,
+        Modules: BuiltInCapabilitySets.Work,
         DefaultAgent: "general",
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
     public static ScenarioDefinition Research { get; } = new(
         Name: "research",
-        Modules: s_researchModules,
+        Modules: BuiltInCapabilitySets.Research,
         DefaultAgent: "explore",
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
     public static ScenarioDefinition Full { get; } = new(
         Name: "full",
-        Modules: s_fullModules,
+        Modules: BuiltInCapabilitySets.Full,
         DefaultAgent: "build",
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);

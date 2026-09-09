@@ -91,7 +91,7 @@ public class GatewayScheduleDispatcherOutboundTests
     private static Mock<ISessionManager> CreateSessionManager(SessionData session)
     {
         var mock = new Mock<ISessionManager>();
-        mock.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>()))
+        mock.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
         mock.Setup(m => m.Get(session.Id)).Returns(session);
         mock.Setup(m => m.AddMessageAsync(session.Id, It.IsAny<SessionMessage>(), It.IsAny<CancellationToken>()))

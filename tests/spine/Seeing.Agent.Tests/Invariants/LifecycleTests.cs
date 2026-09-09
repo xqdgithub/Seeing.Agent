@@ -8,6 +8,7 @@ using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Extensions;
+using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Modules;
 using Xunit;
 
@@ -55,7 +56,11 @@ public class LifecycleTests
                 new ModuleDescriptor("io.local", [], [], []),
                 new ModuleDescriptor("filesystem", [], [], ["io.local"]),
             ],
-            UserEnabled = ["filesystem"],
+            ConfiguredBoot = "broken",
+            CapabilitySets = new Dictionary<string, CapabilitySetDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["broken"] = new("broken", ["filesystem"], Array.Empty<string>()),
+            },
         };
 
         var act = async () => await engine.SettleAsync(input);

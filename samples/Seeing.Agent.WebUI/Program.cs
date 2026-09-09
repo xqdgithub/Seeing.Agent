@@ -23,6 +23,7 @@ using Seeing.Agent.Core.Tools.FileSystem;
 using Seeing.Agent.Core.Tools.Git;
 using Seeing.Agent.Core.Tools.Shell;
 using Seeing.Agent.Core.Tools.Web;
+using Seeing.Agent.Core.Modules;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.WebUI.Services;
@@ -78,6 +79,7 @@ builder.Services.AddSeeingCore(registry);
 
 // === Web Host Shape：Circuit + BlazorPermissionChannel ===
 builder.Services.AddSeeingHostingWeb();
+BootOverrideSource.ApplyToServices(builder.Services, args);
 builder.Services.AddSingleton<UiContributionRegistry>();
 builder.Services.AddSingleton<IUiContributionRegistry>(sp => sp.GetRequiredService<UiContributionRegistry>());
 

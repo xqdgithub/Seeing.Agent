@@ -10,10 +10,17 @@ namespace Seeing.Agent.Llm.Anthropic;
 public sealed class AnthropicLlmClientFactory : ILlmClientFactory
 {
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ILlmCallInterceptorRegistry? _interceptors;
+    private readonly ILlmClientDecoratorRegistry? _decorators;
 
-    public AnthropicLlmClientFactory(ILoggerFactory loggerFactory)
+    public AnthropicLlmClientFactory(
+        ILoggerFactory loggerFactory,
+        ILlmCallInterceptorRegistry? interceptors = null,
+        ILlmClientDecoratorRegistry? decorators = null)
     {
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _interceptors = interceptors;
+        _decorators = decorators;
     }
 
     /// <inheritdoc />
@@ -33,9 +40,12 @@ public sealed class AnthropicLlmClientFactory : ILlmClientFactory
             throw new NotSupportedException($"不支持的 Provider 类型: {config.Type}");
 
         var httpClient = LlmHttpClientFactory.Create(config);
-        return new AnthropicClient(
+        ILlmClient client = new AnthropicClient(
             config,
             httpClient,
-            _loggerFactory.CreateLogger<AnthropicClient>());
+            _loggerFactory.CreateLogger<AnthropicClient>(),
+            _interceptors);
+
+        return _decorators?.Apply(client, config) ?? client;
     }
 }

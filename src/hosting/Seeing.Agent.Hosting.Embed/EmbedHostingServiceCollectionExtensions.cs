@@ -24,9 +24,16 @@ public static class EmbedHostingServiceCollectionExtensions
         Action<ExecutionOptions>? configureExecution = null)
     {
         services.AddSingleton(EmbedHostShape.Descriptor);
+        // D10：HostDefaultSeams=executionWorld→io.local；HostDefaultBoot=minimal
         services.AddSingleton(new ProcessSettlementOptions
         {
             HostDefaultScenario = EmbedHostShape.Descriptor.DefaultScenario,
+            HostDefaultBoot = "minimal",
+            HostDefaultSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executionWorld"] = "io.local",
+            },
+            BootOverride = BootOverrideSource.ResolveFromEnvironment(),
         });
 
         // 无 UI：未显式注册 IPermissionChannel 时使用 DenyAll（嵌入方应自行提供通道或 AutoApprove）

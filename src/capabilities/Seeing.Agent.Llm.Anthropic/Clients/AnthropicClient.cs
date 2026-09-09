@@ -16,6 +16,7 @@ public class AnthropicClient : ILlmClient
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ProviderConfig _config;
+    private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
 
     /// <summary>Anthropic API 版本</summary>
     private const string ApiVersion = "2023-06-01";
@@ -29,11 +30,16 @@ public class AnthropicClient : ILlmClient
     /// <summary>
     /// 创建 Anthropic 客户端
     /// </summary>
-    public AnthropicClient(ProviderConfig config, HttpClient httpClient, ILogger logger)
+    public AnthropicClient(
+        ProviderConfig config,
+        HttpClient httpClient,
+        ILogger logger,
+        ILlmCallInterceptorRegistry? interceptorRegistry = null)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _httpClient = httpClient;
+        _interceptorRegistry = interceptorRegistry;
 
         // 允许匿名网关：ApiKey 与 x-api-key 头均可缺省，缺失时直接不发送认证头
 
@@ -66,10 +72,17 @@ public class AnthropicClient : ILlmClient
             ProviderId, baseUrl);
     }
 
+    private IReadOnlyList<ILlmCallInterceptor> ResolveInterceptors()
+        => _interceptorRegistry?.Resolve(ProviderId, ProviderType)
+           ?? Array.Empty<ILlmCallInterceptor>();
+
     /// <summary>
     /// 发送聊天补全请求
     /// </summary>
-    public async Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken cancellationToken = default)
+    public async Task<ChatResponse> CompleteAsync(
+        ChatRequest request,
+        LlmCallContext? call = null,
+        CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Anthropic 请求: Model={Model}, Messages={Count}", request.Model, request.Messages.Count);
 
@@ -77,7 +90,10 @@ public class AnthropicClient : ILlmClient
         var json = JsonSerializer.Serialize(anthropicRequest);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.PostAsync("messages", content, cancellationToken);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages") { Content = content };
+        OutboundPipeline.Apply(httpRequest, staticHeaders: null, call, ResolveInterceptors(), ProviderId, ProviderType);
+
+        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -91,6 +107,7 @@ public class AnthropicClient : ILlmClient
     /// </summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         ChatRequest request,
+        LlmCallContext? call = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Anthropic 流式请求: Model={Model}", request.Model);
@@ -103,6 +120,7 @@ public class AnthropicClient : ILlmClient
         {
             Content = content
         };
+        OutboundPipeline.Apply(httpRequest, staticHeaders: null, call, ResolveInterceptors(), ProviderId, ProviderType);
 
         var response = await _httpClient.SendAsync(
             httpRequest,
@@ -291,7 +309,10 @@ public class AnthropicClient : ILlmClient
     /// <summary>
     /// 测试连接
     /// </summary>
-    public async Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken = default)
+    public async Task<bool> TestConnectionAsync(
+        string modelId,
+        LlmCallContext? call = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -305,7 +326,7 @@ public class AnthropicClient : ILlmClient
                 MaxTokens = 5
             };
 
-            await CompleteAsync(testRequest, cancellationToken);
+            await CompleteAsync(testRequest, call, cancellationToken);
             return true;
         }
         catch (Exception ex)

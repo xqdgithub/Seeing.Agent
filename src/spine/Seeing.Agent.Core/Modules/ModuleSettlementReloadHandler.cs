@@ -4,24 +4,28 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Scenarios;
 
 namespace Seeing.Agent.Core.Modules;
 
 /// <summary>
-/// 进程级模块结算热重载：配置变更 → 重新结算 → Activate 新增 / Deactivate 移除（含在途边界）。
+/// 进程级模块结算热重载：Boot / CapabilitySets / Modules.Disabled / Seams / Workspace 变更 → 再结算 → Activate diff。
+/// Scenarios / Scenario 变更不触发本 handler 的 boot Activate diff。
 /// </summary>
 public sealed class ModuleSettlementReloadHandler : IReloadHandler
 {
     private static readonly string[] s_relevantSections =
-        ["Modules", "Scenario", "Scenarios", "Seams", "modules", "scenario", "scenarios", "seams"];
+    [
+        "Boot", "CapabilitySets", "Modules", "Seams", "Workspace",
+        "boot", "capabilitySets", "modules", "seams", "workspace",
+    ];
 
     private readonly SettlementEngine _engine;
     private readonly ModuleLifecycleManager _lifecycle;
     private readonly ModuleCatalog _catalog;
-    private readonly IScenarioCatalog _scenarioCatalog;
+    private readonly ICapabilitySetCatalog _capabilitySetCatalog;
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
     private readonly IReadOnlyList<ISeeingModule> _modules;
     private readonly ModuleReloadOptions _reloadOptions;
@@ -40,7 +44,7 @@ public sealed class ModuleSettlementReloadHandler : IReloadHandler
         ModuleCatalog catalog,
         IOptionsMonitor<SeeingAgentOptions> options,
         IEnumerable<ISeeingModule> modules,
-        IScenarioCatalog? scenarioCatalog = null,
+        ICapabilitySetCatalog? capabilitySetCatalog = null,
         ModuleReloadOptions? reloadOptions = null,
         ProcessSettlementOptions? settlementOptions = null,
         IExecutionInFlightBoundary? inFlight = null,
@@ -52,7 +56,7 @@ public sealed class ModuleSettlementReloadHandler : IReloadHandler
         _options = options ?? throw new ArgumentNullException(nameof(options));
         ArgumentNullException.ThrowIfNull(modules);
         _modules = modules.ToArray();
-        _scenarioCatalog = scenarioCatalog ?? new ScenarioCatalog(options);
+        _capabilitySetCatalog = capabilitySetCatalog ?? new CapabilitySetCatalog(options);
         _reloadOptions = reloadOptions ?? new ModuleReloadOptions();
         _settlementOptions = settlementOptions;
         _inFlight = inFlight;
@@ -109,25 +113,19 @@ public sealed class ModuleSettlementReloadHandler : IReloadHandler
         var seeing = _options.CurrentValue;
         var modulesOptions = seeing.Modules ?? new ModulesOptions();
 
-        var input = new SettlementInput
-        {
-            Available = SettlementEngine.ToDescriptors(_modules),
-            ConfiguredScenario = seeing.Scenario,
-            HostDefaultScenario = _settlementOptions?.HostDefaultScenario,
-            UserEnabled = modulesOptions.Enabled,
-            UserDisabled = modulesOptions.Disabled,
-            UserSeams = seeing.Seams,
-            ResolveScenarioModules = name =>
-                _scenarioCatalog.Get(name)?.Modules ?? BuiltInScenarios.TryGet(name)?.Modules,
-            ResolveScenarioSeams = name =>
-                _scenarioCatalog.Get(name)?.Seams ?? BuiltInScenarios.TryGet(name)?.Seams,
-        };
+        var input = BuildSettlementInput(
+            modules: _modules,
+            seeing: seeing,
+            modulesOptions: modulesOptions,
+            settlementOptions: _settlementOptions,
+            capabilitySetCatalog: _capabilitySetCatalog);
 
         var previousActivated = _lifecycle.Activated.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var result = await _engine.SettleAsync(input, ct).ConfigureAwait(false);
         _logger.LogInformation(
-            "模块热重载结算：scenario={Scenario}, enabled={EnabledCount}, warnings={WarningCount}",
+            "模块热重载结算：boot={Boot}, scenario={Scenario}, enabled={EnabledCount}, warnings={WarningCount}",
+            result.Boot,
             result.Scenario,
             result.Enabled.Count,
             result.Warnings.Count);
@@ -147,6 +145,31 @@ public sealed class ModuleSettlementReloadHandler : IReloadHandler
         }
 
         await ApplyDeactivateBoundaryAsync(toDeactivate, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>构建与 <c>InitializeSeeingAsync</c> 一致的结算输入。</summary>
+    internal static SettlementInput BuildSettlementInput(
+        IReadOnlyList<ISeeingModule> modules,
+        SeeingAgentOptions? seeing,
+        ModulesOptions modulesOptions,
+        ProcessSettlementOptions? settlementOptions,
+        ICapabilitySetCatalog? capabilitySetCatalog)
+    {
+        return new SettlementInput
+        {
+            Available = SettlementEngine.ToDescriptors(modules),
+            ConfiguredBoot = seeing?.Boot,
+            BootOverride = settlementOptions?.BootOverride,
+            HostDefaultBoot = settlementOptions?.HostDefaultBoot,
+            HostDefaultSeams = settlementOptions?.HostDefaultSeams,
+            ConfiguredScenario = seeing?.Scenario,
+            HostDefaultScenario = settlementOptions?.HostDefaultScenario,
+            UserEnabled = modulesOptions.Enabled,
+            UserDisabled = modulesOptions.Disabled,
+            UserSeams = seeing?.Seams,
+            ResolveCapabilitySet = name =>
+                capabilitySetCatalog?.Get(name) ?? BuiltInCapabilitySets.TryGet(name),
+        };
     }
 
     private async Task ApplyDeactivateBoundaryAsync(

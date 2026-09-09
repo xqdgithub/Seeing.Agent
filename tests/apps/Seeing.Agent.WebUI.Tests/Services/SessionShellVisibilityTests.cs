@@ -34,22 +34,22 @@ public class SessionShellVisibilityTests
         {
             new NavContribution("/memory", "记忆", "database", ["memory"]),
             new NavContribution("/cron-jobs", "定时任务", "clock-circle", ["scheduler"]),
+            // Scenarios 白名单不再影响进程侧栏；git boot-enabled 即可见
             new NavContribution("/git-only", "Git", "code", ["git"], Scenarios: ["code"]),
         };
 
         var processFull = SessionShellVisibility.FilterNavForProcess(nav, catalog, "full");
         var processFullAgain = SessionShellVisibility.FilterNavForProcess(nav, catalog, "full");
 
-        // 会话从 code→work 不改变进程级侧栏结果（同进程 scenario 下稳定）
-        processFull.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs");
+        processFull.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs", "/git-only");
         processFullAgain.Select(n => n.Route).Should().Equal(processFull.Select(n => n.Route));
 
-        // 进程场景切到 code 才会让 Scenarios=["code"] 的项出现
+        // 进程 Scenario 名变更也不应隐藏已 boot-enabled 的项
         var processCode = SessionShellVisibility.FilterNavForProcess(nav, catalog, "code");
         processCode.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs", "/git-only");
 
         var processResearch = SessionShellVisibility.FilterNavForProcess(nav, catalog, "research");
-        processResearch.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs");
+        processResearch.Select(n => n.Route).Should().BeEquivalentTo("/memory", "/cron-jobs", "/git-only");
     }
 
     [Fact]

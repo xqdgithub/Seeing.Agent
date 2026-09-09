@@ -18,9 +18,15 @@ public static class GatewayHostingServiceCollectionExtensions
     public static IServiceCollection AddSeeingHostingGateway(this IServiceCollection services)
     {
         services.AddSingleton(GatewayHostShape.Descriptor);
+        // D10：HostDefaultSeams=executionWorld→io.local；Boot 未设 → 回退 *
         services.AddSingleton(new ProcessSettlementOptions
         {
             HostDefaultScenario = GatewayHostShape.Descriptor.DefaultScenario,
+            HostDefaultSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executionWorld"] = "io.local",
+            },
+            BootOverride = BootOverrideSource.ResolveFromEnvironment(),
         });
         return services;
     }

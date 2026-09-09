@@ -181,6 +181,7 @@ public class DeepSeekProviderTests
         var client = new Mock<ILlmClient>();
         client.Setup(c => c.TestConnectionAsync(
                 "deepseek-chat",
+                It.IsAny<LlmCallContext?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         var factory = new Mock<ILlmClientFactory>();
@@ -196,6 +197,7 @@ public class DeepSeekProviderTests
         result.Should().BeTrue();
         client.Verify(c => c.TestConnectionAsync(
             "deepseek-chat",
+            It.IsAny<LlmCallContext?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

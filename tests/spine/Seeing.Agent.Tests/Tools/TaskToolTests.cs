@@ -339,6 +339,7 @@ public class TaskToolTests
             SessionManager.Setup(s => s.EnsureSessionAsync(
                     Child.Id,
                     It.IsAny<string?>(),
+                    It.IsAny<string?>(),
                     It.IsAny<string?>()))
                 .ReturnsAsync(Child);
 
@@ -578,6 +579,7 @@ public class TaskStatusToolTests
             SessionManager.Setup(s => s.SaveAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
             SessionManager.Setup(s => s.EnsureSessionAsync(
                     Child.Id,
+                    It.IsAny<string?>(),
                     It.IsAny<string?>(),
                     It.IsAny<string?>()))
                 .ReturnsAsync(Child);

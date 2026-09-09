@@ -9,6 +9,7 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
@@ -173,8 +174,11 @@ public class MigrationTests : IDisposable
                 new ModuleDescriptor("io.local", [], [], []),
                 new ModuleDescriptor("basic", [], [], []),
             ],
-            ConfiguredScenario = "minimal",
-            ResolveScenarioModules = _ => ["io.local", "basic", "never-referenced-capability"],
+            ConfiguredBoot = "minimal",
+            ResolveCapabilitySet = _ => new CapabilitySetDefinition(
+                "minimal",
+                ["io.local", "basic", "never-referenced-capability"],
+                Array.Empty<string>()),
         });
 
         result.Enabled.Should().BeEquivalentTo(["basic", "io.local"]);

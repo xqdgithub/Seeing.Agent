@@ -1,13 +1,14 @@
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Core.Configuration
 {
     /// <summary>
-    /// Seeing.Agent 脊柱配置选项（modules/seams/agents/permission/models/workspace + 核心工具/标题）。
+    /// Seeing.Agent 脊柱配置选项（boot/capabilitySets/modules/seams/agents/permission/models/workspace + 核心工具/标题）。
     /// 子系统 Options（Gateway/Acp/TokenBudget/Skills/Shell/Mcp 等）已迁至各自能力包。
     /// </summary>
     public class SeeingAgentOptions
@@ -18,7 +19,23 @@ namespace Seeing.Agent.Core.Configuration
         /// <summary>默认 Agent</summary>
         public string? DefaultAgent { get; set; }
 
-        /// <summary>进程级场景名（seeing.json <c>scenario</c>）；null 回退 Host Shape 默认。</summary>
+        /// <summary>
+        /// 进程启动能力指针（seeing.json <c>Boot</c>）：能力集名或 <c>*</c>。
+        /// null 回退 Host Shape <c>HostDefaultBoot</c>，再回退 <c>*</c>。决定 Activate 集。
+        /// </summary>
+        public string? Boot { get; set; }
+
+        /// <summary>
+        /// 自定义/覆盖能力集字典（seeing.json <c>CapabilitySets</c>）。
+        /// key 为能力集名；同名覆盖内置；仅含 Modules + Disabled（模块层）。
+        /// </summary>
+        public Dictionary<string, CapabilitySetConfig> CapabilitySets { get; set; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// 进程默认工作模式名（seeing.json <c>Scenario</c>）；null 回退 Host Shape 默认。
+        /// 仅会话滤镜/诊断，<b>不</b>决定 Activate。
+        /// </summary>
         public string? Scenario { get; set; }
 
         /// <summary>
@@ -28,12 +45,15 @@ namespace Seeing.Agent.Core.Configuration
         public Dictionary<string, ScenarioConfig> Scenarios { get; set; } =
             new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>进程级模块装配覆盖（seeing.json <c>modules</c>）。</summary>
+        /// <summary>
+        /// 进程级模块装配覆盖（seeing.json <c>Modules</c>）。
+        /// <c>Modules.Enabled</c> 已忽略（警告）；保留 <c>Modules.Disabled</c> 作 boot 全局黑名单。
+        /// </summary>
         public ModulesOptions Modules { get; set; } = new();
 
         /// <summary>
-        /// 进程级 seam 绑定覆盖（seeing.json <c>seams</c>）：seam 名 → 提供方模块 id
-        /// （如 <c>executionWorld</c>→<c>io.local</c>）。覆盖 scenario seams；禁止用逻辑名 switch。
+        /// 进程级 seam 绑定覆盖（seeing.json <c>Seams</c>）：seam 名 → 提供方模块 id
+        /// （如 <c>executionWorld</c>→<c>io.local</c>）。覆盖 HostDefaultSeams；禁止用逻辑名 switch。
         /// </summary>
         public Dictionary<string, string> Seams { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

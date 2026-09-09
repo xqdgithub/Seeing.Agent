@@ -107,7 +107,10 @@ public sealed class SeeingConfigService : ISeeingConfigService
         await _configManager.SaveSectionAsync(sectionName, value, ConfigLevel.Project, ct);
     }
 
-    /// <summary>批量保存配置节到指定级别。值为 null 的键会从 seeing.json 的 SeeingAgent 中移除（用于清空 Scenario 等）。</summary>
+    /// <summary>
+    /// 批量保存配置节到指定级别。值为 null 的键会从 seeing.json 的 SeeingAgent 中移除
+    /// （用于清空 <c>Scenario</c> / <c>Boot</c> / <c>CapabilitySets</c> 等可选脊柱字段）。
+    /// </summary>
     public async Task SaveLevelSectionsAsync(
         ConfigLevel level,
         Dictionary<string, object?> sections,

@@ -12,22 +12,24 @@ internal sealed class SessionSettlementSnapshot
     /// <summary>解析后的会话 scenario 名（可能为 null）。</summary>
     public required string? ScenarioName { get; init; }
 
-    /// <summary>会话启用模块（已与进程级 enabled 求交，只能收窄）。</summary>
+    /// <summary>会话启用模块（已与进程级 bootEnabled 求交，只能收窄）。</summary>
     public required IReadOnlyList<string> EnabledModules { get; init; }
 
-    /// <summary>层1∩层2 已结算 tool id（模块 ProvidedTools − disabled）。</summary>
+    /// <summary>工具层：模块 ProvidedTools − Tools.Disabled*。</summary>
     public required IReadOnlyList<string> SettledToolIds { get; init; }
 }
 
 /// <summary>
-/// 会话级结算：只收窄进程级已启用模块，再展开为 tool id 并扣除 tools.disabled。
+/// 会话级结算：两层分离——模块层只求交 module id；工具层再展开 ProvidedTools 并扣 Tools.Disabled。
 /// </summary>
 /// <remarks>
-/// 公式：
-/// <c>sessionScenario = session.Scenario ?? 进程级 scenario</c>；
-/// <c>sessionBase = sessionScenario.modules ∩ 进程级 enabled</c>；
-/// <c>enabledModules = (session.modules.enabled ?? sessionBase) ∩ 进程级 enabled</c>；
-/// <c>settledTools = enabledModules.ProvidedTools − session.tools.disabled − 用户 tools.disabled − scenario.ToolsDisabled</c>。
+/// 模块层：
+/// <c>sessionScenario = session.Scenario ?? 进程默认工作模式</c>；
+/// <c>sessionModules = scenario.Modules ∩ catalog.Enabled(=bootEnabled)</c>；
+/// 若有 <c>session.ScenarioOverride.Modules.Enabled</c> 则以其为候选再 ∩ bootEnabled（不能超 boot）。
+/// 工具层（模块层之后）：
+/// <c>settledToolIds = ⋃ sessionModules.ProvidedTools − scenario.Tools.Disabled − override.Tools.Disabled − Modules.Tools.Disabled</c>。
+/// <c>Tools.Disabled</c> 禁止写入模块层公式。
 /// </remarks>
 internal static class SessionSettlement
 {
@@ -41,9 +43,10 @@ internal static class SessionSettlement
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(catalog);
 
+        // 默认 BuiltIn-only；生产路径应传入 IScenarioCatalog.Get（configured ∪ built-in）
         resolveScenario ??= static name => BuiltInScenarios.TryGet(name);
 
-        var processEnabled = new HashSet<string>(catalog.Enabled, StringComparer.OrdinalIgnoreCase);
+        var bootEnabled = new HashSet<string>(catalog.Enabled, StringComparer.OrdinalIgnoreCase);
         var availableById = catalog.Available.ToDictionary(
             d => d.Id,
             d => d,
@@ -54,17 +57,19 @@ internal static class SessionSettlement
             ? null
             : resolveScenario(scenarioName.Trim());
 
+        // —— 模块层：只操作 module id，不应用 Tools.Disabled ——
+        // sessionModules = scenario.Modules ∩ bootEnabled
+        // 有 override 时再 ∩ override.Modules.Enabled（仍 ⊆ bootEnabled）
         var scenarioModules = scenario?.Modules ?? Array.Empty<string>();
-        var sessionBase = Intersect(scenarioModules, processEnabled);
+        var sessionBase = Intersect(scenarioModules, bootEnabled);
 
-        IReadOnlyList<string> candidateSource = session.ScenarioOverride?.Modules?.Enabled is { } overrideEnabled
-            ? overrideEnabled
-            : sessionBase;
-
-        var enabledModules = Intersect(candidateSource, processEnabled)
+        var enabledModules = (session.ScenarioOverride?.Modules?.Enabled is { } overrideEnabled
+                ? Intersect(overrideEnabled, new HashSet<string>(sessionBase, StringComparer.OrdinalIgnoreCase))
+                : sessionBase)
             .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        // —— 工具层：展开 ProvidedTools，再扣各类 Tools.Disabled ——
         var toolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var moduleId in enabledModules)
         {
@@ -94,7 +99,7 @@ internal static class SessionSettlement
 
     private static List<string> Intersect(
         IEnumerable<string> ids,
-        HashSet<string> processEnabled)
+        HashSet<string> bootEnabled)
     {
         var result = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -103,7 +108,7 @@ internal static class SessionSettlement
             if (string.IsNullOrWhiteSpace(raw))
                 continue;
             var id = raw.Trim();
-            if (!processEnabled.Contains(id))
+            if (!bootEnabled.Contains(id))
                 continue;
             if (seen.Add(id))
                 result.Add(id);

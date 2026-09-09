@@ -104,11 +104,13 @@ namespace Seeing.Session.Management
         /// <param name="id">会话 ID（由调用方指定）</param>
         /// <param name="selectedAgent">选中的 Agent ID（可选，仅新建时生效）</param>
         /// <param name="partitionId">分区 ID（可选，仅新建时生效）</param>
+        /// <param name="scenario">会话级场景名（仅新建时生效；应物化进程默认工作模式）</param>
         /// <returns>已存在或新创建的 SessionData</returns>
         public async Task<SessionData> EnsureSessionAsync(
             string id,
             string? selectedAgent = null,
-            string? partitionId = null)
+            string? partitionId = null,
+            string? scenario = null)
         {
             if (string.IsNullOrEmpty(id))
                 throw new ArgumentException("Session id cannot be null or empty.", nameof(id));
@@ -127,6 +129,7 @@ namespace Seeing.Session.Management
                 Title = $"Session {id}",
                 PartitionId = partitionId ?? "default",
                 SelectedAgent = selectedAgent ?? string.Empty,
+                Scenario = scenario,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now,
                 LastActiveAt = DateTime.Now,

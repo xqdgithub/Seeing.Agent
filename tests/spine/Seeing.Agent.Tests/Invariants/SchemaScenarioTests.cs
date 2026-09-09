@@ -21,6 +21,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Llm;
@@ -138,7 +139,7 @@ public class SchemaScenarioTests
     [Fact]
     public async Task ModelVisibleSchema_CrossProcessModuleShrink_IntersectsAndWarns_DoesNotRefuse()
     {
-        // 跨进程：available 收缩（memory 包未引用）→ scenario 仍可结算，取交集并告警，不拒启
+        // 跨进程：available 收缩（memory 包未引用）→ Boot 能力集仍可结算，取交集并告警，不拒启
         var engine = new SettlementEngine(new ModuleCatalog(), NullLogger<SettlementEngine>.Instance);
         var result = await engine.SettleAsync(new SettlementInput
         {
@@ -148,8 +149,11 @@ public class SchemaScenarioTests
                 Desc("basic"),
                 Desc("git", dependsOn: ["io.local"]),
             ],
-            ConfiguredScenario = "code",
-            ResolveScenarioModules = _ => BuiltInScenarios.Code.Modules,
+            ConfiguredBoot = "code",
+            ResolveCapabilitySet = _ => new CapabilitySetDefinition(
+                "code",
+                BuiltInCapabilitySets.Code,
+                Array.Empty<string>()),
         });
 
         result.Enabled.Should().Contain(["basic", "git", "io.local"]);
@@ -277,7 +281,11 @@ public class SchemaScenarioTests
 
         var options = new MutableOptions(new SeeingAgentOptions
         {
-            Modules = new ModulesOptions { Enabled = ["a"] },
+            Boot = "only-a",
+            CapabilitySets = new Dictionary<string, CapabilitySetConfig>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["only-a"] = new() { Modules = ["a"] },
+            },
         });
         var stillInFlight = true;
         var inFlight = new Mock<IExecutionInFlightBoundary>();
@@ -295,7 +303,7 @@ public class SchemaScenarioTests
             settlementOptions: null,
             inFlight: inFlight.Object);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Modules"] });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Boot"] });
         lifecycle.IsActivated("b").Should().BeTrue();
         handler.PendingDeactivate.Should().Contain("b");
         b.DeactivateCount.Should().Be(0);
@@ -391,7 +399,7 @@ public class SchemaScenarioTests
         IReadOnlyList<TrackingModule>? modules = null)
     {
         var sessionManager = new Mock<ISessionManager>();
-        sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>()))
+        sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
         sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns(session);
         sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);

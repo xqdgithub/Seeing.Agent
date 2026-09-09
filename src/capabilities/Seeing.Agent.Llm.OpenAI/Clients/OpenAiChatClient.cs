@@ -15,15 +15,21 @@ public class OpenAiChatClient : ILlmClient
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ProviderConfig _config;
+    private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
 
     public string ProviderId => _config.Id;
     public string ProviderType => ProviderTypes.OpenAi;
 
-    public OpenAiChatClient(ProviderConfig config, HttpClient httpClient, ILogger logger)
+    public OpenAiChatClient(
+        ProviderConfig config,
+        HttpClient httpClient,
+        ILogger logger,
+        ILlmCallInterceptorRegistry? interceptorRegistry = null)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         ArgumentNullException.ThrowIfNull(httpClient);
+        _interceptorRegistry = interceptorRegistry;
 
         // 允许匿名网关（如 OpenCode Zen 免费模型）：ApiKey 与 Authorization 头均可缺省，
         // 缺失时直接不发送 Authorization 头（由 OpenAiHttpHelper.ConfigureHttpClient 处理）。
@@ -35,18 +41,26 @@ public class OpenAiChatClient : ILlmClient
             : ConfigureFactoryClient(httpClient, config, logger);
     }
 
+    private IReadOnlyList<ILlmCallInterceptor> ResolveInterceptors()
+        => _interceptorRegistry?.Resolve(ProviderId, ProviderType)
+           ?? Array.Empty<ILlmCallInterceptor>();
+
     private static HttpClient ConfigureFactoryClient(HttpClient httpClient, ProviderConfig config, ILogger logger)
     {
         OpenAiHttpHelper.ConfigureHttpClient(httpClient, config, logger);
         return httpClient;
     }
 
-    public async Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken ct = default)
+    public async Task<ChatResponse> CompleteAsync(
+        ChatRequest request,
+        LlmCallContext? call = null,
+        CancellationToken ct = default)
     {
         _logger.LogDebug("ChatCompletions 非流式: Model={Model}", request.Model);
 
         var body = BuildRequest(request, stream: false);
-        var response = await OpenAiHttpHelper.PostJsonAsync(_httpClient, "chat/completions", body, _logger, ct);
+        var response = await OpenAiHttpHelper.PostJsonAsync(
+            _httpClient, "chat/completions", body, _logger, ct, _config, call, ResolveInterceptors());
         await OpenAiHttpHelper.EnsureSuccessAsync(response, _logger, ct);
 
         var json = await response.Content.ReadAsStringAsync(ct);
@@ -56,12 +70,14 @@ public class OpenAiChatClient : ILlmClient
 
     public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         ChatRequest request,
+        LlmCallContext? call = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         _logger.LogDebug("ChatCompletions 流式: Model={Model}", request.Model);
 
         var body = BuildRequest(request, stream: true);
-        var response = await OpenAiHttpHelper.PostJsonAsync(_httpClient, "chat/completions", body, _logger, ct);
+        var response = await OpenAiHttpHelper.PostJsonAsync(
+            _httpClient, "chat/completions", body, _logger, ct, _config, call, ResolveInterceptors());
         await OpenAiHttpHelper.EnsureSuccessAsync(response, _logger, ct);
 
         _logger.LogInformation("ChatCompletions SSE 已建立: StatusCode={StatusCode}", (int)response.StatusCode);
@@ -161,7 +177,10 @@ public class OpenAiChatClient : ILlmClient
         };
     }
 
-    public async Task<bool> TestConnectionAsync(string modelId, CancellationToken ct = default)
+    public async Task<bool> TestConnectionAsync(
+        string modelId,
+        LlmCallContext? call = null,
+        CancellationToken ct = default)
     {
         try
         {
@@ -171,7 +190,7 @@ public class OpenAiChatClient : ILlmClient
                 Messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = "Hi" } },
                 MaxTokens = 5
             };
-            await CompleteAsync(req, ct);
+            await CompleteAsync(req, call, ct);
             return true;
         }
         catch (Exception ex)

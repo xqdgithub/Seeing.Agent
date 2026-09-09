@@ -173,7 +173,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
     public Task<bool> TestConnectionAsync(
         string modelId,
         CancellationToken cancellationToken = default)
-        => GetClient().TestConnectionAsync(modelId, cancellationToken);
+        => GetClient().TestConnectionAsync(modelId, call: null, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {
@@ -195,8 +195,8 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
     {
         try
         {
-            // 服务端按 User-Agent 识别 opencode 客户端以豁免免费模型限流；
-            // 免费模型无需 API Key：仅带识别 UA（非认证头），不发送 Authorization。
+            // Console 免费层校验：x-opencode-session 由 OpenCodeZenCallInterceptor 按调用注入；
+            // User-Agent / x-opencode-client 为静态识别头。免费模型可无 API Key。
             var factory = LlmClientFactoryResolver.Require(_factories, ProviderTypes.OpenAi);
             return factory.Create(new ProviderConfig
             {
@@ -205,9 +205,11 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
                 Name = Name,
                 BaseUrl = OpenCodeZenModelsClient.DefaultBaseUrl,
                 ApiKey = _apiKey,
+                MaxRetries = MaxRetries,
                 Headers = new Dictionary<string, string>
                 {
-                    ["User-Agent"] = "opencode"
+                    ["User-Agent"] = "opencode/1.18.29",
+                    ["x-opencode-client"] = "cli"
                 }
             });
         }

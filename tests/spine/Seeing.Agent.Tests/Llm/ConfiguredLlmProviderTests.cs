@@ -183,7 +183,10 @@ public class ConfiguredLlmProviderTests
     {
         using var cts = new CancellationTokenSource();
         var client = new Mock<ILlmClient>();
-        client.Setup(candidate => candidate.TestConnectionAsync("test-model", cts.Token))
+        client.Setup(candidate => candidate.TestConnectionAsync(
+                "test-model",
+                It.IsAny<LlmCallContext?>(),
+                cts.Token))
             .ReturnsAsync(true);
         var sut = CreateProvider(CreateFactory(client.Object).Object);
 
@@ -191,7 +194,10 @@ public class ConfiguredLlmProviderTests
 
         result.Should().BeTrue();
         client.Verify(
-            candidate => candidate.TestConnectionAsync("test-model", cts.Token),
+            candidate => candidate.TestConnectionAsync(
+                "test-model",
+                It.IsAny<LlmCallContext?>(),
+                cts.Token),
             Times.Once);
     }
 

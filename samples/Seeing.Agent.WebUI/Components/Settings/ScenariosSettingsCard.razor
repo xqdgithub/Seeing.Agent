@@ -14,10 +14,10 @@
 @implements IDisposable
 
 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
-       Message="场景决定进程启用哪些模块、默认 Agent、seams 与禁用工具。内置场景可查看并「另存为」自定义；自定义场景可完整 CRUD。当前进程场景写入 seeing.json 的 Scenario，热重载后重新结算。" />
+       Message="工作模式（Scenario）决定会话模块滤镜、默认 Agent、场景 Seams 与 Tools.Disabled。不驱动进程 Activate。启动能力请到「启动能力」页签配置 Boot + 能力集。当前进程默认工作模式写入 seeing.json 的 Scenario，仅影响新会话默认值。" />
 
 <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
-    <span>当前进程场景：</span>
+    <span>默认工作模式：</span>
     <Select TItemValue="string" TItem="string"
             Value="@_activeScenario"
             ValueChanged="OnActiveScenarioChanged"
@@ -31,7 +31,7 @@
         }
     </Select>
     <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="StartCreate" Disabled="@_busy">
-        新建场景
+        新建工作模式
     </Button>
     <Button Icon="@IconType.Outline.Reload" OnClick="Refresh" Disabled="@_busy">刷新</Button>
 </div>
@@ -71,13 +71,13 @@
        Width="720"
        DestroyOnClose="true">
     <Form Layout="@FormLayout.Vertical" Model="@_editModel">
-        <FormItem Label="场景名">
+        <FormItem Label="工作模式名">
             <Input @bind-Value="@_editModel.Name" Disabled="@(!_editIsNew)" Placeholder="小写字母/数字/连字符，如 my-research" />
         </FormItem>
         <FormItem Label="默认 Agent">
             <Input @bind-Value="@_editModel.DefaultAgent" Placeholder="general / build / explore …" />
         </FormItem>
-        <FormItem Label="模块（勾选进程目录中可用的模块）">
+        <FormItem Label="模块（会话滤镜候选；结算时 ∩ bootEnabled）">
             <div style="max-height: 220px; overflow: auto; border: 1px solid #f0f0f0; padding: 8px; border-radius: 6px;">
                 @foreach (var id in _availableModuleIds)
                 {
@@ -87,7 +87,7 @@
                             @id
                             @if (!ModuleCatalog.IsEnabled(id))
                             {
-                                <span style="color:#999; margin-left:6px;">（当前未启用）</span>
+                                <span style="color:#999; margin-left:6px;">（当前未启用 / 超出 Boot）</span>
                             }
                         </Checkbox>
                     </div>
@@ -98,17 +98,17 @@
             </div>
             <Input @bind-Value="@_editModel.ExtraModulesCsv" Placeholder="例如 experimental.foo" Style="margin-top: 4px;" />
         </FormItem>
-        <FormItem Label="Seams（JSON 对象，可选）">
+        <FormItem Label="Seams（会话/文档语义，JSON 对象，可选）">
             <TextArea @bind-Value="@_editModel.SeamsJson" Rows="3"
                       Placeholder='{"executionWorld":"io.local"}' />
         </FormItem>
-        <FormItem Label="禁用工具（逗号分隔）">
+        <FormItem Label="Tools.Disabled（逗号分隔）">
             <Input @bind-Value="@_editModel.ToolsDisabledCsv" Placeholder="bash, delete" />
         </FormItem>
         @if (_editIsBuiltInBase)
         {
             <Alert Type="@AlertType.Warning" ShowIcon="true"
-                   Message="保存将把该内置场景的覆盖写入 seeing.json Scenarios；删除覆盖可恢复内置默认。" />
+                   Message="保存将把该内置工作模式的覆盖写入 seeing.json Scenarios；删除覆盖可恢复内置默认。" />
         }
     </Form>
 </Modal>
@@ -118,7 +118,7 @@
     private bool _editorVisible;
     private bool _editIsNew;
     private bool _editIsBuiltInBase;
-    private string _editorTitle = "场景";
+    private string _editorTitle = "工作模式";
     private string? _activeScenario;
     private List<string> _allNames = [];
     private List<ScenarioRow> _rows = [];
@@ -188,8 +188,8 @@
                 ["Scenario"] = _activeScenario
             });
             MessageService.Success(_activeScenario is null
-                ? "已清空进程场景（回退 Host 默认）"
-                : $"进程场景已切换为 {_activeScenario}");
+                ? "已清空默认工作模式（回退 Host 默认）"
+                : $"默认工作模式已切换为 {_activeScenario}");
             Refresh();
         }
         catch (Exception ex)
@@ -206,7 +206,7 @@
     {
         _editIsNew = true;
         _editIsBuiltInBase = false;
-        _editorTitle = "新建场景";
+        _editorTitle = "新建工作模式";
         _editModel = new EditorModel
         {
             Name = "",
@@ -228,8 +228,8 @@
         _editIsNew = false;
         _editIsBuiltInBase = row.IsBuiltIn;
         _editorTitle = row.IsBuiltIn && !row.HasOverride
-            ? $"查看内置场景 · {row.Name}（保存即覆盖）"
-            : $"编辑场景 · {row.Name}";
+            ? $"查看内置工作模式 · {row.Name}（保存即覆盖）"
+            : $"编辑工作模式 · {row.Name}";
 
         var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var selected = def.Modules.Where(available.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -255,7 +255,7 @@
 
         _editIsNew = true;
         _editIsBuiltInBase = false;
-        _editorTitle = "另存为自定义场景";
+        _editorTitle = "另存为自定义工作模式";
         var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         _editModel = new EditorModel
         {
@@ -281,7 +281,7 @@
     {
         if (string.IsNullOrWhiteSpace(_editModel.Name))
         {
-            MessageService.Error("场景名不能为空");
+            MessageService.Error("工作模式名不能为空");
             return;
         }
 
@@ -289,7 +289,7 @@
         if (_editIsNew && ScenarioCatalog.ListAll().Any(s =>
                 string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
-            MessageService.Error($"场景名 '{name}' 已存在，请换名或编辑现有项");
+            MessageService.Error($"工作模式名 '{name}' 已存在，请换名或编辑现有项");
             return;
         }
 
@@ -327,7 +327,10 @@
             Modules = modules,
             DefaultAgent = string.IsNullOrWhiteSpace(_editModel.DefaultAgent) ? "general" : _editModel.DefaultAgent.Trim(),
             Seams = new Dictionary<string, string>(seams, StringComparer.OrdinalIgnoreCase),
-            ToolsDisabled = toolsDisabled,
+            Tools = new ScenarioToolsConfig
+            {
+                Disabled = toolsDisabled,
+            },
         };
 
         _busy = true;
@@ -340,7 +343,7 @@
             {
                 ["Scenarios"] = options.Scenarios
             });
-            MessageService.Success($"场景 '{name}' 已保存");
+            MessageService.Success($"工作模式 '{name}' 已保存");
             _editorVisible = false;
             Refresh();
         }
@@ -362,7 +365,7 @@
             var options = await ConfigService.LoadProjectOptionsAsync();
             if (options.Scenarios is null || !options.Scenarios.Remove(row.Name))
             {
-                MessageService.Warning("配置中无该场景条目");
+                MessageService.Warning("配置中无该工作模式条目");
                 return;
             }
 
@@ -380,7 +383,7 @@
                 });
             }
 
-            MessageService.Success(row.IsBuiltIn ? $"已清除 '{row.Name}' 的配置覆盖" : $"已删除场景 '{row.Name}'");
+            MessageService.Success(row.IsBuiltIn ? $"已清除 '{row.Name}' 的配置覆盖" : $"已删除工作模式 '{row.Name}'");
             Refresh();
         }
         catch (Exception ex)

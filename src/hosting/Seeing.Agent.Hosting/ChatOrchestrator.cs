@@ -1,20 +1,19 @@
 using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Agents;
-using System.Runtime.CompilerServices;
+using Seeing.Agent.Abstractions.Configuration;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Commands;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Configuration;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting;
@@ -37,6 +36,7 @@ public class ChatOrchestrator : IChatOrchestrator
     private readonly IModelManager _modelManager;
     private readonly ChatExecutionQueue _executionQueue;
     private readonly ChatRunTracker _runTracker;
+    private readonly IDefaultWorkModeProvider? _defaultWorkMode;
     private readonly ILogger<ChatOrchestrator> _logger;
 
     public ChatOrchestrator(
@@ -50,7 +50,8 @@ public class ChatOrchestrator : IChatOrchestrator
         IModelManager modelManager,
         ChatExecutionQueue executionQueue,
         ChatRunTracker runTracker,
-        ILogger<ChatOrchestrator> logger)
+        ILogger<ChatOrchestrator> logger,
+        IDefaultWorkModeProvider? defaultWorkMode = null)
     {
         _executionJobService = executionJobService;
         _sessionManager = sessionManager;
@@ -63,6 +64,7 @@ public class ChatOrchestrator : IChatOrchestrator
         _executionQueue = executionQueue;
         _runTracker = runTracker;
         _logger = logger;
+        _defaultWorkMode = defaultWorkMode;
     }
 
     #region 新接口实现
@@ -127,7 +129,9 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task<SessionData> EnsureSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        return await _sessionManager.EnsureSessionAsync(sessionId);
+        return await _sessionManager.EnsureSessionAsync(
+            sessionId,
+            scenario: _defaultWorkMode?.GetDefaultScenario());
     }
 
     /// <inheritdoc/>
@@ -146,7 +150,9 @@ public class ChatOrchestrator : IChatOrchestrator
             sessionSelectedAgent: null,
             cancellationToken).ConfigureAwait(false);
 
-        var session = _sessionManager.Create(selectedAgent: resolvedAgentId);
+        var session = _sessionManager.Create(
+            selectedAgent: resolvedAgentId,
+            scenario: _defaultWorkMode?.GetDefaultScenario());
 
         if (!string.IsNullOrEmpty(title))
         {
@@ -168,13 +174,14 @@ public class ChatOrchestrator : IChatOrchestrator
         await _sessionManager.SaveAsync(session.Id);
 
         _logger.LogInformation(
-            "Created session: {SessionId}, Title: {Title}, Agent: {Agent}, Model: {Model}",
+            "Created session: {SessionId}, Title: {Title}, Agent: {Agent}, Model: {Model}, Scenario: {Scenario}",
             session.Id,
             session.Title,
             session.SelectedAgent,
             string.IsNullOrEmpty(session.SelectedModel)
                 ? "(none)"
-                : session.SelectedModel);
+                : session.SelectedModel,
+            session.Scenario ?? "(none)");
         return session;
     }
 
@@ -205,9 +212,12 @@ public class ChatOrchestrator : IChatOrchestrator
         {
             throw new InvalidOperationException($"Session '{sessionId}' not found");
         }
-        
-        // 创建独立 Root 会话（无 Parent），可正常操作；从 SubAgent 分叉时脱离只读
-        var newSession = _sessionManager.Create(selectedAgent: sourceSession.SelectedAgent);
+
+        // 创建独立 Root 会话（无 Parent）；物化 Scenario（优先源会话，否则进程默认）
+        var scenario = sourceSession.Scenario ?? _defaultWorkMode?.GetDefaultScenario();
+        var newSession = _sessionManager.Create(
+            selectedAgent: sourceSession.SelectedAgent,
+            scenario: scenario);
         newSession.Kind = SessionKind.Root;
         newSession.ParentSessionId = null;
         newSession.ForkLabel = null;
@@ -223,7 +233,7 @@ public class ChatOrchestrator : IChatOrchestrator
         }
 
         await _sessionManager.SaveAsync(newSession.Id);
-        
+
         _logger.LogInformation("Branched session: {SourceId} -> {NewId} (Root, no parent)", sessionId, newSession.Id);
         return newSession;
     }

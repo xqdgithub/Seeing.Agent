@@ -145,7 +145,7 @@ public sealed class DeepSeekProvider : ILlmProvider, IConfigurableLlmProvider, I
                 return Task.FromResult(false);
         }
 
-        return GetClient().TestConnectionAsync(modelId, cancellationToken);
+        return GetClient().TestConnectionAsync(modelId, call: null, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

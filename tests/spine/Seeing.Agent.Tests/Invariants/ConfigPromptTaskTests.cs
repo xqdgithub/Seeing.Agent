@@ -46,6 +46,8 @@ public class ConfigPromptTaskTests
 
         keys.Should().Equal(
             "AgentModels",
+            "Boot",
+            "CapabilitySets",
             "DefaultAgent",
             "DefaultModel",
             "GlobalWorkspaceRoot",

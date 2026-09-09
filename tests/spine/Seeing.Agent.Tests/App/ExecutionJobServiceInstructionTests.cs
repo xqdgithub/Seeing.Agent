@@ -122,7 +122,7 @@ public class ExecutionJobServiceInstructionTests
     {
         var sessionManager = new Mock<ISessionManager>();
         sessionManager
-            .Setup(manager => manager.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>()))
+            .Setup(manager => manager.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
         sessionManager.Setup(manager => manager.SaveAsync(session.Id)).Returns(Task.CompletedTask);
 

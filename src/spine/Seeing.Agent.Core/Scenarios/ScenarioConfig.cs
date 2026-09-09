@@ -14,24 +14,48 @@ public sealed class ScenarioConfig
     /// <summary>seam 名 → 提供方模块 id。</summary>
     public Dictionary<string, string> Seams { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>禁用工具 id（扁平字段；与 <see cref="Tools"/> 并存时合并）。</summary>
+    /// <summary>
+    /// 禁用工具 id（扁平字段；已弃用，请改用 <see cref="Tools"/>.<see cref="ScenarioToolsConfig.Disabled"/>）。
+    /// 与 <see cref="Tools"/> 并存时合并。
+    /// </summary>
+    [Obsolete("改用 Tools.Disabled；扁平 ToolsDisabled 仅作迁移兼容。")]
     public List<string> ToolsDisabled { get; set; } = [];
 
-    /// <summary>可选嵌套 tools 节（spec：<c>tools.disabled</c>）。</summary>
+    /// <summary>嵌套 tools 节（规范字段：<c>Tools.Disabled</c>）。</summary>
     public ScenarioToolsConfig? Tools { get; set; }
+
+    /// <summary>
+    /// 将弃用扁平 <see cref="ToolsDisabled"/> 合并进 <see cref="Tools"/>.<see cref="ScenarioToolsConfig.Disabled"/>。
+    /// 加载/解析路径调用，保证定义与后续保存只消费规范字段。
+    /// </summary>
+    public void MergeFlatToolsDisabledIntoNested()
+    {
+#pragma warning disable CS0618 // ToolsDisabled 迁移兼容
+        if (ToolsDisabled.Count == 0)
+            return;
+
+        Tools ??= new ScenarioToolsConfig();
+        var set = new HashSet<string>(Tools.Disabled, StringComparer.OrdinalIgnoreCase);
+        foreach (var id in ToolsDisabled)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+            var trimmed = id.Trim();
+            if (set.Add(trimmed))
+                Tools.Disabled.Add(trimmed);
+        }
+#pragma warning restore CS0618
+    }
 
     /// <summary>转为不可变 <see cref="ScenarioDefinition"/>。</summary>
     public ScenarioDefinition ToDefinition(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        var disabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in ToolsDisabled)
-        {
-            if (!string.IsNullOrWhiteSpace(id))
-                disabled.Add(id.Trim());
-        }
+        // 加载路径：扁平 ToolsDisabled → Tools.Disabled
+        MergeFlatToolsDisabledIntoNested();
 
+        var disabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (Tools?.Disabled is { Count: > 0 } nested)
         {
             foreach (var id in nested)
@@ -75,7 +99,10 @@ public sealed class ScenarioConfig
                 kv => kv.Key,
                 kv => kv.Value,
                 StringComparer.OrdinalIgnoreCase),
-            ToolsDisabled = definition.ToolsDisabled.ToList(),
+            Tools = new ScenarioToolsConfig
+            {
+                Disabled = definition.ToolsDisabled.ToList(),
+            },
         };
     }
 }

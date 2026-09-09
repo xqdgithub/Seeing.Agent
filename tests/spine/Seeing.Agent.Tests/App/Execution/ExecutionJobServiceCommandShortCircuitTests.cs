@@ -363,7 +363,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
         IAgentExecutor executor)
     {
         var sessionManager = new Mock<ISessionManager>();
-        sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>()))
+        sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
         sessionManager.Setup(m => m.GetOrLoadAsync(session.Id, It.IsAny<CancellationToken>())).ReturnsAsync(session);
         sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);

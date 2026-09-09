@@ -16,10 +16,12 @@ namespace Seeing.Session.Core
         SessionData Create(string? partitionId = null, string? selectedAgent = null, string? scenario = null);
 
         /// <summary>确保会话存在（缓存 → 存储 → 创建）</summary>
+        /// <param name="scenario">会话级场景名（仅新建时生效；应物化进程默认工作模式）</param>
         Task<SessionData> EnsureSessionAsync(
             string id,
             string? selectedAgent = null,
-            string? partitionId = null);
+            string? partitionId = null,
+            string? scenario = null);
 
         /// <summary>获取会话</summary>
         SessionData? Get(string id);

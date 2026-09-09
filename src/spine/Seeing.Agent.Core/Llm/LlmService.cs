@@ -15,43 +15,20 @@ namespace Seeing.Agent.Core.Llm;
 /// </summary>
 public interface ILlmService : IModelConfigLookup
 {
-    /// <summary>获取可用于文本对话的模型（默认 Text）</summary>
     IReadOnlyDictionary<string, ModelConfig> GetAvailableModels();
-
-    /// <summary>获取指定模型的客户端</summary>
     ILlmClient? GetClientForModel(string modelId);
-
-    /// <summary>获取指定 Provider 的客户端</summary>
     ILlmClient? GetClient(string providerId);
-
-    /// <summary>发送聊天请求</summary>
     Task<ChatResponse> CompleteAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>发送聊天请求（带 Hook 支持）</summary>
     Task<ChatResponse> CompleteAsync(string modelId, ChatRequest request, string? sessionId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// 发送聊天请求（不触发 chat.* / llm.* Hook）。供标题生成、Memory 等旁路补全使用。
-    /// </summary>
     Task<ChatResponse> CompleteRawAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// 发送流式聊天请求（不触发 chat.* / llm.* Hook）。供摘要、标题生成等旁路流式补全使用。
-    /// </summary>
     IAsyncEnumerable<StreamUpdate> CompleteRawStreamAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>发送流式聊天请求</summary>
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>发送流式聊天请求（带 Hook 支持）</summary>
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(string modelId, ChatRequest request, string? sessionId, CancellationToken cancellationToken = default);
-
-    /// <summary>测试 Provider 连接</summary>
     Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// LLM 服务实现 - 调用层，不管理配置
+/// LLM 服务实现 - 调用编排层：构造 Call、跑 Hook；重试由客户端装饰器负责。
 /// </summary>
 public class LlmService : ILlmService
 {
@@ -61,9 +38,6 @@ public class LlmService : ILlmService
     private readonly IHookManager _hookManager;
     private readonly ILogger _logger;
 
-    /// <summary>
-    /// 创建 LLM 服务
-    /// </summary>
     public LlmService(
         IProviderManager providerManager,
         IModelManager modelManager,
@@ -78,32 +52,24 @@ public class LlmService : ILlmService
         _logger = logger;
     }
 
-    /// <summary>获取可用于文本对话的模型（默认 Text）</summary>
     public IReadOnlyDictionary<string, ModelConfig> GetAvailableModels()
         => _modelManager.GetModelsByType(ModelType.Text);
 
-    /// <summary>获取指定模型配置</summary>
     public ModelConfig? GetModelConfig(string modelId)
         => _modelManager.GetModel(modelId);
 
-    /// <summary>获取指定模型的客户端</summary>
     public ILlmClient? GetClientForModel(string modelId)
         => _providerManager.GetClientForModel(modelId);
 
-    /// <summary>获取指定 Provider 的客户端</summary>
     public ILlmClient? GetClient(string providerId)
         => _providerManager.GetClient(providerId);
 
-    /// <summary>发送聊天请求</summary>
     public async Task<ChatResponse> CompleteAsync(
         string modelId,
         ChatRequest request,
         CancellationToken cancellationToken = default)
-    {
-        return await CompleteAsync(modelId, request, sessionId: null, cancellationToken).ConfigureAwait(false);
-    }
+        => await CompleteAsync(modelId, request, sessionId: null, cancellationToken).ConfigureAwait(false);
 
-    /// <inheritdoc />
     public async Task<ChatResponse> CompleteRawAsync(
         string modelId,
         ChatRequest request,
@@ -111,12 +77,9 @@ public class LlmService : ILlmService
     {
         var (client, apiModelId) = PrepareClientRequest(modelId, request);
         _logger.LogDebug("发送旁路聊天请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
-        return await client.CompleteAsync(request, cancellationToken).ConfigureAwait(false);
+        return await client.CompleteAsync(request, call: null, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// 旁路流式补全（无 Hook）：逐增量透传客户端流式响应。
-    /// </summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteRawStreamAsync(
         string modelId,
         ChatRequest request,
@@ -125,15 +88,10 @@ public class LlmService : ILlmService
         var (client, apiModelId) = PrepareClientRequest(modelId, request);
         _logger.LogDebug("发送旁路流式请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
 
-        await foreach (var update in client.CompleteStreamAsync(request, cancellationToken).ConfigureAwait(false))
-        {
+        await foreach (var update in client.CompleteStreamAsync(request, call: null, cancellationToken).ConfigureAwait(false))
             yield return update;
-        }
     }
 
-    /// <summary>
-    /// 解析模型配置与客户端，并回写 request.Model / MaxTokens（无 Hook）。
-    /// </summary>
     private (ILlmClient Client, string ApiModelId) PrepareClientRequest(string modelId, ChatRequest request)
     {
         var modelConfig = _modelManager.GetModel(modelId)
@@ -153,7 +111,60 @@ public class LlmService : ILlmService
         return (client, apiModelId);
     }
 
-    /// <summary>发送聊天请求（带 Hook 支持）</summary>
+    private static LlmCallContext CreateCallContext(string? sessionId)
+        => new()
+        {
+            SessionId = string.IsNullOrWhiteSpace(sessionId) ? null : sessionId,
+            CorrelationId = Guid.NewGuid().ToString("N")
+        };
+
+    private static void MergeHeadersHookOutput(LlmCallContext call, IDictionary<string, object?> headersOutput)
+    {
+        if (!headersOutput.TryGetValue("headers", out var raw) || raw is null)
+            return;
+
+        IEnumerable<KeyValuePair<string, string>>? pairs = raw switch
+        {
+            IDictionary<string, string> dict => dict,
+            IReadOnlyDictionary<string, string> readOnly => readOnly,
+            _ => null
+        };
+
+        if (pairs is null)
+            return;
+
+        foreach (var (key, value) in pairs)
+        {
+            if (!string.IsNullOrWhiteSpace(key))
+                call.ExtraHeaders[key] = value;
+        }
+    }
+
+    private void FireChatOnError(
+        string modelId,
+        string providerId,
+        string? sessionId,
+        LlmCallContext call,
+        Exception ex)
+    {
+        var attempt = call.Items.TryGetValue(LlmRetryPolicy.AttemptItemKey, out var a) ? a : 1;
+        var maxRetries = call.Items.TryGetValue(LlmRetryPolicy.MaxRetriesItemKey, out var m) ? m : 1;
+        var willRetry = call.Items.TryGetValue(LlmRetryPolicy.WillRetryItemKey, out var w) && w is true;
+
+        _hookManager.TriggerFireAndForget(
+            HookRegistry.ChatOnError,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
+            {
+                ["modelId"] = modelId,
+                ["provider"] = providerId,
+                ["error"] = ex,
+                ["attempt"] = attempt,
+                ["maxRetries"] = maxRetries,
+                ["willRetry"] = willRetry
+            });
+    }
+
     public async Task<ChatResponse> CompleteAsync(
         string modelId,
         ChatRequest request,
@@ -161,8 +172,8 @@ public class LlmService : ILlmService
         CancellationToken cancellationToken = default)
     {
         var (client, apiModelId) = PrepareClientRequest(modelId, request);
+        var call = CreateCallContext(sessionId);
 
-        // ========== Hook: chat.before_start ==========
         await _hookManager.TriggerBlockingAsync(
             HookRegistry.ChatBeforeStart,
             sessionId ?? string.Empty,
@@ -173,7 +184,6 @@ public class LlmService : ILlmService
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        // ========== Hook: chat.params ==========
         var paramsOutput = new Dictionary<string, object?>
         {
             ["temperature"] = request.Temperature ?? 0.7,
@@ -193,15 +203,13 @@ public class LlmService : ILlmService
             paramsOutput,
             cancellationToken).ConfigureAwait(false);
 
-        // 应用 Hook 修改后的参数
         request.Temperature = Convert.ToDouble(paramsOutput["temperature"]);
         request.TopP = Convert.ToDouble(paramsOutput["topP"]);
         request.MaxTokens = Convert.ToInt32(paramsOutput["maxTokens"]);
 
-        // ========== Hook: chat.headers ==========
         var headersOutput = new Dictionary<string, object?>
         {
-            ["headers"] = new Dictionary<string, string>()
+            ["headers"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         };
 
         await _hookManager.TriggerBlockingAsync(
@@ -215,7 +223,8 @@ public class LlmService : ILlmService
             headersOutput,
             cancellationToken).ConfigureAwait(false);
 
-        // ========== Hook: llm.system_prompt ==========
+        MergeHeadersHookOutput(call, headersOutput);
+
         if (!string.IsNullOrEmpty(request.SystemPrompt))
         {
             var promptOutput = new Dictionary<string, object?>
@@ -226,10 +235,7 @@ public class LlmService : ILlmService
             await _hookManager.TriggerBlockingAsync(
                 HookRegistry.LlmSystemPrompt,
                 sessionId ?? string.Empty,
-                new Dictionary<string, object?>
-                {
-                    ["modelId"] = modelId
-                },
+                new Dictionary<string, object?> { ["modelId"] = modelId },
                 promptOutput,
                 cancellationToken).ConfigureAwait(false);
 
@@ -241,24 +247,14 @@ public class LlmService : ILlmService
         ChatResponse response;
         try
         {
-            response = await client.CompleteAsync(request, cancellationToken).ConfigureAwait(false);
+            response = await client.CompleteAsync(request, call, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // ========== Hook: chat.on_error ==========
-            _hookManager.TriggerFireAndForget(
-                HookRegistry.ChatOnError,
-                sessionId ?? string.Empty,
-                new Dictionary<string, object?>
-                {
-                    ["modelId"] = modelId,
-                    ["provider"] = client.ProviderId,
-                    ["error"] = ex
-                });
+            FireChatOnError(modelId, client.ProviderId, sessionId, call, ex);
             throw;
         }
 
-        // ========== Hook: chat.message ==========
         await _hookManager.TriggerParallelAsync(
             HookRegistry.ChatMessage,
             sessionId ?? string.Empty,
@@ -269,7 +265,6 @@ public class LlmService : ILlmService
             },
             cancellationToken).ConfigureAwait(false);
 
-        // ========== Hook: chat.after_complete ==========
         _hookManager.TriggerFireAndForget(
             HookRegistry.ChatAfterComplete,
             sessionId ?? string.Empty,
@@ -286,19 +281,15 @@ public class LlmService : ILlmService
         return response;
     }
 
-    /// <summary>发送流式聊天请求</summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         string modelId,
         ChatRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var update in CompleteStreamAsync(modelId, request, sessionId: null, cancellationToken))
-        {
             yield return update;
-        }
     }
 
-    /// <summary>发送流式聊天请求（带 Hook 支持）</summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         string modelId,
         ChatRequest request,
@@ -308,7 +299,6 @@ public class LlmService : ILlmService
         var modelConfig = _modelManager.GetModel(modelId)
             ?? throw new InvalidOperationException($"未找到模型配置: {modelId}");
 
-        // 应用模型输出限制
         if (request.MaxTokens == null && modelConfig.Limit?.Output > 0)
         {
             request.MaxTokens = modelConfig.Limit.Output;
@@ -320,8 +310,8 @@ public class LlmService : ILlmService
 
         var apiModelId = string.IsNullOrEmpty(modelConfig.Id) ? modelId : modelConfig.Id;
         request.Model = apiModelId;
+        var call = CreateCallContext(sessionId);
 
-        // ========== Hook: chat.before_start ==========
         await _hookManager.TriggerBlockingAsync(
             HookRegistry.ChatBeforeStart,
             sessionId ?? string.Empty,
@@ -333,7 +323,6 @@ public class LlmService : ILlmService
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        // ========== Hook: chat.params ==========
         var paramsOutput = new Dictionary<string, object?>
         {
             ["temperature"] = request.Temperature ?? 0.7,
@@ -357,7 +346,25 @@ public class LlmService : ILlmService
         request.TopP = Convert.ToDouble(paramsOutput["topP"]);
         request.MaxTokens = Convert.ToInt32(paramsOutput["maxTokens"]);
 
-        // ========== Hook: llm.system_prompt ==========
+        var headersOutput = new Dictionary<string, object?>
+        {
+            ["headers"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        };
+
+        await _hookManager.TriggerBlockingAsync(
+            HookRegistry.ChatHeaders,
+            sessionId ?? string.Empty,
+            new Dictionary<string, object?>
+            {
+                ["modelId"] = modelId,
+                ["provider"] = client.ProviderId,
+                ["streaming"] = true
+            },
+            headersOutput,
+            cancellationToken).ConfigureAwait(false);
+
+        MergeHeadersHookOutput(call, headersOutput);
+
         if (!string.IsNullOrEmpty(request.SystemPrompt))
         {
             var promptOutput = new Dictionary<string, object?>
@@ -382,122 +389,46 @@ public class LlmService : ILlmService
         _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
 
         var startTime = DateTime.Now;
-        var providerInfo = _providerManager.GetProvider(modelConfig.Provider);
-        var maxRetries = providerInfo?.MaxRetries ?? 3;
-        var retryDelay = TimeSpan.FromSeconds(1);
-
-        // 流式数据累计变量
         var streamedContent = new StringBuilder();
         var streamedReasoning = new StringBuilder();
         var streamedToolCalls = new List<ToolCall>();
         TokenUsage? streamedUsage = null;
 
-        // 使用 Channel 解决 C# 不允许 yield 在 try-catch 中的限制
         var channel = Channel.CreateUnbounded<StreamUpdate>();
         var writer = channel.Writer;
-        var messageId = Guid.NewGuid().ToString("N");
         Exception? capturedException = null;
         var retryCount = 0;
 
-        // 在后台处理流式数据，捕获任何异常并支持重试
         var processTask = Task.Run(async () =>
         {
-            var attempt = 0;
-            while (attempt < maxRetries)
+            try
             {
-                attempt++;
-                try
-                {
-                    // 如果是重试，需要重置状态
-                    if (attempt > 1)
-                    {
-                        messageId = Guid.NewGuid().ToString("N");
-                        streamedContent.Clear();
-                        streamedReasoning.Clear();
-                        streamedToolCalls.Clear();
-                        streamedUsage = null;
+                await foreach (var update in client.CompleteStreamAsync(request, call, cancellationToken))
+                    await writer.WriteAsync(update, cancellationToken).ConfigureAwait(false);
 
-                        _logger.LogWarning(
-                            "[LlmService] 流式请求重试: Model={Model}, Attempt={Attempt}/{MaxRetries}",
-                            apiModelId, attempt, maxRetries);
-                    }
-
-                    await foreach (var update in client.CompleteStreamAsync(request, cancellationToken))
-                    {
-                        if (!string.IsNullOrEmpty(update.Id))
-                            messageId = update.Id;
-                        await writer.WriteAsync(update, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    // 成功完成
-                    writer.Complete();
+                writer.Complete();
+            }
+            catch (Exception ex)
+            {
+                capturedException = ex;
+                if (call.Items.TryGetValue(LlmRetryPolicy.AttemptItemKey, out var attemptObj) &&
+                    attemptObj is int attempt && attempt > 1)
                     retryCount = attempt - 1;
-                    return;
-                }
-                catch (Exception ex) when (attempt < maxRetries && IsRetryableException(ex, cancellationToken))
-                {
-                    // 可重试的瞬态故障
-                    capturedException = ex;
-                    _logger.LogWarning(ex,
-                        "[LlmService] 流式请求失败，准备重试: Model={Model}, Attempt={Attempt}/{MaxRetries}, Error={Error}",
-                        apiModelId, attempt, maxRetries, ex.Message);
 
-                    // 触发 chat.on_error Hook（可重试场景）
-                    _hookManager.TriggerFireAndForget(
-                        HookRegistry.ChatOnError,
-                        sessionId ?? string.Empty,
-                        new Dictionary<string, object?>
-                        {
-                            ["modelId"] = modelId,
-                            ["provider"] = client.ProviderId,
-                            ["error"] = ex,
-                            ["attempt"] = attempt,
-                            ["maxRetries"] = maxRetries,
-                            ["willRetry"] = true
-                        });
-
-                    // 指数退避
-                    var delay = TimeSpan.FromMilliseconds(retryDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    // 不可重试或已达到最大重试次数
-                    capturedException = ex;
-                    _logger.LogError(ex, "流式聊天请求失败: Model={Model}, Attempt={Attempt}", apiModelId, attempt);
-
-                    // 触发 chat.on_error Hook（最终失败）
-                    _hookManager.TriggerFireAndForget(
-                        HookRegistry.ChatOnError,
-                        sessionId ?? string.Empty,
-                        new Dictionary<string, object?>
-                        {
-                            ["modelId"] = modelId,
-                            ["provider"] = client.ProviderId,
-                            ["error"] = ex,
-                            ["attempt"] = attempt,
-                            ["maxRetries"] = maxRetries,
-                            ["willRetry"] = false
-                        });
-
-                    writer.Complete(ex);
-                    return;
-                }
+                _logger.LogError(ex, "流式聊天请求失败: Model={Model}", apiModelId);
+                FireChatOnError(modelId, client.ProviderId, sessionId, call, ex);
+                writer.Complete(ex);
             }
         }, cancellationToken);
 
-        // 从 channel 读取并 yield 返回给调用者，同时累计数据
         await foreach (var update in channel.Reader.ReadAllAsync(cancellationToken))
         {
-            // 累计内容
             if (!string.IsNullOrEmpty(update.ContentDelta))
                 streamedContent.Append(update.ContentDelta);
 
-            // 累计推理内容
             if (!string.IsNullOrEmpty(update.ReasoningDelta))
                 streamedReasoning.Append(update.ReasoningDelta);
 
-            // 累计工具调用
             if (update.ToolCallDeltas != null && update.ToolCallDeltas.Count > 0)
             {
                 foreach (var toolCall in update.ToolCallDeltas)
@@ -505,7 +436,6 @@ public class LlmService : ILlmService
                     var existingCall = streamedToolCalls.FirstOrDefault(tc => tc.Id == toolCall.Id);
                     if (existingCall != null)
                     {
-                        // 追加到现有工具调用
                         if (toolCall.Function != null)
                         {
                             existingCall.Function ??= new FunctionCall();
@@ -522,21 +452,17 @@ public class LlmService : ILlmService
                 }
             }
 
-            // 累计使用统计（通常在最后一个 update 中）
             if (update.Usage != null)
                 streamedUsage = update.Usage;
 
             yield return update;
         }
 
-        // 确保后台任务完成
         await processTask.ConfigureAwait(false);
 
-        // ✅ 如果有异常，包装并抛出
         if (capturedException != null)
         {
-            // 根据异常类型包装
-            var wrappedException = capturedException switch
+            throw capturedException switch
             {
                 OperationCanceledException oce when !oce.CancellationToken.IsCancellationRequested
                     => new LlmTimeoutException(timeout: TimeSpan.FromMinutes(5), oce)
@@ -549,42 +475,25 @@ public class LlmService : ILlmService
                 _ => new LlmException($"LLM 请求失败: {capturedException.Message}", capturedException)
                 { ModelId = apiModelId, ProviderId = client.ProviderId, IsRetryable = false, RetryCount = retryCount }
             };
-
-            throw wrappedException;
         }
-
-        // ========== Hook: chat.after_complete ==========
-        var completeResult = new Dictionary<string, object?>
-        {
-            ["content"] = streamedContent.ToString(),
-            ["reasoning"] = streamedReasoning.ToString(),
-            ["usage"] = streamedUsage,
-            ["toolCalls"] = streamedToolCalls,
-            ["duration"] = DateTime.Now - startTime
-        };
 
         _hookManager.TriggerFireAndForget(
             HookRegistry.ChatAfterComplete,
             sessionId ?? "",
             input: new Dictionary<string, object?> { ["modelId"] = modelId, ["streaming"] = true },
-            result: completeResult);
+            result: new Dictionary<string, object?>
+            {
+                ["content"] = streamedContent.ToString(),
+                ["reasoning"] = streamedReasoning.ToString(),
+                ["usage"] = streamedUsage,
+                ["toolCalls"] = streamedToolCalls,
+                ["duration"] = DateTime.Now - startTime
+            });
     }
 
-    /// <summary>测试 Provider 连接</summary>
-    public async Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken cancellationToken = default)
-    {
-        return await _providerManager.TestConnectionAsync(providerId, modelId, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// 判断异常是否为可重试的瞬态故障
-    /// </summary>
-    private static bool IsRetryableException(Exception ex, CancellationToken cancellationToken)
-    {
-        return ex is TimeoutException
-            || ex is HttpRequestException
-            || ex is IOException
-            // OperationCanceledException 仅当非用户主动取消时才重试
-            || ex is OperationCanceledException oce && oce.CancellationToken != cancellationToken && !cancellationToken.IsCancellationRequested;
-    }
+    public async Task<bool> TestConnectionAsync(
+        string providerId,
+        string modelId,
+        CancellationToken cancellationToken = default)
+        => await _providerManager.TestConnectionAsync(providerId, modelId, cancellationToken).ConfigureAwait(false);
 }

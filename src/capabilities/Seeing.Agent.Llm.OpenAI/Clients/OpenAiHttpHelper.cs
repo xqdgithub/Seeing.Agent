@@ -54,15 +54,36 @@ internal static class OpenAiHttpHelper
     }
 
     /// <summary>
-    /// POST JSON body，返回 HttpResponseMessage
+    /// POST JSON body，返回 HttpResponseMessage。
+    /// 可选出站塑形：静态头 → Call.ExtraHeaders → 拦截器 → 本次 HttpRequestMessage。
     /// </summary>
     public static async Task<HttpResponseMessage> PostJsonAsync(
-        HttpClient httpClient, string path, object body, ILogger logger, CancellationToken ct)
+        HttpClient httpClient,
+        string path,
+        object body,
+        ILogger logger,
+        CancellationToken ct,
+        ProviderConfig? config = null,
+        LlmCallContext? call = null,
+        IReadOnlyList<ILlmCallInterceptor>? interceptors = null)
     {
         var json = JsonSerializer.Serialize(body, JsonOpts);
         logger.LogDebug("OpenAI POST {Path}: body={Json}", path, json);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
         var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = content };
+
+        if (config is not null)
+        {
+            // 静态 ProviderConfig.Headers 已在 DefaultRequestHeaders；此处只合并 Call + 拦截器
+            OutboundPipeline.Apply(
+                request,
+                staticHeaders: null,
+                call,
+                interceptors ?? Array.Empty<ILlmCallInterceptor>(),
+                config.Id,
+                config.Type);
+        }
+
         return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
     }
 

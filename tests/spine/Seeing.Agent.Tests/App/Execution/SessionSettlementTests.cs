@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Hosting.Execution;
@@ -10,7 +9,7 @@ using Xunit;
 namespace Seeing.Agent.Tests.App.Execution;
 
 /// <summary>
-/// P7-T9：会话级结算只收窄进程级 enabled；同进程多会话并行不同 scenario。
+/// 会话级结算：模块层 ∩ bootEnabled；工具层再扣 Tools.Disabled（两层分离）。
 /// </summary>
 public class SessionSettlementTests
 {
@@ -33,7 +32,6 @@ public class SessionSettlementTests
         var settleA = SessionSettlement.Compute(sessionA, catalog, processScenario: "full", userToolsDisabled: null);
         var settleB = SessionSettlement.Compute(sessionB, catalog, processScenario: "full", userToolsDisabled: null);
 
-        // code 含 git，不含 memory；work 含 memory，不含 git
         settleA.EnabledModules.Should().Contain("git");
         settleA.EnabledModules.Should().NotContain("memory");
         settleA.SettledToolIds.Should().Contain("git_status");
@@ -46,7 +44,113 @@ public class SessionSettlementTests
     }
 
     [Fact]
-    public void Compute_SessionModulesOverride_CanOnlyNarrowNotAdd()
+    public void Compute_BootStar_SessionFull_GetsWideTools()
+    {
+        // Boot=* → filesystem ∈ bootEnabled；session full → 含 filesystem 工具
+        var catalog = CreateCatalog(
+            processEnabled: ["io.local", "filesystem", "shell", "basic"],
+            modules:
+            [
+                Desc("io.local", []),
+                Desc("filesystem", ["read", "write"]),
+                Desc("shell", ["bash"]),
+                Desc("basic", ["current_time"]),
+            ]);
+
+        var session = SessionData.Create(scenario: "full");
+        var settle = SessionSettlement.Compute(session, catalog, processScenario: "minimal", userToolsDisabled: null);
+
+        settle.EnabledModules.Should().Contain("filesystem");
+        settle.SettledToolIds.Should().Contain("read");
+        settle.SettledToolIds.Should().Contain("write");
+    }
+
+    [Fact]
+    public void Compute_BootMinimal_SessionFull_NoFilesystemTools()
+    {
+        // Boot=minimal → filesystem ∉ bootEnabled；即使 session Scenario=full 也不能越界
+        var catalog = CreateCatalog(
+            processEnabled: ["io.local", "basic"], // bootEnabled 无 filesystem
+            modules:
+            [
+                Desc("io.local", []),
+                Desc("basic", ["current_time"]),
+                Desc("filesystem", ["read", "write"]), // available but not boot-enabled
+            ]);
+
+        var session = SessionData.Create(scenario: "full");
+        var settle = SessionSettlement.Compute(session, catalog, processScenario: "minimal", userToolsDisabled: null);
+
+        settle.EnabledModules.Should().NotContain("filesystem");
+        settle.SettledToolIds.Should().NotContain("read");
+        settle.SettledToolIds.Should().NotContain("write");
+    }
+
+    [Fact]
+    public void Compute_ToolsDisabled_DropsToolNotModule()
+    {
+        var catalog = CreateCatalog(
+            processEnabled: ["shell", "io.local"],
+            modules:
+            [
+                Desc("io.local", []),
+                Desc("shell", ["bash", "powershell"]),
+            ]);
+
+        var session = SessionData.Create(scenario: "code");
+        var settle = SessionSettlement.Compute(
+            session,
+            catalog,
+            processScenario: "full",
+            userToolsDisabled: null,
+            resolveScenario: _ => new ScenarioDefinition(
+                Name: "code",
+                Modules: ["shell", "io.local"],
+                DefaultAgent: "build",
+                Seams: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                ToolsDisabled: ["bash"]));
+
+        settle.EnabledModules.Should().Contain("shell");
+        settle.SettledToolIds.Should().NotContain("bash");
+        settle.SettledToolIds.Should().Contain("powershell");
+    }
+
+    [Fact]
+    public void Compute_CustomScenario_ViaCatalogResolve()
+    {
+        var catalog = CreateCatalog(
+            processEnabled: ["git", "web"],
+            modules:
+            [
+                Desc("git", ["git_status"]),
+                Desc("web", ["web_fetch"]),
+                Desc("memory", ["memory_search"]),
+            ]);
+
+        var session = SessionData.Create(scenario: "my-review");
+        var settle = SessionSettlement.Compute(
+            session,
+            catalog,
+            processScenario: "minimal",
+            userToolsDisabled: null,
+            resolveScenario: name => name == "my-review"
+                ? new ScenarioDefinition(
+                    "my-review",
+                    ["git", "web"],
+                    "general",
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                    Array.Empty<string>())
+                : BuiltInScenarios.TryGet(name));
+
+        settle.ScenarioName.Should().Be("my-review");
+        settle.EnabledModules.Should().BeEquivalentTo(["git", "web"]);
+        settle.SettledToolIds.Should().Contain("git_status");
+        settle.SettledToolIds.Should().Contain("web_fetch");
+        settle.EnabledModules.Should().NotContain("memory");
+    }
+
+    [Fact]
+    public void Compute_OverrideCannotWidenPastBoot()
     {
         var catalog = CreateCatalog(
             processEnabled: ["git", "filesystem"],
@@ -62,7 +166,6 @@ public class SessionSettlementTests
         {
             Modules = new SessionModulesOverride
             {
-                // 试图「新增」进程未启用的 memory — 必须被 ∩ 掉
                 Enabled = ["git", "memory", "filesystem"]
             }
         };
@@ -135,7 +238,7 @@ public class SessionSettlementTests
         var session = SessionData.Create(scenario: "code");
         var snapshot = SessionSettlement.Compute(session, catalog, processScenario: "full", userToolsDisabled: null);
 
-        session.Scenario = "work"; // 本轮之后切换；快照不变
+        session.Scenario = "work";
         snapshot.ScenarioName.Should().Be("code");
         snapshot.SettledToolIds.Should().Contain("git_status");
         snapshot.SettledToolIds.Should().NotContain("memory_search");

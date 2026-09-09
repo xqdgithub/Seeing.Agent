@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Linq;
 using Seeing.Agent.Cli.Services;
+using Seeing.Agent.Core.Modules;
 
 namespace Seeing.Agent.Cli.Commands;
 
@@ -31,17 +32,26 @@ public static class StartCommand
             command = new Command(commandName, description) { serviceArg };
         }
 
+        var bootOption = new Option<string?>("--boot")
+        {
+            Description =
+                "进程启动能力集（写入子进程 SEEING_BOOT，覆盖 seeing.json Boot）。" +
+                "内置：* / minimal / code / work / research / full / secure / dev"
+        };
+        command.Options.Add(bootOption);
+
         command.SetAction(async parseResult =>
         {
-            var service = (fixedService ?? parseResult.GetValue<string>(serviceArg!))
+            var service = (fixedService ?? parseResult.GetValue(serviceArg!))
                 ?? string.Empty;
-            await ExecuteStartAsync(service.ToLowerInvariant());
+            var boot = parseResult.GetValue(bootOption);
+            await ExecuteStartAsync(service.ToLowerInvariant(), boot);
         });
 
         return command;
     }
 
-    private static async Task ExecuteStartAsync(string service)
+    private static async Task ExecuteStartAsync(string service, string? boot)
     {
         if (service != "webui" && service != "gateway")
         {
@@ -49,6 +59,10 @@ public static class StartCommand
             Environment.ExitCode = 1;
             return;
         }
+
+        var effectiveBoot = string.IsNullOrWhiteSpace(boot)
+            ? BootOverrideSource.ResolveFromEnvironment()
+            : boot.Trim();
 
         try
         {
@@ -94,7 +108,14 @@ public static class StartCommand
                     : Array.Empty<string>();
                 var launchEnvironment = service == "webui"
                     ? WebUiLaunch.BuildEnvironment(port)
-                    : null;
+                    : new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+                if (!string.IsNullOrWhiteSpace(effectiveBoot))
+                {
+                    launchEnvironment[BootOverrideSource.EnvironmentVariableName] = effectiveBoot;
+                    Console.WriteLine(
+                        $"BootOverride={effectiveBoot}（{BootOverrideSource.EnvironmentVariableName}）");
+                }
 
                 Console.WriteLine($"正在启动 {service}（端口: {port}）...");
                 record = await manager.StartAsync(

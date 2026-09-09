@@ -7,12 +7,14 @@ using Seeing.Agent.Core.Modules;
 namespace Seeing.Agent.WebUI.Services;
 
 /// <summary>
-/// 侧栏 / 设置页贡献可见性：只读 <see cref="IModuleCatalog"/> + 进程级 Scenario（不含会话 Scenario）。
+/// 侧栏 / 设置页贡献可见性：只读 <see cref="IModuleCatalog"/>（bootEnabled / Requires）。
+/// 进程 Scenario 名<strong>不</strong>硬藏已挂载模块；Scenario 白名单仅用于会话壳/插槽（见 <see cref="SessionShellVisibility"/>）。
 /// </summary>
 public static class UiContributionVisibility
 {
     /// <summary>
-    /// 解析进程级场景名：seeing.json <c>scenario</c>，否则 Host Shape 默认。
+    /// 解析进程默认工作模式名：seeing.json <c>Scenario</c>，否则 Host Shape 默认。
+    /// 仅会话默认/诊断；不驱动侧栏或 Activate。
     /// </summary>
     public static string? ResolveProcessScenario(
         SeeingAgentOptions? options,
@@ -26,12 +28,12 @@ public static class UiContributionVisibility
     }
 
     /// <summary>
-    /// 侧栏可见 Nav：排除参数化路由、子路径，并按 Requires + Scenarios 过滤。
+    /// 侧栏可见 Nav：排除参数化路由、子路径，并按 Requires ⊆ bootEnabled（<see cref="IModuleCatalog.IsEnabled"/>）过滤。
+    /// 不再按贡献 Scenarios 白名单对进程 Scenario 名硬过滤。
     /// </summary>
     public static IReadOnlyList<NavContribution> FilterSidebarNav(
         IEnumerable<NavContribution> navItems,
-        IModuleCatalog? catalog,
-        string? processScenario)
+        IModuleCatalog? catalog)
     {
         ArgumentNullException.ThrowIfNull(navItems);
 
@@ -39,7 +41,6 @@ public static class UiContributionVisibility
             .Where(n => !string.IsNullOrWhiteSpace(n.Route))
             .Where(n => n.Route.IndexOf('{') < 0)
             .Where(n => AreRequirementsEnabled(n.Requires, catalog))
-            .Where(n => MatchesProcessScenario(n.Scenarios, processScenario))
             .ToList();
 
         // 有更短前缀路由时隐藏子路径（如 /memory 存在则不显示 /memory/settings）
@@ -48,7 +49,16 @@ public static class UiContributionVisibility
             .ToList();
     }
 
-    /// <summary>设置卡片可见性：仅 Requires ∩ 进程级启用模块。</summary>
+    /// <summary>
+    /// 兼容旧调用：忽略 <paramref name="processScenario"/>（侧栏不再跟进程 Scenario 名）。
+    /// </summary>
+    public static IReadOnlyList<NavContribution> FilterSidebarNav(
+        IEnumerable<NavContribution> navItems,
+        IModuleCatalog? catalog,
+        string? processScenario)
+        => FilterSidebarNav(navItems, catalog);
+
+    /// <summary>设置卡片可见性：仅 Requires ∩ 进程级启用模块（bootEnabled）。</summary>
     public static IReadOnlyList<SettingsCardContribution> FilterSettingsCards(
         IEnumerable<SettingsCardContribution> cards,
         IModuleCatalog? catalog)
@@ -75,22 +85,6 @@ public static class UiContributionVisibility
         }
 
         return true;
-    }
-
-    internal static bool MatchesProcessScenario(IReadOnlyList<string>? scenarios, string? processScenario)
-    {
-        if (scenarios is null || scenarios.Count == 0)
-            return true;
-        if (string.IsNullOrWhiteSpace(processScenario))
-            return false;
-
-        foreach (var s in scenarios)
-        {
-            if (string.Equals(s, processScenario, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
     }
 
     private static bool HasShorterPrefix(string route, IReadOnlyList<NavContribution> candidates)

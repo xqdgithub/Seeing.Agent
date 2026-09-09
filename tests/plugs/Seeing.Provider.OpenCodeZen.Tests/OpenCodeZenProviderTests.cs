@@ -166,7 +166,7 @@ public class OpenCodeZenProviderTests
     }
 
     [Fact]
-    public async Task CreateClient_WithoutApiKey_SendsRecognitionUserAgentOnly()
+    public async Task CreateClient_WithoutApiKey_SendsOpenCodeFreeTierHeaders()
     {
         ProviderConfig? createdConfig = null;
         var factory = new Mock<ILlmClientFactory>();
@@ -183,9 +183,12 @@ public class OpenCodeZenProviderTests
 
         createdConfig.Should().NotBeNull();
         createdConfig!.ApiKey.Should().BeNull();
-        // 免认证：不发送 Authorization，仅带识别 UA 以豁免免费模型限流
+        // 免认证：不发送 Authorization；静态 UA/client；session 由拦截器按调用注入
         createdConfig.Headers.Should().NotContainKey("Authorization");
-        createdConfig.Headers.Should().Contain("User-Agent", "opencode");
+        createdConfig.Headers.Should().ContainKey("User-Agent");
+        createdConfig.Headers!["User-Agent"].Should().StartWith("opencode/");
+        createdConfig.Headers.Should().Contain("x-opencode-client", "cli");
+        createdConfig.Headers.Should().NotContainKey("x-opencode-session");
         createdConfig.BaseUrl.Should().Be(OpenCodeZenModelsClient.DefaultBaseUrl);
         createdConfig.Type.Should().Be(ProviderTypes.OpenAi);
     }
@@ -241,7 +244,9 @@ public class OpenCodeZenProviderTests
             _ = sut.GetClient();
 
             createdConfig!.ApiKey.Should().Be("sk-zen");
-            createdConfig.Headers.Should().Contain("User-Agent", "opencode");
+            createdConfig.Headers!["User-Agent"].Should().StartWith("opencode/");
+            createdConfig.Headers.Should().Contain("x-opencode-client", "cli");
+            createdConfig.Headers.Should().NotContainKey("x-opencode-session");
         }
         finally
         {
@@ -346,6 +351,7 @@ public class OpenCodeZenProviderTests
         var client = new Mock<ILlmClient>();
         client.Setup(c => c.TestConnectionAsync(
                 "nemotron-3-ultra-free",
+                It.IsAny<LlmCallContext?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         var factory = new Mock<ILlmClientFactory>();
@@ -361,6 +367,7 @@ public class OpenCodeZenProviderTests
         result.Should().BeTrue();
         client.Verify(c => c.TestConnectionAsync(
             "nemotron-3-ultra-free",
+            It.IsAny<LlmCallContext?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

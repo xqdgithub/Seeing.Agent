@@ -29,9 +29,15 @@ public static class WebHostingServiceCollectionExtensions
     public static IServiceCollection AddSeeingHostingWeb(this IServiceCollection services)
     {
         services.AddSingleton(WebHostShape.Descriptor);
+        // D10 Host Shape：HostDefaultSeams 至少 executionWorld=io.local；Boot 未设 → 回退 *
         services.AddSingleton(new ProcessSettlementOptions
         {
             HostDefaultScenario = WebHostShape.Descriptor.DefaultScenario,
+            HostDefaultSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executionWorld"] = "io.local",
+            },
+            BootOverride = BootOverrideSource.ResolveFromEnvironment(),
         });
 
         services.AddScoped<CircuitContext>();

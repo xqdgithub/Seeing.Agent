@@ -25,7 +25,7 @@ public class UiContributionVisibilityTests
             new("/gateway-clients", "Gateway 客户端", "api", ["gateway"]),
         };
 
-        var visible = UiContributionVisibility.FilterSidebarNav(nav, catalog, processScenario: "full");
+        var visible = UiContributionVisibility.FilterSidebarNav(nav, catalog);
 
         visible.Select(n => n.Route).Should().BeEquivalentTo("/skills", "/memory");
     }
@@ -41,13 +41,13 @@ public class UiContributionVisibilityTests
             new("/sessions", "会话", "team", []),
         };
 
-        var visible = UiContributionVisibility.FilterSidebarNav(nav, catalog, "full");
+        var visible = UiContributionVisibility.FilterSidebarNav(nav, catalog);
 
         visible.Select(n => n.Route).Should().BeEquivalentTo("/skills", "/sessions");
     }
 
     [Fact]
-    public void FilterSidebarNav_ScenariosWhitelist_UsesProcessScenarioOnly()
+    public void FilterSidebarNav_IgnoresScenarioWhitelist_UsesBootEnabledOnly()
     {
         var catalog = Enabled("memory");
         var nav = new NavContribution[]
@@ -56,11 +56,26 @@ public class UiContributionVisibilityTests
             new("/sessions", "会话", "team", []),
         };
 
-        UiContributionVisibility.FilterSidebarNav(nav, catalog, "code")
-            .Select(n => n.Route).Should().Equal("/sessions");
-
-        UiContributionVisibility.FilterSidebarNav(nav, catalog, "work")
+        // Boot=* / memory 已启用时，即使进程默认 Scenario=minimal/code，侧栏仍应显示 memory
+        UiContributionVisibility.FilterSidebarNav(nav, catalog, processScenario: "code")
             .Select(n => n.Route).Should().BeEquivalentTo("/memory", "/sessions");
+
+        UiContributionVisibility.FilterSidebarNav(nav, catalog)
+            .Select(n => n.Route).Should().BeEquivalentTo("/memory", "/sessions");
+    }
+
+    [Fact]
+    public void FilterSidebarNav_HidesWhenModuleNotBootEnabled()
+    {
+        var catalog = Enabled("skills");
+        var nav = new NavContribution[]
+        {
+            new("/mcp", "MCP", "api", ["mcp"], Scenarios: ["full"]),
+            new("/sessions", "会话", "team", []),
+        };
+
+        UiContributionVisibility.FilterSidebarNav(nav, catalog, "full")
+            .Select(n => n.Route).Should().Equal("/sessions");
     }
 
     [Fact]

@@ -8,6 +8,7 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Permission;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -29,6 +30,7 @@ using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Core.Services;
 using Seeing.Agent.Core.Execution;
 using Seeing.Session.Core;
@@ -54,6 +56,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     private readonly ILogger<ExecutionJobService> _logger;
     private readonly Timer _cleanupTimer;
     private readonly IAgentLoopScheduler? _loopScheduler;
+    private readonly IScenarioCatalog? _scenarioCatalog;
     private bool _disposed;
 
     /// <summary>
@@ -67,7 +70,8 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         IConfigSectionStore configStore,
         ILogger<ExecutionJobService> logger,
         CompactionRunner compactionRunner,
-        IAgentLoopScheduler? loopScheduler = null)
+        IAgentLoopScheduler? loopScheduler = null,
+        IScenarioCatalog? scenarioCatalog = null)
     {
         _serviceProvider = serviceProvider;
         _eventPublisher = eventPublisher;
@@ -77,6 +81,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         _compactionRunner = compactionRunner ?? throw new ArgumentNullException(nameof(compactionRunner));
         _logger = logger;
         _loopScheduler = loopScheduler;
+        _scenarioCatalog = scenarioCatalog;
 
         // Setup cleanup timer
         _cleanupTimer = new Timer(
@@ -147,7 +152,9 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             var instructionManager = scope.ServiceProvider.GetRequiredService<IInstructionManager>();
             var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
             var executionWorld = scope.ServiceProvider.GetRequiredService<IExecutionWorld>();
-            var session = await sessionManager.EnsureSessionAsync(sessionId);
+            var session = await sessionManager.EnsureSessionAsync(
+                sessionId,
+                scenario: scope.ServiceProvider.GetService<IDefaultWorkModeProvider>()?.GetDefaultScenario());
             TryBackfillSessionOutbound(session, options?.ChannelId, options?.UserId);
 
             // ⭐ Persist model/mode selection to session (ensures they're saved even if execution fails)
@@ -480,7 +487,9 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
 
         try
         {
-            var session = await sessionManager.EnsureSessionAsync(record.SessionId);
+            var session = await sessionManager.EnsureSessionAsync(
+                record.SessionId,
+                scenario: scope.ServiceProvider.GetService<IDefaultWorkModeProvider>()?.GetDefaultScenario());
 
             // 自动压缩门控：TokenBudget 标记 + 配置开启时，每轮 Agent 循环开始前触发压缩
             // GetSection 契约应返回非 null；防御性 ?. 避免测试/错误 mock 返回 null 时整轮执行 NRE 短路
@@ -775,6 +784,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         var options = _seeingAgentOptions.CurrentValue;
         var processScenario = options.Scenario
             ?? services.GetService<ProcessSettlementOptions>()?.HostDefaultScenario;
+        var scenarioCatalog = _scenarioCatalog ?? services.GetService<IScenarioCatalog>();
 
         SessionSettlementSnapshot? settlement = null;
         IReadOnlyList<string> settledToolIds = Array.Empty<string>();
@@ -785,7 +795,10 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
                 session,
                 catalog,
                 processScenario,
-                options.Modules?.Tools?.Disabled);
+                options.Modules?.Tools?.Disabled,
+                resolveScenario: scenarioCatalog is not null
+                    ? name => scenarioCatalog.Get(name)
+                    : null);
             settledToolIds = settlement.SettledToolIds;
 
             _logger.LogDebug(

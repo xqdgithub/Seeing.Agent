@@ -28,9 +28,10 @@
 | 能力包互硬引用（Skills/Mcp） | ✅ | Scheduler/Acp 等无 Skills/Mcp ProjectReference |
 | schema 单点（执行路径） | ✅ | Native `AgentExecutor` 只读 `context.ToolSchemas`；计算在 `ExecutionJobService` |
 | 无阻塞式 GetToolSchemas 同步包装 | ✅ | 已删除 `Task.Run().GetResult()` 同步 API |
+| CapabilitySet / Boot 契约落点 | ✅（目标态） | `CapabilitySetDefinition` / `ICapabilitySetCatalog` **仅** Abstractions + Core；能力包不得自实现目录或引用 Core 结算类型；会话滤镜不外键绑 CapabilitySet |
 
 **结论：** **架构方向性债已关闭，本轮无需为合规做强制重构。**  
-后续风险主要在**回潮**（平铺新项目、ConfigureServices 挂 ITool、能力包再引 Core、配置旁路）。用 [README 扫描命令](README.md) 守门。
+后续风险主要在**回潮**（平铺新项目、ConfigureServices 挂 ITool、能力包再引 Core、配置旁路、用 Scenario/`Modules.Enabled` 当启动天花板）。用 [README 扫描命令](README.md) 守门。
 
 ---
 
@@ -105,6 +106,8 @@ GetToolSchemas 调用（执行路径）
 | 能力包编译依赖 Core | 违反分层；上提端口到 Abstractions |
 | 新项目出现在 `src/Seeing.Agent.Xxx` 根下 | 违反目录分类；移入对应子目录并改 slnx |
 | ChatRequest.Tools 与 SchemaSnapshot 不一致 | 第二处计算 schema 写入请求 |
+| 能力包实现 / 引用 CapabilitySet 目录或 SettlementEngine | 违反「目录仅 Abstractions/Core」；Boot 结算属脊柱 |
+| `Tools.Disabled` 进模块层求交 / 用 Scenario 驱动 Activate | 两层/两轴回潮；对照 01 §3、03 §3–§4 |
 
 ---
 

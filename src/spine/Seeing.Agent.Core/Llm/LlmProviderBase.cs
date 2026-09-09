@@ -20,7 +20,7 @@ public abstract class LlmProviderBase : ILlmProvider
     public virtual Task<bool> TestConnectionAsync(
         string modelId,
         CancellationToken cancellationToken)
-        => GetClient().TestConnectionAsync(modelId, cancellationToken);
+        => GetClient().TestConnectionAsync(modelId, call: null, cancellationToken);
 
     /// <summary>
     /// 使用内置客户端工厂创建 Provider 客户端。

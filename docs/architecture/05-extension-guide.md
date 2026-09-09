@@ -11,7 +11,7 @@
    - `ActivateAsync(sp, ct)`：`await tm.RegisterToolAsync(sp.GetRequiredService<XxxTool>(), ct)` + UI Register  
    - `DeactivateAsync`：`UnregisterToolAsync` + UI Unregister  
 5. Sample `Program.cs`：`AddSeeingModule<XxxModule>(registry)`（在 `AddSeeingCore` **之前**）。  
-6. 若需进内置场景：改 `BuiltInScenarios` **字符串**数组（勿引用工具类型）。  
+6. 若需进内置启动集 / 工作模式：改 `BuiltInCapabilitySets`（boot SSOT）及引用它的 `BuiltInScenarios.Modules`（编译期常量，勿复制数组、勿引用工具类型）。  
 7. 测试放 `tests/capabilities/Seeing.Agent.Tools.Xxx.Tests/`；补不变量（未启用则 schema 无该工具）。  
 8. 把项目加入 `Seeing.Agent.slnx` 的 `/src/capabilities/` 与 `/tests/capabilities/` Folder。
 
@@ -38,33 +38,63 @@
 1. 包可放 `plugs/providers/`；实现 `ILlmProvider` / `IConfigurableLlmProvider`（**禁止**引用 Core；工厂解析用 `LlmClientFactoryResolver`）。  
 2. 实现 `ISeeingModule`（如 `provider.deepseek`），`DependsOn: ["llm.openai"]`（若走 OpenAI 兼容协议）。  
 3. `ConfigureServices`：登记 Provider / Store；**不要** `AddHostedService` 旁路登记。  
-4. `ActivateAsync`：Warmup + `IProviderRegistry.Register`；`DeactivateAsync`：`Unregister`。  
+4. `ActivateAsync`：先挂 `ILlmCallInterceptor`（若有），再 Warmup + `IProviderRegistry.Register`；`DeactivateAsync`：先 `Unregister` Provider，再卸拦截器。  
 5. 创建客户端：注入 `IEnumerable<ILlmClientFactory>`，用 `LlmClientFactoryResolver.Require(..., ProviderTypes.OpenAi)`，**禁止**注入单个 `ILlmClientFactory`。  
 6. Sample：`AddSeeingModule<XxxLlmModule>(registry)`（在 `AddSeeingCore` 之前；模块类由 plug 提供，登记 API 在 Core）。
 
-## 4. 自定义 Scenario
+**LLM 调用边界扩展点（勿混层）：**
 
-**UI：** 设置 → 场景 → 新建 / 另存为。  
+| 用途 | 载体 | 说明 |
+|------|------|------|
+| 静态连接头（UA 等） | `ProviderConfig.Headers` | 客户端创建时写入 DefaultRequestHeaders |
+| 通用、多订阅、全 provider 头 | `chat.headers` Hook → `LlmCallContext.ExtraHeaders` | 编排层；流式/非流式均应用 |
+| provider 专属出站塑形 | `ILlmCallInterceptor`（`AppliesTo`） | 如 OpenCode `x-opencode-session`；协议客户端**每次发送前** `Resolve`，经 `OutboundPipeline` 写入本次请求（非 Create 快照） |
+| 横切（重试） | `ILlmClientDecorator` / `RetryLlmClientDecorator` | 镜像工具装饰器；工厂 Create 后包装 |
+| 调用期身份 | `ILlmClient.Complete*(request, LlmCallContext? call, …)` | **不**塞进 `ChatRequest` |
 
-**文件：**
+公共扩展点用**类型化接口**（非 Func）。详见 `docs/superpowers/specs/2026-09-09-llm-provider-abstraction-redesign.md`。
+
+## 4. 自定义 Boot / CapabilitySet 与 Scenario
+
+**UI：** 设置 → **启动能力**（`Boot` + `CapabilitySets`）；设置 → **场景**（工作模式 CRUD / 另存为）。  
+
+**文件（PascalCase；模块层 `Disabled`；工具层 `Tools.Disabled`）：**
 
 ```json
 {
   "SeeingAgent": {
+    "Boot": "my-lab-boot",
+    "CapabilitySets": {
+      "my-lab-boot": {
+        "Modules": ["io.local", "agents.builtin", "llm.openai", "basic", "filesystem"],
+        "Disabled": []
+      }
+    },
     "Scenario": "my-lab",
     "Scenarios": {
       "my-lab": {
         "Modules": ["io.local", "agents.builtin", "llm.openai", "basic", "filesystem"],
         "DefaultAgent": "build",
         "Seams": { "executionWorld": "io.local" },
-        "ToolsDisabled": []
+        "Tools": { "Disabled": [] }
       }
-    }
+    },
+    "Modules": {
+      "Disabled": [],
+      "Tools": { "Disabled": [] }
+    },
+    "Seams": { "executionWorld": "io.local" }
   }
 }
 ```
 
-同名覆盖内置；删除覆盖即回退内置定义。未在宿主引用的模块 id 不会真正启用。
+- `Boot` 决定进程 `bootEnabled` / Activate；`Scenario` 只是默认工作模式（会话可再切换，且只能 ∩ `bootEnabled`）。  
+- CapabilitySet / Scenario **各自**持有 `Modules`，**无**外键；运行时求交。  
+- 内置能力集：`minimal` / `code` / `work` / `research` / `full` / **`secure`**（`*` − shell/mcp/acp/gateway）/ **`dev`**（= full）。  
+- 快速切换启动档：`seeing web --boot secure`，或环境变量 `SEEING_BOOT=secure`，或 `dotnet run --project samples/Seeing.Agent.WebUI -- --boot secure`（覆盖文件 `Boot`）。  
+- 同名覆盖内置能力集 / 场景；删除覆盖即回退内置。未在宿主引用的模块 id 不会真正启用。  
+- 若只需缩工具、不卸模块：写场景或全局的 `Tools.Disabled`，不要把工具 id 写进模块层 `Disabled`。  
+- 迁移：旧「`Scenario=minimal` 当沙箱」→ `Boot=minimal`；旧 `Modules.Enabled` → 本例式 CapabilitySet + `Boot`；扁平 `ToolsDisabled` → `Tools.Disabled`。
 
 ## 5. WebUI 扩展
 
@@ -116,7 +146,7 @@ Activate：`IUiContributionRegistry.Register`；Deactivate：`Unregister(moduleI
 - 所需 Tools 模块  
 - `AddSeeingCore` + `InitializeSeeingAsync`  
 
-否则结算 base 可能为空或硬依赖失败。
+否则 `bootEnabled` / 结算 base 可能为空或硬依赖失败。Embed 等 Shape 可通过 `HostDefaultBoot`（如 `minimal`）收窄默认启动集。
 
 ## 11. 扩展完成自检
 

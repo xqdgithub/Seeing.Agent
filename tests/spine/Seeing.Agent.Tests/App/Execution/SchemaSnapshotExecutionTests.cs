@@ -191,7 +191,7 @@ public class SchemaSnapshotExecutionTests
         bool withCatalog)
     {
         var sessionManager = new Mock<ISessionManager>();
-        sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>()))
+        sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
         sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns(session);
         sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);

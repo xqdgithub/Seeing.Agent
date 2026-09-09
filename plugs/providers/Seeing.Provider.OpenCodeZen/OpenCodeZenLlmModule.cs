@@ -38,6 +38,7 @@ public sealed class OpenCodeZenLlmModule : ISeeingModule
                 sp.GetRequiredService<ILogger<OpenCodeZenConfigStore>>()));
         services.TryAddSingleton<OpenCodeZenModelsClient>();
         services.TryAddSingleton<OpenCodeZenProvider>();
+        services.TryAddSingleton<OpenCodeZenCallInterceptor>();
     }
 
     /// <inheritdoc />
@@ -46,6 +47,12 @@ public sealed class OpenCodeZenLlmModule : ISeeingModule
         var provider = services.GetRequiredService<OpenCodeZenProvider>();
         var registry = services.GetRequiredService<IProviderRegistry>();
         await provider.WarmupAsync(cancellationToken).ConfigureAwait(false);
+
+        // 先挂拦截器再对外发布 Provider，避免 Create 快照/首次 GetClient 抢到空列表
+        var interceptors = services.GetService<ILlmCallInterceptorRegistry>();
+        if (interceptors is not null)
+            interceptors.Register(services.GetRequiredService<OpenCodeZenCallInterceptor>());
+
         registry.Register(provider, OpenCodeZenProvider.ExtensionId);
     }
 
@@ -53,8 +60,16 @@ public sealed class OpenCodeZenLlmModule : ISeeingModule
     public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        // 先下线 Provider，再卸拦截器（与 Activate 对称，缩小竞态窗口）
         var provider = services.GetRequiredService<OpenCodeZenProvider>();
         services.GetRequiredService<IProviderRegistry>().Unregister(provider.Id);
+
+        var interceptors = services.GetService<ILlmCallInterceptorRegistry>();
+        var interceptor = services.GetService<OpenCodeZenCallInterceptor>();
+        if (interceptors is not null && interceptor is not null)
+            interceptors.Unregister(interceptor);
+
         return Task.CompletedTask;
     }
 }

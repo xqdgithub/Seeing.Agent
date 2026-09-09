@@ -17,6 +17,7 @@ using Seeing.Agent.Core.Tools.FileSystem;
 using Seeing.Agent.Core.Tools.Git;
 using Seeing.Agent.Core.Tools.Shell;
 using Seeing.Agent.Core.Tools.Web;
+using Seeing.Agent.Core.Modules;
 using Seeing.IO.Local;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -52,6 +53,7 @@ public static class CliServiceBootstrap
         builder.Services.AddMemoryServices(registry);
         builder.Services.AddSeeingCore(registry);
         builder.Services.AddSeeingHostingHeadless();
+        BootOverrideSource.ApplyToServices(builder.Services, args);
 
         var host = builder.Build();
 

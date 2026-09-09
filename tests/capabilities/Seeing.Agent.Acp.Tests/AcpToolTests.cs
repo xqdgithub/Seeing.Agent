@@ -133,8 +133,14 @@ public sealed class FakeSessionManager : ISessionManager
         return session;
     }
 
-    public Task<SessionData> EnsureSessionAsync(string id, string? selectedAgent = null, string? partitionId = null) =>
-        Task.FromResult(_sessions.TryGetValue(id, out var session) ? session : Create(partitionId, selectedAgent));
+    public Task<SessionData> EnsureSessionAsync(
+        string id,
+        string? selectedAgent = null,
+        string? partitionId = null,
+        string? scenario = null) =>
+        Task.FromResult(_sessions.TryGetValue(id, out var session)
+            ? session
+            : Create(partitionId, selectedAgent, scenario));
 
     public SessionData? Get(string id) =>
         _sessions.TryGetValue(id, out var session) ? session : null;

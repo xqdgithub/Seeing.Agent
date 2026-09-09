@@ -1,0 +1,425 @@
+@using AntDesign
+@using Microsoft.Extensions.Options
+@using Seeing.Agent.Abstractions.Modules
+@using Seeing.Agent.Core.CapabilitySets
+@using Seeing.Agent.Core.Configuration
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.WebUI.Services
+@inject SeeingConfigService ConfigService
+@inject ICapabilitySetCatalog CapabilitySetCatalog
+@inject IModuleCatalog ModuleCatalog
+@inject IOptionsMonitor<SeeingAgentOptions> AgentOptions
+@inject IMessageService MessageService
+@implements IDisposable
+
+<Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
+       Message="启动能力（Boot + 能力集）决定进程 Activate / bootEnabled。工作模式（Scenario）只影响会话滤镜与默认 Agent，不缩启动集。编辑能力集或切换 Boot 会热重载并重新结算。" />
+
+@if (_modulesEnabledWarning)
+{
+    <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
+           Message="检测到 Modules.Enabled：该字段已废除，结算会忽略。请改用上方 Boot + 能力集；Modules.Disabled 仍可作为全局模块黑名单。" />
+}
+
+<div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+    <span>当前 Boot：</span>
+    <Select TItemValue="string" TItem="string"
+            Value="@_activeBoot"
+            ValueChanged="OnActiveBootChanged"
+            Placeholder="*（全 Available）/ Host 默认"
+            AllowClear="true"
+            Style="width: 260px;"
+            Disabled="@_busy">
+        <SelectOption TItemValue="string" TItem="string" Value="@("*")" Label="@("*（全 Available）")" />
+        @foreach (var name in _allSetNames)
+        {
+            <SelectOption TItemValue="string" TItem="string" Value="@name" Label="@name" />
+        }
+    </Select>
+    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="StartCreate" Disabled="@_busy">
+        新建能力集
+    </Button>
+    <Button Icon="@IconType.Outline.Reload" OnClick="Refresh" Disabled="@_busy">刷新</Button>
+</div>
+
+<div style="margin-bottom: 12px; font-size: 12px; color: #888;">
+    清空 Boot 后回退 Host Shape 的 HostDefaultBoot（未设则 *）。进程默认工作模式请到「工作模式」页签配置。
+</div>
+
+<Table TItem="CapabilitySetRow" DataSource="@_rows" RowKey="r => r.Name" Loading="@_busy" Size="@TableSize.Middle">
+    <PropertyColumn Property="c => c.Name" Title="名称" Width="140" />
+    <PropertyColumn Property="c => c.Kind" Title="类型" Width="100" />
+    <PropertyColumn Property="c => c.ModuleSummary" Title="模块" />
+    <PropertyColumn Property="c => c.DisabledSummary" Title="Disabled" Width="160" />
+    <ActionColumn Title="操作" Width="260">
+        <Space>
+            <Button Size="@ButtonSize.Small" OnClick="() => ViewOrEdit(context)">详情</Button>
+            @if (context.IsActive)
+            {
+                <Tag Color="@("blue")">当前 Boot</Tag>
+            }
+            else
+            {
+                <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => ActivateAsync(context.Name)">设为 Boot</Button>
+            }
+            <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => CloneAsCustom(context)">另存为</Button>
+            @if (!context.IsBuiltIn || context.HasOverride)
+            {
+                <Button Size="@ButtonSize.Small" Danger OnClick="() => ConfirmDelete(context)" Disabled="@(context.IsBuiltIn && !context.HasOverride)">
+                    @(context.IsBuiltIn ? "清除覆盖" : "删除")
+                </Button>
+            }
+        </Space>
+    </ActionColumn>
+</Table>
+
+<Modal Title="@_editorTitle"
+       Visible="@_editorVisible"
+       OnOk="SaveEditorAsync"
+       OnCancel="CloseEditor"
+       ConfirmLoading="@_busy"
+       Width="720"
+       DestroyOnClose="true">
+    <Form Layout="@FormLayout.Vertical" Model="@_editModel">
+        <FormItem Label="能力集名">
+            <Input @bind-Value="@_editModel.Name" Disabled="@(!_editIsNew)" Placeholder="小写字母/数字/连字符，如 my-secure" />
+        </FormItem>
+        <FormItem Label="模块（勾选 Available；可用 * 表示全量）">
+            <div style="margin-bottom: 8px;">
+                <Checkbox Checked="@_editModel.UseStar"
+                          CheckedChanged="OnUseStarChanged">
+                    使用 ["*"]（解析层展开为全部 Available）
+                </Checkbox>
+            </div>
+            @if (!_editModel.UseStar)
+            {
+                <div style="max-height: 220px; overflow: auto; border: 1px solid #f0f0f0; padding: 8px; border-radius: 6px;">
+                    @foreach (var id in _availableModuleIds)
+                    {
+                        <div>
+                            <Checkbox Checked="@_editModel.SelectedModules.Contains(id)"
+                                      CheckedChanged="@(v => ToggleModule(id, v))">
+                                @id
+                                @if (!ModuleCatalog.IsEnabled(id))
+                                {
+                                    <span style="color:#999; margin-left:6px;">（当前未启用）</span>
+                                }
+                            </Checkbox>
+                        </div>
+                    }
+                </div>
+                <div style="margin-top: 6px; font-size: 12px; color: #888;">
+                    也可手写额外模块 id（逗号分隔）：
+                </div>
+                <Input @bind-Value="@_editModel.ExtraModulesCsv" Placeholder="例如 experimental.foo" Style="margin-top: 4px;" />
+            }
+        </FormItem>
+        <FormItem Label="Disabled（模块层黑名单，逗号分隔）">
+            <Input @bind-Value="@_editModel.DisabledCsv" Placeholder="shell, mcp" />
+        </FormItem>
+        @if (_editIsBuiltInBase)
+        {
+            <Alert Type="@AlertType.Warning" ShowIcon="true"
+                   Message="保存将把该内置能力集的覆盖写入 seeing.json CapabilitySets；删除覆盖可恢复内置默认。" />
+        }
+    </Form>
+</Modal>
+
+@code {
+    private bool _busy;
+    private bool _editorVisible;
+    private bool _editIsNew;
+    private bool _editIsBuiltInBase;
+    private bool _modulesEnabledWarning;
+    private string _editorTitle = "能力集";
+    private string? _activeBoot;
+    private List<string> _allSetNames = [];
+    private List<CapabilitySetRow> _rows = [];
+    private List<string> _availableModuleIds = [];
+    private EditorModel _editModel = new();
+    private IDisposable? _optSub;
+
+    protected override void OnInitialized()
+    {
+        _optSub = AgentOptions.OnChange(_ => InvokeAsync(Refresh));
+        Refresh();
+    }
+
+    public void Dispose() => _optSub?.Dispose();
+
+    private void Refresh()
+    {
+        var opts = AgentOptions.CurrentValue;
+        _activeBoot = string.IsNullOrWhiteSpace(opts.Boot) ? null : opts.Boot.Trim();
+        _modulesEnabledWarning = opts.Modules?.Enabled is { Count: > 0 };
+
+        _availableModuleIds = ModuleCatalog.Available
+            .Select(d => d.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var list = CapabilitySetCatalog.ListAll();
+        _allSetNames = list.Select(s => s.Name).ToList();
+        _rows = list.Select(s =>
+        {
+            var builtin = CapabilitySetCatalog.IsBuiltInName(s.Name);
+            var over = CapabilitySetCatalog.HasConfiguredOverride(s.Name);
+            var isActive = string.Equals(_activeBoot, s.Name, StringComparison.OrdinalIgnoreCase);
+            return new CapabilitySetRow(
+                s.Name,
+                KindLabel(builtin, over),
+                string.Join(", ", s.Modules),
+                s.Disabled.Count == 0 ? "—" : string.Join(", ", s.Disabled),
+                builtin,
+                over,
+                isActive);
+        }).ToList();
+    }
+
+    private static string KindLabel(bool builtin, bool over) =>
+        builtin ? (over ? "内置·已覆盖" : "内置") : "自定义";
+
+    private async Task OnActiveBootChanged(string? value)
+    {
+        _activeBoot = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        await PersistActiveBootAsync();
+    }
+
+    private async Task ActivateAsync(string name)
+    {
+        _activeBoot = name;
+        await PersistActiveBootAsync();
+    }
+
+    private async Task PersistActiveBootAsync()
+    {
+        _busy = true;
+        try
+        {
+            await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+            {
+                ["Boot"] = _activeBoot
+            });
+            MessageService.Success(_activeBoot is null
+                ? "已清空 Boot（回退 Host 默认 / *）"
+                : $"Boot 已切换为 {_activeBoot}");
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void StartCreate()
+    {
+        _editIsNew = true;
+        _editIsBuiltInBase = false;
+        _editorTitle = "新建能力集";
+        _editModel = new EditorModel
+        {
+            Name = "",
+            UseStar = false,
+            SelectedModules = ModuleCatalog.Enabled.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            ExtraModulesCsv = "",
+            DisabledCsv = "",
+        };
+        _editorVisible = true;
+    }
+
+    private void ViewOrEdit(CapabilitySetRow row)
+    {
+        var def = CapabilitySetCatalog.Get(row.Name);
+        if (def is null)
+            return;
+
+        _editIsNew = false;
+        _editIsBuiltInBase = row.IsBuiltIn;
+        _editorTitle = row.IsBuiltIn && !row.HasOverride
+            ? $"查看内置能力集 · {row.Name}（保存即覆盖）"
+            : $"编辑能力集 · {row.Name}";
+
+        var useStar = def.Modules.Count == 1 &&
+                      string.Equals(def.Modules[0], "*", StringComparison.OrdinalIgnoreCase);
+        var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selected = def.Modules.Where(available.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var extra = def.Modules.Where(m => !available.Contains(m) && m != "*").ToArray();
+
+        _editModel = new EditorModel
+        {
+            Name = def.Name,
+            UseStar = useStar,
+            SelectedModules = selected,
+            ExtraModulesCsv = string.Join(", ", extra),
+            DisabledCsv = string.Join(", ", def.Disabled),
+        };
+        _editorVisible = true;
+    }
+
+    private void CloneAsCustom(CapabilitySetRow row)
+    {
+        var def = CapabilitySetCatalog.Get(row.Name);
+        if (def is null)
+            return;
+
+        _editIsNew = true;
+        _editIsBuiltInBase = false;
+        _editorTitle = "另存为自定义能力集";
+        var useStar = def.Modules.Count == 1 &&
+                      string.Equals(def.Modules[0], "*", StringComparison.OrdinalIgnoreCase);
+        var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _editModel = new EditorModel
+        {
+            Name = row.IsBuiltIn ? $"{row.Name}-custom" : $"{row.Name}-copy",
+            UseStar = useStar,
+            SelectedModules = def.Modules.Where(available.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            ExtraModulesCsv = string.Join(", ", def.Modules.Where(m => !available.Contains(m) && m != "*")),
+            DisabledCsv = string.Join(", ", def.Disabled),
+        };
+        _editorVisible = true;
+    }
+
+    private void CloseEditor() => _editorVisible = false;
+
+    private void OnUseStarChanged(bool on)
+    {
+        _editModel.UseStar = on;
+    }
+
+    private void ToggleModule(string id, bool on)
+    {
+        if (on) _editModel.SelectedModules.Add(id);
+        else _editModel.SelectedModules.Remove(id);
+    }
+
+    private async Task SaveEditorAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editModel.Name))
+        {
+            MessageService.Error("能力集名不能为空");
+            return;
+        }
+
+        var name = _editModel.Name.Trim();
+        if (_editIsNew && CapabilitySetCatalog.ListAll().Any(s =>
+                string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            MessageService.Error($"能力集名 '{name}' 已存在，请换名或编辑现有项");
+            return;
+        }
+
+        List<string> modules;
+        if (_editModel.UseStar)
+        {
+            modules = ["*"];
+        }
+        else
+        {
+            modules = _editModel.SelectedModules.ToList();
+            foreach (var part in (_editModel.ExtraModulesCsv ?? "")
+                         .Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!modules.Contains(part, StringComparer.OrdinalIgnoreCase))
+                    modules.Add(part.Trim());
+            }
+        }
+
+        var disabled = (_editModel.DisabledCsv ?? "")
+            .Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var cfg = new CapabilitySetConfig
+        {
+            Modules = modules,
+            Disabled = disabled,
+        };
+
+        _busy = true;
+        try
+        {
+            var options = await ConfigService.LoadProjectOptionsAsync();
+            options.CapabilitySets ??= new Dictionary<string, CapabilitySetConfig>(StringComparer.OrdinalIgnoreCase);
+            options.CapabilitySets[name] = cfg;
+            await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+            {
+                ["CapabilitySets"] = options.CapabilitySets
+            });
+            MessageService.Success($"能力集 '{name}' 已保存");
+            _editorVisible = false;
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ConfirmDelete(CapabilitySetRow row)
+    {
+        _busy = true;
+        try
+        {
+            var options = await ConfigService.LoadProjectOptionsAsync();
+            if (options.CapabilitySets is null || !options.CapabilitySets.Remove(row.Name))
+            {
+                MessageService.Warning("配置中无该能力集条目");
+                return;
+            }
+
+            await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+            {
+                ["CapabilitySets"] = options.CapabilitySets.Count == 0 ? null : options.CapabilitySets
+            });
+
+            if (string.Equals(_activeBoot, row.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                _activeBoot = null;
+                await ConfigService.SaveLevelSectionsAsync(ConfigLevel.Project, new Dictionary<string, object?>
+                {
+                    ["Boot"] = null
+                });
+            }
+
+            MessageService.Success(row.IsBuiltIn ? $"已清除 '{row.Name}' 的配置覆盖" : $"已删除能力集 '{row.Name}'");
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed record CapabilitySetRow(
+        string Name,
+        string Kind,
+        string ModuleSummary,
+        string DisabledSummary,
+        bool IsBuiltIn,
+        bool HasOverride,
+        bool IsActive);
+
+    private sealed class EditorModel
+    {
+        public string Name { get; set; } = "";
+        public bool UseStar { get; set; }
+        public HashSet<string> SelectedModules { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string ExtraModulesCsv { get; set; } = "";
+        public string DisabledCsv { get; set; } = "";
+    }
+}

@@ -547,15 +547,22 @@ public class ProviderManagerTests : IDisposable
 
         public string ProviderType => ProviderTypes.OpenAi;
 
-        public Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken cancellationToken = default)
+        public Task<ChatResponse> CompleteAsync(
+            ChatRequest request,
+            LlmCallContext? call = null,
+            CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
 
         public IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
             ChatRequest request,
+            LlmCallContext? call = null,
             CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
 
-        public Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken = default)
+        public Task<bool> TestConnectionAsync(
+            string modelId,
+            LlmCallContext? call = null,
+            CancellationToken cancellationToken = default)
             => Task.FromResult(true);
 
         public ValueTask DisposeAsync()

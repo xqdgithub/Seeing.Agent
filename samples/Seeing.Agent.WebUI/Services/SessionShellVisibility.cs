@@ -29,17 +29,19 @@ public static class SessionShellVisibility
     }
 
     /// <summary>
-    /// 进程级导航过滤：只看 <see cref="IModuleCatalog.IsEnabled"/> + 贡献 Scenarios 对进程场景。
-    /// 会话级 Scenario 变更不得影响此结果。
+    /// 进程级导航过滤：只看 <see cref="IModuleCatalog.IsEnabled"/>（Requires ⊆ bootEnabled）。
+    /// 不按贡献 Scenarios 白名单硬藏；会话级 Scenario 变更不得影响此结果。
     /// </summary>
     public static IReadOnlyList<NavContribution> FilterNavForProcess(
         IEnumerable<NavContribution> items,
         IModuleCatalog? catalog,
-        string? processScenario)
+        string? processScenario = null)
     {
         ArgumentNullException.ThrowIfNull(items);
+        // processScenario 保留参数以兼容旧调用；侧栏/进程 chrome 不再消费 Scenario 名。
+        _ = processScenario;
         return items
-            .Where(n => IsVisible(n.Requires, n.Scenarios, catalog, processScenario, sessionModuleGate: null))
+            .Where(n => AreRequirementsEnabled(n.Requires, catalog))
             .ToArray();
     }
 

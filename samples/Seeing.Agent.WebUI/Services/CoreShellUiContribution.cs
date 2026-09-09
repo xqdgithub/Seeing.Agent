@@ -47,8 +47,13 @@ public sealed class CoreShellUiContribution : IUiContribution
             ComponentType: typeof(Settings),
             Group: NavGroups.Settings, GroupIcon: NavGroups.SettingsIcon, Order: 90),
         new SettingsCardContribution(
+            "/settings/boot",
+            "启动能力",
+            typeof(BootCapabilitySettingsCard),
+            []),
+        new SettingsCardContribution(
             "/settings/scenarios",
-            "场景",
+            "工作模式",
             typeof(ScenariosSettingsCard),
             []),
         new SettingsCardContribution(

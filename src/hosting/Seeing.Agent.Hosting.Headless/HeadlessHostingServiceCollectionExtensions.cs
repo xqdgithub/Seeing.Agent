@@ -24,9 +24,15 @@ public static class HeadlessHostingServiceCollectionExtensions
         Action<ExecutionOptions>? configureExecution = null)
     {
         services.AddSingleton(HeadlessHostShape.Descriptor);
+        // D10：HostDefaultSeams=executionWorld→io.local；Boot 未设 → 回退 *
         services.AddSingleton(new ProcessSettlementOptions
         {
             HostDefaultScenario = HeadlessHostShape.Descriptor.DefaultScenario,
+            HostDefaultSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executionWorld"] = "io.local",
+            },
+            BootOverride = BootOverrideSource.ResolveFromEnvironment(),
         });
 
         // 无 UI：未显式注册 IPermissionChannel 时使用 DenyAll（后台/CLI 安全默认）

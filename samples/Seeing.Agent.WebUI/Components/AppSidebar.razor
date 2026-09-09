@@ -6,7 +6,6 @@
 @using Seeing.Agent.Abstractions.Ui
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
-@using Seeing.Agent.Core.Modules
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Agent.WebUI.State
 @implements IDisposable
@@ -17,7 +16,6 @@
 @inject UiContributionRegistry Registry
 @inject IModuleCatalog Catalog
 @inject IOptionsMonitor<SeeingAgentOptions> AgentOptions
-@inject ProcessSettlementOptions SettlementOptions
 
 <Sider Class="@GetSiderClass()"
        Width="240"
@@ -175,10 +173,8 @@
 
     private void RefreshNav()
     {
-        var scenario = UiContributionVisibility.ResolveProcessScenario(
-            AgentOptions.CurrentValue, SettlementOptions);
-        _visibleNav = UiContributionVisibility.FilterSidebarNav(
-            Registry.NavItems, Catalog, scenario);
+        // 侧栏只跟 bootEnabled（Requires + IsEnabled），不跟进程 Scenario 名
+        _visibleNav = UiContributionVisibility.FilterSidebarNav(Registry.NavItems, Catalog);
 
         _ungroupedNav = _visibleNav
             .Where(n => string.IsNullOrWhiteSpace(n.Group))

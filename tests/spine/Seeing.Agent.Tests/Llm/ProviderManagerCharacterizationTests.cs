@@ -207,6 +207,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         client.SetupGet(candidate => candidate.ProviderType).Returns(providerType);
         client.Setup(candidate => candidate.TestConnectionAsync(
                 It.IsAny<string>(),
+                It.IsAny<LlmCallContext?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(connectionResult);
         return client.Object;

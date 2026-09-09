@@ -34,6 +34,7 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
@@ -357,11 +358,13 @@ namespace Seeing.Agent.Core.Extensions
         private static void RegisterCoreServices(IServiceCollection services)
         {
             // 进程级模块目录 / 结算 / 生命周期
-            // ProcessSettlementOptions 由 Host Shape 登记（HostDefaultScenario）；无宿主则保持未注册。
+            // ProcessSettlementOptions 由 Host Shape 登记（HostDefaultBoot/Seams/Scenario）；无宿主则保持未注册。
             services.TryAddSingleton<ModuleCatalog>();
             services.TryAddSingleton<IModuleCatalog>(sp => sp.GetRequiredService<ModuleCatalog>());
             services.TryAddSingleton<SettlementEngine>();
             services.TryAddSingleton<IScenarioCatalog, ScenarioCatalog>();
+            services.TryAddSingleton<ICapabilitySetCatalog, CapabilitySetCatalog>();
+            services.TryAddSingleton<IDefaultWorkModeProvider, DefaultWorkModeProvider>();
             services.TryAddSingleton<ModuleLifecycleManager>();
             services.TryAddSingleton<ModuleReloadOptions>();
 
@@ -632,6 +635,15 @@ namespace Seeing.Agent.Core.Extensions
 
             // Provider 管理器（同时注册具体类，供 ProviderReloadHandler 等注入）
             services.AddSingleton<IProviderRegistry, ProviderRegistry>();
+            services.AddSingleton<ILlmCallInterceptorRegistry, LlmCallInterceptorRegistry>();
+            services.AddSingleton<ILlmClientDecorator, RetryLlmClientDecorator>();
+            services.AddSingleton<ILlmClientDecoratorRegistry>(sp =>
+            {
+                var registry = new LlmClientDecoratorRegistry();
+                foreach (var decorator in sp.GetServices<ILlmClientDecorator>())
+                    registry.Register(decorator);
+                return registry;
+            });
             services.AddSingleton<ProviderManager>();
             services.AddSingleton<IProviderManager>(sp => sp.GetRequiredService<ProviderManager>());
 
@@ -663,7 +675,7 @@ namespace Seeing.Agent.Core.Extensions
                     catalog: sp.GetRequiredService<ModuleCatalog>(),
                     options: sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
                     modules: sp.GetServices<ISeeingModule>(),
-                    scenarioCatalog: sp.GetService<IScenarioCatalog>(),
+                    capabilitySetCatalog: sp.GetService<ICapabilitySetCatalog>(),
                     reloadOptions: sp.GetRequiredService<ModuleReloadOptions>(),
                     settlementOptions: sp.GetService<ProcessSettlementOptions>(),
                     inFlight: sp.GetService<IExecutionInFlightBoundary>(),
@@ -775,25 +787,19 @@ namespace Seeing.Agent.Core.Extensions
             var settlementOptions = services.GetService<ProcessSettlementOptions>();
             var seeing = configManager?.GetSeeingAgentOptions();
             var modulesOptions = seeing?.Modules ?? new ModulesOptions();
-            var catalog = services.GetService<IScenarioCatalog>();
+            var capabilitySetCatalog = services.GetService<ICapabilitySetCatalog>();
 
-            var input = new SettlementInput
-            {
-                Available = SettlementEngine.ToDescriptors(modules),
-                ConfiguredScenario = seeing?.Scenario,
-                HostDefaultScenario = settlementOptions?.HostDefaultScenario,
-                UserEnabled = modulesOptions.Enabled,
-                UserDisabled = modulesOptions.Disabled,
-                UserSeams = seeing?.Seams,
-                ResolveScenarioModules = name =>
-                    catalog?.Get(name)?.Modules ?? BuiltInScenarios.TryGet(name)?.Modules,
-                ResolveScenarioSeams = name =>
-                    catalog?.Get(name)?.Seams ?? BuiltInScenarios.TryGet(name)?.Seams,
-            };
+            var input = ModuleSettlementReloadHandler.BuildSettlementInput(
+                modules: modules,
+                seeing: seeing,
+                modulesOptions: modulesOptions,
+                settlementOptions: settlementOptions,
+                capabilitySetCatalog: capabilitySetCatalog);
 
             var result = await engine.SettleAsync(input, cancellationToken).ConfigureAwait(false);
             logger?.LogInformation(
-                "进程级结算完成：scenario={Scenario}, enabled={EnabledCount}, warnings={WarningCount}",
+                "进程级结算完成：boot={Boot}, scenario={Scenario}, enabled={EnabledCount}, warnings={WarningCount}",
+                result.Boot,
                 result.Scenario,
                 result.Enabled.Count,
                 result.Warnings.Count);
