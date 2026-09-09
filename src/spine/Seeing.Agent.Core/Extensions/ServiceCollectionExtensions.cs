@@ -735,6 +735,11 @@ namespace Seeing.Agent.Core.Extensions
                     await configManager.LoadAsync(cancellationToken);
                     workspaceProvider.SetDependencies(configManager, workspaceLogger);
                     await workspaceProvider.InitializeAsync(cancellationToken);
+
+                    // 工作区可能解析到全局默认/项目自定义路径，项目级配置随之切换；
+                    // 需在切换后重新加载，否则启动目录的项目级配置会覆盖全局工作区配置
+                    // （如 Permission.AutoApproveAll 读不到全局工作区 setting）。
+                    await configManager.LoadAsync(cancellationToken);
                 }
             }
             else if (services.GetService<UnifiedConfigManager>() is { } configOnly)
