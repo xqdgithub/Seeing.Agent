@@ -188,6 +188,20 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
+        // 级联删除：先收集该会话的全部子会话（SubAgent / 分支），再一并删除，避免孤儿数据。
+        // 子会话优先取缓存；冷缓存（如进程重启后长时间未打开父会话）时从存储加载兜底。
+        var children = await _sessionManager.ListChildrenAsync(sessionId, ct: cancellationToken);
+        if (children.Count == 0)
+        {
+            children = await _sessionManager.LoadChildrenFromStorageAsync(sessionId, cancellationToken);
+        }
+
+        foreach (var child in children)
+        {
+            _sessionManager.Delete(child.Id);
+            _logger.LogInformation("Deleted child session: {ChildSessionId} (parent: {ParentSessionId})", child.Id, sessionId);
+        }
+
         _sessionManager.Delete(sessionId);
         _logger.LogInformation("Deleted session: {SessionId}", sessionId);
     }

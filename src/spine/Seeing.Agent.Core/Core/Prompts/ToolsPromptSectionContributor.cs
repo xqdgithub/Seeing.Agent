@@ -1,12 +1,16 @@
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Prompts;
 using System.Text;
-using System.Text.Json;
 
 namespace Seeing.Agent.Core.Prompts;
 
 /// <summary>
 /// Core 内置工具分节贡献者 — 根据 <see cref="PromptContext.Tools"/> 生成工具列表。
+/// <para>
+/// 为保持厂商侧提示缓存稳定并压缩 system 体积，此处仅渲染工具名称与一行描述，
+/// 完整参数 schema 交由 API 请求的 <c>tools</c> 字段承载（OpenAI / Anthropic 均支持），
+/// 不在 system prompt 中重复展开。
+/// </para>
 /// </summary>
 public sealed class ToolsPromptSectionContributor : IPromptSectionContributor
 {
@@ -41,23 +45,6 @@ public sealed class ToolsPromptSectionContributor : IPromptSectionContributor
             if (!string.IsNullOrEmpty(tool.Description))
                 sb.AppendLine(tool.Description);
             sb.AppendLine();
-
-            if (tool.Parameters.HasValue)
-            {
-                var parameters = tool.Parameters.Value;
-                if (parameters.ValueKind == JsonValueKind.Object &&
-                    parameters.TryGetProperty("properties", out var properties))
-                {
-                    var requiredNames = JsonSchemaPromptFormatting.ReadRequiredNames(parameters);
-                    sb.AppendLine("**参数：**");
-                    foreach (var prop in properties.EnumerateObject())
-                    {
-                        sb.AppendLine(
-                            $"- `{prop.Name}`: {JsonSchemaPromptFormatting.FormatProperty(prop.Name, prop.Value, requiredNames)}");
-                    }
-                    sb.AppendLine();
-                }
-            }
         }
 
         return sb.ToString().TrimEnd();

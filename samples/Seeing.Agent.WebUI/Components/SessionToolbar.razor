@@ -48,20 +48,13 @@
                     <span Class="session-scenario-badge" data-testid="session-scenario-badge">
                         <Icon Type="@IconType.Outline.Appstore" />
                         @(EffectiveScenarioDisplay)
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Edit"
+                                OnClick="@OnEditScenario"
+                                Class="session-scenario-edit" />
                     </span>
                 </Tooltip>
-                <Select TItemValue="string"
-                        TItem="ScenarioOption"
-                        Value="@ScenarioSelectValue"
-                        ValueChanged="EventCallback.Factory.Create<string?>(this, OnScenarioChanged)"
-                        DataSource="@_scenarioOptions"
-                        ValueName="@nameof(ScenarioOption.Value)"
-                        LabelName="@nameof(ScenarioOption.Label)"
-                        Style="min-width: 110px;"
-                        Size="@InputSize.Small"
-                        Placeholder="跟随进程"
-                        AllowClear="true"
-                        Class="session-scenario-switcher" />
             }
             @if (Context.IsSubAgentView)
             {
@@ -208,6 +201,30 @@
     </Modal>
 }
 
+@if (ScenarioModalVisible)
+{
+    <Modal Title="编辑场景"
+           Visible="true"
+           OnOk="@OnScenarioConfirm"
+           OnCancel="@OnScenarioCancel"
+           OkText="@OkText"
+           CancelText="@CancelText">
+        <Form Model="@ScenarioFormModel" Layout="@FormLayout.Vertical">
+            <FormItem Label="场景">
+                <Select TItemValue="string"
+                        TItem="ScenarioOption"
+                        @bind-Value="@ScenarioFormModel.Scenario"
+                        DataSource="@_scenarioOptions"
+                        ValueName="@nameof(ScenarioOption.Value)"
+                        LabelName="@nameof(ScenarioOption.Label)"
+                        Placeholder="跟随进程"
+                        AllowClear="true"
+                        Style="width: 100%;" />
+            </FormItem>
+        </Form>
+    </Modal>
+}
+
 @if (OutboundModalVisible)
 {
     <Modal Title="编辑出站绑定"
@@ -244,6 +261,8 @@
     private bool _optionsReady;
     private bool RenameModalVisible;
     private RenameSessionForm RenameForm { get; set; } = new();
+    private bool ScenarioModalVisible;
+    private ScenarioForm ScenarioFormModel { get; set; } = new();
     private bool OutboundModalVisible;
     private OutboundEditForm OutboundForm { get; set; } = new();
 
@@ -259,9 +278,6 @@
         Context.SessionScenario is null
             ? $"会话场景：跟随进程（{EffectiveScenarioDisplay}）"
             : $"会话场景：{Context.SessionScenario}（仅影响下一次 Submit）";
-
-    /// <summary>Select 绑定值：null 表示跟随进程（session.Scenario=null）。</summary>
-    private string? ScenarioSelectValue => Context.SessionScenario;
 
     /// <summary>
     /// 选项缓存：大屏切换主窗口会重建工具栏，复用内存选项避免重复查询（配置热重载时短暂旧值可接受）。
@@ -403,6 +419,29 @@
             await Context.SetScenarioAsync(string.IsNullOrWhiteSpace(value) ? null : value);
     }
 
+    private void OnEditScenario()
+    {
+        ScenarioFormModel.Scenario = Context.SessionScenario;
+        ScenarioModalVisible = true;
+    }
+
+    private async Task OnScenarioConfirm()
+    {
+        if (Context.SetScenarioAsync != null)
+        {
+            var value = string.IsNullOrWhiteSpace(ScenarioFormModel.Scenario) ? null : ScenarioFormModel.Scenario;
+            await Context.SetScenarioAsync(value);
+        }
+
+        ScenarioModalVisible = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnScenarioCancel()
+    {
+        ScenarioModalVisible = false;
+    }
+
     private async Task OnModelChanged(string value)
     {
         if (Context.SetModelAsync != null)
@@ -518,6 +557,12 @@
     private class RenameSessionForm
     {
         public string Title { get; set; } = "";
+    }
+
+    /// <summary>场景编辑表单模型</summary>
+    private class ScenarioForm
+    {
+        public string? Scenario { get; set; }
     }
 
     private sealed class OutboundEditForm

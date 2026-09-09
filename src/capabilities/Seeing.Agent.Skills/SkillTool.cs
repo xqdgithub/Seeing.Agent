@@ -1,6 +1,7 @@
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Skills;
+using System.Text;
 using System.Text.Json;
 
 namespace Seeing.Agent.Skills
@@ -40,52 +41,21 @@ namespace Seeing.Agent.Skills
         public JsonElement ParametersSchema => BuildParametersSchema();
 
         /// <summary>
-        /// 构建工具描述，包含所有可用技能列表（已按权限过滤）
+        /// 构建工具描述 — 纯加载器：技能目录由系统提示词 <c>## Skills</c> 节承载（含兜底注入），
+        /// 本工具只负责按名加载技能全文，避免重复维护列表导致描述膨胀。
         /// </summary>
         private string BuildDescription()
         {
-            var skills = _skillManager.GetAllSkillInfos().Values;
-
-            if (!skills.Any())
-            {
-                return "Load a specialized skill that provides domain-specific instructions and workflows. No skills are currently available.";
-            }
-
-            var skillList = skills.Select(s =>
-                $"    <skill>\n" +
-                $"      <name>{EscapeXml(s.Name)}</name>\n" +
-                $"      <description>{EscapeXml(s.Description)}</description>\n" +
-                $"      <location>{EscapeXml(s.Location)}</location>\n" +
-                $"    </skill>");
-
-            return string.Join("\n", new[]
-            {
-                "Load a specialized skill that provides domain-specific instructions and workflows.",
-                "",
-                "When you recognize that a task matches one of the available skills listed below, use this tool to load the full skill instructions.",
-                "",
-                "The skill will inject detailed instructions, workflows, and access to bundled resources (scripts, references, templates) into the conversation context.",
-                "",
-                "Tool output includes a `<skill_content name=\"...\">` block with the loaded content.",
-                "",
-                "The following skills provide specialized sets of instructions for particular tasks.",
-                "Invoke this tool to load a skill when a task matches one of the available skills listed below:",
-                "",
-                "<available_skills>",
-                string.Join("\n", skillList),
-                "</available_skills>"
-            });
+            return "Load a specialized skill that provides domain-specific instructions and workflows. " +
+                   "The available skill names are listed in the system prompt's '## Skills' section. " +
+                   "Call this tool with a skill 'name' to load its full instructions into the context.";
         }
 
         /// <summary>
-        /// 构建参数 Schema
+        /// 构建参数 Schema — name 必填，技能名见系统提示词 <c>## Skills</c> 节。
         /// </summary>
         private JsonElement BuildParametersSchema()
         {
-            var skills = _skillManager.GetAllSkillInfos().Values;
-            var examples = skills.Take(3).Select(s => s.Name).ToList();
-            var hint = examples.Count > 0 ? $" (e.g., {string.Join(", ", examples)})" : "";
-
             var schema = new
             {
                 type = "object",
@@ -94,7 +64,7 @@ namespace Seeing.Agent.Skills
                     name = new
                     {
                         type = "string",
-                        description = $"The name of the skill from available_skills{hint}"
+                        description = "The name of the skill to load (see '## Skills' section in the system prompt)."
                     }
                 },
                 required = new[] { "name" }
@@ -108,13 +78,13 @@ namespace Seeing.Agent.Skills
             // 获取技能名称
             if (!arguments.TryGetProperty("name", out var nameProp))
             {
-                return Task.FromResult(Failure("Missing required parameter: name"));
+                return Task.FromResult(Failure("Missing required parameter: name. See '## Skills' section in the system prompt for available skill names."));
             }
 
             var skillName = nameProp.GetString();
             if (string.IsNullOrEmpty(skillName))
             {
-                return Task.FromResult(Failure("Parameter 'name' must be a non-empty string"));
+                return Task.FromResult(Failure("Parameter 'name' must be a non-empty string. See '## Skills' section in the system prompt for available skill names."));
             }
 
             // 检查技能是否启用

@@ -65,11 +65,40 @@
     <!-- Filters Bar -->
     <div class="page-filters">
         <div class="filter-search">
-            <Input @bind-Value="_searchText" Placeholder="搜索会话..." AllowClear="true">
+            <Input @bind-Value="_searchText" Placeholder="搜索会话..." AllowClear="true"
+                   OnChange="@((string _) => OnSearchChanged())">
                 <Prefix><Icon Type="@IconType.Outline.Search" /></Prefix>
             </Input>
         </div>
     </div>
+
+    @if (_selectedIds.Count > 0)
+    {
+        <!-- Batch Action Bar -->
+        <div class="batch-bar">
+            <Space>
+                <SpaceItem>
+                    <Checkbox Checked="@IsAllSelected()" CheckedChanged="@OnToggleSelectAll">全选</Checkbox>
+                </SpaceItem>
+                <SpaceItem>
+                    <span Class="batch-count">已选 <b>@_selectedIds.Count</b> 项</span>
+                </SpaceItem>
+                <SpaceItem>
+                    <Popconfirm Title="@($"确定删除所选 {_selectedIds.Count} 个会话？将同步删除其子会话。")"
+                                OnConfirm="@DeleteSelectedAsync">
+                        <Button Type="@ButtonType.Primary" Danger Icon="@IconType.Outline.Delete">
+                            批量删除
+                        </Button>
+                    </Popconfirm>
+                </SpaceItem>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="@ClearSelection">
+                        清除选择
+                    </Button>
+                </SpaceItem>
+            </Space>
+        </div>
+    }
     
     <!-- Session List -->
     <div class="page-content">
@@ -86,7 +115,8 @@
                         ? session.WorkingDirectory 
                         : WorkspaceProvider.GetProjectRoot();
                     
-                    <div Class="session-card-wrapper" @onclick="@(() => ViewSession(session.Id))">
+                    <div Class="session-card-wrapper @(IsSelected(session.Id) ? "session-card-selected" : "")"
+                         @onclick="@(() => ViewSession(session.Id))">
                         <Card Size="@CardSize.Small" Hoverable="true" Class="session-card">
                             <div Class="session-card-content">
                                 <div Class="session-card-header">
@@ -115,22 +145,26 @@
                                     </span>
                                 </div>
                                 <div Class="session-card-actions" @onclick:stopPropagation>
-                                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
-                                            Icon="@IconType.Outline.Edit"
-                                            OnClick="@(() => OpenOutboundEditor(session))">
-                                        出站
-                                    </Button>
-                                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
-                                            Icon="@IconType.Outline.Fork" 
-                                            OnClick="@(() => BranchSession(session.Id))">
-                                        分支
-                                    </Button>
-                                    <Popconfirm Title="确定删除此会话？" OnConfirm="@(() => DeleteSession(session.Id))">
-                                        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
-                                                Danger Icon="@IconType.Outline.Delete">
-                                            删除
+                                    <Checkbox Checked="@IsSelected(session.Id)"
+                                              CheckedChanged="@((bool value) => ToggleSelect(session.Id, value))" />
+                                    <div Class="session-card-action-buttons">
+                                        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
+                                                Icon="@IconType.Outline.Edit"
+                                                OnClick="@(() => OpenOutboundEditor(session))">
+                                            出站
                                         </Button>
-                                    </Popconfirm>
+                                        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
+                                                Icon="@IconType.Outline.Fork" 
+                                                OnClick="@(() => BranchSession(session.Id))">
+                                            分支
+                                        </Button>
+                                        <Popconfirm Title="确定删除此会话？将同步删除其子会话。" OnConfirm="@(() => DeleteSession(session.Id))">
+                                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
+                                                    Danger Icon="@IconType.Outline.Delete">
+                                                删除
+                                            </Button>
+                                        </Popconfirm>
+                                    </div>
                                 </div>
                             </div>
                         </Card>
@@ -163,6 +197,22 @@
 }
 
 <style>
+.batch-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    background: #e6f4ff;
+    border: 1px solid #91caff;
+    border-radius: 8px;
+}
+
+.batch-count {
+    font-size: 14px;
+    color: #595959;
+}
+
 .session-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -171,6 +221,12 @@
 
 .session-card-wrapper {
     cursor: pointer;
+    border-radius: 8px;
+    transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.session-card-wrapper.session-card-selected {
+    box-shadow: 0 0 0 1px #d9d9d9;
 }
 
 .session-card {
@@ -212,10 +268,20 @@
 
 .session-card-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
-    justify-content: flex-end;
+    justify-content: space-between;
     padding-top: 8px;
     border-top: 1px solid #f0f0f0;
+}
+
+.session-card-actions .ant-btn {
+    flex-shrink: 0;
+}
+
+.session-card-action-buttons {
+    display: flex;
+    gap: 8px;
 }
 </style>
 
@@ -225,6 +291,8 @@
     private int _totalCount;
     private int _todayCount;
     private int _activeCount;
+
+    private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
 
     private bool _outboundModalVisible;
     private string? _editingSessionId;
@@ -316,11 +384,90 @@
             _todayCount = sessions.Count(s => s.CreatedAt.Date == today);
             var yesterday = DateTime.Now.AddHours(-24);
             _activeCount = sessions.Count(s => s.UpdatedAt >= yesterday);
+
+            // 刷新后清空勾选，避免残留对已不存在会话的选择
+            ClearSelection();
         }
         catch
         {
             _filteredSessions = new List<SessionData>();
         }
+    }
+
+    // ---- 批量选择 ----
+
+    bool IsSelected(string id) => _selectedIds.Contains(id);
+
+    void ToggleSelect(string id, bool value)
+    {
+        if (value) _selectedIds.Add(id);
+        else _selectedIds.Remove(id);
+        StateHasChanged();
+    }
+
+    bool IsAllSelected() =>
+        _filteredSessions.Count > 0 && _filteredSessions.All(s => _selectedIds.Contains(s.Id));
+
+    void OnToggleSelectAll(bool value)
+    {
+        if (value)
+        {
+            foreach (var s in _filteredSessions)
+                _selectedIds.Add(s.Id);
+        }
+        else
+        {
+            foreach (var s in _filteredSessions)
+                _selectedIds.Remove(s.Id);
+        }
+        StateHasChanged();
+    }
+
+    void ClearSelection()
+    {
+        if (_selectedIds.Count == 0) return;
+        _selectedIds.Clear();
+        StateHasChanged();
+    }
+
+    /// <summary>搜索词变化即清空勾选（筛选结果改变，旧的勾选无意义）</summary>
+    void OnSearchChanged()
+    {
+        ClearSelection();
+    }
+
+    async Task DeleteSelectedAsync()
+    {
+        var ids = _selectedIds.ToList();
+        var (deleted, failed) = await DeleteSessionsCoreAsync(ids);
+        if (failed > 0)
+            MessageService.Error(string.Format("批量删除部分失败：成功 {0}，失败 {1}", deleted, failed));
+        else
+            MessageService.Success(string.Format("已删除 {0} 个会话", deleted));
+    }
+
+    /// <summary>批量删除核心：逐个调用级联删除，统计成败，并刷新列表</summary>
+    async Task<(int Deleted, int Failed)> DeleteSessionsCoreAsync(IEnumerable<string> ids)
+    {
+        var deleted = 0;
+        var failed = 0;
+        foreach (var id in ids)
+        {
+            try
+            {
+                await ChatOrchestrator.DeleteSessionAsync(id);
+                _selectedIds.Remove(id);
+                deleted++;
+            }
+            catch
+            {
+                failed++;
+            }
+        }
+
+        await RefreshSessionsAsync();
+        StateHasChanged();
+        return (deleted, failed);
     }
     
     async Task CreateSession()
@@ -352,7 +499,7 @@
             MessageService.Error(string.Format("删除失败: {0}", ex.Message));
         }
     }
-    
+
     void ViewSession(string id) => NavigationManager.NavigateTo(string.Format("/session/{0}", id));
     
     async Task BranchSession(string id)

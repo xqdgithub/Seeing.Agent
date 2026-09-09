@@ -210,8 +210,17 @@
     flex-shrink: 0;
 }
 
-.session-scenario-switcher {
-    margin-left: var(--space-1);
+.session-scenario-edit {
+    font-size: 12px;
+    height: auto;
+    padding: 0 2px;
+    margin-left: 2px;
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+
+.session-scenario-edit:hover {
+    color: var(--color-primary, #1677ff);
 }
 
 /* 子会话只读元信息：Agent / Model 分芯片展示 */

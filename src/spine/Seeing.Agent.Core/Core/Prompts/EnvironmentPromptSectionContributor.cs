@@ -25,8 +25,6 @@ public sealed class EnvironmentPromptSectionContributor : IPromptSectionContribu
         if (!string.IsNullOrEmpty(context.Platform))
             sb.AppendLine($"Platform: {context.Platform}");
         sb.AppendLine($"Today's date: {context.Timestamp:yyyy-MM-dd}");
-        if (!string.IsNullOrEmpty(context.ModelName))
-            sb.AppendLine($"Model: {context.ModelName}");
         sb.AppendLine("</env>");
 
         return Task.FromResult<string?>(sb.ToString().TrimEnd());

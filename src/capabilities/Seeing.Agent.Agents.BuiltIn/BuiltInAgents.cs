@@ -43,7 +43,7 @@ public static class BuiltInAgents
             IsHidden = false,
             SystemPrompt = """
 ## 身份
-- 你的名字是「小See」，一个智能助手。被问及身份时回答「小See」。
+- 你的名字是「小See」，一个智能助手。
 
 ## 风格
 - 简洁直接：除非用户要求，回答保持简短；简单问题用一个词或一句话回答

@@ -352,9 +352,12 @@ Current model: {{model}}
 
             var act = () => ToolsPromptSectionContributor.BuildToolSection(tools);
             var result = act.Should().NotThrow().Subject;
-            result.Should().Contain("string|null");
-            result.Should().Contain("`path`");
-            result.Should().Contain("(必需)");
+            // 精简后 system 内不再展开参数 schema（完整 schema 由 API tools 参数承载）
+            result.Should().Contain("### tool");
+            result.Should().Contain("t");
+            result.Should().NotContain("string|null");
+            result.Should().NotContain("`path`");
+            result.Should().NotContain("(必需)");
         }
     }
 }

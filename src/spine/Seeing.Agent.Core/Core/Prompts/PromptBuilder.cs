@@ -8,6 +8,8 @@ namespace Seeing.Agent.Core.Prompts;
 /// <para>
 /// 通过 <see cref="IPromptSectionContributor"/> 向固定锚点标题注入分节内容：
 /// <c>## Tools</c> / <c>## Skills</c> / <c>## Agents</c> / <c>## Environment</c>。
+/// 模板含对应锚点时精确注入其下方；模板缺少锚点的分节按稳定顺序兜底追加到末尾，
+/// 避免自定义 Agent 模板未预留锚点时分节内容被静默丢弃。
 /// 另支持自定义变量 <c>{{variable_name}}</c> 与内置变量（model、session_id 等）。
 /// </para>
 /// </summary>
@@ -95,13 +97,12 @@ public class PromptBuilder
                 StringComparer.OrdinalIgnoreCase);
 
         var injections = new Dictionary<string, string>(StringComparer.Ordinal);
+        // 模板中缺少锚点但贡献者有内容的分节 → 兜底追加到 prompt 末尾（按锚点定义顺序，保证稳定）
+        var appendedSections = new List<string>();
 
         foreach (var (sectionName, contributors) in bySection)
         {
             if (!SectionAnchors.TryGetValue(sectionName, out var heading))
-                continue;
-
-            if (!ContainsHeading(prompt, heading))
                 continue;
 
             var parts = new List<string>();
@@ -112,11 +113,35 @@ public class PromptBuilder
                     parts.Add(part.TrimEnd());
             }
 
-            if (parts.Count > 0)
-                injections[heading] = string.Join("\n\n", parts);
+            if (parts.Count == 0)
+                continue;
+
+            var content = string.Join("\n\n", parts);
+            if (ContainsHeading(prompt, heading))
+                injections[heading] = content;
+            else
+                appendedSections.Add($"{heading}\n\n{content}");
         }
 
-        return ApplyInjections(prompt, injections);
+        // 按锚点定义顺序排序，保证追加分节顺序稳定（Tools → Skills → Agents → Environment）
+        var anchorOrder = SectionAnchors.Values.ToList();
+        appendedSections = appendedSections
+            .OrderBy(s => anchorOrder.FindIndex(h => s.StartsWith(h, StringComparison.Ordinal)))
+            .ToList();
+
+        var result = ApplyInjections(prompt, injections);
+
+        if (appendedSections.Count > 0)
+        {
+            var sb = new StringBuilder(result);
+            if (!result.EndsWith('\n'))
+                sb.Append('\n');
+            sb.Append('\n');
+            sb.Append(string.Join("\n\n", appendedSections));
+            result = sb.ToString();
+        }
+
+        return result;
     }
 
     internal static bool ContainsHeading(string prompt, string heading)
