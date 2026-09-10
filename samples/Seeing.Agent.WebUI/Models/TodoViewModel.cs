@@ -151,8 +151,11 @@ public class TodoListViewModel
     /// <summary>暂停数</summary>
     public int PausedCount => Items.Count(i => i.Status == TodoStatusViewModel.Paused);
 
-    /// <summary>进度百分比 (0-100)</summary>
-    public double ProgressPercent => TotalCount > 0 ? Math.Round(CompletedCount * 100.0 / TotalCount, 1) : 0;
+    /// <summary>已结束数（已完成 + 已取消）</summary>
+    public int FinishedCount => Items.Count(i => i.Status == TodoStatusViewModel.Completed || i.Status == TodoStatusViewModel.Cancelled);
+
+    /// <summary>进度百分比 (0-100)，已结束项（已完成 + 已取消）计入进度</summary>
+    public double ProgressPercent => TotalCount > 0 ? Math.Round(FinishedCount * 100.0 / TotalCount, 1) : 0;
 
     /// <summary>进度条颜色</summary>
     public string ProgressColor => ProgressPercent switch
@@ -169,8 +172,8 @@ public class TodoListViewModel
     /// <summary>是否有任务</summary>
     public bool HasTasks => Items.Count > 0;
 
-    /// <summary>是否全部完成</summary>
-    public bool IsAllCompleted => TotalCount > 0 && CompletedCount == TotalCount;
+    /// <summary>是否全部结束（已完成 + 已取消）</summary>
+    public bool IsAllCompleted => TotalCount > 0 && FinishedCount == TotalCount;
 
     #endregion
 

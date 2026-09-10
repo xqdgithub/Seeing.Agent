@@ -587,12 +587,27 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
                 // 快照取消令牌：避免 BuildAgentContext 与 ExecuteAsync 两次读取 CurrentCancellationToken 读到不同值
                 // （取消推进队列后令牌可能已更换，导致上下文与执行器使用的令牌不一致）。
                 var execToken = queue.CurrentCancellationToken;
+                var loopFailed = false;
+                string? loopError = null;
                 await foreach (var evt in executionRouter.ExecuteAsync(
                     context.Agent,
                     messages,
                     BuildAgentContext(context, execToken),
                     execToken))
                 {
+                    // 事件流语义：LLM/Agent 失败以 ErrorEvent + LoopCompleteEvent(Success=false) 表达（不抛异常）
+                    // 若不在此捕获，下方正常结束路径会把 record 标记为 Completed，导致 task_status 无法判定失败。
+                    if (evt is ErrorEvent err)
+                    {
+                        loopFailed = true;
+                        loopError = err.Message;
+                    }
+                    else if (evt is LoopCompleteEvent loopEnd && !loopEnd.Success)
+                    {
+                        loopFailed = true;
+                        loopError ??= loopEnd.Error;
+                    }
+
                     var liveSession = sessionManager.Get(record.SessionId) ?? session;
                     eventTracker.ApplyEvent(liveSession, evt);
 
@@ -602,15 +617,33 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
                     if (ShouldPersistEvent(evt))
                         await sessionManager.SaveAsync(record.SessionId);
                 }
+
+                if (loopFailed)
+                {
+                    record.Status = ExecutionStatus.Failed;
+                    record.ErrorMessage = loopError;
+                }
             }
 
             // 执行器以终态事件正常结束时：若本执行已被取消（CancelAsync 已置 Cancelled 并推进队列）或
             // 队列已推进（取消竞态下 status 尚未同步），保留取消态；否则标记完成。
+            // 事件流已标记 Failed（ErrorEvent / LoopCompleteEvent(Success=false)）的保留失败态。
             if (record.Status != ExecutionStatus.Cancelled &&
+                record.Status != ExecutionStatus.Failed &&
                 queue.CurrentExecution?.ExecutionId != record.ExecutionId)
                 record.Status = ExecutionStatus.Cancelled;
-            else if (record.Status != ExecutionStatus.Cancelled)
+            else if (record.Status != ExecutionStatus.Cancelled &&
+                     record.Status != ExecutionStatus.Failed)
                 record.Status = ExecutionStatus.Completed;
+
+            // 事件流失败（非异常）或 catch 异常失败：统一标记会话 Error 状态。
+            // 执行失败后 CurrentExecution 会在 finally 中清空，仅靠执行记录无法长期判定失败，
+            // task_status 回落判定依赖 SessionStatus。
+            if (record.Status == ExecutionStatus.Failed)
+                MarkSessionError(sessionManager, record.SessionId);
+            else if (record.Status == ExecutionStatus.Completed)
+                ClearSessionError(sessionManager, record.SessionId);
+
             _logger.LogInformation("Execution {ExecutionId} completed with status {Status}", record.ExecutionId, record.Status);
         }
         catch (OperationCanceledException)
@@ -634,6 +667,9 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             record.Status = ExecutionStatus.Failed;
             record.ErrorMessage = ex.Message;
             _logger.LogError(ex, "Execution {ExecutionId} failed", record.ExecutionId);
+
+            // 标记会话 Error 状态：task_status 回落判定依赖 SessionStatus
+            MarkSessionError(sessionManager, record.SessionId);
 
             // Publish error event
             _eventPublisher.Publish(record.SessionId, new ErrorEvent
@@ -1249,6 +1285,51 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
 
         // 继续执行 Agent
         yield return null;
+    }
+
+    /// <summary>
+    /// 标记会话为 Error 状态（执行失败时调用）。
+    /// 仅标记 SubAgent 子会话：task_status 回落判定依赖 SessionStatus，而 Root/Fork 会话无此消费方。
+    /// 子会话执行失败后，ExecutionRecord 终态很快从队列移除，仅靠执行记录无法长期判定失败。
+    /// </summary>
+    private void MarkSessionError(ISessionManager sessionManager, string sessionId)
+    {
+        try
+        {
+            var failedSession = sessionManager.Get(sessionId);
+            if (failedSession != null && failedSession.Kind == SessionKind.SubAgent)
+            {
+                failedSession.Status = SessionStatus.Error;
+                failedSession.UpdatedAt = DateTime.Now;
+            }
+        }
+        catch (Exception statusEx)
+        {
+            _logger.LogWarning(statusEx, "标记会话 Error 状态失败: {SessionId}", sessionId);
+        }
+    }
+
+    /// <summary>
+    /// 子会话失败标记 Error 后，成功续跑（传递 task_id 继续任务）时清除 Error 标记。
+    /// 否则子会话一旦失败，即使后续成功续跑，task_status 仍会误判为 error。
+    /// </summary>
+    private void ClearSessionError(ISessionManager sessionManager, string sessionId)
+    {
+        try
+        {
+            var session = sessionManager.Get(sessionId);
+            if (session != null &&
+                session.Kind == SessionKind.SubAgent &&
+                session.Status == SessionStatus.Error)
+            {
+                session.Status = SessionStatus.Active;
+                session.UpdatedAt = DateTime.Now;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "清除会话 Error 状态失败: {SessionId}", sessionId);
+        }
     }
 
     /// <summary>

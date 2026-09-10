@@ -490,6 +490,44 @@ public class TaskStatusToolTests
         result.Output.Should().Contain("waited output");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_FailedWithoutActiveExecution_ShouldReturnErrorState()
+    {
+        using var fixture = new TaskStatusToolFixture(executor: FailingExecutor("boom"));
+        await fixture.SubmitAsync();
+        await fixture.WaitCompletedAsync();
+
+        // 执行失败后应把子会话标记为 Error，task_status 回落时应返回 error 而非 running
+        fixture.Child.Status.Should().Be(SessionStatus.Error);
+
+        var tool = new TaskStatusTool(
+            NullLogger<TaskStatusTool>.Instance,
+            fixture.SessionManager.Object,
+            fixture.ExecService,
+            fixture.ExecService);
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { task_id = fixture.Child.Id }),
+            new ToolContext { SessionId = fixture.ParentId });
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("state: error");
+        result.Output.Should().Contain("boom");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RetryAfterFailure_ShouldClearSessionError()
+    {
+        using var fixture = new TaskStatusToolFixture(executor: ToggleExecutor(failFirst: true));
+        await fixture.SubmitAsync();
+        await fixture.WaitCompletedAsync();
+        fixture.Child.Status.Should().Be(SessionStatus.Error);
+
+        // 续跑（传递 task_id 继续任务）：成功后应清除 Error 标记，否则 task_status 永远误判 error
+        await fixture.SubmitAsync();
+        await fixture.WaitCompletedAsync();
+        fixture.Child.Status.Should().Be(SessionStatus.Active);
+    }
+
     private static IAgentExecutor BuildExecutor(string content = "final answer", int delayMs = 0)
     {
         var mock = new Mock<IAgentExecutor>();
@@ -516,6 +554,27 @@ public class TaskStatusToolTests
         return mock.Object;
     }
 
+    private static IAgentExecutor ToggleExecutor(bool failFirst)
+    {
+        var failNext = failFirst;
+        var mock = new Mock<IAgentExecutor>();
+        mock.Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken _) =>
+            {
+                if (failNext)
+                {
+                    failNext = false;
+                    return FailingStream("boom");
+                }
+                return AssistantStream("recovered", 0);
+            });
+        return mock.Object;
+    }
+
     private static async IAsyncEnumerable<IMessageEvent> AssistantStream(
         string content, int delayMs, [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -533,6 +592,35 @@ public class TaskStatusToolTests
     {
         await Task.Delay(10000, ct);
         yield break;
+    }
+
+    private static IAgentExecutor FailingExecutor(string error)
+    {
+        var mock = new Mock<IAgentExecutor>();
+        mock.Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken _)
+                => FailingStream(error));
+        return mock.Object;
+    }
+
+    private static async IAsyncEnumerable<IMessageEvent> FailingStream(string error)
+    {
+        yield return new ErrorEvent
+        {
+            SessionId = "",
+            Message = error
+        };
+        yield return new LoopCompleteEvent
+        {
+            SessionId = "",
+            LoopId = "loop-fail",
+            Success = false,
+            Error = error
+        };
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 8000)

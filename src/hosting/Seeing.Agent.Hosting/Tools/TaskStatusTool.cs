@@ -164,6 +164,21 @@ public class TaskStatusTool : ToolBase
             sb.AppendLine(result);
             sb.AppendLine("</task_result>");
         }
+        else if (state == "error")
+        {
+            // 会话已标记 Error：优先输出最后一条错误 system 消息（ChatEventTracker 落盘格式 "错误: {msg}"）
+            var errMsg = activeMessages
+                .LastOrDefault(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase)
+                                    && m.Content?.Contains("错误:", StringComparison.OrdinalIgnoreCase) == true)
+                ?.Content;
+            if (!string.IsNullOrEmpty(errMsg))
+            {
+                sb.AppendLine();
+                sb.AppendLine("<task_error>");
+                sb.AppendLine(errMsg);
+                sb.AppendLine("</task_error>");
+            }
+        }
         else if (lastError != null && !string.IsNullOrEmpty(lastError.Content))
         {
             sb.AppendLine();
