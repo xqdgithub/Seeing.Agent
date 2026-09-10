@@ -1,0 +1,38 @@
+src/hosting/Seeing.Agent.Hosting/Tools/TaskStatusTool.cs
+  s_349da5347d4712::t_136c7e9340188f 167-181
+tests/spine/Seeing.Agent.Tests/Tools/TaskToolTests.cs
+  s_349da5347d4712::t_136c7e9340188f 493-530,557-574,597-623
+  s_349da5347d4712::t_c164f7945ec24c 575-577
+  s_349da5347d4712::t_4b497518565636 624-625
+src/hosting/Seeing.Agent.Hosting/Execution/ExecutionJobService.cs
+  s_349da5347d4712::t_1a7351f2cb80ad 673
+  s_349da5347d4712::t_f8efec3dae4941 1333-1334
+  s_349da5347d4712::t_136c7e9340188f 590-591,598-610,620-625,630,632,635-636,638-646,671-672,1290-1332
+samples/Seeing.Agent.WebUI/Models/TodoViewModel.cs
+  s_02f4dcb49e06b6::t_99afe390678a34 154-158
+  s_02f4dcb49e06b6::t_fec2bfdb65a649 175-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "5edc40bae2dc1e5739f52eeb0a197dbf0c4295c3",
+  "prompts": {},
+  "sessions": {
+    "s_02f4dcb49e06b6": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f75e858f3fferAZia5u31Sd9H3",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_349da5347d4712": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f76d30a88ffe1bdhHJsHg066NZ",
+        "model": "DeepSeek-V4-Flash-0731"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
