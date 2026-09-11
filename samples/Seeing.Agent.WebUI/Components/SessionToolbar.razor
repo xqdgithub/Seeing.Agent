@@ -130,6 +130,19 @@
                         <span>@model.ModelName</span>
                     </ItemTemplate>
                 </Select>
+                @if (TryGetThinkingLevels(out var thinkingLevels))
+                {
+                    <Select TItemValue="string" TItem="ThinkingLevelOption"
+                            Value="@Context.SelectedThinkingEffort"
+                            ValueExpression="@(() => Context.SelectedThinkingEffort)"
+                            ValueChanged="EventCallback.Factory.Create<string>(this, OnThinkingEffortChanged)"
+                            DataSource="@thinkingLevels"
+                            ValueName="@nameof(ThinkingLevelOption.Key)"
+                            LabelName="@nameof(ThinkingLevelOption.Label)"
+                            Style="min-width: 100px;"
+                            Size="@InputSize.Small"
+                            Placeholder="思考" />
+                }
             }
         </div>
         <div class="session-toolbar-right">
@@ -442,11 +455,51 @@
         ScenarioModalVisible = false;
     }
 
-    private async Task OnModelChanged(string value)
+    private async Task OnModelChanged(string? value)
     {
+        var modelId = value ?? "";
+        // Native Select 无 AllowClear；空事件多为思考档挂载引发的受控回滚
+        if (string.IsNullOrEmpty(modelId) && !Context.IsAcpPassthrough)
+            return;
+        if (string.Equals(Context.SelectedModel ?? "", modelId, StringComparison.Ordinal))
+            return;
+
         if (Context.SetModelAsync != null)
-            await Context.SetModelAsync(value);
+            await Context.SetModelAsync(modelId);
     }
+
+    private async Task OnThinkingEffortChanged(string value)
+    {
+        if (string.Equals(Context.SelectedThinkingEffort ?? "", value ?? "", StringComparison.Ordinal))
+            return;
+
+        if (Context.SetThinkingEffortAsync != null)
+            await Context.SetThinkingEffortAsync(value);
+    }
+
+    private bool TryGetThinkingLevels(out List<ThinkingLevelOption> levels)
+    {
+        levels = new List<ThinkingLevelOption>();
+        var modelId = Context.SelectedModel;
+        if (string.IsNullOrWhiteSpace(modelId))
+            return false;
+
+        var thinking = LlmService.GetModelConfig(modelId)?.Options?.Thinking;
+        if (thinking is not { Supported: true } || thinking.Levels is null || thinking.Levels.Count == 0)
+            return false;
+
+        levels.Add(new ThinkingLevelOption("", "默认"));
+        foreach (var level in thinking.Levels)
+        {
+            if (string.IsNullOrWhiteSpace(level.Key))
+                continue;
+            levels.Add(new ThinkingLevelOption(level.Key, string.IsNullOrWhiteSpace(level.Label) ? level.Key : level.Label!));
+        }
+
+        return levels.Count > 1;
+    }
+
+    private sealed record ThinkingLevelOption(string Key, string Label);
 
     private async Task OnAcpModelChanged(string? value)
     {

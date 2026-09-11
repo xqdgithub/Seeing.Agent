@@ -68,16 +68,68 @@ public class ModelOptions
 }
 
 /// <summary>
-/// 思考/推理预算（与 options.thinking 对齐）
+/// 思考/推理选项（与 options.thinking 对齐）
 /// </summary>
 public class ThinkingOptions
 {
-    /// <summary>例如 enabled、disabled</summary>
+    /// <summary>是否支持思考强度（且 levels 非空时 UI/出站才启用）</summary>
+    [JsonPropertyName("supported")]
+    public bool Supported { get; set; }
+
+    /// <summary>
+    /// 可选默认档 key。不填表示未选档时不传思考字段（与现状一致）。
+    /// </summary>
+    [JsonPropertyName("default")]
+    public string? Default { get; set; }
+
+    /// <summary>模型支持的思考档位（key 原样作出站强度值）</summary>
+    [JsonPropertyName("levels")]
+    public List<ThinkingLevel>? Levels { get; set; }
+
+    /// <summary>例如 enabled、disabled（legacy / Anthropic 兼容）</summary>
     [JsonPropertyName("type")]
     public string Type { get; set; } = "disabled";
 
+    /// <summary>顶层预算（legacy；Anthropic budget 回落用）</summary>
     [JsonPropertyName("budgetTokens")]
     public int? BudgetTokens { get; set; }
+
+    /// <summary>
+    /// OpenAI 兼容思考回传字段名。对齐 OpenCode interleaved。
+    /// 仅当值为 <c>reasoning_content</c> 时，兼容 Client 出站写出该字段；缺省不回传。
+    /// Anthropic 不使用此字段（靠消息上的 ReasoningSignature 协议回传）。
+    /// </summary>
+    [JsonPropertyName("interleaved")]
+    public string? Interleaved { get; set; }
+}
+
+/// <summary>思考强度档位</summary>
+public class ThinkingLevel
+{
+    /// <summary>会话存储值；非关闭档时作为 reasoning_effort / effort 原样出站</summary>
+    [JsonPropertyName("key")]
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>UI 文案；缺省显示 key</summary>
+    [JsonPropertyName("label")]
+    public string? Label { get; set; }
+
+    /// <summary>仅 Anthropic 固定预算模式使用</summary>
+    [JsonPropertyName("budgetTokens")]
+    public int? BudgetTokens { get; set; }
+}
+
+/// <summary>思考强度约定（关闭档等）</summary>
+public static class ThinkingEffortKeys
+{
+    public static bool IsOff(string? key) =>
+        !string.IsNullOrWhiteSpace(key) &&
+        (key.Equals("disabled", StringComparison.OrdinalIgnoreCase)
+         || key.Equals("off", StringComparison.OrdinalIgnoreCase)
+         || key.Equals("none", StringComparison.OrdinalIgnoreCase));
+
+    public static bool IsSupported(ThinkingOptions? thinking) =>
+        thinking is { Supported: true, Levels.Count: > 0 };
 }
 
 /// <summary>

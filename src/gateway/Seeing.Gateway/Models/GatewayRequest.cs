@@ -15,6 +15,9 @@ public record GatewayRequest
 
     public string? ModelId { get; init; }
 
+    /// <summary>思考强度档位 key（可选；映射到 ChatOptions.ThinkingEffort）</summary>
+    public string? ThinkingEffort { get; init; }
+
     /// <summary>ACP 透传 session mode；Native Agent 忽略。</summary>
     public string? ModeId { get; init; }
 

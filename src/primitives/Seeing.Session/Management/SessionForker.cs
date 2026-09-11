@@ -53,6 +53,7 @@ namespace Seeing.Session.Management
 
             forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
             forkedSession.SelectedModel = sourceSession.SelectedModel;
+            forkedSession.SelectedThinkingEffort = sourceSession.SelectedThinkingEffort;
             forkedSession.Scenario = sourceSession.Scenario;
             forkedSession.ScenarioOverride = sourceSession.ScenarioOverride is null
                 ? null

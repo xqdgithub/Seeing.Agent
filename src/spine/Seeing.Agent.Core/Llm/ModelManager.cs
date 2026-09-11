@@ -67,7 +67,31 @@ public sealed class ModelManager : IModelManager
             return false;
 
         session.SelectedModel = normalized;
+        ClearIncompatibleThinkingEffort(session, normalized);
         return true;
+    }
+
+    /// <summary>
+    /// 换模型：旧思考档 ∉ 新 levels（或不支持思考）时清空会话字段，与规格 §5 / WebUI 行为对齐。
+    /// </summary>
+    private void ClearIncompatibleThinkingEffort(SessionData session, string modelRef)
+    {
+        if (string.IsNullOrWhiteSpace(session.SelectedThinkingEffort))
+            return;
+
+        if (string.IsNullOrEmpty(modelRef))
+        {
+            session.SelectedThinkingEffort = string.Empty;
+            return;
+        }
+
+        var thinking = GetModel(modelRef)?.Options?.Thinking;
+        if (!ThinkingEffortKeys.IsSupported(thinking)
+            || thinking!.Levels!.All(l =>
+                !string.Equals(l.Key, session.SelectedThinkingEffort, StringComparison.OrdinalIgnoreCase)))
+        {
+            session.SelectedThinkingEffort = string.Empty;
+        }
     }
 
     public bool SeedSessionModel(SessionData session, string agentName)

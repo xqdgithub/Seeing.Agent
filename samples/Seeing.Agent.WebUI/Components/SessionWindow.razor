@@ -278,6 +278,7 @@
         Context.SessionId = effectiveSessionId ?? "";
         Context.SetAgentAsync = OnAgentChanged;
         Context.SetModelAsync = OnModelChanged;
+        Context.SetThinkingEffortAsync = OnThinkingEffortChanged;
         Context.SetScenarioAsync = OnScenarioChanged;
         Context.SetAcpMode = OnAcpModeChanged;
         Context.RenameAsync = RenameSessionAsync;
@@ -801,6 +802,7 @@
         Context.IsExecuting = SessionState.IsExecuting;
         Context.SelectedAgent = SessionState.SelectedAgent;
         Context.SelectedModel = SessionState.SelectedModel;
+        Context.SelectedThinkingEffort = SessionState.SelectedThinkingEffort;
         Context.SelectedAcpMode = SessionState.SelectedAcpMode;
         Context.ExecutionStatus = SessionState.ExecutionStatus;
         Context.CurrentTodoList = SessionState.CurrentTodoList;
@@ -924,19 +926,54 @@
     }
 
     /// <summary>
-    /// Native 模型选择变更。先同步 Context（Select 受控值立即更新）再异步保存，
+    /// 模型选择变更。先同步 Context（Select 受控值立即更新）再异步保存，
     /// 避免保存期间 AntDesign Select 收到旧受控值而回滚并触发旧值 change 事件。
+    /// Native Select 无 AllowClear：空 ValueChanged 视为兄弟控件（思考档）挂载/重绘时的伪事件，忽略以免闪烁死循环。
     /// </summary>
     private async Task OnModelChanged(string value)
     {
-        SessionState.SelectedModel = value ?? "";
+        var modelId = value ?? "";
+        // Native 无清空入口；空值来自受控回滚时绝不能写回会话
+        if (string.IsNullOrEmpty(modelId) && !Context.IsAcpPassthrough)
+            return;
+
+        if (string.Equals(SessionState.SelectedModel ?? "", modelId, StringComparison.Ordinal))
+            return;
+
+        SessionState.SelectedModel = modelId;
         _modelInvalid = false;
 
-        // 立即同步受控值，消除异步保存期间的 Select 回滚窗口
+        // 换模型：旧思考档不在新 levels 内则清空（仅内存；持久化放在 Sync 之后）
+        var thinking = string.IsNullOrEmpty(modelId)
+            ? null
+            : LlmService.GetModelConfig(modelId)?.Options?.Thinking;
+        var levels = thinking?.Levels;
+        var shouldClearThinking = thinking is not { Supported: true } || levels is null || levels.Count == 0
+            || (!string.IsNullOrEmpty(SessionState.SelectedThinkingEffort)
+                && levels.All(l => !string.Equals(l.Key, SessionState.SelectedThinkingEffort, StringComparison.OrdinalIgnoreCase)));
+
+        if (shouldClearThinking && !string.IsNullOrEmpty(SessionState.SelectedThinkingEffort))
+            SessionState.SelectedThinkingEffort = "";
+
+        // 先同步受控值，再 await 持久化（与 OnAgentChanged 同模式）
         SyncContextState();
 
-        await SessionManager.SetModelAsync(SessionState.SessionId, value ?? "");
+        if (shouldClearThinking)
+            await SessionManager.SetThinkingEffortAsync(SessionState.SessionId, "");
+
+        await SessionManager.SetModelAsync(SessionState.SessionId, modelId);
+    }
+
+    private async Task OnThinkingEffortChanged(string? value)
+    {
+        var effort = value ?? "";
+        // 思考档 Select 挂载时常再发一次当前值；短路避免牵动模型 Select 重绘
+        if (string.Equals(SessionState.SelectedThinkingEffort ?? "", effort, StringComparison.Ordinal))
+            return;
+
+        SessionState.SelectedThinkingEffort = effort;
         SyncContextState();
+        await SessionManager.SetThinkingEffortAsync(SessionState.SessionId, effort);
     }
 
     private void OnAcpModeChanged(string value)

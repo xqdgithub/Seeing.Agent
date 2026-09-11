@@ -97,6 +97,105 @@ public class ModelManagerTests
     }
 
     [Fact]
+    public void ApplyModelToSession_ClearsThinkingEffort_WhenKeyNotInNewLevels()
+    {
+        var models = new Dictionary<string, ModelConfig>
+        {
+            ["openai/o1"] = new ModelConfig
+            {
+                Id = "o1",
+                Provider = "openai",
+                Options = new ModelOptions
+                {
+                    Thinking = new ThinkingOptions
+                    {
+                        Supported = true,
+                        Levels = [new ThinkingLevel { Key = "high" }]
+                    }
+                }
+            },
+            ["openai/gpt-4o"] = new ModelConfig
+            {
+                Id = "gpt-4o",
+                Provider = "openai"
+            }
+        };
+
+        var manager = CreateManager(
+            new SeeingAgentOptions(),
+            agentName: "build",
+            agentModel: null,
+            runtime: AgentRuntime.Native,
+            models: models);
+
+        var session = SessionData.Create();
+        session.SelectedModel = "openai/o1";
+        session.SelectedThinkingEffort = "high";
+
+        manager.ApplyModelToSession(session, "openai/gpt-4o");
+
+        session.SelectedModel.Should().Be("openai/gpt-4o");
+        session.SelectedThinkingEffort.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ApplyModelToSession_KeepsThinkingEffort_WhenKeyStillValid()
+    {
+        var models = new Dictionary<string, ModelConfig>
+        {
+            ["openai/a"] = new ModelConfig
+            {
+                Id = "a",
+                Provider = "openai",
+                Options = new ModelOptions
+                {
+                    Thinking = new ThinkingOptions
+                    {
+                        Supported = true,
+                        Levels =
+                        [
+                            new ThinkingLevel { Key = "high" },
+                            new ThinkingLevel { Key = "max" }
+                        ]
+                    }
+                }
+            },
+            ["openai/b"] = new ModelConfig
+            {
+                Id = "b",
+                Provider = "openai",
+                Options = new ModelOptions
+                {
+                    Thinking = new ThinkingOptions
+                    {
+                        Supported = true,
+                        Levels =
+                        [
+                            new ThinkingLevel { Key = "high" },
+                            new ThinkingLevel { Key = "low" }
+                        ]
+                    }
+                }
+            }
+        };
+
+        var manager = CreateManager(
+            new SeeingAgentOptions(),
+            agentName: "build",
+            agentModel: null,
+            runtime: AgentRuntime.Native,
+            models: models);
+
+        var session = SessionData.Create();
+        session.SelectedModel = "openai/a";
+        session.SelectedThinkingEffort = "high";
+
+        manager.ApplyModelToSession(session, "openai/b");
+
+        session.SelectedThinkingEffort.Should().Be("high");
+    }
+
+    [Fact]
     public void SeedSessionModel_Native_WritesResolvedDefault()
     {
         var manager = CreateManager(
@@ -136,7 +235,8 @@ public class ModelManagerTests
         SeeingAgentOptions options,
         string agentName,
         string? agentModel,
-        AgentRuntime runtime)
+        AgentRuntime runtime,
+        IReadOnlyDictionary<string, ModelConfig>? models = null)
     {
         var store = new Mock<IAgentStore>();
         store
@@ -150,8 +250,15 @@ public class ModelManagerTests
 
         var catalog = new Mock<IModelConfigManager>();
         catalog.Setup(c => c.GetDefaultModel()).Returns(options.DefaultModel);
-        catalog.Setup(c => c.GetModel(It.IsAny<string>())).Returns((string _) => null);
-        catalog.Setup(c => c.GetModels()).Returns(new Dictionary<string, ModelConfig>());
+        catalog.Setup(c => c.GetModel(It.IsAny<string>())).Returns((string id) =>
+        {
+            if (models is null)
+                return null;
+            return models.TryGetValue(id, out var m) ? m : null;
+        });
+        catalog.Setup(c => c.GetModels()).Returns(models is null
+            ? new Dictionary<string, ModelConfig>()
+            : new Dictionary<string, ModelConfig>(models));
 
         return new ModelManager(catalog.Object, store.Object);
     }

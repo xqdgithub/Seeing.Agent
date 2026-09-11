@@ -38,6 +38,12 @@ public class ChatMessage
     [JsonPropertyName("reasoning_content")]
     public string? ReasoningContent { get; set; }
 
+    /// <summary>
+    /// Anthropic thinking 块 signature；工具多轮出站必须原样带回。
+    /// </summary>
+    [JsonPropertyName("reasoning_signature")]
+    public string? ReasoningSignature { get; set; }
+
     /// <summary>工具调用列表（Assistant 消息中的工具调用请求）</summary>
     [JsonPropertyName("tool_calls")]
     public List<ToolCall>? ToolCalls { get; set; }
@@ -230,6 +236,26 @@ public class ChatRequest
     /// <summary>是否流式输出</summary>
     [JsonPropertyName("stream")]
     public bool Stream { get; set; }
+
+    /// <summary>
+    /// 思考强度 key（经 LlmService 规范化后交给 Client；关闭档为 disabled/off/none）。
+    /// 不序列进通用 JSON 契约；由各 Client 映射为协议字段。
+    /// </summary>
+    [JsonIgnore]
+    public string? ThinkingEffort { get; set; }
+
+    /// <summary>
+    /// Anthropic budget 用；由 LlmService 解析写入。null 且有非关闭 ThinkingEffort 时走 adaptive。
+    /// </summary>
+    [JsonIgnore]
+    public int? ThinkingBudgetTokens { get; set; }
+
+    /// <summary>
+    /// 是否在 OpenAI 兼容出站回传 assistant.reasoning_content。
+    /// 由 LlmService 根据 ThinkingOptions.Interleaved 写入。
+    /// </summary>
+    [JsonIgnore]
+    public bool EchoReasoningContent { get; set; }
 }
 
 /// <summary>
@@ -271,6 +297,9 @@ public class StreamUpdate
 
     /// <summary>推理内容增量</summary>
     public string? ReasoningDelta { get; set; }
+
+    /// <summary>Anthropic thinking signature（通常在块结束时一次给出，非增量文本）</summary>
+    public string? ReasoningSignature { get; set; }
 
     /// <summary>工具调用增量</summary>
     public List<ToolCall>? ToolCallDeltas { get; set; }

@@ -218,6 +218,7 @@ public class AgentExecutor : IAgentExecutor
                 ChatMessage? assistantMessage = null;
                 var streamingContent = new StringBuilder();
                 var streamingReasoning = new StringBuilder();
+                string? streamingReasoningSignature = null;
                 List<ToolCall>? accumulatedToolCalls = null;
                 TokenUsage? lastUsage = null;
 
@@ -298,6 +299,9 @@ public class AgentExecutor : IAgentExecutor
                         }, effectiveToken);
                     }
 
+                    if (!string.IsNullOrEmpty(update.ReasoningSignature))
+                        streamingReasoningSignature = update.ReasoningSignature;
+
                     // ========== 处理正文内容增量 ==========
                     if (!string.IsNullOrEmpty(update.ContentDelta))
                     {
@@ -345,6 +349,7 @@ public class AgentExecutor : IAgentExecutor
                             update,
                             streamingContent.ToString(),
                             streamingReasoning.ToString(),
+                            streamingReasoningSignature,
                             accumulatedToolCalls);
                     }
                 }
@@ -592,8 +597,16 @@ public class AgentExecutor : IAgentExecutor
             Temperature = agent.Temperature,
             TopP = agent.TopP,
             MaxTokens = agent.MaxTokens,
-            Stream = true
+            Stream = true,
+            ThinkingEffort = ResolveThinkingEffort(context)
         };
+    }
+
+    private static string? ResolveThinkingEffort(AgentContext context)
+    {
+        if (context.Metadata.TryGetValue(AgentContextKeys.RequestThinkingEffort, out var raw) && raw is string s)
+            return s;
+        return null;
     }
 
     /// <summary>
@@ -980,6 +993,7 @@ public class AgentExecutor : IAgentExecutor
         StreamUpdate update,
         string fullContent,
         string fullReasoning,
+        string? reasoningSignature,
         List<ToolCall>? toolCalls)
     {
         return new ChatMessage
@@ -987,6 +1001,7 @@ public class AgentExecutor : IAgentExecutor
             Role = ChatRole.Assistant,
             Content = fullContent,
             ReasoningContent = string.IsNullOrEmpty(fullReasoning) ? null : fullReasoning,
+            ReasoningSignature = string.IsNullOrEmpty(reasoningSignature) ? null : reasoningSignature,
             ToolCalls = toolCalls
         };
     }

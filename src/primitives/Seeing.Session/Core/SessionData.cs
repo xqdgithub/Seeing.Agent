@@ -51,6 +51,11 @@ namespace Seeing.Session.Core
         /// <summary>选中的模型引用（完整 modelRef，如 openai/gpt-4o 或 ACP 模型 ID）</summary>
         public string SelectedModel { get; set; } = string.Empty;
 
+        /// <summary>
+        /// 选中的思考强度档位 key；空 = 尝试模型 default，再空则出站不传。
+        /// </summary>
+        public string SelectedThinkingEffort { get; set; } = string.Empty;
+
         /// <summary>ACP 透传 session mode（如 build / ask）</summary>
         public string SelectedAcpMode { get; set; } = string.Empty;
 
@@ -425,6 +430,7 @@ namespace Seeing.Session.Core
                 LastActiveAt = LastActiveAt,
                 SelectedAgent = SelectedAgent,
                 SelectedModel = SelectedModel,
+                SelectedThinkingEffort = SelectedThinkingEffort,
                 SelectedAcpMode = SelectedAcpMode,
                 Scenario = Scenario,
                 ScenarioOverride = CloneScenarioOverride(ScenarioOverride),

@@ -45,6 +45,9 @@ namespace Seeing.Agent.Abstractions.Agents
         /// </remarks>
         public const string RequestModelId = "request:modelId";
 
+        /// <summary>请求级思考强度 key（ChatOptions / 会话 SelectedThinkingEffort）</summary>
+        public const string RequestThinkingEffort = "request:thinkingEffort";
+
         /// <summary>ACP 透传 session mode（如 build / ask）</summary>
         public const string AcpModeId = "acp:modeId";
 

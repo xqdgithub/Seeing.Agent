@@ -32,7 +32,9 @@ public class DeepSeekModelsClientTests
         models[0].Limit.Output.Should().Be(384_000);
         models[1].Id.Should().Be("deepseek-reasoner");
         models[1].Limit.Context.Should().Be(1_000_000);
-        models[1].Options!.Thinking!.Type.Should().Be("enabled");
+        models[1].Options!.Thinking!.Supported.Should().BeTrue();
+        models[1].Options.Thinking.Interleaved.Should().Be("reasoning_content");
+        models[1].Options.Thinking.Levels.Should().NotBeNullOrEmpty();
     }
 
     [Fact]

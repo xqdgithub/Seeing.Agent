@@ -75,7 +75,7 @@ public class LlmService : ILlmService
         ChatRequest request,
         CancellationToken cancellationToken = default)
     {
-        var (client, apiModelId) = PrepareClientRequest(modelId, request);
+        var (client, apiModelId, _) = PrepareClientRequest(modelId, request);
         _logger.LogDebug("发送旁路聊天请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
         return await client.CompleteAsync(request, call: null, cancellationToken).ConfigureAwait(false);
     }
@@ -85,14 +85,14 @@ public class LlmService : ILlmService
         ChatRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var (client, apiModelId) = PrepareClientRequest(modelId, request);
+        var (client, apiModelId, _) = PrepareClientRequest(modelId, request);
         _logger.LogDebug("发送旁路流式请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
 
         await foreach (var update in client.CompleteStreamAsync(request, call: null, cancellationToken).ConfigureAwait(false))
             yield return update;
     }
 
-    private (ILlmClient Client, string ApiModelId) PrepareClientRequest(string modelId, ChatRequest request)
+    private (ILlmClient Client, string ApiModelId, ModelConfig ModelConfig) PrepareClientRequest(string modelId, ChatRequest request)
     {
         var modelConfig = _modelManager.GetModel(modelId)
             ?? throw new InvalidOperationException($"未找到模型配置: {modelId}");
@@ -103,12 +103,109 @@ public class LlmService : ILlmService
             _logger.LogDebug("应用模型输出限制: Model={Model}, MaxTokens={MaxTokens}", modelId, modelConfig.Limit.Output);
         }
 
+        ApplyThinkingCatalog(modelConfig, request, _logger);
+
         var client = _providerManager.GetClient(modelConfig.Provider)
             ?? throw new InvalidOperationException($"未找到模型 {modelId} 的客户端");
 
         var apiModelId = string.IsNullOrEmpty(modelConfig.Id) ? modelId : modelConfig.Id;
         request.Model = apiModelId;
-        return (client, apiModelId);
+        return (client, apiModelId, modelConfig);
+    }
+
+    /// <summary>
+    /// 按模型目录规范化 ThinkingEffort，并填写 ThinkingBudgetTokens。不拼 vendor JSON 字段名。
+    /// </summary>
+    internal static void ApplyThinkingCatalog(ModelConfig modelConfig, ChatRequest request, ILogger? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(modelConfig);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var thinking = modelConfig.Options?.Thinking;
+        if (!ThinkingEffortKeys.IsSupported(thinking))
+        {
+            request.ThinkingEffort = null;
+            request.ThinkingBudgetTokens = null;
+            request.EchoReasoningContent = false;
+            return;
+        }
+
+        var levels = thinking!.Levels!;
+        var candidate = string.IsNullOrWhiteSpace(request.ThinkingEffort)
+            ? null
+            : request.ThinkingEffort.Trim();
+
+        if (string.IsNullOrEmpty(candidate) && !string.IsNullOrWhiteSpace(thinking.Default))
+            candidate = thinking.Default.Trim();
+
+        if (string.IsNullOrEmpty(candidate))
+        {
+            request.ThinkingEffort = null;
+            request.ThinkingBudgetTokens = null;
+            request.EchoReasoningContent = false;
+            return;
+        }
+
+        var match = FindLevel(levels, candidate);
+        if (match is null)
+        {
+            logger?.LogWarning(
+                "思考强度 key 不在模型 levels 内，将回落: Model={Model}, Key={Key}, Default={Default}",
+                modelConfig.Id,
+                candidate,
+                thinking.Default);
+
+            if (!string.IsNullOrWhiteSpace(thinking.Default))
+                match = FindLevel(levels, thinking.Default.Trim());
+
+            if (match is null)
+            {
+                request.ThinkingEffort = null;
+                request.ThinkingBudgetTokens = null;
+                request.EchoReasoningContent = false;
+                return;
+            }
+        }
+
+        request.ThinkingEffort = match.Key;
+        if (ThinkingEffortKeys.IsOff(match.Key))
+        {
+            request.ThinkingBudgetTokens = null;
+            request.EchoReasoningContent = false;
+            return;
+        }
+
+        request.ThinkingBudgetTokens = match.BudgetTokens ?? thinking.BudgetTokens;
+        request.EchoReasoningContent = string.Equals(
+            thinking.Interleaved,
+            "reasoning_content",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ThinkingLevel? FindLevel(IReadOnlyList<ThinkingLevel> levels, string key)
+    {
+        foreach (var level in levels)
+        {
+            if (string.Equals(level.Key, key, StringComparison.OrdinalIgnoreCase))
+                return level;
+        }
+
+        return null;
+    }
+
+    private static void ApplyChatParamsToRequest(ChatRequest request, IDictionary<string, object?> paramsOutput, ModelConfig modelConfig, ILogger logger)
+    {
+        if (paramsOutput.TryGetValue("temperature", out var t) && t is not null)
+            request.Temperature = Convert.ToDouble(t);
+        if (paramsOutput.TryGetValue("topP", out var p) && p is not null)
+            request.TopP = Convert.ToDouble(p);
+        if (paramsOutput.TryGetValue("maxTokens", out var m) && m is not null)
+            request.MaxTokens = Convert.ToInt32(m);
+
+        if (paramsOutput.TryGetValue("thinkingEffort", out var effort) && effort is not null)
+            request.ThinkingEffort = effort.ToString();
+
+        ApplyThinkingCatalog(modelConfig, request, logger);
     }
 
     private static LlmCallContext CreateCallContext(string? sessionId)
@@ -171,7 +268,7 @@ public class LlmService : ILlmService
         string? sessionId,
         CancellationToken cancellationToken = default)
     {
-        var (client, apiModelId) = PrepareClientRequest(modelId, request);
+        var (client, apiModelId, modelConfig) = PrepareClientRequest(modelId, request);
         var call = CreateCallContext(sessionId);
 
         await _hookManager.TriggerBlockingAsync(
@@ -189,7 +286,8 @@ public class LlmService : ILlmService
             ["temperature"] = request.Temperature ?? 0.7,
             ["topP"] = request.TopP ?? 1.0,
             ["topK"] = 0,
-            ["maxTokens"] = request.MaxTokens ?? 4096
+            ["maxTokens"] = request.MaxTokens ?? 4096,
+            ["thinkingEffort"] = request.ThinkingEffort
         };
 
         await _hookManager.TriggerBlockingAsync(
@@ -203,10 +301,7 @@ public class LlmService : ILlmService
             paramsOutput,
             cancellationToken).ConfigureAwait(false);
 
-        request.Temperature = Convert.ToDouble(paramsOutput["temperature"]);
-        request.TopP = Convert.ToDouble(paramsOutput["topP"]);
-        request.MaxTokens = Convert.ToInt32(paramsOutput["maxTokens"]);
-
+        ApplyChatParamsToRequest(request, paramsOutput, modelConfig, _logger);
         var headersOutput = new Dictionary<string, object?>
         {
             ["headers"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -296,20 +391,7 @@ public class LlmService : ILlmService
         string? sessionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var modelConfig = _modelManager.GetModel(modelId)
-            ?? throw new InvalidOperationException($"未找到模型配置: {modelId}");
-
-        if (request.MaxTokens == null && modelConfig.Limit?.Output > 0)
-        {
-            request.MaxTokens = modelConfig.Limit.Output;
-            _logger.LogDebug("应用模型输出限制: Model={Model}, MaxTokens={MaxTokens}", modelId, modelConfig.Limit.Output);
-        }
-
-        var client = _providerManager.GetClient(modelConfig.Provider)
-            ?? throw new InvalidOperationException($"未找到模型 {modelId} 的客户端");
-
-        var apiModelId = string.IsNullOrEmpty(modelConfig.Id) ? modelId : modelConfig.Id;
-        request.Model = apiModelId;
+        var (client, apiModelId, modelConfig) = PrepareClientRequest(modelId, request);
         var call = CreateCallContext(sessionId);
 
         await _hookManager.TriggerBlockingAsync(
@@ -327,7 +409,8 @@ public class LlmService : ILlmService
         {
             ["temperature"] = request.Temperature ?? 0.7,
             ["topP"] = request.TopP ?? 1.0,
-            ["maxTokens"] = request.MaxTokens ?? 4096
+            ["maxTokens"] = request.MaxTokens ?? 4096,
+            ["thinkingEffort"] = request.ThinkingEffort
         };
 
         await _hookManager.TriggerBlockingAsync(
@@ -342,9 +425,7 @@ public class LlmService : ILlmService
             paramsOutput,
             cancellationToken).ConfigureAwait(false);
 
-        request.Temperature = Convert.ToDouble(paramsOutput["temperature"]);
-        request.TopP = Convert.ToDouble(paramsOutput["topP"]);
-        request.MaxTokens = Convert.ToInt32(paramsOutput["maxTokens"]);
+        ApplyChatParamsToRequest(request, paramsOutput, modelConfig, _logger);
 
         var headersOutput = new Dictionary<string, object?>
         {
@@ -387,7 +468,6 @@ public class LlmService : ILlmService
         }
 
         _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
-
         var startTime = DateTime.Now;
         var streamedContent = new StringBuilder();
         var streamedReasoning = new StringBuilder();

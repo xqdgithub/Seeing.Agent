@@ -18,30 +18,35 @@ public static class DeepSeekModelCapabilities
                 name: "DeepSeek V4 Flash",
                 context: 1_000_000,
                 output: 384_000,
-                thinking: null),
+                thinking: DeepSeekThinkingLevels()),
 
             ["deepseek-v4-pro"] = Create(
                 id: "deepseek-v4-pro",
                 name: "DeepSeek V4 Pro",
                 context: 1_000_000,
                 output: 384_000,
-                thinking: null),
+                thinking: DeepSeekThinkingLevels()),
 
             // 兼容别名：仍可能出现在 List Models；能力与 V4 Flash 对齐
-            ["deepseek-chat"] = Create(
-                id: "deepseek-chat",
-                name: "DeepSeek Chat",
+            ["deepseek-flash"] = Create(
+                id: "deepseek-flash",
+                name: "deepseek-flash",
                 context: 1_000_000,
                 output: 384_000,
-                thinking: null),
-
-            ["deepseek-reasoner"] = Create(
-                id: "deepseek-reasoner",
-                name: "DeepSeek Reasoner",
-                context: 1_000_000,
-                output: 384_000,
-                thinking: new ThinkingOptions { Type = "enabled" }),
+                thinking: DeepSeekThinkingLevels()),
         };
+
+    private static ThinkingOptions DeepSeekThinkingLevels() => new()
+    {
+        Supported = true,
+        Interleaved = "reasoning_content",
+        Levels =
+        [
+            new ThinkingLevel { Key = "disabled", Label = "关闭" },
+            new ThinkingLevel { Key = "high", Label = "高" },
+            new ThinkingLevel { Key = "max", Label = "最大" }
+        ]
+    };
 
     /// <summary>
     /// 用预置能力覆盖 List Models 返回项的 Limit / Name / Options / Modalities / Types。
@@ -128,6 +133,15 @@ public static class DeepSeekModelCapabilities
         {
             Thinking = new ThinkingOptions
             {
+                Supported = source.Thinking.Supported,
+                Default = source.Thinking.Default,
+                Interleaved = source.Thinking.Interleaved,
+                Levels = source.Thinking.Levels?.Select(l => new ThinkingLevel
+                {
+                    Key = l.Key,
+                    Label = l.Label,
+                    BudgetTokens = l.BudgetTokens
+                }).ToList(),
                 Type = source.Thinking.Type,
                 BudgetTokens = source.Thinking.BudgetTokens
             }

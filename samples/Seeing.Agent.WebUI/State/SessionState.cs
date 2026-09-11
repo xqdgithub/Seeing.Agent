@@ -116,6 +116,17 @@ namespace Seeing.Agent.WebUI.State
             }
         }
 
+        /// <summary>当前选中的思考强度 key（空 = 跟随模型 default / 不传）</summary>
+        public string SelectedThinkingEffort
+        {
+            get => CurrentSession?.SelectedThinkingEffort ?? "";
+            set
+            {
+                if (CurrentSession != null)
+                    CurrentSession.SelectedThinkingEffort = value;
+            }
+        }
+
         /// <summary>ACP 透传 session mode（如 build / ask）</summary>
         public string SelectedAcpMode
         {

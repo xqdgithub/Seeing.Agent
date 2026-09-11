@@ -61,7 +61,17 @@ public static class PredefinedModels
             },
             Options = new ModelOptions
             {
-                Thinking = new ThinkingOptions { Type = "enabled", BudgetTokens = 8192 }
+                Thinking = new ThinkingOptions
+                {
+                    Supported = true,
+                    Levels =
+                    [
+                        new ThinkingLevel { Key = "none", Label = "关闭" },
+                        new ThinkingLevel { Key = "low", Label = "低" },
+                        new ThinkingLevel { Key = "medium", Label = "中" },
+                        new ThinkingLevel { Key = "high", Label = "高" }
+                    ]
+                }
             },
             Limit = new ModelLimits { Context = 200000, Output = 100000 },
             Pricing = new ModelPricing { Input = 15, Output = 60 }
@@ -83,7 +93,18 @@ public static class PredefinedModels
             },
             Options = new ModelOptions
             {
-                Thinking = new ThinkingOptions { Type = "enabled", BudgetTokens = 8192 }
+                Thinking = new ThinkingOptions
+                {
+                    Supported = true,
+                    BudgetTokens = 8192,
+                    Levels =
+                    [
+                        new ThinkingLevel { Key = "disabled", Label = "关闭" },
+                        new ThinkingLevel { Key = "low", Label = "低", BudgetTokens = 2048 },
+                        new ThinkingLevel { Key = "medium", Label = "中", BudgetTokens = 8192 },
+                        new ThinkingLevel { Key = "high", Label = "高", BudgetTokens = 16384 }
+                    ]
+                }
             },
             Limit = new ModelLimits { Context = 200000, Output = 16000 },
             Pricing = new ModelPricing { Input = 3, Output = 15 }

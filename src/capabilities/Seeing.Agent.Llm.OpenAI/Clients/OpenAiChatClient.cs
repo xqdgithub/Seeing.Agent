@@ -228,12 +228,26 @@ public class OpenAiChatClient : ILlmClient
             }).ToList();
         }
 
+        if (!string.IsNullOrWhiteSpace(request.ThinkingEffort))
+        {
+            if (ThinkingEffortKeys.IsOff(request.ThinkingEffort))
+            {
+                body.Thinking = new ChatCompletionThinking { Type = "disabled" };
+            }
+            else
+            {
+                body.Thinking = new ChatCompletionThinking { Type = "enabled" };
+                body.ReasoningEffort = request.ThinkingEffort;
+            }
+        }
+
         return body;
     }
 
     private List<ChatCompletionMessage> BuildMessages(ChatRequest request)
     {
         var messages = new List<ChatCompletionMessage>();
+        var echoReasoning = request.EchoReasoningContent;
 
         if (!string.IsNullOrEmpty(request.SystemPrompt))
         {
@@ -249,7 +263,7 @@ public class OpenAiChatClient : ILlmClient
             messages.Add(msg.Role switch
             {
                 ChatRole.User => BuildUserMessage(msg),
-                ChatRole.Assistant => BuildAssistantMessage(msg),
+                ChatRole.Assistant => BuildAssistantMessage(msg, echoReasoning),
                 ChatRole.Tool => new ChatCompletionMessage
                 {
                     Role = "tool",
@@ -322,14 +336,19 @@ public class OpenAiChatClient : ILlmClient
             : new ChatCompletionMessage { Role = "user", Content = contentParts };
     }
 
-    private static ChatCompletionMessage BuildAssistantMessage(ChatMessage msg)
+    private static ChatCompletionMessage BuildAssistantMessage(ChatMessage msg, bool echoReasoning)
     {
+        var reasoning = echoReasoning && !string.IsNullOrEmpty(msg.ReasoningContent)
+            ? msg.ReasoningContent
+            : null;
+
         if (msg.ToolCalls?.Count > 0)
         {
             return new ChatCompletionMessage
             {
                 Role = "assistant",
                 Content = msg.Content,
+                ReasoningContent = reasoning,
                 ToolCalls = msg.ToolCalls.Select(tc => new ChatCompletionToolCall
                 {
                     Id = tc.Id,
@@ -342,7 +361,12 @@ public class OpenAiChatClient : ILlmClient
                 }).ToList()
             };
         }
-        return new ChatCompletionMessage { Role = "assistant", Content = msg.Content };
+        return new ChatCompletionMessage
+        {
+            Role = "assistant",
+            Content = msg.Content,
+            ReasoningContent = reasoning
+        };
     }
 
     #endregion

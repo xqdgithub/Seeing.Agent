@@ -75,6 +75,8 @@ internal class ChatEventTracker
                             _currentAssistantMessage.Content = streamComplete.Message.Content;
                         if (!string.IsNullOrEmpty(streamComplete.Message.ReasoningContent))
                             _currentAssistantMessage.ReasoningContent = streamComplete.Message.ReasoningContent;
+                        if (!string.IsNullOrEmpty(streamComplete.Message.ReasoningSignature))
+                            _currentAssistantMessage.ReasoningSignature = streamComplete.Message.ReasoningSignature;
 
                         if (streamComplete.Message.ToolCalls is { Count: > 0 })
                         {

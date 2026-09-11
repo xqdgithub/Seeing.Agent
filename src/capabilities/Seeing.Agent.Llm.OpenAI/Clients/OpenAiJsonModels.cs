@@ -31,6 +31,20 @@ internal class ChatCompletionRequest
     [JsonPropertyName("tools")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ChatCompletionTool>? Tools { get; set; }
+
+    [JsonPropertyName("thinking")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ChatCompletionThinking? Thinking { get; set; }
+
+    [JsonPropertyName("reasoning_effort")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReasoningEffort { get; set; }
+}
+
+internal class ChatCompletionThinking
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "enabled";
 }
 
 internal class ChatCompletionMessage

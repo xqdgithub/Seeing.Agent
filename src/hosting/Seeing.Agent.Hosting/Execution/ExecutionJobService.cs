@@ -159,6 +159,11 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
 
             // ⭐ Persist model/mode selection to session (ensures they're saved even if execution fails)
             ApplyInboundModelAndMode(session, options?.ModelId, options?.ModeId, modelManager);
+            if (options?.ThinkingEffort is not null)
+            {
+                session.SelectedThinkingEffort = options.ThinkingEffort.Trim();
+                session.UpdatedAt = DateTime.Now;
+            }
 
             var cwd = options?.WorkingDirectory
                 ?? session.WorkingDirectory
@@ -788,6 +793,10 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         var (settlement, toolSchemas, sectionIds) = await SettleSessionAndSchemasAsync(
             session, agentDef, services).ConfigureAwait(false);
 
+        string? requestThinkingEffort = record.Options?.ThinkingEffort;
+        if (requestThinkingEffort is null && !string.IsNullOrWhiteSpace(session.SelectedThinkingEffort))
+            requestThinkingEffort = session.SelectedThinkingEffort;
+
         return new ChatExecutionContext
         {
             SessionId = record.SessionId,
@@ -800,6 +809,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             UserId = record.Options?.UserId,
             AcpModeId = acpModeId,
             RequestModelId = requestModelId,
+            RequestThinkingEffort = requestThinkingEffort,
             Settlement = settlement,
             ToolSchemas = toolSchemas,
             SectionIds = sectionIds
@@ -1130,6 +1140,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
                 Role = msg.Role,
                 Content = msg.Content,
                 ReasoningContent = msg.ReasoningContent,
+                ReasoningSignature = msg.ReasoningSignature,
                 ToolCallId = msg.ToolCallId
             };
 
@@ -1215,6 +1226,9 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         // 优先级：用户选择 > Agent 配置 > 全局默认
         if (!string.IsNullOrEmpty(context.RequestModelId))
             agentContext.Metadata[AgentContextKeys.RequestModelId] = context.RequestModelId;
+
+        if (context.RequestThinkingEffort is not null)
+            agentContext.Metadata[AgentContextKeys.RequestThinkingEffort] = context.RequestThinkingEffort;
 
         if (!string.IsNullOrEmpty(context.AcpModeId))
             agentContext.Metadata[AgentContextKeys.AcpModeId] = context.AcpModeId;

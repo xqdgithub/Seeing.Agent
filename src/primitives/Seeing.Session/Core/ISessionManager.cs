@@ -114,6 +114,9 @@ namespace Seeing.Session.Core
         /// <param name="ct">取消令牌</param>
         Task SetModelAsync(string sessionId, string modelId, CancellationToken ct = default);
 
+        /// <summary>设置会话思考强度档位 key；空表示跟随模型 default（无则不传）</summary>
+        Task SetThinkingEffortAsync(string sessionId, string? thinkingEffort, CancellationToken ct = default);
+
         // === 原子操作方法（确保缓存一致性） ===
 
         /// <summary>

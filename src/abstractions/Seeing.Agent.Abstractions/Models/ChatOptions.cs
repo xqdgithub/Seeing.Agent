@@ -14,6 +14,9 @@ public record ChatOptions
     /// <summary>指定 Model ID（可选）</summary>
     public string? ModelId { get; init; }
 
+    /// <summary>思考强度档位 key（可选；覆盖会话 SelectedThinkingEffort）</summary>
+    public string? ThinkingEffort { get; init; }
+
     /// <summary>ACP Mode ID（可选）</summary>
     public string? ModeId { get; init; }
 

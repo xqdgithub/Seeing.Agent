@@ -238,6 +238,7 @@ public class ChatOrchestrator : IChatOrchestrator
         newSession.Title = title ?? string.Format("{0} (分支)", sourceSession.Title);
         newSession.WorkingDirectory = sourceSession.WorkingDirectory;
         newSession.SelectedModel = sourceSession.SelectedModel;
+        newSession.SelectedThinkingEffort = sourceSession.SelectedThinkingEffort;
         // 深拷贝消息（元素共享会导致分支后原会话压缩标记污染分支会话的活跃消息）
         newSession.ReplaceMessages(sourceSession.Messages.Select(m => m.Clone()));
         if (sourceSession.Metadata.TryGetValue(SessionMetadataKeys.InstructionFingerprints, out var fingerprints)

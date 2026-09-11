@@ -306,6 +306,7 @@ public sealed class GatewayOrchestratorV2
         {
             AgentId = request.AgentId,
             ModelId = request.ModelId,
+            ThinkingEffort = request.ThinkingEffort,
             ModeId = request.ModeId,
             ChannelId = request.ChannelId,
             UserId = request.UserId,

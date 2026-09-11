@@ -407,6 +407,7 @@ namespace Seeing.Session.Management
             child.PartitionId = parent.PartitionId;
             // 默认继承父委派时模型；子 Agent 自带 Model 时由 TaskTool 覆盖
             child.SelectedModel = parent.SelectedModel;
+            child.SelectedThinkingEffort = parent.SelectedThinkingEffort;
             child.PermissionSnapshot = permissionSnapshot?
                 .Select(r => new SessionPermissionRule
                 {
@@ -631,6 +632,10 @@ namespace Seeing.Session.Management
                 return;
             }
 
+            modelId ??= string.Empty;
+            if (string.Equals(session.SelectedModel ?? string.Empty, modelId, StringComparison.Ordinal))
+                return;
+
             session.SelectedModel = modelId;
             session.UpdatedAt = DateTime.Now;
 
@@ -657,6 +662,41 @@ namespace Seeing.Session.Management
 
             _logger?.LogInformation("设置会话模型: SessionId={SessionId}, Model={Model}",
                 sessionId, modelId);
+        }
+
+        /// <summary>
+        /// 设置会话的思考强度档位 key；空字符串表示跟随模型 default（无则不传）。
+        /// </summary>
+        public async Task SetThinkingEffortAsync(string sessionId, string? thinkingEffort, CancellationToken ct = default)
+        {
+            var session = Get(sessionId);
+            if (session == null)
+            {
+                _logger?.LogWarning("会话不存在，无法设置思考强度: {SessionId}", sessionId);
+                return;
+            }
+
+            var normalized = thinkingEffort?.Trim() ?? string.Empty;
+            if (string.Equals(session.SelectedThinkingEffort ?? string.Empty, normalized, StringComparison.Ordinal))
+                return;
+
+            session.SelectedThinkingEffort = normalized;
+            session.UpdatedAt = DateTime.Now;
+
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.Updated,
+                session.Id,
+                result: new Dictionary<string, object?> { ["session"] = session });
+
+            if (_store != null)
+            {
+                await SaveAsync(sessionId);
+            }
+
+            _logger?.LogInformation(
+                "设置会话思考强度: SessionId={SessionId}, ThinkingEffort={ThinkingEffort}",
+                sessionId,
+                session.SelectedThinkingEffort);
         }
 
         // === 原子操作方法（确保缓存一致性） ===

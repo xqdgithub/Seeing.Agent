@@ -74,6 +74,9 @@ internal class ChatExecutionContext
     /// </para>
     /// </summary>
     public string? RequestModelId { get; init; }
+
+    /// <summary>请求级思考强度 key（可选；空则由 LlmService 用模型 default 或不传）</summary>
+    public string? RequestThinkingEffort { get; init; }
     
     /// <summary>ACP 透传 session mode（如 build / ask）</summary>
     public string? AcpModeId { get; init; }

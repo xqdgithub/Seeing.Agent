@@ -264,6 +264,10 @@ namespace Seeing.Session.Core
         [JsonPropertyName("reasoning_content")]
         public string? ReasoningContent { get; set; }
 
+        /// <summary>Anthropic thinking 块 signature</summary>
+        [JsonPropertyName("reasoning_signature")]
+        public string? ReasoningSignature { get; set; }
+
         /// <summary>工具调用列表（Assistant 消息发起的工具调用请求）</summary>
         [JsonPropertyName("tool_calls")]
         public List<SessionToolCall>? ToolCalls { get; set; }
@@ -331,6 +335,7 @@ namespace Seeing.Session.Core
                     ImageDetail = p.ImageDetail
                 }).ToList(),
                 ReasoningContent = ReasoningContent,
+                ReasoningSignature = ReasoningSignature,
                 ToolCalls = ToolCalls?.Select(t => t.Clone()).ToList(),
                 ToolCallId = ToolCallId,
                 ToolName = ToolName,

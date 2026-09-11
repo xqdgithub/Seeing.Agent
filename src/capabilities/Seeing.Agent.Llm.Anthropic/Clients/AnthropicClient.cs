@@ -219,6 +219,16 @@ public class AnthropicClient : ILlmClient
                         IsComplete = false
                     };
                 }
+                else if (string.Equals(d.Type, "signature_delta", StringComparison.Ordinal)
+                         && !string.IsNullOrEmpty(d.Signature))
+                {
+                    yield return new StreamUpdate
+                    {
+                        Id = responseId,
+                        ReasoningSignature = d.Signature,
+                        IsComplete = false
+                    };
+                }
             }
 
             if (string.Equals(evt.Type, "message_delta", StringComparison.Ordinal) && evt.Usage != null)
@@ -368,27 +378,61 @@ public class AnthropicClient : ILlmClient
             }
         ];
 
-        return new
+        var maxTokens = request.MaxTokens ?? 4096;
+        object? thinkingPayload = null;
+        object? outputConfig = null;
+
+        if (!string.IsNullOrWhiteSpace(request.ThinkingEffort)
+            && !ThinkingEffortKeys.IsOff(request.ThinkingEffort))
         {
-            model = request.Model,
-            max_tokens = request.MaxTokens ?? 4096,
-            system = systemInfo,
-            messages,
-            stream,
-            //thinking = new
-            //{
-            //    type = "enabled",
-            //    budget_tokens = 10000
-            //},
-            tools = request.Tools?.Select(t => new
+            if (request.ThinkingBudgetTokens is int budget)
+            {
+                var n = budget < 1024 ? 1024 : budget;
+                if (maxTokens < n + 1024)
+                    maxTokens = n + 1024;
+                thinkingPayload = new { type = "enabled", budget_tokens = n };
+            }
+            else
+            {
+                thinkingPayload = new { type = "adaptive" };
+                outputConfig = new { effort = request.ThinkingEffort };
+            }
+        }
+
+        var body = new Dictionary<string, object?>
+        {
+            ["model"] = request.Model,
+            ["max_tokens"] = maxTokens,
+            ["system"] = systemInfo,
+            ["messages"] = messages,
+            ["stream"] = stream
+        };
+
+        if (request.Tools is { Count: > 0 })
+        {
+            body["tools"] = request.Tools.Select(t => new
             {
                 name = t.Function?.Name,
                 description = t.Function?.Description,
                 input_schema = t.Function?.Parameters
-            }),
-            temperature = request.Temperature,
-            top_p = request.TopP
-        };
+            });
+        }
+
+        // 启用 thinking 时 Anthropic 要求 temperature 为 1 或省略；同时省略 top_p 避免采样冲突。
+        if (thinkingPayload is null)
+        {
+            if (request.Temperature is not null)
+                body["temperature"] = request.Temperature;
+            if (request.TopP is not null)
+                body["top_p"] = request.TopP;
+        }
+
+        if (thinkingPayload is not null)
+            body["thinking"] = thinkingPayload;
+        if (outputConfig is not null)
+            body["output_config"] = outputConfig;
+
+        return body;
     }
 
     private object BuildContent(ChatMessage msg)
@@ -411,6 +455,7 @@ public class AnthropicClient : ILlmClient
         if (msg.ToolCalls?.Count > 0)
         {
             var contents = new List<object>();
+            PrependThinkingBlock(contents, msg);
 
             if (!string.IsNullOrEmpty(msg.Content))
                 contents.Add(new { type = "text", text = msg.Content });
@@ -445,13 +490,25 @@ public class AnthropicClient : ILlmClient
         // 普通消息
         var parts = msg.GetEffectiveParts();
         if (parts.Count == 0)
-            return new[] { new { type = "text", text = "" } };
+        {
+            var empty = new List<object>();
+            PrependThinkingBlock(empty, msg);
+            if (empty.Count == 0)
+                empty.Add(new { type = "text", text = "" });
+            return empty;
+        }
 
         if (parts.Count == 1
             && string.Equals(parts[0].Type, ChatContentPart.KindText, StringComparison.OrdinalIgnoreCase))
-            return new[] { new { type = "text", text = parts[0].Text ?? "" } };
+        {
+            var single = new List<object>();
+            PrependThinkingBlock(single, msg);
+            single.Add(new { type = "text", text = parts[0].Text ?? "" });
+            return single;
+        }
 
         var blocks = new List<object>();
+        PrependThinkingBlock(blocks, msg);
         foreach (var p in parts)
         {
             switch (p.Type?.ToLowerInvariant())
@@ -484,9 +541,32 @@ public class AnthropicClient : ILlmClient
             }
         }
 
-        return blocks.Count > 0
-            ? blocks.ToArray()
-            : new[] { new { type = "text", text = msg.Content } };
+        return blocks.Count > 0 ? blocks : new[] { new { type = "text", text = msg.Content } };
+    }
+
+    /// <summary>历史 assistant 回传 thinking 块（含 signature）；对齐 OpenCode Anthropic 路径。</summary>
+    private static void PrependThinkingBlock(List<object> contents, ChatMessage msg)
+    {
+        if (string.IsNullOrEmpty(msg.ReasoningContent) && string.IsNullOrEmpty(msg.ReasoningSignature))
+            return;
+
+        if (!string.IsNullOrEmpty(msg.ReasoningSignature))
+        {
+            contents.Add(new
+            {
+                type = "thinking",
+                thinking = msg.ReasoningContent ?? "",
+                signature = msg.ReasoningSignature
+            });
+        }
+        else
+        {
+            contents.Add(new
+            {
+                type = "thinking",
+                thinking = msg.ReasoningContent ?? ""
+            });
+        }
     }
 
     private ChatResponse MapResponse(AnthropicResponse response, string model)
@@ -498,6 +578,7 @@ public class AnthropicClient : ILlmClient
 
         var textContent = new StringBuilder();
         var thinkingContent = new StringBuilder();
+        string? thinkingSignature = null;
         var toolCalls = new List<ToolCall>();
 
         foreach (var block in response.Content ?? Array.Empty<AnthropicContentBlock>())
@@ -509,6 +590,8 @@ public class AnthropicClient : ILlmClient
             else if (block.Type == "thinking" && block.Thinking != null)
             {
                 thinkingContent.Append(block.Thinking);
+                if (!string.IsNullOrEmpty(block.Signature))
+                    thinkingSignature = block.Signature;
             }
             else if (block.Type == "tool_use")
             {
@@ -527,9 +610,9 @@ public class AnthropicClient : ILlmClient
 
         message.Content = textContent.ToString();
         if (thinkingContent.Length > 0)
-        {
             message.ReasoningContent = thinkingContent.ToString();
-        }
+        if (!string.IsNullOrEmpty(thinkingSignature))
+            message.ReasoningSignature = thinkingSignature;
         if (toolCalls.Count > 0)
             message.ToolCalls = toolCalls;
 
@@ -576,6 +659,8 @@ public class AnthropicClient : ILlmClient
         public string? Text { get; set; }
         [JsonPropertyName("thinking")]
         public string? Thinking { get; set; }
+        [JsonPropertyName("signature")]
+        public string? Signature { get; set; }
         [JsonPropertyName("id")]
         public string? Id { get; set; }
         [JsonPropertyName("name")]

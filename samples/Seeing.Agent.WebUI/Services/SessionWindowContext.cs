@@ -32,6 +32,7 @@ public sealed class SessionWindowContext
     public bool IsExecuting { get; internal set; }
     public string SelectedAgent { get; internal set; } = string.Empty;
     public string SelectedModel { get; internal set; } = string.Empty;
+    public string SelectedThinkingEffort { get; internal set; } = string.Empty;
     public string SelectedAcpMode { get; internal set; } = string.Empty;
     public ExecutionStatus? ExecutionStatus { get; internal set; }
     public TodoListViewModel? CurrentTodoList { get; internal set; }
@@ -49,6 +50,7 @@ public sealed class SessionWindowContext
     // ---- 操作（窗口内实现） ----
     public Func<string, Task>? SetAgentAsync { get; internal set; }
     public Func<string, Task>? SetModelAsync { get; internal set; }
+    public Func<string?, Task>? SetThinkingEffortAsync { get; internal set; }
     /// <summary>切换会话级 Scenario（null/空 = 跟随进程）；只影响下一次 Submit。</summary>
     public Func<string?, Task>? SetScenarioAsync { get; internal set; }
     public Action<string>? SetAcpMode { get; internal set; }

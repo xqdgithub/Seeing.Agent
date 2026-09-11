@@ -29,7 +29,7 @@ public class DeepSeekModelCapabilitiesTests
     }
 
     [Fact]
-    public void Apply_Reasoner_EnablesThinking()
+    public void Apply_Reasoner_EnablesThinkingLevels()
     {
         var enriched = DeepSeekModelCapabilities.Apply(new ModelConfig
         {
@@ -39,7 +39,10 @@ public class DeepSeekModelCapabilitiesTests
 
         enriched.Options.Should().NotBeNull();
         enriched.Options!.Thinking.Should().NotBeNull();
-        enriched.Options.Thinking!.Type.Should().Be("enabled");
+        enriched.Options.Thinking!.Supported.Should().BeTrue();
+        enriched.Options.Thinking.Interleaved.Should().Be("reasoning_content");
+        enriched.Options.Thinking.Levels.Should().NotBeNull();
+        enriched.Options.Thinking.Levels!.Select(l => l.Key).Should().Contain(new[] { "disabled", "high", "max" });
         enriched.Limit.Context.Should().Be(1_000_000);
     }
 
