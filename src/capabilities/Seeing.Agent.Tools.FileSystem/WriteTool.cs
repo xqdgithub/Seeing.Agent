@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Tools.Support;
 using Microsoft.Extensions.Logging;
@@ -16,13 +17,18 @@ namespace Seeing.Agent.Core.Tools.FileSystem
     public class WriteTool : BuiltInToolBase
     {
         private readonly IFileSystem _fileSystem;
+        private readonly IWorkspacePathGate _pathGate;
 
         /// <summary>
         /// 创建 WriteTool 实例
         /// </summary>
-        public WriteTool(ILogger<WriteTool> logger, IFileSystem fileSystem) : base(logger)
+        public WriteTool(
+            ILogger<WriteTool> logger,
+            IFileSystem fileSystem,
+            IWorkspacePathGate pathGate) : base(logger)
         {
             _fileSystem = fileSystem;
+            _pathGate = pathGate;
         }
 
         public override string Id => "write";
@@ -79,6 +85,10 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             {
                 filePath = _fileSystem.GetFullPath(filePath);
             }
+
+            var denied = PathGateHelper.RejectIfDenied(_pathGate, context, filePath, Failure);
+            if (denied != null)
+                return denied;
 
             _logger.LogInformation("写入文件: {FilePath}", filePath);
 

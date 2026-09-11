@@ -154,6 +154,13 @@
                             设置后将忽略工作区模式，直接使用此路径
                         </div>
                     </FormItem>
+
+                    <FormItem Label="工作区文件硬边界">
+                        <Switch @bind-Value="@_restrictToWorkspace" />
+                        <div style="margin-top: 4px; font-size: 12px; color: #888;">
+                            开启后，文件工具（read/write/edit/delete/glob/grep）仅可在当前工作区与会话白名单内操作；越界将询问授权。不约束 bash。
+                        </div>
+                    </FormItem>
                 </Form>
             </TabPane>
 
@@ -214,6 +221,7 @@
     private bool _workspaceUseGlobal;
     private string _globalWorkspacePath = "";
     private string _customWorkspacePath = "";
+    private bool _restrictToWorkspace;
 
     protected override async Task OnInitializedAsync()
     {
@@ -271,6 +279,7 @@
         _globalWorkspacePath = WorkspaceSwitchService.GlobalWorkspaceRoot ?? "";
         _customWorkspacePath = _options.Workspace?.CustomPath ?? "";
         _workspaceUseGlobal = _options.Workspace?.UseGlobal ?? false;
+        _restrictToWorkspace = _options.Workspace?.RestrictToWorkspace ?? false;
     }
 
     private void ShowWorkspaceSelector()
@@ -350,7 +359,8 @@
                     var workspaceOptions = new WorkspaceOptions
                     {
                         UseGlobal = _workspaceUseGlobal,
-                        CustomPath = string.IsNullOrWhiteSpace(_customWorkspacePath) ? null : _customWorkspacePath
+                        CustomPath = string.IsNullOrWhiteSpace(_customWorkspacePath) ? null : _customWorkspacePath,
+                        RestrictToWorkspace = _restrictToWorkspace
                     };
                     await WorkspaceSwitchService.SetWorkspaceOptionsAsync(workspaceOptions);
                     

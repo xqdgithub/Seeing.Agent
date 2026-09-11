@@ -48,4 +48,6 @@ public sealed class SessionWorkspaceWhitelist : IWorkspaceWhitelist
         if (!string.IsNullOrEmpty(sessionId))
             _store.TryRemove(sessionId, out _);
     }
+
+    public void ClearAll() => _store.Clear();
 }

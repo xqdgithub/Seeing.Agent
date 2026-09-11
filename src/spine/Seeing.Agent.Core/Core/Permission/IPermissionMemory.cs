@@ -47,4 +47,7 @@ public interface IPermissionMemory
 
     /// <summary>清除整个会话的记忆</summary>
     void ClearSession(string sessionId);
+
+    /// <summary>清除全部会话的记忆（工作区根切换时调用）。</summary>
+    void ClearAll();
 }

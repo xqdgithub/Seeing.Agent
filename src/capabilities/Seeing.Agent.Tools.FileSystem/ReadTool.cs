@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Tools.Support;
 using Microsoft.Extensions.Logging;
@@ -20,13 +21,18 @@ namespace Seeing.Agent.Core.Tools.FileSystem
     public class ReadTool : BuiltInToolBase
     {
         private readonly IFileSystem _fileSystem;
+        private readonly IWorkspacePathGate _pathGate;
 
         /// <summary>
         /// 创建 ReadTool 实例
         /// </summary>
-        public ReadTool(ILogger<ReadTool> logger, IFileSystem fileSystem) : base(logger)
+        public ReadTool(
+            ILogger<ReadTool> logger,
+            IFileSystem fileSystem,
+            IWorkspacePathGate pathGate) : base(logger)
         {
             _fileSystem = fileSystem;
+            _pathGate = pathGate;
         }
 
         public override string Id => "read";
@@ -91,6 +97,10 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             {
                 filePath = _fileSystem.GetFullPath(filePath);
             }
+
+            var denied = PathGateHelper.RejectIfDenied(_pathGate, context, filePath, Failure);
+            if (denied != null)
+                return denied;
 
             _logger.LogInformation("读取文件: {FilePath}, offset={Offset}, limit={Limit}", filePath, offset, limit);
 

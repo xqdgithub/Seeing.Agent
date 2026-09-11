@@ -49,8 +49,10 @@ public static class WebHostingServiceCollectionExtensions
         {
             var memory = sp.GetRequiredService<IPermissionMemory>();
             var workspace = sp.GetService<IWorkspaceProvider>();
+            var whitelist = sp.GetRequiredService<IWorkspaceWhitelist>();
+            var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions>>();
             var inner = sp.GetRequiredService<BlazorPermissionChannel>();
-            return new SerializingPermissionChannel(inner, memory, workspace);
+            return new SerializingPermissionChannel(inner, memory, workspace, whitelist, options);
         });
 
         return services;

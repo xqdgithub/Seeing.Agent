@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Tools.Support;
 using Microsoft.Extensions.Logging;
@@ -15,13 +16,18 @@ namespace Seeing.Agent.Core.Tools.FileSystem
         private const int MaxLineLength = 2000;
         private const int DefaultLimit = 100;
         private readonly IExecutionWorld _world;
+        private readonly IWorkspacePathGate _pathGate;
 
         /// <summary>
         /// 创建 GrepTool 实例
         /// </summary>
-        public GrepTool(ILogger<GrepTool> logger, IExecutionWorld world) : base(logger)
+        public GrepTool(
+            ILogger<GrepTool> logger,
+            IExecutionWorld world,
+            IWorkspacePathGate pathGate) : base(logger)
         {
             _world = world;
+            _pathGate = pathGate;
         }
 
         public override string Id => "grep";
@@ -72,6 +78,10 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             {
                 searchPath = _world.FileSystem.GetFullPath(searchPath);
             }
+
+            var denied = PathGateHelper.RejectIfDenied(_pathGate, context, searchPath, Failure);
+            if (denied != null)
+                return Task.FromResult(denied);
 
             _logger.LogInformation("Grep 搜索: pattern={Pattern}, path={Path}, include={Include}",
                 pattern, searchPath, includePattern);

@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Tools.Support;
 using Microsoft.Extensions.Logging;
@@ -20,13 +21,18 @@ namespace Seeing.Agent.Core.Tools.FileSystem
         /// </summary>
         private const int DefaultLimit = 100;
         private readonly IExecutionWorld _world;
+        private readonly IWorkspacePathGate _pathGate;
 
         /// <summary>
         /// 创建 GlobTool 实例
         /// </summary>
-        public GlobTool(ILogger<GlobTool> logger, IExecutionWorld world) : base(logger)
+        public GlobTool(
+            ILogger<GlobTool> logger,
+            IExecutionWorld world,
+            IWorkspacePathGate pathGate) : base(logger)
         {
             _world = world;
+            _pathGate = pathGate;
         }
 
         public override string Id => "glob";
@@ -87,6 +93,10 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             {
                 searchPath = _world.FileSystem.GetFullPath(searchPath);
             }
+
+            var denied = PathGateHelper.RejectIfDenied(_pathGate, context, searchPath, Failure);
+            if (denied != null)
+                return denied;
 
             // 检查目录是否存在
             if (!_world.FileSystem.Exists(searchPath))

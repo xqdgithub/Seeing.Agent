@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Tools.Support;
 using Microsoft.Extensions.Logging;
@@ -12,10 +13,15 @@ namespace Seeing.Agent.Core.Tools.FileSystem;
 public class DeleteTool : BuiltInToolBase
 {
     private readonly IFileSystem _fileSystem;
+    private readonly IWorkspacePathGate _pathGate;
 
-    public DeleteTool(ILogger<DeleteTool> logger, IFileSystem fileSystem) : base(logger)
+    public DeleteTool(
+        ILogger<DeleteTool> logger,
+        IFileSystem fileSystem,
+        IWorkspacePathGate pathGate) : base(logger)
     {
         _fileSystem = fileSystem;
+        _pathGate = pathGate;
     }
 
     public override string Id => "delete";
@@ -56,6 +62,10 @@ public class DeleteTool : BuiltInToolBase
             path = _fileSystem.GetFullPath(path);
         else
             path = ResolvePath(path);
+
+        var denied = PathGateHelper.RejectIfDenied(_pathGate, context, path, Failure);
+        if (denied != null)
+            return Task.FromResult(denied);
 
         _logger.LogInformation("删除路径: {Path}", path);
 

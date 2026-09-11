@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Tools.Support;
 using Microsoft.Extensions.Logging;
@@ -16,13 +17,18 @@ namespace Seeing.Agent.Core.Tools.FileSystem
     public class EditTool : ToolBase
     {
         private readonly IFileSystem _fileSystem;
+        private readonly IWorkspacePathGate _pathGate;
 
         /// <summary>
         /// 创建 EditTool 实例
         /// </summary>
-        public EditTool(ILogger<EditTool> logger, IFileSystem fileSystem) : base(logger)
+        public EditTool(
+            ILogger<EditTool> logger,
+            IFileSystem fileSystem,
+            IWorkspacePathGate pathGate) : base(logger)
         {
             _fileSystem = fileSystem;
+            _pathGate = pathGate;
         }
 
         public override string Id => "edit";
@@ -108,6 +114,10 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             {
                 filePath = _fileSystem.GetFullPath(filePath);
             }
+
+            var denied = PathGateHelper.RejectIfDenied(_pathGate, context, filePath, Failure);
+            if (denied != null)
+                return denied;
 
             _logger.LogInformation("编辑文件: {FilePath}", filePath);
 

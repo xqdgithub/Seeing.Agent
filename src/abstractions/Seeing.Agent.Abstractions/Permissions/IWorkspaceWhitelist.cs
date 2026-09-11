@@ -11,4 +11,7 @@ public interface IWorkspaceWhitelist
     bool Contains(string sessionId, string path);
 
     void ClearSession(string sessionId);
+
+    /// <summary>清除全部会话的白名单（工作区根切换时调用）。</summary>
+    void ClearAll();
 }

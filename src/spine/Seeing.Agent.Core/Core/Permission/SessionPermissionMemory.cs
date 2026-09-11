@@ -67,4 +67,6 @@ public class SessionPermissionMemory : IPermissionMemory
     {
         _store.TryRemove(sessionId, out _);
     }
+
+    public void ClearAll() => _store.Clear();
 }

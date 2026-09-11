@@ -30,7 +30,7 @@ public class GrepGlobSubprocessTests
             },
             fsExists: true);
 
-        var tool = new GrepTool(NullLogger<GrepTool>.Instance, world);
+        var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "hello", path = @"C:\repo" }),
             new ToolContext { SessionId = "s", CallId = "c" });
@@ -50,7 +50,7 @@ public class GrepGlobSubprocessTests
             enumerateFiles: [@"C:\repo\a.cs"],
             fileContent: "line with needle here\n");
 
-        var tool = new GrepTool(NullLogger<GrepTool>.Instance, world);
+        var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "needle", path = @"C:\repo" }),
             new ToolContext { SessionId = "s", CallId = "c" });
@@ -73,7 +73,7 @@ public class GrepGlobSubprocessTests
             },
             fsExists: true);
 
-        var tool = new GlobTool(NullLogger<GlobTool>.Instance, world);
+        var tool = new GlobTool(NullLogger<GlobTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "**/*.cs", path = @"C:\repo" }),
             new ToolContext { SessionId = "s", CallId = "c" });

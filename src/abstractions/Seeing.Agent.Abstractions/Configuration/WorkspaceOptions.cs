@@ -18,4 +18,10 @@ public class WorkspaceOptions
     /// <para>设置后忽略 UseGlobal，直接使用此路径</para>
     /// </summary>
     public string? CustomPath { get; set; }
+
+    /// <summary>
+    /// 工作区文件硬边界：为 true 时，文件工具目标路径须 ∈ WorkspaceRoot ∪ 会话白名单；
+    /// 越界由权限通道 Ask，Allow 后写入白名单。默认 false（与历史行为一致）。不约束 bash。
+    /// </summary>
+    public bool RestrictToWorkspace { get; set; }
 }

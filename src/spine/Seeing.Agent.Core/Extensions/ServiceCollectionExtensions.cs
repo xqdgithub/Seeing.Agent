@@ -568,6 +568,8 @@ namespace Seeing.Agent.Core.Extensions
 
             // 会话级工作区白名单（AddWorkspacePathTool 写入，权限通道读取）
             services.AddSingleton<IWorkspaceWhitelist, SessionWorkspaceWhitelist>();
+            services.AddSingleton<IWorkspacePathGate, WorkspacePathGate>();
+            services.AddSingleton<WorkspaceBoundaryLifecycle>();
 
             // 权限通道 — 默认使用 DynamicPermissionChannel + SerializingPermissionChannel（带记忆）
             // 使用 IOptionsMonitor 实现运行时配置变更无需重启
@@ -584,8 +586,12 @@ namespace Seeing.Agent.Core.Extensions
                 var inner = new Core.Permission.DynamicPermissionChannel(optionsMonitor, logger);
 
                 // 进程级 Ask 串行 + 会话级记忆 + 工作区边界检查（宿主可再包一层，如 Blazor）
-                return new Core.Permission.SerializingPermissionChannel(inner, memory, workspace,
-                    sp.GetRequiredService<IWorkspaceWhitelist>());
+                return new Core.Permission.SerializingPermissionChannel(
+                    inner,
+                    memory,
+                    workspace,
+                    sp.GetRequiredService<IWorkspaceWhitelist>(),
+                    optionsMonitor);
             });
 
             // Agent 执行器（统一执行引擎）
@@ -747,6 +753,9 @@ namespace Seeing.Agent.Core.Extensions
                 configManager = configOnly;
                 await configOnly.LoadAsync(cancellationToken);
             }
+
+            // 切根时清空白名单与权限记忆（须在工作区 Initialize 之后挂接，避免启动期误清）
+            services.GetService<WorkspaceBoundaryLifecycle>()?.Attach();
 
             // 进程级结算 → 仅 Activate 启用集（含 agents.builtin → IAgentStore；须在 AgentManager.StartAsync 之前）
             await SettleAndActivateModulesAsync(services, configManager, logger, cancellationToken);
