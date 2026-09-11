@@ -29,6 +29,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     private Lazy<Dictionary<string, Dictionary<string, ModelConfig>>> _providerIndex =
         new(() => new Dictionary<string, Dictionary<string, ModelConfig>>(),
             LazyThreadSafetyMode.ExecutionAndPublication);
+    private readonly List<(long Version, TaskCompletionSource Completion)> _refreshWaiters = [];
 
     /// <summary>
     /// Providers 节持久化级别（<see cref="ConfigScope.UserOnly"/>）。
@@ -141,6 +142,27 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     {
         var config = GetModel(modelId);
         return config is not null && GetEffectiveTypes(config).Contains(ModelType.Text);
+    }
+
+    /// <inheritdoc />
+    public Task RefreshCatalogAsync(
+        string? providerId = null,
+        CancellationToken ct = default)
+    {
+        var normalized = string.IsNullOrWhiteSpace(providerId) ? null : providerId.Trim();
+        if (normalized is not null
+            && _registry.GetProvider(normalized) is null
+            && !GetUserProviders().ContainsKey(normalized))
+        {
+            return Task.FromException(new ArgumentException(
+                $"Provider '{normalized}' 未找到。",
+                nameof(providerId)));
+        }
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var source = normalized is null ? "manual-full" : "manual-provider";
+        EnqueueRefresh(source, normalized, completion);
+        return completion.Task.WaitAsync(ct);
     }
 
     #endregion
@@ -268,15 +290,30 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         => EnqueueRefresh("provider-registry");
 
     internal void EnqueueRefresh(string source)
+        => EnqueueRefresh(source, providerId: null, completion: null);
+
+    private void EnqueueRefresh(string source, string? providerId, TaskCompletionSource? completion)
     {
         long version;
         lock (_cacheLock)
         {
+            if (_disposeCts.IsCancellationRequested)
+            {
+                completion?.TrySetCanceled(_disposeCts.Token);
+                return;
+            }
+
             version = ++_refreshVersion;
+            if (completion is not null)
+                _refreshWaiters.Add((version, completion));
         }
 
-        if (!_refreshQueue.Writer.TryWrite(new RefreshRequest(version, source)))
+        if (!_refreshQueue.Writer.TryWrite(new RefreshRequest(version, source, providerId)))
+        {
             _logger.LogDebug("模型目录刷新队列已关闭，忽略 {Source} 请求", source);
+            if (completion is not null)
+                FailWaiter(version, new ObjectDisposedException(nameof(ModelConfigManager)));
+        }
     }
 
     private async Task ProcessRefreshQueueAsync(CancellationToken ct)
@@ -289,20 +326,31 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
+        finally
+        {
+            CancelPendingWaiters();
+        }
     }
 
     private async Task RefreshFromProvidersAsync(RefreshRequest request, CancellationToken ct)
     {
+        if (request.ProviderId is { } providerId)
+        {
+            await RefreshSingleProviderAsync(request, providerId, ct).ConfigureAwait(false);
+            return;
+        }
+
         var models = new Dictionary<string, ModelConfig>();
 
         // 配置驱动：用户级 Providers[*].Models；扩展：仍走 ILlmProvider.GetModelsAsync。
-        foreach (var (providerId, providerConfig) in GetUserProviders())
+        foreach (var (configuredProviderId, providerConfig) in GetUserProviders())
         {
             if (providerConfig.Models is null)
                 continue;
 
             foreach (var (modelId, config) in providerConfig.Models)
-                models[ModelRef.Format(providerId, modelId)] = CloneModelConfig(providerId, modelId, config);
+                models[ModelRef.Format(configuredProviderId, modelId)] =
+                    CloneModelConfig(configuredProviderId, modelId, config);
         }
 
         var extensionLoads = _registry.GetProviders()
@@ -310,15 +358,15 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             .Select(pair => LoadProviderModelsAsync(pair.Key, pair.Value, ct));
         var extensionModels = await Task.WhenAll(extensionLoads).ConfigureAwait(false);
 
-        foreach (var (providerId, configurations) in extensionModels)
+        foreach (var (extensionProviderId, configurations) in extensionModels)
         {
             foreach (var config in configurations)
             {
                 if (string.IsNullOrWhiteSpace(config.Id))
                     continue;
 
-                config.Provider = providerId;
-                models[ModelRef.Format(providerId, config.Id)] = config;
+                config.Provider = extensionProviderId;
+                models[ModelRef.Format(extensionProviderId, config.Id)] = config;
             }
         }
 
@@ -329,10 +377,138 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             return;
         }
 
+        CompleteWaitersUpTo(request.Version);
         ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
         {
             ChangeType = ModelConfigChangeType.Updated
         });
+    }
+
+    private async Task RefreshSingleProviderAsync(
+        RefreshRequest request,
+        string providerId,
+        CancellationToken ct)
+    {
+        var slice = await LoadProviderSliceAsync(providerId, ct).ConfigureAwait(false);
+
+        lock (_cacheLock)
+        {
+            if (request.Version != _refreshVersion)
+            {
+                _logger.LogDebug("丢弃过期单 Provider 刷新 {Version}（当前 {CurrentVersion}）",
+                    request.Version, _refreshVersion);
+                return;
+            }
+
+            var merged = new Dictionary<string, ModelConfig>(_modelCache);
+            RemoveProviderEntries(merged, providerId);
+            foreach (var (key, config) in slice)
+                merged[key] = config;
+
+            ReplaceCacheLocked(merged);
+        }
+
+        _logger.LogDebug("已刷新 Provider {ProviderId} 模型目录，共 {Count} 个模型", providerId, slice.Count);
+        CompleteWaitersUpTo(request.Version);
+        ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
+        {
+            ChangeType = ModelConfigChangeType.Updated
+        });
+    }
+
+    private async Task<Dictionary<string, ModelConfig>> LoadProviderSliceAsync(
+        string providerId,
+        CancellationToken ct)
+    {
+        var models = new Dictionary<string, ModelConfig>();
+
+        if (_registry.GetOwnerExtensionId(providerId) is not null)
+        {
+            var provider = _registry.GetProvider(providerId);
+            if (provider is null)
+                return models;
+
+            var loaded = await LoadProviderModelsAsync(providerId, provider, ct).ConfigureAwait(false);
+            foreach (var config in loaded.Value)
+            {
+                if (string.IsNullOrWhiteSpace(config.Id))
+                    continue;
+
+                config.Provider = providerId;
+                models[ModelRef.Format(providerId, config.Id)] = config;
+            }
+
+            return models;
+        }
+
+        if (GetUserProviders().TryGetValue(providerId, out var providerConfig)
+            && providerConfig.Models is not null)
+        {
+            foreach (var (modelId, config) in providerConfig.Models)
+                models[ModelRef.Format(providerId, modelId)] = CloneModelConfig(providerId, modelId, config);
+        }
+
+        return models;
+    }
+
+    private static void RemoveProviderEntries(Dictionary<string, ModelConfig> models, string providerId)
+    {
+        var keys = models
+            .Where(pair => string.Equals(pair.Value.Provider, providerId, StringComparison.OrdinalIgnoreCase))
+            .Select(pair => pair.Key)
+            .ToList();
+
+        foreach (var key in keys)
+            models.Remove(key);
+    }
+
+    private void CompleteWaitersUpTo(long appliedVersion)
+    {
+        List<TaskCompletionSource> completed;
+        lock (_cacheLock)
+        {
+            completed = [];
+            _refreshWaiters.RemoveAll(waiter =>
+            {
+                if (waiter.Version > appliedVersion)
+                    return false;
+
+                completed.Add(waiter.Completion);
+                return true;
+            });
+        }
+
+        foreach (var completion in completed)
+            completion.TrySetResult();
+    }
+
+    private void FailWaiter(long version, Exception exception)
+    {
+        TaskCompletionSource? completion = null;
+        lock (_cacheLock)
+        {
+            var index = _refreshWaiters.FindIndex(waiter => waiter.Version == version);
+            if (index >= 0)
+            {
+                completion = _refreshWaiters[index].Completion;
+                _refreshWaiters.RemoveAt(index);
+            }
+        }
+
+        completion?.TrySetException(exception);
+    }
+
+    private void CancelPendingWaiters()
+    {
+        List<TaskCompletionSource> pending;
+        lock (_cacheLock)
+        {
+            pending = _refreshWaiters.Select(waiter => waiter.Completion).ToList();
+            _refreshWaiters.Clear();
+        }
+
+        foreach (var completion in pending)
+            completion.TrySetCanceled();
     }
 
     private async Task<KeyValuePair<string, IReadOnlyList<ModelConfig>>> LoadProviderModelsAsync(
@@ -615,5 +791,5 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         }
     }
 
-    private sealed record RefreshRequest(long Version, string Source);
+    private sealed record RefreshRequest(long Version, string Source, string? ProviderId = null);
 }

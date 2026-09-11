@@ -8,8 +8,8 @@ namespace Seeing.Agent.Core.Prompts;
 /// <para>
 /// 通过 <see cref="IPromptSectionContributor"/> 向固定锚点标题注入分节内容：
 /// <c>## Tools</c> / <c>## Skills</c> / <c>## Agents</c> / <c>## Environment</c>。
-/// 模板含对应锚点时精确注入其下方；模板缺少锚点的分节按稳定顺序兜底追加到末尾，
-/// 避免自定义 Agent 模板未预留锚点时分节内容被静默丢弃。
+/// 模板含对应锚点时精确注入其下方；Skills / Agents / Environment 缺少锚点时按稳定顺序兜底追加到末尾。
+/// Tools 例外：无 <c>## Tools</c> 锚点时不追加（完整 schema 已由 API <c>tools</c> 参数承载，避免冗余）。
 /// 另支持自定义变量 <c>{{variable_name}}</c> 与内置变量（model、session_id 等）。
 /// </para>
 /// </summary>
@@ -97,7 +97,7 @@ public class PromptBuilder
                 StringComparer.OrdinalIgnoreCase);
 
         var injections = new Dictionary<string, string>(StringComparer.Ordinal);
-        // 模板中缺少锚点但贡献者有内容的分节 → 兜底追加到 prompt 末尾（按锚点定义顺序，保证稳定）
+        // Skills / Agents / Environment：缺锚点时兜底追加到末尾（Tools 见下方例外）
         var appendedSections = new List<string>();
 
         foreach (var (sectionName, contributors) in bySection)
@@ -118,12 +118,17 @@ public class PromptBuilder
 
             var content = string.Join("\n\n", parts);
             if (ContainsHeading(prompt, heading))
+            {
                 injections[heading] = content;
-            else
+            }
+            else if (!string.Equals(sectionName, PromptSectionNames.Tools, StringComparison.OrdinalIgnoreCase))
+            {
+                // Tools 无锚点不兜底追加：工具已通过 API tools 字段传入，system 内重复冗余
                 appendedSections.Add($"{heading}\n\n{content}");
+            }
         }
 
-        // 按锚点定义顺序排序，保证追加分节顺序稳定（Tools → Skills → Agents → Environment）
+        // 按锚点定义顺序排序，保证追加分节顺序稳定（Skills → Agents → Environment；Tools 不兜底）
         var anchorOrder = SectionAnchors.Values.ToList();
         appendedSections = appendedSections
             .OrderBy(s => anchorOrder.FindIndex(h => s.StartsWith(h, StringComparison.Ordinal)))

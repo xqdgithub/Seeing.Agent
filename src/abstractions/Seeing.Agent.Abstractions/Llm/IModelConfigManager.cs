@@ -63,6 +63,19 @@ public interface IModelConfigManager
     /// <summary>是否可作为默认对话模型（有效类型含 Text）</summary>
     bool CanSetAsDefaultModel(string modelId);
 
+    /// <summary>
+    /// 重新聚合模型目录并等待本次刷新生效。
+    /// </summary>
+    /// <param name="providerId">
+    /// 为 null 或空白时刷新全部 Provider；
+    /// 指定时仅刷新该 Provider（配置型重读 <c>Providers[*].Models</c>，扩展型重新
+    /// <c>GetModelsAsync</c>），其它 Provider 的目录条目保留。
+    /// </param>
+    /// <param name="ct">取消等待或刷新。</param>
+    Task RefreshCatalogAsync(
+        string? providerId = null,
+        CancellationToken ct = default);
+
     #endregion
 
     #region 持久化

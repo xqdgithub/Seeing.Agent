@@ -21,6 +21,10 @@
     </Breadcrumb>
     <Extra>
         <Space>
+            <Button Icon="@IconType.Outline.Reload" Loading="@_refreshingAll"
+                    Disabled="@_refreshingCurrent" OnClick="RefreshAllAsync">
+                刷新全部
+            </Button>
             <Button Icon="@IconType.Outline.Plus" OnClick="ShowAddProvider">添加 Provider</Button>
         </Space>
     </Extra>
@@ -155,10 +159,17 @@
 
                     <Card Title="模型列表" Style="margin-top: 16px;">
                         <div style="margin-bottom: 12px;">
-                            <Button Icon="@IconType.Outline.Plus" Size="@ButtonSize.Small"
-                                    OnClick="ShowAddModel" Disabled="@(!CanEditCurrentProvider)">
-                                添加模型
-                            </Button>
+                            <Space>
+                                <Button Icon="@IconType.Outline.Reload" Size="@ButtonSize.Small"
+                                        Loading="@_refreshingCurrent" Disabled="@_refreshingAll"
+                                        OnClick="RefreshCurrentAsync">
+                                    刷新
+                                </Button>
+                                <Button Icon="@IconType.Outline.Plus" Size="@ButtonSize.Small"
+                                        OnClick="ShowAddModel" Disabled="@(!CanEditCurrentProvider)">
+                                    添加模型
+                                </Button>
+                            </Space>
                         </div>
                         <Table TItem="ModelRow" DataSource="@_modelRows" RowKey="@(m => m.Key)" Size="@TableSize.Small">
                             <PropertyColumn Property="c => c.Id" Title="模型 ID" />
@@ -305,6 +316,8 @@
     private ConfigLevel _saveLevel = ModelConfigManager.ModelStoreLevel;
     private bool _loading;
     private bool _testing;
+    private bool _refreshingAll;
+    private bool _refreshingCurrent;
     private bool _addModalVisible;
     private string _newProviderId = "";
     private string _newProviderType = ProviderTypes.OpenAi;
@@ -347,6 +360,54 @@
             await SelectProviderAsync(providers.Keys.First());
 
         _loading = false;
+    }
+
+    private async Task RefreshAllAsync()
+    {
+        if (_refreshingAll || _refreshingCurrent)
+            return;
+
+        _refreshingAll = true;
+        try
+        {
+            await ModelManager.RefreshCatalogAsync();
+            if (!string.IsNullOrEmpty(_selectedProviderId))
+                await SelectProviderAsync(_selectedProviderId);
+            else
+                RefreshModelRows();
+
+            MessageService.Success("已刷新全部模型目录");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"刷新失败: {ex.Message}");
+        }
+        finally
+        {
+            _refreshingAll = false;
+        }
+    }
+
+    private async Task RefreshCurrentAsync()
+    {
+        if (_refreshingAll || _refreshingCurrent || string.IsNullOrEmpty(_selectedProviderId))
+            return;
+
+        _refreshingCurrent = true;
+        try
+        {
+            await ModelManager.RefreshCatalogAsync(_selectedProviderId);
+            await SelectProviderAsync(_selectedProviderId);
+            MessageService.Success($"已刷新 {_selectedProviderId} 的模型目录");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"刷新失败: {ex.Message}");
+        }
+        finally
+        {
+            _refreshingCurrent = false;
+        }
     }
 
     private void OnModelConfigChanged(object? sender, ModelConfigChangedEventArgs e)

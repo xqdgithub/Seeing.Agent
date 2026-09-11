@@ -211,6 +211,105 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("sequence/latest");
     }
 
+    [Fact]
+    public async Task RefreshCatalogAsync_Full_WaitsUntilApplied_AndRecoversModels()
+    {
+        var config = await CreateConfigAsync(new SeeingAgentOptions());
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        var provider = new MutableModelsProvider("recoverable");
+        provider.SetModels([]);
+        registry.Register(provider, ownerExtensionId: "recover");
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(() => provider.CallCount >= 1, TimeSpan.FromSeconds(5));
+        catalog.GetModels().Should().BeEmpty();
+
+        provider.SetModels([new ModelConfig { Id = "recovered" }]);
+        await catalog.RefreshCatalogAsync();
+
+        catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("recoverable/recovered");
+    }
+
+    [Fact]
+    public async Task RefreshCatalogAsync_SingleProvider_UpdatesOnlyThatProvider()
+    {
+        var config = await CreateConfigAsync(new SeeingAgentOptions());
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        var first = new MutableModelsProvider("first");
+        first.SetModels([new ModelConfig { Id = "a" }]);
+        var second = new MutableModelsProvider("second");
+        second.SetModels([new ModelConfig { Id = "b" }]);
+        registry.Register(first, ownerExtensionId: "ext");
+        registry.Register(second, ownerExtensionId: "ext");
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => catalog.GetModels().Count == 2,
+            TimeSpan.FromSeconds(5));
+
+        var secondCallsBefore = second.CallCount;
+        first.SetModels([new ModelConfig { Id = "a2" }]);
+        second.SetModels([new ModelConfig { Id = "b2" }]);
+
+        await catalog.RefreshCatalogAsync("first");
+
+        catalog.GetModels().Keys.Should().BeEquivalentTo("first/a2", "second/b");
+        second.CallCount.Should().Be(secondCallsBefore);
+    }
+
+    [Fact]
+    public async Task RefreshCatalogAsync_ConfiguredProvider_RereadsUserModels()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["gpt"] = new() { Id = "gpt" }
+                }
+            }
+        };
+        var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        registry.Register(new TestProvider("openai", [new() { Id = "gpt" }]));
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => catalog.GetModels().ContainsKey("openai/gpt"),
+            TimeSpan.FromSeconds(5));
+
+        await config.SaveSectionAsync(
+            "Providers",
+            new Dictionary<string, ProviderConfig>
+            {
+                ["openai"] = new ProviderConfig
+                {
+                    Id = "openai",
+                    Models = new Dictionary<string, ModelConfig>
+                    {
+                        ["gpt"] = new() { Id = "gpt" },
+                        ["added"] = new() { Id = "added" }
+                    }
+                }
+            },
+            ConfigLevel.User);
+
+        await catalog.RefreshCatalogAsync("openai");
+
+        catalog.GetModels().Keys.Should().BeEquivalentTo("openai/gpt", "openai/added");
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -278,6 +377,35 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             => _error is null
                 ? Task.FromResult(_models)
                 : Task.FromException<IReadOnlyList<ModelConfig>>(_error);
+
+        public Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken)
+            => Task.FromResult(true);
+    }
+
+    private sealed class MutableModelsProvider(string id) : ILlmProvider
+    {
+        private readonly object _lock = new();
+        private IReadOnlyList<ModelConfig> _models = [];
+
+        public string Id { get; } = id;
+        public string? Name => Id;
+        public int MaxRetries => 3;
+        public int CallCount { get; private set; }
+
+        public void SetModels(IReadOnlyList<ModelConfig> models)
+        {
+            lock (_lock)
+                _models = models;
+        }
+
+        public ILlmClient GetClient() => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ModelConfig>> GetModelsAsync(CancellationToken cancellationToken)
+        {
+            CallCount++;
+            lock (_lock)
+                return Task.FromResult(_models);
+        }
 
         public Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken)
             => Task.FromResult(true);

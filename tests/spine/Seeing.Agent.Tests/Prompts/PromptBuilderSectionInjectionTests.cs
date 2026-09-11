@@ -81,8 +81,9 @@ public class PromptBuilderSectionInjectionTests
     }
 
     [Fact]
-    public async Task BuildAsync_ShouldAppendSection_WhenAnchorMissing()
+    public async Task BuildAsync_ShouldNotAppendTools_WhenAnchorMissing()
     {
+        // Tools 已由 API tools 字段承载；无 ## Tools 锚点时不兜底追加，避免冗余
         var tools = new FakeContributor(PromptSectionNames.Tools, order: 1, "SHOULD-NOT-APPEAR");
         var builder = new PromptBuilder([tools]);
         var context = new PromptContext
@@ -95,22 +96,20 @@ public class PromptBuilderSectionInjectionTests
 
         var result = await builder.BuildAsync(context);
 
-        // 无锚点时不再丢弃，兜底追加到末尾
-        result.Should().StartWith("No anchors here.");
-        result.Should().Contain("## Tools");
-        result.Should().Contain("SHOULD-NOT-APPEAR");
-        result.IndexOf("## Tools", StringComparison.Ordinal).Should().BeGreaterThan(result.IndexOf("No anchors here.", StringComparison.Ordinal));
+        result.Should().Be("No anchors here.");
+        result.Should().NotContain("## Tools");
+        result.Should().NotContain("SHOULD-NOT-APPEAR");
     }
 
     [Fact]
-    public async Task BuildAsync_ShouldAppendSections_WhenAnchorsMissing_InStableOrder()
+    public async Task BuildAsync_ShouldAppendNonToolsSections_WhenAnchorsMissing_InStableOrder()
     {
         var tools = new FakeContributor(PromptSectionNames.Tools, order: 100, "TOOLS-BODY");
         var skills = new FakeContributor(PromptSectionNames.Skills, order: 200, "SKILLS-BODY");
         var agents = new FakeContributor(PromptSectionNames.Agents, order: 300, "AGENTS-BODY");
         var env = new FakeContributor(PromptSectionNames.Environment, order: 400, "ENV-BODY");
 
-        // 故意乱序注册，验证按锚点定义顺序兜底追加
+        // 故意乱序注册；Tools 无锚点跳过，其余按锚点定义顺序兜底追加
         var builder = new PromptBuilder([skills, env, tools, agents]);
         var context = new PromptContext
         {
@@ -122,13 +121,14 @@ public class PromptBuilderSectionInjectionTests
 
         var result = await builder.BuildAsync(context);
 
-        var toolsIdx = result.IndexOf("## Tools", StringComparison.Ordinal);
+        result.Should().NotContain("## Tools");
+        result.Should().NotContain("TOOLS-BODY");
+
         var skillsIdx = result.IndexOf("## Skills", StringComparison.Ordinal);
         var agentsIdx = result.IndexOf("## Agents", StringComparison.Ordinal);
         var envIdx = result.IndexOf("## Environment", StringComparison.Ordinal);
 
-        toolsIdx.Should().BeGreaterThan(-1);
-        toolsIdx.Should().BeLessThan(skillsIdx);
+        skillsIdx.Should().BeGreaterThan(-1);
         skillsIdx.Should().BeLessThan(agentsIdx);
         agentsIdx.Should().BeLessThan(envIdx);
     }

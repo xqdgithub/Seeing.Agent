@@ -101,6 +101,11 @@ public sealed class ModelManager : IModelManager
 
     public bool CanSetAsDefaultModel(string modelId) => _catalog.CanSetAsDefaultModel(modelId);
 
+    public Task RefreshCatalogAsync(
+        string? providerId = null,
+        CancellationToken ct = default) =>
+        _catalog.RefreshCatalogAsync(providerId, ct);
+
     public Task AddModelAsync(
         string modelId,
         ModelConfig config,
