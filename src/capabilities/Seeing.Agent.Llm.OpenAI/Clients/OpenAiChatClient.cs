@@ -240,6 +240,11 @@ public class OpenAiChatClient : ILlmClient
                 body.ReasoningEffort = request.ThinkingEffort;
             }
         }
+        else
+        {
+            //默认开启思考，但是不设置思考强度
+            body.Thinking = new ChatCompletionThinking { Type = "enabled" };
+        }
 
         return body;
     }
