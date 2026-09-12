@@ -138,19 +138,17 @@
                             <Divider />
                             <Space>
                                 @* @key：切换 Provider 时强制重建，避免 AntDesign Select 残留上一 Provider 的 Option *@
-                                <Select TItemValue="string"
-                                        TItem="ModelRow"
-                                        @key="@($"test-conn-{_selectedProviderId}")"
-                                        DataSource="@_modelRows"
-                                        @bind-Value="_testModelId"
-                                        ValueName="@nameof(ModelRow.Id)"
-                                        LabelName="@nameof(ModelRow.Id)"
-                                        Style="width: 240px;"
-                                        Placeholder="选择测试模型"
-                                        Disabled="@(_modelRows.Count == 0)"
-                                        AllowClear />
+                                <ModelSelectDropdown @key="@($"test-conn-{_selectedProviderId}")"
+                                                     Value="@_testModelKey"
+                                                     ValueChanged="OnTestModelKeyChanged"
+                                                     ProviderId="@_selectedProviderId"
+                                                     FilterType="@((ModelType?)null)"
+                                                     Style="width: 240px;"
+                                                     Placeholder="选择测试模型"
+                                                     Disabled="@(_modelRows.Count == 0)"
+                                                     AllowClear="true" />
                                 <Button Loading="@_testing" OnClick="TestConnection"
-                                        Disabled="@(string.IsNullOrEmpty(_testModelId))">
+                                        Disabled="@(string.IsNullOrEmpty(_testModelKey))">
                                     测试连接
                                 </Button>
                             </Space>
@@ -328,7 +326,7 @@
     private bool _addingModel;
     private readonly AddModelForm _addModelForm = new();
     private IEnumerable<ModelType> _addModelTypes = new[] { ModelType.Text };
-    private string _testModelId = "";
+    private string _testModelKey = "";
     private string _headersJson = "{}";
 
     private IConfigurableLlmProvider? _configurable;
@@ -496,10 +494,13 @@
 
         // 当前选中测试模型若不在本 Provider 列表中，回落到首项或清空
         if (_modelRows.Count == 0)
-            _testModelId = "";
-        else if (_modelRows.All(m => m.Id != _testModelId))
-            _testModelId = _modelRows[0].Id;
+            _testModelKey = "";
+        else if (string.IsNullOrEmpty(_testModelKey) || _modelRows.All(m => m.Key != _testModelKey))
+            _testModelKey = _modelRows[0].Key;
     }
+
+    private void OnTestModelKeyChanged(string? value)
+        => _testModelKey = value ?? "";
 
     /// <summary>
     /// 从模型扩展元数据读取免费标记（支持 bool 与 JSON 反序列化的 JsonElement/字符串）。
@@ -574,7 +575,7 @@
     private async Task TestConnection()
     {
         if (string.IsNullOrEmpty(_selectedProviderId)) return;
-        if (string.IsNullOrEmpty(_testModelId))
+        if (string.IsNullOrEmpty(_testModelKey))
         {
             MessageService.Warning("请先选择测试模型");
             return;
@@ -582,8 +583,10 @@
         _testing = true;
         try
         {
-            var ok = await ProviderManager.TestConnectionAsync(_selectedProviderId, _testModelId);
-            if (ok) MessageService.Success($"连接成功 ({_testModelId})");
+            var cfg = ModelManager.GetModel(_testModelKey);
+            var modelId = cfg?.Id ?? _testModelKey;
+            var ok = await ProviderManager.TestConnectionAsync(_selectedProviderId, modelId);
+            if (ok) MessageService.Success($"连接成功 ({modelId})");
             else MessageService.Error("连接失败");
         }
         finally { _testing = false; }

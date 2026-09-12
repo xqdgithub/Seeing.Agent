@@ -1,0 +1,181 @@
+/* Unified model picker: dropdown + badge + modal */
+
+.model-select-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.model-select-dropdown-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-select-dropdown-provider {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 12px;
+}
+
+.model-select-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 160px;
+  vertical-align: middle;
+}
+
+/* 对齐工具栏 Agent Select (InputSize.Small ≈ 24px) */
+.model-select-badge .model-select-badge-chip.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  max-width: 160px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 22px;
+  overflow: hidden;
+}
+
+.model-select-badge .model-select-badge-chip.ant-btn > span {
+  display: block !important;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.model-select-badge-inner {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 模型名优先占满所需宽度；不够时再省略 */
+.model-select-badge-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+/* provider 先被压缩省略，给模型名让路 */
+.model-select-badge-provider {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.45);
+  font-weight: 400;
+}
+
+.model-select-badge-text.is-placeholder {
+  flex: 1 1 auto;
+  color: rgba(0, 0, 0, 0.25);
+}
+
+.model-select-badge-chip.is-invalid.ant-btn {
+  border-color: var(--ant-color-error, #ff4d4f);
+  color: var(--ant-color-error, #ff4d4f);
+}
+
+.model-select-badge-clear {
+  flex-shrink: 0;
+  height: 24px;
+  width: 24px;
+  padding: 0;
+}
+
+.model-select-modal-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.model-select-modal-body {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.model-select-modal-group {
+  margin-bottom: 12px;
+}
+
+.model-select-modal-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.45);
+  margin: 0 0 6px 4px;
+  text-transform: none;
+}
+
+.model-select-modal-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  box-sizing: border-box;
+}
+
+.model-select-modal-row:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.model-select-modal-row:focus-visible {
+  outline: 2px solid var(--ant-color-primary, #1677ff);
+  outline-offset: 1px;
+}
+
+.model-select-modal-row.is-selected {
+  border-color: var(--ant-color-primary, #1677ff);
+  background: rgba(22, 119, 255, 0.06);
+}
+
+.model-select-modal-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.model-select-modal-key {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.model-select-modal-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-select-modal-limits {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}

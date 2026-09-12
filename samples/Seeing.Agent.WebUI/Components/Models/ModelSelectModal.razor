@@ -1,0 +1,162 @@
+@using AntDesign
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Agent.Abstractions.Llm
+
+<Modal Title="@Title"
+       Visible="@Visible"
+       VisibleChanged="OnVisibleChanged"
+       Closable="true"
+       DestroyOnClose="true"
+       Footer="@null"
+       Width="640">
+    <div class="model-select-modal">
+        <div class="model-select-modal-toolbar">
+            <Input Placeholder="搜索模型 ID / 名称 / Provider"
+                   Value="@_search"
+                   ValueChanged="EventCallback.Factory.Create<string?>(this, OnSearchChanged)"
+                   AllowClear="true"
+                   Style="flex: 1;" />
+            @if (ShowRefresh)
+            {
+                <Button Loading="@_refreshing" OnClick="OnRefreshAsync" Icon="@IconType.Outline.Reload">
+                    刷新目录
+                </Button>
+            }
+        </div>
+
+        <div class="model-select-modal-body">
+            @if (_grouped.Count == 0)
+            {
+                <Empty Description="@("没有匹配的模型")" />
+            }
+            else
+            {
+                @foreach (var group in _grouped)
+                {
+                    <div class="model-select-modal-group">
+                        <div class="model-select-modal-group-title">@group.Key</div>
+                        @foreach (var item in group)
+                        {
+                            var key = item.Key;
+                            <div class="@GetRowClass(item)"
+                                 role="button"
+                                 tabindex="0"
+                                 @onclick="(() => OnPickAsync(key))"
+                                 @onkeydown="(e => OnRowKeyDown(e, key))">
+                                <div class="model-select-modal-row-main">
+                                    <strong>@item.DisplayName</strong>
+                                    <span class="model-select-modal-key">@item.Key</span>
+                                </div>
+                                <div class="model-select-modal-row-meta">
+                                    @foreach (var t in item.Types)
+                                    {
+                                        <Tag>@t</Tag>
+                                    }
+                                    @if (item.IsFree)
+                                    {
+                                        <Tag Color="@("green")">免费</Tag>
+                                    }
+                                    @if (item.SupportsThinking)
+                                    {
+                                        <Tag Color="@("blue")">思考</Tag>
+                                    }
+                                    @if (item.Context > 0 || item.Output > 0)
+                                    {
+                                        <span class="model-select-modal-limits">
+                                            ctx @item.Context / out @item.Output
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<ModelPickerItem> Items { get; set; } = [];
+    [Parameter] public string Title { get; set; } = "选择模型";
+    [Parameter] public bool ShowRefresh { get; set; } = true;
+    [Parameter] public EventCallback OnRefresh { get; set; }
+
+    private string _search = "";
+    private bool _refreshing;
+    private List<IGrouping<string, ModelPickerItem>> _grouped = [];
+
+    protected override void OnParametersSet() => RebuildGroups();
+
+    private void OnSearchChanged(string? value)
+    {
+        _search = value ?? "";
+        RebuildGroups();
+    }
+
+    private void RebuildGroups()
+    {
+        IEnumerable<ModelPickerItem> query = Items ?? [];
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var q = _search.Trim();
+            query = query.Where(i =>
+                i.Key.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || i.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || i.Provider.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || i.ModelId.Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _grouped = query
+            .GroupBy(i => string.IsNullOrEmpty(i.Provider) ? "其他" : i.Provider)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private string GetRowClass(ModelPickerItem item)
+    {
+        var selected = string.Equals(Value, item.Key, StringComparison.Ordinal);
+        return selected
+            ? "model-select-modal-row is-selected"
+            : "model-select-modal-row";
+    }
+
+    private async Task OnVisibleChanged(bool visible)
+    {
+        Visible = visible;
+        if (VisibleChanged.HasDelegate)
+            await VisibleChanged.InvokeAsync(visible);
+    }
+
+    private async Task OnPickAsync(string key)
+    {
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(key);
+        await OnVisibleChanged(false);
+    }
+
+    private async Task OnRowKeyDown(KeyboardEventArgs e, string key)
+    {
+        if (e.Key is "Enter" or " ")
+            await OnPickAsync(key);
+    }
+
+    private async Task OnRefreshAsync()
+    {
+        if (!OnRefresh.HasDelegate || _refreshing)
+            return;
+        _refreshing = true;
+        try
+        {
+            await OnRefresh.InvokeAsync();
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+}

@@ -23,6 +23,7 @@
 | [04 开发规范与反模式](04-development-standards.md) | 强制约定、PR 检查清单、反模式 |
 | [05 扩展指南](05-extension-guide.md) | 新工具包 / 模块 / UI / LLM / Scenario / Gateway |
 | [06 合规审查](06-compliance-audit.md) | 当前仓库对照规格的结论与残留 |
+| [07 WebUI 统一模型选择](07-webui-model-picker.md) | Session Badge+Modal / 配置页 Dropdown、目录新鲜度 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

@@ -3,14 +3,9 @@
 @using Seeing.Agent.Scheduler.Engine
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.Core.Models
-@using Seeing.Agent.Core.Llm
-@using Seeing.Agent.Llm
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @inject IAgentRegistry AgentRegistry
-@inject ILlmService LlmService
-@inject IProviderManager ProviderManager
-@inject IModelConfigManager ModelManager
 
 <Modal Title="@(IsEdit ? "编辑任务" : "新建任务")"
        Visible="@Visible"
@@ -85,22 +80,11 @@
                 else
                 {
                     <FormItem Label="模型">
-                        <Select TItemValue="string" TItem="ModelViewModel"
-                                Value="@_selectedModel"
-                                ValueChanged="@OnModelChanged"
-                                DataSource="@_models"
-                                ValueName="Id"
-                                LabelName="ModelName"
-                                Placeholder="选择模型"
-                                EnableSearch="true">
-                            <ItemTemplate Context="model">
-                                <span>@model.ModelName</span>
-                                @if (!string.IsNullOrEmpty(model.ProviderName))
-                                {
-                                    <span style="color: #999; font-size: 12px; margin-left: 4px;">(@model.ProviderName)</span>
-                                }
-                            </ItemTemplate>
-                        </Select>
+                        <ModelSelectDropdown Value="@_selectedModel"
+                                             ValueChanged="OnModelChanged"
+                                             FilterType="ModelType.Text"
+                                             AllowClear="true"
+                                             Placeholder="选择模型" />
                         <small style="color: #999;">Agent 执行时使用的模型</small>
                     </FormItem>
                 }
@@ -221,17 +205,14 @@
     private string _selectedModel = "";
     private string _selectedAcpMode = "";
     private bool _isAcpPassthrough;
-    private List<ModelViewModel> _models = new();
-    private bool _optionsReady;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadOptionsAsync();
+        await LoadAgentsAsync();
     }
 
-    private async Task LoadOptionsAsync()
+    private async Task LoadAgentsAsync()
     {
-        _optionsReady = false;
         try
         {
             var agents = await AgentRegistry.GetPrimaryAgentsAsync();
@@ -245,38 +226,6 @@
             _agentNames = new List<string>();
         }
 
-        try
-        {
-            var availableModels = LlmService.GetAvailableModels();
-            if (availableModels != null)
-            {
-                var providerIds = ProviderManager.GetProviders().Keys.ToArray();
-                _models = availableModels
-                    .Where(m => !string.IsNullOrEmpty(m.Key))
-                    .Select(m =>
-                    {
-                        var providerName = m.Value.Provider
-                            ?? ModelRef.Parse(m.Key, providerIds).ProviderId
-                            ?? "";
-                        var modelName = !string.IsNullOrEmpty(m.Value.Id)
-                            ? m.Value.Id
-                            : ModelRef.Parse(m.Key, providerIds).ModelId;
-                        return new ModelViewModel
-                        {
-                            Id = m.Key,
-                            ModelName = modelName,
-                            ProviderName = providerName
-                        };
-                    })
-                    .ToList();
-            }
-        }
-        catch
-        {
-            _models = new List<ModelViewModel>();
-        }
-
-        _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
         RefreshAgentRuntime();
     }
 
@@ -335,14 +284,14 @@
         }
         else if (wasAcpPassthrough && !_isAcpPassthrough)
         {
-            var defaultModel = _models.FirstOrDefault()?.Id ?? "";
-            _selectedModel = defaultModel;
+            _selectedModel = "";
         }
     }
 
-    private async Task OnModelChanged(string value)
+    private Task OnModelChanged(string? value)
     {
         _selectedModel = value ?? "";
+        return Task.CompletedTask;
     }
 
     private async Task OnAcpModelChanged(string? value)
@@ -523,13 +472,6 @@
     }
 
     private async Task HandleCancel() => await VisibleChanged.InvokeAsync(false);
-
-    private sealed class ModelViewModel
-    {
-        public string Id { get; init; } = "";
-        public string ModelName { get; init; } = "";
-        public string ProviderName { get; init; } = "";
-    }
 
     private sealed class WindowRow
     {

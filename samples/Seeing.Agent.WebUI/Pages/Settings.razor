@@ -12,7 +12,6 @@
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
 @inject AgentManager AgentManager
-@inject IModelConfigManager ModelManager
 @inject IWorkspaceProvider WorkspaceProvider
 @inject WorkspaceSwitchService WorkspaceSwitchService
 @inject IMessageService MessageService
@@ -94,15 +93,10 @@
                         </div>
                     </FormItem>
                     <FormItem Label="默认模型">
-                        <Select TItemValue="string" TItem="ModelOption"
-                                @bind-Value="@_options.DefaultModel"
-                                Placeholder="选择默认模型（格式: provider/model）" AllowClear="true">
-                            @foreach (var m in _availableModels)
-                            {
-                                <SelectOption TItemValue="string" TItem="ModelOption"
-                                              Value="@m.Key" Label="@m.Display" />
-                            }
-                        </Select>
+                        <ModelSelectDropdown @bind-Value="@_options.DefaultModel"
+                                             FilterType="ModelType.Text"
+                                             AllowClear="true"
+                                             Placeholder="选择默认模型（格式: provider/model）" />
                     </FormItem>
                     
                     <Divider Orientation="@DividerOrientation.Left">工作区设置</Divider>
@@ -208,7 +202,6 @@
     private string _workspacePath = "";
     private List<PluginRow> _pluginRows = new();
     private List<AgentOption> _availableAgents = new();
-    private List<ModelOption> _availableModels = new();
     private List<ScenarioOption> _scenarioOptions = [];
     private List<string> _bootOptions = [];
     private bool _modulesEnabledWarning;
@@ -244,12 +237,6 @@
             .Where(a => !a.IsHidden && !a.Disabled
                 && (a.Mode == AgentMode.Primary || a.Mode == AgentMode.All))
             .Select(a => new AgentOption { Name = a.Name, Display = $"{a.Name}{(a.Description is { Length: > 0 } ? $" — {a.Description}" : "")}" })
-            .ToList();
-
-        // 加载可选模型列表
-        _availableModels = ModelManager.GetModels()
-            .Select(m => new ModelOption { Key = m.Key, Display = $"{m.Key}{(m.Value.Name is { Length: > 0 } ? $" ({m.Value.Name})" : "")}" })
-            .OrderBy(m => m.Key)
             .ToList();
 
         // 加载工作区配置
@@ -391,12 +378,6 @@
     private sealed class AgentOption
     {
         public string Name { get; set; } = "";
-        public string Display { get; set; } = "";
-    }
-
-    private sealed class ModelOption
-    {
-        public string Key { get; set; } = "";
         public string Display { get; set; } = "";
     }
 

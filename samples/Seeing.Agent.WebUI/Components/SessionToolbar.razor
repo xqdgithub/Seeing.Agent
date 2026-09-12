@@ -1,6 +1,5 @@
 @using AntDesign
 @using Microsoft.Extensions.Options
-@using Seeing.Agent.WebUI.State
 @using Services = Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @using Seeing.Agent.Abstractions.Agents
@@ -9,7 +8,6 @@
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Scenarios
-@inject AppState AppState
 @inject IAgentRegistry AgentRegistry
 @inject ILlmService LlmService
 @inject IMessageService MessageService
@@ -111,25 +109,13 @@
             }
             else if (!Context.IsSubAgentView && _optionsReady && Context.CurrentSession != null)
             {
-                <Select TItemValue="string" TItem="ModelViewModel"
-                        Value="@Context.SelectedModel"
-                        ValueExpression="@(() => Context.SelectedModel)"
-                        ValueChanged="@OnModelChanged"
-                        DataSource="@_models"
-                        ValueName="Id"
-                        LabelName="ModelName"
-                        GroupName="@nameof(ModelViewModel.ProviderName)"
-                        SortByGroup="SortDirection.Ascending"
-                        SortByLabel="SortDirection.Ascending"
-                        Style="min-width: 160px;"
-                        Size="@InputSize.Small"
-                        Placeholder="模型"
-                        Class="@(Context.ModelInvalid ? "model-select-invalid" : null)"
-                        EnableSearch="true">
-                    <ItemTemplate Context="model">
-                        <span>@model.ModelName</span>
-                    </ItemTemplate>
-                </Select>
+                <ModelSelectBadge Value="@Context.SelectedModel"
+                                  ValueChanged="EventCallback.Factory.Create<string?>(this, OnModelChangedNullable)"
+                                  FilterType="ModelType.Text"
+                                  AllowClear="false"
+                                  IsInvalid="@Context.ModelInvalid"
+                                  Placeholder="选择模型"
+                                  Style="width: 160px; max-width: 160px;" />
                 @if (TryGetThinkingLevels(out var thinkingLevels))
                 {
                     <Select TItemValue="string" TItem="ThinkingLevelOption"
@@ -269,7 +255,6 @@
     private const string CancelText = "取消";
 
     private List<string> _agentNames = new();
-    private List<ModelViewModel> _models = new();
     private List<ScenarioOption> _scenarioOptions = [];
     private bool _optionsReady;
     private bool RenameModalVisible;
@@ -292,56 +277,6 @@
             ? $"会话场景：跟随进程（{EffectiveScenarioDisplay}）"
             : $"会话场景：{Context.SessionScenario}（仅影响下一次 Submit）";
 
-    /// <summary>
-    /// 选项缓存：大屏切换主窗口会重建工具栏，复用内存选项避免重复查询（配置热重载时短暂旧值可接受）。
-    /// 缓存 30 秒过期，规避长驻内存的陈旧风险。
-    /// </summary>
-    private static readonly TimeSpan OptionCacheTtl = TimeSpan.FromSeconds(30);
-    private static (DateTime LoadedAt, List<string> Agents, List<ModelViewModel> Models)? s_optionCache;
-
-    /// <summary>模型视图类 - 用于选择器显示</summary>
-    private class ModelViewModel
-    {
-        /// <summary>完整 ID（provider/model 格式）</summary>
-        public string Id { get; init; } = "";
-
-        /// <summary>模型名称</summary>
-        public string ModelName { get; init; } = "";
-
-        /// <summary>Provider 名称</summary>
-        public string ProviderName { get; init; } = "";
-    }
-
-    private static ModelViewModel ToModelViewModel(string catalogKey, ModelConfig config)
-    {
-        var providerName = config.Provider;
-        var modelName = config.Id;
-        if (string.IsNullOrEmpty(modelName))
-            modelName = config.Name ?? catalogKey;
-
-        if (string.IsNullOrEmpty(providerName) || string.IsNullOrEmpty(modelName))
-        {
-            var slash = catalogKey.IndexOf('/');
-            if (slash > 0)
-            {
-                if (string.IsNullOrEmpty(providerName))
-                    providerName = catalogKey[..slash];
-                if (string.IsNullOrEmpty(modelName))
-                    modelName = catalogKey[(slash + 1)..];
-            }
-        }
-
-        if (string.IsNullOrEmpty(providerName))
-            providerName = "其他";
-
-        return new ModelViewModel
-        {
-            Id = catalogKey,
-            ModelName = modelName,
-            ProviderName = providerName
-        };
-    }
-
     protected override async Task OnInitializedAsync()
     {
         Context.StateChanged += OnContextStateChanged;
@@ -361,16 +296,6 @@
     {
         _optionsReady = false;
 
-        // 命中缓存（30s 内）直接复用，避免大屏切换主窗口重建工具栏时重复查询
-        if (s_optionCache is { } cache && DateTime.UtcNow - cache.LoadedAt < OptionCacheTtl)
-        {
-            _agentNames = cache.Agents;
-            _models = cache.Models;
-            RefreshScenarioOptions();
-            _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
-            return;
-        }
-
         var agentNames = new List<string>();
         try
         {
@@ -387,28 +312,9 @@
 
         RefreshScenarioOptions();
 
-        var models = new List<ModelViewModel>();
-        try
-        {
-            var availableModels = LlmService.GetAvailableModels();
-            if (availableModels != null)
-            {
-                AppState.AvailableModels = availableModels;
-                models = availableModels
-                    .Where(m => !string.IsNullOrEmpty(m.Key))
-                    .Select(m => ToModelViewModel(m.Key, m.Value))
-                    .ToList();
-            }
-        }
-        catch (Exception)
-        {
-            // 静默失败，选项保持为空
-        }
-
         _agentNames = agentNames;
-        _models = models;
-        _optionsReady = _agentNames.Count > 0 || _models.Count > 0;
-        s_optionCache = (DateTime.UtcNow, agentNames, models);
+        // 模型选择由 ModelSelectBadge 自行读目录；不因 Agent 列表为空而隐藏
+        _optionsReady = true;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -455,10 +361,12 @@
         ScenarioModalVisible = false;
     }
 
+    private Task OnModelChangedNullable(string? value) => OnModelChanged(value);
+
     private async Task OnModelChanged(string? value)
     {
         var modelId = value ?? "";
-        // Native Select 无 AllowClear；空事件多为思考档挂载引发的受控回滚
+        // Badge 无 AllowClear；空事件多为思考档挂载引发的受控回滚
         if (string.IsNullOrEmpty(modelId) && !Context.IsAcpPassthrough)
             return;
         if (string.Equals(Context.SelectedModel ?? "", modelId, StringComparison.Ordinal))

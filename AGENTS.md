@@ -76,6 +76,7 @@ Seeing.Agent/
 | 新增 Tool | `src/capabilities/Seeing.Agent.Tools.*` + `[Tool]` | 经 `AddSeeingModule`；Activate 挂载 |
 | 子 Agent / Task | `src/hosting/Seeing.Agent.Hosting/` Task 工具 | Session-first |
 | 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
+| WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |
 | Hook | `src/spine/Seeing.Agent.Core/` HookManager | `HookPoints.*` 常量 |
 | 权限 | `src/spine/Seeing.Agent.Core/` PermissionService | Allow/Deny/Ask |
 | MCP | `src/capabilities/Seeing.Agent.Mcp/` | 能力模块，非 Core |

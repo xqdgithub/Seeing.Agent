@@ -1015,7 +1015,7 @@
         if (!Context.IsAcpPassthrough)
         {
             var modelAvailable = !string.IsNullOrEmpty(SessionState.SelectedModel)
-                && AppState.AvailableModels.ContainsKey(SessionState.SelectedModel);
+                && ModelManager.GetModelsByType(ModelType.Text).ContainsKey(SessionState.SelectedModel);
             if (!modelAvailable)
             {
                 _modelInvalid = true;

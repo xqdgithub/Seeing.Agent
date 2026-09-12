@@ -53,13 +53,12 @@
                     <FormItem Label="空闲 Flush 分钟"><AntDesign.InputNumber @bind-Value="@_options.Extraction.FlushIdleMinutes" Min="0" Max="1440" /></FormItem>
                     <FormItem Label="每分钟 Flush 上限"><AntDesign.InputNumber @bind-Value="@_options.Extraction.MaxCandidatesPerMinute" Min="1" Max="60" /></FormItem>
                     <FormItem Label="抽取模型">
-                        <Select TItemValue="string"
-                                TItem="string"
-                                AllowClear
-                                @bind-Value="@_options.Extraction.Model"
-                                Placeholder="空则使用 DefaultModel"
-                                Style="width: 100%;"
-                                DataSource="@_textModelIds" />
+                        <ModelSelectDropdown Value="@_extractionKey"
+                                             ValueChanged="OnExtractionKeyChanged"
+                                             FilterType="ModelType.Text"
+                                             AllowClear="true"
+                                             Placeholder="空则使用 DefaultModel"
+                                             Style="width: 100%;" />
                     </FormItem>
                 </Card>
                 <Card Title="演化" Style="margin-bottom: 16px;">
@@ -70,18 +69,14 @@
                 </Card>
                 <Card Title="Embedding" Style="margin-bottom: 16px;">
                     <FormItem Label="Embedding 模型">
-                        <Select TItemValue="string"
-                                TItem="ModelPickOption"
-                                Value="@_embeddingKey"
-                                ValueChanged="OnEmbeddingKeyChanged"
-                                Placeholder="选择 Embedding 模型"
-                                Style="width: 100%;"
-                                DataSource="@_embeddingOptions"
-                                ValueName="@nameof(ModelPickOption.Key)"
-                                LabelName="@nameof(ModelPickOption.Label)"
-                                AllowClear />
+                        <ModelSelectDropdown Value="@_embeddingKey"
+                                             ValueChanged="OnEmbeddingKeyChanged"
+                                             FilterType="ModelType.Embedding"
+                                             AllowClear="true"
+                                             Placeholder="选择 Embedding 模型"
+                                             Style="width: 100%;" />
                     </FormItem>
-                    @if (_embeddingOptions.Count == 0)
+                    @if (!ModelManager.GetModelsByType(ModelType.Embedding).Any())
                     {
                         <Alert Type="@AlertType.Warning"
                                Message="请先在模型管理中为模型勾选 Embedding 类型"
@@ -133,41 +128,23 @@
     private bool _embeddingTestOk;
     private string? _embeddingTestMessage;
     private string? _embeddingKey;
-    private List<ModelPickOption> _embeddingOptions = new();
-    private List<string> _textModelIds = new();
+    private string? _extractionKey;
 
     protected override void OnInitialized()
     {
         _options = Clone(OptionsStore.Get());
-        RefreshModelPickers();
+        RefreshModelKeys();
         _loading = false;
     }
 
-    private void RefreshModelPickers()
+    private void RefreshModelKeys()
     {
-        _embeddingOptions = ModelManager.GetModelsByType(ModelType.Embedding)
-            .Select(kv => new ModelPickOption(
-                kv.Key,
-                $"{kv.Value.Provider} / {kv.Value.Name ?? kv.Value.Id}"))
-            .ToList();
-
-        _textModelIds = ModelManager.GetModelsByType(ModelType.Text)
-            .Select(kv => kv.Value.Id)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x)
-            .ToList();
-
         if (_options is null) return;
 
         _embeddingKey = ResolveEmbeddingKey(
             _options.Embedding.Provider,
             _options.Embedding.Model);
-
-        if (!string.IsNullOrEmpty(_options.Extraction.Model)
-            && !_textModelIds.Contains(_options.Extraction.Model, StringComparer.OrdinalIgnoreCase))
-        {
-            _textModelIds.Insert(0, _options.Extraction.Model);
-        }
+        _extractionKey = ResolveExtractionKey(_options.Extraction.Model);
     }
 
     private string? ResolveEmbeddingKey(string? provider, string? model)
@@ -176,17 +153,44 @@
             return null;
 
         var exact = $"{provider}/{model}";
-        if (_embeddingOptions.Any(o => o.Key.Equals(exact, StringComparison.OrdinalIgnoreCase)))
+        if (ModelManager.GetModel(exact) is not null)
             return exact;
 
-        return _embeddingOptions
-            .FirstOrDefault(o =>
+        return ModelManager.GetModelsByType(ModelType.Embedding)
+            .FirstOrDefault(kv =>
             {
-                var cfg = ModelManager.GetModel(o.Key);
-                return cfg is not null
-                       && cfg.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase)
+                var cfg = kv.Value;
+                return cfg.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase)
                        && cfg.Id.Equals(model, StringComparison.OrdinalIgnoreCase);
-            })?.Key;
+            }).Key;
+    }
+
+    private string? ResolveExtractionKey(string? model)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+            return null;
+
+        if (ModelManager.GetModel(model) is not null)
+            return model;
+
+        var match = ModelManager.GetModelsByType(ModelType.Text)
+            .FirstOrDefault(kv => kv.Value.Id.Equals(model, StringComparison.OrdinalIgnoreCase));
+        return match.Key is { Length: > 0 } ? match.Key : model;
+    }
+
+    private void OnExtractionKeyChanged(string? value)
+    {
+        _extractionKey = value;
+        if (_options is null) return;
+
+        if (string.IsNullOrEmpty(value))
+        {
+            _options.Extraction.Model = null;
+            return;
+        }
+
+        var cfg = ModelManager.GetModel(value);
+        _options.Extraction.Model = cfg?.Id ?? value;
     }
 
     private void OnEmbeddingKeyChanged(string value)
@@ -216,7 +220,7 @@
             await OptionsStore.SaveAsync(_options);
             MessageService.Success("记忆设置已保存");
             _options = Clone(OptionsStore.Get());
-            RefreshModelPickers();
+            RefreshModelKeys();
         }
         catch (Exception ex)
         {
@@ -258,5 +262,4 @@
         System.Text.Json.JsonSerializer.Deserialize<MemoryOptions>(
             System.Text.Json.JsonSerializer.Serialize(src)) ?? new MemoryOptions();
 
-    private sealed record ModelPickOption(string Key, string Label);
 }

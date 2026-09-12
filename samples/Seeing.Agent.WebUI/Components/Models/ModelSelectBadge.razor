@@ -1,0 +1,210 @@
+@using AntDesign
+@using Seeing.Agent.Abstractions.Llm
+@using Seeing.Agent.Llm
+@inject IModelConfigManager ModelManager
+@implements IDisposable
+
+<div class="@RootClass">
+    <Tooltip Title="@_badgeTitle">
+        <Button Type="@ButtonType.Default"
+                Size="@ButtonSize.Small"
+                Disabled="@Disabled"
+                Danger="@(IsInvalid || _isOrphan)"
+                Class="@ChipClass"
+                Style="@EffectiveStyle"
+                OnClick="OpenModalAsync">
+            @if (string.IsNullOrEmpty(Value))
+            {
+                <span class="model-select-badge-inner">
+                    <span class="model-select-badge-text is-placeholder">@Placeholder</span>
+                </span>
+            }
+            else
+            {
+                <span class="model-select-badge-inner">
+                    <span class="model-select-badge-text">@_badgeLabel</span>
+                    @if (!string.IsNullOrEmpty(_badgeProvider))
+                    {
+                        <span class="model-select-badge-provider">/ @_badgeProvider</span>
+                    }
+                </span>
+            }
+        </Button>
+    </Tooltip>
+    @if (AllowClear && !Disabled && !string.IsNullOrEmpty(Value))
+    {
+        <Button Type="@ButtonType.Text"
+                Size="@ButtonSize.Small"
+                Icon="@IconType.Outline.Close"
+                Class="model-select-badge-clear"
+                OnClick="OnClearAsync" />
+    }
+</div>
+
+<ModelSelectModal Visible="_modalVisible"
+                  VisibleChanged="OnModalVisibleChanged"
+                  Value="@Value"
+                  ValueChanged="OnPickedAsync"
+                  Items="@_items"
+                  ShowRefresh="true"
+                  OnRefresh="OnRefreshCatalogAsync" />
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public ModelType? FilterType { get; set; } = ModelType.Text;
+    [Parameter] public string? ProviderId { get; set; }
+    [Parameter] public bool AllowClear { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool IsInvalid { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "选择模型";
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private List<ModelPickerItem> _items = [];
+    private bool _modalVisible;
+    private string _badgeLabel = "";
+    private string? _badgeProvider;
+    private string _badgeTitle = "";
+    private bool _isOrphan;
+
+    private string RootClass =>
+        string.IsNullOrEmpty(Class) ? "model-select-badge" : $"model-select-badge {Class}";
+
+    private string ChipClass =>
+        _isOrphan || IsInvalid
+            ? "model-select-badge-chip is-invalid"
+            : "model-select-badge-chip";
+
+    private string EffectiveStyle =>
+        string.IsNullOrWhiteSpace(Style)
+            ? "max-width: 160px;"
+            : Style;
+
+    protected override void OnInitialized()
+    {
+        ModelManager.ModelConfigChanged += OnModelConfigChanged;
+        Reload();
+    }
+
+    protected override void OnParametersSet() => UpdateBadge();
+
+    private void OnModelConfigChanged(object? sender, ModelConfigChangedEventArgs e)
+        => _ = InvokeAsync(() =>
+        {
+            Reload();
+            StateHasChanged();
+        });
+
+    private async Task OpenModalAsync()
+    {
+        if (Disabled)
+            return;
+        Reload();
+        _modalVisible = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnModalVisibleChanged(bool visible)
+    {
+        _modalVisible = visible;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void Reload()
+    {
+        _items = ModelPickerItem.Build(ModelManager.GetModels(), FilterType, ProviderId).ToList();
+        _isOrphan = !string.IsNullOrEmpty(Value)
+            && !_items.Any(i => string.Equals(i.Key, Value, StringComparison.Ordinal));
+        EnsureOrphanInItems();
+        UpdateBadgeLabel();
+    }
+
+    private void EnsureOrphanInItems()
+    {
+        if (!_isOrphan || string.IsNullOrEmpty(Value))
+            return;
+        if (_items.Any(i => string.Equals(i.Key, Value, StringComparison.Ordinal)))
+            return;
+
+        var slash = Value.IndexOf('/');
+        var provider = slash > 0 ? Value[..slash] : "其他";
+        var modelId = slash > 0 ? Value[(slash + 1)..] : Value;
+        _items.Insert(0, new ModelPickerItem
+        {
+            Key = Value,
+            Provider = provider,
+            ModelId = modelId,
+            DisplayName = $"{modelId}（不可用）",
+            Types = []
+        });
+    }
+
+    private void UpdateBadge()
+    {
+        var catalog = ModelPickerItem.Build(ModelManager.GetModels(), FilterType, ProviderId);
+        _isOrphan = !string.IsNullOrEmpty(Value)
+            && !catalog.Any(i => string.Equals(i.Key, Value, StringComparison.Ordinal));
+        if (_isOrphan)
+            EnsureOrphanInItems();
+        UpdateBadgeLabel();
+    }
+
+    private void UpdateBadgeLabel()
+    {
+        if (string.IsNullOrEmpty(Value))
+        {
+            _badgeLabel = "";
+            _badgeProvider = null;
+            _badgeTitle = "";
+            return;
+        }
+
+        if (!_isOrphan)
+        {
+            var match = _items.FirstOrDefault(i => string.Equals(i.Key, Value, StringComparison.Ordinal))
+                ?? ModelPickerItem.Build(ModelManager.GetModels(), FilterType, ProviderId)
+                    .FirstOrDefault(i => string.Equals(i.Key, Value, StringComparison.Ordinal));
+            if (match is not null)
+            {
+                _badgeLabel = match.BadgeLabel;
+                _badgeProvider = match.BadgeProvider;
+                _badgeTitle = match.Key;
+                return;
+            }
+        }
+
+        var slash = Value.IndexOf('/');
+        var provider = slash > 0 ? Value[..slash] : "";
+        var name = slash > 0 ? Value[(slash + 1)..] : Value;
+        _badgeLabel = name;
+        _badgeProvider = string.IsNullOrEmpty(provider) ? null : provider;
+        _badgeTitle = $"{Value}（不可用）";
+    }
+
+    private async Task OnPickedAsync(string? key)
+    {
+        Value = key;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(key);
+        _modalVisible = false;
+        UpdateBadge();
+    }
+
+    private async Task OnClearAsync()
+    {
+        Value = null;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(null);
+        UpdateBadge();
+    }
+
+    private async Task OnRefreshCatalogAsync()
+    {
+        await ModelManager.RefreshCatalogAsync(ProviderId);
+        Reload();
+    }
+
+    public void Dispose()
+        => ModelManager.ModelConfigChanged -= OnModelConfigChanged;
+}

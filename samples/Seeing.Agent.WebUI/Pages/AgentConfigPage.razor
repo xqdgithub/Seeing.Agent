@@ -9,7 +9,6 @@
 @using Seeing.Agent.WebUI.State
 @inject AgentManager AgentManager
 @inject IAgentRuntimeManager RuntimeManager
-@inject ILlmService LlmService
 @inject ToolManager ToolInvoker
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
@@ -61,8 +60,7 @@
                     <div class="panel-body">
                         <AgentConfigForm @key="@_agentName"
                                          @ref="_form"
-                                         EditModel="@_editModel"
-                                         ModelKeys="@_modelKeys" />
+                                         EditModel="@_editModel" />
                     </div>
                 </div>
                 <div class="config-preview-panel">
@@ -117,7 +115,6 @@
     private string _agentName = "";
     private List<string> _agentNames = new();
     private AgentEditModel _editModel = new();
-    private List<string> _modelKeys = new();
     private ConfigLevel _saveLevel = ConfigLevel.Project;
     private bool _loading;
     private string _mdPreview = "";
@@ -138,9 +135,6 @@
         if (!string.IsNullOrEmpty(_agentName) && !_agentNames.Contains(_agentName))
             _agentName = _agentNames.FirstOrDefault() ?? "";
 
-        _modelKeys = LlmService.GetAvailableModels().Keys
-            .Where(k => !string.IsNullOrEmpty(k))
-            .ToList();
         await LoadAgentAsync();
     }
 

@@ -40,13 +40,11 @@
                                 }
                                 else
                                 {
-                                    <Select TItemValue="string" TItem="string"
-                                            Value="@_modelKey"
-                                            ValueExpression="@(() => _modelKey)"
-                                            ValueChanged="OnModelKeyChanged"
-                                            DataSource="@_modelKeys"
-                                            AllowClear
-                                            Placeholder="空则 Task 时继承主 Agent 模型" />
+                                    <ModelSelectDropdown Value="@_modelKey"
+                                                         ValueChanged="OnModelKeyChanged"
+                                                         FilterType="ModelType.Text"
+                                                         AllowClear="true"
+                                                         Placeholder="空则 Task 时继承主 Agent 模型" />
                                 }
                             </FormItem>
                         </Col>
@@ -203,13 +201,11 @@
 
 @code {
     [Parameter] public AgentEditModel EditModel { get; set; } = new();
-    [Parameter] public IEnumerable<string> ModelKeys { get; set; } = Array.Empty<string>();
 
     private static readonly List<string> _modeNames = new() { "Primary", "SubAgent", "All" };
 
     private string _modeName = "";
     private string _modelKey = "";
-    private List<string> _modelKeys = new();
 
     // 新规则输入
     private string _newRuleKind = "Tool";
@@ -219,12 +215,9 @@
 
     protected override void OnParametersSet()
     {
-        _modelKeys = ModelKeys.Where(k => !string.IsNullOrEmpty(k)).ToList();
         _modelKey = !string.IsNullOrEmpty(EditModel.Model)
             ? ModelRef.Format(EditModel.Provider, EditModel.Model)
             : "";
-        if (!string.IsNullOrEmpty(_modelKey) && !_modelKeys.Contains(_modelKey))
-            _modelKey = "";
 
         _modeName = EditModel.Mode.ToString();
         if (!string.IsNullOrEmpty(_modeName) && !_modeNames.Contains(_modeName))
@@ -239,7 +232,7 @@
             : Enum.Parse<AgentMode>(_modeName);
     }
 
-    private void OnModelKeyChanged(string value)
+    private void OnModelKeyChanged(string? value)
     {
         _modelKey = value ?? "";
         ApplyToModel();
