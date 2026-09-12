@@ -102,6 +102,7 @@ public sealed class BuiltinCapabilitySource : IBatchEditableModelCapabilitySourc
         lock (_gate)
         {
             var resolved = ResolveAliasCore(providerId, modelId);
+            // 精确 Provider 命中 → 通用条目（空 ProviderId，跨实现匹配）
             var exact = FindEntry(providerId, resolved) ?? FindEntry(null, resolved);
             if (exact is not null)
                 return ValueTask.FromResult<ModelCapabilityEntry?>(exact);
@@ -109,9 +110,7 @@ public sealed class BuiltinCapabilitySource : IBatchEditableModelCapabilitySourc
             if (ModelCapabilityModelIds.TryGetNonFreeFallbackId(resolved, out var baseId))
             {
                 var fallback = FindEntry(providerId, baseId)
-                               ?? FindEntry(null, baseId)
-                               ?? _entries.FirstOrDefault(e =>
-                                   string.Equals(e.ModelId, baseId, StringComparison.OrdinalIgnoreCase));
+                               ?? FindEntry(null, baseId);
                 return ValueTask.FromResult(fallback);
             }
 

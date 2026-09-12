@@ -8,7 +8,7 @@ namespace Seeing.Agent.Llm.ModelCapabilities.Tests;
 public class BuiltinCapabilitySourceTests
 {
     [Fact]
-    public async Task Load_HasDeepSeekAndZenWithThinkingLevels()
+    public async Task Load_HasGenericAndZenScopedEntries()
     {
         var dir = CreateTempDir();
         try
@@ -18,23 +18,57 @@ public class BuiltinCapabilitySourceTests
 
             var entries = await source.ListEntriesAsync();
             entries.Should().Contain(e =>
-                e.ProviderId == "deepseek" &&
+                string.IsNullOrWhiteSpace(e.ProviderId) &&
                 e.ModelId == "deepseek-v4-flash" &&
                 e.Options!.Thinking!.Levels!.Count >= 2);
             entries.Should().Contain(e =>
                 e.ProviderId == "opencode-zen" &&
                 e.ModelId == "big-pickle" &&
                 e.Limit!.Context == 1_000_000);
-            entries.Should().Contain(e => e.ProviderId == "zai" && e.ModelId == "glm-5.3");
-            entries.Should().Contain(e => e.ProviderId == "moonshotai" && e.ModelId == "kimi-k3");
-            entries.Should().Contain(e => e.ProviderId == "minimax" && e.ModelId == "MiniMax-M3");
-            entries.Should().Contain(e => e.ProviderId == "openai" && e.ModelId == "gpt-6-astra");
-            entries.Should().Contain(e => e.ProviderId == "anthropic" && e.ModelId == "claude-opus-5");
-            entries.Should().Contain(e => e.ProviderId == "alibaba" && e.ModelId == "qwen3.8-max");
+            entries.Should().Contain(e => string.IsNullOrWhiteSpace(e.ProviderId) && e.ModelId == "glm-5.3");
+            entries.Should().Contain(e => string.IsNullOrWhiteSpace(e.ProviderId) && e.ModelId == "kimi-k3");
+            entries.Should().Contain(e => string.IsNullOrWhiteSpace(e.ProviderId) && e.ModelId == "MiniMax-M3");
+            entries.Should().Contain(e => string.IsNullOrWhiteSpace(e.ProviderId) && e.ModelId == "gpt-6-astra");
+            entries.Should().Contain(e => string.IsNullOrWhiteSpace(e.ProviderId) && e.ModelId == "claude-opus-5");
+            entries.Should().Contain(e => string.IsNullOrWhiteSpace(e.ProviderId) && e.ModelId == "qwen3.8-max");
             entries.Should().NotContain(e => e.ModelId == "kimi-k2.5");
+
+            // 除 Zen 外不得绑死 Provider（通用匹配）
+            entries.Where(e => !string.Equals(e.ProviderId, "opencode-zen", StringComparison.OrdinalIgnoreCase))
+                .Should().OnlyContain(e => string.IsNullOrWhiteSpace(e.ProviderId));
 
             // 体量精简：不应是 models.dev 全量
             entries.Count.Should().BeLessThan(80);
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
+    [Fact]
+    public async Task TryGet_GenericEntry_MatchesAnyProviderId()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var source = new BuiltinCapabilitySource(dir);
+            await source.LoadAsync();
+
+            var viaProxy = await source.TryGetAsync("my-openai-proxy", "glm-5.3");
+            var viaZai = await source.TryGetAsync("zai", "glm-5.3");
+            var viaEmpty = await source.TryGetAsync("", "claude-opus-5");
+
+            viaProxy.Should().NotBeNull();
+            viaProxy!.Limit!.Context.Should().Be(1_000_000);
+            viaZai!.ModelId.Should().Be("glm-5.3");
+            viaEmpty!.ModelId.Should().Be("claude-opus-5");
+
+            // Zen 私有条目仍需 Provider 对齐，不能被其它实现误命中
+            var zenMiss = await source.TryGetAsync("openai", "big-pickle");
+            zenMiss.Should().BeNull();
+            var zenHit = await source.TryGetAsync("opencode-zen", "big-pickle");
+            zenHit.Should().NotBeNull();
         }
         finally
         {
@@ -53,7 +87,7 @@ public class BuiltinCapabilitySourceTests
 
             await source.UpsertEntryAsync(new ModelCapabilityEntry
             {
-                ProviderId = "deepseek",
+                ProviderId = null,
                 ModelId = "deepseek-v4-flash",
                 Name = "Local Flash",
                 Limit = new ModelCapabilityLimits { Context = 42, Output = 7 },
@@ -71,7 +105,7 @@ public class BuiltinCapabilitySourceTests
                 }
             });
 
-            var entry = await source.TryGetAsync("deepseek", "deepseek-v4-flash");
+            var entry = await source.TryGetAsync("any-provider", "deepseek-v4-flash");
             entry!.Name.Should().Be("Local Flash");
             entry.Limit!.Context.Should().Be(42);
             entry.Options!.Thinking!.Levels!.Should().HaveCount(2);
@@ -114,6 +148,25 @@ public class BuiltinCapabilitySourceTests
             entry!.ModelId.Should().Be("brand-new-model");
             entry.Limit!.Context.Should().Be(111111);
             entry.Options!.Thinking!.Levels.Should().ContainSingle(l => l.Key == "high");
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
+    [Fact]
+    public async Task TryGet_GenericAlias_ResolvesAcrossProviders()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var source = new BuiltinCapabilitySource(dir);
+            await source.LoadAsync();
+
+            var entry = await source.TryGetAsync("custom-deepseek", "deepseek-flash");
+            entry.Should().NotBeNull();
+            entry!.ModelId.Should().Be("deepseek-v4-flash");
         }
         finally
         {
