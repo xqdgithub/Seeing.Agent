@@ -4,6 +4,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Execution;
+using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
 using Xunit;
@@ -151,5 +152,57 @@ public class EventStreamHandlerTests
         handler.OnStreamEnd();
 
         handler.GetCurrentLoopId().Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ProcessEventAsync_BashOutputWithTaskIdLiteral_ShouldNotSetTaskId()
+    {
+        var session = SessionData.Create("p1", "general");
+        session.AddMessage(SessionMessage.AssistantMessage("x"));
+        var handler = CreateHandler("s1", session);
+
+        await handler.ProcessEventAsync(new ToolCallEvent
+        {
+            SessionId = "s1",
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "b1",
+            ToolName = "bash",
+            Status = ToolCallStatus.Success,
+            Arguments = new { command = "echo task_id:abc", description = "echo" },
+            Output = "task_id:abc\n",
+            Title = "echo"
+        });
+
+        var tc = session.Messages.Last(m => m.Role == "assistant").ToolCalls!.Single(t => t.Id == "b1");
+        tc.Name.Should().Be("bash");
+        tc.TaskId.Should().BeNullOrEmpty();
+        tc.TaskDescription.Should().BeNullOrEmpty();
+        ToolCallViewModel.FromSessionToolCall(tc, "s1").IsTaskTool.Should().BeFalse();
+        ToolCallViewModel.FromSessionToolCall(tc, "s1").IsBashTool.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcessEventAsync_TaskTool_ShouldStillFillTaskIdFromResult()
+    {
+        var session = SessionData.Create("p1", "general");
+        session.AddMessage(SessionMessage.AssistantMessage("x"));
+        var handler = CreateHandler("s1", session);
+
+        await handler.ProcessEventAsync(new ToolCallEvent
+        {
+            SessionId = "s1",
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "t1",
+            ToolName = "task",
+            Status = ToolCallStatus.Success,
+            Arguments = new { description = "探索", subagent_type = "explore" },
+            Output = "task_id: child-sid-1\n"
+        });
+
+        var tc = session.Messages.Last(m => m.Role == "assistant").ToolCalls!.Single(t => t.Id == "t1");
+        tc.TaskId.Should().Be("child-sid-1");
+        tc.TaskDescription.Should().Be("探索");
+        tc.TaskAgent.Should().Be("explore");
+        ToolCallViewModel.FromSessionToolCall(tc, "s1").IsTaskTool.Should().BeTrue();
     }
 }

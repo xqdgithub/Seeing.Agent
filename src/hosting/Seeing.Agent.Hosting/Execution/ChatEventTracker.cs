@@ -136,6 +136,12 @@ internal class ChatEventTracker
                     existing.Result = toolCall.Output;
                 if (toolCall.Error != null)
                     existing.Error = toolCall.Error;
+                if (toolCall.Title != null)
+                    existing.Title = toolCall.Title;
+                if (toolCall.Metadata is { Count: > 0 })
+                    existing.Metadata = new Dictionary<string, object>(toolCall.Metadata);
+                if (toolCall.Duration is { } duration)
+                    existing.DurationMs = duration.TotalMilliseconds;
                 break;
 
             case ErrorEvent error:

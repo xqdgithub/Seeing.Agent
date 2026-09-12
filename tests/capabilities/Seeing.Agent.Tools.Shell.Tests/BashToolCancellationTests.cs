@@ -67,6 +67,8 @@ public class BashToolCancellationTests
         await Task.Delay(300);
         cts.Cancel();
         var result = await task;
+        result.Success.Should().BeFalse();
+        result.Error.Should().Be("已取消");
         result.Output.Should().Contain("用户取消了命令");
         result.Metadata["aborted"].Should().Be(true);
     }

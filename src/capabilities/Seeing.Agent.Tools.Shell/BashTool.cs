@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,7 @@ public class BashTool : ToolBase
 {
     private const int DefaultTimeoutMs = 120_000;
     private const int MaxMetadataLength = 30_000;
+    private const int StreamEmitMinIntervalMs = 100;
 
     private readonly IExecutionWorld _world;
     private readonly IShellService _shellService;
@@ -87,13 +89,14 @@ public class BashTool : ToolBase
 
         var prepared = _shellService.PrepareCommand(shell, command);
         var args = _shellService.BuildArguments(shell, prepared);
+        var environment = EnsureUtf8OutputEnvironment(envVars);
 
         var spec = new SubprocessSpec
         {
             FileName = shell,
             Arguments = args,
             WorkingDirectory = workdir,
-            Environment = envVars.ToDictionary(kv => kv.Key, kv => (string?)kv.Value),
+            Environment = environment,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             Encoding = Encoding.UTF8,
@@ -101,6 +104,7 @@ public class BashTool : ToolBase
 
         using var subprocess = _world.Subprocess.Start(spec);
         var outputBuilder = new StringBuilder();
+        var gate = new StreamEmitGate();
         var timedOut = false;
         var aborted = false;
 
@@ -108,9 +112,9 @@ public class BashTool : ToolBase
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             context.CancellationToken, timeoutCts.Token);
 
-        var stdoutTask = PumpStreamAsync(subprocess.StandardOutput, outputBuilder, context, description, linkedCts.Token);
-        var stderrTask = PumpStreamAsync(subprocess.StandardError, outputBuilder, context, description, linkedCts.Token);
-        UpdateMetadata(context, outputBuilder, description);
+        var stdoutTask = PumpStreamAsync(subprocess.StandardOutput, outputBuilder, gate, context, description, linkedCts.Token);
+        var stderrTask = PumpStreamAsync(subprocess.StandardError, outputBuilder, gate, context, description, linkedCts.Token);
+        await PublishProgressAsync(context, description, outputBuilder, gate, force: true);
 
         if (linkedCts.Token.IsCancellationRequested)
         {
@@ -132,24 +136,46 @@ public class BashTool : ToolBase
         linkedCts.Cancel();
         try { await Task.WhenAll(stdoutTask, stderrTask); } catch (OperationCanceledException) { }
 
-        var output = outputBuilder.ToString();
+        await PublishProgressAsync(context, description, outputBuilder, gate, force: true);
+
+        var output = AnsiEscape.Strip(outputBuilder.ToString());
         var metadataLines = new List<string>();
         if (timedOut) metadataLines.Add($"命令在超过超时时间 {timeout} 毫秒后被终止");
         if (aborted) metadataLines.Add("用户取消了命令");
+        // <bash_metadata> 仅面向 LLM 可读附录；UI 以 ToolResult.Metadata 为真源并 strip 该块
         if (metadataLines.Count > 0)
             output += "\n\n<bash_metadata>\n" + string.Join("\n", metadataLines) + "\n</bash_metadata>";
 
-        return Success(description, output, new Dictionary<string, object>
+        var metadata = new Dictionary<string, object>
         {
             ["exit"] = subprocess.ExitCode,
             ["description"] = description,
             ["timedOut"] = timedOut,
             ["aborted"] = aborted
-        });
+        };
+
+        if (aborted)
+        {
+            return new ToolResult
+            {
+                Success = false,
+                Title = description,
+                Output = output,
+                Error = "已取消",
+                Metadata = metadata
+            };
+        }
+
+        return Success(description, output, metadata);
     }
 
-    private static async Task PumpStreamAsync(
-        TextReader reader, StringBuilder output, ToolContext context, string description, CancellationToken ct)
+    private async Task PumpStreamAsync(
+        TextReader reader,
+        StringBuilder output,
+        StreamEmitGate gate,
+        ToolContext context,
+        string description,
+        CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -157,23 +183,69 @@ public class BashTool : ToolBase
             try { line = await reader.ReadLineAsync(ct); }
             catch (OperationCanceledException) { break; }
             if (line == null) break;
-            output.AppendLine(line);
-            UpdateMetadataStatic(context, output, description);
+
+            lock (gate.Sync)
+            {
+                output.AppendLine(AnsiEscape.Strip(line));
+            }
+
+            await PublishProgressAsync(context, description, output, gate, force: false);
         }
     }
 
-    private void UpdateMetadata(ToolContext context, StringBuilder output, string description) =>
-        UpdateMetadataStatic(context, output, description);
-
-    private static void UpdateMetadataStatic(ToolContext context, StringBuilder output, string description)
+    private async Task PublishProgressAsync(
+        ToolContext context,
+        string description,
+        StringBuilder output,
+        StreamEmitGate gate,
+        bool force)
     {
-        if (context.MetadataSink is null) return;
-        var s = output.ToString();
-        context.MetadataSink.SetMetadata("bash_output", new Dictionary<string, object>
+        string snapshot;
+        lock (gate.Sync)
         {
-            ["output"] = s.Length > MaxMetadataLength ? s[..MaxMetadataLength] + "\n\n..." : s,
-            ["description"] = description
-        });
+            snapshot = output.ToString();
+            if (!force && !gate.ShouldEmitUnlocked())
+                return;
+            gate.MarkEmittedUnlocked();
+        }
+
+        var truncated = snapshot.Length > MaxMetadataLength
+            ? snapshot[..MaxMetadataLength] + "\n\n..."
+            : snapshot;
+
+        if (context.EventSink is null)
+            return;
+
+        try
+        {
+            await context.EventSink.EmitAsync(new ToolCallEvent
+            {
+                SessionId = context.SessionId,
+                ToolCallId = context.CallId,
+                ToolName = "bash",
+                Status = ToolCallStatus.Running,
+                Type = MessageEventType.ToolCallRunning,
+                Output = truncated,
+                Title = description
+            });
+        }
+        catch (Exception ex)
+        {
+            // 流式进度失败不阻断命令执行；打日志便于发现 EventSink 接线问题
+            _logger.LogDebug(ex, "bash 流式进度 EventSink 推送失败 CallId={CallId}", context.CallId);
+        }
+    }
+
+    private static Dictionary<string, string?> EnsureUtf8OutputEnvironment(
+        IReadOnlyDictionary<string, string> envVars)
+    {
+        var env = envVars.ToDictionary(kv => kv.Key, kv => (string?)kv.Value);
+        env.TryAdd("PYTHONIOENCODING", "utf-8");
+        env.TryAdd("PYTHONUTF8", "1");
+        env.TryAdd("LANG", "C.UTF-8");
+        env.TryAdd("LC_ALL", "C.UTF-8");
+        env.TryAdd("NO_COLOR", "1");
+        return env;
     }
 
     private string BuildPlatformHint() => $"{DescribePlatform()}，Shell: {DescribeShell()}";
@@ -194,5 +266,19 @@ public class BashTool : ToolBase
             return string.IsNullOrWhiteSpace(shell) ? "未知" : $"{_shellService.GetShellName(shell)}（{shell}）";
         }
         catch { return "未知"; }
+    }
+
+    private sealed class StreamEmitGate
+    {
+        public object Sync { get; } = new();
+        private long _lastEmitMs = -StreamEmitMinIntervalMs;
+
+        public bool ShouldEmitUnlocked()
+        {
+            var now = Environment.TickCount64;
+            return now - _lastEmitMs >= StreamEmitMinIntervalMs;
+        }
+
+        public void MarkEmittedUnlocked() => _lastEmitMs = Environment.TickCount64;
     }
 }

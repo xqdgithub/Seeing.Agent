@@ -489,9 +489,27 @@ namespace Seeing.Agent.WebUI.Services
                 toolCall.Error = evt.Error;
             }
 
-            // task 工具：从参数/输出补齐 Task 卡片字段，避免完成后退化成普通工具调用
-            TryFillTaskFieldsFromArguments(toolCall);
-            TryFillTaskIdFromResult(toolCall);
+            if (!string.IsNullOrEmpty(evt.Title))
+            {
+                toolCall.Title = evt.Title;
+            }
+
+            if (evt.Metadata is { Count: > 0 })
+            {
+                toolCall.Metadata = new Dictionary<string, object>(evt.Metadata);
+            }
+
+            if (evt.Duration is { } duration)
+            {
+                toolCall.DurationMs = duration.TotalMilliseconds;
+            }
+
+            // 仅 task 工具回填 Task*；禁止用 Output 文本给 bash 等工具打上 TaskId
+            if (string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase))
+            {
+                TryFillTaskFieldsFromArguments(toolCall);
+                TryFillTaskIdFromResult(toolCall);
+            }
 
             // 处理 todowrite 工具：提取 Todo 列表并更新 SessionState
             if (evt.ToolName?.ToLowerInvariant() == "todowrite" &&
@@ -504,6 +522,8 @@ namespace Seeing.Agent.WebUI.Services
 
         private static void TryFillTaskFieldsFromArguments(SessionToolCall toolCall)
         {
+            if (!string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase))
+                return;
             if (string.IsNullOrWhiteSpace(toolCall.Arguments))
                 return;
 
@@ -544,6 +564,8 @@ namespace Seeing.Agent.WebUI.Services
 
         private static void TryFillTaskIdFromResult(SessionToolCall toolCall)
         {
+            if (!string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase))
+                return;
             if (!string.IsNullOrEmpty(toolCall.TaskId) || string.IsNullOrWhiteSpace(toolCall.Result))
                 return;
 

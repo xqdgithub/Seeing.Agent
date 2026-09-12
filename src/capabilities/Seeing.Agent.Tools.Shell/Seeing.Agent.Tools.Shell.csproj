@@ -16,4 +16,8 @@
     <ProjectReference Include="..\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.Tools.Shell.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -48,9 +48,17 @@ public sealed class DefaultShellService : IShellService
         var shellName = GetShellName(shell);
         if (shellName is "powershell" or "pwsh")
         {
+            // PlainText：禁止 Get-ChildItem 等把 ANSI 颜色码写进重定向输出（WebUI 会当乱码展示）
             return "[Console]::InputEncoding = [System.Text.Encoding]::UTF8;" +
-                   "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;" + command;
+                   "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;" +
+                   "$OutputEncoding = [System.Text.Encoding]::UTF8;" +
+                   "if (Get-Variable -Name PSStyle -ErrorAction SilentlyContinue) { $PSStyle.OutputRendering = 'PlainText' };" +
+                   command;
         }
+
+        // cmd 默认系统代码页；切到 UTF-8，与 BashTool 的 UTF-8 解码一致
+        if (shellName == "cmd")
+            return "chcp 65001 >nul & " + command;
 
         return command;
     }

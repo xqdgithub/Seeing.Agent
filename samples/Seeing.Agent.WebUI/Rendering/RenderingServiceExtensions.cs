@@ -119,6 +119,23 @@ public static class RenderingServiceExtensions
                     ["OnOpenTaskSession"] = context.OnOpenTaskSession
                 }));
 
+        // 优先级 45: bash 终端展示卡（优先于普通 ToolCall）
+        services.AddSingleton<IMessageComponent>(sp =>
+            new DefaultMessageComponent<MessagingComponents.BashMessageComponent>(
+                ContentBlockType.ToolCall,
+                45,
+                "Bash",
+                block => block.Type == ContentBlockType.ToolCall
+                         && block.ToolCall != null
+                         && block.ToolCall.IsBashTool,
+                (block, context) => new Dictionary<string, object?>
+                {
+                    ["ToolCall"] = block.ToolCall!,
+                    ["Block"] = block,
+                    ["Context"] = context,
+                    ["OnToolClick"] = context.OnToolClick
+                }));
+
         // 优先级 50: 工具调用消息组件
         services.AddSingleton<IMessageComponent>(sp =>
             new DefaultMessageComponent<MessagingComponents.ToolCallMessageComponent>(
@@ -127,7 +144,8 @@ public static class RenderingServiceExtensions
                 "ToolCall",
                 block => block.Type == ContentBlockType.ToolCall
                          && block.ToolCall != null
-                         && !block.ToolCall.IsTaskTool,
+                         && !block.ToolCall.IsTaskTool
+                         && !block.ToolCall.IsBashTool,
                 (block, context) => new Dictionary<string, object?>
                 {
                     ["ToolCall"] = block.ToolCall!,

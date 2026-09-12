@@ -148,12 +148,21 @@ Activate：`IUiContributionRegistry.Register`；Deactivate：`Unregister(moduleI
 
 否则 `bootEnabled` / 结算 base 可能为空或硬依赖失败。Embed 等 Shape 可通过 `HostDefaultBoot`（如 `minimal`）收窄默认启动集。
 
-## 11. 扩展完成自检
+## 11. 工具进度与元数据通道
+
+- **流式/进度**：经 `ToolContext.EventSink` 发 `ToolCallEvent`（`Status=Running`，`Output`/`Title`）。  
+- **终态结构化字段**（如 bash 的 `exit`/`timedOut`）：写入 `ToolResult.Metadata`，由 `AgentExecutor` 打进 Complete 事件 → Session `Metadata`。  
+- **`IToolMetadataSink`**：当前 **未接线**（`ToolManager` 传入 `setMetadata: null`），`SetMetadata` 为 no-op，**请勿依赖**。  
+- **耗时**：使用事件一等字段 `Duration` / Session `duration_ms`；不要塞进 Metadata。  
+- **工具卡片识别**：按工具名（及 Task 的显式 `TaskId`）；禁止用 Output 文本启发式。展示特化用投影模型（如 `BashCardModel`），勿向 `ToolCallViewModel` 堆专用属性。
+
+## 12. 扩展完成自检
 
 - [ ] 磁盘路径在正确分类目录；slnx Folder 已加  
 - [ ] csproj 无 Core（能力包）/ 无违规互引  
 - [ ] Activate / Deactivate 成对；未启用时无工具、无 UI、无连接、无后台循环  
 - [ ] Options 已 Register；改 seeing.json 可热反应或有文档说明「需重启」  
 - [ ] 未在 executor 双算 schema  
+- [ ] 工具进度走 EventSink；终态私有字段走 ToolResult.Metadata  
 - [ ] 构建 + Invariants 通过  
 - [ ] README 扫描命令无意外命中  

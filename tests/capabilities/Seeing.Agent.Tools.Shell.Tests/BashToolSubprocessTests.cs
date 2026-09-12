@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Tools.Shell;
@@ -20,8 +21,8 @@ public class BashToolSubprocessTests
     public async Task ExecuteAsync_WithoutWorkdir_ShouldUseWorldCwd()
     {
         SubprocessSpec? capturedSpec = null;
-        var bash = CreateBashTool(spec => capturedSpec = spec, worldCwd: WorldCwd);
-        var result = await bash.ExecuteAsync(BuildArgs("echo hi"), CreateContext());
+        var (bash, ctx) = CreateBashTool(spec => capturedSpec = spec, worldCwd: WorldCwd);
+        var result = await bash.ExecuteAsync(BuildArgs("echo hi"), ctx);
         result.Success.Should().BeTrue();
         capturedSpec!.WorkingDirectory.Should().Be(WorldCwd);
     }
@@ -31,8 +32,8 @@ public class BashToolSubprocessTests
     {
         SubprocessSpec? capturedSpec = null;
         const string customWorkdir = @"D:\custom\workdir";
-        var bash = CreateBashTool(spec => capturedSpec = spec);
-        await bash.ExecuteAsync(BuildArgs("echo hi", customWorkdir), CreateContext());
+        var (bash, ctx) = CreateBashTool(spec => capturedSpec = spec);
+        await bash.ExecuteAsync(BuildArgs("echo hi", customWorkdir), ctx);
         capturedSpec!.WorkingDirectory.Should().Be(customWorkdir);
     }
 
@@ -41,28 +42,79 @@ public class BashToolSubprocessTests
     {
         SubprocessSpec? capturedSpec = null;
         var env = new Dictionary<string, string> { ["MY_VAR"] = "my_value" };
-        var bash = CreateBashTool(spec => capturedSpec = spec, environment: env);
-        await bash.ExecuteAsync(BuildArgs("echo hi"), CreateContext());
+        var (bash, ctx) = CreateBashTool(spec => capturedSpec = spec, environment: env);
+        await bash.ExecuteAsync(BuildArgs("echo hi"), ctx);
         capturedSpec!.Environment["MY_VAR"].Should().Be("my_value");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldInjectUtf8OutputEnvDefaults()
+    {
+        SubprocessSpec? capturedSpec = null;
+        var (bash, ctx) = CreateBashTool(spec => capturedSpec = spec);
+        await bash.ExecuteAsync(BuildArgs("echo hi"), ctx);
+        capturedSpec!.Environment["PYTHONIOENCODING"].Should().Be("utf-8");
+        capturedSpec.Environment["PYTHONUTF8"].Should().Be("1");
+        capturedSpec.Environment["LANG"].Should().Be("C.UTF-8");
+        capturedSpec.Environment["LC_ALL"].Should().Be("C.UTF-8");
+        capturedSpec.Environment["NO_COLOR"].Should().Be("1");
+        capturedSpec.Encoding.Should().Be(Encoding.UTF8);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldNotOverrideExplicitUtf8EnvFromHook()
+    {
+        SubprocessSpec? capturedSpec = null;
+        var env = new Dictionary<string, string>
+        {
+            ["PYTHONIOENCODING"] = "gbk",
+            ["PYTHONUTF8"] = "0",
+        };
+        var (bash, ctx) = CreateBashTool(spec => capturedSpec = spec, environment: env);
+        await bash.ExecuteAsync(BuildArgs("echo hi"), ctx);
+        capturedSpec!.Environment["PYTHONIOENCODING"].Should().Be("gbk");
+        capturedSpec.Environment["PYTHONUTF8"].Should().Be("0");
     }
 
     [Fact]
     public async Task ExecuteAsync_ShouldUseShellServiceForLaunch()
     {
         SubprocessSpec? capturedSpec = null;
-        var bash = CreateBashTool(spec => capturedSpec = spec, shellPath: "/bin/zsh", preparedCommand: "prepared-cmd", arguments: "-c 'prepared-cmd'");
-        await bash.ExecuteAsync(BuildArgs("raw-cmd"), CreateContext());
+        var (bash, ctx) = CreateBashTool(spec => capturedSpec = spec, shellPath: "/bin/zsh", preparedCommand: "prepared-cmd", arguments: "-c 'prepared-cmd'");
+        await bash.ExecuteAsync(BuildArgs("raw-cmd"), ctx);
         capturedSpec!.FileName.Should().Be("/bin/zsh");
         capturedSpec.Arguments.Should().Be("-c 'prepared-cmd'");
     }
 
-    private static BashTool CreateBashTool(
+    [Fact]
+    public async Task ExecuteAsync_ShouldEmitRunningProgressViaEventSink()
+    {
+        var emissions = new List<ToolCallEvent>();
+        var (bash, ctx) = CreateBashTool(
+            _ => { },
+            stdout: "line1\nline2\n",
+            onEmit: evt =>
+            {
+                if (evt is ToolCallEvent tc)
+                    emissions.Add(tc);
+            });
+
+        var result = await bash.ExecuteAsync(BuildArgs("echo hi"), ctx);
+        result.Success.Should().BeTrue();
+        emissions.Should().NotBeEmpty();
+        emissions.Should().OnlyContain(e => e.Status == ToolCallStatus.Running && e.ToolName == "bash");
+        emissions.Last().Output.Should().Contain("line1");
+    }
+
+    private static (BashTool Tool, ToolContext Context) CreateBashTool(
         Action<SubprocessSpec> onStart,
         string worldCwd = WorldCwd,
         IReadOnlyDictionary<string, string>? environment = null,
         string shellPath = "/bin/bash",
         string preparedCommand = "echo hi",
-        string arguments = "-c 'echo hi'")
+        string arguments = "-c 'echo hi'",
+        string stdout = "hello\n",
+        Action<IMessageEvent>? onEmit = null)
     {
         var options = new Mock<IOptionsMonitor<ShellOptions>>();
         options.Setup(o => o.CurrentValue).Returns(new ShellOptions());
@@ -85,18 +137,36 @@ public class BashToolSubprocessTests
         subprocessFactory.Setup(f => f.Start(It.IsAny<SubprocessSpec>())).Returns((SubprocessSpec spec) =>
         {
             onStart(spec);
-            return new FakeSubprocess("hello\n");
+            return new FakeSubprocess(stdout);
         });
 
         var world = new Mock<IExecutionWorld>();
         world.Setup(w => w.Cwd).Returns(worldCwd);
         world.Setup(w => w.Subprocess).Returns(subprocessFactory.Object);
 
-        return new BashTool(NullLogger<BashTool>.Instance, world.Object, shellService.Object,
-            shellEnv.Object, options.Object);
-    }
+        IToolEventSink? sink = null;
+        if (onEmit != null)
+        {
+            var mock = new Mock<IToolEventSink>();
+            mock.Setup(s => s.EmitAsync(It.IsAny<IMessageEvent>()))
+                .Returns((IMessageEvent evt) =>
+                {
+                    onEmit(evt);
+                    return ValueTask.CompletedTask;
+                });
+            sink = mock.Object;
+        }
 
-    private static ToolContext CreateContext() => new() { SessionId = "s", CallId = "c" };
+        var tool = new BashTool(NullLogger<BashTool>.Instance, world.Object, shellService.Object,
+            shellEnv.Object, options.Object);
+        var context = new ToolContext
+        {
+            SessionId = "s",
+            CallId = "c",
+            EventSink = sink
+        };
+        return (tool, context);
+    }
 
     private static JsonElement BuildArgs(string command, string? workdir = null)
     {

@@ -874,8 +874,11 @@ public class AgentExecutor : IAgentExecutor
                     ToolName = name,
                     Arguments = arguments,
                     Status = ToolCallStatus.Cancelled,
+                    Output = result.Output,
+                    Title = result.Title,
                     Error = result.Error ?? "已取消",
-                    Duration = DateTime.Now - startTime
+                    Duration = DateTime.Now - startTime,
+                    Metadata = CopyMetadata(result.Metadata)
                 };
             }
 
@@ -889,8 +892,10 @@ public class AgentExecutor : IAgentExecutor
                 Arguments = arguments,
                 Status = ToolCallStatus.Failed,
                 Output = result.Output,
+                Title = result.Title,
                 Error = result.Error,
-                Duration = DateTime.Now - startTime
+                Duration = DateTime.Now - startTime,
+                Metadata = CopyMetadata(result.Metadata)
             };
         }
 
@@ -904,10 +909,15 @@ public class AgentExecutor : IAgentExecutor
             Arguments = arguments,
             Status = ToolCallStatus.Success,
             Output = result.Output,
+            Title = result.Title,
             Error = result.Error,
-            Duration = DateTime.Now - startTime
+            Duration = DateTime.Now - startTime,
+            Metadata = CopyMetadata(result.Metadata)
         };
     }
+
+    private static IReadOnlyDictionary<string, object>? CopyMetadata(Dictionary<string, object>? metadata)
+        => metadata is { Count: > 0 } ? new Dictionary<string, object>(metadata) : null;
 
     /// <summary>
     /// 评估权限

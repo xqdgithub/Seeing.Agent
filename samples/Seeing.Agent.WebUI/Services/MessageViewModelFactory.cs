@@ -117,10 +117,13 @@ public static class MessageViewModelFactory
 
         var wasExpanded = existing.IsExpanded;
         existing.Name = incoming.Name;
+        existing.Description = incoming.Description ?? existing.Description;
         existing.Parameters = incoming.Parameters;
         existing.Result = incoming.Result;
         existing.Status = incoming.Status;
         existing.Error = incoming.Error;
+        existing.Metadata = incoming.Metadata ?? existing.Metadata;
+        existing.DurationMs = incoming.DurationMs ?? existing.DurationMs;
         existing.TaskId = incoming.TaskId;
         existing.TaskAgent = incoming.TaskAgent;
         existing.TaskDescription = incoming.TaskDescription;

@@ -119,6 +119,18 @@ namespace Seeing.Session.Core
         [JsonPropertyName("error")]
         public string? Error { get; set; }
 
+        /// <summary>结果标题（如 bash description）</summary>
+        [JsonPropertyName("title")]
+        public string? Title { get; set; }
+
+        /// <summary>工具元数据（exit / timedOut 等工具私有键；勿塞 duration）</summary>
+        [JsonPropertyName("metadata")]
+        public Dictionary<string, object>? Metadata { get; set; }
+
+        /// <summary>执行耗时（毫秒）</summary>
+        [JsonPropertyName("duration_ms")]
+        public double? DurationMs { get; set; }
+
         /// <summary>子任务 ID（task 工具；≡ Child Session Id）</summary>
         [JsonPropertyName("task_id")]
         public string? TaskId { get; set; }
@@ -151,6 +163,9 @@ namespace Seeing.Session.Core
                 Result = Result,
                 Status = Status,
                 Error = Error,
+                Title = Title,
+                Metadata = Metadata == null ? null : new Dictionary<string, object>(Metadata),
+                DurationMs = DurationMs,
                 TaskId = TaskId,
                 TaskAgent = TaskAgent,
                 TaskDescription = TaskDescription,

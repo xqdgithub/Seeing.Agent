@@ -291,6 +291,9 @@ public record ToolCallEvent : IMessageEvent
 
     /// <summary>执行耗时</summary>
     public TimeSpan? Duration { get; init; }
+
+    /// <summary>工具结果元数据（如 bash 的 exit / timedOut / aborted）</summary>
+    public IReadOnlyDictionary<string, object>? Metadata { get; init; }
 }
 
 /// <summary>

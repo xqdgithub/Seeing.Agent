@@ -235,6 +235,14 @@ public sealed class FakeSessionManager : ISessionManager
         return Task.CompletedTask;
     }
 
+    public Task SetThinkingEffortAsync(string sessionId, string? thinkingEffort, CancellationToken ct = default)
+    {
+        var session = Get(sessionId);
+        if (session != null)
+            session.SelectedThinkingEffort = thinkingEffort?.Trim() ?? string.Empty;
+        return Task.CompletedTask;
+    }
+
     public Task<SessionData> GetOrLoadAsync(string sessionId, CancellationToken ct = default)
     {
         var session = Get(sessionId);

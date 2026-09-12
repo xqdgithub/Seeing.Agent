@@ -149,14 +149,6 @@ public class TaskTool : ToolBase
                 }
             }
 
-            context.MetadataSink?.SetMetadata(description, new Dictionary<string, object>
-            {
-                ["sessionId"] = session.Id,
-                ["agent"] = agentInfo.Name,
-                ["background"] = background,
-                ["originToolCallId"] = context.CallId ?? string.Empty
-            });
-
             // 关联元数据：写入子会话，UI 据此精确匹配"父 task 工具调用 ↔ 子会话"（多子代理并行）
             if (!session.Metadata.ContainsKey(SessionMetadataKeys.OriginToolCallId))
             {

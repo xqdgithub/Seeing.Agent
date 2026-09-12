@@ -573,8 +573,8 @@ namespace Seeing.Agent.Core.Tools
 
             try
             {
-                // Sink 接线：emitAsync 委托包装为 IToolEventSink/IToolMetadataSink（同一实例）
-                var sink = emitAsync is null ? null : new ToolSinkAdapter(emitAsync, null);
+                // EventSink：进度/流式走 ToolCallEvent。MetadataSink 未接线（setMetadata=null），勿依赖。
+                var sink = emitAsync is null ? null : new ToolSinkAdapter(emitAsync, setMetadata: null);
                 var context = new ToolContext
                 {
                     SessionId = sessionId,

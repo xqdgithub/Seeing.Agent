@@ -1,0 +1,235 @@
+@using AntDesign
+@using Microsoft.JSInterop
+@using Seeing.Agent.WebUI.Helpers
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Models.Messaging
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+@inject IJSRuntime JSRuntime
+@inject MessageService MessageService
+
+@* bash 专用终端展示卡（只读，无 stdin） *@
+
+<div class="tool-call-shell bash-terminal-shell">
+    <div class="bash-terminal-header" onclick="@ToggleExpand">
+        <Icon Type="@IconType.Outline.Code" Style="color: var(--color-primary); font-size: 14px;" />
+        <span class="bash-terminal-title">@_card.DisplayTitle</span>
+        <Tag Color="@ToolCall.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@ToolCall.StatusText</Tag>
+
+        @if (_card.ExitCode.HasValue)
+        {
+            <span class="bash-exit-badge @BashToolDisplayHelper.ExitBadgeClass(_card.ExitCode)">
+                @BashToolDisplayHelper.ExitBadgeText(_card.ExitCode)
+            </span>
+        }
+        @if (_card.TimedOut)
+        {
+            <Tag Color="@("warning")" Style="margin-left: 4px; font-size: 11px;">超时</Tag>
+        }
+        @if (_card.Aborted)
+        {
+            <Tag Color="@("default")" Style="margin-left: 4px; font-size: 11px;">已取消</Tag>
+        }
+        @if (!string.IsNullOrEmpty(ToolCall.GetFormattedDuration()))
+        {
+            <span class="bash-duration">@ToolCall.GetFormattedDuration()</span>
+        }
+        @if (ToolCall.IsRunning)
+        {
+            <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
+        }
+        <Icon Type="@(_isExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+              Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
+    </div>
+
+    @if (_isExpanded)
+    {
+        <div class="bash-terminal-body">
+            @if (!string.IsNullOrWhiteSpace(_card.Workdir))
+            {
+                <div class="bash-workdir" title="@_card.Workdir">@_card.Workdir</div>
+            }
+
+            <div class="bash-command-row">
+                <code class="bash-command"><span class="bash-prompt">$</span> @(_card.Command ?? "")</code>
+                <Button Size="@ButtonSize.Small"
+                        Type="@ButtonType.Link"
+                        Icon="@IconType.Outline.Copy"
+                        Class="bash-action-btn"
+                        OnClick="CopyCommandAsync">复制命令</Button>
+            </div>
+
+            <div class="bash-output-toolbar">
+                <span class="bash-output-label">输出</span>
+                <Space Size="@SpaceSize.Small">
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small"
+                                Type="@ButtonType.Link"
+                                OnClick="ToggleWrap">@(_wrap ? "不换行" : "换行")</Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small"
+                                Type="@ButtonType.Link"
+                                Icon="@(_outputExpanded ? IconType.Outline.Compress : IconType.Outline.Expand)"
+                                OnClick="ToggleOutputExpanded">
+                            @(_outputExpanded ? "收起" : "展开全部")
+                        </Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small"
+                                Type="@ButtonType.Link"
+                                Icon="@IconType.Outline.Copy"
+                                OnClick="CopyOutputAsync">复制输出</Button>
+                    </SpaceItem>
+                </Space>
+            </div>
+
+            <pre @ref="_outputRef"
+                 class="bash-terminal-pre @(_wrap ? "is-wrap" : "is-nowrap") @(_outputExpanded ? null : "is-collapsed")"
+                 @onscroll="OnOutputScroll">@_card.DisplayOutput</pre>
+
+            @if (!string.IsNullOrEmpty(ToolCall.Error))
+            {
+                <div class="bash-error-block">
+                    <div class="bash-output-label is-error">错误</div>
+                    <pre class="bash-terminal-pre is-error">@ToolCall.Error</pre>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public ToolCallViewModel ToolCall { get; set; } = new();
+    [Parameter] public ContentBlock Block { get; set; } = default!;
+    [Parameter] public RenderContext Context { get; set; } = default!;
+    [Parameter] public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+
+    private BashCardModel _card = BashCardModel.From(new ToolCallViewModel { Name = "bash" });
+    private bool _isExpanded;
+    private bool _outputExpanded = true;
+    private bool _wrap = true;
+    private bool _stickToBottom = true;
+    private bool _userToggledCard;
+    private bool _userToggledOutput;
+    private string? _lastToolCallId;
+    private string? _lastStatus;
+    private ElementReference _outputRef;
+
+    protected override void OnParametersSet()
+    {
+        _card = BashCardModel.From(ToolCall);
+        var status = ToolCall.Status?.ToLowerInvariant() ?? "";
+        var isNew = _lastToolCallId != ToolCall.Id;
+
+        if (isNew)
+        {
+            _lastToolCallId = ToolCall.Id;
+            _userToggledCard = false;
+            _userToggledOutput = false;
+            _wrap = true;
+            _stickToBottom = true;
+            // 执行中默认展开；历史已完成默认折叠（与 Task 卡一致）
+            _isExpanded = ToolCall.IsRunning;
+            _outputExpanded = !BashToolDisplayHelper.ShouldCollapseByDefault(_card.DisplayOutput, ToolCall.IsRunning);
+        }
+        else if (!_userToggledCard)
+        {
+            if (ToolCall.IsRunning)
+            {
+                _isExpanded = true;
+            }
+            else if (_lastStatus is "running" or "pending"
+                     && status is "success" or "failed" or "cancelled" or "rejected")
+            {
+                // 刚结束：自动折叠整卡
+                _isExpanded = false;
+            }
+        }
+
+        // 输出区：仅在用户未手动切换时，按长度在结束瞬间收起；流式过程勿强行展开（否则手动收起无效）
+        if (!_userToggledOutput && !ToolCall.IsRunning
+            && _lastStatus is "running" or "pending"
+            && status is "success" or "failed" or "cancelled" or "rejected")
+        {
+            _outputExpanded = !BashToolDisplayHelper.ShouldCollapseByDefault(_card.DisplayOutput, false);
+        }
+
+        ToolCall.IsExpanded = _isExpanded;
+        _lastStatus = status;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_isExpanded || !_stickToBottom || !ToolCall.IsRunning)
+            return;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("bashTerminalStickBottom", _outputRef);
+        }
+        catch (JSException)
+        {
+            // 旧缓存 app.js 或缺函数时不拖垮 circuit
+            _stickToBottom = false;
+        }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private void ToggleExpand()
+    {
+        _userToggledCard = true;
+        _isExpanded = !_isExpanded;
+        ToolCall.IsExpanded = _isExpanded;
+    }
+
+    private void ToggleOutputExpanded()
+    {
+        _userToggledOutput = true;
+        _outputExpanded = !_outputExpanded;
+    }
+
+    private void ToggleWrap() => _wrap = !_wrap;
+
+    private async Task OnOutputScroll()
+    {
+        try
+        {
+            _stickToBottom = await JSRuntime.InvokeAsync<bool>("bashTerminalIsNearBottom", _outputRef);
+        }
+        catch
+        {
+            _stickToBottom = true;
+        }
+    }
+
+    private async Task CopyCommandAsync()
+    {
+        var text = _card.Command ?? "";
+        if (string.IsNullOrEmpty(text)) return;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            MessageService.Success("已复制命令");
+        }
+        catch
+        {
+            MessageService.Error("复制失败");
+        }
+    }
+
+    private async Task CopyOutputAsync()
+    {
+        var text = _card.DisplayOutput;
+        if (string.IsNullOrEmpty(text)) return;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            MessageService.Success("已复制输出");
+        }
+        catch
+        {
+            MessageService.Error("复制失败");
+        }
+    }
+}

@@ -83,6 +83,16 @@ public class ToolCallViewModel
     public bool IsTodoTool => Name?.ToLowerInvariant() == "todowrite";
 
     /// <summary>
+    /// 是否为 bash / Shell 工具（仅按工具名）
+    /// </summary>
+    public bool IsBashTool => string.Equals(Name, "bash", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 工具元数据（exit/timedOut 等）；展示投影现算，不在此摊平为专用属性
+    /// </summary>
+    public Dictionary<string, object>? Metadata { get; set; }
+
+    /// <summary>
     /// 子任务 ID（≡ Child Session Id）
     /// </summary>
     public string? TaskId { get; set; }
@@ -108,15 +118,11 @@ public class ToolCallViewModel
     public List<SessionTaskStep> TaskSteps { get; set; } = new();
 
     /// <summary>
-    /// 是否为 Task 子代理工具卡片
+    /// 是否为 Task 子代理工具卡片（仅 Name==task 或显式 TaskId；禁止扫 Output 文本）
     /// </summary>
     public bool IsTaskTool =>
         string.Equals(Name, "task", StringComparison.OrdinalIgnoreCase)
-        || !string.IsNullOrEmpty(TaskId)
-        || (!string.IsNullOrEmpty(Result) &&
-            Result.Contains("task_id:", StringComparison.OrdinalIgnoreCase))
-        || (!string.IsNullOrEmpty(Parameters) &&
-            Parameters.Contains("\"subagent_type\"", StringComparison.OrdinalIgnoreCase));
+        || !string.IsNullOrEmpty(TaskId);
 
     // ========== 工厂方法 ==========
 
@@ -132,10 +138,13 @@ public class ToolCallViewModel
         {
             Id = tc.Id,
             Name = tc.Name,
+            Description = tc.Title,
             Parameters = tc.Arguments,
             Result = tc.Result,
             Status = tc.Status,
             Error = tc.Error,
+            Metadata = tc.Metadata == null ? null : new Dictionary<string, object>(tc.Metadata),
+            DurationMs = tc.DurationMs,
             TaskId = tc.TaskId,
             TaskAgent = tc.TaskAgent,
             TaskDescription = tc.TaskDescription,
@@ -143,7 +152,11 @@ public class ToolCallViewModel
             TaskSteps = tc.TaskSteps?.ToList() ?? new List<SessionTaskStep>()
         };
 
-        // 持久化/刷新后可能丢失 Task* 字段：从参数与结果回填
+        // 旧会话兼容：曾把 duration 塞进 Metadata["durationMs"]
+        if (!vm.DurationMs.HasValue)
+            ApplyDurationFromLegacyMetadata(vm, tc.Metadata);
+
+        // Name==task 时从参数/结果回填 Task* 展示字段
         RecoverTaskFields(vm);
 
         // todowrite 工具特殊处理：解析 Todo 列表
@@ -166,15 +179,9 @@ public class ToolCallViewModel
 
     private static void RecoverTaskFields(ToolCallViewModel vm)
     {
-        var looksLikeTask =
-            string.Equals(vm.Name, "task", StringComparison.OrdinalIgnoreCase)
-            || !string.IsNullOrEmpty(vm.TaskId)
-            || (!string.IsNullOrEmpty(vm.Result) &&
-                vm.Result.Contains("task_id:", StringComparison.OrdinalIgnoreCase))
-            || (!string.IsNullOrEmpty(vm.Parameters) &&
-                vm.Parameters.Contains("\"subagent_type\"", StringComparison.OrdinalIgnoreCase));
-
-        if (!looksLikeTask)
+        // 仅在 Name==task（或已有 TaskId 且需补全展示字段）时回填；不用 Output 文本判定身份
+        if (!string.Equals(vm.Name, "task", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(vm.TaskId))
             return;
 
         if (string.IsNullOrEmpty(vm.Name))
@@ -228,6 +235,36 @@ public class ToolCallViewModel
         catch
         {
             // ignore
+        }
+    }
+
+    private static void ApplyDurationFromLegacyMetadata(ToolCallViewModel vm, Dictionary<string, object>? metadata)
+    {
+        if (metadata == null || vm.DurationMs.HasValue)
+            return;
+        if (!metadata.TryGetValue("durationMs", out var raw) || raw == null)
+            return;
+        switch (raw)
+        {
+            case double d:
+                vm.DurationMs = d;
+                break;
+            case float f:
+                vm.DurationMs = f;
+                break;
+            case int i:
+                vm.DurationMs = i;
+                break;
+            case long l:
+                vm.DurationMs = l;
+                break;
+            case System.Text.Json.JsonElement je when je.TryGetDouble(out var jd):
+                vm.DurationMs = jd;
+                break;
+            default:
+                if (double.TryParse(raw.ToString(), out var parsed))
+                    vm.DurationMs = parsed;
+                break;
         }
     }
 

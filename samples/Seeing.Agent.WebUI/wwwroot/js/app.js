@@ -467,6 +467,28 @@ function forceScrollToBottom() {
 }
 
 /**
+ * bash 终端输出区：是否接近底部（用于贴底自动滚动）
+ * @param {HTMLElement} el
+ */
+function bashTerminalIsNearBottom(el) {
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+}
+
+/**
+ * bash 终端输出区贴底
+ * @param {HTMLElement} el
+ */
+function bashTerminalStickBottom(el) {
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+}
+
+// 显式挂到 window，避免缓存/作用域导致 Blazor 找不到
+window.bashTerminalIsNearBottom = bashTerminalIsNearBottom;
+window.bashTerminalStickBottom = bashTerminalStickBottom;
+
+/**
  * 检查是否应该自动滚动
  */
 function shouldAutoScroll() {
