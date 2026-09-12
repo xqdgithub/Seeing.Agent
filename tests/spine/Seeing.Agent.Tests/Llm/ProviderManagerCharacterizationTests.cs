@@ -46,6 +46,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var client = sut.GetClient("openai");
@@ -68,6 +69,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var client = sut.GetClient("unknown");
@@ -93,6 +95,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var providers = sut.GetProviders();
@@ -121,6 +124,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         sut.GetClient("provider").Should().BeSameAs(openAiClient);

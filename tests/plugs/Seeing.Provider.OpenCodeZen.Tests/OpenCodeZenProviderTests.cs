@@ -213,6 +213,7 @@ public class OpenCodeZenProviderTests
             new[] { anthropic.Object, openai.Object },
             Mock.Of<IProviderRegistry>(),
             new OpenCodeZenModelsClient(NullLogger<OpenCodeZenModelsClient>.Instance),
+            PassthroughCapabilityManager(),
             NullLogger<OpenCodeZenProvider>.Instance);
 
         sut.GetClient().Should().BeSameAs(client);
@@ -283,6 +284,7 @@ public class OpenCodeZenProviderTests
                 new[] { OpenAiFactory(factory) },
                 registry.Object,
                 new OpenCodeZenModelsClient(NullLogger<OpenCodeZenModelsClient>.Instance),
+                PassthroughCapabilityManager(),
                 NullLogger<OpenCodeZenProvider>.Instance);
 
             await sut.WarmupAsync(TestContext.Current.CancellationToken);
@@ -390,7 +392,16 @@ public class OpenCodeZenProviderTests
             new[] { factory ?? OpenAiFactory() },
             Mock.Of<IProviderRegistry>(),
             modelsClient ?? new OpenCodeZenModelsClient(NullLogger<OpenCodeZenModelsClient>.Instance),
+            PassthroughCapabilityManager(),
             NullLogger<OpenCodeZenProvider>.Instance);
+
+    private static IModelCapabilityManager PassthroughCapabilityManager()
+    {
+        var mock = new Mock<IModelCapabilityManager>();
+        mock.Setup(m => m.TryEnrichIfEnabledAsync(It.IsAny<ModelConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelConfig m, CancellationToken _) => m);
+        return mock.Object;
+    }
 
     private static string CreateTempDirectory()
     {

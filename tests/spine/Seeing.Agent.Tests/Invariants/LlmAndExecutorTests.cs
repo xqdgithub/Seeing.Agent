@@ -88,6 +88,7 @@ public class LlmAndExecutorTests : IDisposable
             [openAi.Object, anthropic.Object],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         sut.GetClient("claude").Should().BeSameAs(anthropicClient);
@@ -99,6 +100,7 @@ public class LlmAndExecutorTests : IDisposable
             [anthropic.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         anthropicOnly.GetClient("claude").Should().BeSameAs(anthropicClient);

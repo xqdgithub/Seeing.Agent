@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
@@ -9,6 +10,11 @@ namespace Seeing.Agent.Core.Configuration;
 /// 统一重载编排器：订阅配置变更与工作区变更，按 IReloadHandler.ChangeTypes 路由分发
 /// <para>串行执行、失败隔离、全量变更去抖合并、执行期间重入合并为一次待处理</para>
 /// <para>实现 IReloadSignalBus（插件推送）与 IReloadHandlerRegistry（插件动态注册）</para>
+/// <para>
+/// 构造期为空壳（可 Publish）；DI 登记的 Handler 经
+/// <see cref="AttachHandlers"/> / <see cref="ReloadOrchestratorServiceExtensions.AttachReloadHandlers"/>
+/// 延后挂载，避免发布方构造拖起全部消费者。
+/// </para>
 /// </summary>
 public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistry, IDisposable
 {
@@ -43,7 +49,6 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     }
 
     public ReloadOrchestrator(
-        IEnumerable<IReloadHandler> handlers,
         IConfigSectionStore configStore,
         IWorkspaceProvider workspace,
         ILogger<ReloadOrchestrator> logger,
@@ -53,13 +58,28 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
         _configStore = configStore;
         _workspace = workspace;
         _moduleReloadOptions = moduleReloadOptions;
-
         _routes = new Dictionary<Type, List<IReloadHandler>>();
-        foreach (var handler in handlers)
-            AddToRoutes(handler);
 
         _configStore.ConfigChanged += OnConfigChanged;
         _workspace.WorkspaceRootChanged += OnWorkspaceChanged;
+    }
+
+    /// <summary>
+    /// 挂载 DI / 静态登记的 Handler（可重复调用；同实例不重复入路由）。
+    /// 须在模块 Activate / 配置热重载消费之前调用。
+    /// </summary>
+    public void AttachHandlers(IEnumerable<IReloadHandler> handlers)
+    {
+        ArgumentNullException.ThrowIfNull(handlers);
+
+        lock (_stateLock)
+        {
+            foreach (var handler in handlers)
+            {
+                ArgumentNullException.ThrowIfNull(handler);
+                AddToRoutes(handler);
+            }
+        }
 
         LogRegistrationSummary();
     }
@@ -126,6 +146,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     /// <inheritdoc/>
     public void RegisterHandler(IReloadHandler handler)
     {
+        ArgumentNullException.ThrowIfNull(handler);
         lock (_stateLock)
         {
             AddToRoutes(handler);
@@ -136,6 +157,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     /// <inheritdoc/>
     public void UnregisterHandler(IReloadHandler handler)
     {
+        ArgumentNullException.ThrowIfNull(handler);
         lock (_stateLock)
         {
             // 防御性复制：ChangeTypes 可能是可变数组，避免迭代期间被外部修改
@@ -285,17 +307,44 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     }
 }
 
+/// <summary>将 DI 中的 <see cref="IReloadHandler"/> 挂到编排器（发布门面与消费侧解耦）。</summary>
+public static class ReloadOrchestratorServiceExtensions
+{
+    /// <summary>
+    /// 解析编排器并 Attach 全部已登记 <see cref="IReloadHandler"/>。
+    /// 幂等（同实例不重复入路由）。须在 <c>SettleAndActivate</c> / 配置热路径之前调用。
+    /// </summary>
+    public static void AttachReloadHandlers(this IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        var orchestrator = services.GetService<ReloadOrchestrator>();
+        if (orchestrator is null)
+            return;
+
+        orchestrator.AttachHandlers(services.GetServices<IReloadHandler>());
+    }
+}
+
 /// <summary>
-/// 触发编排器构造的宿主服务：ReloadOrchestrator 为惰性单例，
-/// 需在宿主启动时显式解析一次，使其订阅配置/工作区变更事件
+/// 触发编排器构造并挂载 Handler：ReloadOrchestrator 为惰性单例，
+/// 需在宿主启动时显式解析一次，使其订阅配置/工作区变更事件。
 /// </summary>
 internal sealed class ReloadOrchestratorStarter : IHostedService
 {
+    private readonly IServiceProvider _services;
     private readonly ReloadOrchestrator _orchestrator;
 
-    public ReloadOrchestratorStarter(ReloadOrchestrator orchestrator) => _orchestrator = orchestrator;
+    public ReloadOrchestratorStarter(IServiceProvider services, ReloadOrchestrator orchestrator)
+    {
+        _services = services;
+        _orchestrator = orchestrator;
+    }
 
-    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _services.AttachReloadHandlers();
+        return Task.CompletedTask;
+    }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {

@@ -45,6 +45,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
         var handler = new ProviderReloadHandler(sut);
 
@@ -81,6 +82,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
         var extensionProvider = new TestProvider("provider");
         registry.Register(extensionProvider, ownerExtensionId: "test-extension");
@@ -122,6 +124,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
         var extensionProvider = new TestProvider("provider");
         registry.Register(extensionProvider, ownerExtensionId: "test-extension");
@@ -151,6 +154,7 @@ public class ProviderManagerTests : IDisposable
             [ Mock.Of<ILlmClientFactory>() ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var connected = await sut.TestConnectionAsync(
@@ -182,6 +186,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var provider = sut.GetProvider("openai");
@@ -214,6 +219,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var ok = sut.TryGetConfigurable("openai", out var configurable);
@@ -233,6 +239,7 @@ public class ProviderManagerTests : IDisposable
             [ Mock.Of<ILlmClientFactory>() ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var ok = sut.TryGetConfigurable("missing", out var configurable);
@@ -252,6 +259,7 @@ public class ProviderManagerTests : IDisposable
             [ Mock.Of<ILlmClientFactory>() ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var ok = sut.TryGetConfigurable("ext", out var configurable);
@@ -273,6 +281,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             logger);
 
         await sut.SaveProviderAsync(
@@ -307,6 +316,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         live.ApiKey = "sk-mutated-before-client";
@@ -334,6 +344,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         _ = sut.GetClient("provider");
@@ -368,6 +379,7 @@ public class ProviderManagerTests : IDisposable
             [ factory.Object ],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         await sut.SaveProviderAsync(
@@ -441,6 +453,7 @@ public class ProviderManagerTests : IDisposable
             [openAi.Object, anthropic.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         sut.ResolveFactory("OpenAI").Should().BeSameAs(openAi.Object);
@@ -462,6 +475,7 @@ public class ProviderManagerTests : IDisposable
             [first.Object, second.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         sut.ResolveFactory(ProviderTypes.OpenAi).Should().BeSameAs(first.Object);
@@ -486,6 +500,7 @@ public class ProviderManagerTests : IDisposable
             [anthropic.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         sut.GetClient("claude").Should().BeSameAs(expected);
@@ -519,6 +534,7 @@ public class ProviderManagerTests : IDisposable
             [openAi.Object, anthropic.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         sut.GetClient("openai").Should().BeSameAs(openAiClient);

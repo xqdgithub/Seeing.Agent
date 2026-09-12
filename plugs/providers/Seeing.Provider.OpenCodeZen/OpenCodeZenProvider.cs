@@ -19,6 +19,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
     private readonly ILlmClientFactory[] _factories;
     private readonly IProviderRegistry _registry;
     private readonly OpenCodeZenModelsClient _modelsClient;
+    private readonly IModelCapabilityManager _capabilityManager;
     private readonly ILogger<OpenCodeZenProvider> _logger;
     private readonly object _gate = new();
     private string? _apiKey;
@@ -32,12 +33,14 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
         IEnumerable<ILlmClientFactory> factories,
         IProviderRegistry registry,
         OpenCodeZenModelsClient modelsClient,
+        IModelCapabilityManager capabilityManager,
         ILogger<OpenCodeZenProvider> logger)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _factories = factories?.ToArray() ?? throw new ArgumentNullException(nameof(factories));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _modelsClient = modelsClient ?? throw new ArgumentNullException(nameof(modelsClient));
+        _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -94,26 +97,39 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
         var options = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
         var models = await _modelsClient.ListModelsAsync(cancellationToken).ConfigureAwait(false);
 
+        List<ModelConfig> mapped;
         lock (_gate)
         {
-            if (string.Equals(apiKeySnapshot, _apiKey, StringComparison.Ordinal))
-            {
-                // 未配置 API Key 时仅展示免费模型，避免全量（含付费）列表过大
-                var visible = string.IsNullOrWhiteSpace(apiKeySnapshot)
-                    ? models.Where(m => m.IsFree)
-                    : models;
+            if (!string.Equals(apiKeySnapshot, _apiKey, StringComparison.Ordinal))
+                return _modelsCache ?? Array.Empty<ModelConfig>();
 
-                _modelsCache = visible
-                    .Select(m => OpenCodeZenModelCatalog.ApplyOverrides(m, options.ModelCapabilities))
-                    .Select(ToModelConfig)
-                    .ToList();
-                _modelsCachedAt = DateTimeOffset.Now;
-                return _modelsCache;
-            }
+            // 未配置 API Key 时仅展示免费模型，避免全量（含付费）列表过大
+            var visible = string.IsNullOrWhiteSpace(apiKeySnapshot)
+                ? models.Where(m => m.IsFree)
+                : models;
+
+            mapped = visible
+                .Select(m => OpenCodeZenModelCatalog.ApplyOverrides(m, options.ModelCapabilities))
+                .Select(ToModelConfig)
+                .ToList();
         }
 
-        // Key 已变更：本次结果作废（保存时会清空缓存，交由下次刷新重新拉取）
-        return _modelsCache ?? Array.Empty<ModelConfig>();
+        for (var i = 0; i < mapped.Count; i++)
+        {
+            mapped[i] = await _capabilityManager
+                .TryEnrichIfEnabledAsync(mapped[i], cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        lock (_gate)
+        {
+            if (!string.Equals(apiKeySnapshot, _apiKey, StringComparison.Ordinal))
+                return _modelsCache ?? Array.Empty<ModelConfig>();
+
+            _modelsCache = mapped;
+            _modelsCachedAt = DateTimeOffset.Now;
+            return _modelsCache;
+        }
     }
 
     /// <summary>

@@ -1,0 +1,771 @@
+@using AntDesign
+@using Microsoft.Extensions.Options
+@using Seeing.Agent.Abstractions.Configuration
+@using Seeing.Agent.Abstractions.Llm
+@using Seeing.Agent.Llm.ModelCapabilities
+@using Seeing.Agent.WebUI.Services
+@inject IModelCapabilityManager CapabilityManager
+@inject IOptionsMonitor<ModelCapabilitiesOptions> OptionsMonitor
+@inject SeeingConfigService ConfigService
+@inject IMessageService MessageService
+@implements IDisposable
+
+<Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
+       Message="默认使用内置精简目录（DeepSeek / Zen 免费等，含思考档位）；编辑写入 local 覆盖。models.dev 全量源默认不加载。" />
+
+<Form Layout="@FormLayout.Vertical" Model="@_options">
+    <FormItem Label="启用能力补全">
+        <Switch @bind-Checked="@_options.Enabled" />
+    </FormItem>
+    <FormItem Label="变更时刷新模型目录">
+        <Switch @bind-Checked="@_options.InvalidateModelCatalogOnChange" />
+        <span style="margin-left: 8px; color: #888;">默认 false；保存时按此开关 Notify</span>
+    </FormItem>
+    <FormItem Label="Providers（* 或 ProviderId）">
+        <Select TItemValue="string" TItem="string"
+                Mode="SelectMode.Tags"
+                Values="@_providers"
+                ValuesChanged="OnProvidersChanged"
+                Placeholder="输入 * 或 ProviderId 后回车"
+                Style="width: 100%;" />
+        <div style="margin-top: 4px; font-size: 12px; color: #888;">逗号分隔亦可：在下方文本框编辑后失焦同步</div>
+        <Input @bind-Value="@_providersText" OnBlur="SyncProvidersFromText" Placeholder="*, openai" Style="margin-top: 8px;" />
+    </FormItem>
+    <FormItem>
+        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync" Loading="@_saving">
+            保存编排配置
+        </Button>
+        <Button Style="margin-left: 8px;" Icon="@IconType.Outline.Reload" OnClick="ReloadRegistrations">
+            刷新列表
+        </Button>
+    </FormItem>
+</Form>
+
+<Divider Orientation="@DividerOrientation.Left">已注册能力源</Divider>
+
+@if (_rows.Count == 0)
+{
+    <Empty Description="@("暂无已激活的能力源")" />
+}
+else
+{
+    <Table TItem="Row" DataSource="@_rows" HidePagination Size="@TableSize.Small" RowKey="r => r.Id">
+        <PropertyColumn Property="c => c.Id" Title="Source Id" />
+        <PropertyColumn Property="c => c.DisplayName" Title="名称" />
+        <ActionColumn Title="Order" Width="110">
+            <InputNumber TValue="int" Value="@context.Order" Min="0"
+                         ValueChanged="v => OnOrderChanged(context, v)" Style="width: 88px;" />
+        </ActionColumn>
+        <ActionColumn Title="启用" Width="80">
+            <Switch Checked="@context.Enabled" OnChange="v => OnEnabledChanged(context, v)" />
+        </ActionColumn>
+        <PropertyColumn Property="c => c.RegisteredLabel" Title="已加载" />
+        <ActionColumn Title="操作" Width="280">
+            <Space>
+                <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Up"
+                        Disabled="@(IndexOf(context) <= 0)"
+                        OnClick="() => MoveAsync(context, -1)" />
+                <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Down"
+                        Disabled="@(IndexOf(context) >= _rows.Count - 1)"
+                        OnClick="() => MoveAsync(context, 1)" />
+                @if (context.CanList)
+                {
+                    <Button Size="@ButtonSize.Small" Loading="@context.Listing"
+                            OnClick="() => OpenEntriesAsync(context)">条目</Button>
+                }
+                @if (context.CanRefresh)
+                {
+                    <Button Size="@ButtonSize.Small" Loading="@context.Refreshing"
+                            OnClick="() => RefreshSourceAsync(context)">
+                        刷新远程
+                    </Button>
+                }
+            </Space>
+        </ActionColumn>
+    </Table>
+}
+
+<Modal Title="@($"能力条目 — {_detailSource?.DisplayName}")"
+       Visible="@_detailVisible"
+       OnCancel="CloseDetail"
+       Footer="null"
+       Width="900"
+       DestroyOnClose="true">
+    @if (_detailLoading)
+    {
+        <div style="min-height: 160px; display: flex; align-items: center; justify-content: center;">
+            <Spin Tip="@_detailLoadingTip" />
+        </div>
+    }
+    else
+    {
+        <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 12px;">
+            <Input Placeholder="筛选 model / provider / name" Style="width: 280px;"
+                   Value="@_entryFilter" OnInput="OnEntryFilterInput" />
+            <span style="color: #888; font-size: 12px;">共 @_entryTotal 条 · 每页 @_entryPageSize</span>
+        </Space>
+        <Table TItem="EntryRow" DataSource="@_pageEntries" HidePagination Size="@TableSize.Small"
+               RowKey="e => e.Key" Style="margin-bottom: 8px;" Loading="@_detailLoading">
+            <PropertyColumn Property="c => c.ModelId" Title="Id" />
+            <PropertyColumn Property="c => c.ProviderId" Title="Provider" />
+            <PropertyColumn Property="c => c.ContextLabel" Title="Context" />
+            <PropertyColumn Property="c => c.OutputLabel" Title="Output" />
+            <PropertyColumn Property="c => c.ThinkingLabel" Title="Thinking" />
+            <ActionColumn Title="">
+                @if (_detailCanEdit)
+                {
+                    <Button Size="@ButtonSize.Small" Type="@ButtonType.Link"
+                            OnClick="() => SelectEntry(context)">编辑</Button>
+                }
+            </ActionColumn>
+        </Table>
+        <Pagination Current="@_entryPage"
+                    Total="@_entryTotal"
+                    PageSize="@_entryPageSize"
+                    OnChange="OnEntryPageChange"
+                    ShowSizeChanger="false"
+                    Style="margin-bottom: 16px;" />
+
+        <Divider Orientation="@DividerOrientation.Left">别名</Divider>
+        <Table TItem="AliasRow" DataSource="@_aliases" HidePagination Size="@TableSize.Small"
+               RowKey="a => a.Key" Style="margin-bottom: 12px;">
+            <PropertyColumn Property="c => c.ProviderId" Title="Provider" />
+            <PropertyColumn Property="c => c.FromModelId" Title="From" />
+            <PropertyColumn Property="c => c.ToModelId" Title="To" />
+            <ActionColumn Title="">
+                @if (_detailCanEdit)
+                {
+                    <Popconfirm Title="删除该别名？" OnConfirm="() => DeleteAliasAsync(context)">
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" Danger>删除</Button>
+                    </Popconfirm>
+                }
+            </ActionColumn>
+        </Table>
+        @if (_detailCanEdit)
+        {
+            <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 16px;">
+                <Input @bind-Value="@_aliasProvider" Placeholder="Provider（可空）" Style="width: 140px;" />
+                <Input @bind-Value="@_aliasFrom" Placeholder="FromModelId" Style="width: 160px;" />
+                <Input @bind-Value="@_aliasTo" Placeholder="ToModelId" Style="width: 160px;" />
+                <Button Type="@ButtonType.Default" Loading="@_aliasSaving" OnClick="SaveAliasAsync">添加/更新别名</Button>
+            </Space>
+        }
+
+        @if (_detailCanEdit && _editEntry is not null)
+        {
+            <Divider Orientation="@DividerOrientation.Left">编辑 @_editEntry.ModelId</Divider>
+            <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 12px;">
+                <span>Context</span>
+                <InputNumber TValue="int?" @bind-Value="@_editContext" Min="1" Style="width: 140px;" />
+                <span>Output</span>
+                <InputNumber TValue="int?" @bind-Value="@_editOutput" Min="1" Style="width: 140px;" />
+            </Space>
+            <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 12px;">
+                <span>Thinking</span>
+                <Switch @bind-Checked="@_editThinkingSupported" CheckedChildren="开" UnCheckedChildren="关" />
+                <span>Interleaved</span>
+                <Input @bind-Value="@_editInterleaved" Placeholder="如 reasoning_content" Style="width: 200px;" />
+            </Space>
+            <Table TItem="LevelEditRow" DataSource="@_editLevels" HidePagination Size="@TableSize.Small"
+                   RowKey="l => l.RowId" Style="margin-bottom: 8px; max-width: 520px;">
+                <ActionColumn Title="Key">
+                    <Input @bind-Value="@context.Key" Style="width: 120px;" />
+                </ActionColumn>
+                <ActionColumn Title="Label">
+                    <Input @bind-Value="@context.Label" Style="width: 120px;" />
+                </ActionColumn>
+                <ActionColumn Title="" Width="70">
+                    <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" Danger
+                            OnClick="() => RemoveLevel(context)">删</Button>
+                </ActionColumn>
+            </Table>
+            <Space Style="margin-bottom: 12px;">
+                <Button Size="@ButtonSize.Small" OnClick="AddLevel">添加档位</Button>
+                <Button Type="@ButtonType.Primary" Loading="@_editSaving" OnClick="SaveEntryAsync">
+                    保存到本地覆盖
+                </Button>
+            </Space>
+        }
+    }
+</Modal>
+
+@code {
+    private ModelCapabilitiesOptions _options = new();
+    private List<Row> _rows = [];
+    private bool _saving;
+    private string _providersText = "*";
+
+    private bool _detailVisible;
+    private bool _detailLoading;
+    private string _detailLoadingTip = "加载条目中…";
+    private bool _detailCanEdit;
+    private Row? _detailSource;
+    private List<EntryRow> _pageEntries = [];
+    private int _entryTotal;
+    private int _entryPage = 1;
+    private const int _entryPageSize = 20;
+    private string _entryFilter = "";
+    private CancellationTokenSource? _filterCts;
+    private List<AliasRow> _aliases = [];
+    private ModelCapabilityEntry? _editEntry;
+    private int? _editContext;
+    private int? _editOutput;
+    private bool _editThinkingSupported;
+    private string? _editInterleaved;
+    private List<LevelEditRow> _editLevels = [];
+    private bool _editSaving;
+    private string? _aliasProvider;
+    private string? _aliasFrom;
+    private string? _aliasTo;
+    private bool _aliasSaving;
+
+    private IEnumerable<string> _providers => _options.Providers;
+
+    protected override void OnInitialized()
+    {
+        _options = Clone(OptionsMonitor.CurrentValue);
+        _providersText = string.Join(", ", _options.Providers);
+        CapabilityManager.CapabilitiesChanged += OnChanged;
+        ReloadRegistrations();
+    }
+
+    public void Dispose()
+        => CapabilityManager.CapabilitiesChanged -= OnChanged;
+
+    private void OnChanged(object? sender, ModelCapabilitiesChangedEventArgs e)
+        => InvokeAsync(ReloadRegistrations);
+
+    private void OnProvidersChanged(IEnumerable<string> values)
+    {
+        _options.Providers = NormalizeProviders(values);
+        _providersText = string.Join(", ", _options.Providers);
+    }
+
+    private void SyncProvidersFromText()
+    {
+        var parts = (_providersText ?? "")
+            .Split([',', ';', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        _options.Providers = NormalizeProviders(parts);
+        _providersText = string.Join(", ", _options.Providers);
+    }
+
+    private static List<string> NormalizeProviders(IEnumerable<string>? values)
+    {
+        var list = values?
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
+        return list.Count == 0 ? ["*"] : list;
+    }
+
+    private void ReloadRegistrations()
+    {
+        var regs = CapabilityManager.GetRegistrations();
+        MergeSourcesFromRegistrations(regs);
+
+        _rows = regs
+            .Select(r =>
+            {
+                var opt = FindSourceOption(r.Id);
+                return new Row
+                {
+                    Id = r.Id,
+                    DisplayName = r.DisplayName,
+                    Order = opt?.Order ?? r.Order,
+                    Enabled = opt?.Enabled ?? r.Enabled,
+                    Registered = r.Registered,
+                    CanList = r.CanList,
+                    CanEdit = r.CanEdit,
+                    CanRefresh = r.CanRefresh,
+                    RegisteredLabel = r.Registered ? "是" : "否"
+                };
+            })
+            .OrderBy(r => r.Order)
+            .ThenBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        StateHasChanged();
+    }
+
+    private void MergeSourcesFromRegistrations(IReadOnlyList<ModelCapabilitySourceRegistration> regs)
+    {
+        foreach (var r in regs)
+        {
+            if (FindSourceOption(r.Id) is not null)
+                continue;
+            _options.Sources.Add(new ModelCapabilitySourceOptions
+            {
+                Id = r.Id,
+                Order = r.Order,
+                Enabled = r.Enabled
+            });
+        }
+    }
+
+    private ModelCapabilitySourceOptions? FindSourceOption(string id)
+        => _options.Sources.FirstOrDefault(s =>
+            string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    private ModelCapabilitySourceOptions EnsureSourceOption(Row row)
+    {
+        var opt = FindSourceOption(row.Id);
+        if (opt is null)
+        {
+            opt = new ModelCapabilitySourceOptions { Id = row.Id };
+            _options.Sources.Add(opt);
+        }
+        return opt;
+    }
+
+    private void OnOrderChanged(Row row, int value)
+    {
+        row.Order = value;
+        var opt = EnsureSourceOption(row);
+        opt.Order = value;
+    }
+
+    private void OnEnabledChanged(Row row, bool value)
+    {
+        row.Enabled = value;
+        var opt = EnsureSourceOption(row);
+        opt.Enabled = value;
+    }
+
+    private int IndexOf(Row row) => _rows.IndexOf(row);
+
+    private Task MoveAsync(Row row, int delta)
+    {
+        var i = IndexOf(row);
+        var j = i + delta;
+        if (i < 0 || j < 0 || j >= _rows.Count)
+            return Task.CompletedTask;
+
+        (_rows[i], _rows[j]) = (_rows[j], _rows[i]);
+        RewriteOrders();
+        return Task.CompletedTask;
+    }
+
+    private void RewriteOrders()
+    {
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var order = i * 10;
+            _rows[i].Order = order;
+            var opt = EnsureSourceOption(_rows[i]);
+            opt.Order = order;
+            opt.Enabled = _rows[i].Enabled;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            SyncProvidersFromText();
+            // 把表格当前 Order/Enabled 写回 Sources
+            foreach (var row in _rows)
+            {
+                var opt = EnsureSourceOption(row);
+                opt.Order = row.Order;
+                opt.Enabled = row.Enabled;
+            }
+
+            await ConfigService.SaveLevelSectionsAsync(
+                ConfigLevel.User,
+                new Dictionary<string, object?>
+                {
+                    [ModelCapabilitiesOptions.SectionName] = _options
+                });
+
+            MessageService.Success("模型能力编排已保存");
+            await CapabilityManager.NotifyChangedAsync(
+                ModelCapabilitiesChangeReason.SystemConfigChanged,
+                invalidateModelCatalog: _options.InvalidateModelCatalogOnChange);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task RefreshSourceAsync(Row row)
+    {
+        row.Refreshing = true;
+        try
+        {
+            var source = CapabilityManager.GetSource(row.Id);
+            if (source is IRefreshableModelCapabilitySource refreshable)
+            {
+                // Source.Changed → Manager.NotifyChangedAsync；勿重复 Notify
+                await refreshable.RefreshAsync();
+                MessageService.Success($"{row.DisplayName} 已刷新");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"刷新失败: {ex.Message}");
+        }
+        finally
+        {
+            row.Refreshing = false;
+            ReloadRegistrations();
+        }
+    }
+
+    private async Task OpenEntriesAsync(Row row)
+    {
+        row.Listing = true;
+        _detailSource = row;
+        _detailCanEdit = row.CanEdit;
+        _detailVisible = true;
+        _detailLoading = true;
+        _detailLoadingTip = "加载条目中…";
+        _editEntry = null;
+        _editLevels = [];
+        _pageEntries = [];
+        _aliases = [];
+        _entryPage = 1;
+        _entryFilter = "";
+        _entryTotal = 0;
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+
+        try
+        {
+            await LoadEntryPageAsync();
+            await LoadAliasesAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"加载条目失败: {ex.Message}");
+        }
+        finally
+        {
+            _detailLoading = false;
+            row.Listing = false;
+        }
+    }
+
+    private async Task LoadEntryPageAsync()
+    {
+        if (_detailSource is null)
+            return;
+
+        var source = CapabilityManager.GetSource(_detailSource.Id);
+        if (source is not IListableModelCapabilitySource listable)
+        {
+            MessageService.Warning("该源不支持列举条目");
+            return;
+        }
+
+        _detailLoading = true;
+        _detailLoadingTip = $"加载第 {_entryPage} 页…";
+        await InvokeAsync(StateHasChanged);
+
+        var page = await listable.ListEntriesPageAsync(new ModelCapabilityListQuery
+        {
+            Skip = (_entryPage - 1) * _entryPageSize,
+            Take = _entryPageSize,
+            Filter = string.IsNullOrWhiteSpace(_entryFilter) ? null : _entryFilter.Trim()
+        });
+
+        _entryTotal = page.Total;
+        _pageEntries = page.Items.Select(ToEntryRow).ToList();
+        _detailLoading = false;
+    }
+
+    private async Task LoadAliasesAsync()
+    {
+        if (_detailSource is null)
+            return;
+        var source = CapabilityManager.GetSource(_detailSource.Id);
+        if (source is not IListableModelCapabilitySource listable)
+            return;
+
+        var aliases = await listable.ListAliasesAsync();
+        _aliases = aliases
+            .Select(a => new AliasRow
+            {
+                Alias = a,
+                ProviderId = a.ProviderId ?? "",
+                FromModelId = a.FromModelId,
+                ToModelId = a.ToModelId
+            })
+            .OrderBy(a => a.FromModelId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static EntryRow ToEntryRow(ModelCapabilityEntry e) => new()
+    {
+        Entry = e,
+        ModelId = e.ModelId,
+        ProviderId = e.ProviderId ?? "",
+        ContextLabel = e.Limit?.Context?.ToString() ?? "—",
+        OutputLabel = e.Limit?.Output?.ToString() ?? "—",
+        ThinkingLabel = e.Options?.Thinking?.Supported == true ? "是" : "否"
+    };
+
+    private async Task OnEntryPageChange(PaginationEventArgs args)
+    {
+        _entryPage = args.Page;
+        try
+        {
+            await LoadEntryPageAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"翻页失败: {ex.Message}");
+            _detailLoading = false;
+        }
+    }
+
+    private async Task OnEntryFilterInput(ChangeEventArgs e)
+    {
+        _entryFilter = e.Value?.ToString() ?? "";
+        _entryPage = 1;
+        _filterCts?.Cancel();
+        _filterCts = new CancellationTokenSource();
+        var token = _filterCts.Token;
+        try
+        {
+            await Task.Delay(300, token);
+            await LoadEntryPageAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // debounce
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"筛选失败: {ex.Message}");
+            _detailLoading = false;
+        }
+    }
+
+    private void CloseDetail()
+    {
+        _filterCts?.Cancel();
+        _detailVisible = false;
+        _detailSource = null;
+        _editEntry = null;
+        _editLevels = [];
+        _pageEntries = [];
+        _aliases = [];
+        _entryTotal = 0;
+    }
+
+    private void SelectEntry(EntryRow row)
+    {
+        _editEntry = row.Entry;
+        _editContext = row.Entry.Limit?.Context;
+        _editOutput = row.Entry.Limit?.Output;
+        var thinking = row.Entry.Options?.Thinking;
+        _editThinkingSupported = thinking?.Supported == true;
+        _editInterleaved = thinking?.Interleaved;
+        _editLevels = thinking?.Levels?
+            .Select(l => new LevelEditRow
+            {
+                RowId = Guid.NewGuid().ToString("N"),
+                Key = l.Key,
+                Label = l.Label
+            }).ToList() ?? [];
+    }
+
+    private void AddLevel()
+    {
+        _editLevels.Add(new LevelEditRow
+        {
+            RowId = Guid.NewGuid().ToString("N"),
+            Key = "",
+            Label = ""
+        });
+    }
+
+    private void RemoveLevel(LevelEditRow row)
+        => _editLevels.Remove(row);
+
+    private async Task SaveEntryAsync()
+    {
+        if (_detailSource is null || _editEntry is null)
+            return;
+
+        var source = CapabilityManager.GetSource(_detailSource.Id);
+        if (source is not IEditableModelCapabilitySource editable)
+        {
+            MessageService.Warning("该源不可编辑");
+            return;
+        }
+
+        _editSaving = true;
+        try
+        {
+            var levels = _editLevels
+                .Where(l => !string.IsNullOrWhiteSpace(l.Key))
+                .Select(l => new ThinkingLevel
+                {
+                    Key = l.Key.Trim(),
+                    Label = string.IsNullOrWhiteSpace(l.Label) ? null : l.Label.Trim()
+                })
+                .ToList();
+
+            ThinkingOptions? thinking = null;
+            if (_editThinkingSupported || levels.Count > 0 || !string.IsNullOrWhiteSpace(_editInterleaved))
+            {
+                thinking = new ThinkingOptions
+                {
+                    Supported = _editThinkingSupported,
+                    Interleaved = string.IsNullOrWhiteSpace(_editInterleaved) ? null : _editInterleaved.Trim(),
+                    Levels = levels.Count > 0 ? levels : null
+                };
+            }
+
+            var updated = new ModelCapabilityEntry
+            {
+                ProviderId = _editEntry.ProviderId,
+                ModelId = _editEntry.ModelId,
+                Name = _editEntry.Name,
+                Limit = new ModelCapabilityLimits
+                {
+                    Context = _editContext,
+                    Output = _editOutput
+                },
+                Modalities = _editEntry.Modalities,
+                Options = thinking is null ? null : new ModelOptions { Thinking = thinking },
+                Pricing = _editEntry.Pricing
+            };
+            // Upsert → 写入 local 覆盖层；Source.Changed → Manager.Notify
+            await editable.UpsertEntryAsync(updated);
+            MessageService.Success("已保存到本地覆盖");
+            await LoadEntryPageAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存条目失败: {ex.Message}");
+        }
+        finally
+        {
+            _editSaving = false;
+        }
+    }
+
+    private async Task SaveAliasAsync()
+    {
+        if (_detailSource is null || string.IsNullOrWhiteSpace(_aliasFrom) || string.IsNullOrWhiteSpace(_aliasTo))
+        {
+            MessageService.Warning("From / To 不能为空");
+            return;
+        }
+
+        var source = CapabilityManager.GetSource(_detailSource.Id);
+        if (source is not IEditableModelCapabilitySource editable)
+        {
+            MessageService.Warning("该源不可编辑");
+            return;
+        }
+
+        _aliasSaving = true;
+        try
+        {
+            await editable.UpsertAliasAsync(new ModelCapabilityAlias
+            {
+                ProviderId = string.IsNullOrWhiteSpace(_aliasProvider) ? null : _aliasProvider.Trim(),
+                FromModelId = _aliasFrom.Trim(),
+                ToModelId = _aliasTo.Trim()
+            });
+            MessageService.Success("别名已保存");
+            _aliasFrom = _aliasTo = null;
+            await LoadAliasesAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存别名失败: {ex.Message}");
+        }
+        finally
+        {
+            _aliasSaving = false;
+        }
+    }
+
+    private async Task DeleteAliasAsync(AliasRow row)
+    {
+        if (_detailSource is null)
+            return;
+
+        var source = CapabilityManager.GetSource(_detailSource.Id);
+        if (source is not IEditableModelCapabilitySource editable)
+            return;
+
+        try
+        {
+            await editable.DeleteAliasAsync(
+                string.IsNullOrWhiteSpace(row.ProviderId) ? null : row.ProviderId,
+                row.FromModelId);
+            MessageService.Success("别名已删除");
+            await LoadAliasesAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除别名失败: {ex.Message}");
+        }
+    }
+
+    private static ModelCapabilitiesOptions Clone(ModelCapabilitiesOptions src) => new()
+    {
+        Enabled = src.Enabled,
+        Providers = src.Providers?.ToList() ?? ["*"],
+        InvalidateModelCatalogOnChange = src.InvalidateModelCatalogOnChange,
+        Sources = src.Sources?.Select(s => new ModelCapabilitySourceOptions
+        {
+            Id = s.Id,
+            Order = s.Order,
+            Enabled = s.Enabled
+        }).ToList() ?? []
+    };
+
+    private sealed class Row
+    {
+        public string Id { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public int Order { get; set; }
+        public bool Enabled { get; set; }
+        public bool Registered { get; set; }
+        public bool CanList { get; set; }
+        public bool CanEdit { get; set; }
+        public bool CanRefresh { get; set; }
+        public bool Refreshing { get; set; }
+        public bool Listing { get; set; }
+        public string RegisteredLabel { get; set; } = "";
+    }
+
+    private sealed class EntryRow
+    {
+        public required ModelCapabilityEntry Entry { get; init; }
+        public string ModelId { get; set; } = "";
+        public string ProviderId { get; set; } = "";
+        public string ContextLabel { get; set; } = "";
+        public string OutputLabel { get; set; } = "";
+        public string ThinkingLabel { get; set; } = "";
+        public string Key => $"{ProviderId}|{ModelId}";
+    }
+
+    private sealed class AliasRow
+    {
+        public required ModelCapabilityAlias Alias { get; init; }
+        public string ProviderId { get; set; } = "";
+        public string FromModelId { get; set; } = "";
+        public string ToModelId { get; set; } = "";
+        public string Key => $"{ProviderId}|{FromModelId}|{ToModelId}";
+    }
+
+    private sealed class LevelEditRow
+    {
+        public string RowId { get; set; } = "";
+        public string Key { get; set; } = "";
+        public string? Label { get; set; }
+    }
+}

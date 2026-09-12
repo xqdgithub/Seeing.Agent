@@ -63,10 +63,11 @@ public sealed class DeepSeekModelsClient
                     Id = m.Id!,
                     Name = m.Id,
                     Provider = "deepseek"
-                });
+                })
+                .ToList();
 
-            // List Models 不返回 limit 等能力字段；用预置表覆盖后再交给 Provider TTL 缓存
-            return DeepSeekModelCapabilities.ApplyAll(listed);
+            // 能力（limit/thinking）由 IModelCapabilityManager FillEmpty 补全
+            return listed;
         }
         catch (Exception ex)
         {

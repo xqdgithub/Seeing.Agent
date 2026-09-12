@@ -10,11 +10,11 @@ namespace Seeing.Provider.DeepSeek.Tests;
 public class DeepSeekModelsClientTests
 {
     [Fact]
-    public async Task ListModelsAsync_ParsesOpenAiStylePayload()
+    public async Task ListModelsAsync_ParsesOpenAiStylePayload_WithoutStaticPresets()
     {
         var handler = new StubHandler(_ =>
         {
-            var json = """{"data":[{"id":"deepseek-chat"},{"id":"deepseek-reasoner"}]}""";
+            var json = """{"data":[{"id":"deepseek-v4-flash"},{"id":"deepseek-v4-pro"}]}""";
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
@@ -25,16 +25,13 @@ public class DeepSeekModelsClientTests
         var models = await client.ListModelsAsync("sk-test", TestContext.Current.CancellationToken);
 
         models.Should().HaveCount(2);
-        models[0].Id.Should().Be("deepseek-chat");
-        models[0].Name.Should().Be("DeepSeek Chat");
+        models[0].Id.Should().Be("deepseek-v4-flash");
+        models[0].Name.Should().Be("deepseek-v4-flash");
         models[0].Provider.Should().Be("deepseek");
-        models[0].Limit.Context.Should().Be(1_000_000);
-        models[0].Limit.Output.Should().Be(384_000);
-        models[1].Id.Should().Be("deepseek-reasoner");
-        models[1].Limit.Context.Should().Be(1_000_000);
-        models[1].Options!.Thinking!.Supported.Should().BeTrue();
-        models[1].Options.Thinking.Interleaved.Should().Be("reasoning_content");
-        models[1].Options.Thinking.Levels.Should().NotBeNullOrEmpty();
+        models[0].Limit.Context.Should().Be(4096);
+        models[0].Options.Should().BeNull();
+        models[1].Id.Should().Be("deepseek-v4-pro");
+        models[1].Options.Should().BeNull();
     }
 
     [Fact]
@@ -50,9 +47,13 @@ public class DeepSeekModelsClientTests
     private sealed class StubHandler : HttpMessageHandler
     {
         private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;
-        public StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) => _responder = responder;
+
+        public StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
+            => _responder = responder;
+
         protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
             => Task.FromResult(_responder(request));
     }
 }

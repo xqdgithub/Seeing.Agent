@@ -22,7 +22,8 @@ public class OpenCodeZenModelsClientTests
         freeModel.IsFree.Should().BeTrue();
         freeModel.InputPrice.Should().Be(0);
         freeModel.OutputPrice.Should().Be(0);
-        freeModel.Context.Should().Be(200_000);
+        freeModel.Context.Should().Be(OpenCodeZenModelCatalog.DefaultContext);
+        freeModel.Output.Should().Be(OpenCodeZenModelCatalog.DefaultOutput);
 
         var bigPickle = models.Single(m => m.Id == "big-pickle");
         bigPickle.IsFree.Should().BeTrue();

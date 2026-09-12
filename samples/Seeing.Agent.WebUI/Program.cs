@@ -14,6 +14,8 @@ using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Llm.Anthropic;
+using Seeing.Agent.Llm.ModelCapabilities;
+using Seeing.Agent.Llm.ModelCatalog.Builtin;
 using Seeing.Agent.Llm.OpenAI;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
@@ -60,6 +62,9 @@ builder.Services.AddSeeingModule<SkillsModule>(registry);
 builder.Services.AddSeeingModule<McpModule>(registry);
 builder.Services.AddSeeingModule<OpenAiLlmModule>(registry);
 builder.Services.AddSeeingModule<AnthropicLlmModule>(registry);
+builder.Services.AddSeeingModule<ModelCapabilitiesModule>(registry);
+builder.Services.AddSeeingModule<BuiltinCatalogModule>(registry);
+// models.dev 全量目录可选：需要时再 AddSeeingModule<ModelsDevCatalogModule>
 builder.Services.AddSeeingModule<DeepSeekLlmModule>(registry);
 builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
 builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);

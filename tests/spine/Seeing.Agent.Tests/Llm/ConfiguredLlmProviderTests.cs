@@ -209,7 +209,8 @@ public class ConfiguredLlmProviderTests
             config ?? new ProviderConfig { Id = "configured" },
             factory,
             NullLogger.Instance,
-            saveAsync ?? ((_, _, _) => Task.CompletedTask));
+            saveAsync ?? ((_, _, _) => Task.CompletedTask),
+            NullModelCapabilityManager.Instance);
 
     private static Mock<ILlmClientFactory> CreateFactory(ILlmClient client)
     {

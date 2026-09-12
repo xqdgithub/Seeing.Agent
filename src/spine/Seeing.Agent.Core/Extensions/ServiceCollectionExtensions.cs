@@ -639,6 +639,13 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<IModelManager>(sp => sp.GetRequiredService<ModelManager>());
             services.AddSingleton<IModelConfigManager>(sp => sp.GetRequiredService<ModelManager>());
 
+            // 能力模块可 Replace 为真实现；未加载时 enrich 恒 no-op
+            services.TryAddSingleton<IModelCapabilityManager, NullModelCapabilityManager>();
+            // 显式 Lazy：打断 ProviderManager ↔ MCM 构造环；MS.DI 不自动提供 Lazy<T>
+            services.AddSingleton(sp => new Lazy<IModelCapabilityManager>(
+                () => sp.GetRequiredService<IModelCapabilityManager>(),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+
             // Provider 管理器（同时注册具体类，供 ProviderReloadHandler 等注入）
             services.AddSingleton<IProviderRegistry, ProviderRegistry>();
             services.AddSingleton<ILlmCallInterceptorRegistry, LlmCallInterceptorRegistry>();
@@ -669,6 +676,7 @@ namespace Seeing.Agent.Core.Extensions
             // 注意：依赖各 Manager，必须在 RegisterCoreServices + RegisterLlmServices 之后调用
             services.AddSingleton<IReloadHandler, ProviderReloadHandler>();
             services.AddSingleton<IReloadHandler, ModelReloadHandler>();
+            services.AddSingleton<IReloadHandler, ModelCapabilityCatalogReloadHandler>();
             services.AddSingleton<IReloadHandler, AgentRuntimeReloadHandler>();
             services.AddSingleton<IReloadHandler, AgentManagerReloadHandler>();
             services.AddSingleton<IReloadHandler, SessionReloadHandler>();
@@ -756,6 +764,9 @@ namespace Seeing.Agent.Core.Extensions
 
             // 切根时清空白名单与权限记忆（须在工作区 Initialize 之后挂接，避免启动期误清）
             services.GetService<WorkspaceBoundaryLifecycle>()?.Attach();
+
+            // 重载 Handler 延后挂载：须在模块 Activate（可能 Publish）之前，且不得在编排器 ctor 全量物化
+            services.AttachReloadHandlers();
 
             // 进程级结算 → 仅 Activate 启用集（含 agents.builtin → IAgentStore；须在 AgentManager.StartAsync 之前）
             await SettleAndActivateModulesAsync(services, configManager, logger, cancellationToken);

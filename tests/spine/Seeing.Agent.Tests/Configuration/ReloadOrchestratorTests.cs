@@ -36,8 +36,9 @@ public class ReloadOrchestratorTests
         workspace.Setup(x => x.ProjectSeeingDirectory).Returns("/workspace/.seeing");
         var handler = new TrackingHandler();
         var orch = new ReloadOrchestrator(
-            new[] { handler }, configStore.Object, workspace.Object,
+            configStore.Object, workspace.Object,
             NullLogger<ReloadOrchestrator>.Instance);
+        orch.AttachHandlers([handler]);
         return (orch, handler);
     }
 
@@ -70,9 +71,9 @@ public class ReloadOrchestratorTests
         workspace.Setup(x => x.StartupDirectory).Returns("/startup");
         workspace.Setup(x => x.ProjectSeeingDirectory).Returns("/workspace/.seeing");
         var orch = new ReloadOrchestrator(
-            new IReloadHandler[] { bad, good },
             new Mock<IConfigSectionStore>().Object, workspace.Object,
             NullLogger<ReloadOrchestrator>.Instance);
+        orch.AttachHandlers([bad, good]);
 
         var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } });
 
@@ -80,6 +81,20 @@ public class ReloadOrchestratorTests
         var badResult = results.Should().ContainSingle(r => r.ComponentId == "bad").Subject;
         badResult.Success.Should().BeFalse();
         badResult.Error.Should().Be("boom");
+    }
+
+    [Fact]
+    public async Task 空壳编排器_Attach前Publish无Handler()
+    {
+        var workspace = new Mock<IWorkspaceProvider>();
+        workspace.Setup(x => x.StartupDirectory).Returns("/startup");
+        var orch = new ReloadOrchestrator(
+            new Mock<IConfigSectionStore>().Object,
+            workspace.Object,
+            NullLogger<ReloadOrchestrator>.Instance);
+
+        var results = await orch.PublishAsync(new ConfigChange { ChangedSections = ["X"] });
+        results.Should().BeEmpty();
     }
 
     [Fact]

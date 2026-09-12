@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Agent.Llm.ModelCapabilities.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Llm.ModelCapabilities\Seeing.Agent.Llm.ModelCapabilities.csproj" />
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Llm.ModelCatalog.Builtin\Seeing.Agent.Llm.ModelCatalog.Builtin.csproj" />
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Llm.ModelCatalog.ModelsDev\Seeing.Agent.Llm.ModelCatalog.ModelsDev.csproj" />
+    <ProjectReference Include="..\..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
+  </ItemGroup>
+
+</Project>

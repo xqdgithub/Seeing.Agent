@@ -16,6 +16,7 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
     private ProviderConfig _config;
     private readonly ILogger _logger;
     private readonly Func<ProviderConfig, ConfigLevel, CancellationToken, Task> _saveAsync;
+    private readonly IModelCapabilityManager _capabilityManager;
     private readonly Lazy<ILlmClient> _client;
     private int _disposed;
 
@@ -23,17 +24,20 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         ProviderConfig config,
         ILlmClientFactory factory,
         ILogger logger,
-        Func<ProviderConfig, ConfigLevel, CancellationToken, Task> saveAsync)
+        Func<ProviderConfig, ConfigLevel, CancellationToken, Task> saveAsync,
+        IModelCapabilityManager capabilityManager)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(factory);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(saveAsync);
+        ArgumentNullException.ThrowIfNull(capabilityManager);
 
         // 持有独立副本，避免与 SeeingAgent.Providers 字典共享引用
         _config = CloneConfig(config);
         _logger = logger;
         _saveAsync = saveAsync;
+        _capabilityManager = capabilityManager;
         _client = new Lazy<ILlmClient>(
             () => CreateClient(factory),
             LazyThreadSafetyMode.ExecutionAndPublication);
@@ -86,13 +90,21 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         _config = updated;
     }
 
-    public override Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
+    public override async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
         CancellationToken cancellationToken)
     {
         var models = _config.Models?
             .Select(pair => CloneModel(pair.Key, pair.Value))
             .ToList() ?? [];
-        return Task.FromResult<IReadOnlyList<ModelConfig>>(models);
+
+        for (var i = 0; i < models.Count; i++)
+        {
+            models[i] = await _capabilityManager
+                .TryEnrichIfEnabledAsync(models[i], cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return models;
     }
 
     public override Task<bool> TestConnectionAsync(

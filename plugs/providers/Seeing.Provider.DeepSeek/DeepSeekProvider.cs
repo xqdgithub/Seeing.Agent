@@ -16,6 +16,7 @@ public sealed class DeepSeekProvider : ILlmProvider, IConfigurableLlmProvider, I
     private readonly IReadOnlyList<ILlmClientFactory> _factories;
     private readonly IProviderRegistry _registry;
     private readonly DeepSeekModelsClient _modelsClient;
+    private readonly IModelCapabilityManager _capabilityManager;
     private readonly ILogger<DeepSeekProvider> _logger;
     private readonly object _gate = new();
     private string? _apiKey;
@@ -29,12 +30,14 @@ public sealed class DeepSeekProvider : ILlmProvider, IConfigurableLlmProvider, I
         IEnumerable<ILlmClientFactory> factories,
         IProviderRegistry registry,
         DeepSeekModelsClient modelsClient,
+        IModelCapabilityManager capabilityManager,
         ILogger<DeepSeekProvider> logger)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _factories = (factories ?? throw new ArgumentNullException(nameof(factories))).ToArray();
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _modelsClient = modelsClient ?? throw new ArgumentNullException(nameof(modelsClient));
+        _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -81,8 +84,15 @@ public sealed class DeepSeekProvider : ILlmProvider, IConfigurableLlmProvider, I
             }
         }
 
-        var models = await _modelsClient.ListModelsAsync(apiKey, cancellationToken)
-            .ConfigureAwait(false);
+        var models = (await _modelsClient.ListModelsAsync(apiKey, cancellationToken)
+            .ConfigureAwait(false)).ToList();
+
+        for (var i = 0; i < models.Count; i++)
+        {
+            models[i] = await _capabilityManager
+                .TryEnrichIfEnabledAsync(models[i], cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         lock (_gate)
         {

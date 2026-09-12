@@ -64,6 +64,7 @@ public class DeepSeekProviderTests
                 new[] { OpenAiFactory(factory) },
                 registry.Object,
                 new DeepSeekModelsClient(NullLogger<DeepSeekModelsClient>.Instance),
+                PassthroughCapabilityManager(),
                 NullLogger<DeepSeekProvider>.Instance);
 
             await sut.WarmupAsync(TestContext.Current.CancellationToken);
@@ -231,7 +232,16 @@ public class DeepSeekProviderTests
             new[] { factory ?? OpenAiFactory() },
             Mock.Of<IProviderRegistry>(),
             modelsClient ?? new DeepSeekModelsClient(NullLogger<DeepSeekModelsClient>.Instance),
+            PassthroughCapabilityManager(),
             NullLogger<DeepSeekProvider>.Instance);
+    }
+
+    private static IModelCapabilityManager PassthroughCapabilityManager()
+    {
+        var mock = new Mock<IModelCapabilityManager>();
+        mock.Setup(m => m.TryEnrichIfEnabledAsync(It.IsAny<ModelConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelConfig m, CancellationToken _) => m);
+        return mock.Object;
     }
 
     private static string CreateTempDirectory()

@@ -26,36 +26,36 @@ public class OpenCodeZenModelCatalogTests
         => OpenCodeZenModelCatalog.IsFreeModel(id!).Should().BeFalse();
 
     [Fact]
-    public void ApplyPreset_KnownFreeModel_OverlaysCapabilities()
+    public void ApplyPreset_FreeModel_MarksFreeWithoutChangingLimits()
     {
         var model = new OpenCodeZenModel
         {
             Id = "nemotron-3-ultra-free",
             Name = "nemotron-3-ultra-free",
-            IsFree = true
+            Context = OpenCodeZenModelCatalog.DefaultContext,
+            Output = OpenCodeZenModelCatalog.DefaultOutput
         };
 
         var enriched = OpenCodeZenModelCatalog.ApplyPreset(model);
 
         enriched.IsFree.Should().BeTrue();
-        enriched.Context.Should().Be(200_000);
-        enriched.Output.Should().Be(65_536);
+        enriched.Context.Should().Be(OpenCodeZenModelCatalog.DefaultContext);
+        enriched.Output.Should().Be(OpenCodeZenModelCatalog.DefaultOutput);
+        enriched.InputPrice.Should().Be(0);
+        enriched.OutputPrice.Should().Be(0);
     }
 
     [Fact]
-    public void ApplyPreset_UnknownModel_KeepsDefaults()
+    public void ApplyPreset_PaidModel_Unchanged()
     {
         var model = new OpenCodeZenModel
         {
-            Id = "future-model-free",
-            Name = "future-model-free",
-            IsFree = true
+            Id = "deepseek-v4-pro",
+            Name = "deepseek-v4-pro"
         };
 
         var enriched = OpenCodeZenModelCatalog.ApplyPreset(model);
-
-        enriched.Context.Should().Be(OpenCodeZenModelCatalog.DefaultContext);
-        enriched.Output.Should().Be(OpenCodeZenModelCatalog.DefaultOutput);
+        enriched.Should().BeSameAs(model);
     }
 
     [Fact]
@@ -107,7 +107,6 @@ public class OpenCodeZenModelCatalogTests
     [Fact]
     public void ApplyOverrides_IsFreeOverride_MarksModelAsFree()
     {
-        // 未带 -free 后缀的新免费模型：用户可通过覆盖手动标记为免费
         var model = new OpenCodeZenModel
         {
             Id = "brand-new-freebie",

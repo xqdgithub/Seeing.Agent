@@ -111,6 +111,7 @@ public class ProviderConfigMigrationTests : IDisposable
             [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var loaded = configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers")["legacy"];

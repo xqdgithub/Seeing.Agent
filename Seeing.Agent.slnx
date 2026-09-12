@@ -34,6 +34,9 @@
     <Project Path="src/capabilities/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Agents.BuiltIn/Seeing.Agent.Agents.BuiltIn.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.Anthropic/Seeing.Agent.Llm.Anthropic.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Llm.ModelCapabilities/Seeing.Agent.Llm.ModelCapabilities.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Llm.ModelCatalog.Builtin/Seeing.Agent.Llm.ModelCatalog.Builtin.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Llm.ModelCatalog.ModelsDev/Seeing.Agent.Llm.ModelCatalog.ModelsDev.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.OpenAI/Seeing.Agent.Llm.OpenAI.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Mcp/Seeing.Agent.Mcp.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
@@ -71,6 +74,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Acp.Tests/Seeing.Agent.Acp.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Agents.BuiltIn.Tests/Seeing.Agent.Agents.BuiltIn.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Llm.Anthropic.Tests/Seeing.Agent.Llm.Anthropic.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Llm.ModelCapabilities.Tests/Seeing.Agent.Llm.ModelCapabilities.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Llm.OpenAI.Tests/Seeing.Agent.Llm.OpenAI.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Mcp.Tests/Seeing.Agent.Mcp.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />

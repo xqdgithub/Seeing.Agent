@@ -2,7 +2,10 @@ namespace Seeing.Agent.Abstractions.Configuration;
 
 /// <summary>
 /// 组件重载处理器：实现者必须声明订阅的变更类型（编译期可见、可自检）
-/// <para>通过 DI 注册（AddSingleton&lt;IReloadHandler, T&gt;），由 ReloadOrchestrator 统一收集调度</para>
+/// <para>
+/// 通过 DI 注册（AddSingleton&lt;IReloadHandler, T&gt;）；编排器空壳构造后经
+/// AttachHandlers / AttachReloadHandlers 延后挂载，避免发布方构造拖起全部消费者。
+/// </para>
 /// </summary>
 public interface IReloadHandler
 {

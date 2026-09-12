@@ -77,6 +77,7 @@ public class MigrationTests : IDisposable
             [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
         var loaded = providers["legacy-openai"];

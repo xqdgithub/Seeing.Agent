@@ -8,6 +8,7 @@
 @using Seeing.Agent.Core.CapabilitySets
 @using Seeing.Agent.Core.Llm
 @using Seeing.Agent.Llm
+@using Seeing.Agent.WebUI.Components.Settings
 @using Seeing.Agent.WebUI.Components
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
@@ -164,6 +165,10 @@
                     <DynamicComponent Type="@card.ComponentType" />
                 </TabPane>
             }
+
+            <TabPane Key="model-capabilities" Tab="模型能力">
+                <ModelCapabilitiesSettingsCard />
+            </TabPane>
 
             <TabPane Key="plugins" Tab="插件">
                 @if (_options.Plugins.Count == 0 && _options.PluginEnabled.Count == 0)

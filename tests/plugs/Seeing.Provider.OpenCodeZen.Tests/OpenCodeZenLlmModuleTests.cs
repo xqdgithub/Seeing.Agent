@@ -28,6 +28,11 @@ public class OpenCodeZenLlmModuleTests
         factory.Setup(f => f.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         services.AddSingleton(factory.Object);
 
+        var capability = new Mock<IModelCapabilityManager>();
+        capability.Setup(m => m.TryEnrichIfEnabledAsync(It.IsAny<ModelConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelConfig m, CancellationToken _) => m);
+        services.AddSingleton(capability.Object);
+
         var module = new OpenCodeZenLlmModule();
         module.Id.Should().Be("provider.opencodezen");
         module.DependsOn.Should().Contain("llm.openai");

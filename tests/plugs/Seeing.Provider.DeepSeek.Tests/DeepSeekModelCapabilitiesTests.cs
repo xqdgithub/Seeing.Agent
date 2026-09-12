@@ -8,52 +8,38 @@ namespace Seeing.Provider.DeepSeek.Tests;
 public class DeepSeekModelCapabilitiesTests
 {
     [Fact]
-    public void Apply_KnownModel_OverlaysLimitAndName()
+    public void Apply_V4Flash_OverlaysLimitNameAndThinking()
     {
         var listed = new ModelConfig
         {
-            Id = "deepseek-chat",
-            Name = "deepseek-chat",
+            Id = "deepseek-v4-flash",
+            Name = "deepseek-v4-flash",
             Provider = "deepseek"
         };
 
         var enriched = DeepSeekModelCapabilities.Apply(listed);
 
-        enriched.Id.Should().Be("deepseek-chat");
-        enriched.Name.Should().Be("DeepSeek Chat");
+        enriched.Id.Should().Be("deepseek-v4-flash");
+        enriched.Name.Should().Be("DeepSeek V4 Flash");
         enriched.Provider.Should().Be("deepseek");
         enriched.Limit.Context.Should().Be(1_000_000);
         enriched.Limit.Output.Should().Be(384_000);
         enriched.Types.Should().Contain(ModelType.Text);
-        enriched.Modalities.Input.Should().Contain("text");
-    }
-
-    [Fact]
-    public void Apply_Reasoner_EnablesThinkingLevels()
-    {
-        var enriched = DeepSeekModelCapabilities.Apply(new ModelConfig
-        {
-            Id = "deepseek-reasoner",
-            Provider = "deepseek"
-        });
-
-        enriched.Options.Should().NotBeNull();
-        enriched.Options!.Thinking.Should().NotBeNull();
-        enriched.Options.Thinking!.Supported.Should().BeTrue();
+        enriched.Options!.Thinking!.Supported.Should().BeTrue();
         enriched.Options.Thinking.Interleaved.Should().Be("reasoning_content");
-        enriched.Options.Thinking.Levels.Should().NotBeNull();
-        enriched.Options.Thinking.Levels!.Select(l => l.Key).Should().Contain(new[] { "disabled", "high", "max" });
-        enriched.Limit.Context.Should().Be(1_000_000);
+        enriched.Options.Thinking.Levels!.Select(l => l.Key)
+            .Should().Contain(["disabled", "high", "max"]);
     }
 
     [Fact]
     public void Apply_V4Models_HaveMillionContext()
     {
-        foreach (var id in new[] { "deepseek-v4-flash", "deepseek-v4-pro" })
+        foreach (var id in new[] { "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-flash" })
         {
             var enriched = DeepSeekModelCapabilities.Apply(new ModelConfig { Id = id });
             enriched.Limit.Context.Should().Be(1_000_000);
             enriched.Limit.Output.Should().Be(384_000);
+            enriched.Options!.Thinking!.Supported.Should().BeTrue();
         }
     }
 
@@ -79,10 +65,10 @@ public class DeepSeekModelCapabilitiesTests
     {
         var enriched = DeepSeekModelCapabilities.Apply(new ModelConfig
         {
-            Id = "DeepSeek-Chat"
+            Id = "DeepSeek-V4-Flash"
         });
 
         enriched.Limit.Context.Should().Be(1_000_000);
-        enriched.Name.Should().Be("DeepSeek Chat");
+        enriched.Name.Should().Be("DeepSeek V4 Flash");
     }
 }

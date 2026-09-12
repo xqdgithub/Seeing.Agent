@@ -16,6 +16,8 @@ public class ProviderManager : IProviderManager, IDisposable
     private readonly ILlmClientFactory[] _clientFactories;
     private readonly IModelConfigManager _modelManager;
     private readonly IProviderRegistry _registry;
+    // Lazy：打断 ModelCapabilityManager → ReloadOrchestrator → ProviderReloadHandler → ProviderManager → MCM 环
+    private readonly Lazy<IModelCapabilityManager> _capabilityManager;
     private readonly ILogger<ProviderManager> _logger;
     private readonly Dictionary<string, ConfiguredLlmProvider> _configuredProviders = [];
     private readonly Dictionary<string, ProviderConfig> _configuredProviderConfigs = [];
@@ -29,12 +31,14 @@ public class ProviderManager : IProviderManager, IDisposable
         IEnumerable<ILlmClientFactory> clientFactories,
         IModelConfigManager modelManager,
         IProviderRegistry registry,
+        Lazy<IModelCapabilityManager> capabilityManager,
         ILogger<ProviderManager> logger)
     {
         _configManager = configManager;
         _clientFactories = clientFactories?.ToArray() ?? [];
         _modelManager = modelManager;
         _registry = registry;
+        _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         _logger = logger;
 
         RegisterConfiguredProviders();
@@ -317,7 +321,8 @@ public class ProviderManager : IProviderManager, IDisposable
             ownedConfig,
             clientFactory,
             _logger,
-            saveAsync: (cfg, level, token) => SaveProviderAsync(cfg.Id, cfg, level, token));
+            saveAsync: (cfg, level, token) => SaveProviderAsync(cfg.Id, cfg, level, token),
+            _capabilityManager.Value);
         _registry.Register(provider, ownerExtensionId: null);
         _configuredProviders[providerId] = provider;
         _configuredProviderConfigs[providerId] = CloneConfig(ownedConfig);

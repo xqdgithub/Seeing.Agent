@@ -1,0 +1,809 @@
+{
+  "entries": [
+    {
+      "providerId": "opencode-zen",
+      "modelId": "big-pickle",
+      "name": "Big Pickle",
+      "limit": { "context": 1000000, "output": 65536 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      },
+      "pricing": { "input": 0, "output": 0 }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "deepseek-v4-flash-free",
+      "name": "DeepSeek V4 Flash Free",
+      "limit": { "context": 200000, "output": 128000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      },
+      "pricing": { "input": 0, "output": 0 }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "mimo-v2.5-free",
+      "name": "MiMo V2.5 Free",
+      "limit": { "context": 200000, "output": 32000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      },
+      "pricing": { "input": 0, "output": 0 }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "nemotron-3-ultra-free",
+      "name": "Nemotron 3 Ultra Free",
+      "limit": { "context": 200000, "output": 65536 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      },
+      "pricing": { "input": 0, "output": 0 }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "nemotron-3.5-lightning-free",
+      "name": "Nemotron 3.5 Lightning Free",
+      "limit": { "context": 200000, "output": 65536 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      },
+      "pricing": { "input": 0, "output": 0 }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "ling-3.0-flash-fin-free",
+      "name": "Ling 3.0 Flash Fin Free",
+      "limit": { "context": 262144, "output": 32768 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      },
+      "pricing": { "input": 0, "output": 0 }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "muse-spark-1.3-contributor-free",
+      "name": "Muse Spark 1.3 Contributor Free",
+      "limit": { "context": 1048576, "output": 131072 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      },
+      "pricing": { "input": 0, "output": 0 }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "muse-spark-1.2-contributor-free",
+      "name": "Muse Spark 1.2 Contributor Free",
+      "limit": { "context": 1048576, "output": 131072 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      },
+      "pricing": { "input": 0, "output": 0 }
+    },
+
+    {
+      "providerId": "deepseek",
+      "modelId": "deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "limit": { "context": 1000000, "output": 384000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "deepseek",
+      "modelId": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "limit": { "context": 1000000, "output": 384000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "deepseek",
+      "modelId": "deepseek-flash",
+      "name": "deepseek-flash",
+      "limit": { "context": 1000000, "output": 384000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+
+    {
+      "providerId": "zai",
+      "modelId": "glm-5.3",
+      "name": "GLM-5.3",
+      "limit": { "context": 1000000, "output": 128000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "low", "label": "低" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "zai",
+      "modelId": "glm-5.3-flash",
+      "name": "GLM-5.3 Flash",
+      "limit": { "context": 1000000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "low", "label": "低" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "zai",
+      "modelId": "glm-5.2",
+      "name": "GLM-5.2",
+      "limit": { "context": 1000000, "output": 128000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "low", "label": "低" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "zai",
+      "modelId": "glm-5.1",
+      "name": "GLM-5.1",
+      "limit": { "context": 200000, "output": 128000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "low", "label": "低" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "zai",
+      "modelId": "glm-5",
+      "name": "GLM-5",
+      "limit": { "context": 200000, "output": 128000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "zai",
+      "modelId": "glm-4.7",
+      "name": "GLM-4.7",
+      "limit": { "context": 200000, "output": 128000 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+
+    {
+      "providerId": "moonshotai",
+      "modelId": "kimi-k3",
+      "name": "Kimi K3",
+      "limit": { "context": 1048576, "output": 262144 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "low", "label": "低" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "moonshotai",
+      "modelId": "kimi-k2.7-code",
+      "name": "Kimi K2.7 Code",
+      "limit": { "context": 262144, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "moonshotai",
+      "modelId": "kimi-k2.7-code-highspeed",
+      "name": "Kimi K2.7 Code Highspeed",
+      "limit": { "context": 262144, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "moonshotai",
+      "modelId": "kimi-k2.6",
+      "name": "Kimi K2.6",
+      "limit": { "context": 262144, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+
+    {
+      "providerId": "minimax",
+      "modelId": "MiniMax-M3",
+      "name": "MiniMax M3",
+      "limit": { "context": 1000000, "output": 131072 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "minimax",
+      "modelId": "MiniMax-M2.7",
+      "name": "MiniMax M2.7",
+      "limit": { "context": 204800, "output": 131072 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "minimax",
+      "modelId": "MiniMax-M2.7-highspeed",
+      "name": "MiniMax M2.7 Highspeed",
+      "limit": { "context": 204800, "output": 131072 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "minimax",
+      "modelId": "MiniMax-M2.5",
+      "name": "MiniMax M2.5",
+      "limit": { "context": 204800, "output": 131072 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "minimax",
+      "modelId": "MiniMax-M2.5-highspeed",
+      "name": "MiniMax M2.5 Highspeed",
+      "limit": { "context": 204800, "output": 131072 },
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+
+    {
+      "providerId": "openai",
+      "modelId": "gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "limit": { "context": 1050000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" },
+            { "key": "xhigh", "label": "极高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.6",
+      "name": "GPT-5.6",
+      "limit": { "context": 1050000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "none", "label": "关闭" },
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" },
+            { "key": "xhigh", "label": "极高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.6-sol",
+      "name": "GPT-5.6 Sol",
+      "limit": { "context": 1050000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "none", "label": "关闭" },
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" },
+            { "key": "xhigh", "label": "极高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.6-terra",
+      "name": "GPT-5.6 Terra",
+      "limit": { "context": 1050000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "none", "label": "关闭" },
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" },
+            { "key": "xhigh", "label": "极高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.6-luna",
+      "name": "GPT-5.6 Luna",
+      "limit": { "context": 1050000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "none", "label": "关闭" },
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" },
+            { "key": "xhigh", "label": "极高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.4",
+      "name": "GPT-5.4",
+      "limit": { "context": 1050000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "none", "label": "关闭" },
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" },
+            { "key": "xhigh", "label": "极高" }
+          ]
+        }
+      }
+    },
+
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-fable-5-1",
+      "name": "Claude Fable 5.1",
+      "limit": { "context": 1000000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-opus-5",
+      "name": "Claude Opus 5",
+      "limit": { "context": 1000000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-sonnet-5",
+      "name": "Claude Sonnet 5",
+      "limit": { "context": 1000000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-haiku-4-5",
+      "name": "Claude Haiku 4.5",
+      "limit": { "context": 200000, "output": 64000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "budgetTokens": 8192,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "low", "label": "低", "budgetTokens": 2048 },
+            { "key": "medium", "label": "中", "budgetTokens": 8192 },
+            { "key": "high", "label": "高", "budgetTokens": 16384 }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-opus-4-8",
+      "name": "Claude Opus 4.8",
+      "limit": { "context": 1000000, "output": 128000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-sonnet-4-6",
+      "name": "Claude Sonnet 4.6",
+      "limit": { "context": 1000000, "output": 64000 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "low", "label": "低" },
+            { "key": "medium", "label": "中" },
+            { "key": "high", "label": "高" }
+          ]
+        }
+      }
+    },
+
+    {
+      "providerId": "alibaba",
+      "modelId": "qwen3.8-max",
+      "name": "Qwen3.8 Max",
+      "limit": { "context": 1000000, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "alibaba",
+      "modelId": "qwen3.8-flash",
+      "name": "Qwen3.8 Flash",
+      "limit": { "context": 1000000, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "alibaba",
+      "modelId": "qwen3.7-max",
+      "name": "Qwen3.7 Max",
+      "limit": { "context": 1000000, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "alibaba",
+      "modelId": "qwen3.7-plus",
+      "name": "Qwen3.7 Plus",
+      "limit": { "context": 1000000, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            { "key": "disabled", "label": "关闭" },
+            { "key": "high", "label": "高" },
+            { "key": "max", "label": "最大" }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "alibaba",
+      "modelId": "qwen3-coder-plus",
+      "name": "Qwen3 Coder Plus",
+      "limit": { "context": 1000000, "output": 65536 },
+      "modalities": { "input": ["text"], "output": ["text"] }
+    },
+    {
+      "providerId": "alibaba",
+      "modelId": "qwen3-coder-next",
+      "name": "Qwen3 Coder Next",
+      "limit": { "context": 262144, "output": 65536 },
+      "modalities": { "input": ["text"], "output": ["text"] }
+    }
+  ],
+  "aliases": [
+    {
+      "providerId": "deepseek",
+      "fromModelId": "deepseek-flash",
+      "toModelId": "deepseek-v4-flash"
+    },
+    {
+      "providerId": "minimax",
+      "fromModelId": "minimax-m3",
+      "toModelId": "MiniMax-M3"
+    },
+    {
+      "providerId": "minimax",
+      "fromModelId": "minimax-m2.5",
+      "toModelId": "MiniMax-M2.5"
+    },
+    {
+      "providerId": "anthropic",
+      "fromModelId": "claude-haiku-4-5-20251001",
+      "toModelId": "claude-haiku-4-5"
+    }
+  ]
+}

@@ -3,8 +3,9 @@ using Seeing.Agent.Abstractions.Llm;
 namespace Seeing.Provider.DeepSeek;
 
 /// <summary>
-/// DeepSeek 模型能力预置（List Models API 不返回 limit 等字段，用静态表覆盖）。
+/// DeepSeek 静态能力表（遗留，仅供单测）。生产 List Models 经 <c>IModelCapabilityManager</c> FillEmpty。
 /// </summary>
+[Obsolete("生产路径请用 IModelCapabilityManager；本类仅保留单测。")]
 public static class DeepSeekModelCapabilities
 {
     /// <summary>

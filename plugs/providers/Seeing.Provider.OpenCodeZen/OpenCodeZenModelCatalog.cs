@@ -31,16 +31,15 @@ public sealed class OpenCodeZenModel
 }
 
 /// <summary>
-/// OpenCode Zen 模型目录：免费判定与能力预置。
-/// List Models API 不返回 limit 等能力字段，免费模型用静态表覆盖。
+/// OpenCode Zen 模型目录：免费判定；能力（limit/thinking）由 <c>IModelCapabilityManager</c> FillEmpty 补全。
 /// </summary>
 public static class OpenCodeZenModelCatalog
 {
-    /// <summary>未知模型默认上下文窗口</summary>
-    public const int DefaultContext = 128_000;
+    /// <summary>未知模型默认上下文（与 ModelLimits 缺省一致，便于 FillEmpty）</summary>
+    public const int DefaultContext = 4096;
 
-    /// <summary>未知模型默认最大输出 Token 数</summary>
-    public const int DefaultOutput = 8_192;
+    /// <summary>未知模型默认最大输出（与 ModelLimits 缺省一致，便于 FillEmpty）</summary>
+    public const int DefaultOutput = 4096;
 
     private const string FreeSuffix = "-free";
 
@@ -49,23 +48,8 @@ public static class OpenCodeZenModelCatalog
     /// </summary>
     private static readonly HashSet<string> ExplicitFreeIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "big-pickle",
-        "muse-spark-1.2-contributor-free"
+        "big-pickle"
     };
-
-    /// <summary>
-    /// 免费模型能力预置（上下文窗口 / 最大输出）。
-    /// </summary>
-    private static readonly IReadOnlyDictionary<string, (int Context, int Output)> FreePresets =
-        new Dictionary<string, (int Context, int Output)>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["big-pickle"] = (1_000_000, 65_536),
-            ["mimo-v2.5-free"] = (131_072, 32_768),
-            ["hy3-free"] = (200_000, 32_768),
-            ["nemotron-3-ultra-free"] = (200_000, 65_536),
-            ["nemotron-3.5-lightning-free"] = (200_000, 65_536),
-            ["muse-spark-1.2-contributor-free"] = (272_000, 65_536)
-        };
 
     /// <summary>
     /// 判定模型是否免费：id 以 "-free" 结尾，或命中显式免费集合。
@@ -76,13 +60,12 @@ public static class OpenCodeZenModelCatalog
                || ExplicitFreeIds.Contains(id));
 
     /// <summary>
-    /// 用预置能力覆盖模型条目（仅免费模型有预置）；未知模型原样返回。
+    /// 能力预置已迁出；此处仅规范化免费标记，不写 limit。
     /// </summary>
     public static OpenCodeZenModel ApplyPreset(OpenCodeZenModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
-
-        if (!FreePresets.TryGetValue(model.Id, out var preset))
+        if (!IsFreeModel(model.Id))
             return model;
 
         return new OpenCodeZenModel
@@ -90,11 +73,11 @@ public static class OpenCodeZenModelCatalog
             Id = model.Id,
             Name = model.Name,
             IsFree = true,
-            Context = preset.Context,
-            Output = preset.Output,
+            Context = model.Context,
+            Output = model.Output,
             SupportsImage = model.SupportsImage,
-            InputPrice = model.InputPrice,
-            OutputPrice = model.OutputPrice
+            InputPrice = 0,
+            OutputPrice = 0
         };
     }
 
