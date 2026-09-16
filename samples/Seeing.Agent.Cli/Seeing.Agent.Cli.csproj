@@ -47,11 +47,13 @@
     WebUI 解耦发布：
     1. Cli 不直接引用 WebUI 项目（无代码依赖），避免 WebUI 内容文件(appsettings.json)回流导致重复冲突。
     2. WebUI 先发布到每次全新创建的 staging 目录，再强制覆盖到 Cli 发布目录。
-    3. 使用 Rebuild，避免 Provider/Seeing.Agent 的旧 bin 输出被增量 Publish 复用。
+    3. 用独立 dotnet 进程发布 WebUI（而非嵌套 MSBuild Rebuild），绕开 VS 解决方案级 up-to-date 缓存：
+       清理后 VS 会把 WebUI 独有依赖（Hosting.Web/Llm.ModelCapabilities/Llm.ModelCatalog.Builtin/TokenBudget，
+       均不在 Cli 闭包内）误判为"最新"跳过，致其 ref 程序集缺失、WebUI 编译报 CS0006。
     4. 通过 manifest 删除上一次 WebUI 发布后已不存在的文件，避免旧 Provider 残留。
   -->
   <PropertyGroup>
-    <WebUIPublishStagingDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\webui-publish\</WebUIPublishStagingDir>
+    <WebUIPublishStagingDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\webui-publish</WebUIPublishStagingDir>
     <WebUIPublishManifest>$(PublishDir)\.seeing-webui-files.txt</WebUIPublishManifest>
   </PropertyGroup>
 
@@ -60,12 +62,13 @@
     <RemoveDir Directories="$(WebUIPublishStagingDir)" Condition="Exists('$(WebUIPublishStagingDir)')" />
     <MakeDir Directories="$(WebUIPublishStagingDir)" />
 
-    <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj"
-             Targets="Restore;Rebuild;Publish"
-             Properties="Configuration=$(Configuration);PublishDir=$(WebUIPublishStagingDir);SelfContained=false;RuntimeIdentifier=;BuildProjectReferences=true" />
+    <!-- 独立 dotnet 进程发布：全新评估 WebUI 依赖闭包，不受 VS 增量缓存影响。
+         DOTNET_CLI_UI_LANGUAGE=en 强制子进程输出英文，避免 VS 输出窗口用 GBK 解码 UTF-8 中文产生乱码。 -->
+    <Exec Command="set &quot;DOTNET_CLI_UI_LANGUAGE=en&quot; &amp;&amp; dotnet publish &quot;$(MSBuildThisFileDirectory)../Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj&quot; -c $(Configuration) -o &quot;$(WebUIPublishStagingDir)&quot; -p:SelfContained=false --nologo"
+          StandardOutputImportance="high" />
 
     <ItemGroup>
-      <WebUIPublishFiles Include="$(WebUIPublishStagingDir)**\*" />
+      <WebUIPublishFiles Include="$(WebUIPublishStagingDir)\**\*" />
     </ItemGroup>
 
     <!-- 删除上一次 WebUI 发布产生、但本次已不再存在的文件。 -->
