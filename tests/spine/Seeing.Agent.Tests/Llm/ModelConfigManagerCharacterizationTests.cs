@@ -236,6 +236,55 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             TimeSpan.FromSeconds(5));
     }
 
+    [Fact]
+    public async Task DeleteModelAsync_ConfiguredProvider_AppliesIncrementalRefreshOnlyForTargetProvider()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Type = ProviderTypes.OpenAi,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["keep"] = new() { Id = "keep", Provider = "openai" },
+                    ["remove"] = new() { Id = "remove", Provider = "openai" }
+                }
+            },
+            ["other"] = new ProviderConfig
+            {
+                Id = "other",
+                Type = ProviderTypes.OpenAi,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["o1"] = new() { Id = "o1", Provider = "other" }
+                }
+            }
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => sut.GetModels().ContainsKey("openai/remove") && sut.GetModels().ContainsKey("other/o1"),
+            TimeSpan.FromSeconds(5));
+
+        await sut.DeleteModelAsync("openai/remove", ct: TestContext.Current.CancellationToken);
+
+        // 目标 provider slice 即时移除被删模型（增量刷新，不依赖外部 ReloadHandler）
+        await WaitUntilAsync(
+            () => !sut.GetModels().ContainsKey("openai/remove")
+                  && !sut.GetModelsByProvider("openai").ContainsKey("openai/remove"),
+            TimeSpan.FromSeconds(5));
+
+        // 增量语义：只改目标 provider，其它 provider 与目标保留模型不受影响
+        sut.GetModelsByProvider("openai").Should().ContainKey("openai/keep");
+        sut.GetModels().Should().ContainKey("other/o1");
+        sut.GetModelsByProvider("other").Should().ContainKey("other/o1");
+    }
+
     private async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
         var start = DateTime.UtcNow;

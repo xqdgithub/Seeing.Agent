@@ -688,8 +688,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             .SaveSectionAsync("Providers", providers, ModelStoreLevel, ct)
             .ConfigureAwait(false);
 
-        // 自订阅已迁移为 ReloadHandler，保存后需显式入队刷新模型目录
-        EnqueueRefresh("configuration");
+        // 写操作已知目标 Provider：仅按 providerId 增量刷新该 slice，避免无条件全量刷新
+        // （全量分支会对无关的扩展 owner provider 逐个 await GetModelsAsync，拖慢即时生效）。
+        EnqueueRefresh("configuration", providerId, completion: null);
         return true;
     }
 

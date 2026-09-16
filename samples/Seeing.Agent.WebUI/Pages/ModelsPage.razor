@@ -614,6 +614,7 @@
         }
 
         await ModelManager.DeleteModelAsync(row.Key, _saveLevel);
+        await ModelManager.RefreshCatalogAsync(_selectedProviderId);
         RefreshModelRows();
         MessageService.Success($"已删除模型 {row.Key}");
     }
