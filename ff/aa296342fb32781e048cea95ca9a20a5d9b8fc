@@ -1,0 +1,23 @@
+samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj
+  s_a68a395c71453b::t_cfa84977fb8de2 56
+  s_a68a395c71453b::t_8f9b5da272dd0a 65-66
+  s_a68a395c71453b::t_c2de3a751ab6a1 67-68
+  s_a68a395c71453b::t_f6a843470c263b 50-52
+  s_a68a395c71453b::t_428f381f000939 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "ffaa296342fb32781e048cea95ca9a20a5d9b8fc",
+  "prompts": {},
+  "sessions": {
+    "s_a68a395c71453b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f56aeb098ffeG3Dwd0fx6x6Mma",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
