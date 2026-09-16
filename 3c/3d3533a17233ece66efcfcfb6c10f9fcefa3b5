@@ -1,0 +1,23 @@
+src/spine/Seeing.Agent.Core/Llm/ModelConfigManager.cs
+  s_918108e9fe6465::t_75f4852bb5aa00 691-693
+tests/spine/Seeing.Agent.Tests/Llm/ModelConfigManagerCharacterizationTests.cs
+  s_918108e9fe6465::t_184c24ed362669 239-287
+samples/Seeing.Agent.WebUI/Pages/ModelsPage.razor
+  s_918108e9fe6465::t_69e374bb462285 617
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "3c3d3533a17233ece66efcfcfb6c10f9fcefa3b5",
+  "prompts": {},
+  "sessions": {
+    "s_918108e9fe6465": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f5630aa6effeWrtgDrXhuE4Eij",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
