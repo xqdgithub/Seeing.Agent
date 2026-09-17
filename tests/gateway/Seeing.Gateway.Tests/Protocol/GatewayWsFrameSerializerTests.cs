@@ -77,4 +77,27 @@ public class GatewayWsFrameSerializerTests
         payload.Capabilities.Should().Contain("cancel");
         payload.Capabilities.Should().Contain("permission");
     }
+
+    [Fact]
+    public void Serialize_PermissionRespondFrame_ShouldUseProtocolFieldNames()
+    {
+        var payload = new GatewayPermissionRespondPayload
+        {
+            SessionId = "ses_1",
+            PermissionId = "req_1",
+            Allow = true,
+            Reason = "ok"
+        };
+
+        var json = GatewayWsFrameSerializer.Serialize(
+            GatewayWsFrameSerializer.Create(GatewayWsFrameType.PermissionRespond, "id_1", payload));
+
+        using var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("type").GetString().Should().Be("permissionRespond");
+        var body = doc.RootElement.GetProperty("payload");
+        body.GetProperty("sessionId").GetString().Should().Be("ses_1");
+        body.GetProperty("permissionId").GetString().Should().Be("req_1");
+        body.GetProperty("allow").GetBoolean().Should().BeTrue();
+        body.TryGetProperty("permissionResponse", out _).Should().BeFalse();
+    }
 }

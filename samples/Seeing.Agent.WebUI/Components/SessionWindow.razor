@@ -31,7 +31,6 @@
 @inject Abstractions.Agents.IAgentRegistry AgentRegistry
 @inject Core.AgentSelectionResolver AgentSelectionResolver
 @inject IWorkspaceProvider WorkspaceProvider
-@inject Seeing.Agent.Abstractions.Permissions.IPermissionChannel PermissionChannel
 @inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
 @inject ILlmService LlmService
@@ -1053,11 +1052,7 @@
             AgentId = SessionState.SelectedAgent,
             ModelId = SessionState.SelectedModel,
             ModeId = SessionState.SelectedAcpMode,
-            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.GetProjectRoot(),
-            // 传递权限通道，支持交互式确认
-            PermissionChannel = PermissionChannel,
-            // 会话级自动批准策略（三态）
-            AutoApprove = SessionState.CurrentSession?.AutoApprove ?? SessionAutoApprove.FollowGlobal
+            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.GetProjectRoot()
         };
 
         try
@@ -1405,8 +1400,7 @@
             return;
 
         SessionState.CurrentSession.AutoApprove = value;
-        SessionState.CurrentSession.UpdatedAt = DateTime.Now;
-        await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
+        await SessionManager.SetAutoApproveAsync(SessionState.CurrentSession.Id, value);
     }
 
     /// <summary>

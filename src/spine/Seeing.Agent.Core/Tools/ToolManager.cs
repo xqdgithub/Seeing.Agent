@@ -472,12 +472,25 @@ namespace Seeing.Agent.Core.Tools
         /// 调用此方法前应确保权限已通过验证。
         /// </para>
         /// </summary>
-        public async Task<ToolResult> ExecuteAsync(
+        public Task<ToolResult> ExecuteAsync(
             ToolCall toolCall,
             string sessionId = "",
             CancellationToken cancellationToken = default,
             Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync = null,
-            IPermissionChannel? permissionChannel = null)
+            IPermissionAuthorizer? permissionAuthorizer = null)
+            => ExecuteAsync(toolCall, sessionId, cancellationToken, emitAsync, permissionAuthorizer, agentName: null);
+
+        /// <summary>
+        /// 执行工具调用（带重试支持）。
+        /// <paramref name="agentName"/> 为当前执行所属 Agent，用于资源门 Agent 规则（spec §5.1 步骤 3）。
+        /// </summary>
+        public async Task<ToolResult> ExecuteAsync(
+            ToolCall toolCall,
+            string sessionId,
+            CancellationToken cancellationToken,
+            Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync,
+            IPermissionAuthorizer? permissionAuthorizer,
+            string? agentName)
         {
             var toolId = toolCall.Name;
 
@@ -542,27 +555,29 @@ namespace Seeing.Agent.Core.Tools
                 resolvedArgs = toolCall.Arguments is JsonElement je2 ? je2 : new JsonElement();
 
             // ========== Resource-level permission check ==========
-            if (permissionChannel != null && _permissionPolicy != null)
+            if (permissionAuthorizer != null && _permissionPolicy != null)
             {
                 var check = _permissionPolicy.Evaluate(toolId, resolvedArgs);
                 if (check != null)
                 {
-                    var decision = await permissionChannel.RequestAsync(new PermissionRequest
+                    var resolution = await permissionAuthorizer.AuthorizeAsync(new PermissionRequest
                     {
+                        SessionId = string.IsNullOrEmpty(sessionId) ? permissionAuthorizer.SessionId : sessionId,
+                        CallId = toolCall.Id,
+                        AgentName = agentName,
                         PermissionKind = check.PermissionKind,
                         Resource = check.Resource,
                         Patterns = check.Patterns ?? new List<string>(),
-                        SessionId = sessionId,
                         Metadata = check.Metadata ?? new Dictionary<string, object>()
                     }, cancellationToken).ConfigureAwait(false);
 
-                    if (decision.Action == PermissionChannelAction.Deny)
+                    if (resolution.Decision != PermissionEffect.Allow)
                     {
                         return new ToolResult
                         {
                             Success = false,
                             ToolCallId = toolCall.Id,
-                            Error = decision.Reason ?? "Permission denied"
+                            Error = resolution.Reason ?? "Permission denied"
                         };
                     }
                 }
@@ -582,7 +597,6 @@ namespace Seeing.Agent.Core.Tools
                     CancellationToken = cancellationToken,
                     EventSink = sink,
                     MetadataSink = sink,
-                    PermissionChannel = permissionChannel,
                     Services = _serviceProvider
                 };
 

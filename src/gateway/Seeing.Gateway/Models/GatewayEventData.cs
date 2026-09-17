@@ -30,6 +30,9 @@ public record GatewayEventData
 
     public string? PermissionId { get; init; }
 
+    /// <summary>关联的工具调用 ID（内联卡片关联键）</summary>
+    public string? CallId { get; init; }
+
     public string? PermissionKind { get; init; }
 
     public string? Resource { get; init; }
@@ -66,8 +69,17 @@ public record GatewayEventData
     /// <summary>权限请求参数</summary>
     public object? PermissionArguments { get; init; }
 
+    /// <summary>权限请求允许的动作集合（once | session | sessionDirectory）</summary>
+    public IReadOnlyList<string>? PermissionAllowedScopes { get; init; }
+
     /// <summary>权限决策：allow | deny</summary>
     public string? PermissionDecision { get; init; }
+
+    /// <summary>权限决策作用域：once | session | sessionDirectory</summary>
+    public string? PermissionScope { get; init; }
+
+    /// <summary>权限决策来源：user | policy | cancellation | timeout | noChannel</summary>
+    public string? PermissionResolvedBy { get; init; }
 
     /// <summary>权限决策原因</summary>
     public string? PermissionReason { get; init; }

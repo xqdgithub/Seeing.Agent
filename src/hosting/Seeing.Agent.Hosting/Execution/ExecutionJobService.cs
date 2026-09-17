@@ -766,13 +766,10 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         if (agentDef.Disabled)
             throw new InvalidOperationException($"Agent '{agentId}' is disabled");
 
-        // 权限通道选择优先级：
-        // 1. 会话级 Enabled 时使用 AutoApproveInstance（强制自动批准）
-        // 2. 会话级 Disabled 时强制使用调用方通道（WebUI 交互式），否则 DenyAll
-        // 3. 会话级 FollowGlobal 时走全局配置：AutoApproveAll=true 用 AutoApproveInstance，否则调用方通道/DenyAll
-        var permissionChannel = ResolvePermissionChannel(
-            record.Options?.PermissionChannel,
-            record.Options?.AutoApprove ?? SessionAutoApprove.FollowGlobal);
+        // 执行级权限授权器：经 IPermissionAuthorizerFactory 构造，
+        // 覆盖值来自 ChatOptions.AutoApprove（null=FollowGlobal）；实时生效策略由授权器/引擎解析。
+        var permissionAuthorizer = ResolvePermissionAuthorizer(
+            services, record.SessionId, record.Options?.AutoApprove);
 
         var sessionModelRef = modelManager.GetSessionModelRef(session);
         var sessionModelRefOrNull = string.IsNullOrEmpty(sessionModelRef) ? null : sessionModelRef;
@@ -804,7 +801,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             History = new List<ChatMessage>(),
             WorkingDirectory = cwd,
             WorkspaceRoot = projectRoot,
-            PermissionChannel = permissionChannel,
+            PermissionAuthorizer = permissionAuthorizer,
             ChannelId = record.Options?.ChannelId,
             UserId = record.Options?.UserId,
             AcpModeId = acpModeId,
@@ -879,70 +876,27 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     }
 
     /// <summary>
-    /// 根据配置解析权限通道。
+    /// 构造本执行级权限授权器（经 <see cref="IPermissionAuthorizerFactory"/>）。
     /// <para>
-    /// 优先级：
-    /// 1. 会话级 Enabled 时使用 AutoApproveInstance（强制自动批准）
-    /// 2. 会话级 Disabled 时强制使用调用方通道（WebUI 传递 BlazorPermissionChannel），无调用方则 DenyAll
-    /// 3. 会话级 FollowGlobal 时走全局配置：AutoApproveAll=true 用 AutoApproveInstance，否则调用方通道/DenyAll
+    /// <paramref name="autoApprove"/> 为执行级冻结覆盖（来自 <c>ChatOptions.AutoApprove</c>）；
+    /// null 表示 FollowGlobal，由授权器/引擎实时解析会话三态与全局开关。
     /// </para>
     /// </summary>
-    /// <param name="callerChannel">调用方传递的权限通道（可选）</param>
-    /// <param name="autoApprove">会话级自动批准策略（默认跟随全局）</param>
-    internal IPermissionChannel ResolvePermissionChannel(
-        IPermissionChannel? callerChannel,
-        SessionAutoApprove autoApprove)
+    internal IPermissionAuthorizer? ResolvePermissionAuthorizer(
+        IServiceProvider services,
+        string sessionId,
+        SessionAutoApprove? autoApprove)
     {
-        // 会话级强制自动批准
-        if (autoApprove == SessionAutoApprove.Enabled)
+        var factory = services.GetService<IPermissionAuthorizerFactory>();
+        if (factory is null)
         {
-            _logger.LogInformation(
-                "Using AutoApprove permission channel (session-level AutoApprove=Enabled)");
-            return DefaultPermissionChannel.AutoApproveInstance;
+            _logger.LogWarning(
+                "IPermissionAuthorizerFactory 未注册，本次执行无权限授权器: SessionId={SessionId}",
+                sessionId);
+            return null;
         }
 
-        // 会话级强制交互式确认：优先调用方通道，否则拒绝
-        if (autoApprove == SessionAutoApprove.Disabled)
-        {
-            if (callerChannel != null)
-            {
-                _logger.LogInformation(
-                    "Using caller-provided permission channel (session-level AutoApprove=Disabled, {ChannelType})",
-                    callerChannel.GetType().Name);
-                return callerChannel;
-            }
-
-            _logger.LogInformation(
-                "Using DenyAll permission channel (session-level AutoApprove=Disabled, no caller channel)");
-            return DenyAllPermissionChannel.Instance;
-        }
-
-        // 跟随全局配置：AutoApproveAll=true 优先级最高
-        var autoApproveAll = _seeingAgentOptions.CurrentValue.Permission?.AutoApproveAll ?? false;
-
-        if (autoApproveAll)
-        {
-            _logger.LogInformation(
-                "Using AutoApprove permission channel (AutoApproveAll=true, overriding caller channel)");
-
-            // 使用自动批准的权限通道
-            return DefaultPermissionChannel.AutoApproveInstance;
-        }
-
-        // 调用方传递的权限通道
-        if (callerChannel != null)
-        {
-            _logger.LogInformation(
-                "Using caller-provided permission channel ({ChannelType})",
-                callerChannel.GetType().Name);
-            return callerChannel;
-        }
-
-        _logger.LogInformation(
-            "Using DenyAll permission channel (no caller channel, AutoApproveAll=false)");
-
-        // 后台执行模式：立即拒绝，不等待超时
-        return DenyAllPermissionChannel.Instance;
+        return factory.Create(sessionId, autoApprove);
     }
 
     /// <summary>
@@ -1217,7 +1171,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             SessionId = context.SessionId,
             WorkingDirectory = context.WorkingDirectory ?? context.WorkspaceRoot ?? "",
             WorkspaceRoot = context.WorkspaceRoot ?? "",
-            PermissionChannel = context.PermissionChannel,
+            PermissionAuthorizer = context.PermissionAuthorizer,
             CancellationToken = cancellationToken,
             ToolSchemas = context.ToolSchemas ?? Array.Empty<FunctionToolSchema>()
         };

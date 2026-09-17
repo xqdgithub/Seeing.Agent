@@ -27,9 +27,9 @@ public class AgentContext
     public IServiceProvider? Services { get; set; }
 
     /// <summary>
-    /// 权限请求通道（多入口抽象）
+    /// 执行级权限授权器（多入口抽象；供能力门）
     /// </summary>
-    public IPermissionChannel? PermissionChannel { get; set; }
+    public IPermissionAuthorizer? PermissionAuthorizer { get; set; }
 
     /// <summary>权限上下文</summary>
     public PermissionContext? PermissionContext { get; set; }

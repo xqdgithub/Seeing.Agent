@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Endpoints;
@@ -23,20 +25,23 @@ namespace Seeing.Agent.Gateway.Hosting;
 public sealed class GatewayHost : IAsyncDisposable
 {
     private readonly IServiceProvider _rootServices;
-    private readonly GatewayOptions _options;
+    private readonly IOptions<GatewayOptions> _optionsMonitor;
     private readonly ILogger<GatewayHost> _logger;
 
     private WebApplication? _app;
     private Task? _runTask;
     private CancellationTokenSource? _hostCts;
 
+    /// <summary>实时读取配置（GatewayOptionsMonitor），避免启动时固化快照。</summary>
+    private GatewayOptions Options => _optionsMonitor.Value;
+
     public GatewayHost(
         IServiceProvider rootServices,
-        GatewayOptions options,
+        IOptions<GatewayOptions> options,
         ILogger<GatewayHost> logger)
     {
         _rootServices = rootServices;
-        _options = options;
+        _optionsMonitor = options;
         _logger = logger;
     }
 
@@ -48,7 +53,7 @@ public sealed class GatewayHost : IAsyncDisposable
             ApplicationName = typeof(GatewayHost).Assembly.FullName
         });
 
-        builder.WebHost.UseUrls($"http://{_options.BindAddress}:{_options.Port}");
+        builder.WebHost.UseUrls($"http://{Options.BindAddress}:{Options.Port}");
 
         builder.Services.Configure<KestrelServerOptions>(options =>
         {
@@ -61,11 +66,12 @@ public sealed class GatewayHost : IAsyncDisposable
             options.ShutdownTimeout = TimeSpan.FromSeconds(30);
         });
 
-        var permissionChannel = new GatewayPermissionChannel(_options);
+        // 根容器解析同一 GatewayPermissionChannel 实例（具体类型 + 接口映射均在 AddSeeingGatewayServer 完成）
+        var permissionChannel = _rootServices.GetRequiredService<GatewayPermissionChannel>();
+        var permissionManager = _rootServices.GetRequiredService<IPermissionRequestManager>();
         var runTracker = new GatewayRunTracker();
         var executionQueue = new SessionExecutionQueue();
-        var connectionManager = _rootServices.GetService<GatewayConnectionManager>()
-            ?? new GatewayConnectionManager();
+        var connectionManager = _rootServices.GetRequiredService<GatewayConnectionManager>();
         var sessionManager = _rootServices.GetRequiredService<ISessionManager>();
         var selectionResolver = _rootServices.GetRequiredService<IAgentSelectionResolver>();
         var agentRegistry = _rootServices.GetRequiredService<IAgentRegistry>();
@@ -80,15 +86,14 @@ public sealed class GatewayHost : IAsyncDisposable
 
         var orchestrator = new GatewayOrchestratorV2(
             _rootServices,
-            _options,
-            permissionChannel,
+            Options,
             runTracker,
             executionQueue,
-            orchestratorLogger,
-            connectionManager);
+            orchestratorLogger);
 
-        builder.Services.AddSingleton(_options);
+        builder.Services.AddSingleton(Options);
         builder.Services.AddSingleton(permissionChannel);
+        builder.Services.AddSingleton(permissionManager);
         builder.Services.AddSingleton(runTracker);
         builder.Services.AddSingleton(executionQueue);
         builder.Services.AddSingleton(connectionManager);
@@ -102,23 +107,23 @@ public sealed class GatewayHost : IAsyncDisposable
             builder.Services.AddSingleton(scheduleStatus);
         builder.Services.AddSingleton(sp => new GatewayWebSocketHandler(
             orchestrator,
-            permissionChannel,
+            permissionManager,
             connectionManager,
-            _options,
+            Options,
             loggerFactory.CreateLogger<GatewayWebSocketHandler>()));
 
         var app = builder.Build();
         app.MapGatewayEndpoints();
         app.MapAdminEndpoints();
 
-        if (_options.EnableWebSocket)
+        if (Options.EnableWebSocket)
         {
             app.UseWebSockets(new WebSocketOptions
             {
-                KeepAliveInterval = TimeSpan.FromSeconds(Math.Max(5, _options.WebSocketKeepAliveSeconds))
+                KeepAliveInterval = TimeSpan.FromSeconds(Math.Max(5, Options.WebSocketKeepAliveSeconds))
             });
 
-            app.Map(_options.WebSocketPath, async (HttpContext context, GatewayWebSocketHandler handler) =>
+            app.Map(Options.WebSocketPath, async (HttpContext context, GatewayWebSocketHandler handler) =>
             {
                 await handler.HandleAsync(context);
             });
@@ -131,9 +136,9 @@ public sealed class GatewayHost : IAsyncDisposable
 
         _logger.LogInformation(
             "GatewayHost listening on http://{BindAddress}:{Port}{WebSocketPath}",
-            _options.BindAddress,
-            _options.Port,
-            _options.EnableWebSocket ? $" (WS: {_options.WebSocketPath})" : string.Empty);
+            Options.BindAddress,
+            Options.Port,
+            Options.EnableWebSocket ? $" (WS: {Options.WebSocketPath})" : string.Empty);
     }
 
     /// <summary>停止 Gateway HTTP 服务</summary>

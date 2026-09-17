@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
 
@@ -11,10 +12,16 @@ namespace Seeing.Agent.Gateway.Core;
 /// </summary>
 public sealed class GatewayConnectionManager
 {
+    private readonly IPermissionRequestManager? _permissionManager;
     private readonly ConcurrentDictionary<string, GatewayWsConnection> _connections = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _sessionSubscriptions = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _channelRegistrations =
         new(StringComparer.OrdinalIgnoreCase);
+
+    public GatewayConnectionManager(IPermissionRequestManager? permissionManager = null)
+    {
+        _permissionManager = permissionManager;
+    }
 
     /// <summary>注册新连接</summary>
     public GatewayWsConnection Register(WebSocket webSocket)
@@ -24,15 +31,18 @@ public sealed class GatewayConnectionManager
         return connection;
     }
 
-    /// <summary>移除连接</summary>
+    /// <summary>移除连接；对连接订阅过的会话取消其在途权限请求（Deny(Cancellation)）。</summary>
     public void Unregister(string connectionId)
     {
         if (!_connections.TryRemove(connectionId, out _))
             return;
 
+        List<string>? subscribedSessions = null;
         foreach (var (sessionId, subscribers) in _sessionSubscriptions)
         {
-            subscribers.TryRemove(connectionId, out _);
+            if (subscribers.TryRemove(connectionId, out _))
+                (subscribedSessions ??= []).Add(sessionId);
+
             if (subscribers.IsEmpty)
                 _sessionSubscriptions.TryRemove(sessionId, out _);
         }
@@ -42,6 +52,29 @@ public sealed class GatewayConnectionManager
             registrants.TryRemove(connectionId, out _);
             if (registrants.IsEmpty)
                 _channelRegistrations.TryRemove(channelId, out _);
+        }
+
+        if (subscribedSessions is null || _permissionManager is null)
+            return;
+
+        foreach (var sessionId in subscribedSessions)
+            CancelPendingForSession(sessionId);
+    }
+
+    private void CancelPendingForSession(string sessionId)
+    {
+        foreach (var request in _permissionManager!.GetPending(sessionId))
+        {
+            if (string.IsNullOrEmpty(request.RequestId))
+                continue;
+
+            _permissionManager.TryResolve(
+                request.RequestId,
+                PermissionEffect.Deny,
+                PermissionGrantScope.Once,
+                PermissionResolvedBy.Cancellation,
+                "连接断开",
+                expectedSessionId: sessionId);
         }
     }
 

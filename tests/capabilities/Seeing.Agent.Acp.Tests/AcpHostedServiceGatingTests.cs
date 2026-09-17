@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Client;
 using Seeing.Agent.Acp.Configuration;
@@ -156,9 +157,8 @@ public sealed class AcpHostedServiceGatingTests
 
     private static AcpConnectionManager CreateManager(IOptionsMonitor<AcpOptions> options)
     {
-        var scopeFactory = new Mock<IServiceScopeFactory>();
         var permission = new AcpPermissionBridge(
-            scopeFactory.Object,
+            Mock.Of<IPermissionAuthorizerFactory>(),
             NullLogger<AcpPermissionBridge>.Instance);
         var fs = new AcpFileSystemBridge(NullLogger<AcpFileSystemBridge>.Instance);
         var terminal = new AcpTerminalBridge(NullLogger<AcpTerminalBridge>.Instance);

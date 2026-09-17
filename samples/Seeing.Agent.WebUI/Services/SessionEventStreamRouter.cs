@@ -49,6 +49,7 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
     private readonly IChatOrchestrator _orchestrator;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SessionEventStreamRouter> _logger;
+    private readonly ActiveSessionTracker? _activeSessions;
 
     private readonly ConcurrentDictionary<string, SessionSubscription> _subscriptions = new();
 
@@ -72,11 +73,13 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
     public SessionEventStreamRouter(
         IChatOrchestrator orchestrator,
         IServiceScopeFactory scopeFactory,
-        ILogger<SessionEventStreamRouter> logger)
+        ILogger<SessionEventStreamRouter> logger,
+        ActiveSessionTracker? activeSessions = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _activeSessions = activeSessions;
     }
 
     /// <summary>
@@ -256,6 +259,8 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
     /// </summary>
     public void DetachAllForCircuit(string circuitId)
     {
+        _activeSessions?.DetachCircuit(circuitId);
+
         var circuitConsumers = _consumerCircuit
             .Where(kv => kv.Value == circuitId)
             .Select(kv => kv.Key)

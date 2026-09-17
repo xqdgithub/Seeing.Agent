@@ -49,12 +49,10 @@ public class SeeingAcpClientRequestContextTests
         };
 
         var options = Mock.Of<IOptionsMonitor<AcpOptions>>(m => m.CurrentValue == new AcpOptions());
-        var services = new ServiceCollection();
-        var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
 
         return new SeeingAcpClient(
             backend,
-            new AcpPermissionBridge(scopeFactory, NullLogger<AcpPermissionBridge>.Instance),
+            new AcpPermissionBridge(Mock.Of<IPermissionAuthorizerFactory>(), NullLogger<AcpPermissionBridge>.Instance),
             new AcpFileSystemBridge(NullLogger<AcpFileSystemBridge>.Instance),
             new AcpTerminalBridge(NullLogger<AcpTerminalBridge>.Instance),
             options,

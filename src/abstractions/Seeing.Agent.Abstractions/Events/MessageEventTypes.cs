@@ -35,8 +35,8 @@ public static class MessageEventType
     /// <summary>权限请求（需要用户确认）</summary>
     public const string PermissionRequest = "permission.request";
 
-    /// <summary>权限响应（用户确认/拒绝）</summary>
-    public const string PermissionResponse = "permission.response";
+    /// <summary>权限结果（授权已判定）</summary>
+    public const string PermissionResolved = "permission.resolved";
 
     /// <summary>Loop 被取消</summary>
     public const string LoopCancelled = "loop.cancelled";
@@ -359,7 +359,10 @@ public record PermissionRequestEvent : IMessageEvent
     public string Type => MessageEventType.PermissionRequest;
 
     /// <summary>权限请求 ID</summary>
-    public required string PermissionId { get; init; }
+    public required string RequestId { get; init; }
+
+    /// <summary>关联的工具调用 ID（内联卡片关联键）</summary>
+    public string? CallId { get; init; }
 
     /// <summary>权限类型: tool, file, network, shell, agent</summary>
     public required string PermissionKind { get; init; }
@@ -376,31 +379,40 @@ public record PermissionRequestEvent : IMessageEvent
     /// <summary>提示消息</summary>
     public string? Message { get; init; }
 
+    /// <summary>允许的动作集合（呈现用，由执行级授权器按 kind 注入）</summary>
+    public IReadOnlyList<PermissionGrantScope> AllowedScopes { get; init; } = Array.Empty<PermissionGrantScope>();
+
     /// <summary>超时时间（秒）</summary>
     public int TimeoutSeconds { get; init; } = 300;
 }
 
 /// <summary>
-/// 权限响应事件 - 用户确认/拒绝
+/// 权限结果事件 - 授权已判定（用户/策略/取消/超时/无通道）
 /// </summary>
-public record PermissionResponseEvent : IMessageEvent
+public record PermissionResolvedEvent : IMessageEvent
 {
     public required string SessionId { get; init; }
     public string? LoopId { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    public string Type => MessageEventType.PermissionResponse;
+    public string Type => MessageEventType.PermissionResolved;
 
     /// <summary>对应的权限请求 ID</summary>
-    public required string PermissionId { get; init; }
+    public required string RequestId { get; init; }
 
-    /// <summary>用户决策: allow, deny</summary>
-    public required string Decision { get; init; }
+    /// <summary>关联的工具调用 ID</summary>
+    public string? CallId { get; init; }
+
+    /// <summary>决策: Allow, Deny</summary>
+    public required PermissionEffect Decision { get; init; }
+
+    /// <summary>决策作用域</summary>
+    public PermissionGrantScope Scope { get; init; } = PermissionGrantScope.Once;
+
+    /// <summary>决策来源</summary>
+    public PermissionResolvedBy ResolvedBy { get; init; } = PermissionResolvedBy.User;
 
     /// <summary>决策原因（可选）</summary>
     public string? Reason { get; init; }
-
-    /// <summary>是否记住决策（会话级别）</summary>
-    public bool Remember { get; init; }
 }
 
 /// <summary>

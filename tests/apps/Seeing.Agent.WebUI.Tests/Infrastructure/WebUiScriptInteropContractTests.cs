@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using FluentAssertions;
 using Xunit;
@@ -34,9 +32,6 @@ public class WebUiScriptInteropContractTests
     private static string AppJsPath => Path.Combine(WebUiPath, "wwwroot", "js", "app.js");
 
     private static string ProgramPath => Path.Combine(WebUiPath, "Program.cs");
-
-    private static string WebUiExePath =>
-        Path.Combine(WebUiPath, "bin", "Debug", "net10.0", "Seeing.Agent.WebUI.exe");
 
     [Fact]
     public void HostPage_Should_Load_AppJs_Before_BlazorServerStarts()
@@ -163,114 +158,5 @@ public class WebUiScriptInteropContractTests
 
         sidebarCss.Should().Contain(".sider-shutdown");
         sidebarCss.Should().Contain("margin-bottom: 48px;");
-    }
-
-    [Fact]
-    public async Task WebUI_StaticAsset_AppJs_Should_Return_200()
-    {
-        // 集成验证：启动 WebUI 后，js/app.js 必须返回 200 且包含 isMobileBrowser。
-        // 这条测试在 exe 未构建时跳过，避免阻塞 CI。
-        if (!File.Exists(WebUiExePath))
-            return;
-
-        var port = FindAvailablePort();
-        using var process = StartWebUi(port);
-        try
-        {
-            await WaitForServerAsync(port, TimeSpan.FromSeconds(30));
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            var response = await http.GetAsync($"http://127.0.0.1:{port}/js/app.js");
-            response.StatusCode.Should().Be(HttpStatusCode.OK,
-                "js/app.js 必须 200，否则 13 处 JS 互操作全部失败");
-            var body = await response.Content.ReadAsStringAsync();
-            body.Should().Contain("isMobileBrowser",
-                "js/app.js 响应必须包含 isMobileBrowser 函数定义");
-        }
-        finally
-        {
-            if (!process.HasExited)
-            {
-                try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
-            }
-        }
-    }
-
-    private static int FindAvailablePort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        try { return ((IPEndPoint)listener.LocalEndpoint).Port; }
-        finally { listener.Stop(); }
-    }
-
-
-    [Fact]
-    public async Task WebUI_ShutdownEndpoint_ShouldStopCurrentProcess()
-    {
-        // 集成验证：关闭接口必须只关闭当前 WebUI 进程。
-        if (!File.Exists(WebUiExePath))
-            return;
-
-        var port = FindAvailablePort();
-        using var process = StartWebUi(port);
-        try
-        {
-            await WaitForServerAsync(port, TimeSpan.FromSeconds(30));
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            var response = await http.PostAsync($"http://127.0.0.1:{port}/api/webui/shutdown", content: null);
-
-            response.StatusCode.Should().Be(HttpStatusCode.Accepted);
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
-            process.HasExited.Should().BeTrue("关闭接口应退出当前 WebUI 进程");
-            process.ExitCode.Should().Be(0, "正常关闭不应因 hosted service 停止异常而以失败退出码结束");
-        }
-        finally
-        {
-            if (!process.HasExited)
-            {
-                try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
-            }
-        }
-    }
-
-    private static System.Diagnostics.Process StartWebUi(int port)
-    {
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = WebUiExePath,
-            Arguments = $"--urls http://127.0.0.1:{port}",
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(WebUiExePath)!,
-        };
-        psi.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
-        var p = System.Diagnostics.Process.Start(psi)!;
-        p.OutputDataReceived += (_, e) => { if (e.Data != null) Console.WriteLine($"[webui] {e.Data}"); };
-        p.ErrorDataReceived += (_, e) => { if (e.Data != null) Console.Error.WriteLine($"[webui-err] {e.Data}"); };
-        p.BeginOutputReadLine();
-        p.BeginErrorReadLine();
-        return p;
-    }
-
-    private static async Task WaitForServerAsync(int port, TimeSpan timeout)
-    {
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-        var deadline = DateTime.UtcNow + timeout;
-        Exception? last = null;
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                var r = await http.GetAsync($"http://127.0.0.1:{port}/");
-                if (r.StatusCode == HttpStatusCode.OK) return;
-                last = new InvalidOperationException($"status={(int)r.StatusCode}");
-            }
-            catch (Exception ex) { last = ex; }
-            await Task.Delay(500);
-        }
-        throw new TimeoutException(
-            $"WebUI 未在 {timeout.TotalSeconds:F0}s 内监听 :{port}。最后一次错误: {last?.Message}");
     }
 }

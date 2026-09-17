@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Abstractions.Components
 {
@@ -29,8 +28,5 @@ namespace Seeing.Agent.Abstractions.Components
 
         /// <summary>元数据存储 - 线程安全</summary>
         IMetadataStore Metadata { get; }
-
-        /// <summary>权限请求通道</summary>
-        IPermissionChannel PermissionChannel { get; }
     }
 }

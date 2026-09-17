@@ -2,7 +2,11 @@
 
 ## 1. 命名与分层后缀
 
-沿用 `AGENTS.md`：`Store` / `Registry` / `Manager` / `Service` / `Provider` / `Executor` / `Channel` / `Loader` / `Sink`。  
+沿用 `AGENTS.md`：`Store` / `Registry` / `Manager` / `Service` / `Provider` / `Executor` / `Channel` / `Loader` / `Sink` / `Aggregator` / `Factory` / `Authorizer` / `Mapper`。  
+- `Aggregator`：UI 投影聚合（Scoped/circuit 维度，不持权威执行态，允许落盘 UI 缓存），如 `PermissionCardAggregator`/`TaskCardAggregator`。  
+- `Factory`：构造器端口（Provider 语义），如 `IPermissionAuthorizerFactory`/`LlmClientFactoryResolver`。  
+- `Authorizer`：授权判定窄端口（请求-响应），如 `IPermissionAuthorizer`/`ExecutionContextPermissionAuthorizer`。  
+- `Mapper`：纯函数映射，如 `PermissionKindMapper`。  
 Hook 点用 `HookPoints.*`，禁止魔法字符串。  
 私有字段 `_camelCase`；静态 `s_camelCase`。  
 Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abstractions 的 `Seeing.Agent.Configuration` / `Seeing.Agent.Llm` 等）。

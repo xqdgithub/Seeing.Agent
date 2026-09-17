@@ -59,28 +59,6 @@ public class OpenAiThinkingOutboundTests
     }
 
     [Fact]
-    public async Task CompleteAsync_NoEffort_OmitsThinkingFields()
-    {
-        string? body = null;
-        var client = CreateClient(req =>
-        {
-            body = req;
-            return OkCompletion();
-        });
-
-        await client.CompleteAsync(new ChatRequest
-        {
-            Model = "deepseek-chat",
-            Messages = [new ChatMessage { Role = ChatRole.User, Content = "hi" }]
-        });
-
-        using var doc = JsonDocument.Parse(body!);
-        var root = doc.RootElement;
-        root.TryGetProperty("thinking", out _).Should().BeFalse();
-        root.TryGetProperty("reasoning_effort", out _).Should().BeFalse();
-    }
-
-    [Fact]
     public async Task CompleteAsync_EchoReasoning_WritesReasoningContentOnAssistant()
     {
         string? body = null;

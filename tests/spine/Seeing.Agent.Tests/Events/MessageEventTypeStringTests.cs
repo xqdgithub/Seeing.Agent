@@ -16,7 +16,7 @@ public class MessageEventTypeStringTests
     [InlineData(MessageEventType.ToolCallRunning, "tool.call.running")]
     [InlineData(MessageEventType.ToolCallComplete, "tool.call.complete")]
     [InlineData(MessageEventType.PermissionRequest, "permission.request")]
-    [InlineData(MessageEventType.PermissionResponse, "permission.response")]
+    [InlineData(MessageEventType.PermissionResolved, "permission.resolved")]
     [InlineData(MessageEventType.LoopCancelled, "loop.cancelled")]
     [InlineData(MessageEventType.Error, "error")]
     [InlineData(MessageEventType.CommandResult, "command.result")]

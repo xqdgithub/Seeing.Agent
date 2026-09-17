@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Hosting;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Commands;

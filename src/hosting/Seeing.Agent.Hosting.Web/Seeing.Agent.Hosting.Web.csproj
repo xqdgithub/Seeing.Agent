@@ -5,7 +5,7 @@
     <RootNamespace>Seeing.Agent.Hosting.Web</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Description>Web Host Shape: Blazor Circuit shell + BlazorPermissionChannel (no capability package refs)</Description>
+    <Description>Web Host Shape: Blazor Circuit shell + EventStreamPermissionChannel (no capability package refs)</Description>
   </PropertyGroup>
 
   <ItemGroup>

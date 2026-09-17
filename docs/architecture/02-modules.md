@@ -64,10 +64,18 @@
 
 | 包 | 职责 | 能力包 |
 |----|------|--------|
-| `Seeing.Agent.Hosting.Web` | Circuit、BlazorPermissionChannel | **不**引用 |
+| `Seeing.Agent.Hosting.Web` | Circuit、`EventStreamPermissionChannel`（事件流宿主通道，Singleton） | **不**引用 |
 | `Seeing.Agent.Hosting.Headless` | 无 UI 宿主辅助 | **不**引用 |
 | `Seeing.Agent.Hosting.Embed` | 进程内嵌入 | **不**引用 |
 | `Seeing.Agent.Hosting.Gateway` | Gateway Host Shape 描述符 | **不**引用 Agent.Gateway；sample 组合 |
+
+**权限授权子系统归属（2026-09-17 重构后）：**
+
+- **Abstractions（契约）**：`IPermissionService`、`IPermissionAuthorizer`（+`IPermissionAuthorizerFactory`）、`IPermissionRequestManager`、`IPermissionGrantStore`、`IPermissionPresenceStore`、`IPermissionChannel`、请求/结果/授权模型。
+- **Core（脊柱）**：`PermissionService`（规则/策略 + `AuthorizeAsync` 资源门编排）、`PermissionRequestManager`（在途唯一权威）、`PermissionPresenceStore`、`PermissionGrantStore`、`EffectivePermissionPolicy`、`ExecutionContextPermissionAuthorizer` + `DefaultPermissionAuthorizerFactory`、`DenyAllPermissionChannel`、`PermissionKindMapper`。
+- **Hosting.Web（Host Shape）**：`EventStreamPermissionChannel`（事件流宿主通道；`WebHostingServiceCollectionExtensions.cs:46` 注册为 Singleton）。
+- **Gateway**：`GatewayPermissionChannel`（`TryAutoApprove` 读 `GatewayOptions.PermissionMode`；拒绝仅在无 Presence 时）。
+- **WebUI（sample）**：`PermissionCardAggregator`（投影聚合）、`PermissionInteractionService`、`ActiveSessionTracker`（活动会话 Presence 记账）。
 
 ## 6. Samples 与插件
 

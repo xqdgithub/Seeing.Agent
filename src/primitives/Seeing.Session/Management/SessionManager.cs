@@ -621,6 +621,44 @@ namespace Seeing.Session.Management
         }
 
         /// <summary>
+        /// 设置会话级自动批准三态
+        /// </summary>
+        public async Task SetAutoApproveAsync(string sessionId, SessionAutoApprove value, CancellationToken ct = default)
+        {
+            var session = Get(sessionId);
+            if (session == null)
+            {
+                _logger?.LogWarning("会话不存在，无法设置自动批准策略: {SessionId}", sessionId);
+                return;
+            }
+
+            session.AutoApprove = value;
+            session.UpdatedAt = DateTime.Now;
+
+            // 触发 Updated Hook
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.Updated,
+                session.Id,
+                result: new Dictionary<string, object?> { ["session"] = session, ["autoApprove"] = value });
+
+            // 发布 SessionEvent（通知 UI 组件）
+            _eventPublisher?.Publish(new SessionEvent
+            {
+                SessionId = session.Id,
+                Type = SessionEventType.Updated,
+                Data = session
+            });
+
+            // 自动保存
+            if (_store != null)
+            {
+                await SaveAsync(sessionId);
+            }
+
+            _logger?.LogInformation("设置会话自动批准策略: SessionId={SessionId}, AutoApprove={AutoApprove}", sessionId, value);
+        }
+
+        /// <summary>
         /// 设置会话的模型
         /// </summary>
         public async Task SetModelAsync(string sessionId, string modelId, CancellationToken ct = default)

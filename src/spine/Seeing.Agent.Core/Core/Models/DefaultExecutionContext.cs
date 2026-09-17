@@ -1,9 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
-using DefaultPermissionChannelAlias = Seeing.Agent.Core.Permission.DefaultPermissionChannel;
-
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Components;
 namespace Seeing.Agent.Core.Models
 {
@@ -15,7 +12,6 @@ namespace Seeing.Agent.Core.Models
         private readonly IServiceProvider _services;
         private readonly ILogger _logger;
         private readonly IMetadataStore _metadata;
-        private readonly IPermissionChannel _permissionChannel;
 
         /// <inheritdoc />
         public string SessionId { get; init; } = string.Empty;
@@ -38,21 +34,16 @@ namespace Seeing.Agent.Core.Models
         /// <inheritdoc />
         public IMetadataStore Metadata => _metadata;
 
-        /// <inheritdoc />
-        public IPermissionChannel PermissionChannel => _permissionChannel;
-
         /// <summary>
         /// 创建默认执行上下文
         /// </summary>
         public DefaultExecutionContext(
             IServiceProvider services,
             ILogger logger,
-            IPermissionChannel permissionChannel,
             IMetadataStore? metadata = null)
         {
             _services = services ?? throw new ArgumentNullException(nameof(services));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _permissionChannel = permissionChannel ?? throw new ArgumentNullException(nameof(permissionChannel));
             _metadata = metadata ?? new ConcurrentMetadataStore();
         }
 
@@ -66,9 +57,8 @@ namespace Seeing.Agent.Core.Models
         {
             var nullLogger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
             var nullServices = services ?? new ServiceCollection().BuildServiceProvider();
-            var permissionChannel = DefaultPermissionChannelAlias.Instance;
 
-            return new DefaultExecutionContext(nullServices, nullLogger, permissionChannel)
+            return new DefaultExecutionContext(nullServices, nullLogger)
             {
                 SessionId = sessionId,
                 MessageId = messageId

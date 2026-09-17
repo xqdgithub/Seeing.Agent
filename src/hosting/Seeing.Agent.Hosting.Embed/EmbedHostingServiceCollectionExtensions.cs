@@ -37,7 +37,7 @@ public static class EmbedHostingServiceCollectionExtensions
         });
 
         // 无 UI：未显式注册 IPermissionChannel 时使用 DenyAll（嵌入方应自行提供通道或 AutoApprove）
-        services.TryAddSingleton<IPermissionChannel>(DenyAllPermissionChannel.Instance);
+        services.TryAddSingleton<IPermissionChannel, DenyAllPermissionChannel>();
 
         services.AddChatOrchestrator();
         services.AddExecutionEngine(configureExecution);

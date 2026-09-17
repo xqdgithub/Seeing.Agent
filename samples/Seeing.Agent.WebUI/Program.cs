@@ -4,7 +4,6 @@ using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Web;
 using Seeing.Agent.Hosting.Web.Circuits;
-using Seeing.Agent.Hosting.Web.Permissions;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
@@ -82,7 +81,7 @@ builder.Services.AddSeeingCore(registry);
 // === Session 管理：由 AddSeeingCore 统一注册 ISessionStore + SessionManager + ISessionManager + ISessionEventPublisher ===
 // 勿再调用 AddSessionManager() / 重复注册 ISessionEventPublisher，避免双实例分裂
 
-// === Web Host Shape：Circuit + BlazorPermissionChannel ===
+// === Web Host Shape：Circuit + EventStreamPermissionChannel ===
 builder.Services.AddSeeingHostingWeb();
 BootOverrideSource.ApplyToServices(builder.Services, args);
 builder.Services.AddSingleton<UiContributionRegistry>();
@@ -97,18 +96,18 @@ builder.Services.AddScoped<MessageTimelineStore>();
 // TaskCardAggregator（Scoped）：每父会话一实例，聚合子代理 TaskSteps。
 builder.Services.AddSingleton<SessionEventStreamRouter>();
 builder.Services.AddSingleton<ICircuitResourceCleanup>(sp => sp.GetRequiredService<SessionEventStreamRouter>());
+builder.Services.AddSingleton<ActiveSessionTracker>();
 builder.Services.AddScoped<TaskCardAggregator>();
+// 权限内联卡片投影聚合器 + 交互服务（Scoped，circuit 维度，与 TaskCardAggregator 同范式）
+builder.Services.AddScoped<PermissionCardAggregator>();
+builder.Services.AddScoped<PermissionInteractionService>();
 builder.Services.AddScoped<TaskSessionResolver>();
 builder.Services.AddScoped<ConferenceRegistry>();
 
 // EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
-// 此处保留的 Scoped 注册作为"全局权限事件总线"占位实例（sessionId 为空串）：
-// BlazorPermissionChannel.RequestAsync 经它 PublishAsync 触发 OnPermissionRequest，
-// PermissionHost 订阅该实例弹权限窗（主渲染 handler 的权限事件无人订阅，无副作用）。
-// 此注册为权限链路必需，不可移除。
+// 此处保留的 Scoped 注册作为全局事件处理占位实例（sessionId 为空串）。
 builder.Services.AddScoped<EventStreamHandler>(sp =>
     new EventStreamHandler(string.Empty, sp.GetRequiredService<ISessionManager>()));
-builder.Services.AddScoped<IPermissionEventSink>(sp => sp.GetRequiredService<EventStreamHandler>());
 builder.Services.AddScoped<ErrorHandlingService>();
 builder.Services.AddSingleton<McpStateService>();
 builder.Services.AddSingleton<SeeingConfigService>();

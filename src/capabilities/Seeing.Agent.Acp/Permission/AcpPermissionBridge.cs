@@ -1,7 +1,6 @@
 using Acp.Helpers;
 using Acp.Messages;
 using Acp.Types;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Abstractions.Permissions;
@@ -9,20 +8,20 @@ using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Acp.Permission;
 
 /// <summary>
-/// 将 ACP request_permission 桥接到 Seeing 权限通道。
+/// 将 ACP request_permission 桥接到 Seeing 权限授权器。
 /// </summary>
 public sealed class AcpPermissionBridge
 {
     private static readonly AsyncLocal<Stack<AcpPermissionContext>> ContextStack = new();
 
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IPermissionAuthorizerFactory _authorizerFactory;
     private readonly ILogger<AcpPermissionBridge> _logger;
 
     public AcpPermissionBridge(
-        IServiceScopeFactory scopeFactory,
+        IPermissionAuthorizerFactory authorizerFactory,
         ILogger<AcpPermissionBridge> logger)
     {
-        _scopeFactory = scopeFactory;
+        _authorizerFactory = authorizerFactory;
         _logger = logger;
     }
 
@@ -40,18 +39,18 @@ public sealed class AcpPermissionBridge
         var optionList = options.ToList();
         var toolName = string.IsNullOrWhiteSpace(toolCall.ToolName) ? "acp_tool" : toolCall.ToolName;
 
-        // 优先使用上下文中的通道，否则从 DI 解析（支持热重载）
-        var channel = ctx.PermissionChannel ?? ResolveDefaultChannel();
-        var channelResult = await channel.RequestAsync(new PermissionRequest
+        var authorizer = _authorizerFactory.Create(ctx.SeeingSessionId);
+        var resolution = await authorizer.AuthorizeAsync(new PermissionRequest
         {
+            SessionId = ctx.SeeingSessionId,
+            LoopId = ctx.LoopId,
+            AgentName = ctx.AgentName,
             PermissionKind = "tool.execute",
             Resource = toolName,
-            SessionId = ctx.SeeingSessionId
+            RequireInteraction = true
         }, cancellationToken).ConfigureAwait(false);
 
-        var approved = channelResult.Action == Seeing.Agent.Abstractions.Permissions.PermissionChannelAction.Allow;
-
-        if (!approved)
+        if (resolution.Decision != PermissionEffect.Allow)
         {
             _logger.LogInformation("ACP permission denied for tool {ToolName} (session {SessionId})",
                 toolName, ctx.SeeingSessionId);
@@ -60,12 +59,6 @@ public sealed class AcpPermissionBridge
 
         var selected = optionList.FirstOrDefault()?.Id ?? "allow";
         return PermissionOutcomes.SelectedResponse(selected);
-    }
-
-    private IPermissionChannel ResolveDefaultChannel()
-    {
-        using var scope = _scopeFactory.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<IPermissionChannel>();
     }
 
     private sealed class Scope : IDisposable

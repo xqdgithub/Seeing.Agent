@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Execution;
@@ -204,5 +205,120 @@ public class EventStreamHandlerTests
         tc.TaskDescription.Should().Be("探索");
         tc.TaskAgent.Should().Be("explore");
         ToolCallViewModel.FromSessionToolCall(tc, "s1").IsTaskTool.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcessEventAsync_PermissionRequest_ShouldRaiseRequestCallback()
+    {
+        var session = SessionData.Create("p1", "general");
+        var handler = CreateHandler("s1", session);
+        PermissionRequestEvent? received = null;
+        handler.OnPermissionRequest += evt => received = evt;
+
+        var evt = new PermissionRequestEvent
+        {
+            SessionId = "s1",
+            RequestId = "r1",
+            PermissionKind = "tool.execute",
+            Resource = "bash",
+            CallId = "t1"
+        };
+        await handler.ProcessEventAsync(evt);
+
+        received.Should().BeSameAs(evt);
+    }
+
+    [Fact]
+    public async Task ProcessEventAsync_PermissionResolved_ShouldRaiseResolvedCallback()
+    {
+        var session = SessionData.Create("p1", "general");
+        var handler = CreateHandler("s1", session);
+        PermissionResolvedEvent? received = null;
+        handler.OnPermissionResolved += evt => received = evt;
+
+        var evt = new PermissionResolvedEvent
+        {
+            SessionId = "s1",
+            RequestId = "r1",
+            Decision = PermissionEffect.Allow,
+            Scope = PermissionGrantScope.Once,
+            ResolvedBy = PermissionResolvedBy.User
+        };
+        await handler.ProcessEventAsync(evt);
+
+        received.Should().BeSameAs(evt);
+    }
+
+    [Fact]
+    public void PermissionEventTypes_ShouldUseProtocolStrings()
+    {
+        MessageEventType.PermissionRequest.Should().Be("permission.request");
+        MessageEventType.PermissionResolved.Should().Be("permission.resolved");
+    }
+
+    [Fact]
+    public async Task ProcessEventAsync_PermissionRequest_ShouldNotMutateSessionMessages()
+    {
+        var session = SessionData.Create("p1", "general");
+        session.AddMessage(SessionMessage.UserMessage("hi"));
+        var handler = CreateHandler("s1", session);
+        var before = session.Messages.Count;
+
+        await handler.ProcessEventAsync(new PermissionRequestEvent
+        {
+            SessionId = "s1",
+            RequestId = "r1",
+            CallId = "t1",
+            PermissionKind = "tool.execute",
+            Resource = "bash"
+        });
+
+        session.Messages.Count.Should().Be(before);
+    }
+
+    [Fact]
+    public async Task ProcessEventAsync_PermissionResolved_ShouldPreserveDecisionFields()
+    {
+        var session = SessionData.Create("p1", "general");
+        var handler = CreateHandler("s1", session);
+        PermissionResolvedEvent? received = null;
+        handler.OnPermissionResolved += evt => received = evt;
+
+        await handler.ProcessEventAsync(new PermissionResolvedEvent
+        {
+            SessionId = "s1",
+            RequestId = "r1",
+            CallId = "t1",
+            Decision = PermissionEffect.Deny,
+            Scope = PermissionGrantScope.Session,
+            ResolvedBy = PermissionResolvedBy.Timeout,
+            Reason = "超时"
+        });
+
+        received.Should().NotBeNull();
+        received!.RequestId.Should().Be("r1");
+        received.Decision.Should().Be(PermissionEffect.Deny);
+        received.Scope.Should().Be(PermissionGrantScope.Session);
+        received.ResolvedBy.Should().Be(PermissionResolvedBy.Timeout);
+        received.Reason.Should().Be("超时");
+    }
+
+    [Fact]
+    public async Task Dispose_ShouldDetachPermissionCallbacks()
+    {
+        var session = SessionData.Create("p1", "general");
+        var handler = CreateHandler("s1", session);
+        var raised = false;
+        handler.OnPermissionResolved += _ => raised = true;
+
+        handler.Dispose();
+        await handler.ProcessEventAsync(new PermissionResolvedEvent
+        {
+            SessionId = "s1",
+            RequestId = "r1",
+            Decision = PermissionEffect.Deny
+        });
+
+        raised.Should().BeFalse();
     }
 }

@@ -356,6 +356,40 @@ namespace Seeing.Session.Tests
                 ReferenceEquals(e.Data, session));
         }
 
+        [Fact]
+        public async Task SetAutoApproveAsync_ShouldSetValueAndPublishUpdatedEvent()
+        {
+            // Arrange
+            var eventPublisher = new SessionEventPublisher();
+            var received = new List<SessionEvent>();
+            using var subscription = eventPublisher.Events.Subscribe(
+                new ActionObserver<SessionEvent>(received.Add));
+            var manager = new SessionManager(
+                store: _mockStore.Object,
+                eventPublisher: eventPublisher,
+                logger: new NullLogger<SessionManager>());
+            var session = manager.Create();
+
+            // Act
+            await manager.SetAutoApproveAsync(session.Id, SessionAutoApprove.Disabled);
+
+            // Assert
+            session.AutoApprove.Should().Be(SessionAutoApprove.Disabled);
+            received.Should().ContainSingle(e =>
+                e.SessionId == session.Id &&
+                e.Type == SessionEventType.Updated &&
+                ReferenceEquals(e.Data, session));
+            _mockStore.Verify(s => s.SaveAsync(It.Is<SessionData>(x => x.Id == session.Id)), Times.Once);
+        }
+
+        [Fact]
+        public async Task SetAutoApproveAsync_UnknownSession_ShouldBeNoOp()
+        {
+            // Act & Assert
+            await _sessionManager.SetAutoApproveAsync("missing", SessionAutoApprove.Enabled);
+            _mockStore.Verify(s => s.SaveAsync(It.IsAny<SessionData>()), Times.Never);
+        }
+
         // === LoadAsync 测试 ===
 
         [Fact]

@@ -35,8 +35,7 @@ public sealed class GatewayServer : IGatewayServer, IAsyncDisposable
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        var gatewayOptions = _options.Value;
-        if (!gatewayOptions.Enabled)
+        if (!_options.Value.Enabled)
         {
             _logger.LogDebug("Gateway 未启用（SeeingAgent:Gateway:Enabled=false），跳过启动");
             return;
@@ -50,15 +49,15 @@ public sealed class GatewayServer : IGatewayServer, IAsyncDisposable
 
             _host = new GatewayHost(
                 _services,
-                gatewayOptions,
+                _options,
                 _loggerFactory.CreateLogger<GatewayHost>());
 
             await _host.StartAsync(cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation(
                 "Gateway 已启动: http://{BindAddress}:{Port}",
-                gatewayOptions.BindAddress,
-                gatewayOptions.Port);
+                _options.Value.BindAddress,
+                _options.Value.Port);
         }
         finally
         {

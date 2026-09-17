@@ -82,7 +82,7 @@ bootEnabled   = resolve(bootPointer) ∩ Available − Disabled(set) − Modules
 
 - 未知模块 id → 告警忽略  
 - `DependsOn` 未在 `bootEnabled` → **SettlementException 拒启**  
-- 独占 seam（`executionWorld` / `permissionChannel`）：提供方须 ∈ `bootEnabled`；多提供方或消费方未绑定 → 拒启  
+- 独占 seam（`executionWorld`）：提供方须 ∈ `bootEnabled`；多提供方或消费方未绑定 → 拒启  
 
 **进程 BoundSeams** 只来自 `SeeingAgent.Seams`（用户覆盖）+ `HostDefaultSeams`（宿主默认）。Scenario.`Seams` 为会话/文档语义，**不**驱动进程 Activate、**不**驱动进程 seam 绑定。
 

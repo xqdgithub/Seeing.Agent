@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.WebUI.Models;
@@ -107,5 +108,71 @@ public class SessionWindowTimelineSyncTests
 
         // 全量重建：消息仍在（来自 Session），Generation 递增
         h.Timeline.Generation.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void ProcessEvent_PermissionRequest_OwnSession_ShouldSyncAssistantAndRender()
+    {
+        var h = new Harness();
+        var sync = h.Create();
+        h.Session.AddMessage(SessionMessage.UserMessage("hi"));
+        var assistant = SessionMessage.AssistantMessage("waiting");
+        assistant.Id = "m1";
+        h.Session.AddMessage(assistant);
+        h.StreamingMessage = assistant;
+
+        sync.ProcessEvent(new PermissionRequestEvent
+        {
+            SessionId = "s1",
+            RequestId = "r1",
+            CallId = "t1",
+            PermissionKind = "tool.execute",
+            Resource = "bash"
+        });
+
+        h.Renders.Should().BeGreaterThan(0);
+        h.Timeline.Items.Should().Contain(i => i.Turn != null && i.Turn.Messages.Any(m => m.Id == "m1"));
+    }
+
+    [Fact]
+    public void ProcessEvent_PermissionResolved_OwnSession_ShouldSyncAssistantAndRender()
+    {
+        var h = new Harness();
+        var sync = h.Create();
+        h.Session.AddMessage(SessionMessage.UserMessage("hi"));
+        var assistant = SessionMessage.AssistantMessage("resolved");
+        assistant.Id = "m1";
+        h.Session.AddMessage(assistant);
+        h.StreamingMessage = assistant;
+
+        sync.ProcessEvent(new PermissionResolvedEvent
+        {
+            SessionId = "s1",
+            RequestId = "r1",
+            CallId = "t1",
+            Decision = PermissionEffect.Allow,
+            Scope = PermissionGrantScope.Once,
+            ResolvedBy = PermissionResolvedBy.User
+        });
+
+        h.Renders.Should().BeGreaterThan(0);
+        h.Timeline.Items.Should().Contain(i => i.Turn != null && i.Turn.Messages.Any(m => m.Id == "m1"));
+    }
+
+    [Fact]
+    public void ProcessEvent_PermissionResolved_OtherSession_ShouldBeFiltered()
+    {
+        var h = new Harness();
+        var sync = h.Create();
+
+        sync.ProcessEvent(new PermissionResolvedEvent
+        {
+            SessionId = "other",
+            RequestId = "r1",
+            Decision = PermissionEffect.Deny
+        });
+
+        h.Renders.Should().Be(0);
+        h.Timeline.Items.Should().BeEmpty();
     }
 }

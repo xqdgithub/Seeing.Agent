@@ -4,7 +4,6 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Helpers;
 using Seeing.Agent.Core.Output;
 using System.Text;
@@ -25,20 +24,20 @@ public sealed class ToolOutputLimiterDecorator : ToolDecorator
 {
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
     private readonly IToolOutputStore _outputStore;
-    private readonly IWorkspaceWhitelist _whitelist;
+    private readonly IPermissionGrantStore _grantStore;
     private readonly ILogger<ToolOutputLimiterDecorator> _logger;
 
     public ToolOutputLimiterDecorator(
         ITool inner,
         IOptionsMonitor<SeeingAgentOptions> options,
         IToolOutputStore outputStore,
-        IWorkspaceWhitelist whitelist,
+        IPermissionGrantStore grantStore,
         ILogger<ToolOutputLimiterDecorator> logger)
         : base(inner)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _outputStore = outputStore ?? throw new ArgumentNullException(nameof(outputStore));
-        _whitelist = whitelist ?? throw new ArgumentNullException(nameof(whitelist));
+        _grantStore = grantStore ?? throw new ArgumentNullException(nameof(grantStore));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -77,7 +76,7 @@ public sealed class ToolOutputLimiterDecorator : ToolDecorator
             var outputPath = await _outputStore.SaveAsync(sessionId, callId, result.Output, CancellationToken.None).ConfigureAwait(false);
 
             if (!string.IsNullOrEmpty(sessionId))
-                _whitelist.Add(sessionId, _outputStore.GetRefDirectory(sessionId));
+                _grantStore.AddSessionDirectory(sessionId, _outputStore.GetRefDirectory(sessionId));
 
             result.Output = BuildPreview(result.Output, outputPath, config, bytes, lines, spillFailed: false);
             result.Metadata["truncated"] = true;

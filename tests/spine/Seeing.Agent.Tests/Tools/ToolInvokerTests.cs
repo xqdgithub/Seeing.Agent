@@ -168,7 +168,7 @@ namespace Seeing.Agent.Tests.Tools
         {
             // Arrange
             var permissionPolicy = new Mock<IToolPermissionPolicy>();
-            var permissionChannel = new Mock<IPermissionChannel>();
+            var permissionAuthorizer = new Mock<IPermissionAuthorizer>();
             var invoker = new ToolManager(
                 _loggerMock.Object, _hookManager,
                 permissionPolicy: permissionPolicy.Object);
@@ -178,9 +178,16 @@ namespace Seeing.Agent.Tests.Tools
                 .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
                 .Returns(new PermissionResourceCheck("filesystem.read", "/secret/file.txt"));
 
-            permissionChannel
-                .Setup(c => c.RequestAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(PermissionChannelResult.Denied("User denied"));
+            permissionAuthorizer.SetupGet(a => a.SessionId).Returns("session-1");
+            permissionAuthorizer
+                .Setup(a => a.AuthorizeAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PermissionResolution
+                {
+                    RequestId = "req-1",
+                    SessionId = "session-1",
+                    Decision = PermissionEffect.Deny,
+                    Reason = "User denied"
+                });
 
             var toolCall = new ToolCall
             {
@@ -190,7 +197,7 @@ namespace Seeing.Agent.Tests.Tools
 
             // Act
             var result = await invoker.ExecuteAsync(toolCall, "session-1",
-                CancellationToken.None, null, permissionChannel.Object);
+                CancellationToken.None, null, permissionAuthorizer.Object);
 
             // Assert
             result.Success.Should().BeFalse();
@@ -202,7 +209,7 @@ namespace Seeing.Agent.Tests.Tools
         {
             // Arrange
             var permissionPolicy = new Mock<IToolPermissionPolicy>();
-            var permissionChannel = new Mock<IPermissionChannel>();
+            var permissionAuthorizer = new Mock<IPermissionAuthorizer>();
             var invoker = new ToolManager(
                 _loggerMock.Object, _hookManager,
                 permissionPolicy: permissionPolicy.Object);
@@ -212,9 +219,15 @@ namespace Seeing.Agent.Tests.Tools
                 .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
                 .Returns(new PermissionResourceCheck("filesystem.read", "/allowed/file.txt"));
 
-            permissionChannel
-                .Setup(c => c.RequestAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(PermissionChannelResult.Allowed());
+            permissionAuthorizer.SetupGet(a => a.SessionId).Returns("session-1");
+            permissionAuthorizer
+                .Setup(a => a.AuthorizeAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PermissionResolution
+                {
+                    RequestId = "req-2",
+                    SessionId = "session-1",
+                    Decision = PermissionEffect.Allow
+                });
 
             var toolCall = new ToolCall
             {
@@ -224,19 +237,68 @@ namespace Seeing.Agent.Tests.Tools
 
             // Act
             var result = await invoker.ExecuteAsync(toolCall, "session-1",
-                CancellationToken.None, null, permissionChannel.Object);
+                CancellationToken.None, null, permissionAuthorizer.Object);
 
             // Assert
             result.Success.Should().BeTrue();
             result.Output.Should().Be("完成");
+            permissionAuthorizer.Verify(
+                a => a.AuthorizeAsync(
+                    It.Is<PermissionRequest>(r => r.CallId == "call-002" && r.PermissionKind == "filesystem.read"),
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
         }
 
         [Fact]
-        public async Task ExecuteAsync_PermissionPolicyReturnsNull_SkipsChannelCheck()
+        public async Task ExecuteAsync_ResourceGate_ShouldPassAgentNameToAuthorizer()
         {
             // Arrange
             var permissionPolicy = new Mock<IToolPermissionPolicy>();
-            var permissionChannel = new Mock<IPermissionChannel>();
+            var permissionAuthorizer = new Mock<IPermissionAuthorizer>();
+            PermissionRequest? captured = null;
+            var invoker = new ToolManager(
+                _loggerMock.Object, _hookManager,
+                permissionPolicy: permissionPolicy.Object);
+            invoker.RegisterTool(new TestTool());
+
+            permissionPolicy
+                .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
+                .Returns(new PermissionResourceCheck("filesystem.read", "/allowed/file.txt"));
+
+            permissionAuthorizer.SetupGet(a => a.SessionId).Returns("session-1");
+            permissionAuthorizer
+                .Setup(a => a.AuthorizeAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<PermissionRequest, CancellationToken>((r, _) => captured = r)
+                .ReturnsAsync(new PermissionResolution
+                {
+                    RequestId = "req-3",
+                    SessionId = "session-1",
+                    Decision = PermissionEffect.Allow
+                });
+
+            var toolCall = new ToolCall
+            {
+                Id = "call-005",
+                Function = new FunctionCall { Name = "test_tool", Arguments = "{}" }
+            };
+
+            // Act
+            var result = await invoker.ExecuteAsync(toolCall, "session-1",
+                CancellationToken.None, null, permissionAuthorizer.Object, "build");
+
+            // Assert
+            result.Success.Should().BeTrue();
+            captured.Should().NotBeNull();
+            captured!.AgentName.Should().Be("build");
+            captured.PermissionKind.Should().Be("filesystem.read");
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_PermissionPolicyReturnsNull_SkipsAuthorizerCheck()
+        {
+            // Arrange
+            var permissionPolicy = new Mock<IToolPermissionPolicy>();
+            var permissionAuthorizer = new Mock<IPermissionAuthorizer>();
             var invoker = new ToolManager(
                 _loggerMock.Object, _hookManager,
                 permissionPolicy: permissionPolicy.Object);
@@ -254,20 +316,20 @@ namespace Seeing.Agent.Tests.Tools
 
             // Act
             var result = await invoker.ExecuteAsync(toolCall, "session-1",
-                CancellationToken.None, null, permissionChannel.Object);
+                CancellationToken.None, null, permissionAuthorizer.Object);
 
             // Assert
             result.Success.Should().BeTrue();
-            // Verify channel was never called
-            permissionChannel.Verify(
-                c => c.RequestAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()),
+            // Verify authorizer was never called
+            permissionAuthorizer.Verify(
+                a => a.AuthorizeAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
 
         [Fact]
-        public async Task ExecuteAsync_NoPolicy_NullChannel_Succeeds()
+        public async Task ExecuteAsync_NoPolicy_NullAuthorizer_Succeeds()
         {
-            // Arrange -- no policy, no channel: old behavior, tool runs fine
+            // Arrange -- no policy, no authorizer: tool runs fine
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterTool(new TestTool());
 

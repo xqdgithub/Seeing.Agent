@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Scheduling;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Hosting;
+using Seeing.Agent.Gateway.Permission;
 using Seeing.Agent.Gateway.Scheduling;
 
 namespace Seeing.Agent.Gateway.Extensions;
@@ -44,6 +46,7 @@ public static class GatewayServiceCollectionExtensions
         services.AddHostedService<GatewayHostedService>();
         services.AddSingleton<ISeeingModule>(sp =>
             new GatewayModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
+        services.AddGatewayPermissionChannel();
         return services;
     }
 
@@ -83,6 +86,19 @@ public static class GatewayServiceCollectionExtensions
         services.AddHostedService<GatewayHostedService>();
         services.AddSingleton<ISeeingModule>(sp =>
             new GatewayModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
+        services.AddGatewayPermissionChannel();
+        return services;
+    }
+
+    /// <summary>
+    /// 注册 Gateway 宿主通道：具体类型 + 接口映射（同一实例）。
+    /// 必须显式映射到 <see cref="IPermissionChannel"/>，否则具体类型不进
+    /// <c>IEnumerable&lt;IPermissionChannel&gt;</c>，TryAutoApprove 会被 Core 兜底 DenyAll 遮蔽。
+    /// </summary>
+    private static IServiceCollection AddGatewayPermissionChannel(this IServiceCollection services)
+    {
+        services.AddSingleton<GatewayPermissionChannel>();
+        services.AddSingleton<IPermissionChannel>(sp => sp.GetRequiredService<GatewayPermissionChannel>());
         return services;
     }
 }

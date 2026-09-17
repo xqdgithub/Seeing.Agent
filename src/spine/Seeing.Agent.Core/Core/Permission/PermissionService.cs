@@ -1,132 +1,52 @@
-using Seeing.Agent.Abstractions.Agents;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Models;
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>
 /// 权限服务实现 - 统一的权限评估入口
 /// </summary>
-public class PermissionService : IPermissionService, IDisposable
+public class PermissionService : IPermissionService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IPermissionCache _cache;
     private readonly ILogger<PermissionService> _logger;
     private readonly byte[] _hmacKey;
-    private readonly TimeSpan _defaultCacheTtl = TimeSpan.FromMinutes(5);
-
-    // TTL 清理定时器
-    private readonly Timer _cleanupTimer;
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _cacheExpirations = new();
+    private readonly IPermissionGrantStore? _grantStore;
+    private readonly EffectivePermissionPolicy? _effectivePolicy;
+    private readonly IWorkspacePathGate? _workspaceGate;
+    private readonly IOptionsMonitor<SeeingAgentOptions>? _options;
+    private readonly IPermissionRequestManager? _requestManager;
+    private readonly IPermissionPresenceStore? _presence;
+    private readonly IEnumerable<IPermissionChannel> _channels;
+    private readonly IAgentRegistry? _agentRegistry;
 
     public PermissionService(
-        IServiceScopeFactory scopeFactory,
-        IPermissionCache cache,
-        ILogger<PermissionService> logger)
+        ILogger<PermissionService> logger,
+        IPermissionGrantStore? grantStore = null,
+        EffectivePermissionPolicy? effectivePolicy = null,
+        IWorkspacePathGate? workspaceGate = null,
+        IOptionsMonitor<SeeingAgentOptions>? options = null,
+        IPermissionRequestManager? requestManager = null,
+        IPermissionPresenceStore? presence = null,
+        IEnumerable<IPermissionChannel>? channels = null,
+        IAgentRegistry? agentRegistry = null)
     {
-        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
-        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _grantStore = grantStore;
+        _effectivePolicy = effectivePolicy;
+        _workspaceGate = workspaceGate;
+        _options = options;
+        _requestManager = requestManager;
+        _presence = presence;
+        _channels = channels ?? Array.Empty<IPermissionChannel>();
+        _agentRegistry = agentRegistry;
 
         // 生成或加载 HMAC 密钥
         _hmacKey = LoadOrGenerateHmacKey();
-
-        // 启动 TTL 清理定时器（每分钟）
-        _cleanupTimer = new Timer(
-            callback: _ => CleanupExpiredCacheEntries(),
-            state: null,
-            dueTime: TimeSpan.FromMinutes(1),
-            period: TimeSpan.FromMinutes(1));
-    }
-
-    /// <inheritdoc />
-    public async Task<PermissionResult> EvaluateAsync(
-        ResourceIdentifier resource,
-        PermissionContext context,
-        CancellationToken cancellationToken = default)
-    {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var evaluationPath = new List<PermissionEvaluationStep>();
-
-        try
-        {
-            // 1. 验证 Context 完整性
-            var integrityHash = PermissionIntegrity.ComputeIntegrityHash(context, _hmacKey);
-            var stepResult = await RecordStepAsync("ValidateIntegrity", resource, context,
-                () => Task.FromResult(true), stopwatch.ElapsedMilliseconds).ConfigureAwait(false);
-            evaluationPath.Add(stepResult);
-
-            // 2. 构建缓存键
-            var cacheKey = BuildCacheKey(resource, context);
-
-            // 3. 检查缓存
-            if (_cache.TryGet(cacheKey, out var cachedAction))
-            {
-                _logger.LogDebug("权限缓存命中: {Resource} for {Agent}", resource, context.AgentName);
-
-                var cachedEffect = MapToEffect(cachedAction);
-                return CreateResult(cachedEffect, resource, "From cache", null, evaluationPath, integrityHash, fromCache: true);
-            }
-
-            // 4. 评估规则（按优先级）
-            var (matchedRule, effect, reason) = await EvaluateRulesAsync(resource, context, cancellationToken).ConfigureAwait(false);
-
-            // 5. 检查父上下文（递归）- 父上下文可以覆盖当前决策
-            if (context.Parent != null)
-            {
-                var parentResult = await EvaluateAsync(resource, context.Parent, cancellationToken).ConfigureAwait(false);
-
-                // 父上下文 Deny 总是覆盖当前 Allow
-                if (parentResult.IsDenied)
-                {
-                    effect = PermissionEffect.Deny;
-                    reason = $"Denied by parent context: {parentResult.Reason}";
-                    matchedRule = parentResult.MatchedRule;
-                }
-                // 父上下文 Ask 时，如果当前是 Allow，降级为 Ask
-                else if (parentResult.NeedsConfirmation && effect == PermissionEffect.Allow)
-                {
-                    effect = PermissionEffect.Ask;
-                    reason = $"Parent requires confirmation: {parentResult.Reason}";
-                }
-
-                evaluationPath.Add(new PermissionEvaluationStep
-                {
-                    Step = "ParentContextCheck",
-                    Input = context.Parent.AgentName,
-                    Output = effect,
-                    Matched = effect == PermissionEffect.Allow,
-                    Duration = stopwatch.Elapsed
-                });
-            }
-
-            // 6. 缓存结果
-            var cacheAction = MapToAction(effect);
-            _cache.Set(cacheKey, cacheAction, _defaultCacheTtl);
-            _cacheExpirations[cacheKey.ToString()] = DateTimeOffset.Now.Add(_defaultCacheTtl);
-
-            // 7. 记录审计日志
-            var result = CreateResult(effect, resource, reason, matchedRule, evaluationPath, integrityHash);
-            await LogAuditAsync(result, context, cancellationToken).ConfigureAwait(false);
-
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "权限评估失败: {Resource} for {Agent}", resource, context.AgentName);
-
-            return CreateResult(
-                PermissionEffect.Deny,
-                resource,
-                $"Evaluation failed: {ex.Message}",
-                null,
-                evaluationPath,
-                string.Empty);
-        }
     }
 
     /// <inheritdoc />
@@ -137,40 +57,7 @@ public class PermissionService : IPermissionService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var resource = new ResourceIdentifier(PermissionKind.Tool, toolName, ns);
-        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <inheritdoc />
-    public async Task<PermissionResult> EvaluateAgentAsync(
-        string agentName,
-        PermissionContext context,
-        CancellationToken cancellationToken = default)
-    {
-        var resource = new ResourceIdentifier(PermissionKind.Agent, agentName);
-        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <inheritdoc />
-    public async Task<PermissionResult> EvaluateFileAsync(
-        string filePath,
-        FileOperation operation,
-        PermissionContext context,
-        CancellationToken cancellationToken = default)
-    {
-        var normalizedPath = NormalizePath(filePath, context.WorkingDirectory);
-        var resource = new ResourceIdentifier(PermissionKind.File, normalizedPath);
-        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <inheritdoc />
-    public async Task<PermissionResult> EvaluateMcpToolAsync(
-        string mcpServer,
-        string toolName,
-        PermissionContext context,
-        CancellationToken cancellationToken = default)
-    {
-        var resource = new ResourceIdentifier(PermissionKind.McpTool, toolName, mcpServer);
-        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
+        return await EvaluateResourceAsync(resource, context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -180,7 +67,7 @@ public class PermissionService : IPermissionService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var resource = new ResourceIdentifier(PermissionKind.Skill, skillName);
-        return await EvaluateAsync(resource, context, cancellationToken).ConfigureAwait(false);
+        return await EvaluateResourceAsync(resource, context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -211,34 +98,12 @@ public class PermissionService : IPermissionService, IDisposable
     /// <inheritdoc />
     public void InvalidateCache(string? agentName = null, string? resourcePattern = null)
     {
-        if (agentName == null && resourcePattern == null)
-        {
-            _cache.Clear();
-            _cacheExpirations.Clear();
-            _logger.LogInformation("已清空所有权限缓存");
-        }
-        else if (agentName != null)
-        {
-            _cache.InvalidateByAgent(agentName);
-
-            // 清理过期记录
-            var keysToRemove = _cacheExpirations
-                .Where(kvp => kvp.Key.StartsWith(agentName))
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var key in keysToRemove)
-            {
-                _cacheExpirations.TryRemove(key, out _);
-            }
-
-            _logger.LogInformation("已清除 Agent {AgentName} 的权限缓存", agentName);
-        }
-        else if (resourcePattern != null)
-        {
-            _cache.InvalidateByPermission(resourcePattern);
-            _logger.LogInformation("已清除资源 {Pattern} 的权限缓存", resourcePattern);
-        }
+        // 旧的 5 分钟判定结果缓存已移除（修 S2 陈旧判定）。
+        // 规则编译快照当前不缓存（无带版本号的策略提供方，缓存会重引入陈旧风险；见 spec §8 YAGNI）。
+        _logger.LogDebug(
+            "权限缓存失效请求（无判定结果缓存 / 无规则快照缓存）: Agent={AgentName} Resource={ResourcePattern}",
+            agentName,
+            resourcePattern);
     }
 
     /// <inheritdoc />
@@ -256,15 +121,345 @@ public class PermissionService : IPermissionService, IDisposable
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// 释放资源
-    /// </summary>
-    public void Dispose()
+    /// <inheritdoc />
+    public async Task<PermissionResolution> AuthorizeAsync(PermissionRequest request, CancellationToken ct = default)
     {
-        _cleanupTimer?.Dispose();
+        ArgumentNullException.ThrowIfNull(request);
+
+        var resolution = await AuthorizeCoreAsync(request, ct).ConfigureAwait(false);
+        await AuditAsync(request, resolution, ct).ConfigureAwait(false);
+        return resolution;
     }
 
+    #region AuthorizeAsync 决策链（spec §5.1）
+
+    private async Task<PermissionResolution> AuthorizeCoreAsync(PermissionRequest request, CancellationToken ct)
+    {
+        // 0. 规范化
+        var sessionId = request.SessionId ?? string.Empty;
+        var requestId = string.IsNullOrEmpty(request.RequestId)
+            ? Guid.NewGuid().ToString("N")
+            : request.RequestId!;
+        var normalized = request with { SessionId = sessionId, RequestId = requestId };
+
+        var isFilesystem = IsFilesystemKind(normalized.PermissionKind);
+        var restrict = _options?.CurrentValue.Workspace.RestrictToWorkspace == true;
+
+        // 1. 工作区边界预检（与 WorkspacePathGate.EnsureAllowed 同源）
+        if (isFilesystem && restrict)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+            {
+                return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.Policy,
+                    "缺少会话 ID，无法在硬边界模式下访问文件");
+            }
+
+            if (_workspaceGate is not null)
+            {
+                var gateError = _workspaceGate.EnsureAllowed(sessionId, normalized.Resource ?? string.Empty);
+                if (gateError is null)
+                {
+                    return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy,
+                        "路径在工作区内或会话白名单内");
+                }
+            }
+            // 越界（含 filesystem.workspace_extend）→ 继续 2/3/5（可经审批扩权）
+        }
+
+        // 2. 授权记忆
+        var grant = MatchGrant(normalized);
+        if (grant is not null)
+        {
+            return Result(normalized, grant.Effect, PermissionResolvedBy.Policy,
+                $"命中授权记忆（{grant.Scope}）");
+        }
+
+        // 3. Agent 规则（kind 经 PermissionKindMapper 映射）
+        var policy = await ResolveAgentPolicyAsync(normalized, ct).ConfigureAwait(false);
+        if (policy is not null)
+        {
+            var (_, ruleEffect, ruleReason) = await EvaluateRulesAsync(
+                new ResourceIdentifier(PermissionKindMapper.Map(normalized.PermissionKind), normalized.Resource ?? string.Empty),
+                BuildPolicyContext(normalized, policy),
+                ct).ConfigureAwait(false);
+
+            // 3a. Deny 对所有 kind 生效（fail-safe；激活 explore/plan 的 Deny(Shell,"*") 等）。
+            if (ruleEffect == PermissionEffect.Deny)
+                return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.Policy, ruleReason);
+
+            // 3b. Allow 仅对非资源类 kind 短路（tool.execute / skill.execute / mcp.* / agent.*）。
+            //     资源类 kind（filesystem.* / shell.* / network.*）忽略 Agent 规则的 Allow：
+            //     旧系统中 EvaluateFileAsync/EvaluateMcpToolAsync/EvaluateAgentAsync 无生产调用者（死代码），
+            //     资源门（ToolManager）从不套用 Agent 规则；工作区内已由步骤 1b 放行，
+            //     越界必须走 4/5/6 审批，不得被 build 的 Allow(File/Shell/Network,"*") 绕过。
+            if (ruleEffect == PermissionEffect.Allow && !normalized.RequireInteraction
+                && !IsResourceKind(normalized.PermissionKind))
+                return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy, ruleReason);
+        }
+
+        // 4. 生效开关（实时）
+        var toggle = _effectivePolicy?.Resolve(normalized);
+        if (toggle == PermissionEffect.Allow)
+            return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy, "生效开关自动批准");
+
+        // 强制交互：会话/覆盖 Disabled（Ask）或 RequireInteraction=true 时短路宿主通道自动批准，直接进入询问
+        // （spec §5.1「RequireInteraction=true → 跳过以上 Allow 分支」；§5.3 Resolve 恒 null 只解决步骤 4）。
+        var forceInteraction = toggle == PermissionEffect.Ask || normalized.RequireInteraction;
+
+        // 5. 宿主通道策略（任一 TryAutoApprove=Allow 即放行）
+        if (!forceInteraction)
+        {
+            foreach (var channel in _channels)
+            {
+                PermissionEffect? autoApprove;
+                try
+                {
+                    autoApprove = channel.TryAutoApprove(normalized);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "宿主权限通道自动批准判定失败: {Channel}", channel.GetType().Name);
+                    continue;
+                }
+
+                if (autoApprove == PermissionEffect.Allow)
+                    return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy, "宿主通道自动批准");
+            }
+        }
+
+        // 6. 询问
+        if (_presence is null || !_presence.CanPresent(sessionId))
+            return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.NoChannel, "无交互通道");
+
+        if (_requestManager is null)
+            return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.NoChannel, "权限请求管理器不可用");
+
+        var ticket = await _requestManager.BeginAsync(normalized, ct).ConfigureAwait(false);
+        await PresentAsync(normalized, ct).ConfigureAwait(false);
+        var resolution = await _requestManager.WaitAsync(ticket, ct).ConfigureAwait(false);
+
+        // 7. 决策后处理
+        if (resolution.Decision == PermissionEffect.Allow && isFilesystem && restrict &&
+            !string.IsNullOrWhiteSpace(normalized.Resource))
+        {
+            // 7a. 越界审批放行后写入会话白名单（无论 Scope 是否 Once）
+            var directory = ResolveResourceDirectory(normalized.Resource!);
+            if (!string.IsNullOrEmpty(directory) && _grantStore is not null)
+                _grantStore.AddSessionDirectory(sessionId, directory);
+        }
+
+        // 7b. Scope != Once → 写入决策记忆（Allow/Deny 均记）。
+        //     SessionDirectory 须以目录前缀写入（Lookup 靠前缀语义命中同目录兄弟文件），其余 Scope 用精确资源。
+        if (resolution.Scope != PermissionGrantScope.Once && _grantStore is not null)
+        {
+            var memoryResource = normalized.Resource;
+            if (resolution.Scope == PermissionGrantScope.SessionDirectory &&
+                isFilesystem &&
+                !string.IsNullOrWhiteSpace(normalized.Resource))
+            {
+                var directory = ResolveResourceDirectory(normalized.Resource!);
+                if (!string.IsNullOrEmpty(directory))
+                    memoryResource = directory;
+            }
+
+            _grantStore.Add(sessionId, new PermissionGrant(
+                normalized.PermissionKind, memoryResource, resolution.Scope, resolution.Decision));
+        }
+
+        return resolution;
+    }
+
+    private PermissionGrant? MatchGrant(PermissionRequest request)
+    {
+        if (_grantStore is null)
+            return null;
+
+        var grants = _grantStore.Lookup(request.SessionId, request.PermissionKind, request.Resource);
+        if (grants.Count == 0)
+            return null;
+
+        // 安全优先：命中多条时 Deny 覆盖 Allow
+        return grants.FirstOrDefault(g => g.Effect == PermissionEffect.Deny) ?? grants[0];
+    }
+
+    private async Task<AgentPermissionPolicy?> ResolveAgentPolicyAsync(PermissionRequest request, CancellationToken ct)
+    {
+        if (_agentRegistry is null || string.IsNullOrWhiteSpace(request.AgentName))
+            return null;
+
+        try
+        {
+            var definition = await _agentRegistry.GetAgentAsync(request.AgentName!).ConfigureAwait(false);
+            return definition?.BuildPermissionPolicy();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "解析 Agent 权限策略失败: {Agent}", request.AgentName);
+            return null;
+        }
+    }
+
+    private static PermissionContext BuildPolicyContext(PermissionRequest request, AgentPermissionPolicy policy) => new()
+    {
+        SessionId = request.SessionId,
+        AgentName = request.AgentName ?? string.Empty,
+        Policy = policy,
+        WorkingDirectory = Directory.GetCurrentDirectory()
+    };
+
+    private async Task PresentAsync(PermissionRequest request, CancellationToken ct)
+    {
+        foreach (var channel in _channels)
+        {
+            try
+            {
+                await channel.PresentAsync(request, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "宿主权限通道呈现失败: {Channel}", channel.GetType().Name);
+            }
+        }
+    }
+
+    private static bool IsFilesystemKind(string? permissionKind) =>
+        permissionKind?.StartsWith("filesystem.", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>资源类 kind（filesystem.* / shell.* / network.*）：其 Agent 规则 Allow 不短路，须走审批。</summary>
+    private static bool IsResourceKind(string? permissionKind) =>
+        IsFilesystemKind(permissionKind) ||
+        permissionKind?.StartsWith("shell.", StringComparison.OrdinalIgnoreCase) == true ||
+        permissionKind?.StartsWith("network.", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>取资源所在目录（<c>Path.GetFullPath</c> → <c>GetDirectoryName</c>）；失败返回 null。</summary>
+    private string? ResolveResourceDirectory(string resource)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(resource));
+            return string.IsNullOrEmpty(directory) ? null : directory;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "解析资源目录失败: {Resource}", resource);
+            return null;
+        }
+    }
+
+    private static PermissionResolution Result(
+        PermissionRequest request,
+        PermissionEffect decision,
+        PermissionResolvedBy resolvedBy,
+        string? reason,
+        PermissionGrantScope scope = PermissionGrantScope.Once) => new()
+        {
+            RequestId = request.RequestId!,
+            SessionId = request.SessionId,
+            CallId = request.CallId,
+            Decision = decision,
+            Scope = scope,
+            ResolvedBy = resolvedBy,
+            Reason = reason
+        };
+
+    private async Task AuditAsync(PermissionRequest request, PermissionResolution resolution, CancellationToken ct)
+    {
+        try
+        {
+            var result = new PermissionResult
+            {
+                Effect = resolution.Decision,
+                Resource = new ResourceIdentifier(
+                    PermissionKindMapper.Map(request.PermissionKind),
+                    request.Resource ?? string.Empty),
+                Reason = resolution.Reason ?? string.Empty
+            };
+
+            var context = new PermissionContext
+            {
+                SessionId = request.SessionId,
+                AgentName = request.AgentName ?? string.Empty
+            };
+
+            await LogAuditAsync(result, context, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "权限审计失败: {RequestId}", request.RequestId);
+        }
+    }
+
+    #endregion
+
     #region Private Methods
+
+    private async Task<PermissionResult> EvaluateResourceAsync(
+        ResourceIdentifier resource,
+        PermissionContext context,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var evaluationPath = new List<PermissionEvaluationStep>();
+
+        try
+        {
+            // 1. 验证 Context 完整性
+            var integrityHash = PermissionIntegrity.ComputeIntegrityHash(context, _hmacKey);
+            var stepResult = await RecordStepAsync("ValidateIntegrity", resource, context,
+                () => Task.FromResult(true), stopwatch.ElapsedMilliseconds).ConfigureAwait(false);
+            evaluationPath.Add(stepResult);
+
+            // 2. 评估规则（按优先级）
+            var (matchedRule, effect, reason) = await EvaluateRulesAsync(resource, context, cancellationToken).ConfigureAwait(false);
+
+            // 3. 检查父上下文（递归）- 父上下文可以覆盖当前决策
+            if (context.Parent != null)
+            {
+                var parentResult = await EvaluateResourceAsync(resource, context.Parent, cancellationToken).ConfigureAwait(false);
+
+                // 父上下文 Deny 总是覆盖当前 Allow
+                if (parentResult.IsDenied)
+                {
+                    effect = PermissionEffect.Deny;
+                    reason = $"Denied by parent context: {parentResult.Reason}";
+                    matchedRule = parentResult.MatchedRule;
+                }
+                // 父上下文 Ask 时，如果当前是 Allow，降级为 Ask
+                else if (parentResult.NeedsConfirmation && effect == PermissionEffect.Allow)
+                {
+                    effect = PermissionEffect.Ask;
+                    reason = $"Parent requires confirmation: {parentResult.Reason}";
+                }
+
+                evaluationPath.Add(new PermissionEvaluationStep
+                {
+                    Step = "ParentContextCheck",
+                    Input = context.Parent.AgentName,
+                    Output = effect,
+                    Matched = effect == PermissionEffect.Allow,
+                    Duration = stopwatch.Elapsed
+                });
+            }
+
+            // 4. 记录审计日志
+            var result = CreateResult(effect, resource, reason, matchedRule, evaluationPath, integrityHash);
+            await LogAuditAsync(result, context, cancellationToken).ConfigureAwait(false);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "权限评估失败: {Resource} for {Agent}", resource, context.AgentName);
+
+            return CreateResult(
+                PermissionEffect.Deny,
+                resource,
+                $"Evaluation failed: {ex.Message}",
+                null,
+                evaluationPath,
+                string.Empty);
+        }
+    }
 
     private byte[] LoadOrGenerateHmacKey()
     {
@@ -311,33 +506,6 @@ public class PermissionService : IPermissionService, IDisposable
         }
 
         return key;
-    }
-
-    private void CleanupExpiredCacheEntries()
-    {
-        var now = DateTimeOffset.Now;
-        var expiredKeys = _cacheExpirations
-            .Where(kvp => kvp.Value <= now)
-            .Select(kvp => kvp.Key)
-            .ToList();
-
-        foreach (var key in expiredKeys)
-        {
-            _cacheExpirations.TryRemove(key, out _);
-        }
-
-        if (expiredKeys.Count > 0)
-        {
-            _logger.LogDebug("清理了 {Count} 个过期的缓存条目", expiredKeys.Count);
-        }
-    }
-
-    private PermissionCacheKey BuildCacheKey(ResourceIdentifier resource, PermissionContext context)
-    {
-        return new PermissionCacheKey(
-            resource.Kind.ToString(),
-            resource.ToCanonicalString(),
-            context.AgentName);
     }
 
     private async Task<(PermissionRuleEntry? Rule, PermissionEffect Effect, string Reason)> EvaluateRulesAsync(
@@ -447,44 +615,13 @@ public class PermissionService : IPermissionService, IDisposable
         return PathSafety.IsPathWithinDirectory(path, parentPath);
     }
 
-    private static string NormalizePath(string filePath, string workingDirectory)
-    {
-        if (Path.IsPathRooted(filePath))
-            return Path.GetFullPath(filePath);
-
-        return Path.GetFullPath(Path.Combine(workingDirectory, filePath));
-    }
-
-    private static PermissionEffect MapToEffect(PermissionAction action)
-    {
-        return action switch
-        {
-            PermissionAction.Allow => PermissionEffect.Allow,
-            PermissionAction.Deny => PermissionEffect.Deny,
-            PermissionAction.Ask => PermissionEffect.Ask,
-            _ => PermissionEffect.Deny
-        };
-    }
-
-    private static PermissionAction MapToAction(PermissionEffect effect)
-    {
-        return effect switch
-        {
-            PermissionEffect.Allow => PermissionAction.Allow,
-            PermissionEffect.Deny => PermissionAction.Deny,
-            PermissionEffect.Ask => PermissionAction.Ask,
-            _ => PermissionAction.Deny
-        };
-    }
-
     private static PermissionResult CreateResult(
         PermissionEffect effect,
         ResourceIdentifier resource,
         string reason,
         PermissionRuleEntry? matchedRule,
         IReadOnlyList<PermissionEvaluationStep> evaluationPath,
-        string contextHash,
-        bool fromCache = false)
+        string contextHash)
     {
         return new PermissionResult
         {
@@ -494,9 +631,7 @@ public class PermissionService : IPermissionService, IDisposable
             MatchedRule = matchedRule,
             EvaluationPath = evaluationPath,
             ContextHash = contextHash,
-            EvaluatedAt = DateTimeOffset.Now,
-            CacheTtl = TimeSpan.FromMinutes(5),
-            FromCache = fromCache
+            EvaluatedAt = DateTimeOffset.Now
         };
     }
 
@@ -531,20 +666,6 @@ public class PermissionService : IPermissionService, IDisposable
                 Duration = sw.Elapsed
             };
         }
-    }
-
-    private static bool TryParsePermissionKind(string permission, out PermissionKind kind)
-    {
-        return Enum.TryParse<PermissionKind>(permission, ignoreCase: true, out kind);
-    }
-
-    private static AgentContext CreateAgentContext(PermissionContext context)
-    {
-        return new AgentContext
-        {
-            SessionId = context.SessionId,
-            WorkingDirectory = context.WorkingDirectory
-        };
     }
 
     #endregion

@@ -36,8 +36,8 @@ internal class ChatExecutionContext
     
     // ========== 权限相关 ==========
     
-    /// <summary>权限通道</summary>
-    public IPermissionChannel? PermissionChannel { get; init; }
+    /// <summary>执行级权限授权器（供能力门 / 资源门）</summary>
+    public IPermissionAuthorizer? PermissionAuthorizer { get; init; }
     
     /// <summary>权限上下文</summary>
     public PermissionContext? PermissionContext { get; init; }
@@ -114,7 +114,7 @@ internal class ChatExecutionContext
             History = new List<ChatMessage>(),
             WorkingDirectory = WorkingDirectory,
             WorkspaceRoot = WorkspaceRoot,
-            PermissionChannel = PermissionChannel,
+            PermissionAuthorizer = PermissionAuthorizer,
             PermissionContext = PermissionContext,  // 权限上下文由 PermissionContext.CreateSubAgentContext 创建
             ParentSessionId = SessionId,
             ParentAgentName = parentAgentName,

@@ -56,24 +56,3 @@ public enum ConditionLogic
     /// <summary>任一条件满足即可</summary>
     Or = 1
 }
-
-/// <summary>
-/// 文件操作类型
-/// </summary>
-public enum FileOperation
-{
-    /// <summary>读取文件</summary>
-    Read = 0,
-
-    /// <summary>写入文件</summary>
-    Write = 1,
-
-    /// <summary>删除文件</summary>
-    Delete = 2,
-
-    /// <summary>执行文件</summary>
-    Execute = 3,
-
-    /// <summary>列出目录内容</summary>
-    List = 4
-}

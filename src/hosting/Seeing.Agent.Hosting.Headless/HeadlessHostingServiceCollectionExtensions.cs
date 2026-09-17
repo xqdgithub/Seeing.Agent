@@ -36,7 +36,7 @@ public static class HeadlessHostingServiceCollectionExtensions
         });
 
         // 无 UI：未显式注册 IPermissionChannel 时使用 DenyAll（后台/CLI 安全默认）
-        services.TryAddSingleton<IPermissionChannel>(DenyAllPermissionChannel.Instance);
+        services.TryAddSingleton<IPermissionChannel, DenyAllPermissionChannel>();
 
         services.AddChatOrchestrator();
         services.AddExecutionEngine(configureExecution);

@@ -22,7 +22,7 @@ public sealed class SettlementEngine
 {
     /// <summary>目录内同时只能绑定一个提供方的 seam 名。</summary>
     public static readonly IReadOnlyList<string> ExclusiveSeams =
-        ["executionWorld", "permissionChannel"];
+        ["executionWorld"];
 
     private readonly ModuleCatalog _catalog;
     private readonly ILogger<SettlementEngine> _logger;

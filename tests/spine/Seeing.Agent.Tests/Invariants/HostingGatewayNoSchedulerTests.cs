@@ -14,7 +14,7 @@ public class HostingGatewayNoSchedulerTests
         var root = FindRepoRoot();
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var queue = new Queue<string>();
-        queue.Enqueue(Path.Combine(root, "src", "Seeing.Agent.Hosting.Gateway", "Seeing.Agent.Hosting.Gateway.csproj"));
+        queue.Enqueue(Path.Combine(root, "src", "hosting", "Seeing.Agent.Hosting.Gateway", "Seeing.Agent.Hosting.Gateway.csproj"));
 
         var projectNames = new List<string>();
         while (queue.Count > 0)

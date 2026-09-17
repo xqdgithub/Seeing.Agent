@@ -1,12 +1,36 @@
 @using AntDesign
+@using Seeing.Agent.Abstractions.Permissions
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Models.Messaging
 @using Seeing.Agent.WebUI.Rendering.Abstractions
 @using Seeing.Agent.WebUI.State
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.Components.Messaging
 @inject IMessageRenderPipeline Pipeline
+@inject SessionEventStreamRouter PermissionRouter
+@inject CircuitContext PermissionCircuit
+@inject PermissionInteractionService PermissionActions
+@implements IDisposable
 
 @* Loop 分组组件 - 使用渲染管线 *@
 @_body
+
+@* 权限内联卡片：按 CallId 关联本 Loop 的工具调用（只读渲染、@key=RequestId） *@
+@if (_pendingCards.Count > 0)
+{
+    <div class="loop-permission-cards">
+        @foreach (var card in _pendingCards)
+        {
+            <PermissionCard @key="card.RequestId"
+                            Card="card"
+                            OnAllowOnce="OnAllowOnceAsync"
+                            OnAllowSession="OnAllowSessionAsync"
+                            OnAllowSessionDirectory="OnAllowSessionDirectoryAsync"
+                            OnDenyOnce="OnDenyOnceAsync"
+                            OnDenySession="OnDenySessionAsync" />
+        }
+    </div>
+}
 
 @code {
     /// <summary>
@@ -29,14 +53,29 @@
 
     private int _blocksRevision = int.MinValue;
     private RenderFragment? _body;
+    private PermissionCardAggregator? _cards;
+    private Action? _onCardsChanged;
+    private string? _attachedSessionId;
+    private IReadOnlyList<PermissionCardModel> _pendingCards = Array.Empty<PermissionCardModel>();
+
+    protected override void OnInitialized()
+    {
+        var circuitId = PermissionCircuit.Id ?? string.Empty;
+        _cards = PermissionRouter.GetOrCreateCircuitConsumer<PermissionCardAggregator>(circuitId);
+        _onCardsChanged = OnCardsChanged;
+        _cards.Changed += _onCardsChanged;
+    }
 
     protected override void OnParametersSet()
     {
-        if (_body != null && _blocksRevision == ContentRevision)
-            return;
+        if (_body == null || _blocksRevision != ContentRevision)
+        {
+            _blocksRevision = ContentRevision;
+            _body = Pipeline.RenderLoop(Loop, GetRenderOptions(), null, OnToolClick);
+        }
 
-        _blocksRevision = ContentRevision;
-        _body = Pipeline.RenderLoop(Loop, GetRenderOptions(), null, OnToolClick);
+        EnsurePermissionBinding();
+        RefreshPendingCards();
     }
 
     /// <summary>
@@ -49,5 +88,115 @@
             ShowReasoning = true,
             ExpandReasoningByDefault = false
         };
+    }
+
+    /// <summary>
+    /// 将会话绑定到权限聚合器并订阅其事件流（幂等；会话切换时摘除旧订阅）。
+    /// </summary>
+    private void EnsurePermissionBinding()
+    {
+        if (_cards is null)
+            return;
+
+        var sessionId = ResolveSessionId();
+        if (string.IsNullOrEmpty(sessionId))
+            return;
+
+        if (string.Equals(_attachedSessionId, sessionId, StringComparison.Ordinal))
+            return;
+
+        if (!string.IsNullOrEmpty(_attachedSessionId))
+            PermissionRouter.DetachConsumer(_attachedSessionId, _cards);
+
+        _cards.Bind(sessionId);
+        // replay=true：缓冲重放可能含在途请求；聚合器以 manager.GetPending 对账，已决议项不复活。
+        PermissionRouter.AttachConsumer(sessionId, _cards, replay: true);
+        _attachedSessionId = sessionId;
+    }
+
+    /// <summary>从 Loop 内消息解析所属会话 ID（LoopGroupViewModel 不直接持有 SessionId）。</summary>
+    private string? ResolveSessionId()
+        => Loop.Messages.FirstOrDefault(m => !string.IsNullOrEmpty(m.SessionId))?.SessionId;
+
+    private void OnCardsChanged()
+    {
+        RefreshPendingCards();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>取本 Loop 工具调用 CallId 关联的在途卡片（CallId 为空时回退按 LoopId 关联）。</summary>
+    private void RefreshPendingCards()
+    {
+        if (_cards is null)
+        {
+            _pendingCards = Array.Empty<PermissionCardModel>();
+            return;
+        }
+
+        var callIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var message in Loop.Messages)
+        {
+            if (message.ToolCalls is null)
+                continue;
+            foreach (var toolCall in message.ToolCalls)
+            {
+                if (!string.IsNullOrEmpty(toolCall.Id))
+                    callIds.Add(toolCall.Id);
+            }
+        }
+
+        _pendingCards = _cards.PendingSnapshot
+            .Where(card => IsCardOfThisLoop(card, callIds))
+            .ToList();
+    }
+
+    private bool IsCardOfThisLoop(PermissionCardModel card, HashSet<string> callIds)
+    {
+        if (!string.IsNullOrEmpty(card.CallId))
+            return callIds.Contains(card.CallId);
+
+        return !string.IsNullOrEmpty(Loop.LoopId)
+            && string.Equals(card.LoopId, Loop.LoopId, StringComparison.Ordinal);
+    }
+
+    private Task OnAllowOnceAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowOnce(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnAllowSessionAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowSession(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnAllowSessionDirectoryAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowSessionDirectory(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDenyOnceAsync(PermissionCardModel card)
+    {
+        PermissionActions.DenyOnce(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDenySessionAsync(PermissionCardModel card)
+    {
+        PermissionActions.DenySession(card);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        if (_cards is not null && _onCardsChanged is not null)
+            _cards.Changed -= _onCardsChanged;
+
+        // 从 Router 摘除该 consumer 的会话订阅：会话切换/页面离开时 LoopGroupItem 被销毁，
+        // 若仅退订 Changed 则旧会话订阅残留累积（长会话多次换会话）。
+        if (_cards is not null && !string.IsNullOrEmpty(_attachedSessionId))
+            PermissionRouter.DetachConsumer(_attachedSessionId, _cards);
     }
 }

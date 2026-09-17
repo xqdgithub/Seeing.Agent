@@ -108,7 +108,7 @@ public sealed class SessionWindowTimelineSync
             case StreamCompleteEvent:
             case LoopStartEvent:
             case PermissionRequestEvent:
-            case PermissionResponseEvent:
+            case PermissionResolvedEvent:
             case TodoUpdateEvent:
             case ModeUpdateEvent:
                 SyncAssistant(isComplete: false);

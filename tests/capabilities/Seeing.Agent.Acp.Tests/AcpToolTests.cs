@@ -1,8 +1,10 @@
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -87,6 +89,110 @@ public class AcpToolTests
         captured.ParentContext!.Metadata[AgentContextKeys.ParentSessionIdKey].Should().Be("parent-sess");
         captured.ParentContext.Metadata[AgentContextKeys.TaskDescriptionKey].Should().Be("meta task");
         captured.ParentContext.Metadata[AgentContextKeys.AcpBackendKey].Should().Be("opencode");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithAuthorizerFactory_ShouldPassAcpAgentName()
+    {
+        var runner = new Mock<IAcpSessionRunner>();
+        runner.Setup(r => r.RunAsync(It.IsAny<AcpRunRequest>(), It.IsAny<IAcpUpdateSink>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AcpRunResult { Text = "done", Success = true });
+
+        var factory = new CapturingPermissionAuthorizerFactory();
+        var services = new ServiceCollection();
+        services.AddSingleton<IPermissionAuthorizerFactory>(factory);
+        using var sp = services.BuildServiceProvider();
+
+        var tool = CreateTool(runner.Object, new FakeSessionManager());
+        var args = JsonSerializer.SerializeToElement(new
+        {
+            description = "perm task",
+            prompt = "hello",
+            backend = "opencode"
+        });
+
+        var result = await tool.ExecuteAsync(args, new ToolContext
+        {
+            SessionId = "parent-sess",
+            CallId = "call-1",
+            Services = sp
+        });
+
+        result.Success.Should().BeTrue();
+        factory.CapturedSessionId.Should().Be("parent-sess");
+        factory.LastRequest.Should().NotBeNull();
+        factory.LastRequest!.AgentName.Should().Be("acp-opencode");
+        factory.LastRequest.Resource.Should().Be("acp");
+        factory.LastRequest.PermissionKind.Should().Be("tool.execute");
+        factory.LastRequest.SessionId.Should().Be("parent-sess");
+        factory.LastRequest.CallId.Should().Be("call-1");
+        factory.LastRequest.RequireInteraction.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DeniedPermission_ShouldFailWithReason()
+    {
+        var runner = new Mock<IAcpSessionRunner>();
+        var factory = new CapturingPermissionAuthorizerFactory
+        {
+            Decision = PermissionEffect.Deny,
+            Reason = "权限被拒绝"
+        };
+        var services = new ServiceCollection();
+        services.AddSingleton<IPermissionAuthorizerFactory>(factory);
+        using var sp = services.BuildServiceProvider();
+
+        var tool = CreateTool(runner.Object, new FakeSessionManager());
+        var args = JsonSerializer.SerializeToElement(new
+        {
+            description = "perm task",
+            prompt = "hello",
+            backend = "opencode"
+        });
+
+        var result = await tool.ExecuteAsync(args, new ToolContext
+        {
+            SessionId = "parent-sess",
+            CallId = "call-1",
+            Services = sp
+        });
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("权限被拒绝");
+        runner.Verify(
+            r => r.RunAsync(It.IsAny<AcpRunRequest>(), It.IsAny<IAcpUpdateSink>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithoutAuthorizerFactory_ShouldFallbackAndRun()
+    {
+        var runner = new Mock<IAcpSessionRunner>();
+        runner.Setup(r => r.RunAsync(It.IsAny<AcpRunRequest>(), It.IsAny<IAcpUpdateSink>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AcpRunResult { Text = "done", Success = true });
+
+        var services = new ServiceCollection();
+        using var sp = services.BuildServiceProvider();
+
+        var tool = CreateTool(runner.Object, new FakeSessionManager());
+        var args = JsonSerializer.SerializeToElement(new
+        {
+            description = "perm task",
+            prompt = "hello",
+            backend = "opencode"
+        });
+
+        var result = await tool.ExecuteAsync(args, new ToolContext
+        {
+            SessionId = "parent-sess",
+            CallId = "call-1",
+            Services = sp
+        });
+
+        result.Success.Should().BeTrue();
+        runner.Verify(
+            r => r.RunAsync(It.IsAny<AcpRunRequest>(), It.IsAny<IAcpUpdateSink>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private static AcpTool CreateTool(IAcpSessionRunner? runner, FakeSessionManager? sessionManager = null)
@@ -226,6 +332,14 @@ public sealed class FakeSessionManager : ISessionManager
 
     public Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default) =>
         Task.CompletedTask;
+
+    public Task SetAutoApproveAsync(string sessionId, SessionAutoApprove value, CancellationToken ct = default)
+    {
+        var session = Get(sessionId);
+        if (session != null)
+            session.AutoApprove = value;
+        return Task.CompletedTask;
+    }
 
     public Task SetModelAsync(string sessionId, string modelId, CancellationToken ct = default)
     {

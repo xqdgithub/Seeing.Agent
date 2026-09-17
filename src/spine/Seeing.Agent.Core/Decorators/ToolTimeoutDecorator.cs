@@ -71,7 +71,6 @@ namespace Seeing.Agent.Core.Decorators
                 CancellationToken = timeoutToken,
                 MetadataSink = context.MetadataSink,
                 EventSink = context.EventSink,
-                PermissionChannel = context.PermissionChannel,
                 Services = context.Services
             };
 

@@ -135,7 +135,7 @@ curl -X POST http://127.0.0.1:8765/api/gateway/sessions/wecom_user_001/reset
 
 - Gateway 与 Blazor WebUI **并列**，不替代 WebUI
 - 同进程时共用 `SessionManager`
-- WebUI 使用 `BlazorPermissionChannel`；Gateway 使用 `GatewayPermissionChannel`
+- WebUI 使用 `EventStreamPermissionChannel`；Gateway 使用 `GatewayPermissionChannel`
 
 ## 安全说明
 

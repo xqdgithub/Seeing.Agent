@@ -4,6 +4,7 @@ using Seeing.Agent.Abstractions.Execution;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
@@ -88,10 +89,15 @@ public sealed class AcpTool : ToolBase
             return Failure(ex.Message);
         }
 
-        if (context.PermissionChannel is not null)
+        var authorizerFactory = context.Services?.GetService<IPermissionAuthorizerFactory>();
+        if (authorizerFactory is not null)
         {
-            var permResult = await context.PermissionChannel.RequestAsync(new PermissionRequest
+            var authorizer = authorizerFactory.Create(context.SessionId);
+            var resolution = await authorizer.AuthorizeAsync(new PermissionRequest
             {
+                SessionId = context.SessionId,
+                CallId = context.CallId,
+                AgentName = Seeing.Agent.Acp.Hosting.AcpDynamicAgentRegistrar.GetAgentName(backend),
                 PermissionKind = "tool.execute",
                 Resource = "acp",
                 Metadata = new Dictionary<string, object>
@@ -100,10 +106,10 @@ public sealed class AcpTool : ToolBase
                     ["backend"] = backend,
                     ["prompt"] = prompt
                 }
-            });
+            }, context.CancellationToken);
 
-            if (permResult.Action != PermissionChannelAction.Allow)
-                return Failure(permResult.Reason ?? "权限被拒绝");
+            if (resolution.Decision != PermissionEffect.Allow)
+                return Failure(resolution.Reason ?? "权限被拒绝");
         }
 
         var session = await ResolveTaskSessionAsync(taskId);
@@ -206,7 +212,6 @@ public sealed class AcpTool : ToolBase
             ParentContext = new AgentContext
             {
                 SessionId = context.SessionId,
-                PermissionChannel = context.PermissionChannel,
                 Metadata = new Dictionary<string, object>
                 {
                     [AgentContextKeys.ParentSessionIdKey] = context.SessionId,

@@ -81,7 +81,7 @@ samples/WebUI             ← composes modules + UI
 - **`IAgent`** (`Core/Interfaces/IAgent.cs`) — All agents implement this. Has metadata (Name, Mode, SystemPrompt, Model, PermissionRules) and `ExecuteAsync` returning `IAsyncEnumerable<ChatMessage>`.
 - **`ITool`** (`Core/Interfaces/ITool.cs`) — Tools implement `Id`, `Description`, `ParametersSchema` (JSON Schema), and `ExecuteAsync(JsonElement arguments, ToolContext context)`. Also supports `[Tool]`/`[ToolParam]` attribute-based discovery.
 - **`IHookHandler`** (`Core/Hooks/IHookHandler.cs`) — Register handlers for 25+ lifecycle hook points (`tool.execute.before`, `chat.params`, `session.compacting`, etc.). HookManager resolves by HookPoint string.
-- **`IPermissionChannel`** (`Core/Interfaces/IPermissionChannel.cs`) — Pluggable permission confirmation. Default is `DefaultPermissionChannel` (throws unless `AutoApproveAll=true`). WebUI provides `BlazorPermissionChannel`. Background exec uses `DenyAllPermissionChannel`.
+- **`IPermissionChannel`** (`Abstractions/Permissions/IPermissionChannel.cs`) — Pluggable host approval surface (`TryAutoApprove` / `PresentAsync` / `DismissAsync`). Decision truth lives in `PermissionService.AuthorizeAsync` (decision chain) + `PermissionRequestManager` (in-flight authority). WebUI provides `EventStreamPermissionChannel`, Gateway provides `GatewayPermissionChannel`, headless/background host shapes register `DenyAllPermissionChannel`.
 - **`RuleEngine`** / **`PermissionService`** — Permission rules with Allow/Deny/Ask effects, pattern matching. Agent definitions carry their own `PermissionRules` and `AllowedTools`/`DeniedTools` lists.
 - **Agent Modes**: `Primary` (user-facing), `SubAgent` (called by other agents), `All` (both). `AgentRuntime.Native` vs ACP-backed.
 
@@ -120,7 +120,7 @@ samples/WebUI             ← composes modules + UI
 
 - Blazor Server app with AntDesign 2.0 components.
 - `AppState` (singleton) + `SessionState` (scoped) for UI state management.
-- `BlazorPermissionChannel` handles interactive permission requests in the browser.
+- `EventStreamPermissionChannel` (Hosting.Web) projects interactive permission requests into the session event stream; the WebUI renders them as inline approval cards (`PermissionCardAggregator` + `PermissionInteractionService`), no modal.
 - `CircuitTracker` + `SeeingCircuitHandler` manage Blazor circuit lifecycle (JSDisconnectedException protection).
 - `GatewayClientSupervisor` + `GatewayClientHostedService` maintain persistent gateway connections.
 - Markdown rendering via Markdig + custom `MessageRendering` pipeline.

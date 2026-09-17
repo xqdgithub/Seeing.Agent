@@ -150,9 +150,8 @@ public class AgentExecutor : IAgentExecutor
         var maxSteps = agent.MaxSteps ?? 32;
         var history = messages.ToList();
 
-        // Ask 全局串行：并行工具不得并发弹出多个 Ask
-        var permissionChannel = context.PermissionChannel
-            ?? Seeing.Agent.Core.Permission.DefaultPermissionChannel.Instance;
+        // 执行级权限授权器（能力门 / 资源门共用）；缺失时能力门 NeedsConfirmation 按拒绝处理
+        var permissionAuthorizer = context.PermissionAuthorizer;
 
         // SubAgent：合并 Session PermissionSnapshot 作为本 Loop 权限真相源
         context.PermissionContext = PermissionIntegrity.FromAgentContext(
@@ -478,7 +477,7 @@ public class AgentExecutor : IAgentExecutor
                     assistantMessage.ToolCalls ?? new List<ToolCall>(),
                     agent,
                     context,
-                    permissionChannel,
+                    permissionAuthorizer,
                     loopId,
                     writer,
                     history,
@@ -624,7 +623,7 @@ public class AgentExecutor : IAgentExecutor
         List<ToolCall> toolCalls,
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
-        IPermissionChannel permissionChannel,
+        IPermissionAuthorizer? permissionAuthorizer,
         string loopId,
         ChannelWriter<IMessageEvent> writer,
         List<ChatMessage> history,
@@ -649,7 +648,7 @@ public class AgentExecutor : IAgentExecutor
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
         var runTasks = toolCalls.Select(tc => RunToolCallWithEventsAsync(
-            tc, agent, context, permissionChannel, loopId, channel.Writer, cancellationToken)).ToList();
+            tc, agent, context, permissionAuthorizer, loopId, channel.Writer, cancellationToken)).ToList();
 
         var allDone = Task.WhenAll(runTasks).ContinueWith(
             t =>
@@ -719,7 +718,7 @@ public class AgentExecutor : IAgentExecutor
         ToolCall tc,
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
-        IPermissionChannel permissionChannel,
+        IPermissionAuthorizer? permissionAuthorizer,
         string loopId,
         ChannelWriter<IMessageEvent> writer,
         CancellationToken cancellationToken)
@@ -743,7 +742,7 @@ public class AgentExecutor : IAgentExecutor
         try
         {
             complete = await ExecuteSingleToolCallAsync(
-                tc, agent, context, permissionChannel, loopId, EmitAsync, cancellationToken)
+                tc, agent, context, permissionAuthorizer, loopId, EmitAsync, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -788,7 +787,7 @@ public class AgentExecutor : IAgentExecutor
         ToolCall tc,
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
-        IPermissionChannel permissionChannel,
+        IPermissionAuthorizer? permissionAuthorizer,
         string loopId,
         Func<IMessageEvent, ValueTask>? emitAsync,
         CancellationToken cancellationToken)
@@ -799,7 +798,7 @@ public class AgentExecutor : IAgentExecutor
 
         // Session-first：task 走正常 ToolManager 路径（TaskTool），不再旁路
 
-        var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionChannel).ConfigureAwait(false);
+        var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionAuthorizer, tc.Id).ConfigureAwait(false);
 
         if (decision.Action == PermissionAction.Deny)
         {
@@ -824,7 +823,7 @@ public class AgentExecutor : IAgentExecutor
         try
         {
             result = await _tools.ExecuteAsync(
-                tc, context.SessionId, cancellationToken, emitAsync, permissionChannel).ConfigureAwait(false);
+                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent.Name).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -927,7 +926,8 @@ public class AgentExecutor : IAgentExecutor
         object? arguments,
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
-        IPermissionChannel permissionChannel)
+        IPermissionAuthorizer? permissionAuthorizer,
+        string callId)
     {
         var policy = ResolvePolicy(agent, context);
         var permContext = PermissionIntegrity.FromAgentContext(context, policy, agent.Name);
@@ -936,19 +936,27 @@ public class AgentExecutor : IAgentExecutor
 
         if (result.NeedsConfirmation)
         {
-            var channelResult = await permissionChannel.RequestAsync(new PermissionRequest
+            if (permissionAuthorizer is null)
+                return PermissionDecision.Deny("无权限授权器，已拒绝");
+
+            var resolution = await permissionAuthorizer.AuthorizeAsync(new PermissionRequest
             {
+                SessionId = string.IsNullOrEmpty(context.SessionId)
+                    ? permissionAuthorizer.SessionId
+                    : context.SessionId,
+                CallId = callId,
+                AgentName = agent.Name,
                 PermissionKind = "tool.execute",
                 Resource = toolName,
-                SessionId = context.SessionId,
+                Arguments = arguments,
                 Metadata = new Dictionary<string, object>
                 {
                     ["arguments"] = arguments ?? new object()
                 }
             }, context.CancellationToken).ConfigureAwait(false);
 
-            if (channelResult.Action != PermissionChannelAction.Allow)
-                return PermissionDecision.Deny(channelResult.Reason ?? "用户拒绝");
+            if (resolution.Decision != PermissionEffect.Allow)
+                return PermissionDecision.Deny(resolution.Reason ?? "用户拒绝");
 
             return PermissionDecision.Allow("用户确认允许");
         }

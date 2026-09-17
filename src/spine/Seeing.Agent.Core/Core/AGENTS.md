@@ -14,8 +14,9 @@ Core/
 │   ├── IRuleEngine.cs    # 权限引擎契约
 │   ├── IExtension.cs     # 扩展插件契约
 │   ├── IAgentRegistry.cs # Agent 注册表
-│   ├── IComponentManager.cs # 组件管理器
-│   └── IPermissionChannel.cs # 权限通道
+│   └── IComponentManager.cs # 组件管理器
+│
+│   # 权限契约已上提 Abstractions/Permissions（IPermissionChannel 等，2026-09-17 重构）
 │
 ├── Abstractions/         # 抽象基类
 │   ├── AgentBase.cs      # Agent 基类（配置驱动/代码驱动双模式）
@@ -33,8 +34,15 @@ Core/
 ├── Configuration/        # 配置工具
 │   └── MergeDeep.cs      # 深度合并算法
 │
-├── Permission/           # 权限系统
-│   └ PermissionCache.cs  # 权限缓存层
+├── Permission/           # 权限授权引擎（决策链 + 在途管理器 + 存储 + 生效策略）
+│   ├── PermissionService.cs        # AuthorizeAsync 决策链（spec §5.1）
+│   ├── PermissionRequestManager.cs # 在途唯一权威 + 事件唯一发布点
+│   ├── PermissionGrantStore.cs     # 记忆 + 会话白名单目录面
+│   ├── EffectivePermissionPolicy.cs# 覆盖 > 会话三态 > 全局（实时）
+│   ├── PermissionPresenceStore.cs  # 可交互性
+│   ├── PermissionKindMapper.cs     # kind → 规则域映射
+│   ├── ExecutionContextPermissionAuthorizer.cs / DefaultPermissionAuthorizerFactory.cs
+│   └── DenyAllPermissionChannel.cs / WorkspacePathGate.cs / WorkspaceBoundaryLifecycle.cs
 │
 ├── Sessions/             # 会话集成
 ├── Prompts/              # 动态提示构建
@@ -58,7 +66,8 @@ Core/
 | Agent 注册 | `Interfaces/IAgentRegistry.cs` | `GetAgentAsync()`, `RegisterAgent()` |
 | 组件加载 | `Interfaces/IComponentManager.cs` | `LoadAllAsync()` |
 | 循环检测 | `Detection/LoopDetector.cs` | `DetectLoop()` |
-| 权限缓存 | `Permission/PermissionCache.cs` | `GetOrAdd()` |
+| 权限授权 | `Permission/PermissionService.cs` | `AuthorizeAsync()`, 决策链 spec §5.1 |
+| 权限在途 | `Permission/PermissionRequestManager.cs` | `BeginAsync/WaitAsync/TryResolve/GetPending` |
 | 配置合并 | `Configuration/MergeDeep.cs` | `Merge()` |
 
 ## CONVENTIONS（核心层特定）

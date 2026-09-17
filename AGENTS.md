@@ -18,6 +18,7 @@
 - [开发规范与反模式](docs/architecture/04-development-standards.md)
 - [扩展指南](docs/architecture/05-extension-guide.md)
 - [合规审查 / 现状债](docs/architecture/06-compliance-audit.md)
+- [权限授权子系统 Release Notes](docs/architecture/08-permission-authorization-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
@@ -78,7 +79,7 @@ Seeing.Agent/
 | 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
 | WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |
 | Hook | `src/spine/Seeing.Agent.Core/` HookManager | `HookPoints.*` 常量 |
-| 权限 | `src/spine/Seeing.Agent.Core/` PermissionService | Allow/Deny/Ask |
+| 权限（授权/审批） | 引擎/Manager/Store 在 `src/spine/Seeing.Agent.Core/Core/Permission/`；契约在 `src/abstractions/Seeing.Agent.Abstractions/Permissions/`；宿主通道 `Hosting.Web`/`Gateway` | `IPermissionAuthorizer` 决策链；在途真相源 `IPermissionRequestManager`；可交互 `IPermissionPresenceStore`；见 `docs/architecture/08` |
 | MCP | `src/capabilities/Seeing.Agent.Mcp/` | 能力模块，非 Core |
 | DI 注册入口 | Core `AddSeeingCore` + 各包 `AddSeeingModule*` | `InitializeSeeingAsync` 在 Host.Start 前 |
 | 会话管理 | `src/primitives/Seeing.Session/` | 独立包 |
@@ -105,15 +106,19 @@ Seeing.Agent/
 | Channel | 通信通道（请求/审批通道） |
 | Loader | 加载器（从源加载组件） |
 | Sink | 单向出口（执行器向工具提供的只写能力出口，不可反向调用） |
+| Aggregator | UI 投影聚合（Scoped/circuit 维度，不持权威执行态，允许落盘 UI 缓存） |
+| Factory | 构造器端口（Provider 语义） |
+| Authorizer | 授权判定端口（请求-响应） |
+| Mapper | 纯函数映射（如 `PermissionKindMapper`） |
 
 层级：`Store < Registry < Manager`；接口名 = 实现类名去 I。
 
 ### DI 生命周期
 | 服务 | 生命周期 |
 |------|----------|
-| ToolManager, HookManager, PermissionService, SkillManager, McpClientManager, IToolDecoratorRegistry | Singleton |
+| ToolManager, HookManager, PermissionService, PermissionRequestManager, PermissionGrantStore, PermissionPresenceStore, EffectivePermissionPolicy, IPermissionAuthorizerFactory, SkillManager, McpClientManager, IToolDecoratorRegistry | Singleton |
 | SessionManager, AgentExecutor | Singleton |
-| Middleware (Logging, Permission, Retry) | Transient |
+| Middleware (Logging, Retry) | Transient |
 
 ### 注解发现
 ```csharp
@@ -186,7 +191,7 @@ public static async Task<string> GetWeather(
 | **工具 ID 冲突静默覆盖** | 最后注册 wins，无警告 |
 | **Hook 点字符串硬编码** | 使用 `HookPoints.*` 常量 |
 | **Context 类添加业务逻辑** | Context 应为纯数据容器 |
-| **权限通道未配置** | 默认拒绝所有，需显式配置 |
+| **无交互宿主却期望审批** | 无 Presence → 立即 `Deny(NoChannel)`（不再等 5 分钟超时）；需显式配置宿主通道/Presence |
 | **同步包装阻塞 async** | `.GetAwaiter().GetResult()` 死锁风险 |
 
 ## 已知问题 / 架构债
@@ -214,6 +219,9 @@ public static async Task<string> GetWeather(
 | **P3** | 同会话排队 exec1+exec2 闪断（exec1 Complete 清态、exec2 Started 恢复） | 已知边界（本期容忍） |
 | **P3** | 页面 Dispose 级联取消含子会话（刷新即取消） | **已完成**（2026-08-27：Dispose 移除 `CancelBySessionAsync`/标记取消，仅清理 UI 订阅；主动取消与程序关闭仍取消） |
 | **P3** | `LoadChildrenFromStorageAsync` 未命中即全量 `ListAsync` 扫描 | 已知边界（建议加缓存 TTL） |
+| **P1** | 权限授权旧栈（`SerializingPermissionChannel`/`IPermissionMemory`/`IWorkspaceWhitelist`/`PermissionMiddleware`/`BlazorPermissionChannel` 等） | **已完成**（2026-09-17 重构：统一授权引擎 + 在途 `PermissionRequestManager` + 事件流 + 内联卡片；破坏性清单见 `docs/architecture/08-permission-authorization-release-notes.md`） |
+| **P3** | 权限：Conference 页同 circuit 多窗口共用 `PermissionCardAggregator`（单 `_sessionId`） | 已知边界（多会话同屏需按父会话分 key；本期容忍） |
+| **P3** | 权限：多通道 `TryAutoApprove` 为进程级语义 | 已知边界（同进程 Gateway `auto_approve` 影响 WebUI 会话；按来源隔离属后续演进） |
 
 ## 命令
 

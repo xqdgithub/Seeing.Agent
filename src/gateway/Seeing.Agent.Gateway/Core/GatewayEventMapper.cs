@@ -111,12 +111,34 @@ public static class ChatEventMapper
                     SourceType = "permission_request",
                     Data = new GatewayEventData
                     {
-                        PermissionId = permEvt.PermissionId,
+                        PermissionId = permEvt.RequestId,
+                        CallId = permEvt.CallId,
                         PermissionKind = permEvt.PermissionKind,
                         Resource = permEvt.Resource,
                         PermissionMessage = permEvt.Message,
                         RiskLevel = permEvt.RiskLevel,
-                        PermissionArguments = permEvt.Arguments
+                        PermissionArguments = permEvt.Arguments,
+                        PermissionAllowedScopes = MapAllowedScopes(permEvt.AllowedScopes)
+                    }
+                };
+                return true;
+
+            case PermissionResolvedEvent resolvedEvt:
+                gatewayEvent = new GatewayEvent
+                {
+                    Object = GatewayEventObject.Permission,
+                    Status = GatewayEventStatus.Completed,
+                    SessionId = evt.SessionId,
+                    LoopId = evt.LoopId,
+                    SourceType = "permission_resolved",
+                    Data = new GatewayEventData
+                    {
+                        PermissionId = resolvedEvt.RequestId,
+                        CallId = resolvedEvt.CallId,
+                        PermissionDecision = resolvedEvt.Decision.ToString().ToLowerInvariant(),
+                        PermissionScope = ToCamelCase(resolvedEvt.Scope.ToString()),
+                        PermissionResolvedBy = ToCamelCase(resolvedEvt.ResolvedBy.ToString()),
+                        PermissionReason = resolvedEvt.Reason
                     }
                 };
                 return true;
@@ -205,4 +227,11 @@ public static class ChatEventMapper
                 return false;
         }
     }
+
+    /// <summary>枚举 → 协议 camelCase 串（如 SessionDirectory → sessionDirectory、NoChannel → noChannel）。</summary>
+    private static string ToCamelCase(string value) =>
+        string.IsNullOrEmpty(value) ? value : char.ToLowerInvariant(value[0]) + value[1..];
+
+    private static IReadOnlyList<string>? MapAllowedScopes(IReadOnlyList<PermissionGrantScope> scopes) =>
+        scopes.Count > 0 ? scopes.Select(s => ToCamelCase(s.ToString())).ToList() : null;
 }

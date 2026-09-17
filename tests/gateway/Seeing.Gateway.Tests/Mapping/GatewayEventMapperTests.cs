@@ -197,7 +197,8 @@ public class GatewayEventMapperTests
         {
             SessionId = SessionId,
             LoopId = LoopId,
-            PermissionId = "perm_1",
+            RequestId = "perm_1",
+            CallId = "call_1",
             PermissionKind = "tool",
             Resource = "bash",
             Message = "Allow shell?",
@@ -209,6 +210,7 @@ public class GatewayEventMapperTests
         result.Object.Should().Be(GatewayEventObject.Permission);
         result.Status.Should().Be(GatewayEventStatus.InProgress);
         result.Data!.PermissionId.Should().Be("perm_1");
+        result.Data.CallId.Should().Be("call_1");
         result.Data.PermissionKind.Should().Be("tool");
         result.Data.Resource.Should().Be("bash");
         result.Data.PermissionMessage.Should().Be("Allow shell?");
@@ -216,14 +218,17 @@ public class GatewayEventMapperTests
     }
 
     [Fact]
-    public void Map_PermissionResponse_ShouldMapToPermissionCompleted()
+    public void Map_PermissionResolved_ShouldMapToPermissionCompleted()
     {
-        var source = new PermissionResponseEvent
+        var source = new PermissionResolvedEvent
         {
             SessionId = SessionId,
             LoopId = LoopId,
-            PermissionId = "perm_1",
-            Decision = "allow",
+            RequestId = "perm_1",
+            CallId = "call_1",
+            Decision = PermissionEffect.Allow,
+            Scope = PermissionGrantScope.Session,
+            ResolvedBy = PermissionResolvedBy.User,
             Reason = "ok"
         };
 
@@ -231,7 +236,11 @@ public class GatewayEventMapperTests
 
         result.Object.Should().Be(GatewayEventObject.Permission);
         result.Status.Should().Be(GatewayEventStatus.Completed);
-        result.Data!.PermissionDecision.Should().Be("allow");
+        result.Data!.PermissionId.Should().Be("perm_1");
+        result.Data.CallId.Should().Be("call_1");
+        result.Data.PermissionDecision.Should().Be("allow");
+        result.Data.PermissionScope.Should().Be("session");
+        result.Data.PermissionResolvedBy.Should().Be("user");
         result.Data.PermissionReason.Should().Be("ok");
     }
 

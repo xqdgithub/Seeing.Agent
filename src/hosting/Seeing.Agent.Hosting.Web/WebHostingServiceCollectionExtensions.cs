@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Agent.Hosting.Web.Permissions;
 using Seeing.Agent.Core.Modules;
@@ -16,11 +15,11 @@ namespace Seeing.Agent.Hosting.Web;
 public static class WebHostingServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册 Web Host Shape：Circuit 壳 + <see cref="BlazorPermissionChannel"/>（经 SerializingPermissionChannel 包装）。
+    /// 注册 Web Host Shape：Circuit 壳 + <see cref="EventStreamPermissionChannel"/>。
     /// <para>
     /// 宿主 sample 仍须自行注册：
     /// <list type="bullet">
-    /// <item><see cref="IPermissionEventSink"/>（通常适配 EventStreamHandler）</item>
+    /// <item>权限呈现/交互服务（通常适配权限管理器与事件流）</item>
     /// <item><see cref="ICircuitResourceCleanup"/>（通常适配 SessionEventStreamRouter）</item>
     /// <item>能力包（Tools.* / Memory / Scheduler 等）— 本包不引用</item>
     /// </list>
@@ -44,16 +43,7 @@ public static class WebHostingServiceCollectionExtensions
         services.AddSingleton<CircuitTracker>();
         services.AddScoped<CircuitHandler, SeeingCircuitHandler>();
 
-        services.AddScoped<BlazorPermissionChannel>();
-        services.AddScoped<IPermissionChannel>(sp =>
-        {
-            var memory = sp.GetRequiredService<IPermissionMemory>();
-            var workspace = sp.GetService<IWorkspaceProvider>();
-            var whitelist = sp.GetRequiredService<IWorkspaceWhitelist>();
-            var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions>>();
-            var inner = sp.GetRequiredService<BlazorPermissionChannel>();
-            return new SerializingPermissionChannel(inner, memory, workspace, whitelist, options);
-        });
+        services.AddSingleton<IPermissionChannel, EventStreamPermissionChannel>();
 
         return services;
     }

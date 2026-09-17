@@ -178,16 +178,27 @@ public class TaskToolTests
     [Fact]
     public void TaskTool_ShouldNotReferenceExecutionJobService()
     {
-        var sourcePath = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory,
-            "..", "..", "..", "..", "..",
-            "src", "Seeing.Agent.Hosting", "Tools", "TaskTool.cs"));
+        var root = FindRepoRoot();
+        var sourcePath = Path.Combine(root, "src", "hosting", "Seeing.Agent.Hosting", "Tools", "TaskTool.cs");
 
         File.Exists(sourcePath).Should().BeTrue($"TaskTool source not found at {sourcePath}");
 
         var source = File.ReadAllText(sourcePath);
         source.Should().NotContain("ExecutionJobService");
         source.Should().NotContain("GetService(typeof(");
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Seeing.Agent.slnx")))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
     }
 
     [Fact]

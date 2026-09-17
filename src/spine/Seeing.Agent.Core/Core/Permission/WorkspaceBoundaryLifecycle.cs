@@ -9,18 +9,15 @@ namespace Seeing.Agent.Core.Permission;
 public sealed class WorkspaceBoundaryLifecycle : IDisposable
 {
     private readonly IWorkspaceProvider _workspace;
-    private readonly IWorkspaceWhitelist _whitelist;
-    private readonly IPermissionMemory _memory;
+    private readonly IPermissionGrantStore _grantStore;
     private bool _attached;
 
     public WorkspaceBoundaryLifecycle(
         IWorkspaceProvider workspace,
-        IWorkspaceWhitelist whitelist,
-        IPermissionMemory memory)
+        IPermissionGrantStore grantStore)
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
-        _whitelist = whitelist ?? throw new ArgumentNullException(nameof(whitelist));
-        _memory = memory ?? throw new ArgumentNullException(nameof(memory));
+        _grantStore = grantStore ?? throw new ArgumentNullException(nameof(grantStore));
     }
 
     public void Attach()
@@ -32,8 +29,7 @@ public sealed class WorkspaceBoundaryLifecycle : IDisposable
 
     private void OnWorkspaceRootChanged(object? sender, WorkspaceChangedEventArgs e)
     {
-        _whitelist.ClearAll();
-        _memory.ClearAll();
+        _grantStore.ClearAll();
     }
 
     public void Dispose()

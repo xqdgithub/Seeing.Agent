@@ -3,9 +3,9 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
-using Seeing.Agent.Gateway.Permission;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
 
@@ -17,20 +17,20 @@ namespace Seeing.Agent.Gateway.Endpoints;
 public sealed class GatewayWebSocketHandler
 {
     private readonly GatewayOrchestratorV2 _orchestrator;
-    private readonly GatewayPermissionChannel _permissionChannel;
+    private readonly IPermissionRequestManager _permissionManager;
     private readonly GatewayConnectionManager _connectionManager;
     private readonly GatewayOptions _options;
     private readonly ILogger<GatewayWebSocketHandler> _logger;
 
     public GatewayWebSocketHandler(
         GatewayOrchestratorV2 orchestrator,
-        GatewayPermissionChannel permissionChannel,
+        IPermissionRequestManager permissionManager,
         GatewayConnectionManager connectionManager,
         GatewayOptions options,
         ILogger<GatewayWebSocketHandler> logger)
     {
         _orchestrator = orchestrator;
-        _permissionChannel = permissionChannel;
+        _permissionManager = permissionManager;
         _connectionManager = connectionManager;
         _options = options;
         _logger = logger;
@@ -295,7 +295,18 @@ public sealed class GatewayWebSocketHandler
             return;
         }
 
-        var result = _permissionChannel.Respond(payload.SessionId, payload.PermissionId, payload.Allow, payload.Reason);
+        var resolved = _permissionManager.TryResolve(
+            payload.PermissionId,
+            payload.Allow ? PermissionEffect.Allow : PermissionEffect.Deny,
+            PermissionGrantScope.Once,
+            PermissionResolvedBy.User,
+            payload.Reason,
+            expectedSessionId: payload.SessionId);
+
+        var result = resolved
+            ? GatewayPermissionRespondResult.Ok()
+            : GatewayPermissionRespondResult.Fail("权限请求不存在、已过期或会话不匹配");
+
         await connection.SendFrameAsync(
             GatewayWsFrameSerializer.Create(GatewayWsFrameType.PermissionAck, frame.Id, result),
             cancellationToken);

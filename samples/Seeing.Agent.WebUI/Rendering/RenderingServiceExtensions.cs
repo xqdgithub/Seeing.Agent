@@ -79,7 +79,6 @@ public static class RenderingServiceExtensions
         services.AddSingleton<IContentBlockRenderer, Renderers.TextBlockRenderer>();
         services.AddSingleton<IContentBlockRenderer, Renderers.ErrorBlockRenderer>();
         services.AddSingleton<IContentBlockRenderer, Renderers.SubAgentBlockRenderer>();
-        services.AddSingleton<IContentBlockRenderer, Renderers.PermissionBlockRenderer>();
 
         // 优先级 201+: 分隔线/装饰等辅助元素
         services.AddSingleton<IContentBlockRenderer, Renderers.DividerBlockRenderer>();
@@ -192,20 +191,6 @@ public static class RenderingServiceExtensions
                 (block, context) => new Dictionary<string, object?>
                 {
                     ["Attachment"] = block.Attachment!,
-                    ["Block"] = block,
-                    ["Context"] = context
-                }));
-
-        // 优先级 130: 权限消息组件
-        services.AddSingleton<IMessageComponent>(sp =>
-            new DefaultMessageComponent<MessagingComponents.PermissionMessageComponent>(
-                ContentBlockType.Permission,
-                130,
-                "Permission",
-                block => block.Type == ContentBlockType.Permission && block.Extensions?.ContainsKey("permission") == true,
-                (block, context) => new Dictionary<string, object?>
-                {
-                    ["Permission"] = block.Extensions!["permission"],
                     ["Block"] = block,
                     ["Context"] = context
                 }));

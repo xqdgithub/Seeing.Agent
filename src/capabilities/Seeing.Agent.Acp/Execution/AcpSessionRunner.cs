@@ -75,9 +75,9 @@ public sealed class AcpSessionRunner : IAcpSessionRunner
         {
             SeeingSessionId = request.SeeingSessionId,
             LoopId = request.LoopId,
+            AgentName = Seeing.Agent.Acp.Hosting.AcpDynamicAgentRegistrar.GetAgentName(request.BackendId),
             AcpSessionId = acpSessionId,
-            UpdateSink = sink,
-            PermissionChannel = request.ParentContext?.PermissionChannel
+            UpdateSink = sink
         };
 
         lease.Client.ConfigureForRequest(sink, permissionContext, request.WorkingDirectory);

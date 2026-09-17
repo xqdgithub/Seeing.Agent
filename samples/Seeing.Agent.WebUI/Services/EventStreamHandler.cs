@@ -1,7 +1,6 @@
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Hosting.Web.Permissions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Llm;
@@ -56,7 +55,7 @@ namespace Seeing.Agent.WebUI.Services
     /// 多实例化：每个会话绑定一个实例（构造传入 sessionId），不再依赖全局 SessionState。
     /// </para>
     /// </summary>
-    public class EventStreamHandler : IStreamConsumer, IPermissionEventSink
+    public class EventStreamHandler : IStreamConsumer, IDisposable
     {
         private readonly ISessionManager _sessionManager;
 
@@ -102,11 +101,6 @@ namespace Seeing.Agent.WebUI.Services
         private readonly Dictionary<string, int> _toolCallPositions = new();
 
         /// <summary>
-        /// 待处理的权限请求
-        /// </summary>
-        private readonly Dictionary<string, PermissionRequestViewModel> _pendingPermissions = new();
-
-        /// <summary>
         /// 当前活跃执行 ID（ExecutionStarted/Complete 配对）
         /// </summary>
         private string? _activeExecutionId;
@@ -150,9 +144,9 @@ namespace Seeing.Agent.WebUI.Services
         public event Action<PermissionRequestEvent>? OnPermissionRequest;
 
         /// <summary>
-        /// 权限响应回调
+        /// 权限收敛回调
         /// </summary>
-        public event Action<PermissionResponseEvent>? OnPermissionResponse;
+        public event Action<PermissionResolvedEvent>? OnPermissionResolved;
 
         public EventStreamHandler(string sessionId, ISessionManager sessionManager)
         {
@@ -186,10 +180,6 @@ namespace Seeing.Agent.WebUI.Services
         /// <summary>
         /// 处理 Core 层消息事件（仅驱动 UI 展示；会话落盘由 ExecutionJobService 完成）
         /// </summary>
-        /// <inheritdoc />
-        public Task PublishAsync(PermissionRequestEvent evt, CancellationToken ct = default)
-            => ProcessEventAsync(evt);
-
         public Task ProcessEventAsync(IMessageEvent evt)
         {
             EnsureCurrentSessionRef();
@@ -234,8 +224,8 @@ namespace Seeing.Agent.WebUI.Services
                     HandlePermissionRequest((PermissionRequestEvent)evt);
                     break;
 
-                case MessageEventType.PermissionResponse:
-                    HandlePermissionResponse((PermissionResponseEvent)evt);
+                case MessageEventType.PermissionResolved:
+                    HandlePermissionResolved((PermissionResolvedEvent)evt);
                     break;
 
                 case MessageEventType.LoopCancelled:
@@ -604,37 +594,19 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 处理权限请求事件
+        /// 处理权限请求事件（投影由后续权限卡片聚合器负责，本处仅广播）
         /// </summary>
         private void HandlePermissionRequest(PermissionRequestEvent evt)
         {
-            // 添加权限请求到待处理队列
-            _pendingPermissions[evt.PermissionId] = new PermissionRequestViewModel
-            {
-                PermissionId = evt.PermissionId,
-                PermissionKind = evt.PermissionKind,
-                Resource = evt.Resource,
-                Arguments = evt.Arguments,
-                RiskLevel = evt.RiskLevel,
-                Message = evt.Message,
-                TimeoutSeconds = evt.TimeoutSeconds,
-                Timestamp = evt.Timestamp
-            };
-
-            // 触发权限 UI 显示
             OnPermissionRequest?.Invoke(evt);
         }
 
         /// <summary>
-        /// 处理权限响应事件
+        /// 处理权限收敛事件
         /// </summary>
-        private void HandlePermissionResponse(PermissionResponseEvent evt)
+        private void HandlePermissionResolved(PermissionResolvedEvent evt)
         {
-            // 移除待处理权限
-            _pendingPermissions.Remove(evt.PermissionId);
-
-            // 触发权限 UI 更新
-            OnPermissionResponse?.Invoke(evt);
+            OnPermissionResolved?.Invoke(evt);
         }
 
         /// <summary>
@@ -894,6 +866,18 @@ namespace Seeing.Agent.WebUI.Services
             _toolCallPositions.Clear();
             _accumulatedReasoning.Clear();
             _accumulatedContent.Clear();
+        }
+
+        /// <summary>
+        /// 释放：解除订阅并清理流式状态（Scoped 生命周期结束由 DI 调用）
+        /// </summary>
+        public void Dispose()
+        {
+            OnStateChanged = null;
+            OnLoopComplete = null;
+            OnPermissionRequest = null;
+            OnPermissionResolved = null;
+            ClearCache();
         }
 
         /// <summary>

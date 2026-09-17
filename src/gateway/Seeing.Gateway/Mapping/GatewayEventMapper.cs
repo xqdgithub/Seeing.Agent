@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Gateway.Models;
 
 namespace Seeing.Gateway.Mapping;
@@ -31,7 +32,7 @@ public static class GatewayEventMapper
             StreamCompleteEvent e => WithMeta(e, MapStreamComplete(e)),
             ToolCallEvent e => WithMeta(e, MapToolCall(e)),
             PermissionRequestEvent e => WithMeta(e, MapPermissionRequest(e)),
-            PermissionResponseEvent e => WithMeta(e, MapPermissionResponse(e)),
+            PermissionResolvedEvent e => WithMeta(e, MapPermissionResolved(e)),
             LoopCompleteEvent e => WithMeta(e, MapLoopComplete(e)),
             LoopCancelledEvent e => WithMeta(e, MapLoopCancelled(e)),
             ErrorEvent e => WithMeta(e, MapError(e)),
@@ -200,16 +201,18 @@ public static class GatewayEventMapper
         LoopId = e.LoopId,
         Data = new GatewayEventData
         {
-            PermissionId = e.PermissionId,
+            PermissionId = e.RequestId,
+            CallId = e.CallId,
             PermissionKind = e.PermissionKind,
             Resource = e.Resource,
             PermissionArguments = e.Arguments,
+            PermissionAllowedScopes = MapAllowedScopes(e.AllowedScopes),
             PermissionMessage = e.Message,
             RiskLevel = e.RiskLevel
         }
     };
 
-    private static GatewayEvent MapPermissionResponse(PermissionResponseEvent e) => new()
+    private static GatewayEvent MapPermissionResolved(PermissionResolvedEvent e) => new()
     {
         Object = GatewayEventObject.Permission,
         Status = GatewayEventStatus.Completed,
@@ -217,11 +220,21 @@ public static class GatewayEventMapper
         LoopId = e.LoopId,
         Data = new GatewayEventData
         {
-            PermissionId = e.PermissionId,
-            PermissionDecision = e.Decision,
+            PermissionId = e.RequestId,
+            CallId = e.CallId,
+            PermissionDecision = e.Decision.ToString().ToLowerInvariant(),
+            PermissionScope = ToCamelCase(e.Scope.ToString()),
+            PermissionResolvedBy = ToCamelCase(e.ResolvedBy.ToString()),
             PermissionReason = e.Reason
         }
     };
+
+    /// <summary>枚举 → 协议 camelCase 串（如 SessionDirectory → sessionDirectory、NoChannel → noChannel）。</summary>
+    private static string ToCamelCase(string value) =>
+        string.IsNullOrEmpty(value) ? value : char.ToLowerInvariant(value[0]) + value[1..];
+
+    private static IReadOnlyList<string>? MapAllowedScopes(IReadOnlyList<PermissionGrantScope> scopes) =>
+        scopes.Count > 0 ? scopes.Select(s => ToCamelCase(s.ToString())).ToList() : null;
 
     private static GatewayEvent MapLoopComplete(LoopCompleteEvent e) => new()
     {

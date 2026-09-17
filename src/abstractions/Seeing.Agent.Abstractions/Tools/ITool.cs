@@ -1,7 +1,6 @@
 ﻿using System.Text.Json;
 
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Abstractions.Tools
 {
     /// <summary>
@@ -22,11 +21,6 @@ namespace Seeing.Agent.Abstractions.Tools
         /// 事件出口（子任务投影等）。由 AgentExecutor 在执行工具时接线。
         /// </summary>
         public IToolEventSink? EventSink { get; set; }
-
-        /// <summary>
-        /// 父 Loop 权限通道（勿从根 DI 解析 Scoped IPermissionChannel）。
-        /// </summary>
-        public IPermissionChannel? PermissionChannel { get; set; }
 
         /// <summary>可选服务定位（用于 Task 等需要额外依赖的工具）</summary>
         public IServiceProvider? Services { get; set; }

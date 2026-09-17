@@ -1,12 +1,15 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 
 namespace Seeing.Agent.Core.Tools.Support;
 
 /// <summary>
 /// Tool 基类 - 提供常用 Tool 实现的便捷方法
+/// <para>
+/// 工具零权限代码：资源级检查集中到 <c>ToolManager</c>（经 <c>IToolPermissionPolicy</c> 映射到
+/// 执行级授权器），工具本身不得发起权限审批。
+/// </para>
 /// </summary>
 public abstract class ToolBase : ITool
 {
@@ -46,32 +49,6 @@ public abstract class ToolBase : ITool
 
     /// <summary>执行工具</summary>
     public abstract Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context);
-
-    /// <summary>
-    /// 通过 IPermissionChannel 请求权限确认
-    /// </summary>
-    protected async Task<ToolResult?> RequestPermissionAsync(
-        ToolContext context,
-        string permissionKind,
-        string? resource,
-        Dictionary<string, object>? metadata = null)
-    {
-        var channel = context.PermissionChannel;
-        if (channel == null) return null;
-
-        var result = await channel.RequestAsync(new PermissionRequest
-        {
-            PermissionKind = permissionKind,
-            Resource = resource,
-            SessionId = context.SessionId,
-            Metadata = metadata ?? new Dictionary<string, object>()
-        });
-
-        if (result.Action == PermissionChannelAction.Deny)
-            return Failure(result.Reason ?? "权限被拒绝");
-
-        return null;
-    }
 
     /// <summary>
     /// 创建成功结果

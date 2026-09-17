@@ -1,0 +1,177 @@
+@using AntDesign
+@using Seeing.Agent.Abstractions.Permissions
+@using Seeing.Agent.WebUI.Models
+
+@* 权限内联卡片：只读渲染，动作经回调上交（无副作用、无 JS 互操作） *@
+
+@if (Card is null)
+{
+    return;
+}
+
+@if (!Card.IsPending)
+{
+    <div class="permission-card is-resolved">
+        <Icon Type="@ResultIcon" Style="@ResultIconStyle" />
+        <span class="permission-card-result">@ResultText</span>
+        @if (!string.IsNullOrEmpty(Card.Reason))
+        {
+            <span class="permission-card-reason">@Card.Reason</span>
+        }
+    </div>
+}
+else
+{
+    <div class="permission-card">
+        <div class="permission-card-header">
+            <Icon Type="@IconType.Outline.SafetyCertificate" Style="color: #faad14;" />
+            <span class="permission-card-title">需要权限确认</span>
+            <Tag Color="@RiskColor" Style="margin-left: 6px; font-size: 11px;">@Card.RiskLevel</Tag>
+            <Tag Style="margin-left: 4px; font-size: 11px;">@Card.PermissionKind</Tag>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Card.Message) || !string.IsNullOrEmpty(Card.Resource))
+        {
+            <div class="permission-card-detail">@(string.IsNullOrEmpty(Card.Message) ? Card.Resource : Card.Message)</div>
+        }
+
+        <div class="permission-card-actions">
+            @if (Card.CanAllowOnce)
+            {
+                <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="AllowOnceAsync">本次允许</Button>
+            }
+            @if (Card.CanAllowSession)
+            {
+                <Button Size="@ButtonSize.Small" OnClick="AllowSessionAsync">始终允许</Button>
+            }
+            @if (Card.CanAllowSessionDirectory)
+            {
+                <Button Size="@ButtonSize.Small" OnClick="AllowSessionDirectoryAsync">允许此目录</Button>
+            }
+            @if (Card.CanDenyOnce)
+            {
+                <Button Size="@ButtonSize.Small" Danger OnClick="DenyOnceAsync">本次拒绝</Button>
+            }
+            @if (Card.CanDenySession)
+            {
+                <Button Size="@ButtonSize.Small" Danger OnClick="DenySessionAsync">始终拒绝</Button>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .permission-card {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 6px 0;
+        padding: 8px 10px;
+        border: 1px solid #ffe58f;
+        background: linear-gradient(180deg, #fffbe6 0%, var(--color-bg-container, #fff) 80%);
+        border-radius: 8px;
+    }
+
+    .permission-card.is-resolved {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        border-color: var(--color-border, #d9d9d9);
+        background: var(--color-bg-secondary, #fafafa);
+        font-size: 12px;
+    }
+
+    .permission-card-header {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .permission-card-title {
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .permission-card-detail {
+        font-size: 12px;
+        color: var(--color-text-secondary, #666);
+        word-break: break-all;
+    }
+
+    .permission-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .permission-card-result {
+        font-weight: 500;
+    }
+
+    .permission-card-reason {
+        color: var(--color-text-tertiary, #999);
+    }
+</style>
+
+@code {
+    /// <summary>卡片投影模型。</summary>
+    [Parameter]
+    public PermissionCardModel? Card { get; set; }
+    [Parameter]
+    public EventCallback<PermissionCardModel> OnAllowOnce { get; set; }
+
+    [Parameter]
+    public EventCallback<PermissionCardModel> OnAllowSession { get; set; }
+
+    [Parameter]
+    public EventCallback<PermissionCardModel> OnAllowSessionDirectory { get; set; }
+
+    [Parameter]
+    public EventCallback<PermissionCardModel> OnDenyOnce { get; set; }
+
+    [Parameter]
+    public EventCallback<PermissionCardModel> OnDenySession { get; set; }
+
+    private string RiskColor => Card?.RiskLevel?.ToLowerInvariant() switch
+    {
+        "critical" => "red",
+        "high" => "volcano",
+        "low" => "green",
+        _ => "gold"
+    };
+
+    private string ResultIcon => Card?.Decision == PermissionEffect.Allow
+        ? IconType.Outline.CheckCircle
+        : IconType.Outline.CloseCircle;
+
+    private string ResultIconStyle => Card?.Decision == PermissionEffect.Allow
+        ? "color: var(--color-success, #52c41a);"
+        : "color: var(--color-error, #ff4d4f);";
+
+    private string ResultText => Card?.Decision switch
+    {
+        PermissionEffect.Allow => $"已允许（{FormatScope(Card.Scope)}）",
+        PermissionEffect.Deny => $"已拒绝（{FormatScope(Card.Scope)}）",
+        _ => "已处理"
+    };
+
+    private static string FormatScope(PermissionGrantScope scope) => scope switch
+    {
+        PermissionGrantScope.Session => "会话",
+        PermissionGrantScope.SessionDirectory => "会话目录",
+        _ => "本次"
+    };
+
+    private Task AllowOnceAsync() => InvokeAsync(OnAllowOnce, Card);
+
+    private Task AllowSessionAsync() => InvokeAsync(OnAllowSession, Card);
+
+    private Task AllowSessionDirectoryAsync() => InvokeAsync(OnAllowSessionDirectory, Card);
+
+    private Task DenyOnceAsync() => InvokeAsync(OnDenyOnce, Card);
+
+    private Task DenySessionAsync() => InvokeAsync(OnDenySession, Card);
+
+    private static Task InvokeAsync(EventCallback<PermissionCardModel> callback, PermissionCardModel? card)
+        => card is null ? Task.CompletedTask : callback.InvokeAsync(card);
+}

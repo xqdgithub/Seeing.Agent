@@ -36,15 +36,3 @@ public sealed class CompositeGatewayEventSink(
         connectionManager?.PushEvent(gatewayEvent.SessionId, gatewayEvent);
     }
 }
-
-/// <summary>
-/// 单次 Chat 运行的权限上下文（AsyncLocal）
-/// </summary>
-public sealed class PermissionRunContext
-{
-    public required string SessionId { get; init; }
-
-    public string? LoopId { get; init; }
-
-    public required IGatewayEventSink Sink { get; init; }
-}

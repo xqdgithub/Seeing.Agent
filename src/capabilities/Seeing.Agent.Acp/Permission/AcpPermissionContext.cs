@@ -11,9 +11,10 @@ public sealed record AcpPermissionContext
 
     public string? LoopId { get; init; }
 
+    /// <summary>发起权限请求的 ACP Agent 名（acp-{backendId}），用于权限规则/审计归属。</summary>
+    public string? AgentName { get; init; }
+
     public required string AcpSessionId { get; init; }
 
     public IAcpUpdateSink? UpdateSink { get; init; }
-
-    public Seeing.Agent.Abstractions.Permissions.IPermissionChannel? PermissionChannel { get; init; }
 }

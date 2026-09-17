@@ -44,7 +44,7 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton<AgentCommands>();
         services.AddSingleton<ToolsCommands>();
 
-        // 注册 ChatOrchestrator (Singleton：移除对 Scoped IPermissionChannel 的依赖后全部依赖均为 Singleton)
+        // 注册 ChatOrchestrator (Singleton：权限审批已改经 IPermissionRequestManager/事件流，依赖均为 Singleton)
         services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
 
         // 任务与 Todo 工具具体类型（由 HostingModule.Activate → IToolManager 挂载）

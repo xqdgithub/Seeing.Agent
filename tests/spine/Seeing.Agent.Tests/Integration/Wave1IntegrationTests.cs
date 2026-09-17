@@ -1,17 +1,8 @@
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
-using Moq;
-using Seeing.Agent.Core.Tools.Support;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Integration;
@@ -21,10 +12,9 @@ namespace Seeing.Agent.Tests.Integration;
 /// </summary>
 public class Wave1IntegrationTests
 {
-    private readonly Mock<ILogger<PermissionCache>> _cacheLoggerMock = new();
     /// <summary>
     /// 测试完整的 Wave 1 功能集成：
-    /// AgentMode + PermissionCache + MergeDeep + MaxSteps
+    /// AgentMode + MergeDeep + MaxSteps
     /// </summary>
     [Fact]
     public async Task FullWave1Integration_ShouldWorkTogether()
@@ -67,63 +57,6 @@ public class Wave1IntegrationTests
         mergedConfig.PermissionRules[0].Kind.Should().Be(PermissionKind.File);
 
         await Task.CompletedTask; // 消除 async 警告
-    }
-
-    /// <summary>
-    /// 测试 AgentMode 过滤 + Permission 缓存协同
-    /// </summary>
-    [Fact]
-    public void AgentModeWithPermissionCache_ShouldFilterCorrectly()
-    {
-        // Arrange
-        var cacheOptions = new PermissionCacheOptions { Ttl = TimeSpan.FromMinutes(5) };
-        var cache = new PermissionCache(cacheOptions, _cacheLoggerMock.Object);
-
-        // 创建 SubAgent 模式的 Agent 定义
-        var subAgentDef = new AgentDefinition
-        {
-            Name = "test-subagent",
-            Mode = AgentMode.SubAgent,
-            MaxSteps = 20
-        };
-
-        // Act - 设置权限决策到缓存
-        var allowedKey = new PermissionCacheKey("file_read", "/public/test.txt", "test-subagent");
-        var deniedKey = new PermissionCacheKey("file_read", "/private/secret.txt", "test-subagent");
-
-        cache.Set(allowedKey, PermissionAction.Allow);
-        cache.Set(deniedKey, PermissionAction.Deny);
-
-        // Assert - 验证缓存工作
-        cache.Get(allowedKey).Should().Be(PermissionAction.Allow);
-        cache.Get(deniedKey).Should().Be(PermissionAction.Deny);
-
-        // 验证 SubAgent 模式
-        subAgentDef.Mode.Should().Be(AgentMode.SubAgent);
-        subAgentDef.MaxSteps.Should().Be(20);
-    }
-
-    /// <summary>
-    /// 测试权限冲突场景：全局 deny vs agent allow
-    /// </summary>
-    [Fact]
-    public void PermissionConflict_GlobalDenyShouldWinOverAgentAllow()
-    {
-        // Arrange - 使用 PermissionCache 和手动设置权限
-        var cache = new PermissionCache();
-
-        // 全局规则：拒绝敏感路径
-        var globalDenyKey = new PermissionCacheKey("file_write", "/system/config.json", "global");
-        cache.Set(globalDenyKey, PermissionAction.Deny);
-
-        // Agent 规则：允许写入（但优先级较低，全局规则已生效）
-        var agentAllowKey = new PermissionCacheKey("file_write", "/system/config.json", "agent");
-
-        // Act - 验证全局规则优先
-        var globalResult = cache.Get(globalDenyKey);
-
-        // Assert - Deny 规则已缓存，应该拒绝
-        globalResult.Should().Be(PermissionAction.Deny);
     }
 
     /// <summary>

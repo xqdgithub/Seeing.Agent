@@ -209,7 +209,6 @@ namespace Seeing.Agent.Core.Extensions
 
             // 注册默认中间件
             services.AddTransient<LoggingMiddleware>();
-            services.AddTransient<PermissionMiddleware>();
             services.AddTransient<RetryMiddleware>();
 
             return services;
@@ -380,6 +379,10 @@ namespace Seeing.Agent.Core.Extensions
             services.TryAddSingleton<IOptions<ShellOptions>>(sp =>
                 sp.GetRequiredService<ConfigSectionOptionsMonitor<ShellOptions>>());
 
+            // 执行事件发布器兜底：Core-only 组合无 Hosting 执行引擎；真实宿主由 AddExecutionEngine
+            // 以 AddSingleton 在后注册覆盖（单服务解析取最后一个注册）。
+            services.TryAddSingleton<IExecutionEventPublisher, NullExecutionEventPublisher>();
+
             // 权限服务（新系统 - 统一权限检查入口）
             services.AddPermissionService();
 
@@ -513,7 +516,7 @@ namespace Seeing.Agent.Core.Extensions
                     tool,
                     sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
                     sp.GetRequiredService<Seeing.Agent.Core.Output.IToolOutputStore>(),
-                    sp.GetRequiredService<IWorkspaceWhitelist>(),
+                    sp.GetRequiredService<IPermissionGrantStore>(),
                     loggerFactory.CreateLogger<ToolOutputLimiterDecorator>()));
 
                 return registry;
@@ -563,36 +566,9 @@ namespace Seeing.Agent.Core.Extensions
             // 执行上下文相关
             services.AddSingleton<IMetadataStore, ConcurrentMetadataStore>();
 
-            // 权限记忆（会话级，纯内存）
-            services.AddSingleton<IPermissionMemory, SessionPermissionMemory>();
-
-            // 会话级工作区白名单（AddWorkspacePathTool 写入，权限通道读取）
-            services.AddSingleton<IWorkspaceWhitelist, SessionWorkspaceWhitelist>();
+            // 工作区路径硬边界门闸（白名单/记忆经 IPermissionGrantStore 单一存储）
             services.AddSingleton<IWorkspacePathGate, WorkspacePathGate>();
             services.AddSingleton<WorkspaceBoundaryLifecycle>();
-
-            // 权限通道 — 默认使用 DynamicPermissionChannel + SerializingPermissionChannel（带记忆）
-            // 使用 IOptionsMonitor 实现运行时配置变更无需重启
-            // 注意：如果用户在其他地方注册了 IPermissionChannel（如 BlazorPermissionChannel），
-            // 那个注册会覆盖这里的默认注册
-            services.AddSingleton<IPermissionChannel>(sp =>
-            {
-                var memory = sp.GetRequiredService<IPermissionMemory>();
-                var workspace = sp.GetService<IWorkspaceProvider>();
-                var optionsMonitor = sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>();
-                var logger = sp.GetService<ILogger<Core.Permission.DynamicPermissionChannel>>();
-
-                // 动态通道：每次请求时从 IOptionsMonitor 读取最新配置
-                var inner = new Core.Permission.DynamicPermissionChannel(optionsMonitor, logger);
-
-                // 进程级 Ask 串行 + 会话级记忆 + 工作区边界检查（宿主可再包一层，如 Blazor）
-                return new Core.Permission.SerializingPermissionChannel(
-                    inner,
-                    memory,
-                    workspace,
-                    sp.GetRequiredService<IWorkspaceWhitelist>(),
-                    optionsMonitor);
-            });
 
             // Agent 执行器（统一执行引擎）
             services.AddSingleton<AgentExecutor>();

@@ -11,16 +11,16 @@ namespace Seeing.Agent.Core.Permission;
 public sealed class WorkspacePathGate : IWorkspacePathGate
 {
     private readonly IWorkspaceProvider _workspace;
-    private readonly IWorkspaceWhitelist _whitelist;
+    private readonly IPermissionGrantStore _grantStore;
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
 
     public WorkspacePathGate(
         IWorkspaceProvider workspace,
-        IWorkspaceWhitelist whitelist,
+        IPermissionGrantStore grantStore,
         IOptionsMonitor<SeeingAgentOptions> options)
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
-        _whitelist = whitelist ?? throw new ArgumentNullException(nameof(whitelist));
+        _grantStore = grantStore ?? throw new ArgumentNullException(nameof(grantStore));
         _options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
@@ -43,7 +43,7 @@ public sealed class WorkspacePathGate : IWorkspacePathGate
             if (!string.IsNullOrEmpty(root) && PathSafety.IsPathWithinDirectory(full, root))
                 return null;
 
-            if (_whitelist.Contains(sessionId, full))
+            if (_grantStore.ContainsSessionPath(sessionId, full))
                 return null;
 
             return $"路径不在工作区允许集内: {full}。请批准权限扩权，或使用 add_workspace_path 将目录加入会话白名单。";

@@ -48,5 +48,5 @@ public interface IToolManager
         string sessionId = "",
         CancellationToken cancellationToken = default,
         Func<IMessageEvent, ValueTask>? emitAsync = null,
-        IPermissionChannel? permissionChannel = null);
+        IPermissionAuthorizer? permissionAuthorizer = null);
 }

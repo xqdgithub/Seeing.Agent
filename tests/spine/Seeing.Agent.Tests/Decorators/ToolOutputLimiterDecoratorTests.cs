@@ -3,9 +3,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Decorators;
 using Seeing.Agent.Core.Output;
 using Seeing.Session.Storage;
@@ -57,12 +57,12 @@ public class ToolOutputLimiterDecoratorTests
             => Task.FromResult(new ToolResult { Success = false, Error = "boom" });
     }
 
-    private static (string TempDir, ToolOutputLimiterDecorator Decorator, SessionWorkspaceWhitelist Whitelist) Create(
+    private static (string TempDir, ToolOutputLimiterDecorator Decorator, Mock<IPermissionGrantStore> GrantStore) Create(
         ITool inner, Action<ToolOutputOptions>? configure = null)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "seeing-limiter-" + Guid.NewGuid().ToString("N"));
         var store = new SessionToolOutputStore(new FileSessionStore(tempDir), NullLogger<SessionToolOutputStore>.Instance);
-        var whitelist = new SessionWorkspaceWhitelist();
+        var grantStore = new Mock<IPermissionGrantStore>();
 
         var opts = new SeeingAgentOptions();
         configure?.Invoke(opts.ToolOutput);
@@ -73,9 +73,9 @@ public class ToolOutputLimiterDecoratorTests
             inner,
             options.Object,
             store,
-            whitelist,
+            grantStore.Object,
             NullLogger<ToolOutputLimiterDecorator>.Instance);
-        return (tempDir, decorator, whitelist);
+        return (tempDir, decorator, grantStore);
     }
 
     private static ToolContext Ctx(string sessionId = "ses_a", string? callId = "call_1")
@@ -99,7 +99,7 @@ public class ToolOutputLimiterDecoratorTests
     public async Task LargeOutput_ShouldSpillToRefDirectory_AndReplaceOutputWithPreview()
     {
         var big = new string('x', 60 * 1024);
-        var (tempDir, decorator, whitelist) = Create(new OutputTool { Result = big });
+        var (tempDir, decorator, grantStore) = Create(new OutputTool { Result = big });
         var result = await ExecAsync(decorator);
 
         result.Success.Should().BeTrue();
@@ -111,7 +111,9 @@ public class ToolOutputLimiterDecoratorTests
         ((int)result.Metadata["originalBytes"]).Should().BeGreaterThan(50 * 1024);
 
         File.ReadAllText((string)result.Metadata["outputPath"]).Should().Be(big);
-        whitelist.Contains("ses_a", Path.Combine(tempDir, "ses_a.ref", "call_1.txt")).Should().BeTrue();
+        grantStore.Verify(
+            g => g.AddSessionDirectory("ses_a", Path.Combine(tempDir, "ses_a.ref")),
+            Times.Once);
     }
 
     [Fact]
@@ -163,7 +165,7 @@ public class ToolOutputLimiterDecoratorTests
         var failingStore = new Mock<IToolOutputStore>();
         failingStore.Setup(s => s.SaveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("磁盘满"));
-        var whitelist = new SessionWorkspaceWhitelist();
+        var grantStore = new Mock<IPermissionGrantStore>();
         var opts = new SeeingAgentOptions();
         var options = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
         options.Setup(o => o.CurrentValue).Returns(opts);
@@ -171,7 +173,7 @@ public class ToolOutputLimiterDecoratorTests
             new OutputTool { Result = big },
             options.Object,
             failingStore.Object,
-            whitelist,
+            grantStore.Object,
             NullLogger<ToolOutputLimiterDecorator>.Instance);
 
         var result = await ExecAsync(decorator);

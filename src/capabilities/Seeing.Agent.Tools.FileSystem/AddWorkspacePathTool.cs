@@ -28,16 +28,16 @@ public class AddWorkspacePathTool : BuiltInToolBase
         ["required"] = new[] { "path" }
     });
 
-    private readonly IWorkspaceWhitelist _whitelist;
+    private readonly IPermissionGrantStore _grantStore;
     private readonly IFileSystem _fileSystem;
 
     public AddWorkspacePathTool(
         ILogger<AddWorkspacePathTool> logger,
-        IWorkspaceWhitelist whitelist,
+        IPermissionGrantStore grantStore,
         IFileSystem fileSystem)
         : base(logger)
     {
-        _whitelist = whitelist;
+        _grantStore = grantStore;
         _fileSystem = fileSystem;
     }
 
@@ -66,7 +66,7 @@ public class AddWorkspacePathTool : BuiltInToolBase
         if (string.IsNullOrEmpty(context.SessionId))
             return Task.FromResult(Failure("当前上下文缺少会话 ID，无法扩展工作区白名单"));
 
-        _whitelist.Add(context.SessionId, path);
+        _grantStore.AddSessionDirectory(context.SessionId, path);
 
         return Task.FromResult(Success("路径已加入当前会话的工作区白名单", path));
     }

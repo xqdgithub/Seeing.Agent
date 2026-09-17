@@ -229,24 +229,6 @@ public class ContentBlock
     }
 
     /// <summary>
-    /// 创建权限请求内容块
-    /// </summary>
-    public static ContentBlock CreatePermission(PermissionRequestViewModel permission, int sortIndex)
-    {
-        return new ContentBlock
-        {
-            Id = GenerateId(ContentBlockType.Permission, sortIndex, permission.PermissionId),
-            Type = ContentBlockType.Permission,
-            SortIndex = sortIndex,
-            IsComplete = false,
-            Extensions = new Dictionary<string, object>
-            {
-                ["permission"] = permission
-            }
-        };
-    }
-
-    /// <summary>
     /// 创建分隔线内容块
     /// </summary>
     public static ContentBlock CreateDivider(int stepIndex, int sortIndex)
@@ -372,7 +354,6 @@ public class ContentBlockBuilder
             ContentBlockType.Attachment or ContentBlockType.Image => block.Attachment?.FileName,
             ContentBlockType.Error => block.Extensions?.TryGetValue("errorId", out var id) == true ? id?.ToString() : null,
             ContentBlockType.SubAgent => block.Extensions?.TryGetValue("subAgentName", out var name) == true ? name?.ToString() : null,
-            ContentBlockType.Permission => block.Extensions?.TryGetValue("permission", out var perm) == true && perm is PermissionRequestViewModel p ? p.PermissionId : null,
             _ => null
         };
     }

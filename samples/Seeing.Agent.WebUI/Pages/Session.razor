@@ -32,6 +32,7 @@
 @inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
 @inject Services.SessionEventStreamRouter Router
+@inject Services.ActiveSessionTracker ActiveSessionTracker
 @inject CircuitContext CircuitContext
 @inject ISessionManager SessionManager
 @implements IDisposable
@@ -168,6 +169,7 @@
     private string? _mainSessionId;
     private string? _activeSessionId;
     private bool _mainMissing;
+    private string _circuitId = string.Empty;
     private ConferenceRegistry? _registry;
     private IReadOnlyList<ConferenceRegistry.WindowNode> _windows = Array.Empty<ConferenceRegistry.WindowNode>();
 
@@ -209,6 +211,7 @@
     {
         // 订阅 AppState 变更事件，确保移动端/桌面端切换时同步重渲染
         AppState.OnChange += OnAppStateChange;
+        _circuitId = CircuitContext.Id ?? string.Empty;
 
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
@@ -239,6 +242,7 @@
         _mainSessionId = mainId;
         _activeSessionId = mainId;
         InitRegistry(mainId);
+        ActiveSessionTracker.Attach(mainId, _circuitId);
 
         await InvokeAsync(StateHasChanged);
     }
@@ -277,6 +281,7 @@
             InitRegistry(SessionId);
         else
             _registry.Rebind(SessionId);
+        ActiveSessionTracker.Attach(SessionId, _circuitId);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -312,6 +317,7 @@
     private async Task OnTileClick(string sessionId)
     {
         _activeSessionId = sessionId;
+        ActiveSessionTracker.Attach(sessionId, _circuitId);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -416,6 +422,7 @@
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChange;
+        ActiveSessionTracker.DetachCircuit(_circuitId);
         if (_registry != null)
             _registry.WindowsChanged -= OnWindowsChanged;
         // circuit 关闭由 SeeingCircuitHandler → Router.DetachAllForCircuit 统一释放

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Permission;
 using Seeing.Gateway.Models;
@@ -97,24 +98,38 @@ public static class GatewayEndpoints
 
     private static IResult GetPendingPermissionsAsync(
         [FromQuery] string sessionId,
-        GatewayPermissionChannel permissionChannel)
+        IPermissionRequestManager permissionManager)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
             return Results.BadRequest(new { error = "sessionId is required" });
 
-        var pending = permissionChannel.GetPendingPermissions(sessionId);
+        var pending = permissionManager.GetPending(sessionId)
+            .Select(GatewayPermissionChannel.MapPending)
+            .ToList();
+
         return Results.Ok(pending);
     }
 
     private static IResult RespondPermissionAsync(
         string id,
         [FromBody] GatewayPermissionRespondRequest body,
-        GatewayPermissionChannel permissionChannel)
+        IPermissionRequestManager permissionManager)
     {
         if (string.IsNullOrWhiteSpace(body.SessionId))
             return Results.BadRequest(new { error = "sessionId is required" });
 
-        var result = permissionChannel.Respond(body.SessionId, id, body.Allow, body.Reason);
+        var resolved = permissionManager.TryResolve(
+            id,
+            body.Allow ? PermissionEffect.Allow : PermissionEffect.Deny,
+            PermissionGrantScope.Once,
+            PermissionResolvedBy.User,
+            body.Reason,
+            expectedSessionId: body.SessionId);
+
+        var result = resolved
+            ? GatewayPermissionRespondResult.Ok()
+            : GatewayPermissionRespondResult.Fail("权限请求不存在、已过期或会话不匹配");
+
         return result.Success
             ? Results.Ok(result)
             : Results.NotFound(result);

@@ -106,6 +106,9 @@ namespace Seeing.Session.Core
         /// <summary>设置会话标题</summary>
         Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default);
 
+        /// <summary>设置会话级自动批准三态（FollowGlobal/Enabled/Disabled）</summary>
+        Task SetAutoApproveAsync(string sessionId, SessionAutoApprove value, CancellationToken ct = default);
+
         /// <summary>
         /// 设置会话的模型
         /// </summary>

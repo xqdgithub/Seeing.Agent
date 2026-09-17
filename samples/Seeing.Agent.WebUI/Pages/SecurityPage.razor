@@ -8,7 +8,7 @@
 @using Seeing.Agent.WebUI.State
 @inject SeeingConfigService ConfigService
 @inject IAgentRegistry AgentRegistry
-@inject BlazorPermissionChannel PermissionChannel
+@inject Seeing.Agent.Abstractions.Permissions.IPermissionRequestManager PermissionRequests
 @inject SessionState SessionState
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
@@ -78,9 +78,9 @@
             </TabPane>
             <TabPane Key="approval" Tab="审批流程">
                 <Descriptions Column="1" Bordered>
-                    <DescriptionsItem Title="待处理权限请求">@PermissionChannel.PendingCount</DescriptionsItem>
+                    <DescriptionsItem Title="待处理权限请求">@PermissionRequests.PendingCount</DescriptionsItem>
                     <DescriptionsItem Title="当前会话智能体">@SessionState.SelectedAgent</DescriptionsItem>
-                    <DescriptionsItem Title="审批通道">Blazor UI 内嵌权限弹窗</DescriptionsItem>
+                    <DescriptionsItem Title="审批通道">执行事件流内联卡片</DescriptionsItem>
                 </Descriptions>
                 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-top: 16px;"
                        Message="在聊天会话中执行工具时，将弹出权限确认对话框。" />

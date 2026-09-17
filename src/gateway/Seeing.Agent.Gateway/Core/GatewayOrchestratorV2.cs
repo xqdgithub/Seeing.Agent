@@ -4,9 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Gateway.Permission;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
 
@@ -19,27 +19,21 @@ public sealed class GatewayOrchestratorV2
 {
     private readonly IServiceProvider _services;
     private readonly GatewayOptions _options;
-    private readonly GatewayPermissionChannel _permissionChannel;
     private readonly GatewayRunTracker _runTracker;
     private readonly SessionExecutionQueue _executionQueue;
-    private readonly GatewayConnectionManager? _connectionManager;
     private readonly ILogger<GatewayOrchestratorV2> _logger;
 
     public GatewayOrchestratorV2(
         IServiceProvider services,
         GatewayOptions options,
-        GatewayPermissionChannel permissionChannel,
         GatewayRunTracker runTracker,
         SessionExecutionQueue executionQueue,
-        ILogger<GatewayOrchestratorV2> logger,
-        GatewayConnectionManager? connectionManager = null)
+        ILogger<GatewayOrchestratorV2> logger)
     {
         _services = services;
         _options = options;
-        _permissionChannel = permissionChannel;
         _runTracker = runTracker;
         _executionQueue = executionQueue;
-        _connectionManager = connectionManager;
         _logger = logger;
     }
 
@@ -79,49 +73,58 @@ public sealed class GatewayOrchestratorV2
         string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var runCts = _runTracker.RegisterRun(executionId, sessionId);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, runCts.Token);
-
-        var runState = new ChatRunState();
-        Exception? fault = null;
-        var cancelled = false;
-
-        await using var enumerator = StreamExecutionEventsAsync(sessionId, executionId, linkedCts.Token, runState)
-            .GetAsyncEnumerator(linkedCts.Token);
-
-        while (true)
+        var presence = _services.GetRequiredService<IPermissionPresenceStore>();
+        presence.Attach(sessionId);
+        try
         {
-            var hasNext = false;
-            try
+            var runCts = _runTracker.RegisterRun(executionId, sessionId);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, runCts.Token);
+
+            var runState = new ChatRunState();
+            Exception? fault = null;
+            var cancelled = false;
+
+            await using var enumerator = StreamExecutionEventsAsync(sessionId, executionId, linkedCts.Token, runState)
+                .GetAsyncEnumerator(linkedCts.Token);
+
+            while (true)
             {
-                hasNext = await enumerator.MoveNextAsync();
-            }
-            catch (OperationCanceledException)
-            {
-                cancelled = true;
-                break;
-            }
-            catch (Exception ex)
-            {
-                fault = ex;
-                break;
+                var hasNext = false;
+                try
+                {
+                    hasNext = await enumerator.MoveNextAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled = true;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    fault = ex;
+                    break;
+                }
+
+                if (!hasNext)
+                    break;
+
+                yield return enumerator.Current with { ExecutionId = executionId };
             }
 
-            if (!hasNext)
-                break;
+            _runTracker.UnregisterRun(executionId);
 
-            yield return enumerator.Current with { ExecutionId = executionId };
+            if (cancelled)
+                yield return await BuildCancelledEventAsync(sessionId, runState) with { ExecutionId = executionId };
+            else if (fault != null)
+            {
+                _logger.LogError(fault, "Gateway 执行订阅失败: SessionId={SessionId}, ExecutionId={ExecutionId}",
+                    sessionId, executionId);
+                yield return await BuildErrorEventAsync(sessionId, runState, fault) with { ExecutionId = executionId };
+            }
         }
-
-        _runTracker.UnregisterRun(executionId);
-
-        if (cancelled)
-            yield return await BuildCancelledEventAsync(sessionId, runState) with { ExecutionId = executionId };
-        else if (fault != null)
+        finally
         {
-            _logger.LogError(fault, "Gateway 执行订阅失败: SessionId={SessionId}, ExecutionId={ExecutionId}",
-                sessionId, executionId);
-            yield return await BuildErrorEventAsync(sessionId, runState, fault) with { ExecutionId = executionId };
+            presence.Detach(sessionId);
         }
     }
 
@@ -149,19 +152,6 @@ public sealed class GatewayOrchestratorV2
             SingleWriter = false
         });
 
-        IGatewayEventSink sink = _connectionManager == null
-            ? new ChannelGatewayEventSink(outputChannel.Writer)
-            : new CompositeGatewayEventSink(
-                new ChannelGatewayEventSink(outputChannel.Writer),
-                _connectionManager);
-
-        GatewayPermissionChannel.SetRunContext(new PermissionRunContext
-        {
-            SessionId = sessionId,
-            LoopId = null,
-            Sink = sink
-        });
-
         var executionTask = MapSubscriptionAsync(
             sessionId,
             executionId,
@@ -177,7 +167,6 @@ public sealed class GatewayOrchestratorV2
         }
         finally
         {
-            GatewayPermissionChannel.SetRunContext(null);
             outputChannel.Writer.TryComplete();
             await executionTask;
         }
@@ -207,15 +196,7 @@ public sealed class GatewayOrchestratorV2
                 }
 
                 if (chatEvent.LoopId != null)
-                {
                     runState.CurrentLoopId = chatEvent.LoopId;
-                    GatewayPermissionChannel.SetRunContext(new PermissionRunContext
-                    {
-                        SessionId = sessionId,
-                        LoopId = chatEvent.LoopId,
-                        Sink = CreateSink(outputWriter)
-                    });
-                }
 
                 if (chatEvent is SessionUpdatedEvent sessionEvt)
                     runState.Session = sessionEvt.Session;
@@ -240,15 +221,6 @@ public sealed class GatewayOrchestratorV2
         {
             outputWriter.TryComplete();
         }
-    }
-
-    private IGatewayEventSink CreateSink(ChannelWriter<GatewayEvent> outputWriter)
-    {
-        return _connectionManager == null
-            ? new ChannelGatewayEventSink(outputWriter)
-            : new CompositeGatewayEventSink(
-                new ChannelGatewayEventSink(outputWriter),
-                _connectionManager);
     }
 
     private static ChatInput BuildChatInput(GatewayRequest request)
