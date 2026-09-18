@@ -40,7 +40,7 @@
                     </span>
                 </Tooltip>
             }
-            @if (!Context.IsSubAgentView && Context.CurrentSession != null)
+            @if (Context.ShowScenarioBadge && Context.CurrentSession != null)
             {
                 <Tooltip Title="@ScenarioBadgeTooltip">
                     <span Class="session-scenario-badge" data-testid="session-scenario-badge">
@@ -54,7 +54,7 @@
                     </span>
                 </Tooltip>
             }
-            @if (Context.IsSubAgentView)
+            @if (Context.ShowSubAgentBadge)
             {
                 <Badge Status="@BadgeStatus.Warning" Text="子会话（只读）" />
             }
@@ -67,7 +67,7 @@
                 <Badge Status="@BadgeStatus.Processing" Text="执行中" />
             }
 
-            @if (Context.IsSubAgentView)
+            @if (Context.ShowSubAgentBadge)
             {
                 <div class="subagent-meta" title="子代理（只读）">
                     <span class="subagent-meta-chip">
@@ -94,7 +94,7 @@
                         Size="@InputSize.Small"
                         Placeholder="智能体" />
             }
-            @if (!Context.IsSubAgentView && _optionsReady && Context.CurrentSession != null && Context.IsAcpPassthrough)
+            @if (Context.ShowAcpModeSelector && _optionsReady && Context.CurrentSession != null && Context.IsAcpPassthrough)
             {
                 <Input Value="@Context.SelectedAcpMode"
                        ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
@@ -107,7 +107,7 @@
                        Style="width: 160px;"
                        Size="@InputSize.Small" />
             }
-            else if (!Context.IsSubAgentView && _optionsReady && Context.CurrentSession != null)
+            else if (Context.ShowModelSelector && _optionsReady && Context.CurrentSession != null)
             {
                 <ModelSelectBadge Value="@Context.SelectedModel"
                                   ValueChanged="EventCallback.Factory.Create<string?>(this, OnModelChangedNullable)"
@@ -132,7 +132,7 @@
             }
         </div>
         <div class="session-toolbar-right">
-            @if (Context.IsSubAgentView && !string.IsNullOrEmpty(Context.ParentSessionId))
+            @if (Context.ShowReturnToParent)
             {
                 <Button Type="@ButtonType.Text"
                         Size="@ButtonSize.Small"
@@ -146,9 +146,9 @@
                         Size="@ButtonSize.Small"
                         Icon="@IconType.Outline.Edit"
                         OnClick="@OnRenameSession"
-                        Disabled="@Context.IsSubAgentView" />
+                        Disabled="@(!Context.CanRename)" />
             </Tooltip>
-            @if (Context.IsSubAgentView)
+            @if (Context.CanDetach)
             {
                 <Tooltip Title="分叉为独立会话（可编辑）">
                     <Button Type="@ButtonType.Text"
@@ -157,7 +157,7 @@
                             OnClick="@OnBranchSession" />
                 </Tooltip>
             }
-            @if (!Context.IsSubAgentView)
+            @if (Context.CanEditOutboundBinding)
             {
                 <Tooltip Title="编辑出站绑定">
                     <Button Type="@ButtonType.Text"
@@ -171,7 +171,7 @@
                         Size="@ButtonSize.Small"
                         Icon="@IconType.Outline.Delete"
                         OnClick="@OnClearSession"
-                        Disabled="@(Context.IsExecuting || Context.IsSubAgentView)" />
+                        Disabled="@(Context.IsExecuting || !Context.CanClear)" />
             </Tooltip>
             @if (RightActions != null)
             {
@@ -284,7 +284,7 @@
     }
 
     /// <summary>
-    /// 订阅窗口状态变更：Context 的只读状态（SelectedAgent/SelectedModel/IsSubAgentView 等）
+    /// 订阅窗口状态变更：Context 的只读状态（SelectedAgent/SelectedModel/能力标记等）
     /// 由 SessionWindow 的 SyncContextState 刷新，此处收到通知后重渲染控件绑定值。
     /// </summary>
     private void OnContextStateChanged()
