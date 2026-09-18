@@ -46,34 +46,6 @@ namespace Seeing.Session.Core
         /// <summary>添加消息到会话</summary>
         Task AddMessageAsync(string sessionId, SessionMessage message, CancellationToken ct = default);
 
-        /// <summary>Fork Session - 创建分支</summary>
-        Task<SessionData> ForkAsync(
-            string sessionId,
-            string? atMessageId = null,
-            string? label = null,
-            CancellationToken ct = default);
-
-        /// <summary>
-        /// 创建子 Agent 会话（Kind=SubAgent，空历史，写入权限快照）
-        /// </summary>
-        /// <param name="scenario">会话级场景名；调用方（如 TaskTool）应显式传 parent.Scenario；null = 进程级回退。</param>
-        Task<SessionData> CreateChildAsync(
-            string parentId,
-            string agentName,
-            string title,
-            IReadOnlyList<SessionPermissionRule> permissionSnapshot,
-            string? scenario = null,
-            CancellationToken ct = default);
-
-        /// <summary>列出根会话（Kind=Root 且未归档）</summary>
-        Task<IReadOnlyList<SessionData>> ListRootsAsync(CancellationToken ct = default);
-
-        /// <summary>列出指定父会话的子会话（可选按 Kind 过滤）</summary>
-        Task<IReadOnlyList<SessionData>> ListChildrenAsync(
-            string parentId,
-            SessionKind? kind = null,
-            CancellationToken ct = default);
-
         /// <summary>Archive Session - 归档</summary>
         Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default);
 
@@ -95,13 +67,6 @@ namespace Seeing.Session.Core
         /// <param name="ct">取消令牌</param>
         /// <returns>会话列表（已按更新时间降序排列）</returns>
         Task<IReadOnlyList<SessionData>> LoadAllFromStorageAsync(CancellationToken ct = default);
-
-        /// <summary>
-        /// 从存储加载指定父会话的全部子会话（Kind=SubAgent）并注册到缓存。
-        /// 用于冷缓存下 UI 关联子代理卡片；缓存已存在的会话跳过。
-        /// </summary>
-        Task<IReadOnlyList<SessionData>> LoadChildrenFromStorageAsync(
-            string parentId, CancellationToken ct = default);
 
         /// <summary>设置会话标题</summary>
         Task SetTitleAsync(string sessionId, string title, CancellationToken ct = default);
@@ -161,8 +126,6 @@ namespace Seeing.Session.Core
         public string Id { get; init; } = string.Empty;
         public string? PartitionId { get; init; }
         public string? SelectedAgent { get; init; }
-        public string? ParentSessionId { get; init; }
-        public string? ForkLabel { get; init; }
         public bool IsArchived { get; init; }
         public int MessageCount { get; init; }
         public DateTimeOffset CreatedAt { get; init; }

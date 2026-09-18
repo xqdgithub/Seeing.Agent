@@ -62,7 +62,6 @@ public static class SessionServiceExtensions
                 hookManager: sp.GetService<IHookManager>(),
                 eventPublisher: sp.GetService<ISessionEventPublisher>(),
                 logger: sp.GetService<ILogger<SessionManager>>(),
-                forker: null,
                 archiver: null,
                 sharer: null,
                 reverter: null,

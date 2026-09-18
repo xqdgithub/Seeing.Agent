@@ -4,7 +4,9 @@ using Seeing.Session.Core;
 namespace Seeing.Session.Management
 {
     /// <summary>
-    /// Session 分支器
+    /// Session 分支器 - 纯消息复制引擎。
+    /// <para>只负责克隆消息、生成新会话 Id、复制必要配置；<b>不设置</b> <c>Kind</c>、
+    /// <c>GroupId</c> 等关系字段，关系由 <c>SessionGroupManager</c> 统一承载。</para>
     /// </summary>
     public class SessionForker
     {
@@ -22,10 +24,15 @@ namespace Seeing.Session.Management
             _sessionManager = sessionManager;
         }
 
-        /// <summary>Fork Session - 创建分支</summary>
+        /// <summary>
+        /// 复制会话：克隆全部消息到新会话，并复制必要配置。
+        /// </summary>
+        /// <param name="sessionId">源会话 ID</param>
+        /// <param name="label">新会话标题（可选）；null 时沿用源会话标题</param>
+        /// <param name="ct">取消令牌</param>
+        /// <returns>新的会话副本（关系字段由调用方设定）</returns>
         public async Task<SessionData> ForkAsync(
             string sessionId,
-            string? atMessageId = null,
             string? label = null,
             CancellationToken ct = default)
         {
@@ -33,86 +40,30 @@ namespace Seeing.Session.Management
             if (sourceSession == null)
                 throw new InvalidOperationException($"Session not found: {sessionId}");
 
-            var forkedSession = SessionData.Create(sourceSession.PartitionId, sourceSession.SelectedAgent);
+            var forkedSession = SessionData.Create(
+                sourceSession.PartitionId,
+                sourceSession.SelectedAgent,
+                sourceSession.Scenario);
 
-            // SubAgent 分叉：产出可操作的独立 Root（无 Parent）；其它会话保持 Fork 谱系
-            if (sourceSession.Kind == SessionKind.SubAgent)
-            {
-                forkedSession.Kind = SessionKind.Root;
-                forkedSession.ParentSessionId = null;
-                forkedSession.ForkLabel = label ?? $"Detached from {sessionId}";
-                forkedSession.Title = label ?? $"{sourceSession.Title} (独立会话)";
-            }
-            else
-            {
-                forkedSession.Kind = SessionKind.Fork;
-                forkedSession.ParentSessionId = sessionId;
-                forkedSession.ForkLabel = label ?? $"Fork of {sessionId}";
-                forkedSession.Title = $"{sourceSession.Title} (Fork)";
-            }
-
+            forkedSession.Title = label ?? sourceSession.Title;
             forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
             forkedSession.SelectedModel = sourceSession.SelectedModel;
             forkedSession.SelectedThinkingEffort = sourceSession.SelectedThinkingEffort;
-            forkedSession.Scenario = sourceSession.Scenario;
-            forkedSession.ScenarioOverride = sourceSession.ScenarioOverride is null
-                ? null
-                : new SessionScenarioOverride
-                {
-                    Modules = sourceSession.ScenarioOverride.Modules is null
-                        ? null
-                        : new SessionModulesOverride
-                        {
-                            Enabled = sourceSession.ScenarioOverride.Modules.Enabled is null
-                                ? null
-                                : new List<string>(sourceSession.ScenarioOverride.Modules.Enabled)
-                        },
-                    Tools = sourceSession.ScenarioOverride.Tools is null
-                        ? null
-                        : new SessionToolsOverride
-                        {
-                            Disabled = new List<string>(sourceSession.ScenarioOverride.Tools.Disabled)
-                        }
-                };
+            forkedSession.ScenarioOverride = CloneScenarioOverride(sourceSession.ScenarioOverride);
             CopyInstructionFingerprints(sourceSession, forkedSession);
 
-            if (atMessageId != null)
+            foreach (var msg in sourceSession.Messages)
             {
-                var messageIndex = -1;
-                for (var i = 0; i < sourceSession.Messages.Count; i++)
-                {
-                    if (sourceSession.Messages[i].Id == atMessageId)
-                    {
-                        messageIndex = i;
-                        break;
-                    }
-                }
-
-                if (messageIndex >= 0)
-                {
-                    for (int i = 0; i < messageIndex; i++)
-                    {
-                        var clone = CloneMessage(sourceSession.Messages[i]);
-                        clone.SessionId = forkedSession.Id;
-                        forkedSession.AddMessage(clone);
-                    }
-                }
-            }
-            else
-            {
-                foreach (var msg in sourceSession.Messages)
-                {
-                    var clone = CloneMessage(msg);
-                    clone.SessionId = forkedSession.Id;
-                    forkedSession.AddMessage(clone);
-                }
+                var clone = CloneMessage(msg);
+                clone.SessionId = forkedSession.Id;
+                forkedSession.AddMessage(clone);
             }
 
             _sessionManager.Register(forkedSession);
             await _sessionManager.SaveAsync(forkedSession.Id);
 
-            _logger.LogInformation("Forked session {SourceId} -> {ForkedId} at message {MessageId}",
-                sessionId, forkedSession.Id, atMessageId ?? "all");
+            _logger.LogInformation("Copied session {SourceId} -> {ForkedId}",
+                sessionId, forkedSession.Id);
 
             return forkedSession;
         }
@@ -122,6 +73,30 @@ namespace Seeing.Session.Management
             var clone = msg.Clone();
             clone.Id = Guid.NewGuid().ToString("N");
             return clone;
+        }
+
+        private static SessionScenarioOverride? CloneScenarioOverride(SessionScenarioOverride? source)
+        {
+            if (source is null)
+                return null;
+
+            return new SessionScenarioOverride
+            {
+                Modules = source.Modules is null
+                    ? null
+                    : new SessionModulesOverride
+                    {
+                        Enabled = source.Modules.Enabled is null
+                            ? null
+                            : new List<string>(source.Modules.Enabled)
+                    },
+                Tools = source.Tools is null
+                    ? null
+                    : new SessionToolsOverride
+                    {
+                        Disabled = new List<string>(source.Tools.Disabled)
+                    }
+            };
         }
 
         private static void CopyInstructionFingerprints(SessionData source, SessionData target)

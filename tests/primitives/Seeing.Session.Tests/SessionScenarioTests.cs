@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.Text.Json;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Session.Core;
@@ -86,40 +84,6 @@ public class SessionScenarioTests
         round.ScenarioOverride.Should().NotBeNull();
         round.ScenarioOverride!.Modules!.Enabled.Should().Equal("web", "memory");
         round.ScenarioOverride.Tools!.Disabled.Should().Equal("shell");
-    }
-
-    [Fact]
-    public async Task CreateChildAsync_WithScenario_ShouldSetChildScenario()
-    {
-        var mgr = new SessionManager(logger: new NullLogger<SessionManager>());
-        var parent = mgr.Create(scenario: "code");
-        mgr.Register(parent);
-
-        var child = await mgr.CreateChildAsync(
-            parent.Id,
-            "explore",
-            "task",
-            new List<SessionPermissionRule>(),
-            scenario: parent.Scenario);
-
-        child.Scenario.Should().Be("code");
-    }
-
-    [Fact]
-    public async Task CreateChildAsync_WithNullScenario_LeavesNullForProcessFallback()
-    {
-        var mgr = new SessionManager(logger: new NullLogger<SessionManager>());
-        var parent = mgr.Create();
-        mgr.Register(parent);
-
-        var child = await mgr.CreateChildAsync(
-            parent.Id,
-            "explore",
-            "task",
-            new List<SessionPermissionRule>(),
-            scenario: null);
-
-        child.Scenario.Should().BeNull();
     }
 
     [Fact]
