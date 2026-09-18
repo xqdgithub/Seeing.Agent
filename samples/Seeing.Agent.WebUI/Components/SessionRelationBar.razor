@@ -3,7 +3,7 @@
 @using Seeing.Session.Core
 @using Seeing.Agent.WebUI.Services
 
-@if (Model is not null && Model.MainLine.Count > 0)
+@if (Model is not null && Model.HasRelatedSessions)
 {
     <div class="session-relation-bar" data-testid="session-relation-bar">
         @if (Bar.Overflow > 0)

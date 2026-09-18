@@ -54,21 +54,64 @@
     min-height: 200px;
 }
 
-/* 侧栏分区（主线历史 / 派生 / 子会话）：分区内卡片纵向堆叠，卡片保持固定高度 */
+/* 已完成（非激活）紧凑卡：高度自适应（不占 200px，避免大片空白） */
+.session-side-area .session-window--summary.session-window--compact {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+/* 侧栏分区（主线历史 / 派生 / 子会话）：分区内卡片纵向堆叠；
+   每个分区用不同强调色（左侧条 + 圆点 + 标题色）区分，避免仅靠文字辨识 */
 .session-side-section,
 .conference-side-section {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    --section-accent: var(--color-text-tertiary);
+    padding-left: 8px;
+    border-left: 2px solid color-mix(in srgb, var(--section-accent) 55%, transparent);
+}
+
+.session-side-section--MainLineHistory,
+.conference-side-section--MainLineHistory {
+    --section-accent: var(--color-primary);
+}
+
+.session-side-section--Derived,
+.conference-side-section--Derived {
+    --section-accent: var(--color-warning);
+}
+
+.session-side-section--Children,
+.conference-side-section--Children {
+    --section-accent: var(--color-text-tertiary);
 }
 
 .session-side-section__title,
 .conference-side-section__title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: var(--color-text-secondary, rgba(0, 0, 0, 0.45));
+    color: var(--section-accent);
     padding: 0 2px;
+}
+
+.session-side-section__dot,
+.conference-side-section__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--section-accent);
+    flex-shrink: 0;
+}
+
+.session-side-section__count,
+.conference-side-section__count {
+    font-weight: 400;
+    color: var(--color-text-tertiary);
 }
 
 /* Summary 摘要卡片（SessionWindow 摘要模式共享样式，会话页/大屏共用） */
@@ -187,17 +230,6 @@
     flex-shrink: 0;
 }
 
-/* 来源行（紧凑卡保留，设计 §4.7） */
-.conference-tile-source {
-    flex-shrink: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: var(--font-size-xs);
-    color: var(--color-text-tertiary);
-}
-
 /* 执行中脉冲点 */
 .conference-tile-pulse {
     width: 8px;
@@ -238,44 +270,48 @@
     -webkit-box-orient: vertical;
 }
 
-/* 已完成 / 子代理：紧凑单行卡片 */
+/* 已完成（非激活）紧凑卡：两行；行内预览 flex 撑满并省略，来源小字限宽，确保预览可见 */
 .conference-tile--compact {
     gap: var(--space-1);
     padding: var(--space-2) var(--space-3);
+    /* 完成态（非激活）用浅灰底与执行中/其他状态区分 */
+    background: var(--color-bg-tertiary, #f5f5f5);
+    border-color: var(--color-border-secondary, #f0f0f0);
 }
 
-/* 只读子代理（Child）：灰底 + "只读" chip 区分 */
-.conference-tile--readonly {
-    background: var(--color-bg-secondary, #f5f5f5);
-    border-color: var(--color-border);
+.conference-tile-compact-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-width: 0;
 }
 
-.conference-tile-compact {
+.conference-tile-compact-meta {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     min-width: 0;
-    width: 100%;
 }
 
 .conference-tile-compact-preview {
-    flex: 1;
-    min-width: 0;
-    font-size: var(--font-size-xs);
-    color: var(--color-text-secondary);
+    flex: 1 1 auto;
+    min-width: 4em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
 }
 
-.conference-tile-readonly {
-    flex-shrink: 0;
-    padding: 0 var(--space-1);
-    border-radius: var(--radius-sm);
+.conference-tile-source {
+    flex: 0 1 auto;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: var(--font-size-xs);
     color: var(--color-text-tertiary);
-    border: 1px solid var(--color-border);
-    white-space: nowrap;
 }
 
 .conference-tile-time {

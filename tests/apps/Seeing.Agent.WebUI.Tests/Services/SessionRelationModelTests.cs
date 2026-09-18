@@ -209,4 +209,40 @@ public class SessionRelationModelTests
 
         rows.Single(r => r.Node.SessionId == "F").Source.Should().Be(RelationTreeModel.SourceMissingText);
     }
+
+    [Fact]
+    public void HasRelatedSessions_WhenSingleAnchorOnly_ShouldBeFalse()
+    {
+        // 单一独立会话（无主线历史、无派生、无子会话）：顶条不渲染
+        var model = RelationTreeModel.Build(new[]
+        {
+            Node("A", SessionRelation.None, anchor: true),
+        });
+
+        model.HasRelatedSessions.Should().BeFalse();
+    }
+
+    [Fact]
+    public void HasRelatedSessions_WhenChildExists_ShouldBeTrue()
+    {
+        var model = RelationTreeModel.Build(new[]
+        {
+            Node("A", SessionRelation.None, anchor: true),
+            Node("C", SessionRelation.Child, parent: "A"),
+        });
+
+        model.HasRelatedSessions.Should().BeTrue();
+    }
+
+    [Fact]
+    public void HasRelatedSessions_WhenHandoffChain_ShouldBeTrue()
+    {
+        var model = RelationTreeModel.Build(new[]
+        {
+            Node("A", SessionRelation.HandoffPredecessor),
+            Node("B", SessionRelation.HandoffSuccessor, parent: "A", anchor: true),
+        });
+
+        model.HasRelatedSessions.Should().BeTrue();
+    }
 }

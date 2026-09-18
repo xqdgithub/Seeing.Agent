@@ -57,8 +57,12 @@
                 <div class="conference-side-area">
                     @foreach (var sec in _sidebarSections)
                     {
-                        <div class="conference-side-section" @key="sec.Section">
-                            <div class="conference-side-section__title">@sec.Title</div>
+                        <div class="conference-side-section @($"conference-side-section--{sec.Section}")" @key="sec.Section">
+                            <div class="conference-side-section__title">
+                                <span class="conference-side-section__dot" aria-hidden="true"></span>
+                                <span>@sec.Title</span>
+                                <span class="conference-side-section__count">@sec.Entries.Count</span>
+                            </div>
                             @foreach (var entry in sec.Entries)
                             {
                                 <ErrorBoundary>
@@ -166,6 +170,12 @@
         /* 覆盖全局 .session-window { flex: 1 }（grow=1/basis=0%）：固定高度不拉伸 */
         flex: 0 0 200px;
         min-height: 200px;
+    }
+
+    /* 已完成（非激活）紧凑卡：高度自适应（不占 200px） */
+    .conference-side-area .session-window--summary.session-window--compact {
+        flex: 0 0 auto;
+        min-height: 0;
     }
 </style>
 

@@ -35,9 +35,6 @@ public static class SessionSummaryView
     /// <summary>预览完整文本的最大长度。</summary>
     public const int PreviewMaxLength = 120;
 
-    /// <summary>紧凑卡片摘要的最大长度。</summary>
-    public const int CompactMaxLength = 20;
-
     /// <summary>预览文本：空的返回"暂无消息"，超长截断并追加省略号。</summary>
     public static string PreviewSnippet(string? full, int max = PreviewMaxLength)
     {
@@ -45,15 +42,6 @@ public static class SessionSummaryView
             return "暂无消息";
 
         return full.Length <= max ? full : full[..max] + "…";
-    }
-
-    /// <summary>紧凑摘要：空的返回"暂无消息"，超长截断并追加省略号。</summary>
-    public static string CompactSnippet(string? preview, int max = CompactMaxLength)
-    {
-        if (string.IsNullOrWhiteSpace(preview))
-            return "暂无消息";
-
-        return preview.Length <= max ? preview : preview[..max] + "…";
     }
 
     /// <summary>执行态 → 摘要状态分层。</summary>

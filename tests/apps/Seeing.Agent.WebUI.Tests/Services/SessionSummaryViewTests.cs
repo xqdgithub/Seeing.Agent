@@ -33,31 +33,15 @@ public class SessionSummaryViewTests
         SessionSummaryView.PreviewSnippet("   ").Should().Be("暂无消息");
     }
 
-    // ---- CompactSnippet ----
-
     [Fact]
-    public void CompactSnippet_ShortText_ShouldReturnAsIs()
+    public void PreviewSnippet_WithMax20_ShouldTruncateAt20WithEllipsis()
     {
-        SessionSummaryView.CompactSnippet("短摘要")
-            .Should().Be("短摘要");
-    }
+        // 紧凑卡使用 20 字上限（12~20 字预览摘要）
+        var text = new string('c', 30);
 
-    [Fact]
-    public void CompactSnippet_LongText_ShouldTruncateAround20WithEllipsis()
-    {
-        var text = new string('b', 30);
+        var result = SessionSummaryView.PreviewSnippet(text, 20);
 
-        var result = SessionSummaryView.CompactSnippet(text);
-
-        result.Should().Be(new string('b', 20) + "…");
-        result.Length.Should().Be(21);
-    }
-
-    [Fact]
-    public void CompactSnippet_Empty_ShouldReturnNoMessage()
-    {
-        SessionSummaryView.CompactSnippet(null).Should().Be("暂无消息");
-        SessionSummaryView.CompactSnippet("").Should().Be("暂无消息");
+        result.Should().Be(new string('c', 20) + "…");
     }
 
     // ---- Classify ----

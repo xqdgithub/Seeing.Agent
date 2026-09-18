@@ -69,6 +69,12 @@ public sealed class RelationTreeModel
     /// <summary>子代理会话数量。</summary>
     public int ChildCount => Children.Count;
 
+    /// <summary>
+    /// 是否存在需要展示的关系（主线历史 &gt; 1 段，或存在派生/子会话）。
+    /// 单一独立会话时为 false，顶部关系条不渲染。
+    /// </summary>
+    public bool HasRelatedSessions => MainLine.Count > 1 || DerivedCount > 0 || ChildCount > 0;
+
     /// <summary>来源缺失（父不存在）时的来源行文案。</summary>
     public const string SourceMissingText = "来源已删除";
 

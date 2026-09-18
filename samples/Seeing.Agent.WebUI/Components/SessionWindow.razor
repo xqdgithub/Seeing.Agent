@@ -45,7 +45,7 @@
 @inject Seeing.Agent.Core.Scenarios.IScenarioCatalog ScenarioCatalog
 @implements IDisposable
 
-<div Class="@($"session-window session-window--{ModeCss}")">
+<div Class="@($"session-window session-window--{ModeCss}{(IsCompactSummary ? " session-window--compact" : "")}")">
     @if (ViewMode == Services.SessionWindowMode.Full)
     {
         @if (Header != null)
@@ -168,29 +168,30 @@
     }
     else
     {
-        @* Summary 模式：状态分层卡片——执行中=大卡+脉冲点+动作行+已运行时长（不渲染进度条）；
-           已完成/子代理=紧凑单行；左侧状态条随代理状态变色，主会话以淡蓝底区分 *@
-        <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main " : "")}{GetStatusBarClass()}{(IsCompactSummary ? " conference-tile--compact" : "")}{(IsChildView ? " conference-tile--readonly" : "")}")" @onclick="OnTileClick">
+        @* Summary 模式：执行中=大卡（脉冲点+动作行+时长）；已完成（非激活侧栏卡）=两行紧凑（预览摘要+来源）；
+           其余状态=完整卡（标题+预览正文+来源）；左侧状态条随代理状态变色，主会话以淡蓝底区分 *@
+        <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main " : "")}{GetStatusBarClass()}{(IsCompactSummary ? " conference-tile--compact" : "")}")" @onclick="OnTileClick">
             @if (IsCompactSummary)
             {
-                <div class="conference-tile-compact">
+                @* 行 1：标题 + 关系徽标 + 状态徽标 + 时间 *@
+                <div class="conference-tile-compact-header">
                     <span class="conference-tile-title">@SessionState.Title</span>
-                    @if (!string.IsNullOrEmpty(GetRelationBadgeText()))
-                    {
-                        <span class="conference-tile-relation">@GetRelationBadgeText()</span>
-                    }
-                    @if (IsChildView)
-                    {
-                        <span class="conference-tile-readonly">只读</span>
-                    }
-                    @* §4.7：紧凑卡也必须保留来源行（不因紧凑化而丢失） *@
+                    <span class="conference-tile-header-right">
+                        @if (!string.IsNullOrEmpty(GetRelationBadgeText()))
+                        {
+                            <span class="conference-tile-relation">@GetRelationBadgeText()</span>
+                        }
+                        <Badge Status="@GetStatusBadge()" />
+                        <span class="conference-tile-time">@GetSummaryTimeText()</span>
+                    </span>
+                </div>
+                @* 行 2：预览摘要（12~20 字）+ 来源小字（预览 flex 撑满并省略，保证可见） *@
+                <div class="conference-tile-compact-meta">
+                    <span class="conference-tile-compact-preview" title="@GetFullPreview()">@GetCompactPreview()</span>
                     @if (!string.IsNullOrEmpty(GetSourceLine()))
                     {
                         <span class="conference-tile-source" title="@GetSourceLine()">@GetSourceLine()</span>
                     }
-                    <span class="conference-tile-compact-preview" title="@GetFullPreview()">@GetCompactPreview()</span>
-                    <span class="conference-tile-time">@GetSummaryTimeText()</span>
-                    <Badge Status="@GetStatusBadge()" />
                 </div>
             }
             else
@@ -213,6 +214,7 @@
                 {
                     <div class="conference-tile-action">@GetCurrentActionLine()</div>
                 }
+                @* 预览正文：沿用原始三分支（最新 assistant 截断 120 字 → 运行中工具 → 暂无消息），始终可见 *@
                 <div class="conference-tile-body">
                     @GetLatestAssistantPreview()
                 </div>
@@ -291,8 +293,12 @@
     /// <summary>Summary 模式：执行中（大卡 + 脉冲点 + 动作行 + 时长）。</summary>
     private bool IsRunningSummary => SummaryStateKind == SummaryState.Running;
 
-    /// <summary>Summary 模式：紧凑单行（已完成或子代理只读）。</summary>
-    private bool IsCompactSummary => IsChildView || SummaryStateKind == SummaryState.Done;
+    /// <summary>
+    /// Summary 模式：已完成（非激活侧栏卡）→ 两行紧凑卡（执行中/排队/失败/取消保持完整卡）。
+    /// 侧栏仅列非 active 会话（active 在主区 Full 渲染），故此处判定即可表达"完成态的非激活会话"。
+    /// </summary>
+    private bool IsCompactSummary =>
+        ViewMode != Services.SessionWindowMode.Full && SummaryStateKind == SummaryState.Done;
 
     /// <summary>
     /// 组件初始化：加载命令列表、加载会话、建立事件流绑定、订阅预算与标题事件。
@@ -833,13 +839,13 @@
     private string GetSourceLine() =>
         Services.SessionSummaryView.SourceLine(GetRelationshipSource(), GetRelationshipOtherTitle());
 
-    /// <summary>Summary 模式：完整预览（hover title，最长 120 字）。</summary>
+    /// <summary>Summary 模式：完整预览（紧凑卡 hover title，≤120 字）。</summary>
     private string GetFullPreview() =>
         Services.SessionSummaryView.PreviewSnippet(GetLatestAssistantPreview());
 
-    /// <summary>Summary 模式：已完成紧凑摘要（12~20 字）。</summary>
+    /// <summary>Summary 模式：紧凑卡预览摘要（12~20 字）。</summary>
     private string GetCompactPreview() =>
-        Services.SessionSummaryView.CompactSnippet(GetLatestAssistantPreview());
+        Services.SessionSummaryView.PreviewSnippet(GetLatestAssistantPreview(), 20);
 
     /// <summary>Summary 模式：紧凑卡时间（今天显示 HH:mm，否则 MM-dd HH:mm）。</summary>
     private string GetSummaryTimeText()
@@ -1686,11 +1692,7 @@
         var lastAssistant = messages.LastOrDefault(m =>
             string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase) && !m.IsSummary);
         if (lastAssistant != null && !string.IsNullOrWhiteSpace(lastAssistant.Content))
-        {
-            return lastAssistant.Content.Length <= 120
-                ? lastAssistant.Content
-                : lastAssistant.Content[..120] + "…";
-        }
+            return Services.SessionSummaryView.PreviewSnippet(lastAssistant.Content);
 
         var runningTool = messages
             .SelectMany(m => m.ToolCalls ?? Enumerable.Empty<SessionToolCall>())

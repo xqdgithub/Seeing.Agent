@@ -147,8 +147,12 @@
             <div class="session-side-area">
                 @foreach (var sec in _sidebarSections)
                 {
-                    <div class="session-side-section" @key="sec.Section">
-                        <div class="session-side-section__title">@sec.Title</div>
+                    <div class="session-side-section @($"session-side-section--{sec.Section}")" @key="sec.Section">
+                        <div class="session-side-section__title">
+                            <span class="session-side-section__dot" aria-hidden="true"></span>
+                            <span>@sec.Title</span>
+                            <span class="session-side-section__count">@sec.Entries.Count</span>
+                        </div>
                         @foreach (var entry in sec.Entries)
                         {
                             <ErrorBoundary>
