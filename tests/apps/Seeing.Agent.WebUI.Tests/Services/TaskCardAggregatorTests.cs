@@ -28,14 +28,25 @@ public class TaskCardAggregatorTests
         return parent;
     }
 
-    private static SessionData CreateChild(string childId, string parentId, string originToolCallId)
+    private static SessionData CreateChild(string childId, string originToolCallId)
     {
         var child = SessionData.Create("p1", "explore");
         child.Id = childId;
         child.Kind = SessionKind.SubAgent;
-        child.ParentSessionId = parentId;
         child.Metadata[SessionMetadataKeys.OriginToolCallId] = originToolCallId;
         return child;
+    }
+
+    private static Mock<ISessionGroupManager> CreateGroupManager(
+        Dictionary<string, SessionData[]> childrenByParent)
+    {
+        var gm = new Mock<ISessionGroupManager>();
+        gm.Setup(m => m.ListChildrenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string parentId, CancellationToken _) =>
+                childrenByParent.TryGetValue(parentId, out var children)
+                    ? (IReadOnlyList<SessionData>)children
+                    : Array.Empty<SessionData>());
+        return gm;
     }
 
     private static Mock<ISessionManager> CreateSessionManagerMock(SessionData parent, SessionData child)
@@ -43,12 +54,14 @@ public class TaskCardAggregatorTests
         var sm = new Mock<ISessionManager>();
         sm.Setup(m => m.Get(parent.Id)).Returns(parent);
         sm.Setup(m => m.Get(child.Id)).Returns(child);
-        sm.Setup(m => m.ListChildrenAsync(parent.Id, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parent.Id, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
         return sm;
     }
+
+    private static TaskCardAggregator CreateAggregator(
+        SessionEventStreamRouter router,
+        Mock<ISessionManager> sm,
+        Mock<ISessionGroupManager> gm)
+        => new(router, sm.Object, new TaskSessionResolver(gm.Object));
 
     private static Mock<IChatOrchestrator> CreateOrchestratorMock(
         Dictionary<string, Channel<IMessageEvent>> channels)
@@ -66,10 +79,11 @@ public class TaskCardAggregatorTests
         var parentId = "parent1";
         var childId = "child1";
         var parent = CreateParentWithTaskCall(parentId, "call-1");
-        var child = CreateChild(childId, parentId, "call-1");
+        var child = CreateChild(childId, "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
         var childChannel = Channel.CreateUnbounded<IMessageEvent>();
         var sm = CreateSessionManagerMock(parent, child);
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
         {
             [parentId] = parentChannel,
@@ -77,7 +91,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
+        var aggregator = CreateAggregator(router, sm, gm);
         var assistantChanged = false;
         aggregator.AssistantChanged += _ => assistantChanged = true;
         aggregator.Rebind(parentId); // 订阅父流
@@ -113,10 +127,11 @@ public class TaskCardAggregatorTests
         var parentId = "parent1";
         var childId = "child1";
         var parent = CreateParentWithTaskCall(parentId, "call-1");
-        var child = CreateChild(childId, parentId, "call-1");
+        var child = CreateChild(childId, "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
         var childChannel = Channel.CreateUnbounded<IMessageEvent>();
         var sm = CreateSessionManagerMock(parent, child);
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
         {
             [parentId] = parentChannel,
@@ -124,7 +139,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
+        var aggregator = CreateAggregator(router, sm, gm);
         aggregator.Rebind(parentId);
 
         // 父流 task 工具调用 → 挂载子流
@@ -177,17 +192,14 @@ public class TaskCardAggregatorTests
         msg.ToolCalls = new List<SessionToolCall> { tc1, tc2 };
         parent.AddMessage(msg);
 
-        var child1 = CreateChild("child1", parentId, "call-1");
-        var child2 = CreateChild("child2", parentId, "call-2");
+        var child1 = CreateChild("child1", "call-1");
+        var child2 = CreateChild("child2", "call-2");
 
         var sm = new Mock<ISessionManager>();
         sm.Setup(m => m.Get(parentId)).Returns(parent);
         sm.Setup(m => m.Get(child1.Id)).Returns(child1);
         sm.Setup(m => m.Get(child2.Id)).Returns(child2);
-        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child1, child2 }));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child1, child2 } });
 
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
         var child1Channel = Channel.CreateUnbounded<IMessageEvent>();
@@ -200,7 +212,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
+        var aggregator = CreateAggregator(router, sm, gm);
         aggregator.Rebind(parentId);
 
         // 父流挂载两个子流
@@ -246,10 +258,11 @@ public class TaskCardAggregatorTests
         var parentId = "parent1";
         var childId = "child1";
         var parent = CreateParentWithTaskCall(parentId, "call-1");
-        var child = CreateChild(childId, parentId, "call-1");
+        var child = CreateChild(childId, "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
         var childChannel = Channel.CreateUnbounded<IMessageEvent>();
         var sm = CreateSessionManagerMock(parent, child);
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
         {
             [parentId] = parentChannel,
@@ -257,7 +270,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
+        var aggregator = CreateAggregator(router, sm, gm);
         aggregator.Rebind(parentId);
 
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
@@ -300,8 +313,8 @@ public class TaskCardAggregatorTests
         msg.ToolCalls = new List<SessionToolCall> { tc1, tc3 };
         parent1Data.AddMessage(msg);
 
-        var child1 = CreateChild("child1", parent1, "call-1");
-        var child3 = CreateChild("child3", parent1, "call-3");
+        var child1 = CreateChild("child1", "call-1");
+        var child3 = CreateChild("child3", "call-3");
         var parent2Data = SessionData.Create("p1", "general");
         parent2Data.Id = parent2;
 
@@ -310,12 +323,11 @@ public class TaskCardAggregatorTests
         sm.Setup(m => m.Get(parent2)).Returns(parent2Data);
         sm.Setup(m => m.Get(child1.Id)).Returns(child1);
         sm.Setup(m => m.Get(child3.Id)).Returns(child3);
-        sm.Setup(m => m.ListChildrenAsync(parent1, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child1, child3 }));
-        sm.Setup(m => m.ListChildrenAsync(parent2, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var gm = CreateGroupManager(new()
+        {
+            [parent1] = new[] { child1, child3 },
+            [parent2] = Array.Empty<SessionData>()
+        });
 
         var parent1Channel = Channel.CreateUnbounded<IMessageEvent>();
         var parent2Channel = Channel.CreateUnbounded<IMessageEvent>();
@@ -330,7 +342,7 @@ public class TaskCardAggregatorTests
         });
 
         using var router = CreateRouter(orchestrator);
-        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
+        var aggregator = CreateAggregator(router, sm, gm);
         aggregator.Rebind(parent1);
 
         // 先挂载 child1（验证父1 订阅有效）
@@ -378,10 +390,11 @@ public class TaskCardAggregatorTests
         var parentId = "parent1";
         var childId = "child1";
         var parent = CreateParentWithTaskCall(parentId, "call-1");
-        var child = CreateChild(childId, parentId, "call-1");
+        var child = CreateChild(childId, "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
         var childChannel = Channel.CreateUnbounded<IMessageEvent>();
         var sm = CreateSessionManagerMock(parent, child);
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
         {
             [parentId] = parentChannel,
@@ -397,7 +410,7 @@ public class TaskCardAggregatorTests
 
         var router = new SessionEventStreamRouter(
             orchestrator.Object, scopeFactory.Object, NullLogger<SessionEventStreamRouter>.Instance);
-        var aggregator = new TaskCardAggregator(router, sm.Object, new TaskSessionResolver(sm.Object));
+        var aggregator = CreateAggregator(router, sm, gm);
         sp.Setup(s => s.GetService(typeof(TaskCardAggregator))).Returns(aggregator);
 
         var agg = router.GetOrCreateConsumer<TaskCardAggregator>(parentId, "circuit-1");

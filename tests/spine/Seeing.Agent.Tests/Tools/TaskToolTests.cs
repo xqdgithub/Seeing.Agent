@@ -42,6 +42,7 @@ public class TaskToolTests
         var tool = new TaskTool(
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
             fixture.ExecService,
@@ -86,6 +87,7 @@ public class TaskToolTests
         var tool = new TaskTool(
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
             fixture.ExecService,
@@ -141,8 +143,8 @@ public class TaskToolTests
         fixture.SessionManager.Setup(s => s.Get(fixture.ParentId)).Returns(parent);
 
         string? capturedScenario = "unset";
-        fixture.SessionManager
-            .Setup(s => s.CreateChildAsync(
+        fixture.GroupManager
+            .Setup(g => g.CreateChildAsync(
                 fixture.ParentId,
                 "explore",
                 It.IsAny<string>(),
@@ -156,6 +158,7 @@ public class TaskToolTests
         var tool = new TaskTool(
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
             fixture.ExecService,
@@ -208,6 +211,7 @@ public class TaskToolTests
         var tool = new TaskTool(
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
             fixture.ExecService,
@@ -241,6 +245,7 @@ public class TaskToolTests
         var tool = new TaskTool(
             NullLogger<TaskTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.AgentRegistry.Object,
             fixture.LoopScheduler.Object,
             fixture.ExecService,
@@ -302,6 +307,7 @@ public class TaskToolTests
         public string ParentId { get; } = "parent-1";
         public SessionData Child { get; }
         public Mock<ISessionManager> SessionManager { get; }
+        public Mock<ISessionGroupManager> GroupManager { get; }
         public Mock<IAgentRegistry> AgentRegistry { get; }
         public Mock<IAgentLoopScheduler> LoopScheduler { get; }
         public ExecutionJobService ExecService { get; }
@@ -323,20 +329,11 @@ public class TaskToolTests
             {
                 Id = "child-1",
                 Kind = SessionKind.SubAgent,
-                ParentSessionId = ParentId,
                 SelectedAgent = "explore",
                 SelectedModel = string.Empty
             };
 
             SessionManager = new Mock<ISessionManager>();
-            SessionManager.Setup(s => s.CreateChildAsync(
-                    ParentId,
-                    agentDef.Name,
-                    It.IsAny<string>(),
-                    It.IsAny<IReadOnlyList<SessionPermissionRule>>(),
-                    It.IsAny<string?>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Child);
             SessionManager.Setup(s => s.AddMessageAsync(
                     Child.Id,
                     It.IsAny<SessionMessage>(),
@@ -353,6 +350,20 @@ public class TaskToolTests
                     It.IsAny<string?>(),
                     It.IsAny<string?>()))
                 .ReturnsAsync(Child);
+
+            GroupManager = new Mock<ISessionGroupManager>();
+            GroupManager.Setup(g => g.CreateChildAsync(
+                    ParentId,
+                    agentDef.Name,
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<SessionPermissionRule>>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Child);
+            GroupManager.Setup(g => g.GetParentAsync(Child.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ParentId);
+            GroupManager.Setup(g => g.ListChildrenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<SessionData> { Child });
 
             AgentRegistry = new Mock<IAgentRegistry>();
             AgentRegistry.Setup(r => r.GetAgentAsync(agentDef.Name)).ReturnsAsync(agentDef);
@@ -447,6 +458,7 @@ public class TaskStatusToolTests
         var tool = new TaskStatusTool(
             NullLogger<TaskStatusTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.ExecService,
             fixture.ExecService);
         var result = await tool.ExecuteAsync(
@@ -468,6 +480,7 @@ public class TaskStatusToolTests
         var tool = new TaskStatusTool(
             NullLogger<TaskStatusTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.ExecService,
             fixture.ExecService);
         var result = await tool.ExecuteAsync(
@@ -489,6 +502,7 @@ public class TaskStatusToolTests
         var tool = new TaskStatusTool(
             NullLogger<TaskStatusTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.ExecService,
             fixture.ExecService);
         var result = await tool.ExecuteAsync(
@@ -514,6 +528,7 @@ public class TaskStatusToolTests
         var tool = new TaskStatusTool(
             NullLogger<TaskStatusTool>.Instance,
             fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
             fixture.ExecService,
             fixture.ExecService);
         var result = await tool.ExecuteAsync(
@@ -650,6 +665,7 @@ public class TaskStatusToolTests
         public string ParentId { get; } = "parent-1";
         public SessionData Child { get; }
         public Mock<ISessionManager> SessionManager { get; }
+        public Mock<ISessionGroupManager> GroupManager { get; }
         public ExecutionJobService ExecService { get; }
         private readonly ServiceProvider _provider;
 
@@ -666,7 +682,6 @@ public class TaskStatusToolTests
             {
                 Id = "child-1",
                 Kind = SessionKind.SubAgent,
-                ParentSessionId = ParentId,
                 SelectedAgent = "explore",
                 SelectedModel = string.Empty
             };
@@ -682,6 +697,12 @@ public class TaskStatusToolTests
                     It.IsAny<string?>(),
                     It.IsAny<string?>()))
                 .ReturnsAsync(Child);
+
+            GroupManager = new Mock<ISessionGroupManager>();
+            GroupManager.Setup(g => g.GetParentAsync(Child.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ParentId);
+            GroupManager.Setup(g => g.ListChildrenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<SessionData> { Child });
 
             var agentRegistry = new Mock<IAgentRegistry>();
             agentRegistry.Setup(r => r.GetAgentAsync(agentDef.Name)).ReturnsAsync(agentDef);

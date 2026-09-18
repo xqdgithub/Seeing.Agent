@@ -14,12 +14,11 @@ namespace Seeing.Agent.WebUI.Tests.Services;
 
 public class ConferenceRegistryTests
 {
-    private static SessionData CreateChild(string childId, string parentId, string originToolCallId)
+    private static SessionData CreateChild(string childId, string originToolCallId)
     {
         var child = SessionData.Create("p1", "explore");
         child.Id = childId;
         child.Kind = SessionKind.SubAgent;
-        child.ParentSessionId = parentId;
         child.Metadata[SessionMetadataKeys.OriginToolCallId] = originToolCallId;
         return child;
     }
@@ -37,20 +36,35 @@ public class ConferenceRegistryTests
         return orchestrator;
     }
 
+    private static Mock<ISessionGroupManager> CreateGroupManager(
+        Dictionary<string, SessionData[]> childrenByParent)
+    {
+        var gm = new Mock<ISessionGroupManager>();
+        gm.Setup(m => m.ListChildrenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string parentId, CancellationToken _) =>
+                childrenByParent.TryGetValue(parentId, out var children)
+                    ? (IReadOnlyList<SessionData>)children
+                    : Array.Empty<SessionData>());
+        return gm;
+    }
+
+    private static ConferenceRegistry CreateRegistry(
+        SessionEventStreamRouter router,
+        Mock<ISessionGroupManager> groupManager)
+        => new(router, Mock.Of<ISessionManager>(), groupManager.Object,
+            new TaskSessionResolver(groupManager.Object));
+
     [Fact]
     public async Task Rebind_ShouldEnumerateChildrenIntoWindows()
     {
         var parentId = "parent1";
-        var child = CreateChild("child1", parentId, "call-1");
+        var child = CreateChild("child1", "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
-        var sm = new Mock<ISessionManager>();
-        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
 
         using var router = CreateRouter(orchestrator);
-        var registry = new ConferenceRegistry(router, sm.Object,
-            new TaskSessionResolver(sm.Object));
+        var registry = CreateRegistry(router, gm);
         registry.Rebind(parentId);
         await Task.Delay(200);
 
@@ -61,22 +75,17 @@ public class ConferenceRegistryTests
     public async Task OnEvent_TaskToolCall_ShouldAddNewWindowAndRaiseChanged()
     {
         var parentId = "parent1";
-        var child = CreateChild("child1", parentId, "call-1");
+        var child = CreateChild("child1", "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
-        var sm = new Mock<ISessionManager>();
-        // 初始枚举返回空（模拟子会话尚未在缓存/磁盘出现），验证"动态识别"路径独立生效
-        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
-        sm.SetupSequence(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
+        var gm = new Mock<ISessionGroupManager>();
+        // 初始枚举返回空（模拟子会话尚未出现），验证"动态识别"路径独立生效
+        gm.SetupSequence(m => m.ListChildrenAsync(parentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<SessionData>())
+            .ReturnsAsync(new[] { child });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
 
         using var router = CreateRouter(orchestrator);
-        var registry = new ConferenceRegistry(router, sm.Object,
-            new TaskSessionResolver(sm.Object));
+        var registry = CreateRegistry(router, gm);
         var changed = 0;
         registry.WindowsChanged += () => changed++;
         registry.Rebind(parentId);
@@ -96,18 +105,13 @@ public class ConferenceRegistryTests
     public async Task OnEvent_DuplicateTaskCall_ShouldNotAddDuplicateWindow()
     {
         var parentId = "parent1";
-        var child = CreateChild("child1", parentId, "call-1");
+        var child = CreateChild("child1", "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
-        var sm = new Mock<ISessionManager>();
-        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
 
         using var router = CreateRouter(orchestrator);
-        var registry = new ConferenceRegistry(router, sm.Object,
-            new TaskSessionResolver(sm.Object));
+        var registry = CreateRegistry(router, gm);
         registry.Rebind(parentId);
         await Task.Delay(200);
         registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
@@ -123,43 +127,16 @@ public class ConferenceRegistryTests
     }
 
     [Fact]
-    public async Task Rebind_DiskFallback_ShouldEnumerateFromStorageWhenMemoryEmpty()
-    {
-        var parentId = "parent1";
-        var child = CreateChild("child1", parentId, "call-1");
-        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
-        var sm = new Mock<ISessionManager>();
-        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
-        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
-
-        using var router = CreateRouter(orchestrator);
-        var registry = new ConferenceRegistry(router, sm.Object,
-            new TaskSessionResolver(sm.Object));
-        registry.Rebind(parentId);
-        await Task.Delay(200);
-
-        registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
-    }
-
-    [Fact]
     public async Task CompletionEvent_ShouldNotRemoveWindow()
     {
         var parentId = "parent1";
-        var child = CreateChild("child1", parentId, "call-1");
+        var child = CreateChild("child1", "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
-        var sm = new Mock<ISessionManager>();
-        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
 
         using var router = CreateRouter(orchestrator);
-        var registry = new ConferenceRegistry(router, sm.Object,
-            new TaskSessionResolver(sm.Object));
+        var registry = CreateRegistry(router, gm);
         registry.Rebind(parentId);
         await Task.Delay(200);
         registry.Windows.Should().ContainSingle(w => w.SessionId == "child1");
@@ -178,19 +155,14 @@ public class ConferenceRegistryTests
     public async Task RemoveWindows_ShouldRemoveMatchingAndRaiseChanged()
     {
         var parentId = "parent1";
-        var child1 = CreateChild("child1", parentId, "call-1");
-        var child2 = CreateChild("child2", parentId, "call-2");
+        var child1 = CreateChild("child1", "call-1");
+        var child2 = CreateChild("child2", "call-2");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
-        var sm = new Mock<ISessionManager>();
-        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child1, child2 }));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child1, child2 } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
 
         using var router = CreateRouter(orchestrator);
-        var registry = new ConferenceRegistry(router, sm.Object,
-            new TaskSessionResolver(sm.Object));
+        var registry = CreateRegistry(router, gm);
         var changed = 0;
         registry.WindowsChanged += () => changed++;
         registry.Rebind(parentId);
@@ -208,18 +180,13 @@ public class ConferenceRegistryTests
     public async Task RemoveWindows_UnknownIds_ShouldNotRaiseChanged()
     {
         var parentId = "parent1";
-        var child = CreateChild("child1", parentId, "call-1");
+        var child = CreateChild("child1", "call-1");
         var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
-        var sm = new Mock<ISessionManager>();
-        sm.Setup(m => m.ListChildrenAsync(parentId, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { child }));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentId, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>> { [parentId] = parentChannel });
 
         using var router = CreateRouter(orchestrator);
-        var registry = new ConferenceRegistry(router, sm.Object,
-            new TaskSessionResolver(sm.Object));
+        var registry = CreateRegistry(router, gm);
         var changed = 0;
         registry.WindowsChanged += () => changed++;
         registry.Rebind(parentId);
@@ -238,27 +205,22 @@ public class ConferenceRegistryTests
     {
         var parentA = "parentA";
         var parentB = "parentB";
-        var childA = CreateChild("childA", parentA, "call-a");
-        var childB = CreateChild("childB", parentB, "call-b");
+        var childA = CreateChild("childA", "call-a");
+        var childB = CreateChild("childB", "call-b");
         var channelA = Channel.CreateUnbounded<IMessageEvent>();
         var channelB = Channel.CreateUnbounded<IMessageEvent>();
-        var sm = new Mock<ISessionManager>();
-        sm.Setup(m => m.ListChildrenAsync(parentA, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { childA }));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentA, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
-        sm.Setup(m => m.ListChildrenAsync(parentB, SessionKind.SubAgent, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(new[] { childB }));
-        sm.Setup(m => m.LoadChildrenFromStorageAsync(parentB, It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult<IReadOnlyList<SessionData>>(Array.Empty<SessionData>()));
+        var gm = CreateGroupManager(new()
+        {
+            [parentA] = new[] { childA },
+            [parentB] = new[] { childB }
+        });
         var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
         {
             [parentA] = channelA, [parentB] = channelB
         });
 
         using var router = CreateRouter(orchestrator);
-        var registry = new ConferenceRegistry(router, sm.Object,
-            new TaskSessionResolver(sm.Object));
+        var registry = CreateRegistry(router, gm);
 
         var changeCount = 0;
         registry.WindowsChanged += () => changeCount++;

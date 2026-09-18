@@ -407,6 +407,11 @@ namespace Seeing.Session.Management
             var child = _sessions.Create(parent.PartitionId, agentName, scenario);
             child.Kind = SessionKind.SubAgent;
             child.Title = title;
+            child.SelectedAgent = agentName;
+            // 默认继承父委派时配置；子 Agent 自带 Model 时由调用方覆盖
+            child.WorkingDirectory = parent.WorkingDirectory;
+            child.SelectedModel = parent.SelectedModel;
+            child.SelectedThinkingEffort = parent.SelectedThinkingEffort;
             child.PermissionSnapshot = snapshot is null
                 ? new List<SessionPermissionRule>()
                 : snapshot.Select(r => new SessionPermissionRule

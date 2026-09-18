@@ -17,6 +17,7 @@ public sealed class ConferenceRegistry : IStreamConsumer
 
     private readonly SessionEventStreamRouter _router;
     private readonly ISessionManager _sessionManager;
+    private readonly ISessionGroupManager _groupManager;
     private readonly TaskSessionResolver _taskResolver;
     private readonly ILogger<ConferenceRegistry>? _logger;
     private readonly List<WindowNode> _windows = new();
@@ -32,11 +33,13 @@ public sealed class ConferenceRegistry : IStreamConsumer
     public ConferenceRegistry(
         SessionEventStreamRouter router,
         ISessionManager sessionManager,
+        ISessionGroupManager groupManager,
         TaskSessionResolver taskResolver,
         ILogger<ConferenceRegistry>? logger = null)
     {
         _router = router ?? throw new ArgumentNullException(nameof(router));
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
+        _groupManager = groupManager ?? throw new ArgumentNullException(nameof(groupManager));
         _taskResolver = taskResolver ?? throw new ArgumentNullException(nameof(taskResolver));
         _logger = logger;
     }
@@ -61,18 +64,14 @@ public sealed class ConferenceRegistry : IStreamConsumer
         _router.AttachConsumer(mainId, this);
     }
 
-    /// <summary>初始/刷新枚举：内存缓存 → 磁盘冷缓存兜底。捕获 parentId 做竞态防护（连续 Rebind 时旧枚举晚到不污染新集合）</summary>
+    /// <summary>初始/刷新枚举：经组管理器查询 Child 关系子会话（内含存储冷兜底）。捕获 parentId 做竞态防护（连续 Rebind 时旧枚举晚到不污染新集合）</summary>
     private async Task EnumerateAsync(string parentId)
     {
         try
         {
-            var children = await _sessionManager.ListChildrenAsync(parentId, SessionKind.SubAgent);
-            _logger?.LogInformation("[ConferenceRegistry] 内存枚举父 {ParentId} 子会话 {Count} 个", parentId, children.Count);
+            var children = await _groupManager.ListChildrenAsync(parentId);
+            _logger?.LogInformation("[ConferenceRegistry] 枚举父 {ParentId} 子会话 {Count} 个", parentId, children.Count);
             AddChildren(parentId, children);
-
-            var diskChildren = await _sessionManager.LoadChildrenFromStorageAsync(parentId);
-            _logger?.LogInformation("[ConferenceRegistry] 磁盘枚举父 {ParentId} 子会话 {Count} 个", parentId, diskChildren.Count);
-            AddChildren(parentId, diskChildren);
         }
         catch (Exception ex)
         {
@@ -99,7 +98,7 @@ public sealed class ConferenceRegistry : IStreamConsumer
             {
                 if (_windows.Any(w => string.Equals(w.SessionId, c.Id, StringComparison.Ordinal)))
                     continue;
-                _windows.Add(new WindowNode(c.Id, c.ParentSessionId, c.Kind, c.Title ?? string.Empty));
+                _windows.Add(new WindowNode(c.Id, parentId, c.Kind, c.Title ?? string.Empty));
                 added = true;
             }
         }

@@ -299,12 +299,12 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
 
         var sessionIds = new List<string> { sessionId };
 
-        // 收集所有子会话（通过 _serviceProvider 解析 ISessionManager 查询）
+        // 收集所有子会话（通过 _serviceProvider 解析 ISessionGroupManager 查询）
         try
         {
             using var scope = _serviceProvider.CreateScope();
-            var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
-            var children = await sessionManager.ListChildrenAsync(sessionId, ct: ct);
+            var groupManager = scope.ServiceProvider.GetRequiredService<ISessionGroupManager>();
+            var children = await groupManager.ListChildrenAsync(sessionId, ct);
             foreach (var child in children)
                 sessionIds.Add(child.Id);
         }

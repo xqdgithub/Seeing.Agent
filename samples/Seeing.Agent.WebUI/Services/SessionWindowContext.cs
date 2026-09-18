@@ -26,6 +26,8 @@ public sealed class SessionWindowContext
     public string Title { get; internal set; } = string.Empty;
     public SessionData? CurrentSession { get; internal set; }
     public bool IsSubAgentView { get; internal set; }
+    /// <summary>当前会话在所属组内的父会话 ID（根会话为 null）</summary>
+    public string? ParentSessionId { get; internal set; }
     public bool IsQueued { get; internal set; }
     public int QueuePosition { get; internal set; }
     public bool HasActiveExecution { get; internal set; }

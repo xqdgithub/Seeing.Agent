@@ -39,6 +39,7 @@
 @inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
 @inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
 @inject ISessionManager SessionManager
+@inject ISessionGroupManager GroupManager
 @inject ISessionEventPublisher SessionEventPublisher
 @inject Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @inject Seeing.Agent.Core.Scenarios.IScenarioCatalog ScenarioCatalog
@@ -108,7 +109,7 @@
                             <div class="subagent-readonly-banner" style="padding: 12px 16px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                                 <Icon Type="@IconType.Outline.Eye" />
                                 <span style="flex: 1;">当前为 Task 子会话（只读）。可返回主会话，或分叉为独立会话后再继续对话。</span>
-                                @if (!string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
+                                @if (!string.IsNullOrEmpty(_parentSessionId))
                                 {
                                     <Button Type="@ButtonType.Default"
                                             Size="@ButtonSize.Small"
@@ -211,6 +212,7 @@
     private string? _boundSessionId;
     private Action<IMessageEvent>? _onHandlerChangedCallback;
     private string? _loadedSessionId;
+    private string? _parentSessionId;
     private string? _renderedTitle;
     private Services.SessionWindowMode _lastViewMode = Services.SessionWindowMode.Full;
     private IDisposable? _budgetSubscription;
@@ -531,6 +533,7 @@
         _handler?.ClearCache();
 
         SessionState.SetSession(sessionData);
+        _parentSessionId = await GroupManager.GetParentAsync(sessionId);
 
         // 桥接仅 Full 模式写全局 SessionState（供 SecurityPage/MainLayout 等读取当前会话）
         if (ViewMode == Services.SessionWindowMode.Full)
@@ -702,7 +705,7 @@
     /// <summary>Summary 模式：父会话标题（子会话经 ParentSessionId 反查；主会话返回空不渲染）</summary>
     private string GetParentSessionTitle()
     {
-        var parentId = SessionState.CurrentSession?.ParentSessionId;
+        var parentId = _parentSessionId;
         if (string.IsNullOrEmpty(parentId))
             return string.Empty;
         var parent = SessionManager.Get(parentId);
@@ -795,6 +798,7 @@
         Context.CurrentSession = s;
         Context.Title = s?.Title ?? "新会话";
         Context.IsSubAgentView = IsSubAgentView;
+        Context.ParentSessionId = _parentSessionId;
         Context.IsQueued = SessionState.IsQueued;
         Context.QueuePosition = SessionState.QueuePosition;
         Context.HasActiveExecution = SessionState.HasActiveExecution;
@@ -1261,7 +1265,7 @@
     /// </summary>
     private void ReturnToParentSession()
     {
-        var parentId = SessionState.CurrentSession?.ParentSessionId;
+        var parentId = _parentSessionId;
         if (string.IsNullOrEmpty(parentId))
             return;
 
@@ -1302,10 +1306,10 @@
             var sessionId = SessionState.CurrentSession.Id;
 
             // 先删除子会话（Task 工具创建的 SubAgent 会话），避免清空后大屏仍显示旧子窗口
-            var children = await SessionManager.ListChildrenAsync(sessionId, SessionKind.SubAgent);
+            var children = await GroupManager.ListChildrenAsync(sessionId);
             foreach (var child in children)
             {
-                SessionManager.Delete(child.Id);
+                await GroupManager.RemoveSessionAsync(child.Id);
             }
             // 通知大屏窗口注册表移除已删除子会话，避免 Summary 卡片残留空窗口
             if (children.Count > 0)

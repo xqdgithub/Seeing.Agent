@@ -17,16 +17,19 @@ namespace Seeing.Agent.Hosting.Tools;
 public class TaskStatusTool : ToolBase
 {
     private readonly ISessionManager _sessionManager;
+    private readonly ISessionGroupManager _groupManager;
     private readonly IExecutionSubmitter _executionSubmitter;
     private readonly IExecutionStatusProvider _execStatusProvider;
 
     public TaskStatusTool(
         ILogger<TaskStatusTool> logger,
         ISessionManager sessionManager,
+        ISessionGroupManager groupManager,
         IExecutionSubmitter executionSubmitter,
         IExecutionStatusProvider execStatusProvider) : base(logger)
     {
         _sessionManager = sessionManager;
+        _groupManager = groupManager;
         _executionSubmitter = executionSubmitter;
         _execStatusProvider = execStatusProvider;
     }
@@ -211,7 +214,7 @@ public class TaskStatusTool : ToolBase
     /// </summary>
     private async Task<ToolResult> GetChildTasksStatusAsync(string parentSessionId)
     {
-        var children = await _sessionManager.ListChildrenAsync(parentSessionId, SessionKind.SubAgent);
+        var children = await _groupManager.ListChildrenAsync(parentSessionId);
         if (children == null || children.Count == 0)
         {
             return Success("no_tasks", "当前会话没有子任务");

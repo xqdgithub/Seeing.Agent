@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Commands.Discovery;
@@ -460,6 +461,34 @@ namespace Seeing.Agent.Core.Extensions
                     globalStore: sp.GetService<GlobalSessionStore>()));
             services.AddSingleton<ISessionManager>(sp =>
                 sp.GetRequiredService<SessionManager>());
+
+            // 会话组存储（关系唯一权威在 SessionGroup）：与会话存储同根目录下 session-groups
+            if (!services.Any(d => d.ServiceType == typeof(ISessionGroupStore)))
+            {
+                services.AddSingleton<ISessionGroupStore>(sp =>
+                {
+                    var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                    var path = Path.Combine(workspace.ProjectSeeingDirectory, "session-groups");
+                    return new FileSessionGroupStore(
+                        path,
+                        sp.GetService<ILogger<FileSessionGroupStore>>());
+                });
+            }
+
+            // 会话分支器（纯消息复制引擎；不承载关系）
+            services.TryAddSingleton(sp =>
+                new SessionForker(
+                    sp.GetService<ILogger<SessionForker>>() ?? NullLogger<SessionForker>.Instance,
+                    sp.GetRequiredService<ISessionManager>()));
+
+            // 会话组管理器：关系（父子 / 分支 / 交接）的唯一权威
+            services.TryAddSingleton(sp =>
+                new SessionGroupManager(
+                    sp.GetRequiredService<ISessionManager>(),
+                    sp.GetRequiredService<ISessionGroupStore>(),
+                    sp.GetService<ILogger<SessionGroupManager>>()));
+            services.TryAddSingleton<ISessionGroupManager>(sp =>
+                sp.GetRequiredService<SessionGroupManager>());
 
             // 工具输出落盘服务（超限工具输出写会话 ref 目录）
             services.AddSingleton<Seeing.Agent.Core.Output.IToolOutputStore>(sp =>

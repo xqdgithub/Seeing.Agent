@@ -24,6 +24,7 @@ namespace Seeing.Agent.Core.Services
 
         private readonly ITextCompletion _text;
         private readonly ISessionManager _sessionManager;
+        private readonly ISessionGroupManager _groupManager;
         private readonly IOptionsMonitor<SeeingAgentOptions> _options;
         private readonly ILogger<SessionTitleService> _logger;
 
@@ -34,11 +35,13 @@ namespace Seeing.Agent.Core.Services
         public SessionTitleService(
             ITextCompletion text,
             ISessionManager sessionManager,
+            ISessionGroupManager groupManager,
             IOptionsMonitor<SeeingAgentOptions> options,
             ILogger<SessionTitleService> logger)
         {
             _text = text;
             _sessionManager = sessionManager;
+            _groupManager = groupManager;
             _options = options;
             _logger = logger;
         }
@@ -160,10 +163,13 @@ namespace Seeing.Agent.Core.Services
                 var activeMessages = session.GetActiveMessages();
                 var realUserCount = CountIntentionalUserMessages(activeMessages);
 
+                var parentId = await _groupManager.GetParentAsync(sessionId, cancellationToken)
+                    .ConfigureAwait(false);
+
                 if (!ShouldEnsure(
                         options.Enabled,
                         session.Kind,
-                        session.ParentSessionId,
+                        parentId,
                         session.Title,
                         realUserCount,
                         userMessage))

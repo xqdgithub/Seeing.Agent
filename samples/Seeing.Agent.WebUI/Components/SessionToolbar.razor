@@ -132,7 +132,7 @@
             }
         </div>
         <div class="session-toolbar-right">
-            @if (Context.IsSubAgentView && !string.IsNullOrEmpty(Context.CurrentSession?.ParentSessionId))
+            @if (Context.IsSubAgentView && !string.IsNullOrEmpty(Context.ParentSessionId))
             {
                 <Button Type="@ButtonType.Text"
                         Size="@ButtonSize.Small"
