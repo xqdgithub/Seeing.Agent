@@ -67,7 +67,7 @@ public sealed class ProviderRegistry : IProviderRegistry
                 DisposeProvider(replacedProvider);
         }
 
-        RaiseProvidersChanged(snapshot);
+        RaiseProvidersChanged(snapshot, changedProviderIds: new[] { provider.Id });
     }
 
     public bool Unregister(string id)
@@ -88,7 +88,7 @@ public sealed class ProviderRegistry : IProviderRegistry
         }
 
         DisposeProvider(removed);
-        RaiseProvidersChanged(snapshot);
+        RaiseProvidersChanged(snapshot, removedProviderIds: new[] { id });
         return true;
     }
 
@@ -98,10 +98,11 @@ public sealed class ProviderRegistry : IProviderRegistry
 
         ILlmProvider[] removed;
         ImmutableDictionary<string, ILlmProvider> snapshot;
+        string[] ids;
 
         lock (_writeLock)
         {
-            var ids = _owners
+            ids = _owners
                 .Where(pair => string.Equals(
                     pair.Value,
                     ownerExtensionId,
@@ -121,7 +122,7 @@ public sealed class ProviderRegistry : IProviderRegistry
         foreach (var provider in removed)
             DisposeProvider(provider);
 
-        RaiseProvidersChanged(snapshot);
+        RaiseProvidersChanged(snapshot, removedProviderIds: ids);
         return removed.Length;
     }
 
@@ -155,6 +156,11 @@ public sealed class ProviderRegistry : IProviderRegistry
     }
 
     private void RaiseProvidersChanged(
-        IReadOnlyDictionary<string, ILlmProvider> providers)
-        => ProvidersChanged?.Invoke(this, new ProvidersChangedEventArgs(providers));
+        IReadOnlyDictionary<string, ILlmProvider> providers,
+        IReadOnlyList<string>? changedProviderIds = null,
+        IReadOnlyList<string>? removedProviderIds = null)
+        => ProvidersChanged?.Invoke(this, new ProvidersChangedEventArgs(
+            providers,
+            changedProviderIds,
+            removedProviderIds));
 }

@@ -114,7 +114,7 @@ public class McpClientManagerDisableTests
             loggerFactory.CreateLogger<ToolManager>(),
             hookManager);
         var factoryRegistry = new McpWrapperFactoryRegistry();
-        factoryRegistry.Register(new Seeing.Agent.Mcp.Factory.StdioWrapperFactory());
+        factoryRegistry.Register(new FakeWrapperFactory());
         var configPersistence = new Mock<IMcpConfigPersistence>().Object;
         return new McpClientManager(
             loggerFactory.CreateLogger<McpClientManager>(),
@@ -124,5 +124,33 @@ public class McpClientManagerDisableTests
             factoryRegistry,
             new McpGlobalPolicy(),
             configPersistence);
+    }
+
+    private sealed class FakeWrapperFactory : IMcpClientWrapperFactory
+    {
+        public McpTransportType TransportType => McpTransportType.Stdio;
+
+        public IMcpClientWrapper Create(
+            McpServerConfig config,
+            IHttpClientFactory? httpClientFactory,
+            ILoggerFactory loggerFactory)
+            => new FakeWrapper();
+    }
+
+    private sealed class FakeWrapper : IMcpClientWrapper
+    {
+        public Task ConnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task DisconnectAsync() => Task.CompletedTask;
+
+        public Task<IReadOnlyList<Seeing.Agent.Mcp.Management.McpToolInfo>> ListToolsAsync(
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<Seeing.Agent.Mcp.Management.McpToolInfo>>([]);
+
+        public Task<McpToolResult> CallToolAsync(
+            string toolName,
+            Dictionary<string, object?> args,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new McpToolResult { IsError = false, Content = "ok" });
     }
 }

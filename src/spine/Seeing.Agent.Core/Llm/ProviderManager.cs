@@ -172,10 +172,11 @@ public class ProviderManager : IProviderManager, IDisposable
 
         providersAtLevel[providerId] = saved;
 
-        await _configManager.SaveSectionAsync("Providers", providersAtLevel, ConfigLevel.User, ct)
+        await _configManager
+            .SaveSectionAsync("Providers", providersAtLevel, ConfigLevel.User, new[] { providerId }, ct)
             .ConfigureAwait(false);
-        await _configManager.ReloadAsync(ct).ConfigureAwait(false);
 
+        // SaveSectionAsync 已同步缓存，无需 ReloadAsync 触发全量重载事件；
         // 自订阅已迁移为 ReloadHandler，保存后需显式刷新配置驱动 Provider
         RefreshConfiguredProviders();
 
@@ -211,10 +212,11 @@ public class ProviderManager : IProviderManager, IDisposable
             return;
         }
 
-        await _configManager.SaveSectionAsync("Providers", providersAtLevel, ConfigLevel.User, ct)
+        await _configManager
+            .SaveSectionAsync("Providers", providersAtLevel, ConfigLevel.User, new[] { providerId }, ct)
             .ConfigureAwait(false);
-        await _configManager.ReloadAsync(ct).ConfigureAwait(false);
 
+        // SaveSectionAsync 已同步缓存，无需 ReloadAsync 触发全量重载事件；
         // 自订阅已迁移为 ReloadHandler，删除后需显式刷新配置驱动 Provider
         RefreshConfiguredProviders();
 
@@ -360,7 +362,11 @@ public class ProviderManager : IProviderManager, IDisposable
     private bool IsExtensionProvider(string providerId)
         => _registry.GetOwnerExtensionId(providerId) is not null;
 
-    private static bool RequiresRebuild(ProviderConfig previous, ProviderConfig current)
+    /// <summary>
+    /// 判断 Provider 实例是否需要重建。模型目录变化由 <see cref="ModelConfigManager"/> 按配置直接刷新，
+    /// 不触发实例重建（避免无谓的注册表变更与全量目录刷新）。
+    /// </summary>
+    internal static bool RequiresRebuild(ProviderConfig previous, ProviderConfig current)
         => previous.Type != current.Type ||
            !string.Equals(previous.ApiKey, current.ApiKey, StringComparison.Ordinal) ||
            !string.Equals(previous.BaseUrl, current.BaseUrl, StringComparison.Ordinal) ||
@@ -371,7 +377,6 @@ public class ProviderManager : IProviderManager, IDisposable
            !string.Equals(previous.Name, current.Name, StringComparison.Ordinal) ||
            previous.MaxRetries != current.MaxRetries ||
            !string.Equals(previous.DefaultModel, current.DefaultModel, StringComparison.Ordinal) ||
-           !DictionaryEqual(previous.Models, current.Models) ||
            !DictionaryEqual(previous.Options, current.Options);
 
     private static bool DictionaryEqual<TValue>(

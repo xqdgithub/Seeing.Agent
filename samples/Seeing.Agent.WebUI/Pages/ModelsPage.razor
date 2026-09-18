@@ -613,8 +613,26 @@
             return;
         }
 
-        await ModelManager.DeleteModelAsync(row.Key, _saveLevel);
-        await ModelManager.RefreshCatalogAsync(_selectedProviderId);
+        try
+        {
+            await ModelManager.DeleteModelAsync(row.Key, _saveLevel);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败: {ex.Message}");
+            return;
+        }
+
+        // 目录刷新失败不应吞掉删除结果反馈（Popconfirm 依赖本方法正常返回才会关闭）
+        try
+        {
+            await ModelManager.RefreshCatalogAsync(_selectedProviderId);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Warning($"模型已删除，但目录刷新失败: {ex.Message}");
+        }
+
         RefreshModelRows();
         MessageService.Success($"已删除模型 {row.Key}");
     }

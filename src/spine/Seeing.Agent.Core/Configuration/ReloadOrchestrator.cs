@@ -192,7 +192,11 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
             EnqueueFullReload();
             return;
         }
-        _ = ReloadAsync(new ConfigChange { ChangedSections = e.ChangedSections });
+        _ = ReloadAsync(new ConfigChange
+        {
+            ChangedSections = e.ChangedSections,
+            ChangedKeys = e.ChangedKeys
+        });
     }
 
     private void OnWorkspaceChanged(object? sender, WorkspaceChangedEventArgs e)

@@ -36,6 +36,14 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     /// </summary>
     public const ConfigLevel ModelStoreLevel = ConfigLevel.User;
 
+    private static readonly TimeSpan DefaultExtensionModelsLoadTimeout = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// 单个扩展 Provider 模型目录加载的超时上限（默认 15s）。
+    /// 用于防止不可达的 Provider 让单线程刷新队列无界阻塞。
+    /// </summary>
+    internal TimeSpan ExtensionModelsLoadTimeout { get; set; } = DefaultExtensionModelsLoadTimeout;
+
     /// <summary>模型配置变更事件</summary>
     public event EventHandler<ModelConfigChangedEventArgs>? ModelConfigChanged;
 
@@ -177,7 +185,11 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         CancellationToken ct = default)
     {
         var providerId = RequireWritableProvider(config.Provider);
-        if (!await SaveProviderModelsAsync(providerId, models => models[NormalizeModelId(modelId, providerId)] = config, level, ct))
+        if (!await SaveProviderModelsAsync(providerId, models =>
+            {
+                models[NormalizeModelId(modelId, providerId)] = config;
+                return true;
+            }, level, ct))
             return;
 
         ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
@@ -204,7 +216,11 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             return;
 
         config.Provider = providerId;
-        if (!await SaveProviderModelsAsync(providerId, models => models[NormalizeModelId(modelId, providerId)] = config, level, ct))
+        if (!await SaveProviderModelsAsync(providerId, models =>
+            {
+                models[NormalizeModelId(modelId, providerId)] = config;
+                return true;
+            }, level, ct))
             return;
 
         ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
@@ -228,7 +244,10 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
         var providerId = ResolveWritableProvider(modelId, oldConfig);
         if (!await SaveProviderModelsAsync(providerId, models => models.Remove(NormalizeModelId(modelId, providerId)), level, ct))
+        {
+            _logger.LogDebug("模型不存在或 Provider 不可写，跳过删除: {ModelId}", modelId);
             return;
+        }
 
         ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
         {
@@ -261,6 +280,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
                 destination.Clear();
                 foreach (var (modelId, config) in models)
                     destination[NormalizeModelId(modelId, providerId)] = config;
+                return true;
             },
             level,
             ct);
@@ -287,10 +307,25 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     #region 私有方法
 
     private void OnProvidersChanged(object? sender, ProvidersChangedEventArgs e)
-        => EnqueueRefresh("provider-registry");
+    {
+        // 无粒度信息（如手工构造的事件）→ 回退全量刷新
+        if (e.ChangedProviderIds.Count == 0 && e.RemovedProviderIds.Count == 0)
+        {
+            EnqueueRefresh("provider-registry");
+            return;
+        }
+
+        // 新增/替换 → 仅刷新该 Provider；移除 → 仅清理该 Provider 的缓存条目
+        foreach (var providerId in e.ChangedProviderIds.Concat(e.RemovedProviderIds).Distinct())
+            EnqueueProviderRefresh("provider-registry", providerId);
+    }
 
     internal void EnqueueRefresh(string source)
         => EnqueueRefresh(source, providerId: null, completion: null);
+
+    /// <summary>按 Provider 粒度刷新（供配置变更 / 注册表作用域变更使用）。</summary>
+    internal void EnqueueProviderRefresh(string source, string providerId)
+        => EnqueueRefresh(source, providerId, completion: null);
 
     private void EnqueueRefresh(string source, string? providerId, TaskCompletionSource? completion)
     {
@@ -518,12 +553,22 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     {
         try
         {
-            var models = await provider.GetModelsAsync(ct).ConfigureAwait(false);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(ExtensionModelsLoadTimeout);
+            var models = await provider.GetModelsAsync(timeoutCts.Token).ConfigureAwait(false);
             return new KeyValuePair<string, IReadOnlyList<ModelConfig>>(providerId, models);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "加载 Provider {ProviderId} 模型目录超时（{Timeout}ms），已跳过",
+                providerId,
+                ExtensionModelsLoadTimeout.TotalMilliseconds);
+            return new KeyValuePair<string, IReadOnlyList<ModelConfig>>(providerId, []);
         }
         catch (Exception ex)
         {
@@ -651,7 +696,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
     private async Task<bool> SaveProviderModelsAsync(
         string providerId,
-        Action<Dictionary<string, ModelConfig>> update,
+        Func<Dictionary<string, ModelConfig>, bool> update,
         ConfigLevel level,
         CancellationToken ct)
     {
@@ -680,12 +725,14 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         provider.Id = providerId;
 
         var models = new Dictionary<string, ModelConfig>(provider.Models ?? []);
-        update(models);
+        if (!update(models))
+            return false;
+
         provider.Models = models;
         providers[providerId] = provider;
 
         await _configManager
-            .SaveSectionAsync("Providers", providers, ModelStoreLevel, ct)
+            .SaveSectionAsync("Providers", providers, ModelStoreLevel, new[] { providerId }, ct)
             .ConfigureAwait(false);
 
         // 写操作已知目标 Provider：仅按 providerId 增量刷新该 slice，避免无条件全量刷新

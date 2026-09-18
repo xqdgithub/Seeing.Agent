@@ -198,15 +198,13 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             config,
             registry,
             NullLogger<ModelConfigManager>.Instance);
-        var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        catalog.ModelConfigChanged += (_, _) => refreshed.TrySetResult();
 
-        registry.Register(new TestProvider("trigger"), ownerExtensionId: "sequence");
         await provider.FirstCallStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        registry.Register(new TestProvider("trigger"), ownerExtensionId: "sequence");
-        provider.ReleaseFirstCall.SetResult();
 
-        await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        // 首个全量刷新仍挂起时再排一次全量刷新，使首个结果过期
+        var latestRefresh = catalog.RefreshCatalogAsync();
+        provider.ReleaseFirstCall.SetResult();
+        await latestRefresh.WaitAsync(TimeSpan.FromSeconds(5));
 
         catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("sequence/latest");
     }
@@ -308,6 +306,102 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         await catalog.RefreshCatalogAsync("openai");
 
         catalog.GetModels().Keys.Should().BeEquivalentTo("openai/gpt", "openai/added");
+    }
+
+    [Fact]
+    public async Task ProvidersChanged_UnregisterOneProvider_DoesNotReloadRemainingProviders()
+    {
+        var config = await CreateConfigAsync(new SeeingAgentOptions());
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        var first = new MutableModelsProvider("first");
+        first.SetModels([new ModelConfig { Id = "a" }]);
+        var second = new MutableModelsProvider("second");
+        second.SetModels([new ModelConfig { Id = "b" }]);
+        registry.Register(first, ownerExtensionId: "ext");
+        registry.Register(second, ownerExtensionId: "ext");
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(() => catalog.GetModels().Count == 2, TimeSpan.FromSeconds(5));
+        var firstCalls = first.CallCount;
+
+        registry.Unregister("second");
+
+        await WaitUntilAsync(
+            () => catalog.GetModels().Keys.All(key => !key.StartsWith("second/", StringComparison.Ordinal)),
+            TimeSpan.FromSeconds(5));
+
+        first.CallCount.Should().Be(firstCalls);
+    }
+
+    [Fact]
+    public async Task DeleteModelAsync_AlreadyDeleted_DoesNotPersistAgain()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["gpt"] = new() { Id = "gpt" }
+                }
+            }
+        };
+        var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        registry.Register(new TestProvider("openai", [new() { Id = "gpt" }]));
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => catalog.GetModels().ContainsKey("openai/gpt"),
+            TimeSpan.FromSeconds(5));
+
+        var providersSaves = 0;
+        config.ConfigChanged += (_, e) =>
+        {
+            if (e.ChangedSections.Contains("Providers", StringComparer.Ordinal))
+                Interlocked.Increment(ref providersSaves);
+        };
+
+        await catalog.DeleteModelAsync("openai/gpt");
+        await catalog.DeleteModelAsync("openai/gpt");
+
+        providersSaves.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ModelReloadHandler_ScopedProvidersChange_RefreshesOnlyThatProvider()
+    {
+        var config = await CreateConfigAsync(new SeeingAgentOptions());
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        var first = new MutableModelsProvider("first");
+        first.SetModels([new ModelConfig { Id = "a" }]);
+        var second = new MutableModelsProvider("second");
+        second.SetModels([new ModelConfig { Id = "b" }]);
+        registry.Register(first, ownerExtensionId: "ext");
+        registry.Register(second, ownerExtensionId: "ext");
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(() => catalog.GetModels().Count == 2, TimeSpan.FromSeconds(5));
+        var firstCalls = first.CallCount;
+        var secondCalls = second.CallCount;
+
+        var handler = new ModelReloadHandler(catalog);
+        await ((IReloadHandler)handler).ReloadAsync(
+            new ConfigChange { ChangedSections = ["Providers"], ChangedKeys = ["first"] },
+            TestContext.Current.CancellationToken);
+
+        await WaitUntilAsync(() => first.CallCount > firstCalls, TimeSpan.FromSeconds(5));
+        second.CallCount.Should().Be(secondCalls);
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)

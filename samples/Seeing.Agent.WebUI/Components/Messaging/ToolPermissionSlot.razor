@@ -1,0 +1,108 @@
+@using Seeing.Agent.Abstractions.Permissions
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Services
+@inject SessionEventStreamRouter PermissionRouter
+@inject CircuitContext PermissionCircuit
+@inject PermissionInteractionService PermissionActions
+@implements IDisposable
+
+@* 工具级权限内联槽位：按 CallId 关联本工具调用的在途审批卡片，紧随工具卡下方渲染（决议后即消失） *@
+@if (_cards.Count > 0)
+{
+    <div class="tool-permission-slot" style="display: flex; flex-direction: column; gap: 6px;">
+        @foreach (var card in _cards)
+        {
+            <PermissionCard @key="card.RequestId"
+                            Card="card"
+                            OnAllowOnce="OnAllowOnceAsync"
+                            OnAllowSession="OnAllowSessionAsync"
+                            OnAllowSessionDirectory="OnAllowSessionDirectoryAsync"
+                            OnDenyOnce="OnDenyOnceAsync"
+                            OnDenySession="OnDenySessionAsync" />
+        }
+    </div>
+}
+
+@code {
+    /// <summary>关联的工具调用 ID（内联卡片关联键）。</summary>
+    [Parameter]
+    public string? CallId { get; set; }
+
+    private PermissionCardAggregator? _aggregator;
+    private Action? _onChanged;
+    private string? _lastCallId;
+    private IReadOnlyList<PermissionCardModel> _cards = Array.Empty<PermissionCardModel>();
+
+    protected override void OnInitialized()
+    {
+        var circuitId = PermissionCircuit.Id ?? string.Empty;
+        _aggregator = PermissionRouter.GetOrCreateCircuitConsumer<PermissionCardAggregator>(circuitId);
+        _onChanged = OnCardsChanged;
+        _aggregator.Changed += _onChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.Equals(_lastCallId, CallId, StringComparison.Ordinal))
+        {
+            _lastCallId = CallId;
+            Refresh();
+        }
+    }
+
+    private void OnCardsChanged()
+    {
+        Refresh();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>取本工具调用关联的在途卡片（决议后从槽位移除）。</summary>
+    private void Refresh()
+    {
+        if (_aggregator is null || string.IsNullOrEmpty(CallId))
+        {
+            _cards = Array.Empty<PermissionCardModel>();
+            return;
+        }
+
+        _cards = _aggregator.GetByCallId(CallId)
+            .Where(c => c.IsPending)
+            .ToList();
+    }
+
+    private Task OnAllowOnceAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowOnce(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnAllowSessionAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowSession(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnAllowSessionDirectoryAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowSessionDirectory(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDenyOnceAsync(PermissionCardModel card)
+    {
+        PermissionActions.DenyOnce(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDenySessionAsync(PermissionCardModel card)
+    {
+        PermissionActions.DenySession(card);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        if (_aggregator is not null && _onChanged is not null)
+            _aggregator.Changed -= _onChanged;
+    }
+}

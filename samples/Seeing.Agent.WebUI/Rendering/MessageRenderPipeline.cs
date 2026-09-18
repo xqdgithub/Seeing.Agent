@@ -241,6 +241,14 @@ public class MessageRenderPipeline : IMessageRenderPipeline
                     _logger.LogWarning("No component or renderer found for block {BlockType}", block.Type);
                 }
 
+                // 工具块后内联权限槽位：按 CallId 关联在途审批卡片（管线不持有权限状态）
+                if (block.Type == ContentBlockType.ToolCall && !string.IsNullOrEmpty(block.ToolCall?.Id))
+                {
+                    builder.OpenComponent<ToolPermissionSlot>(100);
+                    builder.AddAttribute(101, nameof(ToolPermissionSlot.CallId), block.ToolCall!.Id);
+                    builder.CloseComponent();
+                }
+
                 builder.CloseRegion();
 #pragma warning restore ASP0006
             }

@@ -280,11 +280,31 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     // ===== 配置保存 =====
     
     /// <summary>保存配置节到指定级别</summary>
-    public async Task SaveSectionAsync<T>(
+    public Task SaveSectionAsync<T>(
         string sectionName,
         T value,
         ConfigLevel level = ConfigLevel.Project,
         CancellationToken ct = default) where T : class
+        => SaveSectionCoreAsync(sectionName, value, level, changedKeys: null, ct);
+
+    /// <summary>
+    /// 保存配置节并声明节内细粒度变更键（如 Providers 节下变更的 provider id），
+    /// 供 ReloadHandler 做作用域刷新而非全量刷新。
+    /// </summary>
+    public Task SaveSectionAsync<T>(
+        string sectionName,
+        T value,
+        ConfigLevel level,
+        IReadOnlyList<string>? changedKeys,
+        CancellationToken ct = default) where T : class
+        => SaveSectionCoreAsync(sectionName, value, level, changedKeys, ct);
+
+    private async Task SaveSectionCoreAsync<T>(
+        string sectionName,
+        T value,
+        ConfigLevel level,
+        IReadOnlyList<string>? changedKeys,
+        CancellationToken ct) where T : class
     {
         if (!_sectionRegistry.TryGet(sectionName, out var meta))
             throw new ArgumentException($"未注册的配置节: {sectionName}");
@@ -310,7 +330,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         }
         
         UpdateCache(sectionName, value, level);
-        OnConfigChanged(new[] { sectionName });
+        OnConfigChanged(new[] { sectionName }, changedKeys);
         
         _logger.LogInformation("配置节 {Section} 已保存到 {Level}级", sectionName, level == ConfigLevel.User ? "用户" : "项目");
     }
@@ -732,11 +752,12 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         }
     }
     
-    private void OnConfigChanged(string[] changedSections)
+    private void OnConfigChanged(string[] changedSections, IReadOnlyList<string>? changedKeys = null)
     {
         ConfigChanged?.Invoke(this, new ConfigChangedEventArgs
         {
-            ChangedSections = changedSections
+            ChangedSections = changedSections,
+            ChangedKeys = changedKeys ?? Array.Empty<string>()
         });
     }
 }

@@ -13,6 +13,9 @@ public sealed class OpenCodeZenModelsClient
     /// <summary>OpenCode Zen 默认网关地址</summary>
     public const string DefaultBaseUrl = "https://opencode.ai/zen/v1";
 
+    /// <summary>默认请求超时：避免不可达端点长时间阻塞模型目录刷新。</summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -31,7 +34,8 @@ public sealed class OpenCodeZenModelsClient
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _http = new HttpClient(handler, disposeHandler: true)
         {
-            BaseAddress = new Uri(DefaultBaseUrl.TrimEnd('/') + "/")
+            BaseAddress = new Uri(DefaultBaseUrl.TrimEnd('/') + "/"),
+            Timeout = DefaultTimeout
         };
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }

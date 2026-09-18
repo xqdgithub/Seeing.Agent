@@ -15,8 +15,25 @@ public sealed class ModelReloadHandler : ReloadHandlerBase<ConfigChange>
     /// <inheritdoc />
     protected override Task ReloadAsync(ConfigChange change, CancellationToken ct)
     {
-        if (change.ChangedSections.Count == 0 || change.ChangedSections.Contains("Providers"))
+        if (change.ChangedSections.Count == 0)
+        {
             _manager.EnqueueRefresh("configuration");
+            return Task.CompletedTask;
+        }
+
+        if (!change.ChangedSections.Contains("Providers"))
+            return Task.CompletedTask;
+
+        // Providers 节带作用域 → 仅刷新目标 Provider；无作用域 → 回退全量
+        if (change.ChangedKeys.Count == 0)
+        {
+            _manager.EnqueueRefresh("configuration");
+            return Task.CompletedTask;
+        }
+
+        foreach (var providerId in change.ChangedKeys)
+            _manager.EnqueueProviderRefresh("configuration", providerId);
+
         return Task.CompletedTask;
     }
 }

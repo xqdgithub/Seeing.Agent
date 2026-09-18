@@ -11,6 +11,12 @@ public sealed class ConfigChangedEventArgs : EventArgs
     /// </summary>
     public string[] ChangedSections { get; init; } = Array.Empty<string>();
 
+    /// <summary>
+    /// 变更节内的细粒度键（如 Providers 节下变更的 provider id）。
+    /// <para>空表示未提供作用域，消费方应回退为按节全量处理。</para>
+    /// </summary>
+    public IReadOnlyList<string> ChangedKeys { get; init; } = Array.Empty<string>();
+
     /// <summary>变更时间</summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
 

@@ -53,6 +53,26 @@ public class ReloadOrchestratorTests
     }
 
     [Fact]
+    public async Task ChangedKeys_透传到ConfigChange()
+    {
+        var (orch, handler) = CreateOrchestrator(out var configStore, out _);
+        ConfigChange? received = null;
+        handler.OnConfig = cfg =>
+        {
+            received = cfg;
+            return Task.CompletedTask;
+        };
+
+        configStore.Raise(x => x.ConfigChanged += null,
+            new ConfigChangedEventArgs { ChangedSections = ["Providers"], ChangedKeys = ["trip"] });
+
+        await Task.Delay(300);
+
+        received.Should().NotBeNull();
+        received!.ChangedKeys.Should().BeEquivalentTo("trip");
+    }
+
+    [Fact]
     public async Task WorkspaceChanged_构造WorkspaceChange()
     {
         var (orch, handler) = CreateOrchestrator(out var configStore, out var workspace);

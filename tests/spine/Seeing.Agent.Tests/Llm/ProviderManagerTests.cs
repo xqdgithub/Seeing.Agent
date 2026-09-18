@@ -26,6 +26,44 @@ public class ProviderManagerTests : IDisposable
         Path.Combine(Path.GetTempPath(), "provider-manager-" + Guid.NewGuid().ToString("N"));
 
     [Fact]
+    public void RequiresRebuild_ModelDirectoryChangeOnly_ReturnsFalse()
+    {
+        var previous = new ProviderConfig
+        {
+            Id = "p",
+            Type = ProviderTypes.OpenAi,
+            Models = new Dictionary<string, ModelConfig> { ["a"] = new() { Id = "a" } }
+        };
+        var current = new ProviderConfig
+        {
+            Id = "p",
+            Type = ProviderTypes.OpenAi,
+            Models = new Dictionary<string, ModelConfig> { ["b"] = new() { Id = "b" } }
+        };
+
+        ProviderManager.RequiresRebuild(previous, current).Should().BeFalse();
+    }
+
+    [Fact]
+    public void RequiresRebuild_ConnectionChange_ReturnsTrue()
+    {
+        var previous = new ProviderConfig
+        {
+            Id = "p",
+            Type = ProviderTypes.OpenAi,
+            BaseUrl = "https://old"
+        };
+        var current = new ProviderConfig
+        {
+            Id = "p",
+            Type = ProviderTypes.OpenAi,
+            BaseUrl = "https://new"
+        };
+
+        ProviderManager.RequiresRebuild(previous, current).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ProviderReloadHandler_配置变更触发刷新()
     {
         var providers = new Dictionary<string, ProviderConfig>
