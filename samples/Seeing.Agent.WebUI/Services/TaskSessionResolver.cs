@@ -4,7 +4,7 @@ namespace Seeing.Agent.WebUI.Services;
 
 /// <summary>
 /// 共享的 task 工具调用 → 子会话 ID 解析器（Scoped，注入 ISessionGroupManager）。
-/// 从 TaskCardAggregator.ResolveTaskIdAsync 提取，TaskCardAggregator 与 ConferenceRegistry 共用：
+/// 从 TaskCardAggregator.ResolveTaskIdAsync 提取，TaskCardAggregator 复用：
 /// origin_tool_call_id 精确匹配（组管理器内含缓存枚举 → 存储冷兜底）。
 /// </summary>
 public sealed class TaskSessionResolver

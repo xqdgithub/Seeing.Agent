@@ -102,7 +102,7 @@ builder.Services.AddScoped<TaskCardAggregator>();
 builder.Services.AddScoped<PermissionCardAggregator>();
 builder.Services.AddScoped<PermissionInteractionService>();
 builder.Services.AddScoped<TaskSessionResolver>();
-builder.Services.AddScoped<ConferenceRegistry>();
+builder.Services.AddScoped<SessionWindowRegistry>();
 
 // EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
 // 此处保留的 Scoped 注册作为全局事件处理占位实例（sessionId 为空串）。
