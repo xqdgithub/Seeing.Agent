@@ -39,24 +39,6 @@ namespace Seeing.Session.Management
             _logger = logger ?? NullLogger<SessionGroupManager>.Instance;
         }
 
-        /// <summary>
-        /// 兼容旧签名的构造（未显式注入 <see cref="SessionForker"/> 时自建默认分支器）。
-        /// <para>生产代码请使用注入 <see cref="SessionForker"/> 的构造，以复用 DI 单例。</para>
-        /// </summary>
-        public SessionGroupManager(
-            ISessionManager sessions,
-            ISessionGroupStore store,
-            ILogger<SessionGroupManager>? logger = null)
-            : this(
-                sessions,
-                store,
-                new SessionForker(
-                    NullLogger<SessionForker>.Instance,
-                    sessions ?? throw new ArgumentNullException(nameof(sessions))),
-                logger)
-        {
-        }
-
         // ============================ 组管理 ============================
 
         /// <inheritdoc/>
@@ -600,8 +582,8 @@ namespace Seeing.Session.Management
         }
 
         /// <summary>
-        /// 校验 §4.5.12 成员不变量：
-        /// 非锚点成员 <c>Relation==Child</c> 时其会话 <c>Kind</c> 必须为 <see cref="SessionKind.SubAgent"/>；
+        /// 校验 §4.5.12 成员不变量（非锚点成员双向）：
+        /// <c>Relation==Child</c> ⇔ 会话 <see cref="SessionKind.SubAgent"/>；
         /// 锚点成员必须 <c>Relation==None</c>。
         /// </summary>
         private void ValidateMemberInvariant(SessionGroupMember member)
@@ -614,13 +596,20 @@ namespace Seeing.Session.Management
                 return;
             }
 
+            var session = _sessions.Get(member.SessionId);
+
             if (member.Relation == SessionRelation.Child)
             {
-                var session = _sessions.Get(member.SessionId);
                 if (session == null || session.Kind != SessionKind.SubAgent)
                     throw new InvalidOperationException(
                         $"非锚点 Child 成员必须对应 SubAgent 会话：SessionId={member.SessionId}, Kind={session?.Kind.ToString() ?? "missing"}");
+                return;
             }
+
+            // 反向：SubAgent 会话不得挂 Fork / HandoffSuccessor / None 等非 Child 关系
+            if (session?.Kind == SessionKind.SubAgent)
+                throw new InvalidOperationException(
+                    $"非锚点 SubAgent 成员必须 Relation=Child：SessionId={member.SessionId}, Relation={member.Relation}");
         }
 
         private static void Touch(SessionGroup group)

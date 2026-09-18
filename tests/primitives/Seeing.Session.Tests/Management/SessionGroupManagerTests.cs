@@ -426,4 +426,36 @@ public class SessionGroupManagerTests
 
         await act.Should().NotThrowAsync();
     }
+
+    [Fact]
+    public async Task AddMemberAsync_NonAnchorSubAgentWithForkRelation_ShouldThrow()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var sub = h.CreatePlainSession(SessionKind.SubAgent);
+
+        var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = sub.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_NonAnchorSubAgentWithHandoffSuccessorRelation_ShouldThrow()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var sub = h.CreatePlainSession(SessionKind.SubAgent);
+
+        var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = sub.Id, Relation = SessionRelation.HandoffSuccessor, ParentSessionId = root.Id
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
 }

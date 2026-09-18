@@ -193,6 +193,7 @@ public class ChatOrchestratorCreateSessionTests
                 sessionManager,
                 new Seeing.Session.Storage.FileSessionGroupStore(
                     Path.Combine(Path.GetTempPath(), "seeing-grp-tests", Guid.NewGuid().ToString("N"))),
+                new SessionForker(NullLogger<SessionForker>.Instance, sessionManager),
                 NullLogger<SessionGroupManager>.Instance),
             agentRegistry: agentRegistry,
             workspaceProvider: Mock.Of<IWorkspaceProvider>(),
