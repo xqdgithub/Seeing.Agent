@@ -33,6 +33,7 @@ using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Core.Decorators;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Core.Hosting;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Core.CapabilitySets;
@@ -491,6 +492,10 @@ namespace Seeing.Agent.Core.Extensions
             services.TryAddSingleton<ISessionGroupManager>(sp =>
                 sp.GetRequiredService<SessionGroupManager>());
 
+            // 会话组事件总线 + 管理器→总线桥接（UI 订阅组变更快照）
+            services.AddSingleton<ISessionGroupEventBus, ChannelSessionGroupEventBus>();
+            services.AddHostedService<SessionGroupEventBridge>();
+
             // 工具输出落盘服务（超限工具输出写会话 ref 目录）
             services.AddSingleton<Seeing.Agent.Core.Output.IToolOutputStore>(sp =>
                 new Seeing.Agent.Core.Output.SessionToolOutputStore(
@@ -686,6 +691,7 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<IReloadHandler, AgentRuntimeReloadHandler>();
             services.AddSingleton<IReloadHandler, AgentManagerReloadHandler>();
             services.AddSingleton<IReloadHandler, SessionReloadHandler>();
+            services.AddSingleton<IReloadHandler, SessionGroupReloadHandler>();
             services.AddSingleton<IReloadHandler>(sp => sp.GetRequiredService<ComponentManager>());
             // 进程级模块结算热重载（在途边界；IExecutionInFlightBoundary 由 Hosting 可选登记）
             services.AddSingleton<ModuleSettlementReloadHandler>(sp =>
