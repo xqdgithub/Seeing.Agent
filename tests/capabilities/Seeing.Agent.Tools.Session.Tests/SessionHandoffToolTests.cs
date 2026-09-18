@@ -158,6 +158,37 @@ public class SessionHandoffToolTests
     }
 
     [Fact]
+    public async Task Handoff_Should_Fail_WhenSourceIsNotAnchor()
+    {
+        using var h = new SessionToolTestHarness();
+        var root = await h.CreateRootGroupedAsync("root");
+        await h.AddMessageAsync(root.Id, "user", "hello");
+
+        // 源已是前任（已有后继）：将其标记为非锚点 HandoffPredecessor
+        var group = await h.Groups.GetGroupForSessionAsync(root.Id);
+        await h.Groups.AddMemberAsync(group!.Id, new SessionGroupMember
+        {
+            SessionId = root.Id,
+            Relation = SessionRelation.HandoffPredecessor,
+            IsAnchor = false,
+        });
+
+        var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Succeeded("exec-1"));
+        var factory = new StubPermissionAuthorizerFactory(PermissionEffect.Allow);
+        var tool = CreateTool(h, submitter);
+
+        var result = await tool.ExecuteAsync(
+            Args(new { prompt = "continue work" }), Context(root.Id, factory));
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("锚点");
+        submitter.SubmitCount.Should().Be(0);
+
+        var members = await h.Groups.ListMembersAsync(group.Id);
+        members.Should().NotContain(m => m.Relation == SessionRelation.HandoffSuccessor);
+    }
+
+    [Fact]
     public async Task Handoff_Should_Fail_WhenPromptMissing()
     {
         using var h = new SessionToolTestHarness();

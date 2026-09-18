@@ -180,7 +180,17 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        // 先取消子会话在途执行，再交给组管理器递归删除 Child 子树，避免孤儿数据与悬挂执行
+        // 先取消被删会话自身的在途执行，避免删除后执行仍向已移除会话写入
+        try
+        {
+            await _executionJobService.CancelBySessionAsync(sessionId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "删除会话时取消自身执行失败: {SessionId}", sessionId);
+        }
+
+        // 再取消子会话在途执行，然后交给组管理器递归删除 Child 子树，避免孤儿数据与悬挂执行
         var children = await _groupManager.ListChildrenAsync(sessionId, cancellationToken);
         foreach (var child in children)
         {

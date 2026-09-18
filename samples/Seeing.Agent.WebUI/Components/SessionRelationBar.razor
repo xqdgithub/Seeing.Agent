@@ -1,0 +1,63 @@
+@namespace Seeing.Agent.WebUI.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Seeing.Session.Core
+@using Seeing.Agent.WebUI.Services
+
+@if (Model is not null && Model.MainLine.Count > 0)
+{
+    <div class="session-relation-bar" data-testid="session-relation-bar">
+        @if (Bar.Overflow > 0)
+        {
+            <div role="button" tabindex="0"
+                    class="relation-chip relation-chip--overflow"
+                    title="查看更早的主线会话"
+                    @onclick="OpenDrawerAsync">
+                +@Bar.Overflow 个更早
+            </div>
+        }
+        @foreach (var node in Bar.Visible)
+        {
+            <div role="button" tabindex="0"
+                    class="relation-chip @(node.IsAnchor ? "relation-chip--anchor" : "") @(node.IsActive ? "relation-chip--active" : "")"
+                    title="@node.Title"
+                    @onclick="() => SelectAsync(node.SessionId)">
+                @if (node.IsExecuting)
+                {
+                    <span class="relation-chip__pulse" aria-hidden="true"></span>
+                }
+                <span class="relation-chip__title">@node.Title</span>
+                <span class="relation-chip__badge">@SessionRelationView.BadgeText(node.Relation, node.IsAnchor, node.Label, node.SuccessorTitle)</span>
+            </div>
+        }
+        <div role="button" tabindex="0"
+                class="relation-chip relation-chip--branches"
+                title="查看关系树（分叉 / 子代理）"
+                @onclick="OpenDrawerAsync">
+            <span aria-hidden="true">⑂</span>@Model.DerivedCount<span class="relation-chip__sep">·</span><span aria-hidden="true">👤</span>@Model.ChildCount <span aria-hidden="true">▾</span>
+        </div>
+        <div class="session-relation-bar__spacer"></div>
+        <div role="button" tabindex="0"
+                class="relation-chip relation-chip--drawer"
+                title="打开关系抽屉"
+                @onclick="OpenDrawerAsync">
+            关系 ▸
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public RelationTreeModel? Model { get; set; }
+
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+
+    [Parameter] public EventCallback OnOpenDrawer { get; set; }
+
+    private (IReadOnlyList<RelationNode> Visible, int Overflow) Bar =>
+        Model is null
+            ? (Array.Empty<RelationNode>(), 0)
+            : RelationTreeModel.BarItems(Model.MainLine);
+
+    private Task SelectAsync(string sessionId) => OnSelect.InvokeAsync(sessionId);
+
+    private Task OpenDrawerAsync() => OnOpenDrawer.InvokeAsync();
+}

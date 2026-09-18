@@ -168,22 +168,65 @@
     }
     else
     {
-        @* Summary 模式：摘要卡片（标题/状态徽标/执行状态/最新消息预览/运行中工具）；
-           左侧状态条随代理状态变色，主会话以淡蓝底区分 *@
-        <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main " : "")}{GetStatusBarClass()}")" @onclick="OnTileClick">
-            <div class="conference-tile-header">
-                <span class="conference-tile-title">@SessionState.Title</span>
-                <Badge Status="@GetStatusBadge()" />
-            </div>
-            <div class="conference-tile-body">
-                @GetLatestAssistantPreview()
-            </div>
-            @if (!IsMainSession && !string.IsNullOrEmpty(GetParentSessionTitle()))
+        @* Summary 模式：状态分层卡片——执行中=大卡+脉冲点+动作行+已运行时长（不渲染进度条）；
+           已完成/子代理=紧凑单行；左侧状态条随代理状态变色，主会话以淡蓝底区分 *@
+        <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main " : "")}{GetStatusBarClass()}{(IsCompactSummary ? " conference-tile--compact" : "")}{(IsChildView ? " conference-tile--readonly" : "")}")" @onclick="OnTileClick">
+            @if (IsCompactSummary)
             {
-                <div class="conference-tile-parent">
-                    <Icon Type="@IconType.Outline.Link" />
-                    <span>父会话：@GetParentSessionTitle()</span>
+                <div class="conference-tile-compact">
+                    <span class="conference-tile-title">@SessionState.Title</span>
+                    @if (!string.IsNullOrEmpty(GetRelationBadgeText()))
+                    {
+                        <span class="conference-tile-relation">@GetRelationBadgeText()</span>
+                    }
+                    @if (IsChildView)
+                    {
+                        <span class="conference-tile-readonly">只读</span>
+                    }
+                    @* §4.7：紧凑卡也必须保留来源行（不因紧凑化而丢失） *@
+                    @if (!string.IsNullOrEmpty(GetSourceLine()))
+                    {
+                        <span class="conference-tile-source" title="@GetSourceLine()">@GetSourceLine()</span>
+                    }
+                    <span class="conference-tile-compact-preview" title="@GetFullPreview()">@GetCompactPreview()</span>
+                    <span class="conference-tile-time">@GetSummaryTimeText()</span>
+                    <Badge Status="@GetStatusBadge()" />
                 </div>
+            }
+            else
+            {
+                <div class="conference-tile-header">
+                    <span class="conference-tile-title">@SessionState.Title</span>
+                    <span class="conference-tile-header-right">
+                        @if (!string.IsNullOrEmpty(GetRelationBadgeText()))
+                        {
+                            <span class="conference-tile-relation">@GetRelationBadgeText()</span>
+                        }
+                        @if (IsRunningSummary)
+                        {
+                            <span class="conference-tile-pulse" title="执行中"></span>
+                        }
+                        <Badge Status="@GetStatusBadge()" />
+                    </span>
+                </div>
+                @if (IsRunningSummary)
+                {
+                    <div class="conference-tile-action">@GetCurrentActionLine()</div>
+                }
+                <div class="conference-tile-body">
+                    @GetLatestAssistantPreview()
+                </div>
+                @if (IsRunningSummary && !string.IsNullOrEmpty(GetElapsedText()))
+                {
+                    <div class="conference-tile-elapsed">已运行 @GetElapsedText()</div>
+                }
+                @if (!string.IsNullOrEmpty(GetSourceLine()))
+                {
+                    <div class="conference-tile-parent">
+                        <Icon Type="@IconType.Outline.Link" />
+                        <span>@GetSourceLine()</span>
+                    </div>
+                }
             }
         </div>
     }
@@ -198,6 +241,8 @@
     [Parameter] public RenderFragment<Services.SessionWindowContext>? ToolbarLeftActions { get; set; }
     [Parameter] public RenderFragment<Services.SessionWindowContext>? ToolbarRightActions { get; set; }
     [Parameter] public EventCallback<string> OnClick { get; set; }
+    /// <summary>执行态变更回调（sessionId, isExecuting）；供页面侧收集运行态（不写入 registry）。</summary>
+    [Parameter] public EventCallback<(string SessionId, bool IsExecuting)> OnExecutionStateChanged { get; set; }
     [Parameter] public string? AggregatorSessionId { get; set; }
     [Parameter] public Seeing.Agent.WebUI.State.SessionState? GlobalSessionState { get; set; }
 
@@ -214,6 +259,11 @@
     private string? _loadedSessionId;
     private string? _parentSessionId;
     private SessionRelation _relation = SessionRelation.None;
+    private bool _isAnchor;
+    private SessionGroup? _currentGroup;
+    private SessionGroupMember? _groupMember;
+    private DateTime? _executionStartedAtUtc;
+    private bool? _reportedExecuting;
     private string? _renderedTitle;
     private Services.SessionWindowMode _lastViewMode = Services.SessionWindowMode.Full;
     private IDisposable? _budgetSubscription;
@@ -233,6 +283,16 @@
     private bool IsChildView =>
         _relation == SessionRelation.Child
         || SessionState.CurrentSession?.Kind == SessionKind.SubAgent;
+
+    /// <summary>Summary 模式：状态分层。</summary>
+    private SummaryState SummaryStateKind =>
+        Services.SessionSummaryView.Classify(SessionState.IsExecuting, SessionState.ExecutionStatus);
+
+    /// <summary>Summary 模式：执行中（大卡 + 脉冲点 + 动作行 + 时长）。</summary>
+    private bool IsRunningSummary => SummaryStateKind == SummaryState.Running;
+
+    /// <summary>Summary 模式：紧凑单行（已完成或子代理只读）。</summary>
+    private bool IsCompactSummary => IsChildView || SummaryStateKind == SummaryState.Done;
 
     /// <summary>
     /// 组件初始化：加载命令列表、加载会话、建立事件流绑定、订阅预算与标题事件。
@@ -380,6 +440,9 @@
         SessionState.ExecutionStatus = overview.CurrentExecution.Status;
         SessionState.QueuePosition = overview.CurrentExecution.QueuePosition;
         SessionState.CurrentExecutionId = overview.CurrentExecution.ExecutionId;
+        _executionStartedAtUtc = overview.CurrentExecution.StartedAt == default
+            ? null
+            : overview.CurrentExecution.StartedAt;
         SyncContextState();
     }
 
@@ -545,6 +608,11 @@
             string.Equals(m.SessionId, sessionId, StringComparison.Ordinal));
         _relation = member?.Relation
             ?? (sessionData.Kind == SessionKind.SubAgent ? SessionRelation.Child : SessionRelation.None);
+        _groupMember = member;
+        _currentGroup = group;
+        _isAnchor = member?.IsAnchor ?? false;
+        _executionStartedAtUtc = null;
+        _reportedExecuting = null;
 
         // 桥接仅 Full 模式写全局 SessionState（供 SecurityPage/MainLayout 等读取当前会话）
         if (ViewMode == Services.SessionWindowMode.Full)
@@ -713,14 +781,73 @@
         !string.IsNullOrEmpty(AggregatorSessionId)
         && string.Equals(EffectiveSessionId, AggregatorSessionId, StringComparison.Ordinal);
 
-    /// <summary>Summary 模式：父会话标题（子会话经 ParentSessionId 反查；主会话返回空不渲染）</summary>
-    private string GetParentSessionTitle()
+    /// <summary>Summary 模式：关系徽标文本（无关系且非锚点时不渲染）。</summary>
+    private string GetRelationBadgeText()
     {
+        if (_relation == SessionRelation.None && !_isAnchor && !IsChildView)
+            return string.Empty;
+        return Services.SessionRelationView.BadgeText(_relation, Context.IsAnchor, _groupMember?.Label, GetSuccessorTitle());
+    }
+
+    /// <summary>Summary 模式：来源方向（锚点无来源）。</summary>
+    private RelationshipSource GetRelationshipSource()
+    {
+        if (_isAnchor)
+            return RelationshipSource.None;
+        return _relation switch
+        {
+            SessionRelation.HandoffPredecessor => RelationshipSource.HandoffTo,
+            SessionRelation.None => RelationshipSource.None,
+            _ => RelationshipSource.Source
+        };
+    }
+
+    /// <summary>Summary 模式：来源行另一端标题（交接前任取后继标题；其余取来源/父会话标题）。</summary>
+    private string? GetRelationshipOtherTitle()
+    {
+        if (GetRelationshipSource() == RelationshipSource.HandoffTo)
+            return GetSuccessorTitle();
+
         var parentId = _parentSessionId;
         if (string.IsNullOrEmpty(parentId))
-            return string.Empty;
-        var parent = SessionManager.Get(parentId);
-        return parent?.Title ?? string.Empty;
+            return null;
+        return SessionManager.Get(parentId)?.Title;
+    }
+
+    /// <summary>按组反向查找主线后继标题（ParentSessionId==当前 且主线关系）。</summary>
+    private string? GetSuccessorTitle()
+    {
+        var members = _currentGroup?.Members;
+        if (members == null)
+            return null;
+
+        var currentId = EffectiveSessionId;
+        var successor = members.FirstOrDefault(m =>
+            !string.Equals(m.SessionId, currentId, StringComparison.Ordinal)
+            && string.Equals(m.ParentSessionId, currentId, StringComparison.Ordinal)
+            && m.Relation is SessionRelation.HandoffSuccessor or SessionRelation.HandoffPredecessor);
+        return successor == null ? null : SessionManager.Get(successor.SessionId)?.Title;
+    }
+
+    /// <summary>Summary 模式：来源行文本（锚点/无来源返回空）。</summary>
+    private string GetSourceLine() =>
+        Services.SessionSummaryView.SourceLine(GetRelationshipSource(), GetRelationshipOtherTitle());
+
+    /// <summary>Summary 模式：完整预览（hover title，最长 120 字）。</summary>
+    private string GetFullPreview() =>
+        Services.SessionSummaryView.PreviewSnippet(GetLatestAssistantPreview());
+
+    /// <summary>Summary 模式：已完成紧凑摘要（12~20 字）。</summary>
+    private string GetCompactPreview() =>
+        Services.SessionSummaryView.CompactSnippet(GetLatestAssistantPreview());
+
+    /// <summary>Summary 模式：紧凑卡时间（今天显示 HH:mm，否则 MM-dd HH:mm）。</summary>
+    private string GetSummaryTimeText()
+    {
+        var updatedAt = SessionState.CurrentSession?.UpdatedAt ?? DateTime.Now;
+        return updatedAt.Date == DateTime.Now.Date
+            ? updatedAt.ToString("HH:mm")
+            : updatedAt.ToString("MM-dd HH:mm");
     }
 
     /// <summary>聚合器父会话 ID：外层可显式指定 AggregatorSessionId；否则回退窗口实际会话（含无路由场景）</summary>
@@ -781,10 +908,34 @@
             NavigationManager.NavigateTo(navEvt.Target);
         else if (evt is CommandResultEvent commandEvt && !string.IsNullOrEmpty(commandEvt.NavigationTarget))
             NavigationManager.NavigateTo(commandEvt.NavigationTarget);
+        else if (evt is ToolCallEvent handoffEvt && TryResolveHandoffTarget(handoffEvt, out var handoffTarget))
+            // 交接成功：由结果元数据驱动导航到后继（兜底仅限交接驱动，不对用户点击切换做 URL 同步）
+            NavigationManager.NavigateTo($"/session/{handoffTarget}");
         else if (evt is CompactionFailedEvent cfe && !string.IsNullOrEmpty(cfe.ErrorMessage))
             MessageService.Error($"压缩失败: {cfe.ErrorMessage}");
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 解析会话交接成功结果的后继 ID：工具名为 <c>session_handoff</c>、状态成功、
+    /// 且结果元数据 <c>target_session_id</c> 为非空字符串。
+    /// </summary>
+    private static bool TryResolveHandoffTarget(ToolCallEvent evt, out string targetSessionId)
+    {
+        targetSessionId = string.Empty;
+        if (evt.Status != ToolCallStatus.Success
+            || !string.Equals(evt.ToolName, "session_handoff", StringComparison.Ordinal)
+            || evt.Metadata is not { } metadata
+            || !metadata.TryGetValue("target_session_id", out var target))
+            return false;
+
+        var id = target as string ?? target?.ToString();
+        if (string.IsNullOrEmpty(id))
+            return false;
+
+        targetSessionId = id;
+        return true;
     }
 
     /// <summary>
@@ -810,6 +961,10 @@
         Context.Title = s?.Title ?? "新会话";
         Context.ApplyCapabilities(IsChildView, hasParent: !string.IsNullOrEmpty(_parentSessionId));
         Context.ParentSessionId = _parentSessionId;
+        Context.Relation = _relation;
+        Context.IsAnchor = _isAnchor;
+        Context.Label = _groupMember?.Label;
+        Context.SuccessorTitle = GetSuccessorTitle();
         Context.IsQueued = SessionState.IsQueued;
         Context.QueuePosition = SessionState.QueuePosition;
         Context.HasActiveExecution = SessionState.HasActiveExecution;
@@ -826,8 +981,26 @@
             s?.Scenario,
             SeeingAgentOptions.CurrentValue.Scenario);
         Context.NotifyStateChanged();
+        ReportExecutionState();
         _ = InvokeAsync(StateHasChanged); // 渲染自触发：外层头部读新值
         _ = RefreshIsAcpAsync();
+    }
+
+    /// <summary>执行态变更上报（仅在变化时回调；供页面侧收集运行态，不写入 registry）。</summary>
+    private void ReportExecutionState()
+    {
+        if (!OnExecutionStateChanged.HasDelegate)
+            return;
+
+        var executing = SummaryStateKind == SummaryState.Running;
+        if (_reportedExecuting == executing)
+            return;
+
+        _reportedExecuting = executing;
+        var sessionId = SessionState.CurrentSession?.Id;
+        if (string.IsNullOrEmpty(sessionId))
+            sessionId = EffectiveSessionId;
+        _ = OnExecutionStateChanged.InvokeAsync((sessionId ?? string.Empty, executing));
     }
 
     private async Task RefreshIsAcpAsync()
@@ -1086,6 +1259,7 @@
             }
 
             SessionState.ExecutionStatus = ExecutionStatus.Pending;
+            _executionStartedAtUtc = DateTime.UtcNow;
 
             // 提交执行（用户消息会立即保存）
             var result = await ChatOrchestrator.SubmitAsync(SessionState.SessionId, input, options);
@@ -1463,6 +1637,41 @@
             return "conference-tile--cancelled";
         return "conference-tile--done";
     }
+
+    /// <summary>Summary 模式：当前动作行（运行中 task 友好显示子代理数；推断不到时显示"正在执行"）。</summary>
+    private string GetCurrentActionLine()
+    {
+        var messages = SessionState.CurrentSession?.Messages;
+        if (messages == null)
+            return "⚙ 正在执行";
+
+        var running = messages
+            .SelectMany(m => m.ToolCalls ?? Enumerable.Empty<SessionToolCall>())
+            .Where(t => string.Equals(t.Status, "running", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var runningTasks = running
+            .Where(t => string.Equals(t.Name, "task", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (runningTasks.Count > 0)
+        {
+            var subagents = runningTasks
+                .Where(t => !string.IsNullOrEmpty(t.TaskId))
+                .Select(t => t.TaskId!)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+            return subagents > 0
+                ? $"⚙ 正在执行 task · {subagents} 个子代理"
+                : "⚙ 正在执行 task";
+        }
+
+        var runningTool = running.FirstOrDefault(t => !string.IsNullOrEmpty(t.Name));
+        return runningTool != null ? $"⚙ 正在执行 {runningTool.Name}" : "⚙ 正在执行";
+    }
+
+    /// <summary>Summary 模式：已运行时长（mm:ss / hh:mm:ss；无起点返回空）。</summary>
+    private string GetElapsedText() =>
+        Services.SessionSummaryView.Elapsed(_executionStartedAtUtc, DateTime.UtcNow);
 
     /// <summary>
     /// Summary 模式：最新 assistant 消息预览（截断约 120 字符）；

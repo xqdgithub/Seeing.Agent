@@ -9,7 +9,7 @@ namespace Seeing.Agent.WebUI.Services;
 /// <see cref="SessionEventStreamRouter.GetOrCreateCircuitConsumer{T}"/> 获取/登记）。
 /// <para>
 /// 订阅会话组事件总线（<see cref="ISessionGroupEventBus"/>），维护组内成员窗口集合与 active/锚点。
-/// 只维护窗口集合（SessionId/Relation/Kind/Title/IsActive），<b>不</b>持权威执行态：
+/// 只维护窗口集合（SessionId/Relation/Kind/Title/IsActive/IsAnchor/Label），<b>不</b>持权威执行态：
 /// IsExecuting 恒为 false，执行态由各窗口自身 handler 提供。
 /// </para>
 /// <para>
@@ -21,6 +21,7 @@ public sealed class SessionWindowRegistry : IStreamConsumer, IDisposable
     /// <summary>
     /// 窗口节点：由组成员快照投影。
     /// <c>IsExecuting</c> 恒为 false（registry 不持权威执行态，由窗口自身 handler 渲染）。
+    /// <c>IsAnchor</c> 标记主线锚点，<c>Label</c> 为成员标签（如 trim 备份前缀），供侧栏分区与徽标区分。
     /// </summary>
     public sealed record WindowNode(
         string SessionId,
@@ -28,7 +29,9 @@ public sealed class SessionWindowRegistry : IStreamConsumer, IDisposable
         SessionKind Kind,
         string Title,
         bool IsActive,
-        bool IsExecuting);
+        bool IsExecuting,
+        bool IsAnchor,
+        string? Label);
 
     private readonly ISessionGroupManager _groupManager;
     private readonly ISessionGroupEventBus _groupEventBus;
@@ -151,7 +154,9 @@ public sealed class SessionWindowRegistry : IStreamConsumer, IDisposable
             session?.Kind ?? SessionKind.Root,
             session?.Title ?? string.Empty,
             IsActive: true,
-            IsExecuting: false);
+            IsExecuting: false,
+            IsAnchor: true,
+            Label: null);
 
         lock (_gate)
         {
@@ -231,7 +236,9 @@ public sealed class SessionWindowRegistry : IStreamConsumer, IDisposable
                 member.Relation == SessionRelation.Child ? SessionKind.SubAgent : SessionKind.Root,
                 session?.Title ?? member.Label ?? string.Empty,
                 string.Equals(member.SessionId, activeId, StringComparison.Ordinal),
-                IsExecuting: false));
+                IsExecuting: false,
+                IsAnchor: member.IsAnchor,
+                Label: member.Label));
         }
         return nodes;
     }

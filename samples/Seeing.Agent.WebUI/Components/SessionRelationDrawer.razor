@@ -1,0 +1,171 @@
+@namespace Seeing.Agent.WebUI.Components
+@using AntDesign
+
+<Drawer Title="@("会话关系")"
+        Visible="@Open"
+        Width="440"
+        Placement="DrawerPlacement.Right"
+        OnClose="CloseAsync">
+    @if (Model is not null)
+    {
+        <div class="relation-tree" data-testid="session-relation-tree">
+            @if (Rows.Count == 0)
+            {
+                <div class="relation-tree__empty">无可展示的关系信息</div>
+            }
+            else
+            {
+                @foreach (var row in Rows)
+                {
+                    <div class="relation-node @(row.Node.IsAnchor ? "relation-node--anchor" : "") @(row.Node.IsActive ? "relation-node--active" : "")"
+                         style="padding-left:@(row.Depth * 18 + 4)px">
+                        <span class="relation-node__dot @(row.Node.IsExecuting ? "is-executing" : "")" aria-hidden="true"></span>
+                        <span class="relation-node__title" title="@row.Node.Title">@row.Node.Title</span>
+                        <span class="relation-node__badge">@SessionRelationView.BadgeText(row.Node.Relation, row.Node.IsAnchor, row.Node.Label, row.Node.SuccessorTitle)</span>
+                        @if (!string.IsNullOrEmpty(row.Source))
+                        {
+                            <span class="relation-node__source">@row.Source</span>
+                        }
+                        <Dropdown>
+                            <Overlay>
+                                <Menu>
+                                    <MenuItem OnClick="() => SelectAsync(row.Node.SessionId)">切换</MenuItem>
+                                    <MenuItem OnClick="() => ActionAsync(row.Node.SessionId, RelationNodeAction.Rename)">重命名</MenuItem>
+                                    <MenuItem OnClick="() => ActionAsync(row.Node.SessionId, RelationNodeAction.OpenNewTab)">打开新标签</MenuItem>
+                                    <MenuItem OnClick="() => PromptDelete(row.Node)">删除</MenuItem>
+                                </Menu>
+                            </Overlay>
+                            <ChildContent>
+                                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small">⋯</Button>
+                            </ChildContent>
+                        </Dropdown>
+                    </div>
+                }
+            }
+        </div>
+    }
+</Drawer>
+
+<Modal Title="删除会话"
+       Visible="@(_pendingDelete is not null)"
+       OnOk="ConfirmDeleteAsync"
+       OnCancel="CancelDelete"
+       OkText="@("删除")"
+       CancelText="@("取消")">
+    <p>将按关系规则删除会话「@(_pendingDelete?.Title)」。</p>
+    <p class="relation-delete-hint">删除前会先取消其自身在途执行；主线、分叉、子代理按各自关系规则处理。</p>
+</Modal>
+
+<style>
+    .relation-tree {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .relation-tree__empty {
+        padding: 12px 4px;
+        opacity: 0.6;
+        font-size: 13px;
+    }
+
+    .relation-node {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px;
+        border-radius: 6px;
+        min-width: 0;
+    }
+
+    .relation-node:hover {
+        background: var(--color-bg-text-hover, rgba(0, 0, 0, 0.04));
+    }
+
+    .relation-node--anchor {
+        font-weight: 600;
+    }
+
+    .relation-node--active {
+        background: var(--color-primary-bg, rgba(22, 119, 255, 0.1));
+    }
+
+    .relation-node__dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--color-border);
+        flex-shrink: 0;
+    }
+
+    .relation-node__dot.is-executing {
+        background: var(--color-primary, #1677ff);
+        animation: relation-node-pulse 1.2s ease-in-out infinite;
+    }
+
+    .relation-node__title {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+    }
+
+    .relation-node__badge {
+        flex-shrink: 0;
+        font-size: 11px;
+        opacity: 0.65;
+    }
+
+    .relation-node__source {
+        flex-shrink: 0;
+        font-size: 11px;
+        color: var(--color-warning, #faad14);
+    }
+
+    .relation-delete-hint {
+        opacity: 0.65;
+        font-size: 12px;
+    }
+
+    @@keyframes relation-node-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+</style>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public RelationTreeModel? Model { get; set; }
+
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+
+    [Parameter] public EventCallback<(string SessionId, RelationNodeAction Action)> OnNodeAction { get; set; }
+
+    private RelationNode? _pendingDelete;
+
+    private IReadOnlyList<RelationRow> Rows => Model?.BuildRows() ?? Array.Empty<RelationRow>();
+
+    private Task SelectAsync(string sessionId) => OnSelect.InvokeAsync(sessionId);
+
+    private Task ActionAsync(string sessionId, RelationNodeAction action)
+        => OnNodeAction.InvokeAsync((sessionId, action));
+
+    private void PromptDelete(RelationNode node) => _pendingDelete = node;
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_pendingDelete is not null)
+            await OnNodeAction.InvokeAsync((_pendingDelete.SessionId, RelationNodeAction.Delete));
+
+        _pendingDelete = null;
+    }
+
+    private void CancelDelete() => _pendingDelete = null;
+
+    private Task CloseAsync() => OpenChanged.InvokeAsync(false);
+}

@@ -12,7 +12,9 @@ namespace Seeing.Session.Core
         /// <summary>分支会话（含 trim 备份）</summary>
         Fork = 2,
         /// <summary>交接后继</summary>
-        HandoffSuccessor = 3
+        HandoffSuccessor = 3,
+        /// <summary>已被后续交接取代的主线节点</summary>
+        HandoffPredecessor = 4
     }
 
     public sealed class SessionGroup

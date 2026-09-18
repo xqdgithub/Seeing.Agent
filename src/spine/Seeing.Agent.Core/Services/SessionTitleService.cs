@@ -82,7 +82,7 @@ namespace Seeing.Agent.Core.Services
         internal static bool ShouldEnsure(
             bool enabled,
             SessionKind kind,
-            string? parentId,
+            bool isChild,
             string title,
             int realUserCount,
             string userMessage)
@@ -93,7 +93,7 @@ namespace Seeing.Agent.Core.Services
             if (string.IsNullOrWhiteSpace(userMessage))
                 return false;
 
-            if (!string.IsNullOrEmpty(parentId))
+            if (isChild)
                 return false;
 
             if (kind != SessionKind.Root)
@@ -163,13 +163,16 @@ namespace Seeing.Agent.Core.Services
                 var activeMessages = session.GetActiveMessages();
                 var realUserCount = CountIntentionalUserMessages(activeMessages);
 
-                var parentId = await _groupManager.GetParentAsync(sessionId, cancellationToken)
+                var group = await _groupManager.GetGroupForSessionAsync(sessionId, cancellationToken)
                     .ConfigureAwait(false);
+                var isChild = group?.Members.FirstOrDefault(m =>
+                        string.Equals(m.SessionId, sessionId, StringComparison.Ordinal))
+                    ?.Relation == SessionRelation.Child;
 
                 if (!ShouldEnsure(
                         options.Enabled,
                         session.Kind,
-                        parentId,
+                        isChild,
                         session.Title,
                         realUserCount,
                         userMessage))

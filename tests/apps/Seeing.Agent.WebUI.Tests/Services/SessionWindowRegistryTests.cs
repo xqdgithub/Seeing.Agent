@@ -15,13 +15,15 @@ public class SessionWindowRegistryTests
         SessionRelation relation,
         string? parent = null,
         bool anchor = false,
-        int order = 0) => new()
+        int order = 0,
+        string? label = null) => new()
         {
             SessionId = sessionId,
             Relation = relation,
             ParentSessionId = parent,
             IsAnchor = anchor,
-            Order = order
+            Order = order,
+            Label = label
         };
 
     private static SessionGroup CreateGroup(
@@ -147,6 +149,50 @@ public class SessionWindowRegistryTests
 
         registry.ActiveSessionId.Should().Be("anchor");
         registry.Windows.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Rebind_ShouldProjectAnchorAndLabel()
+    {
+        var group = CreateGroup("g1", "anchor", "anchor", 3,
+            Member("anchor", SessionRelation.None, anchor: true, order: 0),
+            Member("fork1", SessionRelation.Fork, parent: "anchor", order: 1,
+                label: "trim-backup 2026-09-18"));
+        var gm = CreateGroupManager(group);
+        var bus = new ChannelSessionGroupEventBus();
+
+        using var registry = CreateRegistry(gm, bus);
+        registry.Rebind("anchor");
+        await Task.Delay(200);
+
+        registry.Windows.Should().HaveCount(2);
+        registry.Windows.Should().Contain(w =>
+            w.SessionId == "anchor"
+            && w.IsAnchor
+            && w.Label == null);
+        registry.Windows.Should().Contain(w =>
+            w.SessionId == "fork1"
+            && !w.IsAnchor
+            && w.Label == "trim-backup 2026-09-18");
+    }
+
+    [Fact]
+    public async Task Rebind_WithoutGroup_ShouldProjectFallbackAsAnchor()
+    {
+        var gm = new Mock<ISessionGroupManager>();
+        gm.Setup(m => m.GetGroupForSessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SessionGroup?)null);
+        var bus = new ChannelSessionGroupEventBus();
+
+        using var registry = CreateRegistry(gm, bus);
+        registry.Rebind("solo");
+        await Task.Delay(200);
+
+        registry.Windows.Should().ContainSingle(w =>
+            w.SessionId == "solo"
+            && w.IsAnchor
+            && w.Label == null
+            && w.Relation == SessionRelation.None);
     }
 
     [Fact]

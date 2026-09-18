@@ -5,6 +5,9 @@
 @inject SessionEventStreamRouter Router
 @inject CircuitContext CircuitContext
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@inject IMessageService MessageService
+@inject IChatOrchestrator ChatOrchestrator
 @inject ISessionManager SessionManager
 @inject ISessionGroupManager GroupManager
 @inject SessionState GlobalSessionState
@@ -29,6 +32,10 @@
     }
     else
     {
+        @* 顶部关系条：主线链 + 分支计数（数据源为组快照，点击仅切 active，URL 不变） *@
+        <SessionRelationBar Model="_relationModel"
+                            OnSelect="OnTileClick"
+                            OnOpenDrawer="OpenRelationDrawer" />
         @* 双栏布局：Full 固定左侧（不随子窗口数量变化），Summary 右侧垂直堆叠；无子会话时隐藏侧栏主窗全宽 *@
         <div class="conference-grid">
             <div class="conference-main-area">
@@ -40,27 +47,52 @@
                                        ViewMode="@SessionWindowMode.Full"
                                        AggregatorSessionId="@_mainSessionId"
                                        GlobalSessionState="@GlobalSessionState"
-                                       OnClick="@OnTileClick" />
+                                       OnClick="@OnTileClick"
+                                       OnExecutionStateChanged="@OnExecutionStateChanged" />
                     </ErrorBoundary>
                 }
             </div>
-            @if (SideWindows.Count > 0)
+            @if (_sidebarSections.Count > 0)
             {
                 <div class="conference-side-area">
-                    @foreach (var node in SideWindows)
+                    @foreach (var sec in _sidebarSections)
                     {
-                        <ErrorBoundary>
-                            <SessionWindow @key="@node.SessionId"
-                                           SessionId="@node.SessionId"
-                                           ViewMode="@SessionWindowMode.Summary"
-                                           AggregatorSessionId="@_mainSessionId"
-                                           GlobalSessionState="@GlobalSessionState"
-                                           OnClick="@OnTileClick" />
-                        </ErrorBoundary>
+                        <div class="conference-side-section" @key="sec.Section">
+                            <div class="conference-side-section__title">@sec.Title</div>
+                            @foreach (var entry in sec.Entries)
+                            {
+                                <ErrorBoundary>
+                                    <SessionWindow @key="@entry.SessionId"
+                                                   SessionId="@entry.SessionId"
+                                                   ViewMode="@SessionWindowMode.Summary"
+                                                   AggregatorSessionId="@_mainSessionId"
+                                                   GlobalSessionState="@GlobalSessionState"
+                                                   OnClick="@OnTileClick"
+                                                   OnExecutionStateChanged="@OnExecutionStateChanged" />
+                                </ErrorBoundary>
+                            }
+                        </div>
                     }
                 </div>
             }
         </div>
+
+        @* 关系抽屉：完整关系树 + 节点操作（切换/重命名/新标签/删除） *@
+        <SessionRelationDrawer Open="_relationDrawerOpen"
+                               Model="_relationModel"
+                               OpenChanged="@(open => _relationDrawerOpen = open)"
+                               OnSelect="OnTileClick"
+                               OnNodeAction="OnRelationNodeAction" />
+
+        @* 关系抽屉触发的重命名弹窗（走既有 ChatOrchestrator.RenameSessionAsync） *@
+        <Modal Title="重命名会话"
+               Visible="@(_renameSessionId != null)"
+               OnOk="ConfirmRenameAsync"
+               OnCancel="CancelRename"
+               OkText="@("确定")"
+               CancelText="@("取消")">
+            <Input @bind-Value="_renameTitle" Placeholder="请输入会话标题" />
+        </Modal>
     }
 </div>
 
@@ -146,24 +178,187 @@
     private IReadOnlyList<SessionWindowRegistry.WindowNode> _windows = Array.Empty<SessionWindowRegistry.WindowNode>();
     private bool _mainMissing;
 
-    /// <summary>全部窗口：组锚点 + 全部成员（由 SessionWindowRegistry 组快照投影）</summary>
-    private IReadOnlyList<SessionWindowRegistry.WindowNode> AllWindows => _windows;
+    // ---- 关系展示（顶条 / 抽屉 / 侧栏分区）----
+    private RelationTreeModel? _relationModel;
+    private IReadOnlyList<SidebarSection> _sidebarSections = Array.Empty<SidebarSection>();
+    private SessionGroup? _currentGroup;
+    private bool _relationDrawerOpen;
+    private int _relationRefreshGeneration;
 
-    /// <summary>侧栏窗口：非 active 的组内成员，锚点（Root）置顶排第一</summary>
-    private IReadOnlyList<SessionWindowRegistry.WindowNode> SideWindows
+    /// <summary>执行态收集（sessionId → isExecuting）：由各 SessionWindow 回调上报，不写入 registry。</summary>
+    private readonly Dictionary<string, bool> _executionStates = new(StringComparer.Ordinal);
+
+    // ---- 重命名弹窗（关系抽屉 Rename 动作触发）----
+    private string? _renameSessionId;
+    private string? _renameTitle;
+
+    /// <summary>按侧栏分区模型重建条目（执行中置顶 + 三分区），数据骨架为 registry 窗口快照。</summary>
+    private void RebuildSidebar()
     {
-        get
+        var active = _activeSessionId;
+        var entries = _windows
+            .Where(w => !string.Equals(w.SessionId, active, StringComparison.Ordinal))
+            .Select(w => new SidebarEntry(
+                w.SessionId,
+                w.Title,
+                w.Relation,
+                w.IsAnchor,
+                IsExecuting(w.SessionId),
+                FindParentSessionId(w.SessionId),
+                w.Label,
+                w.IsActive));
+        _sidebarSections = SessionSidebarView.Build(entries);
+    }
+
+    /// <summary>组快照（GetGroupForSessionAsync）→ 顶条 / 抽屉的关系树模型。</summary>
+    private async Task RefreshRelationAsync()
+    {
+        var generation = ++_relationRefreshGeneration;
+        var probe = _registry?.AnchorSessionId;
+        if (string.IsNullOrEmpty(probe))
+            probe = _activeSessionId ?? _mainSessionId;
+        if (string.IsNullOrEmpty(probe))
+            return;
+
+        var group = await GroupManager.GetGroupForSessionAsync(probe);
+        if (generation != _relationRefreshGeneration)
+            return;
+
+        _currentGroup = group;
+        RebuildSidebar();
+        _relationModel = group is null ? null : BuildRelationModel(group);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>fire-and-forget 关系刷新：异常静默兜底，避免未观察任务异常中断组事件回流。</summary>
+    private async Task RefreshRelationSafelyAsync()
+    {
+        try
         {
-            return AllWindows
-                .Where(n => !string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal))
-                .OrderBy(n => n.Kind == SessionKind.Root ? 0 : 1)
-                .ToArray();
+            await RefreshRelationAsync();
         }
+        catch (Exception)
+        {
+            // 关系刷新为 UI 增强：失败不应阻断组事件回流 / 页面渲染
+        }
+    }
+
+    /// <summary>组成员快照 → 关系树节点（标题取会话管理，执行态取页面收集字典）。</summary>
+    private RelationTreeModel BuildRelationModel(SessionGroup group)
+    {
+        var nodes = group.Members
+            .OrderBy(m => m.Order)
+            .Select(m => new RelationNode(
+                m.SessionId,
+                SessionManager.Get(m.SessionId)?.Title ?? m.Label ?? string.Empty,
+                m.Relation,
+                m.IsAnchor,
+                IsExecuting(m.SessionId),
+                m.ParentSessionId,
+                m.Label,
+                string.Equals(m.SessionId, _activeSessionId, StringComparison.Ordinal)))
+            .ToList();
+        return RelationTreeModel.Build(nodes);
+    }
+
+    /// <summary>查询页面侧收集的执行态（registry 不持权威执行态）。</summary>
+    private bool IsExecuting(string sessionId)
+        => !string.IsNullOrEmpty(sessionId)
+           && _executionStates.TryGetValue(sessionId, out var executing)
+           && executing;
+
+    /// <summary>来源会话 ID（组快照反查，供侧栏来源行/分区映射）。</summary>
+    private string? FindParentSessionId(string sessionId)
+        => _currentGroup?.Members
+            .FirstOrDefault(m => string.Equals(m.SessionId, sessionId, StringComparison.Ordinal))?.ParentSessionId;
+
+    /// <summary>各 SessionWindow 上报执行态：更新收集字典并刷新顶条/侧栏“执行中置顶”。</summary>
+    private void OnExecutionStateChanged((string SessionId, bool IsExecuting) state)
+    {
+        if (string.IsNullOrEmpty(state.SessionId))
+            return;
+
+        _executionStates[state.SessionId] = state.IsExecuting;
+        RebuildSidebar();
+        if (_currentGroup is not null)
+            _relationModel = BuildRelationModel(_currentGroup);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenRelationDrawer() => _relationDrawerOpen = true;
+
+    /// <summary>关系抽屉节点操作：切换/重命名/新标签/删除（删除确认已在抽屉内完成）。</summary>
+    private async Task OnRelationNodeAction((string SessionId, RelationNodeAction Action) action)
+    {
+        switch (action.Action)
+        {
+            case RelationNodeAction.Select:
+                await OnTileClick(action.SessionId);
+                break;
+            case RelationNodeAction.Rename:
+                OpenRename(action.SessionId);
+                break;
+            case RelationNodeAction.OpenNewTab:
+                await JS.InvokeVoidAsync("open", $"/session/{action.SessionId}", "_blank");
+                break;
+            case RelationNodeAction.Delete:
+                await DeleteSessionAsync(action.SessionId);
+                break;
+        }
+    }
+
+    private void OpenRename(string sessionId)
+    {
+        _renameSessionId = sessionId;
+        _renameTitle = SessionManager.Get(sessionId)?.Title ?? string.Empty;
+    }
+
+    private async Task ConfirmRenameAsync()
+    {
+        var id = _renameSessionId;
+        var title = _renameTitle?.Trim();
+        _renameSessionId = null;
+        if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(title))
+            return;
+
+        try
+        {
+            await ChatOrchestrator.RenameSessionAsync(id, title);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"重命名失败: {ex.Message}");
+        }
+        await RefreshRelationAsync();
+    }
+
+    private void CancelRename() => _renameSessionId = null;
+
+    private async Task DeleteSessionAsync(string sessionId)
+    {
+        try
+        {
+            await ChatOrchestrator.DeleteSessionAsync(sessionId);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除会话失败: {ex.Message}");
+            return;
+        }
+
+        if (string.Equals(sessionId, _mainSessionId, StringComparison.Ordinal))
+            _mainSessionId = null;
+        if (string.Equals(sessionId, _activeSessionId, StringComparison.Ordinal))
+            _activeSessionId = null;
+        await RefreshRelationAsync();
     }
 
     private async Task OnTileClick(string sessionId)
     {
         _activeSessionId = sessionId;
+        RebuildSidebar();
+        if (_currentGroup is not null)
+            _relationModel = BuildRelationModel(_currentGroup);
         var groupId = _registry?.GroupId;
         if (!string.IsNullOrEmpty(groupId))
             await GroupManager.SetActiveAsync(groupId, sessionId);
@@ -267,7 +462,10 @@
         var active = _registry?.ActiveSessionId;
         if (!string.IsNullOrEmpty(active))
             _activeSessionId = active;
+        RebuildSidebar();
         _ = InvokeAsync(StateHasChanged);
+        // 组快照随 WindowsChanged 重新拉取（不新增 ISessionGroupEventBus 订阅）
+        _ = RefreshRelationSafelyAsync();
     }
 
     public void Dispose()

@@ -18,12 +18,16 @@ internal sealed class SessionGroupTestHarness : IDisposable
     public SessionManager Sessions { get; }
     public SessionGroupManager Manager { get; }
 
-    public SessionGroupTestHarness()
+    /// <param name="decorateGroupStore">
+    /// 可选的组存储装饰器（如注入保存失败）；null 时直接使用 <see cref="FileSessionGroupStore"/>。
+    /// </param>
+    public SessionGroupTestHarness(Func<ISessionGroupStore, ISessionGroupStore>? decorateGroupStore = null)
     {
         GroupStore = new FileSessionGroupStore(Dir);
+        var effectiveStore = decorateGroupStore is null ? GroupStore : decorateGroupStore(GroupStore);
         Sessions = new SessionManager(store: SessionStore, logger: new NullLogger<SessionManager>());
         var forker = new SessionForker(new NullLogger<SessionForker>(), Sessions);
-        Manager = new SessionGroupManager(Sessions, GroupStore, forker, NullLogger<SessionGroupManager>.Instance);
+        Manager = new SessionGroupManager(Sessions, effectiveStore, forker, NullLogger<SessionGroupManager>.Instance);
     }
 
     /// <summary>构造共享同一后端存储、但缓存为空的组管理器（用于冷兜底测试）。</summary>
