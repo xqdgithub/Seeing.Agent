@@ -22,7 +22,8 @@ internal sealed class SessionGroupTestHarness : IDisposable
     {
         GroupStore = new FileSessionGroupStore(Dir);
         Sessions = new SessionManager(store: SessionStore, logger: new NullLogger<SessionManager>());
-        Manager = new SessionGroupManager(Sessions, GroupStore, NullLogger<SessionGroupManager>.Instance);
+        var forker = new SessionForker(new NullLogger<SessionForker>(), Sessions);
+        Manager = new SessionGroupManager(Sessions, GroupStore, forker, NullLogger<SessionGroupManager>.Instance);
     }
 
     /// <summary>构造共享同一后端存储、但缓存为空的组管理器（用于冷兜底测试）。</summary>
@@ -30,7 +31,8 @@ internal sealed class SessionGroupTestHarness : IDisposable
     {
         var sessions = new SessionManager(store: SessionStore, logger: new NullLogger<SessionManager>());
         var groupStore = new FileSessionGroupStore(Dir);
-        return new SessionGroupManager(sessions, groupStore, NullLogger<SessionGroupManager>.Instance);
+        var forker = new SessionForker(new NullLogger<SessionForker>(), sessions);
+        return new SessionGroupManager(sessions, groupStore, forker, NullLogger<SessionGroupManager>.Instance);
     }
 
     /// <summary>创建并注册一个根会话（未入组）。</summary>

@@ -87,6 +87,7 @@ public static class SessionServiceExtensions
             new SessionGroupManager(
                 sp.GetRequiredService<ISessionManager>(),
                 sp.GetRequiredService<ISessionGroupStore>(),
+                sp.GetRequiredService<SessionForker>(),
                 sp.GetService<ILogger<SessionGroupManager>>()));
         services.TryAddSingleton<ISessionGroupManager>(sp =>
             sp.GetRequiredService<SessionGroupManager>());

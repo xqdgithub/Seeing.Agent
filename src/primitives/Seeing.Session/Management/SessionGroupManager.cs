@@ -30,12 +30,31 @@ namespace Seeing.Session.Management
         public SessionGroupManager(
             ISessionManager sessions,
             ISessionGroupStore store,
+            SessionForker forker,
             ILogger<SessionGroupManager>? logger = null)
         {
             _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
             _store = store ?? throw new ArgumentNullException(nameof(store));
+            _forker = forker ?? throw new ArgumentNullException(nameof(forker));
             _logger = logger ?? NullLogger<SessionGroupManager>.Instance;
-            _forker = new SessionForker(NullLogger<SessionForker>.Instance, _sessions);
+        }
+
+        /// <summary>
+        /// 兼容旧签名的构造（未显式注入 <see cref="SessionForker"/> 时自建默认分支器）。
+        /// <para>生产代码请使用注入 <see cref="SessionForker"/> 的构造，以复用 DI 单例。</para>
+        /// </summary>
+        public SessionGroupManager(
+            ISessionManager sessions,
+            ISessionGroupStore store,
+            ILogger<SessionGroupManager>? logger = null)
+            : this(
+                sessions,
+                store,
+                new SessionForker(
+                    NullLogger<SessionForker>.Instance,
+                    sessions ?? throw new ArgumentNullException(nameof(sessions))),
+                logger)
+        {
         }
 
         // ============================ 组管理 ============================
@@ -120,6 +139,7 @@ namespace Seeing.Session.Management
         public async Task AddMemberAsync(string groupId, SessionGroupMember member, CancellationToken ct = default)
         {
             ArgumentNullException.ThrowIfNull(member);
+            ValidateMemberInvariant(member);
 
             var groupLock = GetLock(_groupLocks, groupId);
             await groupLock.WaitAsync(ct).ConfigureAwait(false);
@@ -350,6 +370,8 @@ namespace Seeing.Session.Management
             var result = new List<SessionData>();
             foreach (var session in all)
             {
+                if (session.IsArchived)
+                    continue;
                 if (partitionId != null && session.PartitionId != partitionId)
                     continue;
                 if (!seen.Add(session.Id))
@@ -556,9 +578,14 @@ namespace Seeing.Session.Management
             }
         }
 
-        private static void PromoteAnchor(SessionGroup group)
+        private void PromoteAnchor(SessionGroup group)
         {
-            var next = group.Members.OrderBy(m => m.Order).FirstOrDefault();
+            // 优先提升非 Fork（备份）成员；仅当组内无非 Fork 成员时才提升 Fork 成员
+            var next = group.Members
+                .Where(m => m.Relation != SessionRelation.Fork)
+                .OrderBy(m => m.Order)
+                .FirstOrDefault()
+                ?? group.Members.OrderBy(m => m.Order).FirstOrDefault();
             if (next == null)
                 return;
 
@@ -568,6 +595,32 @@ namespace Seeing.Session.Management
             next.IsAnchor = true;
             next.Relation = SessionRelation.None;
             group.AnchorSessionId = next.SessionId;
+            // 锚点变更重算组标题（锁内纯内存读取会话标题）
+            group.Title = _sessions.Get(next.SessionId)?.Title ?? group.Title;
+        }
+
+        /// <summary>
+        /// 校验 §4.5.12 成员不变量：
+        /// 非锚点成员 <c>Relation==Child</c> 时其会话 <c>Kind</c> 必须为 <see cref="SessionKind.SubAgent"/>；
+        /// 锚点成员必须 <c>Relation==None</c>。
+        /// </summary>
+        private void ValidateMemberInvariant(SessionGroupMember member)
+        {
+            if (member.IsAnchor)
+            {
+                if (member.Relation != SessionRelation.None)
+                    throw new InvalidOperationException(
+                        $"锚点成员必须 Relation=None：SessionId={member.SessionId}, Relation={member.Relation}");
+                return;
+            }
+
+            if (member.Relation == SessionRelation.Child)
+            {
+                var session = _sessions.Get(member.SessionId);
+                if (session == null || session.Kind != SessionKind.SubAgent)
+                    throw new InvalidOperationException(
+                        $"非锚点 Child 成员必须对应 SubAgent 会话：SessionId={member.SessionId}, Kind={session?.Kind.ToString() ?? "missing"}");
+            }
         }
 
         private static void Touch(SessionGroup group)

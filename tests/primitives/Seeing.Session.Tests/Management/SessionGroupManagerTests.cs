@@ -303,4 +303,127 @@ public class SessionGroupManagerTests
         (await h.Manager.GetParentAsync(child.Id)).Should().Be(root.Id);
         (await h.Manager.GetParentAsync(root.Id)).Should().BeNull();
     }
+
+    [Fact]
+    public async Task ListAnchorsAsync_ShouldExcludeArchivedAnchors()
+    {
+        using var h = new SessionGroupTestHarness();
+        var active = h.CreateRoot();
+        var archived = h.CreateRoot();
+        await h.Sessions.SaveAsync(active.Id);
+        await h.Sessions.SaveAsync(archived.Id);
+        await h.Manager.EnsureForSessionAsync(active.Id);
+        await h.Manager.EnsureForSessionAsync(archived.Id);
+
+        h.Sessions.Get(archived.Id)!.IsArchived = true;
+        await h.Sessions.SaveAsync(archived.Id);
+
+        var anchors = await h.NewColdManager().ListAnchorsAsync();
+
+        anchors.Select(a => a.Id).Should().Contain(active.Id);
+        anchors.Select(a => a.Id).Should().NotContain(archived.Id);
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_WhenAnchorRemoved_ShouldPromoteNonForkAndUpdateGroupTitle()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot("根标题");
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+
+        // Fork（备份）先入组，Order 更小；随后加入 Child 成员（非 Fork）
+        var fork = h.CreatePlainSession();
+        fork.Title = "备份标题";
+        await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = fork.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
+        });
+        var child = await h.Manager.CreateChildAsync(
+            root.Id, "task", "子标题", Array.Empty<SessionPermissionRule>(), null);
+
+        await h.Manager.RemoveMemberAsync(group.Id, root.Id);
+
+        var reloaded = await h.Manager.GetGroupAsync(group.Id);
+        var anchor = reloaded!.Members.Single(m => m.IsAnchor);
+        anchor.SessionId.Should().Be(child.Id);
+        anchor.Relation.Should().Be(SessionRelation.None);
+        reloaded.Title.Should().Be("子标题");
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_WhenOnlyForkMembersRemain_ShouldPromoteForkAndUpdateGroupTitle()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot("根标题");
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+
+        var fork1 = h.CreatePlainSession();
+        fork1.Title = "备份一";
+        var fork2 = h.CreatePlainSession();
+        fork2.Title = "备份二";
+        await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = fork1.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
+        });
+        await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = fork2.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
+        });
+
+        await h.Manager.RemoveMemberAsync(group.Id, root.Id);
+
+        var reloaded = await h.Manager.GetGroupAsync(group.Id);
+        var anchor = reloaded!.Members.Single(m => m.IsAnchor);
+        anchor.SessionId.Should().Be(fork1.Id);
+        anchor.Relation.Should().Be(SessionRelation.None);
+        reloaded.Title.Should().Be("备份一");
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_NonAnchorChildWithNonSubAgentKind_ShouldThrow()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var plain = h.CreatePlainSession(SessionKind.Root);
+
+        var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = plain.Id, Relation = SessionRelation.Child, ParentSessionId = root.Id
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_AnchorWithNonNoneRelation_ShouldThrow()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var sub = h.CreatePlainSession(SessionKind.SubAgent);
+
+        var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = sub.Id, Relation = SessionRelation.Child, IsAnchor = true, ParentSessionId = root.Id
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_NonAnchorChildWithSubAgentKind_ShouldNotThrow()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var sub = h.CreatePlainSession(SessionKind.SubAgent);
+
+        var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = sub.Id, Relation = SessionRelation.Child, ParentSessionId = root.Id
+        });
+
+        await act.Should().NotThrowAsync();
+    }
 }

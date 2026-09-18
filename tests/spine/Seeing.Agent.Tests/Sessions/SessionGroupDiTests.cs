@@ -7,6 +7,7 @@ using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Sessions;
@@ -62,6 +63,28 @@ public class SessionGroupDiTests
 
             forker.Should().NotBeNull();
             forker.Should().BeSameAs(again);
+        }
+        finally
+        {
+            provider.Dispose();
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void AddSeeingCore_SessionGroupManager_ShouldUseInjectedSessionForker()
+    {
+        var provider = BuildProvider(out var tempDir);
+        try
+        {
+            var forker = provider.GetRequiredService<SessionForker>();
+            var manager = provider.GetRequiredService<SessionGroupManager>();
+
+            var field = typeof(SessionGroupManager)
+                .GetField("_forker", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            field.Should().NotBeNull();
+            field!.GetValue(manager).Should().BeSameAs(forker);
         }
         finally
         {
