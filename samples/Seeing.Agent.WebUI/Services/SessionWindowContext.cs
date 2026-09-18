@@ -28,6 +28,18 @@ public sealed class SessionWindowContext
     /// <summary>当前会话在所属组内的父会话 ID（根会话为 null）</summary>
     public string? ParentSessionId { get; internal set; }
 
+    /// <summary>当前会话在所属组内的成员关系（SessionWindow 加载时写入；组缺失时按会话 Kind 兜底）。</summary>
+    public SessionRelation Relation { get; internal set; }
+
+    /// <summary>当前会话是否为所属组的主线锚点（SessionWindow 加载时写入）。</summary>
+    public bool IsAnchor { get; internal set; }
+
+    /// <summary>当前会话在所属组内的成员标签（如 trim 备份前缀；无则 null）。</summary>
+    public string? Label { get; internal set; }
+
+    /// <summary>当前会话若为交接前任，其后继会话标题（用于"已交接 → X"；无则 null）。</summary>
+    public string? SuccessorTitle { get; internal set; }
+
     // ---- 能力标记（由 SessionWindow 按组内成员 Relation 经 ApplyCapabilities 计算） ----
     /// <summary>是否为 Child 关系成员（只读子会话）</summary>
     public bool IsChild { get; internal set; }

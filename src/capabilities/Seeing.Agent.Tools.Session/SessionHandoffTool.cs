@@ -99,6 +99,13 @@ public sealed class SessionHandoffTool : SessionToolBase
         }
 
         var group = await Groups.GetGroupForSessionAsync(source.Id, ct).ConfigureAwait(false);
+
+        // 仅当前锚点（最新主线会话）可被交接；单成员冷兜底（group==null）不误判
+        var member = group?.Members.FirstOrDefault(m =>
+            string.Equals(m.SessionId, source.Id, StringComparison.Ordinal));
+        if (member is { IsAnchor: false })
+            return Failure("仅当前主线会话（锚点）可发起交接；请回到最新会话后再试。");
+
         var originalActiveId = group?.ResolveActiveId();
 
         string? createdSuccessorId = null;

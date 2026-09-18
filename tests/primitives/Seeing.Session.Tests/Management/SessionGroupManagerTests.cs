@@ -325,7 +325,7 @@ public class SessionGroupManagerTests
     }
 
     [Fact]
-    public async Task RemoveMemberAsync_WhenAnchorRemoved_ShouldPromoteNonForkAndUpdateGroupTitle()
+    public async Task RemoveMemberAsync_WhenAnchorRemoved_ShouldFallbackToForkAndUpdateGroupTitle()
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot("根标题");
@@ -343,11 +343,12 @@ public class SessionGroupManagerTests
 
         await h.Manager.RemoveMemberAsync(group.Id, root.Id);
 
+        // 新语义：优先 (d) 非 Fork 且非 Child → 无；再 (e) Fork 兜底 → fork（排除 Child）
         var reloaded = await h.Manager.GetGroupAsync(group.Id);
         var anchor = reloaded!.Members.Single(m => m.IsAnchor);
-        anchor.SessionId.Should().Be(child.Id);
+        anchor.SessionId.Should().Be(fork.Id);
         anchor.Relation.Should().Be(SessionRelation.None);
-        reloaded.Title.Should().Be("子标题");
+        reloaded.Title.Should().Be("备份标题");
     }
 
     [Fact]

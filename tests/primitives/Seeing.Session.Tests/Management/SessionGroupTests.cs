@@ -7,6 +7,12 @@ namespace Seeing.Session.Tests.Management
     public class SessionGroupTests
     {
         [Fact]
+        public void SessionRelation_HandoffPredecessor_ShouldBeFour()
+        {
+            ((int)SessionRelation.HandoffPredecessor).Should().Be(4);
+        }
+
+        [Fact]
         public void ResolveActiveId_WhenActiveIsStale_ShouldFallbackToAnchor()
         {
             var group = new SessionGroup

@@ -292,7 +292,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     /// <param name="sessionId">父会话或子会话 ID</param>
     /// <param name="ct">取消令牌</param>
     /// <returns>已取消的执行数量</returns>
-    public async Task<int> CancelBySessionAsync(string sessionId, CancellationToken ct = default)
+    public virtual async Task<int> CancelBySessionAsync(string sessionId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
             return 0;

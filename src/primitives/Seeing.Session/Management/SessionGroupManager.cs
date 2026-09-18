@@ -199,13 +199,25 @@ namespace Seeing.Session.Management
                     return;
 
                 var wasAnchor = member.IsAnchor || group.AnchorSessionId == sessionId;
+                var deletedParent = member.ParentSessionId;
+
+                // 移除前重挂：主线后继与 Fork/Child 的来源指向被删节点时，改指被删节点的父（可能为 null）
+                foreach (var m in group.Members)
+                {
+                    if (m.SessionId == sessionId) continue;
+                    if (!string.Equals(m.ParentSessionId, sessionId, StringComparison.Ordinal)) continue;
+                    m.ParentSessionId = deletedParent;
+                }
+
                 group.Members.Remove(member);
                 UnmapSession(sessionId, group.Id);
 
                 if (group.ActiveSessionId == sessionId)
                     group.ActiveSessionId = null;
-                if (wasAnchor)
-                    PromoteAnchor(group);
+
+                // 全路径归一：删除锚点时优先回溯到被删节点的父；否则为幂等 no-op
+                NormalizeAnchor(group, wasAnchor ? deletedParent : null);
+                group.Title = _sessions.Get(group.AnchorSessionId)?.Title ?? group.Title;
 
                 Touch(group);
                 if (group.Members.Count == 0)
@@ -278,6 +290,28 @@ namespace Seeing.Session.Management
 
                 var anchorMember = current.Members.FirstOrDefault(m => m.SessionId == sessionId);
                 var wasAnchor = anchorMember?.IsAnchor == true || current.AnchorSessionId == sessionId;
+                var deletedParent = anchorMember?.ParentSessionId;
+
+                // 移除前重挂：不属于删除集、且 ParentSessionId 指向任一被删节点的成员，
+                // 改挂到"该被删节点最近的、不在删除集内的祖先"（若不存在则置 null），与 RemoveMemberAsync 对称。
+                // 多层 Child 子树删除时，被删节点的父可能同样在 toRemove 内，须沿 ParentSessionId 向上解析。
+                foreach (var m in current.Members)
+                {
+                    if (toRemove.Contains(m.SessionId)) continue;
+                    if (string.IsNullOrEmpty(m.ParentSessionId) || !toRemove.Contains(m.ParentSessionId!)) continue;
+
+                    var resolvedParent = m.ParentSessionId;
+                    var visited = new HashSet<string>(StringComparer.Ordinal);
+                    while (!string.IsNullOrEmpty(resolvedParent)
+                           && toRemove.Contains(resolvedParent!)
+                           && visited.Add(resolvedParent!))
+                    {
+                        var deletedNode = current.Members.FirstOrDefault(x => x.SessionId == resolvedParent);
+                        resolvedParent = deletedNode?.ParentSessionId;
+                    }
+
+                    m.ParentSessionId = resolvedParent;
+                }
 
                 foreach (var id in toRemove)
                 {
@@ -290,8 +324,10 @@ namespace Seeing.Session.Management
 
                 if (current.ActiveSessionId != null && toRemove.Contains(current.ActiveSessionId))
                     current.ActiveSessionId = null;
-                if (wasAnchor)
-                    PromoteAnchor(current);
+
+                // 全路径归一（锚点删除时优先回溯到被删节点的父；否则幂等 no-op）
+                NormalizeAnchor(current, wasAnchor ? deletedParent : null);
+                current.Title = _sessions.Get(current.AnchorSessionId)?.Title ?? current.Title;
 
                 Touch(current);
                 if (current.Members.Count == 0)
@@ -594,17 +630,49 @@ namespace Seeing.Session.Management
                 var group = await EnsureForSessionAsync(sourceSessionId, ct).ConfigureAwait(false);
                 groupId = group.Id;
 
-                await AddMemberAsync(group.Id, new SessionGroupMember
+                // 组锁内原子迁移：校验源为锚点 → 建成员 → 归一锚点 → 一次持久化/发布
+                var groupLock = GetLock(_groupLocks, group.Id);
+                await groupLock.WaitAsync(ct).ConfigureAwait(false);
+                SessionGroup snapshot;
+                try
                 {
-                    SessionId = successor.Id,
-                    Relation = SessionRelation.HandoffSuccessor,
-                    ParentSessionId = sourceSessionId
-                }, ct).ConfigureAwait(false);
+                    var current = await GetGroupLiveAsync(group.Id, ct).ConfigureAwait(false)
+                        ?? throw new InvalidOperationException($"Session group not found: {group.Id}");
+
+                    var sourceMember = current.Members.FirstOrDefault(m => m.SessionId == sourceSessionId)
+                        ?? throw new InvalidOperationException($"会话不在组内: {sourceSessionId}");
+                    if (!(sourceMember.IsAnchor || current.AnchorSessionId == sourceSessionId))
+                        throw new InvalidOperationException("仅当前锚点可被交接");
+
+                    sourceMember.IsAnchor = false;
+                    sourceMember.Relation = SessionRelation.HandoffPredecessor;
+
+                    var successorMember = new SessionGroupMember
+                    {
+                        SessionId = successor.Id,
+                        Relation = SessionRelation.HandoffSuccessor,
+                        ParentSessionId = sourceSessionId,
+                        Order = current.Members.Count == 0 ? 0 : current.Members.Max(m => m.Order) + 1
+                    };
+                    current.Members.Add(successorMember);
+                    _sessionToGroup[successor.Id] = current.Id;
+                    current.ActiveSessionId = successor.Id;
+
+                    NormalizeAnchor(current, successor.Id);
+                    current.Title = _sessions.Get(current.AnchorSessionId)?.Title ?? current.Title;
+                    Touch(current);
+                    await _store.SaveAsync(current).ConfigureAwait(false);
+                    snapshot = current.Clone();
+                }
+                finally
+                {
+                    groupLock.Release();
+                }
 
                 await _sessions.UpdateSessionAsync(successor.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
-                await SetActiveAsync(group.Id, successor.Id, ct).ConfigureAwait(false);
                 await _sessions.SaveAsync(successor.Id).ConfigureAwait(false);
 
+                RaiseChanged(snapshot);
                 return successor;
             }
             catch
@@ -634,10 +702,15 @@ namespace Seeing.Session.Management
                         var member = group?.Members.FirstOrDefault(m => m.SessionId == successorId);
                         if (group is not null && member is not null)
                         {
+                            // 移除后继前记录其来源（原锚点），供归一优先级 (a) 复位原锚点
+                            var removedParent = member.ParentSessionId;
                             group.Members.Remove(member);
                             UnmapSession(successorId, group.Id);
                             if (group.ActiveSessionId == successorId)
                                 group.ActiveSessionId = null;
+                            // 恢复原锚点：传 hint 确保退出点仍是原锚点，而非按 Order 回退到链首
+                            NormalizeAnchor(group, removedParent);
+                            group.Title = _sessions.Get(group.AnchorSessionId)?.Title ?? group.Title;
                             Touch(group);
                             await _store.SaveAsync(group).ConfigureAwait(false);
                         }
@@ -681,39 +754,65 @@ namespace Seeing.Session.Management
             }
         }
 
-        private void PromoteAnchor(SessionGroup group)
+        /// <summary>
+        /// 锚点归一（仅内存态；不持久化/不发布，由调用方统一 Touch/SaveAsync/RaiseChanged）。
+        /// 优先级：(a) hint → (b) 当前锚点存活保持 → (d) 非 Fork 且非 Child
+        /// → (e) Fork 兜底 → (f) 仅剩 Child 退化。
+        /// <para>主线回溯由调用方以 <paramref name="preferredMemberHint"/>（(a)）承担，本方法不再自行回溯。</para>
+        /// </summary>
+        private static void NormalizeAnchor(SessionGroup group, string? preferredMemberHint = null)
         {
-            // 优先提升非 Fork（备份）成员；仅当组内无非 Fork 成员时才提升 Fork 成员
-            var next = group.Members
-                .Where(m => m.Relation != SessionRelation.Fork)
-                .OrderBy(m => m.Order)
-                .FirstOrDefault()
-                ?? group.Members.OrderBy(m => m.Order).FirstOrDefault();
-            if (next == null)
+            if (group.Members.Count == 0)
+                return;
+
+            SessionGroupMember? ByOrder(Func<SessionGroupMember, bool> pred) =>
+                group.Members.Where(pred).OrderBy(m => m.Order).FirstOrDefault();
+
+            SessionGroupMember? target = null;
+            if (!string.IsNullOrEmpty(preferredMemberHint))
+                target = group.Members.FirstOrDefault(m => m.SessionId == preferredMemberHint);
+
+            if (target is null)
+            {
+                var current = group.Members.FirstOrDefault(m => m.IsAnchor)
+                    ?? group.Members.FirstOrDefault(m => m.SessionId == group.AnchorSessionId);
+                if (current is not null)
+                    target = current;                              // (b) 幂等
+            }
+
+            target ??= ByOrder(m => m.Relation != SessionRelation.Fork && m.Relation != SessionRelation.Child); // (d)
+            target ??= ByOrder(m => m.Relation == SessionRelation.Fork);                                          // (e)
+            target ??= ByOrder(_ => true);                                                                        // (f)
+            if (target is null)
                 return;
 
             foreach (var member in group.Members)
                 member.IsAnchor = false;
 
-            next.IsAnchor = true;
-            next.Relation = SessionRelation.None;
-            group.AnchorSessionId = next.SessionId;
-            // 锚点变更重算组标题（锁内纯内存读取会话标题）
-            group.Title = _sessions.Get(next.SessionId)?.Title ?? group.Title;
+            target.IsAnchor = true;
+            target.Relation = target.Relation == SessionRelation.Child
+                ? SessionRelation.Child
+                : (target.Relation == SessionRelation.Fork || string.IsNullOrEmpty(target.ParentSessionId)
+                    ? SessionRelation.None
+                    : SessionRelation.HandoffSuccessor);
+
+            group.AnchorSessionId = target.SessionId;
         }
 
         /// <summary>
         /// 校验 §4.5.12 成员不变量（非锚点成员双向）：
         /// <c>Relation==Child</c> ⇔ 会话 <see cref="SessionKind.SubAgent"/>；
-        /// 锚点成员必须 <c>Relation==None</c>。
+        /// 锚点成员 <c>Relation ∈ { None, HandoffSuccessor }</c>（<c>Fork</c> 兜底当选时已归一为 <c>None</c>，
+        /// <c>Child</c> 仅退化态由 <see cref="NormalizeAnchor"/> 内部保留，不在此入口放行）。
         /// </summary>
         private void ValidateMemberInvariant(SessionGroupMember member)
         {
             if (member.IsAnchor)
             {
-                if (member.Relation != SessionRelation.None)
+                if (member.Relation != SessionRelation.None
+                    && member.Relation != SessionRelation.HandoffSuccessor)
                     throw new InvalidOperationException(
-                        $"锚点成员必须 Relation=None：SessionId={member.SessionId}, Relation={member.Relation}");
+                        $"锚点成员必须 Relation=None 或 HandoffSuccessor：SessionId={member.SessionId}, Relation={member.Relation}");
                 return;
             }
 

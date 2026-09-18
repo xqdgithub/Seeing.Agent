@@ -54,6 +54,45 @@ public class SessionHandoffRollbackTests
         }
     }
 
+    /// <summary>
+    /// 链 A→B→C（C 为锚点）执行 C→D 交接时若保存失败，清理后继后必须恢复原锚点 C，
+    /// 而不是按 Order 回退到链首 A（A/B 关系保持不变）。
+    /// </summary>
+    [Fact]
+    public async Task Handoff_MidChainStorageFailure_ShouldRestoreOriginalAnchor()
+    {
+        // 仅当组内出现第 4 个成员（即 C→D 交接写入后继）时注入保存失败
+        using var h = new SessionGroupTestHarness(
+            inner => new FailingGroupStore(inner, g => g.Members.Count == 4));
+
+        var a = h.CreateRoot("A");
+        var group = await h.Manager.EnsureForSessionAsync(a.Id);
+        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null); // A→B, B 锚点
+        var c = await h.Manager.CreateHandoffSuccessorAsync(b.Id, null, "C", null); // A→B→C, C 锚点
+
+        var sessionsBefore = h.Sessions.List().Select(s => s.Id).OrderBy(x => x).ToList();
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            h.Manager.CreateHandoffSuccessorAsync(c.Id, null, "D", null));
+
+        // 无孤儿会话：D 不存在（会话集合与失败前一致）
+        h.Sessions.List().Select(s => s.Id).OrderBy(x => x).Should().Equal(sessionsBefore);
+
+        var g = await h.Manager.GetGroupAsync(group.Id);
+        g!.Members.Should().HaveCount(3);
+        g.AnchorSessionId.Should().Be(c.Id);
+
+        var cMember = g.Members.Single(m => m.SessionId == c.Id);
+        cMember.IsAnchor.Should().BeTrue();
+        cMember.Relation.Should().Be(SessionRelation.HandoffSuccessor);
+
+        // A/B 主线历史关系不变
+        g.Members.Single(m => m.SessionId == b.Id).Relation.Should().Be(SessionRelation.HandoffPredecessor);
+        g.Members.Single(m => m.SessionId == a.Id).Relation.Should().Be(SessionRelation.HandoffPredecessor);
+        g.Members.Single(m => m.SessionId == b.Id).ParentSessionId.Should().Be(a.Id);
+        g.Members.Single(m => m.SessionId == c.Id).ParentSessionId.Should().Be(b.Id);
+    }
+
     /// <summary>按谓词在保存组时注入失败的存储装饰器。</summary>
     private sealed class FailingGroupStore : ISessionGroupStore
     {

@@ -41,34 +41,43 @@ namespace Seeing.Agent.Tests.Services
         }
 
         [Fact]
-        public void ShouldEnsure_false_when_disabled_or_fork_or_subagent()
+        public void ShouldEnsure_false_when_disabled_or_child_or_subagent()
         {
             SessionTitleService.ShouldEnsure(
-                enabled: false, kind: SessionKind.Root, parentId: null,
+                enabled: false, kind: SessionKind.Root, isChild: false,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeFalse();
 
             SessionTitleService.ShouldEnsure(
-                enabled: true, kind: SessionKind.Root, parentId: "p",
+                enabled: true, kind: SessionKind.Root, isChild: true,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeFalse();
 
             SessionTitleService.ShouldEnsure(
-                enabled: true, kind: SessionKind.SubAgent, parentId: null,
+                enabled: true, kind: SessionKind.SubAgent, isChild: false,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeFalse();
+        }
+
+        [Fact]
+        public void ShouldEnsure_true_for_mainline_successor_with_parent()
+        {
+            // 新模型：主线后继 ParentSessionId 非空但非 Child，仍应自动生成标题
+            SessionTitleService.ShouldEnsure(
+                enabled: true, kind: SessionKind.Root, isChild: false,
+                title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeTrue();
         }
 
         [Fact]
         public void ShouldEnsure_true_for_default_title_under_10_or_every_10th()
         {
             SessionTitleService.ShouldEnsure(
-                enabled: true, kind: SessionKind.Root, parentId: null,
+                enabled: true, kind: SessionKind.Root, isChild: false,
                 title: "新会话", realUserCount: 1, userMessage: "hi").Should().BeTrue();
 
             SessionTitleService.ShouldEnsure(
-                enabled: true, kind: SessionKind.Root, parentId: null,
+                enabled: true, kind: SessionKind.Root, isChild: false,
                 title: "新会话", realUserCount: 2, userMessage: "hi").Should().BeTrue();
 
             SessionTitleService.ShouldEnsure(
-                enabled: true, kind: SessionKind.Root, parentId: null,
+                enabled: true, kind: SessionKind.Root, isChild: false,
                 title: "已有标题", realUserCount: 10, userMessage: "hi").Should().BeTrue();
         }
 
@@ -79,7 +88,7 @@ namespace Seeing.Agent.Tests.Services
         public void ShouldEnsure_false_when_user_message_empty_or_whitespace(string userMessage)
         {
             SessionTitleService.ShouldEnsure(
-                enabled: true, kind: SessionKind.Root, parentId: null,
+                enabled: true, kind: SessionKind.Root, isChild: false,
                 title: "新会话", realUserCount: 1, userMessage: userMessage).Should().BeFalse();
         }
 
@@ -274,11 +283,68 @@ namespace Seeing.Agent.Tests.Services
             session.Title.Should().Be("新主题标题");
         }
 
+        [Fact]
+        public async Task TryEnsureAsync_writes_title_for_mainline_successor_with_parent()
+        {
+            var session = SessionData.Create();
+            session.Title = "新会话";
+            session.Kind = SessionKind.Root;
+            session.AddMessage(SessionMessage.UserMessage("continue the work"));
+
+            var sm = new Mock<ISessionManager>();
+            sm.Setup(x => x.Get(session.Id)).Returns(session);
+            sm.Setup(x => x.SetTitleAsync(session.Id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask)
+                .Callback<string, string, CancellationToken>((_, t, _) => session.Title = t);
+
+            var text = new Mock<ITextCompletion>();
+            text.Setup(x => x.CompleteAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<List<ChatMessage>>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync("后继标题");
+
+            var groupManager = new Mock<ISessionGroupManager>();
+            groupManager.Setup(g => g.GetGroupForSessionAsync(session.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SessionGroup
+                {
+                    Id = "grp-1",
+                    AnchorSessionId = "prev",
+                    Members = new List<SessionGroupMember>
+                    {
+                        new()
+                        {
+                            SessionId = "prev",
+                            Relation = SessionRelation.HandoffPredecessor,
+                            IsAnchor = false,
+                        },
+                        new()
+                        {
+                            SessionId = session.Id,
+                            Relation = SessionRelation.HandoffSuccessor,
+                            IsAnchor = true,
+                            ParentSessionId = "prev",
+                        },
+                    },
+                });
+
+            var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
+            opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
+
+            var svc = new SessionTitleService(text.Object, sm.Object, groupManager.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
+            var title = await svc.TryEnsureAsync(session.Id, "continue the work", "provider/model");
+
+            title.Should().Be("后继标题");
+            session.Title.Should().Be("后继标题");
+        }
+
         private static Mock<ISessionGroupManager> RootGroupManager()
         {
             var gm = new Mock<ISessionGroupManager>();
-            gm.Setup(g => g.GetParentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((string?)null);
+            gm.Setup(g => g.GetGroupForSessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((SessionGroup?)null);
             return gm;
         }
     }
