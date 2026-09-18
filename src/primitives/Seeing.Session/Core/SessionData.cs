@@ -79,8 +79,11 @@ namespace Seeing.Session.Core
         /// <summary>出站用户/对端 ID；可空</summary>
         public string? UserId { get; set; }
 
-        /// <summary>会话关系类型（Root / Fork / SubAgent）</summary>
+        /// <summary>会话类型（Root / SubAgent）</summary>
         public SessionKind Kind { get; set; } = SessionKind.Root;
+
+        /// <summary>所属会话组 ID（关系唯一权威在 SessionGroup）</summary>
+        public string? GroupId { get; set; }
 
         /// <summary>子 Agent 会话权限快照（可序列化；续跑复用不重算）</summary>
         public List<SessionPermissionRule> PermissionSnapshot { get; set; } = new();
@@ -151,12 +154,6 @@ namespace Seeing.Session.Core
         public Dictionary<string, string> Metadata { get; set; } = new();
 
         // === Fork/Archive 支持（新增） ===
-        /// <summary>父会话 ID（Fork 时设置）</summary>
-        public string? ParentSessionId { get; set; }
-
-        /// <summary>Fork 标签</summary>
-        public string? ForkLabel { get; set; }
-
         /// <summary>是否已归档</summary>
         public bool IsArchived { get; set; }
 
@@ -439,6 +436,7 @@ namespace Seeing.Session.Core
                 ChannelId = ChannelId,
                 UserId = UserId,
                 Kind = Kind,
+                GroupId = GroupId,
                 AutoApprove = AutoApprove,
                 PermissionSnapshot = PermissionSnapshot.Select(r => new SessionPermissionRule
                 {
@@ -452,8 +450,6 @@ namespace Seeing.Session.Core
                 Metadata = new Dictionary<string, string>(Metadata),
                 State = new Dictionary<string, string>(State),
                 // 新增字段
-                ParentSessionId = ParentSessionId,
-                ForkLabel = ForkLabel,
                 IsArchived = IsArchived,
                 ArchivedAt = ArchivedAt,
                 // Token 预算配置
