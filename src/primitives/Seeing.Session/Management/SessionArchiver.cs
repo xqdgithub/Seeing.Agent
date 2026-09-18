@@ -12,13 +12,15 @@ namespace Seeing.Session.Management
     {
         private readonly ILogger<SessionArchiver> _logger;
         private readonly string _archivePath;
+        private readonly ISessionManager? _sessionManager;
 
-        public SessionArchiver(ILogger<SessionArchiver> logger, string? archivePath = null)
+        public SessionArchiver(ILogger<SessionArchiver> logger, string? archivePath = null, ISessionManager? sessionManager = null)
         {
             _logger = logger;
             _archivePath = archivePath ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".seeing", "sessions", "_archive");
+            _sessionManager = sessionManager;
         }
 
         /// <summary>Archive Session - 归档</summary>
@@ -26,6 +28,23 @@ namespace Seeing.Session.Management
         {
             try
             {
+                // 归档前先落盘写回缓冲：确保归档内容为最新快照；写回失败仅记 Warning，继续归档
+                if (_sessionManager != null)
+                {
+                    try
+                    {
+                        await _sessionManager.FlushAsync(session.Id, ct);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "归档前落盘失败，继续归档: SessionId={SessionId}", session.Id);
+                    }
+                }
+
                 // 标记为归档
                 session.IsArchived = true;
                 session.ArchivedAt = DateTimeOffset.Now;

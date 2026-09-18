@@ -436,17 +436,51 @@ namespace Seeing.Agent.Core.Extensions
             // Agent 运行时初始化服务（IHostedService）
             services.AddHostedService<AgentInitializationService>();
 
+            // 会话持久化写回配置（共享单例；宿主可预先注册实例以调整，默认启用写回）
+            // 以具体实例注册，使下方基于 ImplementationInstance 的 Enabled 探测真正生效。
+            // 如需旁路写回：在调用 AddSeeingCore 之前注册
+            // new Seeing.Session.Persistence.SessionPersistenceOptions { Enabled = false } 实例。
+            services.TryAddSingleton(new Seeing.Session.Persistence.SessionPersistenceOptions());
+
+            // 写回开关：宿主在注册前提供 SessionPersistenceOptions 实例并设置 Enabled=false 可旁路装饰器
+            var writeBehindEnabled = (services
+                .LastOrDefault(d => d.ServiceType == typeof(Seeing.Session.Persistence.SessionPersistenceOptions))
+                ?.ImplementationInstance as Seeing.Session.Persistence.SessionPersistenceOptions)?.Enabled ?? true;
+
             // 会话管理器 - 必须注入 ISessionStore，否则 SaveAsync 只会警告「未配置 SessionStore」
             if (!services.Any(d => d.ServiceType == typeof(ISessionStore)))
             {
-                services.AddSingleton<ISessionStore>(sp =>
+                if (writeBehindEnabled)
                 {
-                    var workspace = sp.GetRequiredService<IWorkspaceProvider>();
-                    var path = Path.Combine(workspace.ProjectSeeingDirectory, "sessions");
-                    return new FileSessionStore(
-                        path,
-                        sp.GetService<ILogger<FileSessionStore>>());
-                });
+                    // 具体装饰器单例 + 接口映射到同一实例：刷新状态共享；容器对具体单例仅释放一次，
+                    // 调度器 Dispose 内部 Interlocked 幂等，重复捕获亦安全
+                    services.AddSingleton<Seeing.Session.Persistence.WriteBehindSessionStore>(sp =>
+                    {
+                        var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                        var path = Path.Combine(workspace.ProjectSeeingDirectory, "sessions");
+                        var inner = new FileSessionStore(path, sp.GetService<ILogger<FileSessionStore>>());
+                        var options = sp.GetRequiredService<Seeing.Session.Persistence.SessionPersistenceOptions>();
+                        return new Seeing.Session.Persistence.WriteBehindSessionStore(
+                            inner,
+                            options,
+                            sp.GetService<ILogger<Seeing.Session.Persistence.WriteBehindSessionStore>>());
+                    });
+                    services.AddSingleton<ISessionStore>(sp =>
+                        sp.GetRequiredService<Seeing.Session.Persistence.WriteBehindSessionStore>());
+                    services.AddSingleton<Seeing.Session.Storage.IWriteBehindSessionStore>(sp =>
+                        sp.GetRequiredService<Seeing.Session.Persistence.WriteBehindSessionStore>());
+                }
+                else
+                {
+                    services.AddSingleton<ISessionStore>(sp =>
+                    {
+                        var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                        var path = Path.Combine(workspace.ProjectSeeingDirectory, "sessions");
+                        return new FileSessionStore(
+                            path,
+                            sp.GetService<ILogger<FileSessionStore>>());
+                    });
+                }
             }
 
             // 会话事件发布器（SessionManager / UI 必须共用同一实例）
@@ -459,21 +493,44 @@ namespace Seeing.Agent.Core.Extensions
                     hookManager: sp.GetService<Seeing.Session.Hooks.IHookManager>(),
                     eventPublisher: sp.GetRequiredService<ISessionEventPublisher>(),
                     logger: sp.GetService<ILogger<SessionManager>>(),
-                    globalStore: sp.GetService<GlobalSessionStore>()));
+                    catalog: sp.GetService<ISessionCatalog>()));
             services.AddSingleton<ISessionManager>(sp =>
                 sp.GetRequiredService<SessionManager>());
 
             // 会话组存储（关系唯一权威在 SessionGroup）：与会话存储同根目录下 session-groups
             if (!services.Any(d => d.ServiceType == typeof(ISessionGroupStore)))
             {
-                services.AddSingleton<ISessionGroupStore>(sp =>
+                if (writeBehindEnabled)
                 {
-                    var workspace = sp.GetRequiredService<IWorkspaceProvider>();
-                    var path = Path.Combine(workspace.ProjectSeeingDirectory, "session-groups");
-                    return new FileSessionGroupStore(
-                        path,
-                        sp.GetService<ILogger<FileSessionGroupStore>>());
-                });
+                    // 具体装饰器单例 + 接口映射到同一实例：刷新状态共享；容器对具体单例仅释放一次，
+                    // 调度器 Dispose 内部 Interlocked 幂等，重复捕获亦安全
+                    services.AddSingleton<Seeing.Session.Persistence.WriteBehindSessionGroupStore>(sp =>
+                    {
+                        var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                        var path = Path.Combine(workspace.ProjectSeeingDirectory, "session-groups");
+                        var inner = new FileSessionGroupStore(path, sp.GetService<ILogger<FileSessionGroupStore>>());
+                        var options = sp.GetRequiredService<Seeing.Session.Persistence.SessionPersistenceOptions>();
+                        return new Seeing.Session.Persistence.WriteBehindSessionGroupStore(
+                            inner,
+                            options,
+                            sp.GetService<ILogger<Seeing.Session.Persistence.WriteBehindSessionGroupStore>>());
+                    });
+                    services.AddSingleton<ISessionGroupStore>(sp =>
+                        sp.GetRequiredService<Seeing.Session.Persistence.WriteBehindSessionGroupStore>());
+                    services.AddSingleton<Seeing.Session.Persistence.IWriteBehindSessionGroupStore>(sp =>
+                        sp.GetRequiredService<Seeing.Session.Persistence.WriteBehindSessionGroupStore>());
+                }
+                else
+                {
+                    services.AddSingleton<ISessionGroupStore>(sp =>
+                    {
+                        var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+                        var path = Path.Combine(workspace.ProjectSeeingDirectory, "session-groups");
+                        return new FileSessionGroupStore(
+                            path,
+                            sp.GetService<ILogger<FileSessionGroupStore>>());
+                    });
+                }
             }
 
             // 会话分支器（纯消息复制引擎；不承载关系）

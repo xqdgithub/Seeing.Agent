@@ -15,7 +15,10 @@ namespace Seeing.Session.Storage
         private volatile string _baseDirectory;
         private readonly ILogger<FileSessionGroupStore>? _logger;
         private readonly JsonSerializerOptions _jsonOptions;
-        private readonly SemaphoreSlim _writeLock = new(1, 1);
+
+        // 按组文件的锁字典（实例级别，消除全局写锁串行）
+        private readonly Dictionary<string, SemaphoreSlim> _groupLocks = new();
+        private readonly object _lockDictLock = new();
 
         /// <summary>创建会话组存储。</summary>
         /// <param name="baseDirectory">基础目录，默认 ~/.seeing/session-groups</param>
@@ -67,22 +70,22 @@ namespace Seeing.Session.Storage
         }
 
         /// <inheritdoc/>
-        public async Task<SessionGroup?> LoadAsync(string groupId)
+        public async Task<SessionGroup?> LoadAsync(string groupId, CancellationToken ct = default)
         {
             var filePath = GetGroupFilePath(groupId);
             if (!File.Exists(filePath))
                 return null;
 
-            return await ReadGroupFileAsync(filePath, groupId).ConfigureAwait(false);
+            return await ReadGroupFileAsync(filePath, groupId, ct).ConfigureAwait(false);
         }
 
         /// <inheritdoc/>
-        public async Task<SessionGroup?> FindBySessionAsync(string sessionId)
+        public async Task<SessionGroup?> FindBySessionAsync(string sessionId, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(sessionId))
                 return null;
 
-            await foreach (var group in ListAsync())
+            await foreach (var group in ListAsync(ct))
             {
                 if (group.Members.Any(m => m.SessionId == sessionId))
                     return group;
@@ -92,39 +95,41 @@ namespace Seeing.Session.Storage
         }
 
         /// <inheritdoc/>
-        public async Task SaveAsync(SessionGroup group)
+        public async Task SaveAsync(SessionGroup group, CancellationToken ct = default)
         {
             if (group == null)
                 throw new ArgumentNullException(nameof(group));
 
             var filePath = GetGroupFilePath(group.Id);
+            var groupLock = GetGroupLock(filePath);
 
-            await _writeLock.WaitAsync().ConfigureAwait(false);
+            await groupLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                group.UpdatedAt = DateTime.Now;
+                // 快照契约：时间戳由调用方设置，仅在 CreatedAt 缺省时补齐
                 if (group.CreatedAt == default)
                     group.CreatedAt = DateTime.Now;
 
                 var json = JsonSerializer.Serialize(group, _jsonOptions);
                 var tempPath = filePath + ".tmp";
-                await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8).ConfigureAwait(false);
+                await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, ct).ConfigureAwait(false);
                 File.Move(tempPath, filePath, overwrite: true);
 
                 _logger?.LogDebug("保存会话组成功: {GroupId}", group.Id);
             }
             finally
             {
-                _writeLock.Release();
+                groupLock.Release();
             }
         }
 
         /// <inheritdoc/>
-        public async Task DeleteAsync(string groupId)
+        public async Task DeleteAsync(string groupId, CancellationToken ct = default)
         {
             var filePath = GetGroupFilePath(groupId);
+            var groupLock = GetGroupLock(filePath);
 
-            await _writeLock.WaitAsync().ConfigureAwait(false);
+            await groupLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
                 if (File.Exists(filePath))
@@ -135,12 +140,12 @@ namespace Seeing.Session.Storage
             }
             finally
             {
-                _writeLock.Release();
+                groupLock.Release();
             }
         }
 
         /// <inheritdoc/>
-        public IAsyncEnumerable<SessionGroup> ListAsync() => EnumerateAsync(CancellationToken.None);
+        public IAsyncEnumerable<SessionGroup> ListAsync(CancellationToken ct = default) => EnumerateAsync(ct);
 
         private async IAsyncEnumerable<SessionGroup> EnumerateAsync(
             [EnumeratorCancellation] CancellationToken ct)
@@ -157,7 +162,7 @@ namespace Seeing.Session.Storage
                 SessionGroup? group = null;
                 try
                 {
-                    group = await ReadGroupFileAsync(filePath, groupId).ConfigureAwait(false);
+                    group = await ReadGroupFileAsync(filePath, groupId, ct).ConfigureAwait(false);
                 }
                 catch (SessionLoadException ex)
                 {
@@ -169,7 +174,7 @@ namespace Seeing.Session.Storage
             }
         }
 
-        private async Task<SessionGroup?> ReadGroupFileAsync(string filePath, string groupId)
+        private async Task<SessionGroup?> ReadGroupFileAsync(string filePath, string groupId, CancellationToken ct)
         {
             try
             {
@@ -177,7 +182,7 @@ namespace Seeing.Session.Storage
                     filePath, FileMode.Open, FileAccess.Read, FileShare.Read,
                     bufferSize: 4096, useAsync: true);
                 using var reader = new StreamReader(stream, Encoding.UTF8);
-                var json = await reader.ReadToEndAsync().ConfigureAwait(false);
+                var json = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
 
                 if (string.IsNullOrWhiteSpace(json))
                     return null;
@@ -197,6 +202,19 @@ namespace Seeing.Session.Storage
             {
                 _logger?.LogError(ex, "读取会话组文件失败: {GroupId}", groupId);
                 throw new SessionLoadException(groupId, filePath, "读取会话组文件失败", ex);
+            }
+        }
+
+        private SemaphoreSlim GetGroupLock(string filePath)
+        {
+            lock (_lockDictLock)
+            {
+                if (!_groupLocks.TryGetValue(filePath, out var groupLock))
+                {
+                    groupLock = new SemaphoreSlim(1, 1);
+                    _groupLocks[filePath] = groupLock;
+                }
+                return groupLock;
             }
         }
 

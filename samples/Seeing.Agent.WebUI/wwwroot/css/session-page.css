@@ -230,25 +230,6 @@
     flex-shrink: 0;
 }
 
-/* 执行中脉冲点 */
-.conference-tile-pulse {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-primary);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 55%, transparent);
-    animation: conference-tile-pulse 1.5s ease-out infinite;
-}
-
-@keyframes conference-tile-pulse {
-    0% {
-        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 55%, transparent);
-    }
-    100% {
-        box-shadow: 0 0 0 6px transparent;
-    }
-}
-
 /* 执行中：当前动作行 + 已运行时长 */
 .conference-tile-action {
     font-size: var(--font-size-xs);

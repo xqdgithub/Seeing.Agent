@@ -38,6 +38,12 @@ namespace Seeing.Session.Core
         /// <summary>保存会话到存储</summary>
         Task SaveAsync(string id);
 
+        /// <summary>
+        /// 显式持久化屏障：等待指定会话当前最新版本落盘。
+        /// <para>未启用写回（存储未实现 <see cref="Seeing.Session.Storage.IWriteBehindSessionStore"/>）时为 no-op。</para>
+        /// </summary>
+        Task FlushAsync(string id, CancellationToken ct = default);
+
         /// <summary>从存储加载会话</summary>
         Task<SessionData?> LoadAsync(string id);
 

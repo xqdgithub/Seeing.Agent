@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Llm;
 using Seeing.Gateway.Models;
@@ -12,17 +13,20 @@ public sealed class GatewaySessionService
     private readonly IAgentRegistry _agentRegistry;
     private readonly IAgentRuntimeManager _runtimeManager;
     private readonly IModelManager _modelManager;
+    private readonly ILogger<GatewaySessionService>? _logger;
 
     public GatewaySessionService(
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
         IAgentRuntimeManager runtimeManager,
-        IModelManager modelManager)
+        IModelManager modelManager,
+        ILogger<GatewaySessionService>? logger = null)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;
         _runtimeManager = runtimeManager;
         _modelManager = modelManager;
+        _logger = logger;
     }
 
     /// <summary>清空指定会话的消息历史并重置默认 Agent / Model 选择</summary>
@@ -53,6 +57,19 @@ public sealed class GatewaySessionService
             _modelManager.SeedSessionModel(session, session.SelectedAgent);
 
         await _sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+        // 响应前落盘：确保重置后的会话已持久化；写回失败仅记 Warning，不阻断响应
+        try
+        {
+            await _sessionManager.FlushAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "会话重置落盘失败，已跳过: SessionId={SessionId}", sessionId);
+        }
 
         return new GatewaySessionResetResult
         {

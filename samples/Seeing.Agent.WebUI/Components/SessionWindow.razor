@@ -168,7 +168,7 @@
     }
     else
     {
-        @* Summary 模式：执行中=大卡（脉冲点+动作行+时长）；已完成（非激活侧栏卡）=两行紧凑（预览摘要+来源）；
+        @* Summary 模式：执行中=大卡（动作行+时长）；已完成（非激活侧栏卡）=两行紧凑（预览摘要+来源）；
            其余状态=完整卡（标题+预览正文+来源）；左侧状态条随代理状态变色，主会话以淡蓝底区分 *@
         <div class="@($"conference-tile {(IsMainSession ? "conference-tile--main " : "")}{GetStatusBarClass()}{(IsCompactSummary ? " conference-tile--compact" : "")}")" @onclick="OnTileClick">
             @if (IsCompactSummary)
@@ -202,10 +202,6 @@
                         @if (!string.IsNullOrEmpty(GetRelationBadgeText()))
                         {
                             <span class="conference-tile-relation">@GetRelationBadgeText()</span>
-                        }
-                        @if (IsRunningSummary)
-                        {
-                            <span class="conference-tile-pulse" title="执行中"></span>
                         }
                         <Badge Status="@GetStatusBadge()" />
                     </span>

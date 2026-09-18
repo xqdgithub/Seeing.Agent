@@ -105,17 +105,17 @@ public class SessionHandoffRollbackTests
             _shouldFail = shouldFail;
         }
 
-        public Task<SessionGroup?> LoadAsync(string groupId) => _inner.LoadAsync(groupId);
+        public Task<SessionGroup?> LoadAsync(string groupId, CancellationToken ct = default) => _inner.LoadAsync(groupId, ct);
 
-        public Task<SessionGroup?> FindBySessionAsync(string sessionId) => _inner.FindBySessionAsync(sessionId);
+        public Task<SessionGroup?> FindBySessionAsync(string sessionId, CancellationToken ct = default) => _inner.FindBySessionAsync(sessionId, ct);
 
-        public Task SaveAsync(SessionGroup group) =>
+        public Task SaveAsync(SessionGroup group, CancellationToken ct = default) =>
             _shouldFail(group)
                 ? Task.FromException(new IOException("注入的组保存失败"))
-                : _inner.SaveAsync(group);
+                : _inner.SaveAsync(group, ct);
 
-        public Task DeleteAsync(string groupId) => _inner.DeleteAsync(groupId);
+        public Task DeleteAsync(string groupId, CancellationToken ct = default) => _inner.DeleteAsync(groupId, ct);
 
-        public IAsyncEnumerable<SessionGroup> ListAsync() => _inner.ListAsync();
+        public IAsyncEnumerable<SessionGroup> ListAsync(CancellationToken ct = default) => _inner.ListAsync(ct);
     }
 }

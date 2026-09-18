@@ -234,3 +234,12 @@ ReloadOrchestrator 路由变更节
 | 模块 Reload | `ModuleSettlementReloadHandler`（boot 节 vs Scenarios 分流）、`ModuleReloadOptions` |
 | 总路由 | `ReloadOrchestrator` |
 | schema 单点 | `src/hosting/.../ExecutionJobService` |
+
+## 11 会话持久化写回（Seeing.Session）
+
+`Seeing.Session` 提供写回（write-behind）持久化：以装饰器（`WriteBehindSessionStore` / `WriteBehindSessionGroupStore`）叠加在任意 `ISessionStore` / `ISessionGroupStore` 上，将高频全量快照保存按会话去抖合并（`DebounceWindow` 默认 400ms，饥饿保护 `MaxFlushDelay` 默认 2s），写失败内部重试、不向业务传播；读路径先做有界 flush（`ReadFlushTimeout` 默认 1s）保证"读己所写"，超时则记 Warning 并退化为读旧值。
+
+- **配置**：`SessionPersistenceOptions`（`Enabled` / `DebounceWindow` / `MaxFlushDelay` / `MaxRetryBackoff` / `ShutdownFlushTimeout` / `ReadFlushTimeout`）。**默认启用**：`AddSeeingCore` / `AddSessionManager` 在 `Enabled=true`（默认）时把 `ISessionStore` / `ISessionGroupStore` 接线到写回装饰器；如需直写后端，须在注册前提供 `SessionPersistenceOptions { Enabled = false }` 实例（见 [10 Release Notes §5](10-session-persistence-release-notes.md)）。
+- **显式 flush 点**：Host 关闭、工作区切换（`SessionReloadHandler` / `SessionGroupReloadHandler` 在重定位前）、归档 / 分支 / 保存命令、Gateway 响应、执行终态。以上经 `IWriteBehindSessionStore` / `IPersistenceFlusher` 判定，未启用写回时自动 no-op。
+- **不做**：DB 后端、增量 / journal 持久化、跨进程写协调；JSON 全量快照格式与路径约定不变。
+- 破坏性契约（`CancellationToken`、`IAsyncEnumerable` 返回、快照契约、`ISessionCatalog`）与已知边界见 [10 会话持久化写回 Release Notes](10-session-persistence-release-notes.md)。

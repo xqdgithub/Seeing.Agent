@@ -216,6 +216,19 @@ public sealed class GatewayOrchestratorV2
             }
 
             await sessionManager.SaveAsync(sessionId);
+            // 订阅结束前落盘：确保本轮会话状态已持久化；写回失败不得中断事件流收尾
+            try
+            {
+                await sessionManager.FlushAsync(sessionId, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "订阅结束落盘失败，已跳过: SessionId={SessionId}", sessionId);
+            }
         }
         finally
         {
@@ -291,7 +304,17 @@ public sealed class GatewayOrchestratorV2
         if (runState.Session != null)
         {
             runState.Session.AddMessage(SessionMessage.SystemMessage("⚠️ 执行已取消"));
-            await _services.GetRequiredService<ISessionManager>().SaveAsync(sessionId);
+            var sessionManager = _services.GetRequiredService<ISessionManager>();
+            await sessionManager.SaveAsync(sessionId);
+            // 取消响应前尽力落盘；写回失败仅记 Warning，仍返回取消事件
+            try
+            {
+                await sessionManager.FlushAsync(sessionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "取消事件落盘失败，已跳过: SessionId={SessionId}", sessionId);
+            }
         }
 
         return new GatewayEvent
@@ -308,7 +331,17 @@ public sealed class GatewayOrchestratorV2
         if (runState.Session != null)
         {
             runState.Session.AddMessage(SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}"));
-            await _services.GetRequiredService<ISessionManager>().SaveAsync(sessionId);
+            var sessionManager = _services.GetRequiredService<ISessionManager>();
+            await sessionManager.SaveAsync(sessionId);
+            // 错误响应前尽力落盘；写回失败仅记 Warning，仍返回错误事件
+            try
+            {
+                await sessionManager.FlushAsync(sessionId);
+            }
+            catch (Exception flushEx)
+            {
+                _logger.LogWarning(flushEx, "错误事件落盘失败，已跳过: SessionId={SessionId}", sessionId);
+            }
         }
 
         return new GatewayEvent

@@ -16,9 +16,6 @@ namespace Seeing.Session.Storage
         private readonly ILogger<FileSessionStore>? _logger;
         private readonly JsonSerializerOptions _jsonOptions;
 
-        // 文件锁超时时间
-        private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
-
         /// <summary>会话引用资源目录后缀（工具输出落盘目录约定）</summary>
         private const string RefDirectorySuffix = ".ref";
 
@@ -131,9 +128,9 @@ namespace Seeing.Session.Storage
         }
 
         /// <summary>
-        /// 保存单个会话
+        /// 保存单个会话（<paramref name="data"/> 为调用方移交的私有快照，本方法不修改其时间戳）。
         /// </summary>
-        public async Task SaveAsync(SessionData data)
+        public async Task SaveAsync(SessionData data, CancellationToken ct = default)
         {
             if (data == null)
             {
@@ -145,16 +142,11 @@ namespace Seeing.Session.Storage
             var filePath = GetSessionFilePath(data.Id);
             var fileLock = GetFileLock(filePath);
 
-            if (!await fileLock.WaitAsync(LockTimeout))
-            {
-                _logger?.LogWarning("获取文件锁超时: {SessionId}", data.Id);
-                throw new TimeoutException("获取文件锁超时，请稍后重试");
-            }
+            await fileLock.WaitAsync(ct);
 
             try
             {
-                // 更新时间戳
-                data.UpdatedAt = DateTime.Now;
+                // 快照契约：时间戳由调用方设置，仅在 CreatedAt 缺省时补齐
                 if (data.CreatedAt == default)
                 {
                     data.CreatedAt = DateTime.Now;
@@ -164,10 +156,10 @@ namespace Seeing.Session.Storage
 
                 // 使用临时文件 + 原子替换确保写入完整性
                 var tempPath = filePath + ".tmp";
-                await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8);
+                await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, ct);
 
                 // 原子替换（带重试机制处理 Windows Defender/OS 缓存导致的瞬时访问失败）
-                await AtomicMoveWithRetryAsync(tempPath, filePath, data.Id);
+                await AtomicMoveWithRetryAsync(tempPath, filePath, data.Id, ct);
 
                 _logger?.LogDebug("保存会话成功: {SessionId}", data.Id);
             }
@@ -187,7 +179,7 @@ namespace Seeing.Session.Storage
         /// 3. 其他进程短暂持有文件句柄
         /// 重试机制可处理这些瞬时故障。
         /// </remarks>
-        private async Task AtomicMoveWithRetryAsync(string sourcePath, string destPath, string sessionId)
+        private async Task AtomicMoveWithRetryAsync(string sourcePath, string destPath, string sessionId, CancellationToken ct)
         {
             const int maxRetries = 5;
             const int initialDelayMs = 50;
@@ -214,7 +206,7 @@ namespace Seeing.Session.Storage
                         attempt + 1, maxRetries, sessionId, ex.Message);
 
                     // 等待后重试（指数退避）
-                    await Task.Delay(delay);
+                    await Task.Delay(delay, ct);
                     delay *= 2;
                 }
                 catch (IOException ex) when (attempt < maxRetries - 1)
@@ -224,7 +216,7 @@ namespace Seeing.Session.Storage
                         "文件移动失败 (尝试 {Attempt}/{MaxRetries}): {SessionId}, 错误: {Error}",
                         attempt + 1, maxRetries, sessionId, ex.Message);
 
-                    await Task.Delay(delay);
+                    await Task.Delay(delay, ct);
                     delay *= 2;
                 }
             }
@@ -263,7 +255,7 @@ namespace Seeing.Session.Storage
         /// <summary>
         /// 加载单个会话
         /// </summary>
-        public async Task<SessionData?> LoadAsync(string sessionId)
+        public async Task<SessionData?> LoadAsync(string sessionId, CancellationToken ct = default)
         {
             ValidateSessionId(sessionId);
 
@@ -277,15 +269,11 @@ namespace Seeing.Session.Storage
 
             var fileLock = GetFileLock(filePath);
 
-            if (!await fileLock.WaitAsync(LockTimeout))
-            {
-                _logger?.LogWarning("获取文件锁超时: {SessionId}", sessionId);
-                throw new TimeoutException("获取文件锁超时，请稍后重试");
-            }
+            await fileLock.WaitAsync(ct);
 
             try
             {
-                return await ReadSessionFileAsync(filePath, sessionId);
+                return await ReadSessionFileAsync(filePath, sessionId, ct);
             }
             finally
             {
@@ -296,7 +284,7 @@ namespace Seeing.Session.Storage
         /// <summary>
         /// 读取会话文件（内部方法）
         /// </summary>
-        private async Task<SessionData?> ReadSessionFileAsync(string filePath, string sessionId)
+        private async Task<SessionData?> ReadSessionFileAsync(string filePath, string sessionId, CancellationToken ct)
         {
             try
             {
@@ -310,7 +298,7 @@ namespace Seeing.Session.Storage
                     useAsync: true);
 
                 using var reader = new StreamReader(stream, Encoding.UTF8);
-                var json = await reader.ReadToEndAsync();
+                var json = await reader.ReadToEndAsync(ct);
 
                 if (string.IsNullOrWhiteSpace(json))
                 {
@@ -357,7 +345,7 @@ namespace Seeing.Session.Storage
         /// <summary>
         /// 删除会话
         /// </summary>
-        public async Task DeleteAsync(string sessionId)
+        public async Task DeleteAsync(string sessionId, CancellationToken ct = default)
         {
             ValidateSessionId(sessionId);
 
@@ -373,11 +361,7 @@ namespace Seeing.Session.Storage
 
             var fileLock = GetFileLock(filePath);
 
-            if (!await fileLock.WaitAsync(LockTimeout))
-            {
-                _logger?.LogWarning("获取文件锁超时: {SessionId}", sessionId);
-                throw new TimeoutException("获取文件锁超时，请稍后重试");
-            }
+            await fileLock.WaitAsync(ct);
 
             try
             {
@@ -414,10 +398,8 @@ namespace Seeing.Session.Storage
         /// <summary>
         /// 列出所有会话
         /// </summary>
-        public async Task<IAsyncEnumerable<SessionData>> ListAsync()
-        {
-            return await Task.FromResult(EnumerateSessions());
-        }
+        public IAsyncEnumerable<SessionData> ListAsync(CancellationToken ct = default) =>
+            EnumerateSessions(ct);
 
         /// <summary>
         /// 枚举所有会话
@@ -442,16 +424,14 @@ namespace Seeing.Session.Storage
                 try
                 {
                     var fileLock = GetFileLock(filePath);
-                    if (await fileLock.WaitAsync(1000, cancellationToken))
+                    await fileLock.WaitAsync(cancellationToken);
+                    try
                     {
-                        try
-                        {
-                            data = await ReadSessionFileAsync(filePath, fileName);
-                        }
-                        finally
-                        {
-                            fileLock.Release();
-                        }
+                        data = await ReadSessionFileAsync(filePath, fileName, cancellationToken);
+                    }
+                    finally
+                    {
+                        fileLock.Release();
                     }
                 }
                 catch (SessionLoadException ex)
@@ -475,10 +455,8 @@ namespace Seeing.Session.Storage
         /// <summary>
         /// 按分区和代理查询会话
         /// </summary>
-        public async Task<IAsyncEnumerable<SessionData>> QueryAsync(string partitionId, string agentId)
-        {
-            return await Task.FromResult(EnumerateSessionsFiltered(partitionId, agentId));
-        }
+        public IAsyncEnumerable<SessionData> QueryAsync(string partitionId, string agentId, CancellationToken ct = default) =>
+            EnumerateSessionsFiltered(partitionId, agentId, ct);
 
         /// <summary>
         /// 枚举过滤后的会话
@@ -506,7 +484,7 @@ namespace Seeing.Session.Storage
         /// <summary>
         /// 批量保存会话
         /// </summary>
-        public async Task SaveAllAsync(IEnumerable<SessionData> data)
+        public async Task SaveAllAsync(IEnumerable<SessionData> data, CancellationToken ct = default)
         {
             if (data == null)
             {
@@ -515,17 +493,15 @@ namespace Seeing.Session.Storage
 
             foreach (var session in data)
             {
-                await SaveAsync(session);
+                await SaveAsync(session, ct);
             }
         }
 
         /// <summary>
         /// 批量加载会话
         /// </summary>
-        public async Task<IAsyncEnumerable<SessionData>> LoadAllAsync()
-        {
-            return await ListAsync();
-        }
+        public IAsyncEnumerable<SessionData> LoadAllAsync(CancellationToken ct = default) =>
+            ListAsync(ct);
 
         /// <summary>
         /// 释放文件锁字典中的所有信号量

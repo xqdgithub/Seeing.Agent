@@ -2,7 +2,7 @@
 
 > **权威规格：** [模块化架构设计](../superpowers/specs/2026-09-08-modular-architecture-design.md)  
 > **本文档集：** 日常开发落地规范；与规格冲突时以规格为准，并应提 PR 同步两边。  
-> **更新日期：** 2026-09-17（权限授权子系统收尾：文档同步 + release notes + 扫描规则）  
+> **更新日期：** 2026-09-18（会话持久化写回：文档同步 + release notes）  
 > **深化说明：** [architecture-docs-deepen-design](../superpowers/specs/2026-09-08-architecture-docs-deepen-design.md)
 
 ## 新人 5 分钟
@@ -26,6 +26,7 @@
 | [07 WebUI 统一模型选择](07-webui-model-picker.md) | Session Badge+Modal / 配置页 Dropdown、目录新鲜度 |
 | [08 权限授权子系统 Release Notes](08-permission-authorization-release-notes.md) | 破坏性变更清单、行为差异、已知边界 |
 | [09 会话工具与会话组 Release Notes](09-session-tools-and-groups-release-notes.md) | 会话组并发/缓存、交接幂等与回滚、已知边界 |
+| [10 会话持久化写回 Release Notes](10-session-persistence-release-notes.md) | 写回调度/去抖合并、破坏性契约变更、选项与已知边界 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

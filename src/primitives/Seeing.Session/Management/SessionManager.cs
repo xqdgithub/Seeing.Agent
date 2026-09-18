@@ -29,7 +29,7 @@ namespace Seeing.Session.Management
         private readonly SessionArchiver? _archiver;
         private readonly SessionSharer? _sharer;
         private readonly SessionReverter? _reverter;
-        private readonly GlobalSessionStore? _globalStore;
+        private readonly ISessionCatalog? _catalog;
 
         /// <summary>
         /// 内部存储实例（供内部组件使用，不暴露到外部）
@@ -46,7 +46,7 @@ namespace Seeing.Session.Management
         /// <param name="archiver">Session 归档器（可选）</param>
         /// <param name="sharer">Session 分享器（可选）</param>
         /// <param name="reverter">Session 回滚器（可选）</param>
-        /// <param name="globalStore">全局 Session 存储（可选）</param>
+        /// <param name="catalog">会话元数据目录（可选，跨分区列举/统计）</param>
         public SessionManager(
             ISessionStore? store = null,
             IHookManager? hookManager = null,
@@ -55,7 +55,7 @@ namespace Seeing.Session.Management
             SessionArchiver? archiver = null,
             SessionSharer? sharer = null,
             SessionReverter? reverter = null,
-            GlobalSessionStore? globalStore = null)
+            ISessionCatalog? catalog = null)
         {
             _store = store;
             _hookManager = hookManager;
@@ -64,7 +64,7 @@ namespace Seeing.Session.Management
             _archiver = archiver;
             _sharer = sharer;
             _reverter = reverter;
-            _globalStore = globalStore;
+            _catalog = catalog;
         }
 
         /// <summary>
@@ -176,16 +176,31 @@ namespace Seeing.Session.Management
                     session.Id,
                     result: new Dictionary<string, object?> { ["session"] = session });
 
-                // 异步删除存储（fire-and-forget）
+                // 异步删除存储（fire-and-forget）；异常须内部消化，避免未观察任务异常
                 if (_store != null)
                 {
-                    _ = _store.DeleteAsync(id).ConfigureAwait(false);
+                    _ = DeleteFromStoreAsync(id);
                 }
 
                 _logger?.LogInformation("删除会话: {SessionId}", id);
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// 后台删除存储（fire-and-forget）：捕获并记录异常，避免未观察任务异常。
+        /// </summary>
+        private async Task DeleteFromStoreAsync(string id)
+        {
+            try
+            {
+                await _store!.DeleteAsync(id, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "删除会话存储失败: {SessionId}", id);
+            }
         }
 
         /// <summary>
@@ -247,8 +262,9 @@ namespace Seeing.Session.Management
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
 
-            // 保存克隆副本（避免后续修改影响）
-            await _store.SaveAsync(session.Clone());
+            // 快照唯一克隆点：先在活会话上写入 UpdatedAt，再移交克隆副本
+            session.UpdatedAt = DateTime.Now;
+            await _store.SaveAsync(session.Clone(), CancellationToken.None);
 
             // 触发 Saved Hook（非阻塞）
             _hookManager?.TriggerFireAndForget(
@@ -256,7 +272,18 @@ namespace Seeing.Session.Management
                 session.Id,
                 result: new Dictionary<string, object?> { ["session"] = session });
 
-            _logger?.LogInformation("保存会话: {SessionId}", id);
+            _logger?.LogDebug("保存会话: {SessionId}", id);
+        }
+
+        /// <summary>
+        /// 显式持久化屏障：等待指定会话最新版本落盘（未启用写回时为 no-op）。
+        /// </summary>
+        public async Task FlushAsync(string id, CancellationToken ct = default)
+        {
+            if (_store is IWriteBehindSessionStore writeBehind)
+            {
+                await writeBehind.FlushAsync(id, ct);
+            }
         }
 
         /// <summary>
@@ -434,9 +461,9 @@ namespace Seeing.Session.Management
         public async Task<IReadOnlyList<SessionMetadata>> ListAllAsync(
             string? partitionId = null, CancellationToken ct = default)
         {
-            if (_globalStore != null)
+            if (_catalog != null)
             {
-                return await _globalStore.ListAllAsync(partitionId, ct);
+                return await _catalog.ListAllAsync(partitionId, ct);
             }
 
             // 降级：从内存缓存生成元数据
@@ -724,9 +751,8 @@ namespace Seeing.Session.Management
             }
 
             var sessions = new List<SessionData>();
-            var asyncEnumerable = await _store.ListAsync();
 
-            await foreach (var session in asyncEnumerable.WithCancellation(ct))
+            await foreach (var session in _store.ListAsync(ct).WithCancellation(ct))
             {
                 // 注册到内存缓存（如果不存在）
                 if (!_sessionDataCache.ContainsKey(session.Id))

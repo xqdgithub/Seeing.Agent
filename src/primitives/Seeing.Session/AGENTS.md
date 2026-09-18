@@ -22,8 +22,20 @@ Seeing.Session/
 │
 ├── Storage/
 │   ├── ISessionStore.cs   # 存储抽象
+│   ├── ISessionGroupStore.cs # 会话组存储抽象
+│   ├── IWriteBehindSessionStore.cs # 写回显式屏障端口
+│   ├── ISessionCatalog.cs # 会话元数据目录端口（GlobalSessionStore 实现）
 │   ├── FileSessionStore.cs # 文件持久化
+│   ├── FileSessionGroupStore.cs # 会话组文件持久化
 │   └── InMemorySessionStore.cs # 内存存储
+│
+├── Persistence/           # 写回调度（2026-09-18）
+│   ├── SessionPersistenceOptions.cs # 写回配置
+│   ├── CoalescingWriteScheduler.cs  # 合并写调度核心
+│   ├── IPersistenceFlusher.cs       # 共享 flush 端口
+│   ├── IWriteBehindSessionGroupStore.cs # 组写回屏障端口
+│   ├── WriteBehindSessionStore.cs   # 会话写回装饰器
+│   └── WriteBehindSessionGroupStore.cs # 组写回装饰器
 │
 ├── Compression/
 │   ├── ICompressionStrategy.cs # 压缩策略接口
@@ -52,6 +64,9 @@ Seeing.Session/
 | 压缩历史 | `Compression/SessionCompressor.cs` | `CompressAsync()` |
 | 添加钩子 | `Hooks/SessionHookManager.cs` | `RegisterHook()` |
 | 生命周期 | `Core/ISessionLifecycle.cs` | `OnCreated/OnUpdated/OnDeleted` |
+| 写回调优 | `Persistence/SessionPersistenceOptions.cs` | `Enabled/DebounceWindow/MaxFlushDelay/MaxRetryBackoff/ShutdownFlushTimeout/ReadFlushTimeout` |
+| 写回屏障 | `Storage/IWriteBehindSessionStore.cs` | `FlushAsync/TryFlushAsync/FlushAllAsync` |
+| 会话目录端口 | `Storage/ISessionCatalog.cs` | `ListAllAsync/GetStatisticsAsync`（`GlobalSessionStore` 实现；未接线） |
 
 ---
 

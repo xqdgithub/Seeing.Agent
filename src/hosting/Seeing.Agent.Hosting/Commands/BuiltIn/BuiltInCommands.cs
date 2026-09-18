@@ -6,6 +6,7 @@ using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Models;
 using Seeing.Session.Core;
+using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.Hosting.Commands.BuiltIn;
 
@@ -18,15 +19,18 @@ public class BuiltInCommands
     private readonly ISessionManager _sessionManager;
     private readonly ICommandRegistry _commandRegistry;
     private readonly CompactionRunner _compactionRunner;
+    private readonly ILogger<BuiltInCommands>? _logger;
 
     public BuiltInCommands(
         ISessionManager sessionManager,
         ICommandRegistry commandRegistry,
-        CompactionRunner compactionRunner)
+        CompactionRunner compactionRunner,
+        ILogger<BuiltInCommands>? logger = null)
     {
         _sessionManager = sessionManager;
         _commandRegistry = commandRegistry;
         _compactionRunner = compactionRunner;
+        _logger = logger;
     }
 
     /// <summary>
@@ -80,6 +84,19 @@ public class BuiltInCommands
 
         session.ClearMessages();
         await _sessionManager.SaveAsync(context.SessionId);
+        // 用户显式保存命令：flush 等待写回缓冲落盘；失败仅记 Warning，不阻断命令响应
+        try
+        {
+            await _sessionManager.FlushAsync(context.SessionId, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "清空会话后落盘失败，已跳过: SessionId={SessionId}", context.SessionId);
+        }
 
         return CommandResult.Ok("会话历史已清除", needsRefresh: true, shouldContinue: false);
     }

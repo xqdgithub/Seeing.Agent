@@ -693,6 +693,8 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             {
                 await AppendExecutionHistoryAsync(sessionManager, record);
                 await sessionManager.SaveAsync(record.SessionId);
+                // 执行终态落盘：flush 确保最终状态持久化
+                await sessionManager.FlushAsync(record.SessionId);
             }
             catch (Exception ex)
             {

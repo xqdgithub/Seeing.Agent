@@ -259,6 +259,8 @@ public sealed class FakeSessionManager : ISessionManager
 
     public Task SaveAsync(string id) => Task.CompletedTask;
 
+    public Task FlushAsync(string id, CancellationToken ct = default) => Task.CompletedTask;
+
     public Task<SessionData?> LoadAsync(string id) =>
         Task.FromResult(Get(id));
 

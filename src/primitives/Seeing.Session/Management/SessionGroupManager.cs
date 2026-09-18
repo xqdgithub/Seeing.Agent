@@ -57,7 +57,7 @@ namespace Seeing.Session.Management
                     ?? throw new InvalidOperationException($"Session not found: {sessionId}");
 
                 var group = NewSingleMemberGroup(session);
-                await _store.SaveAsync(group).ConfigureAwait(false);
+                await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
                 CacheGroup(group);
                 await _sessions.UpdateSessionAsync(sessionId, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
 
@@ -170,7 +170,7 @@ namespace Seeing.Session.Management
                 }
 
                 Touch(group);
-                await _store.SaveAsync(group).ConfigureAwait(false);
+                await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
                 _sessionToGroup[member.SessionId] = group.Id;
                 snapshot = group.Clone();
             }
@@ -222,12 +222,12 @@ namespace Seeing.Session.Management
                 Touch(group);
                 if (group.Members.Count == 0)
                 {
-                    await _store.DeleteAsync(group.Id).ConfigureAwait(false);
+                    await _store.DeleteAsync(group.Id, ct).ConfigureAwait(false);
                     RemoveFromCache(group.Id);
                 }
                 else
                 {
-                    await _store.SaveAsync(group).ConfigureAwait(false);
+                    await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
                 }
 
                 snapshot = group.Clone();
@@ -256,7 +256,7 @@ namespace Seeing.Session.Management
 
                 group.ActiveSessionId = sessionId;
                 Touch(group);
-                await _store.SaveAsync(group).ConfigureAwait(false);
+                await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
                 snapshot = group.Clone();
             }
             finally
@@ -332,12 +332,12 @@ namespace Seeing.Session.Management
                 Touch(current);
                 if (current.Members.Count == 0)
                 {
-                    await _store.DeleteAsync(current.Id).ConfigureAwait(false);
+                    await _store.DeleteAsync(current.Id, ct).ConfigureAwait(false);
                     RemoveFromCache(current.Id);
                 }
                 else
                 {
-                    await _store.SaveAsync(current).ConfigureAwait(false);
+                    await _store.SaveAsync(current.Clone(), ct).ConfigureAwait(false);
                 }
 
                 snapshot = current.Clone();
@@ -485,7 +485,7 @@ namespace Seeing.Session.Management
                 session.WorkingDirectory = workingDirectory;
 
             var group = NewSingleMemberGroup(session);
-            await _store.SaveAsync(group).ConfigureAwait(false);
+            await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
             CacheGroup(group);
 
             await _sessions.UpdateSessionAsync(session.Id, s =>
@@ -557,7 +557,7 @@ namespace Seeing.Session.Management
             {
                 // 子会话分支：建立独立新组，仅以 ParentSessionId 记录谱系
                 var group = NewSingleMemberGroup(forked, parentSessionId: sessionId);
-                await _store.SaveAsync(group).ConfigureAwait(false);
+                await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
                 CacheGroup(group);
                 await _sessions.UpdateSessionAsync(forked.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
             }
@@ -661,7 +661,7 @@ namespace Seeing.Session.Management
                     NormalizeAnchor(current, successor.Id);
                     current.Title = _sessions.Get(current.AnchorSessionId)?.Title ?? current.Title;
                     Touch(current);
-                    await _store.SaveAsync(current).ConfigureAwait(false);
+                    await _store.SaveAsync(current.Clone(), ct).ConfigureAwait(false);
                     snapshot = current.Clone();
                 }
                 finally
@@ -712,7 +712,7 @@ namespace Seeing.Session.Management
                             NormalizeAnchor(group, removedParent);
                             group.Title = _sessions.Get(group.AnchorSessionId)?.Title ?? group.Title;
                             Touch(group);
-                            await _store.SaveAsync(group).ConfigureAwait(false);
+                            await _store.SaveAsync(group.Clone(), CancellationToken.None).ConfigureAwait(false);
                         }
                     }
                     finally

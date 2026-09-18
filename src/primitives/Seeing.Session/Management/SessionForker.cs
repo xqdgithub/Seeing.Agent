@@ -61,6 +61,19 @@ namespace Seeing.Session.Management
 
             _sessionManager.Register(forkedSession);
             await _sessionManager.SaveAsync(forkedSession.Id);
+            // 分支源数据需立即持久化：显式 flush 等待写回缓冲落盘；失败仅记 Warning，不阻断分支
+            try
+            {
+                await _sessionManager.FlushAsync(forkedSession.Id, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "分支会话落盘失败，已跳过: SessionId={SessionId}", forkedSession.Id);
+            }
 
             _logger.LogInformation("Copied session {SourceId} -> {ForkedId}",
                 sessionId, forkedSession.Id);

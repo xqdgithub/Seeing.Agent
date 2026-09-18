@@ -7,7 +7,7 @@ namespace Seeing.Session.Storage
     /// <summary>
     /// 全局 Session 存储 - 支持跨分区查询
     /// </summary>
-    public class GlobalSessionStore
+    public class GlobalSessionStore : ISessionCatalog
     {
         private readonly ILogger<GlobalSessionStore> _logger;
         private readonly string _basePath;
