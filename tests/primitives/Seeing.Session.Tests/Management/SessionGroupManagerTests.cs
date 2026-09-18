@@ -458,4 +458,79 @@ public class SessionGroupManagerTests
 
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
+
+    [Fact]
+    public async Task ReadApis_ShouldReturnSnapshots_NotLiveGroup()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var fork = h.CreatePlainSession();
+
+        var byId = await h.Manager.GetGroupAsync(group.Id);
+        var bySession = await h.Manager.GetGroupForSessionAsync(root.Id);
+
+        byId!.Members.Should().ContainSingle();
+        bySession!.Members.Should().ContainSingle();
+
+        await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+        {
+            SessionId = fork.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
+        });
+
+        // 快照不得被后续组内变更回写
+        byId.Members.Should().ContainSingle();
+        bySession.Members.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ConcurrentReads_DuringAdds_ShouldNotThrow()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var forks = Enumerable.Range(0, 300).Select(_ => h.CreatePlainSession()).ToArray();
+
+        var writer = Task.Run(async () =>
+        {
+            foreach (var f in forks)
+            {
+                await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
+                {
+                    SessionId = f.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
+                });
+            }
+        });
+
+        var readers = Enumerable.Range(0, 6).Select(_ => Task.Run(async () =>
+        {
+            for (var i = 0; i < 400; i++)
+            {
+                var members = await h.Manager.ListMembersAsync(group.Id);
+                members.Should().NotBeNull();
+                await h.Manager.GetParentAsync(forks[0].Id);
+                var snapshot = await h.Manager.GetGroupAsync(group.Id);
+                snapshot.Should().NotBeNull();
+            }
+        })).ToArray();
+
+        await Task.WhenAll(readers.Append(writer));
+
+        (await h.Manager.ListMembersAsync(group.Id)).Should().HaveCount(forks.Length + 1);
+    }
+
+    [Fact]
+    public async Task ClearCache_ShouldForceReloadFromStore()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+
+        await h.GroupStore.DeleteAsync(group.Id);
+        (await h.Manager.GetGroupAsync(group.Id)).Should().NotBeNull();
+
+        h.Manager.ClearCache();
+
+        (await h.Manager.GetGroupAsync(group.Id)).Should().BeNull();
+    }
 }

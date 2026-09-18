@@ -473,7 +473,7 @@ public class AgentExecutor : IAgentExecutor
                     _totalToolCallsExecuted += assistantMessage.ToolCalls.Count;
 
                 // ========== 执行工具调用（内部排空，保证终态送达）==========
-                var endTurn = await ExecuteToolCallsAsync(
+                var (endTurn, endTurnReason) = await ExecuteToolCallsAsync(
                     assistantMessage.ToolCalls ?? new List<ToolCall>(),
                     agent,
                     context,
@@ -493,7 +493,7 @@ public class AgentExecutor : IAgentExecutor
                         TotalSteps = totalSteps,
                         Duration = DateTime.Now - loopStartTime,
                         Success = true,
-                        Reason = "turn-directive"
+                        Reason = endTurnReason ?? "turn-directive"
                     }, CancellationToken.None);
                     return;
                 }
@@ -634,7 +634,8 @@ public class AgentExecutor : IAgentExecutor
     /// 关键：消费端用 CancellationToken.None 排空，取消后工具终态事件（Cancelled/Success/Failed）完整送达；
     /// 排空受 ToolDrainTimeout 保护，避免被不响应取消的工具无限阻塞。
     /// </summary>
-    private async Task<bool> ExecuteToolCallsAsync(
+    /// <returns>本步是否存在 EndTurn 工具结果，及其透传的原因（无则 null）。</returns>
+    private async Task<(bool EndTurn, string? Reason)> ExecuteToolCallsAsync(
         List<ToolCall> toolCalls,
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
@@ -689,7 +690,7 @@ public class AgentExecutor : IAgentExecutor
                     ToolDrainTimeout.TotalSeconds);
                 channel.Writer.TryComplete();
                 try { await forward.ConfigureAwait(false); } catch { /* 个别事件丢弃为已知边界 */ }
-                return false; // 不等待不响应取消的工具（任务泄漏为已知边界，与修复前一致）
+                return (false, null); // 不等待不响应取消的工具（任务泄漏为已知边界，与修复前一致）
             }
             // 排空成功：forward 与 allDone 均已结束
             return await forward.ConfigureAwait(false);
@@ -708,13 +709,14 @@ public class AgentExecutor : IAgentExecutor
     /// 转发工具事件并同步追加 tool 历史（所有终态都必须有对应的 tool 消息，否则下一轮 LLM 报 400）。
     /// 转发本身不因取消中断：消费端统一用 CancellationToken.None 排空。
     /// </summary>
-    /// <returns>本步是否存在 <see cref="ToolTurnDirective.EndTurn"/> 的工具结果。</returns>
-    private static async Task<bool> ForwardToolEventsAsync(
+    /// <returns>本步是否存在 EndTurn 工具结果，及其透传的原因（无则 null）。</returns>
+    private static async Task<(bool EndTurn, string? Reason)> ForwardToolEventsAsync(
         ChannelReader<IMessageEvent> reader,
         ChannelWriter<IMessageEvent> outbound,
         List<ChatMessage> history)
     {
         var endTurn = false;
+        string? reason = null;
         await foreach (var evt in reader.ReadAllAsync(CancellationToken.None))
         {
             await outbound.WriteAsync(evt, CancellationToken.None);
@@ -723,7 +725,10 @@ public class AgentExecutor : IAgentExecutor
                     or ToolCallStatus.Rejected or ToolCallStatus.Cancelled)
             {
                 if (tcEvent.TurnDirective == ToolTurnDirective.EndTurn)
+                {
                     endTurn = true;
+                    reason = tcEvent.TurnDirectiveReason ?? reason;
+                }
 
                 history.Add(new ChatMessage
                 {
@@ -733,7 +738,7 @@ public class AgentExecutor : IAgentExecutor
                 });
             }
         }
-        return endTurn;
+        return (endTurn, reason);
     }
 
     private async Task RunToolCallWithEventsAsync(

@@ -8,11 +8,13 @@ namespace Seeing.Agent.Core.Tools.Session;
 /// <summary>
 /// 会话读取工具 — 按区间 / 窗口 / 分页读取会话消息，默认隐藏工具输出与思考内容。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.OutputSkip, "true")]
 public sealed class SessionReadTool : SessionToolBase
 {
     private const int DefaultLimit = 20;
     private const int MaxLimit = 50;
     private const int DefaultMaxChars = 2000;
+    private const int MaxCharsLimit = 2000;
 
     /// <summary>创建 SessionReadTool 实例。</summary>
     public SessionReadTool(
@@ -55,7 +57,8 @@ public sealed class SessionReadTool : SessionToolBase
             {
                 type = "integer",
                 minimum = 1,
-                description = $"单条消息内容最大字符数（默认 {DefaultMaxChars}）"
+                maximum = MaxCharsLimit,
+                description = $"单条消息内容最大字符数（默认 {DefaultMaxChars}，上限 {MaxCharsLimit}）"
             },
             include_tool_output = new
             {
@@ -102,7 +105,7 @@ public sealed class SessionReadTool : SessionToolBase
 
         var includeToolOutput = GetBoolArgument(arguments, "include_tool_output") ?? false;
         var includeCompacted = GetBoolArgument(arguments, "include_compacted") ?? false;
-        var maxChars = Math.Max(GetIntArgument(arguments, "max_chars") ?? DefaultMaxChars, 1);
+        var maxChars = Math.Clamp(GetIntArgument(arguments, "max_chars") ?? DefaultMaxChars, 1, MaxCharsLimit);
         var limit = Math.Clamp(GetIntArgument(arguments, "limit") ?? DefaultLimit, 1, MaxLimit);
 
         List<SessionMessage> source = includeCompacted

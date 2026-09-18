@@ -34,9 +34,19 @@ public sealed class ChannelSessionGroupEventBus : ISessionGroupEventBus
         var channel = Channel.CreateUnbounded<SessionGroupChangedEvent>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
-        var list = _subscribers.GetOrAdd(groupId, _ => new List<Channel<SessionGroupChangedEvent>>());
-        lock (list)
-            list.Add(channel);
+        // 与注销清理竞争时重试：确保订阅注册到当前仍挂在该 group 下的列表中
+        while (true)
+        {
+            var list = _subscribers.GetOrAdd(groupId, _ => new List<Channel<SessionGroupChangedEvent>>());
+            lock (list)
+            {
+                if (!_subscribers.TryGetValue(groupId, out var current) || !ReferenceEquals(current, list))
+                    continue;
+
+                list.Add(channel);
+            }
+            break;
+        }
 
         return ReadAsync(groupId, channel, ct);
     }
@@ -56,7 +66,13 @@ public sealed class ChannelSessionGroupEventBus : ISessionGroupEventBus
             if (_subscribers.TryGetValue(groupId, out var list))
             {
                 lock (list)
+                {
                     list.Remove(channel);
+                    // 最后一个订阅者注销时移除空 key，避免无界增长
+                    if (list.Count == 0)
+                        _subscribers.TryRemove(
+                            new KeyValuePair<string, List<Channel<SessionGroupChangedEvent>>>(groupId, list));
+                }
             }
             channel.Writer.TryComplete();
         }

@@ -285,7 +285,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     }
 
     /// <summary>
-    /// 取消会话级联取消：取消指定会话及其所有子会话（ParentSessionId 匹配）下未终态的执行。
+    /// 取消会话级联取消：取消指定会话及其所有子会话（Relation==Child）下未终态的执行。
     /// 参考 <see cref="Cancel(string)"/> 的队列推进逻辑：取消当前项后提升下一排队项，
     /// 循环直至无活跃/排队执行，因此本方法会清空该会话的执行队列。
     /// </summary>

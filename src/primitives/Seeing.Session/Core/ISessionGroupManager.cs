@@ -55,6 +55,9 @@ namespace Seeing.Session.Core
         /// <summary>移除会话及其 Child 子树（不取消执行）；必要时提升锚点或删除空组。</summary>
         Task RemoveSessionAsync(string sessionId, CancellationToken ct = default);
 
+        /// <summary>清空内存缓存（组 + 会话→组映射）；用于工作区切换等场景，下次访问时从存储重新加载。</summary>
+        void ClearCache();
+
         // === 查询 ===
 
         /// <summary>获取会话在组内的父会话 ID。</summary>

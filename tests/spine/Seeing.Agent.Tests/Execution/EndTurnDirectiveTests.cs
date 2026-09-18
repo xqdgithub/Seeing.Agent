@@ -20,7 +20,8 @@ namespace Seeing.Agent.Tests.Execution;
 
 /// <summary>
 /// Task 8：工具经 <see cref="ToolTurnDirective.EndTurn"/> 要求结束本轮时，
-/// AgentExecutor 必须在全部工具结束后发出成功的 LoopComplete（Reason=turn-directive），
+/// AgentExecutor 必须在全部工具结束后发出成功的 LoopComplete，
+/// Reason 透传工具结果的 <c>TurnDirectiveReason</c>（缺省回退 <c>turn-directive</c>），
 /// 且不再进行下一轮 LLM 调用。
 /// </summary>
 public class EndTurnDirectiveTests
@@ -59,11 +60,11 @@ public class EndTurnDirectiveTests
         await foreach (var evt in executor.ExecuteAsync(agent, messages, context, default))
             events.Add(evt);
 
-        // 恰一次终态 LoopComplete，且为成功 + 指令原因
+        // 恰一次终态 LoopComplete，且为成功 + 透传工具原因
         events.OfType<LoopCompleteEvent>().Should().HaveCount(1);
         var complete = events.OfType<LoopCompleteEvent>().Single();
         complete.Success.Should().BeTrue();
-        complete.Reason.Should().Be("turn-directive");
+        complete.Reason.Should().Be("end-turn-requested");
 
         // 工具终态事件透传指令
         var toolComplete = events.OfType<ToolCallEvent>()
@@ -73,6 +74,38 @@ public class EndTurnDirectiveTests
 
         // 不得进入第二轮 LLM
         llmCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ToolReturnsEndTurnWithoutReason_ShouldFallbackToTurnDirective()
+    {
+        var llm = new Mock<ILlmService>();
+        llm.Setup(s => s.CompleteStreamAsync(
+                It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns(StreamToolCall("end_turn_tool"));
+
+        var executor = CreateExecutor(llm.Object, manager => manager.RegisterTool(new EndTurnTool(reason: null)));
+
+        var agent = new AgentDefinition
+        {
+            Name = "end-turn-agent",
+            Runtime = AgentRuntime.Native,
+            Mode = AgentMode.All,
+            MaxSteps = 5
+        };
+        var context = new AgentContext
+        {
+            SessionId = "s1",
+            WorkingDirectory = "workspace-root",
+            WorkspaceRoot = "workspace-root"
+        };
+        var messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = "go" } };
+
+        var events = new List<IMessageEvent>();
+        await foreach (var evt in executor.ExecuteAsync(agent, messages, context, default))
+            events.Add(evt);
+
+        events.OfType<LoopCompleteEvent>().Single().Reason.Should().Be("turn-directive");
     }
 
     private static async IAsyncEnumerable<StreamUpdate> StreamToolCall(string name)
@@ -125,6 +158,10 @@ public class EndTurnDirectiveTests
 
     private sealed class EndTurnTool : ITool
     {
+        private readonly string? _reason;
+
+        public EndTurnTool(string? reason = "end-turn-requested") => _reason = reason;
+
         public string Id => "end_turn_tool";
         public string Description => "end the current turn";
         public IReadOnlyList<string> Tags => Array.Empty<string>();
@@ -138,7 +175,7 @@ public class EndTurnDirectiveTests
                 Success = true,
                 Output = "done",
                 TurnDirective = ToolTurnDirective.EndTurn,
-                TurnDirectiveReason = "end-turn-requested"
+                TurnDirectiveReason = _reason
             });
     }
 }

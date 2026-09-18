@@ -25,6 +25,7 @@
 | [06 合规审查](06-compliance-audit.md) | 当前仓库对照规格的结论与残留 |
 | [07 WebUI 统一模型选择](07-webui-model-picker.md) | Session Badge+Modal / 配置页 Dropdown、目录新鲜度 |
 | [08 权限授权子系统 Release Notes](08-permission-authorization-release-notes.md) | 破坏性变更清单、行为差异、已知边界 |
+| [09 会话工具与会话组 Release Notes](09-session-tools-and-groups-release-notes.md) | 会话组并发/缓存、交接幂等与回滚、已知边界 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

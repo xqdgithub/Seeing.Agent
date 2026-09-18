@@ -225,4 +225,29 @@ public class SessionReadToolTests
         result.Output.Should().Contain("visible");
         result.Output.Should().NotContain("SECRET_REASONING");
     }
+
+    [Fact]
+    public void Capabilities_Should_SkipOutputLimiter()
+    {
+        using var h = new SessionToolTestHarness();
+        var tool = new SessionReadTool(NullLogger<SessionReadTool>.Instance, h.Sessions, h.Groups);
+
+        tool.Capabilities.Should().NotBeNull();
+        tool.Capabilities![ToolCapabilityKeys.OutputSkip].Should().Be("true");
+    }
+
+    [Fact]
+    public async Task Read_Should_ClampMaxCharsToUpperBound()
+    {
+        using var h = new SessionToolTestHarness();
+        var root = await h.CreateRootGroupedAsync("root");
+        await h.AddMessageAsync(root.Id, "user", new string('a', 5000));
+        var tool = CreateTool(h);
+
+        var result = await tool.ExecuteAsync(Args(new { max_chars = 100000 }), Context(root.Id));
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("…[截断");
+        result.Output.Length.Should().BeLessThan(4000);
+    }
 }

@@ -136,6 +136,7 @@ internal sealed class StubExecutionSubmitter : IExecutionSubmitter
     public ChatInput? LastInput { get; private set; }
     public ChatOptions? LastOptions { get; private set; }
     public string? LastCancelledExecutionId { get; private set; }
+    public int SubmitCount { get; private set; }
 
     public StubExecutionSubmitter(ExecutionSubmitResult result)
     {
@@ -148,6 +149,7 @@ internal sealed class StubExecutionSubmitter : IExecutionSubmitter
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        SubmitCount++;
         LastSessionId = sessionId;
         LastInput = input;
         LastOptions = options;

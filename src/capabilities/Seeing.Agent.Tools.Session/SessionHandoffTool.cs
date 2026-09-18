@@ -77,16 +77,43 @@ public sealed class SessionHandoffTool : SessionToolBase
             return Failure($"会话不存在: {context.SessionId}");
         }
 
+        // 幂等预检：装饰器重试同一 CallId 时，复用已创建的后继，避免重复交接
+        var inflightKey = string.IsNullOrEmpty(context.CallId)
+            ? null
+            : "handoff_inflight:" + context.CallId;
+        if (inflightKey is not null
+            && source.Metadata.TryGetValue(inflightKey, out var inflightTarget)
+            && !string.IsNullOrEmpty(inflightTarget))
+        {
+            var existing = Sessions.Get(inflightTarget)
+                ?? await Sessions.LoadAsync(inflightTarget).ConfigureAwait(false);
+            if (existing is not null)
+            {
+                var replay = Success(
+                    $"会话交接已完成。目标会话: {inflightTarget}",
+                    new Dictionary<string, object> { ["target_session_id"] = inflightTarget });
+                replay.TurnDirective = ToolTurnDirective.EndTurn;
+                replay.TurnDirectiveReason = "handoff";
+                return replay;
+            }
+        }
+
         var group = await Groups.GetGroupForSessionAsync(source.Id, ct).ConfigureAwait(false);
         var originalActiveId = group?.ResolveActiveId();
 
-        SessionData? successor = null;
+        string? createdSuccessorId = null;
         try
         {
-            successor = await Groups.CreateHandoffSuccessorAsync(
+            var successor = await Groups.CreateHandoffSuccessorAsync(
                 source.Id, agent, title, source.Scenario, ct).ConfigureAwait(false);
+            createdSuccessorId = successor.Id;
 
-            await EnsureInheritedAsync(successor, source, ct).ConfigureAwait(false);
+            // 提交前写入在途标记：同一 CallId 重试可直接复用该目标
+            if (inflightKey is not null)
+            {
+                await Sessions.UpdateSessionAsync(
+                    source.Id, s => s.Metadata[inflightKey] = successor.Id, ct).ConfigureAwait(false);
+            }
 
             await Sessions.AddMessageAsync(successor.Id, new SessionMessage
             {
@@ -128,35 +155,10 @@ public sealed class SessionHandoffTool : SessionToolBase
         }
         catch (Exception ex)
         {
-            if (successor is not null)
-                await RollbackAsync(successor.Id, group?.Id, originalActiveId, ct).ConfigureAwait(false);
+            if (createdSuccessorId is not null)
+                await RollbackAsync(createdSuccessorId, group?.Id, originalActiveId, ct).ConfigureAwait(false);
             return Failure(ex, "会话交接失败");
         }
-    }
-
-    private async Task EnsureInheritedAsync(
-        SessionData successor, SessionData source, CancellationToken ct)
-    {
-        var changed = false;
-
-        if (string.IsNullOrEmpty(successor.WorkingDirectory) && !string.IsNullOrEmpty(source.WorkingDirectory))
-        {
-            successor.WorkingDirectory = source.WorkingDirectory;
-            changed = true;
-        }
-        if (string.IsNullOrEmpty(successor.SelectedModel) && !string.IsNullOrEmpty(source.SelectedModel))
-        {
-            successor.SelectedModel = source.SelectedModel;
-            changed = true;
-        }
-        if (string.IsNullOrEmpty(successor.SelectedThinkingEffort) && !string.IsNullOrEmpty(source.SelectedThinkingEffort))
-        {
-            successor.SelectedThinkingEffort = source.SelectedThinkingEffort;
-            changed = true;
-        }
-
-        if (changed)
-            await Sessions.SaveAsync(successor.Id).ConfigureAwait(false);
     }
 
     private async Task RollbackAsync(

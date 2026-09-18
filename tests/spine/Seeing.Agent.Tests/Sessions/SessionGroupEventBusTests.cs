@@ -5,6 +5,9 @@ using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Hosting;
 using Seeing.Session.Core;
 using Xunit;
+using System.Collections.Concurrent;
+using System.Linq;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Tests.Sessions;
 
@@ -129,6 +132,33 @@ public class SessionGroupEventBusTests
 
         cts.Cancel();
         try { await reader; } catch (OperationCanceledException) { }
+    }
+
+    [Fact]
+    public async Task Subscribe_WhenLastSubscriberRemoved_ShouldDropGroupKey()
+    {
+        var bus = new ChannelSessionGroupEventBus();
+        using var cts = new CancellationTokenSource();
+        var stream = bus.SubscribeAsync("g1", cts.Token);
+        var reader = Task.Run(async () =>
+        {
+            await foreach (var _ in stream) { }
+        });
+
+        await WaitUntilAsync(() => SubscriberKeys(bus).Contains("g1"));
+
+        cts.Cancel();
+        try { await reader; } catch (OperationCanceledException) { }
+
+        await WaitUntilAsync(() => !SubscriberKeys(bus).Contains("g1"));
+    }
+
+    private static IReadOnlyCollection<string> SubscriberKeys(ChannelSessionGroupEventBus bus)
+    {
+        var field = typeof(ChannelSessionGroupEventBus).GetField(
+            "_subscribers", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var dict = (ConcurrentDictionary<string, List<Channel<SessionGroupChangedEvent>>>)field.GetValue(bus)!;
+        return dict.Keys.ToList();
     }
 
     private static async Task<SessionGroupChangedEvent> CollectOneAsync(

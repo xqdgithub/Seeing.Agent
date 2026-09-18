@@ -82,6 +82,35 @@ public class SessionHandoffToolTests
     }
 
     [Fact]
+    public async Task Handoff_SameCallId_ShouldCreateSingleSuccessorAndSubmitOnce()
+    {
+        using var h = new SessionToolTestHarness();
+        var root = await h.CreateRootGroupedAsync("root");
+        await h.AddMessageAsync(root.Id, "user", "hello");
+        var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Succeeded("exec-1"));
+        var tool = CreateTool(h, submitter);
+        var ctx = Context(root.Id);
+        ctx.CallId = "call-42";
+
+        var first = await tool.ExecuteAsync(Args(new { prompt = "go" }), ctx);
+        var second = await tool.ExecuteAsync(Args(new { prompt = "go" }), ctx);
+
+        first.Success.Should().BeTrue();
+        second.Success.Should().BeTrue();
+        second.TurnDirective.Should().Be(ToolTurnDirective.EndTurn);
+        second.TurnDirectiveReason.Should().Be("handoff");
+
+        var firstTarget = (string)first.Metadata["target_session_id"];
+        var secondTarget = (string)second.Metadata["target_session_id"];
+        secondTarget.Should().Be(firstTarget);
+
+        var group = await h.Groups.GetGroupForSessionAsync(root.Id);
+        var members = await h.Groups.ListMembersAsync(group!.Id);
+        members.Count(m => m.Relation == SessionRelation.HandoffSuccessor).Should().Be(1);
+        submitter.SubmitCount.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Handoff_Should_Rollback_WhenSubmitFails()
     {
         using var h = new SessionToolTestHarness();

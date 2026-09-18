@@ -21,7 +21,7 @@ public class SessionGroupReloadHandlerTests
         try
         {
             var store = new FileSessionGroupStore(dirA);
-            var handler = new SessionGroupReloadHandler(store);
+            var handler = new SessionGroupReloadHandler(store, Mock.Of<ISessionGroupManager>());
 
             // 目录 A 写入一个组
             await store.SaveAsync(new SessionGroup { Id = "before", AnchorSessionId = "s-before" });
@@ -57,7 +57,7 @@ public class SessionGroupReloadHandlerTests
         try
         {
             var store = new FileSessionGroupStore(dirA);
-            var handler = new SessionGroupReloadHandler(store);
+            var handler = new SessionGroupReloadHandler(store, Mock.Of<ISessionGroupManager>());
 
             await handler.ReloadAsync(new WorkspaceChange { NewWorkspace = null }, CancellationToken.None);
 
@@ -72,10 +72,32 @@ public class SessionGroupReloadHandlerTests
     [Fact]
     public void ComponentId_ShouldBe_SessionGroups()
     {
-        var handler = new SessionGroupReloadHandler(Mock.Of<ISessionGroupStore>());
+        var handler = new SessionGroupReloadHandler(Mock.Of<ISessionGroupStore>(), Mock.Of<ISessionGroupManager>());
 
         handler.ComponentId.Should().Be("session.groups");
         handler.ChangeTypes.Should().Contain(typeof(WorkspaceChange));
+    }
+
+    [Fact]
+    public async Task ReloadAsync_WithNewWorkspace_ShouldClearGroupManagerCache()
+    {
+        var dirA = NewTempDir();
+        var dirB = NewTempDir();
+        try
+        {
+            var store = new FileSessionGroupStore(dirA);
+            var groups = new Mock<ISessionGroupManager>();
+            var handler = new SessionGroupReloadHandler(store, groups.Object);
+
+            await handler.ReloadAsync(new WorkspaceChange { NewWorkspace = dirB }, CancellationToken.None);
+
+            groups.Verify(g => g.ClearCache(), Times.Once);
+        }
+        finally
+        {
+            Cleanup(dirA);
+            Cleanup(dirB);
+        }
     }
 
     private static string NewTempDir()
