@@ -34,6 +34,7 @@ public static class BuiltInCapabilitySets
         "shell",
         "git",
         "subagent",
+        "session.tools",
         ..s_providerModules,
     ];
 
@@ -77,6 +78,7 @@ public static class BuiltInCapabilitySets
         "shell",
         "git",
         "subagent",
+        "session.tools",
         "web",
         "memory",
         "scheduler",
