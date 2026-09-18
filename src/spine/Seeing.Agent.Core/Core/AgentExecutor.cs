@@ -473,7 +473,7 @@ public class AgentExecutor : IAgentExecutor
                     _totalToolCallsExecuted += assistantMessage.ToolCalls.Count;
 
                 // ========== 执行工具调用（内部排空，保证终态送达）==========
-                await ExecuteToolCallsAsync(
+                var (endTurn, endTurnReason) = await ExecuteToolCallsAsync(
                     assistantMessage.ToolCalls ?? new List<ToolCall>(),
                     agent,
                     context,
@@ -482,6 +482,21 @@ public class AgentExecutor : IAgentExecutor
                     writer,
                     history,
                     effectiveToken);
+
+                // 工具要求结束本轮：全部工具结束后发出成功的 LoopComplete，不再进入下一轮 LLM
+                if (endTurn)
+                {
+                    await writer.WriteAsync(new LoopCompleteEvent
+                    {
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        TotalSteps = totalSteps,
+                        Duration = DateTime.Now - loopStartTime,
+                        Success = true,
+                        Reason = endTurnReason ?? "turn-directive"
+                    }, CancellationToken.None);
+                    return;
+                }
             }
 
             // 达到最大步数
@@ -619,7 +634,8 @@ public class AgentExecutor : IAgentExecutor
     /// 关键：消费端用 CancellationToken.None 排空，取消后工具终态事件（Cancelled/Success/Failed）完整送达；
     /// 排空受 ToolDrainTimeout 保护，避免被不响应取消的工具无限阻塞。
     /// </summary>
-    private async Task ExecuteToolCallsAsync(
+    /// <returns>本步是否存在 EndTurn 工具结果，及其透传的原因（无则 null）。</returns>
+    private async Task<(bool EndTurn, string? Reason)> ExecuteToolCallsAsync(
         List<ToolCall> toolCalls,
         Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
         AgentContext context,
@@ -674,9 +690,10 @@ public class AgentExecutor : IAgentExecutor
                     ToolDrainTimeout.TotalSeconds);
                 channel.Writer.TryComplete();
                 try { await forward.ConfigureAwait(false); } catch { /* 个别事件丢弃为已知边界 */ }
-                return; // 不等待不响应取消的工具（任务泄漏为已知边界，与修复前一致）
+                return (false, null); // 不等待不响应取消的工具（任务泄漏为已知边界，与修复前一致）
             }
             // 排空成功：forward 与 allDone 均已结束
+            return await forward.ConfigureAwait(false);
         }
         else
         {
@@ -684,7 +701,7 @@ public class AgentExecutor : IAgentExecutor
             // 保证 tool 历史完整写入，避免下一轮 LLM 因缺 tool 消息报 400。
             // RunToolCallWithEventsAsync 内部已捕获 OCE/异常，allDone 不会 fault。
             await allDone.ConfigureAwait(false);
-            await forward.ConfigureAwait(false);
+            return await forward.ConfigureAwait(false);
         }
     }
 
@@ -692,11 +709,14 @@ public class AgentExecutor : IAgentExecutor
     /// 转发工具事件并同步追加 tool 历史（所有终态都必须有对应的 tool 消息，否则下一轮 LLM 报 400）。
     /// 转发本身不因取消中断：消费端统一用 CancellationToken.None 排空。
     /// </summary>
-    private static async Task ForwardToolEventsAsync(
+    /// <returns>本步是否存在 EndTurn 工具结果，及其透传的原因（无则 null）。</returns>
+    private static async Task<(bool EndTurn, string? Reason)> ForwardToolEventsAsync(
         ChannelReader<IMessageEvent> reader,
         ChannelWriter<IMessageEvent> outbound,
         List<ChatMessage> history)
     {
+        var endTurn = false;
+        string? reason = null;
         await foreach (var evt in reader.ReadAllAsync(CancellationToken.None))
         {
             await outbound.WriteAsync(evt, CancellationToken.None);
@@ -704,6 +724,12 @@ public class AgentExecutor : IAgentExecutor
                 tcEvent.Status is ToolCallStatus.Success or ToolCallStatus.Failed
                     or ToolCallStatus.Rejected or ToolCallStatus.Cancelled)
             {
+                if (tcEvent.TurnDirective == ToolTurnDirective.EndTurn)
+                {
+                    endTurn = true;
+                    reason = tcEvent.TurnDirectiveReason ?? reason;
+                }
+
                 history.Add(new ChatMessage
                 {
                     Role = ChatRole.Tool,
@@ -712,6 +738,7 @@ public class AgentExecutor : IAgentExecutor
                 });
             }
         }
+        return (endTurn, reason);
     }
 
     private async Task RunToolCallWithEventsAsync(
@@ -894,7 +921,9 @@ public class AgentExecutor : IAgentExecutor
                 Title = result.Title,
                 Error = result.Error,
                 Duration = DateTime.Now - startTime,
-                Metadata = CopyMetadata(result.Metadata)
+                Metadata = CopyMetadata(result.Metadata),
+                TurnDirective = result.TurnDirective,
+                TurnDirectiveReason = result.TurnDirectiveReason
             };
         }
 
@@ -911,7 +940,9 @@ public class AgentExecutor : IAgentExecutor
             Title = result.Title,
             Error = result.Error,
             Duration = DateTime.Now - startTime,
-            Metadata = CopyMetadata(result.Metadata)
+            Metadata = CopyMetadata(result.Metadata),
+            TurnDirective = result.TurnDirective,
+            TurnDirectiveReason = result.TurnDirectiveReason
         };
     }
 

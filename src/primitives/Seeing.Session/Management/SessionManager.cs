@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Storage;
@@ -27,7 +26,6 @@ namespace Seeing.Session.Management
         private readonly ConcurrentDictionary<string, SessionData> _sessionDataCache = new();
 
         // 新增组件（可选）
-        private readonly SessionForker? _forker;
         private readonly SessionArchiver? _archiver;
         private readonly SessionSharer? _sharer;
         private readonly SessionReverter? _reverter;
@@ -45,7 +43,6 @@ namespace Seeing.Session.Management
         /// <param name="hookManager">Hook 管理器（可选）</param>
         /// <param name="eventPublisher">事件发布器（可选，用于 UI 更新）</param>
         /// <param name="logger">日志（可选）</param>
-        /// <param name="forker">Session 分支器（可选）</param>
         /// <param name="archiver">Session 归档器（可选）</param>
         /// <param name="sharer">Session 分享器（可选）</param>
         /// <param name="reverter">Session 回滚器（可选）</param>
@@ -55,7 +52,6 @@ namespace Seeing.Session.Management
             IHookManager? hookManager = null,
             ISessionEventPublisher? eventPublisher = null,
             ILogger<SessionManager>? logger = null,
-            SessionForker? forker = null,
             SessionArchiver? archiver = null,
             SessionSharer? sharer = null,
             SessionReverter? reverter = null,
@@ -65,7 +61,6 @@ namespace Seeing.Session.Management
             _hookManager = hookManager;
             _eventPublisher = eventPublisher;
             _logger = logger;
-            _forker = forker;
             _archiver = archiver;
             _sharer = sharer;
             _reverter = reverter;
@@ -341,121 +336,6 @@ namespace Seeing.Session.Management
         }
 
         /// <summary>
-        /// Fork Session - 创建分支
-        /// </summary>
-        public async Task<SessionData> ForkAsync(
-            string sessionId,
-            string? atMessageId = null,
-            string? label = null,
-            CancellationToken ct = default)
-        {
-            SessionData forkedSession;
-            if (_forker != null)
-            {
-                forkedSession = await _forker.ForkAsync(sessionId, atMessageId, label, ct);
-            }
-            else
-            {
-                // DI 默认未注入 SessionForker 时的内联实现（与 SessionForker 对齐）
-                forkedSession = await ForkInlineAsync(sessionId, atMessageId, label, ct);
-            }
-
-            if (forkedSession.Kind != SessionKind.Fork && forkedSession.Kind != SessionKind.Root)
-                forkedSession.Kind = SessionKind.Fork;
-
-            // 触发 Hook
-            _hookManager?.TriggerFireAndForget(
-                HookPoints.SessionForked,
-                forkedSession.Id,
-                result: new Dictionary<string, object?>
-                {
-                    ["session"] = forkedSession,
-                    ["parentSessionId"] = forkedSession.ParentSessionId ?? sessionId
-                });
-
-            return forkedSession;
-        }
-
-        private async Task<SessionData> ForkInlineAsync(
-            string sessionId,
-            string? atMessageId,
-            string? label,
-            CancellationToken ct)
-        {
-            var forker = new SessionForker(NullLogger<SessionForker>.Instance, this);
-            return await forker.ForkAsync(sessionId, atMessageId, label, ct);
-        }
-
-        /// <inheritdoc />
-        public async Task<SessionData> CreateChildAsync(
-            string parentId,
-            string agentName,
-            string title,
-            IReadOnlyList<SessionPermissionRule> permissionSnapshot,
-            string? scenario = null,
-            CancellationToken ct = default)
-        {
-            var parent = Get(parentId)
-                ?? throw new InvalidOperationException($"Parent session not found: {parentId}");
-
-            var child = SessionData.Create(parent.PartitionId, agentName, scenario);
-            child.Kind = SessionKind.SubAgent;
-            child.ParentSessionId = parentId;
-            child.Title = title;
-            child.SelectedAgent = agentName;
-            child.WorkingDirectory = parent.WorkingDirectory;
-            child.PartitionId = parent.PartitionId;
-            // 默认继承父委派时模型；子 Agent 自带 Model 时由 TaskTool 覆盖
-            child.SelectedModel = parent.SelectedModel;
-            child.SelectedThinkingEffort = parent.SelectedThinkingEffort;
-            child.PermissionSnapshot = permissionSnapshot?
-                .Select(r => new SessionPermissionRule
-                {
-                    Kind = r.Kind,
-                    Pattern = r.Pattern,
-                    Effect = r.Effect,
-                    Priority = r.Priority
-                })
-                .ToList()
-                ?? new List<SessionPermissionRule>();
-
-            Register(child);
-            await SaveAsync(child.Id);
-
-            _logger?.LogInformation(
-                "创建子 Agent 会话: {ChildId} <- {ParentId}, Agent: {Agent}, Scenario: {Scenario}",
-                child.Id, parentId, agentName, scenario ?? "(process)");
-
-            return child;
-        }
-
-        /// <inheritdoc />
-        public Task<IReadOnlyList<SessionData>> ListRootsAsync(CancellationToken ct = default)
-        {
-            var roots = _sessionDataCache.Values
-                .Where(s => s.Kind == SessionKind.Root && !s.IsArchived)
-                .OrderByDescending(s => s.UpdatedAt)
-                .ToList()
-                .AsReadOnly();
-            return Task.FromResult<IReadOnlyList<SessionData>>(roots);
-        }
-
-        /// <inheritdoc />
-        public Task<IReadOnlyList<SessionData>> ListChildrenAsync(
-            string parentId,
-            SessionKind? kind = null,
-            CancellationToken ct = default)
-        {
-            var q = _sessionDataCache.Values
-                .Where(s => s.ParentSessionId == parentId);
-            if (kind.HasValue)
-                q = q.Where(s => s.Kind == kind.Value);
-
-            var list = q.OrderByDescending(s => s.UpdatedAt).ToList().AsReadOnly();
-            return Task.FromResult<IReadOnlyList<SessionData>>(list);
-        }
-
-        /// <summary>
         /// Archive Session - 归档
         /// </summary>
         public async Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default)
@@ -571,8 +451,6 @@ namespace Seeing.Session.Management
                     Id = s.Id,
                     PartitionId = s.PartitionId,
                     SelectedAgent = s.SelectedAgent,
-                    ParentSessionId = s.ParentSessionId,
-                    ForkLabel = s.ForkLabel,
                     IsArchived = s.IsArchived,
                     MessageCount = s.MessageCount,
                     CreatedAt = new DateTimeOffset(s.CreatedAt),
@@ -860,35 +738,6 @@ namespace Seeing.Session.Management
 
             _logger?.LogInformation("从存储加载 {Count} 个会话", sessions.Count);
             return sessions.OrderByDescending(s => s.UpdatedAt).ToList();
-        }
-
-        /// <inheritdoc/>
-        public async Task<IReadOnlyList<SessionData>> LoadChildrenFromStorageAsync(
-            string parentId, CancellationToken ct = default)
-        {
-            if (_store == null)
-            {
-                _logger?.LogDebug("未配置存储，返回内存缓存中的子会话");
-                return await ListChildrenAsync(parentId, SessionKind.SubAgent, ct);
-            }
-
-            var result = new List<SessionData>();
-            var asyncEnumerable = await _store.ListAsync();
-            await foreach (var session in asyncEnumerable.WithCancellation(ct))
-            {
-                if (!string.Equals(session.ParentSessionId, parentId, StringComparison.Ordinal))
-                    continue;
-                if (session.Kind != SessionKind.SubAgent)
-                    continue;
-
-                // 缓存已存在则跳过，避免磁盘旧快照覆盖执行中活跃子会话的内存态
-                if (!_sessionDataCache.ContainsKey(session.Id))
-                    _sessionDataCache[session.Id] = session;
-                result.Add(_sessionDataCache[session.Id]);
-            }
-
-            _logger?.LogInformation("从存储加载父会话 {ParentId} 的子会话 {Count} 个", parentId, result.Count);
-            return result;
         }
     }
 }

@@ -29,6 +29,7 @@
 | `Seeing.Agent.Tools.Shell` | `shell` | bash |
 | `Seeing.Agent.Tools.Web` | `web` | fetch/search |
 | `Seeing.Agent.Tools.Git` | `git` | git_* |
+| `Seeing.Agent.Tools.Session` | `session.tools` | session_list/search/read/trim/handoff |
 | `Seeing.Agent.Tools.Basic` | `basic` | current_time |
 | `Seeing.Agent.Tools.Support` | — | ToolBase 等共享；**不是** `ISeeingModule` |
 | `Seeing.Agent.Skills` | `skills` | skill；命令经 `ICommand` 贡献 |

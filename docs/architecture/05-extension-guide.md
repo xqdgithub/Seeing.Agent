@@ -3,7 +3,7 @@
 ## 1. 新增工具能力包（推荐路径）
 
 1. 建目录 `src/capabilities/Seeing.Agent.Tools.Xxx/`（程序集名仍为 `Seeing.Agent.Tools.Xxx`）。  
-2. **只**引用 Abstractions + Tools.Support（及 IO 接口）；**禁止**引用 Core。  
+2. **只**引用 Abstractions + Tools.Support（及 IO 接口）；可引用**原语层**（如 `Seeing.Session`，先例 `Seeing.Agent.TokenBudget` / `Seeing.Agent.Acp`）；**禁止**引用 Core。  
 3. 实现工具：注入 `IFileSystem` / `ISubprocess` / `IExecutionWorld`，实现 `ITool`。  
 4. 实现 `XxxModule : ISeeingModule`（+ 可选 `IUiContribution`）：  
    - `Id = "xxx"`；声明 `ProvidedTools`  

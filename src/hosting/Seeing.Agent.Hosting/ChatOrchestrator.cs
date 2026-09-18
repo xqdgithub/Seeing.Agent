@@ -28,6 +28,7 @@ public class ChatOrchestrator : IChatOrchestrator
 {
     private readonly ExecutionJobService _executionJobService;
     private readonly ISessionManager _sessionManager;
+    private readonly ISessionGroupManager _groupManager;
     private readonly IAgentRegistry _agentRegistry;
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly IAgentExecutor _executionRouter;
@@ -42,6 +43,7 @@ public class ChatOrchestrator : IChatOrchestrator
     public ChatOrchestrator(
         ExecutionJobService executionJobService,
         ISessionManager sessionManager,
+        ISessionGroupManager groupManager,
         IAgentRegistry agentRegistry,
         IWorkspaceProvider workspaceProvider,
         IAgentExecutor executionRouter,
@@ -55,6 +57,7 @@ public class ChatOrchestrator : IChatOrchestrator
     {
         _executionJobService = executionJobService;
         _sessionManager = sessionManager;
+        _groupManager = groupManager;
         _agentRegistry = agentRegistry;
         _workspaceProvider = workspaceProvider;
         _executionRouter = executionRouter;
@@ -137,9 +140,8 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task<IReadOnlyList<SessionData>> ListSessionsAsync(CancellationToken cancellationToken = default)
     {
-        // 装入磁盘会话后仅返回 Root（排除 Fork / SubAgent）
-        await _sessionManager.LoadAllFromStorageAsync(cancellationToken);
-        return await _sessionManager.ListRootsAsync(cancellationToken);
+        // 锚点会话（每组单一 Root）：ListAnchorsAsync 内部已完成存储加载与组物化
+        return await _groupManager.ListAnchorsAsync(ct: cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -150,23 +152,13 @@ public class ChatOrchestrator : IChatOrchestrator
             sessionSelectedAgent: null,
             cancellationToken).ConfigureAwait(false);
 
-        var session = _sessionManager.Create(
-            selectedAgent: resolvedAgentId,
-            scenario: _defaultWorkMode?.GetDefaultScenario());
-
-        if (!string.IsNullOrEmpty(title))
-        {
-            session.Title = title;
-        }
-        else
-        {
-            session.Title = "新会话";
-        }
-
-        if (!string.IsNullOrEmpty(workingDirectory))
-        {
-            session.WorkingDirectory = workingDirectory;
-        }
+        var session = await _groupManager.CreateRootAsync(
+            partitionId: null,
+            agent: resolvedAgentId,
+            scenario: _defaultWorkMode?.GetDefaultScenario(),
+            title: string.IsNullOrEmpty(title) ? "新会话" : title,
+            workingDirectory: workingDirectory,
+            ct: cancellationToken).ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
         _modelManager.SeedSessionModel(session, resolvedAgentId);
@@ -188,21 +180,21 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        // 级联删除：先收集该会话的全部子会话（SubAgent / 分支），再一并删除，避免孤儿数据。
-        // 子会话优先取缓存；冷缓存（如进程重启后长时间未打开父会话）时从存储加载兜底。
-        var children = await _sessionManager.ListChildrenAsync(sessionId, ct: cancellationToken);
-        if (children.Count == 0)
-        {
-            children = await _sessionManager.LoadChildrenFromStorageAsync(sessionId, cancellationToken);
-        }
-
+        // 先取消子会话在途执行，再交给组管理器递归删除 Child 子树，避免孤儿数据与悬挂执行
+        var children = await _groupManager.ListChildrenAsync(sessionId, cancellationToken);
         foreach (var child in children)
         {
-            _sessionManager.Delete(child.Id);
-            _logger.LogInformation("Deleted child session: {ChildSessionId} (parent: {ParentSessionId})", child.Id, sessionId);
+            try
+            {
+                await _executionJobService.CancelBySessionAsync(child.Id, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "删除会话时取消子会话执行失败: {ChildSessionId}", child.Id);
+            }
         }
 
-        _sessionManager.Delete(sessionId);
+        await _groupManager.RemoveSessionAsync(sessionId, cancellationToken);
         _logger.LogInformation("Deleted session: {SessionId}", sessionId);
     }
 
@@ -221,35 +213,17 @@ public class ChatOrchestrator : IChatOrchestrator
     /// <inheritdoc/>
     public async Task<SessionData> BranchSessionAsync(string sessionId, string? title = null, CancellationToken cancellationToken = default)
     {
-        var sourceSession = await _sessionManager.LoadAsync(sessionId);
+        var sourceSession = _sessionManager.Get(sessionId) ?? await _sessionManager.LoadAsync(sessionId);
         if (sourceSession == null)
         {
             throw new InvalidOperationException($"Session '{sessionId}' not found");
         }
 
-        // 创建独立 Root 会话（无 Parent）；物化 Scenario（优先源会话，否则进程默认）
-        var scenario = sourceSession.Scenario ?? _defaultWorkMode?.GetDefaultScenario();
-        var newSession = _sessionManager.Create(
-            selectedAgent: sourceSession.SelectedAgent,
-            scenario: scenario);
-        newSession.Kind = SessionKind.Root;
-        newSession.ParentSessionId = null;
-        newSession.ForkLabel = null;
-        newSession.Title = title ?? string.Format("{0} (分支)", sourceSession.Title);
-        newSession.WorkingDirectory = sourceSession.WorkingDirectory;
-        newSession.SelectedModel = sourceSession.SelectedModel;
-        newSession.SelectedThinkingEffort = sourceSession.SelectedThinkingEffort;
-        // 深拷贝消息（元素共享会导致分支后原会话压缩标记污染分支会话的活跃消息）
-        newSession.ReplaceMessages(sourceSession.Messages.Select(m => m.Clone()));
-        if (sourceSession.Metadata.TryGetValue(SessionMetadataKeys.InstructionFingerprints, out var fingerprints)
-            && !string.IsNullOrEmpty(fingerprints))
-        {
-            newSession.Metadata[SessionMetadataKeys.InstructionFingerprints] = fingerprints;
-        }
+        // 分支关系（新组 / 加入源组 + Relation=Fork）由组管理器统一承载，消息深拷贝在 SessionForker 内完成
+        var resolvedTitle = title ?? string.Format("{0} (分支)", sourceSession.Title);
+        var newSession = await _groupManager.ForkSessionAsync(sessionId, resolvedTitle, cancellationToken);
 
-        await _sessionManager.SaveAsync(newSession.Id);
-
-        _logger.LogInformation("Branched session: {SourceId} -> {NewId} (Root, no parent)", sessionId, newSession.Id);
+        _logger.LogInformation("Branched session: {SourceId} -> {NewId}", sessionId, newSession.Id);
         return newSession;
     }
 

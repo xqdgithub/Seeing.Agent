@@ -1,6 +1,18 @@
 ﻿namespace Seeing.Agent.Abstractions.Tools;
 
 /// <summary>
+/// 工具对当前 Agent Loop 的轮次指令。
+/// </summary>
+public enum ToolTurnDirective
+{
+    /// <summary>继续循环（默认）</summary>
+    Continue = 0,
+
+    /// <summary>结束当前 Loop（全部工具结束后不再进行下一轮 LLM 调用）</summary>
+    EndTurn = 1
+}
+
+/// <summary>
 /// 文件附件
 /// </summary>
 public class FileAttachment
@@ -58,6 +70,12 @@ public class ToolResult
 
     /// <summary>执行耗时</summary>
     public TimeSpan? Duration { get; set; }
+
+    /// <summary>本轮轮次指令：EndTurn 时 AgentExecutor 在全部工具结束后终止 Loop（默认 Continue）</summary>
+    public ToolTurnDirective TurnDirective { get; set; } = ToolTurnDirective.Continue;
+
+    /// <summary>轮次指令原因（用于诊断与 LoopComplete.Reason）</summary>
+    public string? TurnDirectiveReason { get; set; }
 
     /// <summary>
     /// 创建成功结果

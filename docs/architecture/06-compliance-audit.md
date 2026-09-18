@@ -1,6 +1,6 @@
 # 06 合规审查
 
-**审查日期：** 2026-09-08（残留清理后复扫）；2026-09-17（权限授权子系统复扫，见下文专节）  
+**审查日期：** 2026-09-08（残留清理后复扫）；2026-09-17（权限授权子系统复扫，见下文专节）；2026-09-18（会话工具包复扫，见下文专节）  
 **对照：** `docs/superpowers/specs/2026-09-08-modular-architecture-design.md` + 本目录 01–05  
 **先前签字：** `.superpowers/sdd/reviews/compliance-remediation-final-r3.md` → Ready to merge: Yes  
 **深化说明：** `docs/superpowers/specs/2026-09-08-architecture-docs-deepen-design.md`
@@ -98,6 +98,28 @@ GetToolSchemas 调用（执行路径）
 | seam | ✅ | `SettlementEngine.ExclusiveSeams` 仅 `executionWorld`；`"permissionChannel"` seam 已移除 |
 
 复扫命令（`rg` 不可用时用 `Select-String` 等价实现，排除 `obj/bin`）见 [README 防回归扫描](README.md) 的权限契约分层规则。
+
+---
+
+## 会话工具包复扫（2026-09-18）
+
+**背景：** 新增能力包 `Seeing.Agent.Tools.Session`（模块 `session.tools`，分支 `feature/session-tools-and-groups`）。
+
+| 维度 | 状态 | 证据 |
+|------|------|------|
+| 能力包无 Core ProjectReference | ✅ | csproj 仅引用 Abstractions + `Seeing.Session`（原语）+ `Tools.Support` |
+| 工具 Activate 挂载 | ✅ | `SessionToolsModule.ConfigureServices` 无 `AddSingleton<ITool>`；Activate/Deactivate 成对 |
+| full/code 能力集与测试同步 | ✅ | `BuiltInCapabilitySets` + `BuiltInScenariosTests` 含 `session.tools` |
+
+复扫命令：
+
+```text
+rg "Seeing\.Agent\.Core\.csproj" src/capabilities/Seeing.Agent.Tools.Session -g "*.csproj"
+→ 空
+
+rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Module*.cs"
+→ 空
+```
 
 ---
 

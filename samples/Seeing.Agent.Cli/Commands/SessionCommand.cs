@@ -51,6 +51,7 @@ public static class SessionCommand
             var id = parseResult.GetValue<string>(showIdArg);
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<ISessionManager>();
+            var groupManager = host.Services.GetRequiredService<ISessionGroupManager>();
             var session = manager.Get(id);
 
             if (session == null)
@@ -60,6 +61,7 @@ public static class SessionCommand
                 return;
             }
 
+            var parentId = await groupManager.GetParentAsync(id);
             Console.WriteLine($"会话: {session.Id}");
             Console.WriteLine(new string('-', 50));
             Console.WriteLine($"  代理:       {session.SelectedAgent ?? "-"}");
@@ -67,7 +69,7 @@ public static class SessionCommand
             Console.WriteLine($"  创建时间:   {session.CreatedAt:yyyy-MM-dd HH:mm:ss}");
             Console.WriteLine($"  更新时间:   {session.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
             Console.WriteLine($"  分区:       {session.PartitionId ?? "-"}");
-            Console.WriteLine($"  父会话:     {session.ParentSessionId ?? "-"}");
+            Console.WriteLine($"  父会话:     {parentId ?? "-"}");
         });
 
         command.Subcommands.Add(listCommand);

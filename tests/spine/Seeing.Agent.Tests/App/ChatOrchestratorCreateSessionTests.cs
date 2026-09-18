@@ -189,6 +189,12 @@ public class ChatOrchestratorCreateSessionTests
         return new ChatOrchestrator(
             executionJobService: executionJobService,
             sessionManager: sessionManager,
+            groupManager: new SessionGroupManager(
+                sessionManager,
+                new Seeing.Session.Storage.FileSessionGroupStore(
+                    Path.Combine(Path.GetTempPath(), "seeing-grp-tests", Guid.NewGuid().ToString("N"))),
+                new SessionForker(NullLogger<SessionForker>.Instance, sessionManager),
+                NullLogger<SessionGroupManager>.Instance),
             agentRegistry: agentRegistry,
             workspaceProvider: Mock.Of<IWorkspaceProvider>(),
             executionRouter: Mock.Of<IAgentExecutor>(),

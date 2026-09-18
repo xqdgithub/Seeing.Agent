@@ -1,6 +1,7 @@
 ﻿using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
 namespace Seeing.Agent.Abstractions.Events;
 
 /// <summary>
@@ -172,6 +173,12 @@ public record LoopCompleteEvent : IMessageEvent
     /// <summary>错误信息（失败时）</summary>
     public string? Error { get; init; }
 
+    /// <summary>
+    /// 结束原因（如 <c>turn-directive</c>：工具要求提前结束本轮）。
+    /// <para>成功但非自然结束时填充；自然结束/失败为空。</para>
+    /// </summary>
+    public string? Reason { get; init; }
+
     /// <summary>Token 使用统计</summary>
     public TokenUsage? Usage { get; init; }
 }
@@ -294,6 +301,12 @@ public record ToolCallEvent : IMessageEvent
 
     /// <summary>工具结果元数据（如 bash 的 exit / timedOut / aborted）</summary>
     public IReadOnlyDictionary<string, object>? Metadata { get; init; }
+
+    /// <summary>工具请求的轮次指令（ToolResult.TurnDirective 透传）</summary>
+    public ToolTurnDirective TurnDirective { get; init; } = ToolTurnDirective.Continue;
+
+    /// <summary>轮次指令原因</summary>
+    public string? TurnDirectiveReason { get; init; }
 }
 
 /// <summary>

@@ -39,6 +39,7 @@
 @inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
 @inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
 @inject ISessionManager SessionManager
+@inject ISessionGroupManager GroupManager
 @inject ISessionEventPublisher SessionEventPublisher
 @inject Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @inject Seeing.Agent.Core.Scenarios.IScenarioCatalog ScenarioCatalog
@@ -103,12 +104,12 @@
                 @if (!ShowEmptyState)
                 {
                     <div Class="session-input-container">
-                        @if (IsSubAgentView)
+                        @if (Context.IsReadOnly)
                         {
                             <div class="subagent-readonly-banner" style="padding: 12px 16px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                                 <Icon Type="@IconType.Outline.Eye" />
                                 <span style="flex: 1;">当前为 Task 子会话（只读）。可返回主会话，或分叉为独立会话后再继续对话。</span>
-                                @if (!string.IsNullOrEmpty(SessionState.CurrentSession?.ParentSessionId))
+                                @if (!string.IsNullOrEmpty(_parentSessionId))
                                 {
                                     <Button Type="@ButtonType.Default"
                                             Size="@ButtonSize.Small"
@@ -139,7 +140,7 @@
                                          AutoApprove="@CurrentAutoApprove"
                                          OnAutoApproveChanged="@OnAutoApproveChanged"
                                          GlobalAutoApprove="@_globalAutoApprove"
-                                         AutoApproveDisabled="@IsSubAgentView"
+                                         AutoApproveDisabled="@(!Context.AllowAutoApproveChange)"
                                          OnCompactRequested="OnCompactRequested"
                                          OnSubmitCallback="@OnSubmitMessage"
                                          OnCancelCallback="@OnCancelExecution" />
@@ -211,6 +212,8 @@
     private string? _boundSessionId;
     private Action<IMessageEvent>? _onHandlerChangedCallback;
     private string? _loadedSessionId;
+    private string? _parentSessionId;
+    private SessionRelation _relation = SessionRelation.None;
     private string? _renderedTitle;
     private Services.SessionWindowMode _lastViewMode = Services.SessionWindowMode.Full;
     private IDisposable? _budgetSubscription;
@@ -225,7 +228,11 @@
     private bool IsLoadingSession;
 
     private string ModeCss => ViewMode == Services.SessionWindowMode.Full ? "full" : "summary";
-    private bool IsSubAgentView => SessionState.CurrentSession?.Kind == SessionKind.SubAgent;
+
+    /// <summary>当前会话在所属组内的成员关系（Child=只读子会话）；组查询失败时用会话 Kind 兜底。</summary>
+    private bool IsChildView =>
+        _relation == SessionRelation.Child
+        || SessionState.CurrentSession?.Kind == SessionKind.SubAgent;
 
     /// <summary>
     /// 组件初始化：加载命令列表、加载会话、建立事件流绑定、订阅预算与标题事件。
@@ -531,6 +538,13 @@
         _handler?.ClearCache();
 
         SessionState.SetSession(sessionData);
+        _parentSessionId = await GroupManager.GetParentAsync(sessionId);
+        // 组权威：取当前会话在组内的成员关系（Child=只读子会话）；组缺失时以会话 Kind 兜底
+        var group = await GroupManager.GetGroupForSessionAsync(sessionId);
+        var member = group?.Members.FirstOrDefault(m =>
+            string.Equals(m.SessionId, sessionId, StringComparison.Ordinal));
+        _relation = member?.Relation
+            ?? (sessionData.Kind == SessionKind.SubAgent ? SessionRelation.Child : SessionRelation.None);
 
         // 桥接仅 Full 模式写全局 SessionState（供 SecurityPage/MainLayout 等读取当前会话）
         if (ViewMode == Services.SessionWindowMode.Full)
@@ -702,7 +716,7 @@
     /// <summary>Summary 模式：父会话标题（子会话经 ParentSessionId 反查；主会话返回空不渲染）</summary>
     private string GetParentSessionTitle()
     {
-        var parentId = SessionState.CurrentSession?.ParentSessionId;
+        var parentId = _parentSessionId;
         if (string.IsNullOrEmpty(parentId))
             return string.Empty;
         var parent = SessionManager.Get(parentId);
@@ -794,7 +808,8 @@
         var s = SessionState.CurrentSession;
         Context.CurrentSession = s;
         Context.Title = s?.Title ?? "新会话";
-        Context.IsSubAgentView = IsSubAgentView;
+        Context.ApplyCapabilities(IsChildView, hasParent: !string.IsNullOrEmpty(_parentSessionId));
+        Context.ParentSessionId = _parentSessionId;
         Context.IsQueued = SessionState.IsQueued;
         Context.QueuePosition = SessionState.QueuePosition;
         Context.HasActiveExecution = SessionState.HasActiveExecution;
@@ -987,7 +1002,7 @@
     /// </summary>
     private async Task OnSubmitMessage(PromptSubmitEventArgs args)
     {
-        if (IsSubAgentView)
+        if (Context.IsReadOnly)
         {
             ErrorMessage = "子会话为只读，请先分叉为独立会话后再发送消息";
             return;
@@ -1240,13 +1255,13 @@
     {
         if (SessionState.CurrentSession == null) return;
 
-        var title = IsSubAgentView
+        var title = Context.IsChild
             ? $"{SessionState.Title} (独立会话)"
             : $"{SessionState.Title} (分支)";
 
         var branchedSession = await ChatOrchestrator.BranchSessionAsync(SessionState.CurrentSession.Id, title);
 
-        MessageService.Success(IsSubAgentView
+        MessageService.Success(Context.IsChild
             ? "已分叉为独立会话，可继续对话"
             : "会话已分支");
 
@@ -1261,7 +1276,7 @@
     /// </summary>
     private void ReturnToParentSession()
     {
-        var parentId = SessionState.CurrentSession?.ParentSessionId;
+        var parentId = _parentSessionId;
         if (string.IsNullOrEmpty(parentId))
             return;
 
@@ -1295,24 +1310,17 @@
     /// </summary>
     private async Task OnClearSession()
     {
-        if (IsSubAgentView) return;
+        if (Context.IsReadOnly) return;
 
         if (SessionState.CurrentSession != null)
         {
             var sessionId = SessionState.CurrentSession.Id;
 
-            // 先删除子会话（Task 工具创建的 SubAgent 会话），避免清空后大屏仍显示旧子窗口
-            var children = await SessionManager.ListChildrenAsync(sessionId, SessionKind.SubAgent);
+            // 先删除子会话（Task 工具创建的 SubAgent 会话）；组变更事件会驱动窗口注册表自动移除
+            var children = await GroupManager.ListChildrenAsync(sessionId);
             foreach (var child in children)
             {
-                SessionManager.Delete(child.Id);
-            }
-            // 通知大屏窗口注册表移除已删除子会话，避免 Summary 卡片残留空窗口
-            if (children.Count > 0)
-            {
-                var circuitId = CircuitContext.Id ?? "";
-                var registry = Router.GetOrCreateCircuitConsumer<Services.ConferenceRegistry>(circuitId);
-                registry.RemoveWindows(children.Select(c => c.Id));
+                await GroupManager.RemoveSessionAsync(child.Id);
             }
 
             SessionState.CurrentSession.ClearMessages();

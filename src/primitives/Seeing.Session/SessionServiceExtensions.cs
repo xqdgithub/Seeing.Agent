@@ -1,6 +1,8 @@
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Management;
@@ -42,34 +44,53 @@ public static class SessionServiceExtensions
         string? storagePath = null,
         ISessionStore? customStore = null)
     {
-        // AddSeeingCore 已注册时不再覆盖，保证 I1：SessionManager 与 ISessionManager 同一引用
-        if (services.Any(d => d.ServiceType == typeof(ISessionManager)))
-            return services;
-
         if (!services.Any(d => d.ServiceType == typeof(ISessionStore)))
         {
             services.AddSingleton<ISessionStore>(_ =>
                 customStore ?? new FileSessionStore(storagePath));
         }
 
-        services.AddSingleton<SessionManager>(sp =>
+        // AddSeeingCore 已注册 ISessionManager 时不再覆盖，保证 I1：SessionManager 与 ISessionManager 同一引用
+        if (!services.Any(d => d.ServiceType == typeof(ISessionManager)))
         {
-            var store = customStore
-                ?? sp.GetRequiredService<ISessionStore>();
+            services.AddSingleton<SessionManager>(sp =>
+            {
+                var store = customStore
+                    ?? sp.GetRequiredService<ISessionStore>();
 
-            return new SessionManager(
-                store: store,
-                hookManager: sp.GetService<IHookManager>(),
-                eventPublisher: sp.GetService<ISessionEventPublisher>(),
-                logger: sp.GetService<ILogger<SessionManager>>(),
-                forker: null,
-                archiver: null,
-                sharer: null,
-                reverter: null,
-                globalStore: sp.GetService<GlobalSessionStore>());
-        });
-        services.AddSingleton<ISessionManager>(sp =>
-            sp.GetRequiredService<SessionManager>());
+                return new SessionManager(
+                    store: store,
+                    hookManager: sp.GetService<IHookManager>(),
+                    eventPublisher: sp.GetService<ISessionEventPublisher>(),
+                    logger: sp.GetService<ILogger<SessionManager>>(),
+                    archiver: null,
+                    sharer: null,
+                    reverter: null,
+                    globalStore: sp.GetService<GlobalSessionStore>());
+            });
+            services.AddSingleton<ISessionManager>(sp =>
+                sp.GetRequiredService<SessionManager>());
+        }
+
+        // 会话组存储 / 分支器 / 组管理器（关系唯一权威）：与 Core 共用存在性检查，避免双实例
+        if (!services.Any(d => d.ServiceType == typeof(ISessionGroupStore)))
+        {
+            services.AddSingleton<ISessionGroupStore>(_ => new FileSessionGroupStore());
+        }
+
+        services.TryAddSingleton(sp =>
+            new SessionForker(
+                sp.GetService<ILogger<SessionForker>>() ?? NullLogger<SessionForker>.Instance,
+                sp.GetRequiredService<ISessionManager>()));
+
+        services.TryAddSingleton(sp =>
+            new SessionGroupManager(
+                sp.GetRequiredService<ISessionManager>(),
+                sp.GetRequiredService<ISessionGroupStore>(),
+                sp.GetRequiredService<SessionForker>(),
+                sp.GetService<ILogger<SessionGroupManager>>()));
+        services.TryAddSingleton<ISessionGroupManager>(sp =>
+            sp.GetRequiredService<SessionGroupManager>());
 
         return services;
     }

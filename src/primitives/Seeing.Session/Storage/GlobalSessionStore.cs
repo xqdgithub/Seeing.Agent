@@ -122,8 +122,6 @@ namespace Seeing.Session.Storage
                 Id = root.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
                 PartitionId = partitionId,
                 SelectedAgent = root.TryGetProperty("selectedAgent", out var agent) ? agent.GetString() : null,
-                ParentSessionId = root.TryGetProperty("parentSessionId", out var parent) ? parent.GetString() : null,
-                ForkLabel = root.TryGetProperty("forkLabel", out var label) ? label.GetString() : null,
                 IsArchived = root.TryGetProperty("isArchived", out var archived) && archived.GetBoolean(),
                 MessageCount = root.TryGetProperty("messages", out var msgs) && msgs.ValueKind == JsonValueKind.Array
                     ? msgs.GetArrayLength()

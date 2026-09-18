@@ -10,6 +10,7 @@ using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Embed;
 using Seeing.Agent.Llm.OpenAI;
 using Seeing.Agent.Core.Tools.Basic;
+using Seeing.Agent.Core.Tools.Session;
 using Seeing.IO.Local;
 
 // Embed Host Shape 最小用法：
@@ -23,6 +24,7 @@ var registry = new ConfigSectionRegistry();
 builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
 builder.Services.AddSeeingModule<LocalExecutionWorldModule>(registry);
 builder.Services.AddSeeingModule<BasicModule>(registry);
+builder.Services.AddSeeingModule<SessionToolsModule>(registry);
 builder.Services.AddSeeingModule<OpenAiLlmModule>(registry);
 builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
 builder.Services.AddSeeingCore(registry);

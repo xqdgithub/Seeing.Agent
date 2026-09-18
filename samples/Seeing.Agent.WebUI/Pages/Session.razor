@@ -35,6 +35,7 @@
 @inject Services.ActiveSessionTracker ActiveSessionTracker
 @inject CircuitContext CircuitContext
 @inject ISessionManager SessionManager
+@inject ISessionGroupManager GroupManager
 @implements IDisposable
 
 <div Class="session-page-container">
@@ -101,7 +102,7 @@
                         </ToolbarLeftActions>
                         <ToolbarRightActions Context="ctx">
                             <Space>
-                                @if (!ctx.IsSubAgentView)
+                                @if (ctx.CanBranch)
                                 {
                                     <SpaceItem>
                                         <Tooltip Title="分支会话">
@@ -126,7 +127,7 @@
                                                 Size="@ButtonSize.Small"
                                                 Icon="@IconType.Outline.Plus"
                                                 OnClick="@CreateNewSessionAsync"
-                                                Disabled="@(ctx.IsExecuting || ctx.IsSubAgentView)" />
+                                                Disabled="@(ctx.IsExecuting || !ctx.CanCreateSession)" />
                                     </Tooltip>
                                 </SpaceItem>
                             </Space>
@@ -170,16 +171,16 @@
     private string? _activeSessionId;
     private bool _mainMissing;
     private string _circuitId = string.Empty;
-    private ConferenceRegistry? _registry;
-    private IReadOnlyList<ConferenceRegistry.WindowNode> _windows = Array.Empty<ConferenceRegistry.WindowNode>();
+    private SessionWindowRegistry? _registry;
+    private IReadOnlyList<SessionWindowRegistry.WindowNode> _windows = Array.Empty<SessionWindowRegistry.WindowNode>();
 
-    /// <summary>侧栏窗口：非 active 的会话，主会话（Root）置顶排第一</summary>
-    private IReadOnlyList<ConferenceRegistry.WindowNode> SideWindows
+    /// <summary>侧栏窗口：非 active 的组内成员，锚点（Root）置顶排第一</summary>
+    private IReadOnlyList<SessionWindowRegistry.WindowNode> SideWindows
     {
         get
         {
             if (string.IsNullOrEmpty(_mainSessionId))
-                return Array.Empty<ConferenceRegistry.WindowNode>();
+                return Array.Empty<SessionWindowRegistry.WindowNode>();
             return AllWindows
                 .Where(n => !string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal))
                 .OrderBy(n => n.Kind == SessionKind.Root ? 0 : 1)
@@ -187,21 +188,8 @@
         }
     }
 
-    /// <summary>全部窗口：主会话（root）+ 子会话（registry.Windows）</summary>
-    private IReadOnlyList<ConferenceRegistry.WindowNode> AllWindows
-    {
-        get
-        {
-            var nodes = new List<ConferenceRegistry.WindowNode>();
-            if (!string.IsNullOrEmpty(_mainSessionId))
-            {
-                var main = SessionManager.Get(_mainSessionId);
-                nodes.Add(new ConferenceRegistry.WindowNode(_mainSessionId, null, SessionKind.Root, main?.Title ?? string.Empty));
-            }
-            nodes.AddRange(_windows);
-            return nodes;
-        }
-    }
+    /// <summary>全部窗口：组锚点 + 全部成员（由 SessionWindowRegistry 组快照投影）</summary>
+    private IReadOnlyList<SessionWindowRegistry.WindowNode> AllWindows => _windows;
 
     /// <summary>
     /// 组件初始化：会话加载/事件绑定/Agent 与模型选项等均由 SessionWindow + SessionToolbar 承载，
@@ -300,7 +288,7 @@
     private void InitRegistry(string mainId)
     {
         var circuitId = CircuitContext.Id ?? "";
-        _registry = Router.GetOrCreateCircuitConsumer<ConferenceRegistry>(circuitId);
+        _registry = Router.GetOrCreateCircuitConsumer<SessionWindowRegistry>(circuitId);
         _registry.WindowsChanged -= OnWindowsChanged; // 防重复订阅
         _registry.WindowsChanged += OnWindowsChanged;
         _registry.Rebind(mainId);
@@ -309,14 +297,20 @@
 
     private void OnWindowsChanged()
     {
-        _windows = _registry?.Windows ?? Array.Empty<ConferenceRegistry.WindowNode>();
+        _windows = _registry?.Windows ?? Array.Empty<SessionWindowRegistry.WindowNode>();
+        var active = _registry?.ActiveSessionId;
+        if (!string.IsNullOrEmpty(active))
+            _activeSessionId = active;
         _ = InvokeAsync(StateHasChanged);
     }
 
-    /// <summary>点击侧栏卡片：原地切换主窗 active 会话（URL 不变，同大屏行为）</summary>
+    /// <summary>点击侧栏卡片：经组管理器切换组 active（URL 不变，组事件回流刷新窗口）</summary>
     private async Task OnTileClick(string sessionId)
     {
         _activeSessionId = sessionId;
+        var groupId = _registry?.GroupId;
+        if (!string.IsNullOrEmpty(groupId))
+            await GroupManager.SetActiveAsync(groupId, sessionId);
         ActiveSessionTracker.Attach(sessionId, _circuitId);
         await InvokeAsync(StateHasChanged);
     }

@@ -6,6 +6,7 @@
 @inject CircuitContext CircuitContext
 @inject NavigationManager NavigationManager
 @inject ISessionManager SessionManager
+@inject ISessionGroupManager GroupManager
 @inject SessionState GlobalSessionState
 @implements IDisposable
 
@@ -31,11 +32,11 @@
         @* 双栏布局：Full 固定左侧（不随子窗口数量变化），Summary 右侧垂直堆叠；无子会话时隐藏侧栏主窗全宽 *@
         <div class="conference-grid">
             <div class="conference-main-area">
-                @foreach (var node in AllWindows.Where(n => string.Equals(n.SessionId, _activeSessionId, StringComparison.Ordinal)))
+                @if (!string.IsNullOrEmpty(_activeSessionId))
                 {
                     <ErrorBoundary>
-                        <SessionWindow @key="@node.SessionId"
-                                       SessionId="@node.SessionId"
+                        <SessionWindow @key="@_activeSessionId"
+                                       SessionId="@_activeSessionId"
                                        ViewMode="@SessionWindowMode.Full"
                                        AggregatorSessionId="@_mainSessionId"
                                        GlobalSessionState="@GlobalSessionState"
@@ -141,28 +142,15 @@
 
     private string? _mainSessionId;
     private string? _activeSessionId;
-    private ConferenceRegistry? _registry;
-    private IReadOnlyList<ConferenceRegistry.WindowNode> _windows = Array.Empty<ConferenceRegistry.WindowNode>();
+    private SessionWindowRegistry? _registry;
+    private IReadOnlyList<SessionWindowRegistry.WindowNode> _windows = Array.Empty<SessionWindowRegistry.WindowNode>();
     private bool _mainMissing;
 
-    /// <summary>全部窗口：主会话（root）+ 子会话（registry.Windows）</summary>
-    private IReadOnlyList<ConferenceRegistry.WindowNode> AllWindows
-    {
-        get
-        {
-            var nodes = new List<ConferenceRegistry.WindowNode>();
-            if (!string.IsNullOrEmpty(_mainSessionId))
-            {
-                var main = SessionManager.Get(_mainSessionId);
-                nodes.Add(new ConferenceRegistry.WindowNode(_mainSessionId, null, SessionKind.Root, main?.Title ?? string.Empty));
-            }
-            nodes.AddRange(_windows);
-            return nodes;
-        }
-    }
+    /// <summary>全部窗口：组锚点 + 全部成员（由 SessionWindowRegistry 组快照投影）</summary>
+    private IReadOnlyList<SessionWindowRegistry.WindowNode> AllWindows => _windows;
 
-    /// <summary>侧栏窗口：非 active 的会话，主会话（Root）置顶排第一</summary>
-    private IReadOnlyList<ConferenceRegistry.WindowNode> SideWindows
+    /// <summary>侧栏窗口：非 active 的组内成员，锚点（Root）置顶排第一</summary>
+    private IReadOnlyList<SessionWindowRegistry.WindowNode> SideWindows
     {
         get
         {
@@ -176,6 +164,9 @@
     private async Task OnTileClick(string sessionId)
     {
         _activeSessionId = sessionId;
+        var groupId = _registry?.GroupId;
+        if (!string.IsNullOrEmpty(groupId))
+            await GroupManager.SetActiveAsync(groupId, sessionId);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -189,7 +180,8 @@
 
     private string GetMainTitle()
     {
-        var session = SessionManager.Get(_mainSessionId ?? "");
+        var anchorId = _registry?.AnchorSessionId;
+        var session = SessionManager.Get(!string.IsNullOrEmpty(anchorId) ? anchorId : (_mainSessionId ?? ""));
         return session?.Title ?? "会议大屏";
     }
 
@@ -231,7 +223,7 @@
     private void InitRegistry(string mainId)
     {
         var circuitId = CircuitContext.Id ?? "";
-        _registry = Router.GetOrCreateCircuitConsumer<ConferenceRegistry>(circuitId);
+        _registry = Router.GetOrCreateCircuitConsumer<SessionWindowRegistry>(circuitId);
         _registry.WindowsChanged -= OnWindowsChanged; // 防重复订阅
         _registry.WindowsChanged += OnWindowsChanged;
         _registry.Rebind(mainId);
@@ -271,7 +263,10 @@
 
     private void OnWindowsChanged()
     {
-        _windows = _registry?.Windows ?? Array.Empty<ConferenceRegistry.WindowNode>();
+        _windows = _registry?.Windows ?? Array.Empty<SessionWindowRegistry.WindowNode>();
+        var active = _registry?.ActiveSessionId;
+        if (!string.IsNullOrEmpty(active))
+            _activeSessionId = active;
         _ = InvokeAsync(StateHasChanged);
     }
 

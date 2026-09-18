@@ -51,6 +51,7 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton(sp => new TaskTool(
             sp.GetRequiredService<ILogger<TaskTool>>(),
             sp.GetRequiredService<ISessionManager>(),
+            sp.GetRequiredService<ISessionGroupManager>(),
             sp.GetRequiredService<IAgentRegistry>(),
             sp.GetRequiredService<IAgentLoopScheduler>(),
             sp.GetRequiredService<IExecutionSubmitter>(),
@@ -59,6 +60,7 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton(sp => new TaskStatusTool(
             sp.GetRequiredService<ILogger<TaskStatusTool>>(),
             sp.GetRequiredService<ISessionManager>(),
+            sp.GetRequiredService<ISessionGroupManager>(),
             sp.GetRequiredService<IExecutionSubmitter>(),
             sp.GetRequiredService<IExecutionStatusProvider>()));
         services.AddSingleton<TodoWriteTool>();

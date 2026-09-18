@@ -142,7 +142,7 @@ namespace Seeing.Agent.Tests.Services
             var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
-            var svc = new SessionTitleService(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
+            var svc = new SessionTitleService(text.Object, sm.Object, RootGroupManager().Object, opts.Object, NullLogger<SessionTitleService>.Instance);
             var title = await svc.TryEnsureAsync(session.Id, "debug 500 errors in production", "provider/model");
 
             title.Should().Be("调试生产500错误");
@@ -179,7 +179,7 @@ namespace Seeing.Agent.Tests.Services
             var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
-            var svc = new SessionTitleService(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
+            var svc = new SessionTitleService(text.Object, sm.Object, RootGroupManager().Object, opts.Object, NullLogger<SessionTitleService>.Instance);
             var title = await svc.TryEnsureAsync(session.Id, "hi", "m");
 
             title.Should().BeNull();
@@ -233,7 +233,7 @@ namespace Seeing.Agent.Tests.Services
             var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
-            var svc = new SessionTitleService(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
+            var svc = new SessionTitleService(text.Object, sm.Object, RootGroupManager().Object, opts.Object, NullLogger<SessionTitleService>.Instance);
             var title = await svc.TryEnsureAsync(session.Id, "implement rate limiting", "provider/model");
 
             title.Should().Be("实现限流");
@@ -267,11 +267,19 @@ namespace Seeing.Agent.Tests.Services
             var opts = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
-            var svc = new SessionTitleService(text.Object, sm.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
+            var svc = new SessionTitleService(text.Object, sm.Object, RootGroupManager().Object, opts.Object, NullLogger<SessionTitleService>.Instance);
             var title = await svc.TryEnsureAsync(session.Id, "msg-9", "provider/model");
 
             title.Should().Be("新主题标题");
             session.Title.Should().Be("新主题标题");
+        }
+
+        private static Mock<ISessionGroupManager> RootGroupManager()
+        {
+            var gm = new Mock<ISessionGroupManager>();
+            gm.Setup(g => g.GetParentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string?)null);
+            return gm;
         }
     }
 }

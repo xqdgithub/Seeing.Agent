@@ -13,11 +13,11 @@ namespace Seeing.Agent.Hosting.Commands;
 [CommandProvider]
 public class SessionCommands
 {
-    private readonly ISessionManager _sessionManager;
+    private readonly ISessionGroupManager _groupManager;
 
-    public SessionCommands(ISessionManager sessionManager)
+    public SessionCommands(ISessionGroupManager groupManager)
     {
-        _sessionManager = sessionManager;
+        _groupManager = groupManager;
     }
 
     /// <summary>
@@ -39,7 +39,7 @@ public class SessionCommands
         }
 
         var title = context.Arguments.Trim();
-        var newSession = await _sessionManager.ForkAsync(context.SessionId, label: title, ct: ct);
+        var newSession = await _groupManager.ForkSessionAsync(context.SessionId, title, ct);
 
         return CommandResult.Ok($"会话已分叉: {newSession.Id}", shouldContinue: false)
             .WithNavigation($"/session/{newSession.Id}");

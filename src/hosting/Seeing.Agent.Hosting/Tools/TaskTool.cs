@@ -27,6 +27,7 @@ namespace Seeing.Agent.Hosting.Tools;
 public class TaskTool : ToolBase
 {
     private readonly ISessionManager _sessionManager;
+    private readonly ISessionGroupManager _groupManager;
     private readonly IAgentRegistry _agentRegistry;
     private readonly IAgentLoopScheduler _loopScheduler;
     private readonly IExecutionSubmitter _executionSubmitter;
@@ -36,6 +37,7 @@ public class TaskTool : ToolBase
     public TaskTool(
         ILogger<TaskTool> logger,
         ISessionManager sessionManager,
+        ISessionGroupManager groupManager,
         IAgentRegistry agentRegistry,
         IAgentLoopScheduler loopScheduler,
         IExecutionSubmitter executionSubmitter,
@@ -43,6 +45,7 @@ public class TaskTool : ToolBase
         IExecutionEventPublisher eventPublisher) : base(logger)
     {
         _sessionManager = sessionManager;
+        _groupManager = groupManager;
         _agentRegistry = agentRegistry;
         _loopScheduler = loopScheduler;
         _executionSubmitter = executionSubmitter;
@@ -112,7 +115,10 @@ public class TaskTool : ToolBase
                 if (session.Kind != SessionKind.SubAgent)
                     return Failure($"task_id '{taskId}' 不是 SubAgent 会话");
 
-                if (!string.Equals(session.ParentSessionId, context.SessionId, StringComparison.Ordinal))
+                if (!string.Equals(
+                        await _groupManager.GetParentAsync(session.Id, context.CancellationToken),
+                        context.SessionId,
+                        StringComparison.Ordinal))
                     return Failure($"task_id '{taskId}' 不属于当前父会话");
 
                 // 快速失败：已有进行中的 Loop 或活跃执行直接拒绝（真正的原子抢占在执行引擎队列内）
@@ -134,7 +140,7 @@ public class TaskTool : ToolBase
                     parentDef,
                     agentInfo);
 
-                session = await _sessionManager.CreateChildAsync(
+                session = await _groupManager.CreateChildAsync(
                     context.SessionId,
                     agentInfo.Name,
                     $"{description} (@{agentInfo.Name})",
@@ -389,7 +395,7 @@ public class TaskTool : ToolBase
     /// </summary>
     private async Task<string> GetSubAgentStatusSummaryAsync(string parentSessionId, string currentChildId)
     {
-        var children = await _sessionManager.ListChildrenAsync(parentSessionId, SessionKind.SubAgent);
+        var children = await _groupManager.ListChildrenAsync(parentSessionId);
         if (children == null || children.Count <= 1)
             return string.Empty;
 

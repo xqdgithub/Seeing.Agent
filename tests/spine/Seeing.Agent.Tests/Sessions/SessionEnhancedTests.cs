@@ -11,27 +11,25 @@ namespace Seeing.Agent.Tests.Sessions;
 public class SessionDataEnhancedTests
 {
     [Fact]
-    public void SessionData_ForkFields_Defaults()
+    public void SessionData_RelationFields_Defaults()
     {
         // Arrange & Act
         var session = new SessionData();
 
         // Assert
-        session.ParentSessionId.Should().BeNull();
-        session.ForkLabel.Should().BeNull();
+        session.GroupId.Should().BeNull();
         session.IsArchived.Should().BeFalse();
         session.ArchivedAt.Should().BeNull();
     }
 
     [Fact]
-    public void SessionData_Clone_ShouldCopyForkFields()
+    public void SessionData_Clone_ShouldCopyRelationFields()
     {
         // Arrange
         var session = new SessionData
         {
             Id = "test-id",
-            ParentSessionId = "parent-id",
-            ForkLabel = "Test Fork",
+            GroupId = "grp-1",
             IsArchived = true,
             ArchivedAt = DateTimeOffset.UtcNow
         };
@@ -40,8 +38,7 @@ public class SessionDataEnhancedTests
         var clone = session.Clone();
 
         // Assert
-        clone.ParentSessionId.Should().Be("parent-id");
-        clone.ForkLabel.Should().Be("Test Fork");
+        clone.GroupId.Should().Be("grp-1");
         clone.IsArchived.Should().BeTrue();
         clone.ArchivedAt.Should().NotBeNull();
     }
@@ -77,28 +74,11 @@ public class SessionForkerTests
         // Act
         var forked = await forker.ForkAsync(original.Id);
 
-        // Assert
+        // Assert：关系字段不再由复制引擎写入，仅验证消息与配置复制
         forked.Id.Should().NotBe(original.Id);
-        forked.ParentSessionId.Should().Be(original.Id);
         forked.Messages.Should().HaveCount(1);
         forked.Metadata[SessionMetadataKeys.InstructionFingerprints]
             .Should().Be(original.Metadata[SessionMetadataKeys.InstructionFingerprints]);
-    }
-
-    [Fact]
-    public async Task ForkAsync_WithMessageId_ShouldTruncate()
-    {
-        // Arrange
-        var (manager, forker) = CreateForker();
-        var original = manager.Create();
-        original.AddMessage(new SessionMessage { Id = "msg1", Role = "user", Content = "Hello" });
-        original.AddMessage(new SessionMessage { Id = "msg2", Role = "assistant", Content = "Hi" });
-
-        // Act - Fork at msg1 (should not include msg1)
-        var forked = await forker.ForkAsync(original.Id, "msg1");
-
-        // Assert
-        forked.Messages.Should().BeEmpty();
     }
 
     [Fact]

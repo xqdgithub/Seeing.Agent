@@ -25,7 +25,62 @@ public sealed class SessionWindowContext
     public string SessionId { get; internal set; } = string.Empty;
     public string Title { get; internal set; } = string.Empty;
     public SessionData? CurrentSession { get; internal set; }
-    public bool IsSubAgentView { get; internal set; }
+    /// <summary>当前会话在所属组内的父会话 ID（根会话为 null）</summary>
+    public string? ParentSessionId { get; internal set; }
+
+    // ---- 能力标记（由 SessionWindow 按组内成员 Relation 经 ApplyCapabilities 计算） ----
+    /// <summary>是否为 Child 关系成员（只读子会话）</summary>
+    public bool IsChild { get; internal set; }
+    /// <summary>只读视图（Child：禁止提交/编辑）</summary>
+    public bool IsReadOnly { get; internal set; }
+    /// <summary>允许切换会话级自动批准（Child 禁止）</summary>
+    public bool AllowAutoApproveChange { get; internal set; }
+    /// <summary>展示场景徽标（Child 隐藏）</summary>
+    public bool ShowScenarioBadge { get; internal set; }
+    /// <summary>展示子会话徽标与元信息（仅 Child）</summary>
+    public bool ShowSubAgentBadge { get; internal set; }
+    /// <summary>展示 ACP Mode/Model 输入（Child 隐藏）</summary>
+    public bool ShowAcpModeSelector { get; internal set; }
+    /// <summary>展示模型选择（Child 隐藏）</summary>
+    public bool ShowModelSelector { get; internal set; }
+    /// <summary>展示"返回主会话"（有父的 Child）</summary>
+    public bool ShowReturnToParent { get; internal set; }
+    /// <summary>允许重命名（Child 禁止）</summary>
+    public bool CanRename { get; internal set; }
+    /// <summary>允许分离为独立会话（仅 Child）</summary>
+    public bool CanDetach { get; internal set; }
+    /// <summary>允许分支会话（仅非 Child）</summary>
+    public bool CanBranch { get; internal set; }
+    /// <summary>允许编辑出站绑定（Child 禁止）</summary>
+    public bool CanEditOutboundBinding { get; internal set; }
+    /// <summary>允许清空会话（Child 禁止）</summary>
+    public bool CanClear { get; internal set; }
+    /// <summary>允许新建会话（Child 禁止）</summary>
+    public bool CanCreateSession { get; internal set; }
+
+    /// <summary>
+    /// 按组内成员关系计算窗口能力标记：
+    /// Child（<see cref="SessionRelation.Child"/>）为只读子会话——禁改名/清空/出站绑定/自动批准切换，
+    /// 隐藏场景徽标与模型/ACP 选择，但可分离为独立会话并在有父时返回父会话。
+    /// </summary>
+    public void ApplyCapabilities(bool isChild, bool hasParent)
+    {
+        IsChild = isChild;
+        IsReadOnly = isChild;
+        AllowAutoApproveChange = !isChild;
+        ShowScenarioBadge = !isChild;
+        ShowSubAgentBadge = isChild;
+        ShowAcpModeSelector = !isChild;
+        ShowModelSelector = !isChild;
+        ShowReturnToParent = isChild && hasParent;
+        CanRename = !isChild;
+        CanDetach = isChild;
+        CanBranch = !isChild;
+        CanEditOutboundBinding = !isChild;
+        CanClear = !isChild;
+        CanCreateSession = !isChild;
+    }
+
     public bool IsQueued { get; internal set; }
     public int QueuePosition { get; internal set; }
     public bool HasActiveExecution { get; internal set; }
