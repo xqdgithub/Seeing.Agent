@@ -103,7 +103,8 @@ public class ProviderManagerCharacterizationTests : IDisposable
         providers.Keys.Should().BeEquivalentTo("openai", "anthropic");
         providers["openai"].Name.Should().Be("OpenAI");
         providers["openai"].Source.Should().Be(ProviderSource.Configured);
-        providers["anthropic"].MaxRetries.Should().Be(3);
+        // 默认 max_retries=0 表示不限次数（仅受总预算约束）
+        providers["anthropic"].MaxRetries.Should().Be(0);
     }
 
     [Fact]

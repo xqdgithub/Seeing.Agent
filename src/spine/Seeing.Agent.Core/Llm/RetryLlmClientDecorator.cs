@@ -22,24 +22,35 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(config);
-        var maxRetries = config.MaxRetries > 0 ? config.MaxRetries : 3;
+
+        var settings = new LlmRetrySettings(
+            BaseDelay: TimeSpan.FromMilliseconds(config.RetryBaseDelayMs > 0 ? config.RetryBaseDelayMs : 500),
+            MaxDelay: TimeSpan.FromMilliseconds(config.RetryMaxDelayMs > 0 ? config.RetryMaxDelayMs : 10_000),
+            Budget: TimeSpan.FromMilliseconds(config.RetryTotalBudgetMs > 0 ? config.RetryTotalBudgetMs : 120_000),
+            MaxRetries: config.MaxRetries);
+
         return new RetryingLlmClient(
             inner,
-            maxRetries,
+            settings,
             _loggerFactory.CreateLogger<RetryingLlmClient>());
     }
+
+    private readonly record struct LlmRetrySettings(
+        TimeSpan BaseDelay,
+        TimeSpan MaxDelay,
+        TimeSpan Budget,
+        int MaxRetries);
 
     private sealed class RetryingLlmClient : ILlmClient
     {
         private readonly ILlmClient _inner;
-        private readonly int _maxRetries;
+        private readonly LlmRetrySettings _settings;
         private readonly ILogger _logger;
-        private static readonly TimeSpan s_retryDelay = TimeSpan.FromSeconds(1);
 
-        public RetryingLlmClient(ILlmClient inner, int maxRetries, ILogger logger)
+        public RetryingLlmClient(ILlmClient inner, LlmRetrySettings settings, ILogger logger)
         {
             _inner = inner;
-            _maxRetries = Math.Max(1, maxRetries);
+            _settings = settings;
             _logger = logger;
         }
 
@@ -52,25 +63,31 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
             CancellationToken cancellationToken = default)
         {
             var attempt = 0;
+            var elapsed = TimeSpan.Zero;
             while (true)
             {
                 attempt++;
-                WriteRetryItems(call, attempt, willRetry: false);
+                WriteRetryItems(call, attempt, willRetry: false, nextDelay: null);
                 try
                 {
                     return await _inner.CompleteAsync(request, call, cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception ex) when (
-                    attempt < _maxRetries &&
-                    LlmRetryPolicy.IsRetryable(ex, cancellationToken))
+                catch (Exception ex) when (LlmRetryPolicy.IsRetryable(ex, cancellationToken))
                 {
-                    WriteRetryItems(call, attempt, willRetry: true);
+                    var nextDelay = LlmRetryPolicy.ComputeDelay(attempt, _settings.BaseDelay, _settings.MaxDelay);
+                    if (!LlmRetryPolicy.ShouldRetry(
+                            attempt, elapsed, nextDelay, _settings.MaxRetries, _settings.Budget))
+                    {
+                        throw;
+                    }
+
+                    elapsed += nextDelay;
+                    WriteRetryItems(call, attempt, willRetry: true, nextDelay);
                     _logger.LogWarning(ex,
-                        "[RetryLlmClient] 非流式重试: Provider={Provider}, Attempt={Attempt}/{Max}",
-                        ProviderId, attempt, _maxRetries);
-                    var delay = TimeSpan.FromMilliseconds(
-                        s_retryDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        "[RetryLlmClient] 非流式重试: Provider={Provider}, Attempt={Attempt}/{Max}, NextDelayMs={NextDelayMs}, ElapsedMs={ElapsedMs}, BudgetMs={BudgetMs}",
+                        ProviderId, attempt, _settings.MaxRetries,
+                        nextDelay.TotalMilliseconds, elapsed.TotalMilliseconds, _settings.Budget.TotalMilliseconds);
+                    await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -81,10 +98,11 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var attempt = 0;
+            var elapsed = TimeSpan.Zero;
             while (true)
             {
                 attempt++;
-                WriteRetryItems(call, attempt, willRetry: false);
+                WriteRetryItems(call, attempt, willRetry: false, nextDelay: null);
                 var yielded = false;
                 Exception? captured = null;
 
@@ -97,21 +115,24 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
                 if (captured is null)
                     yield break;
 
-                if (yielded ||
-                    attempt >= _maxRetries ||
-                    !LlmRetryPolicy.IsRetryable(captured, cancellationToken))
+                if (yielded || !LlmRetryPolicy.IsRetryable(captured, cancellationToken))
+                    throw captured;
+
+                var nextDelay = LlmRetryPolicy.ComputeDelay(attempt, _settings.BaseDelay, _settings.MaxDelay);
+                if (!LlmRetryPolicy.ShouldRetry(
+                        attempt, elapsed, nextDelay, _settings.MaxRetries, _settings.Budget))
                 {
-                    WriteRetryItems(call, attempt, willRetry: false);
+                    WriteRetryItems(call, attempt, willRetry: false, nextDelay: null);
                     throw captured;
                 }
 
-                WriteRetryItems(call, attempt, willRetry: true);
+                elapsed += nextDelay;
+                WriteRetryItems(call, attempt, willRetry: true, nextDelay);
                 _logger.LogWarning(captured,
-                    "[RetryLlmClient] 流式重试: Provider={Provider}, Attempt={Attempt}/{Max}",
-                    ProviderId, attempt, _maxRetries);
-                var delay = TimeSpan.FromMilliseconds(
-                    s_retryDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                    "[RetryLlmClient] 流式重试: Provider={Provider}, Attempt={Attempt}/{Max}, NextDelayMs={NextDelayMs}, ElapsedMs={ElapsedMs}, BudgetMs={BudgetMs}",
+                    ProviderId, attempt, _settings.MaxRetries,
+                    nextDelay.TotalMilliseconds, elapsed.TotalMilliseconds, _settings.Budget.TotalMilliseconds);
+                await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -158,13 +179,16 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
             CancellationToken cancellationToken = default)
             => _inner.TestConnectionAsync(modelId, call, cancellationToken);
 
-        private void WriteRetryItems(LlmCallContext? call, int attempt, bool willRetry)
+        private void WriteRetryItems(LlmCallContext? call, int attempt, bool willRetry, TimeSpan? nextDelay)
         {
             if (call is null)
                 return;
+
             call.Items[LlmRetryPolicy.AttemptItemKey] = attempt;
             call.Items[LlmRetryPolicy.WillRetryItemKey] = willRetry;
-            call.Items[LlmRetryPolicy.MaxRetriesItemKey] = _maxRetries;
+            call.Items[LlmRetryPolicy.MaxRetriesItemKey] = _settings.MaxRetries;
+            if (nextDelay is { } delay)
+                call.Items[LlmRetryPolicy.NextDelayItemKey] = delay.TotalMilliseconds;
         }
     }
 }

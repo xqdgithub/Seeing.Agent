@@ -81,9 +81,23 @@ public class ProviderConfig
     [JsonPropertyName("timeout")]
     public int Timeout { get; set; } = 300000; // 5 分钟
 
-    /// <summary>最大重试次数</summary>
+    /// <summary>
+    /// 最大重试次数；&lt;=0 表示不限次数（仅受 <see cref="RetryTotalBudgetMs"/> 与取消约束）。
+    /// </summary>
     [JsonPropertyName("max_retries")]
-    public int MaxRetries { get; set; } = 3;
+    public int MaxRetries { get; set; }
+
+    /// <summary>首次重试退避（毫秒），默认 500ms</summary>
+    [JsonPropertyName("retry_base_delay")]
+    public int RetryBaseDelayMs { get; set; } = 500;
+
+    /// <summary>单次重试退避上限（毫秒），默认 10000ms</summary>
+    [JsonPropertyName("retry_max_delay")]
+    public int RetryMaxDelayMs { get; set; } = 10000;
+
+    /// <summary>单次 LLM 调用累计重试等待预算（毫秒），默认 120000ms（约 2 分钟）</summary>
+    [JsonPropertyName("retry_total_budget")]
+    public int RetryTotalBudgetMs { get; set; } = 120000;
 
     /// <summary>自定义模型配置（属于该 Provider 连接）</summary>
     [JsonPropertyName("models")]

@@ -69,14 +69,22 @@ public class RetryLlmClientDecoratorTests
             => Task.FromResult(true);
     }
 
-    private static ILlmClient Wrap(ILlmClient inner, int maxRetries = 3)
+    private static ILlmClient Wrap(
+        ILlmClient inner,
+        int maxRetries = 0,
+        int baseDelayMs = 1,
+        int maxDelayMs = 5,
+        int budgetMs = 60_000)
     {
         var decorator = new RetryLlmClientDecorator(NullLoggerFactory.Instance);
         return decorator.Wrap(inner, new ProviderConfig
         {
             Id = "p",
             Type = ProviderTypes.OpenAi,
-            MaxRetries = maxRetries
+            MaxRetries = maxRetries,
+            RetryBaseDelayMs = baseDelayMs,
+            RetryMaxDelayMs = maxDelayMs,
+            RetryTotalBudgetMs = budgetMs
         });
     }
 
@@ -146,5 +154,81 @@ public class RetryLlmClientDecoratorTests
 
         await act.Should().ThrowAsync<HttpRequestException>();
         inner.StreamCalls.Should().Be(1);
+    }
+
+    private sealed class AlwaysFailingClient : ILlmClient
+    {
+        public int CompleteCalls { get; private set; }
+
+        public string ProviderId => "p";
+        public string ProviderType => ProviderTypes.OpenAi;
+
+        public Task<ChatResponse> CompleteAsync(
+            ChatRequest request,
+            LlmCallContext? call = null,
+            CancellationToken cancellationToken = default)
+        {
+            CompleteCalls++;
+            throw new HttpRequestException("503", null, HttpStatusCode.ServiceUnavailable);
+        }
+
+        public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
+            ChatRequest request,
+            LlmCallContext? call = null,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            throw new HttpRequestException("503", null, HttpStatusCode.ServiceUnavailable);
+#pragma warning disable CS0162
+            yield break;
+#pragma warning restore CS0162
+        }
+
+        public Task<bool> TestConnectionAsync(
+            string modelId,
+            LlmCallContext? call = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(true);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_BudgetExhausted_ThrowsOriginalException()
+    {
+        // base=cap=1ms, budget=2ms → attempt1 等待 1ms、attempt2 等待 1ms、attempt3 前累计 2ms+1ms>2ms 停止
+        var inner = new AlwaysFailingClient();
+        var client = Wrap(inner, maxRetries: 0, baseDelayMs: 1, maxDelayMs: 1, budgetMs: 2);
+
+        var act = () => client.CompleteAsync(new ChatRequest { Model = "m" });
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+        inner.CompleteCalls.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_MaxRetriesCapsAttempts()
+    {
+        var inner = new AlwaysFailingClient();
+        var client = Wrap(inner, maxRetries: 2, baseDelayMs: 1, maxDelayMs: 1, budgetMs: 60_000);
+
+        var act = () => client.CompleteAsync(new ChatRequest { Model = "m" });
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+        inner.CompleteCalls.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_NextDelayItem_RespectsCap()
+    {
+        var inner = new FlakyClient(
+        [
+            new HttpRequestException("503", null, HttpStatusCode.ServiceUnavailable),
+            null
+        ]);
+        var client = Wrap(inner, maxRetries: 0, baseDelayMs: 1, maxDelayMs: 1, budgetMs: 60_000);
+        var call = new LlmCallContext();
+
+        await client.CompleteAsync(new ChatRequest { Model = "m" }, call);
+
+        call.Items[LlmRetryPolicy.NextDelayItemKey].Should().Be(1d);
     }
 }

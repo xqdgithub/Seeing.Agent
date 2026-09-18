@@ -71,6 +71,9 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
                 : new Dictionary<string, string>(_config.Headers),
             ["Timeout"] = _config.Timeout,
             ["MaxRetries"] = _config.MaxRetries,
+            ["RetryBaseDelayMs"] = _config.RetryBaseDelayMs,
+            ["RetryMaxDelayMs"] = _config.RetryMaxDelayMs,
+            ["RetryTotalBudgetMs"] = _config.RetryTotalBudgetMs,
             ["DefaultModel"] = _config.DefaultModel
         };
 
@@ -179,6 +182,15 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
 
         if (TryGetInt(values, "MaxRetries", out var maxRetries))
             config.MaxRetries = maxRetries;
+
+        if (TryGetInt(values, "RetryBaseDelayMs", out var retryBaseDelayMs))
+            config.RetryBaseDelayMs = retryBaseDelayMs;
+
+        if (TryGetInt(values, "RetryMaxDelayMs", out var retryMaxDelayMs))
+            config.RetryMaxDelayMs = retryMaxDelayMs;
+
+        if (TryGetInt(values, "RetryTotalBudgetMs", out var retryTotalBudgetMs))
+            config.RetryTotalBudgetMs = retryTotalBudgetMs;
 
         if (TryGetString(values, "DefaultModel", out var defaultModel))
             config.DefaultModel = defaultModel;
@@ -329,6 +341,9 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             DefaultModel = config.DefaultModel,
             Timeout = config.Timeout,
             MaxRetries = config.MaxRetries,
+            RetryBaseDelayMs = config.RetryBaseDelayMs,
+            RetryMaxDelayMs = config.RetryMaxDelayMs,
+            RetryTotalBudgetMs = config.RetryTotalBudgetMs,
             Models = config.Models is null ? null : new Dictionary<string, ModelConfig>(config.Models),
             Options = config.Options is null ? null : new Dictionary<string, object>(config.Options),
             Headers = config.Headers is null ? null : new Dictionary<string, string>(config.Headers)

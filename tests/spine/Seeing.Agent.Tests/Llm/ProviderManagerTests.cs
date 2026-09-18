@@ -235,7 +235,7 @@ public class ProviderManagerTests : IDisposable
             Id = "openai",
             Name = "OpenAI",
             Source = ProviderSource.Configured,
-            MaxRetries = 3
+            MaxRetries = 0
         });
     }
 

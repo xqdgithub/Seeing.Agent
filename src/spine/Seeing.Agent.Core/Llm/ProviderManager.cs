@@ -376,6 +376,9 @@ public class ProviderManager : IProviderManager, IDisposable
            !DictionaryEqual(previous.Headers, current.Headers) ||
            !string.Equals(previous.Name, current.Name, StringComparison.Ordinal) ||
            previous.MaxRetries != current.MaxRetries ||
+           previous.RetryBaseDelayMs != current.RetryBaseDelayMs ||
+           previous.RetryMaxDelayMs != current.RetryMaxDelayMs ||
+           previous.RetryTotalBudgetMs != current.RetryTotalBudgetMs ||
            !string.Equals(previous.DefaultModel, current.DefaultModel, StringComparison.Ordinal) ||
            !DictionaryEqual(previous.Options, current.Options);
 
@@ -402,6 +405,9 @@ public class ProviderManager : IProviderManager, IDisposable
             DefaultModel = config.DefaultModel,
             Timeout = config.Timeout,
             MaxRetries = config.MaxRetries,
+            RetryBaseDelayMs = config.RetryBaseDelayMs,
+            RetryMaxDelayMs = config.RetryMaxDelayMs,
+            RetryTotalBudgetMs = config.RetryTotalBudgetMs,
             Models = config.Models is null ? null : new Dictionary<string, ModelConfig>(config.Models),
             Options = config.Options is null ? null : new Dictionary<string, object>(config.Options),
             Headers = config.Headers is null ? null : new Dictionary<string, string>(config.Headers)
