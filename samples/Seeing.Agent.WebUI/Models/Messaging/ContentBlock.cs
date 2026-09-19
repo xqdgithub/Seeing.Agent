@@ -274,12 +274,26 @@ public class ContentBlockBuilder
             ));
         }
 
-        // 2. 添加附件（如果有）
-        if (message.HasAttachments)
+        // 2. 添加多模态内容段（按段类型分派，保留原始顺序）
+        // 带附件的用户消息将文本存于 Parts 的 text 段（Content 为空），
+        // 若不分派会把 text 段误当作附件，导致文本内容丢失。
+        var hasTextPart = false;
+        if (message.Parts is { Count: > 0 })
         {
-            foreach (var attachment in message.Parts)
+            foreach (var part in message.Parts)
             {
-                blocks.Add(ContentBlock.CreateAttachment(attachment, index++));
+                if (part.IsText)
+                {
+                    if (string.IsNullOrEmpty(part.Text))
+                        continue;
+
+                    hasTextPart = true;
+                    blocks.Add(ContentBlock.CreateText(part.Text, index++, message.IsComplete));
+                }
+                else
+                {
+                    blocks.Add(ContentBlock.CreateAttachment(part, index++));
+                }
             }
         }
 
@@ -292,8 +306,8 @@ public class ContentBlockBuilder
             }
         }
 
-        // 4. 添加文本内容（如果有）
-        if (!string.IsNullOrEmpty(message.Content))
+        // 4. 添加文本内容（Parts 未提供文本段时使用，兼容旧的纯文本消息且避免重复）
+        if (!hasTextPart && !string.IsNullOrEmpty(message.Content))
         {
             blocks.Add(ContentBlock.CreateText(
                 message.Content,
