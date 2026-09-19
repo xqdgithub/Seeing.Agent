@@ -229,6 +229,35 @@ public class PermissionRequestManagerTests
     }
 
     [Fact]
+    public async Task ReEvaluate_ParentSessionEnabled_ShouldResolveChildPendingRequest()
+    {
+        var groups = new Mock<ISessionGroupManager>();
+        groups.Setup(g => g.TryGetParent("child", out It.Ref<string?>.IsAny))
+            .Returns((string _, out string? parent) =>
+            {
+                parent = "parent";
+                return true;
+            });
+
+        using var harness = new ManagerHarness(groups: groups.Object);
+        harness.Sessions.Setup(s => s.Get("child"))
+            .Returns(new SessionData { Id = "child", Kind = SessionKind.SubAgent, AutoApprove = SessionAutoApprove.FollowGlobal });
+        harness.Sessions.Setup(s => s.Get("parent"))
+            .Returns(new SessionData { Id = "parent", Kind = SessionKind.Root, AutoApprove = SessionAutoApprove.FollowGlobal });
+
+        var ticket = await harness.Manager.BeginAsync(NewRequest("child"));
+
+        // 父会话执行中切换为「自动」→ 子代理在途请求应即时放行
+        harness.Sessions.Setup(s => s.Get("parent"))
+            .Returns(new SessionData { Id = "parent", Kind = SessionKind.Root, AutoApprove = SessionAutoApprove.Enabled });
+        harness.SessionEvents.Publish(new SessionEvent { SessionId = "parent", Type = SessionEventType.Updated });
+
+        var resolution = await harness.Manager.WaitAsync(ticket);
+        resolution.Decision.Should().Be(PermissionEffect.Allow);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
+    }
+
+    [Fact]
     public async Task ReEvaluate_OverrideDisabled_ShouldNeverAutoApprove()
     {
         using var harness = new ManagerHarness();
@@ -556,10 +585,11 @@ public class PermissionRequestManagerTests
         public ManagerHarness(
             TimeSpan? timeout = null,
             IEnumerable<IPermissionChannel>? channels = null,
-            TimeSpan? convergenceGrace = null)
+            TimeSpan? convergenceGrace = null,
+            ISessionGroupManager? groups = null)
         {
             Options = new TestOptionsMonitor(new SeeingAgentOptions());
-            Policy = new EffectivePermissionPolicy(Sessions.Object, Options);
+            Policy = new EffectivePermissionPolicy(Sessions.Object, Options, groups);
 
             var publisher = new Mock<IExecutionEventPublisher>();
             publisher

@@ -75,4 +75,35 @@ public class AgentsBuiltInModuleTests
             r.Pattern == "task" &&
             r.Effect == PermissionEffect.Deny);
     }
+
+    // explore 应默认放开只读工具（Git 只读 + 记忆只读），以便子代理真正探索仓库。
+    [Theory]
+    [InlineData("git_status")]
+    [InlineData("git_diff")]
+    [InlineData("git_log")]
+    [InlineData("memory_search")]
+    [InlineData("memory_read")]
+    public void Explore_ShouldAllowReadOnlyTools(string toolId)
+    {
+        var explore = BuiltInAgents.GetBuiltInAgents().First(a => a.Name == "explore");
+
+        explore.PermissionRules.Should().Contain(r =>
+            r.Kind == PermissionKind.Tool &&
+            r.Pattern == toolId &&
+            r.Effect == PermissionEffect.Allow);
+    }
+
+    // 只读放开不得扩及写工具（git_commit / memory_write 仍不得被 Allow）。
+    [Theory]
+    [InlineData("git_commit")]
+    [InlineData("memory_write")]
+    public void Explore_ShouldNotAllowWriteTools(string toolId)
+    {
+        var explore = BuiltInAgents.GetBuiltInAgents().First(a => a.Name == "explore");
+
+        explore.PermissionRules.Should().NotContain(r =>
+            r.Kind == PermissionKind.Tool &&
+            r.Pattern == toolId &&
+            r.Effect == PermissionEffect.Allow);
+    }
 }

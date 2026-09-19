@@ -178,13 +178,17 @@ public class PermissionService : IPermissionService
         var policy = await ResolveAgentPolicyAsync(normalized, ct).ConfigureAwait(false);
         if (policy is not null)
         {
-            var (_, ruleEffect, ruleReason) = await EvaluateRulesAsync(
+            var (matchedRule, ruleEffect, ruleReason) = await EvaluateRulesAsync(
                 new ResourceIdentifier(PermissionKindMapper.Map(normalized.PermissionKind), normalized.Resource ?? string.Empty),
                 BuildPolicyContext(normalized, policy),
                 ct).ConfigureAwait(false);
 
             // 3a. Deny 对所有 kind 生效（fail-safe；激活 explore/plan 的 Deny(Shell,"*") 等）。
-            if (ruleEffect == PermissionEffect.Deny)
+            //     注意：仅"匹配到的 Deny 规则"硬拒；策略默认效果（无匹配规则）Deny 不短路资源类 kind，
+            //     否则子代理（如 explore 默认 Deny）的文件/shell 访问会被秒拒而永远走不到审批
+            //     （release notes §3.5「资源门仅应用 Deny 规则」；§5 要求资源门进入询问）。
+            if (ruleEffect == PermissionEffect.Deny &&
+                (matchedRule is not null || !IsResourceKind(normalized.PermissionKind)))
                 return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.Policy, ruleReason);
 
             // 3b. Allow 仅对非资源类 kind 短路（tool.execute / skill.execute / mcp.* / agent.*）。

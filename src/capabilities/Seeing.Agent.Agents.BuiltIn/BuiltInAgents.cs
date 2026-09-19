@@ -256,6 +256,13 @@ public static class BuiltInAgents
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "webfetch", 0),
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "websearch", 0),
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "codesearch", 0),
+                // 允许 Git 只读工具（git_commit 等写操作未放行，仍走默认 Deny）
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "git_status", 0),
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "git_diff", 0),
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "git_log", 0),
+                // 允许记忆只读工具（memory_write 未放行，仍走默认 Deny）
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "memory_search", 0),
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "memory_read", 0),
                 // 禁用编辑工具
                 PermissionRuleEntry.Deny(PermissionKind.Tool, "edit", 100),
                 PermissionRuleEntry.Deny(PermissionKind.Tool, "write", 100),

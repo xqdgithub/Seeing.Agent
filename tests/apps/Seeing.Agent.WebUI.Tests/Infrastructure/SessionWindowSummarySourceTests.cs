@@ -4,7 +4,7 @@ namespace Seeing.Agent.WebUI.Tests.Infrastructure;
 
 /// <summary>
 /// SessionWindow Summary 摘要卡回归守卫：完整卡必须常显预览正文与来源行；
-/// 已完成（非激活）紧凑卡必须保留预览摘要与来源行，且高度自适应（不占 200px）。
+/// 侧栏摘要卡（含已完成紧凑卡）高度自适应内容（不写死 200px）。
 /// </summary>
 public class SessionWindowSummarySourceTests
 {
@@ -74,14 +74,17 @@ public class SessionWindowSummarySourceTests
     }
 
     [Fact]
-    public void CompactSummaryCard_ShouldBeAutoHeight()
+    public void SidebarSummaryCard_ShouldBeAutoHeight()
     {
         var css = File.ReadAllText(SessionPageCssPath);
 
-        css.Should().Contain(".session-side-area .session-window--summary.session-window--compact",
-            "紧凑卡需覆盖侧栏 200px 定高");
-        css.Should().Contain("flex: 0 0 auto",
-            "紧凑卡高度应自适应（避免定高产生大片空白）");
+        var start = css.IndexOf(".session-side-area .session-window--summary", StringComparison.Ordinal);
+        start.Should().BeGreaterThan(0, "侧栏摘要卡应有定高覆盖规则");
+
+        var block = css[start..Math.Min(css.Length, start + 300)];
+        block.Should().Contain("flex: 0 0 auto",
+            "侧栏摘要卡高度应自适应内容（避免定高在卡片中间留大片空白）");
+        css.Should().NotContain("flex: 0 0 200px", "侧栏摘要卡不得再写死 200px 定高");
     }
 
     [Fact]

@@ -107,6 +107,96 @@ public class EffectivePermissionPolicyTests
     }
 
     [Fact]
+    public void Resolve_SubAgentFollowGlobal_ParentEnabled_ShouldReturnAllow()
+    {
+        var policy = ChildPolicy(parent: SessionAutoApprove.Enabled);
+
+        var result = policy.Resolve(Request(sessionId: "child"));
+
+        result.Should().Be(PermissionEffect.Allow);
+    }
+
+    [Fact]
+    public void Resolve_SubAgentFollowGlobal_ParentDisabled_ShouldForceInteraction()
+    {
+        var policy = ChildPolicy(parent: SessionAutoApprove.Disabled);
+
+        var result = policy.Resolve(Request(sessionId: "child"));
+
+        result.Should().Be(PermissionEffect.Ask);
+    }
+
+    [Fact]
+    public void Resolve_SubAgentFollowGlobal_ParentFollowGlobal_GlobalTrue_ShouldReturnAllow()
+    {
+        var policy = ChildPolicy(parent: SessionAutoApprove.FollowGlobal, globalAutoApproveAll: true);
+
+        var result = policy.Resolve(Request(sessionId: "child"));
+
+        result.Should().Be(PermissionEffect.Allow);
+    }
+
+    [Fact]
+    public void Resolve_SubAgentOwnDisabled_ShouldBeatParentEnabled()
+    {
+        var policy = CreatePolicy(
+            sessions: new Dictionary<string, SessionData>
+            {
+                ["child"] = Session("child", SessionAutoApprove.Disabled, SessionKind.SubAgent),
+                ["parent"] = Session("parent", SessionAutoApprove.Enabled)
+            },
+            parents: new Dictionary<string, string> { ["child"] = "parent" });
+
+        policy.Resolve(Request(sessionId: "child")).Should().Be(PermissionEffect.Ask);
+    }
+
+    [Fact]
+    public void Resolve_NestedSubAgent_FollowsRootParent_ShouldReturnAllow()
+    {
+        var policy = CreatePolicy(
+            sessions: new Dictionary<string, SessionData>
+            {
+                ["grand"] = Session("grand", SessionAutoApprove.FollowGlobal, SessionKind.SubAgent),
+                ["child"] = Session("child", SessionAutoApprove.FollowGlobal, SessionKind.SubAgent),
+                ["parent"] = Session("parent", SessionAutoApprove.Enabled)
+            },
+            parents: new Dictionary<string, string>
+            {
+                ["grand"] = "child",
+                ["child"] = "parent"
+            });
+
+        policy.Resolve(Request(sessionId: "grand")).Should().Be(PermissionEffect.Allow);
+    }
+
+    [Fact]
+    public void Resolve_RootSession_ShouldNotFollowParent()
+    {
+        var policy = CreatePolicy(
+            sessions: new Dictionary<string, SessionData>
+            {
+                ["forked"] = Session("forked", SessionAutoApprove.FollowGlobal, SessionKind.Root),
+                ["source"] = Session("source", SessionAutoApprove.Enabled)
+            },
+            parents: new Dictionary<string, string> { ["forked"] = "source" });
+
+        policy.Resolve(Request(sessionId: "forked")).Should().BeNull();
+    }
+
+    [Fact]
+    public void Resolve_SubAgent_NoParentIndexed_ShouldFallBackToGlobal()
+    {
+        var policy = CreatePolicy(
+            globalAutoApproveAll: true,
+            sessions: new Dictionary<string, SessionData>
+            {
+                ["child"] = Session("child", SessionAutoApprove.FollowGlobal, SessionKind.SubAgent)
+            });
+
+        policy.Resolve(Request(sessionId: "child")).Should().Be(PermissionEffect.Allow);
+    }
+
+    [Fact]
     public void Resolve_RequireInteraction_ShouldReturnNullEvenWithGlobalTrue()
     {
         var policy = CreatePolicy(globalAutoApproveAll: true, session: Session("s1", SessionAutoApprove.Enabled));
@@ -117,27 +207,50 @@ public class EffectivePermissionPolicyTests
     }
 
     private static PermissionRequest Request(
+        string sessionId = "s1",
         bool requireInteraction = false,
         SessionAutoApprove? @override = null) => new()
         {
-            SessionId = "s1",
+            SessionId = sessionId,
             PermissionKind = "tool.execute",
             RequireInteraction = requireInteraction,
             Override = @override
         };
 
-    private static SessionData Session(string id, SessionAutoApprove value) => new()
-    {
-        Id = id,
-        AutoApprove = value
-    };
+    private static SessionData Session(
+        string id,
+        SessionAutoApprove value,
+        SessionKind kind = SessionKind.Root) => new()
+        {
+            Id = id,
+            Kind = kind,
+            AutoApprove = value
+        };
+
+    /// <summary>子会话（自身 FollowGlobal）绑定到 parent；用于验证实时父链上溯。</summary>
+    private static EffectivePermissionPolicy ChildPolicy(
+        SessionAutoApprove parent,
+        bool globalAutoApproveAll = false) =>
+        CreatePolicy(
+            globalAutoApproveAll: globalAutoApproveAll,
+            sessions: new Dictionary<string, SessionData>
+            {
+                ["child"] = Session("child", SessionAutoApprove.FollowGlobal, SessionKind.SubAgent),
+                ["parent"] = Session("parent", parent)
+            },
+            parents: new Dictionary<string, string> { ["child"] = "parent" });
 
     private static EffectivePermissionPolicy CreatePolicy(
         bool globalAutoApproveAll = false,
-        SessionData? session = null)
+        SessionData? session = null,
+        IReadOnlyDictionary<string, SessionData>? sessions = null,
+        IReadOnlyDictionary<string, string>? parents = null)
     {
-        var sessions = new Mock<ISessionManager>();
-        sessions.Setup(s => s.Get(It.IsAny<string>())).Returns(session);
+        var sessionsMock = new Mock<ISessionManager>();
+        sessionsMock.Setup(s => s.Get(It.IsAny<string>()))
+            .Returns((string id) => sessions is null
+                ? session
+                : sessions.TryGetValue(id, out var found) ? found : null);
 
         var options = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
         options.SetupGet(o => o.CurrentValue).Returns(new SeeingAgentOptions
@@ -145,6 +258,14 @@ public class EffectivePermissionPolicyTests
             Permission = new PermissionOptions { AutoApproveAll = globalAutoApproveAll }
         });
 
-        return new EffectivePermissionPolicy(sessions.Object, options.Object);
+        var groups = new Mock<ISessionGroupManager>();
+        groups.Setup(g => g.TryGetParent(It.IsAny<string>(), out It.Ref<string?>.IsAny))
+            .Returns((string id, out string? parent) =>
+            {
+                parent = parents is not null && parents.TryGetValue(id, out var p) ? p : null;
+                return !string.IsNullOrEmpty(parent);
+            });
+
+        return new EffectivePermissionPolicy(sessionsMock.Object, options.Object, groups.Object);
     }
 }

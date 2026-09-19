@@ -254,6 +254,31 @@ public class SessionGroupManagerTests
     }
 
     [Fact]
+    public async Task TryGetParent_ShouldReturnIndexedParent_AndReindexOnRemoval()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var child = await h.Manager.CreateChildAsync(
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null);
+        var grandChild = await h.Manager.CreateChildAsync(
+            child.Id, "task", "孙任务", Array.Empty<SessionPermissionRule>(), null);
+
+        h.Manager.TryGetParent(child.Id, out var childParent).Should().BeTrue();
+        childParent.Should().Be(root.Id);
+        h.Manager.TryGetParent(grandChild.Id, out var grandParent).Should().BeTrue();
+        grandParent.Should().Be(child.Id);
+        h.Manager.TryGetParent(root.Id, out _).Should().BeFalse();
+
+        // 移除中间节点：孙任务重挂到 root，被移除节点不再有父索引
+        var group = await h.Manager.GetGroupForSessionAsync(root.Id);
+        await h.Manager.RemoveMemberAsync(group!.Id, child.Id);
+
+        h.Manager.TryGetParent(grandChild.Id, out var reparented).Should().BeTrue();
+        reparented.Should().Be(root.Id);
+        h.Manager.TryGetParent(child.Id, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ListChildrenAsync_ShouldMatchOnlyChildRelationAndSupportColdFallback()
     {
         using var h = new SessionGroupTestHarness();

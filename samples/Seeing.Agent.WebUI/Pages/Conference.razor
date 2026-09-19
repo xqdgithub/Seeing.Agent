@@ -176,13 +176,8 @@
     }
 
     .conference-side-area .session-window--summary {
-        /* 覆盖全局 .session-window { flex: 1 }（grow=1/basis=0%）：固定高度不拉伸 */
-        flex: 0 0 200px;
-        min-height: 200px;
-    }
-
-    /* 已完成（非激活）紧凑卡：高度自适应（不占 200px） */
-    .conference-side-area .session-window--summary.session-window--compact {
+        /* 覆盖全局 .session-window { flex: 1 }（grow=1/basis=0%）：高度自适应内容，
+           避免固定 200px 时预览正文（flex:1）撑开造成卡片中间大片空白。 */
         flex: 0 0 auto;
         min-height: 0;
     }

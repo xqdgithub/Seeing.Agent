@@ -15,7 +15,8 @@ using Xunit;
 namespace Seeing.Agent.Tests.Tools;
 
 /// <summary>
-/// TaskTool 审批策略继承：子会话 AutoApprove 继承父会话三态，不再硬编码 Enabled。
+/// TaskTool 审批策略继承：子会话不冻结父会话三态到执行级 Override，
+/// 由 EffectivePermissionPolicy 沿父链实时解析（父会话切换即时作用于子代理）。
 /// </summary>
 public class TaskToolAutoApproveInheritanceTests
 {
@@ -23,7 +24,7 @@ public class TaskToolAutoApproveInheritanceTests
     [InlineData(SessionAutoApprove.Disabled)]
     [InlineData(SessionAutoApprove.Enabled)]
     [InlineData(SessionAutoApprove.FollowGlobal)]
-    public async Task ExecuteAsync_NewChild_ShouldInheritParentAutoApprove(SessionAutoApprove parentAutoApprove)
+    public async Task ExecuteAsync_NewChild_ShouldNotFreezeParentAutoApprove(SessionAutoApprove parentAutoApprove)
     {
         var fixture = new Fixture(parentAutoApprove);
 
@@ -38,14 +39,14 @@ public class TaskToolAutoApproveInheritanceTests
 
         result.Success.Should().BeTrue();
         fixture.SubmittedOptions.Should().NotBeNull();
-        fixture.SubmittedOptions!.AutoApprove.Should().Be(parentAutoApprove);
+        fixture.SubmittedOptions!.AutoApprove.Should().Be(SessionAutoApprove.FollowGlobal);
     }
 
     [Theory]
     [InlineData(SessionAutoApprove.Disabled)]
     [InlineData(SessionAutoApprove.Enabled)]
     [InlineData(SessionAutoApprove.FollowGlobal)]
-    public async Task ExecuteAsync_ResumeTask_ShouldInheritParentAutoApprove(SessionAutoApprove parentAutoApprove)
+    public async Task ExecuteAsync_ResumeTask_ShouldNotFreezeParentAutoApprove(SessionAutoApprove parentAutoApprove)
     {
         var fixture = new Fixture(parentAutoApprove);
 
@@ -61,7 +62,7 @@ public class TaskToolAutoApproveInheritanceTests
 
         result.Success.Should().BeTrue();
         fixture.SubmittedOptions.Should().NotBeNull();
-        fixture.SubmittedOptions!.AutoApprove.Should().Be(parentAutoApprove);
+        fixture.SubmittedOptions!.AutoApprove.Should().Be(SessionAutoApprove.FollowGlobal);
     }
 
     private sealed class Fixture

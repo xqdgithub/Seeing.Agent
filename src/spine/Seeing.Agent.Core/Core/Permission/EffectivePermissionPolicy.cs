@@ -12,14 +12,17 @@ public sealed class EffectivePermissionPolicy
 {
     private readonly ISessionManager _sessions;
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
+    private readonly ISessionGroupManager? _groups;
 
     /// <summary>创建生效策略解析器。</summary>
     public EffectivePermissionPolicy(
         ISessionManager sessions,
-        IOptionsMonitor<SeeingAgentOptions> options)
+        IOptionsMonitor<SeeingAgentOptions> options,
+        ISessionGroupManager? groups = null)
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _groups = groups;
     }
 
     /// <summary>
@@ -34,9 +37,7 @@ public sealed class EffectivePermissionPolicy
         if (request.RequireInteraction)
             return null;
 
-        var effective = request.Override is { } @override && @override != SessionAutoApprove.FollowGlobal
-            ? @override
-            : _sessions.Get(request.SessionId)?.AutoApprove ?? SessionAutoApprove.FollowGlobal;
+        var effective = ResolveEffective(request);
 
         return effective switch
         {
@@ -46,5 +47,40 @@ public sealed class EffectivePermissionPolicy
                 ? PermissionEffect.Allow
                 : null
         };
+    }
+
+    /// <summary>
+    /// 解析生效三态：执行级覆盖（显式）&gt; 会话自身三态；若会话为子会话且自身为 <c>FollowGlobal</c>，
+    /// 则沿父链实时上溯到最近的非 <c>FollowGlobal</c> 三态（子代理随父会话切换即时生效）。
+    /// </summary>
+    private SessionAutoApprove ResolveEffective(PermissionRequest request)
+    {
+        if (request.Override is { } @override && @override != SessionAutoApprove.FollowGlobal)
+            return @override;
+
+        var sessionId = request.SessionId;
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        while (!string.IsNullOrEmpty(sessionId) && visited.Add(sessionId))
+        {
+            var session = _sessions.Get(sessionId);
+            if (session is null)
+                break;
+
+            if (session.AutoApprove != SessionAutoApprove.FollowGlobal)
+                return session.AutoApprove;
+
+            // 仅子会话随父；根会话（含 Fork/Handoff）到此为止，用自身三态
+            if (session.Kind != SessionKind.SubAgent ||
+                _groups is null ||
+                !_groups.TryGetParent(sessionId, out var parent) ||
+                string.IsNullOrEmpty(parent))
+            {
+                break;
+            }
+
+            sessionId = parent;
+        }
+
+        return SessionAutoApprove.FollowGlobal;
     }
 }

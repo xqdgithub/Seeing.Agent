@@ -21,6 +21,8 @@ namespace Seeing.Session.Management
 
         private readonly ConcurrentDictionary<string, SessionGroup> _cache = new();
         private readonly ConcurrentDictionary<string, string> _sessionToGroup = new();
+        // 会话 → 父会话的内存索引（关系权威仍是 SessionGroup；此处仅为高频只读路径提供同步快照）
+        private readonly ConcurrentDictionary<string, string> _sessionParents = new();
         private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionLocks = new();
         private readonly ConcurrentDictionary<string, SemaphoreSlim> _groupLocks = new();
 
@@ -89,6 +91,7 @@ namespace Seeing.Session.Management
         {
             _cache.Clear();
             _sessionToGroup.Clear();
+            _sessionParents.Clear();
         }
 
         /// <summary>
@@ -172,6 +175,7 @@ namespace Seeing.Session.Management
                 Touch(group);
                 await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
                 _sessionToGroup[member.SessionId] = group.Id;
+                IndexParent(member);
                 snapshot = group.Clone();
             }
             finally
@@ -209,6 +213,7 @@ namespace Seeing.Session.Management
                     m.ParentSessionId = deletedParent;
                 }
 
+                ReindexParents(group);
                 group.Members.Remove(member);
                 UnmapSession(sessionId, group.Id);
 
@@ -313,6 +318,7 @@ namespace Seeing.Session.Management
                     m.ParentSessionId = resolvedParent;
                 }
 
+                ReindexParents(current);
                 foreach (var id in toRemove)
                 {
                     var member = current.Members.FirstOrDefault(m => m.SessionId == id);
@@ -373,6 +379,22 @@ namespace Seeing.Session.Management
             {
                 groupLock.Release();
             }
+        }
+
+        /// <inheritdoc/>
+        public bool TryGetParent(string sessionId, out string? parentId)
+        {
+            parentId = null;
+            if (string.IsNullOrEmpty(sessionId))
+                return false;
+
+            if (_sessionParents.TryGetValue(sessionId, out var parent) && !string.IsNullOrEmpty(parent))
+            {
+                parentId = parent;
+                return true;
+            }
+
+            return false;
         }
 
         /// <inheritdoc/>
@@ -656,6 +678,7 @@ namespace Seeing.Session.Management
                     };
                     current.Members.Add(successorMember);
                     _sessionToGroup[successor.Id] = current.Id;
+                    IndexParent(successorMember);
                     current.ActiveSessionId = successor.Id;
 
                     NormalizeAnchor(current, successor.Id);
@@ -879,7 +902,10 @@ namespace Seeing.Session.Management
         {
             _cache[group.Id] = group;
             foreach (var member in group.Members)
+            {
                 _sessionToGroup[member.SessionId] = group.Id;
+                IndexParent(member);
+            }
         }
 
         private void RemoveFromCache(string groupId)
@@ -895,6 +921,23 @@ namespace Seeing.Session.Management
         {
             if (_sessionToGroup.TryGetValue(sessionId, out var mapped) && mapped == groupId)
                 _sessionToGroup.TryRemove(sessionId, out _);
+            _sessionParents.TryRemove(sessionId, out _);
+        }
+
+        /// <summary>刷新单个成员的父索引（无父则移除）。</summary>
+        private void IndexParent(SessionGroupMember member)
+        {
+            if (!string.IsNullOrEmpty(member.ParentSessionId))
+                _sessionParents[member.SessionId] = member.ParentSessionId!;
+            else
+                _sessionParents.TryRemove(member.SessionId, out _);
+        }
+
+        /// <summary>全量重建某组内成员的父索引（重挂/删除后使用）。</summary>
+        private void ReindexParents(SessionGroup group)
+        {
+            foreach (var member in group.Members)
+                IndexParent(member);
         }
 
         private void RaiseChanged(SessionGroup snapshot) =>

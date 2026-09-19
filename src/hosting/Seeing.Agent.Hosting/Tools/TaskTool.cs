@@ -181,9 +181,9 @@ public class TaskTool : ToolBase
             {
                 AgentId = agentInfo.Name,
                 ModelId = session.SelectedModel,
-                SkipUserMessagePersist = true,
-                // 子会话默认继承父会话审批策略（spec §5：与 EffectivePermissionPolicy.Resolve 一致）
-                AutoApprove = parent?.AutoApprove ?? SessionAutoApprove.FollowGlobal
+                SkipUserMessagePersist = true
+                // 不再冻结父会话三态到执行级 Override：子会话由 EffectivePermissionPolicy 沿父链实时解析，
+                // 父会话在执行中切换「默认/自动/确认」可即时作用于子代理（spec §5 修订）。
             };
 
             if (background)

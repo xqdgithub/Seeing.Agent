@@ -328,7 +328,9 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
             if (sessionEvent?.Type != SessionEventType.Updated || string.IsNullOrEmpty(sessionEvent.SessionId))
                 return;
 
-            ReEvaluate(sessionEvent.SessionId);
+            // 任一会话变更都可能改变在途请求的生效开关：
+            // 父会话切换三态需即时作用于子代理在途请求（EffectivePermissionPolicy 沿父链实时解析）。
+            ReEvaluatePending();
         }
         catch (Exception ex)
         {
@@ -345,15 +347,7 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
                 return;
 
             _lastAutoApproveAll = current;
-
-            foreach (var sessionId in _pending.Values
-                         .Where(entry => !entry.Completion.Task.IsCompleted)
-                         .Select(entry => entry.Request.SessionId)
-                         .Where(id => !string.IsNullOrEmpty(id))
-                         .Distinct(StringComparer.Ordinal))
-            {
-                ReEvaluate(sessionId);
-            }
+            ReEvaluatePending();
         }
         catch (Exception ex)
         {
@@ -361,18 +355,18 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
         }
     }
 
-    private void ReEvaluate(string sessionId)
+    private void ReEvaluatePending()
     {
-        if (_disposed)
+        if (_disposed || PendingCount == 0)
             return;
 
-        foreach (var entry in GetPending(sessionId))
+        foreach (var entry in GetAllPending())
         {
             if (_policy.Resolve(entry) != PermissionEffect.Allow)
                 continue;
 
             TryResolve(entry.RequestId!, PermissionEffect.Allow, PermissionGrantScope.Once,
-                PermissionResolvedBy.Policy, "策略变更放行", sessionId);
+                PermissionResolvedBy.Policy, "策略变更放行", entry.SessionId);
         }
     }
 

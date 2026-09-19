@@ -254,6 +254,40 @@ public class PermissionAuthorizationTests
         h.AssertNoAsk();
     }
 
+    // F4：Agent 策略的"默认效果 Deny"不是显式 Deny 规则，不得硬拒资源类 kind。
+    // 无匹配规则时应进入询问（release notes 3.5「资源门仅应用 Deny 规则」；子代理 explore 场景）。
+    [Fact]
+    public async Task AuthorizeAsync_ResourceKind_DefaultEffectDeny_NoMatchingRule_ShouldAsk()
+    {
+        var h = new Harness();
+        h.SetAgentPolicy("explore", PermissionEffect.Deny,
+            PermissionRuleEntry.Allow(PermissionKind.Tool, "read"));
+        h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
+
+        var resolution = await h.Service.AuthorizeAsync(
+            h.Request("filesystem.read", OutsidePath, agentName: "explore"));
+
+        resolution.Decision.Should().Be(PermissionEffect.Allow);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.User);
+        h.AssertAskedOnce();
+    }
+
+    // F4：非资源类 kind 的默认效果 Deny 仍应硬拒（保持原语义，不受 F4 修复影响）。
+    [Fact]
+    public async Task AuthorizeAsync_NonResourceKind_DefaultEffectDeny_NoMatchingRule_ShouldDeny()
+    {
+        var h = new Harness();
+        h.SetAgentPolicy("explore", PermissionEffect.Deny,
+            PermissionRuleEntry.Allow(PermissionKind.Tool, "read"));
+
+        var resolution = await h.Service.AuthorizeAsync(
+            h.Request("tool.execute", "git_status", agentName: "explore"));
+
+        resolution.Decision.Should().Be(PermissionEffect.Deny);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
+        h.AssertNoAsk();
+    }
+
     [Fact]
     public async Task AuthorizeAsync_RuleAllow_RequireInteraction_ShouldStillAsk()
     {
@@ -631,6 +665,16 @@ public class PermissionAuthorizationTests
                 Name = agentName,
                 PermissionRules = rules.ToList(),
                 PermissionDefaultEffect = PermissionEffect.Ask
+            });
+        }
+
+        public void SetAgentPolicy(string agentName, PermissionEffect defaultEffect, params PermissionRuleEntry[] rules)
+        {
+            Registry.Setup(r => r.GetAgentAsync(agentName)).ReturnsAsync(new AgentDefinition
+            {
+                Name = agentName,
+                PermissionRules = rules.ToList(),
+                PermissionDefaultEffect = defaultEffect
             });
         }
 

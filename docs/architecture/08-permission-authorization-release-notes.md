@@ -81,6 +81,7 @@
 5. **资源门仅应用 Deny 规则**：与第 2 点同源——资源门不放行 Allow，只拦截 Deny 与触发审批。
 6. **在途上限 32**：溢出立即 `Deny(NoChannel,"队列已满")`，并补发 `PermissionResolvedEvent`（使拒绝可被 UI/Gateway 观测）。
 7. **多通道自动批准为进程级语义**：同进程 WebUI 与 Gateway 并存时，Gateway `auto_approve` 对 WebUI 会话同样生效（按来源隔离属后续演进）。
+8. **子代理实时跟随父会话三态（2026-09-19 修订）**：子会话不再冻结父会话 `AutoApprove` 到执行级 `ChatOptions.AutoApprove`；`EffectivePermissionPolicy` 对 `Kind=SubAgent` 且自身 `FollowGlobal` 的会话沿父链实时上溯。父会话执行中切换「默认/自动/确认」即时作用于子代理（含在途请求；`PermissionRequestManager` 在会话 `Updated` 时全量重评估）。父链索引经 `ISessionGroupManager.TryGetParent`（内存快照）。
 
 ---
 

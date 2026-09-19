@@ -63,6 +63,12 @@ namespace Seeing.Session.Core
         /// <summary>获取会话在组内的父会话 ID。</summary>
         Task<string?> GetParentAsync(string sessionId, CancellationToken ct = default);
 
+        /// <summary>
+        /// 尽力同步获取父会话 ID（仅内存索引命中；未命中/无父返回 <c>false</c>）。
+        /// <para>供权限生效开关的实时父链解析等高频只读路径使用，不做冷存兜底。</para>
+        /// </summary>
+        bool TryGetParent(string sessionId, out string? parentId);
+
         /// <summary>列出指定父会话的 Child 子会话（含冷兜底）。</summary>
         Task<IReadOnlyList<SessionData>> ListChildrenAsync(string parentId, CancellationToken ct = default);
 
