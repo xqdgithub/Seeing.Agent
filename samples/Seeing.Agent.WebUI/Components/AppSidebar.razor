@@ -16,6 +16,8 @@
 @inject UiContributionRegistry Registry
 @inject IModuleCatalog Catalog
 @inject IOptionsMonitor<SeeingAgentOptions> AgentOptions
+@inject PermissionInboxView PermissionView
+@inject WebUiPermissionPresenter PermissionPresenter
 
 <Sider Class="@GetSiderClass()"
        Width="240"
@@ -50,6 +52,13 @@
         <MenuItem Key="chat" OnClick="@(() => NavigateTo(GetChatPath()))">
             <Icon Type="@IconType.Outline.Message" />
             <span>聊天</span>
+        </MenuItem>
+
+        <MenuItem Key="permission-center" OnClick="OpenPermissionCenter">
+            <Icon Type="@IconType.Outline.SafetyCertificate" />
+            <Badge Count="@PermissionView.TotalCount">
+                <span>审批中心</span>
+            </Badge>
         </MenuItem>
 
         @foreach (var item in _ungroupedNav)
@@ -102,6 +111,9 @@
     </div>
 </Sider>
 
+<PermissionCenterDrawer Open="_permissionCenterOpen"
+                        OpenChanged="@(open => _permissionCenterOpen = open)" />
+
 @code {
     [Parameter] public bool Collapsed { get; set; }
     [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
@@ -117,7 +129,17 @@
     private IReadOnlyList<NavContribution> _ungroupedNav = Array.Empty<NavContribution>();
     private IReadOnlyList<NavGroupView> _groupedNav = Array.Empty<NavGroupView>();
     private bool _shutdownRequested;
+    private bool _permissionCenterOpen;
     private IDisposable? _optionsSubscription;
+
+    /// <summary>打开审批中心抽屉（供移动端悬浮按钮经 @ref 调用）。</summary>
+    public void OpenPermissionCenter() => _ = InvokeAsync(() =>
+    {
+        _permissionCenterOpen = true;
+        StateHasChanged();
+    });
+
+    private void OnPermissionChanged() => _ = InvokeAsync(StateHasChanged);
 
     /// <summary>有效折叠状态：移动端 overlay 模式时强制展开 Sider</summary>
     private bool EffectiveCollapsed =>
@@ -159,6 +181,7 @@
         NavigationManager.LocationChanged += OnLocationChanged;
         Registry.Changed += OnRegistryChanged;
         _optionsSubscription = AgentOptions.OnChange(_ => RefreshNav());
+        PermissionView.Changed += OnPermissionChanged;
         RefreshNav();
         UpdateSelectedKey();
     }
@@ -168,6 +191,7 @@
         AppState.OnChange -= OnAppStateChange;
         NavigationManager.LocationChanged -= OnLocationChanged;
         Registry.Changed -= OnRegistryChanged;
+        PermissionView.Changed -= OnPermissionChanged;
         _optionsSubscription?.Dispose();
     }
 

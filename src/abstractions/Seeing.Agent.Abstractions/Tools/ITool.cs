@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Abstractions.Tools
 {
     /// <summary>
@@ -24,6 +25,11 @@ namespace Seeing.Agent.Abstractions.Tools
 
         /// <summary>可选服务定位（用于 Task 等需要额外依赖的工具）</summary>
         public IServiceProvider? Services { get; set; }
+
+        /// <summary>
+        /// 执行级授权器（由 ToolManager 从执行链注入；工具须优先使用，缺失时回退工厂）。
+        /// </summary>
+        public IPermissionAuthorizer? PermissionAuthorizer { get; set; }
     }
 
     /// <summary>

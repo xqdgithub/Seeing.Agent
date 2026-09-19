@@ -4,6 +4,7 @@
 @using Seeing.Session.Core
 @inject SessionEventStreamRouter Router
 @inject CircuitContext CircuitContext
+@inject PermissionInboxView PermissionView
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @inject IMessageService MessageService
@@ -61,18 +62,26 @@
                             <div class="conference-side-section__title">
                                 <span class="conference-side-section__dot" aria-hidden="true"></span>
                                 <span>@sec.Title</span>
-                                <span class="conference-side-section__count">@sec.Entries.Count</span>
+                                <span class="conference-side-section__count">
+                                    @sec.Entries.Count
+                                    @if (sec.Entries.Any(e => e.PendingPermissions > 0))
+                                    {
+                                        <text> · 待批 @sec.Entries.Sum(e => e.PendingPermissions)</text>
+                                    }
+                                </span>
                             </div>
                             @foreach (var entry in sec.Entries)
                             {
                                 <ErrorBoundary>
-                                    <SessionWindow @key="@entry.SessionId"
-                                                   SessionId="@entry.SessionId"
-                                                   ViewMode="@SessionWindowMode.Summary"
-                                                   AggregatorSessionId="@_mainSessionId"
-                                                   GlobalSessionState="@GlobalSessionState"
-                                                   OnClick="@OnTileClick"
-                                                   OnExecutionStateChanged="@OnExecutionStateChanged" />
+                                    <Badge Count="@entry.PendingPermissions" Style="width: 100%;">
+                                        <SessionWindow @key="@entry.SessionId"
+                                                       SessionId="@entry.SessionId"
+                                                       ViewMode="@SessionWindowMode.Summary"
+                                                       AggregatorSessionId="@_mainSessionId"
+                                                       GlobalSessionState="@GlobalSessionState"
+                                                       OnClick="@OnTileClick"
+                                                       OnExecutionStateChanged="@OnExecutionStateChanged" />
+                                    </Badge>
                                 </ErrorBoundary>
                             }
                         </div>
@@ -216,7 +225,8 @@
                 IsExecuting(w.SessionId),
                 FindParentSessionId(w.SessionId),
                 w.Label,
-                w.IsActive));
+                w.IsActive,
+                PermissionView.CountBySession(w.SessionId)));
         _sidebarSections = SessionSidebarView.Build(entries);
     }
 
@@ -392,6 +402,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        PermissionView.Changed += OnPermissionChanged;
         var mainId = !string.IsNullOrEmpty(SessionId) ? SessionId
             : (await SessionManager.LoadAllFromStorageAsync()).FirstOrDefault()?.Id;
         if (string.IsNullOrEmpty(mainId))
@@ -478,8 +489,16 @@
         _ = RefreshRelationSafelyAsync();
     }
 
+    private void OnPermissionChanged() => _ = InvokeAsync(() =>
+    {
+        // 先按最新在途计数重建侧栏分区（徽标数字），再重渲染
+        RebuildSidebar();
+        StateHasChanged();
+    });
+
     public void Dispose()
     {
+        PermissionView.Changed -= OnPermissionChanged;
         if (_registry != null)
             _registry.WindowsChanged -= OnWindowsChanged;
         // circuit 关闭由 SeeingCircuitHandler → Router.DetachAllForCircuit 统一释放

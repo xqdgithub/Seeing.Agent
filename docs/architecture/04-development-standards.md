@@ -3,7 +3,7 @@
 ## 1. 命名与分层后缀
 
 沿用 `AGENTS.md`：`Store` / `Registry` / `Manager` / `Service` / `Provider` / `Executor` / `Channel` / `Loader` / `Sink` / `Aggregator` / `Factory` / `Authorizer` / `Mapper`。  
-- `Aggregator`：UI 投影聚合（Scoped/circuit 维度，不持权威执行态，允许落盘 UI 缓存），如 `PermissionCardAggregator`/`TaskCardAggregator`。  
+- `Aggregator`：UI 投影聚合（Scoped/circuit 维度，不持权威执行态，允许落盘 UI 缓存），如 `TaskCardAggregator`。  
 - `Factory`：构造器端口（Provider 语义），如 `IPermissionAuthorizerFactory`/`LlmClientFactoryResolver`。  
 - `Authorizer`：授权判定窄端口（请求-响应），如 `IPermissionAuthorizer`/`ExecutionContextPermissionAuthorizer`。  
 - `Mapper`：纯函数映射，如 `PermissionKindMapper`。  

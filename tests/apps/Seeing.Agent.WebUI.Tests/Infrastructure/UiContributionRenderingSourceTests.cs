@@ -58,9 +58,9 @@ public class UiContributionRenderingSourceTests
                 $"AppSidebar 不得硬编码模块菜单项: {needle}");
         }
 
-        // 除聊天壳入口外，菜单项应来自 @foreach 注册表（未分组 + 分组两套模板）
-        Regex.Matches(source, @"<MenuItem\b").Count.Should().Be(3,
-            "仅允许：1 个聊天壳 MenuItem + 1 个未分组 @foreach + 1 个分组 @foreach 模板 MenuItem");
+        // 除聊天/审批中心壳入口外，菜单项应来自 @foreach 注册表（未分组 + 分组两套模板）
+        Regex.Matches(source, @"<MenuItem\b").Count.Should().Be(4,
+            "仅允许：1 个聊天壳 MenuItem + 1 个审批中心壳 MenuItem + 1 个未分组 @foreach + 1 个分组 @foreach 模板 MenuItem");
     }
 
     [Fact]

@@ -72,11 +72,11 @@
 
 **权限授权子系统归属（2026-09-17 重构后）：**
 
-- **Abstractions（契约）**：`IPermissionService`、`IPermissionAuthorizer`（+`IPermissionAuthorizerFactory`）、`IPermissionRequestManager`、`IPermissionGrantStore`、`IPermissionPresenceStore`、`IPermissionChannel`、请求/结果/授权模型。
-- **Core（脊柱）**：`PermissionService`（规则/策略 + `AuthorizeAsync` 资源门编排）、`PermissionRequestManager`（在途唯一权威）、`PermissionPresenceStore`、`PermissionGrantStore`、`EffectivePermissionPolicy`、`ExecutionContextPermissionAuthorizer` + `DefaultPermissionAuthorizerFactory`、`DenyAllPermissionChannel`、`PermissionKindMapper`。
+- **Abstractions（契约）**：`IPermissionService`、`IPermissionAuthorizer`（+`IPermissionAuthorizerFactory`）、`IPermissionRequestManager`、`IPermissionGrantStore`、`IPermissionPresenter`、`IPermissionPresentationStore`、`IPermissionChannel`、请求/结果/授权模型。
+- **Core（脊柱）**：`PermissionService`（规则/策略 + `AuthorizeAsync` 资源门编排）、`PermissionRequestManager`（在途唯一权威）、`PermissionPresentationStore`（呈现端登记表）、`PermissionGrantStore`、`EffectivePermissionPolicy`、`ExecutionContextPermissionAuthorizer` + `DefaultPermissionAuthorizerFactory`、`DenyAllPermissionChannel`、`PermissionKindMapper`。
 - **Hosting.Web（Host Shape）**：`EventStreamPermissionChannel`（事件流宿主通道；`WebHostingServiceCollectionExtensions.cs:46` 注册为 Singleton）。
-- **Gateway**：`GatewayPermissionChannel`（`TryAutoApprove` 读 `GatewayOptions.PermissionMode`；拒绝仅在无 Presence 时）。
-- **WebUI（sample）**：`PermissionCardAggregator`（投影聚合）、`PermissionInteractionService`、`ActiveSessionTracker`（活动会话 Presence 记账）。
+- **Gateway**：`GatewayPermissionChannel`（`TryAutoApprove` 读 `GatewayOptions.PermissionMode`）；每个执行订阅注册 `GatewaySubscriptionPresenter`（固定单会话呈现端，随订阅注销）。
+- **WebUI（sample）**：`PermissionInbox`（全局在途投影，Singleton）、`PermissionInboxView`（scoped 投影 + 合并）、`WebUiPermissionPresenter`（circuit 维度呈现端）、`PermissionInteractionService`。
 
 ## 6. Samples 与插件
 

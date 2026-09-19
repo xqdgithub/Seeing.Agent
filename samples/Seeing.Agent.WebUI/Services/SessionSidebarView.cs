@@ -14,6 +14,7 @@ namespace Seeing.Agent.WebUI.Services;
 /// <param name="ParentSessionId">来源会话 ID（边的来源方向）。</param>
 /// <param name="Label">成员标签（如 trim 备份前缀）。</param>
 /// <param name="IsActive">是否为当前活跃会话。</param>
+/// <param name="PendingPermissions">该会话在途审批数（0 时不渲染徽标）。</param>
 public sealed record SidebarEntry(
     string SessionId,
     string Title,
@@ -22,7 +23,8 @@ public sealed record SidebarEntry(
     bool IsExecuting,
     string? ParentSessionId,
     string? Label,
-    bool IsActive);
+    bool IsActive,
+    int PendingPermissions = 0);
 
 /// <summary>侧栏分区（固定顺序：主线历史 → 派生 → 子会话；空分区省略）。</summary>
 /// <param name="Title">分区标题。</param>

@@ -13,7 +13,7 @@ using Xunit;
 namespace Seeing.Agent.Tests.Permission;
 
 /// <summary>
-/// 授权引擎决策链（spec §5.1 步骤 0-8）。Manager / Presence / Channel 用 Moq 替身。
+/// 授权引擎决策链（spec §5.1 步骤 0-8）。Manager / Presenter / Channel 用 Moq 替身。
 /// </summary>
 public class PermissionAuthorizationTests
 {
@@ -73,7 +73,7 @@ public class PermissionAuthorizationTests
     {
         var h = new Harness();
         h.Options.Workspace.RestrictToWorkspace = true;
-        h.Presence.Setup(p => p.CanPresent(It.IsAny<string>())).Returns(false);
+        h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", OutsidePath));
 
@@ -216,7 +216,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.Options.Workspace.RestrictToWorkspace = true;
         h.SetAgentPolicy("agent", PermissionRuleEntry.Allow(PermissionKind.File, "*"));
-        h.Presence.Setup(p => p.CanPresent(It.IsAny<string>())).Returns(false);
+        h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(
             h.Request("filesystem.read", OutsidePath, agentName: "agent"));
@@ -286,7 +286,7 @@ public class PermissionAuthorizationTests
     public async Task AuthorizeAsync_OverrideEnabled_ShouldAllow()
     {
         var h = new Harness();
-        h.Presence.Setup(p => p.CanPresent(It.IsAny<string>())).Returns(false);
+        h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(
             h.Request("tool.execute", "bash", @override: SessionAutoApprove.Enabled));
@@ -325,7 +325,7 @@ public class PermissionAuthorizationTests
     {
         var h = new Harness();
         h.Options.Permission.AutoApproveAll = true;
-        h.Presence.Setup(p => p.CanPresent(It.IsAny<string>())).Returns(false);
+        h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(
             h.Request("tool.execute", "bash", requireInteraction: true));
@@ -355,7 +355,7 @@ public class PermissionAuthorizationTests
     {
         var h = new Harness();
         h.AddAutoApproveChannel();
-        h.Presence.Setup(p => p.CanPresent(It.IsAny<string>())).Returns(false);
+        h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(
             h.Request("tool.execute", "bash", requireInteraction: true));
@@ -396,10 +396,10 @@ public class PermissionAuthorizationTests
     // === 步骤 6：询问 ===
 
     [Fact]
-    public async Task AuthorizeAsync_NoPresence_ShouldDenyNoChannel()
+    public async Task AuthorizeAsync_NoPresenter_ShouldDenyNoChannel()
     {
         var h = new Harness();
-        h.Presence.Setup(p => p.CanPresent(It.IsAny<string>())).Returns(false);
+        h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
 
@@ -410,7 +410,7 @@ public class PermissionAuthorizationTests
     }
 
     [Fact]
-    public async Task AuthorizeAsync_WithPresence_ShouldPresentToChannelsAndWait()
+    public async Task AuthorizeAsync_CanSurface_ShouldPresentToChannelsAndWait()
     {
         var h = new Harness();
         var channel = new Mock<IPermissionChannel>();
@@ -576,7 +576,7 @@ public class PermissionAuthorizationTests
     {
         public PermissionGrantStore Store { get; } = new();
         public Mock<IPermissionRequestManager> Manager { get; } = new();
-        public Mock<IPermissionPresenceStore> Presence { get; } = new();
+        public Mock<IPermissionPresentationStore> Presentation { get; } = new();
         public List<IPermissionChannel> Channels { get; } = new();
         public Mock<IAgentRegistry> Registry { get; } = new();
         public Mock<ISessionManager> Sessions { get; } = new();
@@ -586,7 +586,7 @@ public class PermissionAuthorizationTests
 
         public Harness()
         {
-            Presence.Setup(p => p.CanPresent(It.IsAny<string>())).Returns(true);
+            Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(true);
 
             var options = OptionsMonitor(Options);
             var workspace = new Mock<IWorkspaceProvider>();
@@ -601,7 +601,7 @@ public class PermissionAuthorizationTests
                 Gate,
                 options,
                 Manager.Object,
-                Presence.Object,
+                Presentation.Object,
                 Channels,
                 Registry.Object);
         }

@@ -107,6 +107,10 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
             return;
         }
 
+        // P5：权限请求/结果事件仅用于展示与时间线，不进入子流聚合（避免默认分支触发虚假落盘/重渲染）
+        if (evt is PermissionRequestEvent or PermissionResolvedEvent)
+            return;
+
         // 子流：聚合（C1：MergeStep/FailStep 读-改-写整体串行化）
         if (_tasks.TryGetValue(sessionId, out var state))
         {

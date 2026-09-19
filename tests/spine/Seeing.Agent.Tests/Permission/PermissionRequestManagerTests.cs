@@ -381,6 +381,153 @@ public class PermissionRequestManagerTests
         channel.Dismissed.Single().RequestId.Should().Be(ticket.RequestId);
     }
 
+    [Fact]
+    public async Task GetAllPending_ShouldReturnUnresolvedAcrossSessions()
+    {
+        using var harness = new ManagerHarness();
+        var first = await harness.Manager.BeginAsync(NewRequest("s1"));
+        await harness.Manager.BeginAsync(NewRequest("s2"));
+        await harness.Manager.BeginAsync(NewRequest("s2"));
+
+        harness.Manager.GetAllPending().Should().HaveCount(3);
+        harness.Manager.GetAllPending().Select(r => r.SessionId).Should().Contain(new[] { "s1", "s2" });
+
+        harness.Manager.TryResolve(first.RequestId, PermissionEffect.Allow,
+            PermissionGrantScope.Once, PermissionResolvedBy.User).Should().BeTrue();
+
+        harness.Manager.GetAllPending().Should().HaveCount(2);
+        harness.Manager.GetAllPending().Select(r => r.SessionId).Should().NotContain("s1");
+    }
+
+    [Fact]
+    public async Task GetAllPending_QueueFull_ShouldExcludeOverflowEntry()
+    {
+        using var harness = new ManagerHarness();
+        for (var i = 0; i < 32; i++)
+            await harness.Manager.BeginAsync(NewRequest($"s{i}"));
+
+        await harness.Manager.BeginAsync(NewRequest("overflow"));
+
+        harness.Manager.GetAllPending().Should().HaveCount(32);
+    }
+
+    [Fact]
+    public async Task PendingChanged_ShouldRaiseOnBeginResolveAndDispose()
+    {
+        var harness = new ManagerHarness();
+        var count = 0;
+        harness.Manager.PendingChanged += () => Interlocked.Increment(ref count);
+
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        count.Should().Be(1);
+
+        harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
+            PermissionGrantScope.Once, PermissionResolvedBy.User).Should().BeTrue();
+        count.Should().Be(2);
+
+        harness.Manager.Dispose();
+        count.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task PendingChanged_ShouldRaiseOnOverflow()
+    {
+        using var harness = new ManagerHarness();
+        for (var i = 0; i < 32; i++)
+            await harness.Manager.BeginAsync(NewRequest($"s{i}"));
+
+        var count = 0;
+        harness.Manager.PendingChanged += () => Interlocked.Increment(ref count);
+
+        await harness.Manager.BeginAsync(NewRequest("overflow"));
+
+        count.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task PendingChanged_ShouldRaiseOnWaitTimeout()
+    {
+        using var harness = new ManagerHarness(TimeSpan.FromMilliseconds(50));
+        var count = 0;
+        harness.Manager.PendingChanged += () => Interlocked.Increment(ref count);
+
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        count.Should().Be(1);
+
+        await harness.Manager.WaitAsync(ticket);
+
+        count.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task PendingChanged_SubscriberThrows_ShouldBeIsolated()
+    {
+        using var harness = new ManagerHarness();
+        harness.Manager.PendingChanged += () => throw new InvalidOperationException("boom");
+
+        var act = async () => await harness.Manager.BeginAsync(NewRequest("s1"));
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task PresenterUnregistered_ShouldConvergePendingToDeny()
+    {
+        using var harness = new ManagerHarness(convergenceGrace: TimeSpan.FromMilliseconds(50));
+        var presenter = new TestPresenter("s1");
+        harness.Presentation.Register(presenter);
+
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var waiter = harness.Manager.WaitAsync(ticket);
+
+        harness.Presentation.Unregister(presenter);
+
+        var resolution = await waiter;
+        resolution.Decision.Should().Be(PermissionEffect.Deny);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
+        resolution.Reason.Should().Be("呈现端已移除");
+    }
+
+    [Fact]
+    public async Task SurfaceShrink_ShouldNotConverge()
+    {
+        using var harness = new ManagerHarness(convergenceGrace: TimeSpan.FromMilliseconds(50));
+        var presenter = new TestPresenter("s1");
+        harness.Presentation.Register(presenter);
+
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+
+        presenter.SetSurface(); // 同一 presenter 集合收缩：仅 SurfacedChanged，不 Unregister
+
+        await Task.Delay(200);
+
+        harness.Manager.PendingCount.Should().Be(1);
+        harness.Manager.GetAllPending().Should().ContainSingle();
+
+        harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
+            PermissionGrantScope.Once, PermissionResolvedBy.User).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PresenterUnregisteredThenReRegisteredWithinGrace_ShouldNotConverge()
+    {
+        using var harness = new ManagerHarness(convergenceGrace: TimeSpan.FromMilliseconds(300));
+        var presenter = new TestPresenter("s1");
+        harness.Presentation.Register(presenter);
+
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+
+        harness.Presentation.Unregister(presenter);
+        harness.Presentation.Register(new TestPresenter("s1"));
+
+        await Task.Delay(600);
+
+        harness.Manager.PendingCount.Should().Be(1);
+
+        harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
+            PermissionGrantScope.Once, PermissionResolvedBy.User).Should().BeTrue();
+    }
+
     private static PermissionRequest NewRequest(string sessionId) => new()
     {
         SessionId = sessionId,
@@ -402,11 +549,14 @@ public class PermissionRequestManagerTests
         public Mock<ISessionManager> Sessions { get; } = new();
         public ManualSessionEventPublisher SessionEvents { get; } = new();
         public TestOptionsMonitor Options { get; }
-        public PermissionPresenceStore Presence { get; } = new();
+        public PermissionPresentationStore Presentation { get; } = new();
         public EffectivePermissionPolicy Policy { get; }
         public PermissionRequestManager Manager { get; }
 
-        public ManagerHarness(TimeSpan? timeout = null, IEnumerable<IPermissionChannel>? channels = null)
+        public ManagerHarness(
+            TimeSpan? timeout = null,
+            IEnumerable<IPermissionChannel>? channels = null,
+            TimeSpan? convergenceGrace = null)
         {
             Options = new TestOptionsMonitor(new SeeingAgentOptions());
             Policy = new EffectivePermissionPolicy(Sessions.Object, Options);
@@ -417,16 +567,31 @@ public class PermissionRequestManagerTests
                 .Callback<string, IMessageEvent>((_, evt) => PublishedEvents.Add(evt));
 
             var channelList = (channels ?? Array.Empty<IPermissionChannel>()).ToList();
-            Manager = timeout is null
-                ? new PermissionRequestManager(
-                    publisher.Object, Presence, Policy, channelList, SessionEvents, Options,
-                    NullLogger<PermissionRequestManager>.Instance)
-                : new PermissionRequestManager(
-                    publisher.Object, Presence, Policy, channelList, SessionEvents, Options,
-                    NullLogger<PermissionRequestManager>.Instance, timeout.Value);
+            Manager = new PermissionRequestManager(
+                publisher.Object, Presentation, Policy, channelList, SessionEvents, Options,
+                NullLogger<PermissionRequestManager>.Instance,
+                timeout ?? TimeSpan.FromMinutes(5),
+                convergenceGrace);
         }
 
         public void Dispose() => Manager.Dispose();
+    }
+
+    private sealed class TestPresenter : IPermissionPresenter
+    {
+        private IReadOnlyCollection<string> _surface;
+
+        public TestPresenter(params string[] sessionIds) => _surface = sessionIds;
+
+        public IReadOnlyCollection<string> SurfaceSessionIds => _surface;
+
+        public event Action? SurfacedChanged;
+
+        public void SetSurface(params string[] sessionIds)
+        {
+            _surface = sessionIds;
+            SurfacedChanged?.Invoke();
+        }
     }
 
     private sealed class TestOptionsMonitor : IOptionsMonitor<SeeingAgentOptions>

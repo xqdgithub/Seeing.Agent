@@ -69,4 +69,7 @@
     <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost')" />
     <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.exe')" />
   </Target>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.WebUI.Tests" />
+  </ItemGroup>
 </Project>

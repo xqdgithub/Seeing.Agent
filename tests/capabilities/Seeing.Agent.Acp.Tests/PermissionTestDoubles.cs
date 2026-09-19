@@ -45,3 +45,35 @@ internal sealed class CapturingPermissionAuthorizerFactory : IPermissionAuthoriz
         }
     }
 }
+
+/// <summary>记录最近一次请求并返回预设决策的直接授权器（用于 context.PermissionAuthorizer 注入测试）。</summary>
+internal sealed class CapturingPermissionAuthorizer : IPermissionAuthorizer
+{
+    private readonly PermissionEffect _decision;
+
+    public CapturingPermissionAuthorizer(PermissionEffect decision = PermissionEffect.Allow, string reason = "允许")
+    {
+        _decision = decision;
+        Reason = reason;
+        SessionId = "context-session";
+    }
+
+    public string Reason { get; }
+
+    public PermissionRequest? LastRequest { get; private set; }
+
+    public string SessionId { get; }
+
+    public Task<PermissionResolution> AuthorizeAsync(PermissionRequest request, CancellationToken ct = default)
+    {
+        LastRequest = request;
+        return Task.FromResult(new PermissionResolution
+        {
+            RequestId = request.RequestId ?? "req-ctx",
+            SessionId = string.IsNullOrEmpty(request.SessionId) ? SessionId : request.SessionId,
+            CallId = request.CallId,
+            Decision = _decision,
+            Reason = Reason
+        });
+    }
+}

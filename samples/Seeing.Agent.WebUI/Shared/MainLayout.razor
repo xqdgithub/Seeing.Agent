@@ -18,6 +18,7 @@
 @inject IAgentRegistry AgentRegistry
 @inject IModelConfigManager ModelManager
 @inject IJSRuntime JSRuntime
+@inject PermissionInboxView PermissionView
 @implements IDisposable
 
 <Layout Class="app-layout" Style="min-height: 100vh;">
@@ -42,6 +43,18 @@
                 OnClickStopPropagation="true" />
     }
 
+    @if (AppState.IsMobile)
+    {
+        <Badge Count="@PermissionView.TotalCount"
+               Style="position: fixed; right: 16px; bottom: 88px; z-index: 150;">
+            <Button Icon="@IconType.Outline.SafetyCertificate"
+                    Shape="@ButtonShape.Circle"
+                    Size="@ButtonSize.Large"
+                    OnClick="OpenPermissionCenter"
+                    OnClickStopPropagation="true" />
+        </Badge>
+    }
+
     <Layout Class="@GetContentClass()">
         <Content Class="content-area">
             @Body
@@ -63,6 +76,8 @@
 
         // 监听模型配置变更
         ModelManager.ModelConfigChanged += OnModelConfigChanged;
+
+        PermissionView.Changed += OnPermissionChanged;
 
         // 只加载 Agent 和 Model 列表，不自动加载会话
         // 会话加载由 Session.razor 根据 URL 参数决定
@@ -144,9 +159,15 @@
     private void CloseMobileSidebar()
         => _sidebarRef?.CloseMobileSidebar();
 
+    private void OpenPermissionCenter()
+        => _sidebarRef?.OpenPermissionCenter();
+
+    private void OnPermissionChanged() => InvokeAsync(StateHasChanged);
+
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChange;
         ModelManager.ModelConfigChanged -= OnModelConfigChanged;
+        PermissionView.Changed -= OnPermissionChanged;
     }
 }

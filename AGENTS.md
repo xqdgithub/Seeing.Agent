@@ -79,7 +79,7 @@ Seeing.Agent/
 | 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
 | WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |
 | Hook | `src/spine/Seeing.Agent.Core/` HookManager | `HookPoints.*` 常量 |
-| 权限（授权/审批） | 引擎/Manager/Store 在 `src/spine/Seeing.Agent.Core/Core/Permission/`；契约在 `src/abstractions/Seeing.Agent.Abstractions/Permissions/`；宿主通道 `Hosting.Web`/`Gateway` | `IPermissionAuthorizer` 决策链；在途真相源 `IPermissionRequestManager`；可交互 `IPermissionPresenceStore`；见 `docs/architecture/08` |
+| 权限（授权/审批） | 引擎/Manager/Store 在 `src/spine/Seeing.Agent.Core/Core/Permission/`；契约在 `src/abstractions/Seeing.Agent.Abstractions/Permissions/`；宿主通道 `Hosting.Web`/`Gateway` | `IPermissionAuthorizer` 决策链；在途真相源 `IPermissionRequestManager`；呈现判定 `IPermissionPresentationStore.CanSurface` + 宿主呈现端 `IPermissionPresenter`；见 `docs/architecture/08` |
 | MCP | `src/capabilities/Seeing.Agent.Mcp/` | 能力模块，非 Core |
 | DI 注册入口 | Core `AddSeeingCore` + 各包 `AddSeeingModule*` | `InitializeSeeingAsync` 在 Host.Start 前 |
 | 会话管理 | `src/primitives/Seeing.Session/` | 独立包 |
@@ -116,7 +116,7 @@ Seeing.Agent/
 ### DI 生命周期
 | 服务 | 生命周期 |
 |------|----------|
-| ToolManager, HookManager, PermissionService, PermissionRequestManager, PermissionGrantStore, PermissionPresenceStore, EffectivePermissionPolicy, IPermissionAuthorizerFactory, SkillManager, McpClientManager, IToolDecoratorRegistry | Singleton |
+| ToolManager, HookManager, PermissionService, PermissionRequestManager, PermissionGrantStore, PermissionPresentationStore, EffectivePermissionPolicy, IPermissionAuthorizerFactory, SkillManager, McpClientManager, IToolDecoratorRegistry | Singleton |
 | SessionManager, AgentExecutor | Singleton |
 | Middleware (Logging, Retry) | Transient |
 
@@ -220,7 +220,7 @@ public static async Task<string> GetWeather(
 | **P3** | 页面 Dispose 级联取消含子会话（刷新即取消） | **已完成**（2026-08-27：Dispose 移除 `CancelBySessionAsync`/标记取消，仅清理 UI 订阅；主动取消与程序关闭仍取消） |
 | **P3** | `LoadChildrenFromStorageAsync` 未命中即全量 `ListAsync` 扫描 | 已知边界（建议加缓存 TTL） |
 | **P1** | 权限授权旧栈（`SerializingPermissionChannel`/`IPermissionMemory`/`IWorkspaceWhitelist`/`PermissionMiddleware`/`BlazorPermissionChannel` 等） | **已完成**（2026-09-17 重构：统一授权引擎 + 在途 `PermissionRequestManager` + 事件流 + 内联卡片；破坏性清单见 `docs/architecture/08-permission-authorization-release-notes.md`） |
-| **P3** | 权限：Conference 页同 circuit 多窗口共用 `PermissionCardAggregator`（单 `_sessionId`） | 已知边界（多会话同屏需按父会话分 key；本期容忍） |
+| **P3** | 权限：Conference 页同 circuit 多窗口共用 `PermissionCardAggregator`（单 `_sessionId`） | **已完成**（2026-09-19：删除 `PermissionCardAggregator`，改由 `PermissionInboxView` 按 `registry.Windows` 会话集合投影分组） |
 | **P3** | 权限：多通道 `TryAutoApprove` 为进程级语义 | 已知边界（同进程 Gateway `auto_approve` 影响 WebUI 会话；按来源隔离属后续演进） |
 
 ## 命令

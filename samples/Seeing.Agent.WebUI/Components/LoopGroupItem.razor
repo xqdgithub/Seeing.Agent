@@ -2,12 +2,7 @@
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Models.Messaging
 @using Seeing.Agent.WebUI.Rendering.Abstractions
-@using Seeing.Agent.WebUI.State
-@using Seeing.Agent.WebUI.Services
 @inject IMessageRenderPipeline Pipeline
-@inject SessionEventStreamRouter PermissionRouter
-@inject CircuitContext PermissionCircuit
-@implements IDisposable
 
 @* Loop 分组组件 - 使用渲染管线 *@
 @_body
@@ -33,14 +28,6 @@
 
     private int _blocksRevision = int.MinValue;
     private RenderFragment? _body;
-    private PermissionCardAggregator? _cards;
-    private string? _attachedSessionId;
-
-    protected override void OnInitialized()
-    {
-        var circuitId = PermissionCircuit.Id ?? string.Empty;
-        _cards = PermissionRouter.GetOrCreateCircuitConsumer<PermissionCardAggregator>(circuitId);
-    }
 
     protected override void OnParametersSet()
     {
@@ -49,8 +36,6 @@
             _blocksRevision = ContentRevision;
             _body = Pipeline.RenderLoop(Loop, GetRenderOptions(), null, OnToolClick);
         }
-
-        EnsurePermissionBinding();
     }
 
     /// <summary>
@@ -63,41 +48,5 @@
             ShowReasoning = true,
             ExpandReasoningByDefault = false
         };
-    }
-
-    /// <summary>
-    /// 将会话绑定到权限聚合器并订阅其事件流（幂等；会话切换时摘除旧订阅）。
-    /// </summary>
-    private void EnsurePermissionBinding()
-    {
-        if (_cards is null)
-            return;
-
-        var sessionId = ResolveSessionId();
-        if (string.IsNullOrEmpty(sessionId))
-            return;
-
-        if (string.Equals(_attachedSessionId, sessionId, StringComparison.Ordinal))
-            return;
-
-        if (!string.IsNullOrEmpty(_attachedSessionId))
-            PermissionRouter.DetachConsumer(_attachedSessionId, _cards);
-
-        _cards.Bind(sessionId);
-        // replay=true：缓冲重放可能含在途请求；聚合器以 manager.GetPending 对账，已决议项不复活。
-        PermissionRouter.AttachConsumer(sessionId, _cards, replay: true);
-        _attachedSessionId = sessionId;
-    }
-
-    /// <summary>从 Loop 内消息解析所属会话 ID（LoopGroupViewModel 不直接持有 SessionId）。</summary>
-    private string? ResolveSessionId()
-        => Loop.Messages.FirstOrDefault(m => !string.IsNullOrEmpty(m.SessionId))?.SessionId;
-
-    public void Dispose()
-    {
-        // 从 Router 摘除该 consumer 的会话订阅：会话切换/页面离开时 LoopGroupItem 被销毁，
-        // 若仅退订 Changed 则旧会话订阅残留累积（长会话多次换会话）。
-        if (_cards is not null && !string.IsNullOrEmpty(_attachedSessionId))
-            PermissionRouter.DetachConsumer(_attachedSessionId, _cards);
     }
 }

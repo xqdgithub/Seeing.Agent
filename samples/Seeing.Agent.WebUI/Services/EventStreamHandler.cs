@@ -139,12 +139,14 @@ namespace Seeing.Agent.WebUI.Services
         public event Action<AgentLoopInfo>? OnLoopComplete;
 
         /// <summary>
-        /// 权限请求回调
+        /// 权限请求回调。仅展示/时间线刷新用途，无生产消费者
+        /// （在途审批交互由 <c>PermissionInbox</c>/<c>PermissionInboxView</c> 承接）。
         /// </summary>
         public event Action<PermissionRequestEvent>? OnPermissionRequest;
 
         /// <summary>
-        /// 权限收敛回调
+        /// 权限收敛回调。仅展示/时间线刷新用途，无生产消费者
+        /// （在途审批交互由 <c>PermissionInbox</c>/<c>PermissionInboxView</c> 承接）。
         /// </summary>
         public event Action<PermissionResolvedEvent>? OnPermissionResolved;
 

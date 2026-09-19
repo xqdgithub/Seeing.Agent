@@ -1,8 +1,7 @@
 @using Seeing.Agent.Abstractions.Permissions
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Services
-@inject SessionEventStreamRouter PermissionRouter
-@inject CircuitContext PermissionCircuit
+@inject PermissionInboxView PermissionView
 @inject PermissionInteractionService PermissionActions
 @implements IDisposable
 
@@ -28,27 +27,15 @@
     [Parameter]
     public string? CallId { get; set; }
 
-    private PermissionCardAggregator? _aggregator;
-    private Action? _onChanged;
-    private string? _lastCallId;
     private IReadOnlyList<PermissionCardModel> _cards = Array.Empty<PermissionCardModel>();
 
     protected override void OnInitialized()
     {
-        var circuitId = PermissionCircuit.Id ?? string.Empty;
-        _aggregator = PermissionRouter.GetOrCreateCircuitConsumer<PermissionCardAggregator>(circuitId);
-        _onChanged = OnCardsChanged;
-        _aggregator.Changed += _onChanged;
+        PermissionView.Changed += OnCardsChanged;
+        Refresh();
     }
 
-    protected override void OnParametersSet()
-    {
-        if (!string.Equals(_lastCallId, CallId, StringComparison.Ordinal))
-        {
-            _lastCallId = CallId;
-            Refresh();
-        }
-    }
+    protected override void OnParametersSet() => Refresh();
 
     private void OnCardsChanged()
     {
@@ -59,13 +46,13 @@
     /// <summary>取本工具调用关联的在途卡片（决议后从槽位移除）。</summary>
     private void Refresh()
     {
-        if (_aggregator is null || string.IsNullOrEmpty(CallId))
+        if (string.IsNullOrEmpty(CallId))
         {
             _cards = Array.Empty<PermissionCardModel>();
             return;
         }
 
-        _cards = _aggregator.GetByCallId(CallId)
+        _cards = PermissionView.GetByCallId(CallId)
             .Where(c => c.IsPending)
             .ToList();
     }
@@ -102,7 +89,6 @@
 
     public void Dispose()
     {
-        if (_aggregator is not null && _onChanged is not null)
-            _aggregator.Changed -= _onChanged;
+        PermissionView.Changed -= OnCardsChanged;
     }
 }

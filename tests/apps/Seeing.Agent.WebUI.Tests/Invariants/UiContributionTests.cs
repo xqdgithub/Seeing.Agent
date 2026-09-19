@@ -66,8 +66,8 @@ public class UiContributionTests
             source.Should().NotContain(needle, $"AppSidebar 不得硬编码模块菜单项: {needle}");
         }
 
-        Regex.Matches(source, @"<MenuItem\b").Count.Should().Be(3,
-            "仅允许：1 个聊天壳 MenuItem + 1 个未分组 @foreach + 1 个分组 @foreach 模板 MenuItem");
+        Regex.Matches(source, @"<MenuItem\b").Count.Should().Be(4,
+            "仅允许：1 个聊天壳 MenuItem + 1 个审批中心壳 MenuItem + 1 个未分组 @foreach + 1 个分组 @foreach 模板 MenuItem");
     }
 
     // ── 2. 未启用模块页面友好提示 ────────────────────────────────────────────

@@ -180,6 +180,52 @@ public class TaskCardAggregatorTests
     }
 
     [Fact]
+    public async Task OnEvent_ChildPermissionEvent_ShouldNotAffectTaskStepsOrNotify()
+    {
+        var parentId = "parent1";
+        var childId = "child1";
+        var parent = CreateParentWithTaskCall(parentId, "call-1");
+        var child = CreateChild(childId, "call-1");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var childChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = CreateSessionManagerMock(parent, child);
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
+        {
+            [parentId] = parentChannel,
+            [childId] = childChannel
+        });
+
+        using var router = CreateRouter(orchestrator);
+        var aggregator = CreateAggregator(router, sm, gm);
+        var assistantChanged = 0;
+        aggregator.AssistantChanged += _ => Interlocked.Increment(ref assistantChanged);
+        aggregator.Rebind(parentId);
+
+        await parentChannel.Writer.WriteAsync(new ToolCallEvent
+        {
+            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+        });
+        await Task.Delay(200);
+        var before = Interlocked.CompareExchange(ref assistantChanged, 0, 0);
+
+        await childChannel.Writer.WriteAsync(new PermissionRequestEvent
+        {
+            SessionId = childId, RequestId = "req-1", CallId = "ct-x",
+            PermissionKind = "tool.execute"
+        });
+        await Task.Delay(200);
+
+        var toolCall = parent.Messages[0].ToolCalls[0];
+        toolCall.TaskSteps.Should().BeNullOrEmpty();
+        Interlocked.CompareExchange(ref assistantChanged, 0, 0).Should().Be(before);
+
+        parentChannel.Writer.TryComplete();
+        childChannel.Writer.TryComplete();
+    }
+
+    [Fact]
     public async Task OnEvent_TwoParallelChildStreams_ShouldKeepBothSteps()
     {
         // C1：两个子会话并行事件，聚合不得互相覆盖丢步骤

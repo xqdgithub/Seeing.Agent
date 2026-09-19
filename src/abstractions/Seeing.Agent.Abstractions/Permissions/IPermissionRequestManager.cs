@@ -13,5 +13,11 @@ public interface IPermissionRequestManager : IDisposable
 
     IReadOnlyList<PermissionRequest> GetPending(string sessionId);
 
+    /// <summary>全部未完成在途请求（不做会话过滤；最终一致性依据）。</summary>
+    IReadOnlyList<PermissionRequest> GetAllPending();
+
     int PendingCount { get; }
+
+    /// <summary>在途集合变化（尽力通知；订阅者异常须隔离）。</summary>
+    event Action? PendingChanged;
 }

@@ -2,6 +2,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Permission;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Permission;
@@ -83,7 +84,7 @@ public class PermissionServiceTests
     }
 
     [Fact]
-    public async Task AuthorizeAsync_WithoutPresence_ShouldDenyNoChannel()
+    public async Task AuthorizeAsync_WithoutPresenter_ShouldDenyNoChannel()
     {
         var service = CreateService();
         var request = new PermissionRequest
@@ -99,5 +100,43 @@ public class PermissionServiceTests
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
         resolution.SessionId.Should().Be("s1");
         resolution.RequestId.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WithPresenterNotSurfacingSession_ShouldDenyNoChannel()
+    {
+        var presentation = new PermissionPresentationStore();
+        presentation.Register(new FixedPresenter("other-session"));
+        var manager = new Mock<IPermissionRequestManager>();
+        var service = new PermissionService(
+            NullLogger<PermissionService>.Instance,
+            requestManager: manager.Object,
+            presentation: presentation);
+
+        var resolution = await service.AuthorizeAsync(new PermissionRequest
+        {
+            SessionId = "s1",
+            PermissionKind = "tool.execute",
+            Resource = "bash"
+        });
+
+        resolution.Decision.Should().Be(PermissionEffect.Deny);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
+        manager.Verify(
+            m => m.BeginAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    private sealed class FixedPresenter : IPermissionPresenter
+    {
+        private readonly IReadOnlyCollection<string> _surface;
+
+        public FixedPresenter(params string[] sessionIds) => _surface = sessionIds;
+
+        public IReadOnlyCollection<string> SurfaceSessionIds => _surface;
+
+        public event Action? SurfacedChanged;
+
+        public void Raise() => SurfacedChanged?.Invoke();
     }
 }

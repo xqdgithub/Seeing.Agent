@@ -1,0 +1,177 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Components.Messaging
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Session.Core
+@inject PermissionInboxView PermissionView
+@inject PermissionInteractionService PermissionActions
+@inject ISessionManager SessionManager
+@inject ISessionGroupManager GroupManager
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+@* 全局审批中心抽屉：当前标签内所有会话的在途审批，按会话分组 + 就地批准/拒绝 *@
+<Drawer Closable="true"
+        Visible="@Open"
+        OnClose="CloseAsync"
+        Placement="@DrawerPlacement.Right"
+        Width="420"
+        Title="@("审批中心")">
+    @if (Groups.Count == 0)
+    {
+        <Empty Description="@("当前没有待审批请求")" />
+    }
+    else
+    {
+        @foreach (var group in Groups)
+        {
+            <div class="permission-center-group" @key="group.Key">
+                <div class="permission-center-group__header">
+                    <span class="permission-center-group__title">@GroupTitle(group.Key)</span>
+                    <Button Type="@ButtonType.Link"
+                            Size="@ButtonSize.Small"
+                            OnClick="@(() => NavigateToSession(group.Key))">跳转会话</Button>
+                </div>
+                @if (AttributionFor(group.Key) is { } attribution)
+                {
+                    <div class="permission-center-group__attribution">@attribution</div>
+                }
+                @foreach (var card in group)
+                {
+                    <PermissionCard @key="card.RequestId"
+                                    Card="card"
+                                    OnAllowOnce="OnAllowOnceAsync"
+                                    OnAllowSession="OnAllowSessionAsync"
+                                    OnAllowSessionDirectory="OnAllowSessionDirectoryAsync"
+                                    OnDenyOnce="OnDenyOnceAsync"
+                                    OnDenySession="OnDenySessionAsync" />
+                }
+            </div>
+        }
+    }
+</Drawer>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    private IReadOnlyList<IGrouping<string, PermissionCardModel>> Groups =>
+        PermissionView.CardsForScope
+            .GroupBy(c => c.SessionId)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .ToList();
+
+    private readonly Dictionary<string, string> _parentTitleCache = new(StringComparer.Ordinal);
+
+    protected override void OnInitialized()
+    {
+        PermissionView.Changed += OnPermissionChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+            return;
+
+        _ = InvokeAsync(async () =>
+        {
+            if (await RefreshAttributionsAsync())
+                StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        PermissionView.Changed -= OnPermissionChanged;
+    }
+
+    private void OnPermissionChanged() => _ = InvokeAsync(async () =>
+    {
+        if (!Open)
+            return;
+
+        var resolved = await RefreshAttributionsAsync();
+        if (resolved)
+            StateHasChanged();
+    });
+
+    private Task CloseAsync() => OpenChanged.InvokeAsync(false);
+
+    private string GroupTitle(string sessionId)
+    {
+        var title = SessionManager.Get(sessionId)?.Title;
+        return string.IsNullOrEmpty(title) ? sessionId : title!;
+    }
+
+    /// <summary>子会话归属文案（父标题异步解析并缓存）；非子会话返回 null。</summary>
+    private string? AttributionFor(string sessionId)
+    {
+        if (!PermissionView.IsChildSession(sessionId))
+            return null;
+
+        return _parentTitleCache.TryGetValue(sessionId, out var parentTitle) && !string.IsNullOrEmpty(parentTitle)
+            ? $"来自「{parentTitle}」的子任务"
+            : "子任务";
+    }
+
+    private async Task<bool> RefreshAttributionsAsync()
+    {
+        var changed = false;
+        foreach (var sessionId in Groups.Select(g => g.Key).ToList())
+        {
+            if (_parentTitleCache.ContainsKey(sessionId) || !PermissionView.IsChildSession(sessionId))
+                continue;
+
+            try
+            {
+                var parentId = await GroupManager.GetParentAsync(sessionId);
+                var parentTitle = string.IsNullOrEmpty(parentId) ? null : SessionManager.Get(parentId)?.Title;
+                _parentTitleCache[sessionId] = parentTitle ?? parentId ?? string.Empty;
+                changed = true;
+            }
+            catch
+            {
+                // 归属解析失败不阻断审批列表
+            }
+        }
+
+        return changed;
+    }
+
+    private void NavigateToSession(string sessionId)
+    {
+        NavigationManager.NavigateTo($"/session/{sessionId}");
+        _ = OpenChanged.InvokeAsync(false);
+    }
+
+    private Task OnAllowOnceAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowOnce(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnAllowSessionAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowSession(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnAllowSessionDirectoryAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowSessionDirectory(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDenyOnceAsync(PermissionCardModel card)
+    {
+        PermissionActions.DenyOnce(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDenySessionAsync(PermissionCardModel card)
+    {
+        PermissionActions.DenySession(card);
+        return Task.CompletedTask;
+    }
+}

@@ -110,4 +110,16 @@ public class SessionSidebarViewTests
 
         built.Should().Be(entry);
     }
+
+    [Fact]
+    public void Build_ShouldPreservePendingPermissions()
+    {
+        var entry = new SidebarEntry(
+            "s1", "会话", SessionRelation.Fork, IsAnchor: false, IsExecuting: false,
+            ParentSessionId: null, Label: null, IsActive: false, PendingPermissions: 3);
+
+        var built = SessionSidebarView.Build(new[] { entry }).Single().Entries.Single();
+
+        built.PendingPermissions.Should().Be(3);
+    }
 }

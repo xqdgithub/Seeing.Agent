@@ -23,9 +23,11 @@ public static class PermissionServiceExtensions
     /// <returns>服务集合</returns>
     public static IServiceCollection AddPermissionService(this IServiceCollection services)
     {
-        // 授权存储（记忆 + 白名单目录面）与可交互性计数
+        // 授权存储（记忆 + 白名单目录面）
         services.AddSingleton<IPermissionGrantStore, PermissionGrantStore>();
-        services.AddSingleton<IPermissionPresenceStore, PermissionPresenceStore>();
+
+        // 呈现端登记表（Singleton）
+        services.AddSingleton<IPermissionPresentationStore, PermissionPresentationStore>();
 
         // 生效开关解析（Service 与 Manager 共用）
         services.AddSingleton<EffectivePermissionPolicy>();

@@ -4,6 +4,10 @@
 @using Seeing.Agent.WebUI.Models.Messaging
 @using Seeing.Agent.WebUI.Rendering.Abstractions
 @using Seeing.Session.Core
+@using Seeing.Agent.WebUI.Services
+@inject PermissionInboxView PermissionView
+@inject PermissionInteractionService PermissionActions
+@implements IDisposable
 
 @* Task 子代理卡片：进度步骤 + 打开 Child Session *@
 
@@ -57,6 +61,25 @@
                                 OnClick="OpenChildSessionAsync">打开详情</Button>
                     </div>
                     <pre class="tool-call-pre">@ToolCall.TaskId</pre>
+                </div>
+            }
+
+            @if (_childCards.Count > 0)
+            {
+                <div class="tool-call-section">
+                    <div class="tool-call-section-header">
+                        <span class="tool-call-section-title" style="color: #faad14;">子任务待审批</span>
+                    </div>
+                    @foreach (var card in _childCards)
+                    {
+                        <PermissionCard @key="card.RequestId"
+                                        Card="card"
+                                        OnAllowOnce="OnAllowOnceAsync"
+                                        OnAllowSession="OnAllowSessionAsync"
+                                        OnAllowSessionDirectory="OnAllowSessionDirectoryAsync"
+                                        OnDenyOnce="OnDenyOnceAsync"
+                                        OnDenySession="OnDenySessionAsync" />
+                    }
                 </div>
             }
 
@@ -181,6 +204,68 @@
     private string? _lastToolCallId;
     private string? _lastStatus;
     private bool _userToggled;
+    private IReadOnlyList<PermissionCardModel> _childCards = Array.Empty<PermissionCardModel>();
+
+    protected override void OnInitialized()
+    {
+        PermissionView.Changed += OnPermissionChanged;
+        RefreshChildCards();
+    }
+
+    private void OnPermissionChanged()
+    {
+        RefreshChildCards();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>取子会话（ToolCall.TaskId）在途权限卡片；有待审批时默认展开。</summary>
+    private void RefreshChildCards()
+    {
+        _childCards = string.IsNullOrEmpty(ToolCall.TaskId)
+            ? Array.Empty<PermissionCardModel>()
+            : PermissionView.GetBySession(ToolCall.TaskId!);
+
+        if (_childCards.Count > 0)
+        {
+            _isExpanded = true;
+            ToolCall.IsExpanded = true;
+        }
+    }
+
+    private Task OnAllowOnceAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowOnce(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnAllowSessionAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowSession(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnAllowSessionDirectoryAsync(PermissionCardModel card)
+    {
+        PermissionActions.AllowSessionDirectory(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDenyOnceAsync(PermissionCardModel card)
+    {
+        PermissionActions.DenyOnce(card);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDenySessionAsync(PermissionCardModel card)
+    {
+        PermissionActions.DenySession(card);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        PermissionView.Changed -= OnPermissionChanged;
+    }
 
     protected override void OnParametersSet()
     {
@@ -212,6 +297,8 @@
 
         ToolCall.IsExpanded = _isExpanded;
         _lastStatus = status;
+
+        RefreshChildCards();
     }
 
     private void ToggleExpand()

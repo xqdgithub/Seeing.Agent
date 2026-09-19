@@ -19,49 +19,62 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
     private readonly ConcurrentDictionary<string, PendingEntry> _pending = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<IPermissionChannel> _channels;
     private readonly IExecutionEventPublisher _eventPublisher;
-    private readonly IPermissionPresenceStore _presence;
+    private readonly IPermissionPresentationStore _presentation;
     private readonly EffectivePermissionPolicy _policy;
     private readonly ILogger<PermissionRequestManager> _logger;
     private readonly TimeSpan _timeout;
+    private readonly TimeSpan _convergenceGrace;
+    private readonly Timer _convergenceTimer;
     private readonly IDisposable? _sessionSubscription;
     private readonly IDisposable? _optionsSubscription;
+    private readonly object _convergenceGate = new();
+    private HashSet<string>? _convergenceCandidates;
+    private bool _convergenceArmed;
     private bool _lastAutoApproveAll;
     private bool _disposed;
 
-    /// <summary>创建在途管理器（等待超时 5 分钟）。</summary>
+    /// <inheritdoc />
+    public event Action? PendingChanged;
+
+    /// <summary>创建在途管理器（等待超时 5 分钟；收敛宽限 1 秒）。</summary>
     public PermissionRequestManager(
         IExecutionEventPublisher eventPublisher,
-        IPermissionPresenceStore presence,
+        IPermissionPresentationStore presentation,
         EffectivePermissionPolicy policy,
         IEnumerable<IPermissionChannel> channels,
         ISessionEventPublisher sessionEvents,
         IOptionsMonitor<SeeingAgentOptions> options,
         ILogger<PermissionRequestManager> logger)
-        : this(eventPublisher, presence, policy, channels, sessionEvents, options, logger, DefaultTimeout)
+        : this(eventPublisher, presentation, policy, channels, sessionEvents, options, logger, DefaultTimeout)
     {
     }
 
-    /// <summary>创建在途管理器（可指定等待超时；仅供测试注入短超时）。</summary>
+    /// <summary>创建在途管理器（可指定等待超时与收敛宽限；仅供测试注入短值）。</summary>
     internal PermissionRequestManager(
         IExecutionEventPublisher eventPublisher,
-        IPermissionPresenceStore presence,
+        IPermissionPresentationStore presentation,
         EffectivePermissionPolicy policy,
         IEnumerable<IPermissionChannel> channels,
         ISessionEventPublisher sessionEvents,
         IOptionsMonitor<SeeingAgentOptions> options,
         ILogger<PermissionRequestManager> logger,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        TimeSpan? convergenceGrace = null)
     {
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
-        _presence = presence ?? throw new ArgumentNullException(nameof(presence));
+        _presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
         _policy = policy ?? throw new ArgumentNullException(nameof(policy));
         _channels = (channels ?? Array.Empty<IPermissionChannel>()).ToList();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _timeout = timeout;
+        _convergenceGrace = convergenceGrace ?? TimeSpan.FromSeconds(1);
 
         _lastAutoApproveAll = options?.CurrentValue.Permission?.AutoApproveAll == true;
         _sessionSubscription = sessionEvents?.Events.Subscribe(OnSessionEvent);
         _optionsSubscription = options?.OnChange(OnOptionsChanged);
+
+        _presentation.PresenterUnregistered += OnPresenterUnregistered;
+        _convergenceTimer = new Timer(OnConvergenceTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     /// <inheritdoc />
@@ -93,6 +106,7 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
             };
             entry.Completion.TrySetResult(overflow);
             _pending[requestId] = entry;
+            RaisePendingChanged();
             // 补发终态事件，使溢出拒绝可被 UI/Gateway 观测（事件唯一发布点语义）。
             PublishResolvedEvent(normalized, overflow);
             return Task.FromResult(new PermissionTicket(requestId, normalized.SessionId));
@@ -100,9 +114,10 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
 
         _pending[requestId] = entry;
 
-        if (!string.IsNullOrEmpty(normalized.SessionId) && !_presence.CanPresent(normalized.SessionId))
+        if (!string.IsNullOrEmpty(normalized.SessionId) && !_presentation.CanSurface(normalized.SessionId))
             _logger.LogDebug("会话无可交互呈现端，仍登记在途请求 RequestId={RequestId}", requestId);
 
+        RaisePendingChanged();
         PublishRequestEvent(normalized);
         return Task.FromResult(new PermissionTicket(requestId, normalized.SessionId));
     }
@@ -164,6 +179,7 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
             return false;
 
         PublishResolvedEvent(entry.Request, resolution);
+        RaisePendingChanged();
         _ = BroadcastDismissAsync(resolution);
         return true;
     }
@@ -182,6 +198,13 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
     }
 
     /// <inheritdoc />
+    public IReadOnlyList<PermissionRequest> GetAllPending() =>
+        _pending.Values
+            .Where(entry => !entry.Completion.Task.IsCompleted)
+            .Select(entry => entry.Request)
+            .ToList();
+
+    /// <inheritdoc />
     public int PendingCount => _pending.Values.Count(entry => !entry.Completion.Task.IsCompleted);
 
     /// <inheritdoc />
@@ -190,6 +213,9 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
         if (_disposed)
             return;
         _disposed = true;
+
+        _presentation.PresenterUnregistered -= OnPresenterUnregistered;
+        _convergenceTimer.Dispose();
 
         _sessionSubscription?.Dispose();
         _optionsSubscription?.Dispose();
@@ -202,6 +228,7 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
         }
 
         _pending.Clear();
+        RaisePendingChanged();
     }
 
     private static PermissionResolution Deny(
@@ -217,6 +244,82 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
             ResolvedBy = resolvedBy,
             Reason = reason
         };
+
+    private void RaisePendingChanged()
+    {
+        try
+        {
+            PendingChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "发布在途变更通知失败");
+        }
+    }
+
+    // 仅在呈现端注销（身份移除）时收敛：注册与 SurfaceSessionIds 内容收缩都不收敛（spec §4.4）。
+    private void OnPresenterUnregistered()
+    {
+        if (_disposed)
+            return;
+
+        lock (_convergenceGate)
+        {
+            // 合并注销时刻及此前已登记的在途请求；已在计时中的变化不重置计时器（防高频注销饿死）。
+            _convergenceCandidates ??= new HashSet<string>(StringComparer.Ordinal);
+            _convergenceCandidates.UnionWith(_pending.Keys);
+
+            if (_convergenceArmed)
+                return;
+
+            _convergenceArmed = true;
+        }
+
+        try
+        {
+            _convergenceTimer.Change(_convergenceGrace, Timeout.InfiniteTimeSpan);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void OnConvergenceTimer(object? state)
+    {
+        if (_disposed)
+            return;
+
+        HashSet<string>? candidates;
+        lock (_convergenceGate)
+        {
+            candidates = _convergenceCandidates;
+            _convergenceCandidates = null;
+            _convergenceArmed = false;
+        }
+
+        if (candidates is null)
+            return;
+
+        try
+        {
+            foreach (var requestId in candidates)
+            {
+                if (!_pending.TryGetValue(requestId, out var entry) || entry.Completion.Task.IsCompleted)
+                    continue;
+
+                var sessionId = entry.Request.SessionId;
+                if (!string.IsNullOrEmpty(sessionId) && _presentation.CanSurface(sessionId))
+                    continue;
+
+                TryResolve(requestId, PermissionEffect.Deny, PermissionGrantScope.Once,
+                    PermissionResolvedBy.NoChannel, "呈现端已移除", sessionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "在途权限收敛复核失败");
+        }
+    }
 
     private void OnSessionEvent(SessionEvent sessionEvent)
     {

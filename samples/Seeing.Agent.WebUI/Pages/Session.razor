@@ -33,8 +33,8 @@
 @inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
 @inject Services.SessionEventStreamRouter Router
-@inject Services.ActiveSessionTracker ActiveSessionTracker
 @inject CircuitContext CircuitContext
+@inject Services.PermissionInboxView PermissionView
 @inject ISessionManager SessionManager
 @inject ISessionGroupManager GroupManager
 @implements IDisposable
@@ -151,18 +151,26 @@
                         <div class="session-side-section__title">
                             <span class="session-side-section__dot" aria-hidden="true"></span>
                             <span>@sec.Title</span>
-                            <span class="session-side-section__count">@sec.Entries.Count</span>
+                            <span class="session-side-section__count">
+                                @sec.Entries.Count
+                                @if (sec.Entries.Any(e => e.PendingPermissions > 0))
+                                {
+                                    <text> · 待批 @sec.Entries.Sum(e => e.PendingPermissions)</text>
+                                }
+                            </span>
                         </div>
                         @foreach (var entry in sec.Entries)
                         {
                             <ErrorBoundary>
-                                <SessionWindow @key="@entry.SessionId"
-                                               SessionId="@entry.SessionId"
-                                               ViewMode="Services.SessionWindowMode.Summary"
-                                               AggregatorSessionId="@_mainSessionId"
-                                               GlobalSessionState="@GlobalSessionState"
-                                               OnClick="@OnTileClick"
-                                               OnExecutionStateChanged="@OnExecutionStateChanged" />
+                                <Badge Count="@entry.PendingPermissions" Style="width: 100%;">
+                                    <SessionWindow @key="@entry.SessionId"
+                                                   SessionId="@entry.SessionId"
+                                                   ViewMode="Services.SessionWindowMode.Summary"
+                                                   AggregatorSessionId="@_mainSessionId"
+                                                   GlobalSessionState="@GlobalSessionState"
+                                                   OnClick="@OnTileClick"
+                                                   OnExecutionStateChanged="@OnExecutionStateChanged" />
+                                </Badge>
                             </ErrorBoundary>
                         }
                     </div>
@@ -204,7 +212,6 @@
     private string? _mainSessionId;
     private string? _activeSessionId;
     private bool _mainMissing;
-    private string _circuitId = string.Empty;
     private SessionWindowRegistry? _registry;
     private IReadOnlyList<SessionWindowRegistry.WindowNode> _windows = Array.Empty<SessionWindowRegistry.WindowNode>();
 
@@ -230,7 +237,7 @@
     {
         // 订阅 AppState 变更事件，确保移动端/桌面端切换时同步重渲染
         AppState.OnChange += OnAppStateChange;
-        _circuitId = CircuitContext.Id ?? string.Empty;
+        PermissionView.Changed += OnPermissionChanged;
 
         // 加载工具和技能数据
         await LoadToolsAndSkillsAsync();
@@ -261,7 +268,6 @@
         _mainSessionId = mainId;
         _activeSessionId = mainId;
         InitRegistry(mainId);
-        ActiveSessionTracker.Attach(mainId, _circuitId);
 
         await InvokeAsync(StateHasChanged);
     }
@@ -300,7 +306,6 @@
             InitRegistry(SessionId);
         else
             _registry.Rebind(SessionId);
-        ActiveSessionTracker.Attach(SessionId, _circuitId);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -352,7 +357,8 @@
                 IsExecuting(w.SessionId),
                 FindParentSessionId(w.SessionId),
                 w.Label,
-                w.IsActive));
+                w.IsActive,
+                PermissionView.CountBySession(w.SessionId)));
         _sidebarSections = SessionSidebarView.Build(entries);
     }
 
@@ -529,7 +535,6 @@
         var groupId = _registry?.GroupId;
         if (!string.IsNullOrEmpty(groupId))
             await GroupManager.SetActiveAsync(groupId, sessionId);
-        ActiveSessionTracker.Attach(sessionId, _circuitId);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -628,13 +633,20 @@
         NavigationManager.NavigateTo($"/session/{branched.Id}");
     }
 
+    private void OnPermissionChanged() => _ = InvokeAsync(() =>
+    {
+        // 先按最新在途计数重建侧栏分区（徽标数字），再重渲染
+        RebuildSidebar();
+        StateHasChanged();
+    });
+
     /// <summary>
     /// 释放资源（导航离开 / 电路断开）
     /// </summary>
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChange;
-        ActiveSessionTracker.DetachCircuit(_circuitId);
+        PermissionView.Changed -= OnPermissionChanged;
         if (_registry != null)
             _registry.WindowsChanged -= OnWindowsChanged;
         // circuit 关闭由 SeeingCircuitHandler → Router.DetachAllForCircuit 统一释放

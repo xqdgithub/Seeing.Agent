@@ -39,7 +39,7 @@ Core/
 │   ├── PermissionRequestManager.cs # 在途唯一权威 + 事件唯一发布点
 │   ├── PermissionGrantStore.cs     # 记忆 + 会话白名单目录面
 │   ├── EffectivePermissionPolicy.cs# 覆盖 > 会话三态 > 全局（实时）
-│   ├── PermissionPresenceStore.cs  # 可交互性
+│   ├── PermissionPresentationStore.cs # 呈现端登记表（CanSurface + PresenterUnregistered/Changed）
 │   ├── PermissionKindMapper.cs     # kind → 规则域映射
 │   ├── ExecutionContextPermissionAuthorizer.cs / DefaultPermissionAuthorizerFactory.cs
 │   └── DenyAllPermissionChannel.cs / WorkspacePathGate.cs / WorkspaceBoundaryLifecycle.cs

@@ -127,6 +127,35 @@ internal sealed class StubPermissionAuthorizerFactory : IPermissionAuthorizerFac
     }
 }
 
+/// <summary>记录最近一次请求并返回预设决策的直接授权器（用于 context.PermissionAuthorizer 注入测试）。</summary>
+internal sealed class RecordingPermissionAuthorizer : IPermissionAuthorizer
+{
+    private readonly PermissionEffect _decision;
+
+    public RecordingPermissionAuthorizer(PermissionEffect decision = PermissionEffect.Allow)
+    {
+        _decision = decision;
+        SessionId = "context-session";
+    }
+
+    public PermissionRequest? LastRequest { get; private set; }
+
+    public string SessionId { get; }
+
+    public Task<PermissionResolution> AuthorizeAsync(PermissionRequest request, CancellationToken ct = default)
+    {
+        LastRequest = request;
+        return Task.FromResult(new PermissionResolution
+        {
+            RequestId = request.RequestId ?? "req-ctx",
+            SessionId = request.SessionId,
+            CallId = request.CallId,
+            Decision = _decision,
+            Reason = _decision == PermissionEffect.Allow ? "允许" : "权限被拒绝",
+        });
+    }
+}
+
 /// <summary>记录提交参数并返回预设结果的执行提交桩。</summary>
 internal sealed class StubExecutionSubmitter : IExecutionSubmitter
 {

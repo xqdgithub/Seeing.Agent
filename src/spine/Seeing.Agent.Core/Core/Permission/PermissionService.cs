@@ -20,7 +20,7 @@ public class PermissionService : IPermissionService
     private readonly IWorkspacePathGate? _workspaceGate;
     private readonly IOptionsMonitor<SeeingAgentOptions>? _options;
     private readonly IPermissionRequestManager? _requestManager;
-    private readonly IPermissionPresenceStore? _presence;
+    private readonly IPermissionPresentationStore? _presentation;
     private readonly IEnumerable<IPermissionChannel> _channels;
     private readonly IAgentRegistry? _agentRegistry;
 
@@ -31,7 +31,7 @@ public class PermissionService : IPermissionService
         IWorkspacePathGate? workspaceGate = null,
         IOptionsMonitor<SeeingAgentOptions>? options = null,
         IPermissionRequestManager? requestManager = null,
-        IPermissionPresenceStore? presence = null,
+        IPermissionPresentationStore? presentation = null,
         IEnumerable<IPermissionChannel>? channels = null,
         IAgentRegistry? agentRegistry = null)
     {
@@ -41,7 +41,7 @@ public class PermissionService : IPermissionService
         _workspaceGate = workspaceGate;
         _options = options;
         _requestManager = requestManager;
-        _presence = presence;
+        _presentation = presentation;
         _channels = channels ?? Array.Empty<IPermissionChannel>();
         _agentRegistry = agentRegistry;
 
@@ -228,7 +228,7 @@ public class PermissionService : IPermissionService
         }
 
         // 6. 询问
-        if (_presence is null || !_presence.CanPresent(sessionId))
+        if (_presentation is null || !_presentation.CanSurface(sessionId))
             return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.NoChannel, "无交互通道");
 
         if (_requestManager is null)

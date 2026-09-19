@@ -98,10 +98,13 @@ builder.Services.AddScoped<MessageTimelineStore>();
 // TaskCardAggregator（Scoped）：每父会话一实例，聚合子代理 TaskSteps。
 builder.Services.AddSingleton<SessionEventStreamRouter>();
 builder.Services.AddSingleton<ICircuitResourceCleanup>(sp => sp.GetRequiredService<SessionEventStreamRouter>());
-builder.Services.AddSingleton<ActiveSessionTracker>();
+// 权限全局收件箱（Singleton 投影：GetAllPending → PermissionCardModel + Changed）
+builder.Services.AddSingleton<PermissionInbox>();
+// 当前标签权限收件箱视图（Scoped，circuit 维度；作用域 = SessionWindowRegistry.Windows）
+builder.Services.AddScoped<PermissionInboxView>();
+// WebUI circuit 呈现端（Scoped）：向 IPermissionPresentationStore 声明可呈现会话集合
+builder.Services.AddScoped<WebUiPermissionPresenter>();
 builder.Services.AddScoped<TaskCardAggregator>();
-// 权限内联卡片投影聚合器 + 交互服务（Scoped，circuit 维度，与 TaskCardAggregator 同范式）
-builder.Services.AddScoped<PermissionCardAggregator>();
 builder.Services.AddScoped<PermissionInteractionService>();
 builder.Services.AddScoped<TaskSessionResolver>();
 builder.Services.AddScoped<SessionWindowRegistry>();

@@ -195,6 +195,77 @@ public class AcpToolTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ContextAuthorizer_ShouldBePreferredOverFactory()
+    {
+        var runner = new Mock<IAcpSessionRunner>();
+        runner.Setup(r => r.RunAsync(It.IsAny<AcpRunRequest>(), It.IsAny<IAcpUpdateSink>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AcpRunResult { Text = "done", Success = true });
+
+        var factory = new CapturingPermissionAuthorizerFactory { Decision = PermissionEffect.Allow };
+        var services = new ServiceCollection();
+        services.AddSingleton<IPermissionAuthorizerFactory>(factory);
+        using var sp = services.BuildServiceProvider();
+
+        var contextAuthorizer = new CapturingPermissionAuthorizer(PermissionEffect.Allow);
+
+        var tool = CreateTool(runner.Object, new FakeSessionManager());
+        var args = JsonSerializer.SerializeToElement(new
+        {
+            description = "perm task",
+            prompt = "hello",
+            backend = "opencode"
+        });
+
+        var result = await tool.ExecuteAsync(args, new ToolContext
+        {
+            SessionId = "parent-sess",
+            CallId = "call-1",
+            Services = sp,
+            PermissionAuthorizer = contextAuthorizer
+        });
+
+        result.Success.Should().BeTrue();
+        contextAuthorizer.LastRequest.Should().NotBeNull();
+        contextAuthorizer.LastRequest!.Resource.Should().Be("acp");
+        factory.LastRequest.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ContextAuthorizerDeny_ShouldFailWithoutCallingFactory()
+    {
+        var runner = new Mock<IAcpSessionRunner>();
+        var factory = new CapturingPermissionAuthorizerFactory { Decision = PermissionEffect.Allow };
+        var services = new ServiceCollection();
+        services.AddSingleton<IPermissionAuthorizerFactory>(factory);
+        using var sp = services.BuildServiceProvider();
+
+        var contextAuthorizer = new CapturingPermissionAuthorizer(PermissionEffect.Deny, "上下文拒绝");
+
+        var tool = CreateTool(runner.Object, new FakeSessionManager());
+        var args = JsonSerializer.SerializeToElement(new
+        {
+            description = "perm task",
+            prompt = "hello",
+            backend = "opencode"
+        });
+
+        var result = await tool.ExecuteAsync(args, new ToolContext
+        {
+            SessionId = "parent-sess",
+            CallId = "call-1",
+            Services = sp,
+            PermissionAuthorizer = contextAuthorizer
+        });
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("上下文拒绝");
+        factory.LastRequest.Should().BeNull();
+        runner.Verify(
+            r => r.RunAsync(It.IsAny<AcpRunRequest>(), It.IsAny<IAcpUpdateSink>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private static AcpTool CreateTool(IAcpSessionRunner? runner, FakeSessionManager? sessionManager = null)
     {
         runner ??= Mock.Of<IAcpSessionRunner>();

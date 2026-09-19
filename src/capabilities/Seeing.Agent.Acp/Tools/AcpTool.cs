@@ -89,10 +89,16 @@ public sealed class AcpTool : ToolBase
             return Failure(ex.Message);
         }
 
-        var authorizerFactory = context.Services?.GetService<IPermissionAuthorizerFactory>();
-        if (authorizerFactory is not null)
+        var authorizer = context.PermissionAuthorizer;
+        if (authorizer is null)
         {
-            var authorizer = authorizerFactory.Create(context.SessionId);
+            var authorizerFactory = context.Services?.GetService<IPermissionAuthorizerFactory>();
+            if (authorizerFactory is not null)
+                authorizer = authorizerFactory.Create(context.SessionId);
+        }
+
+        if (authorizer is not null)
+        {
             var resolution = await authorizer.AuthorizeAsync(new PermissionRequest
             {
                 SessionId = context.SessionId,

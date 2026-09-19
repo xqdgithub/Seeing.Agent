@@ -177,6 +177,51 @@ public class SessionSearchToolTests
     }
 
     [Fact]
+    public async Task Search_CrossGroup_ShouldPreferContextPermissionAuthorizer()
+    {
+        using var h = new SessionToolTestHarness();
+        var root1 = await h.CreateRootGroupedAsync("r1");
+        var root2 = await h.CreateRootGroupedAsync("r2");
+        await h.AddMessageAsync(root2.Id, "user", "shared content");
+        var authorizer = new RecordingPermissionAuthorizer(PermissionEffect.Allow);
+        var tool = CreateTool(h);
+
+        var context = new ToolContext
+        {
+            SessionId = root1.Id,
+            PermissionAuthorizer = authorizer
+        };
+
+        var result = await tool.ExecuteAsync(
+            Args(new { session_id = root2.Id, pattern = "shared" }), context);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("shared content");
+        authorizer.LastRequest.Should().NotBeNull();
+        authorizer.LastRequest!.Resource.Should().Be("session_search");
+    }
+
+    [Fact]
+    public async Task Search_CrossGroup_ContextAuthorizerDeny_ShouldBeatFactoryAllow()
+    {
+        using var h = new SessionToolTestHarness();
+        var root1 = await h.CreateRootGroupedAsync("r1");
+        var root2 = await h.CreateRootGroupedAsync("r2");
+        await h.AddMessageAsync(root2.Id, "user", "private content");
+        var factory = new StubPermissionAuthorizerFactory(PermissionEffect.Allow);
+        var tool = CreateTool(h);
+
+        var context = Context(root1.Id, factory);
+        context.PermissionAuthorizer = new RecordingPermissionAuthorizer(PermissionEffect.Deny);
+
+        var result = await tool.ExecuteAsync(
+            Args(new { session_id = root2.Id, pattern = "private" }), context);
+
+        result.Success.Should().BeFalse();
+        result.Output.Should().NotContain("private content");
+    }
+
+    [Fact]
     public async Task Search_Should_Fail_OnInvalidRegex()
     {
         using var h = new SessionToolTestHarness();

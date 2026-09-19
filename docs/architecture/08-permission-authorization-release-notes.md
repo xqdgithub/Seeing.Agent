@@ -14,7 +14,7 @@
 
 > **统一授权引擎 + 在途管理器（`IPermissionRequestManager`）+ 会话事件流 + 内联卡片投影**
 
-- 单一真相源：在途状态 → `IPermissionRequestManager`；记忆/白名单 → `IPermissionGrantStore`；可交互性 → `IPermissionPresenceStore`；生效策略 → `EffectivePermissionPolicy`（实时解析）。
+- 单一真相源：在途状态 → `IPermissionRequestManager`；记忆/白名单 → `IPermissionGrantStore`；可交互性 → `IPermissionPresentationStore`（2026-09-19 收敛重构后）；生效策略 → `EffectivePermissionPolicy`（实时解析）。
 - 无兼容约束（用户明确「不需要兼容」）：旧契约与旧栈**全部删除**，不保留垫片/适配层。
 
 ---
@@ -52,6 +52,24 @@
 - Hosting.Web：`EventStreamPermissionChannel`（Singleton）。
 - WebUI：`PermissionCardAggregator` / `PermissionCardModel` / `PermissionCard.razor` / `PermissionInteractionService` / `ActiveSessionTracker`。
 
+### 2.3 全局权限收件箱重构（2026-09-19）
+
+设计规格：[`2026-09-19-global-permission-inbox-design.md`](../superpowers/specs/2026-09-19-global-permission-inbox-design.md)（v3.1）。
+
+| 类型 / 成员 | 位置 | 处置 | 替代 |
+|-------------|------|------|------|
+| `IPermissionPresenceStore` / `PermissionPresenceStore` | `Abstractions/Permissions/`、Core | **删除** | `IPermissionPresenter`（宿主声明的会话集合快照）+ `IPermissionPresentationStore`（登记表 + `CanSurface` + `PresenterUnregistered`/`Changed`） |
+| `PermissionCardAggregator` | WebUI（sample） | **删除** | `PermissionInbox` / `PermissionInboxView`（唯一权威仍在 `IPermissionRequestManager`） |
+| `ActiveSessionTracker` | WebUI（sample） | **删除** | 呈现端 `WebUiPermissionPresenter`（circuit 维度） |
+| `IPermissionPresenceStore.CanPresent` 决策点 | `PermissionService` 步骤 6 | **改名/改语义** | `IPermissionPresentationStore.CanSurface(sessionId)` |
+
+**新增契约（供迁移对照）：**
+
+- Abstractions：`IPermissionPresenter`（`SurfaceSessionIds` + `SurfacedChanged`）、`IPermissionPresentationStore`（`Register`/`Unregister`/`CanSurface`/`PresenterUnregistered`/`Changed`；`PresenterUnregistered` 为收敛信号，`Changed` 仅 UI 通知）。
+- `IPermissionRequestManager`：新增 `GetAllPending()` 与 `PendingChanged`（在途变更尽力通知；`BeginAsync`/`TryResolve`/`WaitAsync` 超时取消/`Dispose` 触发）。
+- `ToolContext.PermissionAuthorizer`（`IPermissionAuthorizer?`，执行级 override 贯通，注入点在 `ToolManager.ExecuteAsync`）。
+- 收敛策略：**仅呈现端注销（`PresenterUnregistered`）时收敛**（宽限 1s 复核）；注册与 `SurfaceSessionIds` 内容收缩仅触发 `Changed`，不收敛，由 300s 超时兜底（已知边界）。
+
 ---
 
 ## 3. 行为差异（同输入不同结果）
@@ -80,7 +98,7 @@
 
 | 边界 | 说明 |
 |------|------|
-| Conference 页同 circuit 多窗口共用 `PermissionCardAggregator` | 聚合器为 circuit 维度单实例（单 `_sessionId`），多会话同屏需按父会话分 key；本期容忍 |
+| ~~Conference 页同 circuit 多窗口共用 `PermissionCardAggregator`~~ | **已关闭**（2026-09-19：`PermissionCardAggregator` 删除，`PermissionInboxView` 按 `registry.Windows` 会话集合投影，多会话同屏按会话分组） |
 | 能力门 Ask 时双询问 | 能力门（`AgentExecutor`）与资源门（`ToolManager`）在能力门解析为 Ask 时各询问一次；现状等价，不合并/不消除（非目标） |
 | 多通道 `TryAutoApprove` 进程级 | 见 3.7 |
 | 非目标 | 跨会话持久化授权、审批历史、CLI 控制台通道、Gateway `PermissionMode` 在途切换 |
@@ -90,6 +108,6 @@
 ## 6. 迁移指引（第三方 / 插件）
 
 - **工具**：移除一切权限代码；如需资源级检查，实现 `IToolPermissionPolicy`（映射到 `ToolManager` 统一入口）。
-- **宿主**：不要设置 `ChatOptions.PermissionChannel`；改为注册 `IPermissionChannel`（Host Shape）并在需要交互时由活动会话维护 `IPermissionPresenceStore`。
+- **宿主**：不要设置 `ChatOptions.PermissionChannel`；改为注册 `IPermissionChannel`（Host Shape），并向 `IPermissionPresentationStore` 注册 `IPermissionPresenter` 声明可呈现的会话集合。
 - **审批请求回传**：使用 `IPermissionRequestManager.TryResolve(requestId, decision, scope, resolvedBy, reason, expectedSessionId)`（幂等）。
 - **事件订阅**：监听 `PermissionRequestEvent` / `PermissionResolvedEvent`（`MessageEventType.PermissionResolved`）。

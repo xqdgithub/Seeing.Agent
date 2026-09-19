@@ -101,6 +101,10 @@ public class TaskTool : ToolBase
 
         try
         {
+            // 统一取得父会话：GetOrLoadAsync 避免缓存未命中退化为 FollowGlobal；
+            // 新建与续跑分支共用，用于 AutoApprove 继承与权限快照派生
+            var parent = await _sessionManager.GetOrLoadAsync(context.SessionId, context.CancellationToken);
+
             SessionData session;
             if (arguments.TryGetProperty("task_id", out _))
             {
@@ -128,7 +132,6 @@ public class TaskTool : ToolBase
             }
             else
             {
-                var parent = _sessionManager.Get(context.SessionId);
                 AgentDefinition? parentDef = null;
                 if (!string.IsNullOrEmpty(parent?.SelectedAgent))
                     parentDef = await _agentRegistry.GetAgentAsync(parent.SelectedAgent);
@@ -179,8 +182,8 @@ public class TaskTool : ToolBase
                 AgentId = agentInfo.Name,
                 ModelId = session.SelectedModel,
                 SkipUserMessagePersist = true,
-                // 子代理工具调用默认自动批准（与旧 RunAgentAsync 的 AutoApproveInstance 语义一致）
-                AutoApprove = SessionAutoApprove.Enabled
+                // 子会话默认继承父会话审批策略（spec §5：与 EffectivePermissionPolicy.Resolve 一致）
+                AutoApprove = parent?.AutoApprove ?? SessionAutoApprove.FollowGlobal
             };
 
             if (background)

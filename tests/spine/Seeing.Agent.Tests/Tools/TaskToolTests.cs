@@ -140,6 +140,9 @@ public class TaskToolTests
             Kind = SessionKind.Root,
             Scenario = "code"
         };
+        fixture.SessionManager.Setup(s => s.GetOrLoadAsync(fixture.ParentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(parent);
+        // 兼容实现切换前仍走 Get 的路径，保证红阶段既有用例不被破坏
         fixture.SessionManager.Setup(s => s.Get(fixture.ParentId)).Returns(parent);
 
         string? capturedScenario = "unset";
@@ -342,6 +345,8 @@ public class TaskToolTests
                 .Returns(Task.CompletedTask);
             SessionManager.Setup(s => s.SaveAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
             SessionManager.Setup(s => s.Get(ParentId)).Returns((SessionData?)null);
+            SessionManager.Setup(s => s.GetOrLoadAsync(ParentId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SessionData { Id = ParentId, Kind = SessionKind.Root });
             SessionManager.Setup(s => s.Get(Child.Id)).Returns(Child);
             SessionManager.Setup(s => s.LoadAsync(It.IsAny<string>())).ReturnsAsync((SessionData?)null);
             SessionManager.Setup(s => s.EnsureSessionAsync(

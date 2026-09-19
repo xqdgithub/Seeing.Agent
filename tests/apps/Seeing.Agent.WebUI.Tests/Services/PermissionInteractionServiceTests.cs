@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Services;
@@ -25,27 +24,23 @@ public class PermissionInteractionServiceTests
             AllowedScopes = scopes ?? new[] { PermissionGrantScope.Once, PermissionGrantScope.Session }
         };
 
-    private static (PermissionCardAggregator Aggregator, FakePermissionRequestManager Manager, PermissionInteractionService Service)
+    private static (PermissionInbox Inbox, FakePermissionRequestManager Manager, PermissionInteractionService Service)
         Setup(PermissionRequest request)
     {
         var manager = new FakePermissionRequestManager();
         manager.Seed(request);
-        var aggregator = new PermissionCardAggregator(manager);
-        aggregator.Bind(Session);
+        var inbox = new PermissionInbox(manager);
         var service = new PermissionInteractionService(manager);
-        return (aggregator, manager, service);
+        return (inbox, manager, service);
     }
-
-    private static PermissionCardModel PendingCard(PermissionRequest request)
-        => Setup(request).Aggregator.GetByRequestId(request.RequestId!)!;
 
     [Fact]
     public void AllowOnce_ShouldResolveWithOnceScopeAndUser()
     {
         var request = Request();
-        var (aggregator, manager, service) = Setup(request);
+        var (inbox, manager, service) = Setup(request);
 
-        var result = service.AllowOnce(aggregator.GetByRequestId("r1")!);
+        var result = service.AllowOnce(inbox.GetBySession(Session).Single());
 
         result.Should().BeTrue();
         manager.ResolveCalls.Should().ContainSingle();
@@ -61,9 +56,9 @@ public class PermissionInteractionServiceTests
     public void AllowSession_ShouldResolveWithSessionScope()
     {
         var request = Request();
-        var (aggregator, manager, service) = Setup(request);
+        var (inbox, manager, service) = Setup(request);
 
-        var result = service.AllowSession(aggregator.GetByRequestId("r1")!);
+        var result = service.AllowSession(inbox.GetBySession(Session).Single());
 
         result.Should().BeTrue();
         manager.ResolveCalls.Should().ContainSingle();
@@ -80,9 +75,9 @@ public class PermissionInteractionServiceTests
             PermissionGrantScope.Session,
             PermissionGrantScope.SessionDirectory
         });
-        var (aggregator, manager, service) = Setup(request);
+        var (inbox, manager, service) = Setup(request);
 
-        var result = service.AllowSessionDirectory(aggregator.GetByRequestId("r1")!);
+        var result = service.AllowSessionDirectory(inbox.GetBySession(Session).Single());
 
         result.Should().BeTrue();
         manager.ResolveCalls.Should().ContainSingle();
@@ -94,9 +89,9 @@ public class PermissionInteractionServiceTests
     public void AllowSessionDirectory_WhenScopeNotAllowed_ShouldNoOp()
     {
         var request = Request();
-        var (aggregator, manager, service) = Setup(request);
+        var (inbox, manager, service) = Setup(request);
 
-        var result = service.AllowSessionDirectory(aggregator.GetByRequestId("r1")!);
+        var result = service.AllowSessionDirectory(inbox.GetBySession(Session).Single());
 
         result.Should().BeFalse();
         manager.ResolveCalls.Should().BeEmpty();
@@ -106,9 +101,9 @@ public class PermissionInteractionServiceTests
     public void DenyOnce_ShouldResolveWithDenyAndOnce()
     {
         var request = Request();
-        var (aggregator, manager, service) = Setup(request);
+        var (inbox, manager, service) = Setup(request);
 
-        var result = service.DenyOnce(aggregator.GetByRequestId("r1")!);
+        var result = service.DenyOnce(inbox.GetBySession(Session).Single());
 
         result.Should().BeTrue();
         manager.ResolveCalls.Should().ContainSingle();
@@ -121,9 +116,9 @@ public class PermissionInteractionServiceTests
     public void DenySession_ShouldResolveWithDenyAndSession()
     {
         var request = Request();
-        var (aggregator, manager, service) = Setup(request);
+        var (inbox, manager, service) = Setup(request);
 
-        var result = service.DenySession(aggregator.GetByRequestId("r1")!);
+        var result = service.DenySession(inbox.GetBySession(Session).Single());
 
         result.Should().BeTrue();
         manager.ResolveCalls.Should().ContainSingle();
@@ -134,23 +129,18 @@ public class PermissionInteractionServiceTests
     [Fact]
     public void Action_WhenCardAlreadyResolved_ShouldNoOp()
     {
-        var request = Request();
         var manager = new FakePermissionRequestManager();
-        manager.Seed(request);
-        var aggregator = new PermissionCardAggregator(manager);
-        aggregator.Bind(Session);
-        aggregator.OnEvent(new PermissionResolvedEvent
-        {
-            SessionId = Session,
-            RequestId = "r1",
-            Decision = PermissionEffect.Allow,
-            Scope = PermissionGrantScope.Once,
-            ResolvedBy = PermissionResolvedBy.User
-        });
         var service = new PermissionInteractionService(manager);
-        var card = aggregator.GetByRequestId("r1")!;
+        var resolvedCard = new PermissionCardModel
+        {
+            RequestId = "r1",
+            SessionId = Session,
+            PermissionKind = "tool.execute",
+            AllowedScopes = new[] { PermissionGrantScope.Once, PermissionGrantScope.Session },
+            IsPending = false
+        };
 
-        var result = service.AllowOnce(card);
+        var result = service.AllowOnce(resolvedCard);
 
         result.Should().BeFalse();
         manager.ResolveCalls.Should().BeEmpty();
@@ -160,10 +150,10 @@ public class PermissionInteractionServiceTests
     public void Action_WhenManagerRejects_ShouldReturnFalse()
     {
         var request = Request();
-        var (aggregator, manager, service) = Setup(request);
+        var (inbox, manager, service) = Setup(request);
         manager.ResolveResult = false;
 
-        var result = service.AllowOnce(aggregator.GetByRequestId("r1")!);
+        var result = service.AllowOnce(inbox.GetBySession(Session).Single());
 
         result.Should().BeFalse();
         manager.ResolveCalls.Should().ContainSingle();
@@ -172,12 +162,15 @@ public class PermissionInteractionServiceTests
     [Fact]
     public void PendingCard_ShouldExposeAllActionScopes()
     {
-        var card = PendingCard(Request("filesystem.write", new[]
+        var request = Request("filesystem.write", new[]
         {
             PermissionGrantScope.Once,
             PermissionGrantScope.Session,
             PermissionGrantScope.SessionDirectory
-        }));
+        });
+        var (inbox, _, _) = Setup(request);
+
+        var card = inbox.GetBySession(Session).Single();
 
         card.CanAllowOnce.Should().BeTrue();
         card.CanAllowSession.Should().BeTrue();

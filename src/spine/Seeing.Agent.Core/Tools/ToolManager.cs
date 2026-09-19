@@ -597,7 +597,8 @@ namespace Seeing.Agent.Core.Tools
                     CancellationToken = cancellationToken,
                     EventSink = sink,
                     MetadataSink = sink,
-                    Services = _serviceProvider
+                    Services = _serviceProvider,
+                    PermissionAuthorizer = permissionAuthorizer
                 };
 
                 var toolResult = await tool.ExecuteAsync(resolvedArgs, context).ConfigureAwait(false);

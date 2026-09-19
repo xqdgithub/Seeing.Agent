@@ -6,7 +6,7 @@ namespace Seeing.Agent.WebUI.Models;
 /// 权限内联卡片投影模型（UI 只读视图，非权威）。
 /// <para>
 /// 权威在途状态在 <see cref="IPermissionRequestManager"/>；本模型由
-/// <c>PermissionCardAggregator</c> 按 <c>RequestId</c> 聚合、按 <c>CallId</c> 关联工具卡片。
+/// <c>PermissionInbox</c> 按 <c>RequestId</c> 聚合、按 <c>CallId</c> 关联工具卡片。
 /// 渲染只读、无副作用（timeline §5.1）。
 /// </para>
 /// </summary>

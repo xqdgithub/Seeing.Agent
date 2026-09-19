@@ -58,11 +58,16 @@ public abstract class SessionToolBase : ToolBase
         IReadOnlyDictionary<string, object> metadata,
         CancellationToken ct)
     {
-        var factory = context.Services?.GetService<IPermissionAuthorizerFactory>();
-        if (factory is null)
-            return null;
+        var authorizer = context.PermissionAuthorizer;
+        if (authorizer is null)
+        {
+            var factory = context.Services?.GetService<IPermissionAuthorizerFactory>();
+            if (factory is null)
+                return null;
 
-        var authorizer = factory.Create(context.SessionId, null);
+            authorizer = factory.Create(context.SessionId, null);
+        }
+
         var resolution = await authorizer.AuthorizeAsync(new PermissionRequest
         {
             SessionId = context.SessionId,

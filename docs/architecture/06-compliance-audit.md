@@ -94,7 +94,7 @@ GetToolSchemas 调用（执行路径）
 | 依赖方向 | ✅ | 能力包无 Core ProjectReference（仅 `src/hosting/*`）；`src/gateway` 无 Core/Hosting ProjectReference |
 | 权限契约分层 | ✅ | 新契约集中在 `Abstractions/Permissions`（零实现）；实现落 Core / Hosting.Web / Gateway；UI 投影在 sample |
 | DI 环修复 | ✅ | `EffectivePermissionPolicy` 单点解析生效开关、`PermissionRequestManager` 不依赖 `IPermissionService`；Core-only 解析 Manager 由 `NullExecutionEventPublisher` 兜底，WebUI 宿主 2.9s 内启动 |
-| 单一真相源 | ✅ | 在途 → `IPermissionRequestManager`；记忆/白名单 → `IPermissionGrantStore`；可交互性 → `IPermissionPresenceStore`；审批事件 → `IExecutionEventPublisher` |
+| 单一真相源 | ✅ | 在途 → `IPermissionRequestManager`；记忆/白名单 → `IPermissionGrantStore`；可交互性 → `IPermissionPresentationStore`；审批事件 → `IExecutionEventPublisher` |
 | seam | ✅ | `SettlementEngine.ExclusiveSeams` 仅 `executionWorld`；`"permissionChannel"` seam 已移除 |
 
 复扫命令（`rg` 不可用时用 `Select-String` 等价实现，排除 `obj/bin`）见 [README 防回归扫描](README.md) 的权限契约分层规则。

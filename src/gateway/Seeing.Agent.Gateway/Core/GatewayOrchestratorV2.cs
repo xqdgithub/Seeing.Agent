@@ -6,6 +6,7 @@ using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Configuration;
+using Seeing.Agent.Gateway.Permission;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
@@ -73,8 +74,11 @@ public sealed class GatewayOrchestratorV2
         string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var presence = _services.GetRequiredService<IPermissionPresenceStore>();
-        presence.Attach(sessionId);
+        // 每订阅一个独立呈现端实例：注册/注销与订阅同生命周期，等价于原引用计数语义；
+        // 同 session 多订阅各持一份，任一订阅结束不影响其它（spec §4.6 / N2）。
+        var presentation = _services.GetRequiredService<IPermissionPresentationStore>();
+        var presenter = new GatewaySubscriptionPresenter(sessionId);
+        presentation.Register(presenter);
         try
         {
             var runCts = _runTracker.RegisterRun(executionId, sessionId);
@@ -124,7 +128,7 @@ public sealed class GatewayOrchestratorV2
         }
         finally
         {
-            presence.Detach(sessionId);
+            presentation.Unregister(presenter);
         }
     }
 
