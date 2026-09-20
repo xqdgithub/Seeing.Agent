@@ -1,0 +1,72 @@
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Services
+@inject QuestionInboxView QuestionView
+@inject QuestionInteractionService QuestionActions
+@implements IDisposable
+
+@* 工具级问答内联槽位：按 CallId 关联本工具调用的在途问答卡片，紧随工具卡下方渲染（决议后即消失） *@
+@if (_cards.Count > 0)
+{
+    <div class="tool-question-slot" style="display: flex; flex-direction: column; gap: 6px;">
+        @foreach (var card in _cards)
+        {
+            <QuestionCard @key="card.RequestId"
+                          Card="card"
+                          OnSubmit="OnSubmitAsync"
+                          OnCancel="OnCancelAsync" />
+        }
+    </div>
+}
+
+@code {
+    /// <summary>关联的工具调用 ID（内联卡片关联键）。</summary>
+    [Parameter]
+    public string? CallId { get; set; }
+
+    private IReadOnlyList<QuestionCardModel> _cards = Array.Empty<QuestionCardModel>();
+
+    protected override void OnInitialized()
+    {
+        QuestionView.Changed += OnCardsChanged;
+        Refresh();
+    }
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void OnCardsChanged()
+    {
+        Refresh();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>取本工具调用关联的在途卡片（决议后从槽位移除）。</summary>
+    private void Refresh()
+    {
+        if (string.IsNullOrEmpty(CallId))
+        {
+            _cards = Array.Empty<QuestionCardModel>();
+            return;
+        }
+
+        _cards = QuestionView.GetByCallId(CallId)
+            .Where(c => c.IsPending)
+            .ToList();
+    }
+
+    private Task OnSubmitAsync(QuestionSubmission submission)
+    {
+        QuestionActions.Submit(submission.Card, submission.Answers);
+        return Task.CompletedTask;
+    }
+
+    private Task OnCancelAsync(QuestionCardModel card)
+    {
+        QuestionActions.Cancel(card);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        QuestionView.Changed -= OnCardsChanged;
+    }
+}

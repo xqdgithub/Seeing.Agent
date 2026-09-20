@@ -1,0 +1,352 @@
+@using AntDesign
+@using Seeing.Agent.Abstractions.Questions
+@using Seeing.Agent.WebUI.Models
+
+@* 问答内联卡片：按题型渲染表单；提交/取消经回调上交（无副作用、无 JS 互操作） *@
+
+@if (Card is null || !Card.IsPending)
+{
+    return;
+}
+
+<div class="question-card">
+    <div class="question-card-header">
+        <Icon Type="@IconType.Outline.QuestionCircle" Style="color: #1677ff;" />
+        <span class="question-card-title">需要你的回答</span>
+    </div>
+
+    @foreach (var q in Card.Questions)
+    {
+        <div class="question-item @(IsMissing(q) ? "is-missing" : null)" @key="q.Id">
+            <div class="question-item-header">
+                <span class="question-item-title">@q.Header</span>
+                @if (q.Required)
+                {
+                    <span class="question-required">*</span>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(q.QuestionText))
+            {
+                <div class="question-item-text">@q.QuestionText</div>
+            }
+
+            @switch (q.Kind)
+            {
+                case QuestionKind.Single:
+                    <RadioGroup TValue="string" Value="@SingleValue(q.Id)" ValueChanged="@(v => OnSingleChanged(q.Id, v))">
+                        @foreach (var opt in q.Options)
+                        {
+                            <Radio Value="@opt.Label">
+                                @opt.Label
+                                @if (!string.IsNullOrEmpty(opt.Description))
+                                {
+                                    <span class="question-option-desc">@opt.Description</span>
+                                }
+                            </Radio>
+                        }
+                        @if (q.AllowCustom)
+                        {
+                            <Radio Value="@CustomOptionValue">其他</Radio>
+                        }
+                    </RadioGroup>
+                    break;
+                case QuestionKind.Multiple:
+                    <CheckboxGroup TValue="string" Value="@MultipleValues(q.Id).ToArray()" ValueChanged="@(v => OnMultipleChanged(q.Id, v))">
+                        @foreach (var opt in q.Options)
+                        {
+                            <Checkbox Label="@opt.Label">
+                                @opt.Label
+                                @if (!string.IsNullOrEmpty(opt.Description))
+                                {
+                                    <span class="question-option-desc">@opt.Description</span>
+                                }
+                            </Checkbox>
+                        }
+                        @if (q.AllowCustom)
+                        {
+                            <Checkbox Label="@CustomOptionValue">其他</Checkbox>
+                        }
+                    </CheckboxGroup>
+                    break;
+                case QuestionKind.Text:
+                    <TextArea Value="@TextValue(q.Id)" ValueChanged="@(v => OnTextChanged(q.Id, v))"
+                              Rows="3" Placeholder="请输入回答" />
+                    break;
+            }
+
+            @if (q.Kind != QuestionKind.Text && q.AllowCustom && IsCustomSelected(q))
+            {
+                <Input TValue="string" Value="@CustomText(q.Id)" ValueChanged="@(v => OnCustomChanged(q.Id, v))"
+                       Placeholder="请输入自定义内容" Style="margin-top: 6px;" />
+            }
+        </div>
+    }
+
+    <div class="question-card-actions">
+        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" Disabled="@(!CanSubmit)" OnClick="SubmitAsync">提交</Button>
+        <Button Size="@ButtonSize.Small" OnClick="CancelAsync">取消</Button>
+    </div>
+</div>
+
+<style>
+    .question-card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 6px 0;
+        padding: 8px 10px;
+        border: 1px solid #91caff;
+        background: linear-gradient(180deg, #e6f4ff 0%, var(--color-bg-container, #fff) 80%);
+        border-radius: 8px;
+    }
+
+    .question-card-header {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .question-card-title {
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .question-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 6px 8px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: var(--color-bg-container, #fff);
+    }
+
+    .question-item.is-missing {
+        border-color: #ff4d4f;
+    }
+
+    .question-item-header {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .question-item-title {
+        font-weight: 500;
+        font-size: 12px;
+    }
+
+    .question-required {
+        color: #ff4d4f;
+    }
+
+    .question-item-text {
+        font-size: 12px;
+        color: var(--color-text-secondary, #666);
+    }
+
+    .question-option-desc {
+        margin-left: 6px;
+        font-size: 11px;
+        color: var(--color-text-tertiary, #999);
+    }
+
+    .question-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+</style>
+
+@code {
+    private const string CustomOptionValue = "\u0000__custom__";
+
+    /// <summary>卡片投影模型。</summary>
+    [Parameter]
+    public QuestionCardModel? Card { get; set; }
+
+    [Parameter]
+    public EventCallback<QuestionSubmission> OnSubmit { get; set; }
+
+    [Parameter]
+    public EventCallback<QuestionCardModel> OnCancel { get; set; }
+
+    private readonly Dictionary<string, string> _singleValues = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _multipleValues = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _textValues = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _customValues = new(StringComparer.Ordinal);
+    private string? _initializedFor;
+
+    protected override void OnParametersSet()
+    {
+        if (Card is null || string.Equals(_initializedFor, Card.RequestId, StringComparison.Ordinal))
+            return;
+
+        _initializedFor = Card.RequestId;
+        InitState();
+    }
+
+    private void InitState()
+    {
+        _singleValues.Clear();
+        _multipleValues.Clear();
+        _textValues.Clear();
+        _customValues.Clear();
+
+        if (Card is null)
+            return;
+
+        foreach (var q in Card.Questions)
+        {
+            var defaults = q.DefaultSelectedLabels ?? Array.Empty<string>();
+            switch (q.Kind)
+            {
+                case QuestionKind.Single:
+                    var single = defaults.FirstOrDefault(l => q.Options.Any(o => o.Label == l));
+                    if (single is not null)
+                    {
+                        _singleValues[q.Id] = single;
+                    }
+                    else if (q.AllowCustom && !string.IsNullOrEmpty(q.DefaultCustomAnswer))
+                    {
+                        _singleValues[q.Id] = CustomOptionValue;
+                        _customValues[q.Id] = q.DefaultCustomAnswer!;
+                    }
+                    else
+                    {
+                        _singleValues[q.Id] = string.Empty;
+                    }
+                    break;
+                case QuestionKind.Multiple:
+                    var set = new HashSet<string>(
+                        defaults.Where(l => q.Options.Any(o => o.Label == l)), StringComparer.Ordinal);
+                    if (q.AllowCustom && !string.IsNullOrEmpty(q.DefaultCustomAnswer))
+                    {
+                        set.Add(CustomOptionValue);
+                        _customValues[q.Id] = q.DefaultCustomAnswer!;
+                    }
+                    _multipleValues[q.Id] = set;
+                    break;
+                case QuestionKind.Text:
+                    _textValues[q.Id] = q.DefaultCustomAnswer ?? string.Empty;
+                    break;
+            }
+        }
+    }
+
+    private string SingleValue(string questionId)
+        => _singleValues.TryGetValue(questionId, out var value) ? value : string.Empty;
+
+    private IEnumerable<string> MultipleValues(string questionId)
+        => _multipleValues.TryGetValue(questionId, out var value) ? value : Array.Empty<string>();
+
+    private string TextValue(string questionId)
+        => _textValues.TryGetValue(questionId, out var value) ? value : string.Empty;
+
+    private string CustomText(string questionId)
+        => _customValues.TryGetValue(questionId, out var value) ? value : string.Empty;
+
+    private bool IsCustomSelected(QuestionCardItem q) => q.Kind switch
+    {
+        QuestionKind.Single => string.Equals(SingleValue(q.Id), CustomOptionValue, StringComparison.Ordinal),
+        QuestionKind.Multiple => MultipleValues(q.Id).Contains(CustomOptionValue, StringComparer.Ordinal),
+        _ => false
+    };
+
+    private bool IsAnswered(QuestionCardItem q) => q.Kind switch
+    {
+        QuestionKind.Single => IsSingleAnswered(q),
+        QuestionKind.Multiple => IsMultipleAnswered(q),
+        QuestionKind.Text => !string.IsNullOrWhiteSpace(TextValue(q.Id)),
+        _ => false
+    };
+
+    private bool IsSingleAnswered(QuestionCardItem q)
+    {
+        var value = SingleValue(q.Id);
+        if (string.IsNullOrEmpty(value))
+            return false;
+        return !string.Equals(value, CustomOptionValue, StringComparison.Ordinal)
+            || !string.IsNullOrWhiteSpace(CustomText(q.Id));
+    }
+
+    private bool IsMultipleAnswered(QuestionCardItem q)
+    {
+        var values = MultipleValues(q.Id);
+        if (!values.Any())
+            return false;
+        return !values.Contains(CustomOptionValue, StringComparer.Ordinal)
+            || !string.IsNullOrWhiteSpace(CustomText(q.Id));
+    }
+
+    private bool IsMissing(QuestionCardItem q) => q.Required && !IsAnswered(q);
+
+    private bool CanSubmit => Card is not null && Card.Questions.All(q => !q.Required || IsAnswered(q));
+
+    private void OnSingleChanged(string questionId, string? value)
+        => _singleValues[questionId] = value ?? string.Empty;
+
+    private void OnMultipleChanged(string questionId, IEnumerable<string>? values)
+        => _multipleValues[questionId] = new HashSet<string>(values ?? Array.Empty<string>(), StringComparer.Ordinal);
+
+    private void OnTextChanged(string questionId, string? value)
+        => _textValues[questionId] = value ?? string.Empty;
+
+    private void OnCustomChanged(string questionId, string? value)
+        => _customValues[questionId] = value ?? string.Empty;
+
+    private Task SubmitAsync()
+    {
+        if (Card is null || !CanSubmit)
+            return Task.CompletedTask;
+
+        var submission = new QuestionSubmission
+        {
+            Card = Card,
+            Answers = BuildAnswers()
+        };
+        return OnSubmit.InvokeAsync(submission);
+    }
+
+    private Task CancelAsync()
+        => Card is null ? Task.CompletedTask : OnCancel.InvokeAsync(Card);
+
+    private IReadOnlyList<QuestionAnswer> BuildAnswers()
+    {
+        if (Card is null)
+            return Array.Empty<QuestionAnswer>();
+
+        var answers = new List<QuestionAnswer>();
+        foreach (var q in Card.Questions)
+        {
+            var answer = new QuestionAnswer { QuestionId = q.Id };
+            switch (q.Kind)
+            {
+                case QuestionKind.Single:
+                    var single = SingleValue(q.Id);
+                    if (string.Equals(single, CustomOptionValue, StringComparison.Ordinal))
+                        answer.CustomAnswer = CustomText(q.Id);
+                    else if (!string.IsNullOrEmpty(single))
+                        answer.SelectedLabels.Add(single);
+                    break;
+                case QuestionKind.Multiple:
+                    foreach (var label in MultipleValues(q.Id))
+                    {
+                        if (string.Equals(label, CustomOptionValue, StringComparison.Ordinal))
+                            answer.CustomAnswer = CustomText(q.Id);
+                        else
+                            answer.SelectedLabels.Add(label);
+                    }
+                    break;
+                case QuestionKind.Text:
+                    answer.CustomAnswer = TextValue(q.Id);
+                    break;
+            }
+
+            answers.Add(answer);
+        }
+
+        return answers;
+    }
+}
