@@ -13,6 +13,8 @@ namespace Seeing.Agent.WebUI.Services;
 /// </summary>
 public sealed class QuestionInteractionService
 {
+    private const int MaxAnswerLength = 2000;
+
     private readonly IQuestionRequestManager _manager;
     private readonly ILogger<QuestionInteractionService>? _logger;
 
@@ -44,12 +46,41 @@ public sealed class QuestionInteractionService
         {
             RequestId = card.RequestId,
             Status = status,
-            Answers = answers is null ? new List<QuestionAnswer>() : answers.ToList()
+            Answers = ClampAnswers(answers)
         };
 
         return _manager.TryResolve(
             card.RequestId,
             result,
             expectedSessionId: string.IsNullOrEmpty(card.SessionId) ? null : card.SessionId);
+    }
+
+    /// <summary>单答案超长截断（spec §12）：customAnswer 超过 2000 字符时截断并记录。</summary>
+    private List<QuestionAnswer> ClampAnswers(IReadOnlyList<QuestionAnswer>? answers)
+    {
+        if (answers is null || answers.Count == 0)
+            return new List<QuestionAnswer>();
+
+        var clamped = new List<QuestionAnswer>(answers.Count);
+        foreach (var answer in answers)
+        {
+            var custom = answer.CustomAnswer;
+            if (custom is not null && custom.Length > MaxAnswerLength)
+            {
+                _logger?.LogWarning(
+                    "问答自定义答案超长已截断 QuestionId={QuestionId} OriginalLength={Length}",
+                    answer.QuestionId, custom.Length);
+                custom = custom[..MaxAnswerLength];
+            }
+
+            clamped.Add(new QuestionAnswer
+            {
+                QuestionId = answer.QuestionId,
+                SelectedLabels = answer.SelectedLabels,
+                CustomAnswer = custom
+            });
+        }
+
+        return clamped;
     }
 }
