@@ -134,15 +134,10 @@
         }
         else if (!_userToggledCard)
         {
+            // 执行中展开；执行结束后保持展开，避免折叠卸载 body 造成闪屏
             if (ToolCall.IsRunning)
             {
                 _isExpanded = true;
-            }
-            else if (_lastStatus is "running" or "pending"
-                     && status is "success" or "failed" or "cancelled" or "rejected")
-            {
-                // 刚结束：自动折叠整卡
-                _isExpanded = false;
             }
         }
 

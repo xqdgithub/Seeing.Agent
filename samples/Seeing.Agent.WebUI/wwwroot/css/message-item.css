@@ -216,6 +216,15 @@
     line-height: 1.6;
 }
 
+/* 流式思考：内容区最多显示三行（超出滚动）；完成后手动展开恢复完整高度 */
+.reasoning-section .reasoning-content-scroll.is-streaming {
+    max-height: calc(1.6em * 3);
+}
+
+.reasoning-section .reasoning-content-scroll.is-complete {
+    max-height: 400px;
+}
+
 .reasoning-section .reasoning-content p,
 .reasoning-section .reasoning-content li {
     margin: 4px 0;
