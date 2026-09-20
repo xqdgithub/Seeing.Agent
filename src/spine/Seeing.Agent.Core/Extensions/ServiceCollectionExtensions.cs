@@ -25,6 +25,7 @@ using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Core.Questions;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Scheduling;
@@ -387,6 +388,9 @@ namespace Seeing.Agent.Core.Extensions
 
             // 权限服务（新系统 - 统一权限检查入口）
             services.AddPermissionService();
+
+            // 问答交互（在途管理器 + 可呈现性注册表）
+            services.AddSeeingQuestions();
 
             // Hook 管理器
             services.AddSingleton<HookManager>();
