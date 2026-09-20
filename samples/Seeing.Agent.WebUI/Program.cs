@@ -102,8 +102,8 @@ builder.Services.AddSingleton<ICircuitResourceCleanup>(sp => sp.GetRequiredServi
 builder.Services.AddSingleton<PermissionInbox>();
 // 当前标签权限收件箱视图（Scoped，circuit 维度；作用域 = SessionWindowRegistry.Windows）
 builder.Services.AddScoped<PermissionInboxView>();
-// WebUI circuit 呈现端（Scoped）：向 IPermissionPresentationStore 声明可呈现会话集合
-builder.Services.AddScoped<WebUiPermissionPresenter>();
+// WebUI circuit 呈现端（Scoped）：向 IPermissionSurfaceRegistry 声明可呈现会话集合
+builder.Services.AddScoped<WebUiSurfacePresenter>();
 builder.Services.AddScoped<TaskCardAggregator>();
 builder.Services.AddScoped<PermissionInteractionService>();
 builder.Services.AddScoped<TaskSessionResolver>();

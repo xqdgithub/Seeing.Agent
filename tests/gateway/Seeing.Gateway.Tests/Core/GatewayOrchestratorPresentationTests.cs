@@ -7,6 +7,7 @@ using Moq;
 using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Gateway.Models;
@@ -106,7 +107,7 @@ public class GatewayOrchestratorPresentationTests
         sessionManager.Setup(s => s.SaveAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
 
         var services = new ServiceCollection();
-        services.AddSingleton<IPermissionPresentationStore>(store);
+        services.AddSingleton<IPermissionSurfaceRegistry>(store);
         services.AddSingleton(chatOrchestrator.Object);
         services.AddSingleton(sessionManager.Object);
         return services.BuildServiceProvider();
@@ -148,27 +149,27 @@ public class GatewayOrchestratorPresentationTests
         }
     }
 
-    private sealed class FakePermissionPresentationStore : IPermissionPresentationStore
+    private sealed class FakePermissionPresentationStore : IPermissionSurfaceRegistry
     {
-        private readonly ConcurrentDictionary<IPermissionPresenter, byte> _presenters = new();
+        private readonly ConcurrentDictionary<ISurfaceProvider, byte> _presenters = new();
 
         public int PresenterCount => _presenters.Count;
 
         public event Action? Changed;
 
-        public event Action? PresenterUnregistered
+        public event Action? ProviderUnregistered
         {
             add { }
             remove { }
         }
 
-        public void Register(IPermissionPresenter presenter)
+        public void Register(ISurfaceProvider presenter)
         {
             _presenters[presenter] = 0;
             Changed?.Invoke();
         }
 
-        public void Unregister(IPermissionPresenter presenter)
+        public void Unregister(ISurfaceProvider presenter)
         {
             _presenters.TryRemove(presenter, out _);
             Changed?.Invoke();

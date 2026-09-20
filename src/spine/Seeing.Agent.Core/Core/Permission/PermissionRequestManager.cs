@@ -1,25 +1,26 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Interactions;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>
-/// 在途审批唯一权威：登记/等待/幂等完成/清理，审批请求与结果事件的唯一发布点。
+/// 在途审批唯一权威：通用在途机制由 <see cref="PendingRequestManager{TRequest,TResponse}"/> 提供，
+/// 本类只负责权限领域语义（溢出拒绝、事件发布、Dismiss 广播、重评估、呈现端注销收敛）。
 /// </summary>
-public sealed class PermissionRequestManager : IPermissionRequestManager
+public sealed class PermissionRequestManager : PendingRequestManager<PermissionRequest, PermissionResolution>, IPermissionRequestManager
 {
     private const int MaxPending = 32;
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
-    private readonly ConcurrentDictionary<string, PendingEntry> _pending = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<IPermissionChannel> _channels;
     private readonly IExecutionEventPublisher _eventPublisher;
-    private readonly IPermissionPresentationStore _presentation;
+    private readonly IPermissionSurfaceRegistry _presentation;
     private readonly EffectivePermissionPolicy _policy;
     private readonly ILogger<PermissionRequestManager> _logger;
     private readonly TimeSpan _timeout;
@@ -33,13 +34,10 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
     private bool _lastAutoApproveAll;
     private bool _disposed;
 
-    /// <inheritdoc />
-    public event Action? PendingChanged;
-
     /// <summary>创建在途管理器（等待超时 5 分钟；收敛宽限 1 秒）。</summary>
     public PermissionRequestManager(
         IExecutionEventPublisher eventPublisher,
-        IPermissionPresentationStore presentation,
+        IPermissionSurfaceRegistry presentation,
         EffectivePermissionPolicy policy,
         IEnumerable<IPermissionChannel> channels,
         ISessionEventPublisher sessionEvents,
@@ -52,7 +50,7 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
     /// <summary>创建在途管理器（可指定等待超时与收敛宽限；仅供测试注入短值）。</summary>
     internal PermissionRequestManager(
         IExecutionEventPublisher eventPublisher,
-        IPermissionPresentationStore presentation,
+        IPermissionSurfaceRegistry presentation,
         EffectivePermissionPolicy policy,
         IEnumerable<IPermissionChannel> channels,
         ISessionEventPublisher sessionEvents,
@@ -60,6 +58,7 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
         ILogger<PermissionRequestManager> logger,
         TimeSpan timeout,
         TimeSpan? convergenceGrace = null)
+        : base(logger)
     {
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
         _presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
@@ -73,77 +72,68 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
         _sessionSubscription = sessionEvents?.Events.Subscribe(OnSessionEvent);
         _optionsSubscription = options?.OnChange(OnOptionsChanged);
 
-        _presentation.PresenterUnregistered += OnPresenterUnregistered;
-        _convergenceTimer = new Timer(OnConvergenceTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _presentation.ProviderUnregistered += OnProviderUnregistered;
+        _convergenceTimer = new Timer(OnConvergenceTimer, null, System.Threading.Timeout.InfiniteTimeSpan, System.Threading.Timeout.InfiniteTimeSpan);
     }
 
     /// <inheritdoc />
-    public Task<PermissionTicket> BeginAsync(PermissionRequest request, CancellationToken ct = default)
+    protected override TimeSpan Timeout => _timeout;
+
+    /// <inheritdoc />
+    protected override string GetRequestId(PermissionRequest request) => request.RequestId ?? string.Empty;
+
+    /// <inheritdoc />
+    protected override PermissionRequest AssignRequestId(PermissionRequest request, string id) => request with { RequestId = id };
+
+    /// <inheritdoc />
+    protected override string GetSessionId(PermissionRequest request) => request.SessionId;
+
+    /// <inheritdoc />
+    protected override PermissionResolution CreateFallback(PermissionRequest request, PendingFallbackReason reason) => reason switch
     {
-        ArgumentNullException.ThrowIfNull(request);
+        PendingFallbackReason.Timeout => Deny(request.RequestId!, request.SessionId, PermissionResolvedBy.Timeout, "审批超时"),
+        PendingFallbackReason.Cancelled => Deny(request.RequestId!, request.SessionId, PermissionResolvedBy.Cancellation, "已取消"),
+        PendingFallbackReason.Disposed => Deny(request.RequestId!, request.SessionId, PermissionResolvedBy.Cancellation, "管理器已释放"),
+        _ => Deny(request.RequestId!, request.SessionId, PermissionResolvedBy.NoChannel, "呈现端已移除")
+    };
 
-        var requestId = string.IsNullOrEmpty(request.RequestId)
-            ? Guid.NewGuid().ToString("N")
-            : request.RequestId!;
-        var normalized = request with { RequestId = requestId };
+    /// <inheritdoc />
+    protected override PermissionResolution CreateMissingResponse(RequestTicket ticket) =>
+        Deny(ticket.RequestId, ticket.SessionId, PermissionResolvedBy.NoChannel, "请求不存在或已完成");
 
-        var entry = new PendingEntry(
-            normalized,
-            new TaskCompletionSource<PermissionResolution>(TaskCreationOptions.RunContinuationsAsynchronously));
+    /// <inheritdoc />
+    protected override PermissionResolution? ValidateOnBegin(PermissionRequest request)
+    {
+        if (PendingCount < MaxPending)
+            return null;
 
-        if (PendingCount >= MaxPending)
-        {
-            _logger.LogWarning("权限在途队列已满（{Count}），立即拒绝 RequestId={RequestId}", PendingCount, requestId);
-            var overflow = new PermissionResolution
-            {
-                RequestId = requestId,
-                SessionId = normalized.SessionId,
-                CallId = normalized.CallId,
-                Decision = PermissionEffect.Deny,
-                Scope = PermissionGrantScope.Once,
-                ResolvedBy = PermissionResolvedBy.NoChannel,
-                Reason = "队列已满"
-            };
-            entry.Completion.TrySetResult(overflow);
-            _pending[requestId] = entry;
-            RaisePendingChanged();
-            // 补发终态事件，使溢出拒绝可被 UI/Gateway 观测（事件唯一发布点语义）。
-            PublishResolvedEvent(normalized, overflow);
-            return Task.FromResult(new PermissionTicket(requestId, normalized.SessionId));
-        }
-
-        _pending[requestId] = entry;
-
-        if (!string.IsNullOrEmpty(normalized.SessionId) && !_presentation.CanSurface(normalized.SessionId))
-            _logger.LogDebug("会话无可交互呈现端，仍登记在途请求 RequestId={RequestId}", requestId);
-
-        RaisePendingChanged();
-        PublishRequestEvent(normalized);
-        return Task.FromResult(new PermissionTicket(requestId, normalized.SessionId));
+        _logger.LogWarning("权限在途队列已满（{Count}），立即拒绝 RequestId={RequestId}", PendingCount, request.RequestId);
+        return Deny(request.RequestId!, request.SessionId, PermissionResolvedBy.NoChannel, "队列已满");
     }
 
     /// <inheritdoc />
-    public async Task<PermissionResolution> WaitAsync(PermissionTicket ticket, CancellationToken ct = default)
+    protected override void OnRequestBegan(PermissionRequest request) => PublishRequestEvent(request);
+
+    /// <inheritdoc />
+    protected override void OnResolved(PermissionRequest request, PermissionResolution resolution)
     {
-        if (!_pending.TryGetValue(ticket.RequestId, out var entry))
-            return Deny(ticket.RequestId, ticket.SessionId, PermissionResolvedBy.NoChannel, "请求不存在或已完成");
+        PublishResolvedEvent(request, resolution);
+        _ = BroadcastDismissAsync(resolution);
+    }
 
-        using var registration = ct.Register(() =>
-            TryResolve(ticket.RequestId, PermissionEffect.Deny, PermissionGrantScope.Once,
-                PermissionResolvedBy.Cancellation, "已取消", ticket.SessionId));
+    /// <inheritdoc />
+    protected override PermissionResolution FinalizeResponse(PermissionRequest request, PermissionResolution response) =>
+        response with { SessionId = request.SessionId, CallId = request.CallId };
 
-        var completed = await Task.WhenAny(entry.Completion.Task, Task.Delay(_timeout, CancellationToken.None))
-            .ConfigureAwait(false);
+    /// <inheritdoc />
+    protected override void OnDisposing()
+    {
+        _disposed = true;
 
-        if (completed != entry.Completion.Task)
-        {
-            TryResolve(ticket.RequestId, PermissionEffect.Deny, PermissionGrantScope.Once,
-                PermissionResolvedBy.Timeout, "审批超时", ticket.SessionId);
-        }
-
-        var resolution = await entry.Completion.Task.ConfigureAwait(false);
-        _pending.TryRemove(new KeyValuePair<string, PendingEntry>(ticket.RequestId, entry));
-        return resolution;
+        _presentation.ProviderUnregistered -= OnProviderUnregistered;
+        _convergenceTimer.Dispose();
+        _sessionSubscription?.Dispose();
+        _optionsSubscription?.Dispose();
     }
 
     /// <inheritdoc />
@@ -155,80 +145,21 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
         string? reason = null,
         string? expectedSessionId = null)
     {
-        if (string.IsNullOrEmpty(requestId) || !_pending.TryGetValue(requestId, out var entry))
+        if (string.IsNullOrEmpty(requestId))
             return false;
 
-        if (!string.IsNullOrEmpty(expectedSessionId) &&
-            !string.Equals(entry.Request.SessionId, expectedSessionId, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
+        // SessionId/CallId 由 FinalizeResponse 从在途请求补全；此处只提供权限决议字段。
         var resolution = new PermissionResolution
         {
             RequestId = requestId,
-            SessionId = entry.Request.SessionId,
-            CallId = entry.Request.CallId,
+            SessionId = expectedSessionId ?? string.Empty,
             Decision = decision,
             Scope = scope,
             ResolvedBy = resolvedBy,
             Reason = reason
         };
 
-        if (!entry.Completion.TrySetResult(resolution))
-            return false;
-
-        PublishResolvedEvent(entry.Request, resolution);
-        RaisePendingChanged();
-        _ = BroadcastDismissAsync(resolution);
-        return true;
-    }
-
-    /// <inheritdoc />
-    public IReadOnlyList<PermissionRequest> GetPending(string sessionId)
-    {
-        if (string.IsNullOrEmpty(sessionId))
-            return Array.Empty<PermissionRequest>();
-
-        return _pending.Values
-            .Where(entry => !entry.Completion.Task.IsCompleted)
-            .Where(entry => string.Equals(entry.Request.SessionId, sessionId, StringComparison.Ordinal))
-            .Select(entry => entry.Request)
-            .ToList();
-    }
-
-    /// <inheritdoc />
-    public IReadOnlyList<PermissionRequest> GetAllPending() =>
-        _pending.Values
-            .Where(entry => !entry.Completion.Task.IsCompleted)
-            .Select(entry => entry.Request)
-            .ToList();
-
-    /// <inheritdoc />
-    public int PendingCount => _pending.Values.Count(entry => !entry.Completion.Task.IsCompleted);
-
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        if (_disposed)
-            return;
-        _disposed = true;
-
-        _presentation.PresenterUnregistered -= OnPresenterUnregistered;
-        _convergenceTimer.Dispose();
-
-        _sessionSubscription?.Dispose();
-        _optionsSubscription?.Dispose();
-
-        foreach (var requestId in _pending.Keys)
-        {
-            // 与溢出路径一致：统一经 TryResolve 发布 PermissionResolvedEvent 并广播 DismissAsync。
-            TryResolve(requestId, PermissionEffect.Deny, PermissionGrantScope.Once,
-                PermissionResolvedBy.Cancellation, "管理器已释放");
-        }
-
-        _pending.Clear();
-        RaisePendingChanged();
+        return TryResolve(requestId, resolution, expectedSessionId);
     }
 
     private static PermissionResolution Deny(
@@ -245,20 +176,8 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
             Reason = reason
         };
 
-    private void RaisePendingChanged()
-    {
-        try
-        {
-            PendingChanged?.Invoke();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "发布在途变更通知失败");
-        }
-    }
-
     // 仅在呈现端注销（身份移除）时收敛：注册与 SurfaceSessionIds 内容收缩都不收敛（spec §4.4）。
-    private void OnPresenterUnregistered()
+    private void OnProviderUnregistered()
     {
         if (_disposed)
             return;
@@ -267,7 +186,7 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
         {
             // 合并注销时刻及此前已登记的在途请求；已在计时中的变化不重置计时器（防高频注销饿死）。
             _convergenceCandidates ??= new HashSet<string>(StringComparer.Ordinal);
-            _convergenceCandidates.UnionWith(_pending.Keys);
+            _convergenceCandidates.UnionWith(GetAllPending().Select(entry => entry.RequestId!).Where(id => !string.IsNullOrEmpty(id)));
 
             if (_convergenceArmed)
                 return;
@@ -277,7 +196,7 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
 
         try
         {
-            _convergenceTimer.Change(_convergenceGrace, Timeout.InfiniteTimeSpan);
+            _convergenceTimer.Change(_convergenceGrace, System.Threading.Timeout.InfiniteTimeSpan);
         }
         catch (ObjectDisposedException)
         {
@@ -304,10 +223,11 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
         {
             foreach (var requestId in candidates)
             {
-                if (!_pending.TryGetValue(requestId, out var entry) || entry.Completion.Task.IsCompleted)
+                var pending = GetAllPending().FirstOrDefault(entry => string.Equals(entry.RequestId, requestId, StringComparison.Ordinal));
+                if (pending is null)
                     continue;
 
-                var sessionId = entry.Request.SessionId;
+                var sessionId = pending.SessionId;
                 if (!string.IsNullOrEmpty(sessionId) && _presentation.CanSurface(sessionId))
                     continue;
 
@@ -433,8 +353,4 @@ public sealed class PermissionRequestManager : IPermissionRequestManager
             }
         }
     }
-
-    private sealed record PendingEntry(
-        PermissionRequest Request,
-        TaskCompletionSource<PermissionResolution> Completion);
 }

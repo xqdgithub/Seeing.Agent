@@ -1,4 +1,6 @@
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Core.Interactions;
 using Seeing.Agent.Core.Permission;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -105,7 +107,7 @@ public class PermissionServiceTests
     [Fact]
     public async Task AuthorizeAsync_WithPresenterNotSurfacingSession_ShouldDenyNoChannel()
     {
-        var presentation = new PermissionPresentationStore();
+        var presentation = new SurfaceRegistry();
         presentation.Register(new FixedPresenter("other-session"));
         var manager = new Mock<IPermissionRequestManager>();
         var service = new PermissionService(
@@ -127,7 +129,7 @@ public class PermissionServiceTests
             Times.Never);
     }
 
-    private sealed class FixedPresenter : IPermissionPresenter
+    private sealed class FixedPresenter : ISurfaceProvider
     {
         private readonly IReadOnlyCollection<string> _surface;
 

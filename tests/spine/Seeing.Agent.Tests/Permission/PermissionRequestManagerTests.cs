@@ -3,8 +3,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Interactions;
 using Seeing.Agent.Core.Permission;
 using Seeing.Session.Core;
 using Xunit;
@@ -164,7 +166,7 @@ public class PermissionRequestManagerTests
     {
         using var harness = new ManagerHarness();
 
-        var resolution = await harness.Manager.WaitAsync(new PermissionTicket("missing", "s1"));
+        var resolution = await harness.Manager.WaitAsync(new RequestTicket("missing", "s1"));
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -578,7 +580,7 @@ public class PermissionRequestManagerTests
         public Mock<ISessionManager> Sessions { get; } = new();
         public ManualSessionEventPublisher SessionEvents { get; } = new();
         public TestOptionsMonitor Options { get; }
-        public PermissionPresentationStore Presentation { get; } = new();
+        public SurfaceRegistry Presentation { get; } = new();
         public EffectivePermissionPolicy Policy { get; }
         public PermissionRequestManager Manager { get; }
 
@@ -607,7 +609,7 @@ public class PermissionRequestManagerTests
         public void Dispose() => Manager.Dispose();
     }
 
-    private sealed class TestPresenter : IPermissionPresenter
+    private sealed class TestPresenter : ISurfaceProvider
     {
         private IReadOnlyCollection<string> _surface;
 

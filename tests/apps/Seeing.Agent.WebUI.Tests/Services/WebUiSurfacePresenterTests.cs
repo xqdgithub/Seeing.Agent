@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
@@ -9,7 +9,7 @@ using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 
-public class WebUiPermissionPresenterTests
+public class WebUiSurfacePresenterTests
 {
     private static SessionGroup AnchorAndChildGroup() => new()
     {
@@ -48,27 +48,31 @@ public class WebUiPermissionPresenterTests
     public async Task Surface_ShouldIncludeWindowsAndAnchor()
     {
         var registry = await ReadyRegistryAsync();
-        var store = new FakePermissionPresentationStore();
+        var store = new FakePermissionSurfaceRegistry();
+        var questionStore = new FakePermissionSurfaceRegistry();
 
-        using var presenter = new WebUiPermissionPresenter(
-            store, () => registry,
+        using var presenter = new WebUiSurfacePresenter(
+            store, questionStore, () => registry,
             TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(200),
-            NullLogger<WebUiPermissionPresenter>.Instance);
+            NullLogger<WebUiSurfacePresenter>.Instance);
 
         presenter.SurfaceSessionIds.Should().BeEquivalentTo(new[] { "anchor", "child" });
         store.RegisterCount.Should().Be(1);
+        questionStore.RegisterCount.Should().Be(1);
         store.CanSurface("child").Should().BeTrue();
+        questionStore.CanSurface("child").Should().BeTrue();
     }
 
     [Fact]
     public async Task TransientEmptyWithinConfirmWindow_ShouldNotReportEmpty()
     {
         var registry = await ReadyRegistryAsync();
-        var store = new FakePermissionPresentationStore();
-        using var presenter = new WebUiPermissionPresenter(
-            store, () => registry,
+        var store = new FakePermissionSurfaceRegistry();
+        var questionStore = new FakePermissionSurfaceRegistry();
+        using var presenter = new WebUiSurfacePresenter(
+            store, questionStore, () => registry,
             TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(400),
-            NullLogger<WebUiPermissionPresenter>.Instance);
+            NullLogger<WebUiSurfacePresenter>.Instance);
         var reports = new List<IReadOnlyCollection<string>>();
         presenter.SurfacedChanged += () => reports.Add(presenter.SurfaceSessionIds.ToArray());
 
@@ -86,17 +90,19 @@ public class WebUiPermissionPresenterTests
     public async Task Dispose_ShouldUnregisterAndStopReporting()
     {
         var registry = await ReadyRegistryAsync();
-        var store = new FakePermissionPresentationStore();
-        var presenter = new WebUiPermissionPresenter(
-            store, () => registry,
+        var store = new FakePermissionSurfaceRegistry();
+        var questionStore = new FakePermissionSurfaceRegistry();
+        var presenter = new WebUiSurfacePresenter(
+            store, questionStore, () => registry,
             TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(100),
-            NullLogger<WebUiPermissionPresenter>.Instance);
+            NullLogger<WebUiSurfacePresenter>.Instance);
         var reports = 0;
         presenter.SurfacedChanged += () => Interlocked.Increment(ref reports);
 
         presenter.Dispose();
 
         store.UnregisterCount.Should().Be(1);
+        questionStore.UnregisterCount.Should().Be(1);
         registry.Rebind("other");
         await Task.Delay(120);
 
@@ -107,45 +113,47 @@ public class WebUiPermissionPresenterTests
     [Fact]
     public void Prerender_NullRegistry_ShouldNotRegister()
     {
-        var store = new FakePermissionPresentationStore();
-        using var presenter = new WebUiPermissionPresenter(
-            store, () => null,
+        var store = new FakePermissionSurfaceRegistry();
+        var questionStore = new FakePermissionSurfaceRegistry();
+        using var presenter = new WebUiSurfacePresenter(
+            store, questionStore, () => null,
             TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(10),
-            NullLogger<WebUiPermissionPresenter>.Instance);
+            NullLogger<WebUiSurfacePresenter>.Instance);
 
         store.RegisterCount.Should().Be(0);
+        questionStore.RegisterCount.Should().Be(0);
         presenter.SurfaceSessionIds.Should().BeEmpty();
     }
 }
 
-/// <summary>测试替身：呈现端登记表。</summary>
-internal sealed class FakePermissionPresentationStore : IPermissionPresentationStore
+/// <summary>测试替身：可呈现性注册表（同时满足权限与 Question 两个 marker 接口）。</summary>
+internal sealed class FakePermissionSurfaceRegistry : IPermissionSurfaceRegistry, IQuestionSurfaceRegistry
 {
-    private readonly HashSet<IPermissionPresenter> _presenters = new();
+    private readonly HashSet<ISurfaceProvider> _providers = new();
 
     public int RegisterCount { get; private set; }
 
     public int UnregisterCount { get; private set; }
 
-    public event Action? PresenterUnregistered;
+    public event Action? ProviderUnregistered;
 
     public event Action? Changed;
 
-    public void Register(IPermissionPresenter presenter)
+    public void Register(ISurfaceProvider provider)
     {
-        if (_presenters.Add(presenter))
+        if (_providers.Add(provider))
             RegisterCount++;
         Changed?.Invoke();
     }
 
-    public void Unregister(IPermissionPresenter presenter)
+    public void Unregister(ISurfaceProvider provider)
     {
-        if (_presenters.Remove(presenter))
+        if (_providers.Remove(provider))
             UnregisterCount++;
-        PresenterUnregistered?.Invoke();
+        ProviderUnregistered?.Invoke();
         Changed?.Invoke();
     }
 
     public bool CanSurface(string sessionId)
-        => _presenters.Any(p => p.SurfaceSessionIds.Contains(sessionId));
+        => _providers.Any(p => p.SurfaceSessionIds.Contains(sessionId));
 }

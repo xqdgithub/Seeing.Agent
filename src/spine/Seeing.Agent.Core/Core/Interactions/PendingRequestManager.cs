@@ -53,6 +53,9 @@ public abstract class PendingRequestManager<TRequest, TResponse>
     /// <summary>决议完成后调用（发布决议事件 / 广播 Dismiss / 重评估通知）；须幂等。</summary>
     protected virtual void OnResolved(TRequest request, TResponse response) { }
 
+    /// <summary>完成前补全响应（如子类仅提供部分字段，需从 TRequest 补 SessionId/CallId）。默认恒等。</summary>
+    protected virtual TResponse FinalizeResponse(TRequest request, TResponse response) => response;
+
     /// <inheritdoc />
     public event Action? PendingChanged;
 
@@ -78,10 +81,11 @@ public abstract class PendingRequestManager<TRequest, TResponse>
 
         if (IsImmediate(immediate))
         {
-            entry.Completion.TrySetResult(immediate!);
+            var immediateResponse = FinalizeResponse(request, immediate!);
+            entry.Completion.TrySetResult(immediateResponse);
             _pending[requestId] = entry;
             RaisePendingChanged();
-            OnResolved(request, immediate!);
+            OnResolved(request, immediateResponse);
             return Task.FromResult(new RequestTicket(requestId, GetSessionId(request)));
         }
 
@@ -98,13 +102,13 @@ public abstract class PendingRequestManager<TRequest, TResponse>
             return CreateMissingResponse(ticket);
 
         using var registration = ct.Register(() =>
-            TryResolve(ticket.RequestId, CreateFallback(entry.Request, PendingFallbackReason.Cancelled)));
+            TryResolve(ticket.RequestId, CreateFallback(entry.Request, PendingFallbackReason.Cancelled), ticket.SessionId));
 
         var completed = await Task.WhenAny(entry.Completion.Task, Task.Delay(Timeout, CancellationToken.None))
             .ConfigureAwait(false);
 
         if (completed != entry.Completion.Task)
-            TryResolve(ticket.RequestId, CreateFallback(entry.Request, PendingFallbackReason.Timeout));
+            TryResolve(ticket.RequestId, CreateFallback(entry.Request, PendingFallbackReason.Timeout), ticket.SessionId);
 
         var response = await entry.Completion.Task.ConfigureAwait(false);
         _pending.TryRemove(new KeyValuePair<string, PendingEntry>(ticket.RequestId, entry));
@@ -123,10 +127,11 @@ public abstract class PendingRequestManager<TRequest, TResponse>
             return false;
         }
 
-        if (!entry.Completion.TrySetResult(response))
+        var finalized = FinalizeResponse(entry.Request, response);
+        if (!entry.Completion.TrySetResult(finalized))
             return false;
 
-        OnResolved(entry.Request, response);
+        OnResolved(entry.Request, finalized);
         RaisePendingChanged();
         return true;
     }

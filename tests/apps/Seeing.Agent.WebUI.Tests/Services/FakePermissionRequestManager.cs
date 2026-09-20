@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
@@ -31,10 +32,13 @@ internal sealed class FakePermissionRequestManager : IPermissionRequestManager
         return removed;
     }
 
-    public Task<PermissionTicket> BeginAsync(PermissionRequest request, CancellationToken ct = default)
+    public Task<RequestTicket> BeginAsync(PermissionRequest request, CancellationToken ct = default)
         => throw new NotSupportedException();
 
-    public Task<PermissionResolution> WaitAsync(PermissionTicket ticket, CancellationToken ct = default)
+    public Task<PermissionResolution> WaitAsync(RequestTicket ticket, CancellationToken ct = default)
+        => throw new NotSupportedException();
+
+    public bool TryResolve(string requestId, PermissionResolution response, string? expectedSessionId = null)
         => throw new NotSupportedException();
 
     public bool TryResolve(

@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Core.Interactions;
 using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Core.Extensions;
@@ -26,8 +28,8 @@ public static class PermissionServiceExtensions
         // 授权存储（记忆 + 白名单目录面）
         services.AddSingleton<IPermissionGrantStore, PermissionGrantStore>();
 
-        // 呈现端登记表（Singleton）
-        services.AddSingleton<IPermissionPresentationStore, PermissionPresentationStore>();
+        // 呈现端登记表（Singleton）：权限专用实例（与 Question 分离，避免 Gateway 误判可呈现）
+        services.AddSingleton<IPermissionSurfaceRegistry>(_ => new SurfaceRegistry());
 
         // 生效开关解析（Service 与 Manager 共用）
         services.AddSingleton<EffectivePermissionPolicy>();

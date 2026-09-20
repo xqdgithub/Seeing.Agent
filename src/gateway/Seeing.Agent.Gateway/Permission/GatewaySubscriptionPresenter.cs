@@ -1,4 +1,4 @@
-using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Interactions;
 
 namespace Seeing.Agent.Gateway.Permission;
 
@@ -7,7 +7,7 @@ namespace Seeing.Agent.Gateway.Permission;
 /// <para>订阅生命周期内固定单会话，<see cref="SurfaceSessionIds"/> 为已确认稳定快照，
 /// <see cref="SurfacedChanged"/> 永不触发（固定集合无变化）。</para>
 /// </summary>
-public sealed class GatewaySubscriptionPresenter : IPermissionPresenter
+public sealed class GatewaySubscriptionPresenter : ISurfaceProvider
 {
     private readonly string[] _surfaceSessionIds;
 

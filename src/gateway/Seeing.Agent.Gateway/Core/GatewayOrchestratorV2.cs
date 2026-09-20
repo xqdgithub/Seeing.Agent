@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Permission;
 using Seeing.Agent.Abstractions.Events;
@@ -76,7 +77,7 @@ public sealed class GatewayOrchestratorV2
     {
         // 每订阅一个独立呈现端实例：注册/注销与订阅同生命周期，等价于原引用计数语义；
         // 同 session 多订阅各持一份，任一订阅结束不影响其它（spec §4.6 / N2）。
-        var presentation = _services.GetRequiredService<IPermissionPresentationStore>();
+        var presentation = _services.GetRequiredService<IPermissionSurfaceRegistry>();
         var presenter = new GatewaySubscriptionPresenter(sessionId);
         presentation.Register(presenter);
         try

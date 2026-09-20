@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Hosting.Web.Circuits;
 
 namespace Seeing.Agent.WebUI.Services;
 
 /// <summary>
-/// WebUI circuit 呈现端（Scoped）：向 <see cref="IPermissionPresentationStore"/> 声明
+/// WebUI circuit 呈现端（Scoped）：向 <see cref="IPermissionSurfaceRegistry"/> 声明
 /// 当前标签（circuit）可呈现的会话集合。
 /// <para>
 /// <see cref="SurfaceSessionIds"/> 返回<b>已确认的稳定快照</b>（缓存字段），非实时读取；
@@ -14,16 +14,17 @@ namespace Seeing.Agent.WebUI.Services;
 /// </para>
 /// <para>prerender（空 circuitId）守卫：不注册、不创建 registry、不上报；Register/Unregister 幂等。</para>
 /// </summary>
-public sealed class WebUiPermissionPresenter : IPermissionPresenter, IDisposable
+public sealed class WebUiSurfacePresenter : ISurfaceProvider, IDisposable
 {
     private static readonly TimeSpan DefaultDebounce = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan DefaultEmptyConfirm = TimeSpan.FromSeconds(1);
 
-    private readonly IPermissionPresentationStore _store;
+    private readonly IPermissionSurfaceRegistry _permissionStore;
+    private readonly IQuestionSurfaceRegistry _questionStore;
     private readonly Func<SessionWindowRegistry?> _registryAccessor;
     private readonly TimeSpan _debounce;
     private readonly TimeSpan _emptyConfirm;
-    private readonly ILogger<WebUiPermissionPresenter>? _logger;
+    private readonly ILogger<WebUiSurfacePresenter>? _logger;
     private readonly object _gate = new();
     private readonly HashSet<string> _confirmed = new(StringComparer.Ordinal);
 
@@ -33,23 +34,26 @@ public sealed class WebUiPermissionPresenter : IPermissionPresenter, IDisposable
     private bool _registered;
     private bool _disposed;
 
-    public WebUiPermissionPresenter(
-        IPermissionPresentationStore store,
+    public WebUiSurfacePresenter(
+        IPermissionSurfaceRegistry permissionStore,
+        IQuestionSurfaceRegistry questionStore,
         SessionEventStreamRouter router,
         CircuitContext circuitContext,
-        ILogger<WebUiPermissionPresenter>? logger = null)
-        : this(store, CreateAccessor(router, circuitContext), DefaultDebounce, DefaultEmptyConfirm, logger)
+        ILogger<WebUiSurfacePresenter>? logger = null)
+        : this(permissionStore, questionStore, CreateAccessor(router, circuitContext), DefaultDebounce, DefaultEmptyConfirm, logger)
     {
     }
 
-    internal WebUiPermissionPresenter(
-        IPermissionPresentationStore store,
+    internal WebUiSurfacePresenter(
+        IPermissionSurfaceRegistry permissionStore,
+        IQuestionSurfaceRegistry questionStore,
         Func<SessionWindowRegistry?> registryAccessor,
         TimeSpan debounce,
         TimeSpan emptyConfirm,
-        ILogger<WebUiPermissionPresenter>? logger = null)
+        ILogger<WebUiSurfacePresenter>? logger = null)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _permissionStore = permissionStore ?? throw new ArgumentNullException(nameof(permissionStore));
+        _questionStore = questionStore ?? throw new ArgumentNullException(nameof(questionStore));
         _registryAccessor = registryAccessor ?? throw new ArgumentNullException(nameof(registryAccessor));
         _debounce = debounce;
         _emptyConfirm = emptyConfirm;
@@ -75,7 +79,8 @@ public sealed class WebUiPermissionPresenter : IPermissionPresenter, IDisposable
                 StartEmptyConfirmLocked();
         }
 
-        _store.Register(this);
+        _permissionStore.Register(this);
+        _questionStore.Register(this);
         _registered = true;
     }
 
@@ -226,18 +231,24 @@ public sealed class WebUiPermissionPresenter : IPermissionPresenter, IDisposable
         if (_registered)
         {
             _registered = false;
-            try
-            {
-                _store.Unregister(this);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "注销呈现端失败");
-            }
+            Unregister(_permissionStore);
+            Unregister(_questionStore);
         }
 
         SurfacedChanged = null;
         lock (_gate)
             _confirmed.Clear();
+    }
+
+    private void Unregister(ISurfaceRegistry registry)
+    {
+        try
+        {
+            registry.Unregister(this);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "注销呈现端失败");
+        }
     }
 }

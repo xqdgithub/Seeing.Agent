@@ -5,6 +5,7 @@ using Seeing.Agent.Core.Models;
 using System.Security.Cryptography;
 
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Permission;
 
@@ -20,7 +21,7 @@ public class PermissionService : IPermissionService
     private readonly IWorkspacePathGate? _workspaceGate;
     private readonly IOptionsMonitor<SeeingAgentOptions>? _options;
     private readonly IPermissionRequestManager? _requestManager;
-    private readonly IPermissionPresentationStore? _presentation;
+    private readonly IPermissionSurfaceRegistry? _presentation;
     private readonly IEnumerable<IPermissionChannel> _channels;
     private readonly IAgentRegistry? _agentRegistry;
 
@@ -31,7 +32,7 @@ public class PermissionService : IPermissionService
         IWorkspacePathGate? workspaceGate = null,
         IOptionsMonitor<SeeingAgentOptions>? options = null,
         IPermissionRequestManager? requestManager = null,
-        IPermissionPresentationStore? presentation = null,
+        IPermissionSurfaceRegistry? presentation = null,
         IEnumerable<IPermissionChannel>? channels = null,
         IAgentRegistry? agentRegistry = null)
     {

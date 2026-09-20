@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
@@ -454,7 +455,7 @@ public class PermissionAuthorizationTests
         await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
 
         channel.Verify(c => c.PresentAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()), Times.Once);
-        h.Manager.Verify(m => m.WaitAsync(It.IsAny<PermissionTicket>(), It.IsAny<CancellationToken>()), Times.Once);
+        h.Manager.Verify(m => m.WaitAsync(It.IsAny<RequestTicket>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -610,7 +611,7 @@ public class PermissionAuthorizationTests
     {
         public PermissionGrantStore Store { get; } = new();
         public Mock<IPermissionRequestManager> Manager { get; } = new();
-        public Mock<IPermissionPresentationStore> Presentation { get; } = new();
+        public Mock<IPermissionSurfaceRegistry> Presentation { get; } = new();
         public List<IPermissionChannel> Channels { get; } = new();
         public Mock<IAgentRegistry> Registry { get; } = new();
         public Mock<ISessionManager> Sessions { get; } = new();
@@ -690,8 +691,8 @@ public class PermissionAuthorizationTests
             PermissionGrantScope scope = PermissionGrantScope.Once)
         {
             Manager.Setup(m => m.BeginAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()))
-                .Returns((PermissionRequest r, CancellationToken _) => Task.FromResult(new PermissionTicket(r.RequestId ?? "req", r.SessionId)));
-            Manager.Setup(m => m.WaitAsync(It.IsAny<PermissionTicket>(), It.IsAny<CancellationToken>()))
+                .Returns((PermissionRequest r, CancellationToken _) => Task.FromResult(new RequestTicket(r.RequestId ?? "req", r.SessionId)));
+            Manager.Setup(m => m.WaitAsync(It.IsAny<RequestTicket>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new PermissionResolution
                 {
                     RequestId = "req",
