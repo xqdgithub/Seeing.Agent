@@ -1,0 +1,49 @@
+samples/Seeing.Agent.WebUI/Services/QuestionInbox.cs
+  s_fba12c16bbad95::t_88cdc802f0b0ac 1-175
+tests/apps/Seeing.Agent.WebUI.Tests/Questions/QuestionInboxTests.cs
+  s_fba12c16bbad95::t_fab14abed851a1 1-227
+samples/Seeing.Agent.WebUI/Components/AppSidebar.razor
+  s_b0b4e58e616938::t_d163f2f429350e 21
+samples/Seeing.Agent.WebUI/Services/QuestionInteractionService.cs
+  s_fba12c16bbad95::t_6a82fca317d838 1-55
+samples/Seeing.Agent.WebUI/Rendering/Providers/QuestionToolCallSlotProvider.cs
+  s_fba12c16bbad95::t_341b1a009075c7 1-18
+samples/Seeing.Agent.WebUI/Program.cs
+  s_b0b4e58e616938::t_f9b2f887dfa8a6 28,31,76,112-116
+samples/Seeing.Agent.WebUI/Models/QuestionCardModel.cs
+  s_fba12c16bbad95::t_06175d0489dd8e 1-69
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_b0b4e58e616938::t_e902e85fc3710b 39
+samples/Seeing.Agent.WebUI/Components/Messaging/QuestionCard.razor
+  s_fba12c16bbad95::t_1d102580bec2ed 55,58,68
+  s_fba12c16bbad95::t_2c063f7940e4f4 1-54,56-57,59-67,69-79,81-352
+  s_fba12c16bbad95::t_3bbf6d0372ef71 80
+samples/Seeing.Agent.WebUI/Components/Messaging/ToolQuestionSlot.razor
+  s_fba12c16bbad95::t_240a542f9549c1 1-72
+samples/Seeing.Agent.WebUI/Services/QuestionInboxView.cs
+  s_fba12c16bbad95::t_9c17d1fab6f16e 1-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "5845d61345fca7fa51a34b01eacd7e3c8ac1637d",
+  "prompts": {},
+  "sessions": {
+    "s_b0b4e58e616938": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f428460e7ffeuWhRMLuC0d8Xdr",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_fba12c16bbad95": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f41d2c9a7ffed0tTKxqCvSmidU",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
