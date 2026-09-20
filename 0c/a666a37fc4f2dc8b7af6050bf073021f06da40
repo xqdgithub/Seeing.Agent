@@ -1,0 +1,44 @@
+tests/spine/Seeing.Agent.Tests/Interactions/PendingRequestManagerTests.cs
+  s_41378ce3964d88::t_df5b5ff1ecc170 1-36,46-51,53,56-64,67-74,77-84,86-95,97-103,105-107,109,112-113,115-125,127-138,140-141,151,154-164,166-176,180,185-192,194-198,201-212,214-217,219-220,222,224-225,228,230-231
+  s_b0b4e58e616938::t_7ee7873bb9d51a 37-45,52,54-55,65-66,75-76,85,96,104,108,110-111,114,126,139,142-150,152-153,165,177-179,181-184,193,199-200,213,218,221,223,226-227,229
+src/abstractions/Seeing.Agent.Abstractions/Interactions/PendingFallbackReason.cs
+  s_41378ce3964d88::t_06477593f22b64 1-17
+src/abstractions/Seeing.Agent.Abstractions/Interactions/RequestTicket.cs
+  s_41378ce3964d88::t_78ba8da04169a0 1-4
+src/abstractions/Seeing.Agent.Abstractions/Interactions/IPendingRequestManager.cs
+  s_41378ce3964d88::t_55e4dfb35e9fd6 1-7,9-28
+  s_b0b4e58e616938::t_892672c47b779d 8
+src/spine/Seeing.Agent.Core/Core/Interactions/PendingRequestManager.cs
+  s_b0b4e58e616938::t_db35c7e62f5945 135-140,145
+  s_41378ce3964d88::t_c9d0a9c22178ae 1-13,15-78,80,82-83,85-88,91-134,141-144,146-162,192,195-217
+  s_41378ce3964d88::t_ee3d342a6acd6e 194
+  s_b0b4e58e616938::t_b35a8d07cc20ed 90
+  s_41378ce3964d88::t_430c249a9c31ba 81,84
+  s_b0b4e58e616938::t_96691bfa338aee 14
+  s_41378ce3964d88::t_bed7fe35d01f89 79
+  s_b0b4e58e616938::t_62065d134f0f48 163-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "0ca666a37fc4f2dc8b7af6050bf073021f06da40",
+  "prompts": {},
+  "sessions": {
+    "s_41378ce3964d88": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f423c2e7fffeCW4ZQbcnczdfQi",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_b0b4e58e616938": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f428460e7ffeuWhRMLuC0d8Xdr",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
