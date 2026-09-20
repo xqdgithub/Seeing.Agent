@@ -39,6 +39,12 @@ public static class MessageEventType
     /// <summary>权限结果（授权已判定）</summary>
     public const string PermissionResolved = "permission.resolved";
 
+    /// <summary>问题请求（需要用户作答）</summary>
+    public const string QuestionRequest = "question.request";
+
+    /// <summary>问题结果（作答已判定）</summary>
+    public const string QuestionResolved = "question.resolved";
+
     /// <summary>Loop 被取消</summary>
     public const string LoopCancelled = "loop.cancelled";
 
