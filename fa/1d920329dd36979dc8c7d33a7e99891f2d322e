@@ -1,0 +1,84 @@
+src/spine/Seeing.Agent.Core/Core/Permission/PermissionService.cs
+  s_b0b4e58e616938::t_4c34d2e346e83c 24
+  s_b0b4e58e616938::t_7c1be084ad388b 35
+tests/spine/Seeing.Agent.Tests/Permission/PermissionAuthorizationTests.cs
+  s_dd06d177d07c28::t_86850f25592cd8 694-695
+  s_dd06d177d07c28::t_3efcfee3e7077f 614
+  s_dd06d177d07c28::t_53bb5ebe886b55 458
+src/abstractions/Seeing.Agent.Abstractions/Permissions/IPermissionRequestManager.cs
+  s_b0b4e58e616938::t_77f27c550e653a 1-2,5-8
+src/gateway/Seeing.Agent.Gateway/Core/GatewayOrchestratorV2.cs
+  s_cd78109c1cd349::t_576d71a2f52fab 80
+  s_cd78109c1cd349::t_7e33a2a0f2b447 8
+tests/spine/Seeing.Agent.Tests/Permission/PermissionRequestManagerTests.cs
+  s_dd06d177d07c28::t_7c28ec6f6f76ea 612
+  s_dd06d177d07c28::t_fe0378d0b31194 6,9
+samples/Seeing.Agent.WebUI/Services/WebUiSurfacePresenter.cs
+  s_8b7e43dd916ccd::t_39a545de08ab61 2
+  s_b0b4e58e616938::t_3dfb79603045a1 22-23,27
+tests/apps/Seeing.Agent.WebUI.Tests/Services/WebUiSurfacePresenterTests.cs
+  s_b0b4e58e616938::t_740a24626bc604 4,12,51-52,54-55,57,61,63,70-73,75,93-96,98,105,116-119,121,124,129-130,132,138,142,144,149,151,153,158
+src/gateway/Seeing.Agent.Gateway/Permission/GatewaySubscriptionPresenter.cs
+  s_cd78109c1cd349::t_f7010828bf7d76 1,10
+samples/Seeing.Agent.WebUI/Components/AppSidebar.razor
+  s_8b7e43dd916ccd::t_9b047f0068d315 20
+tests/gateway/Seeing.Gateway.Tests/Core/GatewayOrchestratorPresentationTests.cs
+  s_cd78109c1cd349::t_38f2dcbb7be070 10
+  s_cd78109c1cd349::t_a336b0f8dc5884 110,152,154,160,166,172
+tests/spine/Seeing.Agent.Tests/Permission/PermissionServiceTests.cs
+  s_dd06d177d07c28::t_18c4555a07e719 132
+src/spine/Seeing.Agent.Core/Core/Interactions/PendingRequestManager.cs
+  s_b0b4e58e616938::t_6ec533adfa36ee 56-58
+  s_b0b4e58e616938::t_cf7bbcbb0adfd8 84-85,88
+  s_b0b4e58e616938::t_2ce9936102bfc0 105,111
+src/spine/Seeing.Agent.Core/Extensions/PermissionServiceExtensions.cs
+  s_b0b4e58e616938::t_00c2804d9bc7d0 31-32
+samples/Seeing.Agent.WebUI/Program.cs
+  s_8b7e43dd916ccd::t_291aef71cba263 105-106
+tests/apps/Seeing.Agent.WebUI.Tests/Services/FakePermissionRequestManager.cs
+  s_b0b4e58e616938::t_d16055bc77f1f9 35,38-41
+  s_b0b4e58e616938::t_6c526c22a3e594 1
+src/spine/Seeing.Agent.Core/Core/Permission/PermissionRequestManager.cs
+  s_b0b4e58e616938::t_749e4ef6295d90 4,13-14,16,23,40,53,61,75-76,80,82-83,85-86,88-89,91-98,100-102,104-111,115,117-122,124-126,128-131,133-136,148,151,155,162,180,189,199,226-227,230
+  s_b0b4e58e616938::t_4204f0b6c9340b 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "fa1d920329dd36979dc8c7d33a7e99891f2d322e",
+  "prompts": {},
+  "sessions": {
+    "s_8b7e43dd916ccd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f41eb1a66ffeY5iqQrP2d8AyIZ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_b0b4e58e616938": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f428460e7ffeuWhRMLuC0d8Xdr",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_cd78109c1cd349": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f41eb1386ffeqUTCLQxcxJwAj7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_dd06d177d07c28": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f41eb08dfffeRktQbyzjbZYQcL",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
