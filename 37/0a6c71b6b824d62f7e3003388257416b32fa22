@@ -1,0 +1,28 @@
+src/spine/Seeing.Agent.Core/Core/Questions/QuestionServiceExtensions.cs
+  s_f3bdeb78f3da36::t_3cb1a2f0b22437 1-27
+src/abstractions/Seeing.Agent.Abstractions/Questions/IQuestionRequestManager.cs
+  s_f3bdeb78f3da36::t_39c32020965a87 1-8
+src/spine/Seeing.Agent.Core/Core/Questions/QuestionRequestManager.cs
+  s_f3bdeb78f3da36::t_7c257115b827e0 157
+  s_f3bdeb78f3da36::t_c5a82d737a5041 63-64
+  s_f3bdeb78f3da36::t_fd4f11bd300442 1-62,65-156,158-220
+tests/spine/Seeing.Agent.Tests/Questions/QuestionRequestManagerTests.cs
+  s_f3bdeb78f3da36::t_9288426f7a1c4e 103-106,110-111
+  s_f3bdeb78f3da36::t_568b2986f0ca15 1-102,107-109,112-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "370a6c71b6b824d62f7e3003388257416b32fa22",
+  "prompts": {},
+  "sessions": {
+    "s_f3bdeb78f3da36": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f420465d5ffelhyt4N2NNmaxUC",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
