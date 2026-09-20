@@ -20,6 +20,7 @@ using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Tools.Basic;
 using Seeing.Agent.Core.Tools.FileSystem;
 using Seeing.Agent.Core.Tools.Git;
+using Seeing.Agent.Core.Tools.Question;
 using Seeing.Agent.Core.Tools.Shell;
 using Seeing.Agent.Core.Tools.Web;
 
@@ -33,6 +34,7 @@ builder.Services.AddSeeingModule<WebModule>(registry);
 builder.Services.AddSeeingModule<ShellModule>(registry);
 builder.Services.AddSeeingModule<BasicModule>(registry);
 builder.Services.AddSeeingModule<GitModule>(registry);
+builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
 builder.Services.AddSeeingModule<SkillsModule>(registry);
 builder.Services.AddSeeingModule<McpModule>(registry);
 builder.Services.AddSeeingModule<OpenAiLlmModule>(registry);

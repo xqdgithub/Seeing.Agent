@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Basic\Seeing.Agent.Tools.Basic.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Session\Seeing.Agent.Tools.Session.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Question\Seeing.Agent.Tools.Question.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.OpenAI\Seeing.Agent.Llm.OpenAI.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Agents.BuiltIn\Seeing.Agent.Agents.BuiltIn.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.IO.Local\Seeing.IO.Local.csproj" />

@@ -56,6 +56,7 @@ public class BuiltInScenariosTests
             "git",
             "subagent",
             "session.tools",
+            "question.tools",
             "web",
             "memory",
             "scheduler",
