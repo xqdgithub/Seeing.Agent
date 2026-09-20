@@ -1,0 +1,22 @@
+tests/apps/Seeing.Agent.WebUI.Tests/Questions/QuestionInteractionServiceTests.cs
+  s_b0b4e58e616938::t_861862372169aa 1-87
+samples/Seeing.Agent.WebUI/Services/QuestionInteractionService.cs
+  s_b0b4e58e616938::t_a282781a19feb1 16-17
+  s_b0b4e58e616938::t_2bff2154842000 49,57-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "19ae0827a6d8ff3c7a145a11844d9f2c77024c4c",
+  "prompts": {},
+  "sessions": {
+    "s_b0b4e58e616938": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f428460e7ffeuWhRMLuC0d8Xdr",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
