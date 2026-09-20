@@ -3,6 +3,7 @@ using Seeing.Agent.WebUI.Models.Messaging;
 using Seeing.Agent.WebUI.Rendering.Abstractions;
 using Seeing.Agent.WebUI.Rendering.Caching;
 using Seeing.Agent.WebUI.Rendering.Components;
+using Seeing.Agent.WebUI.Rendering.Providers;
 using MessagingComponents = Seeing.Agent.WebUI.Components.Messaging;
 
 namespace Seeing.Agent.WebUI.Rendering;
@@ -63,6 +64,9 @@ public static class RenderingServiceExtensions
 
         // 渲染管线（Scoped，每个请求一个实例）
         services.TryAddScoped<IMessageRenderPipeline, MessageRenderPipeline>();
+
+        // 工具调用内联槽位提供者（Scoped；TryAddEnumerable 防重复注册）
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IToolCallSlotProvider, PermissionToolCallSlotProvider>());
 
         // ========== 内置渲染器 ==========
         // 按优先级顺序注册（数值越小优先级越高）

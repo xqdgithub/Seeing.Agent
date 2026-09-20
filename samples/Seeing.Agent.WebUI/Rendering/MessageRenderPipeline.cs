@@ -33,6 +33,7 @@ public class MessageRenderPipeline : IMessageRenderPipeline
     private readonly IRenderCache _cache;
     private readonly SessionState _sessionState;
     private readonly ILogger<MessageRenderPipeline> _logger;
+    private readonly IReadOnlyList<IToolCallSlotProvider> _slotProviders;
 
     /// <summary>
     /// 创建消息渲染管线
@@ -41,18 +42,23 @@ public class MessageRenderPipeline : IMessageRenderPipeline
     /// <param name="componentRegistry">消息组件注册表</param>
     /// <param name="cache">渲染缓存</param>
     /// <param name="sessionState">会话状态（用于获取 SessionId）</param>
+    /// <param name="slotProviders">工具调用内联槽位提供者集合</param>
     /// <param name="logger">日志器</param>
     public MessageRenderPipeline(
         IContentBlockRendererRegistry registry,
         IMessageComponentRegistry componentRegistry,
         IRenderCache cache,
         SessionState sessionState,
+        IEnumerable<IToolCallSlotProvider> slotProviders,
         ILogger<MessageRenderPipeline> logger)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _componentRegistry = componentRegistry ?? throw new ArgumentNullException(nameof(componentRegistry));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _sessionState = sessionState ?? throw new ArgumentNullException(nameof(sessionState));
+        _slotProviders = (slotProviders ?? throw new ArgumentNullException(nameof(slotProviders)))
+            .OrderBy(p => p.Order)
+            .ToList();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -241,12 +247,22 @@ public class MessageRenderPipeline : IMessageRenderPipeline
                     _logger.LogWarning("No component or renderer found for block {BlockType}", block.Type);
                 }
 
-                // 工具块后内联权限槽位：按 CallId 关联在途审批卡片（管线不持有权限状态）
+                // 工具块后内联槽位：由各 provider 按 Order 追加渲染（管线不持有槽位状态）
                 if (block.Type == ContentBlockType.ToolCall && !string.IsNullOrEmpty(block.ToolCall?.Id))
                 {
-                    builder.OpenComponent<ToolPermissionSlot>(100);
-                    builder.AddAttribute(101, nameof(ToolPermissionSlot.CallId), block.ToolCall!.Id);
-                    builder.CloseComponent();
+                    var slotSeq = 100;
+                    foreach (var slotProvider in _slotProviders)
+                    {
+                        var slotType = slotProvider.GetSlotComponentType(block.ToolCall!.Id);
+                        if (slotType is null)
+                        {
+                            continue;
+                        }
+
+                        builder.OpenComponent(slotSeq++, slotType);
+                        builder.AddAttribute(slotSeq++, "CallId", block.ToolCall!.Id);
+                        builder.CloseComponent();
+                    }
                 }
 
                 builder.CloseRegion();
