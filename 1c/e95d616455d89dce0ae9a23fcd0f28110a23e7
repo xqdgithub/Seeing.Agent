@@ -1,0 +1,25 @@
+src/hosting/Seeing.Agent.Hosting/Execution/ExecutionJobService.cs
+  s_448005a9250c58::t_aa3365026d8d07 1192-1195
+src/gateway/Seeing.Agent.Gateway/Core/GatewayOrchestratorV2.cs
+  s_448005a9250c58::t_97cce041750d65 338
+src/spine/Seeing.Agent.Core/Execution/CompactionRunner.cs
+  s_448005a9250c58::t_206006c3cb8d86 78-79
+tests/spine/Seeing.Agent.Tests/App/Execution/BuildHistoryFromSessionTests.cs
+  s_448005a9250c58::t_682cc744bd0816 14-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "1ce95d616455d89dce0ae9a23fcd0f28110a23e7",
+  "prompts": {},
+  "sessions": {
+    "s_448005a9250c58": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3e128ecdffehd7guFx9JY48Qa",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
