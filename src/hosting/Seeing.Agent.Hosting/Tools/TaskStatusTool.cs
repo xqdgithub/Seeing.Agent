@@ -169,8 +169,12 @@ public class TaskStatusTool : ToolBase
         }
         else if (state == "error")
         {
-            // 会话已标记 Error：优先输出最后一条错误 system 消息（ChatEventTracker 落盘格式 "错误: {msg}"）
-            var errMsg = activeMessages
+            // 优先取会话运行时错误（ExecutionJobService.MarkSessionError 写入 Metadata，不进入 Messages/LLM 历史）；
+            // 存量兼容：旧版 ChatEventTracker 落盘的 "错误: {msg}" system 消息
+            string? errMsg = null;
+            if (session.Metadata?.TryGetValue(SessionMetadataKeys.LastError, out var storedErr) == true)
+                errMsg = storedErr as string;
+            errMsg ??= activeMessages
                 .LastOrDefault(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase)
                                     && m.Content?.Contains("错误:", StringComparison.OrdinalIgnoreCase) == true)
                 ?.Content;

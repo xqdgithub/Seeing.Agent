@@ -42,14 +42,12 @@ internal class ChatEventTracker
                 break;
 
             case StreamStartEvent streamStart:
+                // 同一 (LoopId, Step) 重发 = 该轮重置：仅移除同一轮的未完成 assistant 消息，避免误删上一步已完成消息
+                RemovePartialAssistantForTurn(session, streamStart.LoopId, streamStart.Step);
                 if (!string.IsNullOrEmpty(streamStart.LoopId))
                     _currentLoopId = streamStart.LoopId;
-                var step = streamStart.Step;
-                if (step > 0 || _currentAssistantMessage == null)
-                {
-                    _currentStep = step;
-                    _currentAssistantMessage = null;
-                }
+                _currentStep = streamStart.Step;
+                _currentAssistantMessage = null;
                 break;
 
             case StreamDeltaEvent streamDelta:
@@ -144,12 +142,12 @@ internal class ChatEventTracker
                     existing.DurationMs = duration.TotalMilliseconds;
                 break;
 
-            case ErrorEvent error:
-                session.AddMessage(SessionMessage.SystemMessage($"错误: {error.Message}"));
+            case ErrorEvent:
+                // 运行时观测，不进对话消息/LLM 历史；由 ErrorEvent 事件驱动 UI 与执行记录
                 break;
 
-            case LoopCancelledEvent cancelled:
-                session.AddMessage(SessionMessage.SystemMessage($"对话已取消: {cancelled.Reason}"));
+            case LoopCancelledEvent:
+                // 同上：取消态由 LoopCancelledEvent + ExecutionStatus.Cancelled 表达
                 break;
 
             case ModeUpdateEvent modeUpdate:
@@ -177,6 +175,33 @@ internal class ChatEventTracker
         _currentLoopId = null;
         _currentStep = 0;
         _pendingSchemaSnapshot = null;
+    }
+
+    /// <summary>
+    /// 若当前累积的 assistant 消息属于同一轮（LoopId+Step），移除之（重试重置）。
+    /// 跨步（step 递增）时保留上一步已完成的消息。
+    /// </summary>
+    private void RemovePartialAssistantForTurn(SessionData session, string? loopId, int step)
+    {
+        if (_currentAssistantMessage != null)
+        {
+            var sameStep = _currentAssistantMessage.Step == step;
+            var sameLoop = string.IsNullOrEmpty(loopId)
+                || string.IsNullOrEmpty(_currentAssistantMessage.LoopId)
+                || string.Equals(_currentAssistantMessage.LoopId, loopId, StringComparison.Ordinal);
+            if (sameStep && sameLoop)
+            {
+                session.RemoveMessage(_currentAssistantMessage);
+                _currentAssistantMessage = null;
+            }
+            return;
+        }
+
+        // 仅在有明确 LoopId 时按 Id 兜底移除，避免 null LoopId 误删历史轮次
+        if (string.IsNullOrEmpty(loopId))
+            return;
+        var expectedId = string.Format("{0}_step{1}", loopId, step);
+        session.RemoveMessages(m => m.Id == expectedId);
     }
 
     private void EnsureAssistantMessage(SessionData session, string sessionId)

@@ -85,7 +85,7 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
                     WriteRetryItems(call, attempt, willRetry: true, nextDelay);
                     _logger.LogWarning(ex,
                         "[RetryLlmClient] 非流式重试: Provider={Provider}, Attempt={Attempt}/{Max}, NextDelayMs={NextDelayMs}, ElapsedMs={ElapsedMs}, BudgetMs={BudgetMs}",
-                        ProviderId, attempt, _settings.MaxRetries,
+                        ProviderId, attempt, FormatMax(_settings.MaxRetries),
                         nextDelay.TotalMilliseconds, elapsed.TotalMilliseconds, _settings.Budget.TotalMilliseconds);
                     await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
                 }
@@ -115,6 +115,8 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
                 if (captured is null)
                     yield break;
 
+                // 传输层边界：一旦向调用方交付过 chunk，绝不在此重试（无法回滚已交付内容）。
+                // 已产出后的重开由应用层（AgentExecutor + ILlmTurnRetryPolicy）负责。
                 if (yielded || !LlmRetryPolicy.IsRetryable(captured, cancellationToken))
                     throw captured;
 
@@ -130,7 +132,7 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
                 WriteRetryItems(call, attempt, willRetry: true, nextDelay);
                 _logger.LogWarning(captured,
                     "[RetryLlmClient] 流式重试: Provider={Provider}, Attempt={Attempt}/{Max}, NextDelayMs={NextDelayMs}, ElapsedMs={ElapsedMs}, BudgetMs={BudgetMs}",
-                    ProviderId, attempt, _settings.MaxRetries,
+                    ProviderId, attempt, FormatMax(_settings.MaxRetries),
                     nextDelay.TotalMilliseconds, elapsed.TotalMilliseconds, _settings.Budget.TotalMilliseconds);
                 await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
             }
@@ -190,5 +192,7 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
             if (nextDelay is { } delay)
                 call.Items[LlmRetryPolicy.NextDelayItemKey] = delay.TotalMilliseconds;
         }
+
+        private static string FormatMax(int maxRetries) => maxRetries > 0 ? maxRetries.ToString() : "∞";
     }
 }

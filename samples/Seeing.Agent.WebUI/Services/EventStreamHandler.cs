@@ -367,25 +367,20 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 处理流式开始事件 - 新轮次开始，清空状态
+        /// 处理流式开始事件 - 轮次边界（含重试重开），无条件重置该轮渲染状态。
         /// </summary>
         private void HandleStreamStart(StreamStartEvent evt)
         {
-            // 更新当前 LoopId（如果事件中有）
             if (!string.IsNullOrEmpty(evt.LoopId))
             {
                 _currentLoopId = evt.LoopId;
             }
 
-            // 新轮次开始，清空当前助手消息，准备接收新一轮的 delta
-            // 注意：step > 0 时表示这是工具调用后的后续轮次，需要创建新的消息
-            if (evt.Step > 0 || _currentAssistantMessage == null)
-            {
-                // 保存当前消息的 step（用于创建新消息时设置正确的 step）
-                _currentStep = evt.Step;
-                _currentAssistantMessage = null;
-                _toolCallPositions.Clear();
-            }
+            _currentStep = evt.Step;
+            _currentAssistantMessage = null;
+            _toolCallPositions.Clear();
+            _accumulatedContent.Clear();
+            _accumulatedReasoning.Clear();
         }
 
         private void HandleStreamDelta(StreamDeltaEvent evt)
@@ -626,7 +621,7 @@ namespace Seeing.Agent.WebUI.Services
                 OnLoopComplete?.Invoke(_currentLoop);
             }
 
-            // 取消/错误消息由服务端 ChatEventTracker 写入 Session
+            // 取消/错误不写入 Session，由事件与 UI 状态呈现
         }
 
         private void HandleError(ErrorEvent evt)

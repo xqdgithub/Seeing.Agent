@@ -645,7 +645,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             // 执行失败后 CurrentExecution 会在 finally 中清空，仅靠执行记录无法长期判定失败，
             // task_status 回落判定依赖 SessionStatus。
             if (record.Status == ExecutionStatus.Failed)
-                MarkSessionError(sessionManager, record.SessionId);
+                MarkSessionError(sessionManager, record.SessionId, record.ErrorMessage);
             else if (record.Status == ExecutionStatus.Completed)
                 ClearSessionError(sessionManager, record.SessionId);
 
@@ -674,7 +674,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             _logger.LogError(ex, "Execution {ExecutionId} failed", record.ExecutionId);
 
             // 标记会话 Error 状态：task_status 回落判定依赖 SessionStatus
-            MarkSessionError(sessionManager, record.SessionId);
+            MarkSessionError(sessionManager, record.SessionId, record.ErrorMessage);
 
             // Publish error event
             _eventPublisher.Publish(record.SessionId, new ErrorEvent
@@ -1091,6 +1091,9 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             if (IsSchemaSnapshotCarrierMessage(msg))
                 continue;
 
+            if (IsRuntimeNotificationMessage(msg))
+                continue;
+
             var chatMessage = new ChatMessage
             {
                 Role = msg.Role,
@@ -1161,6 +1164,32 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         if (msg.Parts is { Count: > 0 })
             return false;
         return msg.Metadata?.ContainsKey(ChatEventTracker.SchemaSnapshotMetadataKey) == true;
+    }
+
+    /// <summary>
+    /// 运行时通知（错误/取消）不进 LLM 历史。
+    /// 新数据已不再产生；此处兼容存量消息（前缀）与显式 transient 标记。
+    /// </summary>
+    private static bool IsRuntimeNotificationMessage(SessionMessage msg)
+    {
+        if (!string.Equals(msg.Role, MessageRole.System, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (msg.Metadata?.TryGetValue("transient", out var flag) == true)
+        {
+            if (flag is bool b && b)
+                return true;
+            // 落盘再加载后 Metadata 值为 JsonElement，需兼容
+            if (flag is System.Text.Json.JsonElement je
+                && je.ValueKind == System.Text.Json.JsonValueKind.True)
+                return true;
+        }
+
+        if (string.IsNullOrEmpty(msg.Content))
+            return false;
+
+        return msg.Content.StartsWith("错误: ", StringComparison.Ordinal)
+            || msg.Content.StartsWith("对话已取消: ", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1262,7 +1291,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     /// 仅标记 SubAgent 子会话：task_status 回落判定依赖 SessionStatus，而 Root/Fork 会话无此消费方。
     /// 子会话执行失败后，ExecutionRecord 终态很快从队列移除，仅靠执行记录无法长期判定失败。
     /// </summary>
-    private void MarkSessionError(ISessionManager sessionManager, string sessionId)
+    private void MarkSessionError(ISessionManager sessionManager, string sessionId, string? errorMessage)
     {
         try
         {
@@ -1271,6 +1300,8 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             {
                 failedSession.Status = SessionStatus.Error;
                 failedSession.UpdatedAt = DateTime.Now;
+                if (!string.IsNullOrEmpty(errorMessage))
+                    failedSession.Metadata[SessionMetadataKeys.LastError] = errorMessage;
             }
         }
         catch (Exception statusEx)
@@ -1293,6 +1324,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
                 session.Status == SessionStatus.Error)
             {
                 session.Status = SessionStatus.Active;
+                session.Metadata.Remove(SessionMetadataKeys.LastError);
                 session.UpdatedAt = DateTime.Now;
             }
         }

@@ -1351,11 +1351,6 @@
         // 3) 收尾（无论后端结果如何都要执行）
         SessionState.CompleteExecution();
 
-        if (SessionState.CurrentSession != null)
-        {
-            SessionState.CurrentSession.AddMessage(SessionMessage.SystemMessage("用户取消了当前执行"));
-        }
-
         SyncTimelineAssistantFromStream(isComplete: true);
         CompleteCurrentTimelineTurn();
         ReconcileTimelineFromSession();

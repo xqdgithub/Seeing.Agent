@@ -80,6 +80,9 @@ public static class MessageEventType
 
     /// <summary>Schema 快照（工具与区块可用性）</summary>
     public const string SchemaSnapshot = "schema.snapshot";
+
+    /// <summary>应用层轮次重试已排期（UI 展示“X 秒后重试”）</summary>
+    public const string LlmRetry = "llm.retry";
 }
 
 /// <summary>
@@ -205,6 +208,13 @@ public record StreamStartEvent : IMessageEvent
 
     /// <summary>轮次索引（step=0, 1, 2...）</summary>
     public int Step { get; init; }
+
+    /// <summary>
+    /// 该轮第几次尝试（从 1 开始）。
+    /// <para>契约：同一 (LoopId, Step) 多次发出本事件表示该轮被重开，消费端必须视为“重置”——
+    /// 投影层移除该轮未完成 assistant 消息，UI 清空该轮渲染缓冲。</para>
+    /// </summary>
+    public int Attempt { get; init; } = 1;
 }
 
 /// <summary>
@@ -333,6 +343,29 @@ public record ErrorEvent : IMessageEvent
 
     /// <summary>错误来源（agent/tool/llm/system）</summary>
     public string? Source { get; init; }
+}
+
+/// <summary>
+/// LLM 轮次重试排期事件 - 应用层决定重试、进入退避等待前发出（不落盘、不进对话历史）。
+/// </summary>
+public record LlmRetryScheduledEvent : IMessageEvent
+{
+    public required string SessionId { get; init; }
+    public string? LoopId { get; init; }
+    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public string Type => MessageEventType.LlmRetry;
+
+    /// <summary>轮次索引</summary>
+    public int Step { get; init; }
+
+    /// <summary>即将进行的第几次尝试（2、3…）</summary>
+    public int Attempt { get; init; }
+
+    /// <summary>本次退避等待时长（毫秒），供 UI 倒计时</summary>
+    public int NextDelayMs { get; init; }
+
+    /// <summary>失败简述</summary>
+    public string? Reason { get; init; }
 }
 
 /// <summary>
