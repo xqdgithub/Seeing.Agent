@@ -11,6 +11,9 @@ public class BuildHistoryFromSessionTests
     [Theory]
     [InlineData("错误: 网络连接错误")]
     [InlineData("对话已取消: user")]
+    [InlineData("压缩失败: 第一次错误")]
+    [InlineData("⚠️ 执行已取消")]
+    [InlineData("❌ 执行出错: boom")]
     public void BuildHistory_SkipsLegacyRuntimeSystemMessages(string content)
     {
         var session = SessionData.Create();

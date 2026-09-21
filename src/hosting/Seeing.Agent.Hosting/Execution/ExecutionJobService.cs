@@ -1189,7 +1189,10 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             return false;
 
         return msg.Content.StartsWith("错误: ", StringComparison.Ordinal)
-            || msg.Content.StartsWith("对话已取消: ", StringComparison.Ordinal);
+            || msg.Content.StartsWith("对话已取消: ", StringComparison.Ordinal)
+            || msg.Content.StartsWith("压缩失败", StringComparison.Ordinal)
+            || msg.Content.StartsWith("⚠️ 执行已取消", StringComparison.Ordinal)
+            || msg.Content.StartsWith("❌ 执行出错", StringComparison.Ordinal);
     }
 
     /// <summary>

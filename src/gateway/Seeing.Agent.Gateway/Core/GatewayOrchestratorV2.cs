@@ -308,7 +308,7 @@ public sealed class GatewayOrchestratorV2
     {
         if (runState.Session != null)
         {
-            runState.Session.AddMessage(SessionMessage.SystemMessage("⚠️ 执行已取消"));
+            runState.Session.AddMessage(SessionMessage.SystemMessage("⚠️ 执行已取消").WithMetadata("transient", true));
             var sessionManager = _services.GetRequiredService<ISessionManager>();
             await sessionManager.SaveAsync(sessionId);
             // 取消响应前尽力落盘；写回失败仅记 Warning，仍返回取消事件
@@ -335,7 +335,7 @@ public sealed class GatewayOrchestratorV2
     {
         if (runState.Session != null)
         {
-            runState.Session.AddMessage(SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}"));
+            runState.Session.AddMessage(SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}").WithMetadata("transient", true));
             var sessionManager = _services.GetRequiredService<ISessionManager>();
             await sessionManager.SaveAsync(sessionId);
             // 错误响应前尽力落盘；写回失败仅记 Warning，仍返回错误事件
