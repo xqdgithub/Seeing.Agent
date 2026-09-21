@@ -44,6 +44,7 @@ public class AgentExecutor : IAgentExecutor
     private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
     private readonly Scheduling.IAgentLoopScheduler? _loopScheduler;
     private readonly ITodoStore? _todoStore;
+    private readonly ILlmTurnRetryPolicy? _turnRetryPolicy;
     private bool _todoEmptyReminded;
     private bool _incompleteReminded;
     private int _totalToolCallsExecuted;
@@ -59,7 +60,8 @@ public class AgentExecutor : IAgentExecutor
         ILogger<AgentExecutor> logger,
         Seeing.Session.Core.ISessionManager? sessionManager = null,
         Scheduling.IAgentLoopScheduler? loopScheduler = null,
-        ITodoStore? todoStore = null)
+        ITodoStore? todoStore = null,
+        ILlmTurnRetryPolicy? turnRetryPolicy = null)
     {
         _llm = llm;
         _tools = tools;
@@ -72,6 +74,7 @@ public class AgentExecutor : IAgentExecutor
         _sessionManager = sessionManager;
         _loopScheduler = loopScheduler;
         _todoStore = todoStore;
+        _turnRetryPolicy = turnRetryPolicy;
     }
 
     /// <summary>
@@ -186,14 +189,6 @@ public class AgentExecutor : IAgentExecutor
                     }
                 }
 
-                // ========== 发布 StreamStart 事件（标记新轮次开始）==========
-                await writer.WriteAsync(new StreamStartEvent
-                {
-                    SessionId = context.SessionId,
-                    LoopId = loopId,
-                    Step = step
-                }, effectiveToken);
-
                 // === TodoEmpty 检查：已执行多步但未创建 todo ===
                 if (step >= 2 && !_todoEmptyReminded
                     && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
@@ -213,152 +208,182 @@ public class AgentExecutor : IAgentExecutor
                 // 构建请求（异步注入动态上下文；token 改用 effectiveToken）
                 var request = await BuildRequestAsync(agent, history, context, effectiveToken).ConfigureAwait(false);
 
-                // 调用 LLM（流式）
                 ChatMessage? assistantMessage = null;
-                var streamingContent = new StringBuilder();
-                var streamingReasoning = new StringBuilder();
-                string? streamingReasoningSignature = null;
-                List<ToolCall>? accumulatedToolCalls = null;
-                TokenUsage? lastUsage = null;
-
-                // 使用 Channel 模式捕获 LLM 流式异常
-                var llmChannel = System.Threading.Channels.Channel.CreateUnbounded<StreamUpdate>();
                 Exception? llmException = null;
+                TokenUsage? lastUsage = null;
+                var turnElapsed = TimeSpan.Zero;
 
-                var llmTask = Task.Run(async () =>
+                for (var attempt = 1; ; attempt++)
                 {
-                    try
+                    assistantMessage = null;            // 每次 attempt 重置，避免残留上一尝试结果
+                    var usageBeforeTurn = totalUsage;   // 重试失败时回滚本轮 usage 累加
+                    var streamingContent = new StringBuilder();
+                    var streamingReasoning = new StringBuilder();
+                    string? streamingReasoningSignature = null;
+                    List<ToolCall>? accumulatedToolCalls = null;
+                    lastUsage = null;
+                    llmException = null;
+
+                    await writer.WriteAsync(new StreamStartEvent
                     {
-                        await foreach (var update in _llm.CompleteStreamAsync(
-                            ResolveModelId(agent, context),
-                            request,
-                            context.SessionId,
-                            effectiveToken))
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        Step = step,
+                        Attempt = attempt
+                    }, effectiveToken);
+
+                    var llmChannel = Channel.CreateUnbounded<StreamUpdate>();
+                    var llmTask = Task.Run(async () =>
+                    {
+                        try
                         {
-                            await llmChannel.Writer.WriteAsync(update, effectiveToken).ConfigureAwait(false);
-                        }
-                        llmChannel.Writer.Complete();
-                    }
-                    catch (OperationCanceledException ex) when (ex.CancellationToken == effectiveToken)
-                    {
-                        // 用户主动取消，不作为错误
-                        _logger.LogInformation("[AgentExecutor] LLM 请求被取消");
-                        llmChannel.Writer.Complete();
-                    }
-                    catch (LlmRetryExhaustedException ex)
-                    {
-                        llmException = ex;
-                        _logger.LogError(ex, "[AgentExecutor] LLM 重试耗尽: {Message}", ex.Message);
-                        llmChannel.Writer.Complete(ex);
-                    }
-                    catch (LlmTimeoutException ex)
-                    {
-                        llmException = ex;
-                        _logger.LogError(ex, "[AgentExecutor] LLM 请求超时");
-                        llmChannel.Writer.Complete(ex);
-                    }
-                    catch (LlmStreamingException ex)
-                    {
-                        llmException = ex;
-                        _logger.LogError(ex, "[AgentExecutor] LLM 流式错误: {Message}", ex.Message);
-                        llmChannel.Writer.Complete(ex);
-                    }
-                    catch (LlmException ex)
-                    {
-                        llmException = ex;
-                        _logger.LogError(ex, "[AgentExecutor] LLM 错误: {Message}", ex.Message);
-                        llmChannel.Writer.Complete(ex);
-                    }
-                    catch (IOException ex)
-                    {
-                        llmException = new LlmConnectionException("网络连接错误", ex);
-                        _logger.LogError(ex, "[AgentExecutor] 网络连接错误");
-                        llmChannel.Writer.Complete(llmException);
-                    }
-                    catch (Exception ex)
-                    {
-                        llmException = new LlmException($"LLM 调用失败: {ex.Message}", ex);
-                        _logger.LogError(ex, "[AgentExecutor] LLM 调用失败");
-                        llmChannel.Writer.Complete(llmException);
-                    }
-                }, effectiveToken);
-
-                // 从 channel 读取流式更新
-                await foreach (var update in llmChannel.Reader.ReadAllAsync(effectiveToken))
-                {
-                    // ========== 处理思考过程增量 ==========
-                    if (!string.IsNullOrEmpty(update.ReasoningDelta))
-                    {
-                        streamingReasoning.Append(update.ReasoningDelta);
-                        await writer.WriteAsync(new StreamDeltaEvent
-                        {
-                            SessionId = context.SessionId,
-                            LoopId = loopId,
-                            ReasoningDelta = update.ReasoningDelta
-                        }, effectiveToken);
-                    }
-
-                    if (!string.IsNullOrEmpty(update.ReasoningSignature))
-                        streamingReasoningSignature = update.ReasoningSignature;
-
-                    // ========== 处理正文内容增量 ==========
-                    if (!string.IsNullOrEmpty(update.ContentDelta))
-                    {
-                        streamingContent.Append(update.ContentDelta);
-                        await writer.WriteAsync(new StreamDeltaEvent
-                        {
-                            SessionId = context.SessionId,
-                            LoopId = loopId,
-                            ContentDelta = update.ContentDelta
-                        }, effectiveToken);
-                    }
-
-                    // 累积工具调用
-                    if (update.ToolCallDeltas != null && update.ToolCallDeltas.Count > 0)
-                    {
-                        accumulatedToolCalls ??= new List<ToolCall>();
-                        accumulatedToolCalls.AddRange(update.ToolCallDeltas);
-                    }
-
-                    // 记录 Usage
-                    if (update.Usage != null)
-                    {
-                        lastUsage = update.Usage;
-                        if (totalUsage == null)
-                        {
-                            totalUsage = new TokenUsage
+                            await foreach (var update in _llm.CompleteStreamAsync(
+                                ResolveModelId(agent, context), request, context.SessionId, effectiveToken))
                             {
-                                InputTokens = update.Usage.InputTokens,
-                                OutputTokens = update.Usage.OutputTokens
-                            };
+                                await llmChannel.Writer.WriteAsync(update, effectiveToken).ConfigureAwait(false);
+                            }
+                            llmChannel.Writer.Complete();
                         }
-                        else
+                        catch (OperationCanceledException ex) when (ex.CancellationToken == effectiveToken)
                         {
-                            totalUsage = totalUsage with
+                            _logger.LogInformation("[AgentExecutor] LLM 请求被取消");
+                            llmChannel.Writer.Complete();
+                        }
+                        catch (LlmRetryExhaustedException ex)
+                        {
+                            llmException = ex;
+                            _logger.LogError(ex, "[AgentExecutor] LLM 重试耗尽: {Message}", ex.Message);
+                            llmChannel.Writer.Complete();
+                        }
+                        catch (LlmTimeoutException ex)
+                        {
+                            llmException = ex;
+                            _logger.LogError(ex, "[AgentExecutor] LLM 请求超时");
+                            llmChannel.Writer.Complete();
+                        }
+                        catch (LlmStreamingException ex)
+                        {
+                            llmException = ex;
+                            _logger.LogError(ex, "[AgentExecutor] LLM 流式错误: {Message}", ex.Message);
+                            llmChannel.Writer.Complete();
+                        }
+                        catch (LlmException ex)
+                        {
+                            llmException = ex;
+                            _logger.LogError(ex, "[AgentExecutor] LLM 错误: {Message}", ex.Message);
+                            llmChannel.Writer.Complete();
+                        }
+                        catch (IOException ex)
+                        {
+                            llmException = new LlmConnectionException("网络连接错误", ex);
+                            _logger.LogError(ex, "[AgentExecutor] 网络连接错误");
+                            llmChannel.Writer.Complete();
+                        }
+                        catch (Exception ex)
+                        {
+                            llmException = new LlmException($"LLM 调用失败: {ex.Message}", ex);
+                            _logger.LogError(ex, "[AgentExecutor] LLM 调用失败");
+                            llmChannel.Writer.Complete();
+                        }
+                    }, effectiveToken);
+
+                    await foreach (var update in llmChannel.Reader.ReadAllAsync(effectiveToken))
+                    {
+                        if (!string.IsNullOrEmpty(update.ReasoningDelta))
+                        {
+                            streamingReasoning.Append(update.ReasoningDelta);
+                            await writer.WriteAsync(new StreamDeltaEvent
                             {
-                                InputTokens = totalUsage.InputTokens + update.Usage.InputTokens,
-                                OutputTokens = totalUsage.OutputTokens + update.Usage.OutputTokens
-                            };
+                                SessionId = context.SessionId,
+                                LoopId = loopId,
+                                ReasoningDelta = update.ReasoningDelta
+                            }, effectiveToken);
+                        }
+
+                        if (!string.IsNullOrEmpty(update.ReasoningSignature))
+                            streamingReasoningSignature = update.ReasoningSignature;
+
+                        if (!string.IsNullOrEmpty(update.ContentDelta))
+                        {
+                            streamingContent.Append(update.ContentDelta);
+                            await writer.WriteAsync(new StreamDeltaEvent
+                            {
+                                SessionId = context.SessionId,
+                                LoopId = loopId,
+                                ContentDelta = update.ContentDelta
+                            }, effectiveToken);
+                        }
+
+                        if (update.ToolCallDeltas != null && update.ToolCallDeltas.Count > 0)
+                        {
+                            accumulatedToolCalls ??= new List<ToolCall>();
+                            accumulatedToolCalls.AddRange(update.ToolCallDeltas);
+                        }
+
+                        if (update.Usage != null)
+                        {
+                            lastUsage = update.Usage;
+                            totalUsage = totalUsage == null
+                                ? new TokenUsage
+                                {
+                                    InputTokens = update.Usage.InputTokens,
+                                    OutputTokens = update.Usage.OutputTokens
+                                }
+                                : totalUsage with
+                                {
+                                    InputTokens = totalUsage.InputTokens + update.Usage.InputTokens,
+                                    OutputTokens = totalUsage.OutputTokens + update.Usage.OutputTokens
+                                };
+                        }
+
+                        if (update.IsComplete)
+                        {
+                            assistantMessage = BuildAssistantMessage(
+                                update,
+                                streamingContent.ToString(),
+                                streamingReasoning.ToString(),
+                                streamingReasoningSignature,
+                                accumulatedToolCalls);
                         }
                     }
 
-                    if (update.IsComplete)
+                    await llmTask.ConfigureAwait(false);
+
+                    if (effectiveToken.IsCancellationRequested)
+                        throw new OperationCanceledException(effectiveToken);
+
+                    if (llmException == null)
+                        break;
+
+                    // 应用层整轮重试判定（本轮工具尚未执行，回滚该轮产出安全）
+                    if (_turnRetryPolicy is not { Enabled: true }
+                        || !_turnRetryPolicy.CanRetry(llmException, effectiveToken))
+                        break;
+
+                    var nextDelay = _turnRetryPolicy.NextDelay(attempt);
+                    if (!_turnRetryPolicy.ShouldRetry(attempt, turnElapsed, nextDelay))
+                        break;
+
+                    turnElapsed += nextDelay;
+                    await writer.WriteAsync(new LlmRetryScheduledEvent
                     {
-                        assistantMessage = BuildAssistantMessage(
-                            update,
-                            streamingContent.ToString(),
-                            streamingReasoning.ToString(),
-                            streamingReasoningSignature,
-                            accumulatedToolCalls);
-                    }
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        Step = step,
+                        Attempt = attempt + 1,
+                        NextDelayMs = (int)nextDelay.TotalMilliseconds,
+                        Reason = llmException.Message
+                    }, effectiveToken);
+
+                    // 回滚本轮 usage 累加，避免重试重复计入
+                    totalUsage = usageBeforeTurn;
+
+                    _logger.LogWarning(
+                        "[AgentExecutor] 轮次重试: Step={Step}, Attempt={Attempt}, NextDelayMs={DelayMs}",
+                        step, attempt + 1, nextDelay.TotalMilliseconds);
+
+                    await Task.Delay(nextDelay, effectiveToken).ConfigureAwait(false);
                 }
-
-                // 确保后台任务完成
-                await llmTask.ConfigureAwait(false);
-
-                // 取消优先：取消后不再把「空响应」误报为错误，交由外层 catch 发布 LoopCancelledEvent
-                if (effectiveToken.IsCancellationRequested)
-                    throw new OperationCanceledException(effectiveToken);
 
                 // 处理 LLM 异常
                 if (llmException != null)

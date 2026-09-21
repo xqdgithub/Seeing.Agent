@@ -40,6 +40,22 @@ namespace Seeing.Agent.WebUI.Services
 
         /// <summary>用户输入（触发消息）</summary>
         public string? UserInput { get; set; }
+
+        /// <summary>当前轮次重试次数（0 = 未重试）</summary>
+        public int RetryAttempt { get; set; }
+
+        /// <summary>本次退避等待毫秒（倒计时用）</summary>
+        public int RetryNextDelayMs { get; set; }
+
+        /// <summary>重试原因</summary>
+        public string? RetryReason { get; set; }
+
+        /// <summary>本次重试起始时间（倒计时基准）</summary>
+        public DateTime? RetryAt { get; set; }
+
+        /// <summary>是否处于重试等待中</summary>
+        public bool IsRetrying => RetryAttempt > 0 && RetryAt.HasValue
+            && DateTime.Now < RetryAt.Value.AddMilliseconds(RetryNextDelayMs);
     }
 
     /// <summary>
@@ -128,6 +144,26 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public BudgetStatusResponse? CurrentBudgetStatus { get; private set; }
 
+        /// <summary>当前 Loop 是否处于重试等待中。</summary>
+        public bool IsRetrying => _currentLoop?.IsRetrying == true;
+
+        /// <summary>重试提示文案（含倒计时秒数）；未重试时为 null。</summary>
+        public string? RetryText
+        {
+            get
+            {
+                var loop = _currentLoop;
+                if (loop is null || !loop.IsRetrying || loop.RetryAt is null)
+                    return null;
+                var remain = (int)Math.Ceiling(
+                    (loop.RetryAt.Value.AddMilliseconds(loop.RetryNextDelayMs) - DateTime.Now).TotalSeconds);
+                return $"连接中断，{Math.Max(0, remain)} 秒后重试（第 {loop.RetryAttempt} 次）…";
+            }
+        }
+
+        /// <summary>最近一次执行错误（仅展示，不写入 Messages/LLM 历史）。</summary>
+        public string? LastError { get; private set; }
+
         /// <summary>
         /// UI 更新回调（携带触发事件；非事件流触发的刷新传 null）
         /// </summary>
@@ -214,6 +250,10 @@ namespace Seeing.Agent.WebUI.Services
 
                 case MessageEventType.StreamComplete:
                     HandleStreamComplete((StreamCompleteEvent)evt);
+                    break;
+
+                case MessageEventType.LlmRetry:
+                    HandleLlmRetry((LlmRetryScheduledEvent)evt);
                     break;
 
                 case MessageEventType.ToolCallPending:
@@ -346,6 +386,9 @@ namespace Seeing.Agent.WebUI.Services
             // 清空累积缓冲区
             _accumulatedReasoning.Clear();
             _accumulatedContent.Clear();
+
+            // 新一轮执行开始：清除上一轮遗留的错误展示态
+            LastError = null;
         }
 
         /// <summary>
@@ -353,6 +396,8 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         private void HandleLoopComplete(LoopCompleteEvent evt)
         {
+            ClearRetryState();
+
             if (_currentLoop != null)
             {
                 _currentLoop.EndTime = evt.Timestamp;
@@ -371,6 +416,8 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         private void HandleStreamStart(StreamStartEvent evt)
         {
+            ClearRetryState();
+
             if (!string.IsNullOrEmpty(evt.LoopId))
             {
                 _currentLoopId = evt.LoopId;
@@ -385,6 +432,8 @@ namespace Seeing.Agent.WebUI.Services
 
         private void HandleStreamDelta(StreamDeltaEvent evt)
         {
+            ClearRetryState();
+
             // 内容由服务端 ChatEventTracker 写入同一 SessionData；UI 只绑定指针用于刷新
             if (!string.IsNullOrEmpty(evt.LoopId))
                 _currentLoopId = evt.LoopId;
@@ -399,6 +448,8 @@ namespace Seeing.Agent.WebUI.Services
 
         private void HandleStreamComplete(StreamCompleteEvent evt)
         {
+            ClearRetryState();
+
             if (evt.Message?.Role == "tool")
                 return;
 
@@ -611,6 +662,8 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         private void HandleLoopCancelled(LoopCancelledEvent evt)
         {
+            ClearRetryState();
+
             if (_currentLoop != null)
             {
                 _currentLoop.EndTime = evt.Timestamp;
@@ -626,9 +679,37 @@ namespace Seeing.Agent.WebUI.Services
 
         private void HandleError(ErrorEvent evt)
         {
-            // 展示用：绑定到服务端已写入的消息；不在此追加以免重复落盘内容
+            ClearRetryState();
+
             EnsureCurrentAssistantMessage(evt.SessionId);
-            _ = FormatErrorDetails(evt);
+            LastError = FormatErrorDetails(evt);
+        }
+
+        /// <summary>
+        /// 处理 LLM 轮次重试排期事件 - 记录退避等待状态，供 UI 展示"X 秒后重试"。
+        /// </summary>
+        private void HandleLlmRetry(LlmRetryScheduledEvent evt)
+        {
+            if (_currentLoop != null)
+            {
+                _currentLoop.RetryAttempt = evt.Attempt;
+                _currentLoop.RetryNextDelayMs = evt.NextDelayMs;
+                _currentLoop.RetryReason = evt.Reason;
+                _currentLoop.RetryAt = DateTime.Now;
+            }
+        }
+
+        /// <summary>
+        /// 清除当前 Loop 的重试态（该轮结束/恢复即视为重试态终止）。
+        /// </summary>
+        private void ClearRetryState()
+        {
+            if (_currentLoop == null)
+                return;
+            _currentLoop.RetryAttempt = 0;
+            _currentLoop.RetryNextDelayMs = 0;
+            _currentLoop.RetryReason = null;
+            _currentLoop.RetryAt = null;
         }
 
         /// <summary>

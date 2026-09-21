@@ -100,6 +100,20 @@
                     }
                 </div>
 
+                @if (_handler?.IsRetrying == true)
+                {
+                    <div class="retry-banner" role="status">
+                        <span class="retry-spinner"></span>
+                        <span>@_handler.RetryText</span>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_handler?.LastError))
+                {
+                    <div class="retry-banner error-banner" role="alert">
+                        <span>@_handler.LastError</span>
+                    </div>
+                }
+
                 <!-- 输入区域：仅在非空状态时显示；SubAgent 子会话只读 -->
                 @if (!ShowEmptyState)
                 {
@@ -230,6 +244,26 @@
     }
 </div>
 
+<style>
+    .retry-banner {
+        display: flex; gap: 8px; align-items: center;
+        padding: 8px 12px; margin: 8px 0; border-radius: 6px;
+        background: var(--color-warning-bg, #fff7e6);
+        color: var(--color-warning, #ad6800);
+        font-size: 13px;
+    }
+    .retry-spinner {
+        width: 12px; height: 12px;
+        border: 2px solid currentColor; border-top-color: transparent;
+        border-radius: 50%; animation: retry-spin 0.8s linear infinite;
+    }
+    .error-banner {
+        background: var(--color-error-bg, #fff1f0);
+        color: var(--color-error, #cf1322);
+    }
+    @@keyframes retry-spin { to { transform: rotate(360deg); } }
+</style>
+
 @code {
 
     // ---- 参数 ----
@@ -252,6 +286,7 @@
     private Services.SessionWindowTimelineSync _sync = null!;
     private Services.EventStreamHandler? _handler;
     private Services.TaskCardAggregator? _aggregator;
+    private System.Timers.Timer? _retryTimer;
     private string? _boundSessionId;
     private Action<IMessageEvent>? _onHandlerChangedCallback;
     private string? _loadedSessionId;
@@ -898,6 +933,8 @@
 
         _sync.ProcessEvent(evt);
 
+        EnsureRetryTimer();
+
         if (evt is ExecutionCompleteEvent completeEvt && _handler != null && !_handler.IsStreamActive)
         {
             SessionState.ExecutionStatus = completeEvt.Status;
@@ -917,6 +954,35 @@
             MessageService.Error($"压缩失败: {cfe.ErrorMessage}");
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 重试倒计时 1s 刷新：处于重试等待时启动 Timer，退出重试后停止并释放。
+    /// </summary>
+    private void EnsureRetryTimer()
+    {
+        var active = _handler?.IsRetrying == true;
+        if (active && _retryTimer is null)
+        {
+            _retryTimer = new System.Timers.Timer(1000);
+            _retryTimer.Elapsed += (_, _) => InvokeAsync(() =>
+            {
+                if (_handler?.IsRetrying != true)
+                {
+                    _retryTimer?.Stop();
+                    _retryTimer?.Dispose();
+                    _retryTimer = null;
+                }
+                StateHasChanged();
+            });
+            _retryTimer.Start();
+        }
+        else if (!active && _retryTimer is not null)
+        {
+            _retryTimer.Stop();
+            _retryTimer.Dispose();
+            _retryTimer = null;
+        }
     }
 
     /// <summary>
@@ -1736,6 +1802,14 @@
     public void Dispose()
     {
         SessionState.CancelExecution();
+
+        if (_retryTimer != null)
+        {
+            _retryTimer.Stop();
+            _retryTimer.Dispose();
+            _retryTimer = null;
+        }
+
         _budgetSubscription?.Dispose();
         _sessionEventSubscription?.Dispose();
         _seeingAgentOptionsSubscription?.Dispose();

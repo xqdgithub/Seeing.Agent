@@ -737,6 +737,10 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<IModelConfigLookup>(sp => sp.GetRequiredService<ILlmService>());
             services.AddSingleton<ITextCompletion, TextCompletionService>();
             services.AddSingleton<IProviderEndpointLookup, OptionsProviderEndpointLookup>();
+
+            // 应用层轮次重试策略（默认无限重试；可由宿主覆盖）
+            services.AddSingleton<Seeing.Agent.Abstractions.Llm.ILlmTurnRetryPolicy>(
+                _ => new Seeing.Agent.Core.Llm.DefaultLlmTurnRetryPolicy());
         }
 
         /// <summary>
