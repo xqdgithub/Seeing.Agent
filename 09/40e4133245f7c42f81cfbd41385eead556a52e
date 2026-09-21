@@ -1,0 +1,78 @@
+src/primitives/Seeing.Session/Core/SessionMetadataKeys.cs
+  s_448005a9250c58::t_f93dc029722336 18-23
+src/hosting/Seeing.Agent.Hosting/Tools/TaskStatusTool.cs
+  s_448005a9250c58::t_e3bb9bb566f440 174-177
+src/abstractions/Seeing.Agent.Abstractions/Events/MessageEventTypes.cs
+  s_2db89ced0a0097::t_d7b3c022ccd446 211-217
+  s_2db89ced0a0097::t_2f0a1b5ba1ef7a 83-85
+  s_2db89ced0a0097::t_b19b18402a4ebe 349-370
+src/abstractions/Seeing.Agent.Abstractions/Llm/LlmTurnRetryOptions.cs
+  s_2db89ced0a0097::t_f0c73be0e3583d 1-24
+tests/spine/Seeing.Agent.Tests/Llm/LlmTurnRetryPolicyTests.cs
+  s_2db89ced0a0097::t_91291854cd59ed 1-69
+src/hosting/Seeing.Agent.Hosting/Execution/ChatEventTracker.cs
+  s_252bf79e783e15::t_225f8e815c2e05 145-146,149-150
+  s_252bf79e783e15::t_285f811ce8064e 45-46,49-50
+  s_252bf79e783e15::t_15f4df1e3abcce 180-206
+tests/spine/Seeing.Agent.Tests/App/Execution/ChatEventTrackerStreamResetTests.cs
+  s_252bf79e783e15::t_082afc03957b7a 56-77
+  s_252bf79e783e15::t_ab09dfe1fc1dcf 1-55,78
+samples/Seeing.Agent.WebUI/Services/EventStreamHandler.cs
+  s_2fbab24b9a5b51::t_fd7be34172ad75 624
+src/abstractions/Seeing.Agent.Abstractions/Llm/ILlmTurnRetryPolicy.cs
+  s_2db89ced0a0097::t_4ee1630ba49672 1-22
+src/hosting/Seeing.Agent.Hosting/Execution/ExecutionJobService.cs
+  s_448005a9250c58::t_cdcc402dc3a1c5 677
+  s_252bf79e783e15::t_f8e7dd82cb5175 1170-1194
+  s_448005a9250c58::t_6674e8135d7a54 1327
+  s_252bf79e783e15::t_a68b79e99aafe7 1094-1096
+tests/spine/Seeing.Agent.Tests/App/Execution/BuildHistoryFromSessionTests.cs
+  s_252bf79e783e15::t_1bd985f0f05db9 1-51
+src/spine/Seeing.Agent.Core/Llm/DefaultLlmTurnRetryPolicy.cs
+  s_2db89ced0a0097::t_991abee52070d2 1-51
+src/spine/Seeing.Agent.Core/Llm/RetryLlmClientDecorator.cs
+  s_2fbab24b9a5b51::t_b862bcc4536b71 135
+  s_2fbab24b9a5b51::t_8ab31d7b21e002 88
+  s_2fbab24b9a5b51::t_e1822f435eacd8 118-119
+  s_2fbab24b9a5b51::t_16bf5ce1833cd3 195-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "0940e4133245f7c42f81cfbd41385eead556a52e",
+  "prompts": {},
+  "sessions": {
+    "s_252bf79e783e15": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3daa26e9ffe830IGJCs8T18EI",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_2db89ced0a0097": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3daa2078ffex7lM6EtmfREJ5Q",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_2fbab24b9a5b51": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3daa18f1ffehWxJ8sVNd6dbj7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_448005a9250c58": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3e128ecdffehd7guFx9JY48Qa",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
