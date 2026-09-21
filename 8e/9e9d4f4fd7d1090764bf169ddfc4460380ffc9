@@ -1,0 +1,24 @@
+samples/Seeing.Agent.WebUI/Components/Messaging/QuestionCard.razor
+  s_bdf7de3a6c41f4::t_5d456093115b5c 150-155,158-160,162-163
+  s_bdf7de3a6c41f4::t_78933f93ca1284 149,156-157,161
+  s_bdf7de3a6c41f4::t_bd53c115a6949d 55
+src/capabilities/Seeing.Agent.Agents.BuiltIn/BuiltInAgents.cs
+  s_bdf7de3a6c41f4::t_52c64789965476 313-314
+  s_bdf7de3a6c41f4::t_ec274f19c596c0 61-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "8e9e9d4f4fd7d1090764bf169ddfc4460380ffc9",
+  "prompts": {},
+  "sessions": {
+    "s_bdf7de3a6c41f4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3d589333ffeG18da4DmKGP2uu",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
