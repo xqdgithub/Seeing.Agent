@@ -1,0 +1,51 @@
+src/spine/Seeing.Agent.Core/Core/AgentExecutor.cs
+  s_0599044440a72b::t_758e09a3f13891 63-64
+  s_0599044440a72b::t_2c6999463c5546 47
+  s_0599044440a72b::t_69bc6709632fd0 214,216,218-223,225-236,238,240-245,247-288,290,292,294-301,303-304,306,308-315,317-321,323,325-336,338-339,341-346,350-368,370-376,378-379,381-386
+  s_0599044440a72b::t_dc5c36063cb283 77
+  s_0599044440a72b::t_f84a623994e70b 213,224
+samples/Seeing.Agent.WebUI/Components/SessionWindow.razor
+  s_2e483bc7a4aa1e::t_ae843c1a48e0f0 1805-1812
+  s_2e483bc7a4aa1e::t_2d31b0e14eebc3 289
+  s_2e483bc7a4aa1e::t_e57e05277a1f92 247-266
+  s_2e483bc7a4aa1e::t_46d479bb194216 960-987
+  s_2e483bc7a4aa1e::t_c00ad7727c4fff 103-116
+  s_2e483bc7a4aa1e::t_3546b64a947f54 936-937
+src/spine/Seeing.Agent.Core/Extensions/ServiceCollectionExtensions.cs
+  s_0599044440a72b::t_5f0a6522e9ab82 740-743
+tests/spine/Seeing.Agent.Tests/Core/AgentExecutorTurnRetryTests.cs
+  s_0599044440a72b::t_7d64719e0b8263 1-108
+samples/Seeing.Agent.WebUI/Services/EventStreamHandler.cs
+  s_2e483bc7a4aa1e::t_39771f1c836dfc 255-258
+  s_2e483bc7a4aa1e::t_faaefe23d2cc23 665-666
+  s_2e483bc7a4aa1e::t_eafe5d05da7c41 389-391
+  s_2e483bc7a4aa1e::t_de00031416493f 43-58
+  s_2e483bc7a4aa1e::t_609c17499a1afd 419-420,435-436,451-452
+  s_2e483bc7a4aa1e::t_58d4a5f724b63b 399-400
+  s_2e483bc7a4aa1e::t_274837fa5fdf61 682-683,685-712
+  s_2e483bc7a4aa1e::t_ba2af1b76ce95d 147-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.44-trip",
+  "base_commit_sha": "e0330fd6d34f5775797d1291f4ca9a03b5897d57",
+  "prompts": {},
+  "sessions": {
+    "s_0599044440a72b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3d9b71eeffeyX6P5a7rLpXGfy",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_2e483bc7a4aa1e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3d9b6582ffesiItCBw4RIGcHg",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
