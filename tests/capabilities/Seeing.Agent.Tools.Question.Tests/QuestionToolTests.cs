@@ -102,6 +102,31 @@ public class QuestionToolTests
     }
 
     [Fact]
+    public void ParametersSchema_Should_Explain_KindVersusOptions()
+    {
+        // 模型曾把 text 与 options 一起传（想要「选项 + 自由输入」）：
+        // schema 必须说清「选项 + 自由输入」用 single（custom 默认 true），text 不要传 options。
+        var item = CreateTool().ParametersSchema
+            .GetProperty("properties").GetProperty("questions").GetProperty("items");
+        var properties = item.GetProperty("properties");
+
+        properties.GetProperty("kind").GetProperty("description").GetString()
+            .Should().Contain("single").And.Contain("custom");
+
+        properties.GetProperty("options").GetProperty("description").GetString()
+            .Should().Contain("text");
+
+        properties.GetProperty("custom").GetProperty("description").GetString()
+            .Should().Contain("single");
+
+        // 给出正/反例，模型对示例的遵循度远高于散文描述。
+        var examples = item.GetProperty("examples").EnumerateArray().ToList();
+        examples.Should().HaveCountGreaterThanOrEqualTo(2);
+        examples.Select(e => e.GetProperty("kind").GetString())
+            .Should().Contain("single").And.Contain("text");
+    }
+
+    [Fact]
     public async Task TooManyQuestions_Should_Fail()
     {
         var questions = Enumerable.Range(0, 11)
@@ -163,6 +188,8 @@ public class QuestionToolTests
 
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("options 必须为空");
+        // 错误信息必须给出可自愈的修法，否则模型只能盲目重试。
+        result.Error.Should().Contain("kind=single");
     }
 
     [Fact]

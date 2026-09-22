@@ -36,6 +36,8 @@ public sealed class QuestionTool : BuiltInToolBase
         "每题可选单选（single）、多选（multiple）或文本（text）；" +
         "选项题可通过 custom 允许\"其他\"自由输入，required 控制是否必填，" +
         "defaultSelectedLabels/defaultCustomAnswer 可预选默认值。" +
+        "需要「给出候选选项 + 仍允许用户自由输入」时用 single（custom 默认为 true，已含「其他」）；" +
+        "text 仅用于纯自由文本作答，且不要传 options——text 与 options 同时出现属非法参数。" +
         "无交互界面的环境会降级返回，此时请改用文本提问。";
 
     /// <inheritdoc />
@@ -63,7 +65,9 @@ public sealed class QuestionTool : BuiltInToolBase
                         options = new
                         {
                             type = "array",
-                            description = $"选项列表（最多 {MaxOptionsPerQuestion} 项；文本题必须为空）",
+                            description =
+                                $"选项列表（最多 {MaxOptionsPerQuestion} 项）。" +
+                                "single/multiple 需要至少 1 项；text 必须省略或为空数组（text 不接受选项）。",
                             items = new
                             {
                                 type = "object",
@@ -79,9 +83,14 @@ public sealed class QuestionTool : BuiltInToolBase
                         {
                             type = "string",
                             @enum = new[] { "single", "multiple", "text" },
-                            description = "问题类型：单选 single / 多选 multiple / 文本 text（默认 single）"
+                            description =
+                                "问题类型（省略则默认 single）：" +
+                                "single=从选项里选一个，且 custom 默认为 true（自动附带\"其他\"可自由输入）；" +
+                                "multiple=从选项里多选；" +
+                                "text=纯自由文本作答（必须不要传 options）。" +
+                                "要「选项 + 允许自由输入」请用 single，而不是 text。"
                         },
-                        custom = new { type = "boolean", description = "是否允许\"其他\"自由输入（默认 true）" },
+                        custom = new { type = "boolean", description = "仅 single/multiple 生效：是否允许\"其他\"自由输入（默认 true）" },
                         required = new { type = "boolean", description = "是否必填（默认 true）" },
                         defaultSelectedLabels = new
                         {
@@ -91,7 +100,25 @@ public sealed class QuestionTool : BuiltInToolBase
                         },
                         defaultCustomAnswer = new { type = "string", description = "默认的自定义答案" }
                     },
-                    required = new[] { "id", "header", "question" }
+                    required = new[] { "id", "header", "question" },
+                    examples = new object[]
+                    {
+                        new
+                        {
+                            id = "city",
+                            header = "查询城市",
+                            question = "要查哪个城市的天气？",
+                            kind = "single",
+                            options = new object[] { new { label = "北京" }, new { label = "上海" } }
+                        },
+                        new
+                        {
+                            id = "detail",
+                            header = "补充说明",
+                            question = "还有什么要补充的？",
+                            kind = "text"
+                        }
+                    }
                 }
             }
         },
@@ -250,7 +277,9 @@ public sealed class QuestionTool : BuiltInToolBase
 
             if (kind == QuestionKind.Text && options.Count > 0)
             {
-                error = $"文本题 {id} 的 options 必须为空";
+                error = $"文本题 {id} 的 options 必须为空。" +
+                        "若意图是「给出候选选项但仍允许用户自由输入」，请改用 kind=single" +
+                        "（custom 默认为 true，会自动附带\"其他\"自由输入）。";
                 return false;
             }
 
