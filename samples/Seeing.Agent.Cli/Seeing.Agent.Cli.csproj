@@ -43,9 +43,18 @@
     构建期依赖（ReferenceOutputAssembly=false）：
     仅确保 `dotnet build` 时产出 seeing-tui.dll 供开发期 ServiceAssetLocator 回退查找，
     不引入任何代码依赖、不复制 TUI 的内容文件；发布产物由下方 PublishTuiForCli 整目录拷贝。
+
+    Private=false 必须显式声明：ReferenceOutputAssembly=false 只切断程序集引用，
+    不会阻止 MSBuild 调 GetCopyToOutputDirectoryItems 收集被引用 Exe 的
+    apphost/runtimeconfig.json/deps.json（CopyToOutputDirectory=PreserveNewest），
+    从而把 seeing-tui.exe / seeing-tui.*.json 复制进 CLI 输出目录。
+    一旦 TUI 未参与本次构建（如解决方案配置取消勾选 Build），这些源文件不存在，
+    复制即报 MSB3030，并连带使 Seeing.Agent.Cli.Tests 报 CS0006。
   -->
   <ItemGroup>
-    <ProjectReference Include="..\..\samples\Seeing.Agent.Tui\Seeing.Agent.Tui.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\samples\Seeing.Agent.Tui\Seeing.Agent.Tui.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
   </ItemGroup>
 
   <ItemGroup>
