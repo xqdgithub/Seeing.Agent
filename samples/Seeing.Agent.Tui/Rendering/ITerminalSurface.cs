@@ -8,8 +8,14 @@ namespace Seeing.Agent.Tui.Rendering;
 /// </summary>
 public interface ITerminalSurface
 {
-    /// <summary>更新活动区（投递到渲染线程，非阻塞）。</summary>
-    Task UpdateAsync(IRenderable view, CancellationToken ct = default);
+    /// <summary>
+    /// 更新活动区（投递到渲染线程，非阻塞）。
+    /// <para>
+    /// <paramref name="caret"/> 为编辑插入点：终端把输入法组合串画在<b>物理光标</b>处，
+    /// 渲染线程在该帧写完后把光标移到插入点，写下一帧前再放回活动区末行。
+    /// </para>
+    /// </summary>
+    Task UpdateAsync(IRenderable view, TuiCaret? caret = null, CancellationToken ct = default);
 
     /// <summary>固化：退出活动区 → 写滚动历史 → 重启活动区。</summary>
     Task CommitAsync(IRenderable committed, CancellationToken ct = default);

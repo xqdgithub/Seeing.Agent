@@ -617,7 +617,7 @@ public sealed class TuiCommandRouterTests
             return this;
         }
 
-        public Task UpdateAsync(IRenderable view, CancellationToken ct = default) => Task.CompletedTask;
+        public Task UpdateAsync(IRenderable view, TuiCaret? caret = null, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task CommitAsync(IRenderable committed, CancellationToken ct = default) => Task.CompletedTask;
 

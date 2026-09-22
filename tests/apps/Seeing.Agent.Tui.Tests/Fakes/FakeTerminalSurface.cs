@@ -37,10 +37,16 @@ public sealed class FakeTerminalSurface : ITerminalSurface, IDisposable
 
     public bool Stopped { get; private set; }
 
-    public Task UpdateAsync(IRenderable view, CancellationToken ct = default)
+    /// <summary>最近一次活动区更新的编辑插入点（无则为 null）。</summary>
+    public TuiCaret? LastCaret { get; private set; }
+
+    public Task UpdateAsync(IRenderable view, TuiCaret? caret = null, CancellationToken ct = default)
     {
         lock (_gate)
+        {
             _updates.Add(RenderToString(view));
+            LastCaret = caret;
+        }
 
         return Task.CompletedTask;
     }

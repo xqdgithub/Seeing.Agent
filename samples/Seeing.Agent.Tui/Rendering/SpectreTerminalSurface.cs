@@ -37,6 +37,9 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
     private volatile PromptCommand? _activePrompt;
     private int _terminalRestored;
 
+    // 光标已被移到插入点（值为相对活动区末行的上移行数，0 = 未移动）。仅在渲染线程读写。
+    private int _caretRowsBelow;
+
     public SpectreTerminalSurface()
         : this(AnsiConsole.Console)
     {
@@ -72,7 +75,7 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
 
     public IAnsiConsole Console => _console;
 
-    public Task UpdateAsync(IRenderable view, CancellationToken ct = default)
+    public Task UpdateAsync(IRenderable view, TuiCaret? caret = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(view);
         EnsureStarted();
@@ -80,7 +83,7 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         if (_faulted)
             return Task.CompletedTask;
 
-        PostUpdate(view);
+        PostUpdate(view, caret);
         return Task.CompletedTask;
     }
 
@@ -207,10 +210,10 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         }
     }
 
-    private void PostUpdate(IRenderable view)
+    private void PostUpdate(IRenderable view, TuiCaret? caret)
     {
         lock (_pendingGate)
-            _pendingUpdate = new UpdateCommand(view);
+            _pendingUpdate = new UpdateCommand(view, caret);
 
         TryFlushPending();
     }
@@ -365,12 +368,16 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
                         switch (command)
                         {
                             case UpdateCommand update:
+                                RestoreCaretPlacement();
                                 _currentView = update.View;
+                                // UpdateTarget 内部已 Refresh（写整帧）；再调一次 Refresh 会让每次更新写两遍帧，
+                                // 双倍擦写终端（输入法组合串被擦的窗口翻倍）。
                                 ctx.UpdateTarget(update.View);
-                                ctx.Refresh();
+                                PlaceCaret(update.Caret);
                                 break;
 
                             case CommitCommand c:
+                                RestoreCaretPlacement();
                                 commit = c;
                                 // 提交前把活动区置空：Refresh 只画空白，避免重绘整帧后再擦除的闪烁。
                                 _currentView = new Text(string.Empty);
@@ -378,10 +385,12 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
                                 return;
 
                             case PromptCommand p:
+                                RestoreCaretPlacement();
                                 prompt = p;
                                 return;
 
                             case StopCommand:
+                                RestoreCaretPlacement();
                                 _stopRequested = true;
                                 return;
                         }
@@ -456,6 +465,54 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         _activePrompt = null;
     }
 
+    /// <summary>
+    /// 把物理光标移到编辑插入点：终端在该位置绘制输入法组合串。
+    /// <para>
+    /// Live 帧写完后光标停在活动区末行，故按「上移 + 归首列 + 右移」定位；
+    /// 下一帧渲染前必须 <see cref="RestoreCaretPlacement"/> 还原，否则 Live 的相对定位会错位。
+    /// </para>
+    /// </summary>
+    private void PlaceCaret(TuiCaret? caret)
+    {
+        if (caret is not { } value)
+            return;
+
+        WriteRaw(TuiCaretSequences.Place(value));
+        _caretRowsBelow = value.RowsBelow;
+    }
+
+    /// <summary>把物理光标放回活动区末行（Live 的下一帧定位与提交擦除都以该位置为基准）。</summary>
+    private void RestoreCaretPlacement()
+    {
+        var rowsBelow = _caretRowsBelow;
+        if (rowsBelow <= 0)
+        {
+            _caretRowsBelow = 0;
+            return;
+        }
+
+        _caretRowsBelow = 0;
+        WriteRaw(TuiCaretSequences.Restore(rowsBelow));
+    }
+
+    /// <summary>直接写终端（不经过 Spectre 渲染管线）；失败不影响帧渲染。</summary>
+    private void WriteRaw(string sequence)
+    {
+        if (string.IsNullOrEmpty(sequence))
+            return;
+
+        try
+        {
+            var writer = _console.Profile.Out.Writer;
+            writer.Write(sequence);
+            writer.Flush();
+        }
+        catch
+        {
+            // 终端不可写：光标定位失败无需中断渲染。
+        }
+    }
+
     private void RunPrompt(PromptCommand command)
     {
         _activePrompt = command;
@@ -509,21 +566,12 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         if (!TryMarkRestored(ref _terminalRestored))
             return;
 
-        try
-        {
-            var writer = _console.Profile.Out.Writer;
-            writer.Write(TerminalRestoreSequence);
-            writer.Flush();
-        }
-        catch
-        {
-            // 恢复失败无需中断退出流程。
-        }
+        WriteRaw(TerminalRestoreSequence);
     }
 
     private abstract record RenderCommand;
 
-    private sealed record UpdateCommand(IRenderable View) : RenderCommand;
+    private sealed record UpdateCommand(IRenderable View, TuiCaret? Caret) : RenderCommand;
 
     private sealed record CommitCommand(IRenderable Renderable) : RenderCommand;
 

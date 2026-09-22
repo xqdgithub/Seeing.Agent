@@ -55,6 +55,21 @@ public static class StatusBarView
         int backgroundExecutions = 0,
         string? hint = null)
     {
+        var rows = BuildRows(state, width, pendingApprovals, backgroundExecutions, hint);
+        return rows.Count == 1 ? rows[0] : new Rows(rows);
+    }
+
+    /// <summary>
+    /// 状态栏各行（1~2 行）。返回行集合而非整块渲染体：调用方需要行数来计算编辑插入点位置
+    /// （插入点之下有几行状态栏），逐行加入活动区与整块加入等价。
+    /// </summary>
+    internal static IReadOnlyList<IRenderable> BuildRows(
+        TuiViewState state,
+        int width,
+        int pendingApprovals = 0,
+        int backgroundExecutions = 0,
+        string? hint = null)
+    {
         try
         {
             var rows = new List<IRenderable>(2)
@@ -66,11 +81,11 @@ public static class StatusBarView
             if (secondary is not null)
                 rows.Add(secondary);
 
-            return rows.Count == 1 ? rows[0] : new Rows(rows);
+            return rows;
         }
         catch
         {
-            return new Text(string.Empty);
+            return [new Text(string.Empty)];
         }
     }
 

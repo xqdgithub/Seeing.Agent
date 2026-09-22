@@ -15,6 +15,9 @@ public sealed class TuiRenderer
     private const int SummaryWidth = 80;
     private const int ReasoningTailLines = 3;
 
+    /// <summary>输入行前缀 <c>&gt; </c> 的显示宽度（<see cref="TuiGlyphs.Prompt"/> + 一个空格）。</summary>
+    private static readonly int InputPrefixWidth = DisplayText.Width(TuiGlyphs.Prompt) + 1;
+
     private readonly TuiRenderOptions _options;
     private readonly MarkdownTerminalRenderer _markdown = new();
 
@@ -33,8 +36,34 @@ public sealed class TuiRenderer
         int maxLines = 0,
         IReadOnlyList<TuiCompletionItem>? completions = null,
         string? hint = null)
+        => BuildActiveViewWithCaret(
+            state,
+            input,
+            width,
+            pendingApprovals,
+            backgroundExecutions,
+            committedOffsets,
+            maxLines,
+            completions,
+            hint).View;
+
+    /// <summary>
+    /// 同 <see cref="BuildActiveView"/>，额外返回该帧的编辑插入点：终端输入法组合串跟随物理光标，
+    /// 调用方据此把光标移到插入点（详见 <see cref="TuiCaret"/>）。
+    /// </summary>
+    public TuiActiveView BuildActiveViewWithCaret(
+        TuiViewState state,
+        TuiInputEditorState input,
+        int width,
+        int pendingApprovals = 0,
+        int backgroundExecutions = 0,
+        IReadOnlyDictionary<string, int>? committedOffsets = null,
+        int maxLines = 0,
+        IReadOnlyList<TuiCompletionItem>? completions = null,
+        string? hint = null)
     {
         var items = new List<IRenderable>();
+        TuiCaret? caret = null;
         try
         {
             // 起始页：Logo + 常用操作，仅在尚无对话内容且空闲时出现，首次提交后自然消失。
@@ -59,11 +88,18 @@ public sealed class TuiRenderer
             // 恒常显示，避免输入行贴着最新消息难以定位。
             items.Add(BuildInputSeparator(width));
 
-            items.Add(BuildInputLine(input, width));
-            items.Add(StatusBarView.Render(state, width, pendingApprovals, backgroundExecutions, hint));
+            var inputBlock = BuildInputLine(input, width);
+            items.Add(inputBlock.Renderable);
+
+            var statusRows = StatusBarView.BuildRows(state, width, pendingApprovals, backgroundExecutions, hint);
+            foreach (var row in statusRows)
+                items.Add(row);
+
+            caret = ResolveCaret(inputBlock, statusRows.Count, maxLines);
         }
         catch
         {
+            caret = null;
             items.Clear();
             items.Add(new Markup("[red]渲染失败[/]"));
             items.Add(StatusBarView.Render(state, width, pendingApprovals, backgroundExecutions, hint));
@@ -72,7 +108,24 @@ public sealed class TuiRenderer
         IRenderable rows = new Rows(items);
 
         // maxLines > 0：活动区高度上限交渲染端保证，裁尾保头部（输入行 + 状态栏恒在尾部）。
-        return maxLines > 0 ? new TailClipRenderable(rows, maxLines) : rows;
+        var view = maxLines > 0 ? new TailClipRenderable(rows, maxLines) : rows;
+        return new TuiActiveView(view, caret);
+    }
+
+    /// <summary>
+    /// 输入块几何 → 相对活动区末行的插入点；输入行被高度裁剪或无法定位时返回 null
+    /// （宁可不动光标，也不能把光标移到活动区之外）。
+    /// </summary>
+    private static TuiCaret? ResolveCaret(InputLineBlock input, int statusRows, int maxLines)
+    {
+        if (input.RowsBelowCaret < 0 || input.CaretColumn <= 0)
+            return null;
+
+        var rowsBelow = input.RowsBelowCaret + Math.Max(0, statusRows);
+        if (maxLines > 0 && rowsBelow + 1 > maxLines)
+            return null;
+
+        return new TuiCaret(rowsBelow, input.CaretColumn);
     }
 
     public IRenderable BuildCommitted(TuiBlock block, int width)
@@ -287,7 +340,10 @@ public sealed class TuiRenderer
             rows.Add(new Markup($"[grey]… 共 {lines.Length} 行，输入 /expand {Markup.Escape(tool.CallId)} 查看完整输出[/]"));
     }
 
-    private IRenderable BuildInputLine(TuiInputEditorState input, int width)
+    /// <summary>输入行渲染体 + 插入点几何（行/列均相对输入块自身；<c>CaretColumn</c> 为 0 表示无法定位）。</summary>
+    private readonly record struct InputLineBlock(IRenderable Renderable, int RowsBelowCaret, int CaretColumn);
+
+    private InputLineBlock BuildInputLine(TuiInputEditorState input, int width)
     {
         var rows = new List<IRenderable>();
 
@@ -300,17 +356,29 @@ public sealed class TuiRenderer
         // 光标按真实插入位渲染：文本分居光标两侧，而非一律追加在末尾。
         var marked = raw[..cursor] + TuiGlyphs.Cursor + raw[cursor..];
         var lines = NormalizeLines(marked);
+
+        // 插入点所在行（换行数与加标记无关，故可直接用光标前的文本推算）。
+        var caretLine = NormalizeLines(raw[..cursor]).Length - 1;
+
         var max = Math.Max(1, _options.MaxInputLines);
         if (lines.Length > max)
         {
             // 保证光标所在行可见：以光标行为窗口下界。
-            var caretLine = NormalizeLines(raw[..cursor]).Length - 1;
             var start = Math.Clamp(caretLine - max + 1, 0, lines.Length - max);
             lines = lines[start..(start + max)];
+            caretLine -= start;
         }
 
         rows.Add(new Markup($"[green]{TuiGlyphs.Prompt}[/] " + Markup.Escape(string.Join('\n', lines))));
-        return rows.Count == 1 ? rows[0] : new Rows(rows);
+
+        // 插入点行内前缀：走显示格宽度，与终端实际占位一致（CJK 记 2 格）。
+        // 直接用「光标前的文本」而非搜索标记字形——用户粘贴的文本里也可能出现该字形。
+        var caretColumn = InputPrefixWidth + DisplayText.Width(NormalizeLines(raw[..cursor])[^1]) + 1;
+
+        return new InputLineBlock(
+            rows.Count == 1 ? rows[0] : new Rows(rows),
+            lines.Length - 1 - caretLine,
+            caretColumn);
     }
 
     private static string ToolSummary(TuiToolState tool)

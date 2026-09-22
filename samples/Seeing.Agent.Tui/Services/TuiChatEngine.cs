@@ -92,6 +92,12 @@ public sealed class TuiChatEngine
     private long _lastRenderedChars;
     private DateTime _lastRenderAt = DateTime.MinValue;
 
+    // 上一次真正渲染时的 tick 判据快照：周期 tick 的脏检查依据（详见 ShouldRenderOnTick）。
+    private TickRenderSnapshot _lastRenderedTick;
+
+    // 活动区外写入（固化提交）代次：提交会拆掉活动区，故代次变化必须触发重绘。
+    private int _terminalCommits;
+
     // 执行中「Esc 二次确认取消」的武装时间（null=未武装）。
     private DateTime? _cancelArmedAt;
 
@@ -253,10 +259,12 @@ public sealed class TuiChatEngine
         Task<IMessageEvent?>? eventTask = ReadEventAsync(_context!.Pump.Reader, cts.Token);
 
         var exit = false;
+        // 本轮唤醒是否只来自周期 tick：tick 的重绘要过脏检查（空闲时不写终端，避免擦掉输入法组合串）。
+        var wokeByTick = false;
         while (!exit && !cts.IsCancellationRequested)
         {
             await PromptPendingAsync(cts.Token).ConfigureAwait(false);
-            await MaybeRenderAsync(false, cts.Token).ConfigureAwait(false);
+            await MaybeRenderAsync(false, cts.Token, tickOnly: wokeByTick).ConfigureAwait(false);
 
             Task done;
             if (inputTask.IsCompleted)
@@ -268,6 +276,7 @@ public sealed class TuiChatEngine
 
             if (done == inputTask)
             {
+                wokeByTick = false;
                 var key = await inputTask.ConfigureAwait(false);
                 inputTask = ReadKeyAsync(_inputRelay.EngineReader, cts.Token);
                 if (key is null)
@@ -286,6 +295,7 @@ public sealed class TuiChatEngine
             }
             else if (eventTask is not null && done == eventTask)
             {
+                wokeByTick = false;
                 var evt = await eventTask.ConfigureAwait(false);
                 if (ShouldEnterNoEventMode(evt))
                 {
@@ -300,6 +310,7 @@ public sealed class TuiChatEngine
             }
             else if (done == tickTask)
             {
+                wokeByTick = true;
                 tickTask = ticker.WaitForNextTickAsync(cts.Token).AsTask();
             }
         }
@@ -517,6 +528,7 @@ public sealed class TuiChatEngine
 
         try
         {
+            NoteTerminalCommitted();
             await _surface.CommitAsync(_renderer.BuildCommitted(block, GetWidth()), ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -879,6 +891,7 @@ public sealed class TuiChatEngine
     {
         try
         {
+            NoteTerminalCommitted();
             await _surface.CommitAsync(renderable, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -1054,6 +1067,7 @@ public sealed class TuiChatEngine
     {
         try
         {
+            NoteTerminalCommitted();
             await _surface.CommitAsync(_renderer.BuildCommitted(block, width), ct).ConfigureAwait(false);
             return true;
         }
@@ -1244,6 +1258,7 @@ public sealed class TuiChatEngine
 
         try
         {
+            NoteTerminalCommitted();
             await _surface.CommitAsync(_renderer.BuildCommitted(copy, width), ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -1468,7 +1483,7 @@ public sealed class TuiChatEngine
             : $"子代理/后台会话 · {sessionId}";
     }
 
-    private async Task MaybeRenderAsync(bool force, CancellationToken ct)
+    private async Task MaybeRenderAsync(bool force, CancellationToken ct, bool tickOnly = false)
     {
         var context = _context;
         if (context is null)
@@ -1481,8 +1496,43 @@ public sealed class TuiChatEngine
         if (!force && elapsed < RedrawIntervalMs && chars - _lastRenderedChars < threshold)
             return;
 
+        // 周期 tick 的补绘走脏检查：tick 每 60ms 都会尝试重绘（流式内容的节流补绘依赖它），
+        // 但空闲时重写整帧会把终端宿主画在物理光标处的输入法组合串擦掉 → 输入中文时持续闪屏。
+        if (tickOnly && !force && !ShouldRenderOnTick(_lastRenderedTick, TakeTickSnapshot(context)))
+            return;
+
         await RenderAsync(ct).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// 周期 tick 是否需要重绘（纯函数，供回归）：与「上次已渲染」的快照不同即需要。
+    /// </summary>
+    internal static bool ShouldRenderOnTick(TickRenderSnapshot last, TickRenderSnapshot current)
+        => !last.Equals(current);
+
+    /// <summary>
+    /// 采集 tick 判据快照（tick 判定与渲染后记录共用同一口径，避免两处漂移）。
+    /// <para>
+    /// 顺带把状态栏外部数据写入视图态（<see cref="ApplyStatusLine"/>）：提前取值与渲染时再取一次等价。
+    /// </para>
+    /// </summary>
+    private TickRenderSnapshot TakeTickSnapshot(SessionContext context)
+        => new(
+            CountActiveChars(context.State),
+            context.State.IsExecuting,
+            CountBackgroundExecutions(context.SessionId),
+            CurrentPendingCount(),
+            ApplyStatusLine(context),
+            GetWidth(),
+            GetRenderHeight(),
+            _terminalCommits);
+
+    /// <summary>
+    /// 记录一次「活动区外写入」（固化提交）。提交会退出活动区（Live <c>AutoClear</c> 即擦除整块），
+    /// 故下一帧必须重绘，否则输入行与状态栏会一直空着；周期 tick 的脏检查用代次捕获这一点。
+    /// 提交可能失败，但失败多记一次只会多绘一帧，无害。
+    /// </summary>
+    private void NoteTerminalCommitted() => _terminalCommits++;
 
     private async Task RenderAsync(CancellationToken ct)
     {
@@ -1490,10 +1540,10 @@ public sealed class TuiChatEngine
         if (context is null)
             return;
 
-        var pendingApprovals = (_permissions.Pending?.Count ?? 0) + (_questions.Pending?.Count ?? 0);
+        var pendingApprovals = CurrentPendingCount();
         _ledger.Prune(context.State);
-        RefreshStatusLine(context);
-        var view = _renderer.BuildActiveView(
+        var status = ApplyStatusLine(context);
+        var active = _renderer.BuildActiveViewWithCaret(
             context.State,
             _editor,
             GetWidth(),
@@ -1506,7 +1556,7 @@ public sealed class TuiChatEngine
         // 防御性：活动区更新失败不得中断主循环（当前实现不抛，替换实现时仍需保证）。
         try
         {
-            await _surface.UpdateAsync(view, ct).ConfigureAwait(false);
+            await _surface.UpdateAsync(active.View, active.Caret, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -1518,25 +1568,52 @@ public sealed class TuiChatEngine
         }
 
         _lastRenderedChars = CountActiveChars(context.State);
+        // 记录「本帧实际用的」判据值（而非事后重读，避免与帧内容不一致导致下一次 tick 白重绘）。
+        _lastRenderedTick = new TickRenderSnapshot(
+            _lastRenderedChars,
+            context.State.IsExecuting,
+            CountBackgroundExecutions(context.SessionId),
+            pendingApprovals,
+            status,
+            GetWidth(),
+            GetRenderHeight(),
+            _terminalCommits);
         _lastRenderAt = DateTime.UtcNow;
     }
 
+    /// <summary>在途权限请求 + 问答请求数（状态栏「待批」）。</summary>
+    private int CurrentPendingCount()
+        => (_permissions.Pending?.Count ?? 0) + (_questions.Pending?.Count ?? 0);
+
     /// <summary>
-    /// 刷新状态栏数据源（工作目录、审批模式、上下文用量）。每帧取值：工作目录可能因切根而变，
-    /// 全局审批开关可热重载，用量由 TokenBudget Hook 异步更新，缓存反而会显示过期值。
+    /// 读取状态栏外部数据（工作目录、审批模式、上下文用量）写入视图态，并返回本次快照。
+    /// <para>
+    /// 每帧取值：工作目录可能因切根而变，全局审批开关可热重载，用量由 TokenBudget Hook 异步更新，
+    /// 缓存反而会显示过期值；返回的快照供周期 tick 的脏检查比对（见 <see cref="ShouldRenderOnTick"/>）。
+    /// </para>
     /// </summary>
-    private void RefreshStatusLine(SessionContext context)
+    private StatusSignature ApplyStatusLine(SessionContext context)
     {
         try
         {
-            context.State.WorkspaceRoot = ResolveWorkspaceRoot(_workspace);
-            context.State.GlobalAutoApprove = ResolveGlobalAutoApprove(_seeingOptions);
-            context.State.Budget = ToBudget(_budgetNotifier?.GetCurrentStatus(context.SessionId));
+            var signature = new StatusSignature(
+                ToBudget(_budgetNotifier?.GetCurrentStatus(context.SessionId)),
+                ResolveGlobalAutoApprove(_seeingOptions),
+                ResolveWorkspaceRoot(_workspace));
+
+            context.State.WorkspaceRoot = signature.WorkspaceRoot;
+            context.State.GlobalAutoApprove = signature.GlobalAutoApprove;
+            context.State.Budget = signature.Budget;
+            return signature;
         }
         catch (Exception ex)
         {
-            // 状态栏是装饰性信息，任何异常都不得影响渲染主循环。
+            // 状态栏是装饰性信息，任何异常都不得影响渲染主循环；读取失败视为「无变化」。
             _logger?.LogDebug(ex, "状态栏数据刷新失败");
+            return new StatusSignature(
+                context.State.Budget,
+                context.State.GlobalAutoApprove,
+                context.State.WorkspaceRoot);
         }
     }
 
