@@ -1,0 +1,25 @@
+tests/capabilities/Seeing.Agent.Tools.Question.Tests/QuestionToolTests.cs
+  s_68d2aa8a5d6609::t_af3ae36c20b331 191-192
+  s_68d2aa8a5d6609::t_c40a1ac954a1d1 105-128
+src/capabilities/Seeing.Agent.Tools.Question/QuestionTool.cs
+  s_68d2aa8a5d6609::t_7f73204691b9ea 68-70,86-91,93
+  s_68d2aa8a5d6609::t_f6568b9cd956b7 103-121
+  s_68d2aa8a5d6609::t_7a2aea4af198d5 39-40
+  s_68d2aa8a5d6609::t_e041a97ac3f6c3 280-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "d18b4486e4c9ba7291536cc4326998ac8cccf996",
+  "prompts": {},
+  "sessions": {
+    "s_68d2aa8a5d6609": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3d2e82a5ffeZviS7LwKY2uQks",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
