@@ -39,11 +39,21 @@
     <ProjectReference Include="..\..\src\capabilities\Seeing.IO.Local\Seeing.IO.Local.csproj" />
   </ItemGroup>
 
+  <!--
+    构建期依赖（ReferenceOutputAssembly=false）：
+    仅确保 `dotnet build` 时产出 seeing-tui.dll 供开发期 ServiceAssetLocator 回退查找，
+    不引入任何代码依赖、不复制 TUI 的内容文件；发布产物由下方 PublishTuiForCli 整目录拷贝。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\samples\Seeing.Agent.Tui\Seeing.Agent.Tui.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
 
   <!--
     WebUI 解耦发布：
@@ -88,6 +98,44 @@
 
     <WriteLinesToFile File="$(WebUIPublishManifest)"
                       Lines="@(WebUIPublishFiles->'%(RecursiveDir)%(Filename)%(Extension)')"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+  </Target>
+
+  <!--
+    TUI 解耦发布：与 WebUI 同因（Cli 无 TUI 代码依赖）。
+    必须整目录拷贝发布产物（含 seeing-tui.runtimeconfig.json / apphost），
+    否则 `dotnet seeing-tui.dll` 会因缺少 runtimeconfig 而启动失败。
+  -->
+  <PropertyGroup>
+    <TuiPublishStagingDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\tui-publish</TuiPublishStagingDir>
+    <TuiPublishManifest>$(PublishDir)\.seeing-tui-files.txt</TuiPublishManifest>
+  </PropertyGroup>
+
+  <Target Name="PublishTuiForCli" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <RemoveDir Directories="$(TuiPublishStagingDir)" Condition="Exists('$(TuiPublishStagingDir)')" />
+    <MakeDir Directories="$(TuiPublishStagingDir)" />
+
+    <Exec Command="set &quot;DOTNET_CLI_UI_LANGUAGE=en&quot; &amp;&amp; dotnet publish &quot;$(MSBuildThisFileDirectory)../Seeing.Agent.Tui/Seeing.Agent.Tui.csproj&quot; -c $(Configuration) -o &quot;$(TuiPublishStagingDir)&quot; -p:SelfContained=false --nologo"
+          StandardOutputImportance="high" />
+
+    <ItemGroup>
+      <TuiPublishFiles Include="$(TuiPublishStagingDir)\**\*" />
+    </ItemGroup>
+
+    <ReadLinesFromFile File="$(TuiPublishManifest)" Condition="Exists('$(TuiPublishManifest)')">
+      <Output TaskParameter="Lines" ItemName="PreviousTuiFiles" />
+    </ReadLinesFromFile>
+    <Delete Files="@(PreviousTuiFiles->'$(PublishDir)%(Identity)')"
+            Condition="@(PreviousTuiFiles) != ''" />
+
+    <Copy SourceFiles="@(TuiPublishFiles)"
+          DestinationFiles="@(TuiPublishFiles->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="false"
+          OverwriteReadOnlyFiles="true" />
+
+    <WriteLinesToFile File="$(TuiPublishManifest)"
+                      Lines="@(TuiPublishFiles->'%(RecursiveDir)%(Filename)%(Extension)')"
                       Overwrite="true"
                       Encoding="UTF-8" />
   </Target>

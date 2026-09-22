@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 
 using FluentAssertions;
 using Seeing.Agent.Cli.Commands;
@@ -15,6 +16,35 @@ public class CliCommandTests
         StartCommand.Create().Name.Should().Be("start");
         StartCommand.CreateWeb().Name.Should().Be("web");
         StartCommand.CreateGateway().Name.Should().Be("gateway");
+    }
+
+    [Fact]
+    public void CreateTuiCommand_ShouldExposeTuiEntry()
+    {
+        var command = TuiCommand.Create();
+
+        command.Name.Should().Be("tui");
+        command.Options
+            .Select(o => o.Name.TrimStart('-'))
+            .Should().Contain(new[] { "continue", "resume", "agent", "model", "log-level", "boot" });
+    }
+
+    [Fact]
+    public void Create_ShouldListTuiAsSupportedService()
+    {
+        StartCommand.SupportedServices.Should().Contain("tui");
+    }
+
+    [Fact]
+    public void CreateWeb_ShouldExposeRunModeSwitches()
+    {
+        var names = StartCommand.CreateWeb().Options
+            .Select(o => o.Name.TrimStart('-'))
+            .ToList();
+
+        names.Should().Contain("background");
+        names.Should().Contain("foreground");
+        names.Should().Contain("boot");
     }
 
     [Fact]

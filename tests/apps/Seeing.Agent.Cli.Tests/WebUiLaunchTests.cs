@@ -7,6 +7,12 @@ namespace Seeing.Agent.Cli.Tests;
 public class WebUiLaunchTests
 {
     [Fact]
+    public void PreferredPort_ShouldAvoidFrequentlyConflicting5000()
+    {
+        WebUiLaunch.PreferredPort.Should().Be(7658);
+    }
+
+    [Fact]
     public void BuildArguments_AndEnvironment_ShouldUseTheSamePort()
     {
         const int port = 25123;

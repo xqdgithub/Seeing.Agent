@@ -5,7 +5,10 @@ namespace Seeing.Agent.Cli.Services;
 /// </summary>
 internal static class WebUiLaunch
 {
-    public const int PreferredPort = 5000;
+    /// <summary>
+    /// WebUI 默认起始端口。避开 5000：该端口在 Windows（AirPlay/UPnP 保留段、其它开发服务器）极易冲突。
+    /// </summary>
+    public const int PreferredPort = 7658;
 
     public static string BuildUrl(int port)
         => $"http://127.0.0.1:{port}";
