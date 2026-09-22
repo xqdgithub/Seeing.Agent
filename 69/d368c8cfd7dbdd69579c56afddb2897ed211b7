@@ -1,0 +1,75 @@
+samples/Seeing.Agent.Cli/Services/TuiLaunch.cs
+  s_68d2aa8a5d6609::t_63e6c6f6481cb8 1-27,32-75
+  s_68d2aa8a5d6609::t_c197a3a87a0733 28-31
+samples/Seeing.Agent.Cli/Program.cs
+  s_68d2aa8a5d6609::t_f831f293028b0f 3,11-14,21,29-32
+docs/architecture/02-modules.md
+  s_68d2aa8a5d6609::t_689165638b200e 89
+samples/Seeing.Agent.Cli/Services/CliWorkspace.cs
+  s_68d2aa8a5d6609::t_34b9db1bd2dc69 1-15
+samples/Seeing.Agent.Cli/Commands/StartCommand.cs
+  s_68d2aa8a5d6609::t_6836aa376e86b2 126-139
+  s_68d2aa8a5d6609::t_d5d26bb03df801 206-213
+  s_68d2aa8a5d6609::t_ce25ab1839825a 179
+  s_68d2aa8a5d6609::t_6b00e91271135e 2,11-13,18,21,34,45-53,55-56,63-66,72-76,78,80-81,88-98,117,121-124,171-178,180-191,220-225,237,242,247-260,269,288,290-291
+  s_68d2aa8a5d6609::t_dd4aec0cf67ad4 153
+  s_68d2aa8a5d6609::t_99ec1cd71b3304 262,267-268,273-277,279,282-283,285
+  s_68d2aa8a5d6609::t_e0b7da9071c6a1 232
+  s_68d2aa8a5d6609::t_73c43986fe58f7 100-104
+samples/Seeing.Agent.Cli/Services/ForegroundProcessRunner.cs
+  s_68d2aa8a5d6609::t_7bd3822c3e80bd 1-124
+samples/Seeing.Agent.Cli/Services/ServiceAssetLocator.cs
+  s_68d2aa8a5d6609::t_47cc72367f017f 63-67,81,83-103,108-122,124-125
+  s_68d2aa8a5d6609::t_3e0e4e6b71f0f8 1-62,68-80,82,104-107,123,126-127
+tests/apps/Seeing.Agent.Cli.Tests/CliCommandTests.cs
+  s_68d2aa8a5d6609::t_b5a4b072ae9eb0 2,21-47
+tests/apps/Seeing.Agent.Cli.Tests/TuiLaunchTests.cs
+  s_68d2aa8a5d6609::t_852f61b95f40fa 1-20,22,31-81
+  s_68d2aa8a5d6609::t_d74c26c6bce80b 21,23-30
+tests/apps/Seeing.Agent.Cli.Tests/WebUiLaunchTests.cs
+  s_68d2aa8a5d6609::t_cbb529abb92682 10-14
+samples/Seeing.Agent.Cli/Services/WebUiLaunch.cs
+  s_68d2aa8a5d6609::t_332c85e6ecb8b5 8-11
+tests/apps/Seeing.Agent.Cli.Tests/GatewayConfigTests.cs
+  s_68d2aa8a5d6609::t_c56356c22e061f 1-135
+samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj
+  s_68d2aa8a5d6609::t_ee53c1ee8b0404 105-142
+  s_68d2aa8a5d6609::t_403ac41929de1d 48-50
+  s_68d2aa8a5d6609::t_5637fd63a7fe04 42-46
+tests/apps/Seeing.Agent.Cli.Tests/ForegroundProcessRunnerTests.cs
+  s_68d2aa8a5d6609::t_df388625c627d8 1-37
+samples/Seeing.Agent.Cli/Services/ServiceRunMode.cs
+  s_68d2aa8a5d6609::t_2d8f9b23cf7358 1-44
+samples/Seeing.Agent.Cli/Services/ServiceProcessManager.cs
+  s_68d2aa8a5d6609::t_7ae330753c1d53 114-115
+  s_68d2aa8a5d6609::t_576e46ba6f280a 222
+  s_68d2aa8a5d6609::t_92124fb32913e4 234,240-244
+  s_68d2aa8a5d6609::t_5e4de4b16588b7 82-113,116-121
+samples/Seeing.Agent.Cli/Commands/TuiCommand.cs
+  s_68d2aa8a5d6609::t_64650584c115a1 1-46,49-69,71-86
+  s_68d2aa8a5d6609::t_1171825c40e6f8 47-48,70
+samples/Seeing.Agent.Cli/Services/GatewayConfig.cs
+  s_68d2aa8a5d6609::t_08922222a8f9d7 1-89
+tests/apps/Seeing.Agent.Cli.Tests/ServiceRunModeResolverTests.cs
+  s_68d2aa8a5d6609::t_fcf52fe14ff642 1-52
+tests/apps/Seeing.Agent.Cli.Tests/ServiceAssetLocatorTests.cs
+  s_68d2aa8a5d6609::t_ba6af2a50e0172 60,65-68
+  s_68d2aa8a5d6609::t_6870698e1da582 56-59,61-64,69-74
+  s_68d2aa8a5d6609::t_8e4d01504c3932 1-55,75-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "69d368c8cfd7dbdd69579c56afddb2897ed211b7",
+  "prompts": {},
+  "sessions": {
+    "s_68d2aa8a5d6609": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3d2e82a5ffeZviS7LwKY2uQks",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
