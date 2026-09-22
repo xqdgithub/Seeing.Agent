@@ -1,0 +1,171 @@
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/QuestionPromptTests.cs
+  s_68d2aa8a5d6609::t_cedf819b6906b0 1-182,184-186,188-192
+  s_68d2aa8a5d6609::t_883b75a0ad0914 183,187
+samples/Seeing.Agent.Tui/Services/TuiBlock.cs
+  s_68d2aa8a5d6609::t_0ae0191f32fdb6 27-28
+samples/Seeing.Agent.Tui/Input/ChannelAnsiConsoleInput.cs
+  s_68d2aa8a5d6609::t_18117cc5ceafd6 211-212
+  s_68d2aa8a5d6609::t_e910e29259b1b9 22-31
+  s_68d2aa8a5d6609::t_baf4d6975aa1e9 354-406
+  s_68d2aa8a5d6609::t_e964438808b284 51-52,56-58,60-65
+  s_68d2aa8a5d6609::t_c320108f991a58 125-126,130-149
+  s_68d2aa8a5d6609::t_e9a084e016f633 1
+  s_68d2aa8a5d6609::t_0a85e29bc025e8 223-231,235-242
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiCommandRouterTests.cs
+  s_68d2aa8a5d6609::t_c969790eee5074 624
+  s_68d2aa8a5d6609::t_7ff7a64a33d204 481-482
+  s_68d2aa8a5d6609::t_acf549c27a8597 506,508,510,512,514-534,538-552
+samples/Seeing.Agent.Tui/Services/TuiChatEngine.cs
+  s_68d2aa8a5d6609::t_741f574920f4c0 12
+  s_68d2aa8a5d6609::t_814afa3527a9cf 70-71,74
+  s_68d2aa8a5d6609::t_b69858a2862c90 127-128
+  s_68d2aa8a5d6609::t_e29b7bbe42cbba 157
+  s_68d2aa8a5d6609::t_04a2bbd1381710 921-923
+  s_68d2aa8a5d6609::t_5eec8c593d536f 949,957
+  s_68d2aa8a5d6609::t_b5c030f351d316 1360-1370
+  s_68d2aa8a5d6609::t_51dd08857ee1fb 1371-1375
+  s_68d2aa8a5d6609::t_6890c4fd37d6c7 1405,1407-1415,1419,1427,1429-1443
+  s_68d2aa8a5d6609::t_cddf2215281de7 900-902
+  s_68d2aa8a5d6609::t_bc84261cb5d694 155-156
+  s_68d2aa8a5d6609::t_b235ec7a45dd85 69,72-73,75
+  s_68d2aa8a5d6609::t_089167863a3261 1495
+  s_68d2aa8a5d6609::t_887d38eb4f827c 129-130
+  s_68d2aa8a5d6609::t_659ae70f7f8f52 1406,1416-1418,1420
+  s_68d2aa8a5d6609::t_a64932c4e61548 1524,1527-1532,1534-1539,1553-1583
+  s_68d2aa8a5d6609::t_1c3187727b10fb 4,13
+  s_68d2aa8a5d6609::t_105e87e7c3cbca 1525-1526,1533,1540-1552
+  s_68d2aa8a5d6609::t_4939be26868200 2012-2017,2019-2020,2022-2023,2026-2053,2057-2062,2064-2069,2073-2076,2078,2080-2092,2096-2100,2104
+samples/Seeing.Agent.Tui/Rendering/TuiGlyphs.cs
+  s_68d2aa8a5d6609::t_89ab0a1927e638 46-51
+samples/Seeing.Agent.Tui/Rendering/Prompts/PermissionPrompt.cs
+  s_68d2aa8a5d6609::t_384529d42f9aa0 35,46
+samples/Seeing.Agent.Tui/Rendering/StatusBarView.cs
+  s_68d2aa8a5d6609::t_e8a05dea9f9188 184,187
+  s_68d2aa8a5d6609::t_c33d424108d047 190
+  s_68d2aa8a5d6609::t_43ee8604b59a0a 239,244,248
+  s_68d2aa8a5d6609::t_51ba653929a0a4 34-36
+  s_68d2aa8a5d6609::t_60fc4dbf5418da 1,14,18,30-33,38,68,113,195,199,222,229,242-243,246-247,251-255
+  s_68d2aa8a5d6609::t_a7e859b0a08dc4 9-10,13,15,46,69-75,78-112,114-123,126-129,188,193,196,200,214,217
+  s_68d2aa8a5d6609::t_ba868d66f08764 11-12,16-17,37,40,60,62,65-67,77,130-143,150,152,158,166,168,170-172,176-182
+  s_68d2aa8a5d6609::t_b6a3795c96e65b 19-21,41-45,47-50,185-186,189,191,194,197,201,203-209,213,215-216,218-221,223-228,240
+  s_68d2aa8a5d6609::t_9d0544b866a020 39
+  s_68d2aa8a5d6609::t_54f1fc46a5c172 25-29
+  s_68d2aa8a5d6609::t_be88138ea0ab21 124
+  s_68d2aa8a5d6609::t_81afdc6aa8eccc 144-145,147,149,151,154-156,160-162,164,167
+  s_68d2aa8a5d6609::t_85e88e1979e6d0 153,157
+  s_68d2aa8a5d6609::t_06223b56a49884 173
+samples/Seeing.Agent.Tui/Services/TuiCompletionProvider.cs
+  s_68d2aa8a5d6609::t_06e8e4319e17b8 20
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/TuiWelcomeTests.cs
+  s_68d2aa8a5d6609::t_f4b155eb401820 1-112,138-152,175-178,181-185
+  s_68d2aa8a5d6609::t_0cd2568c7bdca6 126
+  s_68d2aa8a5d6609::t_a527bd3405829e 113-125,127-137
+  s_68d2aa8a5d6609::t_9fc04a237e59dd 153-174
+  s_68d2aa8a5d6609::t_02b80e243a0d9a 179-180
+samples/Seeing.Agent.Tui/Rendering/TuiRenderer.cs
+  s_68d2aa8a5d6609::t_e14f5edf73eb63 58-61
+  s_68d2aa8a5d6609::t_000d94302089a6 148-149,151-152,156-158
+  s_68d2aa8a5d6609::t_dd431dba6cf9e2 1-2
+  s_68d2aa8a5d6609::t_4858cc03498353 40-43
+  s_68d2aa8a5d6609::t_5829af9808a2d8 150
+  s_68d2aa8a5d6609::t_c78869fd098a90 321-325,331-365
+  s_68d2aa8a5d6609::t_a3a328057c8e5d 120,129
+samples/Seeing.Agent.Tui/Rendering/ITerminalSurface.cs
+  s_68d2aa8a5d6609::t_08370cb278ecca 17-25
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiEventInterpreterTests.cs
+  s_68d2aa8a5d6609::t_e27c30ef422ee2 238-257
+  s_68d2aa8a5d6609::t_23c33586c04328 86-95
+samples/Seeing.Agent.Tui/README.md
+  s_68d2aa8a5d6609::t_7b91dfc96492f7 58-65
+  s_68d2aa8a5d6609::t_5dfab6cd95ae86 145-146,151-154
+  s_68d2aa8a5d6609::t_470c63afb140f7 43
+  s_68d2aa8a5d6609::t_754520e15faca6 104
+  s_68d2aa8a5d6609::t_8bc8349e1b8c7b 79
+  s_68d2aa8a5d6609::t_f02e9d2707a721 147-150,155
+samples/Seeing.Agent.Tui/Rendering/TuiWelcome.cs
+  s_68d2aa8a5d6609::t_28e3d59c12a971 68
+  s_68d2aa8a5d6609::t_a4974b7cfb14b6 1-44,56-57,66-67,69-89,91,93-94,96-98,100-102,104,108-109,112-116
+  s_68d2aa8a5d6609::t_47e20cc53b4aa6 90,92,105-107
+  s_68d2aa8a5d6609::t_bfd2b7856149a4 95,99,103,110-111
+  s_68d2aa8a5d6609::t_978701d475f675 45-55
+  s_68d2aa8a5d6609::t_a17b39a953ef10 58-65
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/DisplayTextTests.cs
+  s_68d2aa8a5d6609::t_13cfbe35b53d1a 1-73
+samples/Seeing.Agent.Tui/Services/TuiCommandRouter.cs
+  s_68d2aa8a5d6609::t_5cca3b99c9c3ef 298-301,303-315
+  s_68d2aa8a5d6609::t_1ffd3310d6c946 538-556
+  s_68d2aa8a5d6609::t_954dd5f708d565 68
+  s_68d2aa8a5d6609::t_858c46259e1431 499,507
+samples/Seeing.Agent.Tui/Services/AutoApproveText.cs
+  s_68d2aa8a5d6609::t_721c67d94ed33f 1-44
+samples/Seeing.Agent.Tui/Rendering/Prompts/QuestionPrompt.cs
+  s_68d2aa8a5d6609::t_a247ea2245e473 36-39,45-46,53,59,61
+  s_68d2aa8a5d6609::t_92af18f29a6b20 208
+  s_68d2aa8a5d6609::t_4d5a2bac6ac84f 133,136
+  s_68d2aa8a5d6609::t_a7c5c04368f006 172-180,193-194
+  s_68d2aa8a5d6609::t_eaca95991e51df 98,101-103
+  s_68d2aa8a5d6609::t_3b9665ca1db3d9 1
+  s_68d2aa8a5d6609::t_086e5b81bfc973 9-18
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiBudgetStatusNotifierTests.cs
+  s_68d2aa8a5d6609::t_0ca0113b3e99ae 1-87
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiChatEngineStatusTests.cs
+  s_68d2aa8a5d6609::t_fa4977464ceb13 1-73
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/StatusBarViewTests.cs
+  s_68d2aa8a5d6609::t_21deb2389b3900 68,76,80-107,110-112,116,136,145-147,149,153,160,163,165-171,189-190
+  s_68d2aa8a5d6609::t_7bd0975e306104 4,10,29-34,79,109,120,122-123,127,139,141-144,159,161-162,164,172-188,191-204,206-207,210,212
+  s_68d2aa8a5d6609::t_69e77b9c4dc1f3 66-67,69-75,77-78,108,113-115,117-119,121,124-126,128-131,134-135,137-138,140,150-152,154-158,205,208-209,211,213-226,228-241,243-244
+  s_68d2aa8a5d6609::t_222d6a04eab744 227,242
+  s_68d2aa8a5d6609::t_12870b2cfe9e9e 132-133
+  s_68d2aa8a5d6609::t_8d7b9d510a7cbc 148
+tests/apps/Seeing.Agent.Tui.Tests/TuiCliOptionsParserTests.cs
+  s_68d2aa8a5d6609::t_c4d0bbe2cc6411 1-51
+tests/apps/Seeing.Agent.Tui.Tests/Input/ChannelAnsiConsoleInputTests.cs
+  s_68d2aa8a5d6609::t_598313b8e9a315 27-28
+  s_68d2aa8a5d6609::t_bf92f279d44605 4-5
+  s_68d2aa8a5d6609::t_09b2f800559982 53-71
+  s_68d2aa8a5d6609::t_12657315c074d5 150-184
+  s_68d2aa8a5d6609::t_65ed05bcbc49e5 149,185-211
+tests/apps/Seeing.Agent.Tui.Tests/Services/AutoApproveTextTests.cs
+  s_68d2aa8a5d6609::t_6c297457b82021 1-41
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/MarkdownTerminalRendererTests.cs
+  s_68d2aa8a5d6609::t_326947d8254c92 27-58
+samples/Seeing.Agent.Tui/Services/TuiSessionController.cs
+  s_68d2aa8a5d6609::t_d34d8c58fae254 166-168
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/TuiRendererTests.cs
+  s_68d2aa8a5d6609::t_27c8d211c21241 79-102
+  s_68d2aa8a5d6609::t_2b0de025942fe7 119,125
+  s_68d2aa8a5d6609::t_a6f7548207049e 46-78
+  s_68d2aa8a5d6609::t_dc768d49898da5 103-118,120-124,126-154
+samples/Seeing.Agent.Tui/Rendering/DisplayText.cs
+  s_68d2aa8a5d6609::t_74aa21b5a21d46 1-77,79-94,96-97,99-116
+  s_68d2aa8a5d6609::t_a2a8508809f533 78,95,98
+tests/apps/Seeing.Agent.Tui.Tests/Fakes/FakeTerminalSurface.cs
+  s_68d2aa8a5d6609::t_545c13551ea862 58,63
+samples/Seeing.Agent.Tui/Services/TuiViewState.cs
+  s_68d2aa8a5d6609::t_ec031c6c061978 42-47
+  s_68d2aa8a5d6609::t_56713da9ab771a 38-41
+  s_68d2aa8a5d6609::t_1cc40e54233980 154
+samples/Seeing.Agent.Tui/Rendering/SpectreTerminalSurface.cs
+  s_68d2aa8a5d6609::t_d5ce4b3535e10b 104,115-116,118-121
+  s_68d2aa8a5d6609::t_eb16f6676b110b 531
+  s_68d2aa8a5d6609::t_9d1d9fbe532a48 462-465
+  s_68d2aa8a5d6609::t_f04ba3b9ecf9ce 24
+  s_68d2aa8a5d6609::t_6d6aef3e5f2117 63
+  s_68d2aa8a5d6609::t_2887324a42602f 468-470
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "352f8237b30e3b8df15efbcf4986ec0aae7c26e3",
+  "prompts": {},
+  "sessions": {
+    "s_68d2aa8a5d6609": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3d2e82a5ffeZviS7LwKY2uQks",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
