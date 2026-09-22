@@ -1,4 +1,4 @@
-using Seeing.Agent.Abstractions.Questions;
+﻿using Seeing.Agent.Abstractions.Questions;
 using Spectre.Console;
 
 namespace Seeing.Agent.Tui.Rendering.Prompts;
@@ -6,7 +6,16 @@ namespace Seeing.Agent.Tui.Rendering.Prompts;
 /// <summary>
 /// 问答内联提示：按题型渲染（单选 <see cref="SelectionPrompt{T}"/>、多选 <see cref="MultiSelectionPrompt{T}"/>、
 /// 文本 <see cref="TextPrompt{T}"/>），支持「其他」自由输入与单答案截断。
-/// <para>经 <see cref="ITerminalSurface.PromptAsync{T}"/> 在渲染线程执行；取消返回 <c>null</c>（不决策）。</para>
+/// <para>经 <see cref="ITerminalSurface.PromptAsync{T}"/> 在渲染线程执行；取消（Esc / 提示被取消）返回 <c>null</c>（不决策）。</para>
+/// <para>
+/// 标题与选项<b>必须转义</b>：模型给出的问题/选项可能含 <c>[ ]</c>，而 Spectre 的标题与选项按 markup 解析，
+/// 未转义会抛 <see cref="System.InvalidOperationException"/>（malformed markup）并终止引擎。
+/// 选项经 <c>UseConverter</c> 只转义「显示」文本，返回值仍是原始标签。
+/// </para>
+/// <para>
+/// Esc 语义：单选/多选提示自带 <c>AddCancelResult</c>；<see cref="TextPrompt{T}"/> 会忽略 Esc，
+/// 由渲染端（<c>EscapeCancellationScope</c>）把 Esc 链入提示取消令牌，从而同样收敛为取消而不是永久阻塞。
+/// </para>
 /// </summary>
 public static class QuestionPrompt
 {
@@ -24,27 +33,32 @@ public static class QuestionPrompt
         ArgumentNullException.ThrowIfNull(surface);
         ArgumentNullException.ThrowIfNull(request);
 
-        return surface.PromptAsync(console => RunAsync(console, request, ct), ct);
+        // 把「提示令牌」传进底层提示：Esc 取消时底层 Spectre 提示能真正终止（否则会被遗留在后台吞按键）。
+        return surface.PromptAsync(
+            (console, promptCt) => RunAsync(console, request, promptCt, callerCt: ct),
+            ct);
     }
 
     private static async Task<QuestionResult?> RunAsync(
         IAnsiConsole console,
         QuestionRequest request,
-        CancellationToken ct)
+        CancellationToken promptCt,
+        CancellationToken callerCt)
     {
         var answers = new List<QuestionAnswer>();
         try
         {
             foreach (var question in request.Questions)
             {
-                var answer = await AskAsync(console, question, ct).ConfigureAwait(false);
+                var answer = await AskAsync(console, question, promptCt).ConfigureAwait(false);
                 if (answer is null)
                     return null;
                 answers.Add(answer);
             }
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (!callerCt.IsCancellationRequested)
         {
+            // 提示被 Esc 取消（调用方令牌未取消）：按「用户放弃作答」处理。
             return null;
         }
 
@@ -81,9 +95,12 @@ public static class QuestionPrompt
             choices.Add(OtherChoice);
 
         var prompt = new SelectionPrompt<string>()
-            .Title(BuildTitle(question))
+            .Title(Markup.Escape(BuildTitle(question)))
             .PageSize(Math.Clamp(choices.Count, 1, MaxPageSize))
             .AddChoices(choices)
+            // 选择项以「原始值」入列表、以转义文本呈现：含 [ ] 的标题/选项不再触发 markup 解析异常，
+            // 且返回的仍是原始标签（不受转义影响）。
+            .UseConverter(Markup.Escape)
             .AddCancelResult(CancelSentinel);
 
         var selected = await prompt.ShowAsync(console, ct).ConfigureAwait(false);
@@ -113,9 +130,10 @@ public static class QuestionPrompt
             choices.Add(OtherChoice);
 
         var prompt = new MultiSelectionPrompt<string>()
-            .Title(BuildTitle(question))
+            .Title(Markup.Escape(BuildTitle(question)))
             .PageSize(Math.Clamp(choices.Count, 1, MaxPageSize))
             .AddChoices(choices)
+            .UseConverter(Markup.Escape)
             .AddCancelResult(new List<string> { CancelSentinel });
 
         if (!question.Required)
@@ -150,11 +168,16 @@ public static class QuestionPrompt
         CancellationToken ct,
         string? title = null)
     {
-        var prompt = new TextPrompt<string>(title ?? BuildTitle(question));
         var defaultValue = ResolveDefaultText(question);
-        if (!string.IsNullOrEmpty(defaultValue))
-            prompt.DefaultValue(defaultValue).ShowDefaultValue(true);
-        else if (!question.Required)
+        var effectiveTitle = title ?? BuildTitle(question);
+        if (defaultValue is not null)
+            effectiveTitle = $"{effectiveTitle} （默认：{defaultValue}）";
+
+        // 不用 TextPrompt.DefaultValue：Spectre 会把默认值按 markup 解析，
+        // 默认值含 "[" 时会抛「Could not find color or style」并终止引擎。
+        // 改为「标题里转义展示默认值 + 允许空提交 → 空值回退默认值」。
+        var prompt = new TextPrompt<string>(Markup.Escape(effectiveTitle));
+        if (defaultValue is not null || !question.Required)
             prompt.AllowEmpty();
 
         string text;
@@ -166,6 +189,9 @@ public static class QuestionPrompt
         {
             return null;
         }
+
+        if (string.IsNullOrEmpty(text) && defaultValue is not null)
+            text = defaultValue;
 
         return new QuestionAnswer
         {
@@ -179,7 +205,7 @@ public static class QuestionPrompt
         Question question,
         CancellationToken ct)
     {
-        var prompt = new TextPrompt<string>($"{BuildTitle(question)} — 自定义回答");
+        var prompt = new TextPrompt<string>(Markup.Escape($"{BuildTitle(question)} — 自定义回答"));
         if (!question.Required)
             prompt.AllowEmpty();
 

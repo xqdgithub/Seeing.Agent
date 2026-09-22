@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Spectre.Console;
 
 namespace Seeing.Agent.Tui.Input;
@@ -19,6 +19,16 @@ public sealed class ChannelAnsiConsoleInput : IAnsiConsoleInput
 
     private ChannelReader<TuiKeyInput>? _reader;
     private CancellationToken _ct = CancellationToken.None;
+    private bool _cancelSeen;
+
+    /// <summary>
+    /// 提示期间收到 Esc（或 Ctrl+C）时触发一次。
+    /// <para>
+    /// Spectre 的 <c>SelectionPrompt</c>/<c>MultiSelectionPrompt</c> 自带 Esc 取消（<c>AddCancelResult</c>），
+    /// 但 <c>TextPrompt</c> <b>完全忽略 Esc</b>（会一直阻塞到令牌取消），故渲染端需要据此把取消链入提示令牌。
+    /// </para>
+    /// </summary>
+    public event Action? EscapePressed;
 
     /// <summary>绑定按键通道与取消令牌（由 <see cref="TuiPromptInputRelay"/> 启动后调用）。</summary>
     public void Bind(ChannelReader<TuiKeyInput> reader, CancellationToken ct)
@@ -38,11 +48,21 @@ public sealed class ChannelAnsiConsoleInput : IAnsiConsoleInput
     /// <inheritdoc />
     public bool IsKeyAvailable()
     {
+        bool cancelSeen;
+        bool available;
         lock (_gate)
         {
             DrainLocked();
-            return _buffer.Count > 0;
+            cancelSeen = _cancelSeen;
+            _cancelSeen = false;
+            available = _buffer.Count > 0;
         }
+
+        // 事件在锁外触发：订阅方会取消提示令牌，避免在持锁时执行外部回调。
+        if (cancelSeen)
+            RaiseEscapePressed();
+
+        return available;
     }
 
     /// <inheritdoc />
@@ -102,10 +122,31 @@ public sealed class ChannelAnsiConsoleInput : IAnsiConsoleInput
 
     private ConsoleKeyInfo? TryTakeKey()
     {
+        ConsoleKeyInfo? result;
+        bool cancelSeen;
         lock (_gate)
         {
             DrainLocked();
-            return _buffer.Count > 0 ? _buffer.Dequeue() : null;
+            cancelSeen = _cancelSeen;
+            _cancelSeen = false;
+            result = _buffer.Count > 0 ? _buffer.Dequeue() : null;
+        }
+
+        if (cancelSeen)
+            RaiseEscapePressed();
+
+        return result;
+    }
+
+    private void RaiseEscapePressed()
+    {
+        try
+        {
+            EscapePressed?.Invoke();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 订阅方已释放取消源：竞态无害。
         }
     }
 
@@ -167,6 +208,8 @@ public sealed class ChannelAnsiConsoleInput : IAnsiConsoleInput
                 return;
 
             case TuiInputAction.Cancel:
+                // 同时登记 Esc 信号：SelectionPrompt 走原生取消，TextPrompt 需由渲染端用该信号取消令牌。
+                _cancelSeen = true;
                 _buffer.Enqueue(new ConsoleKeyInfo('\u001b', ConsoleKey.Escape, false, false, false));
                 return;
 
@@ -177,12 +220,26 @@ public sealed class ChannelAnsiConsoleInput : IAnsiConsoleInput
         }
     }
 
+    /// <summary>
+    /// 单个可打印字符 → <see cref="ConsoleKeyInfo"/>。
+    /// <para>
+    /// <b>必须把 <c>key</c> 限制在 0..255</b>：<c>ConsoleKeyInfo</c> 构造函数会校验该范围，
+    /// 而 <see cref="char.IsLetter(char)"/> 对 CJK 等非 ASCII 字母同样返回 true，
+    /// 直接 <c>(ConsoleKey)char.ToUpperInvariant(ch)</c> 会以码点 &gt;255 抛
+    /// <see cref="ArgumentOutOfRangeException"/>——中文输入到任何提示都会崩掉引擎。
+    /// </para>
+    /// </summary>
     private static ConsoleKeyInfo CreatePrintable(char ch)
     {
         var shift = char.IsUpper(ch);
-        var consoleKey = char.IsLetter(ch)
-            ? (ConsoleKey)char.ToUpperInvariant(ch)
-            : ch == ' ' ? ConsoleKey.Spacebar : ConsoleKey.None;
+        var consoleKey = ch switch
+        {
+            ' ' => ConsoleKey.Spacebar,
+            >= 'a' and <= 'z' => (ConsoleKey)(ch - 32),
+            >= 'A' and <= 'Z' => (ConsoleKey)ch,
+            _ => ConsoleKey.None,
+        };
+
         return new ConsoleKeyInfo(ch, consoleKey, shift, false, false);
     }
 }
@@ -292,5 +349,58 @@ public sealed class TuiPromptInputRelay
             _engine.Writer.TryComplete();
             _prompt.Writer.TryComplete();
         }
+    }
+}
+
+/// <summary>
+/// 把「提示期间按 Esc」链接到提示取消源（<see cref="ChannelAnsiConsoleInput.EscapePressed"/> →
+/// <c>promptCancellation.Cancel()</c>）。
+/// <para>
+/// 渲染端（<c>SpectreTerminalSurface.RunPrompt</c>）与测试共用同一实现，避免「测试替身模拟的逻辑」
+/// 与「生产接线」漂移。取消后提示以 <see cref="OperationCanceledException"/> 收敛，
+/// 调用侧（问答/权限提示）按「用户取消」处理。
+/// </para>
+/// </summary>
+internal sealed class EscapeCancellationScope : IDisposable
+{
+    private readonly ChannelAnsiConsoleInput? _input;
+    private readonly Action _handler;
+
+    private EscapeCancellationScope(ChannelAnsiConsoleInput? input, Action handler)
+    {
+        _input = input;
+        _handler = handler;
+    }
+
+    /// <summary>订阅 Esc 信号；<paramref name="input"/> 为 null（无按键通道）时为空操作。</summary>
+    public static EscapeCancellationScope Attach(
+        ChannelAnsiConsoleInput? input,
+        CancellationTokenSource promptCancellation)
+    {
+        ArgumentNullException.ThrowIfNull(promptCancellation);
+
+        if (input is null)
+            return new EscapeCancellationScope(null, static () => { });
+
+        void Handler()
+        {
+            try
+            {
+                promptCancellation.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 提示已结束并释放取消源：竞态无害。
+            }
+        }
+
+        input.EscapePressed += Handler;
+        return new EscapeCancellationScope(input, Handler);
+    }
+
+    public void Dispose()
+    {
+        if (_input is not null)
+            _input.EscapePressed -= _handler;
     }
 }

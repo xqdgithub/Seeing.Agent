@@ -8,7 +8,6 @@ public enum TuiBlockKind
     Error,
     System,
     Compaction,
-    Divider,
 }
 
 public enum TuiToolStatus
@@ -25,7 +24,8 @@ public sealed record TuiTaskStep(string ToolName, string Summary, TuiToolStatus 
 
 public sealed record TuiTodo(string Content, string Status, string? ActiveForm);
 
-public sealed record TuiBudget(long InputTokens, long OutputTokens, long? Limit);
+/// <summary>上下文用量（当前占用 / 上限）。上限未知（0 或未配置）时为 null，状态栏只显示已用量。</summary>
+public sealed record TuiBudget(long CurrentTokens, long? MaxTokens);
 
 public sealed class TuiToolState
 {

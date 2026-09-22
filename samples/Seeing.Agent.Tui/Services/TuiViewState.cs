@@ -35,6 +35,16 @@ public sealed class TuiViewState
 
     public required string SessionId { get; init; }
     public string? Title { get; set; }
+
+    /// <summary>当前工作目录（项目根）。由引擎每帧刷新；null 时状态栏不显示该段。</summary>
+    public string? WorkspaceRoot { get; set; }
+
+    /// <summary>会话级审批模式（三态）；默认跟随全局配置。</summary>
+    public SessionAutoApprove AutoApprove { get; set; } = SessionAutoApprove.FollowGlobal;
+
+    /// <summary>全局 <c>Permission.AutoApproveAll</c> 当前值（热重载）；仅在 <see cref="AutoApprove"/> 为 FollowGlobal 时生效。</summary>
+    public bool GlobalAutoApprove { get; set; }
+
     public string? AgentId { get; set; }
     public string? ModelId { get; set; }
     public string? ThinkingEffort { get; set; }
@@ -141,6 +151,7 @@ public sealed class TuiViewState
             ThinkingEffort = session.SelectedThinkingEffort;
             Scenario = session.Scenario;
             AcpMode = session.SelectedAcpMode;
+            AutoApprove = session.AutoApprove;
 
             foreach (var msg in session.Messages)
             {

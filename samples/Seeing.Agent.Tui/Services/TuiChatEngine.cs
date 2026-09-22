@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
@@ -8,6 +9,8 @@ using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Questions;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Llm;
@@ -63,6 +66,13 @@ public sealed class TuiChatEngine
     private readonly ILlmService _llm;
     private readonly IScenarioCatalog _scenarios;
     private readonly IExecutionStatusProvider _executionStatus;
+
+    // 状态栏数据源：工作目录取项目根（缺失时回落进程 cwd）；上下文用量取 TokenBudget 快照；
+    // 全局审批开关取热重载配置。
+    private readonly IWorkspaceProvider? _workspace;
+    private readonly Seeing.Agent.TokenBudget.IBudgetStatusNotifier? _budgetNotifier;
+    private readonly IOptionsMonitor<SeeingAgentOptions>? _seeingOptions;
+
     private readonly IHostApplicationLifetime? _hostLifetime;
     private readonly ILogger<TuiChatEngine>? _logger;
 
@@ -114,7 +124,10 @@ public sealed class TuiChatEngine
         IScenarioCatalog scenarios,
         IExecutionStatusProvider executionStatus,
         IHostApplicationLifetime? hostLifetime = null,
-        ILogger<TuiChatEngine>? logger = null)
+        ILogger<TuiChatEngine>? logger = null,
+        IWorkspaceProvider? workspace = null,
+        Seeing.Agent.TokenBudget.IBudgetStatusNotifier? budgetNotifier = null,
+        IOptionsMonitor<SeeingAgentOptions>? seeingOptions = null)
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _commands = commands ?? throw new ArgumentNullException(nameof(commands));
@@ -139,6 +152,9 @@ public sealed class TuiChatEngine
         _llm = llm ?? throw new ArgumentNullException(nameof(llm));
         _scenarios = scenarios ?? throw new ArgumentNullException(nameof(scenarios));
         _executionStatus = executionStatus ?? throw new ArgumentNullException(nameof(executionStatus));
+        _workspace = workspace;
+        _budgetNotifier = budgetNotifier;
+        _seeingOptions = seeingOptions;
         _hostLifetime = hostLifetime;
         _logger = logger;
     }
@@ -881,7 +897,9 @@ public sealed class TuiChatEngine
         try
         {
             return await _surface
-                .PromptAsync(console => console.PromptAsync(new TextPrompt<string>(title), ct), ct)
+                .PromptAsync(
+                    (console, promptCt) => console.PromptAsync(new TextPrompt<string>(Markup.Escape(title)), promptCt),
+                    ct)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -900,7 +918,9 @@ public sealed class TuiChatEngine
         try
         {
             return await _surface
-                .PromptAsync(console => console.PromptAsync(new ConfirmationPrompt(Markup.Escape(title)), ct), ct)
+                .PromptAsync(
+                    (console, promptCt) => console.PromptAsync(new ConfirmationPrompt(Markup.Escape(title)), promptCt),
+                    ct)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -926,7 +946,7 @@ public sealed class TuiChatEngine
         {
             var chosen = await _surface
                 .PromptAsync(
-                    console => console.PromptAsync(
+                    (console, promptCt) => console.PromptAsync(
                         new SelectionPrompt<string>()
                             .Title(Markup.Escape(title))
                             .PageSize(15)
@@ -934,7 +954,7 @@ public sealed class TuiChatEngine
                             .UseConverter(value => displays.TryGetValue(value, out var display) ? display : Markup.Escape(value))
                             // Esc 取消：返回哨兵值视为放弃（否则选择器无法退出）。
                             .AddCancelResult(CompletionCancelSentinel),
-                        ct),
+                        promptCt),
                     ct)
                 .ConfigureAwait(false);
 
@@ -1337,6 +1357,22 @@ public sealed class TuiChatEngine
                     .ShowAsync(_surface, permission, BuildOwnerLabel(permission.SessionId), ct)
                     .ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // 停机：交给上层收敛（不在此处把请求判成「用户取消」）。
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                // 提示被 Esc 取消（TextPrompt 不响应 Esc，由渲染端取消令牌）：按「不决策」处理。
+                decision = null;
+            }
+            catch (Exception ex)
+            {
+                // 提示自身失败不得终止引擎：按「已忽略」收敛（请求仍挂起，可由下次触发重试）。
+                _logger?.LogError(ex, "权限提示失败，按忽略处理: {RequestId}", permission.RequestId);
+                decision = null;
+            }
             finally
             {
                 _inputRelay.EndPrompt();
@@ -1366,13 +1402,45 @@ public sealed class TuiChatEngine
             {
                 result = await QuestionPrompt.ShowAsync(_surface, question, ct).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                // 提示被 Esc 取消：按「不决策」处理，下方统一收敛为「已取消作答」。
+                result = null;
+            }
+            catch (Exception ex)
+            {
+                // 提示自身失败不得终止引擎：按「用户取消作答」收敛，
+                // 否则请求会一直挂起并由主循环每轮重试（表现为反复弹不出提示 + 日志刷屏）。
+                _logger?.LogError(ex, "问答提示失败，按取消处理: {RequestId}", question.Id);
+                result = null;
+            }
             finally
             {
                 _inputRelay.EndPrompt();
             }
 
             if (result is not null)
+            {
                 _questions.TryResolve(question, result);
+            }
+            else
+            {
+                // 用户按 Esc（或提示内部取消）放弃作答：以 Cancelled 立即收敛，
+                // 把控制权交回聊天窗口，而不是让请求挂起到超时（否则会反复弹窗）。
+                _questions.TryResolve(question, new QuestionResult
+                {
+                    RequestId = question.Id,
+                    Status = QuestionResultStatus.Cancelled,
+                    Answers = [],
+                });
+
+                if (!ct.IsCancellationRequested)
+                    await CommitNoticeAsync("已取消作答", ct).ConfigureAwait(false);
+            }
 
             _lastRenderAt = DateTime.MinValue;
         }
@@ -1424,6 +1492,7 @@ public sealed class TuiChatEngine
 
         var pendingApprovals = (_permissions.Pending?.Count ?? 0) + (_questions.Pending?.Count ?? 0);
         _ledger.Prune(context.State);
+        RefreshStatusLine(context);
         var view = _renderer.BuildActiveView(
             context.State,
             _editor,
@@ -1450,6 +1519,66 @@ public sealed class TuiChatEngine
 
         _lastRenderedChars = CountActiveChars(context.State);
         _lastRenderAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// 刷新状态栏数据源（工作目录、审批模式、上下文用量）。每帧取值：工作目录可能因切根而变，
+    /// 全局审批开关可热重载，用量由 TokenBudget Hook 异步更新，缓存反而会显示过期值。
+    /// </summary>
+    private void RefreshStatusLine(SessionContext context)
+    {
+        try
+        {
+            context.State.WorkspaceRoot = ResolveWorkspaceRoot(_workspace);
+            context.State.GlobalAutoApprove = ResolveGlobalAutoApprove(_seeingOptions);
+            context.State.Budget = ToBudget(_budgetNotifier?.GetCurrentStatus(context.SessionId));
+        }
+        catch (Exception ex)
+        {
+            // 状态栏是装饰性信息，任何异常都不得影响渲染主循环。
+            _logger?.LogDebug(ex, "状态栏数据刷新失败");
+        }
+    }
+
+    /// <summary>全局审批开关（<c>Permission.AutoApproveAll</c>，热重载配置）；取不到时视为关闭。</summary>
+    internal static bool ResolveGlobalAutoApprove(IOptionsMonitor<SeeingAgentOptions>? options)
+    {
+        try
+        {
+            return options?.CurrentValue.Permission?.AutoApproveAll ?? false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>当前工作目录：优先项目根（<c>{root}/.seeing</c> 的父目录），不可用时回落进程 cwd。</summary>
+    internal static string ResolveWorkspaceRoot(IWorkspaceProvider? workspace)
+    {
+        try
+        {
+            var root = workspace?.GetProjectRoot();
+            if (!string.IsNullOrWhiteSpace(root))
+                return root!;
+        }
+        catch
+        {
+            // 工作区未初始化等情况：回落 cwd
+        }
+
+        return Directory.GetCurrentDirectory();
+    }
+
+    /// <summary>TokenBudget 快照 → 状态栏上下文用量；无数据时返回 null（不显示该段）。</summary>
+    internal static TuiBudget? ToBudget(Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse? status)
+    {
+        if (status is null || (status.CurrentTokens <= 0 && status.MaxTokens <= 0))
+            return null;
+
+        return new TuiBudget(
+            status.CurrentTokens,
+            status.MaxTokens > 0 ? status.MaxTokens : null);
     }
 
     /// <summary>行首斜杠命令 token 的候选（上限 <see cref="TuiRenderOptions.MaxCompletionRows"/>）；否则空。</summary>
@@ -1880,29 +2009,96 @@ internal sealed class TuiCommitLedger
 }
 
 /// <summary>
-/// TUI 预算状态通知器：无 UI 订阅者，仅作 TokenBudget Hook 的可选依赖占位。
+/// TUI 预算状态通知器：缓存每个会话的最新 Budget 快照并支持订阅。
+/// <para>
+/// 状态栏按帧拉取 <see cref="GetCurrentStatus"/>（单活跃会话，无需推送）；
+/// <see cref="Publish"/> 由 TokenBudget Hook 在 taskpool 线程调用，与渲染线程并发，
+/// 故读写统一加锁。
+/// </para>
 /// </summary>
-public sealed class TuiBudgetStatusNotifier : Seeing.Agent.TokenBudget.IBudgetStatusNotifier{
+public sealed class TuiBudgetStatusNotifier : Seeing.Agent.TokenBudget.IBudgetStatusNotifier
+{
     private readonly Dictionary<string, Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse> _current = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<Action<Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse>>> _subscribers = new(StringComparer.Ordinal);
+    private readonly object _gate = new();
 
     public IDisposable Subscribe(string sessionId, Action<Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse> onUpdate)
-        => EmptySubscription.Instance;
+    {
+        ArgumentNullException.ThrowIfNull(onUpdate);
+
+        lock (_gate)
+        {
+            if (!_subscribers.TryGetValue(sessionId, out var list))
+                _subscribers[sessionId] = list = [];
+
+            list.Add(onUpdate);
+
+            // 订阅即回放当前快照，避免订阅者等到下一次 Publish 才有数据。
+            if (_current.TryGetValue(sessionId, out var status))
+                SafeInvoke(onUpdate, status);
+        }
+
+        return new Subscription(() =>
+        {
+            lock (_gate)
+            {
+                if (!_subscribers.TryGetValue(sessionId, out var list))
+                    return;
+
+                list.Remove(onUpdate);
+                if (list.Count == 0)
+                    _subscribers.Remove(sessionId);
+            }
+        });
+    }
 
     public void Publish(string sessionId, Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse status)
     {
-        if (!string.IsNullOrEmpty(sessionId))
+        if (string.IsNullOrEmpty(sessionId) || status is null)
+            return;
+
+        List<Action<Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse>>? subscribers;
+        lock (_gate)
+        {
             _current[sessionId] = status;
+            subscribers = _subscribers.TryGetValue(sessionId, out var list) ? list.ToList() : null;
+        }
+
+        // 锁外回调：订阅者异常不得影响 TokenBudget Hook。
+        foreach (var subscriber in subscribers ?? [])
+            SafeInvoke(subscriber, status);
     }
 
     public Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse? GetCurrentStatus(string sessionId)
-        => _current.TryGetValue(sessionId, out var status) ? status : null;
-
-    private sealed class EmptySubscription : IDisposable
     {
-        public static readonly EmptySubscription Instance = new();
+        lock (_gate)
+            return _current.TryGetValue(sessionId, out var status) ? status : null;
+    }
+
+    private static void SafeInvoke(Action<Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse> callback, Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse status)
+    {
+        try
+        {
+            callback(status);
+        }
+        catch
+        {
+            // 忽略订阅者异常
+        }
+    }
+
+    private sealed class Subscription(Action unsubscribe) : IDisposable
+    {
+        private bool _disposed;
 
         public void Dispose()
         {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            unsubscribe();
         }
     }
 }
+

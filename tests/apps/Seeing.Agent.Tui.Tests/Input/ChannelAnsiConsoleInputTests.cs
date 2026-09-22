@@ -1,6 +1,8 @@
 using System.Threading.Channels;
 using FluentAssertions;
 using Seeing.Agent.Tui.Input;
+using Seeing.Agent.Tui.Rendering;
+using Spectre.Console;
 
 namespace Seeing.Agent.Tui.Tests.Input;
 
@@ -22,6 +24,8 @@ public class ChannelAnsiConsoleInputTests
         ("大写字母", new TuiKeyInput(TuiInputAction.InsertText, "A"), new ConsoleKeyInfo('A', ConsoleKey.A, true, false, false)),
         ("空格", new TuiKeyInput(TuiInputAction.InsertText, " "), new ConsoleKeyInfo(' ', ConsoleKey.Spacebar, false, false, false)),
         ("数字", new TuiKeyInput(TuiInputAction.InsertText, "1"), new ConsoleKeyInfo('1', ConsoleKey.None, false, false, false)),
+        ("中文汉字", new TuiKeyInput(TuiInputAction.InsertText, "北"), new ConsoleKeyInfo('北', ConsoleKey.None, false, false, false)),
+        ("全角符号", new TuiKeyInput(TuiInputAction.InsertText, "："), new ConsoleKeyInfo('：', ConsoleKey.None, false, false, false)),
         ("无动作不产出按键", new TuiKeyInput(TuiInputAction.None), null),
         ("退出请求不产出按键", new TuiKeyInput(TuiInputAction.ExitRequested), null),
     ];
@@ -43,6 +47,26 @@ public class ChannelAnsiConsoleInputTests
             var actual = await channelInput.ReadKeyAsync(true, TestContext.Current.CancellationToken);
             actual.Should().Be(expected.Value, name);
         }
+    }
+
+    [Fact]
+    public async Task InsertText_WithCjk_ShouldNotThrowAndPreserveKeyChar()
+    {
+        // 回归：曾因 (ConsoleKey)char.ToUpperInvariant(ch) 对 CJK 产生 >255 的 key，
+        // ConsoleKeyInfo 构造抛 ArgumentOutOfRangeException，中文输入直接崩掉引擎。
+        var (channelInput, source) = CreateBound();
+        source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.InsertText, "北京 42℃"));
+
+        var chars = new List<char>();
+        for (var i = 0; i < "北京 42℃".Length; i++)
+        {
+            var key = await channelInput.ReadKeyAsync(true, TestContext.Current.CancellationToken);
+            key.Should().NotBeNull();
+            key!.Value.Key.Should().BeOneOf(ConsoleKey.None, ConsoleKey.Spacebar);
+            chars.Add(key.Value.KeyChar);
+        }
+
+        new string(chars.ToArray()).Should().Be("北京 42℃");
     }
 
     [Fact]
@@ -120,6 +144,69 @@ public class ChannelAnsiConsoleInputTests
         relay.BeginPrompt();
 
         relay.Input.IsKeyAvailable().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task EscapePressed_ShouldFireOncePerEscapeKey()
+    {
+        // TextPrompt 忽略 Esc，渲染端依赖该信号取消提示令牌；触发时机必须在锁外且与按键一一对应。
+        var (channelInput, source) = CreateBound();
+        var fired = 0;
+        channelInput.EscapePressed += () => fired++;
+
+        source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.InsertText, "a"));
+        await channelInput.ReadKeyAsync(true, TestContext.Current.CancellationToken);
+        fired.Should().Be(0);
+
+        source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.Cancel));
+        await channelInput.ReadKeyAsync(true, TestContext.Current.CancellationToken);
+        fired.Should().Be(1);
+
+        // 非 Esc 按键不得触发
+        source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.InsertText, "b"));
+        await channelInput.ReadKeyAsync(true, TestContext.Current.CancellationToken);
+        fired.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task EscapePressed_ShouldCancelPromptCancellationSource()
+    {
+        var (channelInput, source) = CreateBound();
+        using var cancellation = new CancellationTokenSource();
+        using var scope = EscapeCancellationScope.Attach(channelInput, cancellation);
+
+        source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.Cancel));
+        await channelInput.ReadKeyAsync(true, TestContext.Current.CancellationToken);
+
+        cancellation.IsCancellationRequested.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TextPrompt_WithCjkKeystrokes_ShouldReturnCjkAnswer()
+    {
+        // 端到端复现崩溃路径：QuestionPrompt → TextPrompt.ShowAsync 读取 TUI 按键通道。
+        // 修复前：输入「北京」时 CreatePrintable 抛 ArgumentOutOfRangeException，引擎整体退出。
+        var source = Channel.CreateUnbounded<TuiKeyInput>();
+        var input = new ChannelAnsiConsoleInput();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        input.Bind(source.Reader, cts.Token);
+
+        var writer = new StringWriter();
+        var inner = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.Yes,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Interactive = InteractionSupport.Yes,
+            Out = new AnsiConsoleOutput(writer),
+        });
+        var console = new InputOverrideConsole(inner, input);
+
+        source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.InsertText, "北京"));
+        source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.Submit));
+
+        var answer = await new TextPrompt<string>("要查哪个城市的天气?").ShowAsync(console, cts.Token);
+
+        answer.Should().Be("北京");
     }
 
     private static (ChannelAnsiConsoleInput Input, Channel<TuiKeyInput> Source) CreateBound()

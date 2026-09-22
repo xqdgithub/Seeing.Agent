@@ -479,6 +479,19 @@ public sealed class TuiCommandRouterTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_CancelAll_ShouldCallCascade()
+    {
+        var (controller, _, _, submitter) = NewController();
+        await controller.SwitchAsync("ses_x");
+
+        await new TuiCommandRouter().ExecuteAsync("/cancel all", Context(controller));
+
+        submitter.Verify(
+            s => s.CancelBySessionAsync("ses_x", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_Open_ShouldSwitchActiveSession()
     {
         var (controller, _, _, _) = NewController();
@@ -490,16 +503,51 @@ public sealed class TuiCommandRouterTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CancelAll_ShouldCallCascade()
+    public async Task ExecuteAsync_AutoApproveWithoutArgs_ShouldCycleTriState()
     {
-        var (controller, _, _, submitter) = NewController();
+        var (controller, _, sessionManager, _) = NewController();
+        await controller.SwitchAsync("ses_x");
+        controller.Current!.AutoApprove = SessionAutoApprove.FollowGlobal;
+
+        var result = await new TuiCommandRouter().ExecuteAsync("/auto-approve", Context(controller));
+
+        result.Handled.Should().BeTrue();
+        sessionManager.Verify(
+            m => m.SetAutoApproveAsync("ses_x", SessionAutoApprove.Enabled, It.IsAny<CancellationToken>()),
+            Times.Once);
+        controller.Current!.AutoApprove.Should().Be(SessionAutoApprove.Enabled);
+    }
+
+    [Theory]
+    [InlineData("on", SessionAutoApprove.Enabled)]
+    [InlineData("off", SessionAutoApprove.Disabled)]
+    [InlineData("follow", SessionAutoApprove.FollowGlobal)]
+    public async Task ExecuteAsync_AutoApproveWithValue_ShouldSetMode(string args, SessionAutoApprove expected)
+    {
+        var (controller, _, sessionManager, _) = NewController();
         await controller.SwitchAsync("ses_x");
 
-        await new TuiCommandRouter().ExecuteAsync("/cancel all", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync($"/auto-approve {args}", Context(controller));
 
-        submitter.Verify(
-            s => s.CancelBySessionAsync("ses_x", It.IsAny<CancellationToken>()),
+        result.Handled.Should().BeTrue();
+        sessionManager.Verify(
+            m => m.SetAutoApproveAsync("ses_x", expected, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AutoApproveWithBadValue_ShouldReturnUsage()
+    {
+        var (controller, _, sessionManager, _) = NewController();
+        await controller.SwitchAsync("ses_x");
+
+        var result = await new TuiCommandRouter().ExecuteAsync("/auto-approve maybe", Context(controller));
+
+        result.Handled.Should().BeTrue();
+        result.Output.Should().NotBeNull();
+        sessionManager.Verify(
+            m => m.SetAutoApproveAsync(It.IsAny<string>(), It.IsAny<SessionAutoApprove>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     private static TuiCommandContext Context(
@@ -573,7 +621,7 @@ public sealed class TuiCommandRouterTests
 
         public Task CommitAsync(IRenderable committed, CancellationToken ct = default) => Task.CompletedTask;
 
-        public Task<T> PromptAsync<T>(Func<IAnsiConsole, Task<T>> prompt, CancellationToken ct = default)
+        public Task<T> PromptAsync<T>(Func<IAnsiConsole, CancellationToken, Task<T>> prompt, CancellationToken ct = default)
         {
             PromptCount++;
             if (_answers.Count == 0)

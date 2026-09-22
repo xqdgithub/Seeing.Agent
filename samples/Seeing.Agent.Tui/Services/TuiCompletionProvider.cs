@@ -17,7 +17,7 @@ public sealed class TuiCompletionProvider
     private static readonly (string Name, string Description)[] LocalCommands =
     [
         ("/agent", "切换 Agent"),
-        ("/auto-approve", "会话级自动批准三态"),
+        ("/auto-approve", "会话级审批模式三态（无参数＝循环切换）"),
         ("/cancel", "取消当前/级联执行"),
         ("/delete", "删除活跃会话"),
         ("/exit", "退出"),

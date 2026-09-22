@@ -55,12 +55,12 @@ public sealed class FakeTerminalSurface : ITerminalSurface, IDisposable
         return Task.CompletedTask;
     }
 
-    public async Task<T> PromptAsync<T>(Func<IAnsiConsole, Task<T>> prompt, CancellationToken ct = default)
+    public async Task<T> PromptAsync<T>(Func<IAnsiConsole, CancellationToken, Task<T>> prompt, CancellationToken ct = default)
     {
         lock (_gate)
             _prompts.Add(typeof(T).Name);
 
-        return await prompt(_console).ConfigureAwait(false);
+        return await prompt(_console, ct).ConfigureAwait(false);
     }
 
     public Task StopAsync()

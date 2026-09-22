@@ -83,6 +83,17 @@ public sealed class TuiEventInterpreterTests
     }
 
     [Fact]
+    public void LoopStart_ShouldNotAddAnyBlock()
+    {
+        // 回合之间不再画分隔线：输入区上边界（整宽 dim 线）已恒定标示边界，重复画线只是噪声。
+        var state = NewState();
+        var sut = new TuiEventInterpreter(state);
+
+        sut.Apply(new LoopStartEvent { SessionId = Session, LoopId = "loop1" }).Should().BeFalse();
+        state.Blocks.Should().BeEmpty();
+    }
+
+    [Fact]
     public void ExecutionStarted_ShouldSetExecutionState_ButLoopStartShouldNot()
     {
         var state = NewState();
@@ -224,8 +235,26 @@ public sealed class TuiEventInterpreterTests
         }).Should().BeTrue();
 
         state.Budget.Should().NotBeNull();
-        state.Budget!.InputTokens.Should().Be(120);
-        state.Budget.Limit.Should().Be(400);
+        state.Budget!.CurrentTokens.Should().Be(120);
+        state.Budget.MaxTokens.Should().Be(400);
+    }
+
+    [Fact]
+    public void BudgetStatus_WithoutMaxTokens_ShouldLeaveLimitUnknown()
+    {
+        var state = NewState();
+        var sut = new TuiEventInterpreter(state);
+
+        sut.Apply(new BudgetStatusEvent
+        {
+            SessionId = Session,
+            CurrentTokens = 120,
+            MaxTokens = 0,
+        }).Should().BeTrue();
+
+        state.Budget.Should().NotBeNull();
+        state.Budget!.CurrentTokens.Should().Be(120);
+        state.Budget.MaxTokens.Should().BeNull();
     }
 
     [Fact]

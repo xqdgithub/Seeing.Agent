@@ -40,7 +40,7 @@ dotnet run --project samples/Seeing.Agent.Tui -- --resume <sessionId> --agent bu
 ## 配置
 
 - 读取用户级 `~/.seeing/seeing.json` 与项目级 `.seeing/seeing.json` 的 `DefaultAgent` / `DefaultModel`（由 Core 配置解析）；`--agent` / `--model` 可覆盖。
-- 会话级 Agent / 模型 / 思考档 / 场景 / 自动批准由斜杠命令切换并写回会话。
+- 会话级 Agent / 模型 / 思考档 / 场景 / 审批模式由斜杠命令切换并写回会话。
 - TUI 不解析、不修改配置文件本身。
 
 ## 平台支持
@@ -55,6 +55,14 @@ dotnet run --project samples/Seeing.Agent.Tui -- --resume <sessionId> --agent bu
 - Unix 不设置 `Console.TreatControlCAsInput`（该 API 在 Unix 抛异常）：raw 模式下 `Ctrl+C` 作为字节 `0x03` 解析；`SIGINT` / `SIGTERM` 由 Host 生命周期统一处理，触发引擎取消（`ApplicationStopping`）后主循环退出、`host.StopAsync()` 正常返回，进程不再挂住。
 
 
+## 起始页
+
+空闲且尚未产生对话内容时，活动区顶部显示 `SEEING` ASCII Logo 与常用操作提示（`Enter` / `Ctrl+J` / `Tab` / `/model` `/agent` / `@path` / `Esc Esc` / `/exit`）。
+
+- 首次提交（或恢复已有会话）后自动消失，**不写入滚动历史**，不占用后续回合的空间。
+- 终端宽度 < 42 列时自动降级为单行 `S E E I N G` + 精简提示集，避免折行破版。
+- 全部文案限 ASCII 与 CP936 可编码字符（同 `TuiGlyphs` 约束），并有 GBK 往返测试兜底。
+
 ## 键盘操作
 
 | 按键 | 行为 |
@@ -68,7 +76,7 @@ dotnet run --project samples/Seeing.Agent.Tui -- --resume <sessionId> --agent bu
 | `Tab` | 行首 `/命令` 补全：唯一候选直接补全并在其后加空格；多候选弹出选择器；无候选忽略 |
 | 输入 `/` | 行首输入斜杠命令时，**实时在输入行上方显示候选表**（命令名 + 说明，上限 8 行）；出现空白后不再显示 |
 | `Ctrl+C` | 输入非空时清空；执行中**立即**取消当前执行（明确意图，无需二次确认）；**空闲且输入为空时二次确认退出** |
-| `Esc` | 输入非空时清空；执行中**需连按两次**才取消执行（首次在状态栏提示「再按一次 Esc 取消执行」，**3 秒**内再按生效，超时需重新两次）；**选择器/提示中取消并返回**（`/model`、`/agent`、`/sessions`、`/thinking`、`/scenario`、补全候选、权限=不决策） |
+| `Esc` | 输入非空时清空；执行中**需连按两次**才取消执行（首次在状态栏提示「再按一次 Esc 取消执行」，**3 秒**内再按生效，超时需重新两次）；**提示中取消并返回**（`/model`、`/agent`、`/sessions`、`/thinking`、`/scenario`、补全候选、权限=不决策、**问答=取消作答并回到聊天窗口**） |
 | `Ctrl+D` | 退出 |
 
 ## 斜杠命令
@@ -93,7 +101,7 @@ dotnet run --project samples/Seeing.Agent.Tui -- --resume <sessionId> --agent bu
 | `/scenario [name]` | 无参交互选择场景；带参直接设置（`clear` 清除） |
 | `/attach <path...>` | 读取本地文件暂存为待发附件（支持 `"含 空格"` 引号） |
 | `/detach [n\|all]` | 移除第 n 个（从 1 起）或全部待发附件；无参移除最后一个 |
-| `/auto-approve <follow\|on\|off>` | 会话级自动批准三态 |
+| `/auto-approve [follow\|on\|off]` | 会话级审批模式三态（无参数＝循环切换） |
 | `/reasoning [on\|off]` | 推理显示开关（本地 UI 偏好） |
 | `/cancel [all]` | 取消当前执行；`all` 为级联取消会话及子会话 |
 | `/expand <callId>` | 展开工具完整输出 |
@@ -134,7 +142,17 @@ dotnet run --project samples/Seeing.Agent.Tui -- --resume <sessionId> --agent bu
 
 ## 状态栏
 
-- 显示 Agent / 模型 / 思考档（`think:`）/ 运行态 / 队列 / 待批 / 后台执行 / Todo / Token 预算。
+状态栏占**两行**：
+
+- **第 1 行**：Agent / 模型 / **审批模式** / 思考档（`think:`）/ 运行态 / 队列 / 待批 / 后台执行 / 提示 / Todo。
+- **第 2 行（左右分栏）**：**左侧工作目录**（项目根，主目录缩写为 `~`），**右侧上下文用量**（如 `45.2k/200k (22%)`）。
+  - 路径过长时**中间省略**（保留盘符与末段）；空间不足时路径让位给用量，用量右对齐保留。
+  - 用量为 `已用/上限 (百分比)`；上限未知（模型未配置 context limit）时只显示已用量。首轮执行完成后开始更新。
+- **审批模式**：对齐 WebUI 会话内分段控件「默认 / 自动 / 确认」，并显示**生效结论与来源**——
+  - `审批 自动` / `审批 确认`：会话显式设置（`/auto-approve on|off`）；
+  - `审批 自动(全局)` / `审批 确认(全局)`：会话为「默认」，跟随全局 `Permission.AutoApproveAll`（热重载实时反映）。
+  - 自动批准时用黄色提示；切换用 `/auto-approve`（无参数循环：默认 → 自动 → 确认 → 默认），也可 `/auto-approve on|off|follow`。设置写回会话并立即生效。
+- **换行保护**：两行各自恒为单行，且行尾保留 1 格（写满最后一格会触发终端自动换行、进而挤掉输入行）。宽度按**显示格**计算（CJK/全角记 2 格）；第 1 行超宽时按优先级丢弃低价值段（Todo → 思考档 → 后台执行 → 队列 → 模型），Agent / 执行态 / 审批模式始终保留。
 - 「待批」= 在途权限请求 + 问答请求数；「后台执行」= 可呈现会话中除主会话外仍有未终态执行的会话数。
 
 ## 显示细节

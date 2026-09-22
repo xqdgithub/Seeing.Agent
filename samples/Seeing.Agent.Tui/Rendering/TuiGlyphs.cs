@@ -43,4 +43,10 @@ internal static class TuiGlyphs
 
     /// <summary>箭头（引用 / 指向）。</summary>
     public const string Arrow = "→";
+
+    /// <summary>省略号（路径/文本截断）。</summary>
+    public const string Ellipsis = "…";
+
+    /// <summary>省略号的显示宽度（CJK 环境按全角计）。</summary>
+    public const int EllipsisWidth = 2;
 }

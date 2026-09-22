@@ -43,6 +43,116 @@ public sealed class TuiRendererTests
     }
 
     [Fact]
+    public void BuildActiveView_QuestionToolCard_ShouldShowQuestionTextInsteadOfRawJson()
+    {
+        // 模型参数里的中文是 \uXXXX 转义：直接显示原始 JSON 完全读不出问题内容。
+        var state = new TuiViewState { SessionId = "ses_1", AgentId = "build", IsExecuting = true };
+        state.Upsert(new TuiBlock
+        {
+            Key = "tool:1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState
+            {
+                CallId = "call_1",
+                Name = "question",
+                Status = TuiToolStatus.Running,
+                Arguments = """{"questions":[{"id":"city","header":"\u67E5\u8BE2\u57CE\u5E02","question":"\u8981\u67E5\u54EA\u4E2A\u57CE\u5E02\u7684\u5929\u6C14\uFF1F"}]}""",
+            },
+        });
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(state, new TuiInputEditorState(), 100));
+
+        text.Should().Contain("查询城市 · 要查哪个城市的天气？");
+        text.Should().NotContain("\\u67E5");
+    }
+
+    [Fact]
+    public void SummarizeQuestions_WithInvalidJson_ShouldReturnNull()
+    {
+        TuiRenderer.SummarizeQuestions("{not json").Should().BeNull();
+        TuiRenderer.SummarizeQuestions(null).Should().BeNull();
+        TuiRenderer.SummarizeQuestions("""{"other":1}""").Should().BeNull();
+    }
+
+    [Fact]
+    public void BuildActiveView_WhenIdleAndEmpty_ShouldShowWelcome()
+    {
+        var state = new TuiViewState { SessionId = "ses_1", AgentId = "build" };
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(state, new TuiInputEditorState(), 100));
+
+        text.Should().Contain("可用操作");
+        text.Should().Contain(TuiWelcome.WideBanner[0]);
+    }
+
+    [Fact]
+    public void BuildActiveView_WhenConversationStarted_ShouldNotShowWelcome()
+    {
+        var state = new TuiViewState { SessionId = "ses_1", AgentId = "build" };
+        state.Upsert(new TuiBlock { Key = "user:1", Kind = TuiBlockKind.User, Text = "hi" });
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(state, new TuiInputEditorState(), 100));
+
+        text.Should().NotContain("可用操作");
+    }
+
+    [Fact]
+    public void BuildActiveView_ShouldDrawFullWidthSeparatorAboveInputLine()
+    {
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(NewState(), new TuiInputEditorState(), 60));
+
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var separatorIndex = Array.FindIndex(lines, l => l.StartsWith(new string('─', 59), StringComparison.Ordinal));
+        var inputIndex = Array.FindIndex(lines, l => l.StartsWith("> ", StringComparison.Ordinal));
+
+        separatorIndex.Should().BeGreaterThanOrEqualTo(0, "输入区上边界应恒常显示");
+        inputIndex.Should().BeGreaterThan(separatorIndex, "分隔线必须在输入行之上");
+    }
+
+    [Fact]
+    public void BuildInputSeparator_ShouldHonourWidthMinusOne()
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Interactive = InteractionSupport.No,
+            Out = new AnsiConsoleOutput(writer),
+        });
+        console.Profile.Width = 10;
+
+        console.Write(TuiRenderer.BuildInputSeparator(10));
+
+        writer.ToString().Trim().Should().Be(new string('─', 9));
+    }
+
+    [Fact]
+    public void BuildInputSeparator_ShouldUseDimInsteadOfNearInvisibleGrey()
+    {
+        // dim(ESC[2m) 在旧 conhost 上被忽略时会退化为正常亮度，而不是像 grey11(#1c1c1c) 变黑。
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.Yes,
+            ColorSystem = ColorSystemSupport.TrueColor,
+            Interactive = InteractionSupport.No,
+            Out = new AnsiConsoleOutput(writer),
+        });
+        console.Profile.Width = 40;
+        console.Write(TuiRenderer.BuildInputSeparator(40));
+
+        var raw = writer.ToString();
+        raw.Should().Contain("\u001b[2m");
+        raw.Should().NotContain("38;5;234");
+        raw.Should().NotContain("38;5;8m");
+    }
+
+    [Fact]
     public void BuildActiveView_ShouldContainInputAndStatusBar()
     {
         var input = new TuiInputEditorState();

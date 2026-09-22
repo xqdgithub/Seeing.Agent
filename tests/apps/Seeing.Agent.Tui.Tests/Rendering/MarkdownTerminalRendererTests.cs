@@ -24,6 +24,39 @@ public sealed class MarkdownTerminalRendererTests
     }
 
     [Fact]
+    public void Render_WithMarkupLikeModelOutput_ShouldNotThrow()
+    {
+        // 模型输出极易包含 [ ]（代码、注解、链接、[citation] 等）。Spectre 的 Markup 会解析这些标记，
+        // 未转义会抛「malformed markup / Could not find color or style」并终止引擎。
+        const string markdown = """
+            ## 含 [方括号] 的标题
+
+            正文 [bold]不是标签[/] 、[[双括号]]、[未知样式] 与 [引用 1]。
+
+            - 列表项 [x]
+            - 列表项 [default]
+
+            | A[B] | C |
+            |------|---|
+            | [d]  | e |
+
+            > 引用 [q]
+
+            行内 `code[with]bracket` 与链接 [label[x]](https://example.com/a[b])
+
+            ```text
+            raw [not-markup]
+            ```
+            """;
+
+        var renderer = new MarkdownTerminalRenderer();
+
+        var act = () => Render(renderer.Render(markdown, 100));
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
     public void Render_ShouldHandleHeadingsListsTablesAndUnclosedFence_WithoutThrowing()
     {
         const string markdown =

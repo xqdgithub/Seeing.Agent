@@ -34,7 +34,6 @@ public sealed class TuiEventInterpreter
     {
         ExecutionStartedEvent e => ApplyExecutionStarted(e),
         ExecutionCompleteEvent e => ApplyExecutionComplete(e),
-        LoopStartEvent e => ApplyLoopStart(e),
         LoopCompleteEvent e => ApplyLoopComplete(e),
         StreamStartEvent e => ApplyStreamStart(e),
         StreamDeltaEvent e => ApplyStreamDelta(e),
@@ -73,17 +72,6 @@ public sealed class TuiEventInterpreter
         _state.ActiveExecutionId = null;
         _state.IsExecuting = false;
         _state.Touch();
-        return true;
-    }
-
-    private bool ApplyLoopStart(LoopStartEvent e)
-    {
-        _state.Upsert(new TuiBlock
-        {
-            Key = $"loop:{e.LoopId}",
-            Kind = TuiBlockKind.Divider,
-            LoopId = e.LoopId,
-        });
         return true;
     }
 
@@ -355,7 +343,6 @@ public sealed class TuiEventInterpreter
     {
         _state.Budget = new TuiBudget(
             e.CurrentTokens,
-            0,
             e.MaxTokens > 0 ? e.MaxTokens : null);
         _state.Touch();
         return true;

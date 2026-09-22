@@ -32,7 +32,7 @@ public static class PermissionPrompt
         if (choices.Count == 0)
             return null;
 
-        var selected = await surface.PromptAsync(async console =>
+        var selected = await surface.PromptAsync(async (console, promptCt) =>
         {
             console.Write(BuildSummary(request, ownerLabel));
 
@@ -43,7 +43,7 @@ public static class PermissionPrompt
                 .AddChoices(choices)
                 .AddCancelResult(Choice.Cancel);
 
-            return await prompt.ShowAsync(console, ct).ConfigureAwait(false);
+            return await prompt.ShowAsync(console, promptCt).ConfigureAwait(false);
         }, ct).ConfigureAwait(false);
 
         return selected.Effect is null || selected.Scope is null

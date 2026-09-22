@@ -21,6 +21,7 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
     internal const string TerminalRestoreSequence = "\u001b[?25h";
 
     private readonly IAnsiConsole _console;
+    private readonly ChannelAnsiConsoleInput? _promptInput;
     private readonly Channel<RenderCommand> _commands;
     private readonly object _pendingGate = new();
     private readonly object _startGate = new();
@@ -59,6 +60,7 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
     {
         ArgumentNullException.ThrowIfNull(console);
         _console = promptInput is null ? console : new InputOverrideConsole(console, promptInput);
+        _promptInput = promptInput;
         _commands = Channel.CreateBounded<RenderCommand>(new BoundedChannelOptions(1)
         {
             SingleReader = true,
@@ -99,7 +101,7 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         return Task.CompletedTask;
     }
 
-    public async Task<T> PromptAsync<T>(Func<IAnsiConsole, Task<T>> prompt, CancellationToken ct = default)
+    public async Task<T> PromptAsync<T>(Func<IAnsiConsole, CancellationToken, Task<T>> prompt, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(prompt);
         EnsureStarted();
@@ -110,8 +112,13 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
         // 提示取消源与调用方 ct（引擎停止令牌）链动：StopAsync 取消它即可让渲染线程立即退出提示；
         // 引擎令牌取消时同样触发，避免停机时长时间等待真按键。
+        // 该源同时经 EscapeCancellationScope 被 Esc 触发，并作为「提示令牌」交给提示实现，
+        // 使底层 Spectre 提示真正观察到取消（而不是被 WaitAsync 丢弃在后台继续吞按键）。
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var command = new PromptCommand(async console => (object?)await prompt(console).ConfigureAwait(false), completion, cancellation);
+        var command = new PromptCommand(
+            async (console, promptCt) => (object?)await prompt(console, promptCt).ConfigureAwait(false),
+            completion,
+            cancellation);
 
         if (!PostNonUpdate(command))
         {
@@ -452,12 +459,15 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
     private void RunPrompt(PromptCommand command)
     {
         _activePrompt = command;
+
+        // 提示期间按 Esc：SelectionPrompt 走 AddCancelResult；TextPrompt 忽略 Esc，
+        // 故统一把 Esc 信号链入提示取消源，让所有提示都能被 Esc 取消而不是永久阻塞。
+        using var escapeScope = EscapeCancellationScope.Attach(_promptInput, command.Cancellation);
         try
         {
-            // sync-over-async：渲染线程是提示的唯一执行者，不与引擎线程互等；
-            // WaitAsync(取消令牌) 让停机/引擎令牌取消时无需等待真按键即可返回。
-            // 底层 Spectre 提示同样观察该令牌（调用方已把 ct 传入 ShowAsync），会随取消收敛。
-            var value = command.Run(_console).WaitAsync(command.Cancellation.Token).GetAwaiter().GetResult();
+            // 提示令牌即上一次投递的取消源：Esc / 停机都会取消它，底层提示据此收敛，
+            // WaitAsync 仅作为「提示不响应令牌」时的兜底，不承担正常取消路径。
+            var value = command.Run(_console, command.Cancellation.Token).WaitAsync(command.Cancellation.Token).GetAwaiter().GetResult();
             command.Completion.TrySetResult(value);
         }
         catch (OperationCanceledException)
@@ -518,7 +528,7 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
     private sealed record CommitCommand(IRenderable Renderable) : RenderCommand;
 
     private sealed record PromptCommand(
-        Func<IAnsiConsole, Task<object?>> Run,
+        Func<IAnsiConsole, CancellationToken, Task<object?>> Run,
         TaskCompletionSource<object?> Completion,
         CancellationTokenSource Cancellation) : RenderCommand;
 

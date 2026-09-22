@@ -163,6 +163,9 @@ public sealed class TuiSessionController
     {
         var current = EnsureCurrent();
         await _sessionManager.SetAutoApproveAsync(current.SessionId, mode, ct);
+
+        // 立即回写视图态：状态栏在下一帧即可反映新模式，无需重载会话。
+        current.AutoApprove = mode;
         current.Touch();
     }
 

@@ -65,7 +65,7 @@ public sealed class TuiCommandRouter
         ("/model [id]", "无参交互选择模型；带参直接切换"),
         ("/thinking [level]", "无参交互选择思考档；带参直接设置（clear 清除）"),
         ("/scenario [name]", "无参交互选择场景；带参直接设置（clear 清除）"),
-        ("/auto-approve <follow|on|off>", "会话级自动批准三态"),
+        ("/auto-approve [follow|on|off]", "会话级审批模式三态（无参数＝循环切换）"),
         ("/reasoning [on|off]", "推理显示开关（无参切换）"),
         ("/cancel [all]", "取消当前/级联执行"),
         ("/expand <callId>", "展开工具完整输出"),
@@ -295,17 +295,24 @@ public sealed class TuiCommandRouter
 
             case "auto-approve":
             {
-                var mode = args.ToLowerInvariant() switch
+                var globalAuto = ctx.State?.GlobalAutoApprove ?? false;
+
+                SessionAutoApprove mode;
+                if (string.IsNullOrWhiteSpace(args))
                 {
-                    "follow" or "followglobal" => SessionAutoApprove.FollowGlobal,
-                    "on" or "enabled" => SessionAutoApprove.Enabled,
-                    "off" or "disabled" => SessionAutoApprove.Disabled,
-                    _ => (SessionAutoApprove?)null,
-                };
-                if (mode is null)
-                    return Local(new Text("用法：/auto-approve <follow|on|off>"));
-                await ctx.Sessions.SetAutoApproveAsync(mode.Value, ct);
-                return Local(new Text($"自动批准：{mode.Value}"));
+                    // 无参数：三态循环（对齐 WebUI 分段控件的点击切换）。
+                    var current = ctx.State?.AutoApprove
+                        ?? ctx.Sessions.Current?.AutoApprove
+                        ?? SessionAutoApprove.FollowGlobal;
+                    mode = AutoApproveText.Next(current);
+                }
+                else if (!TryParseAutoApprove(args, out mode))
+                {
+                    return Local(new Text("用法：/auto-approve [follow|on|off]（无参数＝在三态间循环）"));
+                }
+
+                await ctx.Sessions.SetAutoApproveAsync(mode, ct);
+                return Local(new Text($"审批模式：{AutoApproveText.Label(mode, globalAuto)}（三态：{AutoApproveText.Mode(mode)}）"));
             }
 
             case "reasoning":
@@ -489,7 +496,7 @@ public sealed class TuiCommandRouter
         try
         {
             var chosen = await ctx.Surface.PromptAsync(
-                console => console.PromptAsync(
+                (console, promptCt) => console.PromptAsync(
                     new SelectionPrompt<string>()
                         .Title(Markup.Escape(title))
                         .PageSize(15)
@@ -497,7 +504,7 @@ public sealed class TuiCommandRouter
                         .UseConverter(value => displays.TryGetValue(value, out var display) ? display : Markup.Escape(value))
                         // Esc 取消：返回哨兵值，调用方据此放弃选择（否则选择器无法退出）。
                         .AddCancelResult(CancelSentinel),
-                    ct),
+                    promptCt),
                 ct);
 
             return string.Equals(chosen, CancelSentinel, StringComparison.Ordinal) ? null : chosen;
@@ -524,6 +531,25 @@ public sealed class TuiCommandRouter
                 return true;
             default:
                 value = false;
+                return false;
+        }
+    }
+
+    private static bool TryParseAutoApprove(string args, out SessionAutoApprove mode)
+    {
+        switch (args.Trim().ToLowerInvariant())
+        {
+            case "follow" or "followglobal" or "default":
+                mode = SessionAutoApprove.FollowGlobal;
+                return true;
+            case "on" or "enabled" or "auto":
+                mode = SessionAutoApprove.Enabled;
+                return true;
+            case "off" or "disabled" or "confirm":
+                mode = SessionAutoApprove.Disabled;
+                return true;
+            default:
+                mode = SessionAutoApprove.FollowGlobal;
                 return false;
         }
     }

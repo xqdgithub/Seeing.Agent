@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Tui.Input;
+﻿using System.Text.Json;
+using Seeing.Agent.Tui.Input;
 using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
 using Spectre.Console;
@@ -36,6 +37,10 @@ public sealed class TuiRenderer
         var items = new List<IRenderable>();
         try
         {
+            // 起始页：Logo + 常用操作，仅在尚无对话内容且空闲时出现，首次提交后自然消失。
+            if (TuiWelcome.IsStartPage(state))
+                items.Add(TuiWelcome.Render(width));
+
             foreach (var block in state.Blocks.Where(b => !b.IsTerminal))
             {
                 if (IsFullyCommitted(block, committedOffsets))
@@ -49,6 +54,10 @@ public sealed class TuiRenderer
                 items.Add(BuildCompletions(completions));
 
             // 不再插入「运行中」占位行：执行态已由状态栏呈现，重复会出现两个运行中指示。
+
+            // 输入区上边界：分隔「滚动历史/消息」与「输入区（候选 + 输入行 + 状态栏）」。
+            // 恒常显示，避免输入行贴着最新消息难以定位。
+            items.Add(BuildInputSeparator(width));
 
             items.Add(BuildInputLine(input, width));
             items.Add(StatusBarView.Render(state, width, pendingApprovals, backgroundExecutions, hint));
@@ -103,15 +112,12 @@ public sealed class TuiRenderer
             case TuiBlockKind.Compaction:
                 return BuildCompaction(block, width);
 
-            case TuiBlockKind.Divider:
-                return BuildDivider(width);
-
             default:
                 return new Text(block.Text ?? string.Empty);
         }
     }
 
-    /// <summary>斜杠命令候选表（命令名 + 说明），两列对齐、暗淡呈现。</summary>
+    /// <summary>斜杠命令候选表（命令名 + 说明）：说明用终端默认前景色，避免 grey11(#1c1c1c) 在黑底不可见。</summary>
     private static IRenderable BuildCompletions(IReadOnlyList<TuiCompletionItem> items)
     {
         var nameWidth = Math.Min(items.Max(i => i.Name.Length), 24);
@@ -120,7 +126,7 @@ public sealed class TuiRenderer
         {
             var name = item.Name.Length < nameWidth ? item.Name.PadRight(nameWidth) : item.Name;
             rows.Add(new Markup(
-                $"[green]{Markup.Escape(name)}[/] [grey11]{Markup.Escape(item.Description ?? string.Empty)}[/]"));
+                $"[green]{Markup.Escape(name)}[/] [default]{Markup.Escape(item.Description ?? string.Empty)}[/]"));
         }
 
         return new Rows(rows);
@@ -139,13 +145,17 @@ public sealed class TuiRenderer
         return new Markup($"[blue]{TuiGlyphs.Prompt} {Markup.Escape(text)}[/]");
     }
 
-    /// <summary>暗淡短分隔：半宽（上限 40 列）而非整宽，降低每帧噪声。</summary>
-    private static IRenderable BuildDivider(int width)
+    /// <summary>
+    /// 输入区上边界分隔线：整宽、<c>dim</c>（默认前景色 + 弱化，不挑终端背景明暗）。
+    /// 回合之间不再另画分隔线：此线已恒常标示「消息区 / 输入区」的边界。
+    /// </summary>
+    internal static IRenderable BuildInputSeparator(int width)
     {
         try
         {
-            var length = Math.Min(Math.Max(width, 0) / 2, 40);
-            return new Markup($"[grey11]{new string('─', length)}[/]");
+            // 取 width-1 抑制「写满最后一行触发自动换行」的经典边界问题。
+            var length = Math.Max(0, width - 1);
+            return new Markup($"[dim]{new string('─', length)}[/]");
         }
         catch
         {
@@ -308,9 +318,51 @@ public sealed class TuiRenderer
         if (string.Equals(tool.Name, "todowrite", StringComparison.OrdinalIgnoreCase))
             return tool.Title ?? "更新待办";
 
+        // question 的参数是 questions JSON：直接显示原始 JSON 会因 \uXXXX 转义而不可读，
+        // 故解析后展示「标题 · 问题」。
+        if (string.Equals(tool.Name, "question", StringComparison.OrdinalIgnoreCase))
+            return FirstLine(tool.Title) ?? FirstLine(SummarizeQuestions(tool.Arguments)) ?? "提问";
+
         return FirstLine(tool.Title)
             ?? FirstLine(tool.Arguments)
             ?? string.Empty;
+    }
+
+    /// <summary>解析 question 工具参数，返回「标题 · 问题」摘要（多题用 | 连接）；无法解析时返回 null。</summary>
+    internal static string? SummarizeQuestions(string? arguments)
+    {
+        if (string.IsNullOrWhiteSpace(arguments))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(arguments);
+            if (!document.RootElement.TryGetProperty("questions", out var questions)
+                || questions.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var parts = new List<string>();
+            foreach (var question in questions.EnumerateArray())
+            {
+                var header = question.TryGetProperty("header", out var h) ? h.GetString() : null;
+                var text = question.TryGetProperty("question", out var t) ? t.GetString() : null;
+
+                var part = string.IsNullOrWhiteSpace(header)
+                    ? text
+                    : string.IsNullOrWhiteSpace(text) ? header : $"{header} · {text}";
+                if (!string.IsNullOrWhiteSpace(part))
+                    parts.Add(part!);
+            }
+
+            return parts.Count == 0 ? null : string.Join(" | ", parts);
+        }
+        catch
+        {
+            // 参数非合法 JSON：退回原始展示。
+            return null;
+        }
     }
 
     private static string? FirstLine(string? value)
