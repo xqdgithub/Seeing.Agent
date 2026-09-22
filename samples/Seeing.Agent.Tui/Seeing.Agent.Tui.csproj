@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Agent.Tui</RootNamespace>
+    <AssemblyName>seeing-tui</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.Tui.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\hosting\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\hosting\Seeing.Agent.Hosting.Tui\Seeing.Agent.Hosting.Tui.csproj" />
+    <ProjectReference Include="..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
+    <ProjectReference Include="..\..\src\primitives\Seeing.Session\Seeing.Session.csproj" />
+    <ProjectReference Include="..\..\src\primitives\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Memory\Seeing.Agent.Memory.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.TokenBudget\Seeing.Agent.TokenBudget.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.OpenAI\Seeing.Agent.Llm.OpenAI.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.Anthropic\Seeing.Agent.Llm.Anthropic.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.ModelCapabilities\Seeing.Agent.Llm.ModelCapabilities.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.ModelCatalog.Builtin\Seeing.Agent.Llm.ModelCatalog.Builtin.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Agents.BuiltIn\Seeing.Agent.Agents.BuiltIn.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Basic\Seeing.Agent.Tools.Basic.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.FileSystem\Seeing.Agent.Tools.FileSystem.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Shell\Seeing.Agent.Tools.Shell.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Session\Seeing.Agent.Tools.Session.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Question\Seeing.Agent.Tools.Question.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.IO.Local\Seeing.IO.Local.csproj" />
+    <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.DeepSeek\Seeing.Provider.DeepSeek.csproj" />
+    <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.OpenCodeZen\Seeing.Provider.OpenCodeZen.csproj" />
+  </ItemGroup>
+
+</Project>

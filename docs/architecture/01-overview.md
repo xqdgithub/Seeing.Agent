@@ -33,10 +33,10 @@ Seeing.Agent 是可组合的 AI Agent 运行时：
 协议/集成  Seeing.Gateway* / Seeing.Agent.Gateway
            磁盘: src/gateway/
    ↑
-Host Shape Hosting.Web / Headless / Embed / Gateway   （UI 表面；不决定能力集）
+Host Shape Hosting.Web / Headless / Embed / Gateway / Tui   （UI 表面；不决定能力集）
            磁盘: src/hosting/
    ↑
-Sample     WebUI / Gateway.Server / Cli / Embed.Demo  （自己 ProjectReference 能力包）
+Sample     WebUI / Tui / Gateway.Server / Cli / Embed.Demo  （自己 ProjectReference 能力包）
 ```
 
 | 层 | 允许引用 | 禁止 |
@@ -55,7 +55,7 @@ Sample     WebUI / Gateway.Server / Cli / Embed.Demo  （自己 ProjectReference
 
 | 轴 | 决定什么 | 谁选 | 热重载 |
 |----|----------|------|--------|
-| **Host Shape** | UI / 进程形态（Web、Headless、Embed、Gateway） | 宿主代码编译期 | 否 |
+| **Host Shape** | UI / 进程形态（Web、Headless、Embed、Gateway、Tui） | 宿主代码编译期 | 否 |
 | **Boot / CapabilitySet** | 启动天花板 `bootEnabled` → Activate/Deactivate；能力集仅模块层（`Modules` + 可选 `Disabled`）。内置含 `secure`/`dev` | `seeing.json` / UI / `--boot` / `SEEING_BOOT` | 是（改 Boot / CapabilitySets / `Modules.Disabled` / `Seams` → boot diff） |
 | **Scenario** | 工作模式：自带 `Modules` + `DefaultAgent` + `Tools.Disabled` + 文档向 `Seams` | `seeing.json` / UI / 会话字段 | 是（只刷 Catalog / Options；**不**跑 Activate diff） |
 

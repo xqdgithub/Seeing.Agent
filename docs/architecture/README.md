@@ -47,15 +47,15 @@ src/
   primitives/      Session, TokenEstimation, ConfigSchema
   abstractions/    Seeing.Agent.Abstractions
   spine/           Seeing.Agent.Core
-  hosting/         Hosting + Web / Headless / Embed / Gateway Shape
+  hosting/         Hosting + Web / Headless / Embed / Gateway / Tui Shape
   capabilities/    Tools.*, Skills, Mcp, Llm.*, Agents.BuiltIn,
                    Scheduler, Memory, Acp, TokenBudget, IO.Local
   gateway/         Seeing.Gateway*, Seeing.Agent.Gateway
 tests/
   primitives|spine|hosting|capabilities|gateway/   # 与 src 镜像
-  apps/            WebUI.Tests, Cli.Tests
+  apps/            WebUI.Tests, Cli.Tests, Tui.Tests
   plugs/           Provider.*Tests
-samples/           WebUI, Gateway.Server, Cli, Embed.Demo, …
+samples/           WebUI, Tui, Gateway.Server, Cli, Embed.Demo, …
 plugs/providers/   DeepSeek, OpenCodeZen
 ```
 

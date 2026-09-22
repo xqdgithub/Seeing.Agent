@@ -1,0 +1,265 @@
+using FluentAssertions;
+using Seeing.Agent.Tui.Input;
+using Seeing.Agent.Tui.Rendering;
+using Seeing.Agent.Tui.Services;
+using Seeing.Session.Core;
+using Spectre.Console;
+using Spectre.Console.Rendering;
+
+namespace Seeing.Agent.Tui.Tests.Rendering;
+
+public sealed class TuiRendererTests
+{
+    private static string Render(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Interactive = InteractionSupport.No,
+            Out = new AnsiConsoleOutput(writer),
+        });
+        console.Profile.Width = 120;
+        console.Profile.Height = 40;
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    private static TuiViewState NewState(params TuiBlock[] blocks)
+    {
+        var state = new TuiViewState
+        {
+            SessionId = "ses_1",
+            AgentId = "build",
+            ModelId = "gpt-4o",
+            IsExecuting = true,
+        };
+
+        foreach (var block in blocks)
+            state.Upsert(block);
+
+        return state;
+    }
+
+    [Fact]
+    public void BuildActiveView_ShouldContainInputAndStatusBar()
+    {
+        var input = new TuiInputEditorState();
+        input.SetText("hello world");
+        var state = NewState(new TuiBlock
+        {
+            Key = "loop_step1",
+            Kind = TuiBlockKind.Assistant,
+            Text = "working",
+            IsStreaming = true,
+        });
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(state, input, 100));
+
+        text.Should().Contain("hello world");
+        text.Should().Contain("build");
+        text.Should().Contain("gpt-4o");
+    }
+
+    [Fact]
+    public void BuildCommitted_ShouldRenderEveryKind_WithoutThrowing()
+    {
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+
+        foreach (var kind in Enum.GetValues<TuiBlockKind>())
+        {
+            var tool = kind == TuiBlockKind.Tool
+                ? new TuiToolState { CallId = "call_x", Name = "grep", Status = TuiToolStatus.Success, Output = "hit" }
+                : null;
+
+            var block = new TuiBlock
+            {
+                Key = $"k:{kind}",
+                Kind = kind,
+                Text = $"text-{kind}",
+                Reasoning = "reasoning",
+                Title = $"title-{kind}",
+                Tool = tool,
+                IsTerminal = true,
+            };
+
+            var act = () => Render(renderer.BuildCommitted(block, 90));
+            act.Should().NotThrow();
+        }
+    }
+
+    [Fact]
+    public void BuildCommitted_ToolOutput_ShouldTruncateAndHintExpand()
+    {
+        var output = string.Join('\n', Enumerable.Range(1, 20).Select(i => $"line{i}"));
+        var tool = new TuiToolState
+        {
+            CallId = "call_1",
+            Name = "grep",
+            Status = TuiToolStatus.Success,
+            Output = output,
+        };
+        var block = new TuiBlock { Key = "tool:call_1", Kind = TuiBlockKind.Tool, Tool = tool, IsTerminal = true };
+
+        var renderer = new TuiRenderer(new TuiRenderOptions(ToolPreviewLines: 3));
+        var text = Render(renderer.BuildCommitted(block, 90));
+
+        text.Should().Contain("line1");
+        text.Should().Contain("line3");
+        text.Should().NotContain("line5");
+        text.Should().Contain("/expand call_1");
+    }
+
+    [Fact]
+    public void BuildCommitted_Bash_ShouldShowCommand()
+    {
+        var tool = new TuiToolState
+        {
+            CallId = "call_bash",
+            Name = "bash",
+            Status = TuiToolStatus.Success,
+            Arguments = "ls -la /tmp",
+            Output = "total 0",
+        };
+        var block = new TuiBlock { Key = "tool:call_bash", Kind = TuiBlockKind.Tool, Tool = tool, IsTerminal = true };
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildCommitted(block, 90));
+
+        text.Should().Contain("bash");
+        text.Should().Contain("ls -la /tmp");
+    }
+
+    [Fact]
+    public void BuildCommitted_TodoWrite_ShouldShowTodoSummary()
+    {
+        var tool = new TuiToolState
+        {
+            CallId = "call_todo",
+            Name = "todowrite",
+            Status = TuiToolStatus.Success,
+            Arguments = "[{\"content\":\"a\",\"status\":\"pending\"}]",
+        };
+        var block = new TuiBlock { Key = "tool:call_todo", Kind = TuiBlockKind.Tool, Tool = tool, IsTerminal = true };
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildCommitted(block, 90));
+
+        text.Should().Contain("todowrite");
+        text.Should().Contain("待办");
+    }
+
+    [Fact]
+    public void BuildCommitted_Reasoning_ShouldCollapseByDefault_AndExpandWhenEnabled()
+    {
+        var reasoning = string.Join('\n', Enumerable.Range(1, 6).Select(i => $"r{i}"));
+        var block = new TuiBlock
+        {
+            Key = "loop_step1",
+            Kind = TuiBlockKind.Assistant,
+            Text = "answer",
+            Reasoning = reasoning,
+            IsTerminal = true,
+        };
+
+        var collapsed = Render(new TuiRenderer(new TuiRenderOptions(ShowReasoning: false)).BuildCommitted(block, 90));
+        collapsed.Should().Contain("思考");
+        collapsed.Should().NotContain("r1");
+        collapsed.Should().Contain("r6");
+
+        var expanded = Render(new TuiRenderer(new TuiRenderOptions(ShowReasoning: true)).BuildCommitted(block, 90));
+        expanded.Should().Contain("r1");
+        expanded.Should().Contain("r6");
+    }
+
+    [Fact]
+    public void BuildSessionList_ShouldSortByUpdatedAtDescending()
+    {
+        var sessions = new[]
+        {
+            new SessionData { Id = "a", Title = "Alpha", UpdatedAt = DateTime.Now.AddMinutes(-5) },
+            new SessionData { Id = "b", Title = "Beta", UpdatedAt = DateTime.Now },
+        };
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildSessionList(sessions, 120));
+
+        text.IndexOf("Beta", StringComparison.Ordinal)
+            .Should().BeLessThan(text.IndexOf("Alpha", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildActiveView_ShouldNotThrow_WhenStateHasNoBlocks()
+    {
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var input = new TuiInputEditorState();
+
+        var act = () => Render(renderer.BuildActiveView(NewState(), input, 100));
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void BuildActiveView_WithCommittedOffsets_ShouldRenderOnlyTail()
+    {
+        var input = new TuiInputEditorState();
+        var state = NewState(new TuiBlock
+        {
+            Key = "loop_step1",
+            Kind = TuiBlockKind.Assistant,
+            Text = "AAAA\n\nBBBB",
+            IsStreaming = true,
+        });
+        var offsets = new Dictionary<string, int> { ["loop_step1"] = 6 };
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(state, input, 100, committedOffsets: offsets));
+
+        text.Should().NotContain("AAAA");
+        text.Should().Contain("BBBB");
+    }
+
+    [Fact]
+    public void BuildActiveView_WhenOffsetCoversWholeText_ShouldSkipBlock()
+    {
+        var input = new TuiInputEditorState();
+        var state = NewState(new TuiBlock
+        {
+            Key = "loop_step1",
+            Kind = TuiBlockKind.Assistant,
+            Text = "fully committed",
+            IsStreaming = true,
+        });
+        var offsets = new Dictionary<string, int> { ["loop_step1"] = "fully committed".Length };
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(state, input, 100, committedOffsets: offsets));
+
+        text.Should().NotContain("fully committed");
+    }
+
+    [Fact]
+    public void BuildActiveView_WhenMaxLinesClips_ShouldKeepTailAndInputAndStatusBar()
+    {
+        var input = new TuiInputEditorState();
+        input.SetText("hello world");
+        var body = string.Join('\n', Enumerable.Range(1, 40).Select(i => $"body line {i}"));
+        var state = NewState(new TuiBlock
+        {
+            Key = "loop_step1",
+            Kind = TuiBlockKind.Assistant,
+            Text = body,
+            IsStreaming = true,
+        });
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(state, input, 100, maxLines: 8));
+
+        var lines = text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+        lines.Should().HaveCountLessThanOrEqualTo(8);
+        text.Should().Contain("body line 40");
+        text.Should().Contain("hello world");
+        text.Should().Contain("build");
+    }
+}

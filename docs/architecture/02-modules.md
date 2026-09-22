@@ -69,6 +69,7 @@
 | `Seeing.Agent.Hosting.Headless` | 无 UI 宿主辅助 | **不**引用 |
 | `Seeing.Agent.Hosting.Embed` | 进程内嵌入 | **不**引用 |
 | `Seeing.Agent.Hosting.Gateway` | Gateway Host Shape 描述符 | **不**引用 Agent.Gateway；sample 组合 |
+| `Seeing.Agent.Hosting.Tui` | 无 UI 终端宿主编排 + `TuiPermissionChannel`（事件流宿主通道，Singleton） | **不**引用 |
 
 **权限授权子系统归属（2026-09-17 重构后）：**
 
@@ -83,6 +84,7 @@
 | 路径 | 角色 |
 |------|------|
 | `samples/Seeing.Agent.WebUI` | Blazor 主开发宿主；组合能力 + Web Shape |
+| `samples/Seeing.Agent.Tui` | `seeing-tui` 内联流式终端组合根；组合能力 + Tui Shape |
 | `samples/Seeing.Gateway.Server` | 无 UI Gateway 宿主；`AddSeeingHostingGateway` + `AddSeeingGatewayServer` |
 | `samples/Seeing.Agent.Cli` | 命令行管理 |
 | `samples/Seeing.Agent.Embed.Demo` | Embed Shape 演示 |

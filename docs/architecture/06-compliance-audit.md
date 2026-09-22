@@ -14,7 +14,7 @@
 | 维度 | 状态 | 证据摘要 |
 |------|------|----------|
 | Core 零能力包引用 / AddSeeingCore 零工具 | ✅ | 能力包 csproj 无 Core；无 `AddSeeingAgent` |
-| 能力包无 Core ProjectReference | ✅ | `rg Core.csproj` **仅** `src/hosting/*`（5 个 Shape/Hosting） |
+| 能力包无 Core ProjectReference | ✅ | `rg Core.csproj` **仅** `src/hosting/*`（6 个 Shape/Hosting） |
 | 工具 Activate 挂载 | ✅ | `*Module*` 无 `AddSingleton<ITool>` |
 | Hosting ↛ Skills / ACP | ✅ | hosting csproj 无 Skills/Acp |
 | Gateway ↛ Core / Hosting | ✅ | gateway 下无 Core/Hosting ProjectReference |
@@ -56,7 +56,7 @@
 
 ```text
 rg "Seeing\.Agent\.Core\.csproj" src -g "*.csproj"
-→ 仅 hosting/Hosting{,.Web,.Headless,.Embed,.Gateway}
+→ 仅 hosting/Hosting{,.Web,.Headless,.Embed,.Gateway,.Tui}
 
 rg "AddSingleton<\s*ITool" src -g "*Module*.cs"
 → 空

@@ -2,6 +2,7 @@
   <Folder Name="/samples/">
     <Project Path="samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj" />
     <Project Path="samples/Seeing.Agent.Embed.Demo/Seeing.Agent.Embed.Demo.csproj" />
+    <Project Path="samples/Seeing.Agent.Tui/Seeing.Agent.Tui.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
     <Project Path="samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" />
     <Project Path="samples/Seeing.Gateway.Console.Demo/Seeing.Gateway.Console.Demo.csproj" />
@@ -28,6 +29,7 @@
     <Project Path="src/hosting/Seeing.Agent.Hosting.Embed/Seeing.Agent.Hosting.Embed.csproj" />
     <Project Path="src/hosting/Seeing.Agent.Hosting.Gateway/Seeing.Agent.Hosting.Gateway.csproj" />
     <Project Path="src/hosting/Seeing.Agent.Hosting.Headless/Seeing.Agent.Hosting.Headless.csproj" />
+    <Project Path="src/hosting/Seeing.Agent.Hosting.Tui/Seeing.Agent.Hosting.Tui.csproj" />
     <Project Path="src/hosting/Seeing.Agent.Hosting.Web/Seeing.Agent.Hosting.Web.csproj" />
   </Folder>
   <Folder Name="/src/capabilities/">
@@ -99,6 +101,7 @@
   </Folder>
   <Folder Name="/tests/apps/">
     <Project Path="tests/apps/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
+    <Project Path="tests/apps/Seeing.Agent.Tui.Tests/Seeing.Agent.Tui.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/plugs/">
