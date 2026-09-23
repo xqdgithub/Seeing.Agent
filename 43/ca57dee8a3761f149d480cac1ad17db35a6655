@@ -1,0 +1,810 @@
+tests/primitives/Seeing.Session.Tests/Storage/RelocatableSessionStoreTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 19,22,24-25
+src/spine/Seeing.Agent.Core/Configuration/UnifiedConfigManager.cs
+  s_ebbe98ec9bc7c7::t_ece3d1a9460f07 769,771,773,775,777,779,781
+  s_ebbe98ec9bc7c7::t_cc4ee1721fc91a 56
+tests/spine/Seeing.Agent.Tests/Sessions/SessionEnhancedTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 75,95,252
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 127,164,179,183,204,223,267
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiTaskTrackerSnapshotTests.cs
+  s_993567c6a77ebc::t_7f525e90b33c18 58,85
+tests/spine/Seeing.Agent.Tests/Llm/RetryLlmClientDecoratorTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 133
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 102,230
+tests/spine/Seeing.Agent.Tests/Plan/PlanManagerTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 61,74,77,90-91,94,107-109,124-126,140-141,144
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 98,112,129
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiAttachmentResolverTests.cs
+  s_993567c6a77ebc::t_8f32a761b9dcbd 57,76,86,96,106
+tests/spine/Seeing.Agent.Tests/Configuration/AcpConfigPersistenceTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 73,123,145
+tests/capabilities/Seeing.Agent.Memory.Tests/Index/VectorIndexTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 69-70,99,102,141,148,166,168,172-173,188,196,198-199,219-220,235,237,241-242,257,260,275,278
+tests/spine/Seeing.Agent.Tests/Configuration/UnifiedConfigManagerBootCapabilitySetsTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 54,58,77,102,105,107,140,142
+src/spine/Seeing.Agent.Core/Core/Instructions/InstructionInjectResult.cs
+  s_db843c68d5fa5c::t_b94a6fb621c893 3-5,8,11,14
+tests/capabilities/Seeing.Agent.Llm.ModelCapabilities.Tests/BuiltinCapabilitySourceTests.cs
+  s_1f9ce749ed47fa::t_4fde917f40147c 17,19,56,58-60,68,70,86,106,108,128,144,146,165,167
+src/spine/Seeing.Agent.Core/Llm/NullModelCapabilityManager.cs
+  s_a7894df84240ce::t_30ee9274f59cee 10-12,15-17,24-26
+  s_a7894df84240ce::t_950565591bcff6 35-37,41-43,46-48
+tests/gateway/Seeing.Gateway.WeCom.Tests/WeComStreamPublishPipelineTests.cs
+  s_e4768418e7b7bc::t_ae50d57fdfc2ed 77
+  s_e4768418e7b7bc::t_226db05be553ba 25
+tests/gateway/Seeing.Gateway.Client.Tests/SseEventReaderTests.cs
+  s_e4768418e7b7bc::t_b069a8d3d43d44 48-49
+  s_e4768418e7b7bc::t_dd157e1312e7aa 24-25
+tests/spine/Seeing.Agent.Tests/MCP/McpClientManagerDisableTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 30,49,79
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 59,82
+tests/spine/Seeing.Agent.Tests/Llm/Clients/OpenAiThinkingOutboundTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 30,53,94,124
+src/capabilities/Seeing.Agent.Tools.Shell/BashTool.cs
+  s_485e69ecc12b65::t_23cb225eb2baa6 224
+tests/primitives/Seeing.Session.Tests/Persistence/WriteBehindSessionStoreTests.cs
+  s_f1ad76ad5c4811::t_579dac064b2f89 1,55,77,109,123,137,167
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 26,28,41-42,53,74,91-92,94,98,107,121,135,153,156-157,166,205,218
+tests/spine/Seeing.Agent.Tests/Commands/CommandMarkdownTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 122,127,144,148,153,166,198,226,254,285,310
+src/spine/Seeing.Agent.Core/Core/Instructions/IInstructionManager.cs
+  s_db843c68d5fa5c::t_271e46cc1b62eb 5-7,10-12,18-20,27-29
+tests/apps/Seeing.Agent.WebUI.Tests/Services/SessionWindowRegistryTests.cs
+  s_993567c6a77ebc::t_530834b77f69e7 226
+  s_993567c6a77ebc::t_41cdb28e70c982 70,101,115,134,148,166,189,209
+tests/spine/Seeing.Agent.Tests/Invariants/LifecycleTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 35,39,43
+tests/capabilities/Seeing.Agent.Memory.Tests/Core/HybridMemoryIndexTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 52,70,80,91,110,131,158,174
+tests/spine/Seeing.Agent.Tests/App/Execution/ExecutionJobServiceCancelTests.cs
+  s_3773c74da5cd34::t_f387268a29f66f 2
+  s_3773c74da5cd34::t_d9047b413e6030 83-84
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 63
+  s_3773c74da5cd34::t_22c3c9590787ab 66
+tests/capabilities/Seeing.Agent.Scheduler.Tests/JsonScheduleRepositoryTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 39-40,64,67
+samples/Seeing.Agent.Cli/Commands/ConfigCommand.cs
+  s_fceea104749dec::t_7d912bc3b3719a 35-41
+src/spine/Seeing.Agent.Core/Services/HookManagerAdapter.cs
+  s_ebbe98ec9bc7c7::t_a4680816bb0870 12
+  s_ebbe98ec9bc7c7::t_537eb7d2c7d0cd 18
+src/spine/Seeing.Agent.Core/Core/ComponentManager.cs
+  s_db843c68d5fa5c::t_7db042f59487e5 29-31
+samples/Seeing.Agent.WebUI/Components/SessionWindow.razor
+  s_fceea104749dec::t_0168d66dc41010 291
+  s_fceea104749dec::t_64e661df21c841 924
+src/spine/Seeing.Agent.Core/Llm/ModelCapabilityCatalogReloadHandler.cs
+  s_a7894df84240ce::t_0eedf99bbdd920 14-16,20-22,25-27
+tests/spine/Seeing.Agent.Tests/Gateway/GatewaySessionServiceTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 48,71
+src/spine/Seeing.Agent.Core/Commands/CommandRegistry.cs
+  s_ebbe98ec9bc7c7::t_88074f83940b95 27
+src/spine/Seeing.Agent.Core/Core/Permission/SessionPermissionMapper.cs
+  s_db843c68d5fa5c::t_a800ca915aa837 11-13
+  s_db843c68d5fa5c::t_99f09aec5daf94 22-24
+  s_db843c68d5fa5c::t_1b5ee329a58c39 42-44
+tests/spine/Seeing.Agent.Tests/Configuration/ReloadOrchestratorDiIntegrationTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 92
+tests/spine/Seeing.Agent.Invariants.Tests/Modules/ToolActivationInvariantTests.cs
+  s_e4768418e7b7bc::t_181972eb92b22b 119,122
+  s_e4768418e7b7bc::t_425a4548085414 60
+  s_e4768418e7b7bc::t_8900301bf2653a 87,92,96
+src/spine/Seeing.Agent.Core/Llm/ProviderReloadHandler.cs
+  s_a7894df84240ce::t_aae69679c6d014 10-12
+tests/spine/Seeing.Agent.Tests/App/ChatOrchestratorDeleteSessionTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 72
+  s_3773c74da5cd34::t_cf9293a8f2c465 42-43
+tests/capabilities/Seeing.Agent.Memory.Tests/Index/KeywordIndexTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 67-68,94,97,124,127,144,146,150-151,166,169,184,187,202,210,212-213,233-234,249,251,255-256,276,279,296,299,315,318
+src/spine/Seeing.Agent.Core/Core/AgentExecutor.cs
+  s_db843c68d5fa5c::t_98d2543eb542a5 52-54
+tests/spine/Seeing.Agent.Tests/Core/AgentDiscoveryTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 85,91,115,121,142-143,149,173,179,203,209,232,238,265-266,272,306-307,314
+src/spine/Seeing.Agent.Core/Core/Snapshot/SnapshotStorage.cs
+  s_db843c68d5fa5c::t_92650be2963f9f 17-19
+  s_db843c68d5fa5c::t_38db2bd62490b8 150-152
+tests/capabilities/Seeing.Agent.Acp.Tests/SeeingAcpClientRequestContextTests.cs
+  s_1f9ce749ed47fa::t_b38dbb12792f16 31-32
+tests/capabilities/Seeing.Agent.Tools.Session.Tests/SessionHandoffToolTests.cs
+  s_1f9ce749ed47fa::t_ff7fb8d780518f 62,107,132,168
+  s_1f9ce749ed47fa::t_d995c6ddad5149 174
+  s_1f9ce749ed47fa::t_911e2fe35f9646 69
+  s_1f9ce749ed47fa::t_c621bd0b5250e1 65,134,187
+  s_1f9ce749ed47fa::t_355ab81d3dd875 147
+  s_1f9ce749ed47fa::t_52dd234bdb8177 108
+  s_1f9ce749ed47fa::t_387062b43562ad 156
+  s_1f9ce749ed47fa::t_4cbe6209e6a58a 148
+tests/capabilities/Seeing.Agent.Tools.Git.Tests/GitServiceSubprocessTests.cs
+  s_e4768418e7b7bc::t_f415fe2ffb64a2 37-38
+  s_e4768418e7b7bc::t_d89c062df6abf9 67-70
+src/spine/Seeing.Agent.Core/Tools/BuiltIn/Plan/PlanTools.cs
+  s_ebbe98ec9bc7c7::t_7f2230e565b225 23
+  s_ebbe98ec9bc7c7::t_4636f374a71efc 45
+  s_ebbe98ec9bc7c7::t_656f44e2f452d2 51
+  s_ebbe98ec9bc7c7::t_8281b92d877c06 12,14
+  s_ebbe98ec9bc7c7::t_08202006f7a612 82,84
+  s_ebbe98ec9bc7c7::t_50a6336396e98f 93
+  s_ebbe98ec9bc7c7::t_bd2df7a34a990b 115
+src/spine/Seeing.Agent.Core/Configuration/ReloadOrchestrator.cs
+  s_ebbe98ec9bc7c7::t_d08a0ac7799824 51
+  s_ebbe98ec9bc7c7::t_cfe594c0897d55 302
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiTaskTrackerTests.cs
+  s_993567c6a77ebc::t_4c9246ac2e0627 122,174,188
+tests/spine/Seeing.Agent.Tests/Llm/LlmTurnRetryPolicyTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 24,29,34,40
+src/spine/Seeing.Agent.Core/Core/Scheduling/AgentLoopScheduler.cs
+  s_db843c68d5fa5c::t_e6d9430225a0a0 55-57,60-62,65-67
+  s_db843c68d5fa5c::t_bd377b3d1a5888 28-30
+  s_db843c68d5fa5c::t_f98c575855c259 17-19
+  s_db843c68d5fa5c::t_964f4927745fd5 71-73
+  s_db843c68d5fa5c::t_0b00a83e04812e 107-109
+tests/primitives/Seeing.Session.Tests/Storage/FileSessionGroupStoreTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 39,41,59,66-67,69-70,76,83,85,87,97,102,104-105
+src/spine/Seeing.Agent.Core/Compression/LlmSummarizer.cs
+  s_ebbe98ec9bc7c7::t_887a5776c10b95 77
+tests/spine/Seeing.Agent.Tests/Compression/LlmSummarizerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 81,113,142,168,195,226,251,277,295,318,356,386,422,468,490,513
+  s_3773c74da5cd34::t_29747293caf794 524,526
+tests/apps/Seeing.Agent.WebUI.Tests/Invariants/UiContributionTests.cs
+  s_993567c6a77ebc::t_e77529fd0cc972 182-183
+  s_993567c6a77ebc::t_6758090d940bd3 87
+tests/apps/Seeing.Agent.WebUI.Tests/Services/WorkspaceSwitchServiceTests.cs
+  s_993567c6a77ebc::t_fc2e3dc6796ef7 92
+  s_993567c6a77ebc::t_0f9a78cf006599 107
+  s_993567c6a77ebc::t_6c1bb24b5c00c5 61,77,124,144
+tests/spine/Seeing.Agent.Tests/MCP/McpClientManagerReinitializeTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 27,36,43,63,71,88
+  s_fb730a4f0fccae::t_e0250cce18815c 28-29,44-45,64-65,72-73
+src/spine/Seeing.Agent.Core/Core/Hooks/HookManager.cs
+  s_db843c68d5fa5c::t_77fe6158e3e767 7-9,15-17,20-22
+  s_db843c68d5fa5c::t_001c50a8ae944e 88-90
+  s_db843c68d5fa5c::t_2465f49c6738f6 59-61,64-66
+  s_db843c68d5fa5c::t_404e665efab0da 97-99
+  s_db843c68d5fa5c::t_32136fbe3d860f 30-32
+  s_db843c68d5fa5c::t_4d393b50518bf9 49-51
+  s_db843c68d5fa5c::t_ee338575a9de0b 78-80
+  s_db843c68d5fa5c::t_ae89ee1a4fd37f 40-42
+tests/apps/Seeing.Agent.Tui.Tests/Input/TuiPromptInputRelayTests.cs
+  s_993567c6a77ebc::t_04891548b44d17 39
+  s_993567c6a77ebc::t_c7f01d18bf397a 57
+src/spine/Seeing.Agent.Core/Tools/BuiltIn/Plan/PlanManager.cs
+  s_ebbe98ec9bc7c7::t_da51a03f4055d2 16
+samples/Seeing.Agent.Cli/Commands/StopCommand.cs
+  s_fceea104749dec::t_82f24c1c26c633 21-26
+tests/capabilities/Seeing.Agent.Memory.Tests/Storage/LocalFileStoreTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 69,84,95,119,122,140,152-153,156,159,178,181,194,204-207,210,226-228,231,241-242,244,254-256,259,270,288,291-293,311,314,328,340,343,357,369,372,417,420
+tests/spine/Seeing.Agent.Tests/MCP/McpStateTransitionsDisconnectTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 41,52,69
+src/spine/Seeing.Agent.Core/Helpers/HashHelper.cs
+  s_ebbe98ec9bc7c7::t_17b0bc505537c5 6,9
+tests/primitives/Seeing.Session.Tests/Management/SessionHandoffRollbackTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 31,33-34,37,39,47,69-71,76,81
+tests/primitives/Seeing.Session.Tests/Storage/FileSessionStoreRefCleanupTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 19,26
+tests/capabilities/Seeing.Agent.Tools.Session.Tests/SessionSearchToolTests.cs
+  s_1f9ce749ed47fa::t_d2eafb6bf70021 132-133
+src/spine/Seeing.Agent.Core/Core/Snapshot/DiffCalculator.cs
+  s_db843c68d5fa5c::t_aa4878943132ff 217,219,221
+tests/spine/Seeing.Agent.Tests/Llm/PerRequestInterceptorResolveTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 67,79
+src/spine/Seeing.Agent.Core/Llm/RetryLlmClientDecorator.cs
+  s_a7894df84240ce::t_af186e8d83c1b6 14-16,22-24,27-29
+src/spine/Seeing.Agent.Core/Configuration/AgentManager.cs
+  s_ebbe98ec9bc7c7::t_a3f22d920bc644 799
+  s_ebbe98ec9bc7c7::t_7a3321d8235c1f 43
+tests/spine/Seeing.Agent.Tests/Configuration/UnifiedConfigManagerSaveSectionsTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 44,49,106
+src/spine/Seeing.Agent.Core/Core/Instructions/InstructionFingerprintSnapshot.cs
+  s_db843c68d5fa5c::t_f2252b953598bd 5-7,10-12,24,27
+tests/capabilities/Seeing.Agent.Scheduler.Tests/SchedulerIntegrationTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 46,60,65,69,77,86-87,94,106,110,126,136,138,142,144,166,175,180,184,188,217,224,230,232,242,244,248,251,263,274,277-278,282-283,288,299,310,313-314,318-319,324
+src/spine/Seeing.Agent.Core/Output/SessionToolOutputStore.cs
+  s_ebbe98ec9bc7c7::t_b0fe430cb3dc2f 19
+tests/capabilities/Seeing.Agent.Llm.ModelCapabilities.Tests/ModelCapabilityManagerTests.cs
+  s_1f9ce749ed47fa::t_4fde917f40147c 55,80,107,115,130,208
+src/spine/Seeing.Agent.Core/Core/Permission/PermissionService.cs
+  s_db843c68d5fa5c::t_0852b4972200c9 28-30
+tests/capabilities/Seeing.Agent.Acp.Tests/AcpPassthroughExecutorMetadataTests.cs
+  s_1f9ce749ed47fa::t_f47fc9450dee4f 60
+tests/primitives/Seeing.Session.Tests/Management/SessionGroupAnchorNormalizationTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 21,23,25,40-42,44,46,54-55,66,70,74,83-84,86,88,101-104,106,108,119,121,123,125,137-140,142,144,146,160-162,164,166,181,183,185,187-188,190,192
+src/spine/Seeing.Agent.Core/Llm/OptionsProviderEndpointLookup.cs
+  s_a7894df84240ce::t_ef0e4a954ae148 17-19,28-30
+src/spine/Seeing.Agent.Core/Core/Generation/IAgentGenerator.cs
+  s_db843c68d5fa5c::t_7788b2fb850d56 69,71,73,75,77
+src/spine/Seeing.Agent.Core/Configuration/SeeingAgentOptionsMonitor.cs
+  s_ebbe98ec9bc7c7::t_ef755fd8a5e059 14,24,28,31,34
+tests/capabilities/Seeing.Agent.Tools.Git.Tests/GitServiceTests.cs
+  s_e4768418e7b7bc::t_b9b8b5cdfeafbe 136
+src/spine/Seeing.Agent.Core/Scenarios/BuiltInScenarios.cs
+  s_ebbe98ec9bc7c7::t_8d086d55386b58 18
+  s_ebbe98ec9bc7c7::t_432d2891a7875b 50
+  s_ebbe98ec9bc7c7::t_205555221f0858 34
+  s_ebbe98ec9bc7c7::t_219a72b2c2b6d4 26
+  s_ebbe98ec9bc7c7::t_5efbbf46d27b4a 42
+tests/capabilities/Seeing.Agent.Acp.Tests/AcpPermissionBridgeTests.cs
+  s_3773c74da5cd34::t_2fc5dc014ddbb8 72
+  s_1f9ce749ed47fa::t_023dd61d6ff839 35-36
+  s_1f9ce749ed47fa::t_e97d9a472f9965 69-70
+  s_3773c74da5cd34::t_cf0e7aa5d1aaf9 38
+tests/capabilities/Seeing.Agent.Acp.Tests/AcpDynamicAgentRegistrarTests.cs
+  s_e4768418e7b7bc::t_99ff03e905fd8f 40-41
+tests/capabilities/Seeing.Agent.Acp.Tests/AcpSessionConfigApplierTests.cs
+  s_1f9ce749ed47fa::t_077da41b11698d 54-55
+  s_1f9ce749ed47fa::t_80a278c1b4f798 83
+  s_1f9ce749ed47fa::t_5b3d95adb7e02d 96
+tests/capabilities/Seeing.Agent.Memory.Tests/Integration/ChatMemoryHandlerEnqueueTests.cs
+  s_dd7e7ae8df18c4::t_e618baf382d7b3 40
+  s_dd7e7ae8df18c4::t_b717d594e04b73 69
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 93,113
+  s_dd7e7ae8df18c4::t_e4a8f8b5cc76d5 138
+src/spine/Seeing.Agent.Core/Services/SessionTitleService.cs
+  s_ebbe98ec9bc7c7::t_7e0751284e4414 35
+tests/capabilities/Seeing.Agent.Tools.Session.Tests/SessionReadToolTests.cs
+  s_1f9ce749ed47fa::t_4ad4d6d5d42415 170-171
+tests/primitives/Seeing.Session.Tests/Management/SessionGroupManagerTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 23,40-41,51,54,65,72,76,78,89,94,96,101,108,112,120,125-126,128,130,140,146,150,152,154,167,172,174,185,190,205,216,218,220,224,226,233,245-246,248,252,262,264,273-274,287,289,293,295,299,313,316-317,326,328-329,340-341,346,357,365,367,369,372,384,393,397,399,401,413,429,445,461,477,493,496-497,505,517,529,545,553,555-556,560
+tests/capabilities/Seeing.Agent.Acp.Tests/AcpReloadHandlerTests.cs
+  s_1f9ce749ed47fa::t_b0d60c44936418 47
+  s_1f9ce749ed47fa::t_1eb4c763f75f8b 33
+  s_1f9ce749ed47fa::t_724ea13334f920 19
+tests/capabilities/Seeing.Agent.Memory.Tests/Core/SqliteMemoryGraphTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 23,26,34,37,46-47,50,58-59,62,70-71,74,77,86-87,90,93,102-103,106,118-119,122,125,136-137,140,153-154,157,167-169,172,184-186,189,202-203,206,216-217,219,221
+tests/apps/Seeing.Agent.WebUI.Tests/Services/UiContributionRegistryTests.cs
+  s_993567c6a77ebc::t_c9963983371186 39-41
+  s_993567c6a77ebc::t_c81cb8f76ee823 25
+  s_993567c6a77ebc::t_dfb8f8be5ebbe4 45
+  s_993567c6a77ebc::t_b8fa2f78c358cb 20,59
+  s_993567c6a77ebc::t_e2fc912eb9ab79 49-50
+src/capabilities/Seeing.Agent.Tools.Session/SessionReadTool.cs
+  s_485e69ecc12b65::t_ecc0a11a066d75 214
+  s_485e69ecc12b65::t_8341ef3d33794c 124
+tests/spine/Seeing.Agent.Tests/Interactions/PendingRequestManagerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 17,31,40,49,51,63,73,83,85,92,104,112,114,123,134-135,149,164
+tests/spine/Seeing.Agent.Tests/Modules/ModuleSettlementReloadHandlerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 30,59,83,128,147,164,182,199,214,230,255,277,293
+src/spine/Seeing.Agent.Core/Llm/DefaultLlmTurnRetryPolicy.cs
+  s_a7894df84240ce::t_393887a8672760 52-54
+  s_a7894df84240ce::t_83efd93fe52251 12-14,18-20,24-26,29-31
+  s_a7894df84240ce::t_69e15e392699ce 43-45
+tests/spine/Seeing.Agent.Tests/Llm/ProviderManagerTests.cs
+  s_3773c74da5cd34::t_8104d3b5c43f45 588
+src/spine/Seeing.Agent.Core/Core/Events/ISessionEventBus.cs
+  s_db843c68d5fa5c::t_be3e2767794e95 11-13
+src/spine/Seeing.Agent.Core/Core/Reminders/SystemReminderRenderer.cs
+  s_db843c68d5fa5c::t_788757163f57a6 8-10,15-17
+  s_db843c68d5fa5c::t_05f7e12fdb01ae 69-71
+tests/spine/Seeing.Agent.Tests/Permission/PermissionServiceTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 29,44,64,83,99,123
+src/spine/Seeing.Agent.Core/Llm/TextCompletionService.cs
+  s_a7894df84240ce::t_335f7da4fb005a 19-21,32-34,37-39
+  s_a7894df84240ce::t_af67c68831735a 54-56
+src/spine/Seeing.Agent.Core/Core/Interactions/SurfaceRegistry.cs
+  s_db843c68d5fa5c::t_e135573c906f7a 19-21
+src/spine/Seeing.Agent.Core/Core/Prompts/PromptBuilder.cs
+  s_db843c68d5fa5c::t_fea07d3482d728 30-32
+src/spine/Seeing.Agent.Core/Core/Permission/WorkspacePathGate.cs
+  s_db843c68d5fa5c::t_fe4e3d1f487dc7 17-19
+src/spine/Seeing.Agent.Core/Core/AgentDiscovery.cs
+  s_db843c68d5fa5c::t_859c1a274de1f9 35-37
+tests/spine/Seeing.Agent.Tests/Llm/Clients/AnthropicThinkingOutboundTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 34,61,85,125
+src/spine/Seeing.Agent.Core/Llm/LlmCallInterceptorRegistry.cs
+  s_a7894df84240ce::t_a05aca8cd79304 13-15
+  s_a7894df84240ce::t_e007f8b769a1e1 26-28,36-38
+tests/spine/Seeing.Agent.Tests/Sessions/SessionGroupEventBusTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 82,111,146
+tests/capabilities/Seeing.Agent.Memory.Tests/Background/MemoryEvolutionWorkerGatingTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 45,67,78
+src/spine/Seeing.Agent.Core/Compression/CompressionService.cs
+  s_ebbe98ec9bc7c7::t_2c9ef6f435ea72 19
+tests/spine/Seeing.Agent.Tests/Configuration/ConfigSectionRegistryConsumptionTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 77,85,93
+src/hosting/Seeing.Agent.Hosting/Tools/TaskTool.cs
+  s_485e69ecc12b65::t_bc368c47bdf2b8 380
+tests/spine/Seeing.Agent.Tests/Invariants/MigrationTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 61,87,109,112,137,139,183
+src/spine/Seeing.Agent.Core/Execution/CompactionRunner.cs
+  s_ebbe98ec9bc7c7::t_2c9885f6f8c0c1 21
+tests/capabilities/Seeing.Agent.Memory.Tests/Evolution/LlmMemoryEvolutionGraphTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 51
+tests/spine/Seeing.Agent.Tests/Invariants/SchemaScenarioTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 83,125,133,157,239,253,280,306
+  s_3773c74da5cd34::t_54ccbc57037a5c 505
+src/spine/Seeing.Agent.Core/Core/AgentExecutorRouter.cs
+  s_db843c68d5fa5c::t_a3b47e9781f649 15-17
+src/spine/Seeing.Agent.Core/Core/Instructions/ProjectInstructions.cs
+  s_db843c68d5fa5c::t_219f423433e0a4 10,12,15,18,20,22,24,28,31,33,35,37
+src/spine/Seeing.Agent.Core/Services/ISessionTitleService.cs
+  s_ebbe98ec9bc7c7::t_e82e72dca5c8c0 8
+tests/apps/Seeing.Agent.WebUI.Tests/Services/TaskCardAggregatorTests.cs
+  s_993567c6a77ebc::t_14c443d68990c1 104,106,112-113,115,150-151,158-159,161,165-166,173-174,209-210,218,220,269,274-275,282,287-288,326-327,340,399-400,411-412,419-420,471-472,479-480
+  s_993567c6a77ebc::t_a7c82e457893b9 217
+src/spine/Seeing.Agent.Core/Decorators/ToolOutputLimiterDecorator.cs
+  s_ebbe98ec9bc7c7::t_42efa608f58ddb 30
+src/spine/Seeing.Agent.Core/Llm/LlmService.cs
+  s_a7894df84240ce::t_4b558762d69e67 436-438
+  s_a7894df84240ce::t_b598224033fa67 18-20,22-24,26-28,30-32,34-36,38-40,42-44,46-48,50-52,54-56
+  s_a7894df84240ce::t_fc3660574ba45a 134-136
+  s_a7894df84240ce::t_f1f79ff6276a0c 637-639
+  s_a7894df84240ce::t_9c558ded662f45 319-321
+  s_a7894df84240ce::t_27819302c32a75 448-450
+  s_a7894df84240ce::t_2cdb2b2acd6b5f 71-73
+  s_a7894df84240ce::t_5ff06630ef8a40 88-90,94-96,100-102,106-108,112-114,121-123
+tests/spine/Seeing.Agent.Tests/Tools/ToolManagerUnregisterTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 55,57,67
+src/spine/Seeing.Agent.Core/Llm/LlmClientDecoratorRegistry.cs
+  s_a7894df84240ce::t_aeacfa1d504964 13-15
+  s_a7894df84240ce::t_4b1bba5f1d4979 26-28,36-38
+tests/gateway/Seeing.Gateway.WeCom.Tests/WeComStreamStateTests.cs
+  s_e4768418e7b7bc::t_82f25645278b9b 25,52,94,113,149
+src/abstractions/Seeing.Agent.Abstractions/Agents/IAgentExecutorImplementation.cs
+  s_cf092b1beb86b1::t_97d7109981fe7e 15
+tests/spine/Seeing.Agent.Tests/Commands/SkillCommandsTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 51,72,89,110
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiAttachmentResolverSizeTests.cs
+  s_993567c6a77ebc::t_8be018a7880008 34
+tests/capabilities/Seeing.Agent.Memory.Tests/Schema/SchemaManagerTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 36,46,50,58,61,71,81,84,94,105,108,118,122,130,133,143,161,178,196,204,212,220,226-227
+src/spine/Seeing.Agent.Core/Configuration/PluginSpec.cs
+  s_ebbe98ec9bc7c7::t_bb84d269d1f69a 12,44
+tests/spine/Seeing.Agent.Invariants.Tests/Invariants/VisibilityTests.cs
+  s_e4768418e7b7bc::t_93b1de31351eb3 128-129
+  s_3773c74da5cd34::t_fe43e926335665 158
+  s_e4768418e7b7bc::t_5d79efebc4f868 63-64
+  s_e4768418e7b7bc::t_05068e289d7998 100-101
+tests/capabilities/Seeing.Agent.Tools.Session.Tests/SessionListToolTests.cs
+  s_1f9ce749ed47fa::t_dedb078d00d5f0 32-33
+  s_1f9ce749ed47fa::t_392ff38f14a52f 82
+  s_1f9ce749ed47fa::t_225f23c8dbc2dc 83
+tests/spine/Seeing.Agent.Tests/Hooks/HookManagerTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 68,92,105
+tests/apps/Seeing.Agent.WebUI.Tests/Services/WebUiSurfacePresenterTests.cs
+  s_993567c6a77ebc::t_cb34e8e1537b9d 107
+  s_fb730a4f0fccae::t_0a4c184c363f94 83
+  s_993567c6a77ebc::t_bb015678f1b0ef 80
+tests/primitives/Seeing.Session.Tests/Persistence/WriteBehindSessionGroupStoreTests.cs
+  s_f1ad76ad5c4811::t_579dac064b2f89 1,55,77,128,141
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 26,28,41-42,53,74,91-92,94,98,112,114,126,140,179,192
+src/spine/Seeing.Agent.Core/Core/Todo/TodoListExtensions.cs
+  s_db843c68d5fa5c::t_cb415de08e6941 6-8,11-13,17-19,23-25,29-31
+tests/spine/Seeing.Agent.Tests/App/Execution/ExecutionJobServiceCommandShortCircuitTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 83,150,214,269,344
+tests/spine/Seeing.Agent.Tests/Configuration/SessionGroupReloadHandlerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 27,36,39,44
+src/spine/Seeing.Agent.Core/Configuration/AgentManagerReloadHandler.cs
+  s_ebbe98ec9bc7c7::t_ac896d8d515d6f 12
+  s_ebbe98ec9bc7c7::t_501bcd8bce3eeb 15,18
+tests/spine/Seeing.Agent.Tests/Permission/PermissionRequestManagerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 33,58,67,69,87,108,127,131,141,156,158,169,181,185-186,201,203,211,222,228,250,257,274,291,298,307,320,335-337,355,359,375,390,406,419-421,438,440,452,468,473,485,488,511-512,529,533,549,554,767,802,834,861,867
+tests/capabilities/Seeing.Agent.Scheduler.Tests/SchedulerOptionsProviderTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 80,82,99,101,113,115
+tests/spine/Seeing.Agent.Tests/TokenBudget/TokenBudgetManagerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 40
+tests/apps/Seeing.Agent.WebUI.Tests/Services/PermissionInboxViewTests.cs
+  s_993567c6a77ebc::t_1f8b486b08e439 127
+tests/spine/Seeing.Agent.Tests/Permission/PermissionAuthorizationTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 35,50,64,79,93,108,122,135,149,163,177,192,207,223,237,251,269,285,300,312,327,340,352,366,381,396,411,425,439,455,467-468,483,489,501,515,530,544,572,602
+src/spine/Seeing.Agent.Core/CapabilitySets/CapabilitySetCatalog.cs
+  s_ebbe98ec9bc7c7::t_27f3dfec130f79 29
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiSurfaceProviderTests.cs
+  s_dd7e7ae8df18c4::t_53fc20cff6099c 82,105,136,161,184
+  s_993567c6a77ebc::t_c92aa773483999 141,167
+  s_993567c6a77ebc::t_f36295e81664e0 44
+  s_993567c6a77ebc::t_79a9fbd90fe5e6 164
+  s_993567c6a77ebc::t_dffef7f4a3f911 144
+tests/capabilities/Seeing.Agent.Memory.Tests/Embedding/EmbeddingConnectionTesterTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 20,29,54
+tests/spine/Seeing.Agent.Tests/App/Execution/ExecutionJobServiceCompactionTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 77,143
+tests/spine/Seeing.Agent.Tests/Gateway/GatewayScheduleDispatcherOutboundTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 45,85
+tests/spine/Seeing.Agent.Tests/App/ExecutionJobServiceInstructionTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 40,60,78,100
+tests/capabilities/Seeing.Agent.Llm.ModelCapabilities.Tests/ModelsDevCapabilitySourceTests.cs
+  s_1f9ce749ed47fa::t_4fde917f40147c 64,69,94,100,105,113,127,145,165,167,169,189,196,208,246,253,264,292,295,298
+tests/spine/Seeing.Agent.Tests/Services/SessionTitleServiceTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 155,192,246,280,337
+tests/capabilities/Seeing.Agent.Tools.Session.Tests/SessionTrimToolTests.cs
+  s_1f9ce749ed47fa::t_9545cb24f7d8d2 48
+  s_1f9ce749ed47fa::t_77c780b58a4fa1 49
+tests/capabilities/Seeing.Agent.Memory.Tests/MemoryConnectionOwnershipTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 20,25,30
+tests/apps/Seeing.Agent.Cli.Tests/ManagementApiClientTests.cs
+  s_e4768418e7b7bc::t_1a5a37dc60f4d0 16
+tests/primitives/Seeing.Session.Tests/SessionManagerTests.cs
+  s_3773c74da5cd34::t_a5beddc72e4011 215
+  s_3773c74da5cd34::t_c4ac40b0e2cc43 249
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 152,266,350,374,389
+tests/spine/Seeing.Agent.Tests/Modules/SettlementEngineTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 39,66,90,113,133,155,191,246,261,282,302,326,358,480,505
+tests/apps/Seeing.Agent.WebUI.Tests/Services/MessageTimelineStoreTests.cs
+  s_3773c74da5cd34::t_ad108edab84abd 165-166
+  s_3773c74da5cd34::t_d88195730ad7e8 182
+src/spine/Seeing.Agent.Core/Tools/Discovery/ReflectedTool.cs
+  s_ebbe98ec9bc7c7::t_73ed66d83e0a8a 44
+  s_ebbe98ec9bc7c7::t_f8f070885d2c65 19,21
+  s_ebbe98ec9bc7c7::t_035212d31bd4a4 30
+  s_ebbe98ec9bc7c7::t_bfa296f77ae6c4 33
+tests/capabilities/Seeing.Agent.Memory.Tests/Evolution/LlmMemoryExtractorTests.cs
+  s_dd7e7ae8df18c4::t_61da66e239723a 75
+  s_dd7e7ae8df18c4::t_cdcff75e96792b 54
+tests/spine/Seeing.Agent.Tests/Commands/CompactHistoryCommandTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 47
+tests/spine/Seeing.Agent.Tests/Configuration/AgentManagerTwoPhaseRegistrationTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 51
+tests/spine/Seeing.Agent.Tests/App/Execution/CompactionRunnerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 64,97,113,131,154,176,193
+tests/spine/Seeing.Agent.Tests/Core/AgentRuntimeReloadHandlerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 24,35,46
+src/hosting/Seeing.Agent.Hosting/Execution/ExecutionJobService.cs
+  s_485e69ecc12b65::t_bbdeb5abf3cfbc 1033
+samples/Seeing.Agent.Cli/Commands/AgentCommand.cs
+  s_fceea104749dec::t_d8c1b841c61e78 36-42
+tests/spine/Seeing.Agent.Tests/Configuration/ReloadOrchestratorTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 51,69,81,98,116,124,140,167-168,177,190,195
+tests/spine/Seeing.Agent.Tests/Core/AgentExecutorCancellationTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 80
+src/spine/Seeing.Agent.Core/Core/Permission/WorkspaceBoundaryLifecycle.cs
+  s_db843c68d5fa5c::t_0add9b72cc8ed2 15-17
+  s_db843c68d5fa5c::t_9269c3b2f2cced 26-28
+  s_db843c68d5fa5c::t_db32499528e6f8 41-43
+tests/primitives/Seeing.Session.Tests/Hooks/SessionHookManagerTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 215,235,258,291,322,352
+tests/spine/Seeing.Agent.Tests/Modules/ModuleLifecycleManagerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 27,50,56,63
+src/spine/Seeing.Agent.Core/Core/Reminders/SystemReminderNotices.cs
+  s_db843c68d5fa5c::t_93b5331f38bd4e 5-7,10-12
+tests/gateway/Seeing.Gateway.WeCom.Tests/WeComBridgeTests.cs
+  s_e4768418e7b7bc::t_75844b93849b65 215-216
+  s_e4768418e7b7bc::t_2d115d8bc3b29f 191-192
+  s_1f9ce749ed47fa::t_c4830e11566d81 238-239
+src/spine/Seeing.Agent.Core/Commands/Discovery/CommandDiscovery.cs
+  s_ebbe98ec9bc7c7::t_09783fde5e3ea0 133
+  s_ebbe98ec9bc7c7::t_196baa12e72f69 31
+  s_ebbe98ec9bc7c7::t_945f951e03054e 22
+  s_ebbe98ec9bc7c7::t_9dd01a447122c7 342-343
+tests/spine/Seeing.Agent.Tests/Llm/ModelCatalogAggregationTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 67,91,179,202,207,258,304,306
+  s_fb730a4f0fccae::t_e0250cce18815c 109,130,159,205,229,372-373
+src/spine/Seeing.Agent.Core/Llm/ConfiguredLlmProvider.cs
+  s_a7894df84240ce::t_0acebfa6f33e1d 104-106
+  s_a7894df84240ce::t_2a9f00fba7ed33 23-25
+  s_a7894df84240ce::t_7e7adb81a90a05 140-142,148-150
+  s_a7894df84240ce::t_11bdfd00b142d4 49-51,54-56,59-61,64-66,69-71,74-76
+  s_a7894df84240ce::t_70eced398c36d8 120-122
+src/spine/Seeing.Agent.Core/Shell/ShellEnvironmentService.cs
+  s_ebbe98ec9bc7c7::t_b414f152828071 15
+src/spine/Seeing.Agent.Core/Llm/ProviderManager.cs
+  s_a7894df84240ce::t_7709a036449f42 421-423
+  s_a7894df84240ce::t_c4d0082f43552f 29-31
+src/spine/Seeing.Agent.Core/Core/AgentRuntimeReloadHandler.cs
+  s_db843c68d5fa5c::t_93da39315f35aa 10-12
+tests/spine/Seeing.Agent.Tests/Modules/ModuleHostedServiceReviveTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 29,34,39,62,65,89-90,92
+tests/capabilities/Seeing.Agent.Scheduler.Tests/SchedulerEngineTests.cs
+  s_dd7e7ae8df18c4::t_339f86c795b990 1,37,39-40,43-44,51,59,61,65,72,83,85,90,113-114,116,120-121,125-126,131,139,142,144,146,148,156,165,167,171,195,198,200,203,210,212-213,215,219,250,253,255,259
+src/spine/Seeing.Agent.Core/Core/Generation/AgentValidator.cs
+  s_db843c68d5fa5c::t_c114612376f0fc 126,128,130
+src/spine/Seeing.Agent.Core/CapabilitySets/BuiltInCapabilitySets.cs
+  s_ebbe98ec9bc7c7::t_91064af0538e84 143
+  s_ebbe98ec9bc7c7::t_b312c381bdcc7c 102
+  s_ebbe98ec9bc7c7::t_d5321bc9b00b9c 96
+  s_ebbe98ec9bc7c7::t_ce8e6c875dde74 108
+  s_ebbe98ec9bc7c7::t_8da32aa8b9143d 114
+  s_ebbe98ec9bc7c7::t_0ede7f3d8665fe 120
+tests/spine/Seeing.Agent.Tests/App/Execution/SchemaSnapshotExecutionTests.cs
+  s_3773c74da5cd34::t_23ef25558a2dc3 285
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 84,165
+tests/capabilities/Seeing.Agent.Tools.FileSystem.Tests/DeleteToolTests.cs
+  s_e4768418e7b7bc::t_1755064b5308c9 35-36
+  s_e4768418e7b7bc::t_a6def77a94f433 21
+tests/capabilities/Seeing.Agent.Tools.Shell.Tests/BashToolCancellationTests.cs
+  s_e4768418e7b7bc::t_ba463867fed355 92-93
+  s_e4768418e7b7bc::t_3df30363e32a42 45-46
+  s_e4768418e7b7bc::t_86fe8d10fe5fc8 69
+  s_e4768418e7b7bc::t_e7c4d2c2aef1b6 58-59
+  s_e4768418e7b7bc::t_9e20f17d663513 82-83
+samples/Seeing.Agent.WebUI/Services/EventStreamHandler.cs
+  s_fceea104749dec::t_6457498f9ee9c0 170
+tests/spine/Seeing.Agent.Tests/App/ChatOrchestratorCreateSessionTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 58,93,128,165
+tests/spine/Seeing.Agent.Tests/Core/AgentExecutorRouterTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 34,58
+tests/primitives/Seeing.Session.Tests/Management/SessionChildTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 95,109,128
+  s_f1ad76ad5c4811::t_a578b488bca054 50,74,125
+src/spine/Seeing.Agent.Core/Tools/ToolManager.cs
+  s_ebbe98ec9bc7c7::t_9a4b72299f4bf5 47
+src/spine/Seeing.Agent.Core/Extensions/ServiceCollectionExtensions.cs
+  s_cf092b1beb86b1::t_2dc7cc4c3732cd 168
+tests/capabilities/Seeing.Agent.Acp.Tests/AcpHostedServiceGatingTests.cs
+  s_e4768418e7b7bc::t_e1e6aafc8b7cd0 68,123,135
+  s_1f9ce749ed47fa::t_fad3e5992997ae 88,97
+  s_1f9ce749ed47fa::t_af1560749b3ca2 93
+src/spine/Seeing.Agent.Core/Llm/ProviderRegistry.cs
+  s_a7894df84240ce::t_e58afd99ba4e07 49-51
+  s_a7894df84240ce::t_cef625a60b9556 91-93
+  s_a7894df84240ce::t_4ceded57a85b61 116-118
+  s_a7894df84240ce::t_06aad034dec5bf 19-21,27-29,32-34,38-40
+  s_a7894df84240ce::t_661e85034206d5 60-62
+src/spine/Seeing.Agent.Core/Llm/LlmProviderBase.cs
+  s_a7894df84240ce::t_5bd3117592a09b 9-11,14-16,19-21,24-26,29-31,35-37
+src/spine/Seeing.Agent.Core/Core/Models/ToolArguments.cs
+  s_db843c68d5fa5c::t_fc284abd4f7209 156-158
+tests/spine/Seeing.Agent.Invariants.Tests/Invariants/CoreZeroToolsTests.cs
+  s_e4768418e7b7bc::t_f7f9ae70438e7b 49-50
+tests/spine/Seeing.Agent.Tests/Execution/EndTurnDirectiveTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 60,105
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/SpectreTerminalSurfaceCaretTests.cs
+  s_993567c6a77ebc::t_127dfb998cc57a 42,45,69
+  s_1f9ce749ed47fa::t_c4830e11566d81 88
+  s_993567c6a77ebc::t_25126def46ad80 24
+tests/spine/Seeing.Agent.Tests/Tools/ToolInvokerTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 74,95,107,343
+tests/plugs/Seeing.Provider.DeepSeek.Tests/DeepSeekModelCapabilitiesTests.cs
+  s_3773c74da5cd34::t_4e899dedbcd396 1
+src/spine/Seeing.Agent.Core/Scenarios/ScenarioCatalog.cs
+  s_ebbe98ec9bc7c7::t_b81f1290fdba2e 30
+src/spine/Seeing.Agent.Core/Tools/BuiltIn/DefaultToolPermissionPolicy.cs
+  s_ebbe98ec9bc7c7::t_1d85cc5157128b 43
+tests/spine/Seeing.Agent.Tests/Llm/TextCompletionServiceTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 46,115
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 70,92
+src/spine/Seeing.Agent.Core/Llm/ModelConfigManager.cs
+  s_a7894df84240ce::t_0514c6f0e50f7e 50-52
+  s_a7894df84240ce::t_d3bbf9d055a071 801-803,810-812
+tests/spine/Seeing.Agent.Tests/Compression/CompressionServiceTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 38,92,132,151,179,211
+samples/Seeing.Agent.WebUI/Components/CronJobs/JobEditorModal.razor
+  s_fceea104749dec::t_5939677e4bee11 180-183
+tests/capabilities/Seeing.Agent.Memory.Tests/Recall/MemoryRecallServiceTests.cs
+  s_dd7e7ae8df18c4::t_4d52439fe471b3 27,49
+src/spine/Seeing.Agent.Core/Core/Generation/AgentTemplateEngine.cs
+  s_db843c68d5fa5c::t_b4313d97b4e959 160,162,164,166,168,175,177,179,186,188,190
+samples/Seeing.Agent.Cli/Commands/SessionCommand.cs
+  s_fceea104749dec::t_afe35a00b5aaa3 37-43
+  s_fceea104749dec::t_dd933fb3491c4d 59-65
+src/spine/Seeing.Agent.Core/Core/Instructions/ProjectInstructionsRenderer.cs
+  s_db843c68d5fa5c::t_f57110606d63a3 19-21
+  s_db843c68d5fa5c::t_469ce031590679 127-129
+  s_db843c68d5fa5c::t_5de0488317c732 90-92
+  s_db843c68d5fa5c::t_b7c85459edfe1d 10-12
+  s_db843c68d5fa5c::t_06ca86dd6af6c8 53-55
+src/spine/Seeing.Agent.Core/Core/NativeAgentExecutor.cs
+  s_db843c68d5fa5c::t_a65938daac878c 14-16
+tests/gateway/Seeing.Gateway.WeCom.Tests/WeComQuoteParserTests.cs
+  s_e4768418e7b7bc::t_d926f4d583e430 87-88
+  s_e4768418e7b7bc::t_4d801658119674 33-34
+  s_e4768418e7b7bc::t_dcc0edfb9234bb 17-18
+  s_e4768418e7b7bc::t_bb53a5bc76929d 54-55
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiViewStateConcurrencyTests.cs
+  s_993567c6a77ebc::t_592f28c204c83a 70
+tests/spine/Seeing.Agent.Tests/Configuration/ConfigMigrationBootCeilingTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 38
+tests/spine/Seeing.Agent.Tests/Scheduling/AgentLoopSchedulerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 29,50,73
+src/spine/Seeing.Agent.Core/Core/AgentSelectionResolver.cs
+  s_db843c68d5fa5c::t_2a565756bc3bf9 13-15
+samples/Seeing.Agent.WebUI/Pages/AgentsPage.razor
+  s_fceea104749dec::t_75280fe3a837cc 176
+tests/spine/Seeing.Agent.Tests/Core/ComponentManagerReloadTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 42,49,64,67,82,85,100,103,122,126,143,148,164,183,191,193,200,222,238,250,253,261
+tests/apps/Seeing.Agent.WebUI.Tests/Questions/QuestionInteractionServiceTests.cs
+  s_3773c74da5cd34::t_a3c110318ad123 62-63
+tests/spine/Seeing.Agent.Tests/Llm/ProviderConfigMigrationTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 72,100,123
+src/spine/Seeing.Agent.Core/Llm/LlmException.cs
+  s_a7894df84240ce::t_ca6cd4648c2639 53-55
+  s_a7894df84240ce::t_c436c426fd408f 95-97
+  s_a7894df84240ce::t_a1bb72bc8cf9a5 117-119
+  s_a7894df84240ce::t_32ab61b9eb059a 69,72-74
+  s_a7894df84240ce::t_58244169cd1bb8 21-23,29-31
+tests/primitives/Seeing.Session.Tests/Management/SessionGroupLifecycleTests.cs
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 19,27,40,46,55,67,71,78,89,91,93,96-97,111,113,115-116,119-120,122,124,140,146,157
+src/spine/Seeing.Agent.Core/Llm/ModelManager.cs
+  s_a7894df84240ce::t_62f1ee0fa6cba0 24-26,33-35
+  s_a7894df84240ce::t_a92075fe97a458 51-53
+  s_a7894df84240ce::t_376a4258e49482 65-67,71-73
+  s_a7894df84240ce::t_cd39f0c5596952 112-114
+  s_a7894df84240ce::t_865e127d80eb92 127-129,132-134,137-139,142-144,148-150,154-156,162-164,167-169,175-177,185-187,195-197,204-206,214-216,223-225
+tests/apps/Seeing.Agent.WebUI.Tests/Services/SessionEventStreamRouterTests.cs
+  s_993567c6a77ebc::t_a26584404ceeba 294
+  s_993567c6a77ebc::t_c34d7120ff7ffc 51,262
+  s_993567c6a77ebc::t_4a44814eeb41ec 45,70,91,246
+  s_993567c6a77ebc::t_df70b2948e94c6 52,76,97,102,263,287,295
+  s_993567c6a77ebc::t_b36fafff24228b 101
+  s_993567c6a77ebc::t_52bd3e48452e0d 285
+src/spine/Seeing.Agent.Core/Commands/CommandService.cs
+  s_ebbe98ec9bc7c7::t_2f1d66ebd0b4dd 37
+tests/spine/Seeing.Agent.Tests/Invariants/LlmAndExecutorTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 55,66
+tests/capabilities/Seeing.IO.Local.Tests/LocalExecutionWorldTests.cs
+  s_e4768418e7b7bc::t_b45d21da8a8a3f 82-83
+  s_e4768418e7b7bc::t_4d11de1bb69041 50-51,54
+tests/spine/Seeing.Agent.Tests/Questions/QuestionRequestManagerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 22,24,49,51,61,76,89-90,108,112,127,154,158
+src/spine/Seeing.Agent.Core/Configuration/LegacyGatewayConfigMigrator.cs
+  s_ebbe98ec9bc7c7::t_b4cdf32b3c0510 11
+tests/primitives/Seeing.Session.Tests/SessionDataTests.cs
+  s_f1ad76ad5c4811::t_18f3abc42e031b 253
+  s_f1ad76ad5c4811::t_61b5ebb8d945d2 243,251
+  s_f1ad76ad5c4811::t_13bf10534b947c 227
+src/spine/Seeing.Agent.Core/Core/Models/ConfigurationModels.cs
+  s_db843c68d5fa5c::t_c9ee5e836b0415 49,51,53,55,57,59,68,72,82,86,90
+tests/spine/Seeing.Agent.Tests/Llm/Clients/LlmHttpClientFactoryTests.cs
+  s_fb730a4f0fccae::t_e0250cce18815c 103,138
+tests/capabilities/Seeing.Agent.Tools.Session.Tests/SessionToolsModuleTests.cs
+  s_1f9ce749ed47fa::t_ac9f5ea35867d5 64,91,119
+tests/capabilities/Seeing.Agent.Skills.Tests/SkillsModuleTests.cs
+  s_e4768418e7b7bc::t_e2e52eb0cf8e93 53
+src/spine/Seeing.Agent.Core/Core/Prompts/AgentsPromptSectionContributor.cs
+  s_db843c68d5fa5c::t_2cfb7f7b12a207 14-16
+src/hosting/Seeing.Agent.Hosting/Tools/TaskStatusTool.cs
+  s_485e69ecc12b65::t_e156a569024e03 108
+src/spine/Seeing.Agent.Core/Scenarios/ScenarioConfig.cs
+  s_ebbe98ec9bc7c7::t_6eb5c1a083272f 113
+samples/Seeing.Agent.Cli/Commands/JobCommand.cs
+  s_fceea104749dec::t_b5c16dbfb46272 37-43
+  s_fceea104749dec::t_80581fb1784985 63-69
+  s_fceea104749dec::t_b8dc72a48fca41 81-87
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiCommandRouterTests.cs
+  s_993567c6a77ebc::t_2814b74c247bed 451
+  s_993567c6a77ebc::t_12673f5f073853 239
+  s_993567c6a77ebc::t_d13a956b3f8bb7 224-225,338-339
+  s_993567c6a77ebc::t_bd887563796eda 97,125,140,159,211,302,326,353,377,414,492,516,535,549
+  s_993567c6a77ebc::t_175fdaccc9eaf4 435-436
+  s_993567c6a77ebc::t_c69f1bc4eb1c70 44,59,75
+  s_993567c6a77ebc::t_1fdd60e1130dfb 314-315
+  s_993567c6a77ebc::t_82fa727090d5e3 291
+  s_993567c6a77ebc::t_4e72b2f0cd364a 365-366
+src/spine/Seeing.Agent.Core/Middlewares/RetryMiddleware.cs
+  s_ebbe98ec9bc7c7::t_84557dd006918f 94
+src/spine/Seeing.Agent.Core/Tools/BuiltIn/Plan/PlanModel.cs
+  s_ebbe98ec9bc7c7::t_21b140e6856ed5 94,96,98,100,102
+  s_ebbe98ec9bc7c7::t_3ddeaa4c27b69c 79,81,83,85,87
+tests/spine/Seeing.Agent.Tests/Configuration/WorkspaceSwitchConfigReloadTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 29,35,76
+tests/primitives/Seeing.Session.Tests/Persistence/CoalescingWriteSchedulerTests.cs
+  s_f1ad76ad5c4811::t_cd665af3cefcc3 1,38,51,74,80,127,148,153,163,173,194,196,200,210,212,215,304,334,336,340,368,371,376-377,402
+src/spine/Seeing.Agent.Core/Core/Instructions/InstructionManager.cs
+  s_db843c68d5fa5c::t_bedf4ebe368851 84-86
+  s_db843c68d5fa5c::t_8c26ae6ea72605 6-8,14-16
+  s_db843c68d5fa5c::t_dc85fdb5d340e2 26-28
+  s_db843c68d5fa5c::t_b2bf7128ea58e3 35-37
+tests/spine/Seeing.Agent.Tests/Llm/ModelCapabilityCatalogReloadHandlerTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 25,42
+src/spine/Seeing.Agent.Core/Modules/DefaultWorkModeProvider.cs
+  s_ebbe98ec9bc7c7::t_8abcc00613f1de 16
+tests/spine/Seeing.Agent.Tests/Core/AgentSelectionResolverTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 38
+tests/spine/Seeing.Agent.Tests/Prompts/PromptBuilderSectionInjectionTests.cs
+  s_fb730a4f0fccae::t_85d37bd64b3f3c 64,97,122,160,196,229,266,290,324
+src/spine/Seeing.Agent.Core/Core/Reminders/SystemReminderRendererService.cs
+  s_db843c68d5fa5c::t_9a04291bacdcd1 11-13,17-19,23-25,30-32
+src/spine/Seeing.Agent.Core/Core/Generation/AgentGenerator.cs
+  s_db843c68d5fa5c::t_76413c45fa54df 111-113
+  s_db843c68d5fa5c::t_b3b5a223389186 132-134
+  s_db843c68d5fa5c::t_fbf5a66e931a20 37-39
+  s_db843c68d5fa5c::t_661f538eed8463 141-143
+  s_db843c68d5fa5c::t_d1636a73f94b18 119-121
+  s_db843c68d5fa5c::t_5a3a1416889219 21-23
+  s_db843c68d5fa5c::t_dccf5dfa33214a 161-163
+src/spine/Seeing.Agent.Core/Llm/ModelReloadHandler.cs
+  s_a7894df84240ce::t_4a485b5e1175a4 10-12
+src/spine/Seeing.Agent.Core/Events/ExecutionEvents.cs
+  s_ebbe98ec9bc7c7::t_01528724175a7d 14
+  s_ebbe98ec9bc7c7::t_1abfb02e5d2156 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "43ca57dee8a3761f149d480cac1ad17db35a6655",
+  "prompts": {},
+  "sessions": {
+    "s_1f9ce749ed47fa": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3645e1dfffeluAru0cFVQUvMf",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_3773c74da5cd34": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f366845baffeM4wr4e5W6Y5G2T",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_485e69ecc12b65": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3668b5f1ffegJhBTVoG9RL43V",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_993567c6a77ebc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3645f616ffeCPw1xRGWMv4Cy4",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_a7894df84240ce": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3668fd6fffeM0ZKDACf6lUHrd",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_cf092b1beb86b1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f366dd84dffeV369KQ1fUFGTlh",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_db843c68d5fa5c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3668ed68ffewXg1AuQka5u349",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_dd7e7ae8df18c4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f36460b9cffeaTNvH6brnkvKpo",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_e4768418e7b7bc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3645caf1ffeet7q5issuSWf3t",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_ebbe98ec9bc7c7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3668d7b1ffeUiXxBDB3M7oih2",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_f1ad76ad5c4811": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f36039e66ffe1LW4XQchLUqgNS",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_fb730a4f0fccae": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f36461f4bffe0adA2Knv0BfTD6",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_fceea104749dec": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f366887baffeumULMdqDSWQQBo",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
