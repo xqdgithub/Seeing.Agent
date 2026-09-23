@@ -1,0 +1,219 @@
+src/abstractions/Seeing.Agent.Abstractions/SystemOne/ISystemOneClient.cs
+  s_0a155f5878e504::t_01adf2a1129ba9 1-20
+src/capabilities/Seeing.Agent.Tools.SystemOne/Skills/systemone/SKILL.md
+  s_6479ac4d2a36bf::t_d4565fe55b6ddf 1-45
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneModuleDiTests.cs
+  s_d8931833bc2798::t_906af6b639d40a 1-63
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneProviderManagerTests.cs
+  s_d8931833bc2798::t_0419f693f681ae 1-183,247
+  s_e101918b7640c8::t_5f478a00e81f5a 184-246
+src/capabilities/Seeing.Agent.Tools.SystemOne/SystemOneAskTool.cs
+  s_756ab49adaad1d::t_4e47b372a31a63 1-108,110-160,162,165-181
+  s_c05f182a65ce8a::t_8e2ee26970c9d7 109
+  s_c05f182a65ce8a::t_fe667f749f5664 161,163-164
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneSerializationTests.cs
+  s_0a155f5878e504::t_ac3c264020615d 1-254
+tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/SystemOneAskParserTests.cs
+  s_c05f182a65ce8a::t_ce6ebce707f3f1 66-83
+  s_756ab49adaad1d::t_1568be15f6b2e5 1-65,84-94
+tests/capabilities/Seeing.Agent.SystemOne.Tests/TestConfigSectionStore.cs
+  s_f988609aea1789::t_d21f795c70fd9a 1-38
+src/capabilities/Seeing.Agent.SystemOne/Clients/TypeSafeSystemOneClient.cs
+  s_4b2f9c4c23ba5e::t_776269b0621d7d 1-68
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneConfigStoreTests.cs
+  s_f988609aea1789::t_4350c156cad401 1-64
+src/capabilities/Seeing.Agent.Tools.SystemOne/SystemOneAskParser.cs
+  s_756ab49adaad1d::t_ae3d0bd2dfa835 1,3-43,46-109,111-125,127,129-135,146-147,149-151,153,160-167,169-175,177-181,183-252,254-255,257-263,266-270
+  s_c05f182a65ce8a::t_0ea1bc78b7a505 110,126,128,136-145,148,152,154-159,168,176,182
+  s_c05f182a65ce8a::t_c23053f186068c 2
+  s_c05f182a65ce8a::t_0c28e388a16751 44-45
+  s_c05f182a65ce8a::t_66fa00c65ad861 253,256,264-265
+tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/ScaffoldSmokeTests.cs
+  s_756ab49adaad1d::t_1d4d8e1cd3109e 1-16
+tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/SystemOneAskToolSchemaTests.cs
+  s_756ab49adaad1d::t_23916726654373 1-53
+src/abstractions/Seeing.Agent.Abstractions/SystemOne/SystemOneException.cs
+  s_0a155f5878e504::t_4c6d803cea0c75 1-12
+tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/SystemOneSkillRegistrationTests.cs
+  s_6479ac4d2a36bf::t_ac6e67590399c7 1-67
+src/capabilities/Seeing.Agent.SystemOne/Clients/SystemOneHttpHelper.cs
+  s_4b2f9c4c23ba5e::t_0be46080d86bab 1-73,87-170
+  s_e101918b7640c8::t_101350ccaf2da7 74-86
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneTestDoubles.cs
+  s_d8931833bc2798::t_aa610a0fc5cf39 66-88
+  s_f988609aea1789::t_6c18a1ab9f2fc3 1-65
+src/abstractions/Seeing.Agent.Abstractions/SystemOne/ISystemOneService.cs
+  s_0a155f5878e504::t_591e654f3a6aaf 1-8
+Seeing.Agent.slnx
+  s_0a155f5878e504::t_15a5598d247d95 89
+  s_756ab49adaad1d::t_2655b8fb369dbc 96
+src/abstractions/Seeing.Agent.Abstractions/SystemOne/SystemOneProviderConfig.cs
+  s_0a155f5878e504::t_124c1ed456ba54 1-47
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneReloadHandlerTests.cs
+  s_d8931833bc2798::t_5f8bd926835c3b 1-74
+tests/capabilities/Seeing.Agent.SystemOne.Tests/Clients/TypeSafeSystemOneClientFactoryTests.cs
+  s_4b2f9c4c23ba5e::t_45b03b1c00bbae 1-60
+tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/SystemOneToolsModuleDiTests.cs
+  s_6479ac4d2a36bf::t_daf4969e5e733d 1-56
+tests/capabilities/Seeing.Agent.SystemOne.Tests/EnvVarScope.cs
+  s_f988609aea1789::t_65f9fffd1baa04 1-40
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneModuleTests.cs
+  s_d8931833bc2798::t_47521c4afca888 1-18
+tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/Seeing.Agent.Tools.SystemOne.Tests.csproj
+  s_756ab49adaad1d::t_9f815d1b88fce9 1-35
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneServiceTests.cs
+  s_e101918b7640c8::t_10c1e918c42a0f 62-77
+  s_d8931833bc2798::t_e5f081c16d91fd 1-61,78-165
+src/capabilities/Seeing.Agent.Tools.SystemOne/Extensions/SystemOneToolsServiceExtensions.cs
+  s_6479ac4d2a36bf::t_2b790631d941bf 1-27
+tests/capabilities/Seeing.Agent.SystemOne.Tests/ScaffoldSmokeTests.cs
+  s_0a155f5878e504::t_08a9154a8e2ed1 1-16
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneEnvironmentConfigTests.cs
+  s_f988609aea1789::t_4dd91630ace9fa 1,3-52
+  s_f988609aea1789::t_635840e279809f 2
+src/abstractions/Seeing.Agent.Abstractions/SystemOne/SystemOneClientFactoryResolver.cs
+  s_0a155f5878e504::t_505b8fe53339fa 1-46
+tests/capabilities/Seeing.Agent.SystemOne.Tests/Clients/SystemOneHttpClientFactoryTests.cs
+  s_4b2f9c4c23ba5e::t_aecd9caeffe92f 1-43
+src/capabilities/Seeing.Agent.SystemOne/Configuration/SystemOneEnvironmentConfig.cs
+  s_f988609aea1789::t_f54f189dd51d3d 1-38
+tests/capabilities/Seeing.Agent.SystemOne.Tests/Clients/SystemOneHttpHelperTests.cs
+  s_e101918b7640c8::t_319a275de8190c 120-135
+  s_4b2f9c4c23ba5e::t_faa86cef31d060 1-119,136-224
+tests/capabilities/Seeing.Agent.SystemOne.Tests/ConfiguredSystemOneProviderTests.cs
+  s_e101918b7640c8::t_35f0ae474631ed 71-101
+  s_f988609aea1789::t_333eb6fd825c83 1-70,102
+tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/SystemOneToolsModuleTests.cs
+  s_6479ac4d2a36bf::t_8f10de41d3bbe7 1-19
+src/capabilities/Seeing.Agent.Tools.SystemOne/Seeing.Agent.Tools.SystemOne.csproj
+  s_756ab49adaad1d::t_dfef32f6943fe7 1-23
+tests/capabilities/Seeing.Agent.SystemOne.Tests/TestAssembly.cs
+  s_f988609aea1789::t_06346cada8a814 1-2,4
+  s_f988609aea1789::t_ef53a9a060f1d6 3
+src/capabilities/Seeing.Agent.SystemOne/Runtime/ConfiguredSystemOneProvider.cs
+  s_e101918b7640c8::t_b8ed9056c64c98 50-57
+  s_e101918b7640c8::t_dcc8e1f8e0ae1c 14
+  s_e101918b7640c8::t_fc60c305d6eb9b 70-74
+  s_f988609aea1789::t_5e29f122e45f4c 1-13,15-49,58-69,75-78
+src/capabilities/Seeing.Agent.Tools.SystemOne/SystemOneToolsModule.cs
+  s_6479ac4d2a36bf::t_39da469760dc1c 1-57
+src/capabilities/Seeing.Agent.SystemOne/SystemOneModule.cs
+  s_d8931833bc2798::t_b3ebb8cb8d5f42 1-51
+src/capabilities/Seeing.Agent.SystemOne/Clients/SystemOneHttpClientFactory.cs
+  s_4b2f9c4c23ba5e::t_df15ddc0ed5f29 1-35
+tests/capabilities/Seeing.Agent.SystemOne.Tests/Seeing.Agent.SystemOne.Tests.csproj
+  s_0a155f5878e504::t_7ea7fe37411f86 1-26,28-31,33-35
+  s_d8931833bc2798::t_3358170ee4c869 27,32
+tests/capabilities/Seeing.Agent.SystemOne.Tests/SystemOneClientFactoryResolverTests.cs
+  s_0a155f5878e504::t_710339230ea96e 1-114
+src/capabilities/Seeing.Agent.Tools.SystemOne/Skills/SystemOneSkillRegistrationHostedService.cs
+  s_6479ac4d2a36bf::t_bb0372091a7d2b 1-128
+tests/capabilities/Seeing.Agent.SystemOne.Tests/Clients/TypeSafeSystemOneClientTests.cs
+  s_4b2f9c4c23ba5e::t_3fb1a51afd2c92 1-132
+src/abstractions/Seeing.Agent.Abstractions/SystemOne/SystemOneModels.cs
+  s_0a155f5878e504::t_7e62cec19746e6 1-70
+src/capabilities/Seeing.Agent.SystemOne/Configuration/SystemOneReloadHandler.cs
+  s_d8931833bc2798::t_8f6e72f9d27e11 1-5,7-28
+  s_e101918b7640c8::t_68c01b35556d44 6
+tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/SystemOneAskToolExecuteTests.cs
+  s_c05f182a65ce8a::t_331dae1fd87e47 139
+  s_756ab49adaad1d::t_3f0f7112128ab6 1-131,155-166
+  s_c05f182a65ce8a::t_f1b27991694054 132-138,140-154
+src/capabilities/Seeing.Agent.SystemOne/Extensions/SystemOneServiceExtensions.cs
+  s_d8931833bc2798::t_cd184270bdc1e4 1-30
+src/capabilities/Seeing.Agent.SystemOne/Runtime/SystemOneService.cs
+  s_d8931833bc2798::t_486c8a629c1ede 1-24,27-32
+  s_e101918b7640c8::t_ec56599b04cea4 25-26
+src/capabilities/Seeing.Agent.SystemOne/Configuration/SystemOneConfigStore.cs
+  s_f988609aea1789::t_740388cd443ebc 1-35
+src/capabilities/Seeing.Agent.SystemOne/PredefinedSystemOneProviders.cs
+  s_f988609aea1789::t_c7ecc854bf51ae 1-19
+src/capabilities/Seeing.Agent.SystemOne/Clients/TypeSafeSystemOneClientFactory.cs
+  s_4b2f9c4c23ba5e::t_f08b9a3293d22d 1-30
+src/abstractions/Seeing.Agent.Abstractions/SystemOne/ISystemOneProvider.cs
+  s_0a155f5878e504::t_7a006e4ee9f395 1-27
+src/capabilities/Seeing.Agent.SystemOne/Seeing.Agent.SystemOne.csproj
+  s_0a155f5878e504::t_3a62cdf9da05c6 1-21
+src/capabilities/Seeing.Agent.SystemOne/Configuration/SystemOneProviderManager.cs
+  s_d8931833bc2798::t_95141bec8b05e9 1-61,67,69-70,73-83,86-91,93-145,148-177,179-180,182-188,191-210,212-213,216-221,224-239,241-242,244-248,251-288,299-337
+  s_e101918b7640c8::t_9c88813c3bc92c 178,181,189-190
+  s_e101918b7640c8::t_f4f36ebb121138 211,214-215,222-223
+  s_e101918b7640c8::t_1f27230174facc 62-66,68,71-72,84-85,92
+  s_e101918b7640c8::t_4b840486d44f2e 146-147
+  s_e101918b7640c8::t_be0473bf2697e0 240,243,249-250
+  s_e101918b7640c8::t_ed1915c5b69ee8 289-298
+tests/capabilities/Seeing.Agent.SystemOne.Tests/PredefinedSystemOneProvidersTests.cs
+  s_f988609aea1789::t_93193d5d591c20 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "15ae80346bfe366cd1fba770d7f9b2367334dfea",
+  "prompts": {},
+  "sessions": {
+    "s_0a155f5878e504": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f31e9b4a0ffeC7J8nmk4wbgKZE",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_4b2f9c4c23ba5e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f31e0e67cffe3s7VRD3isT8EyH",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_6479ac4d2a36bf": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f31780684ffed3YZ4JmbUwTExm",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_756ab49adaad1d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f317e167affezMX0PToV9uv0nX",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_c05f182a65ce8a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f316eb42affetKOgFtyabGqkl0",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_d8931833bc2798": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f31d06530ffe4u3o69kTzvzeY2",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_e101918b7640c8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f31be6176ffeRJyzbShAHcLzTT",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_f988609aea1789": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f31d96ea7ffe3D8CoYIwR5CrF4",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
