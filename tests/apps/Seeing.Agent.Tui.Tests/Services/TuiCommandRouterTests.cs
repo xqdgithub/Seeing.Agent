@@ -638,6 +638,9 @@ public sealed class TuiCommandRouterTests
             return Task.FromResult(answer is null ? default! : (T)answer);
         }
 
+        public Task<T> PromptListAsync<T>(Func<TuiPromptContext, CancellationToken, Task<T>> prompt, CancellationToken ct = default)
+            => PromptAsync<T>((_, _) => Task.FromResult(default(T)!), ct);
+
         public IAnsiConsole Console { get; } = AnsiConsole.Create(new AnsiConsoleSettings
         {
             Ansi = AnsiSupport.No,

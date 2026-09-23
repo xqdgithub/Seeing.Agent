@@ -7,6 +7,7 @@
 - 只读现有配置，**不提供任何配置编辑 UI**（无设置页/模型管理/Gateway 管理）
 
 > 设计规格见 [`docs/superpowers/specs/2026-09-21-tui-entry-design.md`](../../docs/superpowers/specs/2026-09-21-tui-entry-design.md)。
+> 候选鼠标/键盘选择见 [`docs/superpowers/specs/2026-09-23-tui-mouse-candidate-selection-design.md`](../../docs/superpowers/specs/2026-09-23-tui-mouse-candidate-selection-design.md)。
 
 ## 运行
 
@@ -28,6 +29,7 @@ dotnet run --project samples/Seeing.Agent.Tui
 | `--agent <name>` | 覆盖默认 Agent |
 | `--model <id>` | 覆盖默认模型 |
 | `--log-level <level>` | 日志级别：`Trace`/`Debug`/`Information`/`Warning`/`Error`/`Critical`/`None`（同义 `warn`/`fatal`/`off`；默认 `Information`） |
+| `--no-mouse` | 关闭鼠标上报（候选仅键盘；终端鼠标交还用户，选中复制无需按 Shift）。默认开启鼠标 |
 | `--boot <name>` | 进程启动能力天花板覆盖（`Boot`）；由 `BootOverrideSource` 直接消费原始 `args`（亦可用环境变量 `SEEING_BOOT`），不映射到 TUI 选项 |
 
 示例：
@@ -73,11 +75,22 @@ dotnet run --project samples/Seeing.Agent.Tui -- --resume <sessionId> --agent bu
 | `↑` / `↓` | 召回输入历史（仅内存，最多 100 条） |
 | `←` / `→` | 移动光标 |
 | `Backspace` / `Delete` | 删除 |
-| `Tab` | 行首 `/命令` 补全：唯一候选直接补全并在其后加空格；多候选弹出选择器；无候选忽略 |
-| 输入 `/` | 行首输入斜杠命令时，**实时在输入行上方显示候选表**（命令名 + 说明，上限 8 行）；出现空白后不再显示 |
+| `Tab` | 行首 `/命令` **接受**当前高亮候选带入输入框（唯一候选亦直接补全并加空格）；无候选（不在下拉态）则忽略 |
+| 输入 `/` | 行首输入斜杠命令时，**实时在输入行上方显示候选下拉**（命令名 + 说明，上限 8 行，默认高亮第一项）；出现空白后不再显示。下拉态下 `↑`/`↓` 移动高亮（**非**翻历史）、`Enter`/`Tab` 接受带入、`Esc` 收起下拉（详见「候选选择」节） |
 | `Ctrl+C` | 输入非空时清空；执行中**立即**取消当前执行（明确意图，无需二次确认）；**空闲且输入为空时二次确认退出** |
-| `Esc` | 输入非空时清空；执行中**需连按两次**才取消执行（首次在状态栏提示「再按一次 Esc 取消执行」，**3 秒**内再按生效，超时需重新两次）；**提示中取消并返回**（`/model`、`/agent`、`/sessions`、`/thinking`、`/scenario`、补全候选、权限=不决策、**问答=取消作答并回到聊天窗口**） |
+| `Esc` | **下拉候选展开时优先收起下拉**（不清空输入、不触发取消/执行取消）；其后输入非空则清空；执行中**需连按两次**才取消执行（首次在状态栏提示「再按一次 Esc 取消执行」，**3 秒**内再按生效，超时需重新两次）；**提示中取消并返回**（`/model`、`/agent`、`/sessions`、`/thinking`、`/scenario`、权限=不决策、**问答=取消作答并回到聊天窗口**） |
 | `Ctrl+D` | 退出 |
+
+## 候选选择（键盘 / 鼠标）
+
+斜杠命令补全（内联下拉）、问答单选/多选、权限审批三类候选**同时支持键盘与鼠标**：
+
+- **键盘**：`↑`/`↓` 移动高亮（默认第一项）；`Enter` 确认（补全＝带入输入框不提交；问答/权限＝提交选择）；多选 `Space` 切换勾选、`Enter` 提交勾选集；`Esc` 取消（补全仅收起下拉）。
+- **鼠标**：`hover` 移动到某行即高亮跟随；`点击` 某行＝确认（补全带入；单选/权限选定决策；多选切换该项勾选）。
+- **命中定位**：终端鼠标上报（SGR `\x1b[?1000;1003;1006h`）+ DSR（`ESC[6n`）底锚校准候选行的绝对位置；未校准/跨帧/终端不支持时**鼠标安全失效、键盘始终可用**。
+- **降级 / 关闭**：`--no-mouse` 关闭鼠标上报（终端鼠标交还用户，选中复制无需按 Shift），仅键盘。非交互终端启动即退出（码 2）。
+- **副作用**：开启鼠标后，终端原生的「拖拽选中复制」需**按住 Shift** 拖动。
+
 
 ## 斜杠命令
 
@@ -114,14 +127,14 @@ dotnet run --project samples/Seeing.Agent.Tui -- --resume <sessionId> --agent bu
 
 ## 权限审批与问答
 
-- **权限**：内联弹出 `SelectionPrompt`，概览含「工具 / 归属 / 资源 / 匹配 / 风险 / 说明」。选项按请求的 `AllowedScopes` 过滤：
+- **权限**：内联弹出候选列表（自绘，键盘 + 鼠标，见「候选选择」节），概览含「工具 / 归属 / 资源 / 匹配 / 风险 / 说明」。选项按请求的 `AllowedScopes` 过滤：
   - 本次允许（`Once`）
   - 始终允许（本会话）（`Session`）
   - 允许此目录（会话目录）（`SessionDirectory`）
   - 本次拒绝（`Deny` + `Once`）
   - 始终拒绝（`Deny` + `Session`）
 - `Esc` 取消提示 = **不决策**（请求保持挂起，不会被误判为拒绝）。
-- **问答**：按题型渲染——单选 `SelectionPrompt`、多选 `MultiSelectionPrompt`（非必填可空选）、文本 `TextPrompt`（支持默认值；单答案截断 2000 字符）；`AllowCustom` 时追加「其他（自定义）」自由输入项。
+- **问答**：按题型渲染——单选/多选为**自绘候选列表**（键盘 + 鼠标；多选非必填可空选、支持默认预勾选）、文本 `TextPrompt`（支持默认值；单答案截断 2000 字符）；`AllowCustom` 时追加「其他（自定义）」自由输入项。
 - 判定为「自动允许」的请求不进入队列、不弹提示；仅需用户决策（`Ask`）的请求才呈现。
 - 提示期间按键由 `TuiPromptInputRelay` 分流到提示通道，不做 stdin 读取挂起。
 

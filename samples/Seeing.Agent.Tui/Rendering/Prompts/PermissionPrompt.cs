@@ -8,10 +8,11 @@ namespace Seeing.Agent.Tui.Rendering.Prompts;
 public sealed record PermissionPromptResult(PermissionEffect Effect, PermissionGrantScope Scope);
 
 /// <summary>
-/// 权限内联提示：用 <see cref="SelectionPrompt{T}"/> 呈现请求概要，选项按 <see cref="PermissionRequest.AllowedScopes"/> 过滤。
+/// 权限内联提示：Panel 概要一次性显示后，选项经自绘列表控件 <see cref="TuiListPrompt"/>
+/// （键盘 ↑/↓+Enter+Esc、鼠标 hover/点击）呈现，选项按 <see cref="PermissionRequest.AllowedScopes"/> 过滤。
 /// <para>
-/// 经 <see cref="ITerminalSurface.PromptAsync{T}"/> 在渲染线程执行以保证单写者；本类<b>不</b>调用 Manager，
-/// 裁决由引擎经 <c>TuiPermissionQueue.TryResolve</c> 回传。按 Esc 返回 <c>null</c> 表示不决策（保持挂起）。
+/// 经 <see cref="ITerminalSurface.PromptListAsync{T}"/> 在渲染线程执行以保证单写者；本类<b>不</b>调用 Manager，
+/// 裁决由引擎经 <c>TuiPermissionQueue.TryResolve</c> 回传。取消（Esc / 无按键通道）返回 <c>null</c> 表示不决策（保持挂起）。
 /// </para>
 /// </summary>
 public static class PermissionPrompt
@@ -32,23 +33,31 @@ public static class PermissionPrompt
         if (choices.Count == 0)
             return null;
 
-        var selected = await surface.PromptAsync(async (console, promptCt) =>
+        var labels = new List<string>(choices.Count);
+        foreach (var choice in choices)
+            labels.Add(choice.Label);
+
+        // Choice.Cancel 不作为列表项渲染（BuildChoices 从不加入），IndexOf 恒为 -1：
+        // 仅作 Esc/降级时由 TuiListPrompt 原样回传的「取消哨兵下标」，本方法据此收敛为 null（不决策）。
+        var cancelIndex = choices.IndexOf(Choice.Cancel);
+
+        var selected = await surface.PromptListAsync(async (ctx, promptCt) =>
         {
-            console.Write(BuildSummary(request, ownerLabel));
-
-            var prompt = new SelectionPrompt<Choice>()
-                .Title("请选择")
-                .PageSize(choices.Count)
-                .UseConverter(choice => choice.Label)
-                .AddChoices(choices)
-                .AddCancelResult(Choice.Cancel);
-
-            return await prompt.ShowAsync(console, promptCt).ConfigureAwait(false);
+            ctx.Console.Write(BuildSummary(request, ownerLabel));
+            // Panel 与列表首行之间留一空行：防自绘列表首行贴住 Panel 底边（W1-B 遗留风险 1）。
+            ctx.Console.WriteLine();
+            return await TuiListPrompt
+                .SelectAsync(ctx, "请选择", labels, pageSize: choices.Count, cancelIndex, promptCt)
+                .ConfigureAwait(false);
         }, ct).ConfigureAwait(false);
 
-        return selected.Effect is null || selected.Scope is null
+        if (selected is null || selected < 0 || selected == cancelIndex)
+            return null;
+
+        var decision = choices[selected.Value];
+        return decision.Effect is null || decision.Scope is null
             ? null
-            : new PermissionPromptResult(selected.Effect.Value, selected.Scope.Value);
+            : new PermissionPromptResult(decision.Effect.Value, decision.Scope.Value);
     }
 
     private static List<Choice> BuildChoices(PermissionRequest request)

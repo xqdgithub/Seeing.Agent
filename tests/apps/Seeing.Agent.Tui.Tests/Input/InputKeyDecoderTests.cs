@@ -54,4 +54,28 @@ public class InputKeyDecoderTests
         ctrlC.Action.Should().Be(TuiInputAction.Cancel);
         ctrlC.IsEscape.Should().BeFalse();
     }
+
+    [Fact]
+    public void Decode_TuiRawMousePress_ShouldMapToMouseActionWithPayload()
+    {
+        var raw = new TuiRawMouse(TuiMouseButton.Left, TuiMousePhase.Press, 10, 5);
+
+        var result = InputKeyDecoder.Decode(raw, false);
+
+        result.Action.Should().Be(TuiInputAction.Mouse);
+        result.Mouse.Should().Be(raw);
+        result.Text.Should().BeEmpty();
+        result.IsEscape.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Decode_TuiRawMouseMotion_ShouldMapToMouseActionPreservingPhaseAndButton()
+    {
+        var raw = new TuiRawMouse(TuiMouseButton.WheelUp, TuiMousePhase.Motion, 4, 6);
+
+        var result = InputKeyDecoder.Decode(raw, pasteActive: true);
+
+        result.Action.Should().Be(TuiInputAction.Mouse);
+        result.Mouse.Should().Be(raw);
+    }
 }

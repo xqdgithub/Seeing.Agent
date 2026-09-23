@@ -18,7 +18,8 @@ internal readonly record struct StatusSignature(TuiBudget? Budget, bool GlobalAu
 /// <para>
 /// 覆盖 tick 存在意义的全部来源：流式内容节流后的补绘、执行中状态（工具卡状态 / Esc 提示到期）、
 /// 后台执行进度、在途权限/问答数、状态栏外部数据、终端尺寸变化（空闲时改窗口也能及时重排）、
-/// 活动区外写入代次（固化提交会拆掉活动区，必须立刻重绘）。
+/// 活动区外写入代次（固化提交会拆掉活动区，必须立刻重绘）、内联补全下拉的选择态
+/// （候选集 + 游标 + 可见，spec §6.5：hover/方向键改游标须能被 tick 感知并补绘，否则高亮错位）。
 /// 其余变化（输入、命令、事件阈值命中）都走强制重绘，不经过本判据。
 /// </para>
 /// </summary>
@@ -30,4 +31,6 @@ internal readonly record struct TickRenderSnapshot(
     StatusSignature Status,
     int Width,
     int Height,
-    int TerminalCommits);
+    int TerminalCommits,
+    // 选择态脏检查签名（候选拼接 hash + SelectedIndex + 可见）；默认 null 兼容无下拉历史帧与既有测试的位置构造。
+    string? CompletionSignature = null);

@@ -120,6 +120,8 @@ static void AddTuiServices(IServiceCollection services)
     services.AddSingleton<TuiRenderOptions>();
     services.AddSingleton<TuiRenderer>();
     services.AddSingleton<MarkdownTerminalRenderer>();
+    // DSR 底锚探针单例：引擎（BeginProbe 代次分配）与 surface（写点）/输入层（Report）共用同一实例。
+    services.AddSingleton<ITuiAnchorProbe, TuiAnchorProbe>();
     services.AddSingleton<TuiPromptInputRelay>();
     services.AddSingleton<ChannelAnsiConsoleInput>(sp => sp.GetRequiredService<TuiPromptInputRelay>().Input);
     services.AddSingleton<ITerminalSurface, SpectreTerminalSurface>();

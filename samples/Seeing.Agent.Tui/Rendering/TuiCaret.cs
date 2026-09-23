@@ -13,5 +13,12 @@ namespace Seeing.Agent.Tui.Rendering;
 /// </summary>
 public readonly record struct TuiCaret(int RowsBelow, int Column);
 
-/// <summary>活动区一帧的产物：渲染体 + 该帧的编辑插入点（无插入点时 <see cref="Caret"/> 为 null）。</summary>
-public readonly record struct TuiActiveView(IRenderable View, TuiCaret? Caret);
+/// <summary>
+/// 活动区一帧的产物：渲染体 + 该帧编辑插入点（无则 null）+ 本帧补全候选命中表 + 帧代次。
+/// <para><paramref name="CompletionHits"/> 只含本帧实画行；<paramref name="FrameGen"/> 须与 DSR 底锚代次一致才命中。</para>
+/// </summary>
+public readonly record struct TuiActiveView(
+    IRenderable View,
+    TuiCaret? Caret,
+    IReadOnlyList<TuiHitRegion>? CompletionHits = null,
+    long FrameGen = 0);

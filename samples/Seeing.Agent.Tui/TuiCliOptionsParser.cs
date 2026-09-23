@@ -11,13 +11,15 @@ namespace Seeing.Agent.Tui;
 /// <param name="Agent">覆盖默认 Agent</param>
 /// <param name="Model">覆盖默认模型</param>
 /// <param name="LogLevel">日志级别（写入文件）</param>
+/// <param name="MouseEnabled">鼠标上报/悬停/点击选择（默认开；<c>--no-mouse</c> 关闭并交还终端鼠标）</param>
 public sealed record TuiCliOptions(
     string? Workspace = null,
     bool Continue = false,
     string? Resume = null,
     string? Agent = null,
     string? Model = null,
-    string? LogLevel = null)
+    string? LogLevel = null,
+    bool MouseEnabled = true)
 {
     /// <summary>解析命令行参数。</summary>
     public static TuiCliOptions Parse(string[] args, TextWriter? error = null)
@@ -28,6 +30,7 @@ public sealed record TuiCliOptions(
         string? agent = null;
         string? model = null;
         string? logLevel = null;
+        var mouseEnabled = true;
 
         var workspaceArg = new Argument<string?>("workspace")
         {
@@ -39,6 +42,7 @@ public sealed record TuiCliOptions(
         var agentOpt = new Option<string?>("--agent") { Description = "覆盖默认 Agent" };
         var modelOpt = new Option<string?>("--model") { Description = "覆盖默认模型" };
         var logOpt = new Option<string?>("--log-level") { Description = "日志级别（Debug/Information/Warning/Error）" };
+        var noMouseOpt = new Option<bool>("--no-mouse") { Description = "关闭鼠标上报（无悬停/点击，选中复制无需 Shift；键盘功能不受影响）" };
 
         // --boot 由 BootOverrideSource.ApplyToServices 直接消费原始 args（写入 ProcessSettlementOptions.BootOverride）。
         // 此处仅声明以令解析器接受该选项、避免「未知选项」把其它选项一并丢弃；有意不映射到 TuiCliOptions。
@@ -52,6 +56,7 @@ public sealed record TuiCliOptions(
             agentOpt,
             modelOpt,
             logOpt,
+            noMouseOpt,
             bootOpt,
         };
 
@@ -71,7 +76,8 @@ public sealed record TuiCliOptions(
         agent = parseResult.GetValue(agentOpt);
         model = parseResult.GetValue(modelOpt);
         logLevel = parseResult.GetValue(logOpt);
+        mouseEnabled = !parseResult.GetValue(noMouseOpt);
 
-        return new TuiCliOptions(workspace, continueOption, resume, agent, model, logLevel);
+        return new TuiCliOptions(workspace, continueOption, resume, agent, model, logLevel, mouseEnabled);
     }
 }

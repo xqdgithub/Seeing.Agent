@@ -38,6 +38,9 @@ public sealed class ChannelAnsiConsoleInput : IAnsiConsoleInput
         _ct = ct;
     }
 
+    /// <summary>绑定的原始 <see cref="TuiKeyInput"/> 流（含鼠标）；自绘列表提示绕开 ConsoleKeyInfo 桥直读它。未绑定为 null。</summary>
+    public ChannelReader<TuiKeyInput>? BoundReader => _reader;
+
     /// <summary>清空尚未被 Spectre 消费的缓冲按键（进入提示前丢弃残留）。</summary>
     public void ClearBuffered()
     {
@@ -169,6 +172,8 @@ public sealed class ChannelAnsiConsoleInput : IAnsiConsoleInput
         {
             case TuiInputAction.None:
             case TuiInputAction.ExitRequested:
+            case TuiInputAction.Mouse:
+                // 鼠标不经 Spectre 按键桥（无坐标语义）；由自绘列表控件直读通道消费。
                 return;
 
             case TuiInputAction.Submit:

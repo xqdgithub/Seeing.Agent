@@ -37,8 +37,6 @@ public sealed class TuiChatEngine
     private const int CommitLines = 24;
     /// <summary>执行中「Esc 二次确认取消」的确认窗口（超时视为放弃，需重新按两次）。</summary>
     private const int CancelConfirmWindowMs = 3000;
-    /// <summary>选择器 Esc 取消哨兵（与真实候选值不可能冲突）。</summary>
-    internal const string CompletionCancelSentinel = "\u0000__tui_completion_cancel__";
 
     // 事件泵重建退避：失败次数越多退避越久（指数，封顶），避免「每次输入即重建、重建即失败」的高频重试。
     private const int RebuildBackoffBaseMs = 250;
@@ -66,6 +64,7 @@ public sealed class TuiChatEngine
     private readonly ILlmService _llm;
     private readonly IScenarioCatalog _scenarios;
     private readonly IExecutionStatusProvider _executionStatus;
+    private readonly ITuiAnchorProbe _anchor;
 
     // 状态栏数据源：工作目录取项目根（缺失时回落进程 cwd）；上下文用量取 TokenBudget 快照；
     // 全局审批开关取热重载配置。
@@ -101,6 +100,18 @@ public sealed class TuiChatEngine
     // 执行中「Esc 二次确认取消」的武装时间（null=未武装）。
     private DateTime? _cancelArmedAt;
 
+    // 内联补全下拉的选择态（spec §6）：null=下拉不可见；非空即游标/命中/渲染的唯一真源。
+    private SelectableList? _completionSelector;
+    // 最近一帧的候选命中表（ItemIndex + RowsFromBottom + FrameGen），供鼠标命中换算；空表=本帧无实画候选。
+    private IReadOnlyList<TuiHitRegion> _lastCompletionHits = [];
+    // 最近一次有效补全帧代次（与命中表 FrameGen、DSR 底锚同源配对；无候选/无鼠标时归 0）。
+    private long _completionFrameGen;
+    // 鼠标开关（RunAsync 由 TuiCliOptions.MouseEnabled 传入；关闭时不启用上报、不发 DSR、不产鼠标事件）。
+    private bool _mouseEnabled = true;
+    // 本轮输入是否产生需要重绘的可视变化：仅鼠标 hover/忽略且无状态变化时为 false → 走 tick 脏检查跳过整帧重写
+    // （避免空闲鼠标移动擦掉输入法组合串，见 spec §6.5 / 审查 M-4）。
+    private bool _inputVisualDirty = true;
+
     // 事件泵「已完成」后的重建退避状态（提交前按需重建；失败累积，成功清零）。
     private int _rebuildFailureCount;
     private DateTime _lastRebuildFailureAt = DateTime.MinValue;
@@ -129,6 +140,7 @@ public sealed class TuiChatEngine
         ILlmService llm,
         IScenarioCatalog scenarios,
         IExecutionStatusProvider executionStatus,
+        ITuiAnchorProbe anchor,
         IHostApplicationLifetime? hostLifetime = null,
         ILogger<TuiChatEngine>? logger = null,
         IWorkspaceProvider? workspace = null,
@@ -158,6 +170,7 @@ public sealed class TuiChatEngine
         _llm = llm ?? throw new ArgumentNullException(nameof(llm));
         _scenarios = scenarios ?? throw new ArgumentNullException(nameof(scenarios));
         _executionStatus = executionStatus ?? throw new ArgumentNullException(nameof(executionStatus));
+        _anchor = anchor ?? throw new ArgumentNullException(nameof(anchor));
         _workspace = workspace;
         _budgetNotifier = budgetNotifier;
         _seeingOptions = seeingOptions;
@@ -169,6 +182,9 @@ public sealed class TuiChatEngine
     public async Task<int> RunAsync(TuiCliOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        // 鼠标启用由 CLI/配置决定（--no-mouse 关闭：不启用上报、不发 DSR、不产鼠标事件，键盘全功能）。
+        _mouseEnabled = options.MouseEnabled;
 
         if (Console.IsInputRedirected || Console.IsOutputRedirected)
         {
@@ -247,7 +263,9 @@ public sealed class TuiChatEngine
         // using 确保循环退出即释放注册，避免其残留到下次运行或悬挂闭包。
         using var stopRegistration = RegisterStopCancellation(_hostLifetime, cts);
 
-        _inputThread = new TuiInputThread(new RawInputReader());
+        _inputThread = new TuiInputThread(new RawInputReader(_mouseEnabled, _anchor));
+        // 把底锚探针与鼠标开关接到终端出口（DSR 写点受此门控）；非 Spectre 出口（如测试 fake）为 null 空操作。
+        (_surface as SpectreTerminalSurface)?.ConfigureMouse(_anchor, _mouseEnabled);
         await _inputThread.StartAsync(cts.Token).ConfigureAwait(false);
         _inputRelay.Attach(_inputThread.Reader, cts.Token);
 
@@ -276,13 +294,16 @@ public sealed class TuiChatEngine
 
             if (done == inputTask)
             {
-                wokeByTick = false;
                 var key = await inputTask.ConfigureAwait(false);
                 inputTask = ReadKeyAsync(_inputRelay.EngineReader, cts.Token);
                 if (key is null)
                     break;
 
+                _inputVisualDirty = true;
                 exit = await HandleInputAsync(key.Value, cts.Token).ConfigureAwait(false);
+                // 无视觉变化的输入（如空闲 hover）：按 tick 脏检查口径处理，避免整帧重写擦除输入法组合串（M-4）。
+                wokeByTick = !_inputVisualDirty;
+                _inputVisualDirty = false;
                 if (await TryRebindAsync(cts.Token).ConfigureAwait(false))
                 {
                     eventTask = ReadEventAsync(_context!.Pump.Reader, cts.Token);
@@ -398,9 +419,50 @@ public sealed class TuiChatEngine
 
     private async Task<bool> HandleInputAsync(TuiKeyInput key, CancellationToken ct)
     {
+        // 下拉优先路由（spec §6.2）：前置于 _editor.Apply，被拦键一律不 Apply（防 ↑/↓ 翻历史、Esc 清空、Enter 误推历史）。
+        var dropdownVisible = _completionSelector is { Count: > 0 };
+        switch (DecideCompletionRoute(dropdownVisible, key.Action))
+        {
+            case CompletionRouteAction.MouseIgnore:
+                // 无下拉时的鼠标事件（含 hover）：无操作、不重置 _cancelArmedAt/不设 _lastRenderAt；
+                // 且标记「无视觉变化」→ 本轮按 tick 脏检查跳过整帧重写（M-4）。
+                _inputVisualDirty = false;
+                return false;
+
+            case CompletionRouteAction.MoveUp:
+                _completionSelector!.MoveUp();
+                ForceRender();
+                return false;
+
+            case CompletionRouteAction.MoveDown:
+                _completionSelector!.MoveDown();
+                ForceRender();
+                return false;
+
+            case CompletionRouteAction.Accept:
+                // Enter/Tab：带入高亮项（光标移到命令名后空格）但不提交、不 Apply。
+                await AcceptCompletionAsync(ct).ConfigureAwait(false);
+                return false;
+
+            case CompletionRouteAction.Dismiss:
+                // Esc 且下拉可见：仅收起下拉，不清空输入、不触发取消执行、不改 _cancelArmedAt。
+                _completionSelector = null;
+                ForceRender();
+                return false;
+
+            case CompletionRouteAction.MouseHandle:
+                HandleCompletionMouse(key.Mouse);
+                return false;
+
+            default:
+                break; // PassThrough：落到下方常规 Apply + 候选重算
+        }
+
         // Cancel 会清空输入，需在 Apply 前记录「原本是否为空」以判定空闲 Ctrl+C。
         var editorWasEmpty = _editor.Text.Length == 0;
         _editor.Apply(key);
+        // 6.2.1 集合变化复位：任何改了 Text/Cursor 的按键，Apply 后重算候选（更新则复位游标、清空则收起下拉）。
+        RefreshCompletionSelector();
 
         switch (key.Action)
         {
@@ -411,13 +473,14 @@ public sealed class TuiChatEngine
             {
                 var text = _editor.Text;
                 _editor.Clear();
+                _completionSelector = null;
                 var exit = await SubmitAsync(text, ct).ConfigureAwait(false);
                 _lastRenderAt = DateTime.MinValue;
                 return exit;
             }
 
             case TuiInputAction.Complete:
-                await HandleCompletionAsync(ct).ConfigureAwait(false);
+                HandleCompletion();
                 _lastRenderAt = DateTime.MinValue;
                 return false;
 
@@ -854,24 +917,16 @@ public sealed class TuiChatEngine
         await CommitNoticeAsync("已删除活跃会话", ct).ConfigureAwait(false);
     }
 
-    private async Task HandleCompletionAsync(CancellationToken ct)
+    /// <summary>
+    /// Tab 补全兜底（下拉未弹时）：唯一候选直接补全并在其后加空格。
+    /// <para>多候选的键盘/鼠标选择已改由内联下拉的前置路由（<see cref="AcceptCompletionAsync"/>）承载，
+    /// 旧的 <c>PromptChoiceAsync</c> 模态分支与 <c>CompletionCancelSentinel</c> 已废弃（spec m-1）。</para>
+    /// </summary>
+    private void HandleCompletion()
     {
         var apply = _completion.TryApply(_editor.Text, _editor.Cursor);
         if (apply is not null)
-        {
             _editor.SetTextAndCursor(apply.Value.Text, apply.Value.Cursor);
-            return;
-        }
-
-        var items = _completion.GetCompletions(_editor.Text, _editor.Cursor);
-        if (items.Count == 0)
-            return;
-
-        var chosen = await PromptChoiceAsync("补全候选", items, ct).ConfigureAwait(false);
-        if (string.IsNullOrEmpty(chosen))
-            return;
-
-        _editor.SetTextAndCursor(chosen + " ", chosen.Length + 1);
     }
 
     private async Task<bool> ConfirmExitAsync(CancellationToken ct)
@@ -939,43 +994,6 @@ public sealed class TuiChatEngine
         catch (OperationCanceledException)
         {
             return false;
-        }
-        finally
-        {
-            _inputRelay.EndPrompt();
-        }
-    }
-
-    private async Task<string?> PromptChoiceAsync(string title, IReadOnlyList<TuiCompletionItem> items, CancellationToken ct)
-    {
-        var choices = items.Select(i => i.Name).ToList();
-        var displays = items.ToDictionary(
-            i => i.Name,
-            i => Markup.Escape($"{i.Name} · {i.Description}"),
-            StringComparer.Ordinal);
-
-        _inputRelay.BeginPrompt();
-        try
-        {
-            var chosen = await _surface
-                .PromptAsync(
-                    (console, promptCt) => console.PromptAsync(
-                        new SelectionPrompt<string>()
-                            .Title(Markup.Escape(title))
-                            .PageSize(15)
-                            .AddChoices(choices)
-                            .UseConverter(value => displays.TryGetValue(value, out var display) ? display : Markup.Escape(value))
-                            // Esc 取消：返回哨兵值视为放弃（否则选择器无法退出）。
-                            .AddCancelResult(CompletionCancelSentinel),
-                        promptCt),
-                    ct)
-                .ConfigureAwait(false);
-
-            return string.Equals(chosen, CompletionCancelSentinel, StringComparison.Ordinal) ? null : chosen;
-        }
-        catch (OperationCanceledException)
-        {
-            return null;
         }
         finally
         {
@@ -1525,7 +1543,11 @@ public sealed class TuiChatEngine
             ApplyStatusLine(context),
             GetWidth(),
             GetRenderHeight(),
-            _terminalCommits);
+            _terminalCommits,
+            CompletionSignatureOf(
+                GetCompletionCandidates(),
+                _completionSelector?.SelectedIndex ?? -1,
+                _completionSelector is { Count: > 0 }));
 
     /// <summary>
     /// 记录一次「活动区外写入」（固化提交）。提交会退出活动区（Live <c>AutoClear</c> 即擦除整块），
@@ -1543,20 +1565,38 @@ public sealed class TuiChatEngine
         var pendingApprovals = CurrentPendingCount();
         _ledger.Prune(context.State);
         var status = ApplyStatusLine(context);
+        var width = GetWidth();
+        var height = GetRenderHeight();
+
+        // resize → 底锚失效（m-3）：物理行几何已变，旧 DSR 校准不可信，本帧重新校准前鼠标命中回落键盘。
+        if (ShouldInvalidateAnchorOnResize(_lastRenderedTick.Width, _lastRenderedTick.Height, width, height))
+            _anchor.Invalidate();
+
+        // 渲染可见性与路由真源一致：仅当选择器存在（下拉可见）才取候选渲染；Esc 收起（selector=null）后本帧即隐藏。
+        var candidates = _completionSelector is { Count: > 0 } ? GetCompletionCandidates() : [];
+        // 仅「有候选且鼠标启用」才分配非 0 帧代次并触发 DSR 探测；否则本帧不探测（probeGen=0），代次计数器单调不复用。
+        var (probeGen, nextCounter) = ComputeCompletionProbeGen(_completionFrameGen, candidates.Count > 0, _mouseEnabled);
+        _completionFrameGen = nextCounter;
+        var selectedIndex = _completionSelector?.SelectedIndex ?? -1;
+
         var active = _renderer.BuildActiveViewWithCaret(
             context.State,
             _editor,
-            GetWidth(),
+            width,
             pendingApprovals,
             CountBackgroundExecutions(context.SessionId),
             _ledger.Offsets,
-            Math.Max(0, GetRenderHeight() - 1),
-            GetCompletionCandidates(),
-            CancelHint);
+            Math.Max(0, height - 1),
+            candidates,
+            CancelHint,
+            completionSelectedIndex: selectedIndex,
+            frameGen: probeGen);
+        // 命中表与底锚同代次：存本帧实画候选行供鼠标换算（其 FrameGen 即本帧 probeGen，与 _completionFrameGen 同源）。
+        _lastCompletionHits = active.CompletionHits ?? [];
         // 防御性：活动区更新失败不得中断主循环（当前实现不抛，替换实现时仍需保证）。
         try
         {
-            await _surface.UpdateAsync(active.View, active.Caret, ct).ConfigureAwait(false);
+            await _surface.UpdateAsync(active.View, active.Caret, active.FrameGen, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -1575,9 +1615,10 @@ public sealed class TuiChatEngine
             CountBackgroundExecutions(context.SessionId),
             pendingApprovals,
             status,
-            GetWidth(),
-            GetRenderHeight(),
-            _terminalCommits);
+            width,
+            height,
+            _terminalCommits,
+            CompletionSignatureOf(candidates, selectedIndex, _completionSelector is { Count: > 0 }));
         _lastRenderAt = DateTime.UtcNow;
     }
 
@@ -1675,6 +1716,193 @@ public sealed class TuiChatEngine
             _logger?.LogDebug(ex, "计算补全候选失败");
             return [];
         }
+    }
+
+    /// <summary>下拉可见时对按键的优先路由动作（spec §6.2）。纯决策枚举，供 <see cref="DecideCompletionRoute"/> 与单测共享。</summary>
+    public enum CompletionRouteAction
+    {
+        /// <summary>不拦：落到常规 <c>_editor.Apply</c> + 候选重算。</summary>
+        PassThrough,
+
+        /// <summary>下拉可见 · ↑：游标上移（端点停），不翻历史、不 Apply。</summary>
+        MoveUp,
+
+        /// <summary>下拉可见 · ↓：游标下移（端点停），不翻历史、不 Apply。</summary>
+        MoveDown,
+
+        /// <summary>下拉可见 · Enter/Tab：带入高亮项，不提交、不 Apply。</summary>
+        Accept,
+
+        /// <summary>下拉可见 · Esc：仅收起下拉，不清空、不改取消武装。</summary>
+        Dismiss,
+
+        /// <summary>下拉可见 · 鼠标：命中换算（hover/点击）。</summary>
+        MouseHandle,
+
+        /// <summary>下拉不可见 · 鼠标：无操作（不 Apply、不重置 <c>_cancelArmedAt</c>、不设 <c>_lastRenderAt</c>）。</summary>
+        MouseIgnore,
+    }
+
+    /// <summary>下拉可见时的按键优先路由决策（spec §6.2，前置于 <c>_editor.Apply</c>）。纯函数，供单测。</summary>
+    internal static CompletionRouteAction DecideCompletionRoute(bool dropdownVisible, TuiInputAction action)
+    {
+        if (!dropdownVisible)
+            return action == TuiInputAction.Mouse ? CompletionRouteAction.MouseIgnore : CompletionRouteAction.PassThrough;
+
+        return action switch
+        {
+            TuiInputAction.HistoryPrev => CompletionRouteAction.MoveUp,
+            TuiInputAction.HistoryNext => CompletionRouteAction.MoveDown,
+            TuiInputAction.Submit => CompletionRouteAction.Accept,
+            TuiInputAction.Complete => CompletionRouteAction.Accept,
+            TuiInputAction.Cancel => CompletionRouteAction.Dismiss,
+            TuiInputAction.Mouse => CompletionRouteAction.MouseHandle,
+            _ => CompletionRouteAction.PassThrough,
+        };
+    }
+
+    /// <summary>强制下一轮重绘（选择态/游标变更后调用；选择态已纳入 <see cref="TickRenderSnapshot"/>，spec §6.5）。</summary>
+    private void ForceRender()
+    {
+        _inputVisualDirty = true;
+        _lastRenderAt = DateTime.MinValue;
+    }
+
+    /// <summary>
+    /// Apply 后重算候选并维护选择器（spec §6.2.1）：候选空 → 收起；非空 → 无选择器则新建（默认高亮第一项），
+    /// 否则 <c>UpdateItems</c>（游标复位 0）。渲染数据源与选择器数据源同为截断后的 <see cref="GetCompletionCandidates"/>（同源同序）。
+    /// </summary>
+    private void RefreshCompletionSelector()
+    {
+        var candidates = GetCompletionCandidates();
+        if (candidates.Count == 0)
+        {
+            _completionSelector = null;
+            return;
+        }
+
+        var labels = new List<string>(candidates.Count);
+        foreach (var item in candidates)
+            labels.Add(item.Name);
+
+        if (_completionSelector is null)
+            _completionSelector = new SelectableList(labels, Math.Max(1, labels.Count), multiSelect: false, allowPaging: false);
+        else
+            _completionSelector.UpdateItems(labels);
+    }
+
+    /// <summary>接受高亮候选带入输入框（不提交）：替换当前 token 为「命令名 + 空格」，光标就绪，收起下拉。</summary>
+    private Task AcceptCompletionAsync(CancellationToken ct)
+    {
+        AcceptCompletionCore();
+        return Task.CompletedTask;
+    }
+
+    private void AcceptCompletionCore()
+    {
+        var label = _completionSelector?.SelectedLabel;
+        if (!string.IsNullOrEmpty(label) &&
+            TryComputeAccept(_editor.Text, _editor.Cursor, label!, out var text, out var cursor))
+        {
+            _editor.SetTextAndCursor(text, cursor);
+        }
+
+        _completionSelector = null;
+        ForceRender();
+    }
+
+    /// <summary>
+    /// 下拉可见时的鼠标处理（spec §6.2）：DSR 底锚 + 命中表换算候选下标。
+    /// <para>hover（Motion）→ 置游标 + 强绘；左键 Press 命中 → 带入；Release/滚轮/其它 → 忽略；无命中不重置任何态。</para>
+    /// </summary>
+    private void HandleCompletionMouse(TuiRawMouse? mouse)
+    {
+        // 默认「无视觉变化」：仅当游标实际改变/点击带入时由 ForceRender 置脏（M-4）。
+        _inputVisualDirty = false;
+
+        if (mouse is null || _completionSelector is not { Count: > 0 })
+            return;
+
+        var hit = TuiHitTest.TryResolve(_anchor, _lastCompletionHits, _completionFrameGen, mouse.Row);
+        if (hit is null)
+            return; // 未校准/跨代次/落在候选区外：不重置游标、不强绘（键盘兜底）。
+
+        if (mouse.Phase == TuiMousePhase.Motion)
+        {
+            if (_completionSelector.SetByHit(hit.Value))
+                ForceRender();
+            return;
+        }
+
+        // 点击确认只认左键 Press（忽略 Release 防双触发）；命中即带入该项。
+        if (mouse.Phase == TuiMousePhase.Press && mouse.Button == TuiMouseButton.Left)
+        {
+            _completionSelector.SetByHit(hit.Value);
+            AcceptCompletionCore();
+        }
+    }
+
+    /// <summary>
+    /// 接受带入的 token 切分（纯函数，供单测）：把行首 <c>/xxx</c> token 替换为命令名 + 空格，返回新文本与光标位。
+    /// <para>不依赖 <c>TuiCompletionProvider</c> 的私有切分：tokenStart 为前导空白后的 <c>/</c>，tokenEnd 为 token 后首个空白（无则文本尾）。</para>
+    /// </summary>
+    internal static bool TryComputeAccept(string text, int cursor, string name, out string newText, out int cursorAfter)
+    {
+        newText = text ?? string.Empty;
+        cursorAfter = cursor;
+
+        if (newText.Length == 0 || string.IsNullOrEmpty(name))
+            return false;
+
+        cursor = Math.Clamp(cursor, 0, newText.Length);
+
+        var start = 0;
+        while (start < cursor && char.IsWhiteSpace(newText[start]))
+            start++;
+
+        if (start >= cursor || newText[start] != '/')
+            return false;
+
+        // token 内（光标前）不得含空白——与候选出现判据一致。
+        for (var i = start; i < cursor; i++)
+        {
+            if (char.IsWhiteSpace(newText[i]))
+                return false;
+        }
+
+        var tokenEnd = start;
+        while (tokenEnd < newText.Length && !char.IsWhiteSpace(newText[tokenEnd]))
+            tokenEnd++;
+
+        var prefix = newText[..start];
+        var after = newText[tokenEnd..].TrimStart();
+        newText = prefix + name + " " + after;
+        cursorAfter = prefix.Length + name.Length + 1;
+        return true;
+    }
+
+    /// <summary>
+    /// 补全帧代次分配（纯函数，供单测）：仅「有候选且鼠标启用」才自增并发探测代次，否则本帧不探测（probeGen=0）。
+    /// <para>代次计数器单调不复用（避免归 0 后再升到旧值致底锚跨帧错配）；返回值第二项为更新后的计数器。</para>
+    /// </summary>
+    internal static (long ProbeGen, long NextCounter) ComputeCompletionProbeGen(long counter, bool hasCandidates, bool mouseEnabled)
+        => hasCandidates && mouseEnabled ? (counter + 1, counter + 1) : (0, counter);
+
+    /// <summary>终端尺寸是否变化到需失效底锚（纯函数，供单测）：仅当上次尺寸有效且宽高有变才失效。</summary>
+    internal static bool ShouldInvalidateAnchorOnResize(int lastWidth, int lastHeight, int width, int height)
+        => lastWidth > 0 && lastHeight > 0 && (lastWidth != width || lastHeight != height);
+
+    /// <summary>选择态脏检查签名（纯函数，供单测）：候选名拼接 + 游标 + 可见。任一变化即不同串（spec §6.5）。</summary>
+    internal static string CompletionSignatureOf(IReadOnlyList<TuiCompletionItem> candidates, int selectedIndex, bool visible)
+    {
+        if (!visible || candidates.Count == 0)
+            return string.Empty;
+
+        var names = new string[candidates.Count];
+        for (var i = 0; i < candidates.Count; i++)
+            names[i] = candidates[i].Name;
+
+        return string.Join("|", names) + "#" + selectedIndex;
     }
 
     /// <summary>统计「可呈现会话」中除主会话外仍有未终态执行的会话数（来源可靠，不编造）。</summary>

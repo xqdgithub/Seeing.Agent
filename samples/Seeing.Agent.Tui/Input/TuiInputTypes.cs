@@ -17,10 +17,39 @@ public enum TuiInputAction
     Complete,
     Cancel,
     ExitRequested,
+    Mouse,
 }
 
+/// <summary>鼠标按键（低 3 位语义；滚轮单列）。</summary>
+public enum TuiMouseButton
+{
+    None,
+    Left,
+    Middle,
+    Right,
+    WheelUp,
+    WheelDown,
+}
+
+/// <summary>鼠标事件阶段。点击确认只认 <see cref="Press"/>，忽略 <see cref="Release"/> 防双触发。</summary>
+public enum TuiMousePhase
+{
+    Press,
+    Release,
+    Motion,
+}
+
+/// <param name="Col">SGR 1 基列。</param>
+/// <param name="Row">SGR 1 基绝对行。</param>
+public sealed record TuiRawMouse(TuiMouseButton Button, TuiMousePhase Phase, int Col, int Row) : TuiRawInput;
+
 /// <param name="IsEscape">是否由 Esc 产生（用于「执行中取消需二次确认」的区分；Ctrl+C 为 false）。</param>
-public readonly record struct TuiKeyInput(TuiInputAction Action, string Text = "", bool IsEscape = false);
+/// <param name="Mouse">鼠标负载（<see cref="TuiInputAction.Mouse"/> 时非空）。</param>
+public readonly record struct TuiKeyInput(
+    TuiInputAction Action,
+    string Text = "",
+    bool IsEscape = false,
+    TuiRawMouse? Mouse = null);
 
 public abstract record TuiRawInput;
 

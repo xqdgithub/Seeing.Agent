@@ -20,8 +20,13 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
     /// </summary>
     internal const string TerminalRestoreSequence = "\u001b[?25h";
 
+    /// <summary>DSR 光标位置报告查询（<c>ESC[6n</c>）：回复由 <see cref="RawInputReader"/> 旁路喂 <see cref="ITuiAnchorProbe"/>，不进按键通道。</summary>
+    internal const string DsrCursorReportQuery = "\u001b[6n";
+
     private readonly IAnsiConsole _console;
     private readonly ChannelAnsiConsoleInput? _promptInput;
+    private ITuiAnchorProbe _anchor = new NullTuiAnchorProbe();
+    private bool _mouseEnabled;
     private readonly Channel<RenderCommand> _commands;
     private readonly object _pendingGate = new();
     private readonly object _startGate = new();
@@ -83,7 +88,20 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         if (_faulted)
             return Task.CompletedTask;
 
-        PostUpdate(view, caret);
+        PostUpdate(view, caret, probeGen: 0);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task UpdateAsync(IRenderable view, TuiCaret? caret, long probeGen, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        EnsureStarted();
+
+        if (_faulted)
+            return Task.CompletedTask;
+
+        PostUpdate(view, caret, probeGen);
         return Task.CompletedTask;
     }
 
@@ -133,6 +151,32 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         // 此处确保停机令牌取消时调用方不会永久等待（残留命令由 StopAsync 兜底完成）。
         var result = await completion.Task.WaitAsync(ct).ConfigureAwait(false);
         return (T)result!;
+    }
+
+    /// <inheritdoc />
+    public async Task<T> PromptListAsync<T>(Func<TuiPromptContext, CancellationToken, Task<T>> prompt, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+
+        return await PromptAsync((console, promptCt) =>
+        {
+            var ctx = new TuiPromptContext
+            {
+                Console = console,
+                Keys = _promptInput?.BoundReader,
+                Anchor = _anchor,
+                MouseEnabled = _mouseEnabled,
+                Width = console.Profile.Width > 0 ? console.Profile.Width : 80,
+            };
+            return prompt(ctx, promptCt);
+        }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>接线鼠标底锚探针与开关（由 <c>Program</c> 在引擎持有探针后注入；DSR 写点受 <paramref name="mouseEnabled"/> 门控）。</summary>
+    internal void ConfigureMouse(ITuiAnchorProbe anchor, bool mouseEnabled)
+    {
+        _anchor = anchor ?? new NullTuiAnchorProbe();
+        _mouseEnabled = mouseEnabled;
     }
 
     public async Task StopAsync()
@@ -210,10 +254,10 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
         }
     }
 
-    private void PostUpdate(IRenderable view, TuiCaret? caret)
+    private void PostUpdate(IRenderable view, TuiCaret? caret, long probeGen)
     {
         lock (_pendingGate)
-            _pendingUpdate = new UpdateCommand(view, caret);
+            _pendingUpdate = new UpdateCommand(view, caret, probeGen);
 
         TryFlushPending();
     }
@@ -373,6 +417,11 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
                                 // UpdateTarget 内部已 Refresh（写整帧）；再调一次 Refresh 会让每次更新写两遍帧，
                                 // 双倍擦写终端（输入法组合串被擦的窗口翻倍）。
                                 ctx.UpdateTarget(update.View);
+                                // DSR 底锚写点（spec §6.4）：帧写完、光标仍在活动区末行时问一次绝对行；
+                                // 必须早于 PlaceCaret（否则报告的是插入点行而非末行），且不入 Live 擦除记账。
+                                // 代次与引擎随帧传入（ProbeGen），与命中表 FrameGen 同源配对（M-3）。
+                                if (update.ProbeGen > 0 && _mouseEnabled)
+                                    _anchor.BeginProbe(update.ProbeGen, () => WriteRaw(DsrCursorReportQuery));
                                 PlaceCaret(update.Caret);
                                 break;
 
@@ -571,7 +620,7 @@ public sealed class SpectreTerminalSurface : ITerminalSurface
 
     private abstract record RenderCommand;
 
-    private sealed record UpdateCommand(IRenderable View, TuiCaret? Caret) : RenderCommand;
+    private sealed record UpdateCommand(IRenderable View, TuiCaret? Caret, long ProbeGen = 0) : RenderCommand;
 
     private sealed record CommitCommand(IRenderable Renderable) : RenderCommand;
 

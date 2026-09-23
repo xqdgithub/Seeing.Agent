@@ -8,6 +8,12 @@ namespace Seeing.Agent.Tui.Input;
 /// 原始 stdin 字节读取（raw 模式 + bracketed paste），产出 <see cref="TuiRawInput"/>。
 /// 说明：<see cref="Console.ReadKey"/> 无法承载 bracketed paste / CSI-u，故直接读字节流自行解析。
 /// 启动发 <c>\x1b[?2004h</c>、退出发 <c>\x1b[?2004l</c>。
+/// <para>
+/// <c>mouseEnabled</c> 为真时在 bracketed paste 开关之后/同处追加/合并写
+/// <c>\x1b[?1000;1003;1006h</c> 与 <c>\x1b[?1006;1003;1000l</c>（SGR 鼠标上报开关）；
+/// 解析 <c>ESC[&lt;btn;col;row(M|m)</c> 产 <see cref="TuiRawMouse"/>，
+/// 而 DSR 光标回复 <c>ESC[row;colR</c> 直接旁路给 <see cref="ITuiAnchorProbe"/>，绝不进按键通道。
+/// </para>
 /// </summary>
 /// <remarks>
 /// 平台边界：Windows 启用 <c>ENABLE_VIRTUAL_TERMINAL_INPUT</c>，停止时注入控制台哨兵事件解除阻塞读；
@@ -40,6 +46,8 @@ public sealed class RawInputReader : IRawInputSource
     private readonly List<byte> _pending = [];
     private readonly StringBuilder _textRun = new();
     private readonly UTF8Encoding _utf8 = new(false);
+    private readonly bool _mouseEnabled;
+    private readonly ITuiAnchorProbe? _anchorProbe;
 
     private Stream? _input;
     private Thread? _readThread;
@@ -60,6 +68,12 @@ public sealed class RawInputReader : IRawInputSource
     private MacTermios _savedMacTermios;
 
     public ChannelReader<TuiRawInput> Reader => _channel.Reader;
+
+    public RawInputReader(bool mouseEnabled = false, ITuiAnchorProbe? anchorProbe = null)
+    {
+        _mouseEnabled = mouseEnabled;
+        _anchorProbe = anchorProbe;
+    }
 
     public Task StartAsync(CancellationToken ct)
     {
@@ -102,6 +116,8 @@ public sealed class RawInputReader : IRawInputSource
         }
 
         TryWriteControlSequence("\x1b[?2004h");
+        if (_mouseEnabled)
+            TryWriteControlSequence("\x1b[?1000;1003;1006h");
 
         _readThread = new Thread(ReadLoop)
         {
@@ -133,7 +149,7 @@ public sealed class RawInputReader : IRawInputSource
 
         RestoreConsole();
 
-        TryWriteControlSequence("\x1b[?2004l");
+        TryWriteControlSequence(_mouseEnabled ? "\x1b[?2004l\x1b[?1006;1003;1000l" : "\x1b[?2004l");
 
         _channel.Writer.TryComplete();
         _started = false;
@@ -224,7 +240,7 @@ public sealed class RawInputReader : IRawInputSource
         }
     }
 
-    private void AppendAndDrain(byte[] data, int count)
+    internal void AppendAndDrain(byte[] data, int count)
     {
         lock (_gate)
         {
@@ -268,6 +284,26 @@ public sealed class RawInputReader : IRawInputSource
 
                     if (end < 0)
                         return;
+
+                    // SGR 鼠标：ESC [ < btn ; col ; row (M|m)，'<' 为参数字节后的私有前缀；
+                    // 无法解析的鼠标序列直接丢弃，绝不落 TuiRawEscape/InsertText。
+                    if (_pending[2] == (byte)'<')
+                    {
+                        var mouse = TryDecodeSgrMouse(CollectionsMarshal.AsSpan(_pending)[3..end], _pending[end]);
+                        RemoveFrontLocked(end + 1);
+                        if (mouse is not null)
+                            EmitTokenLocked(mouse);
+                        continue;
+                    }
+
+                    // DSR 光标位置回复：ESC [ row ; col R —— 旁路直达探针，不产 TuiRawInput、不写按键通道。
+                    if (_pending[end] == (byte)'R' &&
+                        TryParseDsrRow(CollectionsMarshal.AsSpan(_pending)[2..end], out var cursorRow))
+                    {
+                        RemoveFrontLocked(end + 1);
+                        _anchorProbe?.Report(cursorRow);
+                        continue;
+                    }
 
                     var sequence = Encoding.ASCII.GetString(CollectionsMarshal.AsSpan(_pending)[..(end + 1)]);
                     RemoveFrontLocked(end + 1);
@@ -443,6 +479,112 @@ public sealed class RawInputReader : IRawInputSource
                 EmitTokenLocked(new TuiRawEscape(sequence));
                 break;
         }
+    }
+
+    /// <summary>
+    /// 解析 SGR 鼠标事件参数（<c>btn;col;row</c>）与终字节（M/m）。
+    /// 解码严格按序：0x40（滚轮，恒 Press）→ 0x20（Motion）→ 按下/释放（M=Press、m=Release）；
+    /// 无法解析返回 null（调用方丢弃该序列）。
+    /// </summary>
+    internal static TuiRawMouse? TryDecodeSgrMouse(ReadOnlySpan<byte> parameters, byte final)
+    {
+        if (final is not ((byte)'M' or (byte)'m'))
+            return null;
+
+        var firstSep = parameters.IndexOf((byte)';');
+        if (firstSep < 0)
+            return null;
+
+        var rest = parameters[(firstSep + 1)..];
+        var secondSep = rest.IndexOf((byte)';');
+        if (secondSep < 0)
+            return null;
+
+        var btnSpan = parameters[..firstSep];
+        var colSpan = rest[..secondSep];
+        var rowSpan = rest[(secondSep + 1)..];
+        if (rowSpan.Contains((byte)';'))
+            return null;
+
+        if (!TryParseDecimal(btnSpan, out var btn) ||
+            !TryParseDecimal(colSpan, out var col) ||
+            !TryParseDecimal(rowSpan, out var row))
+            return null;
+
+        TuiMouseButton button;
+        TuiMousePhase phase;
+        if ((btn & 0x40) != 0)
+        {
+            button = btn == 64 ? TuiMouseButton.WheelUp : TuiMouseButton.WheelDown;
+            phase = TuiMousePhase.Press;
+        }
+        else if ((btn & 0x20) != 0)
+        {
+            button = MapMouseButton(btn & 0x07);
+            phase = TuiMousePhase.Motion;
+        }
+        else
+        {
+            button = MapMouseButton(btn & 0x07);
+            phase = final == (byte)'M' ? TuiMousePhase.Press : TuiMousePhase.Release;
+        }
+
+        return new TuiRawMouse(button, phase, col, row);
+    }
+
+    private static TuiMouseButton MapMouseButton(int code) => code switch
+    {
+        0 => TuiMouseButton.Left,
+        1 => TuiMouseButton.Middle,
+        2 => TuiMouseButton.Right,
+        _ => TuiMouseButton.None,
+    };
+
+    /// <summary>解析 DSR 光标回复 <c>ESC [ row ; col R</c> 的参数段取 row（空段按 1 基默认）。</summary>
+    private static bool TryParseDsrRow(ReadOnlySpan<byte> parameters, out int row)
+    {
+        row = 1;
+        var sep = parameters.IndexOf((byte)';');
+        if (sep < 0)
+            return parameters.IsEmpty || TryParseDecimal(parameters, out row);
+
+        var rowSpan = parameters[..sep];
+        var colSpan = parameters[(sep + 1)..];
+        if (colSpan.Contains((byte)';'))
+            return false;
+
+        if (!rowSpan.IsEmpty && !TryParseDecimal(rowSpan, out row))
+            return false;
+
+        return colSpan.IsEmpty || IsAllDecimal(colSpan);
+    }
+
+    private static bool TryParseDecimal(ReadOnlySpan<byte> digits, out int value)
+    {
+        value = 0;
+        if (digits.IsEmpty)
+            return false;
+
+        foreach (var d in digits)
+        {
+            if (d is < (byte)'0' or > (byte)'9')
+                return false;
+
+            value = value * 10 + (d - '0');
+        }
+
+        return true;
+    }
+
+    private static bool IsAllDecimal(ReadOnlySpan<byte> digits)
+    {
+        foreach (var d in digits)
+        {
+            if (d is < (byte)'0' or > (byte)'9')
+                return false;
+        }
+
+        return true;
     }
 
     private void EmitControlLocked(byte b)

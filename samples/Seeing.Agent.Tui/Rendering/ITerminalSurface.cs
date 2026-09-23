@@ -17,6 +17,19 @@ public interface ITerminalSurface
     /// </summary>
     Task UpdateAsync(IRenderable view, TuiCaret? caret = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// 更新活动区并随帧携带 <b>DSR 底锚探测代次</b>（鼠标命中校准，spec §6.4）。
+    /// <para>
+    /// <paramref name="probeGen"/> &gt; 0 且鼠标启用时，渲染线程在本帧写完（<c>UpdateTarget</c> 之后、
+    /// 光标移到插入点 <c>PlaceCaret</c> 之前，此刻光标停在活动区末行）写 <c>ESC[6n</c>，
+    /// 使底锚绝对行与 <paramref name="probeGen"/> 同代次配对本帧命中表 <c>FrameGen</c>。
+    /// </para>
+    /// <para><c>probeGen = 0</c> 表示本帧不探测。默认实现转发旧重载（等价不探测），不破坏既有实现方；
+    /// 支持鼠标校准的实现方（<c>SpectreTerminalSurface</c>）覆写本重载。</para>
+    /// </summary>
+    Task UpdateAsync(IRenderable view, TuiCaret? caret, long probeGen, CancellationToken ct = default)
+        => UpdateAsync(view, caret, ct);
+
     /// <summary>固化：退出活动区 → 写滚动历史 → 重启活动区。</summary>
     Task CommitAsync(IRenderable committed, CancellationToken ct = default);
 
@@ -29,6 +42,14 @@ public interface ITerminalSurface
     /// </para>
     /// </summary>
     Task<T> PromptAsync<T>(Func<IAnsiConsole, CancellationToken, Task<T>> prompt, CancellationToken ct = default);
+
+    /// <summary>
+    /// 在渲染线程上运行<b>自绘列表提示</b>（活动区暂停，单写者），委托拿到 <see cref="TuiPromptContext"/>：
+    /// 既可用 <see cref="IAnsiConsole"/> 写，也可直读 <see cref="TuiKeyInput"/>（含鼠标）做命中/选择。
+    /// <para>用于问答/权限候选的自绘控件 <c>TuiListPrompt</c>（区别于走 Spectre 按键桥的 <see cref="PromptAsync{T}"/>）。</para>
+    /// <para>委托的 <see cref="CancellationToken"/> 为提示取消令牌（链调用方令牌 + Esc），必须传给底层读取以响应取消。</para>
+    /// </summary>
+    Task<T> PromptListAsync<T>(Func<TuiPromptContext, CancellationToken, Task<T>> prompt, CancellationToken ct = default);
 
     /// <summary>渲染所用控制台（只读；宽度/高度/能力查询）。</summary>
     IAnsiConsole Console { get; }

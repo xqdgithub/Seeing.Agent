@@ -11,6 +11,7 @@ public static class InputKeyDecoder
             ? new TuiKeyInput(TuiInputAction.None)
             : new TuiKeyInput(TuiInputAction.InsertText, text.Value),
         TuiRawPasteStart or TuiRawPasteEnd => new TuiKeyInput(TuiInputAction.None),
+        TuiRawMouse mouse => new TuiKeyInput(TuiInputAction.Mouse, Mouse: mouse),
         TuiRawEscape escape => DecodeEscape(escape.Sequence),
         TuiRawKey key => DecodeKey(key, pasteActive),
         _ => new TuiKeyInput(TuiInputAction.None),
