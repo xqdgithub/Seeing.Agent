@@ -44,6 +44,7 @@
     <Project Path="src/capabilities/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Skills/Seeing.Agent.Skills.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.SystemOne/Seeing.Agent.SystemOne.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Basic/Seeing.Agent.Tools.Basic.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.FileSystem/Seeing.Agent.Tools.FileSystem.csproj" />
@@ -52,6 +53,7 @@
     <Project Path="src/capabilities/Seeing.Agent.Tools.Session/Seeing.Agent.Tools.Session.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Shell/Seeing.Agent.Tools.Shell.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.SystemOne/Seeing.Agent.Tools.SystemOne.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Web/Seeing.Agent.Tools.Web.csproj" />
     <Project Path="src/capabilities/Seeing.IO.Local/Seeing.IO.Local.csproj" />
   </Folder>
@@ -84,12 +86,14 @@
     <Project Path="tests/capabilities/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Skills.Tests/Seeing.Agent.Skills.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.SystemOne.Tests/Seeing.Agent.SystemOne.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Basic.Tests/Seeing.Agent.Tools.Basic.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.FileSystem.Tests/Seeing.Agent.Tools.FileSystem.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Git.Tests/Seeing.Agent.Tools.Git.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Question.Tests/Seeing.Agent.Tools.Question.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Session.Tests/Seeing.Agent.Tools.Session.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Shell.Tests/Seeing.Agent.Tools.Shell.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/Seeing.Agent.Tools.SystemOne.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.IO.Local.Tests/Seeing.IO.Local.Tests.csproj" />
   </Folder>
