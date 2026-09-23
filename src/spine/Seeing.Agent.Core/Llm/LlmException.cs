@@ -18,11 +18,17 @@ public class LlmException : Exception
     /// <summary>重试次数</summary>
     public int RetryCount { get; init; }
 
+    /// <summary>
+    /// 以消息构造 LLM 异常，Source 标记为 unknown。
+    /// </summary>
 public LlmException(string message) : base(message)
     {
         Source = "unknown";
     }
 
+    /// <summary>
+    /// 以消息与内部异常构造 LLM 异常。
+    /// </summary>
     public LlmException(string message, Exception innerException)
         : base(message, innerException) { }
 
@@ -44,6 +50,9 @@ public LlmException(string message) : base(message)
 /// </summary>
 public class LlmConnectionException : LlmException
 {
+    /// <summary>
+    /// 构造网络连接层异常，Source 为 network，并按内部异常判定可重试性。
+    /// </summary>
     public LlmConnectionException(string message, Exception innerException)
         : base(message, innerException)
     {
@@ -57,8 +66,12 @@ public class LlmConnectionException : LlmException
 /// </summary>
 public class LlmTimeoutException : LlmException
 {
+    /// <summary>触发超时的时间预算</summary>
     public TimeSpan Timeout { get; init; }
 
+    /// <summary>
+    /// 构造超时异常，Source 为 timeout，固定可重试并记录超时时长。
+    /// </summary>
     public LlmTimeoutException(TimeSpan timeout, Exception innerException)
         : base($"LLM 请求超时 ({timeout.TotalSeconds:F1}s)", innerException)
     {
@@ -79,6 +92,9 @@ public class LlmStreamingException : LlmException
     /// <summary>流式阶段（reading/parsing/yielding）</summary>
     public string Stage { get; init; } = "unknown";
 
+    /// <summary>
+    /// 构造流式处理异常，Source 为 streaming，并按内部异常判定可重试性。
+    /// </summary>
     public LlmStreamingException(string message, Exception innerException)
         : base(message, innerException)
     {
@@ -98,6 +114,9 @@ public class LlmRetryExhaustedException : LlmException
     /// <summary>最后一次异常</summary>
     public Exception? LastException { get; init; }
 
+    /// <summary>
+    /// 构造重试耗尽异常，携带最大重试次数与最后一次异常，标记为不可重试。
+    /// </summary>
     public LlmRetryExhaustedException(int maxRetries, Exception? lastException)
         : base($"LLM 请求在 {maxRetries} 次重试后仍然失败", lastException!)
     {

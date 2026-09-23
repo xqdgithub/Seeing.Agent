@@ -43,7 +43,7 @@ public class SchedulerIntegrationTests
         var executedPrompts = new List<string>();
         var (manager, engine) = CreateScheduleManager(ws, executedPrompts);
 
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
         
         // 验证 scheduler 已启动
         engine.IsStarted.Should().BeTrue("scheduler should be started");
@@ -57,16 +57,16 @@ public class SchedulerIntegrationTests
             Prompt = "执行定时检查",
             Schedule = new ScheduleSpec { Type = ScheduleTypes.Cron, Cron = "0 9 * * *" },
             Dispatch = new DispatchSpec { Target = new DispatchTarget { SessionId = "cron-session" } }
-        });
+        }, TestContext.Current.CancellationToken);
 
         job.Id.Should().Be("test-job");
 
         // 检查 job 是否已注册
-        var statusBefore = await manager.GetJobStatusAsync("test-job");
+        var statusBefore = await manager.GetJobStatusAsync("test-job", TestContext.Current.CancellationToken);
         Console.WriteLine($"Job state before trigger: {statusBefore.State}");
         statusBefore.State.Should().Be(JobState.Scheduled);
 
-        var result = await manager.RunJobOnceAsync("test-job");
+        var result = await manager.RunJobOnceAsync("test-job", TestContext.Current.CancellationToken);
         
         // RunJobOnceAsync 返回 TriggerResult
         result.Should().BeOfType<TriggerResult.Accepted>();
@@ -74,7 +74,7 @@ public class SchedulerIntegrationTests
         // 等待任务实际执行完成（Quartz 异步执行）
         for (int i = 0; i < 30; i++)
         {
-            await Task.Delay(200);
+            await Task.Delay(200, TestContext.Current.CancellationToken);
             if (executedPrompts.Count > 0)
                 break;
         }
@@ -83,15 +83,15 @@ public class SchedulerIntegrationTests
         
         if (executedPrompts.Count == 0)
         {
-            var statusAfter = await manager.GetJobStatusAsync("test-job");
-            var engineStatus = await engine.GetStatusAsync();
+            var statusAfter = await manager.GetJobStatusAsync("test-job", TestContext.Current.CancellationToken);
+            var engineStatus = await engine.GetStatusAsync(TestContext.Current.CancellationToken);
             Console.WriteLine($"Engine started: {engineStatus.IsStarted}, Running jobs: {engineStatus.RunningJobs}");
             Console.WriteLine($"Job state after trigger: {statusAfter.State}");
             Console.WriteLine($"Job previous fire: {statusAfter.PreviousFireTime}");
             
             // 检查历史记录是否有错误
             var debugRepo = new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance);
-            var debugHistory = await debugRepo.GetHistoryAsync("test-job", 10);
+            var debugHistory = await debugRepo.GetHistoryAsync("test-job", 10, ct: TestContext.Current.CancellationToken);
             Console.WriteLine($"History count: {debugHistory.Count}");
             if (debugHistory.Count > 0)
             {
@@ -103,11 +103,11 @@ public class SchedulerIntegrationTests
         executedPrompts.Should().ContainSingle(p => p.Contains("执行定时检查", StringComparison.Ordinal));
 
         var repo = new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance);
-        var history = await repo.GetHistoryAsync("test-job", 10);
+        var history = await repo.GetHistoryAsync("test-job", 10, ct: TestContext.Current.CancellationToken);
         history.Should().HaveCount(1);
         history[0].Status.Should().Be("success");
 
-        await manager.StopAsync();
+        await manager.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class SchedulerIntegrationTests
             .ReturnsAsync(DispatchResult.Ok());
 
         var (manager, _) = CreateScheduleManager(ws, [], dispatcher.Object);
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
 
         await manager.CreateOrReplaceJobAsync(new ScheduledJobSpec
         {
@@ -133,15 +133,15 @@ public class SchedulerIntegrationTests
             Text = "test text",
             Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" },
             Dispatch = new DispatchSpec { Target = new DispatchTarget { SessionId = "notify" } }
-        });
+        }, TestContext.Current.CancellationToken);
 
-        var result = await manager.RunJobOnceAsync("text-job");
+        var result = await manager.RunJobOnceAsync("text-job", TestContext.Current.CancellationToken);
         result.Should().BeOfType<TriggerResult.Accepted>();
         
         // 等待异步执行完成
-        await Task.Delay(2000);
+        await Task.Delay(2000, TestContext.Current.CancellationToken);
 
-        await manager.StopAsync();
+        await manager.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class SchedulerIntegrationTests
         var executedPrompts = new List<string>();
         var (manager, engine, serviceProvider) = CreateScheduleManagerWithServices(ws, executedPrompts, schedulerOptions: schedulerOptions);
         
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
         
         // 验证 scheduler 状态
         var scheduler = engine.Scheduler;
@@ -172,20 +172,20 @@ public class SchedulerIntegrationTests
         
         // 验证 heartbeat job 已注册
         var jobKey = new Quartz.JobKey(SchedulerConstants.HeartbeatJobId, SchedulerConstants.DefaultJobGroup);
-        var jobDetail = await scheduler.GetJobDetail(jobKey);
+        var jobDetail = await scheduler.GetJobDetail(jobKey, TestContext.Current.CancellationToken);
         jobDetail.Should().NotBeNull();
         jobDetail!.JobDataMap.GetString(JobDataKeys.Prompt).Should().Be("heartbeat test prompt");
 
         // 触发 job
-        var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId);
+        var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, TestContext.Current.CancellationToken);
         result.Should().BeOfType<TriggerResult.Accepted>();
         
         // 等待执行完成（Quartz 异步执行）
-        await Task.Delay(3000);
+        await Task.Delay(3000, TestContext.Current.CancellationToken);
         
         Console.WriteLine($"Executed prompts: {string.Join(", ", executedPrompts)}");
 
-        await manager.StopAsync();
+        await manager.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -214,22 +214,22 @@ public class SchedulerIntegrationTests
 
         var executedPrompts = new List<string>();
         var (manager, engine) = CreateScheduleManager(ws, executedPrompts, schedulerOptions: schedulerOptions);
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
         
         // 验证 scheduler 状态
         var scheduler = engine.Scheduler;
         scheduler.Should().NotBeNull();
         scheduler!.IsStarted.Should().BeTrue();
 
-        var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId);
+        var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, TestContext.Current.CancellationToken);
         
         // 验证触发成功
         result.Should().BeOfType<TriggerResult.Accepted>();
         
         // 等待执行
-        await Task.Delay(2000);
+        await Task.Delay(2000, TestContext.Current.CancellationToken);
 
-        await manager.StopAsync();
+        await manager.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -239,16 +239,16 @@ public class SchedulerIntegrationTests
         ws.WriteSeeingJson();
 
         var (manager, engine) = CreateScheduleManager(ws, []);
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
 
-        var status = await engine.GetStatusAsync();
+        var status = await engine.GetStatusAsync(TestContext.Current.CancellationToken);
         status.IsRunning.Should().BeTrue();
         status.IsStarted.Should().BeTrue();
 
-        await manager.StopAsync();
+        await manager.StopAsync(TestContext.Current.CancellationToken);
 
         // StopAsync 后 scheduler 已 shutdown，GetStatusAsync 返回空状态
-        var statusAfterStop = await engine.GetStatusAsync();
+        var statusAfterStop = await engine.GetStatusAsync(TestContext.Current.CancellationToken);
         statusAfterStop.IsRunning.Should().BeFalse();
         statusAfterStop.IsStarted.Should().BeFalse();
     }
@@ -260,7 +260,7 @@ public class SchedulerIntegrationTests
         ws.WriteSeeingJson();
 
         var (manager, engine) = CreateScheduleManager(ws, []);
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
 
         try
         {
@@ -271,21 +271,21 @@ public class SchedulerIntegrationTests
                 TaskType = ScheduleTaskTypes.Text,
                 Text = "test",
                 Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" }
-            });
+            }, TestContext.Current.CancellationToken);
 
             // 暂停任务
-            await manager.PauseJobAsync("pause-test");
-            var statusPaused = await manager.GetJobStatusAsync("pause-test");
+            await manager.PauseJobAsync("pause-test", TestContext.Current.CancellationToken);
+            var statusPaused = await manager.GetJobStatusAsync("pause-test", TestContext.Current.CancellationToken);
             statusPaused.State.Should().Be(JobState.Paused);
 
             // 恢复任务
-            await manager.ResumeJobAsync("pause-test");
-            var statusResumed = await manager.GetJobStatusAsync("pause-test");
+            await manager.ResumeJobAsync("pause-test", TestContext.Current.CancellationToken);
+            var statusResumed = await manager.GetJobStatusAsync("pause-test", TestContext.Current.CancellationToken);
             statusResumed.State.Should().Be(JobState.Scheduled);
         }
         finally
         {
-            await manager.StopAsync();
+            await manager.StopAsync(TestContext.Current.CancellationToken);
         }
     }
     
@@ -296,7 +296,7 @@ public class SchedulerIntegrationTests
         ws.WriteSeeingJson();
 
         var (manager, engine) = CreateScheduleManager(ws, []);
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
 
         try
         {
@@ -307,21 +307,21 @@ public class SchedulerIntegrationTests
                 TaskType = ScheduleTaskTypes.Text,
                 Text = "test",
                 Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" }
-            });
+            }, TestContext.Current.CancellationToken);
 
             // 禁用任务
-            await manager.SetJobIntentAsync("disable-test", ScheduleIntent.Disabled);
-            var statusDisabled = await manager.GetJobStatusAsync("disable-test");
+            await manager.SetJobIntentAsync("disable-test", ScheduleIntent.Disabled, TestContext.Current.CancellationToken);
+            var statusDisabled = await manager.GetJobStatusAsync("disable-test", TestContext.Current.CancellationToken);
             statusDisabled.State.Should().Be(JobState.Disabled);
 
             // 启用任务
-            await manager.SetJobIntentAsync("disable-test", ScheduleIntent.Active);
-            var statusEnabled = await manager.GetJobStatusAsync("disable-test");
+            await manager.SetJobIntentAsync("disable-test", ScheduleIntent.Active, TestContext.Current.CancellationToken);
+            var statusEnabled = await manager.GetJobStatusAsync("disable-test", TestContext.Current.CancellationToken);
             statusEnabled.State.Should().Be(JobState.Scheduled);
         }
         finally
         {
-            await manager.StopAsync();
+            await manager.StopAsync(TestContext.Current.CancellationToken);
         }
     }
 

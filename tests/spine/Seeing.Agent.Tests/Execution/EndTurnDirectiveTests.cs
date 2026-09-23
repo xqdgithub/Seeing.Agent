@@ -57,7 +57,7 @@ public class EndTurnDirectiveTests
         var messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = "go" } };
 
         var events = new List<IMessageEvent>();
-        await foreach (var evt in executor.ExecuteAsync(agent, messages, context, default))
+        await foreach (var evt in executor.ExecuteAsync(agent, messages, context, TestContext.Current.CancellationToken))
             events.Add(evt);
 
         // 恰一次终态 LoopComplete，且为成功 + 透传工具原因
@@ -102,7 +102,7 @@ public class EndTurnDirectiveTests
         var messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = "go" } };
 
         var events = new List<IMessageEvent>();
-        await foreach (var evt in executor.ExecuteAsync(agent, messages, context, default))
+        await foreach (var evt in executor.ExecuteAsync(agent, messages, context, TestContext.Current.CancellationToken))
             events.Add(evt);
 
         events.OfType<LoopCompleteEvent>().Single().Reason.Should().Be("turn-directive");

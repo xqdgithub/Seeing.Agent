@@ -47,11 +47,11 @@ public class LocalExecutionWorldTests
         try
         {
             var filePath = Path.Combine(tempDir, "async.txt");
-            await fs.WriteAllTextAsync(filePath, "line1\nline2");
-            (await fs.ReadAllTextAsync(filePath)).Should().Be("line1\nline2");
+            await fs.WriteAllTextAsync(filePath, "line1\nline2", TestContext.Current.CancellationToken);
+            (await fs.ReadAllTextAsync(filePath, TestContext.Current.CancellationToken)).Should().Be("line1\nline2");
 
             var lines = new List<string>();
-            await foreach (var line in fs.ReadLinesAsync(filePath))
+            await foreach (var line in fs.ReadLinesAsync(filePath, TestContext.Current.CancellationToken))
             {
                 lines.Add(line);
             }
@@ -79,8 +79,8 @@ public class LocalExecutionWorldTests
             Arguments = "/c echo hi",
         });
 
-        var output = await process.StandardOutput.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        var output = await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
 
         output.Trim().Should().Be("hi");
         process.HasExited.Should().BeTrue();

@@ -34,6 +34,7 @@ namespace Seeing.Agent.Core.Commands
         private readonly ILogger<CommandService> _logger;
         private readonly Abstractions.Hooks.IHookManager _hookManager;
 
+        /// <summary>初始化命令执行服务，注入日志器与 Hook 管理器。</summary>
         public CommandService(
             ILogger<CommandService> logger,
             Abstractions.Hooks.IHookManager hookManager)

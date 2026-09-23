@@ -7,6 +7,9 @@ public sealed class ProviderReloadHandler : ReloadHandlerBase<ConfigChange>
 {
     private readonly ProviderManager _manager;
 
+    /// <summary>
+    /// 注入 ProviderManager 构造 Provider 重载处理器。
+    /// </summary>
     public ProviderReloadHandler(ProviderManager manager) => _manager = manager;
 
     /// <inheritdoc/>

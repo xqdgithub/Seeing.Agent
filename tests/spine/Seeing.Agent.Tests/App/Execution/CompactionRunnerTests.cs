@@ -61,7 +61,7 @@ public class CompactionRunnerTests
 
         var runner = new CompactionRunner(compression, publisher.Object, sessionManager.Object);
 
-        var outcome = await runner.RunAsync(session.Id, reason: "manual");
+        var outcome = await runner.RunAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeTrue();
         events[0].Should().Be("started", "Started 必须最先发布：UI 进度态依赖它承载后续 Delta");
@@ -94,7 +94,7 @@ public class CompactionRunnerTests
 
         var runner = new CompactionRunner(compression, publisher.Object, sessionManager.Object);
 
-        var outcome = await runner.RunAsync(session.Id, reason: "manual");
+        var outcome = await runner.RunAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeFalse();
         events.Should().Equal(new[] { "started", "failed" }, "失败路径事件序列为 Started → Failed");
@@ -110,7 +110,7 @@ public class CompactionRunnerTests
 
         var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>(), sessionManager.Object);
 
-        var outcome = await runner.RunAsync(session.Id, reason: "manual");
+        var outcome = await runner.RunAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeFalse();
         var systemMessage = session.Messages.Should().ContainSingle(m => m.Role == MessageRole.System).Subject;
@@ -128,7 +128,7 @@ public class CompactionRunnerTests
 
         var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>(), sessionManager.Object);
 
-        var outcome = await runner.RunAsync(session.Id, reason: "manual");
+        var outcome = await runner.RunAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeFalse();
         sessionManager.Verify(m => m.SaveAndNotifyAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -151,7 +151,7 @@ public class CompactionRunnerTests
 
         var runner = new CompactionRunner(compression, publisher.Object, sessionManager.Object);
 
-        await runner.RunAsync(session.Id, reason: "manual");
+        await runner.RunAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         order.Should().Equal(new[] { "save", "publish" }, "先写会话再发布事件：UI 收到事件时读到已写入的 SessionData");
         sessionManager.Verify(m => m.SaveAndNotifyAsync(session.Id, It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -173,7 +173,7 @@ public class CompactionRunnerTests
 
         var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>(), sessionManager.Object);
 
-        var outcome = await runner.RunAsync(session.Id, reason: "manual");
+        var outcome = await runner.RunAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeFalse();
         var systemMessage = session.Messages.Should().ContainSingle(m => m.Role == MessageRole.System).Subject;
@@ -190,7 +190,7 @@ public class CompactionRunnerTests
 
         var runner = new CompactionRunner(compression, Mock.Of<IExecutionEventPublisher>(), sessionManager.Object);
 
-        var outcome = await runner.RunAsync(session.Id, reason: "manual");
+        var outcome = await runner.RunAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeFalse();
         var failureMessages = session.Messages.Where(m => m.Role == MessageRole.System).ToList();

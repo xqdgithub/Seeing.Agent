@@ -16,16 +16,28 @@ public sealed class ProviderRegistry : IProviderRegistry
     private ImmutableDictionary<string, string?> _owners =
         ImmutableDictionary<string, string?>.Empty;
 
+    /// <summary>
+    /// 注入日志构造空的 Provider 注册表。
+    /// </summary>
     public ProviderRegistry(ILogger<ProviderRegistry> logger)
     {
         _logger = logger;
     }
 
+    /// <summary>
+    /// Provider 集合变更事件（注册/注销后触发，携带最新快照与变更明细）。
+    /// </summary>
     public event EventHandler<ProvidersChangedEventArgs>? ProvidersChanged;
 
+    /// <summary>
+    /// 获取当前 Provider 快照（不可变字典，线程安全读取）。
+    /// </summary>
     public IReadOnlyDictionary<string, ILlmProvider> GetProviders()
         => Volatile.Read(ref _providers);
 
+    /// <summary>
+    /// 按 ID 获取 Provider，未注册返回 null。
+    /// </summary>
     public ILlmProvider? GetProvider(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
@@ -34,6 +46,9 @@ public sealed class ProviderRegistry : IProviderRegistry
             : null;
     }
 
+    /// <summary>
+    /// 查询 Provider 的归属扩展 ID，无归属或未注册返回 null。
+    /// </summary>
     public string? GetOwnerExtensionId(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
@@ -42,6 +57,9 @@ public sealed class ProviderRegistry : IProviderRegistry
             : null;
     }
 
+    /// <summary>
+    /// 注册 Provider；同 ID 后注册者覆盖并释放被替换的实例，随后广播变更事件。
+    /// </summary>
     public void Register(ILlmProvider provider, string? ownerExtensionId = null)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -70,6 +88,9 @@ public sealed class ProviderRegistry : IProviderRegistry
         RaiseProvidersChanged(snapshot, changedProviderIds: new[] { provider.Id });
     }
 
+    /// <summary>
+    /// 注销指定 ID 的 Provider 并释放实例，返回是否成功移除。
+    /// </summary>
     public bool Unregister(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
@@ -92,6 +113,9 @@ public sealed class ProviderRegistry : IProviderRegistry
         return true;
     }
 
+    /// <summary>
+    /// 注销指定扩展拥有的全部 Provider 并释放实例，返回移除数量。
+    /// </summary>
     public int UnregisterByOwner(string ownerExtensionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerExtensionId);

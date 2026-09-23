@@ -27,6 +27,7 @@ public sealed class ScenarioCatalog : IScenarioCatalog
 {
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
 
+    /// <summary>初始化场景目录，注入配置监视器。</summary>
     public ScenarioCatalog(IOptionsMonitor<SeeingAgentOptions> options)
     {
         _options = options;

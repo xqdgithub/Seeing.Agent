@@ -123,8 +123,11 @@ namespace Seeing.Agent.Core.Generation
     /// <summary>验证结果</summary>
     public class AgentValidationResult
     {
+        /// <summary>定义是否通过验证（无错误）</summary>
         public bool IsValid { get; set; }
+        /// <summary>验证发现的错误列表</summary>
         public List<string> Errors { get; set; } = new();
+        /// <summary>验证发现的警告列表</summary>
         public List<string> Warnings { get; set; } = new();
     }
 }

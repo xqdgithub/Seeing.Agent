@@ -24,7 +24,7 @@ public class ModuleLifecycleManagerTests
 
         var lifecycle = new ModuleLifecycleManager(catalog, [io, fs, unused], new ServiceCollection().BuildServiceProvider(), NullLogger<ModuleLifecycleManager>.Instance);
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         lifecycle.Activated.Should().BeEquivalentTo(["filesystem", "io.local"]);
         unused.ActivateCount.Should().Be(0);
@@ -47,20 +47,20 @@ public class ModuleLifecycleManagerTests
 
         var lifecycle = new ModuleLifecycleManager(catalog, [module], new ServiceCollection().BuildServiceProvider(), NullLogger<ModuleLifecycleManager>.Instance);
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         toolBag.Has("demo_tool").Should().BeTrue();
         var promptAfterActivate = await BuildPromptAsync(section);
         promptAfterActivate.Should().Contain("demo-section-body");
 
-        await lifecycle.DeactivateAsync(["demo"]);
+        await lifecycle.DeactivateAsync(["demo"], TestContext.Current.CancellationToken);
 
         toolBag.Has("demo_tool").Should().BeFalse();
         var promptAfterDeactivate = await BuildPromptAsync(section);
         promptAfterDeactivate.Should().NotContain("demo-section-body");
         lifecycle.IsActivated("demo").Should().BeFalse();
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         toolBag.Has("demo_tool").Should().BeTrue();
         var promptAfterReactivate = await BuildPromptAsync(section);

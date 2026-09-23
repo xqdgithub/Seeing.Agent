@@ -41,12 +41,12 @@ public class SessionTrimToolTests
         result.Metadata["backup_session_id"].Should().NotBeNull();
         result.Metadata["remaining_active_count"].Should().Be(3);
 
-        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id));
+        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id, TestContext.Current.CancellationToken));
         ids.Should().NotContain(u0.Id!).And.NotContain(a0.Id!).And.NotContain(u1.Id!);
         ids.Should().Contain(a1.Id!).And.Contain(u2.Id!).And.Contain(a2.Id!);
 
-        var group = await h.Groups.GetGroupForSessionAsync(root.Id);
-        var members = await h.Groups.ListMembersAsync(group!.Id);
+        var group = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var members = await h.Groups.ListMembersAsync(group!.Id, TestContext.Current.CancellationToken);
         members.Should().Contain(m => m.Relation == SessionRelation.Fork);
     }
 
@@ -69,7 +69,7 @@ public class SessionTrimToolTests
         result.Success.Should().BeTrue();
         result.Metadata["removed_count"].Should().Be(4);
 
-        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id));
+        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id, TestContext.Current.CancellationToken));
         ids.Should().Equal(u2.Id!, a2.Id!);
     }
 
@@ -91,7 +91,7 @@ public class SessionTrimToolTests
         result.Success.Should().BeTrue();
         result.Metadata["removed_count"].Should().Be(2);
 
-        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id));
+        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id, TestContext.Current.CancellationToken));
         ids.Should().Contain(summary.Id!).And.Contain(u2.Id!);
         ids.Should().NotContain(u1.Id!).And.NotContain(a1.Id!);
     }
@@ -114,7 +114,7 @@ public class SessionTrimToolTests
         result.Success.Should().BeFalse();
         result.Error.Should().NotBeNullOrEmpty();
 
-        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id));
+        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id, TestContext.Current.CancellationToken));
         ids.Should().Contain(u1.Id!).And.Contain(a1.Id!).And.Contain(u2.Id!).And.Contain(a2.Id!);
     }
 
@@ -134,7 +134,7 @@ public class SessionTrimToolTests
             Args(new { mode = "before", message_id = u2.Id }), Context(root.Id));
 
         result.Success.Should().BeTrue();
-        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id));
+        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id, TestContext.Current.CancellationToken));
         ids.Should().Contain(old.Id!);
         ids.Should().NotContain(u1.Id!).And.NotContain(a1.Id!);
     }
@@ -156,7 +156,7 @@ public class SessionTrimToolTests
         result.Success.Should().BeTrue();
         result.Metadata["removed_count"].Should().Be(2);
 
-        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id));
+        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id, TestContext.Current.CancellationToken));
         ids.Should().Equal(u0.Id!, u1.Id!);
     }
 
@@ -180,7 +180,7 @@ public class SessionTrimToolTests
             Args(new { mode = "before", message_id = a1.Id }), Context(root.Id));
 
         result.Success.Should().BeFalse();
-        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id));
+        var ids = MessageIds(await h.Sessions.GetOrLoadAsync(root.Id, TestContext.Current.CancellationToken));
         ids.Should().Contain(u0.Id!).And.Contain(a0.Id!);
     }
 

@@ -12,6 +12,9 @@ public sealed class AgentExecutorRouter : IAgentExecutor
 {
     private readonly IReadOnlyDictionary<AgentRuntime, IAgentExecutorImplementation> _byRuntime;
 
+    /// <summary>
+    /// 构造执行路由器，按各实现声明的 SupportedRuntime 建立运行时→执行器映射。
+    /// </summary>
     public AgentExecutorRouter(IEnumerable<IAgentExecutorImplementation> implementations)
     {
         ArgumentNullException.ThrowIfNull(implementations);

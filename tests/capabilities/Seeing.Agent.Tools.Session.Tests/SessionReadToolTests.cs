@@ -167,7 +167,8 @@ public class SessionReadToolTests
         using var h = new SessionToolTestHarness();
         var root = await h.CreateRootGroupedAsync("root");
         var child = await h.Groups.CreateChildAsync(
-            root.Id, "build", "child", new List<SessionPermissionRule>(), null);
+            root.Id, "build", "child", new List<SessionPermissionRule>(), null,
+            TestContext.Current.CancellationToken);
         await h.AddMessageAsync(child.Id, "user", "child-content");
         var tool = CreateTool(h);
 

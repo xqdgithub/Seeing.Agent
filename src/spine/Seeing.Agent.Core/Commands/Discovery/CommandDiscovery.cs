@@ -19,6 +19,7 @@ namespace Seeing.Agent.Core.Commands.Discovery
 
         public CommandMetadata Metadata { get; }
 
+        /// <summary>初始化反射命令，绑定目标方法、实例与元数据。</summary>
         public ReflectedCommand(MethodInfo method, object? instance, CommandMetadata metadata, ILogger? logger = null)
         {
             _method = method;
@@ -27,6 +28,7 @@ namespace Seeing.Agent.Core.Commands.Discovery
             Metadata = metadata;
         }
 
+        /// <summary>反射调用目标方法执行命令，解析参数并返回命令结果。</summary>
         public async Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
         {
             try
@@ -128,6 +130,7 @@ namespace Seeing.Agent.Core.Commands.Discovery
         private readonly ILoggerFactory? _loggerFactory;
         private readonly ILogger<CommandDiscovery>? _logger;
 
+        /// <summary>初始化命令发现器，可选注入日志工厂。</summary>
         public CommandDiscovery(ILoggerFactory? loggerFactory = null)
         {
             _loggerFactory = loggerFactory;
@@ -336,7 +339,8 @@ namespace Seeing.Agent.Core.Commands.Discovery
         /// </summary>
         private class MarkdownCommand : ICommand
         {
-            public CommandMetadata Metadata { get; }
+        /// <summary>命令元数据。</summary>
+        public CommandMetadata Metadata { get; }
             private readonly string? _template;
             private readonly ILogger? _logger;
 

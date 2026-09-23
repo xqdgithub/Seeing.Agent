@@ -64,8 +64,8 @@ public class KeywordIndexTests : IDisposable
         );
 
         // Act
-        await _index.IndexAsync(node);
-        var count = await _index.GetDocumentCountAsync();
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
+        var count = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         count.Should().Be(1);
@@ -91,10 +91,10 @@ public class KeywordIndexTests : IDisposable
             title: "Cooking Guide"
         );
 
-        await _index.IndexBatchAsync(new[] { node1, node2, node3 });
+        await _index.IndexBatchAsync(new[] { node1, node2, node3 }, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _index.SearchAsync("machine learning");
+        var results = await _index.SearchAsync("machine learning", ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().NotBeEmpty();
@@ -121,10 +121,10 @@ public class KeywordIndexTests : IDisposable
             title: "天气预报"
         );
 
-        await _index.IndexBatchAsync(new[] { node1, node2 });
+        await _index.IndexBatchAsync(new[] { node1, node2 }, TestContext.Current.CancellationToken);
 
         // Act - 搜索"天气"
-        var results = await _index.SearchAsync("天气");
+        var results = await _index.SearchAsync("天气", ct: TestContext.Current.CancellationToken);
 
         // Assert
         // 由于 FTS5 unicode61 对中文的 tokenizer 限制，前缀匹配可能只找到部分结果
@@ -141,14 +141,14 @@ public class KeywordIndexTests : IDisposable
             "This document will be deleted.",
             title: "To Delete"
         );
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
         
-        var countBefore = await _index.GetDocumentCountAsync();
+        var countBefore = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
         countBefore.Should().Be(1);
 
         // Act
-        await _index.RemoveAsync("daily/to-delete.md");
-        var countAfter = await _index.GetDocumentCountAsync();
+        await _index.RemoveAsync("daily/to-delete.md", TestContext.Current.CancellationToken);
+        var countAfter = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         countAfter.Should().Be(0);
@@ -163,10 +163,10 @@ public class KeywordIndexTests : IDisposable
             "Some content",
             title: "Test"
         );
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _index.SearchAsync("");
+        var results = await _index.SearchAsync("", ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().BeEmpty();
@@ -181,10 +181,10 @@ public class KeywordIndexTests : IDisposable
             "Some unrelated content",
             title: "Test"
         );
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _index.SearchAsync("xyznonexistent123");
+        var results = await _index.SearchAsync("xyznonexistent123", ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().BeEmpty();
@@ -199,7 +199,7 @@ public class KeywordIndexTests : IDisposable
             "Original content",
             title: "Original Title"
         );
-        await _index.IndexAsync(node1);
+        await _index.IndexAsync(node1, TestContext.Current.CancellationToken);
 
         // Act - 更新同一文档
         var node2 = CreateTestNode(
@@ -207,10 +207,10 @@ public class KeywordIndexTests : IDisposable
             "Updated content with machine learning keywords",
             title: "Updated Title"
         );
-        await _index.IndexAsync(node2);
+        await _index.IndexAsync(node2, TestContext.Current.CancellationToken);
 
-        var count = await _index.GetDocumentCountAsync();
-        var results = await _index.SearchAsync("machine learning");
+        var count = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
+        var results = await _index.SearchAsync("machine learning", ct: TestContext.Current.CancellationToken);
 
         // Assert
         count.Should().Be(1); // 应该只有一份文档
@@ -230,8 +230,8 @@ public class KeywordIndexTests : IDisposable
         };
 
         // Act
-        await _index.IndexBatchAsync(nodes);
-        var count = await _index.GetDocumentCountAsync();
+        await _index.IndexBatchAsync(nodes, TestContext.Current.CancellationToken);
+        var count = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         count.Should().Be(3);
@@ -246,14 +246,14 @@ public class KeywordIndexTests : IDisposable
             CreateTestNode("daily/clear1.md", "Content 1"),
             CreateTestNode("daily/clear2.md", "Content 2"),
         };
-        await _index.IndexBatchAsync(nodes);
+        await _index.IndexBatchAsync(nodes, TestContext.Current.CancellationToken);
         
-        var countBefore = await _index.GetDocumentCountAsync();
+        var countBefore = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
         countBefore.Should().Be(2);
 
         // Act
-        await _index.ClearAsync();
-        var countAfter = await _index.GetDocumentCountAsync();
+        await _index.ClearAsync(TestContext.Current.CancellationToken);
+        var countAfter = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         countAfter.Should().Be(0);
@@ -273,10 +273,10 @@ public class KeywordIndexTests : IDisposable
             "Data science is a broad field",
             title: "DS Overview"
         );
-        await _index.IndexBatchAsync(new[] { node1, node2 });
+        await _index.IndexBatchAsync(new[] { node1, node2 }, TestContext.Current.CancellationToken);
 
         // Act - 搜索多个关键词（AND 查询）
-        var results = await _index.SearchAsync("machine learning data");
+        var results = await _index.SearchAsync("machine learning data", ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().NotBeEmpty();
@@ -293,10 +293,10 @@ public class KeywordIndexTests : IDisposable
             "Content with (parentheses) and [brackets]",
             title: "Special Characters"
         );
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
 
         // Act - 搜索包含特殊字符的查询
-        var results = await _index.SearchAsync("parentheses brackets");
+        var results = await _index.SearchAsync("parentheses brackets", ct: TestContext.Current.CancellationToken);
 
         // Assert - 不应抛出异常，应正常返回结果
         results.Should().NotBeEmpty();
@@ -312,10 +312,10 @@ public class KeywordIndexTests : IDisposable
             title: "Tagged Document",
             tags: new[] { "important", "project-alpha", "review" }
         );
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _index.SearchAsync("project-alpha");
+        var results = await _index.SearchAsync("project-alpha", ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().NotBeEmpty();

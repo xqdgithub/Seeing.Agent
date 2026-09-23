@@ -16,6 +16,9 @@ public sealed class SurfaceRegistry : IPermissionSurfaceRegistry, IQuestionSurfa
     private readonly ConcurrentDictionary<ISurfaceProvider, byte> _providers = new();
     private readonly ILogger<SurfaceRegistry>? _logger;
 
+    /// <summary>
+    /// 构造呈现端登记表，可选注入日志器。
+    /// </summary>
     public SurfaceRegistry(ILogger<SurfaceRegistry>? logger = null) => _logger = logger;
 
     /// <inheritdoc />

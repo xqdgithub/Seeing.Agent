@@ -58,7 +58,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
         var newPath = _testDirectory;
 
         // Act
-        var result = await service.SwitchWorkspaceAsync(newPath);
+        var result = await service.SwitchWorkspaceAsync(newPath, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
@@ -74,7 +74,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
         var newPath = _testDirectory;
 
         // Act
-        var result = await service.SwitchWorkspaceAsync(newPath);
+        var result = await service.SwitchWorkspaceAsync(newPath, TestContext.Current.CancellationToken);
 
         // Assert: 仅 SetWorkspaceRoot + ReloadAsync 被调用（工具/技能状态由编排器 Handler 处理）
         result.Should().BeTrue();
@@ -89,7 +89,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        var result = await service.SwitchWorkspaceAsync("");
+        var result = await service.SwitchWorkspaceAsync("", TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeFalse();
@@ -104,7 +104,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
         var nonExistentPath = Path.Combine(Path.GetTempPath(), $"nonexistent_{Guid.NewGuid():N}");
 
         // Act
-        var result = await service.SwitchWorkspaceAsync(nonExistentPath);
+        var result = await service.SwitchWorkspaceAsync(nonExistentPath, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeFalse();
@@ -121,7 +121,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
             .Returns(Path.Combine(newPath, ".seeing"));
 
         // Act
-        var result = await service.SwitchWorkspaceAsync(newPath);
+        var result = await service.SwitchWorkspaceAsync(newPath, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
@@ -141,7 +141,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
             .ThrowsAsync(new InvalidOperationException("Config error"));
 
         // Act
-        var result = await service.SwitchWorkspaceAsync(newPath);
+        var result = await service.SwitchWorkspaceAsync(newPath, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeFalse();

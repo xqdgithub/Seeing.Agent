@@ -66,10 +66,15 @@ namespace Seeing.Agent.Core.Generation
     /// <summary>模型配置覆盖</summary>
     public class ModelConfigOverride
     {
+        /// <summary>模型提供商 ID</summary>
         public string? Provider { get; set; }
+        /// <summary>模型 ID</summary>
         public string? ModelId { get; set; }
+        /// <summary>采样温度覆盖值</summary>
         public double? Temperature { get; set; }
+        /// <summary>最大输出 Token 数覆盖值</summary>
         public int? MaxTokens { get; set; }
+        /// <summary>Top-P 核采样覆盖值</summary>
         public double? TopP { get; set; }
     }
 }

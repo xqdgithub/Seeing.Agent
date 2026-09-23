@@ -173,7 +173,7 @@
         _loading = true;
         try
         {
-            _defaultAgent = await RuntimeManager.GetDefaultAgentNameAsync();
+            _defaultAgent = await RuntimeManager.GetDefaultAgentNameAsync() ?? "";
             var agents = await AgentManager.GetAgentsAsync();
             
             // 加载 MD 配置信息

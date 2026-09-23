@@ -67,7 +67,7 @@ public sealed class TuiViewStateConcurrencyTests
             }
         })).ToArray();
 
-        await Task.Delay(1500);
+        await Task.Delay(1500, TestContext.Current.CancellationToken);
 
         await writerCts.CancelAsync();
         await readerCts.CancelAsync();

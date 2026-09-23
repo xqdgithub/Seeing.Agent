@@ -14,6 +14,9 @@ namespace Seeing.Agent.Core.Snapshot
         private readonly SnapshotOptions _options;
         private readonly ConcurrentDictionary<string, string> _contentCache = new();
 
+        /// <summary>
+        /// 构造快照存储，加载快照选项配置。
+        /// </summary>
         public SnapshotStorage(ILogger<SnapshotStorage> logger, IOptions<SnapshotOptions> options)
         {
             _logger = logger;
@@ -144,6 +147,9 @@ namespace Seeing.Agent.Core.Snapshot
         private string GetContentPath(string snapshotId, string sessionId)
             => Path.Combine(_options.StoragePath, sessionId, "content", $"{snapshotId}.txt");
 
+        /// <summary>
+        /// 计算内容的 SHA256 十六进制哈希（快照指纹）。
+        /// </summary>
         public static string ComputeHash(string content)
         {
             return Helpers.HashHelper.ComputeSha256Hex(content);

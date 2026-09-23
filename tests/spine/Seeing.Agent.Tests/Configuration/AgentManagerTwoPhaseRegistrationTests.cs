@@ -48,7 +48,7 @@ public class AgentManagerTwoPhaseRegistrationTests
 
         (await manager.GetAgentsAsync()).Should().BeEmpty();
 
-        await new AgentsBuiltInModule(store).ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await new AgentsBuiltInModule(store).ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
 
         var names = (await manager.GetAgentsAsync()).Select(a => a.Name).ToList();
         names.Should().Contain(["build", "plan", "explore", "general", "summary"]);

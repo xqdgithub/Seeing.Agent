@@ -48,7 +48,7 @@ public class LlmMemoryEvolutionGraphTests : IDisposable
 
             User prefers PostgreSQL
             """;
-        await store.WriteAsync(dailyPath, dailyContent);
+        await store.WriteAsync(dailyPath, dailyContent, TestContext.Current.CancellationToken);
 
         var index = new Mock<IMemoryIndex>();
         var graph = new Mock<IMemoryGraph>();

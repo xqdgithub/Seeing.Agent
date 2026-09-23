@@ -80,7 +80,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
                 AgentId = "general",
                 SkipUserMessagePersist = true,
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
 
@@ -147,7 +147,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
                 AgentId = "general",
                 SkipUserMessagePersist = true,
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
 
@@ -211,7 +211,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
             {
                 AgentId = "general",
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
 
@@ -266,7 +266,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
             {
                 AgentId = "general",
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
 
@@ -341,7 +341,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
             {
                 AgentId = "general",
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
 

@@ -41,7 +41,7 @@ public sealed class TuiSurfaceProviderTests
             .ReturnsAsync([new SessionData { Id = "c2" }]);
 
         provider.Initialize();
-        await provider.SetActiveSessionAsync("root");
+        await provider.SetActiveSessionAsync("root", TestContext.Current.CancellationToken);
 
         provider.SurfaceSessionIds.Should().Contain(["root", "c1", "c2", "fork1"]);
     }
@@ -57,11 +57,11 @@ public sealed class TuiSurfaceProviderTests
         using var provider = CreateProvider(groups, bus, permissions, questions, Debounce, EmptyConfirm);
         provider.Initialize();
 
-        await provider.SetActiveSessionAsync("a");
+        await provider.SetActiveSessionAsync("a", TestContext.Current.CancellationToken);
         provider.SurfaceSessionIds.Should().ContainSingle().Which.Should().Be("a");
 
-        await provider.SetActiveSessionAsync("b");
-        await Task.Delay(250);
+        await provider.SetActiveSessionAsync("b", TestContext.Current.CancellationToken);
+        await Task.Delay(250, TestContext.Current.CancellationToken);
 
         provider.SurfaceSessionIds.Should().ContainSingle().Which.Should().Be("b");
     }
@@ -79,13 +79,13 @@ public sealed class TuiSurfaceProviderTests
         permissions.Setup(p => p.GetAllPending()).Returns(() => pending.ToList());
 
         provider.Initialize();
-        await provider.SetActiveSessionAsync("s1");
+        await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
 
         pending.Add(new PermissionRequest { SessionId = "other", PermissionKind = "tool.execute" });
         permissions.Raise(p => p.PendingChanged += null);
 
         provider.SurfaceSessionIds.Should().NotContain("other");
-        await Task.Delay(250);
+        await Task.Delay(250, TestContext.Current.CancellationToken);
         provider.SurfaceSessionIds.Should().Contain("other");
     }
 
@@ -102,7 +102,7 @@ public sealed class TuiSurfaceProviderTests
         permissions.Setup(p => p.GetAllPending()).Returns(() => pending.ToList());
 
         provider.Initialize();
-        await provider.SetActiveSessionAsync("s1");
+        await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
 
         var count = 0;
         provider.SurfacedChanged += () => Interlocked.Increment(ref count);
@@ -114,7 +114,7 @@ public sealed class TuiSurfaceProviderTests
         pending.Add(new PermissionRequest { SessionId = "o3", PermissionKind = "tool.execute" });
         permissions.Raise(p => p.PendingChanged += null);
 
-        await Task.Delay(300);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
 
         count.Should().Be(1);
         provider.SurfaceSessionIds.Should().Contain(["o1", "o2", "o3"]);
@@ -133,15 +133,15 @@ public sealed class TuiSurfaceProviderTests
             TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(250));
 
         provider.Initialize();
-        await provider.SetActiveSessionAsync("s1");
+        await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
         provider.SurfaceSessionIds.Should().Contain("s1");
 
-        await provider.SetActiveSessionAsync(string.Empty);
+        await provider.SetActiveSessionAsync(string.Empty, TestContext.Current.CancellationToken);
 
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
         provider.SurfaceSessionIds.Should().Contain("s1");
 
-        await Task.Delay(400);
+        await Task.Delay(400, TestContext.Current.CancellationToken);
         provider.SurfaceSessionIds.Should().BeEmpty();
     }
 
@@ -158,13 +158,13 @@ public sealed class TuiSurfaceProviderTests
             TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(250));
 
         provider.Initialize();
-        await provider.SetActiveSessionAsync("s1");
+        await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
 
-        await provider.SetActiveSessionAsync(string.Empty);
-        await Task.Delay(80);
-        await provider.SetActiveSessionAsync("s2");
+        await provider.SetActiveSessionAsync(string.Empty, TestContext.Current.CancellationToken);
+        await Task.Delay(80, TestContext.Current.CancellationToken);
+        await provider.SetActiveSessionAsync("s2", TestContext.Current.CancellationToken);
 
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
         provider.SurfaceSessionIds.Should().Contain("s2");
     }
 
@@ -181,7 +181,7 @@ public sealed class TuiSurfaceProviderTests
         permissions.Setup(p => p.GetAllPending()).Returns(() => pending.ToList());
 
         provider.Initialize();
-        await provider.SetActiveSessionAsync("s1");
+        await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
 
         var count = 0;
         provider.SurfacedChanged += () => Interlocked.Increment(ref count);
@@ -191,7 +191,7 @@ public sealed class TuiSurfaceProviderTests
         pending.Add(new PermissionRequest { SessionId = "other", PermissionKind = "tool.execute" });
         permissions.Raise(p => p.PendingChanged += null);
 
-        await Task.Delay(300);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
 
         count.Should().Be(0);
         provider.SurfaceSessionIds.Should().BeEmpty();

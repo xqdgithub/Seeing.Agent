@@ -25,6 +25,9 @@ public class PermissionService : IPermissionService
     private readonly IEnumerable<IPermissionChannel> _channels;
     private readonly IAgentRegistry? _agentRegistry;
 
+    /// <summary>
+    /// 构造权限服务，注入授权决策链所需的可选依赖（白名单存储、生效策略、通道等，均可缺省）。
+    /// </summary>
     public PermissionService(
         ILogger<PermissionService> logger,
         IPermissionGrantStore? grantStore = null,

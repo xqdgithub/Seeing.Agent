@@ -133,6 +133,9 @@ namespace Seeing.Agent.Core.Models
             return new Dictionary<string, object?>(_parsed);
         }
 
+        /// <summary>
+        /// 返回原始参数 JSON 文本。
+        /// </summary>
         public override string ToString()
         {
             return _raw.GetRawText();
@@ -150,6 +153,9 @@ namespace Seeing.Agent.Core.Models
         /// <summary>期望类型</summary>
         public Type ExpectedType { get; }
 
+        /// <summary>
+        /// 构造参数缺失异常，记录缺失的参数名与期望类型。
+        /// </summary>
         public ToolParameterMissingException(string parameterName, Type expectedType)
             : base($"缺少必需参数 '{parameterName}' (类型: {expectedType.Name})")
         {

@@ -48,7 +48,6 @@ using Seeing.Agent.Core.Middlewares;
 using Seeing.Agent.Core.Shell;
 using Seeing.Agent.Core.Tools;
 using Seeing.Agent.Core.Tools.BuiltIn;
-using Seeing.Agent.Core.Todo;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
@@ -166,7 +165,7 @@ namespace Seeing.Agent.Core.Extensions
 
         /// <summary>
         /// 登记能力模块：调用 <see cref="ISeeingModule.ConfigureServices"/> 并注册为 <see cref="ISeeingModule"/>。
-        /// 须在 <see cref="AddSeeingCore"/> 之前调用。
+        /// 须在 <see cref="AddSeeingCore(Microsoft.Extensions.DependencyInjection.IServiceCollection, Seeing.Agent.Abstractions.Configuration.IConfigSectionRegistry)"/> 之前调用。
         /// </summary>
         public static IServiceCollection AddSeeingModule<TModule>(
             this IServiceCollection services,

@@ -52,9 +52,9 @@ public class ToolManagerUnregisterTests
     public async Task UnregisterToolAsync_AfterRegister_RemovesFromGetTools()
     {
         var manager = CreateManager();
-        await manager.RegisterToolAsync(new StubTool("async_demo"));
+        await manager.RegisterToolAsync(new StubTool("async_demo"), TestContext.Current.CancellationToken);
 
-        var removed = await manager.UnregisterToolAsync("async_demo");
+        var removed = await manager.UnregisterToolAsync("async_demo", TestContext.Current.CancellationToken);
 
         removed.Should().BeTrue();
         manager.GetTools().Should().BeEmpty();
@@ -64,6 +64,6 @@ public class ToolManagerUnregisterTests
     public async Task UnregisterToolAsync_UnknownId_ReturnsFalse()
     {
         var manager = CreateManager();
-        (await manager.UnregisterToolAsync("nope")).Should().BeFalse();
+        (await manager.UnregisterToolAsync("nope", TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 }

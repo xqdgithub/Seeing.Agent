@@ -32,9 +32,10 @@ public class AcpPermissionBridgeTests
         var response = await bridge.HandleAsync(
             "acp-1",
             new ToolCallUpdate { ToolCallId = "tc-1", ToolName = "read_file" },
-            Options);
+            Options,
+            TestContext.Current.CancellationToken);
 
-        response.Outcome.OptionId.Should().Be("allow");
+        response.Outcome!.OptionId.Should().Be("allow");
         factory.CapturedSessionId.Should().Be("seeing-1");
         factory.LastRequest.Should().NotBeNull();
         factory.LastRequest!.RequireInteraction.Should().BeTrue();
@@ -65,9 +66,10 @@ public class AcpPermissionBridgeTests
         var response = await bridge.HandleAsync(
             "acp-1",
             new ToolCallUpdate { ToolCallId = "tc-1", ToolName = "bash" },
-            Options);
+            Options,
+            TestContext.Current.CancellationToken);
 
-        response.Outcome.Outcome.Should().Be(PermissionOutcomes.CancelledResponse().Outcome.Outcome);
+        response.Outcome!.Outcome.Should().Be(PermissionOutcomes.CancelledResponse().Outcome!.Outcome);
         factory.LastRequest!.RequireInteraction.Should().BeTrue();
     }
 

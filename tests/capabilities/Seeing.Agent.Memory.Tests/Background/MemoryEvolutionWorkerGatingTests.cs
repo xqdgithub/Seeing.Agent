@@ -42,7 +42,7 @@ public sealed class MemoryEvolutionWorkerGatingTests
         await worker.StartAsync(CancellationToken.None);
 
         // Give ExecuteAsync a moment to enter loops
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
 
         activity.MarkInactiveAndWake();
 
@@ -64,7 +64,7 @@ public sealed class MemoryEvolutionWorkerGatingTests
         var worker = CreateWorker(catalog.Object, activity);
 
         await worker.StartAsync(CancellationToken.None);
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
         worker.IsRunning.Should().BeTrue();
 
         activity.MarkInactiveAndWake();
@@ -75,7 +75,7 @@ public sealed class MemoryEvolutionWorkerGatingTests
 
         activity.MarkActive();
         await worker.StartAsync(CancellationToken.None);
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
         worker.IsRunning.Should().BeTrue();
 
         using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3)))

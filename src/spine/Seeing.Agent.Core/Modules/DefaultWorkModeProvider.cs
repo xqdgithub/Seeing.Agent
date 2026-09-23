@@ -13,6 +13,7 @@ public sealed class DefaultWorkModeProvider : IDefaultWorkModeProvider
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
     private readonly ProcessSettlementOptions? _settlementOptions;
 
+    /// <summary>初始化默认工作模式提供者，注入配置监视器与进程结算选项。</summary>
     public DefaultWorkModeProvider(
         IOptionsMonitor<SeeingAgentOptions> options,
         ProcessSettlementOptions? settlementOptions = null)

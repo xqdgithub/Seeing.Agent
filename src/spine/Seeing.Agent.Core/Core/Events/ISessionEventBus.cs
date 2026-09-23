@@ -8,5 +8,8 @@ namespace Seeing.Agent.Core.Events;
 /// </summary>
 public interface ISessionEventBus
 {
+    /// <summary>
+    /// 将消息事件发布到指定 Session 的实时事件总线。
+    /// </summary>
     void Publish(string sessionId, IMessageEvent evt);
 }

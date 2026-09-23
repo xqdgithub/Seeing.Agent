@@ -72,7 +72,7 @@ public class SessionForkerTests
             """{"cwd":"/repo","files":{"/repo/AGENTS.md":"sha256:abc"}}""";
 
         // Act
-        var forked = await forker.ForkAsync(original.Id);
+        var forked = await forker.ForkAsync(original.Id, ct: TestContext.Current.CancellationToken);
 
         // Assert：关系字段不再由复制引擎写入，仅验证消息与配置复制
         forked.Id.Should().NotBe(original.Id);
@@ -92,7 +92,7 @@ public class SessionForkerTests
         original.Messages.Should().OnlyContain(m => m.SessionId == original.Id);
 
         // Act
-        var forked = await forker.ForkAsync(original.Id);
+        var forked = await forker.ForkAsync(original.Id, ct: TestContext.Current.CancellationToken);
 
         // Assert：fork 消息应改写为新会话 Id，而非保留源归属
         forked.Messages.Should().HaveCount(2);
@@ -124,7 +124,7 @@ public class SessionArchiverTests
         session.AddMessage(new SessionMessage { Role = "user", Content = "Test" });
 
         // Act
-        var result = await archiver.ArchiveAsync(session);
+        var result = await archiver.ArchiveAsync(session, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
@@ -161,7 +161,7 @@ public class SessionSharerTests
         var session = SessionData.Create();
 
         // Act
-        var shareId = await sharer.ShareAsync(session);
+        var shareId = await sharer.ShareAsync(session, TestContext.Current.CancellationToken);
 
         // Assert
         shareId.Should().StartWith("session://share/");
@@ -176,11 +176,11 @@ public class SessionSharerTests
         var sharer = new SessionSharer(logger.Object, tempPath);
         var session = SessionData.Create();
         session.AddMessage(new SessionMessage { Role = "user", Content = "Test" });
-        var shareId = await sharer.ShareAsync(session);
+        var shareId = await sharer.ShareAsync(session, TestContext.Current.CancellationToken);
         var shareGuid = shareId.Replace("session://share/", "");
 
         // Act
-        var resolved = await sharer.ResolveAsync(shareGuid);
+        var resolved = await sharer.ResolveAsync(shareGuid, TestContext.Current.CancellationToken);
 
         // Assert
         resolved.Should().NotBeNull();
@@ -201,7 +201,7 @@ public class SessionReverterTests
         session.AddMessage(new SessionMessage { Id = "msg3", Role = "user", Content = "Bye" });
 
         // Act
-        var result = await reverter.RevertAsync(session.Id, "msg2");
+        var result = await reverter.RevertAsync(session.Id, "msg2", TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
@@ -220,7 +220,7 @@ public class SessionReverterTests
         session.AddMessage(new SessionMessage { Id = "msg4", Role = "assistant", Content = "Goodbye" });
 
         // Act
-        var result = await reverter.RevertToLastUserMessageAsync(session.Id);
+        var result = await reverter.RevertToLastUserMessageAsync(session.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
@@ -249,7 +249,7 @@ public class GlobalSessionStoreTests
         var store = new GlobalSessionStore(logger.Object, tempPath);
 
         // Act
-        var sessions = await store.ListAllAsync();
+        var sessions = await store.ListAllAsync(ct: TestContext.Current.CancellationToken);
 
         // Assert
         sessions.Should().BeEmpty();
@@ -264,7 +264,7 @@ public class GlobalSessionStoreTests
         var store = new GlobalSessionStore(logger.Object, tempPath);
 
         // Act
-        var stats = await store.GetStatisticsAsync();
+        var stats = await store.GetStatisticsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         stats.Should().NotBeNull();

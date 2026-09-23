@@ -39,8 +39,8 @@ public class ChatOrchestratorDeleteSessionTests
                 new CompressionService(null!, Mock.Of<ISessionManager>()),
                 Mock.Of<IExecutionEventPublisher>(),
                 Mock.Of<ISessionManager>()),
-            null,
-            null);
+            null!,
+            null!);
         jobService
             .Setup(s => s.CancelBySessionAsync(target, It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
@@ -69,7 +69,7 @@ public class ChatOrchestratorDeleteSessionTests
                 runTracker: new ChatRunTracker(),
                 logger: NullLogger<ChatOrchestrator>.Instance);
 
-            await orchestrator.DeleteSessionAsync(target);
+            await orchestrator.DeleteSessionAsync(target, TestContext.Current.CancellationToken);
 
             jobService.Verify(
                 s => s.CancelBySessionAsync(target, It.IsAny<CancellationToken>()),

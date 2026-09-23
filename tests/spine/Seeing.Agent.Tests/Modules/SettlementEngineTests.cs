@@ -36,7 +36,7 @@ public class SettlementEngineTests
             ConfiguredBoot = "*",
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Boot.Should().Be("*");
         result.Enabled.Should().BeEquivalentTo(["filesystem", "io.local", "shell"]);
@@ -63,7 +63,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Boot.Should().Be("secure");
         result.Enabled.Should().BeEquivalentTo(["basic", "io.local"]);
@@ -87,7 +87,7 @@ public class SettlementEngineTests
             ConfiguredBoot = "minimal",
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Boot.Should().Be("minimal");
         result.Enabled.Should().BeEquivalentTo(BuiltInCapabilitySets.Minimal);
@@ -110,7 +110,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Enabled.Should().BeEquivalentTo(["a", "b"]);
         result.Warnings.Should().NotContain(w => w.Contains("'*'", StringComparison.Ordinal));
@@ -130,7 +130,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Enabled.Should().BeEmpty();
         catalog.Enabled.Should().BeEmpty();
@@ -152,7 +152,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Boot.Should().Be("*");
         result.Scenario.Should().Be("minimal");
@@ -188,7 +188,7 @@ public class SettlementEngineTests
             UserEnabled = ["io.local"], // 已废除：不得收窄 boot
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Enabled.Should().BeEquivalentTo(["filesystem", "io.local", "shell"]);
         result.Warnings.Should().Contain(w =>
@@ -243,7 +243,7 @@ public class SettlementEngineTests
             UserDisabled = ["git", "unknown-disabled"],
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Enabled.Should().BeEquivalentTo(["filesystem", "io.local", "shell"]);
         result.Warnings.Should().Contain(w => w.Contains("unknown-disabled", StringComparison.Ordinal));
@@ -258,7 +258,7 @@ public class SettlementEngineTests
             Available = [Desc("io.local"), Desc("filesystem")],
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Boot.Should().Be("*");
         result.Enabled.Should().BeEquivalentTo(["filesystem", "io.local"]);
@@ -279,7 +279,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Boot.Should().Be("narrow");
         result.Enabled.Should().BeEquivalentTo(["a"]);
@@ -299,7 +299,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Boot.Should().Be("narrow");
         result.Enabled.Should().BeEquivalentTo(["a"]);
@@ -323,7 +323,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.BoundSeams.Should().ContainKey("executionWorld")
             .WhoseValue.Should().Be("io.local");
@@ -355,7 +355,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.BoundSeams["executionWorld"].Should().Be("io.sandbox");
     }
@@ -477,7 +477,7 @@ public class SettlementEngineTests
             },
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Enabled.Should().BeEquivalentTo(["filesystem", "io.local"]);
         result.BoundSeams.Should().ContainKey("executionWorld")
@@ -502,7 +502,7 @@ public class SettlementEngineTests
                 : null,
         };
 
-        var result = await engine.SettleAsync(input);
+        var result = await engine.SettleAsync(input, TestContext.Current.CancellationToken);
 
         result.Enabled.Should().BeEquivalentTo(["a", "b"]);
     }

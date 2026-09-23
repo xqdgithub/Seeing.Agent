@@ -18,6 +18,9 @@ namespace Seeing.Agent.Core.Generation
         private readonly ConcurrentDictionary<string, AgentTemplate> _templates = new();
         private readonly ConcurrentDictionary<string, GeneratedAgentDefinition> _definitions = new();
 
+        /// <summary>
+        /// 构造生成器，加载内置模板并可选绑定 Agent 注册表。
+        /// </summary>
         public AgentGenerator(
             ILogger<AgentGenerator> logger,
             AgentTemplateEngine templateEngine,
@@ -31,6 +34,9 @@ namespace Seeing.Agent.Core.Generation
             LoadBuiltinTemplates();
         }
 
+        /// <summary>
+        /// 依据请求（可选模板渲染系统提示词）生成 Agent 定义，验证通过后注册到注册表。
+        /// </summary>
         public async Task<GeneratedAgentDefinition> GenerateAsync(AgentGenerationRequest request, CancellationToken cancellationToken = default)
         {
             // 获取模板
@@ -102,11 +108,17 @@ namespace Seeing.Agent.Core.Generation
             return definition;
         }
 
+        /// <summary>
+        /// 验证给定的 Agent 定义是否合法。
+        /// </summary>
         public Task<AgentValidationResult> ValidateAsync(GeneratedAgentDefinition definition, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(_validator.Validate(definition));
         }
 
+        /// <summary>
+        /// 列出全部模板，内置模板优先、再按名称排序。
+        /// </summary>
         public Task<IReadOnlyList<AgentTemplate>> ListTemplatesAsync(CancellationToken cancellationToken = default)
         {
             var templates = _templates.Values
@@ -117,12 +129,18 @@ namespace Seeing.Agent.Core.Generation
             return Task.FromResult<IReadOnlyList<AgentTemplate>>(templates);
         }
 
+        /// <summary>
+        /// 按 ID 获取模板，不存在时返回 null。
+        /// </summary>
         public Task<AgentTemplate?> GetTemplateAsync(string templateId, CancellationToken cancellationToken = default)
         {
             _templates.TryGetValue(templateId, out var template);
             return Task.FromResult(template);
         }
 
+        /// <summary>
+        /// 校验模板名称与提示词语法后注册（或覆盖）模板。
+        /// </summary>
         public Task RegisterTemplateAsync(AgentTemplate template, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(template.Name))
@@ -140,6 +158,9 @@ namespace Seeing.Agent.Core.Generation
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// 从已有 Agent 定义反向提取为新模板并注册。
+        /// </summary>
         public Task<AgentTemplate> ExtractTemplateAsync(GeneratedAgentDefinition definition, string templateName, CancellationToken cancellationToken = default)
         {
             var template = new AgentTemplate

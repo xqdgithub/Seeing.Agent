@@ -46,11 +46,17 @@ namespace Seeing.Agent.Core.Models
     /// </summary>
     public class SessionInfo
     {
+        /// <summary>会话 ID</summary>
         public string Id { get; set; } = string.Empty;
+        /// <summary>会话标题</summary>
         public string Title { get; set; } = string.Empty;
+        /// <summary>创建时间</summary>
         public DateTime CreatedAt { get; set; }
+        /// <summary>最后更新时间</summary>
         public DateTime UpdatedAt { get; set; }
+        /// <summary>父会话 ID（子代理会话时非空）</summary>
         public string? ParentId { get; set; }
+        /// <summary>会话消息列表</summary>
         public List<ChatMessage> Messages { get; set; } = new();
     }
 
@@ -59,9 +65,11 @@ namespace Seeing.Agent.Core.Models
     /// </summary>
     public class ToolDefinition
     {
+        /// <summary>定义类型（固定为 function）</summary>
         [JsonPropertyName("type")]
         public string Type { get; set; } = "function";
 
+        /// <summary>函数签名定义</summary>
         [JsonPropertyName("function")]
         public FunctionDefinition? Function { get; set; }
     }
@@ -71,12 +79,15 @@ namespace Seeing.Agent.Core.Models
     /// </summary>
     public class FunctionDefinition
     {
+        /// <summary>函数（工具）名称</summary>
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
+        /// <summary>函数功能描述</summary>
         [JsonPropertyName("description")]
         public string? Description { get; set; }
 
+        /// <summary>参数 JSON Schema</summary>
         [JsonPropertyName("parameters")]
         public object? Parameters { get; set; }
     }

@@ -15,6 +15,7 @@ public static class BuiltInScenarios
 
     private static readonly IReadOnlyList<string> s_noToolsDisabled = Array.Empty<string>();
 
+    /// <summary>最小档场景定义（默认 Agent 为 general）。</summary>
     public static ScenarioDefinition Minimal { get; } = new(
         Name: "minimal",
         Modules: BuiltInCapabilitySets.Minimal,
@@ -22,6 +23,7 @@ public static class BuiltInScenarios
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
+    /// <summary>编码档场景定义（默认 Agent 为 build）。</summary>
     public static ScenarioDefinition Code { get; } = new(
         Name: "code",
         Modules: BuiltInCapabilitySets.Code,
@@ -29,6 +31,7 @@ public static class BuiltInScenarios
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
+    /// <summary>办公档场景定义（默认 Agent 为 general）。</summary>
     public static ScenarioDefinition Work { get; } = new(
         Name: "work",
         Modules: BuiltInCapabilitySets.Work,
@@ -36,6 +39,7 @@ public static class BuiltInScenarios
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
+    /// <summary>研究档场景定义（默认 Agent 为 explore）。</summary>
     public static ScenarioDefinition Research { get; } = new(
         Name: "research",
         Modules: BuiltInCapabilitySets.Research,
@@ -43,6 +47,7 @@ public static class BuiltInScenarios
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
+    /// <summary>全功能档场景定义（默认 Agent 为 build）。</summary>
     public static ScenarioDefinition Full { get; } = new(
         Name: "full",
         Modules: BuiltInCapabilitySets.Full,

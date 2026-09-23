@@ -177,8 +177,10 @@
             <Col Span="8">
                 <FormItem Label="选项">
                     <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <Checkbox @bind-Checked="@Job.Runtime.RunInBackground">后台运行</Checkbox>
-                        <Checkbox @bind-Checked="@Job.Runtime.ShareSession">共享 Session</Checkbox>
+                        <Checkbox Checked="@Job.Runtime.RunInBackground"
+                                  CheckedChanged="@((bool value) => Job.Runtime.RunInBackground = value)">后台运行</Checkbox>
+                        <Checkbox Checked="@Job.Runtime.ShareSession"
+                                  CheckedChanged="@((bool value) => Job.Runtime.ShareSession = value)">共享 Session</Checkbox>
                     </div>
                 </FormItem>
             </Col>

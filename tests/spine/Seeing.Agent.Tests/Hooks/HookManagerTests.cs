@@ -65,7 +65,7 @@ namespace Seeing.Agent.Tests.Hooks
             _manager.Register(handler1.Object);
             _manager.Register(handler2.Object);
 
-            var payload = HookPayload.Blocking(HookRegistry.ToolExecuteBefore, "test-session");
+            var payload = HookPayload.Blocking(HookRegistry.ToolExecuteBefore, "test-session", cancellationToken: TestContext.Current.CancellationToken);
             var result = await _manager.TriggerAsync(payload);
 
             result.Continue.Should().BeTrue();
@@ -89,7 +89,7 @@ namespace Seeing.Agent.Tests.Hooks
             _manager.Register(handler1.Object);
             _manager.Register(handler2.Object);
 
-            var payload = HookPayload.Blocking(HookRegistry.ToolExecuteBefore, "test-session");
+            var payload = HookPayload.Blocking(HookRegistry.ToolExecuteBefore, "test-session", cancellationToken: TestContext.Current.CancellationToken);
             var result = await _manager.TriggerAsync(payload);
 
             result.Continue.Should().BeFalse();
@@ -102,7 +102,7 @@ namespace Seeing.Agent.Tests.Hooks
         {
             var payload = HookPayload.Blocking(
                 new HookSpec(HookPolicy.Blocking, "nonexistent_hook"),
-                "test-session");
+                "test-session", cancellationToken: TestContext.Current.CancellationToken);
 
             var result = await _manager.TriggerAsync(payload);
 

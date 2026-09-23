@@ -43,7 +43,7 @@ public class TextCompletionServiceTests
         var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
         var svc = new TextCompletionService(llm.Object, optionsMonitor);
 
-        var text = await svc.CompleteAsync("sys", "user");
+        var text = await svc.CompleteAsync("sys", "user", ct: TestContext.Current.CancellationToken);
         text.Should().Be("hello");
         llm.Verify(x => x.CompleteRawAsync("m1", It.Is<ChatRequest>(r =>
             r.SystemPrompt == "sys" &&
@@ -67,7 +67,7 @@ public class TextCompletionServiceTests
         var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
         var svc = new TextCompletionService(llm.Object, optionsMonitor);
 
-        await svc.CompleteAsync("sys", "user", model: "m1", maxTokens: 32);
+        await svc.CompleteAsync("sys", "user", model: "m1", maxTokens: 32, TestContext.Current.CancellationToken);
         llm.Verify(x => x.CompleteRawAsync("m1", It.Is<ChatRequest>(r => r.MaxTokens == 32), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -89,7 +89,7 @@ public class TextCompletionServiceTests
         {
             new() { Role = ChatRole.User, Content = "hello" }
         };
-        var text = await svc.CompleteAsync("sys", messages, model: "m1", maxTokens: 32);
+        var text = await svc.CompleteAsync("sys", messages, model: "m1", maxTokens: 32, TestContext.Current.CancellationToken);
         text.Should().Be("标题");
         llm.Verify(x => x.CompleteRawAsync(
             "m1",
@@ -112,7 +112,7 @@ public class TextCompletionServiceTests
         var svc = new TextCompletionService(llm.Object, optionsMonitor);
 
         var updates = new List<StreamUpdate>();
-        await foreach (var update in svc.StreamCompleteAsync("sys", new List<ChatMessage>()))
+        await foreach (var update in svc.StreamCompleteAsync("sys", new List<ChatMessage>(), ct: TestContext.Current.CancellationToken))
         {
             updates.Add(update);
         }

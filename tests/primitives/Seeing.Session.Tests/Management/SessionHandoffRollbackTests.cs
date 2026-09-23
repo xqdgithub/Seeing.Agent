@@ -28,15 +28,15 @@ public class SessionHandoffRollbackTests
 
             var root = sessions.Create(partitionId: "p1", selectedAgent: "build");
             root.Title = "root";
-            await manager.EnsureForSessionAsync(root.Id);
+            await manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
-            var group = await manager.GetGroupForSessionAsync(root.Id);
-            var membersBefore = await manager.ListMembersAsync(group!.Id);
+            var group = await manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+            var membersBefore = await manager.ListMembersAsync(group!.Id, TestContext.Current.CancellationToken);
 
             await Assert.ThrowsAnyAsync<Exception>(() =>
-                manager.CreateHandoffSuccessorAsync(root.Id, null, "successor", null));
+                manager.CreateHandoffSuccessorAsync(root.Id, null, "successor", null, TestContext.Current.CancellationToken));
 
-            var membersAfter = await manager.ListMembersAsync(group.Id);
+            var membersAfter = await manager.ListMembersAsync(group.Id, TestContext.Current.CancellationToken);
             membersAfter.Should().HaveCount(membersBefore.Count);
             membersAfter.Should().NotContain(m => m.Relation == SessionRelation.HandoffSuccessor);
 
@@ -44,7 +44,7 @@ public class SessionHandoffRollbackTests
             sessions.List().Should().ContainSingle(s => s.Id == root.Id);
 
             // 持久化组中也不含后继成员
-            var persisted = await manager.GetGroupAsync(group.Id);
+            var persisted = await manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
             persisted!.Members.Should().NotContain(m => m.Relation == SessionRelation.HandoffSuccessor);
         }
         finally
@@ -66,19 +66,19 @@ public class SessionHandoffRollbackTests
             inner => new FailingGroupStore(inner, g => g.Members.Count == 4));
 
         var a = h.CreateRoot("A");
-        var group = await h.Manager.EnsureForSessionAsync(a.Id);
-        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null); // A→B, B 锚点
-        var c = await h.Manager.CreateHandoffSuccessorAsync(b.Id, null, "C", null); // A→B→C, C 锚点
+        var group = await h.Manager.EnsureForSessionAsync(a.Id, TestContext.Current.CancellationToken);
+        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null, TestContext.Current.CancellationToken); // A→B, B 锚点
+        var c = await h.Manager.CreateHandoffSuccessorAsync(b.Id, null, "C", null, TestContext.Current.CancellationToken); // A→B→C, C 锚点
 
         var sessionsBefore = h.Sessions.List().Select(s => s.Id).OrderBy(x => x).ToList();
 
         await Assert.ThrowsAnyAsync<Exception>(() =>
-            h.Manager.CreateHandoffSuccessorAsync(c.Id, null, "D", null));
+            h.Manager.CreateHandoffSuccessorAsync(c.Id, null, "D", null, TestContext.Current.CancellationToken));
 
         // 无孤儿会话：D 不存在（会话集合与失败前一致）
         h.Sessions.List().Select(s => s.Id).OrderBy(x => x).Should().Equal(sessionsBefore);
 
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         g!.Members.Should().HaveCount(3);
         g.AnchorSessionId.Should().Be(c.Id);
 

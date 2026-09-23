@@ -21,7 +21,7 @@ public class AgentRuntimeReloadHandlerTests
     {
         var (handler, agent) = CreateHandlerWithAgent();
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "AgentModels" } });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "AgentModels" } }, TestContext.Current.CancellationToken);
 
         agent.Model.Should().NotBeNull();
         agent.Model!.ModelId.Should().Be("modelA");
@@ -32,7 +32,7 @@ public class AgentRuntimeReloadHandlerTests
     {
         var (handler, agent) = CreateHandlerWithAgent();
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = Array.Empty<string>() });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = Array.Empty<string>() }, TestContext.Current.CancellationToken);
 
         agent.Model.Should().NotBeNull();
         agent.Model!.ModelId.Should().Be("modelA");
@@ -43,7 +43,7 @@ public class AgentRuntimeReloadHandlerTests
     {
         var (handler, agent) = CreateHandlerWithAgent();
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Skills" } });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Skills" } }, TestContext.Current.CancellationToken);
 
         agent.Model.Should().BeNull();
     }

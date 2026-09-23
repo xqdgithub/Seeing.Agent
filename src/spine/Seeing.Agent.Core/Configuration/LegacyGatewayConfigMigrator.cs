@@ -8,6 +8,7 @@ namespace Seeing.Agent.Core.Configuration;
 /// </summary>
 public static class LegacyGatewayConfigMigrator
 {
+    /// <summary>将已弃用的 Gateway 默认 Agent/Model 迁移到根级配置项。</summary>
     public static void Apply(JsonElement gateway, SeeingAgentOptions options, ILogger? logger = null)
     {
         if (gateway.TryGetProperty("DefaultAgentId", out var legacyAgent) &&

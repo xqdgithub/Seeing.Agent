@@ -24,7 +24,7 @@ public class MemoryRecallServiceTests
             });
 
         var svc = new MemoryRecallService(index.Object, Options.Create(new MemoryOptions()));
-        var hits = await svc.RecallAsync("q");
+        var hits = await svc.RecallAsync("q", TestContext.Current.CancellationToken);
 
         hits.Should().HaveCount(2);
         hits.Should().OnlyContain(h => !h.Node.Path.StartsWith("session/"));
@@ -46,7 +46,7 @@ public class MemoryRecallServiceTests
             Retrieval = new MemoryRetrievalOptions { InjectTimeoutMs = 20 }
         }));
 
-        var hits = await svc.RecallAsync("q");
+        var hits = await svc.RecallAsync("q", TestContext.Current.CancellationToken);
         hits.Should().BeEmpty();
     }
 

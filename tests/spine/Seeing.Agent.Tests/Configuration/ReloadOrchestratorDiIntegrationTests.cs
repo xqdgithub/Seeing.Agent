@@ -89,7 +89,7 @@ public class ReloadOrchestratorDiIntegrationTests
             {
                 OldWorkspace = "/old",
                 NewWorkspace = "/new"
-            });
+            }, TestContext.Current.CancellationToken);
 
             results.Should().NotBeNull();
             results.Select(r => r.ComponentId).Should().Contain("session");

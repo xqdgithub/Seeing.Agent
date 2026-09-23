@@ -45,7 +45,7 @@ public class GatewaySessionServiceTests
         await manager.SaveAsync(session.Id);
 
         var service = new GatewaySessionService(manager, registryMock.Object, runtimeMock.Object, modelManager);
-        var result = await service.ResetAsync(session.Id);
+        var result = await service.ResetAsync(session.Id, TestContext.Current.CancellationToken);
 
         result.Should().NotBeNull();
         result!.SessionId.Should().Be("test-session");
@@ -68,7 +68,7 @@ public class GatewaySessionServiceTests
         var manager = CreateSessionManager();
         var service = new GatewaySessionService(manager, registryMock.Object, new Mock<IAgentRuntimeManager>().Object, modelManager);
 
-        var result = await service.ResetAsync("missing-session");
+        var result = await service.ResetAsync("missing-session", TestContext.Current.CancellationToken);
 
         result.Should().BeNull();
     }

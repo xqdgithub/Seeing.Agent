@@ -32,6 +32,7 @@ namespace Seeing.Agent.Core.Services
             @"<think>.*?</think>|<tool_call>think.*?</(?:redacted_thinking|think)>\s*",
             RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        /// <summary>初始化会话标题服务，注入文本补全、会话与分组管理器、选项及日志器。</summary>
         public SessionTitleService(
             ITextCompletion text,
             ISessionManager sessionManager,

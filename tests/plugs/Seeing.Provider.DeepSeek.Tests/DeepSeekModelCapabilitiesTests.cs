@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // 本测试即针对已过时类型 DeepSeekModelCapabilities（仅保留单测）
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Provider.DeepSeek;

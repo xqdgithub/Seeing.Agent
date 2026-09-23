@@ -38,7 +38,7 @@ public class McpStateTransitionsDisconnectTests
     {
         var manager = await CreateConnectedToErrorAsync("broken");
 
-        var result = await manager.DisconnectServerAsync("broken");
+        var result = await manager.DisconnectServerAsync("broken", TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         manager.GetStatus("broken")!.State.Should().Be(CoreMcpConnectionState.Pending);
@@ -49,7 +49,7 @@ public class McpStateTransitionsDisconnectTests
     {
         var manager = await CreateConnectedToErrorAsync("broken");
 
-        var result = await manager.RemoveServerAsync("broken", persist: false);
+        var result = await manager.RemoveServerAsync("broken", persist: false, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         manager.GetStatus("broken").Should().BeNull();
@@ -66,7 +66,7 @@ public class McpStateTransitionsDisconnectTests
             .Build();
         manager.UpdateState("connecting-srv", connectingStatus);
 
-        var result = await manager.RemoveServerAsync("connecting-srv", persist: false);
+        var result = await manager.RemoveServerAsync("connecting-srv", persist: false, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         manager.GetStatus("connecting-srv").Should().BeNull();

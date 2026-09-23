@@ -31,7 +31,7 @@ public class AnthropicThinkingOutboundTests
             Temperature = 0.2,
             TopP = 0.9,
             MaxTokens = 100
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         using var doc = JsonDocument.Parse(body!);
         var root = doc.RootElement;
@@ -58,7 +58,7 @@ public class AnthropicThinkingOutboundTests
             Model = "claude",
             Messages = [new ChatMessage { Role = ChatRole.User, Content = "hi" }],
             ThinkingEffort = "high"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         using var doc = JsonDocument.Parse(body!);
         var root = doc.RootElement;
@@ -82,7 +82,7 @@ public class AnthropicThinkingOutboundTests
             Messages = [new ChatMessage { Role = ChatRole.User, Content = "hi" }],
             ThinkingEffort = "disabled",
             Temperature = 0.3
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         using var doc = JsonDocument.Parse(body!);
         var root = doc.RootElement;
@@ -122,7 +122,7 @@ public class AnthropicThinkingOutboundTests
                 },
                 new ChatMessage { Role = ChatRole.Tool, ToolCallId = "toolu_1", Content = "result" }
             ]
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         using var doc = JsonDocument.Parse(body!);
         var content = doc.RootElement.GetProperty("messages")[0].GetProperty("content");

@@ -15,15 +15,45 @@ namespace Seeing.Agent.Core.Llm;
 /// </summary>
 public interface ILlmService : IModelConfigLookup
 {
+    /// <summary>
+    /// 获取所有可用的文本模型配置（按模型 ID 索引）。
+    /// </summary>
     IReadOnlyDictionary<string, ModelConfig> GetAvailableModels();
+    /// <summary>
+    /// 获取指定模型所属 Provider 的客户端，未找到返回 null。
+    /// </summary>
     ILlmClient? GetClientForModel(string modelId);
+    /// <summary>
+    /// 获取指定 Provider 的客户端，未找到返回 null。
+    /// </summary>
     ILlmClient? GetClient(string providerId);
+    /// <summary>
+    /// 非流式完成聊天补全，触发完整 Hook 链。
+    /// </summary>
     Task<ChatResponse> CompleteAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 非流式完成聊天补全，关联会话 ID 以触发 Hook 链。
+    /// </summary>
     Task<ChatResponse> CompleteAsync(string modelId, ChatRequest request, string? sessionId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 旁路非流式补全：不触发 Hook，直接透传请求。
+    /// </summary>
     Task<ChatResponse> CompleteRawAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 旁路流式补全：不触发 Hook，逐块透传增量。
+    /// </summary>
     IAsyncEnumerable<StreamUpdate> CompleteRawStreamAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 流式完成聊天补全，触发完整 Hook 链。
+    /// </summary>
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(string modelId, ChatRequest request, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 流式完成聊天补全，关联会话 ID 以触发 Hook 链。
+    /// </summary>
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(string modelId, ChatRequest request, string? sessionId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 测试指定 Provider 与模型的连通性。
+    /// </summary>
     Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken cancellationToken = default);
 }
 
@@ -38,6 +68,9 @@ public class LlmService : ILlmService
     private readonly IHookManager _hookManager;
     private readonly ILogger _logger;
 
+    /// <summary>
+    /// 注入 Provider/模型管理器、配置与 Hook 依赖构造 LLM 服务。
+    /// </summary>
     public LlmService(
         IProviderManager providerManager,
         IModelManager modelManager,
@@ -52,24 +85,42 @@ public class LlmService : ILlmService
         _logger = logger;
     }
 
+    /// <summary>
+    /// 获取所有文本类型模型配置。
+    /// </summary>
     public IReadOnlyDictionary<string, ModelConfig> GetAvailableModels()
         => _modelManager.GetModelsByType(ModelType.Text);
 
+    /// <summary>
+    /// 按模型 ID 从目录解析模型配置，未找到返回 null。
+    /// </summary>
     public ModelConfig? GetModelConfig(string modelId)
         => _modelManager.GetModel(modelId);
 
+    /// <summary>
+    /// 获取指定模型所属 Provider 的客户端。
+    /// </summary>
     public ILlmClient? GetClientForModel(string modelId)
         => _providerManager.GetClientForModel(modelId);
 
+    /// <summary>
+    /// 获取指定 Provider 的客户端。
+    /// </summary>
     public ILlmClient? GetClient(string providerId)
         => _providerManager.GetClient(providerId);
 
+    /// <summary>
+    /// 非流式补全（无会话上下文的便捷重载）。
+    /// </summary>
     public async Task<ChatResponse> CompleteAsync(
         string modelId,
         ChatRequest request,
         CancellationToken cancellationToken = default)
         => await CompleteAsync(modelId, request, sessionId: null, cancellationToken).ConfigureAwait(false);
 
+    /// <summary>
+    /// 旁路非流式补全：仅做请求预处理，不触发任何 Hook。
+    /// </summary>
     public async Task<ChatResponse> CompleteRawAsync(
         string modelId,
         ChatRequest request,
@@ -80,6 +131,9 @@ public class LlmService : ILlmService
         return await client.CompleteAsync(request, call: null, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 旁路流式补全：仅做请求预处理，不触发任何 Hook，逐块透传增量。
+    /// </summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteRawStreamAsync(
         string modelId,
         ChatRequest request,
@@ -262,6 +316,9 @@ public class LlmService : ILlmService
             });
     }
 
+    /// <summary>
+    /// 非流式补全：依次跑开始/参数/请求头/系统提示 Hook 后调用客户端，失败时触发错误 Hook。
+    /// </summary>
     public async Task<ChatResponse> CompleteAsync(
         string modelId,
         ChatRequest request,
@@ -376,6 +433,9 @@ public class LlmService : ILlmService
         return response;
     }
 
+    /// <summary>
+    /// 流式补全（无会话上下文的便捷重载）。
+    /// </summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         string modelId,
         ChatRequest request,
@@ -385,6 +445,9 @@ public class LlmService : ILlmService
             yield return update;
     }
 
+    /// <summary>
+    /// 流式补全：跑完整 Hook 链后经通道转发增量，失败时包装为 Llm 异常抛出，结束触发完成 Hook。
+    /// </summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         string modelId,
         ChatRequest request,
@@ -571,6 +634,9 @@ public class LlmService : ILlmService
             });
     }
 
+    /// <summary>
+    /// 测试指定 Provider 与模型的连通性，委托 ProviderManager 实现。
+    /// </summary>
     public async Task<bool> TestConnectionAsync(
         string providerId,
         string modelId,

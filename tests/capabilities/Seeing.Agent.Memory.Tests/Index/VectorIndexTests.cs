@@ -66,8 +66,8 @@ public class VectorIndexTests : IDisposable
         );
 
         // Act
-        await _index.IndexAsync(node);
-        var count = await _index.GetDocumentCountAsync();
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
+        var count = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         count.Should().Be(1);
@@ -96,10 +96,10 @@ public class VectorIndexTests : IDisposable
             title: "Cooking Guide"
         );
 
-        await _index.IndexBatchAsync(new[] { node1, node2, node3 });
+        await _index.IndexBatchAsync(new[] { node1, node2, node3 }, TestContext.Current.CancellationToken);
 
         // Act - Search for machine learning related content
-        var results = await _index.SearchAsync("machine learning algorithms", limit: 10);
+        var results = await _index.SearchAsync("machine learning algorithms", limit: 10, ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().NotBeEmpty();
@@ -138,14 +138,14 @@ public class VectorIndexTests : IDisposable
             title: "Cooking"
         );
 
-        await _index.IndexBatchAsync(new[] { node1, node2, node3 });
+        await _index.IndexBatchAsync(new[] { node1, node2, node3 }, TestContext.Current.CancellationToken);
 
         // Act - Filter to only include daily documents
         var results = await _index.SearchWithFilterAsync(
             "machine learning",
             path => path.StartsWith("daily/"),
             limit: 10
-        );
+        , ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().NotBeEmpty();
@@ -163,14 +163,14 @@ public class VectorIndexTests : IDisposable
             "This document will be deleted.",
             title: "To Delete"
         );
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
 
-        var countBefore = await _index.GetDocumentCountAsync();
+        var countBefore = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
         countBefore.Should().Be(1);
 
         // Act
-        await _index.RemoveAsync("daily/to-delete.md");
-        var countAfter = await _index.GetDocumentCountAsync();
+        await _index.RemoveAsync("daily/to-delete.md", TestContext.Current.CancellationToken);
+        var countAfter = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         countAfter.Should().Be(0);
@@ -185,7 +185,7 @@ public class VectorIndexTests : IDisposable
             "Original content about cats and dogs.",
             title: "Original Title"
         );
-        await _index.IndexAsync(node1);
+        await _index.IndexAsync(node1, TestContext.Current.CancellationToken);
 
         // Act - Update the same document
         var node2 = CreateTestNode(
@@ -193,10 +193,10 @@ public class VectorIndexTests : IDisposable
             "Updated content about machine learning and artificial intelligence.",
             title: "Updated Title"
         );
-        await _index.IndexAsync(node2);
+        await _index.IndexAsync(node2, TestContext.Current.CancellationToken);
 
-        var count = await _index.GetDocumentCountAsync();
-        var results = await _index.SearchAsync("machine learning");
+        var count = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
+        var results = await _index.SearchAsync("machine learning", ct: TestContext.Current.CancellationToken);
 
         // Assert
         count.Should().Be(1); // Should still have only one document
@@ -216,8 +216,8 @@ public class VectorIndexTests : IDisposable
         };
 
         // Act
-        await _index.IndexBatchAsync(nodes);
-        var count = await _index.GetDocumentCountAsync();
+        await _index.IndexBatchAsync(nodes, TestContext.Current.CancellationToken);
+        var count = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         count.Should().Be(3);
@@ -232,14 +232,14 @@ public class VectorIndexTests : IDisposable
             CreateTestNode("daily/clear1.md", "Content 1"),
             CreateTestNode("daily/clear2.md", "Content 2"),
         };
-        await _index.IndexBatchAsync(nodes);
+        await _index.IndexBatchAsync(nodes, TestContext.Current.CancellationToken);
 
-        var countBefore = await _index.GetDocumentCountAsync();
+        var countBefore = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
         countBefore.Should().Be(2);
 
         // Act
-        await _index.ClearAsync();
-        var countAfter = await _index.GetDocumentCountAsync();
+        await _index.ClearAsync(TestContext.Current.CancellationToken);
+        var countAfter = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         countAfter.Should().Be(0);
@@ -254,10 +254,10 @@ public class VectorIndexTests : IDisposable
             "Some content about testing.",
             title: "Test"
         );
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _index.SearchAsync("");
+        var results = await _index.SearchAsync("", ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().BeEmpty();
@@ -272,10 +272,10 @@ public class VectorIndexTests : IDisposable
             "Machine learning algorithms for data science.",
             title: "Score Test"
         );
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _index.SearchAsync("machine learning");
+        var results = await _index.SearchAsync("machine learning", ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().NotBeEmpty();

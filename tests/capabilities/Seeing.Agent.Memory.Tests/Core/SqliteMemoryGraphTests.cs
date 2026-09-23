@@ -20,10 +20,10 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task AddNodeAsync_ShouldAddNode()
     {
         // Act
-        await _graph.AddNodeAsync("test.md", "Test");
+        await _graph.AddNodeAsync("test.md", "Test", TestContext.Current.CancellationToken);
 
         // Assert
-        var stats = await _graph.GetStatsAsync();
+        var stats = await _graph.GetStatsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, stats.NodeCount);
     }
 
@@ -31,10 +31,10 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task AddEdgeAsync_ShouldAddEdgeAndCreateNodes()
     {
         // Act
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Assert
-        var stats = await _graph.GetStatsAsync();
+        var stats = await _graph.GetStatsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, stats.NodeCount);
         Assert.Equal(1, stats.EdgeCount);
     }
@@ -43,11 +43,11 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task AddEdgeAsync_SameSourceTarget_ShouldNotDuplicate()
     {
         // Act
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Assert
-        var stats = await _graph.GetStatsAsync();
+        var stats = await _graph.GetStatsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, stats.EdgeCount); // UNIQUEness constraint
     }
 
@@ -55,11 +55,11 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task AddEdgeAsync_DifferentTypes_ShouldAllowSamePair()
     {
         // Act
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.ParentChild);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.ParentChild, ct: TestContext.Current.CancellationToken);
 
         // Assert
-        var stats = await _graph.GetStatsAsync();
+        var stats = await _graph.GetStatsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, stats.EdgeCount);
     }
 
@@ -67,14 +67,14 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task RemoveNodeAsync_ShouldRemoveAllEdges()
     {
         // Arrange
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Act
-        await _graph.RemoveNodeAsync("doc2.md");
+        await _graph.RemoveNodeAsync("doc2.md", TestContext.Current.CancellationToken);
 
         // Assert
-        var stats = await _graph.GetStatsAsync();
+        var stats = await _graph.GetStatsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, stats.NodeCount); // doc1, doc3
         Assert.Equal(0, stats.EdgeCount); // all edges removed
     }
@@ -83,14 +83,14 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task RemoveEdgeAsync_ShouldRemoveOnlyEdge()
     {
         // Arrange
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc1.md", "doc3.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc1.md", "doc3.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Act
-        await _graph.RemoveEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
+        await _graph.RemoveEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, TestContext.Current.CancellationToken);
 
         // Assert
-        var stats = await _graph.GetStatsAsync();
+        var stats = await _graph.GetStatsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(3, stats.NodeCount);
         Assert.Equal(1, stats.EdgeCount);
     }
@@ -99,11 +99,11 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task GetNeighborsAsync_ShouldReturnConnectedNodes()
     {
         // Arrange
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Act
-        var neighbors = await _graph.GetNeighborsAsync("doc2.md");
+        var neighbors = await _graph.GetNeighborsAsync("doc2.md", ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, neighbors.Count);
@@ -115,14 +115,14 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task GetNeighborsAsync_WithDepth_ShouldTraverseGraph()
     {
         // Arrange: doc1 -> doc2 -> doc3
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Act - depth 1 from doc1
-        var depth1 = await _graph.GetNeighborsAsync("doc1.md", depth: 1);
+        var depth1 = await _graph.GetNeighborsAsync("doc1.md", depth: 1, ct: TestContext.Current.CancellationToken);
 
         // Act - depth 2 from doc1
-        var depth2 = await _graph.GetNeighborsAsync("doc1.md", depth: 2);
+        var depth2 = await _graph.GetNeighborsAsync("doc1.md", depth: 2, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(depth1); // only doc2
@@ -133,11 +133,11 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task FindPathAsync_ShouldFindShortestPath()
     {
         // Arrange: doc1 -> doc2 -> doc3
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Act
-        var path = await _graph.FindPathAsync("doc1.md", "doc3.md");
+        var path = await _graph.FindPathAsync("doc1.md", "doc3.md", ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, path.Count);
@@ -150,11 +150,11 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task FindPathAsync_NoPath_ShouldReturnEmpty()
     {
         // Arrange
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc3.md", "doc4.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc3.md", "doc4.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Act
-        var path = await _graph.FindPathAsync("doc1.md", "doc4.md");
+        var path = await _graph.FindPathAsync("doc1.md", "doc4.md", ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(path);
@@ -164,12 +164,12 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task GetStatsAsync_ShouldReturnCorrectStats()
     {
         // Arrange
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference);
-        await _graph.AddNodeAsync("doc4.md", "Doc4"); // isolated
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddNodeAsync("doc4.md", "Doc4", TestContext.Current.CancellationToken); // isolated
 
         // Act
-        var stats = await _graph.GetStatsAsync();
+        var stats = await _graph.GetStatsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(4, stats.NodeCount);
@@ -181,12 +181,12 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task QueryAsync_WithStartNode_ShouldReturnSubgraph()
     {
         // Arrange
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc3.md", "doc4.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc2.md", "doc3.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc3.md", "doc4.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _graph.QueryAsync("doc2.md", depth: 1);
+        var result = await _graph.QueryAsync("doc2.md", depth: 1, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result.Nodes, n => n.Path == "doc2.md");
@@ -199,11 +199,11 @@ public class SqliteMemoryGraphTests : IDisposable
     public async Task QueryAsync_NoStartNode_ShouldReturnFullGraph()
     {
         // Arrange
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddEdgeAsync("doc3.md", "doc4.md", EdgeType.Reference);
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddEdgeAsync("doc3.md", "doc4.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _graph.QueryAsync();
+        var result = await _graph.QueryAsync(ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(4, result.Nodes.Count);
@@ -213,12 +213,12 @@ public class SqliteMemoryGraphTests : IDisposable
     [Fact]
     public async Task ClearAsync_ShouldRemoveAllNodesAndEdges()
     {
-        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference);
-        await _graph.AddNodeAsync("doc3.md", "Doc3");
+        await _graph.AddEdgeAsync("doc1.md", "doc2.md", EdgeType.Reference, ct: TestContext.Current.CancellationToken);
+        await _graph.AddNodeAsync("doc3.md", "Doc3", TestContext.Current.CancellationToken);
 
-        await _graph.ClearAsync();
+        await _graph.ClearAsync(TestContext.Current.CancellationToken);
 
-        var stats = await _graph.GetStatsAsync();
+        var stats = await _graph.GetStatsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(0, stats.NodeCount);
         Assert.Equal(0, stats.EdgeCount);
     }

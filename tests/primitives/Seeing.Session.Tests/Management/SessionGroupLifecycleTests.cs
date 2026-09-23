@@ -16,7 +16,7 @@ public class SessionGroupLifecycleTests
 
         var root = await h.Manager.CreateRootAsync(
             partitionId: "p1", agent: "build", scenario: "code",
-            title: "标题", workingDirectory: @"E:\work");
+            title: "标题", workingDirectory: @"E:\work", TestContext.Current.CancellationToken);
 
         root.Title.Should().Be("标题");
         root.WorkingDirectory.Should().Be(@"E:\work");
@@ -24,7 +24,7 @@ public class SessionGroupLifecycleTests
         root.GroupId.Should().NotBeNullOrEmpty();
         h.Sessions.Get(root.Id).Should().BeSameAs(root);
 
-        var group = await h.Manager.GetGroupAsync(root.GroupId!);
+        var group = await h.Manager.GetGroupAsync(root.GroupId!, TestContext.Current.CancellationToken);
         group.Should().NotBeNull();
         group!.AnchorSessionId.Should().Be(root.Id);
         group.PartitionId.Should().Be("p1");
@@ -37,13 +37,13 @@ public class SessionGroupLifecycleTests
     public async Task CreateChildAsync_ShouldJoinParentGroupWithRelationAndSnapshot()
     {
         using var h = new SessionGroupTestHarness();
-        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", null);
+        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", null, TestContext.Current.CancellationToken);
         var snapshot = new[]
         {
             new SessionPermissionRule { Kind = "Tool", Pattern = "*", Effect = "Allow", Priority = 1 }
         };
 
-        var child = await h.Manager.CreateChildAsync(root.Id, "task", "子任务", snapshot, "code");
+        var child = await h.Manager.CreateChildAsync(root.Id, "task", "子任务", snapshot, "code", TestContext.Current.CancellationToken);
 
         child.Kind.Should().Be(SessionKind.SubAgent);
         child.Title.Should().Be("子任务");
@@ -52,7 +52,7 @@ public class SessionGroupLifecycleTests
         child.PermissionSnapshot[0].Pattern.Should().Be("*");
         child.GroupId.Should().Be(root.GroupId);
 
-        var group = await h.Manager.GetGroupForSessionAsync(child.Id);
+        var group = await h.Manager.GetGroupForSessionAsync(child.Id, TestContext.Current.CancellationToken);
         group!.Id.Should().Be(root.GroupId);
         var member = group.Members.Single(m => m.SessionId == child.Id);
         member.Relation.Should().Be(SessionRelation.Child);
@@ -64,18 +64,18 @@ public class SessionGroupLifecycleTests
     public async Task ForkSessionAsync_FromRoot_ShouldJoinSourceGroupAsFork()
     {
         using var h = new SessionGroupTestHarness();
-        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", null);
+        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", null, TestContext.Current.CancellationToken);
         root.AddMessage(new SessionMessage { Id = "m1", Role = "user", Content = "hi", CreatedAt = DateTime.UtcNow });
         h.Sessions.Register(root);
 
-        var fork = await h.Manager.ForkSessionAsync(root.Id, "分支");
+        var fork = await h.Manager.ForkSessionAsync(root.Id, "分支", TestContext.Current.CancellationToken);
 
         fork.Kind.Should().Be(SessionKind.Root);
         fork.Title.Should().Be("分支");
         fork.Messages.Should().HaveCount(1);
         fork.GroupId.Should().Be(root.GroupId);
 
-        var group = await h.Manager.GetGroupForSessionAsync(fork.Id);
+        var group = await h.Manager.GetGroupForSessionAsync(fork.Id, TestContext.Current.CancellationToken);
         group!.Id.Should().Be(root.GroupId);
         var member = group.Members.Single(m => m.SessionId == fork.Id);
         member.Relation.Should().Be(SessionRelation.Fork);
@@ -86,15 +86,15 @@ public class SessionGroupLifecycleTests
     public async Task ForkSessionAsync_FromSubAgent_ShouldCreateIndependentGroup()
     {
         using var h = new SessionGroupTestHarness();
-        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", null);
+        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", null, TestContext.Current.CancellationToken);
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
 
-        var fork = await h.Manager.ForkSessionAsync(child.Id, "分支");
+        var fork = await h.Manager.ForkSessionAsync(child.Id, "分支", TestContext.Current.CancellationToken);
 
         fork.Kind.Should().Be(SessionKind.Root);
-        var parentGroup = await h.Manager.GetGroupForSessionAsync(child.Id);
-        var forkGroup = await h.Manager.GetGroupForSessionAsync(fork.Id);
+        var parentGroup = await h.Manager.GetGroupForSessionAsync(child.Id, TestContext.Current.CancellationToken);
+        var forkGroup = await h.Manager.GetGroupForSessionAsync(fork.Id, TestContext.Current.CancellationToken);
 
         forkGroup.Should().NotBeNull();
         forkGroup!.Id.Should().NotBe(parentGroup!.Id);
@@ -108,20 +108,20 @@ public class SessionGroupLifecycleTests
     public async Task CreateBackupForkAsync_ShouldAlwaysJoinSourceGroupWithLabel()
     {
         using var h = new SessionGroupTestHarness();
-        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", null);
+        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", null, TestContext.Current.CancellationToken);
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
 
-        var backupFromRoot = await h.Manager.CreateBackupForkAsync(root.Id, "root-backup");
-        var backupFromChild = await h.Manager.CreateBackupForkAsync(child.Id, "child-backup");
+        var backupFromRoot = await h.Manager.CreateBackupForkAsync(root.Id, "root-backup", TestContext.Current.CancellationToken);
+        var backupFromChild = await h.Manager.CreateBackupForkAsync(child.Id, "child-backup", TestContext.Current.CancellationToken);
 
         backupFromRoot.Kind.Should().Be(SessionKind.Root);
-        var rootGroup = await h.Manager.GetGroupForSessionAsync(root.Id);
-        var childGroup = await h.Manager.GetGroupForSessionAsync(child.Id);
+        var rootGroup = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var childGroup = await h.Manager.GetGroupForSessionAsync(child.Id, TestContext.Current.CancellationToken);
 
-        (await h.Manager.GetGroupForSessionAsync(backupFromRoot.Id))!.Id.Should().Be(rootGroup!.Id);
+        (await h.Manager.GetGroupForSessionAsync(backupFromRoot.Id, TestContext.Current.CancellationToken))!.Id.Should().Be(rootGroup!.Id);
         // 子会话处于父组中；备份始终入源所在组（而非独立新组）
-        (await h.Manager.GetGroupForSessionAsync(backupFromChild.Id))!.Id.Should().Be(childGroup!.Id);
+        (await h.Manager.GetGroupForSessionAsync(backupFromChild.Id, TestContext.Current.CancellationToken))!.Id.Should().Be(childGroup!.Id);
 
         var memberFromRoot = rootGroup.Members.Single(m => m.SessionId == backupFromRoot.Id);
         memberFromRoot.Relation.Should().Be(SessionRelation.Fork);
@@ -137,13 +137,13 @@ public class SessionGroupLifecycleTests
     public async Task CreateHandoffSuccessorAsync_ShouldJoinGroupActivateAndInheritConfig()
     {
         using var h = new SessionGroupTestHarness();
-        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", @"E:\work");
+        var root = await h.Manager.CreateRootAsync("p1", "build", "code", "根", @"E:\work", TestContext.Current.CancellationToken);
         root.SelectedModel = "openai/gpt-4o";
         root.SelectedThinkingEffort = "high";
         root.AddMessage(new SessionMessage { Id = "m1", Role = "user", Content = "hi", CreatedAt = DateTime.UtcNow });
         h.Sessions.Register(root);
 
-        var successor = await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "接续", "code");
+        var successor = await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "接续", "code", TestContext.Current.CancellationToken);
 
         successor.Kind.Should().Be(SessionKind.Root);
         successor.Messages.Should().BeEmpty();
@@ -154,7 +154,7 @@ public class SessionGroupLifecycleTests
         successor.WorkingDirectory.Should().Be(@"E:\work");
         successor.Scenario.Should().Be("code");
 
-        var group = await h.Manager.GetGroupForSessionAsync(successor.Id);
+        var group = await h.Manager.GetGroupForSessionAsync(successor.Id, TestContext.Current.CancellationToken);
         group!.Id.Should().Be(root.GroupId);
         group.ActiveSessionId.Should().Be(successor.Id);
         var member = group.Members.Single(m => m.SessionId == successor.Id);

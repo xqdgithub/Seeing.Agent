@@ -13,7 +13,7 @@ public class ManagementApiClientTests
         var handler = new StubHandler(HttpStatusCode.OK, "");
         using var client = new ManagementApiClient("http://127.0.0.1:5000", handler);
 
-        var result = await client.ReachableAsync();
+        var result = await client.ReachableAsync(TestContext.Current.CancellationToken);
 
         result.Should().BeTrue();
         handler.LastPath.Should().Be("/");
@@ -25,7 +25,7 @@ public class ManagementApiClientTests
         var handler = new StubHandler(null, "");
         using var client = new ManagementApiClient("http://127.0.0.1:5000", handler);
 
-        (await client.ReachableAsync()).Should().BeFalse();
+        (await client.ReachableAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public class ManagementApiClientTests
         var handler = new StubHandler(HttpStatusCode.NotFound, "");
         using var client = new ManagementApiClient("http://127.0.0.1:8765", handler);
 
-        (await client.HealthCheckAsync()).Should().BeFalse();
+        (await client.HealthCheckAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class ManagementApiClientTests
         var handler = new StubHandler(HttpStatusCode.OK, "");
         using var client = new ManagementApiClient("http://127.0.0.1:8765", handler);
 
-        (await client.HealthCheckAsync()).Should().BeTrue();
+        (await client.HealthCheckAsync(TestContext.Current.CancellationToken)).Should().BeTrue();
     }
 
     private sealed class StubHandler : HttpMessageHandler

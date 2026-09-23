@@ -80,7 +80,7 @@ public class SchemaScenarioTests
                 AgentId = "general",
                 SkipUserMessagePersist = true,
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         await WaitUntilAsync(() =>
@@ -122,7 +122,7 @@ public class SchemaScenarioTests
             "git_status", "git_diff", "memory_search", "read", "current_time");
         var agent = new AgentDefinition { Name = "general" };
 
-        var original = await toolManager.GetToolSchemasAsync(settle.SettledToolIds, agent);
+        var original = await toolManager.GetToolSchemasAsync(settle.SettledToolIds, agent, TestContext.Current.CancellationToken);
         var snapshotToolIds = original
             .Where(s => s.Function != null)
             .Select(s => s.Function.Name)
@@ -130,7 +130,7 @@ public class SchemaScenarioTests
             .ToArray();
 
         // 同模块集重放：用快照 toolIds 再取 schema → 可完整重建
-        var rebuilt = await toolManager.GetToolSchemasAsync(snapshotToolIds, agent);
+        var rebuilt = await toolManager.GetToolSchemasAsync(snapshotToolIds, agent, TestContext.Current.CancellationToken);
         rebuilt.Select(s => s.Function!.Name)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .Should().Equal(snapshotToolIds);
@@ -154,7 +154,7 @@ public class SchemaScenarioTests
                 "code",
                 BuiltInCapabilitySets.Code,
                 Array.Empty<string>()),
-        });
+        }, TestContext.Current.CancellationToken);
 
         result.Enabled.Should().Contain(["basic", "git", "io.local"]);
         result.Enabled.Should().NotContain("filesystem"); // 未在 available
@@ -236,7 +236,7 @@ public class SchemaScenarioTests
 
         var r1 = await fixture.Service.SubmitAsync(
             session.Id, ChatInput.FromText("1"),
-            new ChatOptions { AgentId = "general", SkipUserMessagePersist = true, SkipInstructionInject = true });
+            new ChatOptions { AgentId = "general", SkipUserMessagePersist = true, SkipInstructionInject = true }, TestContext.Current.CancellationToken);
         r1.Success.Should().BeTrue();
         await WaitUntilAsync(() =>
             published.Any(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == r1.ExecutionId));
@@ -250,7 +250,7 @@ public class SchemaScenarioTests
 
         var r2 = await fixture.Service.SubmitAsync(
             session.Id, ChatInput.FromText("2"),
-            new ChatOptions { AgentId = "general", SkipUserMessagePersist = true, SkipInstructionInject = true });
+            new ChatOptions { AgentId = "general", SkipUserMessagePersist = true, SkipInstructionInject = true }, TestContext.Current.CancellationToken);
         r2.Success.Should().BeTrue();
         await WaitUntilAsync(() =>
             published.Any(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == r2.ExecutionId));
@@ -277,7 +277,7 @@ public class SchemaScenarioTests
         catalog.ReplaceAvailable(SettlementEngine.ToDescriptors([a, b]));
         catalog.ReplaceEnabled(["a", "b"]);
         var lifecycle = new ModuleLifecycleManager(catalog, [a, b], new ServiceCollection().BuildServiceProvider(), NullLogger<ModuleLifecycleManager>.Instance);
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         var options = new MutableOptions(new SeeingAgentOptions
         {
@@ -303,7 +303,7 @@ public class SchemaScenarioTests
             settlementOptions: null,
             inFlight: inFlight.Object);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Boot"] });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Boot"] }, TestContext.Current.CancellationToken);
         lifecycle.IsActivated("b").Should().BeTrue();
         handler.PendingDeactivate.Should().Contain("b");
         b.DeactivateCount.Should().Be(0);
@@ -502,7 +502,7 @@ public class SchemaScenarioTests
     private sealed class NamedTool(string id) : ITool
     {
         public string Id { get; } = id;
-        public string Description => id;
+        public string Description => Id;
         public IReadOnlyList<string> Tags => Array.Empty<string>();
         public ToolCategory Category => ToolCategory.General;
         public System.Text.Json.JsonElement ParametersSchema =>

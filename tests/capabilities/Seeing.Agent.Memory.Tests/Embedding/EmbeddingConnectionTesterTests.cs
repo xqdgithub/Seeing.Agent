@@ -17,7 +17,7 @@ public class EmbeddingConnectionTesterTests
     public async Task TestAsync_WhenProviderOrModelEmpty_ShouldFail()
     {
         var tester = CreateTester(CreateLookup(), CreateHttpFactory(null));
-        var result = await tester.TestAsync(null, null);
+        var result = await tester.TestAsync(null, null, TestContext.Current.CancellationToken);
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("填写");
     }
@@ -26,7 +26,7 @@ public class EmbeddingConnectionTesterTests
     public async Task TestAsync_WhenProviderMissing_ShouldFail()
     {
         var tester = CreateTester(CreateLookup(), CreateHttpFactory(null));
-        var result = await tester.TestAsync("openai", "text-embedding-3-small");
+        var result = await tester.TestAsync("openai", "text-embedding-3-small", TestContext.Current.CancellationToken);
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("未找到");
     }
@@ -51,7 +51,7 @@ public class EmbeddingConnectionTesterTests
             });
 
         var tester = CreateTester(lookup.Object, factory);
-        var result = await tester.TestAsync("openai", "text-embedding-3-small");
+        var result = await tester.TestAsync("openai", "text-embedding-3-small", TestContext.Current.CancellationToken);
         result.Success.Should().BeTrue();
         result.Dimensions.Should().Be(3);
     }

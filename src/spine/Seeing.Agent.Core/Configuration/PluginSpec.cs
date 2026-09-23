@@ -9,6 +9,7 @@ namespace Seeing.Agent.Core.Configuration
     /// </summary>
     public class PluginSpecConverter : JsonConverter<PluginSpec>
     {
+        /// <summary>读取 JSON，兼容字符串与对象两种 PluginSpec 表示形式。</summary>
         public override PluginSpec? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.String)
@@ -40,6 +41,7 @@ namespace Seeing.Agent.Core.Configuration
             throw new JsonException($"无法将 {reader.TokenType} 转换为 PluginSpec");
         }
 
+        /// <summary>写出 JSON，无选项时写为字符串、含选项时写为对象。</summary>
         public override void Write(Utf8JsonWriter writer, PluginSpec value, JsonSerializerOptions options)
         {
             if (value.Options == null || value.Options.Count == 0)

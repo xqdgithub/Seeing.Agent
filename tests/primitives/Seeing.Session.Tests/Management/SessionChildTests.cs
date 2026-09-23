@@ -47,7 +47,7 @@ namespace Seeing.Session.Tests.Management
             source.AddMessage(new SessionMessage { Id = "m2", Role = "assistant", Content = "hi", CreatedAt = DateTime.UtcNow });
             mgr.Register(source);
 
-            var forked = await CreateForker(mgr).ForkAsync(source.Id);
+            var forked = await CreateForker(mgr).ForkAsync(source.Id, ct: TestContext.Current.CancellationToken);
 
             forked.Id.Should().NotBe(source.Id);
             forked.Messages.Should().HaveCount(2);
@@ -71,7 +71,7 @@ namespace Seeing.Session.Tests.Management
             };
             mgr.Register(source);
 
-            var forked = await CreateForker(mgr).ForkAsync(source.Id);
+            var forked = await CreateForker(mgr).ForkAsync(source.Id, ct: TestContext.Current.CancellationToken);
 
             forked.PartitionId.Should().Be("p1");
             forked.SelectedAgent.Should().Be("build");
@@ -92,7 +92,7 @@ namespace Seeing.Session.Tests.Management
             var source = mgr.Create();
             mgr.Register(source);
 
-            var forked = await CreateForker(mgr).ForkAsync(source.Id, "新分支");
+            var forked = await CreateForker(mgr).ForkAsync(source.Id, "新分支", TestContext.Current.CancellationToken);
 
             forked.Title.Should().Be("新分支");
         }
@@ -106,7 +106,7 @@ namespace Seeing.Session.Tests.Management
             source.GroupId = "g1";
             mgr.Register(source);
 
-            var forked = await CreateForker(mgr).ForkAsync(source.Id, "label");
+            var forked = await CreateForker(mgr).ForkAsync(source.Id, "label", TestContext.Current.CancellationToken);
 
             // 不继承源 Kind（若复制则为 SubAgent）；默认 Root，由调用方（组管理器）按场景设定
             forked.Kind.Should().Be(SessionKind.Root);
@@ -122,10 +122,10 @@ namespace Seeing.Session.Tests.Management
             var source = mgr.Create();
             mgr.Register(source);
 
-            var forked = await CreateForker(mgr).ForkAsync(source.Id);
+            var forked = await CreateForker(mgr).ForkAsync(source.Id, ct: TestContext.Current.CancellationToken);
 
             mgr.Get(forked.Id).Should().BeSameAs(forked);
-            var loaded = await store.LoadAsync(forked.Id);
+            var loaded = await store.LoadAsync(forked.Id, TestContext.Current.CancellationToken);
             loaded.Should().NotBeNull();
             loaded!.Id.Should().Be(forked.Id);
         }

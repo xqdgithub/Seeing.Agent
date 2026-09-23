@@ -49,7 +49,7 @@ public class HybridMemoryIndexTests : IDisposable
         var node = CreateTestNode("test.md");
 
         // Act
-        await _index.IndexAsync(node);
+        await _index.IndexAsync(node, TestContext.Current.CancellationToken);
 
         // Assert
         _vectorIndexMock.Verify(x => x.IndexAsync(node, It.IsAny<CancellationToken>()), Times.Once);
@@ -67,7 +67,7 @@ public class HybridMemoryIndexTests : IDisposable
             Mock.Of<IFileStore>());
         var node = CreateTestNode("test.md");
 
-        await index.IndexAsync(node);
+        await index.IndexAsync(node, TestContext.Current.CancellationToken);
 
         _vectorIndexMock.Verify(x => x.IndexAsync(It.IsAny<FileNode>(), It.IsAny<CancellationToken>()), Times.Never);
         _keywordIndexMock.Verify(x => x.IndexAsync(node, It.IsAny<CancellationToken>()), Times.Once);
@@ -77,7 +77,7 @@ public class HybridMemoryIndexTests : IDisposable
     public async Task RemoveAsync_ShouldCallBothIndexes()
     {
         // Act
-        await _index.RemoveAsync("test.md");
+        await _index.RemoveAsync("test.md", TestContext.Current.CancellationToken);
 
         // Assert
         _vectorIndexMock.Verify(x => x.RemoveAsync("test.md", It.IsAny<CancellationToken>()), Times.Once);
@@ -88,7 +88,7 @@ public class HybridMemoryIndexTests : IDisposable
     public async Task RebuildAsync_ShouldClearBothIndexes()
     {
         // Act
-        await _index.RebuildAsync();
+        await _index.RebuildAsync(TestContext.Current.CancellationToken);
 
         // Assert
         _vectorIndexMock.Verify(x => x.ClearAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -107,7 +107,7 @@ public class HybridMemoryIndexTests : IDisposable
             });
 
         // Act
-        var results = await _index.SearchAsync(query);
+        var results = await _index.SearchAsync(query, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(results);
@@ -128,7 +128,7 @@ public class HybridMemoryIndexTests : IDisposable
             });
 
         // Act
-        var results = await _index.SearchAsync(query);
+        var results = await _index.SearchAsync(query, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(results);
@@ -155,7 +155,7 @@ public class HybridMemoryIndexTests : IDisposable
             });
 
         // Act
-        var results = await _index.SearchAsync(query);
+        var results = await _index.SearchAsync(query, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, results.Count); // doc1, doc2, doc3
@@ -171,7 +171,7 @@ public class HybridMemoryIndexTests : IDisposable
             .ReturnsAsync(15);
 
         // Act
-        var stats = await _index.GetStatsAsync();
+        var stats = await _index.GetStatsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(10, stats.TotalVectors);

@@ -42,14 +42,14 @@ public class SessionEventStreamRouterTests
         var channel = Channel.CreateUnbounded<IMessageEvent>();
         var orchestrator = new Mock<IChatOrchestrator>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
-            .Returns(channel.Reader.ReadAllAsync());
+             .Returns(channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken));
 
         using var router = CreateRouter(orchestrator);
         var consumer = new FakeConsumer("s1");
         router.AttachConsumer("s1", consumer);
 
-        await channel.Writer.WriteAsync(evt);
-        await Task.Delay(200);
+        await channel.Writer.WriteAsync(evt, TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         consumer.Events.Should().ContainSingle(e => ReferenceEquals(e, evt));
 
         router.DetachConsumer("s1", consumer);
@@ -67,13 +67,13 @@ public class SessionEventStreamRouterTests
         orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(buffered);
         var channel = Channel.CreateUnbounded<IMessageEvent>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
-            .Returns(channel.Reader.ReadAllAsync());
+             .Returns(channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken));
 
         using var router = CreateRouter(orchestrator);
         var consumer = new FakeConsumer("s1");
         router.AttachConsumer("s1", consumer, replay: true);
 
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         consumer.Events.Should().ContainSingle(); // buffer 补历史一次（replay）
     }
 
@@ -88,18 +88,18 @@ public class SessionEventStreamRouterTests
         orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(buffered);
         var channel = Channel.CreateUnbounded<IMessageEvent>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
-            .Returns(channel.Reader.ReadAllAsync());
+             .Returns(channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken));
 
         using var router = CreateRouter(orchestrator);
         var consumer = new FakeConsumer("s1");
         router.AttachConsumer("s1", consumer); // 非 replay：skipSet 丢弃 buffer 历史
 
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         consumer.Events.Should().BeEmpty(); // buffer 历史被 skip
 
         var live = new LoopStartEvent { SessionId = "s1", LoopId = "new" };
-        await channel.Writer.WriteAsync(live);
-        await Task.Delay(200);
+        await channel.Writer.WriteAsync(live, TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         consumer.Events.Should().ContainSingle(e => ReferenceEquals(e, live));
     }
 
@@ -243,7 +243,7 @@ public class SessionEventStreamRouterTests
         var channel = Channel.CreateUnbounded<IMessageEvent>();
         var orchestrator = new Mock<IChatOrchestrator>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
-            .Returns(channel.Reader.ReadAllAsync());
+             .Returns(channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken));
         orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(new List<IMessageEvent>());
 
         using var router = CreateRouter(orchestrator, scopeFactory.Object);
@@ -259,8 +259,8 @@ public class SessionEventStreamRouterTests
 
         // circuit-2 的 c2 订阅不受影响：事件照常送达
         var evt = new LoopStartEvent { SessionId = "s1", LoopId = "l1" };
-        await channel.Writer.WriteAsync(evt);
-        await Task.Delay(200);
+        await channel.Writer.WriteAsync(evt, TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         c2.Events.Should().Contain(e => ReferenceEquals(e, evt));
     }
 
@@ -282,17 +282,17 @@ public class SessionEventStreamRouterTests
         var consumer = new FakeConsumer("s1");
         router.AttachConsumer("s1", consumer); // loop1 消费 channel1
 
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         channel1.Writer.TryComplete(); // 模拟空闲清理：流完成
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         consumer.StreamEnded.Should().BeTrue(); // loop 结束时广播流结束
 
         // 同页新提交：再次 AttachConsumer → 应重启 loop（消费 channel2）
         router.AttachConsumer("s1", consumer);
 
         var evt = new LoopStartEvent { SessionId = "s1", LoopId = "l2" };
-        await channel2.Writer.WriteAsync(evt);
-        await Task.Delay(200);
+        await channel2.Writer.WriteAsync(evt, TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         consumer.Events.Should().Contain(e => ReferenceEquals(e, evt));
         channels.Count.Should().Be(0); // 两次订阅均已建立
     }

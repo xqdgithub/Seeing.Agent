@@ -16,13 +16,13 @@ public class RelocatableSessionStoreTests
         {
             var store = new FileSessionStore(root1);
             var session = new SessionData { Id = "s1", Title = "旧工作区会话" };
-            await store.SaveAsync(session);
+            await store.SaveAsync(session, TestContext.Current.CancellationToken);
 
             store.SetBaseDirectory(root2);
-            await store.SaveAsync(new SessionData { Id = "s2", Title = "新工作区会话" });
+            await store.SaveAsync(new SessionData { Id = "s2", Title = "新工作区会话" }, TestContext.Current.CancellationToken);
 
-            (await store.LoadAsync("s1")).Should().BeNull();   // 旧目录不可见
-            (await store.LoadAsync("s2")).Should().NotBeNull(); // 新目录可读写
+            (await store.LoadAsync("s1", TestContext.Current.CancellationToken)).Should().BeNull();   // 旧目录不可见
+            (await store.LoadAsync("s2", TestContext.Current.CancellationToken)).Should().NotBeNull(); // 新目录可读写
         }
         finally
         {

@@ -14,6 +14,9 @@ public sealed class WorkspacePathGate : IWorkspacePathGate
     private readonly IPermissionGrantStore _grantStore;
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
 
+    /// <summary>
+    /// 构造路径门闸，注入工作区提供者、授权存储与配置监听。
+    /// </summary>
     public WorkspacePathGate(
         IWorkspaceProvider workspace,
         IPermissionGrantStore grantStore,

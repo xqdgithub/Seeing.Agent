@@ -26,6 +26,9 @@ public class ProviderManager : IProviderManager, IDisposable
     private Dictionary<string, ProviderConfig> ConfiguredProviders
         => _configManager.GetSection<Dictionary<string, ProviderConfig>>("Providers");
 
+    /// <summary>
+    /// 注入配置管理器与客户端工厂等依赖构造 Provider 管理器，并注册配置驱动 Provider。
+    /// </summary>
     public ProviderManager(
         UnifiedConfigManager configManager,
         IEnumerable<ILlmClientFactory> clientFactories,
@@ -415,6 +418,9 @@ public class ProviderManager : IProviderManager, IDisposable
 
     #endregion
 
+    /// <summary>
+    /// 释放资源：注销 Provider 注册表的变更监听。
+    /// </summary>
     public void Dispose()
     {
         _registry.ProvidersChanged -= OnProvidersChanged;

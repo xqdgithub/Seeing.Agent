@@ -70,7 +70,7 @@ public class AcpConfigPersistenceTests
 
         var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, TestConfigSectionRegistry.WithAcp());
 
-        await configManager.LoadAsync();
+        await configManager.LoadAsync(TestContext.Current.CancellationToken);
 
         configManager.GetSection<AcpOptions>("Acp").Backends["cursor"].Command.Should().Be("C:/saved.cmd");
 
@@ -120,7 +120,7 @@ public class AcpConfigPersistenceTests
 
         var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, TestConfigSectionRegistry.WithAcp());
 
-        await configManager.LoadAsync();
+        await configManager.LoadAsync(TestContext.Current.CancellationToken);
 
         configManager.GetSection<AcpOptions>("Acp").Backends["cursor"].Command.Should().Be("C:/user.cmd");
 
@@ -142,7 +142,7 @@ public class AcpConfigPersistenceTests
 
         var configManager = new UnifiedConfigManager(workspaceMock.Object, NullLogger<UnifiedConfigManager>.Instance, TestConfigSectionRegistry.WithAcp());
 
-        await configManager.LoadAsync();
+        await configManager.LoadAsync(TestContext.Current.CancellationToken);
 
         var acp = new AcpOptions { Enabled = true };
 

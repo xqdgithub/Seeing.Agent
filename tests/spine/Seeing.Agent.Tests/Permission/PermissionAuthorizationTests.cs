@@ -32,7 +32,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.Options.Workspace.RestrictToWorkspace = true;
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", InsidePath));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", InsidePath), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -47,7 +47,7 @@ public class PermissionAuthorizationTests
         h.Store.AddSessionDirectory("s1", WhitelistDir);
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", Path.Combine(WhitelistDir, "a.txt")));
+            h.Request("filesystem.read", Path.Combine(WhitelistDir, "a.txt")), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -61,7 +61,7 @@ public class PermissionAuthorizationTests
         h.Options.Workspace.RestrictToWorkspace = true;
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", InsidePath, sessionId: string.Empty));
+            h.Request("filesystem.read", InsidePath, sessionId: string.Empty), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -76,7 +76,7 @@ public class PermissionAuthorizationTests
         h.Options.Workspace.RestrictToWorkspace = true;
         h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", OutsidePath));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", OutsidePath), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -90,7 +90,7 @@ public class PermissionAuthorizationTests
         h.Options.Workspace.RestrictToWorkspace = true;
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.write", OutsidePath));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.write", OutsidePath), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.Store.ContainsSessionPath("s1", OutsidePath).Should().BeTrue();
@@ -105,7 +105,7 @@ public class PermissionAuthorizationTests
         h.SetAgentPolicy("agent", PermissionRuleEntry.Deny(PermissionKind.File, "*"));
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", InsidePath, agentName: "agent"));
+            h.Request("filesystem.read", InsidePath, agentName: "agent"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertNoAsk();
@@ -119,7 +119,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.Store.Add("s1", new PermissionGrant("filesystem.read", "secret.pem", PermissionGrantScope.Session, PermissionEffect.Deny));
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", "secret.pem"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", "secret.pem"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -132,7 +132,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.Store.Add("s1", new PermissionGrant("filesystem.read", "secret.pem", PermissionGrantScope.Session, PermissionEffect.Allow));
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", "secret.pem"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", "secret.pem"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -146,7 +146,7 @@ public class PermissionAuthorizationTests
         h.Store.Add("s1", new PermissionGrant("filesystem.read", WhitelistDir, PermissionGrantScope.SessionDirectory, PermissionEffect.Allow));
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", Path.Combine(WhitelistDir, "nested", "a.txt")));
+            h.Request("filesystem.read", Path.Combine(WhitelistDir, "nested", "a.txt")), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertNoAsk();
@@ -160,7 +160,7 @@ public class PermissionAuthorizationTests
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", Path.Combine(WhitelistDir, "a.txt")));
+            h.Request("filesystem.read", Path.Combine(WhitelistDir, "a.txt")), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertAskedOnce();
@@ -174,7 +174,7 @@ public class PermissionAuthorizationTests
         h.SetAgentPolicy("agent", PermissionRuleEntry.Allow(PermissionKind.File, "*"));
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", "secret.pem", agentName: "agent"));
+            h.Request("filesystem.read", "secret.pem", agentName: "agent"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         h.AssertNoAsk();
@@ -189,7 +189,7 @@ public class PermissionAuthorizationTests
         h.SetAgentPolicy("agent", PermissionRuleEntry.Deny(PermissionKind.File, "*.pem"));
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", "secret.pem", agentName: "agent"));
+            h.Request("filesystem.read", "secret.pem", agentName: "agent"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -204,7 +204,7 @@ public class PermissionAuthorizationTests
         h.SetAgentPolicy("agent", PermissionRuleEntry.Allow(PermissionKind.Tool, "ba*"));
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("tool.execute", "bash", agentName: "agent"));
+            h.Request("tool.execute", "bash", agentName: "agent"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertNoAsk();
@@ -220,7 +220,7 @@ public class PermissionAuthorizationTests
         h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", OutsidePath, agentName: "agent"));
+            h.Request("filesystem.read", OutsidePath, agentName: "agent"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -234,7 +234,7 @@ public class PermissionAuthorizationTests
         h.SetAgentPolicy("agent", PermissionRuleEntry.Allow(PermissionKind.Tool, "*"));
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("tool.execute", "bash", agentName: "agent"));
+            h.Request("tool.execute", "bash", agentName: "agent"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -248,7 +248,7 @@ public class PermissionAuthorizationTests
         h.SetAgentPolicy("agent", PermissionRuleEntry.Deny(PermissionKind.Shell, "*"));
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("shell.execute", "bash -c rm -rf /", agentName: "agent"));
+            h.Request("shell.execute", "bash -c rm -rf /", agentName: "agent"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -266,7 +266,7 @@ public class PermissionAuthorizationTests
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", OutsidePath, agentName: "explore"));
+            h.Request("filesystem.read", OutsidePath, agentName: "explore"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.User);
@@ -282,7 +282,7 @@ public class PermissionAuthorizationTests
             PermissionRuleEntry.Allow(PermissionKind.Tool, "read"));
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("tool.execute", "git_status", agentName: "explore"));
+            h.Request("tool.execute", "git_status", agentName: "explore"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -297,7 +297,7 @@ public class PermissionAuthorizationTests
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("tool.execute", "bash", agentName: "agent", requireInteraction: true));
+            h.Request("tool.execute", "bash", agentName: "agent", requireInteraction: true), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertAskedOnce();
@@ -309,7 +309,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.SetupAsk(PermissionEffect.Deny, PermissionGrantScope.Once);
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         h.AssertAskedOnce();
@@ -324,7 +324,7 @@ public class PermissionAuthorizationTests
         h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("tool.execute", "bash", @override: SessionAutoApprove.Enabled));
+            h.Request("tool.execute", "bash", @override: SessionAutoApprove.Enabled), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -337,7 +337,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.Sessions.Setup(s => s.Get("s1")).Returns(new SessionData { Id = "s1", AutoApprove = SessionAutoApprove.Enabled });
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertNoAsk();
@@ -349,7 +349,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.Options.Permission.AutoApproveAll = true;
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertNoAsk();
@@ -363,7 +363,7 @@ public class PermissionAuthorizationTests
         h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("tool.execute", "bash", requireInteraction: true));
+            h.Request("tool.execute", "bash", requireInteraction: true), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -378,7 +378,7 @@ public class PermissionAuthorizationTests
         h.AddAutoApproveChannel();
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertAskedOnce();
@@ -393,7 +393,7 @@ public class PermissionAuthorizationTests
         h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
         var resolution = await h.Service.AuthorizeAsync(
-            h.Request("tool.execute", "bash", requireInteraction: true));
+            h.Request("tool.execute", "bash", requireInteraction: true), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -408,7 +408,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.AddAutoApproveChannel();
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
@@ -422,7 +422,7 @@ public class PermissionAuthorizationTests
         h.Channels.Add(new DenyAllPermissionChannel());
         h.SetupAsk(PermissionEffect.Deny, PermissionGrantScope.Once);
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         h.AssertAskedOnce();
@@ -436,7 +436,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(false);
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -452,7 +452,7 @@ public class PermissionAuthorizationTests
         h.Channels.Add(channel.Object);
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
 
-        await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         channel.Verify(c => c.PresentAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()), Times.Once);
         h.Manager.Verify(m => m.WaitAsync(It.IsAny<RequestTicket>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -464,8 +464,8 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
 
-        await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash", callId: "c1"));
-        await h.Service.AuthorizeAsync(h.Request("filesystem.write", OutsidePath, callId: "c1"));
+        await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash", callId: "c1"), TestContext.Current.CancellationToken);
+        await h.Service.AuthorizeAsync(h.Request("filesystem.write", OutsidePath, callId: "c1"), TestContext.Current.CancellationToken);
 
         h.Manager.Verify(
             m => m.BeginAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()),
@@ -480,13 +480,13 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Session);
 
-        var first = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var first = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
         first.Decision.Should().Be(PermissionEffect.Allow);
         h.Store.Lookup("s1", "tool.execute", "bash").Should().ContainSingle()
             .Which.Scope.Should().Be(PermissionGrantScope.Session);
 
         h.Manager.Invocations.Clear();
-        var second = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        var second = await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         second.Decision.Should().Be(PermissionEffect.Allow);
         h.AssertNoAsk();
@@ -498,7 +498,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.SetupAsk(PermissionEffect.Deny, PermissionGrantScope.Session);
 
-        await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"));
+        await h.Service.AuthorizeAsync(h.Request("tool.execute", "bash"), TestContext.Current.CancellationToken);
 
         h.Store.Lookup("s1", "tool.execute", "bash").Should().ContainSingle()
             .Which.Effect.Should().Be(PermissionEffect.Deny);
@@ -512,7 +512,7 @@ public class PermissionAuthorizationTests
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.SessionDirectory);
 
         await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", Path.Combine(WhitelistDir, "a.txt")));
+            h.Request("filesystem.read", Path.Combine(WhitelistDir, "a.txt")), TestContext.Current.CancellationToken);
 
         h.Store.Lookup("s1", "filesystem.read", Path.Combine(WhitelistDir, "b.txt"))
             .Should().ContainSingle()
@@ -527,7 +527,7 @@ public class PermissionAuthorizationTests
         h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Session);
 
         await h.Service.AuthorizeAsync(
-            h.Request("filesystem.read", Path.Combine(WhitelistDir, "a.txt")));
+            h.Request("filesystem.read", Path.Combine(WhitelistDir, "a.txt")), TestContext.Current.CancellationToken);
 
         h.Store.Lookup("s1", "filesystem.read", Path.Combine(WhitelistDir, "a.txt"))
             .Should().ContainSingle().Which.Scope.Should().Be(PermissionGrantScope.Session);
@@ -541,7 +541,7 @@ public class PermissionAuthorizationTests
         var h = new Harness();
         h.Options.Workspace.RestrictToWorkspace = true;
 
-        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", InsidePath));
+        var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.read", InsidePath), TestContext.Current.CancellationToken);
 
         resolution.RequestId.Should().NotBeNullOrEmpty();
     }
@@ -569,7 +569,7 @@ public class PermissionAuthorizationTests
             SessionId = string.Empty,
             PermissionKind = "filesystem.write",
             Resource = "x"
-        });
+        }, TestContext.Current.CancellationToken);
 
         captured.Should().NotBeNull();
         captured!.SessionId.Should().Be("s1");
@@ -599,7 +599,7 @@ public class PermissionAuthorizationTests
             SessionId = "s1",
             PermissionKind = "tool.execute",
             Resource = "bash"
-        });
+        }, TestContext.Current.CancellationToken);
 
         captured!.AllowedScopes.Should().BeEquivalentTo(
             new[] { PermissionGrantScope.Once, PermissionGrantScope.Session });

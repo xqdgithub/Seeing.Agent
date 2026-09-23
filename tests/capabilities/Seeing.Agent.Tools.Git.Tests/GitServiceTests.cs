@@ -114,7 +114,8 @@ public class GitServiceTests
         var service = CreateService(tempPath);
 
         // Act
-        var result = await service.IsInRepositoryAsync();
+        var result = await service.IsInRepositoryAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeFalse();
@@ -132,7 +133,7 @@ public class GitServiceTests
         var service = CreateService(tempPath);
 
         // Act
-        var branch = await service.GetCurrentBranchAsync();
+        var branch = await service.GetCurrentBranchAsync(TestContext.Current.CancellationToken);
 
         // Assert
         branch.Should().Be("HEAD");

@@ -64,7 +64,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             new TestProvider("extension", [new() { Id = "dynamic-model" }]),
             ownerExtensionId: "sample-extension");
 
-        await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         catalog.GetModels().Keys.Should().BeEquivalentTo(
             "openai/configured",
@@ -88,7 +88,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         registry.Register(new TestProvider("trigger", []), ownerExtensionId: "ext");
 
-        await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("healthy/visible");
     }
@@ -106,7 +106,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         await catalog.AddModelAsync(
             "extension/dynamic",
-            new ModelConfig { Id = "dynamic", Provider = "extension" });
+            new ModelConfig { Id = "dynamic", Provider = "extension" }, ct: TestContext.Current.CancellationToken);
 
         config.GetSection<Dictionary<string, ProviderConfig>>("Providers").Should().BeEmpty();
     }
@@ -127,7 +127,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             new Dictionary<string, ModelConfig>
             {
                 ["dynamic"] = new() { Id = "dynamic" }
-            });
+            }, ct: TestContext.Current.CancellationToken);
 
         config.GetSection<Dictionary<string, ProviderConfig>>("Providers").Should().BeEmpty();
     }
@@ -156,7 +156,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             NullLogger<ModelConfigManager>.Instance);
         var replacement = new ModelConfig { Id = "replacement", Provider = "extension" };
 
-        await catalog.UpdateModelAsync("openai/original", replacement);
+        await catalog.UpdateModelAsync("openai/original", replacement, ct: TestContext.Current.CancellationToken);
 
         config.GetSection<Dictionary<string, ProviderConfig>>("Providers")["openai"].Models!["original"].Id.Should().Be("replacement");
         replacement.Provider.Should().Be("openai");
@@ -176,7 +176,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             registry,
             NullLogger<ModelConfigManager>.Instance);
 
-        await gate.AllStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await gate.AllStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         gate.Release.SetResult();
         await WaitUntilAsync(
             () => catalog.GetModels().Count == 2,
@@ -199,12 +199,12 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             registry,
             NullLogger<ModelConfigManager>.Instance);
 
-        await provider.FirstCallStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await provider.FirstCallStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         // 首个全量刷新仍挂起时再排一次全量刷新，使首个结果过期
-        var latestRefresh = catalog.RefreshCatalogAsync();
+        var latestRefresh = catalog.RefreshCatalogAsync(ct: TestContext.Current.CancellationToken);
         provider.ReleaseFirstCall.SetResult();
-        await latestRefresh.WaitAsync(TimeSpan.FromSeconds(5));
+        await latestRefresh.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("sequence/latest");
     }
@@ -226,7 +226,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         catalog.GetModels().Should().BeEmpty();
 
         provider.SetModels([new ModelConfig { Id = "recovered" }]);
-        await catalog.RefreshCatalogAsync();
+        await catalog.RefreshCatalogAsync(ct: TestContext.Current.CancellationToken);
 
         catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("recoverable/recovered");
     }
@@ -255,7 +255,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         first.SetModels([new ModelConfig { Id = "a2" }]);
         second.SetModels([new ModelConfig { Id = "b2" }]);
 
-        await catalog.RefreshCatalogAsync("first");
+        await catalog.RefreshCatalogAsync("first", TestContext.Current.CancellationToken);
 
         catalog.GetModels().Keys.Should().BeEquivalentTo("first/a2", "second/b");
         second.CallCount.Should().Be(secondCallsBefore);
@@ -301,9 +301,9 @@ public sealed class ModelCatalogAggregationTests : IDisposable
                     }
                 }
             },
-            ConfigLevel.User);
+            ConfigLevel.User, TestContext.Current.CancellationToken);
 
-        await catalog.RefreshCatalogAsync("openai");
+        await catalog.RefreshCatalogAsync("openai", TestContext.Current.CancellationToken);
 
         catalog.GetModels().Keys.Should().BeEquivalentTo("openai/gpt", "openai/added");
     }
@@ -369,8 +369,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
                 Interlocked.Increment(ref providersSaves);
         };
 
-        await catalog.DeleteModelAsync("openai/gpt");
-        await catalog.DeleteModelAsync("openai/gpt");
+        await catalog.DeleteModelAsync("openai/gpt", ct: TestContext.Current.CancellationToken);
+        await catalog.DeleteModelAsync("openai/gpt", ct: TestContext.Current.CancellationToken);
 
         providersSaves.Should().Be(1);
     }

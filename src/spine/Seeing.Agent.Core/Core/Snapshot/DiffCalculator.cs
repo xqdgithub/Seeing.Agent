@@ -214,8 +214,11 @@ namespace Seeing.Agent.Core.Snapshot
     /// <summary>Diff 操作类型</summary>
     public enum DiffOperation
     {
+        /// <summary>行内容相同</summary>
         Equal,
+        /// <summary>新增行</summary>
         Insert,
+        /// <summary>删除行</summary>
         Delete
     }
 }

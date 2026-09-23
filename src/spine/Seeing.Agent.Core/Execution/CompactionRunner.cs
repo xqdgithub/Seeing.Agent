@@ -18,6 +18,7 @@ public class CompactionRunner
     private readonly ISessionManager _sessionManager;
     private readonly ILogger<CompactionRunner> _logger;
 
+    /// <summary>初始化压缩执行器，注入压缩服务、事件发布器与日志器。</summary>
     public CompactionRunner(
         CompressionService compressionService,
         IExecutionEventPublisher publisher,

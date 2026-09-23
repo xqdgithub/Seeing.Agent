@@ -47,6 +47,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     /// <summary>模型配置变更事件</summary>
     public event EventHandler<ModelConfigChangedEventArgs>? ModelConfigChanged;
 
+    /// <summary>
+    /// 初始化模型目录管理器：种子加载配置模型、监听注册表变更并启动单线程刷新队列。
+    /// </summary>
     public ModelConfigManager(
         UnifiedConfigManager configManager,
         IProviderRegistry registry,
@@ -795,12 +798,18 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
     #endregion
 
+    /// <summary>
+    /// 释放资源：关闭模型目录刷新工作器。
+    /// </summary>
     public void Dispose()
     {
         _ = ShutdownRefreshWorkerAsync();
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>
+    /// 异步释放资源：等待刷新工作器完全关闭。
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         await ShutdownRefreshWorkerAsync().ConfigureAwait(false);

@@ -22,7 +22,7 @@ public class WeComStreamStateTests
         await state.BeginAsync(CancellationToken.None);
         await state.PublishAsync("hello", CancellationToken.None);
 
-        await Task.Delay(TimeSpan.FromSeconds(6));
+        await Task.Delay(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken);
 
         var helloIndex = sender.Records.FindIndex(r => r.Content == "hello");
         helloIndex.Should().BeGreaterThanOrEqualTo(0);
@@ -49,7 +49,7 @@ public class WeComStreamStateTests
         await state.PublishAsync("hello", CancellationToken.None);
         await state.PublishAsync("hello world", CancellationToken.None);
 
-        await Task.Delay(TimeSpan.FromSeconds(6));
+        await Task.Delay(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken);
 
         sender.Records.Count(r => r.Content == "hello world").Should().Be(0,
             "second delta is throttled and should not be sent yet");
@@ -91,7 +91,7 @@ public class WeComStreamStateTests
         await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
 
-        await Task.Delay(TimeSpan.FromSeconds(6));
+        await Task.Delay(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken);
 
         sender.Records.Should().OnlyContain(r => !r.Finish);
     }
@@ -110,7 +110,7 @@ public class WeComStreamStateTests
         await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
 
-        await Task.Delay(TimeSpan.FromSeconds(6));
+        await Task.Delay(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken);
         await state.CompleteAsync("final answer", CancellationToken.None);
 
         sender.Records.Select(r => r.StreamId).Distinct().Should().ContainSingle();
@@ -146,7 +146,7 @@ public class WeComStreamStateTests
         await using var state = new WeComStreamState(sender, client: null, new WeComWsFrame(), options);
         await state.BeginAsync(CancellationToken.None);
 
-        await Task.Delay(TimeSpan.FromSeconds(6));
+        await Task.Delay(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken);
 
         sender.Records.Should().ContainSingle(r => r.Content == ProcessingText && !r.Finish);
     }

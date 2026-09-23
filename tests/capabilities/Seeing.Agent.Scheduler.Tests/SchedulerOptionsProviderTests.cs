@@ -77,9 +77,9 @@ public class SchedulerOptionsProviderTests
                 Prompt = "检查系统状态"
             }
         };
-        await configManager.SaveSectionAsync("Scheduler", newOptions, ConfigLevel.Project);
+        await configManager.SaveSectionAsync("Scheduler", newOptions, ConfigLevel.Project, TestContext.Current.CancellationToken);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Scheduler" } });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Scheduler" } }, TestContext.Current.CancellationToken);
 
         provider.Current.Enabled.Should().BeTrue();
         provider.Current.Timezone.Should().Be("Asia/Shanghai");
@@ -96,9 +96,9 @@ public class SchedulerOptionsProviderTests
         var (configManager, provider, handler) = CreateReloadHandler(ws);
 
         var newOptions = new SchedulerOptions { Enabled = false };
-        await configManager.SaveSectionAsync("Scheduler", newOptions, ConfigLevel.Project);
+        await configManager.SaveSectionAsync("Scheduler", newOptions, ConfigLevel.Project, TestContext.Current.CancellationToken);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Memory" } });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Memory" } }, TestContext.Current.CancellationToken);
 
         provider.Current.Enabled.Should().BeTrue();
     }
@@ -110,9 +110,9 @@ public class SchedulerOptionsProviderTests
         var (configManager, provider, handler) = CreateReloadHandler(ws);
 
         var newOptions = new SchedulerOptions { Enabled = false };
-        await configManager.SaveSectionAsync("Scheduler", newOptions, ConfigLevel.Project);
+        await configManager.SaveSectionAsync("Scheduler", newOptions, ConfigLevel.Project, TestContext.Current.CancellationToken);
 
-        await handler.ReloadAsync(new ConfigChange());
+        await handler.ReloadAsync(new ConfigChange(), TestContext.Current.CancellationToken);
 
         provider.Current.Enabled.Should().BeFalse();
     }

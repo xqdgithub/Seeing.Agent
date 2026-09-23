@@ -34,7 +34,8 @@ public class GitServiceSubprocessTests
             world,
             Microsoft.Extensions.Options.Options.Create(new GitOptions()));
 
-        var status = await service.GetStatusAsync();
+        var status = await service.GetStatusAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         status.Branch.Should().Be("feature/test");
         status.Ahead.Should().Be("+2");
@@ -63,7 +64,10 @@ public class GitServiceSubprocessTests
             world,
             Microsoft.Extensions.Options.Options.Create(new GitOptions()));
 
-        await service.ExecuteAsync("rev-parse", new[] { "--is-inside-work-tree" });
+        await service.ExecuteAsync(
+            "rev-parse",
+            ["--is-inside-work-tree"],
+            TestContext.Current.CancellationToken);
 
         captured.Should().NotBeNull();
         captured!.WorkingDirectory.Should().Be("/world-cwd");

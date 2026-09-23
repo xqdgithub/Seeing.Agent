@@ -221,7 +221,7 @@ public class BashTool : ToolBase
             await context.EventSink.EmitAsync(new ToolCallEvent
             {
                 SessionId = context.SessionId,
-                ToolCallId = context.CallId,
+                ToolCallId = context.CallId ?? "",
                 ToolName = "bash",
                 Status = ToolCallStatus.Running,
                 Type = MessageEventType.ToolCallRunning,

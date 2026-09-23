@@ -27,7 +27,7 @@ public class OpenAiThinkingOutboundTests
             Model = "deepseek-chat",
             Messages = [new ChatMessage { Role = ChatRole.User, Content = "hi" }],
             ThinkingEffort = "high"
-        });
+        }, ct: TestContext.Current.CancellationToken);
 
         using var doc = JsonDocument.Parse(body!);
         var root = doc.RootElement;
@@ -50,7 +50,7 @@ public class OpenAiThinkingOutboundTests
             Model = "deepseek-chat",
             Messages = [new ChatMessage { Role = ChatRole.User, Content = "hi" }],
             ThinkingEffort = "disabled"
-        });
+        }, ct: TestContext.Current.CancellationToken);
 
         using var doc = JsonDocument.Parse(body!);
         var root = doc.RootElement;
@@ -91,7 +91,7 @@ public class OpenAiThinkingOutboundTests
                 },
                 new ChatMessage { Role = ChatRole.Tool, ToolCallId = "call_1", Content = "ok" }
             ]
-        });
+        }, ct: TestContext.Current.CancellationToken);
 
         using var doc = JsonDocument.Parse(body!);
         var assistant = doc.RootElement.GetProperty("messages")[0];
@@ -121,7 +121,7 @@ public class OpenAiThinkingOutboundTests
                     ReasoningContent = "secret-thought"
                 }
             ]
-        });
+        }, ct: TestContext.Current.CancellationToken);
 
         using var doc = JsonDocument.Parse(body!);
         var assistant = doc.RootElement.GetProperty("messages")[0];

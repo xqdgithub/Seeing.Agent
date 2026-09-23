@@ -32,6 +32,9 @@ namespace Seeing.Agent.Core
             @"^---\s*[\r]?\n(.*?)[\r]?\n---\s*[\r]?\n?",
             RegexOptions.Singleline | RegexOptions.Compiled);
 
+        /// <summary>
+        /// 构造 Agent 发现器，初始化 YAML 反序列化器并注册默认搜索目录。
+        /// </summary>
         public AgentDiscovery(ILogger<AgentDiscovery> logger)
         {
             _logger = logger;

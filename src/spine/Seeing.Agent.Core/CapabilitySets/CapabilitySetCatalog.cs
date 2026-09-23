@@ -26,6 +26,7 @@ public sealed class CapabilitySetCatalog : ICapabilitySetCatalog
 {
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
 
+    /// <summary>初始化能力集目录，注入配置监视器。</summary>
     public CapabilitySetCatalog(IOptionsMonitor<SeeingAgentOptions> options)
     {
         _options = options;

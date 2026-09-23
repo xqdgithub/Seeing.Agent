@@ -55,7 +55,7 @@ public class ChatOrchestratorCreateSessionTests
             new AgentSelectionResolver(runtime.Object),
             modelManager);
 
-        var session = await orchestrator.CreateSessionAsync(title: "新会话");
+        var session = await orchestrator.CreateSessionAsync(title: "新会话", cancellationToken: TestContext.Current.CancellationToken);
 
         session.SelectedAgent.Should().Be("build");
         session.SelectedModel.Should().Be("openai/gpt-4o");
@@ -90,7 +90,7 @@ public class ChatOrchestratorCreateSessionTests
             new AgentSelectionResolver(runtime.Object),
             modelManager);
 
-        var session = await orchestrator.CreateSessionAsync();
+        var session = await orchestrator.CreateSessionAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         session.SelectedAgent.Should().Be("acp-cursor");
         session.SelectedModel.Should().BeEmpty();
@@ -125,7 +125,7 @@ public class ChatOrchestratorCreateSessionTests
             new AgentSelectionResolver(runtime.Object),
             modelManager);
 
-        var session = await orchestrator.CreateSessionAsync();
+        var session = await orchestrator.CreateSessionAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         session.SelectedModel.Should().Be("anthropic/claude-sonnet");
     }
@@ -162,7 +162,7 @@ public class ChatOrchestratorCreateSessionTests
             modelManager,
             workMode.Object);
 
-        var session = await orchestrator.CreateSessionAsync(title: "场景会话");
+        var session = await orchestrator.CreateSessionAsync(title: "场景会话", cancellationToken: TestContext.Current.CancellationToken);
 
         session.Scenario.Should().Be("code");
         await sessionManager.SaveAsync(session.Id);

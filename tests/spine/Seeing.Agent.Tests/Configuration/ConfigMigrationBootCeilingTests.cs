@@ -35,7 +35,7 @@ public class ConfigMigrationBootCeilingTests
             // 旧 Modules.Enabled：应警告并忽略，不得收窄 boot
             UserEnabled = ["io.local"],
             UserDisabled = null,
-        });
+        }, TestContext.Current.CancellationToken);
 
         result.Boot.Should().Be("*");
         result.Enabled.Should().BeEquivalentTo(["basic", "filesystem", "io.local"]);

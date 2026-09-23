@@ -14,7 +14,7 @@ public class PendingRequestManagerTests
         using var manager = new TestManager();
         var request = new TestRequest { SessionId = "s1" };
 
-        var ticket = await manager.BeginAsync(request);
+        var ticket = await manager.BeginAsync(request, TestContext.Current.CancellationToken);
 
         ticket.RequestId.Should().NotBeNullOrEmpty();
         ticket.SessionId.Should().Be("s1");
@@ -28,7 +28,7 @@ public class PendingRequestManagerTests
     {
         using var manager = new TestManager();
 
-        var ticket = await manager.BeginAsync(new TestRequest { Id = "fixed", SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { Id = "fixed", SessionId = "s1" }, TestContext.Current.CancellationToken);
 
         ticket.RequestId.Should().Be("fixed");
     }
@@ -37,7 +37,7 @@ public class PendingRequestManagerTests
     public async Task GetPending_EmptySessionId_ShouldReturnEmpty()
     {
         using var manager = new TestManager();
-        await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
         manager.GetPending("").Should().BeEmpty();
     }
@@ -46,9 +46,9 @@ public class PendingRequestManagerTests
     public async Task WaitAsync_ShouldReturnResolvedResponse()
     {
         using var manager = new TestManager();
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
-        var waiter = manager.WaitAsync(ticket);
+        var waiter = manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
         var resolved = new TestResponse(42);
 
         manager.TryResolve(ticket.RequestId, resolved).Should().BeTrue();
@@ -60,7 +60,7 @@ public class PendingRequestManagerTests
     public async Task TryResolve_SecondCall_ShouldReturnFalse()
     {
         using var manager = new TestManager();
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
         manager.TryResolve(ticket.RequestId, new TestResponse(42)).Should().BeTrue();
         manager.TryResolve(ticket.RequestId, new TestResponse(99)).Should().BeFalse();
@@ -70,7 +70,7 @@ public class PendingRequestManagerTests
     public async Task TryResolve_ShouldValidateExpectedSessionId()
     {
         using var manager = new TestManager();
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
         manager.TryResolve(ticket.RequestId, new TestResponse(42), "other").Should().BeFalse();
         manager.TryResolve(ticket.RequestId, new TestResponse(42), "s1").Should().BeTrue();
@@ -80,16 +80,16 @@ public class PendingRequestManagerTests
     public async Task WaitAsync_Timeout_ShouldReturnTimeoutFallback()
     {
         using var manager = new TestManager(TimeSpan.FromMilliseconds(50));
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
-        (await manager.WaitAsync(ticket)).Should().BeSameAs(TestManager.TimeoutValue);
+        (await manager.WaitAsync(ticket, TestContext.Current.CancellationToken)).Should().BeSameAs(TestManager.TimeoutValue);
     }
 
     [Fact]
     public async Task WaitAsync_CancelledToken_ShouldReturnCancelledFallback()
     {
         using var manager = new TestManager();
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
@@ -101,7 +101,7 @@ public class PendingRequestManagerTests
     {
         using var manager = new TestManager();
 
-        (await manager.WaitAsync(new RequestTicket("nope", "s1"))).Should().BeSameAs(TestManager.MissingValue);
+        (await manager.WaitAsync(new RequestTicket("nope", "s1"), TestContext.Current.CancellationToken)).Should().BeSameAs(TestManager.MissingValue);
     }
 
     [Fact]
@@ -109,9 +109,9 @@ public class PendingRequestManagerTests
     {
         var immediate = new TestResponse(7);
         using var manager = new TestManager { ImmediateResult = immediate };
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
-        (await manager.WaitAsync(ticket)).Should().BeSameAs(immediate);
+        (await manager.WaitAsync(ticket, TestContext.Current.CancellationToken)).Should().BeSameAs(immediate);
         manager.BeganCalled.Should().BeFalse();
         manager.ResolvedCalled.Should().BeTrue();
     }
@@ -120,7 +120,7 @@ public class PendingRequestManagerTests
     public async Task ValidateOnBegin_Null_ShouldCallOnRequestBegan()
     {
         using var manager = new TestManager();
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
         manager.BeganCalled.Should().BeTrue();
         manager.TryResolve(ticket.RequestId, new TestResponse(1));
@@ -131,8 +131,8 @@ public class PendingRequestManagerTests
     public async Task Dispose_ShouldResolveInFlightWithDisposedFallback()
     {
         var manager = new TestManager();
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
-        var waiter = manager.WaitAsync(ticket);
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
+        var waiter = manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         manager.Dispose();
 
@@ -146,7 +146,7 @@ public class PendingRequestManagerTests
     public async Task Dispose_ShouldInvokeOnDisposingHook()
     {
         var manager = new TestManager();
-        await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
         manager.Dispose();
 
@@ -161,7 +161,7 @@ public class PendingRequestManagerTests
         manager.PendingChanged += () => throw new InvalidOperationException("boom");
         manager.PendingChanged += () => count++;
 
-        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" });
+        var ticket = await manager.BeginAsync(new TestRequest { SessionId = "s1" }, TestContext.Current.CancellationToken);
         manager.TryResolve(ticket.RequestId, new TestResponse(42));
 
         count.Should().BeGreaterThan(0);

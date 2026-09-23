@@ -58,7 +58,7 @@ public class MigrationTests : IDisposable
                 "apiKey": "sk-anth"
               }
             }
-            """);
+            """, TestContext.Current.CancellationToken);
 
         var configManager = await CreateConfigManagerAsync(userSeeing);
 
@@ -84,7 +84,7 @@ public class MigrationTests : IDisposable
         await sut.SaveProviderAsync("legacy-openai", loaded, ConfigLevel.User, TestContext.Current.CancellationToken);
 
         var root = JsonNode.Parse(
-            await File.ReadAllTextAsync(Path.Combine(userSeeing, "providers.json")))!.AsObject();
+            await File.ReadAllTextAsync(Path.Combine(userSeeing, "providers.json"), TestContext.Current.CancellationToken))!.AsObject();
         root["legacy-openai"]!["type"]!.GetValue<string>().Should().Be("openai");
         root["legacy-openai"]!["type"]!.GetValue<string>().Should().NotBe("OpenAI");
     }
@@ -106,10 +106,10 @@ public class MigrationTests : IDisposable
               "partitionId": "default",
               "messages": []
             }
-            """);
+            """, TestContext.Current.CancellationToken);
 
         var store = new FileSessionStore(storeDir, NullLogger<FileSessionStore>.Instance);
-        var loaded = await store.LoadAsync("ses_legacy");
+        var loaded = await store.LoadAsync("ses_legacy", TestContext.Current.CancellationToken);
 
         loaded.Should().NotBeNull();
         loaded!.Scenario.Should().BeNull();
@@ -134,9 +134,9 @@ public class MigrationTests : IDisposable
 
         // 保存后仍不强制写入非 null Scenario（保持 null / 不发明进程级值）
         loaded.Scenario.Should().BeNull();
-        await store.SaveAsync(loaded);
+        await store.SaveAsync(loaded, TestContext.Current.CancellationToken);
 
-        var roundTripJson = await File.ReadAllTextAsync(legacyPath);
+        var roundTripJson = await File.ReadAllTextAsync(legacyPath, TestContext.Current.CancellationToken);
         var roundTrip = JsonSerializer.Deserialize<SessionData>(roundTripJson, s_sessionJson);
         roundTrip!.Scenario.Should().BeNull();
         // 不得被强制写成进程级 "work"
@@ -180,7 +180,7 @@ public class MigrationTests : IDisposable
                 "minimal",
                 ["io.local", "basic", "never-referenced-capability"],
                 Array.Empty<string>()),
-        });
+        }, TestContext.Current.CancellationToken);
 
         result.Enabled.Should().BeEquivalentTo(["basic", "io.local"]);
         result.Warnings.Should().Contain(w =>

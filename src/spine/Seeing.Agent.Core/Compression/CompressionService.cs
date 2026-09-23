@@ -16,6 +16,7 @@ public class CompressionService : ICompressionService
     private readonly ISessionManager _sessionManager;
     private readonly ILogger<CompressionService> _logger;
 
+    /// <summary>初始化压缩编排服务，注入摘要器、会话管理器与日志器。</summary>
     public CompressionService(
         ISummarizer? summarizer,
         ISessionManager sessionManager,

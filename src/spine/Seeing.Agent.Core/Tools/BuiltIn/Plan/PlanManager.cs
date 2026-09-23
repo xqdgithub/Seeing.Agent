@@ -13,6 +13,7 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
         private readonly ConcurrentDictionary<string, PlanModel> _plans = new();
         private readonly string _storagePath;
 
+        /// <summary>初始化计划管理器，注入日志器并确定计划存储路径。</summary>
         public PlanManager(ILogger<PlanManager> logger, string? storagePath = null)
         {
             _logger = logger;

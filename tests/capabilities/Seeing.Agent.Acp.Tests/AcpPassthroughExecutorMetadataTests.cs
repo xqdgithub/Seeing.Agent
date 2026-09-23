@@ -57,7 +57,7 @@ public class AcpPassthroughExecutorMetadataTests
             AcpBackend = "opencode"
         };
 
-        await foreach (var _ in executor.ExecuteAsync(agent, messages, context))
+        await foreach (var _ in executor.ExecuteAsync(agent, messages, context, TestContext.Current.CancellationToken))
         {
         }
 

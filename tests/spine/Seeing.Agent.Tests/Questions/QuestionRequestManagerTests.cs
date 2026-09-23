@@ -19,9 +19,9 @@ public class QuestionRequestManagerTests
     public async Task WaitAsync_TryResolve_ShouldReturnSubmittedResult_AndBeIdempotent()
     {
         using var harness = new Harness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
-        var waiter = harness.Manager.WaitAsync(ticket);
+        var waiter = harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         var submitted = new QuestionResult
         {
@@ -46,9 +46,9 @@ public class QuestionRequestManagerTests
     public async Task WaitAsync_Timeout_ShouldReturnTimeoutStatus()
     {
         using var harness = new Harness(timeout: TimeSpan.FromMilliseconds(80));
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
-        var result = await harness.Manager.WaitAsync(ticket);
+        var result = await harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         result.Status.Should().Be(QuestionResultStatus.Timeout);
         result.RequestId.Should().Be(ticket.RequestId);
@@ -58,7 +58,7 @@ public class QuestionRequestManagerTests
     public async Task WaitAsync_Cancelled_ShouldReturnCancelledStatus()
     {
         using var harness = new Harness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
         using var cts = new CancellationTokenSource();
 
         var waiter = harness.Manager.WaitAsync(ticket, cts.Token);
@@ -73,7 +73,7 @@ public class QuestionRequestManagerTests
     {
         using var harness = new Harness();
 
-        var result = await harness.Manager.WaitAsync(new RequestTicket("missing", "s1"));
+        var result = await harness.Manager.WaitAsync(new RequestTicket("missing", "s1"), TestContext.Current.CancellationToken);
 
         result.Status.Should().Be(QuestionResultStatus.Unavailable);
         result.RequestId.Should().Be("missing");
@@ -86,8 +86,8 @@ public class QuestionRequestManagerTests
         var provider = new TestProvider("s1");
         harness.Registry.Register(provider);
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
-        var waiter = harness.Manager.WaitAsync(ticket);
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
+        var waiter = harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         harness.Registry.Unregister(provider);
 
@@ -105,11 +105,11 @@ public class QuestionRequestManagerTests
         harness.Registry.Register(s1Provider);
         harness.Registry.Register(otherProvider);
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         // 注销的是另一个会话的呈现端；s1 仍有可呈现提供方，不应收敛
         harness.Registry.Unregister(otherProvider);
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         harness.Manager.PendingCount.Should().Be(1);
 
@@ -124,7 +124,7 @@ public class QuestionRequestManagerTests
     public async Task BeginAndResolve_ShouldPublishEvents()
     {
         using var harness = new Harness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         var request = harness.PublishedEvents.OfType<QuestionRequestEvent>().Single();
         request.RequestId.Should().Be(ticket.RequestId);
@@ -151,11 +151,11 @@ public class QuestionRequestManagerTests
     public async Task Dispose_ShouldReturnUnavailable_AndUnsubscribe()
     {
         var harness = new Harness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
         var provider = new TestProvider("s1");
         harness.Registry.Register(provider);
 
-        var waiter = harness.Manager.WaitAsync(ticket);
+        var waiter = harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
         harness.Manager.Dispose();
 
         var result = await waiter;

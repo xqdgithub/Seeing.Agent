@@ -74,6 +74,7 @@ public class LlmSummarizer : ISummarizer
     private readonly CompressionOptions _options;
     private readonly ILogger<LlmSummarizer> _logger;
 
+    /// <summary>初始化 LLM 摘要器，注入文本补全、压缩选项及相关依赖。</summary>
     public LlmSummarizer(
         ITextCompletion textCompletion,
         CompressionOptions? options = null,

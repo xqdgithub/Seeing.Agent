@@ -16,7 +16,9 @@ namespace Seeing.Agent.Core.Tools.Discovery
         private readonly ILogger<ReflectedTool>? _logger;
         private readonly IServiceProvider? _serviceProvider;
 
+        /// <summary>工具 ID，取自反射发现的工具定义。</summary>
         public string Id => _discovered.Id;
+        /// <summary>工具描述。</summary>
         public string Description => _discovered.Description;
 
         /// <summary>工具标签（用于分类和过滤）</summary>
@@ -25,8 +27,10 @@ namespace Seeing.Agent.Core.Tools.Discovery
         /// <summary>工具分类</summary>
         public ToolCategory Category => ToolCategory.General;
 
+        /// <summary>工具参数的 JSON Schema。</summary>
         public JsonElement ParametersSchema => _discovered.ParametersSchema;
 
+        /// <summary>初始化反射工具包装器，绑定发现结果与可选日志器/服务提供器。</summary>
         public ReflectedTool(
             DiscoveredTool discovered,
             ILogger<ReflectedTool>? logger = null,
@@ -37,6 +41,7 @@ namespace Seeing.Agent.Core.Tools.Discovery
             _serviceProvider = serviceProvider;
         }
 
+        /// <summary>执行：将 JSON 参数转换后反射调用目标方法，返回工具结果。</summary>
         public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             try

@@ -67,7 +67,7 @@ public class SessionWindowRegistryTests
 
         using var registry = CreateRegistry(gm, bus);
         registry.Rebind("anchor");
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         registry.GroupId.Should().Be("g1");
         registry.AnchorSessionId.Should().Be("anchor");
@@ -98,7 +98,7 @@ public class SessionWindowRegistryTests
         var changed = 0;
         registry.WindowsChanged += () => changed++;
         registry.Rebind("anchor");
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         bus.Publish(new SessionGroupChangedEvent
         {
@@ -112,7 +112,7 @@ public class SessionWindowRegistryTests
                 Member("child1", SessionRelation.Child, parent: "anchor", order: 1)
             }
         });
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         registry.ActiveSessionId.Should().Be("child1");
         registry.Windows.Should().Contain(w => w.SessionId == "child1" && w.IsActive);
@@ -131,7 +131,7 @@ public class SessionWindowRegistryTests
 
         using var registry = CreateRegistry(gm, bus);
         registry.Rebind("anchor");
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // 乱序到达的旧快照（Version=2 < 已应用 5）：不得覆盖 active / 成员集合
         bus.Publish(new SessionGroupChangedEvent
@@ -145,7 +145,7 @@ public class SessionWindowRegistryTests
                 Member("child1", SessionRelation.Child, parent: "anchor", order: 0)
             }
         });
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         registry.ActiveSessionId.Should().Be("anchor");
         registry.Windows.Should().HaveCount(2);
@@ -163,7 +163,7 @@ public class SessionWindowRegistryTests
 
         using var registry = CreateRegistry(gm, bus);
         registry.Rebind("anchor");
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         registry.Windows.Should().HaveCount(2);
         registry.Windows.Should().Contain(w =>
@@ -186,7 +186,7 @@ public class SessionWindowRegistryTests
 
         using var registry = CreateRegistry(gm, bus);
         registry.Rebind("solo");
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         registry.Windows.Should().ContainSingle(w =>
             w.SessionId == "solo"
@@ -206,10 +206,10 @@ public class SessionWindowRegistryTests
 
         var registry = CreateRegistry(gm, bus);
         registry.Rebind("anchor");
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         registry.Dispose();
-        await Task.Delay(100); // 等待读循环退出并注销订阅
+        await Task.Delay(100, TestContext.Current.CancellationToken); // 等待读循环退出并注销订阅
 
         bus.Publish(new SessionGroupChangedEvent
         {
@@ -223,7 +223,7 @@ public class SessionWindowRegistryTests
                 Member("child1", SessionRelation.Child, parent: "anchor", order: 1)
             }
         });
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
 
         registry.ActiveSessionId.Should().Be("anchor");
     }

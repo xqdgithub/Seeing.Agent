@@ -152,7 +152,7 @@ namespace Seeing.Agent.Tests.Services
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
             var svc = new SessionTitleService(text.Object, sm.Object, RootGroupManager().Object, opts.Object, NullLogger<SessionTitleService>.Instance);
-            var title = await svc.TryEnsureAsync(session.Id, "debug 500 errors in production", "provider/model");
+            var title = await svc.TryEnsureAsync(session.Id, "debug 500 errors in production", "provider/model", TestContext.Current.CancellationToken);
 
             title.Should().Be("调试生产500错误");
             session.Title.Should().Be("调试生产500错误");
@@ -189,7 +189,7 @@ namespace Seeing.Agent.Tests.Services
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
             var svc = new SessionTitleService(text.Object, sm.Object, RootGroupManager().Object, opts.Object, NullLogger<SessionTitleService>.Instance);
-            var title = await svc.TryEnsureAsync(session.Id, "hi", "m");
+            var title = await svc.TryEnsureAsync(session.Id, "hi", "m", TestContext.Current.CancellationToken);
 
             title.Should().BeNull();
             sm.Verify(x => x.SetTitleAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -243,7 +243,7 @@ namespace Seeing.Agent.Tests.Services
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
             var svc = new SessionTitleService(text.Object, sm.Object, RootGroupManager().Object, opts.Object, NullLogger<SessionTitleService>.Instance);
-            var title = await svc.TryEnsureAsync(session.Id, "implement rate limiting", "provider/model");
+            var title = await svc.TryEnsureAsync(session.Id, "implement rate limiting", "provider/model", TestContext.Current.CancellationToken);
 
             title.Should().Be("实现限流");
             session.Title.Should().Be("实现限流");
@@ -277,7 +277,7 @@ namespace Seeing.Agent.Tests.Services
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
             var svc = new SessionTitleService(text.Object, sm.Object, RootGroupManager().Object, opts.Object, NullLogger<SessionTitleService>.Instance);
-            var title = await svc.TryEnsureAsync(session.Id, "msg-9", "provider/model");
+            var title = await svc.TryEnsureAsync(session.Id, "msg-9", "provider/model", TestContext.Current.CancellationToken);
 
             title.Should().Be("新主题标题");
             session.Title.Should().Be("新主题标题");
@@ -334,7 +334,7 @@ namespace Seeing.Agent.Tests.Services
             opts.Setup(x => x.CurrentValue).Returns(new SeeingAgentOptions());
 
             var svc = new SessionTitleService(text.Object, sm.Object, groupManager.Object, opts.Object, NullLogger<SessionTitleService>.Instance);
-            var title = await svc.TryEnsureAsync(session.Id, "continue the work", "provider/model");
+            var title = await svc.TryEnsureAsync(session.Id, "continue the work", "provider/model", TestContext.Current.CancellationToken);
 
             title.Should().Be("后继标题");
             session.Title.Should().Be("后继标题");

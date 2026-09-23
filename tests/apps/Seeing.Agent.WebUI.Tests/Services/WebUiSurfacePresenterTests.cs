@@ -77,10 +77,10 @@ public class WebUiSurfacePresenterTests
         presenter.SurfacedChanged += () => reports.Add(presenter.SurfaceSessionIds.ToArray());
 
         registry.Rebind(string.Empty);       // 瞬态空集候选
-        await Task.Delay(40);                // 已过去抖，但未到 400ms 确认期
+        await Task.Delay(40, TestContext.Current.CancellationToken); // 已过去抖，但未到 400ms 确认期
         registry.Rebind("anchor");           // 期内恢复非空
 
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         presenter.SurfaceSessionIds.Should().Contain("anchor");
         reports.Should().NotContain(r => r.Count == 0);
@@ -104,7 +104,7 @@ public class WebUiSurfacePresenterTests
         store.UnregisterCount.Should().Be(1);
         questionStore.UnregisterCount.Should().Be(1);
         registry.Rebind("other");
-        await Task.Delay(120);
+        await Task.Delay(120, TestContext.Current.CancellationToken);
 
         reports.Should().Be(0);
         presenter.SurfaceSessionIds.Should().BeEmpty();

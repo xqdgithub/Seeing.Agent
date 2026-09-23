@@ -12,6 +12,7 @@ public class ShellEnvironmentService : IShellEnvironmentService
     private readonly ILogger<ShellEnvironmentService> _logger;
     private readonly IHookManager _hookManager;
 
+    /// <summary>初始化 Shell 环境服务，注入日志器与 Hook 管理器。</summary>
     public ShellEnvironmentService(
         ILogger<ShellEnvironmentService> logger,
         IHookManager hookManager)

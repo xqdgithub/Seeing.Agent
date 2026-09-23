@@ -33,7 +33,7 @@ public class SchemaManagerTests : IDisposable
     public async Task GetCurrentVersion_WhenNoSchema_ReturnsZero()
     {
         // Act
-        var version = await _schemaManager.GetCurrentVersionAsync();
+        var version = await _schemaManager.GetCurrentVersionAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(0, version);
@@ -43,11 +43,11 @@ public class SchemaManagerTests : IDisposable
     public async Task ApplyMigrations_AppliesAllPendingMigrations()
     {
         // Act
-        var applied = await _schemaManager.ApplyMigrationsAsync();
+        var applied = await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(1, applied);
-        var version = await _schemaManager.GetCurrentVersionAsync();
+        var version = await _schemaManager.GetCurrentVersionAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, version);
     }
 
@@ -55,10 +55,10 @@ public class SchemaManagerTests : IDisposable
     public async Task ApplyMigrations_WhenAlreadyApplied_ReturnsZero()
     {
         // Arrange
-        await _schemaManager.ApplyMigrationsAsync();
+        await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var applied = await _schemaManager.ApplyMigrationsAsync();
+        var applied = await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(0, applied);
@@ -68,7 +68,7 @@ public class SchemaManagerTests : IDisposable
     public async Task IsSchemaUpToDate_WhenNoSchema_ReturnsFalse()
     {
         // Act
-        var isUpToDate = await _schemaManager.IsSchemaUpToDateAsync();
+        var isUpToDate = await _schemaManager.IsSchemaUpToDateAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(isUpToDate);
@@ -78,10 +78,10 @@ public class SchemaManagerTests : IDisposable
     public async Task IsSchemaUpToDate_WhenSchemaApplied_ReturnsTrue()
     {
         // Arrange
-        await _schemaManager.ApplyMigrationsAsync();
+        await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var isUpToDate = await _schemaManager.IsSchemaUpToDateAsync();
+        var isUpToDate = await _schemaManager.IsSchemaUpToDateAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(isUpToDate);
@@ -91,7 +91,7 @@ public class SchemaManagerTests : IDisposable
     public async Task GetPendingMigrations_ReturnsAllMigrations_WhenNoSchema()
     {
         // Act
-        var pending = await _schemaManager.GetPendingMigrationsAsync();
+        var pending = await _schemaManager.GetPendingMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(pending);
@@ -102,10 +102,10 @@ public class SchemaManagerTests : IDisposable
     public async Task GetPendingMigrations_ReturnsEmpty_WhenSchemaApplied()
     {
         // Arrange
-        await _schemaManager.ApplyMigrationsAsync();
+        await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var pending = await _schemaManager.GetPendingMigrationsAsync();
+        var pending = await _schemaManager.GetPendingMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(pending);
@@ -115,11 +115,11 @@ public class SchemaManagerTests : IDisposable
     public async Task EnsureInitialized_AppliesMigrationsAndReturnsTrue()
     {
         // Act
-        var initialized = await _schemaManager.EnsureInitializedAsync();
+        var initialized = await _schemaManager.EnsureInitializedAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(initialized);
-        var version = await _schemaManager.GetCurrentVersionAsync();
+        var version = await _schemaManager.GetCurrentVersionAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, version);
     }
 
@@ -127,10 +127,10 @@ public class SchemaManagerTests : IDisposable
     public async Task EnsureInitialized_IsIdempotent()
     {
         // Arrange
-        await _schemaManager.EnsureInitializedAsync();
+        await _schemaManager.EnsureInitializedAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var initialized = await _schemaManager.EnsureInitializedAsync();
+        var initialized = await _schemaManager.EnsureInitializedAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(initialized); // No new migrations applied
@@ -140,7 +140,7 @@ public class SchemaManagerTests : IDisposable
     public async Task Schema_CreatesAllRequiredTables()
     {
         // Act
-        await _schemaManager.ApplyMigrationsAsync();
+        await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert - Verify all tables exist
         var tables = await GetTableNamesAsync();
@@ -158,7 +158,7 @@ public class SchemaManagerTests : IDisposable
     public async Task VectorsTable_HasCorrectSchema()
     {
         // Act
-        await _schemaManager.ApplyMigrationsAsync();
+        await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert - Verify vectors table columns
         var columns = await GetTableColumnsAsync("vectors");
@@ -175,7 +175,7 @@ public class SchemaManagerTests : IDisposable
     public async Task LinksTable_HasCorrectSchema()
     {
         // Act
-        await _schemaManager.ApplyMigrationsAsync();
+        await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert - Verify links table columns
         var columns = await GetTableColumnsAsync("links");
@@ -193,7 +193,7 @@ public class SchemaManagerTests : IDisposable
     public async Task KeywordsTable_IsVirtualTable()
     {
         // Act
-        await _schemaManager.ApplyMigrationsAsync();
+        await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         using var command = _connection.CreateCommand();
@@ -201,7 +201,7 @@ public class SchemaManagerTests : IDisposable
             SELECT type FROM sqlite_master 
             WHERE type='table' AND name='keywords'";
         
-        var tableType = await command.ExecuteScalarAsync();
+        var tableType = await command.ExecuteScalarAsync(TestContext.Current.CancellationToken);
         Assert.Equal("table", tableType);
         
         // Verify it's a virtual table by checking sql contains "VIRTUAL TABLE"
@@ -209,7 +209,7 @@ public class SchemaManagerTests : IDisposable
             SELECT sql FROM sqlite_master 
             WHERE type='table' AND name='keywords'";
         
-        var sql = await command.ExecuteScalarAsync() as string;
+        var sql = await command.ExecuteScalarAsync(TestContext.Current.CancellationToken) as string;
         Assert.Contains("VIRTUAL TABLE", sql);
     }
 
@@ -217,14 +217,14 @@ public class SchemaManagerTests : IDisposable
     public async Task SchemaVersion_RecordsMigration()
     {
         // Act
-        await _schemaManager.ApplyMigrationsAsync();
+        await _schemaManager.ApplyMigrationsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         using var command = _connection.CreateCommand();
         command.CommandText = "SELECT version, description FROM schema_version WHERE version = 1";
         
-        using var reader = await command.ExecuteReaderAsync();
-        Assert.True(await reader.ReadAsync());
+        using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        Assert.True(await reader.ReadAsync(TestContext.Current.CancellationToken));
         Assert.Equal(1, reader.GetInt32(0));
         Assert.Equal("Initial schema", reader.GetString(1));
     }

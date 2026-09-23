@@ -82,13 +82,13 @@ temperature: 0.5
 ---
 This is the agent prompt content.";
 
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "test-agent.md"), agentContent);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "test-agent.md"), agentContent, TestContext.Current.CancellationToken);
 
             _discovery.ClearSearchDirectories();
             _discovery.AddSearchDirectory(agentDir);
 
             // Act
-            var result = await _discovery.DiscoverAgentsAsync();
+            var result = await _discovery.DiscoverAgentsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().HaveCount(1);
@@ -112,13 +112,13 @@ description: Agent without name
 ---
 Prompt content.";
 
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "my-custom-agent.md"), agentContent);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "my-custom-agent.md"), agentContent, TestContext.Current.CancellationToken);
 
             _discovery.ClearSearchDirectories();
             _discovery.AddSearchDirectory(agentDir);
 
             // Act
-            var result = await _discovery.DiscoverAgentsAsync();
+            var result = await _discovery.DiscoverAgentsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().HaveCount(1);
@@ -139,14 +139,14 @@ name: valid-agent
 ---
 Valid agent prompt.";
 
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "invalid.md"), agentWithoutFrontmatter);
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "valid.md"), agentWithFrontmatter);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "invalid.md"), agentWithoutFrontmatter, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "valid.md"), agentWithFrontmatter, TestContext.Current.CancellationToken);
 
             _discovery.ClearSearchDirectories();
             _discovery.AddSearchDirectory(agentDir);
 
             // Act
-            var result = await _discovery.DiscoverAgentsAsync();
+            var result = await _discovery.DiscoverAgentsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().HaveCount(1);
@@ -170,13 +170,13 @@ tools:
 ---
 Agent with tool restrictions.";
 
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "restricted.md"), agentContent);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "restricted.md"), agentContent, TestContext.Current.CancellationToken);
 
             _discovery.ClearSearchDirectories();
             _discovery.AddSearchDirectory(agentDir);
 
             // Act
-            var result = await _discovery.DiscoverAgentsAsync();
+            var result = await _discovery.DiscoverAgentsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().HaveCount(1);
@@ -200,13 +200,13 @@ model: openai/gpt-4o
 ---
 Agent with model.";
 
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "model.md"), agentContent);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "model.md"), agentContent, TestContext.Current.CancellationToken);
 
             _discovery.ClearSearchDirectories();
             _discovery.AddSearchDirectory(agentDir);
 
             // Act
-            var result = await _discovery.DiscoverAgentsAsync();
+            var result = await _discovery.DiscoverAgentsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().HaveCount(1);
@@ -229,13 +229,13 @@ tags: exploration, readonly, fast
 ---
 Agent with tags.";
 
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "tagged.md"), agentContent);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "tagged.md"), agentContent, TestContext.Current.CancellationToken);
 
             _discovery.ClearSearchDirectories();
             _discovery.AddSearchDirectory(agentDir);
 
             // Act
-            var result = await _discovery.DiscoverAgentsAsync();
+            var result = await _discovery.DiscoverAgentsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().HaveCount(1);
@@ -262,14 +262,14 @@ mode: subagent
 ---
 Sub agent.";
 
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "primary.md"), primaryAgentContent);
-            await File.WriteAllTextAsync(Path.Combine(agentDir, "sub.md"), subAgentContent);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "primary.md"), primaryAgentContent, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(agentDir, "sub.md"), subAgentContent, TestContext.Current.CancellationToken);
 
             _discovery.ClearSearchDirectories();
             _discovery.AddSearchDirectory(agentDir);
 
             // Act
-            var result = await _discovery.DiscoverAgentsAsync();
+            var result = await _discovery.DiscoverAgentsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().HaveCount(2);
@@ -303,15 +303,15 @@ name: agent-two
 ---
 Second agent.";
 
-            await File.WriteAllTextAsync(Path.Combine(agentDir1, "one.md"), agent1);
-            await File.WriteAllTextAsync(Path.Combine(agentDir2, "two.md"), agent2);
+            await File.WriteAllTextAsync(Path.Combine(agentDir1, "one.md"), agent1, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(agentDir2, "two.md"), agent2, TestContext.Current.CancellationToken);
 
             _discovery.ClearSearchDirectories();
             _discovery.AddSearchDirectory(agentDir1);
             _discovery.AddSearchDirectory(agentDir2);
 
             // Act
-            var result = await _discovery.DiscoverAgentsAsync();
+            var result = await _discovery.DiscoverAgentsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().HaveCount(2);

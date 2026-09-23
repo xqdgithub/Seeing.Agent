@@ -7,6 +7,9 @@ public sealed class ModelReloadHandler : ReloadHandlerBase<ConfigChange>
 {
     private readonly ModelConfigManager _manager;
 
+    /// <summary>
+    /// 注入模型配置管理器构造模型目录重载处理器。
+    /// </summary>
     public ModelReloadHandler(ModelConfigManager manager) => _manager = manager;
 
     /// <inheritdoc />

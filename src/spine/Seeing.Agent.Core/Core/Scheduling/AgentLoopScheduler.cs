@@ -14,6 +14,9 @@ public sealed class AgentLoopScheduler : IAgentLoopScheduler
     private readonly ILogger<AgentLoopScheduler> _logger;
     private Func<string, CancellationToken, Task>? _resumeHandler;
 
+    /// <summary>
+    /// 构造 Loop 调度器，可选注入会话管理器（用于合成消息注入）。
+    /// </summary>
     public AgentLoopScheduler(
         ILogger<AgentLoopScheduler> logger,
         ISessionManager? sessionManager = null)
@@ -22,6 +25,9 @@ public sealed class AgentLoopScheduler : IAgentLoopScheduler
         _sessionManager = sessionManager;
     }
 
+    /// <summary>
+    /// 设置会话 Loop 忙闲状态；转为空闲时后台补唤醒遗留的 synthetic 消息。
+    /// </summary>
     public void SetLoopBusy(string sessionId, bool busy)
     {
         if (busy)
@@ -46,13 +52,25 @@ public sealed class AgentLoopScheduler : IAgentLoopScheduler
         });
     }
 
+    /// <summary>
+    /// 查询会话 Loop 当前是否处于忙碌状态。
+    /// </summary>
     public bool IsLoopBusy(string sessionId) => _busy.ContainsKey(sessionId);
 
+    /// <summary>
+    /// 原子地将空闲 Loop 置为忙碌；已忙碌时返回 false。
+    /// </summary>
     public bool TrySetLoopBusy(string sessionId) => _busy.TryAdd(sessionId, 1);
 
+    /// <summary>
+    /// 注册 Loop 空闲时的补唤醒回调。
+    /// </summary>
     public void RegisterResumeHandler(Func<string, CancellationToken, Task> handler) =>
         _resumeHandler = handler;
 
+    /// <summary>
+    /// 向会话注入标记为 synthetic 的用户消息；Loop 忙碌时仅注入不触发。
+    /// </summary>
     public async Task InjectSyntheticAsync(
         string sessionId,
         string text,
@@ -86,6 +104,9 @@ public sealed class AgentLoopScheduler : IAgentLoopScheduler
         _logger.LogInformation("已注入 synthetic 消息到会话 {SessionId}", sessionId);
     }
 
+    /// <summary>
+    /// 若会话 Loop 空闲且存在待处理 synthetic 消息，触发已注册的补唤醒回调。
+    /// </summary>
     public async Task<bool> TryResumeWhenIdleAsync(string sessionId, CancellationToken ct = default)
     {
         if (IsLoopBusy(sessionId))

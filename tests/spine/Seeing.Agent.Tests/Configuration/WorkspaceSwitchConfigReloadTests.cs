@@ -26,13 +26,13 @@ public class WorkspaceSwitchConfigReloadTests
         Directory.CreateDirectory(startupSeeing);
         await File.WriteAllTextAsync(
             Path.Combine(startupSeeing, "seeing.json"),
-            """{ "SeeingAgent": { "Workspace": { "UseGlobal": true } } }""");
+            """{ "SeeingAgent": { "Workspace": { "UseGlobal": true } } }""", TestContext.Current.CancellationToken);
 
         var globalSeeing = Path.Combine(globalWorkspace.Root, ".seeing");
         Directory.CreateDirectory(globalSeeing);
         await File.WriteAllTextAsync(
             Path.Combine(globalSeeing, "seeing.json"),
-            """{ "SeeingAgent": { "Permission": { "AutoApproveAll": true } } }""");
+            """{ "SeeingAgent": { "Permission": { "AutoApproveAll": true } } }""", TestContext.Current.CancellationToken);
 
         var previousEnv = Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT");
         Environment.SetEnvironmentVariable("SEEING_WORKSPACE_ROOT", globalWorkspace.Root);
@@ -73,7 +73,7 @@ public class WorkspaceSwitchConfigReloadTests
         Directory.CreateDirectory(seeingDir);
         await File.WriteAllTextAsync(
             Path.Combine(seeingDir, "seeing.json"),
-            """{ "SeeingAgent": { "Permission": { "AutoApproveAll": true } } }""");
+            """{ "SeeingAgent": { "Permission": { "AutoApproveAll": true } } }""", TestContext.Current.CancellationToken);
 
         var previousEnv = Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT");
         Environment.SetEnvironmentVariable("SEEING_WORKSPACE_ROOT", workspace.Root);

@@ -78,7 +78,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         result.Summary.Should().Contain("摘要");
         result.ResultMessages.Should().HaveCount(2, "新历史 = 摘要消息 + 最后一条 user 消息");
@@ -110,7 +110,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         result.MessagesRemoved.Should().Be(6, "压缩到最后一条 user（问题三）之前");
         result.ResultMessages.Should().HaveCount(3, "新历史 = 摘要 + 完整最后轮次（问题三 + 回答三）");
@@ -139,7 +139,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         capturedModel.Should().Be("trip/DeepSeek-V4-Pro-discount", "摘要应使用会话已选择的模型而非全局默认");
     }
@@ -165,7 +165,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         capturedModel.Should().BeNull("会话未选择模型时保持 null，由 ITextCompletion 回退全局默认");
     }
@@ -192,7 +192,7 @@ public class LlmSummarizerTests
             compactionEventSink: sink.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         result.Summary.Should().Be("第一段第二段", "摘要正文仅拼接 ContentDelta，推理不进入摘要正文");
         // 起始阶段事件 + 正文/推理各增量事件
@@ -223,7 +223,7 @@ public class LlmSummarizerTests
             textCompletion.Object,
             sessionManager: sessionManager.Object);
 
-        var result = await summarizer.SummarizeAsync(new SummarizeRequest(session.Id));
+        var result = await summarizer.SummarizeAsync(new SummarizeRequest(session.Id), TestContext.Current.CancellationToken);
 
         result.Summary.Should().NotBeNullOrWhiteSpace("未配置 ICompactionEventSink 时压缩应正常执行（仅不推送进度）");
     }
@@ -248,7 +248,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        await summarizer.SummarizeAsync(request);
+        await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         capturedMaxTokens.Should().BeNull("未配置 SummaryTargetTokens 时不应限制输出，防止摘要截断导致压缩不完整");
     }
@@ -274,7 +274,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        await summarizer.SummarizeAsync(request);
+        await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         capturedMaxTokens.Should().Be(2000, "显式配置 SummaryTargetTokens 时作为输出上限传递");
     }
@@ -292,7 +292,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        await summarizer.SummarizeAsync(request);
+        await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         capturedMessages.Should().HaveCount(3);
         capturedMessages[0].Role.Should().Be(ChatRole.User);
@@ -315,7 +315,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        await summarizer.SummarizeAsync(request);
+        await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         var prompt = capturedMessages[^1].Content;
         prompt.Should().Contain("更新锚定摘要", "有先前摘要时应请求更新合并");
@@ -353,7 +353,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         capturedSystemPrompt.Should().Contain("会话压缩助手", "应复用内置 summary Agent 的系统提示词");
     }
@@ -383,7 +383,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         capturedSystemPrompt.Should().Contain("会话压缩助手", "summary Agent 不存在时回退内置默认提示词");
     }
@@ -419,7 +419,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         result.MessagesRemoved.Should().Be(1, "无 user 消息时应至少压缩活跃段首（旧摘要），使新摘要成为真相");
         result.ResultMessages.Should().HaveCount(2);
@@ -465,7 +465,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         result.MessagesRemoved.Should().Be(3, "命令消息一并压缩进历史，摘要成为最后一条");
         result.ResultMessages.Should().HaveCount(1, "保留段不得再包含命令消息");
@@ -487,7 +487,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         result.MessagesRemoved.Should().Be(3, "全命令会话：全部压缩，摘要成为唯一内容");
         result.ResultMessages.Should().HaveCount(1);
@@ -510,7 +510,7 @@ public class LlmSummarizerTests
             sessionManager: sessionManager.Object);
         var request = new SummarizeRequest(session.Id);
 
-        var result = await summarizer.SummarizeAsync(request);
+        var result = await summarizer.SummarizeAsync(request, TestContext.Current.CancellationToken);
 
         result.MessagesRemoved.Should().Be(3, "命令与命令前的消息压缩，保留最后一条真实 user 消息");
         result.ResultMessages.Should().HaveCount(2);
@@ -521,6 +521,8 @@ public class LlmSummarizerTests
     private static async IAsyncEnumerable<StreamUpdate> ThrowStream()
     {
         throw new HttpRequestException("上游服务不可用");
+#pragma warning disable CS0162 // 异步迭代器必须保留 yield 语句，此行按设计不可达（枚举即抛异常）
         yield break;
+#pragma warning restore CS0162
     }
 }

@@ -66,7 +66,7 @@ This is a test session with [[related/note]] link.
 ";
 
         // Act
-        var result = await _store.WriteAsync(path, content);
+        var result = await _store.WriteAsync(path, content, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -81,7 +81,7 @@ This is a test session with [[related/note]] link.
         result.Links.Should().Contain("related/note");
 
         // 文件应存在
-        (await _store.ExistsAsync(path)).Should().BeTrue();
+        (await _store.ExistsAsync(path, TestContext.Current.CancellationToken)).Should().BeTrue();
     }
 
     [Fact]
@@ -92,7 +92,7 @@ This is a test session with [[related/note]] link.
         var content = "# Raw Session\n\nNo frontmatter here.";
 
         // Act
-        var result = await _store.WriteAsync(path, content);
+        var result = await _store.WriteAsync(path, content, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -116,10 +116,10 @@ title: API Design Notes
 Best practices for REST API design.
 ";
 
-        await _store.WriteAsync(path, content);
+        await _store.WriteAsync(path, content, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _store.ReadAsync(path);
+        var result = await _store.ReadAsync(path, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -137,7 +137,7 @@ Best practices for REST API design.
         var path = "daily/nonexistent.md";
 
         // Act
-        var result = await _store.ReadAsync(path);
+        var result = await _store.ReadAsync(path, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeNull();
@@ -149,14 +149,14 @@ Best practices for REST API design.
         // Arrange
         var path = "session/temp-session.md";
         var content = "# Temporary";
-        await _store.WriteAsync(path, content);
-        (await _store.ExistsAsync(path)).Should().BeTrue();
+        await _store.WriteAsync(path, content, TestContext.Current.CancellationToken);
+        (await _store.ExistsAsync(path, TestContext.Current.CancellationToken)).Should().BeTrue();
 
         // Act
-        await _store.DeleteAsync(path);
+        await _store.DeleteAsync(path, TestContext.Current.CancellationToken);
 
         // Assert
-        (await _store.ExistsAsync(path)).Should().BeFalse();
+        (await _store.ExistsAsync(path, TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 
     [Fact]
@@ -175,10 +175,10 @@ Best practices for REST API design.
     {
         // Arrange
         var path = "daily/existing.md";
-        await _store.WriteAsync(path, "# Content");
+        await _store.WriteAsync(path, "# Content", TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _store.ExistsAsync(path);
+        var result = await _store.ExistsAsync(path, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
@@ -191,7 +191,7 @@ Best practices for REST API design.
         var path = "daily/nonexisting.md";
 
         // Act
-        var result = await _store.ExistsAsync(path);
+        var result = await _store.ExistsAsync(path, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeFalse();
@@ -201,13 +201,13 @@ Best practices for REST API design.
     public async Task ListAsync_ReturnsAllFiles()
     {
         // Arrange
-        await _store.WriteAsync("daily/2025-01-10/note1.md", "# Note 1");
-        await _store.WriteAsync("daily/2025-01-11/note2.md", "# Note 2");
-        await _store.WriteAsync("session/2025-01-12/session.md", "# Session");
-        await _store.WriteAsync("digest/wiki/knowledge.md", "# Knowledge");
+        await _store.WriteAsync("daily/2025-01-10/note1.md", "# Note 1", TestContext.Current.CancellationToken);
+        await _store.WriteAsync("daily/2025-01-11/note2.md", "# Note 2", TestContext.Current.CancellationToken);
+        await _store.WriteAsync("session/2025-01-12/session.md", "# Session", TestContext.Current.CancellationToken);
+        await _store.WriteAsync("digest/wiki/knowledge.md", "# Knowledge", TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _store.ListAsync();
+        var result = await _store.ListAsync(ct: TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().HaveCount(4);
@@ -223,12 +223,12 @@ Best practices for REST API design.
     public async Task ListAsync_WithPattern_ReturnsMatchingFiles()
     {
         // Arrange
-        await _store.WriteAsync("daily/note-a.md", "# A");
-        await _store.WriteAsync("daily/note-b.md", "# B");
-        await _store.WriteAsync("session/session-x.md", "# X");
+        await _store.WriteAsync("daily/note-a.md", "# A", TestContext.Current.CancellationToken);
+        await _store.WriteAsync("daily/note-b.md", "# B", TestContext.Current.CancellationToken);
+        await _store.WriteAsync("session/session-x.md", "# X", TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _store.ListAsync("note-*.md");
+        var result = await _store.ListAsync("note-*.md", ct: TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().HaveCount(2);
@@ -238,10 +238,10 @@ Best practices for REST API design.
     [Fact]
     public async Task ListAsync_WithPathGlob_ShouldListByTypePrefix()
     {
-        await _store.WriteAsync("daily/2025-01-10/note1.md", "# Note 1");
-        await _store.WriteAsync("session/2025-01-10/session.md", "# Session");
+        await _store.WriteAsync("daily/2025-01-10/note1.md", "# Note 1", TestContext.Current.CancellationToken);
+        await _store.WriteAsync("session/2025-01-10/session.md", "# Session", TestContext.Current.CancellationToken);
 
-        var result = await _store.ListAsync("daily/**/*.md");
+        var result = await _store.ListAsync("daily/**/*.md", ct: TestContext.Current.CancellationToken);
 
         result.Should().HaveCount(1);
         result[0].Path.Should().Be("daily/2025-01-10/note1.md");
@@ -251,12 +251,12 @@ Best practices for REST API design.
     public async Task ListByPrefixAsync_ReturnsMatchingFiles()
     {
         // Arrange
-        await _store.WriteAsync("daily/2025-01-10/note1.md", "# Note 1");
-        await _store.WriteAsync("daily/2025-01-11/note2.md", "# Note 2");
-        await _store.WriteAsync("session/2025-01-10/session.md", "# Session");
+        await _store.WriteAsync("daily/2025-01-10/note1.md", "# Note 1", TestContext.Current.CancellationToken);
+        await _store.WriteAsync("daily/2025-01-11/note2.md", "# Note 2", TestContext.Current.CancellationToken);
+        await _store.WriteAsync("session/2025-01-10/session.md", "# Session", TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _store.ListByPrefixAsync("daily");
+        var result = await _store.ListByPrefixAsync("daily", TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().HaveCount(2);
@@ -267,7 +267,7 @@ Best practices for REST API design.
     public async Task ListByPrefixAsync_NonExistingPrefix_ReturnsEmpty()
     {
         // Act
-        var result = await _store.ListByPrefixAsync("nonexistent");
+        var result = await _store.ListByPrefixAsync("nonexistent", TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeEmpty();
@@ -285,12 +285,12 @@ Best practices for REST API design.
         };
 
         // Act
-        await _store.WriteBatchAsync(items);
+        await _store.WriteBatchAsync(items, TestContext.Current.CancellationToken);
 
         // Assert
-        (await _store.ExistsAsync("daily/batch-1.md")).Should().BeTrue();
-        (await _store.ExistsAsync("daily/batch-2.md")).Should().BeTrue();
-        (await _store.ExistsAsync("session/batch-3.md")).Should().BeTrue();
+        (await _store.ExistsAsync("daily/batch-1.md", TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await _store.ExistsAsync("daily/batch-2.md", TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await _store.ExistsAsync("session/batch-3.md", TestContext.Current.CancellationToken)).Should().BeTrue();
     }
 
     [Fact]
@@ -308,10 +308,10 @@ Best practices for REST API design.
         });
 
         // Act
-        await _store.WriteAsync(path, "# New Content");
+        await _store.WriteAsync(path, "# New Content", TestContext.Current.CancellationToken);
 
         // Wait a bit for the event to propagate
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert
         eventFired.Should().BeTrue();
@@ -325,7 +325,7 @@ Best practices for REST API design.
     {
         // Arrange
         var path = "daily/existing-for-modify.md";
-        await _store.WriteAsync(path, "# Original");
+        await _store.WriteAsync(path, "# Original", TestContext.Current.CancellationToken);
 
         var eventFired = false;
         FileChangeEventArgs? eventArgs = null;
@@ -337,10 +337,10 @@ Best practices for REST API design.
         });
 
         // Act - Write again to modify
-        await _store.WriteAsync(path, "# Modified");
+        await _store.WriteAsync(path, "# Modified", TestContext.Current.CancellationToken);
 
         // Wait a bit for the event to propagate
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert
         eventFired.Should().BeTrue();
@@ -354,7 +354,7 @@ Best practices for REST API design.
     {
         // Arrange
         var path = "daily/to-delete.md";
-        await _store.WriteAsync(path, "# To Delete");
+        await _store.WriteAsync(path, "# To Delete", TestContext.Current.CancellationToken);
 
         var eventFired = false;
         FileChangeEventArgs? eventArgs = null;
@@ -366,10 +366,10 @@ Best practices for REST API design.
         });
 
         // Act
-        await _store.DeleteAsync(path);
+        await _store.DeleteAsync(path, TestContext.Current.CancellationToken);
 
         // Wait a bit for the event to propagate
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert
         eventFired.Should().BeTrue();
@@ -414,10 +414,10 @@ See [[digest/wiki/api]] and [[daily/2025-01-10/related]].
 Also check [[session/debug#anchor]].
 ";
 
-        await _store.WriteAsync(path, content);
+        await _store.WriteAsync(path, content, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _store.ReadAsync(path);
+        var result = await _store.ReadAsync(path, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();

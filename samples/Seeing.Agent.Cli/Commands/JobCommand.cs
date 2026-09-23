@@ -34,6 +34,13 @@ public static class JobCommand
         runCommand.SetAction(async parseResult =>
         {
             var jobId = parseResult.GetValue<string>(runJobArg);
+            if (string.IsNullOrEmpty(jobId))
+            {
+                Console.Error.WriteLine("错误: 任务 ID 不能为空");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<IScheduleManager>();
             var result = await manager.RunJobOnceAsync(jobId);
@@ -53,6 +60,13 @@ public static class JobCommand
         disableCommand.SetAction(async parseResult =>
         {
             var jobId = parseResult.GetValue<string>(disableJobArg);
+            if (string.IsNullOrEmpty(jobId))
+            {
+                Console.Error.WriteLine("错误: 任务 ID 不能为空");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<IScheduleManager>();
             await manager.DisableJobAsync(jobId);
@@ -64,6 +78,13 @@ public static class JobCommand
         enableCommand.SetAction(async parseResult =>
         {
             var jobId = parseResult.GetValue<string>(enableJobArg);
+            if (string.IsNullOrEmpty(jobId))
+            {
+                Console.Error.WriteLine("错误: 任务 ID 不能为空");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<IScheduleManager>();
             await manager.ResumeJobAsync(jobId);

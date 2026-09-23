@@ -59,7 +59,8 @@ public class QuestionInteractionServiceTests
 
         public string? LastExpectedSessionId { get; private set; }
 
-        public event Action? PendingChanged;
+        // 测试假实现故意不触发该事件
+        public event Action? PendingChanged { add { } remove { } }
 
         public Task<RequestTicket> BeginAsync(QuestionRequest request, CancellationToken ct = default)
             => throw new NotSupportedException();

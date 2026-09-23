@@ -16,6 +16,7 @@ public sealed class SessionToolOutputStore : IToolOutputStore
     private readonly ISessionStore _store;
     private readonly ILogger<SessionToolOutputStore>? _logger;
 
+    /// <summary>初始化会话工具输出存储，注入会话存储与日志器。</summary>
     public SessionToolOutputStore(ISessionStore store, ILogger<SessionToolOutputStore>? logger = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));

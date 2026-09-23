@@ -21,7 +21,7 @@ public sealed class SpectreTerminalSurfaceCaretTests
         var surface = new SpectreTerminalSurface(CreateConsole(writer));
         try
         {
-            await surface.UpdateAsync(new Text("frame"), new TuiCaret(1, 5));
+            await surface.UpdateAsync(new Text("frame"), new TuiCaret(1, 5), ct: TestContext.Current.CancellationToken);
 
             await WaitForAsync(() => writer.Text.Contains(UpOneColumnFour, StringComparison.Ordinal));
             writer.Text.Should().Contain(UpOneColumnFour);
@@ -39,10 +39,10 @@ public sealed class SpectreTerminalSurfaceCaretTests
         var surface = new SpectreTerminalSurface(CreateConsole(writer));
         try
         {
-            await surface.UpdateAsync(new Text("frame"), new TuiCaret(2, 4));
+            await surface.UpdateAsync(new Text("frame"), new TuiCaret(2, 4), ct: TestContext.Current.CancellationToken);
             await WaitForAsync(() => writer.Text.Contains("\u001b[2A\r", StringComparison.Ordinal));
 
-            await surface.CommitAsync(new Text("COMMITTED"));
+            await surface.CommitAsync(new Text("COMMITTED"), ct: TestContext.Current.CancellationToken);
             await WaitForAsync(() => writer.Text.Contains("COMMITTED", StringComparison.Ordinal));
 
             var text = writer.Text;
@@ -66,7 +66,7 @@ public sealed class SpectreTerminalSurfaceCaretTests
         var surface = new SpectreTerminalSurface(CreateConsole(writer));
         try
         {
-            await surface.UpdateAsync(new Text("frame"));
+            await surface.UpdateAsync(new Text("frame"), ct: TestContext.Current.CancellationToken);
             await WaitForAsync(() => writer.Text.Contains("frame", StringComparison.Ordinal));
 
             writer.Text.Should().NotContain(DownTwo);
@@ -85,7 +85,7 @@ public sealed class SpectreTerminalSurfaceCaretTests
         var surface = new SpectreTerminalSurface(CreateConsole(writer));
         try
         {
-            await surface.UpdateAsync(new Text("FRAME"), new TuiCaret(1, 5));
+            await surface.UpdateAsync(new Text("FRAME"), new TuiCaret(1, 5), ct: TestContext.Current.CancellationToken);
 
             // 插入点定位写在整帧写完之后：此刻数帧文本出现次数，等价于数本次更新写了几遍帧。
             // Spectre 的 UpdateTarget 内部已 Refresh，若再补一次 Refresh 就会写两遍（双倍擦写终端）。

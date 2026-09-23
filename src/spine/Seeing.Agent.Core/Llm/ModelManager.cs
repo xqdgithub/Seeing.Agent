@@ -21,12 +21,18 @@ public sealed class ModelManager : IModelManager
     private readonly IModelConfigManager _catalog;
     private readonly IAgentStore _agentStore;
 
+    /// <summary>
+    /// 注入模型目录管理器与 Agent 存储构造模型域门面。
+    /// </summary>
     public ModelManager(IModelConfigManager catalog, IAgentStore agentStore)
     {
         _catalog = catalog;
         _agentStore = agentStore;
     }
 
+    /// <summary>
+    /// 按请求 > 会话 > Agent 配置 > 目录默认的优先级解析 Native 运行模型引用。
+    /// </summary>
     public string? ResolveNativeModel(string? requestModelRef, string? sessionModelRef, string agentName)
     {
         if (!string.IsNullOrEmpty(requestModelRef))
@@ -42,6 +48,9 @@ public sealed class ModelManager : IModelManager
         return _catalog.GetDefaultModel();
     }
 
+    /// <summary>
+    /// 按请求 > 会话的优先级解析 ACP 运行模型引用，均缺省返回 null（交由 ACP 端决定）。
+    /// </summary>
     public string? ResolveAcpModel(string? requestModelRef, string? sessionModelRef)
     {
         if (!string.IsNullOrEmpty(requestModelRef))
@@ -53,9 +62,15 @@ public sealed class ModelManager : IModelManager
         return null;
     }
 
+    /// <summary>
+    /// 读取会话当前选中的模型引用，未选择时返回空串。
+    /// </summary>
     public string GetSessionModelRef(SessionData session) =>
         session.SelectedModel ?? string.Empty;
 
+    /// <summary>
+    /// 将模型引用规范化后写入会话；若实际发生变更则清空不兼容的思考档位并返回 true。
+    /// </summary>
     public bool ApplyModelToSession(SessionData session, string? modelRef)
     {
         var trimmed = modelRef?.Trim() ?? string.Empty;
@@ -94,6 +109,9 @@ public sealed class ModelManager : IModelManager
         }
     }
 
+    /// <summary>
+    /// 会话尚无选中模型时按 Agent 配置播种默认模型；ACP 直通会话与已有选择时跳过。
+    /// </summary>
     public bool SeedSessionModel(SessionData session, string agentName)
     {
         if (!string.IsNullOrEmpty(session.SelectedModel))
@@ -106,30 +124,57 @@ public sealed class ModelManager : IModelManager
         return ApplyModelToSession(session, ResolveNativeModel(null, null, agentName));
     }
 
+    /// <summary>
+    /// 获取目录中全部模型配置（透传目录管理器）。
+    /// </summary>
     public IReadOnlyDictionary<string, ModelConfig> GetModels() => _catalog.GetModels();
 
+    /// <summary>
+    /// 按模型 ID 获取模型配置，未找到返回 null。
+    /// </summary>
     public ModelConfig? GetModel(string modelId) => _catalog.GetModel(modelId);
 
+    /// <summary>
+    /// 获取默认模型引用。
+    /// </summary>
     public string? GetDefaultModel() => _catalog.GetDefaultModel();
 
+    /// <summary>
+    /// 获取指定 Provider 下的模型配置字典。
+    /// </summary>
     public IReadOnlyDictionary<string, ModelConfig> GetModelsByProvider(string providerId) =>
         _catalog.GetModelsByProvider(providerId);
 
+    /// <summary>
+    /// 解析模型生效的类型列表（缺省时按目录规则补全）。
+    /// </summary>
     public IReadOnlyList<Seeing.Agent.Abstractions.Llm.ModelType> GetEffectiveTypes(ModelConfig config) =>
         _catalog.GetEffectiveTypes(config);
 
+    /// <summary>
+    /// 按模型类型（可选限定 Provider）过滤模型配置。
+    /// </summary>
     public IReadOnlyDictionary<string, ModelConfig> GetModelsByType(
         Seeing.Agent.Abstractions.Llm.ModelType type = Seeing.Agent.Abstractions.Llm.ModelType.Text,
         string? providerId = null) =>
         _catalog.GetModelsByType(type, providerId);
 
+    /// <summary>
+    /// 判定指定模型是否可被设为默认模型。
+    /// </summary>
     public bool CanSetAsDefaultModel(string modelId) => _catalog.CanSetAsDefaultModel(modelId);
 
+    /// <summary>
+    /// 刷新模型目录，可限定单个 Provider。
+    /// </summary>
     public Task RefreshCatalogAsync(
         string? providerId = null,
         CancellationToken ct = default) =>
         _catalog.RefreshCatalogAsync(providerId, ct);
 
+    /// <summary>
+    /// 新增模型配置并持久化到指定配置级别。
+    /// </summary>
     public Task AddModelAsync(
         string modelId,
         ModelConfig config,
@@ -137,6 +182,9 @@ public sealed class ModelManager : IModelManager
         CancellationToken ct = default) =>
         _catalog.AddModelAsync(modelId, config, level, ct);
 
+    /// <summary>
+    /// 更新模型配置并持久化到指定配置级别。
+    /// </summary>
     public Task UpdateModelAsync(
         string modelId,
         ModelConfig config,
@@ -144,12 +192,18 @@ public sealed class ModelManager : IModelManager
         CancellationToken ct = default) =>
         _catalog.UpdateModelAsync(modelId, config, level, ct);
 
+    /// <summary>
+    /// 删除模型配置并持久化到指定配置级别。
+    /// </summary>
     public Task DeleteModelAsync(
         string modelId,
         ConfigLevel level = ConfigLevel.Project,
         CancellationToken ct = default) =>
         _catalog.DeleteModelAsync(modelId, level, ct);
 
+    /// <summary>
+    /// 整体保存指定 Provider 的模型集合并持久化到指定配置级别。
+    /// </summary>
     public Task SaveModelsAsync(
         string providerId,
         Dictionary<string, ModelConfig> models,
@@ -157,12 +211,18 @@ public sealed class ModelManager : IModelManager
         CancellationToken ct = default) =>
         _catalog.SaveModelsAsync(providerId, models, level, ct);
 
+    /// <summary>
+    /// 设置默认模型并持久化到指定配置级别。
+    /// </summary>
     public Task SetDefaultModelAsync(
         string? modelId,
         ConfigLevel level = ConfigLevel.Project,
         CancellationToken ct = default) =>
         _catalog.SetDefaultModelAsync(modelId, level, ct);
 
+    /// <summary>
+    /// 模型配置变更事件（透传目录管理器的同名事件）。
+    /// </summary>
     public event EventHandler<ModelConfigChangedEventArgs>? ModelConfigChanged
     {
         add => _catalog.ModelConfigChanged += value;

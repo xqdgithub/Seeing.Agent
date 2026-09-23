@@ -50,7 +50,7 @@ public class SkillManagerPromptSectionTests
     public async Task BuildAsync_WithNoSkills_ReturnsPlaceholder()
     {
         var manager = new SkillManager(NullLogger<SkillManager>.Instance);
-        var result = await manager.BuildAsync(new PromptContext());
+        var result = await manager.BuildAsync(new PromptContext(), TestContext.Current.CancellationToken);
         result.Should().Be("暂无可用技能。");
     }
 }

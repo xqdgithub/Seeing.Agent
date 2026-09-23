@@ -53,6 +53,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     
     // ===== 构造函数 =====
     
+    /// <summary>初始化统一配置管理器，注入工作区、日志器与配置节注册表。</summary>
     public UnifiedConfigManager(
         IWorkspaceProvider workspace,
         ILogger<UnifiedConfigManager> logger,
@@ -765,12 +766,19 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
 /// <summary>配置来源信息</summary>
 public sealed class ConfigSourceInfo
 {
+    /// <summary>配置节名称。</summary>
     public string SectionName { get; init; } = "";
+    /// <summary>是否存在用户级配置。</summary>
     public bool HasUserLevel { get; init; }
+    /// <summary>是否存在项目级配置。</summary>
     public bool HasProjectLevel { get; init; }
+    /// <summary>用户级配置文件路径（若存在）。</summary>
     public string? UserPath { get; init; }
+    /// <summary>项目级配置文件路径。</summary>
     public string ProjectPath { get; init; } = "";
+    /// <summary>生效的配置作用域。</summary>
     public ConfigScope Scope { get; init; }
+    /// <summary>作用域判定原因的补充说明（可选）。</summary>
     public string? ScopeReason { get; init; }
     
     /// <summary>有效配置来源描述</summary>

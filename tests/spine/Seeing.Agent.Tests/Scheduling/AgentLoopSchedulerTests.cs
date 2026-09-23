@@ -26,7 +26,7 @@ public class AgentLoopSchedulerTests
             return Task.CompletedTask;
         });
 
-        var resumed = await scheduler.TryResumeWhenIdleAsync("s1");
+        var resumed = await scheduler.TryResumeWhenIdleAsync("s1", TestContext.Current.CancellationToken);
 
         resumed.Should().BeFalse();
         called.Should().BeFalse();
@@ -47,7 +47,7 @@ public class AgentLoopSchedulerTests
             return Task.CompletedTask;
         });
 
-        var resumed = await scheduler.TryResumeWhenIdleAsync("s1");
+        var resumed = await scheduler.TryResumeWhenIdleAsync("s1", TestContext.Current.CancellationToken);
 
         resumed.Should().BeFalse();
         called.Should().BeFalse();
@@ -70,7 +70,7 @@ public class AgentLoopSchedulerTests
             return Task.CompletedTask;
         });
 
-        var resumed = await scheduler.TryResumeWhenIdleAsync("s1");
+        var resumed = await scheduler.TryResumeWhenIdleAsync("s1", TestContext.Current.CancellationToken);
 
         resumed.Should().BeTrue();
         called.Should().BeTrue();

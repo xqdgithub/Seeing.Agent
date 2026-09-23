@@ -42,7 +42,8 @@ public class BashToolCancellationTests
     public async Task BashToolTimeout_ShouldReportTimeoutMessage_NotUserCancellation()
     {
         var bash = CreateBashTool(out _);
-        var result = await bash.ExecuteAsync(BuildArgs(LongRunningCommand, 500), CreateContext());
+        var result = await bash.ExecuteAsync(
+            BuildArgs(LongRunningCommand, 500), CreateContext(TestContext.Current.CancellationToken));
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("命令在超过超时时间 500 毫秒后被终止");
         result.Metadata["timedOut"].Should().Be(true);
@@ -54,7 +55,8 @@ public class BashToolCancellationTests
     {
         var bash = CreateBashTool(out var shellService);
         if (shellService.GetShellName(shellService.SelectShell()) is not ("powershell" or "pwsh")) return;
-        var result = await bash.ExecuteAsync(BuildArgs("Write-Output \"中文测试\""), CreateContext());
+        var result = await bash.ExecuteAsync(
+            BuildArgs("Write-Output \"中文测试\""), CreateContext(TestContext.Current.CancellationToken));
         result.Output.Should().Contain("中文测试");
     }
 
@@ -64,7 +66,7 @@ public class BashToolCancellationTests
         var bash = CreateBashTool(out _);
         using var cts = new CancellationTokenSource();
         var task = bash.ExecuteAsync(BuildArgs(LongRunningCommand), CreateContext(cts.Token));
-        await Task.Delay(300);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
         cts.Cancel();
         var result = await task;
         result.Success.Should().BeFalse();
@@ -77,7 +79,8 @@ public class BashToolCancellationTests
     public async Task BashTool_TimeoutZero_ShouldRejectInvalid()
     {
         var bash = CreateBashTool(out _);
-        (await bash.ExecuteAsync(BuildArgs("echo hi", 0), CreateContext())).Success.Should().BeFalse();
+        (await bash.ExecuteAsync(
+            BuildArgs("echo hi", 0), CreateContext(TestContext.Current.CancellationToken))).Success.Should().BeFalse();
     }
 
     [Fact]
@@ -86,7 +89,8 @@ public class BashToolCancellationTests
         var bash = CreateBashTool(out var shellService);
         if (OperatingSystem.IsWindows() && shellService.GetShellName(shellService.SelectShell()) is not ("powershell" or "pwsh")) return;
         var cmd = OperatingSystem.IsWindows() ? "Write-Output ('x' * 40000)" : "printf 'x%.0s' {1..40000}";
-        var result = await bash.ExecuteAsync(BuildArgs(cmd), CreateContext());
+        var result = await bash.ExecuteAsync(
+            BuildArgs(cmd), CreateContext(TestContext.Current.CancellationToken));
         result.Output.Length.Should().BeGreaterThan(30_000);
     }
 }

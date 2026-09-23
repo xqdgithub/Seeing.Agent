@@ -48,7 +48,7 @@ public class ReloadOrchestratorTests
         var (orch, handler) = CreateOrchestrator(out var configStore, out var workspace);
         configStore.Raise(x => x.ConfigChanged += null, new ConfigChangedEventArgs { ChangedSections = new[] { "Providers" } });
 
-        await Task.Delay(200); // 等待异步调度
+        await Task.Delay(200, TestContext.Current.CancellationToken); // 等待异步调度
         handler.Received.Should().Contain("Providers");
     }
 
@@ -66,7 +66,7 @@ public class ReloadOrchestratorTests
         configStore.Raise(x => x.ConfigChanged += null,
             new ConfigChangedEventArgs { ChangedSections = ["Providers"], ChangedKeys = ["trip"] });
 
-        await Task.Delay(300);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
 
         received.Should().NotBeNull();
         received!.ChangedKeys.Should().BeEquivalentTo("trip");
@@ -78,7 +78,7 @@ public class ReloadOrchestratorTests
         var (orch, handler) = CreateOrchestrator(out var configStore, out var workspace);
         workspace.Raise(x => x.WorkspaceRootChanged += null, new WorkspaceChangedEventArgs { OldWorkspace = "/old", NewWorkspace = "/new" });
 
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
         handler.Received.Should().NotBeEmpty();
     }
 
@@ -95,7 +95,7 @@ public class ReloadOrchestratorTests
             NullLogger<ReloadOrchestrator>.Instance);
         orch.AttachHandlers([bad, good]);
 
-        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } });
+        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } }, TestContext.Current.CancellationToken);
 
         good.Received.Should().Contain("X");
         var badResult = results.Should().ContainSingle(r => r.ComponentId == "bad").Subject;
@@ -113,7 +113,7 @@ public class ReloadOrchestratorTests
             workspace.Object,
             NullLogger<ReloadOrchestrator>.Instance);
 
-        var results = await orch.PublishAsync(new ConfigChange { ChangedSections = ["X"] });
+        var results = await orch.PublishAsync(new ConfigChange { ChangedSections = ["X"] }, TestContext.Current.CancellationToken);
         results.Should().BeEmpty();
     }
 
@@ -121,7 +121,7 @@ public class ReloadOrchestratorTests
     public async Task 显式ReloadAsync_返回结果集合()
     {
         var (orch, _) = CreateOrchestrator(out _, out _);
-        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } });
+        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } }, TestContext.Current.CancellationToken);
         results.Should().HaveCount(1);
         results[0].ComponentId.Should().Be("track");
         results[0].Success.Should().BeTrue();
@@ -137,7 +137,7 @@ public class ReloadOrchestratorTests
         configStore.Raise(x => x.ConfigChanged += null, args);
         configStore.Raise(x => x.ConfigChanged += null, args);
 
-        await Task.Delay(500);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
         lock (handler.Received) handler.Received.Should().HaveCount(1);
     }
 
@@ -164,8 +164,8 @@ public class ReloadOrchestratorTests
         configStore.Raise(x => x.ConfigChanged += null,
             new ConfigChangedEventArgs { ChangedSections = Array.Empty<string>() });
 
-        await firstRound.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(500); // 等待 dirty 补跑的第二轮完成
+        await firstRound.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await Task.Delay(500, TestContext.Current.CancellationToken); // 等待 dirty 补跑的第二轮完成
         rounds.Should().BeGreaterThanOrEqualTo(2);
     }
 
@@ -174,7 +174,7 @@ public class ReloadOrchestratorTests
     {
         var (orch, handler) = CreateOrchestrator(out _, out _);
         var bus = (IReloadSignalBus)orch;
-        var results = await bus.PublishAsync(new ConfigChange { ChangedSections = new[] { "P" } });
+        var results = await bus.PublishAsync(new ConfigChange { ChangedSections = new[] { "P" } }, TestContext.Current.CancellationToken);
         results.Should().HaveCount(1);
         handler.Received.Should().Contain("P");
     }
@@ -187,12 +187,12 @@ public class ReloadOrchestratorTests
         var pluginHandler = new TrackingHandler { ComponentId = "plugin" };
         registry.RegisterHandler(pluginHandler);
 
-        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } });
+        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } }, TestContext.Current.CancellationToken);
         results.Select(r => r.ComponentId).Should().Contain("plugin");
         pluginHandler.Received.Should().Contain("X");
 
         registry.UnregisterHandler(pluginHandler);
-        results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Y" } });
+        results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Y" } }, TestContext.Current.CancellationToken);
         results.Select(r => r.ComponentId).Should().NotContain("plugin");
     }
 }

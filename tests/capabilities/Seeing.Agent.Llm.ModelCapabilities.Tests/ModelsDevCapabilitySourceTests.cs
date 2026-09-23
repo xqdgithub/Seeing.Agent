@@ -61,12 +61,12 @@ public class ModelsDevCapabilitySourceTests
         try
         {
             var source = new ModelsDevCapabilitySource(dir);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
             File.Exists(Path.Combine(dir, "catalog.json")).Should().BeFalse();
             File.Exists(Path.Combine(dir, "local.json")).Should().BeFalse();
 
-            var entries = await source.ListEntriesAsync();
+            var entries = await source.ListEntriesAsync(TestContext.Current.CancellationToken);
             entries.Should().Contain(e =>
                 e.ProviderId == "deepseek" &&
                 e.ModelId == "deepseek-v4-flash" &&
@@ -91,18 +91,18 @@ public class ModelsDevCapabilitySourceTests
             using var http = CreateStubHttp(SampleApiJson);
             var source = new ModelsDevCapabilitySource(dir, httpClient: http);
 
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
             await source.UpsertAliasAsync(new ModelCapabilityAlias
             {
                 ProviderId = "opencode-zen",
                 FromModelId = "alias-from",
                 ToModelId = "big-pickle"
-            });
+            }, TestContext.Current.CancellationToken);
 
             ModelCapabilitySourceChangedEventArgs? changed = null;
             source.Changed += (_, e) => changed = e;
 
-            await source.RefreshAsync();
+            await source.RefreshAsync(TestContext.Current.CancellationToken);
 
             changed.Should().NotBeNull();
             changed!.Kind.Should().Be(ModelCapabilitySourceChangeKind.Reloaded);
@@ -110,7 +110,7 @@ public class ModelsDevCapabilitySourceTests
             File.Exists(Path.Combine(dir, "remote.json.bk")).Should().BeFalse(); // first write, no prior
             File.Exists(Path.Combine(dir, "local.json")).Should().BeTrue();
 
-            var entries = await source.ListEntriesAsync();
+            var entries = await source.ListEntriesAsync(TestContext.Current.CancellationToken);
             var bigPickle = entries.Single(e =>
                 e.ProviderId == "opencode-zen" && e.ModelId == "big-pickle");
             // remote limit 200k 被 builtin 1M 覆盖
@@ -124,7 +124,7 @@ public class ModelsDevCapabilitySourceTests
             entries.Should().Contain(e =>
                 e.ProviderId == "openai" && e.ModelId == "gpt-test");
 
-            var aliases = await source.ListAliasesAsync();
+            var aliases = await source.ListAliasesAsync(TestContext.Current.CancellationToken);
             aliases.Should().ContainSingle(a =>
                 a.FromModelId == "alias-from" && a.ToModelId == "big-pickle");
         }
@@ -142,7 +142,7 @@ public class ModelsDevCapabilitySourceTests
         {
             using var http = CreateStubHttp(SampleApiJson);
             var source = new ModelsDevCapabilitySource(dir, httpClient: http);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
             await source.UpsertEntryAsync(new ModelCapabilityEntry
             {
@@ -162,11 +162,11 @@ public class ModelsDevCapabilitySourceTests
                         ]
                     }
                 }
-            });
+            }, TestContext.Current.CancellationToken);
 
-            await source.RefreshAsync();
+            await source.RefreshAsync(TestContext.Current.CancellationToken);
 
-            var entry = (await source.ListEntriesAsync())
+            var entry = (await source.ListEntriesAsync(TestContext.Current.CancellationToken))
                 .Single(e => e.ModelId == "big-pickle");
             entry.Name.Should().Be("Local Pickle");
             entry.Limit!.Context.Should().Be(42);
@@ -186,14 +186,14 @@ public class ModelsDevCapabilitySourceTests
         try
         {
             var source = new ModelsDevCapabilitySource(dir);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
             await source.UpsertEntryAsync(new ModelCapabilityEntry
             {
                 ProviderId = "p1",
                 ModelId = "m1",
                 Name = "Model One"
-            });
+            }, TestContext.Current.CancellationToken);
 
             var localPath = Path.Combine(dir, "local.json");
             var backupPath = localPath + ".bk";
@@ -205,7 +205,7 @@ public class ModelsDevCapabilitySourceTests
                 ProviderId = "p1",
                 ModelId = "m1",
                 Name = "Model One Updated"
-            });
+            }, TestContext.Current.CancellationToken);
 
             File.Exists(backupPath).Should().BeTrue();
             File.ReadAllText(backupPath).Should().Contain("Model One");
@@ -243,14 +243,14 @@ public class ModelsDevCapabilitySourceTests
             using var http = new HttpClient(new StubHandler(_ =>
                 new HttpResponseMessage(HttpStatusCode.InternalServerError)));
             var source = new ModelsDevCapabilitySource(dir, httpClient: http);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
             await source.UpsertEntryAsync(new ModelCapabilityEntry
             {
                 ProviderId = "local",
                 ModelId = "keep-me",
                 Name = "Keep"
-            });
+            }, TestContext.Current.CancellationToken);
 
             ModelCapabilitySourceChangedEventArgs? changed = null;
             source.Changed += (_, e) => changed = e;
@@ -261,7 +261,7 @@ public class ModelsDevCapabilitySourceTests
             changed.Should().NotBeNull();
             changed!.Kind.Should().Be(ModelCapabilitySourceChangeKind.RefreshFailed);
 
-            var entries = await source.ListEntriesAsync();
+            var entries = await source.ListEntriesAsync(TestContext.Current.CancellationToken);
             entries.Should().Contain(e => e.ModelId == "keep-me");
         }
         finally
@@ -289,13 +289,13 @@ public class ModelsDevCapabilitySourceTests
                   "aliases": []
                 }
                 """;
-            await File.WriteAllTextAsync(Path.Combine(dir, "catalog.json"), legacy);
+            await File.WriteAllTextAsync(Path.Combine(dir, "catalog.json"), legacy, TestContext.Current.CancellationToken);
 
             var source = new ModelsDevCapabilitySource(dir);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
             File.Exists(Path.Combine(dir, "local.json")).Should().BeTrue();
-            var entry = (await source.ListEntriesAsync())
+            var entry = (await source.ListEntriesAsync(TestContext.Current.CancellationToken))
                 .Single(e => e.ModelId == "deepseek-v4-flash");
             entry.Name.Should().Be("Migrated Flash");
             entry.Limit!.Context.Should().Be(123);

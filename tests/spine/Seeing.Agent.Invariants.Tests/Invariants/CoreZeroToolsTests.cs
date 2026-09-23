@@ -46,7 +46,8 @@ public class CoreZeroToolsTests
 
         var schemas = await tools.GetToolSchemasAsync(
             Array.Empty<string>(),
-            new AgentDefinition { Name = "t" });
+            new AgentDefinition { Name = "t" },
+            TestContext.Current.CancellationToken);
 
         schemas.Should().BeEmpty("空层1∩层2 结算集 → schema 必须为空");
     }

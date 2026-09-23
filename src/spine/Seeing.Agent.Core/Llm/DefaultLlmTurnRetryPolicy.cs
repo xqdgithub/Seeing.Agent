@@ -9,14 +9,26 @@ public sealed class DefaultLlmTurnRetryPolicy : ILlmTurnRetryPolicy
 {
     private readonly LlmTurnRetryOptions _options;
 
+    /// <summary>
+    /// 使用默认重试选项（<see cref="LlmTurnRetryOptions.Default"/>）构造轮次重试策略。
+    /// </summary>
     public DefaultLlmTurnRetryPolicy()
         : this(LlmTurnRetryOptions.Default) { }
 
+    /// <summary>
+    /// 使用指定重试选项构造轮次重试策略。
+    /// </summary>
     public DefaultLlmTurnRetryPolicy(LlmTurnRetryOptions options)
         => _options = options ?? throw new ArgumentNullException(nameof(options));
 
+    /// <summary>
+    /// 是否启用应用层轮次重试。
+    /// </summary>
     public bool Enabled => _options.Enabled;
 
+    /// <summary>
+    /// 判定异常是否可重试：LlmException 子类按其 IsRetryable 判定，其余走 LlmRetryPolicy 规则。
+    /// </summary>
     public bool CanRetry(Exception ex, CancellationToken cancellationToken)
     {
         // AgentExecutor 拿到的异常是 LlmService 包装后的 LlmException 子类（LlmStreamingException/
@@ -28,12 +40,18 @@ public sealed class DefaultLlmTurnRetryPolicy : ILlmTurnRetryPolicy
         return LlmRetryPolicy.IsRetryable(ex, cancellationToken);
     }
 
+    /// <summary>
+    /// 计算指定尝试次数对应的指数退避延迟。
+    /// </summary>
     public TimeSpan NextDelay(int attempt)
         => LlmRetryPolicy.ComputeDelay(
             attempt,
             TimeSpan.FromMilliseconds(_options.BaseDelayMs > 0 ? _options.BaseDelayMs : 500),
             TimeSpan.FromMilliseconds(_options.MaxDelayMs > 0 ? _options.MaxDelayMs : 10_000));
 
+    /// <summary>
+    /// 综合开关、最大尝试次数与总时间预算判定是否进行下一轮重试。
+    /// </summary>
     public bool ShouldRetry(int attempt, TimeSpan elapsed, TimeSpan nextDelay)
     {
         if (!_options.Enabled)

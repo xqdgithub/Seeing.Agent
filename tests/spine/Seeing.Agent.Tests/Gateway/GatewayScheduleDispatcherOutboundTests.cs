@@ -42,7 +42,7 @@ public class GatewayScheduleDispatcherOutboundTests
             SessionId = "sess-1",
             Channel = "ignored",
             UserId = "ignored-user"
-        });
+        }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         captured.Should().NotBeNull();
@@ -82,7 +82,7 @@ public class GatewayScheduleDispatcherOutboundTests
             SessionId = "sess-2",
             Channel = "qq",
             UserId = "u1"
-        });
+        }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         outboundCalls.Should().Be(0);

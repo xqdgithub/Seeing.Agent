@@ -212,7 +212,7 @@ namespace Seeing.Session.Tests.Hooks
             await manager.TriggerAsync(HookPoints.Created);
 
             // Wait for async task to complete
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
 
             hook.Verify(h => h.ExecuteAsync(It.IsAny<SessionHookContext>()), Times.Once());
         }
@@ -232,7 +232,7 @@ namespace Seeing.Session.Tests.Hooks
             await manager.TriggerAsync(HookPoints.Created, session);
 
             // Wait for async task to complete
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
 
             hook.Verify(h => h.ExecuteAsync(It.Is<SessionHookContext>(ctx =>
                 ctx.HookPoint == HookPoints.Created &&
@@ -255,7 +255,7 @@ namespace Seeing.Session.Tests.Hooks
             await manager.TriggerAsync(HookPoints.Created, "session-456");
 
             // Wait for async task to complete
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
 
             hook.Verify(h => h.ExecuteAsync(It.Is<SessionHookContext>(ctx =>
                 ctx.HookPoint == HookPoints.Created &&
@@ -288,7 +288,7 @@ namespace Seeing.Session.Tests.Hooks
             await manager.TriggerAsync(HookPoints.Created);
 
             // Wait for async task to complete
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
 
             // Priority 10 should execute first, then 20
             executionOrder.Should().Equal(10, 20);
@@ -319,7 +319,7 @@ namespace Seeing.Session.Tests.Hooks
             await manager.TriggerAsync(HookPoints.Created);
 
             // Wait for async task to complete
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
 
             executionOrder.Should().Equal(10, 20); // Both hooks execute (Continue flag not checked in current impl)
         }
@@ -349,7 +349,7 @@ namespace Seeing.Session.Tests.Hooks
             await manager.TriggerAsync(HookPoints.Created);
 
             // Wait for async task to complete
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
 
             // Both should execute, hook1 throws but chain continues
             executionOrder.Should().Equal(10, 20);

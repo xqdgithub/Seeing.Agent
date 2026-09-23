@@ -26,6 +26,9 @@ public class ComponentManager : IComponentManager, IReloadHandler
     private readonly ConcurrentDictionary<string, IComponentLoader> _loaders = new();
     private readonly ConcurrentDictionary<string, ComponentLoadResult> _loadStatus = new();
 
+    /// <summary>
+    /// 构造组件管理器，登记可选的组件加载器集合。
+    /// </summary>
     public ComponentManager(
         IServiceProvider services,
         ILogger<ComponentManager> logger,

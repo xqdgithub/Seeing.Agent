@@ -76,20 +76,30 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
     /// <summary>计划状态</summary>
     public enum PlanStatus
     {
+        /// <summary>草稿。</summary>
         Draft,
+        /// <summary>已激活。</summary>
         Active,
+        /// <summary>进行中。</summary>
         InProgress,
+        /// <summary>已完成。</summary>
         Completed,
+        /// <summary>已取消。</summary>
         Cancelled
     }
 
     /// <summary>任务状态</summary>
     public enum PlanTaskStatus
     {
+        /// <summary>待处理。</summary>
         Pending,
+        /// <summary>进行中。</summary>
         InProgress,
+        /// <summary>已完成。</summary>
         Completed,
+        /// <summary>已失败。</summary>
         Failed,
+        /// <summary>已跳过。</summary>
         Skipped
     }
 }

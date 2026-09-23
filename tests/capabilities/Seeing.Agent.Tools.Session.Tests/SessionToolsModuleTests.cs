@@ -61,7 +61,7 @@ public class SessionToolsModuleTests
         module.ConfigureServices(services);
         using var provider = services.BuildServiceProvider();
 
-        await module.ActivateAsync(provider);
+        await module.ActivateAsync(provider, TestContext.Current.CancellationToken);
 
         registered.Should().BeEquivalentTo(
         [
@@ -88,7 +88,7 @@ public class SessionToolsModuleTests
         module.ConfigureServices(services);
         using var provider = services.BuildServiceProvider();
 
-        await module.ActivateAsync(provider);
+        await module.ActivateAsync(provider, TestContext.Current.CancellationToken);
 
         registered.Should().BeEquivalentTo(
         [
@@ -116,8 +116,8 @@ public class SessionToolsModuleTests
         module.ConfigureServices(services);
         using var provider = services.BuildServiceProvider();
 
-        await module.ActivateAsync(provider);
-        await module.DeactivateAsync(provider);
+        await module.ActivateAsync(provider, TestContext.Current.CancellationToken);
+        await module.DeactivateAsync(provider, TestContext.Current.CancellationToken);
 
         unregistered.Should().BeEquivalentTo(module.ProvidedTools);
     }

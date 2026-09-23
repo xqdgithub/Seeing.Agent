@@ -48,7 +48,7 @@ public class SkillCommandsTests
 
         // Act
         var result = await command.ExecuteAsync(
-            new CommandContext { SessionId = "s1", Arguments = "demo arg" });
+            new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();
@@ -69,7 +69,7 @@ public class SkillCommandsTests
         var command = new SkillLoadCommand(skillManager, sessionManager.Object);
 
         // Act
-        await command.ExecuteAsync(new CommandContext { SessionId = "s1", Arguments = "demo arg" });
+        await command.ExecuteAsync(new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
 
         // Assert
         session.Messages[^1].Content.Should().Be("old");
@@ -86,7 +86,7 @@ public class SkillCommandsTests
         var command = new DynamicSkillCommand(sessionManager.Object, skill);
 
         // Act
-        var result = await command.ExecuteAsync(new CommandContext { SessionId = "s1", Arguments = "arg" });
+        var result = await command.ExecuteAsync(new CommandContext { SessionId = "s1", Arguments = "arg" }, TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();
@@ -107,7 +107,7 @@ public class SkillCommandsTests
 
         // Act
         var result = await command.ExecuteAsync(
-            new CommandContext { SessionId = "s1", Arguments = "demo arg" });
+            new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();

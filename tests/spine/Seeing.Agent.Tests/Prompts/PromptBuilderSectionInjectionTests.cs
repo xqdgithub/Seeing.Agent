@@ -61,7 +61,7 @@ public class PromptBuilderSectionInjectionTests
             }
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         result.Should().Contain("## Tools");
         result.Should().Contain("## Skills");
@@ -94,7 +94,7 @@ public class PromptBuilderSectionInjectionTests
             }
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         result.Should().Be("No anchors here.");
         result.Should().NotContain("## Tools");
@@ -119,7 +119,7 @@ public class PromptBuilderSectionInjectionTests
             }
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         result.Should().NotContain("## Tools");
         result.Should().NotContain("TOOLS-BODY");
@@ -157,7 +157,7 @@ public class PromptBuilderSectionInjectionTests
             }
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         // H2 锚点 + 技能名同时出现，且技能名在 H2 之下
         var skillsHeadingIdx = result.IndexOf("## Skills", StringComparison.Ordinal);
@@ -193,7 +193,7 @@ public class PromptBuilderSectionInjectionTests
             }
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         result.Should().Contain("## Tools");
         result.Should().Contain("TOOLS-BODY");
@@ -226,7 +226,7 @@ public class PromptBuilderSectionInjectionTests
             ]
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         result.Should().Contain("## Tools");
         result.Should().Contain("### read");
@@ -263,7 +263,7 @@ public class PromptBuilderSectionInjectionTests
             ]
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         result.Should().Contain("### read");
         result.Should().Contain("Read a file");
@@ -287,7 +287,7 @@ public class PromptBuilderSectionInjectionTests
             Timestamp = new DateTime(2026, 9, 9, 10, 0, 0)
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         result.Should().Contain("Working directory");
         result.Should().Contain("Today's date");
@@ -321,7 +321,7 @@ public class PromptBuilderSectionInjectionTests
             }
         };
 
-        var result = await builder.BuildAsync(context);
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
         result.Should().Contain("**explore**");
         result.Should().Contain("Explore the codebase");

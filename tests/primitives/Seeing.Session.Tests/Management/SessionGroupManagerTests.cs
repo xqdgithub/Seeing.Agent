@@ -20,7 +20,7 @@ public class SessionGroupManagerTests
         groups.Select(g => g.Id).Distinct().Should().ContainSingle();
         Directory.GetFiles(h.Dir, "*.json").Should().ContainSingle();
 
-        var persisted = await h.GroupStore.FindBySessionAsync(session.Id);
+        var persisted = await h.GroupStore.FindBySessionAsync(session.Id, TestContext.Current.CancellationToken);
         persisted.Should().NotBeNull();
         persisted!.Members.Should().ContainSingle();
         persisted.Members[0].IsAnchor.Should().BeTrue();
@@ -37,8 +37,8 @@ public class SessionGroupManagerTests
         using var h = new SessionGroupTestHarness();
         var session = h.CreateRoot();
 
-        var first = await h.Manager.EnsureForSessionAsync(session.Id);
-        var second = await h.Manager.EnsureForSessionAsync(session.Id);
+        var first = await h.Manager.EnsureForSessionAsync(session.Id, TestContext.Current.CancellationToken);
+        var second = await h.Manager.EnsureForSessionAsync(session.Id, TestContext.Current.CancellationToken);
 
         second.Id.Should().Be(first.Id);
     }
@@ -48,10 +48,10 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var session = h.CreateRoot();
-        await h.Manager.EnsureForSessionAsync(session.Id);
+        await h.Manager.EnsureForSessionAsync(session.Id, TestContext.Current.CancellationToken);
 
         var cold = h.NewColdManager();
-        var group = await cold.GetGroupForSessionAsync(session.Id);
+        var group = await cold.GetGroupForSessionAsync(session.Id, TestContext.Current.CancellationToken);
 
         group.Should().NotBeNull();
         group!.AnchorSessionId.Should().Be(session.Id);
@@ -62,20 +62,20 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var a = h.CreatePlainSession();
         var b = h.CreatePlainSession();
 
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = a.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = b.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
 
-        var reloaded = await h.Manager.GetGroupAsync(group.Id);
+        var reloaded = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         reloaded!.Version.Should().Be(3);
         reloaded.Members.Single(m => m.SessionId == a.Id).Order.Should().Be(1);
         reloaded.Members.Single(m => m.SessionId == b.Id).Order.Should().Be(2);
@@ -86,30 +86,30 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var leaf = h.CreatePlainSession();
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = leaf.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
 
-        var versionBefore = (await h.Manager.GetGroupAsync(group.Id))!.Version;
+        var versionBefore = (await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken))!.Version;
 
         var snapshots = new List<SessionGroup>();
         h.Manager.Changed += (_, e) => snapshots.Add(e.Group);
 
-        await h.Manager.SetActiveAsync(group.Id, leaf.Id);
+        await h.Manager.SetActiveAsync(group.Id, leaf.Id, TestContext.Current.CancellationToken);
 
         snapshots.Should().ContainSingle();
         snapshots[0].ActiveSessionId.Should().Be(leaf.Id);
         snapshots[0].Version.Should().Be(versionBefore + 1);
 
         // 快照独立：后续变更不得回写已捕获快照
-        await h.Manager.SetActiveAsync(group.Id, root.Id);
+        await h.Manager.SetActiveAsync(group.Id, root.Id, TestContext.Current.CancellationToken);
         snapshots[0].ActiveSessionId.Should().Be(leaf.Id);
         snapshots.Should().HaveCount(2);
         snapshots[1].ActiveSessionId.Should().Be(root.Id);
-        (await h.Manager.GetGroupAsync(group.Id))!.ActiveSessionId.Should().Be(root.Id);
+        (await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken))!.ActiveSessionId.Should().Be(root.Id);
     }
 
     [Fact]
@@ -117,17 +117,17 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var leaf = h.CreatePlainSession();
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = leaf.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
-        await h.Manager.SetActiveAsync(group.Id, leaf.Id);
+        }, TestContext.Current.CancellationToken);
+        await h.Manager.SetActiveAsync(group.Id, leaf.Id, TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveMemberAsync(group.Id, leaf.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, leaf.Id, TestContext.Current.CancellationToken);
 
-        var reloaded = await h.Manager.GetGroupAsync(group.Id);
+        var reloaded = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         reloaded!.ActiveSessionId.Should().BeNull();
         reloaded.ResolveActiveId().Should().Be(root.Id);
     }
@@ -137,21 +137,21 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var first = h.CreatePlainSession();
         var second = h.CreatePlainSession();
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = first.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = second.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveMemberAsync(group.Id, root.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, root.Id, TestContext.Current.CancellationToken);
 
-        var reloaded = await h.Manager.GetGroupAsync(group.Id);
+        var reloaded = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         reloaded!.Members.Should().NotContain(m => m.SessionId == root.Id);
         var anchor = reloaded.Members.Single(m => m.IsAnchor);
         anchor.SessionId.Should().Be(first.Id);
@@ -164,14 +164,14 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
         SessionGroup? lastSnapshot = null;
         h.Manager.Changed += (_, e) => lastSnapshot = e.Group;
 
-        await h.Manager.RemoveMemberAsync(group.Id, root.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, root.Id, TestContext.Current.CancellationToken);
 
-        (await h.Manager.GetGroupAsync(group.Id)).Should().BeNull();
+        (await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken)).Should().BeNull();
         Directory.GetFiles(h.Dir, "*.json").Should().BeEmpty();
         lastSnapshot.Should().NotBeNull();
         lastSnapshot!.Members.Should().BeEmpty();
@@ -182,12 +182,12 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var leaf = h.CreatePlainSession();
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = leaf.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
 
         var reentrantCallSucceeded = false;
         var reentered = 0;
@@ -202,7 +202,7 @@ public class SessionGroupManagerTests
             reentrantCallSucceeded = task.Wait(TimeSpan.FromSeconds(10));
         };
 
-        await h.Manager.SetActiveAsync(group.Id, root.Id);
+        await h.Manager.SetActiveAsync(group.Id, root.Id, TestContext.Current.CancellationToken);
 
         reentrantCallSucceeded.Should().BeTrue();
     }
@@ -213,24 +213,24 @@ public class SessionGroupManagerTests
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
         var grandChild = await h.Manager.CreateChildAsync(
-            child.Id, "task", "孙任务", Array.Empty<SessionPermissionRule>(), null);
+            child.Id, "task", "孙任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
         var fork = h.CreatePlainSession();
-        var group = await h.Manager.GetGroupForSessionAsync(root.Id);
+        var group = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         await h.Manager.AddMemberAsync(group!.Id, new SessionGroupMember
         {
             SessionId = fork.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveSessionAsync(root.Id);
+        await h.Manager.RemoveSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
         h.Sessions.Get(root.Id).Should().BeNull();
         h.Sessions.Get(child.Id).Should().BeNull();
         h.Sessions.Get(grandChild.Id).Should().BeNull();
         h.Sessions.Get(fork.Id).Should().NotBeNull();
 
-        var reloaded = await h.Manager.GetGroupAsync(group.Id);
+        var reloaded = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         reloaded.Should().NotBeNull();
         reloaded!.Members.Should().ContainSingle(m => m.SessionId == fork.Id);
         reloaded.Members.Single().IsAnchor.Should().BeTrue();
@@ -242,14 +242,14 @@ public class SessionGroupManagerTests
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null);
-        var group = await h.Manager.GetGroupForSessionAsync(root.Id);
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
+        var group = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveSessionAsync(root.Id);
+        await h.Manager.RemoveSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
         h.Sessions.Get(root.Id).Should().BeNull();
         h.Sessions.Get(child.Id).Should().BeNull();
-        (await h.Manager.GetGroupAsync(group!.Id)).Should().BeNull();
+        (await h.Manager.GetGroupAsync(group!.Id, TestContext.Current.CancellationToken)).Should().BeNull();
         Directory.GetFiles(h.Dir, "*.json").Should().BeEmpty();
     }
 
@@ -259,9 +259,9 @@ public class SessionGroupManagerTests
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
         var grandChild = await h.Manager.CreateChildAsync(
-            child.Id, "task", "孙任务", Array.Empty<SessionPermissionRule>(), null);
+            child.Id, "task", "孙任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
 
         h.Manager.TryGetParent(child.Id, out var childParent).Should().BeTrue();
         childParent.Should().Be(root.Id);
@@ -270,8 +270,8 @@ public class SessionGroupManagerTests
         h.Manager.TryGetParent(root.Id, out _).Should().BeFalse();
 
         // 移除中间节点：孙任务重挂到 root，被移除节点不再有父索引
-        var group = await h.Manager.GetGroupForSessionAsync(root.Id);
-        await h.Manager.RemoveMemberAsync(group!.Id, child.Id);
+        var group = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        await h.Manager.RemoveMemberAsync(group!.Id, child.Id, TestContext.Current.CancellationToken);
 
         h.Manager.TryGetParent(grandChild.Id, out var reparented).Should().BeTrue();
         reparented.Should().Be(root.Id);
@@ -284,19 +284,19 @@ public class SessionGroupManagerTests
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
         var fork = h.CreatePlainSession();
-        var group = await h.Manager.GetGroupForSessionAsync(root.Id);
+        var group = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         await h.Manager.AddMemberAsync(group!.Id, new SessionGroupMember
         {
             SessionId = fork.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
 
-        var warm = await h.Manager.ListChildrenAsync(root.Id);
+        var warm = await h.Manager.ListChildrenAsync(root.Id, TestContext.Current.CancellationToken);
         warm.Select(s => s.Id).Should().Equal(child.Id);
 
         var cold = h.NewColdManager();
-        var coldResult = await cold.ListChildrenAsync(root.Id);
+        var coldResult = await cold.ListChildrenAsync(root.Id, TestContext.Current.CancellationToken);
         coldResult.Select(s => s.Id).Should().Equal(child.Id);
     }
 
@@ -310,11 +310,11 @@ public class SessionGroupManagerTests
         await h.Sessions.SaveAsync(s2.Id);
 
         var cold = h.NewColdManager();
-        var anchors = await cold.ListAnchorsAsync();
+        var anchors = await cold.ListAnchorsAsync(ct: TestContext.Current.CancellationToken);
 
         anchors.Select(a => a.Id).Should().BeEquivalentTo(new[] { s1.Id, s2.Id });
-        (await h.GroupStore.FindBySessionAsync(s1.Id)).Should().NotBeNull();
-        (await h.GroupStore.FindBySessionAsync(s2.Id)).Should().NotBeNull();
+        (await h.GroupStore.FindBySessionAsync(s1.Id, TestContext.Current.CancellationToken)).Should().NotBeNull();
+        (await h.GroupStore.FindBySessionAsync(s2.Id, TestContext.Current.CancellationToken)).Should().NotBeNull();
     }
 
     [Fact]
@@ -323,10 +323,10 @@ public class SessionGroupManagerTests
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
 
-        (await h.Manager.GetParentAsync(child.Id)).Should().Be(root.Id);
-        (await h.Manager.GetParentAsync(root.Id)).Should().BeNull();
+        (await h.Manager.GetParentAsync(child.Id, TestContext.Current.CancellationToken)).Should().Be(root.Id);
+        (await h.Manager.GetParentAsync(root.Id, TestContext.Current.CancellationToken)).Should().BeNull();
     }
 
     [Fact]
@@ -337,13 +337,13 @@ public class SessionGroupManagerTests
         var archived = h.CreateRoot();
         await h.Sessions.SaveAsync(active.Id);
         await h.Sessions.SaveAsync(archived.Id);
-        await h.Manager.EnsureForSessionAsync(active.Id);
-        await h.Manager.EnsureForSessionAsync(archived.Id);
+        await h.Manager.EnsureForSessionAsync(active.Id, TestContext.Current.CancellationToken);
+        await h.Manager.EnsureForSessionAsync(archived.Id, TestContext.Current.CancellationToken);
 
         h.Sessions.Get(archived.Id)!.IsArchived = true;
         await h.Sessions.SaveAsync(archived.Id);
 
-        var anchors = await h.NewColdManager().ListAnchorsAsync();
+        var anchors = await h.NewColdManager().ListAnchorsAsync(ct: TestContext.Current.CancellationToken);
 
         anchors.Select(a => a.Id).Should().Contain(active.Id);
         anchors.Select(a => a.Id).Should().NotContain(archived.Id);
@@ -354,7 +354,7 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot("根标题");
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
         // Fork（备份）先入组，Order 更小；随后加入 Child 成员（非 Fork）
         var fork = h.CreatePlainSession();
@@ -362,14 +362,14 @@ public class SessionGroupManagerTests
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = fork.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子标题", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "子标题", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveMemberAsync(group.Id, root.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, root.Id, TestContext.Current.CancellationToken);
 
         // 新语义：优先 (d) 非 Fork 且非 Child → 无；再 (e) Fork 兜底 → fork（排除 Child）
-        var reloaded = await h.Manager.GetGroupAsync(group.Id);
+        var reloaded = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         var anchor = reloaded!.Members.Single(m => m.IsAnchor);
         anchor.SessionId.Should().Be(fork.Id);
         anchor.Relation.Should().Be(SessionRelation.None);
@@ -381,7 +381,7 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot("根标题");
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
         var fork1 = h.CreatePlainSession();
         fork1.Title = "备份一";
@@ -390,15 +390,15 @@ public class SessionGroupManagerTests
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = fork1.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = fork2.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveMemberAsync(group.Id, root.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, root.Id, TestContext.Current.CancellationToken);
 
-        var reloaded = await h.Manager.GetGroupAsync(group.Id);
+        var reloaded = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         var anchor = reloaded!.Members.Single(m => m.IsAnchor);
         anchor.SessionId.Should().Be(fork1.Id);
         anchor.Relation.Should().Be(SessionRelation.None);
@@ -410,7 +410,7 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var plain = h.CreatePlainSession(SessionKind.Root);
 
         var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
@@ -426,7 +426,7 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var sub = h.CreatePlainSession(SessionKind.SubAgent);
 
         var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
@@ -442,7 +442,7 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var sub = h.CreatePlainSession(SessionKind.SubAgent);
 
         var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
@@ -458,7 +458,7 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var sub = h.CreatePlainSession(SessionKind.SubAgent);
 
         var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
@@ -474,7 +474,7 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var sub = h.CreatePlainSession(SessionKind.SubAgent);
 
         var act = () => h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
@@ -490,11 +490,11 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var fork = h.CreatePlainSession();
 
-        var byId = await h.Manager.GetGroupAsync(group.Id);
-        var bySession = await h.Manager.GetGroupForSessionAsync(root.Id);
+        var byId = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
+        var bySession = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
         byId!.Members.Should().ContainSingle();
         bySession!.Members.Should().ContainSingle();
@@ -502,7 +502,7 @@ public class SessionGroupManagerTests
         await h.Manager.AddMemberAsync(group.Id, new SessionGroupMember
         {
             SessionId = fork.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
-        });
+        }, TestContext.Current.CancellationToken);
 
         // 快照不得被后续组内变更回写
         byId.Members.Should().ContainSingle();
@@ -514,7 +514,7 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var forks = Enumerable.Range(0, 300).Select(_ => h.CreatePlainSession()).ToArray();
 
         var writer = Task.Run(async () =>
@@ -526,7 +526,7 @@ public class SessionGroupManagerTests
                     SessionId = f.Id, Relation = SessionRelation.Fork, ParentSessionId = root.Id
                 });
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
         var readers = Enumerable.Range(0, 6).Select(_ => Task.Run(async () =>
         {
@@ -542,7 +542,7 @@ public class SessionGroupManagerTests
 
         await Task.WhenAll(readers.Append(writer));
 
-        (await h.Manager.ListMembersAsync(group.Id)).Should().HaveCount(forks.Length + 1);
+        (await h.Manager.ListMembersAsync(group.Id, TestContext.Current.CancellationToken)).Should().HaveCount(forks.Length + 1);
     }
 
     [Fact]
@@ -550,13 +550,13 @@ public class SessionGroupManagerTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
-        await h.GroupStore.DeleteAsync(group.Id);
-        (await h.Manager.GetGroupAsync(group.Id)).Should().NotBeNull();
+        await h.GroupStore.DeleteAsync(group.Id, TestContext.Current.CancellationToken);
+        (await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken)).Should().NotBeNull();
 
         h.Manager.ClearCache();
 
-        (await h.Manager.GetGroupAsync(group.Id)).Should().BeNull();
+        (await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken)).Should().BeNull();
     }
 }

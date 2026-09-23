@@ -74,7 +74,7 @@ public class ExecutionJobServiceCompactionTests
                 AgentId = "general",
                 SkipUserMessagePersist = true,
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
 
@@ -140,7 +140,7 @@ public class ExecutionJobServiceCompactionTests
                 AgentId = "general",
                 SkipUserMessagePersist = true,
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
 

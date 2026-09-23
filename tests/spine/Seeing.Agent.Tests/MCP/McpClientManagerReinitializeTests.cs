@@ -24,25 +24,25 @@ public class McpClientManagerReinitializeTests
         var configs = CreateConfigs("srv_a", "srv_b");
 
         // Act: 首次初始化并等待连接就绪
-        await manager.InitializeAsync(configs);
-        (await manager.WaitForReadyAsync("srv_a")).Should().BeTrue();
-        (await manager.WaitForReadyAsync("srv_b")).Should().BeTrue();
+        await manager.InitializeAsync(configs, TestContext.Current.CancellationToken);
+        (await manager.WaitForReadyAsync("srv_a", cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await manager.WaitForReadyAsync("srv_b", cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
 
         manager.GetAllConfigs().Count.Should().Be(2);
         manager.GetAllStatus().Count.Should().Be(2);
         var createdAfterFirst = factory.CreatedCount;
 
         // 重置全部 MCP 状态
-        await manager.ResetAllAsync();
+        await manager.ResetAllAsync(TestContext.Current.CancellationToken);
 
         // Assert: 重置后配置与状态清空
         manager.GetAllConfigs().Count.Should().Be(0);
         manager.GetAllStatus().Count.Should().Be(0);
 
         // 重置后再次初始化
-        await manager.InitializeAsync(configs);
-        (await manager.WaitForReadyAsync("srv_a")).Should().BeTrue();
-        (await manager.WaitForReadyAsync("srv_b")).Should().BeTrue();
+        await manager.InitializeAsync(configs, TestContext.Current.CancellationToken);
+        (await manager.WaitForReadyAsync("srv_a", cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await manager.WaitForReadyAsync("srv_b", cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
 
         // Assert: 配置与状态重新加载，且创建了全新连接实例
         manager.GetAllConfigs().Count.Should().Be(2);
@@ -60,17 +60,17 @@ public class McpClientManagerReinitializeTests
         var configs = CreateConfigs("srv_a", "srv_b");
 
         // Act: 首次初始化并等待连接就绪
-        await manager.InitializeAsync(configs);
-        (await manager.WaitForReadyAsync("srv_a")).Should().BeTrue();
-        (await manager.WaitForReadyAsync("srv_b")).Should().BeTrue();
+        await manager.InitializeAsync(configs, TestContext.Current.CancellationToken);
+        (await manager.WaitForReadyAsync("srv_a", cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await manager.WaitForReadyAsync("srv_b", cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
 
         var toolsAfterFirst = manager.GetTools().Count;
         toolsAfterFirst.Should().Be(4);
 
         // 第二次初始化（同一配置）
-        await manager.InitializeAsync(configs);
-        (await manager.WaitForReadyAsync("srv_a")).Should().BeTrue();
-        (await manager.WaitForReadyAsync("srv_b")).Should().BeTrue();
+        await manager.InitializeAsync(configs, TestContext.Current.CancellationToken);
+        (await manager.WaitForReadyAsync("srv_a", cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await manager.WaitForReadyAsync("srv_b", cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
 
         // Assert: 服务器与工具均不翻倍
         manager.GetAllConfigs().Count.Should().Be(2);
@@ -85,7 +85,7 @@ public class McpClientManagerReinitializeTests
         var manager = CreateManager(new FakeWrapperFactory());
 
         // Act: 直接重置
-        await manager.ResetAllAsync();
+        await manager.ResetAllAsync(TestContext.Current.CancellationToken);
 
         // Assert: 无异常，状态保持为空
         manager.GetAllConfigs().Count.Should().Be(0);

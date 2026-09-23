@@ -24,6 +24,7 @@ namespace Seeing.Agent.Core.Commands
         private readonly ConcurrentDictionary<string, ICommand> _defaultAliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly ILogger<CommandRegistry>? _logger;
 
+        /// <summary>初始化命令注册表，可选注入日志器。</summary>
         public CommandRegistry(ILogger<CommandRegistry>? logger = null)
         {
             _logger = logger;

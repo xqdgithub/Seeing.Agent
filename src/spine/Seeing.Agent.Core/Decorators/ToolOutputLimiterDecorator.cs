@@ -27,6 +27,7 @@ public sealed class ToolOutputLimiterDecorator : ToolDecorator
     private readonly IPermissionGrantStore _grantStore;
     private readonly ILogger<ToolOutputLimiterDecorator> _logger;
 
+    /// <summary>初始化工具输出限流装饰器，注入选项、输出存储、授权存储与日志器。</summary>
     public ToolOutputLimiterDecorator(
         ITool inner,
         IOptionsMonitor<SeeingAgentOptions> options,

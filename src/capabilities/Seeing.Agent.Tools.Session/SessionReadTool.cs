@@ -121,7 +121,7 @@ public sealed class SessionReadTool : SessionToolBase
                 ["from_index"] = -1,
                 ["to_index"] = -1,
                 ["truncated"] = false,
-                ["next_cursor"] = null,
+                ["next_cursor"] = null!,
             });
         }
 
@@ -211,7 +211,7 @@ public sealed class SessionReadTool : SessionToolBase
                 ["from_index"] = displayed > 0 ? start : -1,
                 ["to_index"] = displayed > 0 ? start + displayed - 1 : -1,
                 ["truncated"] = truncated,
-                ["next_cursor"] = nextCursor,
+                ["next_cursor"] = nextCursor!,
             });
     }
 

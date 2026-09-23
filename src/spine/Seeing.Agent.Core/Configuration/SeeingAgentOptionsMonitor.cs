@@ -11,6 +11,7 @@ public sealed class SeeingAgentOptionsMonitor : IOptions<SeeingAgentOptions>, IO
     private readonly UnifiedConfigManager _manager;
     private readonly List<Action<SeeingAgentOptions, string?>> _changeListeners = new();
 
+    /// <summary>初始化配置监视器，订阅统一配置管理器的变更事件。</summary>
     public SeeingAgentOptionsMonitor(UnifiedConfigManager manager)
     {
         _manager = manager;
@@ -20,13 +21,17 @@ public sealed class SeeingAgentOptionsMonitor : IOptions<SeeingAgentOptions>, IO
     }
 
     // IOptions<SeeingAgentOptions>
+    /// <summary>获取当前 SeeingAgentOptions 实例（IOptions 实现）。</summary>
     public SeeingAgentOptions Value => CurrentValue;
 
     // IOptionsMonitor<SeeingAgentOptions>
+    /// <summary>从统一配置管理器获取最新配置（IOptionsMonitor 实现）。</summary>
     public SeeingAgentOptions CurrentValue => _manager.GetSeeingAgentOptions();
 
+    /// <summary>按名称获取配置（忽略名称，始终返回当前值）。</summary>
     public SeeingAgentOptions Get(string? name) => CurrentValue;
 
+    /// <summary>注册配置变更回调，返回可注销监听的可释放对象。</summary>
     public IDisposable? OnChange(Action<SeeingAgentOptions, string?> listener)
     {
         lock (_changeListeners)

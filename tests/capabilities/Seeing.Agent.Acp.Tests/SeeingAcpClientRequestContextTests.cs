@@ -28,12 +28,14 @@ public class SeeingAcpClientRequestContextTests
         client.ConfigureForRequest(firstSink, permissionContext: null);
         await client.SessionUpdateAsync(
             "acp-1",
-            new AgentMessageChunk { Content = new TextContentBlock("first") });
+            new AgentMessageChunk { Content = new TextContentBlock("first") },
+            TestContext.Current.CancellationToken);
 
         client.ConfigureForRequest(secondSink, permissionContext: null);
         await client.SessionUpdateAsync(
             "acp-1",
-            new AgentMessageChunk { Content = new TextContentBlock("second") });
+            new AgentMessageChunk { Content = new TextContentBlock("second") },
+            TestContext.Current.CancellationToken);
 
         firstSink.GetText().Should().Contain("first");
         firstSink.GetText().Should().NotContain("second");

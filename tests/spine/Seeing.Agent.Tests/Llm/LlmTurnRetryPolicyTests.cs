@@ -21,23 +21,23 @@ public class LlmTurnRetryPolicyTests
 
     [Fact]
     public void CanRetry_Http4xx_ReturnsFalse()
-        => Create().CanRetry(new HttpRequestException("400", null, HttpStatusCode.BadRequest), default)
+        => Create().CanRetry(new HttpRequestException("400", null, HttpStatusCode.BadRequest), TestContext.Current.CancellationToken)
             .Should().BeFalse();
 
     [Fact]
     public void CanRetry_IOException_ReturnsTrue()
-        => Create().CanRetry(new IOException("broken"), default).Should().BeTrue();
+        => Create().CanRetry(new IOException("broken"), TestContext.Current.CancellationToken).Should().BeTrue();
 
     [Fact]
     public void CanRetry_LlmStreamingExceptionWithInnerIOException_ReturnsTrue()
         => Create().CanRetry(
-                new LlmStreamingException("流式响应读取失败", new IOException("remote closed")), default)
+                new LlmStreamingException("流式响应读取失败", new IOException("remote closed")), TestContext.Current.CancellationToken)
             .Should().BeTrue();
 
     [Fact]
     public void CanRetry_LlmRetryExhausted_ReturnsFalse()
         => Create().CanRetry(
-                new LlmRetryExhaustedException(3, new IOException("x")), default)
+                new LlmRetryExhaustedException(3, new IOException("x")), TestContext.Current.CancellationToken)
             .Should().BeFalse();
 
     [Fact]

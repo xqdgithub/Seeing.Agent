@@ -69,7 +69,7 @@ public class ProviderConfigMigrationTests : IDisposable
                 "apiKey": "sk-anth"
               }
             }
-            """);
+            """, TestContext.Current.CancellationToken);
 
         var configManager = await CreateConfigManagerAsync(userSeeing);
 
@@ -97,7 +97,7 @@ public class ProviderConfigMigrationTests : IDisposable
                 "apiKey": "sk-legacy"
               }
             }
-            """);
+            """, TestContext.Current.CancellationToken);
 
         var configManager = await CreateConfigManagerAsync(userSeeing);
         var factory = new Mock<ILlmClientFactory>();
@@ -120,7 +120,7 @@ public class ProviderConfigMigrationTests : IDisposable
         await sut.SaveProviderAsync("legacy", loaded, ConfigLevel.User, TestContext.Current.CancellationToken);
 
         var providersPath = Path.Combine(userSeeing, "providers.json");
-        var root = JsonNode.Parse(await File.ReadAllTextAsync(providersPath))!.AsObject();
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(providersPath, TestContext.Current.CancellationToken))!.AsObject();
         root["legacy"]!["type"]!.GetValue<string>().Should().Be("openai");
         root["legacy"]!["type"]!.GetValue<string>().Should().NotBe("OpenAI");
     }

@@ -27,7 +27,7 @@ public class ModuleSettlementReloadHandlerTests
         catalog.ReplaceEnabled(["a", "b"]);
 
         var lifecycle = new ModuleLifecycleManager(catalog, [a, b], new ServiceCollection().BuildServiceProvider(), NullLogger<ModuleLifecycleManager>.Instance);
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         var options = new MutableOptions(new SeeingAgentOptions
         {
@@ -56,7 +56,7 @@ public class ModuleSettlementReloadHandlerTests
             settlementOptions: null,
             inFlight: inFlight.Object);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Boot"] });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Boot"] }, TestContext.Current.CancellationToken);
 
         lifecycle.IsActivated("b").Should().BeTrue("在途时应推迟 Deactivate");
         handler.PendingDeactivate.Should().Contain("b");
@@ -80,7 +80,7 @@ public class ModuleSettlementReloadHandlerTests
         catalog.ReplaceEnabled(["a", "b"]);
 
         var lifecycle = new ModuleLifecycleManager(catalog, [a, b], new ServiceCollection().BuildServiceProvider());
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         var options = new MutableOptions(new SeeingAgentOptions
         {
@@ -125,7 +125,7 @@ public class ModuleSettlementReloadHandlerTests
         var lifecycle = new ModuleLifecycleManager(catalog, [a], new ServiceCollection().BuildServiceProvider());
         catalog.ReplaceAvailable(SettlementEngine.ToDescriptors([a]));
         catalog.ReplaceEnabled(["a"]);
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         var options = new MutableOptions(new SeeingAgentOptions
         {
@@ -144,7 +144,7 @@ public class ModuleSettlementReloadHandlerTests
             [a],
             reloadOptions: new ModuleReloadOptions());
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["CapabilitySets"] });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["CapabilitySets"] }, TestContext.Current.CancellationToken);
 
         catalog.Enabled.Should().BeEquivalentTo(["a"]);
         catalog.IsAvailable("never-referenced-pkg").Should().BeFalse();
@@ -161,7 +161,7 @@ public class ModuleSettlementReloadHandlerTests
         catalog.ReplaceEnabled(["a", "mcp"]);
 
         var lifecycle = new ModuleLifecycleManager(catalog, [a, mcp], new ServiceCollection().BuildServiceProvider());
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         var options = new MutableOptions(new SeeingAgentOptions
         {
@@ -179,7 +179,7 @@ public class ModuleSettlementReloadHandlerTests
             options,
             [a, mcp]);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["CapabilitySets"] });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["CapabilitySets"] }, TestContext.Current.CancellationToken);
 
         lifecycle.IsActivated("mcp").Should().BeFalse();
         mcp.DeactivateCount.Should().Be(1);
@@ -196,7 +196,7 @@ public class ModuleSettlementReloadHandlerTests
         catalog.ReplaceEnabled(["a"]);
 
         var lifecycle = new ModuleLifecycleManager(catalog, [a, b], new ServiceCollection().BuildServiceProvider());
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         b.ActivateCount.Should().Be(0);
 
         var options = new MutableOptions(new SeeingAgentOptions
@@ -211,7 +211,7 @@ public class ModuleSettlementReloadHandlerTests
             options,
             [a, b]);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Boot"] });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Boot"] }, TestContext.Current.CancellationToken);
 
         lifecycle.IsActivated("b").Should().BeTrue();
         b.ActivateCount.Should().Be(1);
@@ -227,7 +227,7 @@ public class ModuleSettlementReloadHandlerTests
         catalog.ReplaceEnabled(["a", "b"]);
 
         var lifecycle = new ModuleLifecycleManager(catalog, [a, b], new ServiceCollection().BuildServiceProvider());
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         var activateBefore = a.ActivateCount + b.ActivateCount;
         var deactivateBefore = a.DeactivateCount + b.DeactivateCount;
 
@@ -252,7 +252,7 @@ public class ModuleSettlementReloadHandlerTests
             options,
             [a, b]);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Scenarios"] });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Scenarios"] }, TestContext.Current.CancellationToken);
 
         // Scenarios 不在 boot relevant 列表 → ReloadAsync 为空操作
         (a.ActivateCount + b.ActivateCount).Should().Be(activateBefore);
@@ -274,7 +274,7 @@ public class ModuleSettlementReloadHandlerTests
         catalog.ReplaceEnabled(["a"]);
 
         var lifecycle = new ModuleLifecycleManager(catalog, [a], new ServiceCollection().BuildServiceProvider());
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         var deactivateBefore = a.DeactivateCount;
 
         var options = new MutableOptions(new SeeingAgentOptions
@@ -290,7 +290,7 @@ public class ModuleSettlementReloadHandlerTests
             options,
             [a]);
 
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Scenario"] });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = ["Scenario"] }, TestContext.Current.CancellationToken);
 
         a.DeactivateCount.Should().Be(deactivateBefore);
         lifecycle.IsActivated("a").Should().BeTrue();

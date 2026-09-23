@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -23,9 +23,9 @@ public sealed class WriteBehindSessionGroupStoreTests
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
         for (var i = 0; i < 10; i++)
-            await store.SaveAsync(new SessionGroup { Id = "g1", Title = $"v{i}" });
+            await store.SaveAsync(new SessionGroup { Id = "g1", Title = $"v{i}" }, TestContext.Current.CancellationToken);
 
-        await store.FlushAllAsync();
+        await store.FlushAllAsync(TestContext.Current.CancellationToken);
 
         inner.SaveCount.Should().Be(1);
         inner.LastSaved!.Title.Should().Be("v9");
@@ -38,8 +38,8 @@ public sealed class WriteBehindSessionGroupStoreTests
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
         var group = new SessionGroup { Id = "g1", Title = "A" };
-        await store.SaveAsync(group);
-        await store.FlushAllAsync();
+        await store.SaveAsync(group, TestContext.Current.CancellationToken);
+        await store.FlushAllAsync(TestContext.Current.CancellationToken);
 
         inner.LastSaved.Should().BeSameAs(group);
     }
@@ -50,9 +50,9 @@ public sealed class WriteBehindSessionGroupStoreTests
         var inner = new RecordingGroupStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" });
+        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" }, TestContext.Current.CancellationToken);
 
-        var loaded = await store.LoadAsync("g1").WaitAsync(TimeSpan.FromSeconds(5));
+        var loaded = await store.LoadAsync("g1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         loaded!.Title.Should().Be("A");
         inner.IndexOfEvent("save:g1").Should().BeLessThan(inner.IndexOfEvent("load:g1"));
@@ -71,10 +71,10 @@ public sealed class WriteBehindSessionGroupStoreTests
             readFlush: TimeSpan.FromMilliseconds(80),
             shutdown: TimeSpan.FromMilliseconds(200));
 
-        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" });
+        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" }, TestContext.Current.CancellationToken);
 
         var stopwatch = Stopwatch.StartNew();
-        var loaded = await store.LoadAsync("g1").WaitAsync(TimeSpan.FromSeconds(5));
+        var loaded = await store.LoadAsync("g1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         stopwatch.Stop();
 
         loaded.Should().BeNull();
@@ -88,14 +88,14 @@ public sealed class WriteBehindSessionGroupStoreTests
         var inner = new RecordingGroupStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" });
-        await store.DeleteAsync("g1");
+        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" }, TestContext.Current.CancellationToken);
+        await store.DeleteAsync("g1", TestContext.Current.CancellationToken);
 
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
 
         inner.DeleteCount.Should().Be(1);
         inner.SaveCount.Should().Be(0);
-        (await inner.LoadAsync("g1")).Should().BeNull();
+        (await inner.LoadAsync("g1", TestContext.Current.CancellationToken)).Should().BeNull();
     }
 
     [Fact]
@@ -109,9 +109,9 @@ public sealed class WriteBehindSessionGroupStoreTests
             Id = "g1",
             Title = "A",
             Members = [new SessionGroupMember { SessionId = "s1" }]
-        });
+        }, TestContext.Current.CancellationToken);
 
-        var found = await store.FindBySessionAsync("s1");
+        var found = await store.FindBySessionAsync("s1", TestContext.Current.CancellationToken);
 
         found!.Id.Should().Be("g1");
         inner.IndexOfEvent("save:g1").Should().BeLessThan(inner.IndexOfEvent("find:s1"));
@@ -123,9 +123,9 @@ public sealed class WriteBehindSessionGroupStoreTests
         var inner = new RecordingGroupStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" });
+        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" }, TestContext.Current.CancellationToken);
 
-        var list = await store.ListAsync().ToListAsync();
+        var list = await store.ListAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         list.Should().ContainSingle();
         inner.IndexOfEvent("save:g1").Should().BeLessThan(inner.IndexOfEvent("list"));
@@ -137,8 +137,8 @@ public sealed class WriteBehindSessionGroupStoreTests
         var inner = new RecordingGroupStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" });
-        await store.FlushAsync("g1").WaitAsync(TimeSpan.FromSeconds(5));
+        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" }, TestContext.Current.CancellationToken);
+        await store.FlushAsync("g1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         inner.SaveCount.Should().Be(1);
         inner.LastSaved!.Title.Should().Be("A");
@@ -176,7 +176,7 @@ public sealed class WriteBehindSessionGroupStoreTests
         var inner = new RecordingGroupStore();
         var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" });
+        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" }, TestContext.Current.CancellationToken);
         await store.DisposeAsync();
 
         inner.SaveCount.Should().Be(1);
@@ -189,7 +189,7 @@ public sealed class WriteBehindSessionGroupStoreTests
         var inner = new RecordingGroupStore();
         var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" });
+        await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" }, TestContext.Current.CancellationToken);
         store.Dispose();
 
         inner.SaveCount.Should().Be(1);

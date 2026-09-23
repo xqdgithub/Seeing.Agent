@@ -188,7 +188,8 @@ public class WeComMessageParserTests
         };
 
         var fetcher = CreateMediaFetcher();
-        var (ok, parsed) = await WeComMessageParser.TryParseAsync(context, fetcher);
+        var (ok, parsed) = await WeComMessageParser.TryParseAsync(
+            context, fetcher, cancellationToken: TestContext.Current.CancellationToken);
 
         ok.Should().BeTrue();
         parsed!.InputParts.Should().ContainSingle(p => p is GatewayTextContentPart);
@@ -211,7 +212,8 @@ public class WeComMessageParserTests
         };
 
         var fetcher = CreateMediaFetcher();
-        var (ok, parsed) = await WeComMessageParser.TryParseAsync(context, fetcher);
+        var (ok, parsed) = await WeComMessageParser.TryParseAsync(
+            context, fetcher, cancellationToken: TestContext.Current.CancellationToken);
 
         ok.Should().BeTrue();
         parsed!.HasUnsupportedReply.Should().BeTrue();
@@ -233,7 +235,8 @@ public class WeComMessageParserTests
         };
 
         var fetcher = CreateMediaFetcher();
-        var (ok, parsed) = await WeComMessageParser.TryParseAsync(context, fetcher);
+        var (ok, parsed) = await WeComMessageParser.TryParseAsync(
+            context, fetcher, cancellationToken: TestContext.Current.CancellationToken);
 
         ok.Should().BeTrue();
         parsed!.HasUnsupportedReply.Should().BeTrue();

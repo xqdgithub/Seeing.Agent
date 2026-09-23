@@ -27,7 +27,7 @@ public class McpClientManagerDisableTests
         var result = await manager.AddServerAsync(
             "filesystem",
             new McpServerConfig { Command = "npx", Disabled = true },
-            persist: false);
+            persist: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();
@@ -46,7 +46,7 @@ public class McpClientManagerDisableTests
         await manager.AddServerAsync(
             "srv",
             new McpServerConfig { Command = "npx" },
-            persist: false);
+            persist: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var connected = McpServerStatusBuilder.From(manager.GetStatus("srv")!)
             .WithConnected()
@@ -56,7 +56,7 @@ public class McpClientManagerDisableTests
         manager.UpdateState("srv", connected);
 
         // Act
-        var result = await manager.DisableServerAsync("srv", persist: false);
+        var result = await manager.DisableServerAsync("srv", persist: false, TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();
@@ -76,10 +76,10 @@ public class McpClientManagerDisableTests
         await manager.AddServerAsync(
             "time",
             new McpServerConfig { Command = "npx", Disabled = true },
-            persist: false);
+            persist: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
-        var result = await manager.EnableServerAsync("time", persist: false);
+        var result = await manager.EnableServerAsync("time", persist: false, TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();

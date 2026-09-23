@@ -22,7 +22,7 @@ public class WeComStreamPublishPipelineTests
         for (var i = 0; i < 10; i++)
             state.SchedulePublish($"chunk-{i}");
 
-        await Task.Delay(TimeSpan.FromMilliseconds(350));
+        await Task.Delay(TimeSpan.FromMilliseconds(350), TestContext.Current.CancellationToken);
 
         var contentSends = sender.Records
             .Where(r => !r.Finish && r.Content != ProcessingText)
@@ -74,7 +74,7 @@ public class WeComStreamPublishPipelineTests
         await state.CompleteAsync("done", CancellationToken.None);
         state.SchedulePublish("should-not-send");
 
-        await Task.Delay(TimeSpan.FromMilliseconds(700));
+        await Task.Delay(TimeSpan.FromMilliseconds(700), TestContext.Current.CancellationToken);
 
         sender.Records.Should().NotContain(r => r.Content == "should-not-send");
         sender.Records[^1].Finish.Should().BeTrue();

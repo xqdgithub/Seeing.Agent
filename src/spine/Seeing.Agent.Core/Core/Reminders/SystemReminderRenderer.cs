@@ -5,10 +5,16 @@ using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Reminders;
 
+/// <summary>
+/// 系统提醒渲染器：将任务体包装为 system-reminder XML 信封，支持解析还原与转 Session 消息。
+/// </summary>
 public static partial class SystemReminderRenderer
 {
     private const string EscapeClose = "<\\/";
 
+    /// <summary>
+    /// 将任务体与来源/类别包装为 system-reminder 信封文本（含转义）。
+    /// </summary>
     public static string Wrap(string taskBody, string source, string kind, string? taskId = null)
     {
         if (string.IsNullOrWhiteSpace(source))
@@ -37,6 +43,9 @@ public static partial class SystemReminderRenderer
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 尝试从消息内容解析出提醒信封的各组成部分，失败返回 false。
+    /// </summary>
     public static bool TryParse(string content, out SystemReminderParts parts)
     {
         parts = default!;
@@ -57,6 +66,9 @@ public static partial class SystemReminderRenderer
         return true;
     }
 
+    /// <summary>
+    /// 构造携带提醒元数据的用户消息，用于注入会话历史。
+    /// </summary>
     public static SessionMessage CreateUserMessage(
         string taskBody, string source, string kind, string? taskId = null)
     {

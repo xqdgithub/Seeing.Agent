@@ -33,6 +33,13 @@ public static class AgentCommand
         showCommand.SetAction(async parseResult =>
         {
             var name = parseResult.GetValue<string>(showNameArg);
+            if (string.IsNullOrEmpty(name))
+            {
+                Console.Error.WriteLine("错误: 代理名称不能为空");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var registry = host.Services.GetRequiredService<IAgentRegistry>();
             var agent = await registry.GetAgentAsync(name);

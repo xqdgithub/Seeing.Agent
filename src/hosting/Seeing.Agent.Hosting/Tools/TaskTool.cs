@@ -377,7 +377,7 @@ public class TaskTool : ToolBase
             .Select(m => m.Content?.Trim())
             .Where(content => !string.IsNullOrEmpty(content));
         
-        var result = string.Join("\n\n", allAssistants);
+        var result = allAssistants is null ? "" : string.Join("\n\n", allAssistants);
         return string.IsNullOrEmpty(result) ? "子任务执行完成，无输出内容。" : result;
     }
 

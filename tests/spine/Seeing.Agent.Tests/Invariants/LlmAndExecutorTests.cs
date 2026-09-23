@@ -52,7 +52,7 @@ public class LlmAndExecutorTests : IDisposable
         var userSeeing = Path.Combine(_tempDirectory, "user", ".seeing");
         await File.WriteAllTextAsync(
             Path.Combine(userSeeing, "providers.json"),
-            System.Text.Json.JsonSerializer.Serialize(providers));
+            System.Text.Json.JsonSerializer.Serialize(providers), TestContext.Current.CancellationToken);
 
         var workspace = new Mock<IWorkspaceProvider>();
         workspace.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
@@ -63,7 +63,7 @@ public class LlmAndExecutorTests : IDisposable
             workspace.Object,
             NullLogger<UnifiedConfigManager>.Instance,
             ConfigSectionRegistry.CreateWithSpine());
-        await configManager.LoadAsync();
+        await configManager.LoadAsync(TestContext.Current.CancellationToken);
 
         var openAiClient = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.OpenAi);
         var anthropicClient = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.Anthropic);

@@ -49,6 +49,9 @@ public class AgentExecutor : IAgentExecutor
     private bool _incompleteReminded;
     private int _totalToolCallsExecuted;
 
+    /// <summary>
+    /// 构造 Agent 执行器，注入 LLM、工具、权限、钩子、注册表等核心依赖（后四项为可选）。
+    /// </summary>
     public AgentExecutor(
         ILlmService llm,
         ToolManager tools,

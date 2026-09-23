@@ -60,7 +60,8 @@ public class VisibilityTests
             ]
         };
 
-        var schemas = await manager.GetToolSchemasAsync(settlement.SettledToolIds, agent);
+        var schemas = await manager.GetToolSchemasAsync(
+            settlement.SettledToolIds, agent, TestContext.Current.CancellationToken);
         var schemaIds = schemas.Select(s => s.Function!.Name).OrderBy(x => x).ToArray();
 
         // 层1∩层2 − Agent DeniedTools；Ask 仍可出现；Permission Deny 属层4（执行时），不从 schema 剔除
@@ -96,7 +97,8 @@ public class VisibilityTests
 
         var manager = CreateToolManager(["read", "write", "git_status", "git_commit", "memory_search"]);
         var agent = new AgentDefinition { Name = "t" };
-        var schemas = await manager.GetToolSchemasAsync(settlement.SettledToolIds, agent);
+        var schemas = await manager.GetToolSchemasAsync(
+            settlement.SettledToolIds, agent, TestContext.Current.CancellationToken);
         var schemaIds = schemas.Select(s => s.Function!.Name).ToArray();
 
         schemaIds.Should().BeEquivalentTo(["git_status", "read"]);
@@ -123,7 +125,8 @@ public class VisibilityTests
             ]
         };
 
-        var schemas = await manager.GetToolSchemasAsync(["bash"], agent);
+        var schemas = await manager.GetToolSchemasAsync(
+            ["bash"], agent, TestContext.Current.CancellationToken);
         schemas.Select(s => s.Function!.Name).Should().Equal("bash");
     }
 
@@ -152,7 +155,7 @@ public class VisibilityTests
     private sealed class NamedTool(string id) : ITool
     {
         public string Id { get; } = id;
-        public string Description => id;
+        public string Description => Id;
         public IReadOnlyList<string> Tags => Array.Empty<string>();
         public ToolCategory Category => ToolCategory.General;
         public JsonElement ParametersSchema =>

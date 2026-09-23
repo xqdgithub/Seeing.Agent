@@ -44,6 +44,7 @@ namespace Seeing.Agent.Core.Tools
         private HashSet<string> _userDisabledTools = new(StringComparer.OrdinalIgnoreCase);
         private HashSet<string> _projectDisabledTools = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>初始化工具管理器，注入日志器、Hook 管理器及装饰器/规则/权限等可选依赖。</summary>
         public ToolManager(
             ILogger<ToolManager> logger,
             Abstractions.Hooks.IHookManager hookManager,

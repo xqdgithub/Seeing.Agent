@@ -167,7 +167,7 @@ namespace Seeing.Agent.WebUI.Services
         /// <summary>
         /// UI 更新回调（携带触发事件；非事件流触发的刷新传 null）
         /// </summary>
-        public event Action<IMessageEvent>? OnStateChanged;
+        public event Action<IMessageEvent?>? OnStateChanged;
 
         /// <summary>
         /// Loop 完成回调（用于 UI 渲染优化）

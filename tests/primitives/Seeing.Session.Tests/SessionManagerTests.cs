@@ -149,7 +149,7 @@ namespace Seeing.Session.Tests
 
             // Act
             await _sessionManager.EnsureSessionAsync(sessionId);
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
 
             // Assert
             hookInvoked.Should().BeTrue();
@@ -212,7 +212,7 @@ namespace Seeing.Session.Tests
         public void Get_WithNullOrEmptyId_ShouldReturnNull()
         {
             // Act & Assert
-            _sessionManager.Get(null).Should().BeNull();
+            _sessionManager.Get(null!).Should().BeNull();
             _sessionManager.Get(string.Empty).Should().BeNull();
         }
 
@@ -246,7 +246,7 @@ namespace Seeing.Session.Tests
         public void Delete_WithNullOrEmptyId_ShouldReturnFalse()
         {
             // Act & Assert
-            _sessionManager.Delete(null).Should().BeFalse();
+            _sessionManager.Delete(null!).Should().BeFalse();
             _sessionManager.Delete(string.Empty).Should().BeFalse();
         }
 
@@ -263,7 +263,7 @@ namespace Seeing.Session.Tests
             // Assert
             result.Should().BeTrue();
             // 验证存储删除被调用（fire-and-forget，需等待）
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
             _mockStore.Verify(s => s.DeleteAsync(created.Id), Times.Once);
         }
 
@@ -347,7 +347,7 @@ namespace Seeing.Session.Tests
             var session = manager.Create();
 
             // Act
-            await manager.SetTitleAsync(session.Id, "新标题");
+            await manager.SetTitleAsync(session.Id, "新标题", TestContext.Current.CancellationToken);
 
             // Assert
             received.Should().ContainSingle(e =>
@@ -371,7 +371,7 @@ namespace Seeing.Session.Tests
             var session = manager.Create();
 
             // Act
-            await manager.SetAutoApproveAsync(session.Id, SessionAutoApprove.Disabled);
+            await manager.SetAutoApproveAsync(session.Id, SessionAutoApprove.Disabled, TestContext.Current.CancellationToken);
 
             // Assert
             session.AutoApprove.Should().Be(SessionAutoApprove.Disabled);
@@ -386,7 +386,7 @@ namespace Seeing.Session.Tests
         public async Task SetAutoApproveAsync_UnknownSession_ShouldBeNoOp()
         {
             // Act & Assert
-            await _sessionManager.SetAutoApproveAsync("missing", SessionAutoApprove.Enabled);
+            await _sessionManager.SetAutoApproveAsync("missing", SessionAutoApprove.Enabled, TestContext.Current.CancellationToken);
             _mockStore.Verify(s => s.SaveAsync(It.IsAny<SessionData>()), Times.Never);
         }
 

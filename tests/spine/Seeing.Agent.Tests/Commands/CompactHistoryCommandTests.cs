@@ -44,7 +44,7 @@ public class CompactHistoryCommandTests
         {
             SessionId = session.Id,
             Arguments = ""
-        });
+        }, TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();

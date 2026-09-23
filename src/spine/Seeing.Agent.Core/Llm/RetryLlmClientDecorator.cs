@@ -11,13 +11,22 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
 {
     private readonly ILoggerFactory _loggerFactory;
 
+    /// <summary>
+    /// 注入日志工厂构造重试装饰器。
+    /// </summary>
     public RetryLlmClientDecorator(ILoggerFactory loggerFactory)
     {
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
     }
 
+    /// <summary>
+    /// 装饰器排序权重（100，值越小越靠内层）。
+    /// </summary>
     public int Order => 100;
 
+    /// <summary>
+    /// 按 Provider 配置的重试参数（退避/预算/次数）将客户端包裹为重试客户端。
+    /// </summary>
     public ILlmClient Wrap(ILlmClient inner, ProviderConfig config)
     {
         ArgumentNullException.ThrowIfNull(inner);

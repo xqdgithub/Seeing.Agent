@@ -224,7 +224,7 @@ namespace Seeing.Session.Tests
         }
 
         [Fact]
-        public void GetActiveMessages_WhenConcurrentlyAppending_ShouldNotThrow()
+        public async Task GetActiveMessages_WhenConcurrentlyAppending_ShouldNotThrow()
         {
             // 快照拷贝（List.CopyTo 快速路径）保证并发追加时读侧不抛异常：
             // TokenBudget 估算与事件管道在后台执行与消息追加并发进行
@@ -240,7 +240,7 @@ namespace Seeing.Session.Tests
                     data.AddMessage(SessionMessage.AssistantMessage($"回答 {i++}"));
                     if (i > 200) break;
                 }
-            });
+            }, TestContext.Current.CancellationToken);
             var reader = Task.Run(() =>
             {
                 while (!cts.IsCancellationRequested)
@@ -248,9 +248,9 @@ namespace Seeing.Session.Tests
                     var active = data.GetActiveMessages();
                     active.Count.Should().BeGreaterThanOrEqualTo(1);
                 }
-            });
+            }, TestContext.Current.CancellationToken);
 
-            Task.WaitAll(appender, reader);
+            await Task.WhenAll(appender, reader);
 
             data.GetActiveMessages().Should().NotBeEmpty();
         }

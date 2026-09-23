@@ -48,6 +48,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
         }
     }
 
+    /// <summary>初始化重载编排器，注入配置存储、工作区、日志器与模块重载选项。</summary>
     public ReloadOrchestrator(
         IConfigSectionStore configStore,
         IWorkspaceProvider workspace,
@@ -298,6 +299,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
         }
     }
 
+    /// <summary>释放编排器：注销事件订阅并释放并发闸门资源。</summary>
     public void Dispose()
     {
         lock (_stateLock)

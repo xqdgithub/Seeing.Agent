@@ -36,8 +36,8 @@ public class JsonScheduleRepositoryTests
             ]
         };
 
-        await repo.SaveAsync(jobs);
-        var loaded = await repo.LoadAsync();
+        await repo.SaveAsync(jobs, TestContext.Current.CancellationToken);
+        var loaded = await repo.LoadAsync(TestContext.Current.CancellationToken);
 
         loaded.Jobs.Should().HaveCount(1);
         loaded.Jobs[0].Id.Should().Be("job-1");
@@ -61,10 +61,10 @@ public class JsonScheduleRepositoryTests
                 RunId = $"run-{i}",
                 Status = "success",
                 Output = $"output-{i}"
-            });
+            }, TestContext.Current.CancellationToken);
         }
 
-        var history = await repo.GetHistoryAsync("job-1", 100);
+        var history = await repo.GetHistoryAsync("job-1", 100, ct: TestContext.Current.CancellationToken);
         history.Should().HaveCount(SchedulerConstants.MaxHistoryRecords);
         history[0].RunId.Should().Be($"run-{SchedulerConstants.MaxHistoryRecords + 4}");
     }

@@ -32,15 +32,15 @@ public class LifecycleTests
 
         var lifecycle = new ModuleLifecycleManager(catalog, [module], new ServiceCollection().BuildServiceProvider(), NullLogger<ModuleLifecycleManager>.Instance);
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         toolBag.Has("demo_tool").Should().BeTrue();
         (await BuildPromptAsync(section)).Should().Contain("demo-section-body");
 
-        await lifecycle.DeactivateAsync(["demo"]);
+        await lifecycle.DeactivateAsync(["demo"], TestContext.Current.CancellationToken);
         toolBag.Has("demo_tool").Should().BeFalse();
         (await BuildPromptAsync(section)).Should().NotContain("demo-section-body");
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         toolBag.Has("demo_tool").Should().BeTrue();
         (await BuildPromptAsync(section)).Should().Contain("demo-section-body");
     }

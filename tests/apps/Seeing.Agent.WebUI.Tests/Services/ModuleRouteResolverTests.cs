@@ -31,7 +31,7 @@ public class ModuleRouteResolverTests
     {
         var registry = new UiContributionRegistry();
         var module = new SkillsModule(registry);
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         ModulePageRouteBinder.BindExistingPages(registry);
 
         var result = ModuleRouteResolver.Resolve("/skills", registry);
@@ -46,7 +46,7 @@ public class ModuleRouteResolverTests
     {
         var registry = new UiContributionRegistry();
         var module = new SkillsModule(registry);
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         ModulePageRouteBinder.BindExistingPages(registry);
 
         var result = ModuleRouteResolver.Resolve("/skills/my-skill", registry);
@@ -62,7 +62,7 @@ public class ModuleRouteResolverTests
     {
         var registry = new UiContributionRegistry();
         var module = new McpModule(registry);
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         ModulePageRouteBinder.BindExistingPages(registry);
 
         var catalog = new Mock<IModuleCatalog>();

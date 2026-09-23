@@ -26,17 +26,17 @@ public class ModuleHostedServiceReviveTests
         var lifecycle = new ModuleLifecycleManager(
             catalog, [module], sp, NullLogger<ModuleLifecycleManager>.Instance);
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         hosted.StartCount.Should().Be(1);
         hosted.IsRunning.Should().BeTrue();
         module.ActivateCount.Should().Be(1);
 
-        await lifecycle.DeactivateAsync(["demo"]);
+        await lifecycle.DeactivateAsync(["demo"], TestContext.Current.CancellationToken);
         hosted.StopCount.Should().Be(1);
         hosted.IsRunning.Should().BeFalse();
         module.DeactivateCount.Should().Be(1);
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         hosted.StartCount.Should().Be(2);
         hosted.IsRunning.Should().BeTrue();
         module.ActivateCount.Should().Be(2);
@@ -59,10 +59,10 @@ public class ModuleHostedServiceReviveTests
         var lifecycle = new ModuleLifecycleManager(
             catalog, [module], sp, NullLogger<ModuleLifecycleManager>.Instance);
 
-        await hosted.StartAsync();
+        await hosted.StartAsync(TestContext.Current.CancellationToken);
         hosted.StartCount.Should().Be(1);
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         hosted.StartCount.Should().Be(1);
         hosted.IsRunning.Should().BeTrue();
     }
@@ -86,10 +86,10 @@ public class ModuleHostedServiceReviveTests
         var lifecycle = new ModuleLifecycleManager(
             catalog, [module], sp, NullLogger<ModuleLifecycleManager>.Instance);
 
-        await lifecycle.ActivateAsync();
-        await other.StartAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
+        await other.StartAsync(TestContext.Current.CancellationToken);
 
-        await lifecycle.DeactivateAsync(["demo"]);
+        await lifecycle.DeactivateAsync(["demo"], TestContext.Current.CancellationToken);
 
         demo.IsRunning.Should().BeFalse();
         demo.StopCount.Should().Be(1);

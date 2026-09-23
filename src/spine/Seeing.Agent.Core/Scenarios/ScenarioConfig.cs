@@ -110,5 +110,6 @@ public sealed class ScenarioConfig
 /// <summary>场景工具裁剪嵌套节。</summary>
 public sealed class ScenarioToolsConfig
 {
+    /// <summary>需禁用的工具 ID 列表。</summary>
     public List<string> Disabled { get; set; } = [];
 }

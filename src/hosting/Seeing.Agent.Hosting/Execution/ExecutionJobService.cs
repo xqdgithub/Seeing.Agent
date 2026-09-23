@@ -8,9 +8,9 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Permission;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -1030,7 +1030,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     /// <summary>
     /// 判定是否为命令输入（/ 开头、至少一个有效字符、非 // 转义）。
     /// </summary>
-    private static bool IsCommandInput(string? text)
+    private static bool IsCommandInput([NotNullWhen(true)] string? text)
         => text != null
            && text.Length > 1
            && text[0] == '/'

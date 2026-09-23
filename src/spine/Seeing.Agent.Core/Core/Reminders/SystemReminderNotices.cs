@@ -2,8 +2,14 @@ using Seeing.Agent.Abstractions.Reminders;
 
 namespace Seeing.Agent.Core.Reminders;
 
+/// <summary>
+/// 系统提醒提示语字典：按来源与类别解析对应的中文提示文本。
+/// </summary>
 public static class SystemReminderNotices
 {
+    /// <summary>
+    /// 根据提醒来源与类别解析提示语，未知组合返回通用提示。
+    /// </summary>
     public static string Resolve(string source, string kind) => (source, kind) switch
     {
         (SystemReminder.Sources.Job, SystemReminder.Kinds.Cron) =>

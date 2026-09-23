@@ -40,6 +40,7 @@ public sealed class DefaultToolPermissionPolicy : IToolPermissionPolicy
                                    StaticMetadata: new() { ["reason"] = "Agent 请求扩展工作区路径" }),
     };
 
+    /// <summary>根据工具 ID 与参数解析出权限资源检查项；无映射时返回 null。</summary>
     public PermissionResourceCheck? Evaluate(string toolId, JsonElement args)
     {
         if (!Mappings.TryGetValue(toolId, out var m))

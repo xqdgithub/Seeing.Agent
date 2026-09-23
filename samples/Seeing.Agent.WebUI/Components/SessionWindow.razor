@@ -288,7 +288,7 @@
     private Services.TaskCardAggregator? _aggregator;
     private System.Timers.Timer? _retryTimer;
     private string? _boundSessionId;
-    private Action<IMessageEvent>? _onHandlerChangedCallback;
+    private Action<IMessageEvent?>? _onHandlerChangedCallback;
     private string? _loadedSessionId;
     private string? _parentSessionId;
     private SessionRelation _relation = SessionRelation.None;
@@ -921,7 +921,7 @@
     /// 时间线/压缩/标题等分派已移入 SessionWindowTimelineSync（_sync.ProcessEvent）；
     /// 此处仅处理导航副作用与执行态清理。
     /// </summary>
-    private async Task OnHandlerChanged(IMessageEvent evt)
+    private async Task OnHandlerChanged(IMessageEvent? evt)
     {
         if (evt == null)
             return;

@@ -11,6 +11,9 @@ namespace Seeing.Agent.Core
     {
         private readonly AgentExecutor _executor;
 
+        /// <summary>
+        /// 构造原生执行器，绑定实际执行逻辑的 AgentExecutor。
+        /// </summary>
         public NativeAgentExecutor(AgentExecutor executor)
         {
             _executor = executor;

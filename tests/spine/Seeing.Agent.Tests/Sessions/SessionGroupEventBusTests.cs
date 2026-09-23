@@ -79,7 +79,7 @@ public class SessionGroupEventBusTests
                 received = e;
                 break;
             }
-        });
+        }, TestContext.Current.CancellationToken);
         manager.Raise(m => m.Changed += null, new SessionGroupChangedEventArgs { Group = group });
 
         await reader;
@@ -108,7 +108,7 @@ public class SessionGroupEventBusTests
         {
             await foreach (var e in stream)
                 received.Add(e);
-        });
+        }, TestContext.Current.CancellationToken);
 
         // 停止前：Changed 应桥接为总线事件
         manager.Raise(m => m.Changed += null, new SessionGroupChangedEventArgs { Group = group });
@@ -143,7 +143,7 @@ public class SessionGroupEventBusTests
         var reader = Task.Run(async () =>
         {
             await foreach (var _ in stream) { }
-        });
+        }, TestContext.Current.CancellationToken);
 
         await WaitUntilAsync(() => SubscriberKeys(bus).Contains("g1"));
 

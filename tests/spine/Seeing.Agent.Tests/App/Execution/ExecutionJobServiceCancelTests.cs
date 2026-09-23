@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -59,10 +60,10 @@ public class ExecutionJobServiceCancelTests
                 AgentId = "general",
                 SkipUserMessagePersist = true,
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
-        var executionId = result.ExecutionId;
+        var executionId = result.ExecutionId!;
 
         await WaitUntilAsync(() =>
             service.GetOverview(session.Id).CurrentExecution?.Status == ExecutionStatus.Running);
@@ -79,7 +80,8 @@ public class ExecutionJobServiceCancelTests
             .Should().Be(1);
     }
 
-    private static async IAsyncEnumerable<IMessageEvent> BlockingStream(CancellationToken token)
+    private static async IAsyncEnumerable<IMessageEvent> BlockingStream(
+        [EnumeratorCancellation] CancellationToken token)
     {
         await Task.Delay(Timeout.Infinite, token);
         yield break;

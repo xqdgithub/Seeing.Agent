@@ -74,7 +74,7 @@ public class ConfigSectionRegistryConsumptionTests
                 "Permission": { "AutoApproveAll": true }
               }
             }
-            """);
+            """, TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(Path.Combine(userSeeing, "seeing.json"),
             """
             {
@@ -82,7 +82,7 @@ public class ConfigSectionRegistryConsumptionTests
                 "Acp": { "Enabled": true, "DefaultBackend": "cursor" }
               }
             }
-            """);
+            """, TestContext.Current.CancellationToken);
 
         var workspace = new Mock<IWorkspaceProvider>();
         workspace.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
@@ -90,7 +90,7 @@ public class ConfigSectionRegistryConsumptionTests
 
         var registry = TestConfigSectionRegistry.WithAcp();
         var manager = new UnifiedConfigManager(workspace.Object, NullLogger<UnifiedConfigManager>.Instance, registry);
-        await manager.LoadAsync();
+        await manager.LoadAsync(TestContext.Current.CancellationToken);
 
         manager.GetSection<PermissionOptions>("Permission").AutoApproveAll.Should().BeTrue();
         manager.GetSection<AcpOptions>("Acp").DefaultBackend.Should().Be("cursor");

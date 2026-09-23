@@ -54,7 +54,7 @@ public sealed class TuiAttachmentResolverTests : IDisposable
     {
         var path = CreateTempFile(".png", PngBytes);
 
-        var attachment = await _resolver.LoadAsync(path);
+        var attachment = await _resolver.LoadAsync(path, TestContext.Current.CancellationToken);
 
         attachment.FileName.Should().Be(Path.GetFileName(path));
         attachment.MimeType.Should().Be("image/png");
@@ -73,7 +73,7 @@ public sealed class TuiAttachmentResolverTests : IDisposable
     {
         var path = CreateTempFile(extension, System.Text.Encoding.UTF8.GetBytes(content));
 
-        var attachment = await _resolver.LoadAsync(path);
+        var attachment = await _resolver.LoadAsync(path, TestContext.Current.CancellationToken);
 
         attachment.MimeType.Should().Be(expectedMime);
     }
@@ -83,7 +83,7 @@ public sealed class TuiAttachmentResolverTests : IDisposable
     {
         var path = CreateTempFile(".weird", [0x00, 0x01, 0x02, 0x03, 0xFF]);
 
-        var attachment = await _resolver.LoadAsync(path);
+        var attachment = await _resolver.LoadAsync(path, TestContext.Current.CancellationToken);
 
         attachment.MimeType.Should().Be("application/octet-stream");
     }
@@ -93,7 +93,7 @@ public sealed class TuiAttachmentResolverTests : IDisposable
     {
         var path = CreateTempFile("", PngBytes);
 
-        var attachment = await _resolver.LoadAsync(path);
+        var attachment = await _resolver.LoadAsync(path, TestContext.Current.CancellationToken);
 
         attachment.MimeType.Should().Be("image/png");
     }
@@ -103,7 +103,7 @@ public sealed class TuiAttachmentResolverTests : IDisposable
     {
         var path = CreateTempFile(".bin", []);
 
-        var attachment = await _resolver.LoadAsync(path);
+        var attachment = await _resolver.LoadAsync(path, TestContext.Current.CancellationToken);
 
         attachment.Base64Data.Should().BeEmpty();
         attachment.Size.Should().Be(0);

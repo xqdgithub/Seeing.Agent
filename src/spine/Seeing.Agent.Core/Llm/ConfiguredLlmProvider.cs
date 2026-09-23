@@ -20,6 +20,9 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
     private readonly Lazy<ILlmClient> _client;
     private int _disposed;
 
+    /// <summary>
+    /// 使用 ProviderConfig 与客户端工厂构造配置驱动 Provider，持有配置独立副本并延迟创建客户端。
+    /// </summary>
     public ConfiguredLlmProvider(
         ProviderConfig config,
         ILlmClientFactory factory,
@@ -43,16 +46,34 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
+    /// <summary>
+    /// Provider 唯一标识（取自配置 Id）。
+    /// </summary>
     public override string Id => _config.Id;
 
+    /// <summary>
+    /// Provider 显示名称（取自配置 Name）。
+    /// </summary>
     public override string? Name => _config.Name;
 
+    /// <summary>
+    /// 配置声明的最大重试次数。
+    /// </summary>
     public override int MaxRetries => _config.MaxRetries;
 
+    /// <summary>
+    /// 返回延迟创建的底层 LLM 客户端。
+    /// </summary>
     public override ILlmClient GetClient() => _client.Value;
 
+    /// <summary>
+    /// 获取配置字段 schema；本 Provider 无自定义 schema，恒返回 null。
+    /// </summary>
     public IReadOnlyList<ConfigFieldSchema>? GetConfigSchema() => null;
 
+    /// <summary>
+    /// 导出当前 Provider 配置为键值字典，供配置界面加载回填。
+    /// </summary>
     public Task<IReadOnlyDictionary<string, object?>> LoadConfigAsync(
         CancellationToken cancellationToken = default)
     {
@@ -80,6 +101,9 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         return Task.FromResult(values);
     }
 
+    /// <summary>
+    /// 将键值字典合并进现有配置副本，持久化到指定配置级别后替换当前配置。
+    /// </summary>
     public async Task SaveConfigAsync(
         IReadOnlyDictionary<string, object?> values,
         ConfigLevel level,
@@ -93,6 +117,9 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         _config = updated;
     }
 
+    /// <summary>
+    /// 返回配置内模型的独立副本，并按开关逐条应用能力元数据增强。
+    /// </summary>
     public override async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
         CancellationToken cancellationToken)
     {
@@ -110,11 +137,17 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         return models;
     }
 
+    /// <summary>
+    /// 通过底层客户端测试与指定模型的连通性。
+    /// </summary>
     public override Task<bool> TestConnectionAsync(
         string modelId,
         CancellationToken cancellationToken)
         => GetClient().TestConnectionAsync(modelId, call: null, cancellationToken);
 
+    /// <summary>
+    /// 释放已创建的客户端（支持异步与同步 Dispose），未创建时为空操作。
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)

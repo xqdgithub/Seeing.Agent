@@ -18,7 +18,7 @@ public class DeleteToolTests
     public async Task ExecuteAsync_DeleteFile_ShouldSucceed()
     {
         var file = Path.Combine(Path.GetTempPath(), "seeing_del_" + Guid.NewGuid().ToString("N") + ".txt");
-        await File.WriteAllTextAsync(file, "x");
+        await File.WriteAllTextAsync(file, "x", TestContext.Current.CancellationToken);
 
         var tool = CreateTool();
         var result = await tool.ExecuteAsync(JsonSerializer.SerializeToElement(new { path = file }), new ToolContext());
@@ -32,7 +32,8 @@ public class DeleteToolTests
     {
         var dir = Path.Combine(Path.GetTempPath(), "seeing_del_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(dir, "sub"));
-        await File.WriteAllTextAsync(Path.Combine(dir, "sub", "a.txt"), "x");
+        await File.WriteAllTextAsync(
+            Path.Combine(dir, "sub", "a.txt"), "x", TestContext.Current.CancellationToken);
 
         var tool = CreateTool();
         var result = await tool.ExecuteAsync(JsonSerializer.SerializeToElement(new { path = dir }), new ToolContext());

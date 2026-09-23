@@ -100,7 +100,7 @@ public class LlmHttpClientFactoryTests
         {
             Model = "test",
             Messages = [new ChatMessage { Role = ChatRole.User, Content = "hi" }]
-        });
+        }, ct: TestContext.Current.CancellationToken);
 
         response.Message.Content.Should().Be("ok");
         handler.RequestCount.Should().Be(1);
@@ -135,7 +135,7 @@ public class LlmHttpClientFactoryTests
         {
             Model = "test",
             Messages = [new ChatMessage { Role = ChatRole.User, Content = "hi" }]
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         handler.LastRequest!.Headers.GetValues("x-api-key").Should().ContainSingle().Which.Should().Be("sk-custom");
         handler.LastRequest.Headers.GetValues("X-Provider-Header").Should().ContainSingle().Which.Should().Be("custom-value");

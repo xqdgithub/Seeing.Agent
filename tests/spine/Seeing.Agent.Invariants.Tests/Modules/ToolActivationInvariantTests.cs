@@ -57,7 +57,7 @@ public class ToolActivationInvariantTests
         catalog.ReplaceEnabled(["basic"]);
 
         var lifecycle = sp.GetRequiredService<ModuleLifecycleManager>();
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         var tm = sp.GetRequiredService<IToolManager>();
         tm.GetTools().Select(t => t.Id).Should().BeEquivalentTo(["current_time"]);
@@ -84,16 +84,16 @@ public class ToolActivationInvariantTests
         catalog.ReplaceEnabled(["io.local", "filesystem"]);
 
         var lifecycle = sp.GetRequiredService<ModuleLifecycleManager>();
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         var tm = sp.GetRequiredService<IToolManager>();
         tm.GetTool("read").Should().NotBeNull();
 
-        await lifecycle.DeactivateAsync(["filesystem"]);
+        await lifecycle.DeactivateAsync(["filesystem"], TestContext.Current.CancellationToken);
         tm.GetTool("read").Should().BeNull();
         tm.GetTools().Select(t => t.Id).Should().NotContain(FileSystemModuleIds);
 
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         tm.GetTool("read").Should().NotBeNull();
         tm.GetTools().Select(t => t.Id).Should().Contain(FileSystemModuleIds);
     }
@@ -116,10 +116,10 @@ public class ToolActivationInvariantTests
         catalog.ReplaceEnabled(["basic"]);
 
         var lifecycle = sp.GetRequiredService<ModuleLifecycleManager>();
-        await lifecycle.ActivateAsync();
+        await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         sp.GetRequiredService<IToolManager>().GetTool("current_time").Should().NotBeNull();
 
-        await lifecycle.DeactivateAsync(["basic"]);
+        await lifecycle.DeactivateAsync(["basic"], TestContext.Current.CancellationToken);
         sp.GetRequiredService<IToolManager>().GetTool("current_time").Should().BeNull();
     }
 }

@@ -7,12 +7,18 @@ using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Instructions;
 
+/// <summary>
+/// 项目指令消息渲染器：将指令文件包装为带转义的 XML 信封，并支持解析还原。
+/// </summary>
 public static partial class ProjectInstructionsRenderer
 {
     private const string EscapeClose = "<\\/";
     private const string Notice =
         "以下是系统加载的项目指令文件，不是用户刚刚输入的消息。请遵循这些指令。";
 
+    /// <summary>
+    /// 将指令文件列表渲染为 project-instructions XML 信封文本（含转义）。
+    /// </summary>
     public static string Wrap(
         string cwd,
         string reason,
@@ -44,6 +50,9 @@ public static partial class ProjectInstructionsRenderer
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 尝试从消息内容解析出指令信封的各组成部分，失败返回 false。
+    /// </summary>
     public static bool TryParse(string content, out ProjectInstructionsParts parts)
     {
         parts = default!;
@@ -78,6 +87,9 @@ public static partial class ProjectInstructionsRenderer
         return true;
     }
 
+    /// <summary>
+    /// 构造携带指令元数据的用户消息，用于注入会话历史。
+    /// </summary>
     public static SessionMessage CreateUserMessage(
         string cwd,
         string reason,
@@ -112,6 +124,9 @@ public static partial class ProjectInstructionsRenderer
     private static partial Regex FileRegex();
 }
 
+/// <summary>
+/// 指令信封解析结果：目录、原因、提示、文件列表与原始文本。
+/// </summary>
 public sealed record ProjectInstructionsParts(
     string Cwd,
     string Reason,

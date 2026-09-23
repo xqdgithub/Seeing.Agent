@@ -105,7 +105,7 @@ public class TaskStatusTool : ToolBase
             .Select(m => m.Content?.Trim())
             .Where(content => !string.IsNullOrEmpty(content));
 
-        var result = string.Join("\n\n", allAssistants);
+        var result = allAssistants is null ? "" : string.Join("\n\n", allAssistants);
         if (current.Status == ExecutionStatus.Completed && !string.IsNullOrEmpty(result))
         {
             sb.AppendLine();

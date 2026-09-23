@@ -51,7 +51,7 @@ public class LlmMemoryExtractorTests
 
         var result = await extractor.ExtractAsync(
             new MemoryCandidate("1", "s", null, MemorySource.Chat, null, "用户喜欢 PostgreSQL 并且要分页", DateTimeOffset.UtcNow),
-            default);
+            TestContext.Current.CancellationToken);
 
         result.Should().BeNull();
     }
@@ -72,7 +72,7 @@ public class LlmMemoryExtractorTests
 
         var result = await extractor.ExtractAsync(
             new MemoryCandidate("1", "s", null, MemorySource.Chat, null, "用户喜欢 PostgreSQL 并且要分页", DateTimeOffset.UtcNow),
-            default);
+            TestContext.Current.CancellationToken);
 
         result.Should().NotBeNull();
         result!.Importance.Should().Be(0.9);

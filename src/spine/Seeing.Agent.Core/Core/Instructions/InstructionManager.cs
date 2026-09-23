@@ -3,11 +3,17 @@ using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Instructions;
 
+/// <summary>
+/// 指令管理器实现：委托内部发现器扫描指令文件，并按指纹差异向会话注入变更。
+/// </summary>
 public sealed class InstructionManager : IInstructionManager
 {
     private readonly InstructionDiscovery _discovery;
     private readonly ILogger<InstructionManager> _logger;
 
+    /// <summary>
+    /// 构造指令管理器，创建配套的指令发现器。
+    /// </summary>
     public InstructionManager(
         ILogger<InstructionManager> logger,
         ILoggerFactory loggerFactory)
@@ -17,12 +23,18 @@ public sealed class InstructionManager : IInstructionManager
             loggerFactory.CreateLogger<InstructionDiscovery>());
     }
 
+    /// <summary>
+    /// 委托发现器从 cwd 向上扫描至 workspaceRoot 的指令文件。
+    /// </summary>
     public Task<IReadOnlyList<InstructionFile>> DiscoverAsync(
         string cwd,
         string workspaceRoot,
         CancellationToken ct = default) =>
         _discovery.DiscoverAsync(cwd, workspaceRoot, ct);
 
+    /// <summary>
+    /// 对比会话指纹与当前发现的指令文件，有变更时以用户消息注入并更新指纹。
+    /// </summary>
     public async Task<InstructionInjectResult> InjectIfNeededAsync(
         SessionData session,
         string cwd,
@@ -69,6 +81,9 @@ public sealed class InstructionManager : IInstructionManager
         };
     }
 
+    /// <summary>
+    /// 从会话元数据读取指令文件指纹快照。
+    /// </summary>
     public InstructionFingerprintSnapshot GetFingerprints(SessionData session) =>
         InstructionFingerprintStore.Load(session);
 }

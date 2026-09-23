@@ -77,7 +77,7 @@ public class AgentExecutorCancellationTests
         };
         var messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = "hi" } };
 
-        await foreach (var _ in executor.ExecuteAsync(agent, messages, context, default)) { }
+        await foreach (var _ in executor.ExecuteAsync(agent, messages, context, TestContext.Current.CancellationToken)) { }
 
         captured.Should().NotBeNull();
         captured!.AgentName.Should().Be("capability-agent");

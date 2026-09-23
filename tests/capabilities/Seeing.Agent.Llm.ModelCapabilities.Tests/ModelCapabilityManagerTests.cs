@@ -52,7 +52,7 @@ public class ModelCapabilityManagerTests
             Limit = new ModelLimits { Context = 4096, Output = 4096 }
         };
 
-        var enriched = await manager.TryEnrichIfEnabledAsync(model);
+        var enriched = await manager.TryEnrichIfEnabledAsync(model, TestContext.Current.CancellationToken);
 
         enriched.Name.Should().Be("FromHigh");
         enriched.Limit.Context.Should().Be(50000);
@@ -77,7 +77,7 @@ public class ModelCapabilityManagerTests
         using var manager = CreateManager(options, registry);
         var model = new ModelConfig { Id = "m1", Provider = "p1", Name = null };
 
-        var enriched = await manager.TryEnrichIfEnabledAsync(model);
+        var enriched = await manager.TryEnrichIfEnabledAsync(model, TestContext.Current.CancellationToken);
         enriched.Name.Should().BeNull();
     }
 
@@ -104,7 +104,7 @@ public class ModelCapabilityManagerTests
             Id = "m1",
             Provider = "other",
             Name = null
-        });
+        }, TestContext.Current.CancellationToken);
         blocked.Name.Should().BeNull();
 
         var allowed = await manager.TryEnrichIfEnabledAsync(new ModelConfig
@@ -112,7 +112,7 @@ public class ModelCapabilityManagerTests
             Id = "m1",
             Provider = "allowed",
             Name = null
-        });
+        }, TestContext.Current.CancellationToken);
         allowed.Name.Should().Be("Enriched");
     }
 
@@ -127,7 +127,7 @@ public class ModelCapabilityManagerTests
         await manager.NotifyChangedAsync(
             ModelCapabilitiesChangeReason.SourceDataChanged,
             affectedSourceIds: ["modelsdev"],
-            sourceKind: ModelCapabilitySourceChangeKind.Reloaded);
+            sourceKind: ModelCapabilitySourceChangeKind.Reloaded, cancellationToken: TestContext.Current.CancellationToken);
 
         var published = bus.Signals.OfType<ModelCapabilitiesChange>().Should().ContainSingle().Subject;
         published.Reason.Should().Be(ModelCapabilitiesChangeReason.SourceDataChanged);
@@ -205,7 +205,7 @@ public class ModelCapabilityManagerTests
             Limit = new ModelLimits { Context = 4096, Output = 4096 }
         };
 
-        var enriched = await manager.TryEnrichIfEnabledAsync(model);
+        var enriched = await manager.TryEnrichIfEnabledAsync(model, TestContext.Current.CancellationToken);
         enriched.Limit.Context.Should().Be(200000);
         enriched.Options!.Thinking!.Levels.Should().HaveCount(2);
     }

@@ -55,7 +55,7 @@ public sealed class TuiTaskTrackerSnapshotTests
 
         await tracker.ReconcileAsync();
         tracker.Observe(tool);
-        await Task.Delay(80);
+        await Task.Delay(80, TestContext.Current.CancellationToken);
 
         pumps.Count.Should().Be(1);
     }
@@ -82,7 +82,7 @@ public sealed class TuiTaskTrackerSnapshotTests
         });
 
         tracker.Observe(toolB);
-        await Task.Delay(80);
+        await Task.Delay(80, TestContext.Current.CancellationToken);
 
         pumps.Count.Should().Be(1);
     }

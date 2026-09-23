@@ -71,7 +71,7 @@ namespace Seeing.Agent.Tests.Tools
                 }
             };
 
-            var result = await invoker.ExecuteAsync(toolCall);
+            var result = await invoker.ExecuteAsync(toolCall, cancellationToken: TestContext.Current.CancellationToken);
 
             result.Success.Should().BeTrue();
             result.Output.Should().Be("8");
@@ -92,7 +92,7 @@ namespace Seeing.Agent.Tests.Tools
                 }
             };
 
-            var result = await invoker.ExecuteAsync(toolCall);
+            var result = await invoker.ExecuteAsync(toolCall, cancellationToken: TestContext.Current.CancellationToken);
 
             result.Success.Should().BeFalse();
             result.Error?.Should().Contain("工具不存在");
@@ -104,7 +104,7 @@ namespace Seeing.Agent.Tests.Tools
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             invoker.RegisterToolsFromType(typeof(TestToolClass));
 
-            var result = await invoker.ExecuteAsync("Add", new Dictionary<string, object?> { ["a"] = 10, ["b"] = 20 });
+            var result = await invoker.ExecuteAsync("Add", new Dictionary<string, object?> { ["a"] = 10, ["b"] = 20 }, cancellationToken: TestContext.Current.CancellationToken);
 
             result.Success.Should().BeTrue();
         }
@@ -340,7 +340,7 @@ namespace Seeing.Agent.Tests.Tools
             };
 
             // Act
-            var result = await invoker.ExecuteAsync(toolCall);
+            var result = await invoker.ExecuteAsync(toolCall, cancellationToken: TestContext.Current.CancellationToken);
 
             // Assert
             result.Success.Should().BeTrue();

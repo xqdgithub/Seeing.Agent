@@ -36,7 +36,7 @@ public class TuiPromptInputRelayTests
         relay.BeginPrompt();
         source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.InsertText, "r"));
         // 留出时间让分发泵把按键写入提示通道（此时按键仍是「未被 Spectre 消费的残留」）。
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         relay.EndPrompt();
 
@@ -54,7 +54,7 @@ public class TuiPromptInputRelayTests
 
         relay.BeginPrompt();
         source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.InsertText, "x"));
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         relay.EngineReader.TryRead(out _).Should().BeFalse();
 

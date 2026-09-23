@@ -37,7 +37,7 @@ public class ExecutionJobServiceInstructionTests
         var result = await fixture.Service.SubmitAsync(
             session.Id,
             new ChatInput { Text = "real user message" },
-            new ChatOptions { WorkingDirectory = "resolved-cwd" });
+            new ChatOptions { WorkingDirectory = "resolved-cwd" }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         session.WorkingDirectory.Should().Be("resolved-cwd");
@@ -57,7 +57,7 @@ public class ExecutionJobServiceInstructionTests
         var result = await fixture.Service.SubmitAsync(
             session.Id,
             new ChatInput { Text = "not persisted" },
-            new ChatOptions { SkipUserMessagePersist = true });
+            new ChatOptions { SkipUserMessagePersist = true }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         session.Messages.Should().ContainSingle(message => message.Content == "injected instructions");
@@ -75,7 +75,7 @@ public class ExecutionJobServiceInstructionTests
         var result = await fixture.Service.SubmitAsync(
             session.Id,
             new ChatInput { Text = "real user message" },
-            new ChatOptions { SkipInstructionInject = true });
+            new ChatOptions { SkipInstructionInject = true }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         session.Messages.Should().ContainSingle(message => message.Content == "real user message");
@@ -97,7 +97,7 @@ public class ExecutionJobServiceInstructionTests
         var result = await fixture.Service.SubmitAsync(
             session.Id,
             new ChatInput { Text = "real user message" },
-            options: null);
+            options: null, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
         session.Messages.Should().ContainSingle(message => message.Content == "real user message");

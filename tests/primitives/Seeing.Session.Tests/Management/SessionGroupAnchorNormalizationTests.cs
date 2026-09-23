@@ -18,11 +18,11 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot("根");
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
 
-        var successor = await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "后继", null);
+        var successor = await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "后继", null, TestContext.Current.CancellationToken);
 
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         var anchor = g!.Members.Single(m => m.IsAnchor);
         anchor.SessionId.Should().Be(successor.Id);
         anchor.Relation.Should().Be(SessionRelation.HandoffSuccessor);
@@ -37,13 +37,13 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot("根");
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
-        var backup = await h.Manager.CreateBackupForkAsync(root.Id, "trim-backup t0");
-        var anchorBefore = (await h.Manager.GetGroupAsync(group.Id))!.AnchorSessionId;
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var backup = await h.Manager.CreateBackupForkAsync(root.Id, "trim-backup t0", TestContext.Current.CancellationToken);
+        var anchorBefore = (await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken))!.AnchorSessionId;
 
-        await h.Manager.RemoveMemberAsync(group.Id, backup.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, backup.Id, TestContext.Current.CancellationToken);
 
-        (await h.Manager.GetGroupAsync(group.Id))!.AnchorSessionId.Should().Be(anchorBefore);
+        (await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken))!.AnchorSessionId.Should().Be(anchorBefore);
     }
 
     [Fact]
@@ -51,8 +51,8 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
-        await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "后继", null); // root 变为 Predecessor
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "后继", null, TestContext.Current.CancellationToken); // root 变为 Predecessor
 
         var act = async () => await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "再次", null);
         await act.Should().ThrowAsync<InvalidOperationException>(); // 源必须为当前锚点
@@ -63,15 +63,15 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot();
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var versions = new List<long>();
         h.Manager.Changed += (_, e) => versions.Add(e.Group.Version);
 
-        var successor = await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "后继", null);
+        var successor = await h.Manager.CreateHandoffSuccessorAsync(root.Id, null, "后继", null, TestContext.Current.CancellationToken);
 
         versions.Should().HaveCount(1);                       // 仅一次发布
         versions[0].Should().Be(2);                           // 单次 +1（EnsureForSession=1）
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         g!.Members.Single(m => m.IsAnchor).SessionId.Should().Be(successor.Id);
     }
 
@@ -80,12 +80,12 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var a = h.CreateRoot("A");
-        var group = await h.Manager.EnsureForSessionAsync(a.Id);
-        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null); // A→B, B 锚点
+        var group = await h.Manager.EnsureForSessionAsync(a.Id, TestContext.Current.CancellationToken);
+        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null, TestContext.Current.CancellationToken); // A→B, B 锚点
 
-        await h.Manager.RemoveMemberAsync(group.Id, a.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, a.Id, TestContext.Current.CancellationToken);
 
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         var bMember = g!.Members.Single(m => m.SessionId == b.Id);
         bMember.ParentSessionId.Should().BeNull();
         bMember.IsAnchor.Should().BeTrue();
@@ -98,14 +98,14 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var a = h.CreateRoot("A");
-        var group = await h.Manager.EnsureForSessionAsync(a.Id);
-        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null);
-        var c = await h.Manager.CreateHandoffSuccessorAsync(b.Id, null, "C", null); // A→B→C
-        var fork = await h.Manager.CreateBackupForkAsync(b.Id, "trim-backup t1");
+        var group = await h.Manager.EnsureForSessionAsync(a.Id, TestContext.Current.CancellationToken);
+        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null, TestContext.Current.CancellationToken);
+        var c = await h.Manager.CreateHandoffSuccessorAsync(b.Id, null, "C", null, TestContext.Current.CancellationToken); // A→B→C
+        var fork = await h.Manager.CreateBackupForkAsync(b.Id, "trim-backup t1", TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveMemberAsync(group.Id, b.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, b.Id, TestContext.Current.CancellationToken);
 
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         g!.Members.Single(m => m.SessionId == c.Id).ParentSessionId.Should().Be(a.Id); // 主线后继重挂
         g.Members.Single(m => m.SessionId == fork.Id).ParentSessionId.Should().Be(a.Id); // 派生重挂
         g.Members.Single(m => m.IsAnchor).SessionId.Should().Be(c.Id);                    // 锚点保持
@@ -116,13 +116,13 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot("根");
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var child = await h.Manager.CreateChildAsync(
-            root.Id, "task", "子", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "子", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveMemberAsync(group.Id, root.Id);
+        await h.Manager.RemoveMemberAsync(group.Id, root.Id, TestContext.Current.CancellationToken);
 
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         var anchor = g!.Members.Single(m => m.IsAnchor);
         anchor.SessionId.Should().Be(child.Id);                 // (f) 仅剩 Child 的退化兜底
         anchor.Relation.Should().Be(SessionRelation.Child);     // 保持 Child（避免 SubAgent+None 非法态）
@@ -134,16 +134,16 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var a = h.CreateRoot("A");
-        var group = await h.Manager.EnsureForSessionAsync(a.Id);
-        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null); // A→B
-        var c = await h.Manager.CreateHandoffSuccessorAsync(b.Id, null, "C", null); // A→B→C
-        var fork = await h.Manager.CreateBackupForkAsync(b.Id, "trim-backup t1");
+        var group = await h.Manager.EnsureForSessionAsync(a.Id, TestContext.Current.CancellationToken);
+        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null, TestContext.Current.CancellationToken); // A→B
+        var c = await h.Manager.CreateHandoffSuccessorAsync(b.Id, null, "C", null, TestContext.Current.CancellationToken); // A→B→C
+        var fork = await h.Manager.CreateBackupForkAsync(b.Id, "trim-backup t1", TestContext.Current.CancellationToken);
         var child = await h.Manager.CreateChildAsync(
-            b.Id, "task", "子", Array.Empty<SessionPermissionRule>(), null);
+            b.Id, "task", "子", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveSessionAsync(b.Id);
+        await h.Manager.RemoveSessionAsync(b.Id, TestContext.Current.CancellationToken);
 
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         g!.Members.Should().NotContain(m => m.SessionId == b.Id);
         g.Members.Should().NotContain(m => m.SessionId == child.Id);            // Child 子树随删
         g.Members.Single(m => m.SessionId == c.Id).ParentSessionId.Should().Be(a.Id);   // 主线后继重挂
@@ -157,13 +157,13 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var a = h.CreateRoot("A");
-        var group = await h.Manager.EnsureForSessionAsync(a.Id);
-        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null); // A→B，B 锚点
-        var backup = await h.Manager.CreateBackupForkAsync(b.Id, "trim-backup t1");
+        var group = await h.Manager.EnsureForSessionAsync(a.Id, TestContext.Current.CancellationToken);
+        var b = await h.Manager.CreateHandoffSuccessorAsync(a.Id, null, "B", null, TestContext.Current.CancellationToken); // A→B，B 锚点
+        var backup = await h.Manager.CreateBackupForkAsync(b.Id, "trim-backup t1", TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveSessionAsync(b.Id);
+        await h.Manager.RemoveSessionAsync(b.Id, TestContext.Current.CancellationToken);
 
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         g!.Members.Single(m => m.SessionId == backup.Id).ParentSessionId.Should().Be(a.Id);
         g.Members.Single(m => m.IsAnchor).SessionId.Should().Be(a.Id);
         g.AnchorSessionId.Should().Be(a.Id);
@@ -178,18 +178,18 @@ public class SessionGroupAnchorNormalizationTests
     {
         using var h = new SessionGroupTestHarness();
         var root = h.CreateRoot("R");
-        var group = await h.Manager.EnsureForSessionAsync(root.Id);
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var c1 = await h.Manager.CreateChildAsync(
-            root.Id, "task", "C1", Array.Empty<SessionPermissionRule>(), null);
+            root.Id, "task", "C1", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
         var c2 = await h.Manager.CreateChildAsync(
-            c1.Id, "task", "C2", Array.Empty<SessionPermissionRule>(), null);
+            c1.Id, "task", "C2", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
         var c3 = await h.Manager.CreateChildAsync(
-            c2.Id, "task", "C3", Array.Empty<SessionPermissionRule>(), null);
-        var fork = await h.Manager.CreateBackupForkAsync(c3.Id, "trim-backup t1");
+            c2.Id, "task", "C3", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
+        var fork = await h.Manager.CreateBackupForkAsync(c3.Id, "trim-backup t1", TestContext.Current.CancellationToken);
 
-        await h.Manager.RemoveSessionAsync(c1.Id);
+        await h.Manager.RemoveSessionAsync(c1.Id, TestContext.Current.CancellationToken);
 
-        var g = await h.Manager.GetGroupAsync(group.Id);
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
         g!.Members.Should().NotContain(m => m.SessionId == c1.Id);
         g.Members.Should().NotContain(m => m.SessionId == c2.Id);
         g.Members.Should().NotContain(m => m.SessionId == c3.Id);

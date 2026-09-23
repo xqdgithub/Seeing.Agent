@@ -34,6 +34,13 @@ public static class SessionCommand
         deleteCommand.SetAction(async parseResult =>
         {
             var id = parseResult.GetValue<string>(deleteIdArg);
+            if (string.IsNullOrEmpty(id))
+            {
+                Console.Error.WriteLine("错误: 会话 ID 不能为空");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<ISessionManager>();
             var deleted = manager.Delete(id);
@@ -49,6 +56,13 @@ public static class SessionCommand
         showCommand.SetAction(async parseResult =>
         {
             var id = parseResult.GetValue<string>(showIdArg);
+            if (string.IsNullOrEmpty(id))
+            {
+                Console.Error.WriteLine("错误: 会话 ID 不能为空");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var manager = host.Services.GetRequiredService<ISessionManager>();
             var groupManager = host.Services.GetRequiredService<ISessionGroupManager>();

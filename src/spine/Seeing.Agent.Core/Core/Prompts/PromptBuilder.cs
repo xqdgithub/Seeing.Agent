@@ -27,6 +27,9 @@ public class PromptBuilder
 
     private readonly IReadOnlyList<IPromptSectionContributor> _contributors;
 
+    /// <summary>
+    /// 构造提示词构建器，收集全部提示词分节贡献者。
+    /// </summary>
     public PromptBuilder(IEnumerable<IPromptSectionContributor> contributors)
     {
         _contributors = contributors?.ToList() ?? [];

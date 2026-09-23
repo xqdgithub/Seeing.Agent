@@ -16,6 +16,9 @@ public sealed class TextCompletionService : ITextCompletion
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
     private readonly ILogger<TextCompletionService>? _logger;
 
+    /// <summary>
+    /// 注入 LLM 服务与选项监视器构造文本补全服务。
+    /// </summary>
     public TextCompletionService(
         ILlmService llm,
         IOptionsMonitor<SeeingAgentOptions> options,
@@ -26,8 +29,14 @@ public sealed class TextCompletionService : ITextCompletion
         _logger = logger;
     }
 
+    /// <summary>
+    /// 未显式指定 maxTokens 时的默认输出 token 上限。
+    /// </summary>
     public const int DefaultMaxTokens = 4096;
 
+    /// <summary>
+    /// 以单条用户提示发起旁路文本补全（温度 0，不触发 Hook）。
+    /// </summary>
     public Task<string> CompleteAsync(
         string systemPrompt,
         string userPrompt,
@@ -42,6 +51,9 @@ public sealed class TextCompletionService : ITextCompletion
         return CompleteAsync(systemPrompt, messages, model, maxTokens, ct);
     }
 
+    /// <summary>
+    /// 以消息列表发起旁路补全（温度 0，走 CompleteRawAsync 不触发 Hook），返回裁剪后的正文。
+    /// </summary>
     public async Task<string> CompleteAsync(
         string systemPrompt,
         List<ChatMessage> messages,

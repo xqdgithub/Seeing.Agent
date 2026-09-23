@@ -40,6 +40,7 @@ namespace Seeing.Agent.Core.Configuration
         /// <inheritdoc/>
         public event EventHandler<AgentConfigChangedEventArgs>? ConfigChanged;
 
+        /// <summary>初始化 Agent 管理器，注入存储、运行时管理、工作区与默认 Agent 等依赖。</summary>
         public AgentManager(
             ILogger<AgentManager> logger,
             IAgentStore agentStore,
@@ -795,6 +796,7 @@ maxSteps: 50
             return string.Equals(pattern, input, StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>触发 Agent 配置变更事件。</summary>
         protected virtual void OnConfigChanged(string name, ConfigLevel level, ConfigChangeAction action)
         {
             ConfigChanged?.Invoke(this, new AgentConfigChangedEventArgs

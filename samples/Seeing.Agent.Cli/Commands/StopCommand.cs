@@ -18,6 +18,12 @@ public static class StopCommand
         command.SetAction(async parseResult =>
         {
             var service = parseResult.GetValue<string>(serviceArg);
+            if (string.IsNullOrEmpty(service))
+            {
+                Console.Error.WriteLine("错误: service 必须是 'webui' 或 'gateway'");
+                Environment.ExitCode = 1;
+                return;
+            }
             service = service.ToLowerInvariant();
             if (service != "webui" && service != "gateway")
             {

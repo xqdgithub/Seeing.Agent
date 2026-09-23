@@ -17,17 +17,17 @@ public sealed class MemoryConnectionOwnershipTests
 
         owner.IsOpen.Should().BeFalse();
 
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         activity.IsActive.Should().BeTrue();
         owner.IsOpen.Should().BeTrue();
         var connection = owner.EnsureInstance();
 
-        await module.DeactivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.DeactivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         activity.IsActive.Should().BeFalse();
         owner.IsOpen.Should().BeFalse();
         owner.EnsureInstance().Should().BeSameAs(connection, "Close keeps the shared instance for consumers");
 
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         activity.IsActive.Should().BeTrue();
         owner.IsOpen.Should().BeTrue();
         owner.EnsureInstance().Should().BeSameAs(connection);

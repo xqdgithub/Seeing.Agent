@@ -9,7 +9,9 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
     /// </summary>
     public class PlanEnterTool : ITool
     {
+        /// <summary>工具 ID。</summary>
         public string Id => "plan_enter";
+        /// <summary>工具描述（供模型识别用途）。</summary>
         public string Description => "Enter plan mode to create or edit an execution plan";
 
         /// <summary>工具标签（用于分类和过滤）</summary>
@@ -18,6 +20,7 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
         /// <summary>工具分类</summary>
         public ToolCategory Category => ToolCategory.General;
 
+        /// <summary>工具参数的 JSON Schema。</summary>
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
@@ -39,11 +42,13 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
 
         private readonly PlanManager _planManager;
 
+        /// <summary>初始化进入计划模式工具，注入计划管理器。</summary>
         public PlanEnterTool(PlanManager planManager)
         {
             _planManager = planManager;
         }
 
+        /// <summary>执行：创建一个计划并进入计划模式。</summary>
         public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             var name = arguments.TryGetProperty("name", out var nameProp)
@@ -74,7 +79,9 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
     /// </summary>
     public class PlanExitTool : ITool
     {
+        /// <summary>工具 ID。</summary>
         public string Id => "plan_exit";
+        /// <summary>工具描述（供模型识别用途）。</summary>
         public string Description => "Exit plan mode and optionally start execution";
 
         /// <summary>工具标签（用于分类和过滤）</summary>
@@ -83,6 +90,7 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
         /// <summary>工具分类</summary>
         public ToolCategory Category => ToolCategory.General;
 
+        /// <summary>工具参数的 JSON Schema。</summary>
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
@@ -104,11 +112,13 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
 
         private readonly PlanManager _planManager;
 
+        /// <summary>初始化退出计划模式工具，注入计划管理器。</summary>
         public PlanExitTool(PlanManager planManager)
         {
             _planManager = planManager;
         }
 
+        /// <summary>执行：退出计划模式，可选将计划置为激活并开始执行。</summary>
         public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             var planId = arguments.TryGetProperty("planId", out var idProp)
@@ -168,7 +178,9 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
     /// </summary>
     public class PlanAddTaskTool : ITool
     {
+        /// <summary>工具 ID。</summary>
         public string Id => "plan_add_task";
+        /// <summary>工具描述（供模型识别用途）。</summary>
         public string Description => "Add a task to an execution plan";
 
         /// <summary>工具标签（用于分类和过滤）</summary>
@@ -177,6 +189,7 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
         /// <summary>工具分类</summary>
         public ToolCategory Category => ToolCategory.General;
 
+        /// <summary>工具参数的 JSON Schema。</summary>
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
@@ -193,11 +206,13 @@ namespace Seeing.Agent.Core.Tools.BuiltIn.Plan
 
         private readonly PlanManager _planManager;
 
+        /// <summary>初始化添加计划任务工具，注入计划管理器。</summary>
         public PlanAddTaskTool(PlanManager planManager)
         {
             _planManager = planManager;
         }
 
+        /// <summary>执行：向指定计划添加一个任务。</summary>
         public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             var planId = arguments.TryGetProperty("planId", out var idProp) ? idProp.GetString() : null;

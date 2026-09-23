@@ -119,12 +119,12 @@ category: tools
 agent: coder
 ---
 Hello {{1}}, this is {{arguments}}";
-            await File.WriteAllTextAsync(commandFile, content);
+            await File.WriteAllTextAsync(commandFile, content, TestContext.Current.CancellationToken);
 
             var discovery = new CommandDiscovery();
 
             // Act
-            var commands = await discovery.DiscoverFromMarkdownAsync(_testCommandsDir);
+            var commands = await discovery.DiscoverFromMarkdownAsync(_testCommandsDir, TestContext.Current.CancellationToken);
 
             // Assert
             commands.Should().HaveCount(1);
@@ -141,16 +141,16 @@ Hello {{1}}, this is {{arguments}}";
         {
             // Arrange - File without name
             var invalidFile = Path.Combine(_testCommandsDir, "invalid.md");
-            await File.WriteAllTextAsync(invalidFile, "---\ndescription: No name\n---\nContent");
+            await File.WriteAllTextAsync(invalidFile, "---\ndescription: No name\n---\nContent", TestContext.Current.CancellationToken);
 
             // Arrange - File without frontmatter
             var noFrontmatterFile = Path.Combine(_testCommandsDir, "no-frontmatter.md");
-            await File.WriteAllTextAsync(noFrontmatterFile, "Just content");
+            await File.WriteAllTextAsync(noFrontmatterFile, "Just content", TestContext.Current.CancellationToken);
 
             var discovery = new CommandDiscovery();
 
             // Act
-            var commands = await discovery.DiscoverFromMarkdownAsync(_testCommandsDir);
+            var commands = await discovery.DiscoverFromMarkdownAsync(_testCommandsDir, TestContext.Current.CancellationToken);
 
             // Assert
             commands.Should().BeEmpty();
@@ -163,7 +163,7 @@ Hello {{1}}, this is {{arguments}}";
             var discovery = new CommandDiscovery();
 
             // Act
-            var commands = await discovery.DiscoverFromMarkdownAsync("/non/existent/path");
+            var commands = await discovery.DiscoverFromMarkdownAsync("/non/existent/path", TestContext.Current.CancellationToken);
 
             // Assert
             commands.Should().BeEmpty();
@@ -195,7 +195,7 @@ Hello {{1}}, this is {{arguments}}";
             };
 
             // Act
-            var result = await command!.ExecuteAsync(context);
+            var result = await command!.ExecuteAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.Success.Should().BeTrue();
@@ -223,7 +223,7 @@ Hello {{1}}, this is {{arguments}}";
             };
 
             // Act
-            var result = await command!.ExecuteAsync(context);
+            var result = await command!.ExecuteAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.Success.Should().BeTrue();
@@ -251,7 +251,7 @@ Hello {{1}}, this is {{arguments}}";
             };
 
             // Act
-            var result = await command!.ExecuteAsync(context);
+            var result = await command!.ExecuteAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.Success.Should().BeTrue();
@@ -282,7 +282,7 @@ Hello {{1}}, this is {{arguments}}";
             };
 
             // Act
-            var result = await command!.ExecuteAsync(context);
+            var result = await command!.ExecuteAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.Success.Should().BeTrue();
@@ -307,7 +307,7 @@ Hello {{1}}, this is {{arguments}}";
             var context = new CommandContext();
 
             // Act
-            var result = await command!.ExecuteAsync(context);
+            var result = await command!.ExecuteAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.Success.Should().BeFalse();

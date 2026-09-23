@@ -585,7 +585,7 @@ public class ProviderManagerTests : IDisposable
     {
         public override string Id { get; } = id;
 
-        public override string? Name => id;
+        public override string? Name => Id;
 
         public override ILlmClient GetClient() => Mock.Of<ILlmClient>();
 

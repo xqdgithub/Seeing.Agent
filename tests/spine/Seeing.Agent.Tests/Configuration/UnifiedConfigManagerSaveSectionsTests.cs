@@ -41,12 +41,12 @@ public class UnifiedConfigManagerSaveSectionsTests
         await configManager.SaveSectionsAsync(ConfigLevel.User, new Dictionary<string, object>
         {
             ["Providers"] = providers
-        });
+        }, TestContext.Current.CancellationToken);
 
         var providersPath = Path.Combine(userSeeing, "providers.json");
         File.Exists(providersPath).Should().BeTrue();
 
-        var root = JsonNode.Parse(await File.ReadAllTextAsync(providersPath))!.AsObject();
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(providersPath, TestContext.Current.CancellationToken))!.AsObject();
         root.ContainsKey("Providers").Should().BeFalse();
         root.ContainsKey("openai").Should().BeTrue();
         root["openai"]!["baseURL"]!.GetValue<string>().Should().Be("https://api.openai.com/v1");
@@ -103,7 +103,7 @@ public class UnifiedConfigManagerSaveSectionsTests
 
         Directory.GetFiles(userSeeing, "*.tmp").Should().BeEmpty();
 
-        var root = JsonNode.Parse(await File.ReadAllTextAsync(providersPath))!.AsObject();
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(providersPath, TestContext.Current.CancellationToken))!.AsObject();
         root.ContainsKey("Providers").Should().BeFalse();
         root.Count.Should().BeGreaterThan(0);
         root.Select(kv => kv.Value).Should().AllSatisfy(v => v!.GetValueKind().Should().Be(JsonValueKind.Object));

@@ -14,9 +14,9 @@ public class BuiltinCapabilitySourceTests
         try
         {
             var source = new BuiltinCapabilitySource(dir);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
-            var entries = await source.ListEntriesAsync();
+            var entries = await source.ListEntriesAsync(TestContext.Current.CancellationToken);
             entries.Should().Contain(e =>
                 string.IsNullOrWhiteSpace(e.ProviderId) &&
                 e.ModelId == "deepseek-v4-flash" &&
@@ -53,11 +53,11 @@ public class BuiltinCapabilitySourceTests
         try
         {
             var source = new BuiltinCapabilitySource(dir);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
-            var viaProxy = await source.TryGetAsync("my-openai-proxy", "glm-5.3");
-            var viaZai = await source.TryGetAsync("zai", "glm-5.3");
-            var viaEmpty = await source.TryGetAsync("", "claude-opus-5");
+            var viaProxy = await source.TryGetAsync("my-openai-proxy", "glm-5.3", TestContext.Current.CancellationToken);
+            var viaZai = await source.TryGetAsync("zai", "glm-5.3", TestContext.Current.CancellationToken);
+            var viaEmpty = await source.TryGetAsync("", "claude-opus-5", TestContext.Current.CancellationToken);
 
             viaProxy.Should().NotBeNull();
             viaProxy!.Limit!.Context.Should().Be(1_000_000);
@@ -65,9 +65,9 @@ public class BuiltinCapabilitySourceTests
             viaEmpty!.ModelId.Should().Be("claude-opus-5");
 
             // Zen 私有条目仍需 Provider 对齐，不能被其它实现误命中
-            var zenMiss = await source.TryGetAsync("openai", "big-pickle");
+            var zenMiss = await source.TryGetAsync("openai", "big-pickle", TestContext.Current.CancellationToken);
             zenMiss.Should().BeNull();
-            var zenHit = await source.TryGetAsync("opencode-zen", "big-pickle");
+            var zenHit = await source.TryGetAsync("opencode-zen", "big-pickle", TestContext.Current.CancellationToken);
             zenHit.Should().NotBeNull();
         }
         finally
@@ -83,7 +83,7 @@ public class BuiltinCapabilitySourceTests
         try
         {
             var source = new BuiltinCapabilitySource(dir);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
             await source.UpsertEntryAsync(new ModelCapabilityEntry
             {
@@ -103,9 +103,9 @@ public class BuiltinCapabilitySourceTests
                         ]
                     }
                 }
-            });
+            }, TestContext.Current.CancellationToken);
 
-            var entry = await source.TryGetAsync("any-provider", "deepseek-v4-flash");
+            var entry = await source.TryGetAsync("any-provider", "deepseek-v4-flash", TestContext.Current.CancellationToken);
             entry!.Name.Should().Be("Local Flash");
             entry.Limit!.Context.Should().Be(42);
             entry.Options!.Thinking!.Levels!.Should().HaveCount(2);
@@ -125,7 +125,7 @@ public class BuiltinCapabilitySourceTests
         try
         {
             var source = new BuiltinCapabilitySource(dir);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
             await source.UpsertEntryAsync(new ModelCapabilityEntry
             {
@@ -141,9 +141,9 @@ public class BuiltinCapabilitySourceTests
                         Levels = [new ThinkingLevel { Key = "high", Label = "高" }]
                     }
                 }
-            });
+            }, TestContext.Current.CancellationToken);
 
-            var entry = await source.TryGetAsync("opencode-zen", "brand-new-model-free");
+            var entry = await source.TryGetAsync("opencode-zen", "brand-new-model-free", TestContext.Current.CancellationToken);
             entry.Should().NotBeNull();
             entry!.ModelId.Should().Be("brand-new-model");
             entry.Limit!.Context.Should().Be(111111);
@@ -162,9 +162,9 @@ public class BuiltinCapabilitySourceTests
         try
         {
             var source = new BuiltinCapabilitySource(dir);
-            await source.LoadAsync();
+            await source.LoadAsync(TestContext.Current.CancellationToken);
 
-            var entry = await source.TryGetAsync("custom-deepseek", "deepseek-flash");
+            var entry = await source.TryGetAsync("custom-deepseek", "deepseek-flash", TestContext.Current.CancellationToken);
             entry.Should().NotBeNull();
             entry!.ModelId.Should().Be("deepseek-v4-flash");
         }

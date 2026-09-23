@@ -24,7 +24,7 @@ public class SessionGroupReloadHandlerTests
             var handler = new SessionGroupReloadHandler(store, Mock.Of<ISessionGroupManager>());
 
             // 目录 A 写入一个组
-            await store.SaveAsync(new SessionGroup { Id = "before", AnchorSessionId = "s-before" });
+            await store.SaveAsync(new SessionGroup { Id = "before", AnchorSessionId = "s-before" }, TestContext.Current.CancellationToken);
 
             // 触发工作区切换 A -> B
             await handler.ReloadAsync(new WorkspaceChange { NewWorkspace = dirB }, CancellationToken.None);
@@ -33,15 +33,15 @@ public class SessionGroupReloadHandlerTests
             store.BaseDirectory.Should().Be(expected);
 
             // 重定位后写入落到 B，并可从 B 读到
-            await store.SaveAsync(new SessionGroup { Id = "after", AnchorSessionId = "s-after" });
+            await store.SaveAsync(new SessionGroup { Id = "after", AnchorSessionId = "s-after" }, TestContext.Current.CancellationToken);
             File.Exists(Path.Combine(expected, "after.json")).Should().BeTrue();
 
-            var loaded = await store.LoadAsync("after");
+            var loaded = await store.LoadAsync("after", TestContext.Current.CancellationToken);
             loaded.Should().NotBeNull();
             loaded!.AnchorSessionId.Should().Be("s-after");
 
             // A 中的旧组不在 B
-            (await store.LoadAsync("before")).Should().BeNull();
+            (await store.LoadAsync("before", TestContext.Current.CancellationToken)).Should().BeNull();
         }
         finally
         {

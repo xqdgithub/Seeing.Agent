@@ -16,14 +16,14 @@ public class FileSessionStoreRefCleanupTests
         {
             var store = new FileSessionStore(tempDir);
             var sessionId = NewSessionId();
-            await store.SaveAsync(new Seeing.Session.Core.SessionData { Id = sessionId });
+            await store.SaveAsync(new Seeing.Session.Core.SessionData { Id = sessionId }, TestContext.Current.CancellationToken);
 
             var refDir = Path.Combine(tempDir, sessionId + ".ref");
             Directory.CreateDirectory(refDir);
             File.WriteAllText(Path.Combine(refDir, "abc.txt"), "data");
             Directory.Exists(refDir).Should().BeTrue();
 
-            await store.DeleteAsync(sessionId);
+            await store.DeleteAsync(sessionId, TestContext.Current.CancellationToken);
 
             Directory.Exists(refDir).Should().BeFalse();
         }

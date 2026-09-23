@@ -30,7 +30,7 @@ public class PermissionRequestManagerTests
             PermissionKind = "tool.execute",
             CallId = "call-1",
             LoopId = "loop-1"
-        });
+        }, TestContext.Current.CancellationToken);
 
         ticket.RequestId.Should().NotBeNullOrEmpty();
         ticket.SessionId.Should().Be("s1");
@@ -55,7 +55,7 @@ public class PermissionRequestManagerTests
             RequestId = "fixed-id",
             SessionId = "s1",
             PermissionKind = "tool.execute"
-        });
+        }, TestContext.Current.CancellationToken);
 
         ticket.RequestId.Should().Be("fixed-id");
     }
@@ -64,9 +64,9 @@ public class PermissionRequestManagerTests
     public async Task WaitAsync_TryResolve_ShouldReturnResolution_AndBeIdempotent()
     {
         using var harness = new ManagerHarness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
-        var waiter = harness.Manager.WaitAsync(ticket);
+        var waiter = harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
             PermissionGrantScope.Once, PermissionResolvedBy.User, "ok", "s1").Should().BeTrue();
@@ -84,7 +84,7 @@ public class PermissionRequestManagerTests
     public async Task TryResolve_WrongExpectedSession_ShouldReturnFalse()
     {
         using var harness = new ManagerHarness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
             PermissionGrantScope.Once, PermissionResolvedBy.User, null, "other-session").Should().BeFalse();
@@ -105,7 +105,7 @@ public class PermissionRequestManagerTests
     public async Task TryResolve_ShouldPublishResolvedEvent()
     {
         using var harness = new ManagerHarness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Deny,
             PermissionGrantScope.Session, PermissionResolvedBy.Policy, "blocked").Should().BeTrue();
@@ -124,11 +124,11 @@ public class PermissionRequestManagerTests
     public async Task TryResolve_AfterWaitConsumed_ShouldReturnFalse()
     {
         using var harness = new ManagerHarness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
             PermissionGrantScope.Once, PermissionResolvedBy.User).Should().BeTrue();
-        await harness.Manager.WaitAsync(ticket);
+        await harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
             PermissionGrantScope.Once, PermissionResolvedBy.User).Should().BeFalse();
@@ -138,7 +138,7 @@ public class PermissionRequestManagerTests
     public async Task WaitAsync_Cancelled_ShouldDenyWithCancellation()
     {
         using var harness = new ManagerHarness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
         using var cts = new CancellationTokenSource();
 
         var waiter = harness.Manager.WaitAsync(ticket, cts.Token);
@@ -153,9 +153,9 @@ public class PermissionRequestManagerTests
     public async Task WaitAsync_Timeout_ShouldDenyWithTimeout()
     {
         using var harness = new ManagerHarness(TimeSpan.FromMilliseconds(80));
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
-        var resolution = await harness.Manager.WaitAsync(ticket);
+        var resolution = await harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Timeout);
@@ -166,7 +166,7 @@ public class PermissionRequestManagerTests
     {
         using var harness = new ManagerHarness();
 
-        var resolution = await harness.Manager.WaitAsync(new RequestTicket("missing", "s1"));
+        var resolution = await harness.Manager.WaitAsync(new RequestTicket("missing", "s1"), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -178,12 +178,12 @@ public class PermissionRequestManagerTests
         using var harness = new ManagerHarness();
 
         for (var i = 0; i < 32; i++)
-            await harness.Manager.BeginAsync(NewRequest($"s{i}"));
+            await harness.Manager.BeginAsync(NewRequest($"s{i}"), TestContext.Current.CancellationToken);
 
         harness.Manager.PendingCount.Should().Be(32);
 
-        var overflow = await harness.Manager.BeginAsync(NewRequest("overflow"));
-        var resolution = await harness.Manager.WaitAsync(overflow);
+        var overflow = await harness.Manager.BeginAsync(NewRequest("overflow"), TestContext.Current.CancellationToken);
+        var resolution = await harness.Manager.WaitAsync(overflow, TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -198,9 +198,9 @@ public class PermissionRequestManagerTests
         using var harness = new ManagerHarness();
 
         for (var i = 0; i < 32; i++)
-            await harness.Manager.BeginAsync(NewRequest($"s{i}"));
+            await harness.Manager.BeginAsync(NewRequest($"s{i}"), TestContext.Current.CancellationToken);
 
-        var overflow = await harness.Manager.BeginAsync(NewRequest("overflow"));
+        var overflow = await harness.Manager.BeginAsync(NewRequest("overflow"), TestContext.Current.CancellationToken);
 
         var evt = harness.PublishedEvents.OfType<PermissionResolvedEvent>()
             .Single(e => e.RequestId == overflow.RequestId);
@@ -208,7 +208,7 @@ public class PermissionRequestManagerTests
         evt.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
         evt.Reason.Should().Be("队列已满");
 
-        var resolution = await harness.Manager.WaitAsync(overflow);
+        var resolution = await harness.Manager.WaitAsync(overflow, TestContext.Current.CancellationToken);
         resolution.Decision.Should().Be(PermissionEffect.Deny);
     }
 
@@ -219,13 +219,13 @@ public class PermissionRequestManagerTests
         harness.Sessions.Setup(s => s.Get("s1"))
             .Returns(new SessionData { Id = "s1", AutoApprove = SessionAutoApprove.FollowGlobal });
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         harness.Sessions.Setup(s => s.Get("s1"))
             .Returns(new SessionData { Id = "s1", AutoApprove = SessionAutoApprove.Enabled });
         harness.SessionEvents.Publish(new SessionEvent { SessionId = "s1", Type = SessionEventType.Updated });
 
-        var resolution = await harness.Manager.WaitAsync(ticket);
+        var resolution = await harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
     }
@@ -247,14 +247,14 @@ public class PermissionRequestManagerTests
         harness.Sessions.Setup(s => s.Get("parent"))
             .Returns(new SessionData { Id = "parent", Kind = SessionKind.Root, AutoApprove = SessionAutoApprove.FollowGlobal });
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("child"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("child"), TestContext.Current.CancellationToken);
 
         // 父会话执行中切换为「自动」→ 子代理在途请求应即时放行
         harness.Sessions.Setup(s => s.Get("parent"))
             .Returns(new SessionData { Id = "parent", Kind = SessionKind.Root, AutoApprove = SessionAutoApprove.Enabled });
         harness.SessionEvents.Publish(new SessionEvent { SessionId = "parent", Type = SessionEventType.Updated });
 
-        var resolution = await harness.Manager.WaitAsync(ticket);
+        var resolution = await harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
     }
@@ -271,7 +271,7 @@ public class PermissionRequestManagerTests
             SessionId = "s1",
             PermissionKind = "tool.execute",
             Override = SessionAutoApprove.Disabled
-        });
+        }, TestContext.Current.CancellationToken);
 
         harness.SessionEvents.Publish(new SessionEvent { SessionId = "s1", Type = SessionEventType.Updated });
         harness.Options.Set(new SeeingAgentOptions
@@ -288,14 +288,14 @@ public class PermissionRequestManagerTests
     public async Task ReEvaluate_GlobalAutoApproveChanged_ShouldResolveAllow()
     {
         using var harness = new ManagerHarness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         harness.Options.Set(new SeeingAgentOptions
         {
             Permission = new PermissionOptions { AutoApproveAll = true }
         });
 
-        var resolution = await harness.Manager.WaitAsync(ticket);
+        var resolution = await harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
         resolution.Decision.Should().Be(PermissionEffect.Allow);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
     }
@@ -304,7 +304,7 @@ public class PermissionRequestManagerTests
     public async Task OnSessionEvent_PolicyThrows_ShouldBeIsolated()
     {
         using var harness = new ManagerHarness();
-        await harness.Manager.BeginAsync(NewRequest("s1"));
+        await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
         harness.Sessions.Setup(s => s.Get("s1")).Throws(new InvalidOperationException("boom"));
 
         var act = () => harness.SessionEvents.Publish(
@@ -317,7 +317,7 @@ public class PermissionRequestManagerTests
     public async Task OnOptionsChanged_PolicyThrows_ShouldBeIsolated()
     {
         using var harness = new ManagerHarness();
-        await harness.Manager.BeginAsync(NewRequest("s1"));
+        await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
         harness.Sessions.Setup(s => s.Get("s1")).Throws(new InvalidOperationException("boom"));
 
         var act = () => harness.Options.Set(new SeeingAgentOptions
@@ -332,9 +332,9 @@ public class PermissionRequestManagerTests
     public async Task GetPending_ShouldReturnOnlyUnresolvedRequests()
     {
         using var harness = new ManagerHarness();
-        var first = await harness.Manager.BeginAsync(NewRequest("s1"));
-        await harness.Manager.BeginAsync(NewRequest("s1"));
-        await harness.Manager.BeginAsync(NewRequest("s2"));
+        var first = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
+        await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
+        await harness.Manager.BeginAsync(NewRequest("s2"), TestContext.Current.CancellationToken);
 
         harness.Manager.GetPending("s1").Should().HaveCount(2);
         harness.Manager.GetPending("s2").Should().HaveCount(1);
@@ -352,11 +352,11 @@ public class PermissionRequestManagerTests
     public async Task Dispose_ShouldUnsubscribe_AndDenyPending()
     {
         var harness = new ManagerHarness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
         harness.SessionEvents.SubscriptionCount.Should().Be(1);
         harness.Options.ListenerCount.Should().Be(1);
 
-        var waiter = harness.Manager.WaitAsync(ticket);
+        var waiter = harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
         harness.Manager.Dispose();
 
         var resolution = await waiter;
@@ -372,7 +372,7 @@ public class PermissionRequestManagerTests
     public async Task Dispose_ShouldPublishResolvedEventForPending()
     {
         var harness = new ManagerHarness();
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         harness.Manager.Dispose();
 
@@ -387,7 +387,7 @@ public class PermissionRequestManagerTests
     public async Task Dispose_Twice_ShouldBeSafe()
     {
         var harness = new ManagerHarness();
-        await harness.Manager.BeginAsync(NewRequest("s1"));
+        await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         var act = () =>
         {
@@ -403,7 +403,7 @@ public class PermissionRequestManagerTests
     {
         var channel = new RecordingChannel();
         using var harness = new ManagerHarness(channels: new IPermissionChannel[] { channel });
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
             PermissionGrantScope.Once, PermissionResolvedBy.User).Should().BeTrue();
@@ -416,9 +416,9 @@ public class PermissionRequestManagerTests
     public async Task GetAllPending_ShouldReturnUnresolvedAcrossSessions()
     {
         using var harness = new ManagerHarness();
-        var first = await harness.Manager.BeginAsync(NewRequest("s1"));
-        await harness.Manager.BeginAsync(NewRequest("s2"));
-        await harness.Manager.BeginAsync(NewRequest("s2"));
+        var first = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
+        await harness.Manager.BeginAsync(NewRequest("s2"), TestContext.Current.CancellationToken);
+        await harness.Manager.BeginAsync(NewRequest("s2"), TestContext.Current.CancellationToken);
 
         harness.Manager.GetAllPending().Should().HaveCount(3);
         harness.Manager.GetAllPending().Select(r => r.SessionId).Should().Contain(new[] { "s1", "s2" });
@@ -435,9 +435,9 @@ public class PermissionRequestManagerTests
     {
         using var harness = new ManagerHarness();
         for (var i = 0; i < 32; i++)
-            await harness.Manager.BeginAsync(NewRequest($"s{i}"));
+            await harness.Manager.BeginAsync(NewRequest($"s{i}"), TestContext.Current.CancellationToken);
 
-        await harness.Manager.BeginAsync(NewRequest("overflow"));
+        await harness.Manager.BeginAsync(NewRequest("overflow"), TestContext.Current.CancellationToken);
 
         harness.Manager.GetAllPending().Should().HaveCount(32);
     }
@@ -449,7 +449,7 @@ public class PermissionRequestManagerTests
         var count = 0;
         harness.Manager.PendingChanged += () => Interlocked.Increment(ref count);
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
         count.Should().Be(1);
 
         harness.Manager.TryResolve(ticket.RequestId, PermissionEffect.Allow,
@@ -465,12 +465,12 @@ public class PermissionRequestManagerTests
     {
         using var harness = new ManagerHarness();
         for (var i = 0; i < 32; i++)
-            await harness.Manager.BeginAsync(NewRequest($"s{i}"));
+            await harness.Manager.BeginAsync(NewRequest($"s{i}"), TestContext.Current.CancellationToken);
 
         var count = 0;
         harness.Manager.PendingChanged += () => Interlocked.Increment(ref count);
 
-        await harness.Manager.BeginAsync(NewRequest("overflow"));
+        await harness.Manager.BeginAsync(NewRequest("overflow"), TestContext.Current.CancellationToken);
 
         count.Should().Be(1);
     }
@@ -482,10 +482,10 @@ public class PermissionRequestManagerTests
         var count = 0;
         harness.Manager.PendingChanged += () => Interlocked.Increment(ref count);
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
         count.Should().Be(1);
 
-        await harness.Manager.WaitAsync(ticket);
+        await harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         count.Should().Be(2);
     }
@@ -508,8 +508,8 @@ public class PermissionRequestManagerTests
         var presenter = new TestPresenter("s1");
         harness.Presentation.Register(presenter);
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
-        var waiter = harness.Manager.WaitAsync(ticket);
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
+        var waiter = harness.Manager.WaitAsync(ticket, TestContext.Current.CancellationToken);
 
         harness.Presentation.Unregister(presenter);
 
@@ -526,11 +526,11 @@ public class PermissionRequestManagerTests
         var presenter = new TestPresenter("s1");
         harness.Presentation.Register(presenter);
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         presenter.SetSurface(); // 同一 presenter 集合收缩：仅 SurfacedChanged，不 Unregister
 
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         harness.Manager.PendingCount.Should().Be(1);
         harness.Manager.GetAllPending().Should().ContainSingle();
@@ -546,12 +546,12 @@ public class PermissionRequestManagerTests
         var presenter = new TestPresenter("s1");
         harness.Presentation.Register(presenter);
 
-        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"));
+        var ticket = await harness.Manager.BeginAsync(NewRequest("s1"), TestContext.Current.CancellationToken);
 
         harness.Presentation.Unregister(presenter);
         harness.Presentation.Register(new TestPresenter("s1"));
 
-        await Task.Delay(600);
+        await Task.Delay(600, TestContext.Current.CancellationToken);
 
         harness.Manager.PendingCount.Should().Be(1);
 
@@ -764,7 +764,7 @@ public class ExecutionContextPermissionAuthorizerTests
         {
             SessionId = string.Empty,
             PermissionKind = "filesystem.write"
-        });
+        }, TestContext.Current.CancellationToken);
 
         authorizer.SessionId.Should().Be("session-x");
         captured.Should().NotBeNull();
@@ -799,7 +799,7 @@ public class ExecutionContextPermissionAuthorizerTests
         {
             SessionId = "s1",
             PermissionKind = "shell.execute"
-        });
+        }, TestContext.Current.CancellationToken);
 
         captured!.AllowedScopes.Should().BeEquivalentTo(new[]
         {
@@ -831,7 +831,7 @@ public class ExecutionContextPermissionAuthorizerTests
             SessionId = "s1",
             PermissionKind = "tool.execute",
             Override = SessionAutoApprove.Disabled
-        });
+        }, TestContext.Current.CancellationToken);
 
         captured!.Override.Should().Be(SessionAutoApprove.Disabled);
     }
@@ -858,12 +858,12 @@ public class DenyAllPermissionChannelTests
 
         channel.TryAutoApprove(request).Should().BeNull();
 
-        await channel.PresentAsync(request);
+        await channel.PresentAsync(request, TestContext.Current.CancellationToken);
         await channel.DismissAsync(new PermissionResolution
         {
             RequestId = "r1",
             SessionId = "s1",
             Decision = PermissionEffect.Allow
-        });
+        }, TestContext.Current.CancellationToken);
     }
 }

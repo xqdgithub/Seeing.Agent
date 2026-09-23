@@ -31,7 +31,7 @@ public sealed class TuiAttachmentResolverSizeTests : IDisposable
     {
         var path = CreateSparseTempFile(TuiAttachmentResolver.MaxAttachmentBytes);
 
-        var attachment = await _resolver.LoadAsync(path);
+        var attachment = await _resolver.LoadAsync(path, TestContext.Current.CancellationToken);
 
         attachment.Size.Should().Be(TuiAttachmentResolver.MaxAttachmentBytes);
     }

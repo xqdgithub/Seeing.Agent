@@ -8,6 +8,9 @@ namespace Seeing.Agent.Core.Permission;
 /// </summary>
 public static class SessionPermissionMapper
 {
+    /// <summary>
+    /// 将 Agent 权限规则映射为 Session 快照 DTO（枚举转为字符串）。
+    /// </summary>
     public static SessionPermissionRule ToSessionRule(PermissionRuleEntry rule) => new()
     {
         Kind = rule.Kind.ToString(),
@@ -16,6 +19,9 @@ public static class SessionPermissionMapper
         Priority = rule.Priority
     };
 
+    /// <summary>
+    /// 将 Session 快照 DTO 还原为 Agent 权限规则，枚举解析失败时回退默认值。
+    /// </summary>
     public static PermissionRuleEntry ToAgentRule(SessionPermissionRule rule)
     {
         if (!Enum.TryParse<PermissionKind>(rule.Kind, ignoreCase: true, out var kind))
@@ -33,6 +39,9 @@ public static class SessionPermissionMapper
         };
     }
 
+    /// <summary>
+    /// 批量将 Session 快照 DTO 列表还原为 Agent 权限规则列表。
+    /// </summary>
     public static IReadOnlyList<PermissionRuleEntry> ToAgentRules(
         IEnumerable<SessionPermissionRule> rules) =>
         rules.Select(ToAgentRule).ToList();

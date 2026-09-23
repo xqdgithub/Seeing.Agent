@@ -59,14 +59,14 @@ public class SessionHandoffToolTests
         var targetId = (string)result.Metadata["target_session_id"];
         result.Output.Should().Contain(targetId);
 
-        var group = await h.Groups.GetGroupForSessionAsync(root.Id);
+        var group = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         group!.ResolveActiveId().Should().Be(targetId);
 
-        var members = await h.Groups.ListMembersAsync(group.Id);
+        var members = await h.Groups.ListMembersAsync(group.Id, TestContext.Current.CancellationToken);
         members.Should().Contain(m =>
             m.SessionId == targetId && m.Relation == SessionRelation.HandoffSuccessor);
 
-        var target = await h.Sessions.GetOrLoadAsync(targetId);
+        var target = await h.Sessions.GetOrLoadAsync(targetId, TestContext.Current.CancellationToken);
         target.Messages.Should().HaveCount(1);
         target.Messages[0].Role.Should().Be("user");
         target.Messages[0].Content.Should().Be("continue work");
@@ -104,8 +104,8 @@ public class SessionHandoffToolTests
         var secondTarget = (string)second.Metadata["target_session_id"];
         secondTarget.Should().Be(firstTarget);
 
-        var group = await h.Groups.GetGroupForSessionAsync(root.Id);
-        var members = await h.Groups.ListMembersAsync(group!.Id);
+        var group = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var members = await h.Groups.ListMembersAsync(group!.Id, TestContext.Current.CancellationToken);
         members.Count(m => m.Relation == SessionRelation.HandoffSuccessor).Should().Be(1);
         submitter.SubmitCount.Should().Be(1);
     }
@@ -129,9 +129,9 @@ public class SessionHandoffToolTests
         targetId.Should().NotBeNullOrEmpty();
         h.Sessions.Get(targetId).Should().BeNull();
 
-        var group = await h.Groups.GetGroupForSessionAsync(root.Id);
+        var group = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         group!.ResolveActiveId().Should().Be(root.Id);
-        var members = await h.Groups.ListMembersAsync(group.Id);
+        var members = await h.Groups.ListMembersAsync(group.Id, TestContext.Current.CancellationToken);
         members.Should().NotContain(m => m.Relation == SessionRelation.HandoffSuccessor);
     }
 
@@ -144,8 +144,8 @@ public class SessionHandoffToolTests
         var factory = new StubPermissionAuthorizerFactory(PermissionEffect.Deny);
         var tool = CreateTool(h, submitter);
 
-        var groupBefore = await h.Groups.GetGroupForSessionAsync(root.Id);
-        var membersBefore = await h.Groups.ListMembersAsync(groupBefore!.Id);
+        var groupBefore = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var membersBefore = await h.Groups.ListMembersAsync(groupBefore!.Id, TestContext.Current.CancellationToken);
 
         var result = await tool.ExecuteAsync(
             Args(new { prompt = "continue work" }), Context(root.Id, factory));
@@ -153,7 +153,7 @@ public class SessionHandoffToolTests
         result.Success.Should().BeFalse();
         submitter.LastSessionId.Should().BeNull();
 
-        var membersAfter = await h.Groups.ListMembersAsync(groupBefore.Id);
+        var membersAfter = await h.Groups.ListMembersAsync(groupBefore.Id, TestContext.Current.CancellationToken);
         membersAfter.Should().HaveCount(membersBefore.Count);
     }
 
@@ -165,13 +165,13 @@ public class SessionHandoffToolTests
         await h.AddMessageAsync(root.Id, "user", "hello");
 
         // 源已是前任（已有后继）：将其标记为非锚点 HandoffPredecessor
-        var group = await h.Groups.GetGroupForSessionAsync(root.Id);
+        var group = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         await h.Groups.AddMemberAsync(group!.Id, new SessionGroupMember
         {
             SessionId = root.Id,
             Relation = SessionRelation.HandoffPredecessor,
             IsAnchor = false,
-        });
+        }, TestContext.Current.CancellationToken);
 
         var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Succeeded("exec-1"));
         var factory = new StubPermissionAuthorizerFactory(PermissionEffect.Allow);
@@ -184,7 +184,7 @@ public class SessionHandoffToolTests
         result.Error.Should().Contain("锚点");
         submitter.SubmitCount.Should().Be(0);
 
-        var members = await h.Groups.ListMembersAsync(group.Id);
+        var members = await h.Groups.ListMembersAsync(group.Id, TestContext.Current.CancellationToken);
         members.Should().NotContain(m => m.Relation == SessionRelation.HandoffSuccessor);
     }
 

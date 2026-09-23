@@ -32,6 +32,13 @@ public static class ConfigCommand
         {
             var path = parseResult.GetValue<string>(setPathArg);
             var value = parseResult.GetValue<string>(setValueArg);
+            if (path is null || value is null)
+            {
+                Console.Error.WriteLine("错误: 配置路径与值不能为空");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             using var host = await CliServiceBootstrap.BuildHostAsync(Array.Empty<string>());
             var config = host.Services.GetRequiredService<UnifiedConfigManager>();
             await SetConfig(config, path, value);

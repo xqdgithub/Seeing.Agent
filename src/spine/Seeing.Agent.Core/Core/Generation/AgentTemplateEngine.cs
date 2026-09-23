@@ -157,26 +157,37 @@ namespace Seeing.Agent.Core.Generation
     /// <summary>模板渲染结果</summary>
     public class TemplateRenderResult
     {
+        /// <summary>渲染后的模板文本</summary>
         public string RenderedContent { get; set; } = string.Empty;
+        /// <summary>渲染过程中的错误列表</summary>
         public List<string> Errors { get; set; } = new();
+        /// <summary>渲染过程中的警告列表</summary>
         public List<string> Warnings { get; set; } = new();
+        /// <summary>本次渲染实际使用的变量名列表</summary>
         public List<string> VariablesUsed { get; set; } = new();
+        /// <summary>是否存在渲染错误</summary>
         public bool HasErrors => Errors.Count > 0;
     }
 
     /// <summary>模板变量信息</summary>
     public class TemplateVariableInfo
     {
+        /// <summary>变量名</summary>
         public string Name { get; set; } = string.Empty;
+        /// <summary>是否声明了默认值</summary>
         public bool HasDefaultValue { get; set; }
+        /// <summary>默认值（未声明时为 null）</summary>
         public string? DefaultValue { get; set; }
     }
 
     /// <summary>模板验证结果</summary>
     public class TemplateValidationResult
     {
+        /// <summary>模板语法是否验证通过</summary>
         public bool IsValid { get; set; }
+        /// <summary>验证发现的错误列表</summary>
         public List<string> Errors { get; set; } = new();
+        /// <summary>验证发现的警告列表</summary>
         public List<string> Warnings { get; set; } = new();
     }
 }

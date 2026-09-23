@@ -162,8 +162,8 @@ public class MessageTimelineStoreTests
         store.Items.Should().ContainSingle(i => i.Kind == TimelineItemKind.AssistantTurn);
         store.Items[0].Key.Should().Be("L1");
         store.Items[0].Turn!.LoopId.Should().Be("L1");
-        store.Items[0].Turn.LoopIndex.Should().Be(1);
-        store.Items[0].Turn.Messages.Should().ContainSingle().Which.Content.Should().Be("hello!");
+        store.Items[0].Turn!.LoopIndex.Should().Be(1);
+        store.Items[0].Turn!.Messages.Should().ContainSingle().Which.Content.Should().Be("hello!");
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class MessageTimelineStoreTests
         store.Items.Should().ContainSingle(i => i.Kind == TimelineItemKind.AssistantTurn);
         store.Items[0].Key.Should().Be("L1");
         store.Items[0].Turn!.Messages.Should().HaveCount(2);
-        store.Items[0].Turn.LoopIndex.Should().Be(1);
+        store.Items[0].Turn!.LoopIndex.Should().Be(1);
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class MessageTimelineStoreTests
         store.Items.Should().ContainSingle(i => i.Kind == TimelineItemKind.AssistantTurn);
         store.Items[0].Key.Should().Be("L1");
         store.Items[0].Turn!.Messages.Select(m => m.Content).Should().Equal("one", "two");
-        store.Items[0].Turn.LoopIndex.Should().Be(1);
+        store.Items[0].Turn!.LoopIndex.Should().Be(1);
     }
 
     [Fact]

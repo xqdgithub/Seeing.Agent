@@ -22,7 +22,7 @@ public class ModelCapabilityCatalogReloadHandlerTests
         {
             Reason = ModelCapabilitiesChangeReason.SourceDataChanged,
             InvalidateModelCatalog = true
-        });
+        }, TestContext.Current.CancellationToken);
 
         catalog.Verify(
             m => m.RefreshCatalogAsync(null, It.IsAny<CancellationToken>()),
@@ -39,7 +39,7 @@ public class ModelCapabilityCatalogReloadHandlerTests
         {
             Reason = ModelCapabilitiesChangeReason.SourceDataChanged,
             InvalidateModelCatalog = false
-        });
+        }, TestContext.Current.CancellationToken);
 
         catalog.Verify(
             m => m.RefreshCatalogAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),

@@ -7,6 +7,9 @@ public sealed class AgentRuntimeReloadHandler : ReloadHandlerBase<ConfigChange>
 {
     private readonly AgentRuntimeManager _manager;
 
+    /// <summary>
+    /// 构造重载处理器，绑定待重载的 Agent 运行时管理器。
+    /// </summary>
     public AgentRuntimeReloadHandler(AgentRuntimeManager manager) => _manager = manager;
 
     /// <inheritdoc/>

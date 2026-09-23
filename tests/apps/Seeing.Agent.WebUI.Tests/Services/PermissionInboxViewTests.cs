@@ -124,7 +124,7 @@ public class PermissionInboxViewTests
 
         view.Dispose();
         manager.Seed(Pending("r2", Anchor, "call-2"));
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         fired.Should().Be(0);
         view.TotalCount.Should().Be(0);

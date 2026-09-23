@@ -93,26 +93,31 @@ public static class BuiltInCapabilitySets
         ..s_providerModules,
     ];
 
+    /// <summary>最小档能力集定义（仅核心模块集 Minimal）。</summary>
     public static CapabilitySetDefinition MinimalSet { get; } = new(
         Name: "minimal",
         Modules: Minimal,
         Disabled: s_noDisabled);
 
+    /// <summary>编码档能力集定义（模块集 Code）。</summary>
     public static CapabilitySetDefinition CodeSet { get; } = new(
         Name: "code",
         Modules: Code,
         Disabled: s_noDisabled);
 
+    /// <summary>办公档能力集定义（模块集 Work）。</summary>
     public static CapabilitySetDefinition WorkSet { get; } = new(
         Name: "work",
         Modules: Work,
         Disabled: s_noDisabled);
 
+    /// <summary>研究档能力集定义（模块集 Research）。</summary>
     public static CapabilitySetDefinition ResearchSet { get; } = new(
         Name: "research",
         Modules: Research,
         Disabled: s_noDisabled);
 
+    /// <summary>全功能档能力集定义（模块集 Full）。</summary>
     public static CapabilitySetDefinition FullSet { get; } = new(
         Name: "full",
         Modules: Full,
@@ -135,11 +140,13 @@ public static class BuiltInCapabilitySets
     /// <summary>开发档模块列表（与 <see cref="Full"/> 同一引用）。</summary>
     public static IReadOnlyList<string> Dev => Full;
 
+    /// <summary>安全档能力集定义（禁用 shell/mcp/acp/gateway 等高风险模块）。</summary>
     public static CapabilitySetDefinition SecureSet { get; } = new(
         Name: "secure",
         Modules: SecureModules,
         Disabled: SecureDisabled);
 
+    /// <summary>开发档能力集定义（模块集与全功能档一致）。</summary>
     public static CapabilitySetDefinition DevSet { get; } = new(
         Name: "dev",
         Modules: Dev,

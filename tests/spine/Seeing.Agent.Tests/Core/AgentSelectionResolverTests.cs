@@ -35,7 +35,7 @@ public class AgentSelectionResolverTests
         runtime.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("default-agent");
         var resolver = new AgentSelectionResolver(runtime.Object);
 
-        var result = await resolver.ResolveAgentIdAsync("request-agent", "session-agent");
+        var result = await resolver.ResolveAgentIdAsync("request-agent", "session-agent", TestContext.Current.CancellationToken);
 
         result.Should().Be("request-agent");
     }

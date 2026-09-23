@@ -39,14 +39,14 @@ public class ComponentManagerReloadTests
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
 
         // 首次加载成功后，重载应走各 Loader 的 ReloadAsync
-        await componentManager.LoadAllAsync(workspace.Root);
+        await componentManager.LoadAllAsync(workspace.Root, TestContext.Current.CancellationToken);
 
         // Act
         await componentManager.ReloadAsync(new WorkspaceChange
         {
             OldWorkspace = workspace.Root,
             NewWorkspace = workspace.Root
-        });
+        }, TestContext.Current.CancellationToken);
 
         // Assert
         skillLoader.ReloadCalls.Should().Be(1);
@@ -61,10 +61,10 @@ public class ComponentManagerReloadTests
         var componentManager = CreateComponentManager(workspace.Root, out _);
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
-        await componentManager.LoadAllAsync(workspace.Root);
+        await componentManager.LoadAllAsync(workspace.Root, TestContext.Current.CancellationToken);
 
         // Act
-        await componentManager.ReloadAsync(new ConfigChange());
+        await componentManager.ReloadAsync(new ConfigChange(), TestContext.Current.CancellationToken);
 
         // Assert
         skillLoader.ReloadCalls.Should().Be(1);
@@ -79,10 +79,10 @@ public class ComponentManagerReloadTests
         var componentManager = CreateComponentManager(workspace.Root, out _);
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
-        await componentManager.LoadAllAsync(workspace.Root);
+        await componentManager.LoadAllAsync(workspace.Root, TestContext.Current.CancellationToken);
 
         // Act
-        await componentManager.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Skills" } });
+        await componentManager.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Skills" } }, TestContext.Current.CancellationToken);
 
         // Assert
         skillLoader.ReloadCalls.Should().Be(1);
@@ -97,10 +97,10 @@ public class ComponentManagerReloadTests
         var componentManager = CreateComponentManager(workspace.Root, out _);
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
-        await componentManager.LoadAllAsync(workspace.Root);
+        await componentManager.LoadAllAsync(workspace.Root, TestContext.Current.CancellationToken);
 
         // Act
-        await componentManager.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Mcp" } });
+        await componentManager.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Mcp" } }, TestContext.Current.CancellationToken);
 
         // Assert
         skillLoader.ReloadCalls.Should().Be(0);
@@ -119,11 +119,11 @@ public class ComponentManagerReloadTests
         var mcpLoader = RegisterRecordingLoader(componentManager, "Mcp");
         // 手动注册 Plugin 录音器：验证 Plugins 节变更不会再分发到它
         var pluginLoader = RegisterRecordingLoader(componentManager, "Plugin");
-        await componentManager.LoadAllAsync(workspace.Root);
+        await componentManager.LoadAllAsync(workspace.Root, TestContext.Current.CancellationToken);
         pluginLoader.ReloadCalls.Should().Be(0);
 
         // Act
-        await componentManager.ReloadAsync(new ConfigChange { ChangedSections = new[] { section } });
+        await componentManager.ReloadAsync(new ConfigChange { ChangedSections = new[] { section } }, TestContext.Current.CancellationToken);
 
         // Assert
         skillLoader.ReloadCalls.Should().Be(0);
@@ -140,12 +140,12 @@ public class ComponentManagerReloadTests
         var skillLoader = RegisterRecordingLoader(componentManager, "Skill");
 
         // Act & Assert：首次加载走 LoadAsync
-        await componentManager.LoadAllAsync(workspace.Root);
+        await componentManager.LoadAllAsync(workspace.Root, TestContext.Current.CancellationToken);
         skillLoader.LoadCalls.Should().Be(1);
         skillLoader.ReloadCalls.Should().Be(0);
 
         // 第二次全量加载（重载场景）走 ReloadAsync
-        await componentManager.LoadAllAsync(workspace.Root);
+        await componentManager.LoadAllAsync(workspace.Root, TestContext.Current.CancellationToken);
         skillLoader.LoadCalls.Should().Be(1);
         skillLoader.ReloadCalls.Should().Be(1);
     }
@@ -161,7 +161,7 @@ public class ComponentManagerReloadTests
         var betaName = $"task19beta{workspace.Suffix}";
         var alphaDir = Path.Combine(skillsDir, alphaName);
         Directory.CreateDirectory(alphaDir);
-        await File.WriteAllTextAsync(Path.Combine(alphaDir, "SKILL.md"), "技能 Alpha 内容");
+        await File.WriteAllTextAsync(Path.Combine(alphaDir, "SKILL.md"), "技能 Alpha 内容", TestContext.Current.CancellationToken);
 
         var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
         var skillManager = new SkillManager(loggerFactory.CreateLogger<SkillManager>());
@@ -180,7 +180,7 @@ public class ComponentManagerReloadTests
         var loader = new SkillLoader();
 
         // Act 1：首次加载发现 alpha
-        var first = await loader.LoadAsync(services, workspace.Root);
+        var first = await loader.LoadAsync(services, workspace.Root, TestContext.Current.CancellationToken);
         first.Success.Should().BeTrue();
         first.Details.Should().Contain(alphaName);
         skillManager.GetAllSkillInfos().Should().ContainKey(alphaName);
@@ -188,16 +188,16 @@ public class ComponentManagerReloadTests
         // Act 2：新增 beta 后重载，两个技能都应被发现
         var betaDir = Path.Combine(skillsDir, betaName);
         Directory.CreateDirectory(betaDir);
-        await File.WriteAllTextAsync(Path.Combine(betaDir, "SKILL.md"), "技能 Beta 内容");
+        await File.WriteAllTextAsync(Path.Combine(betaDir, "SKILL.md"), "技能 Beta 内容", TestContext.Current.CancellationToken);
 
-        var reload = await loader.ReloadAsync(services, workspace.Root);
+        var reload = await loader.ReloadAsync(services, workspace.Root, TestContext.Current.CancellationToken);
         reload.Success.Should().BeTrue();
         reload.Details.Should().Contain(alphaName).And.Contain(betaName);
         skillManager.GetAllSkillInfos().Should().ContainKey(betaName);
 
         // Act 3：删除 beta 后重载，旧技能信息应被清理（区别于默认 ReloadAsync 转调 LoadAsync 的关键语义）
         Directory.Delete(betaDir, true);
-        var reload2 = await loader.ReloadAsync(services, workspace.Root);
+        var reload2 = await loader.ReloadAsync(services, workspace.Root, TestContext.Current.CancellationToken);
         reload2.Success.Should().BeTrue();
         skillManager.GetAllSkillInfos().Should().NotContainKey(betaName);
         skillManager.GetAllSkillInfos().Should().ContainKey(alphaName);
@@ -219,7 +219,7 @@ public class ComponentManagerReloadTests
                 "{{serverA}}": { "command": "npx", "disabled": true }
             }
         }
-        """);
+        """, TestContext.Current.CancellationToken);
 
         var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
         var mcpManager = CreateMcpManager(loggerFactory);
@@ -235,7 +235,7 @@ public class ComponentManagerReloadTests
         try
         {
             // Act 1：首次加载
-            var first = await loader.LoadAsync(services, workspace.Root);
+            var first = await loader.LoadAsync(services, workspace.Root, TestContext.Current.CancellationToken);
             first.Success.Should().BeTrue();
             mcpManager.GetConfig(serverA).Should().NotBeNull();
 
@@ -247,10 +247,10 @@ public class ComponentManagerReloadTests
                     "{{serverB}}": { "command": "npx", "disabled": true }
                 }
             }
-            """);
+            """, TestContext.Current.CancellationToken);
 
             // Act 2：重载
-            var reload = await loader.ReloadAsync(services, workspace.Root);
+            var reload = await loader.ReloadAsync(services, workspace.Root, TestContext.Current.CancellationToken);
             reload.Success.Should().BeTrue();
             reload.Count.Should().BeGreaterThanOrEqualTo(2);
             mcpManager.GetConfig(serverB).Should().NotBeNull();
@@ -258,7 +258,7 @@ public class ComponentManagerReloadTests
         }
         finally
         {
-            await mcpManager.ShutdownAsync();
+            await mcpManager.ShutdownAsync(TestContext.Current.CancellationToken);
         }
     }
 

@@ -16,7 +16,7 @@ public class AcpReloadHandlerTests
         var handler = new AcpReloadHandler(reloader.Object);
 
         // Act
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Acp" } });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Acp" } }, TestContext.Current.CancellationToken);
 
         // Assert
         reloader.Verify(r => r.ReloadAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -30,7 +30,7 @@ public class AcpReloadHandlerTests
         var handler = new AcpReloadHandler(reloader.Object);
 
         // Act
-        await handler.ReloadAsync(new ConfigChange());
+        await handler.ReloadAsync(new ConfigChange(), TestContext.Current.CancellationToken);
 
         // Assert
         reloader.Verify(r => r.ReloadAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -44,7 +44,7 @@ public class AcpReloadHandlerTests
         var handler = new AcpReloadHandler(reloader.Object);
 
         // Act
-        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Mcp" } });
+        await handler.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Mcp" } }, TestContext.Current.CancellationToken);
 
         // Assert
         reloader.Verify(r => r.ReloadAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -58,7 +58,7 @@ public class AcpReloadHandlerTests
         var handler = new AcpReloadHandler(reloader.Object);
 
         // Act
-        await handler.ReloadAsync(new WorkspaceChange { OldWorkspace = "/a", NewWorkspace = "/b" });
+        await handler.ReloadAsync(new WorkspaceChange { OldWorkspace = "/a", NewWorkspace = "/b" }, TestContext.Current.CancellationToken);
 
         // Assert
         reloader.Verify(r => r.ReloadAsync(It.IsAny<CancellationToken>()), Times.Never);

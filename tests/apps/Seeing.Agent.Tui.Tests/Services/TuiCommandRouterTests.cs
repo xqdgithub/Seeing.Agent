@@ -41,7 +41,7 @@ public sealed class TuiCommandRouterTests
     [InlineData("/?")]
     public async Task ExecuteAsync_HelpAliases_ShouldReturnLocalOutput(string input)
     {
-        var result = await new TuiCommandRouter().ExecuteAsync(input, Context());
+        var result = await new TuiCommandRouter().ExecuteAsync(input, Context(), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.ExitRequested.Should().BeFalse();
@@ -56,7 +56,7 @@ public sealed class TuiCommandRouterTests
     [InlineData("/Exit")]
     public async Task ExecuteAsync_ExitAliases_ShouldRequestExit(string input)
     {
-        var result = await new TuiCommandRouter().ExecuteAsync(input, Context());
+        var result = await new TuiCommandRouter().ExecuteAsync(input, Context(), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.ExitRequested.Should().BeTrue();
@@ -72,7 +72,7 @@ public sealed class TuiCommandRouterTests
     [InlineData("/skill foo")]
     public async Task ExecuteAsync_NonLocalCommands_ShouldForwardOriginalText(string input)
     {
-        var result = await new TuiCommandRouter().ExecuteAsync(input, Context());
+        var result = await new TuiCommandRouter().ExecuteAsync(input, Context(), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.ExitRequested.Should().BeFalse();
@@ -83,7 +83,7 @@ public sealed class TuiCommandRouterTests
     [Fact]
     public async Task ExecuteAsync_PlainText_ShouldNotHandle()
     {
-        var result = await new TuiCommandRouter().ExecuteAsync("hello", Context());
+        var result = await new TuiCommandRouter().ExecuteAsync("hello", Context(), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeFalse();
         result.ForwardText.Should().Be("hello");
@@ -94,8 +94,8 @@ public sealed class TuiCommandRouterTests
     {
         var (controller, orchestrator, _, _) = NewController();
 
-        await controller.SwitchAsync("ses_x");
-        var result = await new TuiCommandRouter().ExecuteAsync("/RENAME Hello", Context(controller));
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
+        var result = await new TuiCommandRouter().ExecuteAsync("/RENAME Hello", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.ForwardText.Should().BeNull();
@@ -107,7 +107,7 @@ public sealed class TuiCommandRouterTests
     {
         var (controller, orchestrator, _, _) = NewController();
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/new My Title", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync("/new My Title", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.ForwardText.Should().BeNull();
@@ -122,9 +122,9 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_RenameWithoutTitle_ShouldNotCallOrchestrator()
     {
         var (controller, orchestrator, _, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/rename", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync("/rename", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.Output.Should().NotBeNull();
@@ -137,15 +137,15 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_AutoApprove_ShouldParseMode()
     {
         var (controller, _, sessionManager, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
         var router = new TuiCommandRouter();
 
-        await router.ExecuteAsync("/auto-approve on", Context(controller));
+        await router.ExecuteAsync("/auto-approve on", Context(controller), TestContext.Current.CancellationToken);
         sessionManager.Verify(
             m => m.SetAutoApproveAsync("ses_x", SessionAutoApprove.Enabled, It.IsAny<CancellationToken>()),
             Times.Once);
 
-        var invalid = await router.ExecuteAsync("/auto-approve bogus", Context(controller));
+        var invalid = await router.ExecuteAsync("/auto-approve bogus", Context(controller), TestContext.Current.CancellationToken);
         invalid.Output.Should().NotBeNull();
         sessionManager.Verify(
             m => m.SetAutoApproveAsync(It.IsAny<string>(), It.IsAny<SessionAutoApprove>(), It.IsAny<CancellationToken>()),
@@ -156,9 +156,9 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_ThinkingWithArgument_ShouldPassLevel()
     {
         var (controller, _, sessionManager, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/thinking high", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync("/thinking high", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.ToggleReasoning.Should().BeFalse();
@@ -172,7 +172,7 @@ public sealed class TuiCommandRouterTests
     {
         var router = new TuiCommandRouter();
 
-        var result = await router.ExecuteAsync("/reasoning", Context());
+        var result = await router.ExecuteAsync("/reasoning", Context(), TestContext.Current.CancellationToken);
 
         result.ToggleReasoning.Should().BeTrue();
         result.ForwardText.Should().BeNull();
@@ -184,11 +184,11 @@ public sealed class TuiCommandRouterTests
     {
         var router = new TuiCommandRouter();
 
-        var on = await router.ExecuteAsync("/reasoning on", Context());
+        var on = await router.ExecuteAsync("/reasoning on", Context(), TestContext.Current.CancellationToken);
         on.ToggleReasoning.Should().BeTrue();
         router.ReasoningEnabled.Should().BeTrue();
 
-        var off = await router.ExecuteAsync("/reasoning off", Context());
+        var off = await router.ExecuteAsync("/reasoning off", Context(), TestContext.Current.CancellationToken);
         off.ToggleReasoning.Should().BeTrue();
         router.ReasoningEnabled.Should().BeFalse();
     }
@@ -198,7 +198,7 @@ public sealed class TuiCommandRouterTests
     {
         var router = new TuiCommandRouter();
 
-        var result = await router.ExecuteAsync("/reasoning maybe", Context());
+        var result = await router.ExecuteAsync("/reasoning maybe", Context(), TestContext.Current.CancellationToken);
 
         result.ToggleReasoning.Should().BeFalse();
         result.Output.Should().NotBeNull();
@@ -208,7 +208,7 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_ModelNoArg_WhenSelectionCancelled_ShouldNotChangeModel()
     {
         var (controller, _, sessionManager, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
         var models = new Mock<IModelConfigManager>();
         models.Setup(m => m.GetModelsByType(It.IsAny<ModelType>(), It.IsAny<string>()))
@@ -221,7 +221,8 @@ public sealed class TuiCommandRouterTests
 
         var result = await new TuiCommandRouter().ExecuteAsync(
             "/model",
-            Context(controller, surface: surface, models: models.Object));
+            Context(controller, surface: surface, models: models.Object),
+            TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         surface.PromptCount.Should().Be(1);
@@ -235,7 +236,7 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_ResumeWithArgument_ShouldSwitchActiveSession()
     {
         var (controller, orchestrator, _, _) = NewController();
-        var result = await new TuiCommandRouter().ExecuteAsync("/resume ses_x", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync("/resume ses_x", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         controller.Current!.SessionId.Should().Be("ses_x");
@@ -254,7 +255,7 @@ public sealed class TuiCommandRouterTests
             });
         var surface = new ScriptedSurface().Enqueue("ses_b");
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/sessions", Context(controller, surface: surface));
+        var result = await new TuiCommandRouter().ExecuteAsync("/sessions", Context(controller, surface: surface), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.Output.Should().NotBeNull();
@@ -270,7 +271,7 @@ public sealed class TuiCommandRouterTests
             .ReturnsAsync(new List<SessionData>());
         var surface = new ScriptedSurface();
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/sessions", Context(controller, surface: surface));
+        var result = await new TuiCommandRouter().ExecuteAsync("/sessions", Context(controller, surface: surface), TestContext.Current.CancellationToken);
 
         result.Output.Should().NotBeNull();
         surface.PromptCount.Should().Be(0);
@@ -287,7 +288,7 @@ public sealed class TuiCommandRouterTests
             });
         var surface = new ScriptedSurface().Enqueue("ses_a");
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/resume", Context(controller, surface: surface));
+        var result = await new TuiCommandRouter().ExecuteAsync("/resume", Context(controller, surface: surface), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         surface.PromptCount.Should().Be(1);
@@ -298,7 +299,7 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_AgentNoArg_ShouldPromptAndSet()
     {
         var (controller, _, _, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
         var agents = new Mock<IAgentRegistry>();
         agents.Setup(a => a.GetPrimaryAgentsAsync()).ReturnsAsync(new List<AgentDefinition>
@@ -310,7 +311,8 @@ public sealed class TuiCommandRouterTests
 
         var result = await new TuiCommandRouter().ExecuteAsync(
             "/agent",
-            Context(controller, surface: surface, agents: agents.Object));
+            Context(controller, surface: surface, agents: agents.Object),
+            TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         surface.PromptCount.Should().Be(1);
@@ -321,7 +323,7 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_ModelNoArg_ShouldPromptAndSet()
     {
         var (controller, _, sessionManager, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
         var models = new Mock<IModelConfigManager>();
         models.Setup(m => m.GetModelsByType(It.IsAny<ModelType>(), It.IsAny<string>()))
@@ -333,7 +335,8 @@ public sealed class TuiCommandRouterTests
 
         var result = await new TuiCommandRouter().ExecuteAsync(
             "/model",
-            Context(controller, surface: surface, models: models.Object));
+            Context(controller, surface: surface, models: models.Object),
+            TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         surface.PromptCount.Should().Be(1);
@@ -347,7 +350,7 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_ScenarioNoArg_ShouldPromptAndSet()
     {
         var (controller, _, _, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
         var scenarios = new Mock<IScenarioCatalog>();
         scenarios.Setup(s => s.ListAll()).Returns(new List<ScenarioDefinition>
@@ -359,7 +362,8 @@ public sealed class TuiCommandRouterTests
 
         var result = await new TuiCommandRouter().ExecuteAsync(
             "/scenario",
-            Context(controller, surface: surface, scenarios: scenarios.Object));
+            Context(controller, surface: surface, scenarios: scenarios.Object),
+            TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         surface.PromptCount.Should().Be(1);
@@ -370,7 +374,7 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_ThinkingNoArg_ShouldPromptFromModelLevels()
     {
         var (controller, _, _, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
         var llm = new Mock<ILlmService>();
         llm.Setup(l => l.GetModelConfig("m1")).Returns(new ModelConfig
@@ -394,7 +398,8 @@ public sealed class TuiCommandRouterTests
 
         var result = await new TuiCommandRouter().ExecuteAsync(
             "/thinking",
-            Context(controller, state: state, surface: surface, llm: llm.Object));
+            Context(controller, state: state, surface: surface, llm: llm.Object),
+            TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         surface.PromptCount.Should().Be(1);
@@ -406,7 +411,7 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_ThinkingNoArgWithoutLevels_ShouldReturnHint()
     {
         var (controller, _, _, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
         var llm = new Mock<ILlmService>();
         llm.Setup(l => l.GetModelConfig("m1")).Returns(new ModelConfig { Id = "m1" });
@@ -415,7 +420,8 @@ public sealed class TuiCommandRouterTests
 
         var result = await new TuiCommandRouter().ExecuteAsync(
             "/thinking",
-            Context(controller, state: state, surface: surface, llm: llm.Object));
+            Context(controller, state: state, surface: surface, llm: llm.Object),
+            TestContext.Current.CancellationToken);
 
         result.Output.Should().NotBeNull();
         surface.PromptCount.Should().Be(0);
@@ -426,7 +432,8 @@ public sealed class TuiCommandRouterTests
     {
         var result = await new TuiCommandRouter().ExecuteAsync(
             "/todo",
-            Context(state: new TuiViewState { SessionId = "ses_x" }));
+            Context(state: new TuiViewState { SessionId = "ses_x" }),
+            TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.Output.Should().NotBeNull();
@@ -441,7 +448,7 @@ public sealed class TuiCommandRouterTests
             Todos = [new TuiTodo("写测试", "in_progress", null)],
         };
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/todo", Context(state: state));
+        var result = await new TuiCommandRouter().ExecuteAsync("/todo", Context(state: state), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.Output.Should().NotBeNull();
@@ -460,7 +467,7 @@ public sealed class TuiCommandRouterTests
         };
         state.Upsert(new TuiBlock { Key = "tool:call_1", Kind = TuiBlockKind.Tool, Tool = tool });
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/expand call_1", Context(state: state));
+        var result = await new TuiCommandRouter().ExecuteAsync("/expand call_1", Context(state: state), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.Output.Should().NotBeNull();
@@ -472,7 +479,7 @@ public sealed class TuiCommandRouterTests
     {
         var state = new TuiViewState { SessionId = "ses_x" };
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/expand nope", Context(state: state));
+        var result = await new TuiCommandRouter().ExecuteAsync("/expand nope", Context(state: state), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.Output.Should().NotBeNull();
@@ -482,9 +489,9 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_CancelAll_ShouldCallCascade()
     {
         var (controller, _, _, submitter) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
-        await new TuiCommandRouter().ExecuteAsync("/cancel all", Context(controller));
+        await new TuiCommandRouter().ExecuteAsync("/cancel all", Context(controller), TestContext.Current.CancellationToken);
 
         submitter.Verify(
             s => s.CancelBySessionAsync("ses_x", It.IsAny<CancellationToken>()),
@@ -496,7 +503,7 @@ public sealed class TuiCommandRouterTests
     {
         var (controller, _, _, _) = NewController();
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/open ses_x", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync("/open ses_x", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         controller.Current!.SessionId.Should().Be("ses_x");
@@ -506,10 +513,10 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_AutoApproveWithoutArgs_ShouldCycleTriState()
     {
         var (controller, _, sessionManager, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
         controller.Current!.AutoApprove = SessionAutoApprove.FollowGlobal;
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/auto-approve", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync("/auto-approve", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         sessionManager.Verify(
@@ -525,9 +532,9 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_AutoApproveWithValue_ShouldSetMode(string args, SessionAutoApprove expected)
     {
         var (controller, _, sessionManager, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
-        var result = await new TuiCommandRouter().ExecuteAsync($"/auto-approve {args}", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync($"/auto-approve {args}", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         sessionManager.Verify(
@@ -539,9 +546,9 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_AutoApproveWithBadValue_ShouldReturnUsage()
     {
         var (controller, _, sessionManager, _) = NewController();
-        await controller.SwitchAsync("ses_x");
+        await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
-        var result = await new TuiCommandRouter().ExecuteAsync("/auto-approve maybe", Context(controller));
+        var result = await new TuiCommandRouter().ExecuteAsync("/auto-approve maybe", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.Output.Should().NotBeNull();

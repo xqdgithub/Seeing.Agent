@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using FluentAssertions;
 using Seeing.Session.Persistence;
@@ -35,7 +35,7 @@ public sealed class CoalescingWriteSchedulerTests
             scheduler.Enqueue("s1", $"v{i}");
 
         await recorder.WaitForCountAsync(1, TimeSpan.FromSeconds(3));
-        await Task.Delay(250);
+        await Task.Delay(250, TestContext.Current.CancellationToken);
 
         recorder.Count.Should().Be(1);
         recorder.Values.Should().ContainSingle().Which.Should().Be("v9");
@@ -48,7 +48,7 @@ public sealed class CoalescingWriteSchedulerTests
         await using var scheduler = Create(recorder.Write, debounce: TimeSpan.FromMilliseconds(300), maxFlushDelay: TimeSpan.FromSeconds(3));
 
         scheduler.Enqueue("s1", "a");
-        await Task.Delay(120);
+        await Task.Delay(120, TestContext.Current.CancellationToken);
         scheduler.Enqueue("s1", "b");
 
         // 尚未越过重置后的静默窗口
@@ -71,13 +71,13 @@ public sealed class CoalescingWriteSchedulerTests
         for (var i = 0; i < 10; i++)
         {
             scheduler.Enqueue("s1", $"v{i}");
-            await Task.Delay(40);
+            await Task.Delay(40, TestContext.Current.CancellationToken);
         }
 
         // 持续的 Enqueue 仍应在 MaxFlushDelay 内被强制落盘至少一次
         recorder.Count.Should().BeGreaterThan(0);
 
-        await scheduler.FlushAsync("s1").WaitAsync(TimeSpan.FromSeconds(3));
+        await scheduler.FlushAsync("s1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
         recorder.Values.Should().Contain("v9");
     }
 
@@ -124,7 +124,7 @@ public sealed class CoalescingWriteSchedulerTests
         scheduler.Enqueue("s1", "v");
 
         var stopwatch = Stopwatch.StartNew();
-        var ok = await scheduler.TryFlushAsync("s1", TimeSpan.FromMilliseconds(150));
+        var ok = await scheduler.TryFlushAsync("s1", TimeSpan.FromMilliseconds(150), TestContext.Current.CancellationToken);
         stopwatch.Stop();
 
         ok.Should().BeFalse();
@@ -145,12 +145,12 @@ public sealed class CoalescingWriteSchedulerTests
         await using var scheduler = Create(write, debounce: TimeSpan.FromMilliseconds(20), maxFlushDelay: TimeSpan.FromMilliseconds(300));
 
         scheduler.Enqueue("s1", "v");
-        var flush = scheduler.FlushAsync("s1");
+        var flush = scheduler.FlushAsync("s1", TestContext.Current.CancellationToken);
 
         flush.IsCompleted.Should().BeFalse();
 
         gate.SetResult();
-        await flush.WaitAsync(TimeSpan.FromSeconds(3));
+        await flush.WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
 
         recorder.Values.Should().ContainSingle().Which.Should().Be("v");
     }
@@ -160,7 +160,7 @@ public sealed class CoalescingWriteSchedulerTests
     {
         await using var scheduler = Create((_, _) => Task.CompletedTask);
 
-        var ok = await scheduler.TryFlushAsync("missing", TimeSpan.FromMilliseconds(50));
+        var ok = await scheduler.TryFlushAsync("missing", TimeSpan.FromMilliseconds(50), TestContext.Current.CancellationToken);
 
         ok.Should().BeTrue();
     }
@@ -170,7 +170,7 @@ public sealed class CoalescingWriteSchedulerTests
     {
         await using var scheduler = Create((_, _) => Task.CompletedTask);
 
-        var ok = await scheduler.TryFlushAllAsync(TimeSpan.FromMilliseconds(50));
+        var ok = await scheduler.TryFlushAllAsync(TimeSpan.FromMilliseconds(50), TestContext.Current.CancellationToken);
 
         ok.Should().BeTrue();
     }
@@ -191,13 +191,13 @@ public sealed class CoalescingWriteSchedulerTests
         await using var scheduler = Create(write, debounce: TimeSpan.FromMilliseconds(20), maxFlushDelay: TimeSpan.FromMilliseconds(300));
 
         scheduler.Enqueue("s1", "v");
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
 
-        var discard = scheduler.DiscardAsync("s1");
+        var discard = scheduler.DiscardAsync("s1", TestContext.Current.CancellationToken);
         discard.IsCompleted.Should().BeFalse();
 
         release.SetResult();
-        await discard.WaitAsync(TimeSpan.FromSeconds(3));
+        await discard.WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -207,12 +207,12 @@ public sealed class CoalescingWriteSchedulerTests
         await using var scheduler = Create(recorder.Write, debounce: TimeSpan.FromMilliseconds(30), maxFlushDelay: TimeSpan.FromMilliseconds(300));
 
         scheduler.Enqueue("s1", "v1");
-        await scheduler.FlushAsync("s1").WaitAsync(TimeSpan.FromSeconds(3));
+        await scheduler.FlushAsync("s1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
 
-        await scheduler.DiscardAsync("s1");
+        await scheduler.DiscardAsync("s1", TestContext.Current.CancellationToken);
 
         scheduler.Enqueue("s1", "v2");
-        await scheduler.FlushAsync("s1").WaitAsync(TimeSpan.FromSeconds(3));
+        await scheduler.FlushAsync("s1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
 
         recorder.Values.Should().ContainInOrder("v1", "v2");
     }
@@ -301,7 +301,7 @@ public sealed class CoalescingWriteSchedulerTests
         Func<Task> act = () => scheduler.FlushAsync("s1");
 
         // 必须快速抛出（而非永久挂起）；WaitAsync 超时即视为失败
-        var assertion = await act.Should().ThrowAsync<Exception>().WaitAsync(TimeSpan.FromSeconds(3));
+        var assertion = await act.Should().ThrowAsync<Exception>().WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
         stopwatch.Stop();
 
         assertion.WithMessage("*持久化写入失败*s1*");
@@ -331,13 +331,13 @@ public sealed class CoalescingWriteSchedulerTests
                 scheduler.Enqueue("s1", $"v{i++}");
                 await Task.Delay(1);
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
-        await Task.Delay(500);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
         stop.Cancel();
         await enqueueTask;
 
-        await scheduler.FlushAsync("s1").WaitAsync(TimeSpan.FromSeconds(3));
+        await scheduler.FlushAsync("s1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
 
         // 尾沿去抖 + 饥饿保护生效时应约为 duration / MaxFlushDelay（~10 次），
         // 若退化为“每次 Enqueue 各写一次”，计数会远超此上限。
@@ -365,16 +365,16 @@ public sealed class CoalescingWriteSchedulerTests
         await using var scheduler = Create(write, debounce: TimeSpan.FromMilliseconds(10), maxFlushDelay: TimeSpan.FromMilliseconds(200));
 
         scheduler.Enqueue("s1", "v1");
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(3)); // v1 在途且被阻塞
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken); // v1 在途且被阻塞
 
         // DiscardAsync 同步执行到“等待在途写”这一步后才挂起，此时墓碑已置位
-        var discard = scheduler.DiscardAsync("s1");
+        var discard = scheduler.DiscardAsync("s1", TestContext.Current.CancellationToken);
         // 等待期间合法重建：清除墓碑并入队新快照
         scheduler.Enqueue("s1", "v2");
 
         release.SetResult();
-        await discard.WaitAsync(TimeSpan.FromSeconds(3));
-        await scheduler.FlushAsync("s1").WaitAsync(TimeSpan.FromSeconds(3));
+        await discard.WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+        await scheduler.FlushAsync("s1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
 
         recorder.Values.Should().Contain("v2");
     }
@@ -399,7 +399,7 @@ public sealed class CoalescingWriteSchedulerTests
             }
         })).ToArray();
 
-        await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(20));
+        await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
     }
 
     private sealed class WriteRecorder

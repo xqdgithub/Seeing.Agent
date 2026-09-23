@@ -37,7 +37,8 @@ public class AcpDynamicAgentRegistrarTests
             registry.Object,
             backendRegistry,
             Mock.Of<IOptionsMonitor<AcpOptions>>(m => m.CurrentValue == new AcpOptions { Enabled = true }),
-            NullLogger.Instance);
+            NullLogger.Instance,
+            TestContext.Current.CancellationToken);
 
         registered.Should().HaveCount(2);
         registered.Select(a => a.Name).Should().BeEquivalentTo(["acp-opencode", "acp-codex"]);

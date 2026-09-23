@@ -26,7 +26,7 @@ public class PermissionServiceTests
             }
         };
 
-        var result = await service.EvaluateToolAsync("bash", null, context);
+        var result = await service.EvaluateToolAsync("bash", null, context, TestContext.Current.CancellationToken);
 
         result.Effect.Should().Be(PermissionEffect.Allow);
         result.IsAllowed.Should().BeTrue();
@@ -41,7 +41,7 @@ public class PermissionServiceTests
             Policy = new AgentPermissionPolicy { DefaultEffect = PermissionEffect.Deny }
         };
 
-        var result = await service.EvaluateToolAsync("read", null, context);
+        var result = await service.EvaluateToolAsync("read", null, context, TestContext.Current.CancellationToken);
 
         result.Effect.Should().Be(PermissionEffect.Deny);
         result.IsDenied.Should().BeTrue();
@@ -61,7 +61,7 @@ public class PermissionServiceTests
             }
         };
 
-        var result = await service.EvaluateToolAsync("bash", null, context);
+        var result = await service.EvaluateToolAsync("bash", null, context, TestContext.Current.CancellationToken);
 
         result.Effect.Should().Be(PermissionEffect.Allow);
     }
@@ -80,7 +80,7 @@ public class PermissionServiceTests
             }
         };
 
-        var result = await service.EvaluateSkillAsync("my-skill", context);
+        var result = await service.EvaluateSkillAsync("my-skill", context, TestContext.Current.CancellationToken);
 
         result.Effect.Should().Be(PermissionEffect.Allow);
     }
@@ -96,7 +96,7 @@ public class PermissionServiceTests
             Resource = "bash"
         };
 
-        var resolution = await service.AuthorizeAsync(request);
+        var resolution = await service.AuthorizeAsync(request, TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);
@@ -120,7 +120,7 @@ public class PermissionServiceTests
             SessionId = "s1",
             PermissionKind = "tool.execute",
             Resource = "bash"
-        });
+        }, TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Deny);
         resolution.ResolvedBy.Should().Be(PermissionResolvedBy.NoChannel);

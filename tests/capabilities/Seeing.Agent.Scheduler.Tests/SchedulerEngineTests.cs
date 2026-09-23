@@ -1,4 +1,4 @@
-using Seeing.Agent.Abstractions.Agents;
+﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Scheduling;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,21 +34,21 @@ public class SchedulerEngineTests
 
         var engine = CreateEngine();
 
-        (await engine.GetStatusAsync()).IsStarted.Should().BeFalse();
+        (await engine.GetStatusAsync(TestContext.Current.CancellationToken)).IsStarted.Should().BeFalse();
 
-        await engine.StartAsync();
-        (await engine.GetStatusAsync()).IsStarted.Should().BeTrue();
+        await engine.StartAsync(TestContext.Current.CancellationToken);
+        (await engine.GetStatusAsync(TestContext.Current.CancellationToken)).IsStarted.Should().BeTrue();
         engine.IsStarted.Should().BeTrue();
 
-        await engine.StopAsync();
-        (await engine.GetStatusAsync()).IsStarted.Should().BeFalse();
+        await engine.StopAsync(TestContext.Current.CancellationToken);
+        (await engine.GetStatusAsync(TestContext.Current.CancellationToken)).IsStarted.Should().BeFalse();
     }
 
     [Fact]
     public async Task QuartzSchedulerEngine_UpsertJob_CreatesJob()
     {
         var engine = CreateEngine();
-        await engine.StartAsync();
+        await engine.StartAsync(TestContext.Current.CancellationToken);
 
         var schedule = new ScheduleSpec
         {
@@ -56,20 +56,20 @@ public class SchedulerEngineTests
             Every = "1h"
         };
 
-        await engine.UpsertJobAsync("test-job", schedule, ScheduleIntent.Active);
+        await engine.UpsertJobAsync("test-job", schedule, ScheduleIntent.Active, ct: TestContext.Current.CancellationToken);
 
-        var status = await engine.GetJobStatusAsync("test-job");
+        var status = await engine.GetJobStatusAsync("test-job", TestContext.Current.CancellationToken);
         status.JobId.Should().Be("test-job");
         status.State.Should().Be(JobState.Scheduled);
 
-        await engine.StopAsync();
+        await engine.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
     public async Task UpsertJob_Interval_With_Windows_Has_Multiple_Triggers()
     {
         var engine = CreateEngine();
-        await engine.StartAsync();
+        await engine.StartAsync(TestContext.Current.CancellationToken);
         await engine.UpsertJobAsync("win-job", new ScheduleSpec
         {
             Type = ScheduleTypes.Interval,
@@ -80,14 +80,14 @@ public class SchedulerEngineTests
                 new() { Start = "09:00", End = "12:00" },
                 new() { Start = "14:00", End = "18:00" }
             }
-        }, ScheduleIntent.Active);
+        }, ScheduleIntent.Active, ct: TestContext.Current.CancellationToken);
 
-        var status = await engine.GetJobStatusAsync("win-job");
+        var status = await engine.GetJobStatusAsync("win-job", TestContext.Current.CancellationToken);
         status.State.Should().Be(JobState.Scheduled);
         status.NextFireTime.Should().NotBeNull();
         status.NextFireTime!.Value.Kind.Should().NotBe(DateTimeKind.Utc);
 
-        await engine.StopAsync();
+        await engine.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -110,25 +110,25 @@ public class SchedulerEngineTests
                 Dispatch = new DispatchSpec { Target = new DispatchTarget { SessionId = "main" } }
             };
 
-            await manager.StartAsync();
-            await manager.CreateOrReplaceJobAsync(job);
+            await manager.StartAsync(TestContext.Current.CancellationToken);
+            await manager.CreateOrReplaceJobAsync(job, TestContext.Current.CancellationToken);
 
-            var initialStatus = await manager.GetJobStatusAsync("pause-job");
+            var initialStatus = await manager.GetJobStatusAsync("pause-job", TestContext.Current.CancellationToken);
             initialStatus.State.Should().Be(JobState.Scheduled);
 
             // 暂停 → 状态变为 Paused
-            await manager.PauseJobAsync("pause-job");
-            var pausedStatus = await manager.GetJobStatusAsync("pause-job");
+            await manager.PauseJobAsync("pause-job", TestContext.Current.CancellationToken);
+            var pausedStatus = await manager.GetJobStatusAsync("pause-job", TestContext.Current.CancellationToken);
             pausedStatus.State.Should().Be(JobState.Paused);
 
             // 恢复 → 状态变为 Scheduled
-            await manager.ResumeJobAsync("pause-job");
-            var resumedStatus = await manager.GetJobStatusAsync("pause-job");
+            await manager.ResumeJobAsync("pause-job", TestContext.Current.CancellationToken);
+            var resumedStatus = await manager.GetJobStatusAsync("pause-job", TestContext.Current.CancellationToken);
             resumedStatus.State.Should().Be(JobState.Scheduled);
         }
         finally
         {
-            await manager.StopAsync();
+            await manager.StopAsync(TestContext.Current.CancellationToken);
         }
     }
 
@@ -136,16 +136,16 @@ public class SchedulerEngineTests
     public async Task QuartzSchedulerEngine_RemoveJob_DeletesJob()
     {
         var engine = CreateEngine();
-        await engine.StartAsync();
+        await engine.StartAsync(TestContext.Current.CancellationToken);
 
         var schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" };
-        await engine.UpsertJobAsync("remove-job", schedule, ScheduleIntent.Active);
+        await engine.UpsertJobAsync("remove-job", schedule, ScheduleIntent.Active, ct: TestContext.Current.CancellationToken);
 
-        (await engine.GetJobStatusAsync("remove-job")).JobId.Should().Be("remove-job");
+        (await engine.GetJobStatusAsync("remove-job", TestContext.Current.CancellationToken)).JobId.Should().Be("remove-job");
 
-        await engine.RemoveJobAsync("remove-job");
+        await engine.RemoveJobAsync("remove-job", TestContext.Current.CancellationToken);
 
-        var status = await engine.GetJobStatusAsync("remove-job");
+        var status = await engine.GetJobStatusAsync("remove-job", TestContext.Current.CancellationToken);
         status.State.Should().Be(JobState.Disabled); // Non-existent = Disabled
     }
 
@@ -153,7 +153,7 @@ public class SchedulerEngineTests
     public async Task QuartzSchedulerEngine_CronSchedule_SetsNextFireTime()
     {
         var engine = CreateEngine();
-        await engine.StartAsync();
+        await engine.StartAsync(TestContext.Current.CancellationToken);
 
         var schedule = new ScheduleSpec
         {
@@ -162,13 +162,13 @@ public class SchedulerEngineTests
             Timezone = "UTC"
         };
 
-        await engine.UpsertJobAsync("cron-job", schedule, ScheduleIntent.Active);
+        await engine.UpsertJobAsync("cron-job", schedule, ScheduleIntent.Active, ct: TestContext.Current.CancellationToken);
 
-        var status = await engine.GetJobStatusAsync("cron-job");
+        var status = await engine.GetJobStatusAsync("cron-job", TestContext.Current.CancellationToken);
         status.NextFireTime.Should().NotBeNull();
         status.CronExpression.Should().Contain("9");  // 验证小时部分
 
-        await engine.StopAsync();
+        await engine.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -192,31 +192,31 @@ public class SchedulerEngineTests
                 }
               ]
             }
-            """);
+            """, TestContext.Current.CancellationToken);
 
         var (manager, _) = CreateManager(ws, []);
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
 
-        var jobs = await manager.ListJobsAsync();
+        var jobs = await manager.ListJobsAsync(TestContext.Current.CancellationToken);
         jobs.Should().ContainSingle(j => j.Id == "loaded-job" && j.Text == "from file");
 
-        await manager.StopAsync();
+        await manager.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
     public async Task QuartzSchedulerEngine_GetAllJobStatuses_ReturnsAllJobs()
     {
         var engine = CreateEngine();
-        await engine.StartAsync();
+        await engine.StartAsync(TestContext.Current.CancellationToken);
 
-        await engine.UpsertJobAsync("job1", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" }, ScheduleIntent.Active);
-        await engine.UpsertJobAsync("job2", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "2h" }, ScheduleIntent.Active);
+        await engine.UpsertJobAsync("job1", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h" }, ScheduleIntent.Active, ct: TestContext.Current.CancellationToken);
+        await engine.UpsertJobAsync("job2", new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "2h" }, ScheduleIntent.Active, ct: TestContext.Current.CancellationToken);
 
-        var statuses = await engine.GetAllJobStatusesAsync();
+        var statuses = await engine.GetAllJobStatusesAsync(TestContext.Current.CancellationToken);
         statuses.Count.Should().Be(2);
         statuses.Select(s => s.JobId).Should().Contain("job1", "job2");
 
-        await engine.StopAsync();
+        await engine.StopAsync(TestContext.Current.CancellationToken);
     }
     
     [Fact]
@@ -247,16 +247,16 @@ public class SchedulerEngineTests
                 }
               ]
             }
-            """);
+            """, TestContext.Current.CancellationToken);
 
         var (manager, _) = CreateManager(ws, []);
-        await manager.StartAsync();
+        await manager.StartAsync(TestContext.Current.CancellationToken);
 
-        var jobs = await manager.ListJobsAsync();
+        var jobs = await manager.ListJobsAsync(TestContext.Current.CancellationToken);
         jobs.First(j => j.Id == "old-enabled-true").Intent.Should().Be(ScheduleIntent.Active);
         jobs.First(j => j.Id == "old-enabled-false").Intent.Should().Be(ScheduleIntent.Disabled);
 
-        await manager.StopAsync();
+        await manager.StopAsync(TestContext.Current.CancellationToken);
     }
 
     private static QuartzSchedulerEngine CreateEngine()

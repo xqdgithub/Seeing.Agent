@@ -21,7 +21,8 @@ public class SseEventReaderTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(SamplePayload));
         var events = new List<GatewayEvent>();
 
-        await foreach (var gatewayEvent in SseEventReader.ReadEventsAsync(stream))
+        await foreach (var gatewayEvent in SseEventReader.ReadEventsAsync(
+            stream, TestContext.Current.CancellationToken))
         {
             events.Add(gatewayEvent);
         }
@@ -44,7 +45,8 @@ public class SseEventReaderTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(payload));
         var events = new List<GatewayEvent>();
 
-        await foreach (var gatewayEvent in SseEventReader.ReadEventsAsync(stream))
+        await foreach (var gatewayEvent in SseEventReader.ReadEventsAsync(
+            stream, TestContext.Current.CancellationToken))
         {
             events.Add(gatewayEvent);
         }

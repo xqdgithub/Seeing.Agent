@@ -14,6 +14,9 @@ public sealed class OptionsProviderEndpointLookup : IProviderEndpointLookup
     private readonly UnifiedConfigManager _configManager;
     private readonly IProviderRegistry _registry;
 
+    /// <summary>
+    /// 注入统一配置管理器与 Provider 注册表构造端点查找器。
+    /// </summary>
     public OptionsProviderEndpointLookup(
         UnifiedConfigManager configManager,
         IProviderRegistry registry)
@@ -22,6 +25,9 @@ public sealed class OptionsProviderEndpointLookup : IProviderEndpointLookup
         _registry = registry;
     }
 
+    /// <summary>
+    /// 解析指定 Provider 的 BaseUrl/ApiKey 端点：注册表优先，回落用户级 Providers 配置。
+    /// </summary>
     public bool TryGet(string providerName, out ProviderEndpoint? endpoint)
     {
         if (string.IsNullOrWhiteSpace(providerName))

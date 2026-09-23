@@ -65,7 +65,7 @@ public sealed class AcpHostedServiceGatingTests
             catalog.Object);
 
         await hosted.StartAsync(CancellationToken.None);
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
 
         activity.MarkInactiveAndWake();
 
@@ -85,16 +85,16 @@ public sealed class AcpHostedServiceGatingTests
 
         owner.HasManager.Should().BeFalse();
 
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         activity.IsActive.Should().BeTrue();
         owner.HasManager.Should().BeTrue();
         var first = owner.Manager;
 
-        await module.DeactivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.DeactivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         activity.IsActive.Should().BeFalse();
         owner.HasManager.Should().BeFalse();
 
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         activity.IsActive.Should().BeTrue();
         owner.HasManager.Should().BeTrue();
         owner.Manager.Should().NotBeSameAs(first, "re-Activate must create a new manager instance");
@@ -120,7 +120,7 @@ public sealed class AcpHostedServiceGatingTests
             catalog.Object);
 
         await hosted.StartAsync(CancellationToken.None);
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
         hosted.IsRunning.Should().BeTrue();
 
         activity.MarkInactiveAndWake();
@@ -132,7 +132,7 @@ public sealed class AcpHostedServiceGatingTests
         activity.MarkActive();
         owner.EnsureCreated();
         await hosted.StartAsync(CancellationToken.None);
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
 
         hosted.IsRunning.Should().BeTrue();
 

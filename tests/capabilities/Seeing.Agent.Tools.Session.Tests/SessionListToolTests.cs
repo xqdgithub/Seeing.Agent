@@ -29,7 +29,8 @@ public class SessionListToolTests
         using var h = new SessionToolTestHarness();
         var root = await h.CreateRootGroupedAsync("root");
         var child = await h.Groups.CreateChildAsync(
-            root.Id, "build", "child-task", new List<SessionPermissionRule>(), null);
+            root.Id, "build", "child-task", new List<SessionPermissionRule>(), null,
+            TestContext.Current.CancellationToken);
         var tool = CreateTool(h);
 
         var result = await tool.ExecuteAsync(Args(new { scope = "related" }), Context(root.Id));
@@ -78,8 +79,8 @@ public class SessionListToolTests
     {
         using var h = new SessionToolTestHarness();
         var root = await h.CreateRootGroupedAsync("root");
-        await h.Groups.CreateChildAsync(root.Id, "build", "c1", new List<SessionPermissionRule>(), null);
-        await h.Groups.CreateChildAsync(root.Id, "build", "c2", new List<SessionPermissionRule>(), null);
+        await h.Groups.CreateChildAsync(root.Id, "build", "c1", new List<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
+        await h.Groups.CreateChildAsync(root.Id, "build", "c2", new List<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
         var tool = CreateTool(h);
 
         var result = await tool.ExecuteAsync(

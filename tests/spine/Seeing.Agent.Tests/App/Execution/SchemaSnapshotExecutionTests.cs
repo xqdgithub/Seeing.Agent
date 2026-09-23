@@ -81,7 +81,7 @@ public class SchemaSnapshotExecutionTests
                 AgentId = "general",
                 SkipUserMessagePersist = true,
                 SkipInstructionInject = true
-            });
+            }, TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
 
@@ -162,7 +162,7 @@ public class SchemaSnapshotExecutionTests
 
         var schemas = await manager.GetToolSchemasAsync(
             ["git_status", "memory_search", "read"],
-            agent);
+            agent, TestContext.Current.CancellationToken);
 
         schemas.Select(s => s.Function!.Name).Should().BeEquivalentTo(["git_status", "read"]);
     }
@@ -282,7 +282,7 @@ public class SchemaSnapshotExecutionTests
     private sealed class NamedTool(string id) : ITool
     {
         public string Id { get; } = id;
-        public string Description => id;
+        public string Description => Id;
         public IReadOnlyList<string> Tags => Array.Empty<string>();
         public ToolCategory Category => ToolCategory.General;
         public System.Text.Json.JsonElement ParametersSchema =>

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -23,9 +23,9 @@ public sealed class WriteBehindSessionStoreTests
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
         for (var i = 0; i < 10; i++)
-            await store.SaveAsync(new SessionData { Id = "s1", Title = $"v{i}" });
+            await store.SaveAsync(new SessionData { Id = "s1", Title = $"v{i}" }, TestContext.Current.CancellationToken);
 
-        await store.FlushAllAsync();
+        await store.FlushAllAsync(TestContext.Current.CancellationToken);
 
         inner.SaveCount.Should().Be(1);
         inner.LastSaved!.Title.Should().Be("v9");
@@ -38,8 +38,8 @@ public sealed class WriteBehindSessionStoreTests
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
         var data = new SessionData { Id = "s1", Title = "A" };
-        await store.SaveAsync(data);
-        await store.FlushAllAsync();
+        await store.SaveAsync(data, TestContext.Current.CancellationToken);
+        await store.FlushAllAsync(TestContext.Current.CancellationToken);
 
         inner.LastSaved.Should().BeSameAs(data);
     }
@@ -50,9 +50,9 @@ public sealed class WriteBehindSessionStoreTests
         var inner = new RecordingSessionStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" });
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" }, TestContext.Current.CancellationToken);
 
-        var loaded = await store.LoadAsync("s1").WaitAsync(TimeSpan.FromSeconds(5));
+        var loaded = await store.LoadAsync("s1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         loaded!.Title.Should().Be("A");
         inner.IndexOfEvent("save:s1").Should().BeLessThan(inner.IndexOfEvent("load:s1"));
@@ -71,10 +71,10 @@ public sealed class WriteBehindSessionStoreTests
             readFlush: TimeSpan.FromMilliseconds(80),
             shutdown: TimeSpan.FromMilliseconds(200));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" });
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" }, TestContext.Current.CancellationToken);
 
         var stopwatch = Stopwatch.StartNew();
-        var loaded = await store.LoadAsync("s1").WaitAsync(TimeSpan.FromSeconds(5));
+        var loaded = await store.LoadAsync("s1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         stopwatch.Stop();
 
         loaded.Should().BeNull();
@@ -88,14 +88,14 @@ public sealed class WriteBehindSessionStoreTests
         var inner = new RecordingSessionStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" });
-        await store.DeleteAsync("s1");
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" }, TestContext.Current.CancellationToken);
+        await store.DeleteAsync("s1", TestContext.Current.CancellationToken);
 
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
 
         inner.DeleteCount.Should().Be(1);
         inner.SaveCount.Should().Be(0);
-        (await inner.LoadAsync("s1")).Should().BeNull();
+        (await inner.LoadAsync("s1", TestContext.Current.CancellationToken)).Should().BeNull();
     }
 
     [Fact]
@@ -104,9 +104,9 @@ public sealed class WriteBehindSessionStoreTests
         var inner = new RecordingSessionStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" });
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" }, TestContext.Current.CancellationToken);
 
-        var list = await store.ListAsync().ToListAsync();
+        var list = await store.ListAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         list.Should().ContainSingle();
         inner.IndexOfEvent("save:s1").Should().BeLessThan(inner.IndexOfEvent("list"));
@@ -118,9 +118,9 @@ public sealed class WriteBehindSessionStoreTests
         var inner = new RecordingSessionStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A", PartitionId = "p1", SelectedAgent = "build" });
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A", PartitionId = "p1", SelectedAgent = "build" }, TestContext.Current.CancellationToken);
 
-        var list = await store.QueryAsync("p1", "build").ToListAsync();
+        var list = await store.QueryAsync("p1", "build", TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         list.Should().ContainSingle();
         inner.IndexOfEvent("save:s1").Should().BeLessThan(inner.IndexOfEvent("query"));
@@ -132,9 +132,9 @@ public sealed class WriteBehindSessionStoreTests
         var inner = new RecordingSessionStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" });
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" }, TestContext.Current.CancellationToken);
 
-        var list = await store.LoadAllAsync().ToListAsync();
+        var list = await store.LoadAllAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         list.Should().ContainSingle();
         inner.IndexOfEvent("save:s1").Should().BeLessThan(inner.IndexOfEvent("loadall"));
@@ -150,11 +150,11 @@ public sealed class WriteBehindSessionStoreTests
         [
             new SessionData { Id = "s1", Title = "A" },
             new SessionData { Id = "s2", Title = "B" }
-        ]);
+        ], TestContext.Current.CancellationToken);
 
         inner.SaveCount.Should().Be(2);
-        (await inner.LoadAsync("s1")).Should().NotBeNull();
-        (await inner.LoadAsync("s2")).Should().NotBeNull();
+        (await inner.LoadAsync("s1", TestContext.Current.CancellationToken)).Should().NotBeNull();
+        (await inner.LoadAsync("s2", TestContext.Current.CancellationToken)).Should().NotBeNull();
     }
 
     [Fact]
@@ -163,8 +163,8 @@ public sealed class WriteBehindSessionStoreTests
         var inner = new RecordingSessionStore();
         using var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" });
-        await store.FlushAsync("s1").WaitAsync(TimeSpan.FromSeconds(5));
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" }, TestContext.Current.CancellationToken);
+        await store.FlushAsync("s1", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         inner.SaveCount.Should().Be(1);
         inner.LastSaved!.Title.Should().Be("A");
@@ -202,7 +202,7 @@ public sealed class WriteBehindSessionStoreTests
         var inner = new RecordingSessionStore();
         var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" });
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" }, TestContext.Current.CancellationToken);
         await store.DisposeAsync();
 
         inner.SaveCount.Should().Be(1);
@@ -215,7 +215,7 @@ public sealed class WriteBehindSessionStoreTests
         var inner = new RecordingSessionStore();
         var store = Create(inner, debounce: TimeSpan.FromSeconds(10));
 
-        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" });
+        await store.SaveAsync(new SessionData { Id = "s1", Title = "A" }, TestContext.Current.CancellationToken);
         store.Dispose();
 
         inner.SaveCount.Should().Be(1);

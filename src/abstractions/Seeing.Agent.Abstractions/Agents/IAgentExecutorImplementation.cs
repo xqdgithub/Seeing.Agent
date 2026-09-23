@@ -12,7 +12,7 @@ public interface IAgentExecutorImplementation : IAgentExecutor
     AgentRuntime SupportedRuntime { get; }
 
     /// <inheritdoc/>
-    IAsyncEnumerable<IMessageEvent> ExecuteAsync(
+    new IAsyncEnumerable<IMessageEvent> ExecuteAsync(
         AgentDefinition definition,
         IReadOnlyList<ChatMessage> messages,
         AgentContext context,

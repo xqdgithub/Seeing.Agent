@@ -17,12 +17,12 @@ public class UiContributionRegistryTests
         var registry = new UiContributionRegistry();
         var module = new SkillsModule(registry);
 
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
 
         registry.NavItems.Should().ContainSingle(n => n.Route == "/skills" && n.Title == "技能");
         registry.Routes.Should().ContainKey("/skills");
 
-        await module.DeactivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.DeactivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
 
         registry.NavItems.Should().BeEmpty();
         registry.Routes.Should().BeEmpty();
@@ -36,18 +36,18 @@ public class UiContributionRegistryTests
         var mcp = new McpModule(registry);
         var basic = new BasicModule(registry);
 
-        await skills.ActivateAsync(new ServiceCollection().BuildServiceProvider());
-        await mcp.ActivateAsync(new ServiceCollection().BuildServiceProvider());
-        await basic.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await skills.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+        await mcp.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+        await basic.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
 
         registry.NavItems.Select(n => n.Route).Should().BeEquivalentTo("/skills", "/mcp", "/tools");
 
-        await mcp.DeactivateAsync(new ServiceCollection().BuildServiceProvider());
+        await mcp.DeactivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         registry.NavItems.Select(n => n.Route).Should().BeEquivalentTo("/skills", "/tools");
         registry.Routes.Should().NotContainKey("/mcp");
 
-        await skills.DeactivateAsync(new ServiceCollection().BuildServiceProvider());
-        await basic.DeactivateAsync(new ServiceCollection().BuildServiceProvider());
+        await skills.DeactivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+        await basic.DeactivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         registry.NavItems.Should().BeEmpty();
     }
 
@@ -56,7 +56,7 @@ public class UiContributionRegistryTests
     {
         var registry = new UiContributionRegistry();
         var module = new SkillsModule(registry);
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
 
         ModulePageRouteBinder.BindExistingPages(registry);
 

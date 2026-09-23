@@ -64,7 +64,7 @@ public class PerRequestInterceptorResolveTests
                 Model = "m",
                 Messages = [new ChatMessage { Role = "user", Content = "hi" }]
             },
-            new LlmCallContext { SessionId = "s1" });
+            new LlmCallContext { SessionId = "s1" }, TestContext.Current.CancellationToken);
 
         handler.Requests[0].Headers.Contains("x-opencode-session").Should().BeFalse();
 
@@ -76,7 +76,7 @@ public class PerRequestInterceptorResolveTests
                 Model = "m",
                 Messages = [new ChatMessage { Role = "user", Content = "hi" }]
             },
-            new LlmCallContext { SessionId = "s2" });
+            new LlmCallContext { SessionId = "s2" }, TestContext.Current.CancellationToken);
 
         handler.Requests[1].Headers.GetValues("x-opencode-session").Should().ContainSingle().Which.Should().Be("s2");
     }

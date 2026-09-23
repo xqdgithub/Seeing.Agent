@@ -31,7 +31,7 @@ public class AgentExecutorRouterTests
         var definition = new AgentDefinition { Name = "n", Runtime = AgentRuntime.Native };
         var context = new AgentContext { SessionId = "s1" };
 
-        await foreach (var _ in router.ExecuteAsync(definition, Array.Empty<ChatMessage>(), context))
+        await foreach (var _ in router.ExecuteAsync(definition, Array.Empty<ChatMessage>(), context, TestContext.Current.CancellationToken))
         {
         }
 
@@ -55,7 +55,7 @@ public class AgentExecutorRouterTests
         var definition = new AgentDefinition { Name = "a", Runtime = AgentRuntime.AcpPassthrough };
         var context = new AgentContext { SessionId = "s1" };
 
-        await foreach (var _ in router.ExecuteAsync(definition, Array.Empty<ChatMessage>(), context))
+        await foreach (var _ in router.ExecuteAsync(definition, Array.Empty<ChatMessage>(), context, TestContext.Current.CancellationToken))
         {
         }
 

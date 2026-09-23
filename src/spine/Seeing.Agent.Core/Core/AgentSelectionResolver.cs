@@ -10,6 +10,9 @@ public sealed class AgentSelectionResolver : IAgentSelectionResolver
 {
     private readonly IAgentRuntimeManager _runtimeManager;
 
+    /// <summary>
+    /// 构造解析器，注入 Agent 运行时管理器以读取默认 Agent 配置。
+    /// </summary>
     public AgentSelectionResolver(IAgentRuntimeManager runtimeManager)
     {
         _runtimeManager = runtimeManager;

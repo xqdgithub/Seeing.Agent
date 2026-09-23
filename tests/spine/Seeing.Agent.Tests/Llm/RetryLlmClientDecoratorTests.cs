@@ -99,7 +99,7 @@ public class RetryLlmClientDecoratorTests
         var client = Wrap(inner, maxRetries: 3);
         var call = new LlmCallContext();
 
-        var response = await client.CompleteAsync(new ChatRequest { Model = "m" }, call);
+        var response = await client.CompleteAsync(new ChatRequest { Model = "m" }, call, TestContext.Current.CancellationToken);
 
         response.Message.Content.Should().Be("ok");
         inner.CompleteCalls.Should().Be(2);
@@ -130,7 +130,7 @@ public class RetryLlmClientDecoratorTests
         var client = Wrap(inner, maxRetries: 3);
 
         var chunks = new List<StreamUpdate>();
-        await foreach (var u in client.CompleteStreamAsync(new ChatRequest { Model = "m" }))
+        await foreach (var u in client.CompleteStreamAsync(new ChatRequest { Model = "m" }, cancellationToken: TestContext.Current.CancellationToken))
             chunks.Add(u);
 
         chunks.Should().ContainSingle(c => c.ContentDelta == "ok");
@@ -227,7 +227,7 @@ public class RetryLlmClientDecoratorTests
         var client = Wrap(inner, maxRetries: 0, baseDelayMs: 1, maxDelayMs: 1, budgetMs: 60_000);
         var call = new LlmCallContext();
 
-        await client.CompleteAsync(new ChatRequest { Model = "m" }, call);
+        await client.CompleteAsync(new ChatRequest { Model = "m" }, call, TestContext.Current.CancellationToken);
 
         call.Items[LlmRetryPolicy.NextDelayItemKey].Should().Be(1d);
     }

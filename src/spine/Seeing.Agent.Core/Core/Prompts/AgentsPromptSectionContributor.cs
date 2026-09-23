@@ -11,6 +11,9 @@ public sealed class AgentsPromptSectionContributor : IPromptSectionContributor
 {
     private readonly IAgentRegistry _agentRegistry;
 
+    /// <summary>
+    /// 构造贡献者，注入 Agent 注册表以获取可委托的子代理列表。
+    /// </summary>
     public AgentsPromptSectionContributor(IAgentRegistry agentRegistry)
     {
         _agentRegistry = agentRegistry;

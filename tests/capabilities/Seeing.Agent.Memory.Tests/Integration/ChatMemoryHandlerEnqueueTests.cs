@@ -37,7 +37,7 @@ public class ChatMemoryHandlerEnqueueTests
             result: new Dictionary<string, object?>
             {
                 ["content"] = "用户偏好使用深色主题，并要求默认语言为中文。"
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await handler.ExecuteAsync(payload);
 
@@ -66,7 +66,7 @@ public class ChatMemoryHandlerEnqueueTests
         var payload = HookPayload.FireAndForget(
             HookRegistry.ChatAfterComplete,
             "session-1",
-            result: new Dictionary<string, object?> { ["content"] = "anything long enough" });
+            result: new Dictionary<string, object?> { ["content"] = "anything long enough" }, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await handler.ExecuteAsync(payload);
         result.Should().Be(HookResult.Success);
@@ -90,7 +90,7 @@ public class ToolMemoryHandlerTests
             HookRegistry.ToolExecuteAfter,
             "session-1",
             input: new Dictionary<string, object?> { ["toolId"] = "bash", ["callId"] = "c1" },
-            result: new Dictionary<string, object?> { ["output"] = "lots of tool output that would waste extraction tokens" });
+            result: new Dictionary<string, object?> { ["output"] = "lots of tool output that would waste extraction tokens" }, TestContext.Current.CancellationToken);
 
         var result = await handler.ExecuteAsync(payload);
         result.Should().Be(HookResult.Success);
@@ -110,7 +110,7 @@ public class ToolMemoryHandlerTests
             HookRegistry.ToolExecuteAfter,
             "session-1",
             input: new Dictionary<string, object?> { ["toolId"] = "bash", ["callId"] = "c1" },
-            result: new Dictionary<string, object?> { ["output"] = "tool output" });
+            result: new Dictionary<string, object?> { ["output"] = "tool output" }, TestContext.Current.CancellationToken);
 
         (await handler.ExecuteAsync(payload)).Should().Be(HookResult.Success);
     }
@@ -135,7 +135,7 @@ public class AgentTurnMemoryHandlerTests
         var payload = HookPayload.FireAndForget(
             HookRegistry.AgentAfterInvoke,
             "session-1",
-            input: new Dictionary<string, object?> { ["agentName"] = "build", ["success"] = true });
+            input: new Dictionary<string, object?> { ["agentName"] = "build", ["success"] = true }, cancellationToken: TestContext.Current.CancellationToken);
 
         await handler.ExecuteAsync(payload);
         flush.Verify(f => f.TryFlushAfterTurn("session-1"), Times.Once);

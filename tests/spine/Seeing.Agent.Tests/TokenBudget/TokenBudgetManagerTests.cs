@@ -37,7 +37,7 @@ public class TokenBudgetManagerTests
         try
         {
             var calculation = Task.Run(() => manager.CalculateBreakdown(session));
-            firstEstimateStarted.Wait();
+            firstEstimateStarted.Wait(TestContext.Current.CancellationToken);
 
             // Simulate ChatEventTracker appending a message while budget calculation is running.
             session.AddMessage(SessionMessage.AssistantMessage("added concurrently"));

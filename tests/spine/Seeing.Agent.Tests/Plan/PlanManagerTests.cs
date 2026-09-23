@@ -58,7 +58,7 @@ public class PlanManagerTests
         var manager = CreateManager();
 
         // Act
-        var plan = await manager.CreatePlanAsync("Test Plan", "Test Description");
+        var plan = await manager.CreatePlanAsync("Test Plan", "Test Description", ct: TestContext.Current.CancellationToken);
 
         // Assert
         plan.Name.Should().Be("Test Plan");
@@ -71,10 +71,10 @@ public class PlanManagerTests
     {
         // Arrange
         var manager = CreateManager();
-        var plan = await manager.CreatePlanAsync("Test", "Test");
+        var plan = await manager.CreatePlanAsync("Test", "Test", ct: TestContext.Current.CancellationToken);
 
         // Act
-        var task = await manager.AddTaskAsync(plan.Id, "Task 1", "First task");
+        var task = await manager.AddTaskAsync(plan.Id, "Task 1", "First task", ct: TestContext.Current.CancellationToken);
 
         // Assert
         task.Title.Should().Be("Task 1");
@@ -87,15 +87,15 @@ public class PlanManagerTests
     {
         // Arrange
         var manager = CreateManager();
-        var plan = await manager.CreatePlanAsync("Test", "Test");
-        var task = await manager.AddTaskAsync(plan.Id, "Task 1");
+        var plan = await manager.CreatePlanAsync("Test", "Test", ct: TestContext.Current.CancellationToken);
+        var task = await manager.AddTaskAsync(plan.Id, "Task 1", ct: TestContext.Current.CancellationToken);
 
         // Act
-        var result = await manager.UpdateTaskStatusAsync(plan.Id, task.Id, PlanTaskStatus.Completed);
+        var result = await manager.UpdateTaskStatusAsync(plan.Id, task.Id, PlanTaskStatus.Completed, ct: TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
-        var updatedPlan = await manager.GetPlanAsync(plan.Id);
+        var updatedPlan = await manager.GetPlanAsync(plan.Id, TestContext.Current.CancellationToken);
         updatedPlan!.Tasks[0].Status.Should().Be(PlanTaskStatus.Completed);
     }
 
@@ -104,12 +104,12 @@ public class PlanManagerTests
     {
         // Arrange
         var manager = CreateManager();
-        var plan = await manager.CreatePlanAsync("Test", "Test");
-        await manager.AddTaskAsync(plan.Id, "Low Priority", priority: 1);
-        await manager.AddTaskAsync(plan.Id, "High Priority", priority: 10);
+        var plan = await manager.CreatePlanAsync("Test", "Test", ct: TestContext.Current.CancellationToken);
+        await manager.AddTaskAsync(plan.Id, "Low Priority", priority: 1, ct: TestContext.Current.CancellationToken);
+        await manager.AddTaskAsync(plan.Id, "High Priority", priority: 10, ct: TestContext.Current.CancellationToken);
 
         // Act
-        var nextTask = await manager.GetNextTaskAsync(plan.Id);
+        var nextTask = await manager.GetNextTaskAsync(plan.Id, TestContext.Current.CancellationToken);
 
         // Assert
         nextTask.Should().NotBeNull();
@@ -121,12 +121,12 @@ public class PlanManagerTests
     {
         // Arrange
         var manager = CreateManager();
-        var plan = await manager.CreatePlanAsync("Test", "Test");
-        var task1 = await manager.AddTaskAsync(plan.Id, "Task 1");
-        await manager.AddTaskAsync(plan.Id, "Task 2", dependencies: new List<string> { task1.Id });
+        var plan = await manager.CreatePlanAsync("Test", "Test", ct: TestContext.Current.CancellationToken);
+        var task1 = await manager.AddTaskAsync(plan.Id, "Task 1", ct: TestContext.Current.CancellationToken);
+        await manager.AddTaskAsync(plan.Id, "Task 2", dependencies: new List<string> { task1.Id }, ct: TestContext.Current.CancellationToken);
 
         // Act - Task 2 depends on Task 1, so Task 1 should be next
-        var nextTask = await manager.GetNextTaskAsync(plan.Id);
+        var nextTask = await manager.GetNextTaskAsync(plan.Id, TestContext.Current.CancellationToken);
 
         // Assert
         nextTask!.Title.Should().Be("Task 1");
@@ -137,11 +137,11 @@ public class PlanManagerTests
     {
         // Arrange
         var manager = CreateManager();
-        await manager.CreatePlanAsync("Plan 1", "Test");
-        await manager.CreatePlanAsync("Plan 2", "Test");
+        await manager.CreatePlanAsync("Plan 1", "Test", ct: TestContext.Current.CancellationToken);
+        await manager.CreatePlanAsync("Plan 2", "Test", ct: TestContext.Current.CancellationToken);
 
         // Act
-        var plans = await manager.ListPlansAsync();
+        var plans = await manager.ListPlansAsync(ct: TestContext.Current.CancellationToken);
 
         // Assert
         plans.Should().HaveCount(2);

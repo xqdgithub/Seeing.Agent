@@ -51,11 +51,11 @@ public class UnifiedConfigManagerBootCapabilitySetsTests
             {
                 ["Boot"] = "secure",
                 ["CapabilitySets"] = capabilitySets,
-            });
+            }, TestContext.Current.CancellationToken);
 
             var path = Path.Combine(userSeeing, "seeing.json");
             File.Exists(path).Should().BeTrue();
-            var raw = await File.ReadAllTextAsync(path);
+            var raw = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
             raw.Should().Contain("\"Boot\"");
             raw.Should().Contain("\"CapabilitySets\"");
             raw.Should().Contain("\"Modules\"");
@@ -74,7 +74,7 @@ public class UnifiedConfigManagerBootCapabilitySetsTests
                 .Select(n => n!.GetValue<string>())
                 .Should().BeEquivalentTo(["shell", "mcp"]);
 
-            await manager.ReloadAsync();
+            await manager.ReloadAsync(TestContext.Current.CancellationToken);
             manager.SeeingAgent.Boot.Should().Be("secure");
             manager.SeeingAgent.CapabilitySets.Should().ContainKey("secure");
             manager.SeeingAgent.CapabilitySets["secure"].Modules.Should().Equal("*");
@@ -99,12 +99,12 @@ public class UnifiedConfigManagerBootCapabilitySetsTests
                 {
                     ["custom"] = new() { Modules = ["io.local", "basic"] },
                 },
-            });
+            }, TestContext.Current.CancellationToken);
 
             // SaveLevel 语义：null → RemoveSeeingAgentKeys
-            await manager.RemoveSeeingAgentKeysAsync(ConfigLevel.Project, ["Boot", "CapabilitySets"]);
+            await manager.RemoveSeeingAgentKeysAsync(ConfigLevel.Project, ["Boot", "CapabilitySets"], TestContext.Current.CancellationToken);
 
-            var raw = await File.ReadAllTextAsync(Path.Combine(userSeeing, "seeing.json"));
+            var raw = await File.ReadAllTextAsync(Path.Combine(userSeeing, "seeing.json"), TestContext.Current.CancellationToken);
             var seeing = JsonNode.Parse(raw)!["SeeingAgent"]!.AsObject();
             seeing.ContainsKey("Boot").Should().BeFalse();
             seeing.ContainsKey("CapabilitySets").Should().BeFalse();
@@ -137,9 +137,9 @@ public class UnifiedConfigManagerBootCapabilitySetsTests
                     }
                   }
                 }
-                """);
+                """, TestContext.Current.CancellationToken);
 
-            await manager.LoadAsync();
+            await manager.LoadAsync(TestContext.Current.CancellationToken);
 
             manager.SeeingAgent.Boot.Should().Be("code");
             manager.SeeingAgent.CapabilitySets.Should().ContainKey("code");

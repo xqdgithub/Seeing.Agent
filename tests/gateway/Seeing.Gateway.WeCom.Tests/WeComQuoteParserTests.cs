@@ -14,7 +14,8 @@ public class WeComQuoteParserTests
     public async Task ParseAsync_NullQuote_ShouldReturnNull()
     {
         var fetcher = CreateMediaFetcher();
-        var result = await WeComQuoteParser.ParseAsync(null, fetcher, NullLogger.Instance);
+        var result = await WeComQuoteParser.ParseAsync(
+            null, fetcher, NullLogger.Instance, TestContext.Current.CancellationToken);
 
         result.Should().BeNull();
     }
@@ -29,7 +30,8 @@ public class WeComQuoteParserTests
             Text = new WeComTextPayload { Content = "  被引用内容  " }
         };
 
-        var result = await WeComQuoteParser.ParseAsync(quote, fetcher, NullLogger.Instance);
+        var result = await WeComQuoteParser.ParseAsync(
+            quote, fetcher, NullLogger.Instance, TestContext.Current.CancellationToken);
 
         result.Should().NotBeNull();
         result!.MsgType.Should().Be("text");
@@ -49,7 +51,8 @@ public class WeComQuoteParserTests
             Voice = new WeComVoicePayload { Content = "语音转写内容" }
         };
 
-        var result = await WeComQuoteParser.ParseAsync(quote, fetcher, NullLogger.Instance);
+        var result = await WeComQuoteParser.ParseAsync(
+            quote, fetcher, NullLogger.Instance, TestContext.Current.CancellationToken);
 
         result!.Content.Should().ContainSingle()
             .Which.Should().BeOfType<GatewayTextContentPart>()
@@ -81,7 +84,8 @@ public class WeComQuoteParserTests
             }
         };
 
-        var result = await WeComQuoteParser.ParseAsync(quote, fetcher, NullLogger.Instance);
+        var result = await WeComQuoteParser.ParseAsync(
+            quote, fetcher, NullLogger.Instance, TestContext.Current.CancellationToken);
 
         result!.MsgType.Should().Be("mixed");
         result.Content.Should().HaveCount(2);

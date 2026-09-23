@@ -91,6 +91,7 @@ namespace Seeing.Agent.Core.Middlewares
         /// <summary>最大重试次数</summary>
         public int MaxRetries { get; }
 
+        /// <summary>初始化最大重试次数超限异常，记录重试上限并保留内部异常。</summary>
         public MaxRetriesExceededException(int maxRetries, Exception innerException)
             : base($"操作在 {maxRetries} 次尝试后仍然失败", innerException)
         {

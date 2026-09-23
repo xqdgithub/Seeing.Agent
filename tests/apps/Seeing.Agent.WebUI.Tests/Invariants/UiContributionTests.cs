@@ -84,7 +84,7 @@ public class UiContributionTests
 
         // 已 Activate 但 catalog 禁用 → NotEnabled
         var module = new SkillsModule(registry);
-        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await module.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
         ModulePageRouteBinder.BindExistingPages(registry);
 
         var catalog = new Mock<IModuleCatalog>();
@@ -179,8 +179,8 @@ public class UiContributionTests
         var registry = new UiContributionRegistry();
         var skills = new SkillsModule(registry);
         var mcp = new McpModule(registry);
-        await skills.ActivateAsync(new ServiceCollection().BuildServiceProvider());
-        await mcp.ActivateAsync(new ServiceCollection().BuildServiceProvider());
+        await skills.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+        await mcp.ActivateAsync(new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
 
         var navSnapshot = registry.NavItems.Select(n => n.Route).OrderBy(r => r).ToArray();
         navSnapshot.Should().BeEquivalentTo("/mcp", "/skills");

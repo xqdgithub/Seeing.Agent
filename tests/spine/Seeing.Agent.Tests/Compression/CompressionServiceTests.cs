@@ -35,7 +35,7 @@ public class CompressionServiceTests
             summarizer.Object,
             sessionManager.Object);
 
-        var outcome = await service.CompressAsync(session.Id, reason: "manual");
+        var outcome = await service.CompressAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeTrue();
         outcome.TokensBefore.Should().BeGreaterThanOrEqualTo(1);
@@ -89,7 +89,7 @@ public class CompressionServiceTests
             summarizer.Object,
             sessionManager.Object);
 
-        var outcome = await service.CompressAsync(session.Id, reason: "auto");
+        var outcome = await service.CompressAsync(session.Id, reason: "auto", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeTrue();
         // 输入 = 活跃消息（旧摘要 + 3 条），activeStart = 0；新摘要插入 0 + 3 处，保留消息 c 仍末尾
@@ -129,7 +129,7 @@ public class CompressionServiceTests
             summarizer.Object,
             sessionManager.Object);
 
-        var outcome = await service.CompressAsync(session.Id, reason: "manual");
+        var outcome = await service.CompressAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeTrue();
         // 快照 activeStart=0 + removed=5 越界（当前仅 3 条），就近回退到末尾，不抛异常、不丢消息
@@ -148,7 +148,7 @@ public class CompressionServiceTests
             summarizer: null!,
             sessionManager.Object);
 
-        var outcome = await service.CompressAsync("s1", reason: "manual");
+        var outcome = await service.CompressAsync("s1", reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeFalse();
         outcome.ErrorMessage.Should().Contain("未配置摘要器");
@@ -176,7 +176,7 @@ public class CompressionServiceTests
             summarizer.Object,
             sessionManager.Object);
 
-        var outcome = await service.CompressAsync(session.Id, reason: "manual");
+        var outcome = await service.CompressAsync(session.Id, reason: "manual", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeTrue();
         session.GetContext<string>(SummarizeRequest.LastSummaryContextKey).Should().Be("新摘要内容", "本次摘要应写回会话上下文供下次锚定");
@@ -208,7 +208,7 @@ public class CompressionServiceTests
             summarizer.Object,
             sessionManager.Object);
 
-        var outcome = await service.CompressAsync(session.Id, reason: "auto");
+        var outcome = await service.CompressAsync(session.Id, reason: "auto", TestContext.Current.CancellationToken);
 
         outcome.Success.Should().BeTrue();
         // activeStart=0 + removed=1 → 新摘要插入旧摘要之后

@@ -51,7 +51,8 @@ public class AcpSessionConfigApplierTests
             "acp-sess",
             options,
             desiredModeId: "build",
-            desiredModelId: "gpt-4");
+            desiredModelId: "gpt-4",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         fake.ConfigSets.Should().BeEquivalentTo([
             ("acp-sess", "mode", "build"),
@@ -79,7 +80,7 @@ public class AcpSessionConfigApplierTests
 
         var applier = new AcpSessionConfigApplier(NullLogger<AcpSessionConfigApplier>.Instance);
 
-        await applier.ApplyAsync(fake, "acp-sess", options, desiredModeId: "build", desiredModelId: null);
+        await applier.ApplyAsync(fake, "acp-sess", options, desiredModeId: "build", desiredModelId: null, cancellationToken: TestContext.Current.CancellationToken);
 
         fake.ConfigSets.Should().BeEmpty();
         fake.Modes.Should().BeEmpty();
@@ -92,7 +93,7 @@ public class AcpSessionConfigApplierTests
         var fake = new FakeConfigClient();
         var applier = new AcpSessionConfigApplier(NullLogger<AcpSessionConfigApplier>.Instance);
 
-        await applier.ApplyAsync(fake, "acp-sess", null, desiredModeId: "build", desiredModelId: "gpt-4");
+        await applier.ApplyAsync(fake, "acp-sess", null, desiredModeId: "build", desiredModelId: "gpt-4", cancellationToken: TestContext.Current.CancellationToken);
 
         fake.Modes.Count.Should().Be(1);
         fake.Modes[0].Should().Be(("acp-sess", "build"));

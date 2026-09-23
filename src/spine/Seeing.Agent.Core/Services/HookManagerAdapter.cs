@@ -9,11 +9,13 @@ namespace Seeing.Agent.Core.Services
     {
         private readonly IHookManager _inner;
 
+        /// <summary>初始化 Hook 管理器适配器，包装内部 IHookManager。</summary>
         public HookManagerAdapter(IHookManager inner)
         {
             _inner = inner;
         }
 
+        /// <summary>以 Fire-and-Forget 策略触发指定 Hook 点。</summary>
         public void TriggerFireAndForget(
             string hookPoint,
             string sessionId,
