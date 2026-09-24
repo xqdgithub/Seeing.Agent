@@ -88,6 +88,11 @@ public class ToolCallViewModel
     public bool IsBashTool => string.Equals(Name, "bash", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 是否为 question 提问工具（仅按工具名）
+    /// </summary>
+    public bool IsQuestionTool => string.Equals(Name, "question", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// 工具元数据（exit/timedOut 等）；展示投影现算，不在此摊平为专用属性
     /// </summary>
     public Dictionary<string, object>? Metadata { get; set; }

@@ -1,0 +1,243 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Models.Messaging
+@using Seeing.Agent.WebUI.Rendering.Abstractions
+
+@* question 结果态专用卡：完整呈现题干与选项的选中答案；失败态显示状态与说明 *@
+
+<div class="tool-call-shell question-result-shell">
+    <div class="question-result-header" onclick="@OnHeaderClick">
+        <Icon Type="@IconType.Outline.QuestionCircle" Style="color: #1677ff; font-size: 14px;" />
+        <span class="question-result-title">@_card.DisplayTitle</span>
+        <Tag Color="@_card.TagColor" Style="margin-left: 6px; font-size: 11px;">@_card.StateText</Tag>
+        @if (!string.IsNullOrEmpty(_duration))
+        {
+            <span class="question-result-duration">@_duration</span>
+        }
+        @if (_card.IsRunning)
+        {
+            <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
+        }
+        else
+        {
+            <Icon Type="@(_isExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+                  Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
+        }
+    </div>
+
+    @if (_card.IsRunning)
+    {
+        <div class="question-result-waiting">等待你的回答…</div>
+    }
+    else if (_isExpanded)
+    {
+        if (_card.State != QuestionCardState.Completed)
+        {
+            @if (!string.IsNullOrWhiteSpace(_card.FailureMessage))
+            {
+                <div class="question-result-failure">@_card.FailureMessage</div>
+            }
+            else if (!string.IsNullOrEmpty(ToolCall.Result))
+            {
+                <pre class="question-result-raw">@ToolCall.Result</pre>
+            }
+        }
+        else if (_card.Items.Count == 0 && !string.IsNullOrEmpty(ToolCall.Result))
+        {
+            <pre class="question-result-raw">@ToolCall.Result</pre>
+        }
+        else
+        {
+            foreach (var item in _card.Items)
+            {
+                <div class="question-result-item" @key="item.Id">
+                    <div class="question-result-item-header">
+                        <span class="question-result-item-title">@item.Header</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(item.QuestionText))
+                    {
+                        <div class="question-result-item-text">@item.QuestionText</div>
+                    }
+                    @if (item.Options.Count > 0)
+                    {
+                        <ul class="question-result-options">
+                            @foreach (var opt in item.Options)
+                            {
+                                <li class="question-result-option @(opt.IsSelected ? "is-selected" : null)">
+                                    <Icon Type="@IconType.Outline.CheckCircle"
+                                          Style="@(opt.IsSelected ? "color: #52c41a;" : "color: var(--color-text-tertiary);")" />
+                                    <span>@opt.Label</span>
+                                    @if (!string.IsNullOrEmpty(opt.Description))
+                                    {
+                                        <span class="question-result-option-desc">@opt.Description</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (!string.IsNullOrEmpty(item.CustomAnswer))
+                    {
+                        <div class="question-result-custom">
+                            <Icon Type="@IconType.Outline.CheckCircle" Style="color: #52c41a;" />
+                            <span>自定义：@item.CustomAnswer</span>
+                        </div>
+                    }
+                    @if (!item.IsAnswered)
+                    {
+                        <div class="question-result-unanswered">未作答</div>
+                    }
+                </div>
+            }
+        }
+    }
+</div>
+
+<style>
+    .question-result-shell {
+        border: 1px solid #91caff;
+        background: linear-gradient(180deg, #f0f7ff 0%, var(--color-bg-container, #fff) 48%);
+        border-radius: 8px;
+    }
+
+    .question-result-header {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 2px;
+        padding: 8px 10px;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .question-result-title {
+        margin-left: 6px;
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .question-result-duration {
+        margin-left: 6px;
+        font-size: 11px;
+        color: var(--color-text-tertiary);
+    }
+
+    .question-result-waiting {
+        padding: 6px 10px 10px;
+        font-size: 12px;
+        color: var(--color-text-secondary, #666);
+    }
+
+    .question-result-failure {
+        padding: 6px 10px 10px;
+        font-size: 12px;
+        color: #ff4d4f;
+    }
+
+    .question-result-raw {
+        margin: 0 10px 10px;
+        font-size: 12px;
+    }
+
+    .question-result-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin: 0 10px 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: var(--color-bg-container, #fff);
+    }
+
+    .question-result-item-header {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .question-result-item-title {
+        font-weight: 500;
+        font-size: 12px;
+    }
+
+    .question-result-item-text {
+        font-size: 12px;
+        color: var(--color-text-secondary, #666);
+    }
+
+    .question-result-options {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .question-result-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--color-text-tertiary, #999);
+    }
+
+    .question-result-option.is-selected {
+        color: var(--color-text, #333);
+    }
+
+    .question-result-option-desc {
+        margin-left: 6px;
+        font-size: 11px;
+        color: var(--color-text-tertiary, #999);
+    }
+
+    .question-result-custom {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        font-size: 12px;
+    }
+
+    .question-result-unanswered {
+        font-size: 12px;
+        color: var(--color-text-tertiary, #999);
+    }
+</style>
+
+@code {
+    [Parameter] public ToolCallViewModel ToolCall { get; set; } = new();
+    [Parameter] public ContentBlock Block { get; set; } = default!;
+    [Parameter] public RenderContext Context { get; set; } = default!;
+    [Parameter] public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
+
+    private QuestionResultCardModel _card = QuestionResultCardModel.From(new ToolCallViewModel { Name = "question" });
+    private string _duration = "";
+    private bool _isExpanded;
+    private string? _lastToolCallId;
+    private bool _userToggled;
+
+    protected override void OnParametersSet()
+    {
+        _card = QuestionResultCardModel.From(ToolCall);
+        _duration = ToolCall.GetFormattedDuration();
+        var isNew = _lastToolCallId != ToolCall.Id;
+        if (isNew)
+        {
+            _lastToolCallId = ToolCall.Id;
+            _userToggled = false;
+            _isExpanded = !_card.IsRunning;   // 结果态默认展开
+        }
+        else if (!_userToggled && !_card.IsRunning)
+        {
+            _isExpanded = true;               // 刚结束自动展开
+        }
+    }
+
+    private void OnHeaderClick()
+    {
+        if (_card.IsRunning)
+            return;
+        _userToggled = true;
+        _isExpanded = !_isExpanded;
+    }
+}

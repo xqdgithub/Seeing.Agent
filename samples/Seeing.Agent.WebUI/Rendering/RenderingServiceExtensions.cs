@@ -139,6 +139,23 @@ public static class RenderingServiceExtensions
                     ["OnToolClick"] = context.OnToolClick
                 }));
 
+        // 优先级 43: question 问答结果卡（升序早于通用 ToolCall 50；与 bash 工具名互斥）
+        services.AddSingleton<IMessageComponent>(sp =>
+            new DefaultMessageComponent<MessagingComponents.QuestionMessageComponent>(
+                ContentBlockType.ToolCall,
+                43,
+                "Question",
+                block => block.Type == ContentBlockType.ToolCall
+                         && block.ToolCall != null
+                         && block.ToolCall.IsQuestionTool,
+                (block, context) => new Dictionary<string, object?>
+                {
+                    ["ToolCall"] = block.ToolCall!,
+                    ["Block"] = block,
+                    ["Context"] = context,
+                    ["OnToolClick"] = context.OnToolClick
+                }));
+
         // 优先级 50: 工具调用消息组件
         services.AddSingleton<IMessageComponent>(sp =>
             new DefaultMessageComponent<MessagingComponents.ToolCallMessageComponent>(
@@ -148,7 +165,8 @@ public static class RenderingServiceExtensions
                 block => block.Type == ContentBlockType.ToolCall
                          && block.ToolCall != null
                          && !block.ToolCall.IsTaskTool
-                         && !block.ToolCall.IsBashTool,
+                         && !block.ToolCall.IsBashTool
+                         && !block.ToolCall.IsQuestionTool,
                 (block, context) => new Dictionary<string, object?>
                 {
                     ["ToolCall"] = block.ToolCall!,
