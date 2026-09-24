@@ -1,0 +1,25 @@
+samples/Seeing.Gateway.Server/Program.cs
+  s_3c85c1732f7a77::t_a17b6dcf008129 52-53
+samples/Seeing.Gateway.Server/Seeing.Gateway.Server.csproj
+  s_3c85c1732f7a77::t_98962e366c37f2 28-29
+samples/Seeing.Agent.WebUI/Program.cs
+  s_3c85c1732f7a77::t_b5980d06723d9e 86-89
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_3c85c1732f7a77::t_ef5fd2303cd2e9 40-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "35d1e7af340f9dd71b9dfe291fdc53c0e02eaa1b",
+  "prompts": {},
+  "sessions": {
+    "s_3c85c1732f7a77": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f3233a867ffeMPw46RauHVxX6d",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
