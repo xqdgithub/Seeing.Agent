@@ -26,6 +26,8 @@ using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Skills;
 using Seeing.Agent.TokenBudget.Extensions;
+using Seeing.Agent.SystemOne.Extensions;
+using Seeing.Agent.Core.Tools.SystemOne.Extensions;
 using Seeing.Agent.Tui;
 using Seeing.Agent.Tui.Input;
 using Seeing.Agent.Tui.Logging;
@@ -71,6 +73,8 @@ builder.Services.AddSeeingAcp(registry);
 builder.Services.AddSeeingScheduler(registry);
 builder.Services.AddTokenBudgetIntegration(registry, builder.Configuration);
 builder.Services.AddMemoryServices(registry);
+builder.Services.AddSystemOne(registry);
+builder.Services.AddSystemOneTools(registry);
 
 builder.Services.AddSeeingCore(registry);
 

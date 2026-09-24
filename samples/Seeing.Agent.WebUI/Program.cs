@@ -34,6 +34,8 @@ using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Extensions;
+using Seeing.Agent.SystemOne.Extensions;
+using Seeing.Agent.Core.Tools.SystemOne.Extensions;
 using Seeing.Provider.DeepSeek;
 using Seeing.Provider.OpenCodeZen;
 
@@ -80,6 +82,10 @@ builder.Services.AddGatewayChannelRegistry();
 
 // === Memory 服务（混合检索、图谱、成本控制）===
 builder.Services.AddMemoryServices(registry);
+
+// === SystemOne 判别（Jev）：客户端 + systemone_ask 工具 + 内嵌 Skill ===
+builder.Services.AddSystemOne(registry);
+builder.Services.AddSystemOneTools(registry);
 
 builder.Services.AddSeeingCore(registry);
 

@@ -25,6 +25,8 @@
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Question\Seeing.Agent.Tools.Question.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.SystemOne\Seeing.Agent.SystemOne.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.SystemOne\Seeing.Agent.Tools.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.OpenAI\Seeing.Agent.Llm.OpenAI.csproj" />

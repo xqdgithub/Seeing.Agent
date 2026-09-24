@@ -23,6 +23,8 @@ using Seeing.Agent.Core.Tools.Git;
 using Seeing.Agent.Core.Tools.Question;
 using Seeing.Agent.Core.Tools.Shell;
 using Seeing.Agent.Core.Tools.Web;
+using Seeing.Agent.SystemOne.Extensions;
+using Seeing.Agent.Core.Tools.SystemOne.Extensions;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -47,6 +49,8 @@ BootOverrideSource.ApplyToServices(builder.Services, args);
 builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();
 builder.Services.AddChannelHostManagement();
+builder.Services.AddSystemOne(registry);
+builder.Services.AddSystemOneTools(registry);
 builder.Services.AddSeeingCore(registry);
 
 var host = builder.Build();
