@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Execution;
 using Seeing.Session.Core;
 
@@ -264,7 +265,13 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
             ToolCallId = tool.ToolCallId,
             ToolName = tool.ToolName,
             Status = tool.Status.ToString(),
-            Preview = Truncate(tool.Output ?? tool.Error),
+            Preview = Truncate(ToolResultFormatting.ToModelContent(
+                tool.Status == ToolCallStatus.Success,
+                tool.Output,
+                tool.Error,
+                tool.ToolName,
+                tool.Status.ToString().ToLowerInvariant(),
+                tool.Title)),
             Timestamp = tool.Timestamp
         };
         var existing = steps.FirstOrDefault(s => s.ToolCallId == tool.ToolCallId);

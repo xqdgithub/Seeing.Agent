@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Seeing.Agent.Tools.SystemOne</RootNamespace>
-    <Description>SystemOne 判别工具（systemone_ask）与内嵌 Skill</Description>
+    <Description>SystemOne 判别工具（systemone_ask 混合 + systemone_noul/choice/score 同类）与内嵌 Skill</Description>
   </PropertyGroup>
 
   <ItemGroup>

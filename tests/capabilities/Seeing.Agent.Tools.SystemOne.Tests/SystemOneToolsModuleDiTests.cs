@@ -13,6 +13,25 @@ namespace Seeing.Agent.Tools.SystemOne.Tests;
 
 public class SystemOneToolsModuleDiTests
 {
+    private static (SystemOneToolsModule Module, ServiceProvider Provider, IToolManager ToolManager) Build()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        var registry = new ConfigSectionRegistry();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+
+        services.AddSystemOneTools(registry);
+        services.AddSeeingCore(registry);
+
+        var module = (SystemOneToolsModule)services
+            .Single(d => d.ServiceType == typeof(ISeeingModule)
+                         && d.ImplementationInstance is SystemOneToolsModule)
+            .ImplementationInstance!;
+
+        var provider = services.BuildServiceProvider();
+        return (module, provider, provider.GetRequiredService<IToolManager>());
+    }
+
     [Fact]
     public void AddSystemOneTools_应登记模块()
     {
@@ -29,28 +48,18 @@ public class SystemOneToolsModuleDiTests
     }
 
     [Fact]
-    public async Task Activate_注册工具_Deactivate_注销()
+    public async Task Activate_注册4工具_Deactivate_全部注销()
     {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        var registry = new ConfigSectionRegistry();
-        services.AddSingleton<IConfigSectionRegistry>(registry);
+        var (module, provider, toolManager) = Build();
+        await using (provider)
+        {
+            await module.ActivateAsync(provider);
+            foreach (var id in new[] { "systemone_ask", "systemone_noul", "systemone_choice", "systemone_score" })
+                toolManager.GetTool(id).Should().NotBeNull(id);
 
-        services.AddSystemOneTools(registry);
-        services.AddSeeingCore(registry);
-
-        var module = (SystemOneToolsModule)services
-            .Single(d => d.ServiceType == typeof(ISeeingModule)
-                         && d.ImplementationInstance is SystemOneToolsModule)
-            .ImplementationInstance!;
-
-        await using var provider = services.BuildServiceProvider();
-        var toolManager = provider.GetRequiredService<IToolManager>();
-
-        await module.ActivateAsync(provider);
-        toolManager.GetTool("systemone_ask").Should().NotBeNull();
-
-        await module.DeactivateAsync(provider);
-        toolManager.GetTool("systemone_ask").Should().BeNull();
+            await module.DeactivateAsync(provider);
+            foreach (var id in new[] { "systemone_ask", "systemone_noul", "systemone_choice", "systemone_score" })
+                toolManager.GetTool(id).Should().BeNull(id);
+        }
     }
 }

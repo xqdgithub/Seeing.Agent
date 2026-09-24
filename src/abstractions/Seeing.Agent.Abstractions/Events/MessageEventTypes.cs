@@ -323,6 +323,18 @@ public record ToolCallEvent : IMessageEvent
 
     /// <summary>轮次指令原因</summary>
     public string? TurnDirectiveReason { get; init; }
+
+    /// <summary>
+    /// 回传给模型的内容：成功为 <see cref="Output"/>；失败为带防误判 notice 的
+    /// <c>tool_result</c> XML 信封（详见 <see cref="ToolResultFormatting"/>）。
+    /// </summary>
+    public string ModelContent => ToolResultFormatting.ToModelContent(
+        Status == ToolCallStatus.Success,
+        Output,
+        Error,
+        ToolName,
+        Status.ToString().ToLowerInvariant(),
+        Title);
 }
 
 /// <summary>

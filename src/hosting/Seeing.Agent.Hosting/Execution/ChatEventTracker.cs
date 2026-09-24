@@ -130,7 +130,7 @@ internal class ChatEventTracker
                     ToolCallStatus.Cancelled => "cancelled",
                     _ => existing.Status
                 };
-                if (toolCall.Output != null)
+                if (!string.IsNullOrEmpty(toolCall.Output))
                     existing.Result = toolCall.Output;
                 if (toolCall.Error != null)
                     existing.Error = toolCall.Error;

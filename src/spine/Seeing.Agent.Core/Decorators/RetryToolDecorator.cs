@@ -86,7 +86,7 @@ namespace Seeing.Agent.Core.Decorators
             {
                 Success = false,
                 Title = "重试耗尽",
-                Output = lastException?.Message ?? $"工具 {Id} 在 {_maxRetries} 次尝试后仍失败",
+                Error = lastException?.Message ?? $"工具 {Id} 在 {_maxRetries} 次尝试后仍失败",
                 Metadata = new Dictionary<string, object>
                 {
                     ["maxRetries"] = _maxRetries,

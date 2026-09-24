@@ -41,6 +41,7 @@ public class SystemOneSkillRegistrationTests
         captured!.Name.Should().Be("systemone-judgment");
         captured.Description.Should().NotBeNullOrEmpty();
         captured.Content.Should().Contain("systemone_ask");
+        captured.Content.Should().Contain("systemone_noul");
         captured.Location.Should().StartWith("systemone/");
         hosted.IsRunning.Should().BeTrue();
     }

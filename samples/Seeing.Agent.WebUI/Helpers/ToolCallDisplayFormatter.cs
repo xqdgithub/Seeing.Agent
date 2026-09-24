@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace Seeing.Agent.WebUI.Helpers;
@@ -15,12 +16,14 @@ public static class ToolCallDisplayFormatter
 
     private static readonly JsonSerializerOptions s_prettyOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     private static readonly JsonSerializerOptions s_compactOptions = new()
     {
-        WriteIndented = false
+        WriteIndented = false,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public static bool TryParseParameters(string? parametersJson, out IReadOnlyList<ToolCallParameterEntry> entries)

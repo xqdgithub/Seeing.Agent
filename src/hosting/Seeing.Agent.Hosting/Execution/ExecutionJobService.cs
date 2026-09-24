@@ -1143,7 +1143,13 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
                     {
                         Role = ChatRole.Tool,
                         ToolCallId = tc.Id,
-                        Content = tc.Result ?? tc.Error ?? string.Empty
+                        Content = ToolResultFormatting.ToModelContent(
+                            string.Equals(tc.Status, "success", StringComparison.OrdinalIgnoreCase),
+                            tc.Result,
+                            tc.Error,
+                            tc.Name,
+                            tc.Status,
+                            tc.Title)
                     });
                 }
             }

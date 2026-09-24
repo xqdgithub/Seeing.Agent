@@ -762,7 +762,7 @@ public class AgentExecutor : IAgentExecutor
                 {
                     Role = ChatRole.Tool,
                     ToolCallId = tcEvent.ToolCallId,
-                    Content = tcEvent.Output ?? tcEvent.Error ?? string.Empty
+                    Content = tcEvent.ModelContent
                 });
             }
         }

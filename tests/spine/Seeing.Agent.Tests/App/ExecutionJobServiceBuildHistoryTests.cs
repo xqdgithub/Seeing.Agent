@@ -66,7 +66,7 @@ public class ExecutionJobServiceBuildHistoryTests
             Content = string.Empty,
             ToolCalls = new List<SessionToolCall>
             {
-                new() { Id = "call_e", Name = "read", Error = "执行失败", Status = "failed" }
+                new() { Id = "call_e", Name = "read", Result = "", Error = "执行失败", Status = "failed" }
             }
         });
 
@@ -75,7 +75,10 @@ public class ExecutionJobServiceBuildHistoryTests
         history.Should().HaveCount(2);
         history[1].Role.Should().Be(ChatRole.Tool);
         history[1].ToolCallId.Should().Be("call_e");
-        history[1].Content.Should().Be("执行失败");
+        history[1].Content.Should().Contain("<tool_result");
+        history[1].Content.Should().Contain("status=\"failed\"");
+        history[1].Content.Should().Contain("执行失败");
+        history[1].Content.Should().Contain("不是工具返回的数据");
     }
 
     [Fact]
@@ -97,5 +100,6 @@ public class ExecutionJobServiceBuildHistoryTests
         history.Should().HaveCount(2);
         history[1].Role.Should().Be(ChatRole.Tool);
         history[1].ToolCallId.Should().Be("call_r");
+        history[1].Content.Should().Contain("status=\"rejected\"");
     }
 }
