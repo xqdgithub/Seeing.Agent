@@ -18,6 +18,9 @@ public class WebFetchTool : ToolBase
     private const int MaxResponseSize = 5 * 1024 * 1024; // 5MB
     private const int DefaultTimeoutSeconds = 30;
     private const int MaxTimeoutSeconds = 120;
+    private const int MaxRedirects = 5;
+    private const string DefaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+    private const string CloudflareUserAgent = "Seeing.Agent";
 
     private readonly HttpClient _httpClient;
     private readonly ConcurrentDictionary<string, byte> _approvedHosts = new(StringComparer.OrdinalIgnoreCase);
@@ -82,9 +85,9 @@ public class WebFetchTool : ToolBase
             return Failure("URL 必须以 http:// 或 https:// 开头");
         }
 
-        // SSRF 防护：检查内网地址（同会话缓存已批准的域名）
+        // SSRF 防护：检查内网地址（已批准的域名缓存复用）
         var approved = _approvedHosts;
-        var safetyCheck = await ValidateUrlSafetyAsync(url, null, host => approved.TryAdd(host, 0));
+        var safetyCheck = await ValidateUrlSafetyAsync(url, approved.ContainsKey, host => approved.TryAdd(host, 0));
         if (safetyCheck != null)
         {
             _logger.LogWarning("SSRF 防护拒绝请求: {Reason}, URL: {Url}", safetyCheck, url);
@@ -101,67 +104,123 @@ public class WebFetchTool : ToolBase
             var combinedToken = CancellationTokenSource.CreateLinkedTokenSource(
                 cts.Token, context.CancellationToken).Token;
 
-            // 构建请求
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-            request.Headers.Add("Accept", BuildAcceptHeader(format));
-            request.Headers.Add("Accept-Language", "en-US,en;q=0.9");
+            var currentUri = new Uri(url);
+            HttpResponseMessage response;
+            var redirectCount = 0;
 
-            var response = await _httpClient.SendAsync(request, combinedToken);
-
-            // 处理 Cloudflare 拦截
-            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden &&
-                response.Headers.Contains("cf-mitigated"))
+            // 手工逐跳跟随重定向：每跳均经 SSRF 校验（禁用自动重定向，避免绕过校验）
+            while (true)
             {
-                request.Headers.Remove("User-Agent");
-                request.Headers.Add("User-Agent", "Seeing.Agent");
-                response = await _httpClient.SendAsync(request, combinedToken);
-            }
+                using var request = new HttpRequestMessage(HttpMethod.Get, currentUri);
+                request.Headers.Add("User-Agent", DefaultUserAgent);
+                request.Headers.Add("Accept", BuildAcceptHeader(format));
+                request.Headers.Add("Accept-Language", "en-US,en;q=0.9");
 
-            if (!response.IsSuccessStatusCode)
-            {
-                return Failure($"请求失败，状态码: {response.StatusCode}");
-            }
+                response = await _httpClient.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead, combinedToken);
 
-            // 检查内容长度
-            var contentLength = response.Content.Headers.ContentLength ?? 0;
-            if (contentLength > MaxResponseSize)
-            {
-                return Failure("响应过大（超过 5MB 限制）");
-            }
-
-            var contentBytes = await response.Content.ReadAsByteArrayAsync(combinedToken);
-            if (contentBytes.Length > MaxResponseSize)
-            {
-                return Failure("响应过大（超过 5MB 限制）");
-            }
-
-            var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-
-            // 检查是否为图片
-            if (IsImageContentType(contentType))
-            {
-                var base64Content = Convert.ToBase64String(contentBytes);
-                return Success("图片已获取", new Dictionary<string, object>
+                // 处理 Cloudflare 拦截（重试不占重定向跳数）
+                if (response.StatusCode == HttpStatusCode.Forbidden &&
+                    response.Headers.Contains("cf-mitigated"))
                 {
+                    response.Dispose();
+
+                    using var retryRequest = new HttpRequestMessage(HttpMethod.Get, currentUri);
+                    retryRequest.Headers.Add("User-Agent", CloudflareUserAgent);
+                    retryRequest.Headers.Add("Accept", BuildAcceptHeader(format));
+                    retryRequest.Headers.Add("Accept-Language", "en-US,en;q=0.9");
+
+                    response = await _httpClient.SendAsync(
+                        retryRequest, HttpCompletionOption.ResponseHeadersRead, combinedToken);
+                }
+
+                if (!IsRedirectStatusCode(response.StatusCode))
+                    break;
+
+                var location = response.Headers.Location;
+                if (location is null)
+                    break;
+
+                if (redirectCount >= MaxRedirects)
+                {
+                    response.Dispose();
+                    return Failure("重定向次数超限");
+                }
+
+                Uri nextUri;
+                try
+                {
+                    nextUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
+                }
+                catch (UriFormatException)
+                {
+                    response.Dispose();
+                    return Failure("重定向地址无效");
+                }
+
+                // 逐跳 SSRF 校验：重定向目标同样不得指向内网/私有地址
+                var redirectSafety = await ValidateUrlSafetyAsync(
+                    nextUri.ToString(), approved.ContainsKey, host => approved.TryAdd(host, 0));
+                if (redirectSafety != null)
+                {
+                    response.Dispose();
+                    _logger.LogWarning("SSRF 防护拒绝重定向: {Reason}, URL: {Url}", redirectSafety, nextUri);
+                    return Failure($"请求被安全策略拒绝: {redirectSafety}");
+                }
+
+                response.Dispose();
+                currentUri = nextUri;
+                redirectCount++;
+            }
+
+            using (response)
+            {
+                if (!response.IsSuccessStatusCode)
+                {
+                    return Failure($"请求失败，状态码: {response.StatusCode}");
+                }
+
+                // 检查内容长度（存在 Content-Length 时快速失败）
+                var contentLength = response.Content.Headers.ContentLength ?? 0;
+                if (contentLength > MaxResponseSize)
+                {
+                    return Failure("响应过大（超过 5MB 限制）");
+                }
+
+                // 流式限长读取：达到上限即停止，避免 chunked 超大流导致 OOM
+                var contentBytes = await ReadLimitedAsync(response.Content, MaxResponseSize, combinedToken);
+                if (contentBytes is null)
+                {
+                    return Failure("响应过大（超过 5MB 限制）");
+                }
+
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+
+                // 检查是否为图片
+                if (IsImageContentType(contentType))
+                {
+                    var base64Content = Convert.ToBase64String(contentBytes);
+                    return Success("图片已获取", new Dictionary<string, object>
+                    {
+                        ["contentType"] = contentType,
+                        ["base64"] = base64Content,
+                        ["url"] = url
+                    });
+                }
+
+                var content = Encoding.UTF8.GetString(contentBytes);
+
+                // 根据格式处理内容
+                var output = ProcessContent(content, contentType, format);
+
+                return Success(output, new Dictionary<string, object>
+                {
+                    ["url"] = url,
                     ["contentType"] = contentType,
-                    ["base64"] = base64Content,
-                    ["url"] = url
+                    ["format"] = format,
+                    ["size"] = contentBytes.Length
                 });
             }
-
-            var content = Encoding.UTF8.GetString(contentBytes);
-
-            // 根据格式处理内容
-            var output = ProcessContent(content, contentType, format);
-
-            return Success(output, new Dictionary<string, object>
-            {
-                ["url"] = url,
-                ["contentType"] = contentType,
-                ["format"] = format,
-                ["size"] = contentBytes.Length
-            });
         }
         catch (OperationCanceledException)
         {
@@ -391,14 +450,46 @@ public class WebFetchTool : ToolBase
         return false;
     }
 
-    private static async Task<string?> ValidateUrlSafetyAsync(string url, HashSet<string>? cachedApproved, Action<string> addToCache)
+    /// <summary>
+    /// 判断状态码是否为需要手工跟随的重定向（301/302/303/307/308）
+    /// </summary>
+    private static bool IsRedirectStatusCode(HttpStatusCode statusCode) => statusCode is
+        HttpStatusCode.MovedPermanently or   // 301
+        HttpStatusCode.Found or              // 302
+        HttpStatusCode.SeeOther or           // 303
+        HttpStatusCode.TemporaryRedirect or  // 307
+        HttpStatusCode.PermanentRedirect;    // 308
+
+    /// <summary>
+    /// 流式限长读取响应体：达到上限返回 null（不一次性读入内存，避免超大流 OOM）
+    /// </summary>
+    private static async Task<byte[]?> ReadLimitedAsync(
+        HttpContent content, int maxBytes, CancellationToken cancellationToken)
+    {
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+                return null;
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
+    }
+
+    private static async Task<string?> ValidateUrlSafetyAsync(string url, Func<string, bool>? isApproved, Action<string> addToCache)
     {
         try
         {
             var uri = new Uri(url);
             var host = uri.Host.ToLowerInvariant();
 
-            if (cachedApproved != null && cachedApproved.Contains(host))
+            if (isApproved != null && isApproved(host))
                 return null;
 
             if (host is "localhost" or "127.0.0.1" or "[::1]" ||

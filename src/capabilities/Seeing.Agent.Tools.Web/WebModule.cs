@@ -17,6 +17,8 @@ public sealed class WebModule : ISeeingModule
         "codesearch",
     ];
 
+    private const string WebFetchClientName = "webfetch";
+
     /// <inheritdoc />
     public string Id => "web";
 
@@ -32,9 +34,12 @@ public sealed class WebModule : ISeeingModule
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
+        // webfetch 禁用自动重定向：由 WebFetchTool 手工逐跳跟随并逐跳做 SSRF 校验
+        services.AddHttpClient(WebFetchClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddSingleton(sp => new WebFetchTool(
             sp.GetRequiredService<ILogger<WebFetchTool>>(),
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient()));
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(WebFetchClientName)));
         services.AddSingleton(sp => new WebSearchTool(
             sp.GetRequiredService<ILogger<WebSearchTool>>(),
             sp.GetRequiredService<IHttpClientFactory>().CreateClient()));

@@ -95,7 +95,7 @@ public sealed class AcpFileSystemBridge
         }
     }
 
-    private static bool TryResolvePath(string path, string workingDirectory, out string fullPath)
+    internal static bool TryResolvePath(string path, string workingDirectory, out string fullPath)
     {
         fullPath = "";
 
@@ -110,8 +110,20 @@ public sealed class AcpFileSystemBridge
             ? Path.GetFullPath(path)
             : Path.GetFullPath(Path.Combine(root, path));
 
-        return fullPath.StartsWith(root, OperatingSystem.IsWindows()
+        var comparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal);
+            : StringComparison.Ordinal;
+
+        // 分隔符边界：必须等于 root 本身，或以 root + 分隔符为前缀，
+        // 避免 E:\ws\apple 命中 root=E:\ws\app 的前缀逃逸
+        if (fullPath.Equals(root, comparison))
+            return true;
+
+        var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar) || root.EndsWith(Path.AltDirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+
+        return fullPath.StartsWith(rootPrefix, comparison)
+            || fullPath.StartsWith(root + Path.AltDirectorySeparatorChar, comparison);
     }
 }
