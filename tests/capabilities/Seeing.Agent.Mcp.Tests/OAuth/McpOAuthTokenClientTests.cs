@@ -75,6 +75,31 @@ public class McpOAuthTokenClientTests
     }
 
     [Fact]
+    public async Task ExchangeCodeAsync_WithEnvReferenceClientSecret_ShouldResolveFromEnvironment()
+    {
+        var handler = RecordingHandler.Json(HttpStatusCode.OK,
+            """{"access_token":"at-1","expires_in":60}""");
+        var client = CreateClient(handler);
+
+        var name = "SEEING_MCP_TEST_SECRET_" + Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable(name, "resolved-secret");
+        try
+        {
+            var config = Config();
+            config.ClientSecret = $"env:{name}";
+
+            await client.ExchangeCodeAsync(
+                config, "code-1", "http://localhost:9999/callback", "verifier-1", CancellationToken.None);
+
+            handler.LastBody.Should().Contain("client_secret=resolved-secret");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(name, null);
+        }
+    }
+
+    [Fact]
     public async Task ExchangeCodeAsync_WhenNoTokenEndpointConfigured_ShouldThrow()
     {
         var handler = RecordingHandler.Json(HttpStatusCode.OK, "{}");

@@ -89,7 +89,7 @@ public class McpOAuthWiringTests
 
         public string GetCallbackUrl() => "http://localhost:59124/callback";
 
-        public Task<(string Code, string State)> WaitForCallbackAsync(TimeSpan timeout)
-            => Task.FromResult(("code", "state"));
+        public Task<(string Code, string State)> WaitForCallbackAsync(string state, TimeSpan timeout)
+            => Task.FromResult(("code", state));
     }
 }

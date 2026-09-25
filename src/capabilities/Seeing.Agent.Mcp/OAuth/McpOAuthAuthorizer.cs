@@ -62,7 +62,7 @@ namespace Seeing.Agent.Mcp.OAuth
             try
             {
                 callback = await _callbackServer
-                    .WaitForCallbackAsync(_callbackTimeout)
+                    .WaitForCallbackAsync(start.State, _callbackTimeout)
                     .WaitAsync(cancellationToken)
                     .ConfigureAwait(false);
             }

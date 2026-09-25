@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
+using Seeing.Agent.Mcp.OAuth;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Seeing.Agent.Abstractions.Configuration;
@@ -333,9 +334,13 @@ public class McpConfigPersistence : IMcpConfigPersistence
     }
 
     /// <summary>
-    /// 序列化 OAuth 配置为对象（仅输出非空/非默认值字段）
+    /// 序列化 OAuth 配置为对象（仅输出非空/非默认值字段）。
+    /// <para>
+    /// 客户端密钥仅持久化环境变量引用（<c>env:VAR</c> / <c>${VAR}</c>）；明文密钥不会写回配置文件，
+    /// 以防密钥明文落盘。请在配置中使用环境变量引用，由令牌客户端在运行时解析。
+    /// </para>
     /// </summary>
-    private static Dictionary<string, object> SerializeOAuthConfigAsObject(McpOAuthConfig oauth)
+    private Dictionary<string, object> SerializeOAuthConfigAsObject(McpOAuthConfig oauth)
     {
         var result = new Dictionary<string, object>();
 
@@ -349,7 +354,17 @@ public class McpConfigPersistence : IMcpConfigPersistence
             result["clientId"] = oauth.ClientId;
 
         if (!string.IsNullOrEmpty(oauth.ClientSecret))
-            result["clientSecret"] = oauth.ClientSecret;
+        {
+            if (McpOAuthSecretResolver.IsEnvironmentReference(oauth.ClientSecret))
+            {
+                result["clientSecret"] = oauth.ClientSecret;
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "检测到明文 OAuth ClientSecret，出于安全考虑不会写回配置文件；请改用 env:VAR 或 ${{VAR}} 引用环境变量");
+            }
+        }
 
         if (!string.IsNullOrEmpty(oauth.Scope))
             result["scope"] = oauth.Scope;

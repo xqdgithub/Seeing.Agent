@@ -156,7 +156,7 @@ public class McpConfigPersistenceOAuthTests
             "authorizationEndpoint": "https://auth.example.com/authorize",
             "tokenEndpoint": "https://auth.example.com/token",
             "clientId": "client-1",
-            "clientSecret": "secret-1",
+            "clientSecret": "${SEEING_MCP_TEST_SECRET}",
             "scope": "read write",
             "redirectUri": "http://localhost:59124/callback",
             "usePkce": false
@@ -175,5 +175,52 @@ public class McpConfigPersistenceOAuthTests
 
         reparsed!.OAuth.Should().NotBeNull();
         reparsed.OAuth.Should().BeEquivalentTo(parsed.OAuth);
+    }
+
+    [Fact]
+    public void SerializeServerConfig_WithPlaintextClientSecret_ShouldNotPersistPlaintext()
+    {
+        var config = new McpServerConfig
+        {
+            Name = "s1",
+            TransportType = McpTransportType.StreamableHttp,
+            Url = new Uri("https://mcp.example.com/mcp"),
+            OAuth = new Seeing.Agent.Abstractions.Mcp.OAuth.McpOAuthConfig
+            {
+                AuthorizationEndpoint = "https://auth.example.com/authorize",
+                TokenEndpoint = "https://auth.example.com/token",
+                ClientId = "client-1",
+                ClientSecret = "super-secret-value"
+            }
+        };
+
+        var json = CreateSut().SerializeServerConfig(config);
+
+        json.Should().NotContain("super-secret-value");
+        var oauth = ParseJson(json).GetProperty("mcpServers").GetProperty("s1").GetProperty("oauth");
+        oauth.TryGetProperty("clientSecret", out _).Should().BeFalse("明文密钥不得写回配置文件");
+    }
+
+    [Fact]
+    public void SerializeServerConfig_WithEnvReferenceClientSecret_ShouldPersistReference()
+    {
+        var config = new McpServerConfig
+        {
+            Name = "s1",
+            TransportType = McpTransportType.StreamableHttp,
+            Url = new Uri("https://mcp.example.com/mcp"),
+            OAuth = new Seeing.Agent.Abstractions.Mcp.OAuth.McpOAuthConfig
+            {
+                AuthorizationEndpoint = "https://auth.example.com/authorize",
+                TokenEndpoint = "https://auth.example.com/token",
+                ClientId = "client-1",
+                ClientSecret = "env:SEEING_MCP_TEST_SECRET"
+            }
+        };
+
+        var json = CreateSut().SerializeServerConfig(config);
+
+        var oauth = ParseJson(json).GetProperty("mcpServers").GetProperty("s1").GetProperty("oauth");
+        oauth.GetProperty("clientSecret").GetString().Should().Be("env:SEEING_MCP_TEST_SECRET");
     }
 }

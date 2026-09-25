@@ -81,8 +81,10 @@ namespace Seeing.Agent.Mcp.OAuth
             if (!string.IsNullOrEmpty(config.ClientId))
                 form["client_id"] = config.ClientId!;
 
-            if (!string.IsNullOrEmpty(config.ClientSecret))
-                form["client_secret"] = config.ClientSecret!;
+            // 客户端密钥支持 env:VAR / ${VAR} 引用，运行时解析为环境变量值（配置中不含明文）
+            var clientSecret = McpOAuthSecretResolver.Resolve(config.ClientSecret);
+            if (!string.IsNullOrEmpty(clientSecret))
+                form["client_secret"] = clientSecret;
         }
 
         private static string RequireTokenEndpoint(McpOAuthConfig config)

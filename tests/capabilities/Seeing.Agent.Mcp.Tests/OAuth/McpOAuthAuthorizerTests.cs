@@ -70,7 +70,7 @@ public class McpOAuthAuthorizerTests : IDisposable
         var browser = new RecordingBrowserLauncher(success: true);
         var callback = new FakeCallbackServer
         {
-            OnWait = () => ("the-code", ExtractQuery(browser.LastUrl!, "state")!)
+            OnWait = state => ("the-code", state)
         };
         var authorizer = CreateAuthorizer(provider, callback, browser);
 
@@ -93,7 +93,7 @@ public class McpOAuthAuthorizerTests : IDisposable
         var browser = new RecordingBrowserLauncher(success: false);
         var callback = new FakeCallbackServer
         {
-            OnWait = () => ("the-code", "irrelevant")
+            OnWait = _ => ("the-code", "irrelevant")
         };
         var authorizer = CreateAuthorizer(provider, callback, browser);
 
@@ -144,17 +144,6 @@ public class McpOAuthAuthorizerTests : IDisposable
         callback.WaitCalled.Should().BeFalse();
     }
 
-    private static string? ExtractQuery(string url, string key)
-    {
-        var index = url.IndexOf($"{key}=", StringComparison.Ordinal);
-        if (index < 0) return null;
-
-        index += key.Length + 1;
-        var end = url.IndexOf('&', index);
-        if (end < 0) end = url.Length;
-        return Uri.UnescapeDataString(url[index..end]);
-    }
-
     private sealed class RecordingBrowserLauncher : IBrowserLauncher
     {
         private readonly bool _success;
@@ -172,7 +161,7 @@ public class McpOAuthAuthorizerTests : IDisposable
 
     private sealed class FakeCallbackServer : IMcpOAuthCallbackServer
     {
-        public Func<(string Code, string State)>? OnWait { get; set; }
+        public Func<string, (string Code, string State)>? OnWait { get; set; }
 
         public bool ThrowTimeout { get; set; }
 
@@ -182,13 +171,13 @@ public class McpOAuthAuthorizerTests : IDisposable
 
         public string GetCallbackUrl() => "http://localhost:59123/callback";
 
-        public Task<(string Code, string State)> WaitForCallbackAsync(TimeSpan timeout)
+        public Task<(string Code, string State)> WaitForCallbackAsync(string state, TimeSpan timeout)
         {
             WaitCalled = true;
             if (ThrowTimeout)
                 throw new TimeoutException("callback timeout");
 
-            return Task.FromResult(OnWait is null ? ("code", "state") : OnWait());
+            return Task.FromResult(OnWait is null ? ("code", state) : OnWait(state));
         }
     }
 }

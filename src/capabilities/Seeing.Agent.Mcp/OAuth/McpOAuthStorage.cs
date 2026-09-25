@@ -7,16 +7,26 @@ using System.Text.Json;
 namespace Seeing.Agent.Mcp.OAuth
 {
     /// <summary>
-    /// OAuth 令牌存储 - 使用 AES 加密（跨平台）。
+    /// OAuth 令牌存储 - 使用 AES-GCM 认证加密（跨平台）。
     /// <para>
     /// 加密密钥为首次运行生成的 32 字节随机密钥，持久化于
     /// <c>%LocalAppData%\Seeing.Agent\mcp_oauth_key.bin</c>；密钥与密文分离存放，
     /// 不再从机器名/用户名派生，避免同机他人可推导。
     /// </para>
+    /// <para>
+    /// 密文格式（AES-GCM）：<c>版本头(4B "MOA2") || nonce(12B) || tag(16B) || ciphertext</c>。
+    /// 认证标签保证篡改/错误密钥会立即、明确地解密失败；读取时向后兼容旧版 AES-CBC 格式
+    /// （随机 IV 前置、无认证），以支持升级迁移。
+    /// </para>
     /// </summary>
     public class McpOAuthStorage
     {
         private const int KeySizeBytes = 32;
+        private const int GcmNonceSizeBytes = 12;
+        private const int GcmTagSizeBytes = 16;
+
+        /// <summary>新版 AesGcm 密文版本头（含格式识别与版本信息）。</summary>
+        private static readonly byte[] s_gcmHeader = { (byte)'M', (byte)'O', (byte)'A', (byte)'2' };
 
         private static readonly ConcurrentDictionary<string, Lazy<byte[]>> s_keyCache =
             new(StringComparer.OrdinalIgnoreCase);
@@ -80,6 +90,18 @@ namespace Seeing.Agent.Mcp.OAuth
                 var json = Encoding.UTF8.GetString(bytes);
                 return JsonSerializer.Deserialize<McpOAuthToken>(json);
             }
+            catch (AuthenticationTagMismatchException ex)
+            {
+                // GCM 认证失败：密钥不匹配或数据被篡改，立即明确失败（不返回任何明文）
+                _logger.LogWarning(ex, "OAuth 令牌认证失败（密钥不匹配或数据被篡改），拒绝加载: {McpName}", mcpName);
+                return null;
+            }
+            catch (CryptographicException ex)
+            {
+                // 旧版 CBC 的 padding 异常等：同样视为密钥不匹配/数据损坏
+                _logger.LogWarning(ex, "OAuth 令牌解密失败（密钥不匹配或数据损坏），拒绝加载: {McpName}", mcpName);
+                return null;
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to load OAuth token for {McpName}", mcpName);
@@ -87,30 +109,71 @@ namespace Seeing.Agent.Mcp.OAuth
             }
         }
 
-        /// <summary>AES-CBC 加密（随机 IV 前置）。</summary>
+        /// <summary>加密令牌：AES-GCM（版本头 + 随机 nonce + 认证标签 + 密文）。</summary>
         private byte[] Protect(byte[] data)
         {
-            using var aes = Aes.Create();
-            aes.Key = GetKey();
-            aes.GenerateIV();
+            var nonce = RandomNumberGenerator.GetBytes(GcmNonceSizeBytes);
+            var ciphertext = new byte[data.Length];
+            var tag = new byte[GcmTagSizeBytes];
 
-            using var encryptor = aes.CreateEncryptor();
-            using var ms = new MemoryStream();
-            ms.Write(aes.IV, 0, aes.IV.Length);
-            using (var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
-            {
-                cs.Write(data, 0, data.Length);
-            }
-            return ms.ToArray();
+            using var gcm = new AesGcm(GetKey(), GcmTagSizeBytes);
+            gcm.Encrypt(nonce, data, ciphertext, tag);
+
+            var output = new byte[s_gcmHeader.Length + GcmNonceSizeBytes + GcmTagSizeBytes + ciphertext.Length];
+            var offset = 0;
+            Buffer.BlockCopy(s_gcmHeader, 0, output, offset, s_gcmHeader.Length);
+            offset += s_gcmHeader.Length;
+            Buffer.BlockCopy(nonce, 0, output, offset, nonce.Length);
+            offset += nonce.Length;
+            Buffer.BlockCopy(tag, 0, output, offset, tag.Length);
+            offset += tag.Length;
+            Buffer.BlockCopy(ciphertext, 0, output, offset, ciphertext.Length);
+            return output;
         }
 
-        /// <summary>AES-CBC 解密（读取前置 IV）。</summary>
+        /// <summary>解密令牌：自动识别新版 AES-GCM 与旧版 AES-CBC 格式。</summary>
         private byte[] Unprotect(byte[] encrypted)
+        {
+            return IsGcmFormat(encrypted)
+                ? UnprotectGcm(encrypted)
+                : UnprotectLegacyCbc(encrypted);
+        }
+
+        private static bool IsGcmFormat(byte[] data)
+        {
+            if (data.Length < s_gcmHeader.Length + GcmNonceSizeBytes + GcmTagSizeBytes)
+                return false;
+
+            return data.AsSpan(0, s_gcmHeader.Length).SequenceEqual(s_gcmHeader);
+        }
+
+        private byte[] UnprotectGcm(byte[] encrypted)
+        {
+            var offset = s_gcmHeader.Length;
+            var nonce = encrypted.AsSpan(offset, GcmNonceSizeBytes);
+            offset += GcmNonceSizeBytes;
+            var tag = encrypted.AsSpan(offset, GcmTagSizeBytes);
+            offset += GcmTagSizeBytes;
+            var ciphertext = encrypted.AsSpan(offset);
+            var plaintext = new byte[ciphertext.Length];
+
+            using var gcm = new AesGcm(GetKey(), GcmTagSizeBytes);
+            // 认证标签不匹配时抛 AuthenticationTagMismatchException
+            gcm.Decrypt(nonce, ciphertext, tag, plaintext);
+            return plaintext;
+        }
+
+        /// <summary>旧版 AES-CBC 解密（随机 IV 前置、无认证），仅用于向后兼容读取。</summary>
+        private byte[] UnprotectLegacyCbc(byte[] encrypted)
         {
             using var aes = Aes.Create();
             aes.Key = GetKey();
 
-            var iv = new byte[aes.IV.Length];
+            var ivSize = aes.BlockSize / 8;
+            if (encrypted.Length <= ivSize)
+                throw new CryptographicException("旧版 OAuth 令牌密文长度非法");
+
+            var iv = new byte[ivSize];
             Array.Copy(encrypted, 0, iv, 0, iv.Length);
             aes.IV = iv;
 
