@@ -25,6 +25,9 @@ namespace Seeing.Session.Management
         private readonly ILogger<SessionManager>? _logger;
         private readonly ConcurrentDictionary<string, SessionData> _sessionDataCache = new();
 
+        // EnsureSessionAsync 的在途去重表：并发同 id 调用共享同一次 Get→Load→new（单实例语义）
+        private readonly ConcurrentDictionary<string, Lazy<Task<SessionData>>> _ensureInFlight = new();
+
         // 新增组件（可选）
         private readonly SessionArchiver? _archiver;
         private readonly SessionSharer? _sharer;
@@ -94,7 +97,11 @@ namespace Seeing.Session.Management
         }
 
         /// <summary>
-        /// 确保会话存在：先查缓存，再尝试从存储加载，均不存在则使用指定 ID 创建
+        /// 确保会话存在：先查缓存，再尝试从存储加载，均不存在则使用指定 ID 创建。
+        /// <para>
+        /// 原子化（P2）：并发同 id 调用经在途去重共享同一次加载/创建结果，
+        /// 保证所有组件拿到同一实例；首个调用的创建参数生效。失败不缓存，下次调用可重试。
+        /// </para>
         /// </summary>
         /// <param name="id">会话 ID（由调用方指定）</param>
         /// <param name="selectedAgent">选中的 Agent ID（可选，仅新建时生效）</param>
@@ -110,11 +117,34 @@ namespace Seeing.Session.Management
             if (string.IsNullOrEmpty(id))
                 throw new ArgumentException("Session id cannot be null or empty.", nameof(id));
 
+            // 快路径：缓存命中直接返回
             var existing = Get(id);
             if (existing != null)
                 return existing;
 
-            var loaded = await LoadAsync(id);
+            // 慢路径去重：并发同 id 共享同一次 Ensure（ExecutionAndPublication 保证单次执行）
+            var lazy = _ensureInFlight.GetOrAdd(id, _ => new Lazy<Task<SessionData>>(
+                () => EnsureSessionCoreAsync(id, selectedAgent, partitionId, scenario),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+            try
+            {
+                return await lazy.Value.ConfigureAwait(false);
+            }
+            finally
+            {
+                // 完成后移除在途条目（含失败）：后续调用走缓存快路径；失败亦可重试
+                _ensureInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<SessionData>>>(id, lazy));
+            }
+        }
+
+        /// <summary>Ensure 慢路径主体：Get→Load→new（在途去重保护下单次执行）。</summary>
+        private async Task<SessionData> EnsureSessionCoreAsync(
+            string id,
+            string? selectedAgent,
+            string? partitionId,
+            string? scenario)
+        {
+            var loaded = await LoadAsync(id).ConfigureAwait(false);
             if (loaded != null)
                 return loaded;
 
@@ -125,9 +155,9 @@ namespace Seeing.Session.Management
                 PartitionId = partitionId ?? "default",
                 SelectedAgent = selectedAgent ?? string.Empty,
                 Scenario = scenario,
-                CreatedAt = DateTime.Now,
-                UpdatedAt = DateTime.Now,
-                LastActiveAt = DateTime.Now,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                LastActiveAt = DateTime.UtcNow,
                 Status = SessionStatus.Created
             };
             _sessionDataCache[session.Id] = session;

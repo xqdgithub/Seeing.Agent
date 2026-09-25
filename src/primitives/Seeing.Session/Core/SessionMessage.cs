@@ -295,9 +295,9 @@ namespace Seeing.Session.Core
         [JsonPropertyName("tool_name")]
         public string? ToolName { get; set; }
 
-        /// <summary>创建时间</summary>
+        /// <summary>创建时间（统一 UTC；JSON 序列化保留 Kind 后缀 Z，往返保真）</summary>
         [JsonPropertyName("created_at")]
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         /// <summary>Token 使用统计（可选）</summary>
         [JsonPropertyName("token_usage")]
