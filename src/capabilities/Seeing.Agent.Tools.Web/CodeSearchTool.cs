@@ -80,7 +80,7 @@ public class CodeSearchTool : ToolBase
                 jsonrpc = "2.0",
                 id = 1,
                 method = "tools/call",
-                parameters = new
+                @params = new
                 {
                     name = "get_code_context_exa",
                     arguments = new Dictionary<string, object?>
