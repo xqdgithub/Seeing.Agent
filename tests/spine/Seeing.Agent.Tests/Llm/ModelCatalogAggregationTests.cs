@@ -88,7 +88,12 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         registry.Register(new TestProvider("trigger", []), ownerExtensionId: "ext");
 
+        // 事件在数据刷新前发出的既有实现时序下，事件不能作为同步点：先等事件触达，
+        // 再轮询缓存直到刷新完成，避免并发调度导致的空集合假失败。
         await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await WaitUntilAsync(
+            () => catalog.GetModels().ContainsKey("healthy/visible"),
+            TimeSpan.FromSeconds(5));
 
         catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("healthy/visible");
     }
