@@ -429,6 +429,115 @@ public class TaskCardAggregatorTests
     }
 
     [Fact]
+    public async Task OnEvent_ChildLoopCancelled_ShouldNotSetError()
+    {
+        // P3：取消不是错误——FailStep 须区分 cancelled，避免任务卡片把取消渲染为"错误"。
+        var parentId = "parent1";
+        var childId = "child1";
+        var parent = CreateParentWithTaskCall(parentId, "call-1");
+        var child = CreateChild(childId, "call-1");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var childChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = CreateSessionManagerMock(parent, child);
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
+        {
+            [parentId] = parentChannel,
+            [childId] = childChannel
+        });
+
+        using var router = CreateRouter(orchestrator);
+        var aggregator = CreateAggregator(router, sm, gm);
+        aggregator.Rebind(parentId);
+
+        await parentChannel.Writer.WriteAsync(new ToolCallEvent
+        {
+            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+        }, TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        await childChannel.Writer.WriteAsync(new LoopCancelledEvent
+        {
+            SessionId = childId, LoopId = "loop-1", Reason = "user"
+        }, TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        parent.Messages[0].ToolCalls![0].Error.Should().BeNullOrEmpty("取消不应渲染为错误");
+
+        parentChannel.Writer.TryComplete();
+        childChannel.Writer.TryComplete();
+    }
+
+    [Fact]
+    public async Task OnEvent_ChildError_ShouldSetError()
+    {
+        var parentId = "parent1";
+        var childId = "child1";
+        var parent = CreateParentWithTaskCall(parentId, "call-1");
+        var child = CreateChild(childId, "call-1");
+        var parentChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var childChannel = Channel.CreateUnbounded<IMessageEvent>();
+        var sm = CreateSessionManagerMock(parent, child);
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
+        {
+            [parentId] = parentChannel,
+            [childId] = childChannel
+        });
+
+        using var router = CreateRouter(orchestrator);
+        var aggregator = CreateAggregator(router, sm, gm);
+        aggregator.Rebind(parentId);
+
+        await parentChannel.Writer.WriteAsync(new ToolCallEvent
+        {
+            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+        }, TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        await childChannel.Writer.WriteAsync(new ErrorEvent
+        {
+            SessionId = childId, Message = "boom"
+        }, TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        parent.Messages[0].ToolCalls![0].Error.Should().Be("boom");
+
+        parentChannel.Writer.TryComplete();
+        childChannel.Writer.TryComplete();
+    }
+
+    [Fact]
+    public async Task Dispose_ShouldBeIdempotent_AndNotThrow()
+    {
+        var parentId = "parent1";
+        var childId = "child1";
+        var parent = CreateParentWithTaskCall(parentId, "call-1");
+        var child = CreateChild(childId, "call-1");
+        var sm = CreateSessionManagerMock(parent, child);
+        var gm = CreateGroupManager(new() { [parentId] = new[] { child } });
+        var orchestrator = CreateOrchestratorMock(new Dictionary<string, Channel<IMessageEvent>>
+        {
+            [parentId] = Channel.CreateUnbounded<IMessageEvent>(),
+            [childId] = Channel.CreateUnbounded<IMessageEvent>()
+        });
+
+        using var router = CreateRouter(orchestrator);
+        var aggregator = CreateAggregator(router, sm, gm);
+
+        var act = () =>
+        {
+            aggregator.Dispose();
+            aggregator.Dispose();
+        };
+
+        act.Should().NotThrow();
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task Dispose_ShouldFlushDirtyTaskStepsBeforeReleasingLocks()
     {
         // I3：circuit 关闭（DetachAllForCircuit → ReleaseConsumer → aggregator.Dispose）时，

@@ -244,8 +244,14 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
 
     private static bool FailStep(TaskCardState state, string error, bool cancelled)
     {
-        if (IsIncomplete(state.ToolCall))
+        if (!IsIncomplete(state.ToolCall))
+            return false;
+
+        // P3：区分取消与错误——取消不是失败，不写 Error（避免任务卡片误渲染为"错误"）；
+        // 父工具状态由 EventStreamHandler 权威设置为 cancelled。
+        if (!cancelled)
             state.ToolCall.Error = error;
+
         return false;
     }
 
@@ -364,10 +370,17 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
             return;
         _disposed = true;
 
-        // I3：先尽力 flush（防抖窗口内未落盘的 TaskSteps 不丢失），再释放锁与 Timer。
+        // P3：异步化释放，避免 UI 线程同步等待 async 落盘（GetAwaiter().GetResult() 死锁面）。
+        // 后台序列：优先 flush 防抖窗口内未落盘的 TaskSteps，再等待在途 flush 归还
+        // _saveLock 后释放资源；Dispose 本身立即返回。
+        _ = ReleaseAsync();
+    }
+
+    private async Task ReleaseAsync()
+    {
         try
         {
-            FlushPersistAsync().GetAwaiter().GetResult();
+            await FlushPersistAsync().ConfigureAwait(false);
         }
         catch
         {
@@ -378,12 +391,12 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
         // 锁被并发 Release 抛 ObjectDisposedException
         try
         {
-            _saveLock.Wait();
+            await _saveLock.WaitAsync().ConfigureAwait(false);
             _saveLock.Release();
         }
         catch (ObjectDisposedException)
         {
-            // 已被并发路径释放，忽略
+            return; // 已被并发路径释放，忽略
         }
 
         _writeLock.Dispose();

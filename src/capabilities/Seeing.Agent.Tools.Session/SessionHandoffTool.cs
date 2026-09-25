@@ -145,7 +145,7 @@ public sealed class SessionHandoffTool : SessionToolBase
                 if (!string.IsNullOrEmpty(submit.ExecutionId))
                     await _submitter.CancelAsync(submit.ExecutionId, ct).ConfigureAwait(false);
 
-                await RollbackAsync(successor.Id, group?.Id, originalActiveId, ct).ConfigureAwait(false);
+                await RollbackAsync(successor.Id, group?.Id, originalActiveId).ConfigureAwait(false);
                 return Failure(submit.Error ?? "交接执行提交失败");
             }
 
@@ -163,14 +163,21 @@ public sealed class SessionHandoffTool : SessionToolBase
         catch (Exception ex)
         {
             if (createdSuccessorId is not null)
-                await RollbackAsync(createdSuccessorId, group?.Id, originalActiveId, ct).ConfigureAwait(false);
+                await RollbackAsync(createdSuccessorId, group?.Id, originalActiveId).ConfigureAwait(false);
             return Failure(ex, "会话交接失败");
         }
     }
 
+    /// <summary>
+    /// 回滚交接：移除后继并还原活跃会话。
+    /// <para>内部一律使用 <see cref="CancellationToken.None"/>：提交失败常因取消令牌已触发，
+    /// 若沿用该令牌，组锁 <c>WaitAsync</c> 会立即抛 <see cref="OperationCanceledException"/>，
+    /// 导致后继成为孤儿并劫持锚点（P1-15）。回滚是清理路径，必须与调用方取消状态解耦。</para>
+    /// </summary>
     private async Task RollbackAsync(
-        string successorId, string? groupId, string? originalActiveId, CancellationToken ct)
+        string successorId, string? groupId, string? originalActiveId)
     {
+        var ct = CancellationToken.None;
         try
         {
             await Groups.RemoveSessionAsync(successorId, ct).ConfigureAwait(false);

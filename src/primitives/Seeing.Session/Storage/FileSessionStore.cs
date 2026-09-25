@@ -156,10 +156,21 @@ namespace Seeing.Session.Storage
 
                 // 使用临时文件 + 原子替换确保写入完整性
                 var tempPath = filePath + ".tmp";
-                await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, ct);
+                var moved = false;
+                try
+                {
+                    await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, ct);
 
-                // 原子替换（带重试机制处理 Windows Defender/OS 缓存导致的瞬时访问失败）
-                await AtomicMoveWithRetryAsync(tempPath, filePath, data.Id, ct);
+                    // 原子替换（带重试机制处理 Windows Defender/OS 缓存导致的瞬时访问失败）
+                    await AtomicMoveWithRetryAsync(tempPath, filePath, data.Id, ct);
+                    moved = true;
+                }
+                finally
+                {
+                    // 仅在成功替换后清理残留 .tmp；失败时保留唯一可恢复副本供排查/恢复
+                    if (moved)
+                        TryDeleteFile(tempPath);
+                }
 
                 _logger?.LogDebug("保存会话成功: {SessionId}", data.Id);
             }
@@ -199,56 +210,62 @@ namespace Seeing.Session.Storage
                     File.Move(sourcePath, destPath, overwrite: true);
                     return; // 成功则返回
                 }
-                catch (UnauthorizedAccessException ex) when (attempt < maxRetries - 1)
+                catch (UnauthorizedAccessException ex)
                 {
                     _logger?.LogWarning(
                         "文件移动失败 (尝试 {Attempt}/{MaxRetries}): {SessionId}, 错误: {Error}",
                         attempt + 1, maxRetries, sessionId, ex.Message);
 
-                    // 等待后重试（指数退避）
-                    await Task.Delay(delay, ct);
-                    delay *= 2;
+                    // 最后一次尝试失败不重试，落到下方备用策略
+                    if (attempt < maxRetries - 1)
+                    {
+                        await Task.Delay(delay, ct);
+                        delay *= 2;
+                    }
                 }
-                catch (IOException ex) when (attempt < maxRetries - 1)
+                catch (IOException ex)
                 {
                     // 处理 IO 异常（如文件被锁定）
                     _logger?.LogWarning(
                         "文件移动失败 (尝试 {Attempt}/{MaxRetries}): {SessionId}, 错误: {Error}",
                         attempt + 1, maxRetries, sessionId, ex.Message);
 
-                    await Task.Delay(delay, ct);
-                    delay *= 2;
+                    if (attempt < maxRetries - 1)
+                    {
+                        await Task.Delay(delay, ct);
+                        delay *= 2;
+                    }
                 }
             }
 
-            // 所有重试都失败，尝试最后的安全备份策略
+            // 所有重试都失败，尝试最后的安全备份策略：Copy 覆盖目标后删除临时源。
+            // 采用 Copy-then-delete（而非 delete dest + Move）：即使目标无法替换，
+            // 也不会先毁掉已有会话文件；Copy 失败时保留 source 作为唯一可恢复副本。
             try
             {
-                // 尝试删除目标文件后重新移动
-                if (File.Exists(destPath))
-                {
-                    File.Delete(destPath);
-                }
-                File.Move(sourcePath, destPath);
+                File.Copy(sourcePath, destPath, overwrite: true);
+                TryDeleteFile(sourcePath);
                 _logger?.LogWarning("使用备用策略成功保存会话: {SessionId}", sessionId);
             }
             catch (Exception ex)
             {
-                // 清理临时文件
-                try
-                {
-                    if (File.Exists(sourcePath))
-                    {
-                        File.Delete(sourcePath);
-                    }
-                }
-                catch
-                {
-                    // 忽略清理失败
-                }
-
+                // 不删除 source：交由 SaveAsync 的 finally 按成功/失败决定清理
                 _logger?.LogError(ex, "保存会话失败（所有重试耗尽）: {SessionId}", sessionId);
                 throw new IOException($"保存会话失败: {sessionId}", ex);
+            }
+        }
+
+        /// <summary>尽力删除文件（不存在或失败均静默）。</summary>
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+                // 忽略清理失败
             }
         }
 

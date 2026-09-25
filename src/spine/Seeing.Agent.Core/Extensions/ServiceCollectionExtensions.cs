@@ -691,6 +691,10 @@ namespace Seeing.Agent.Core.Extensions
             // 同时注册具体类，供 ReloadHandler 注入；接口复用同一实例
             services.AddSingleton<ComponentManager>();
             services.AddSingleton<IComponentManager>(sp => sp.GetRequiredService<ComponentManager>());
+
+            // 会话销毁清理（P1-16）：订阅 session.destroyed，收敛该会话在途审批并清除授权记忆/白名单目录
+            services.AddSingleton<SessionDestroyedCleanupHook>();
+            services.AddHostedService<SessionDestroyedCleanupHookRegistrar>();
         }
 
         /// <summary>

@@ -23,8 +23,11 @@ namespace Seeing.Session.Management
         private readonly ConcurrentDictionary<string, string> _sessionToGroup = new();
         // 会话 → 父会话的内存索引（关系权威仍是 SessionGroup；此处仅为高频只读路径提供同步快照）
         private readonly ConcurrentDictionary<string, string> _sessionParents = new();
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionLocks = new();
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> _groupLocks = new();
+
+        // 两级会话/组锁：Dictionary + 引用计数，空闲即回收，避免长期运行字典无限增长
+        private readonly object _locksGate = new();
+        private readonly Dictionary<string, LockEntry> _sessionLocks = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, LockEntry> _groupLocks = new(StringComparer.Ordinal);
 
         /// <inheritdoc/>
         public event EventHandler<SessionGroupChangedEventArgs>? Changed;
@@ -46,8 +49,7 @@ namespace Seeing.Session.Management
         /// <inheritdoc/>
         public async Task<SessionGroup> EnsureForSessionAsync(string sessionId, CancellationToken ct = default)
         {
-            var sessionLock = GetLock(_sessionLocks, sessionId);
-            await sessionLock.WaitAsync(ct).ConfigureAwait(false);
+            var sessionLock = await AcquireLockAsync(_sessionLocks, sessionId, ct).ConfigureAwait(false);
             try
             {
                 var existing = await GetGroupForSessionLiveAsync(sessionId, ct).ConfigureAwait(false);
@@ -68,7 +70,7 @@ namespace Seeing.Session.Management
             }
             finally
             {
-                sessionLock.Release();
+                sessionLock.Dispose();
             }
         }
 
@@ -150,8 +152,7 @@ namespace Seeing.Session.Management
             ArgumentNullException.ThrowIfNull(member);
             ValidateMemberInvariant(member);
 
-            var groupLock = GetLock(_groupLocks, groupId);
-            await groupLock.WaitAsync(ct).ConfigureAwait(false);
+            var groupLock = await AcquireLockAsync(_groupLocks, groupId, ct).ConfigureAwait(false);
             SessionGroup snapshot;
             try
             {
@@ -180,7 +181,7 @@ namespace Seeing.Session.Management
             }
             finally
             {
-                groupLock.Release();
+                groupLock.Dispose();
             }
 
             RaiseChanged(snapshot);
@@ -189,8 +190,7 @@ namespace Seeing.Session.Management
         /// <inheritdoc/>
         public async Task RemoveMemberAsync(string groupId, string sessionId, CancellationToken ct = default)
         {
-            var groupLock = GetLock(_groupLocks, groupId);
-            await groupLock.WaitAsync(ct).ConfigureAwait(false);
+            var groupLock = await AcquireLockAsync(_groupLocks, groupId, ct).ConfigureAwait(false);
             SessionGroup snapshot;
             try
             {
@@ -239,7 +239,7 @@ namespace Seeing.Session.Management
             }
             finally
             {
-                groupLock.Release();
+                groupLock.Dispose();
             }
 
             RaiseChanged(snapshot);
@@ -248,8 +248,7 @@ namespace Seeing.Session.Management
         /// <inheritdoc/>
         public async Task SetActiveAsync(string groupId, string sessionId, CancellationToken ct = default)
         {
-            var groupLock = GetLock(_groupLocks, groupId);
-            await groupLock.WaitAsync(ct).ConfigureAwait(false);
+            var groupLock = await AcquireLockAsync(_groupLocks, groupId, ct).ConfigureAwait(false);
             SessionGroup snapshot;
             try
             {
@@ -266,7 +265,7 @@ namespace Seeing.Session.Management
             }
             finally
             {
-                groupLock.Release();
+                groupLock.Dispose();
             }
 
             RaiseChanged(snapshot);
@@ -282,8 +281,7 @@ namespace Seeing.Session.Management
                 return;
             }
 
-            var groupLock = GetLock(_groupLocks, group.Id);
-            await groupLock.WaitAsync(ct).ConfigureAwait(false);
+            var groupLock = await AcquireLockAsync(_groupLocks, group.Id, ct).ConfigureAwait(false);
             var removedSessionIds = new List<string>();
             SessionGroup snapshot;
             try
@@ -350,7 +348,7 @@ namespace Seeing.Session.Management
             }
             finally
             {
-                groupLock.Release();
+                groupLock.Dispose();
             }
 
             foreach (var id in removedSessionIds)
@@ -368,8 +366,7 @@ namespace Seeing.Session.Management
             if (group == null)
                 return null;
 
-            var groupLock = GetLock(_groupLocks, group.Id);
-            await groupLock.WaitAsync(ct).ConfigureAwait(false);
+            var groupLock = await AcquireLockAsync(_groupLocks, group.Id, ct).ConfigureAwait(false);
             try
             {
                 var current = await GetGroupLiveAsync(group.Id, ct).ConfigureAwait(false) ?? group;
@@ -377,7 +374,7 @@ namespace Seeing.Session.Management
             }
             finally
             {
-                groupLock.Release();
+                groupLock.Dispose();
             }
         }
 
@@ -431,8 +428,7 @@ namespace Seeing.Session.Management
             if (string.IsNullOrEmpty(groupId))
                 return Array.Empty<SessionGroupMember>();
 
-            var groupLock = GetLock(_groupLocks, groupId);
-            await groupLock.WaitAsync(ct).ConfigureAwait(false);
+            var groupLock = await AcquireLockAsync(_groupLocks, groupId, ct).ConfigureAwait(false);
             try
             {
                 var group = await GetGroupLiveAsync(groupId, ct).ConfigureAwait(false);
@@ -442,7 +438,7 @@ namespace Seeing.Session.Management
             }
             finally
             {
-                groupLock.Release();
+                groupLock.Dispose();
             }
         }
 
@@ -450,8 +446,7 @@ namespace Seeing.Session.Management
         private async Task<IReadOnlyList<string>> SelectChildIdsLockedAsync(
             string groupId, string parentId, CancellationToken ct)
         {
-            var groupLock = GetLock(_groupLocks, groupId);
-            await groupLock.WaitAsync(ct).ConfigureAwait(false);
+            var groupLock = await AcquireLockAsync(_groupLocks, groupId, ct).ConfigureAwait(false);
             try
             {
                 var group = await GetGroupLiveAsync(groupId, ct).ConfigureAwait(false);
@@ -461,7 +456,7 @@ namespace Seeing.Session.Management
             }
             finally
             {
-                groupLock.Release();
+                groupLock.Dispose();
             }
         }
 
@@ -552,17 +547,26 @@ namespace Seeing.Session.Management
                     Priority = r.Priority
                 }).ToList();
 
-            await _sessions.SaveAsync(child.Id).ConfigureAwait(false);
-
-            await AddMemberAsync(parentGroup.Id, new SessionGroupMember
+            try
             {
-                SessionId = child.Id,
-                Relation = SessionRelation.Child,
-                ParentSessionId = parentId
-            }, ct).ConfigureAwait(false);
+                await _sessions.SaveAsync(child.Id).ConfigureAwait(false);
 
-            await _sessions.UpdateSessionAsync(child.Id, s => s.GroupId = parentGroup.Id, ct).ConfigureAwait(false);
-            return child;
+                await AddMemberAsync(parentGroup.Id, new SessionGroupMember
+                {
+                    SessionId = child.Id,
+                    Relation = SessionRelation.Child,
+                    ParentSessionId = parentId
+                }, ct).ConfigureAwait(false);
+
+                await _sessions.UpdateSessionAsync(child.Id, s => s.GroupId = parentGroup.Id, ct).ConfigureAwait(false);
+                return child;
+            }
+            catch
+            {
+                // 中途失败自清理：移除已入组/已建子会话，避免孤儿泄漏
+                await CleanupOrphanSessionAsync(child.Id, parentGroup.Id).ConfigureAwait(false);
+                throw;
+            }
         }
 
         /// <inheritdoc/>
@@ -575,28 +579,40 @@ namespace Seeing.Session.Management
             var forked = await _forker.ForkAsync(sessionId, title, ct).ConfigureAwait(false);
             forked.Kind = SessionKind.Root;
 
-            if (source.Kind == SessionKind.SubAgent)
+            string? groupId = null;
+            try
             {
-                // 子会话分支：建立独立新组，仅以 ParentSessionId 记录谱系
-                var group = NewSingleMemberGroup(forked, parentSessionId: sessionId);
-                await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
-                CacheGroup(group);
-                await _sessions.UpdateSessionAsync(forked.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
-            }
-            else
-            {
-                var group = await EnsureForSessionAsync(sessionId, ct).ConfigureAwait(false);
-                await AddMemberAsync(group.Id, new SessionGroupMember
+                if (source.Kind == SessionKind.SubAgent)
                 {
-                    SessionId = forked.Id,
-                    Relation = SessionRelation.Fork,
-                    ParentSessionId = sessionId
-                }, ct).ConfigureAwait(false);
-                await _sessions.UpdateSessionAsync(forked.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
-            }
+                    // 子会话分支：建立独立新组，仅以 ParentSessionId 记录谱系
+                    var group = NewSingleMemberGroup(forked, parentSessionId: sessionId);
+                    groupId = group.Id;
+                    await _store.SaveAsync(group.Clone(), ct).ConfigureAwait(false);
+                    CacheGroup(group);
+                    await _sessions.UpdateSessionAsync(forked.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    var group = await EnsureForSessionAsync(sessionId, ct).ConfigureAwait(false);
+                    groupId = group.Id;
+                    await AddMemberAsync(group.Id, new SessionGroupMember
+                    {
+                        SessionId = forked.Id,
+                        Relation = SessionRelation.Fork,
+                        ParentSessionId = sessionId
+                    }, ct).ConfigureAwait(false);
+                    await _sessions.UpdateSessionAsync(forked.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
+                }
 
-            await _sessions.SaveAsync(forked.Id).ConfigureAwait(false);
-            return forked;
+                await _sessions.SaveAsync(forked.Id).ConfigureAwait(false);
+                return forked;
+            }
+            catch
+            {
+                // 中途失败自清理：移除已入组/已建分支会话，避免孤儿泄漏
+                await CleanupOrphanSessionAsync(forked.Id, groupId).ConfigureAwait(false);
+                throw;
+            }
         }
 
         /// <inheritdoc/>
@@ -611,17 +627,26 @@ namespace Seeing.Session.Management
 
             // 备份始终加入源会话所在组（即使源为子会话也沿用其组）
             var group = await EnsureForSessionAsync(source.Id, ct).ConfigureAwait(false);
-            await AddMemberAsync(group.Id, new SessionGroupMember
+            try
             {
-                SessionId = forked.Id,
-                Relation = SessionRelation.Fork,
-                ParentSessionId = sessionId,
-                Label = label
-            }, ct).ConfigureAwait(false);
+                await AddMemberAsync(group.Id, new SessionGroupMember
+                {
+                    SessionId = forked.Id,
+                    Relation = SessionRelation.Fork,
+                    ParentSessionId = sessionId,
+                    Label = label
+                }, ct).ConfigureAwait(false);
 
-            await _sessions.UpdateSessionAsync(forked.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
-            await _sessions.SaveAsync(forked.Id).ConfigureAwait(false);
-            return forked;
+                await _sessions.UpdateSessionAsync(forked.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
+                await _sessions.SaveAsync(forked.Id).ConfigureAwait(false);
+                return forked;
+            }
+            catch
+            {
+                // 中途失败自清理：移除已入组/已建备份会话，避免孤儿泄漏
+                await CleanupOrphanSessionAsync(forked.Id, group.Id).ConfigureAwait(false);
+                throw;
+            }
         }
 
         /// <inheritdoc/>
@@ -653,8 +678,7 @@ namespace Seeing.Session.Management
                 groupId = group.Id;
 
                 // 组锁内原子迁移：校验源为锚点 → 建成员 → 归一锚点 → 一次持久化/发布
-                var groupLock = GetLock(_groupLocks, group.Id);
-                await groupLock.WaitAsync(ct).ConfigureAwait(false);
+                var groupLock = await AcquireLockAsync(_groupLocks, group.Id, ct).ConfigureAwait(false);
                 SessionGroup snapshot;
                 try
                 {
@@ -689,7 +713,7 @@ namespace Seeing.Session.Management
                 }
                 finally
                 {
-                    groupLock.Release();
+                    groupLock.Dispose();
                 }
 
                 await _sessions.UpdateSessionAsync(successor.Id, s => s.GroupId = group.Id, ct).ConfigureAwait(false);
@@ -701,55 +725,64 @@ namespace Seeing.Session.Management
             catch
             {
                 // 中途失败自清理：移除已入组/已建会话，避免孤儿泄漏
-                await CleanupHandoffSuccessorAsync(successor.Id, groupId, ct).ConfigureAwait(false);
+                await CleanupOrphanSessionAsync(successor.Id, groupId).ConfigureAwait(false);
                 throw;
             }
         }
 
         /// <summary>
-        /// 创建交接后继失败时清理：从源组移除可能已写入的成员（含未持久化的活组内存态），
-        /// 再删除已建会话。尽力而为，不掩盖原始异常。
+        /// 创建会话关系（交接/子会话/分支/备份）中途失败时清理：从组移除可能已写入的成员
+        /// （含未持久化的活组内存态），组因此清空时删除组，再删除已建会话。尽力而为，不掩盖原始异常。
+        /// <para>清理一律使用 <see cref="CancellationToken.None"/>：失败原因常为取消，清理必须与取消状态解耦。</para>
         /// </summary>
-        private async Task CleanupHandoffSuccessorAsync(
-            string successorId, string? groupId, CancellationToken ct)
+        private async Task CleanupOrphanSessionAsync(string sessionId, string? groupId)
         {
             if (groupId is not null)
             {
                 try
                 {
-                    var groupLock = GetLock(_groupLocks, groupId);
-                    await groupLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                    var groupLock = await AcquireLockAsync(_groupLocks, groupId, CancellationToken.None).ConfigureAwait(false);
                     try
                     {
                         var group = await GetGroupLiveAsync(groupId, CancellationToken.None).ConfigureAwait(false);
-                        var member = group?.Members.FirstOrDefault(m => m.SessionId == successorId);
+                        var member = group?.Members.FirstOrDefault(m => m.SessionId == sessionId);
                         if (group is not null && member is not null)
                         {
-                            // 移除后继前记录其来源（原锚点），供归一优先级 (a) 复位原锚点
+                            // 移除前记录其来源（原锚点），供归一优先级 (a) 复位原锚点
                             var removedParent = member.ParentSessionId;
                             group.Members.Remove(member);
-                            UnmapSession(successorId, group.Id);
-                            if (group.ActiveSessionId == successorId)
+                            UnmapSession(sessionId, group.Id);
+                            if (group.ActiveSessionId == sessionId)
                                 group.ActiveSessionId = null;
-                            // 恢复原锚点：传 hint 确保退出点仍是原锚点，而非按 Order 回退到链首
-                            NormalizeAnchor(group, removedParent);
-                            group.Title = _sessions.Get(group.AnchorSessionId)?.Title ?? group.Title;
-                            Touch(group);
-                            await _store.SaveAsync(group.Clone(), CancellationToken.None).ConfigureAwait(false);
+
+                            if (group.Members.Count == 0)
+                            {
+                                // 组已无成员：删除组而非保留空壳
+                                await _store.DeleteAsync(group.Id, CancellationToken.None).ConfigureAwait(false);
+                                RemoveFromCache(group.Id);
+                            }
+                            else
+                            {
+                                // 恢复原锚点：传 hint 确保退出点仍是原锚点，而非按 Order 回退到链首
+                                NormalizeAnchor(group, removedParent);
+                                group.Title = _sessions.Get(group.AnchorSessionId)?.Title ?? group.Title;
+                                Touch(group);
+                                await _store.SaveAsync(group.Clone(), CancellationToken.None).ConfigureAwait(false);
+                            }
                         }
                     }
                     finally
                     {
-                        groupLock.Release();
+                        groupLock.Dispose();
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "清理交接后继组成员失败: SuccessorId={SuccessorId}", successorId);
+                    _logger.LogWarning(ex, "清理孤儿子会话组成员失败: SessionId={SessionId}", sessionId);
                 }
             }
 
-            _sessions.Delete(successorId);
+            _sessions.Delete(sessionId);
         }
 
         // ============================ 内部辅助 ============================
@@ -894,9 +927,98 @@ namespace Seeing.Session.Management
         private static string NewGroupId() =>
             "grp_" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + Guid.NewGuid().ToString("N")[..8];
 
-        private static SemaphoreSlim GetLock(
-            ConcurrentDictionary<string, SemaphoreSlim> locks, string key) =>
-            locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        // ============================ 锁（引用计数 + 空闲回收） ============================
+
+        /// <summary>
+        /// 获取锁租约：登记引用计数后异步等待信号量；空闲（引用计数归零）时从字典移除并释放信号量，
+        /// 避免长期运行下 <c>_sessionLocks</c>/<c>_groupLocks</c> 只增不减。
+        /// <para>引用计数覆盖持有者与等待者，全部增减在 <see cref="_locksGate"/> 下进行，
+        /// 保证"归零 => 无任何持有者/等待者"再释放，杜绝同名键出现两个信号量。</para>
+        /// </summary>
+        private async Task<LockLease> AcquireLockAsync(
+            Dictionary<string, LockEntry> locks, string key, CancellationToken ct)
+        {
+            LockEntry entry;
+            lock (_locksGate)
+            {
+                if (!locks.TryGetValue(key, out var existing))
+                {
+                    existing = new LockEntry();
+                    locks[key] = existing;
+                }
+                existing.RefCount++;
+                entry = existing;
+            }
+
+            try
+            {
+                await entry.Semaphore.WaitAsync(ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 未取得信号量：仅回退引用计数，不得 Release
+                ReleaseLock(locks, key, entry, releaseSemaphore: false);
+                throw;
+            }
+
+            return new LockLease(this, locks, key, entry);
+        }
+
+        private void ReleaseLock(
+            Dictionary<string, LockEntry> locks, string key, LockEntry entry, bool releaseSemaphore)
+        {
+            if (releaseSemaphore)
+                entry.Semaphore.Release();
+
+            var dispose = false;
+            lock (_locksGate)
+            {
+                if (--entry.RefCount == 0)
+                {
+                    locks.Remove(key);
+                    dispose = true;
+                }
+            }
+
+            if (dispose)
+                entry.Semaphore.Dispose();
+        }
+
+        /// <summary>锁条目：信号量 + 引用计数（持有者 + 等待者）。</summary>
+        private sealed class LockEntry
+        {
+            public readonly SemaphoreSlim Semaphore = new(1, 1);
+            public int RefCount;
+        }
+
+        /// <summary>锁租约：<see cref="Dispose"/> 幂等归还锁并回收空闲条目。</summary>
+        private sealed class LockLease : IDisposable
+        {
+            private readonly SessionGroupManager _owner;
+            private readonly Dictionary<string, LockEntry> _locks;
+            private readonly string _key;
+            private readonly LockEntry _entry;
+            private int _disposed;
+
+            public LockLease(
+                SessionGroupManager owner,
+                Dictionary<string, LockEntry> locks,
+                string key,
+                LockEntry entry)
+            {
+                _owner = owner;
+                _locks = locks;
+                _key = key;
+                _entry = entry;
+            }
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                    return;
+                _owner.ReleaseLock(_locks, _key, _entry, releaseSemaphore: true);
+            }
+        }
 
         private void CacheGroup(SessionGroup group)
         {

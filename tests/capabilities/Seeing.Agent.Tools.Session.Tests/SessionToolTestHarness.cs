@@ -160,6 +160,7 @@ internal sealed class RecordingPermissionAuthorizer : IPermissionAuthorizer
 internal sealed class StubExecutionSubmitter : IExecutionSubmitter
 {
     private readonly ExecutionSubmitResult _result;
+    private readonly Action? _onSubmitting;
 
     public string? LastSessionId { get; private set; }
     public ChatInput? LastInput { get; private set; }
@@ -167,9 +168,10 @@ internal sealed class StubExecutionSubmitter : IExecutionSubmitter
     public string? LastCancelledExecutionId { get; private set; }
     public int SubmitCount { get; private set; }
 
-    public StubExecutionSubmitter(ExecutionSubmitResult result)
+    public StubExecutionSubmitter(ExecutionSubmitResult result, Action? onSubmitting = null)
     {
         _result = result;
+        _onSubmitting = onSubmitting;
     }
 
     public Task<ExecutionSubmitResult> SubmitAsync(
@@ -182,6 +184,8 @@ internal sealed class StubExecutionSubmitter : IExecutionSubmitter
         LastSessionId = sessionId;
         LastInput = input;
         LastOptions = options;
+        // 允许测试在提交期间取消令牌，模拟"提交失败伴随取消"的真实场景
+        _onSubmitting?.Invoke();
         return Task.FromResult(_result);
     }
 

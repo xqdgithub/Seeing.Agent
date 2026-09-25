@@ -96,13 +96,19 @@ namespace Seeing.Session.Core
         private readonly object _messagesGate = new();
 
         /// <summary>
-        /// 消息列表（只读视图）。写入请使用 <see cref="AddMessage"/> 等统一编辑 API，
+        /// 消息列表（锁内快照）。写入请使用 <see cref="AddMessage"/> 等统一编辑 API，
         /// 它们会为消息补写 <see cref="SessionMessage.SessionId"/> 归属。
+        /// <para>返回快照而非活列表：调用方（Timer 落盘、UI 遍历等）持有后不会与并发
+        /// <see cref="AddMessage"/> 竞争同一 List，避免枚举/拷贝异常。需要观察后续变化请重新读取。</para>
         /// <para>保留 public setter：System.Text.Json 反序列化旧会话文件需要。</para>
         /// </summary>
         public IReadOnlyList<SessionMessage> Messages
         {
-            get => _messages;
+            get
+            {
+                lock (_messagesGate)
+                    return _messages.ToList();
+            }
             set
             {
                 lock (_messagesGate)
@@ -193,7 +199,14 @@ namespace Seeing.Session.Core
         public Dictionary<string, string> State { get; set; } = new Dictionary<string, string>();
 
         // === 统计属性 ===
-        public int MessageCount => Messages.Count;
+        public int MessageCount
+        {
+            get
+            {
+                lock (_messagesGate)
+                    return _messages.Count;
+            }
+        }
 
         // === 工厂方法 ===
         /// <param name="scenario">会话级场景名；null = 进程级回退。</param>
@@ -388,7 +401,8 @@ namespace Seeing.Session.Core
 
         public void ClearMessages()
         {
-            _messages.Clear();
+            lock (_messagesGate)
+                _messages.Clear();
             Metadata.Remove(SessionMetadataKeys.InstructionFingerprints);
             // 清空会话应同时去掉运行时上下文（如 todos），否则下次首条消息会因未完成 todo 再续一轮
             Context.Clear();
@@ -417,6 +431,9 @@ namespace Seeing.Session.Core
         // === 深拷贝 ===
         public SessionData Clone()
         {
+            // 消息列表在锁内克隆：与并发 AddMessage/Remove 竞争时不得枚举失效或漏拷贝。
+            var clonedMessages = CloneMessages();
+
             return new SessionData
             {
                 Id = Id,
@@ -445,7 +462,9 @@ namespace Seeing.Session.Core
                     Effect = r.Effect,
                     Priority = r.Priority
                 }).ToList(),
-                _messages = Messages.Select(m => m.Clone()).ToList(),
+                _messages = clonedMessages,
+                // Context/Metadata/State 为浅拷贝（新字典容器，值仍共享引用）；嵌套对象跨克隆共享同一实例，
+                // 调用方不得通过克隆修改共享嵌套对象（spec §6 决策：保持既有契约，文档明示）。
                 Context = new Dictionary<string, object>(Context),
                 Metadata = new Dictionary<string, string>(Metadata),
                 State = new Dictionary<string, string>(State),
@@ -459,6 +478,13 @@ namespace Seeing.Session.Core
                 CachedOutputTokens = CachedOutputTokens,
                 CachedUsageUpdatedAt = CachedUsageUpdatedAt
             };
+        }
+
+        /// <summary>锁内克隆消息列表（逐条深拷贝），避免与并发写入竞争。</summary>
+        private List<SessionMessage> CloneMessages()
+        {
+            lock (_messagesGate)
+                return _messages.Select(m => m.Clone()).ToList();
         }
 
         private static SessionScenarioOverride? CloneScenarioOverride(SessionScenarioOverride? source)

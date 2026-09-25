@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -20,15 +21,22 @@ namespace Seeing.Session.Storage
         private readonly Dictionary<string, SemaphoreSlim> _groupLocks = new();
         private readonly object _lockDictLock = new();
 
+        // 会话 → 组 的正向 TTL 索引（避免 FindBySessionAsync 每次全量扫描）；Save/Delete/SetBaseDirectory 同步刷新
+        private readonly ConcurrentDictionary<string, SessionIndexEntry> _sessionIndex = new(StringComparer.Ordinal);
+        private readonly TimeSpan _sessionIndexTtl;
+
         /// <summary>创建会话组存储。</summary>
         /// <param name="baseDirectory">基础目录，默认 ~/.seeing/session-groups</param>
         /// <param name="logger">日志记录器</param>
+        /// <param name="sessionIndexTtl">会话→组索引 TTL（默认 30 秒；测试可注入短值）</param>
         public FileSessionGroupStore(
             string? baseDirectory = null,
-            ILogger<FileSessionGroupStore>? logger = null)
+            ILogger<FileSessionGroupStore>? logger = null,
+            TimeSpan? sessionIndexTtl = null)
         {
             _logger = logger;
             _baseDirectory = baseDirectory ?? GetDefaultDirectory();
+            _sessionIndexTtl = sessionIndexTtl ?? TimeSpan.FromSeconds(30);
             _jsonOptions = new JsonSerializerOptions
             {
                 WriteIndented = true,
@@ -49,6 +57,7 @@ namespace Seeing.Session.Storage
                 throw new ArgumentException("基础目录不能为空", nameof(baseDirectory));
 
             _baseDirectory = baseDirectory;
+            _sessionIndex.Clear();
             EnsureDirectoryExists();
             _logger?.LogInformation("会话组存储目录已切换: {Directory}", _baseDirectory);
         }
@@ -85,10 +94,23 @@ namespace Seeing.Session.Storage
             if (string.IsNullOrWhiteSpace(sessionId))
                 return null;
 
+            // 快路径：TTL 正向索引命中，加载后仍须校验成员（组可能已被外部改写/删除）
+            if (_sessionIndex.TryGetValue(sessionId, out var cached)
+                && cached.ExpiresAtUtc > DateTime.UtcNow)
+            {
+                var cachedGroup = await LoadAsync(cached.GroupId, ct).ConfigureAwait(false);
+                if (cachedGroup != null && cachedGroup.Members.Any(m => m.SessionId == sessionId))
+                    return cachedGroup;
+            }
+
+            // 慢路径：全量扫描并回填索引
             await foreach (var group in ListAsync(ct))
             {
                 if (group.Members.Any(m => m.SessionId == sessionId))
+                {
+                    IndexGroup(group);
                     return group;
+                }
             }
 
             return null;
@@ -115,6 +137,7 @@ namespace Seeing.Session.Storage
                 await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, ct).ConfigureAwait(false);
                 File.Move(tempPath, filePath, overwrite: true);
 
+                IndexGroup(group);
                 _logger?.LogDebug("保存会话组成功: {GroupId}", group.Id);
             }
             finally
@@ -135,6 +158,7 @@ namespace Seeing.Session.Storage
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
+                    EvictIndex(groupId);
                     _logger?.LogDebug("删除会话组成功: {GroupId}", groupId);
                 }
             }
@@ -146,6 +170,26 @@ namespace Seeing.Session.Storage
 
         /// <inheritdoc/>
         public IAsyncEnumerable<SessionGroup> ListAsync(CancellationToken ct = default) => EnumerateAsync(ct);
+
+        /// <summary>把组内全部成员写入会话→组索引，统一刷新过期时间。</summary>
+        private void IndexGroup(SessionGroup group)
+        {
+            var expiresAt = DateTime.UtcNow + _sessionIndexTtl;
+            foreach (var member in group.Members)
+                _sessionIndex[member.SessionId] = new SessionIndexEntry(group.Id, expiresAt);
+        }
+
+        /// <summary>删除组时逐出其全部成员的索引项。</summary>
+        private void EvictIndex(string groupId)
+        {
+            foreach (var (sessionId, entry) in _sessionIndex)
+            {
+                if (string.Equals(entry.GroupId, groupId, StringComparison.Ordinal))
+                    _sessionIndex.TryRemove(sessionId, out _);
+            }
+        }
+
+        private readonly record struct SessionIndexEntry(string GroupId, DateTime ExpiresAtUtc);
 
         private async IAsyncEnumerable<SessionGroup> EnumerateAsync(
             [EnumeratorCancellation] CancellationToken ct)

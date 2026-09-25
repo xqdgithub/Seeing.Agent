@@ -93,6 +93,70 @@ public class SessionHandoffRollbackTests
         g.Members.Single(m => m.SessionId == c.Id).ParentSessionId.Should().Be(b.Id);
     }
 
+    /// <summary>CreateChild 中途失败（组成员保存失败）时，须清理孤儿子会话，避免缓存/存储泄漏。</summary>
+    [Fact]
+    public async Task CreateChildAsync_WhenGroupSaveFails_ShouldCleanUpOrphanChild()
+    {
+        using var h = new SessionGroupTestHarness(
+            inner => new FailingGroupStore(inner, g => g.Members.Any(m => m.Relation == SessionRelation.Child)));
+
+        var root = h.CreateRoot("root");
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var sessionsBefore = h.Sessions.List().Select(s => s.Id).OrderBy(x => x).ToList();
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            h.Manager.CreateChildAsync(
+                root.Id, "explore", "child",
+                Array.Empty<SessionPermissionRule>(), null,
+                TestContext.Current.CancellationToken));
+
+        // 无孤儿子会话
+        h.Sessions.List().Select(s => s.Id).OrderBy(x => x).Should().Equal(sessionsBefore);
+
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
+        g!.Members.Should().NotContain(m => m.Relation == SessionRelation.Child);
+    }
+
+    /// <summary>ForkSession 中途失败时，须清理分支会话，避免孤儿泄漏。</summary>
+    [Fact]
+    public async Task ForkSessionAsync_WhenGroupSaveFails_ShouldCleanUpOrphanFork()
+    {
+        using var h = new SessionGroupTestHarness(
+            inner => new FailingGroupStore(inner, g => g.Members.Any(m => m.Relation == SessionRelation.Fork)));
+
+        var root = h.CreateRoot("root");
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var sessionsBefore = h.Sessions.List().Select(s => s.Id).OrderBy(x => x).ToList();
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            h.Manager.ForkSessionAsync(root.Id, "fork", TestContext.Current.CancellationToken));
+
+        h.Sessions.List().Select(s => s.Id).OrderBy(x => x).Should().Equal(sessionsBefore);
+
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
+        g!.Members.Should().NotContain(m => m.Relation == SessionRelation.Fork);
+    }
+
+    /// <summary>CreateBackupFork 中途失败时，须清理备份分支会话，避免孤儿泄漏。</summary>
+    [Fact]
+    public async Task CreateBackupForkAsync_WhenGroupSaveFails_ShouldCleanUpOrphanFork()
+    {
+        using var h = new SessionGroupTestHarness(
+            inner => new FailingGroupStore(inner, g => g.Members.Any(m => m.Relation == SessionRelation.Fork)));
+
+        var root = h.CreateRoot("root");
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var sessionsBefore = h.Sessions.List().Select(s => s.Id).OrderBy(x => x).ToList();
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            h.Manager.CreateBackupForkAsync(root.Id, "backup", TestContext.Current.CancellationToken));
+
+        h.Sessions.List().Select(s => s.Id).OrderBy(x => x).Should().Equal(sessionsBefore);
+
+        var g = await h.Manager.GetGroupAsync(group.Id, TestContext.Current.CancellationToken);
+        g!.Members.Should().NotContain(m => m.Relation == SessionRelation.Fork);
+    }
+
     /// <summary>按谓词在保存组时注入失败的存储装饰器。</summary>
     private sealed class FailingGroupStore : ISessionGroupStore
     {

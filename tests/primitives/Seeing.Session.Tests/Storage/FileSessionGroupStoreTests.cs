@@ -111,6 +111,32 @@ public class FileSessionGroupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task FindBySessionAsync_WithShortTtl_ShouldReflectLatestSave()
+    {
+        // P3：FindBySessionAsync 增加 TTL 正向索引；Save/Delete 同步刷新索引，
+        // 保证 TTL 内重复查询返回最新且不因缓存陈旧丢失。
+        var store = new FileSessionGroupStore(_dir, sessionIndexTtl: TimeSpan.FromMilliseconds(100));
+        await store.SaveAsync(MakeGroup("grp_1", "s1"), TestContext.Current.CancellationToken);
+
+        (await store.FindBySessionAsync("s1", TestContext.Current.CancellationToken))!.Id.Should().Be("grp_1");
+
+        await store.SaveAsync(MakeGroup("grp_2", "s1"), TestContext.Current.CancellationToken);
+        (await store.FindBySessionAsync("s1", TestContext.Current.CancellationToken))!.Id.Should().Be("grp_2");
+    }
+
+    [Fact]
+    public async Task FindBySessionAsync_AfterDelete_ShouldReturnNull()
+    {
+        var store = new FileSessionGroupStore(_dir, sessionIndexTtl: TimeSpan.FromSeconds(30));
+        await store.SaveAsync(MakeGroup("grp_1", "s1"), TestContext.Current.CancellationToken);
+        (await store.FindBySessionAsync("s1", TestContext.Current.CancellationToken))!.Id.Should().Be("grp_1");
+
+        await store.DeleteAsync("grp_1", TestContext.Current.CancellationToken);
+
+        (await store.FindBySessionAsync("s1", TestContext.Current.CancellationToken)).Should().BeNull();
+    }
+
+    [Fact]
     public void BaseDirectory_ShouldDefaultToUserSessionGroups()
     {
         var store = new FileSessionGroupStore();

@@ -401,5 +401,78 @@ namespace Seeing.Session.Tests
             data!.Messages.Should().ContainSingle();
             data.Messages[0].SessionId.Should().BeNull();
         }
+
+        // === 线程安全（P1-14 全快照） ===
+
+        [Fact]
+        public void Messages_ShouldReturnSnapshot_NotLiveList()
+        {
+            // Messages getter 返回锁内快照：调用方持有的旧快照不得随后续 AddMessage 变化，
+            // 否则 Timer 落盘遍历时会与执行管线并发修改同一 List（P1-14）。
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("a"));
+
+            var snapshot = data.Messages;
+
+            data.AddMessage(SessionMessage.UserMessage("b"));
+
+            snapshot.Should().HaveCount(1, "getter 应返回快照而非活列表");
+            data.Messages.Should().HaveCount(2, "重新读取应包含新消息");
+        }
+
+        [Fact]
+        public async Task Clone_WhenConcurrentlyAddingMessages_ShouldNotThrow()
+        {
+            // Clone 的消息列表拷贝移入 _messagesGate：与并发 AddMessage 竞争时不得抛
+            // ArgumentException（List 增长导致 CopyTo 失败）或枚举失效。
+            var data = SessionData.Create();
+            var stop = false;
+
+            var appender = Task.Run(() =>
+            {
+                for (var i = 0; i < 3000; i++)
+                    data.AddMessage(SessionMessage.UserMessage($"m{i}"));
+                Volatile.Write(ref stop, true);
+            }, TestContext.Current.CancellationToken);
+
+            var cloner = Task.Run(() =>
+            {
+                while (!Volatile.Read(ref stop))
+                {
+                    var clone = data.Clone();
+                    _ = clone.Messages.Count;
+                    _ = clone.GetActiveMessages();
+                }
+            }, TestContext.Current.CancellationToken);
+
+            await Task.WhenAll(appender, cloner);
+
+            data.Clone().Messages.Should().HaveCount(3000);
+        }
+
+        [Fact]
+        public async Task ClearMessages_WhenConcurrentlyAddingMessages_ShouldNotThrow()
+        {
+            // ClearMessages 补锁：与并发 AddMessage 竞争时不得抛（Clear 与 Add 同锁串行）。
+            var data = SessionData.Create();
+            var stop = false;
+
+            var appender = Task.Run(() =>
+            {
+                for (var i = 0; i < 3000; i++)
+                    data.AddMessage(SessionMessage.UserMessage($"m{i}"));
+                Volatile.Write(ref stop, true);
+            }, TestContext.Current.CancellationToken);
+
+            var clearer = Task.Run(() =>
+            {
+                while (!Volatile.Read(ref stop))
+                    data.ClearMessages();
+            }, TestContext.Current.CancellationToken);
+
+            await Task.WhenAll(appender, clearer);
+
+            data.Messages.Count.Should().BeGreaterThanOrEqualTo(0);
+        }
     }
 }

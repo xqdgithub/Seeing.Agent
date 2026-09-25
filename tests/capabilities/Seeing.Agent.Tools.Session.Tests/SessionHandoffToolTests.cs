@@ -136,6 +136,37 @@ public class SessionHandoffToolTests
     }
 
     [Fact]
+    public async Task Handoff_WhenSubmitFailsAfterCancellation_ShouldStillRollback()
+    {
+        // P1-15：提交失败常因取消令牌已触发；回滚须内部改用 CancellationToken.None，
+        // 否则组锁 WaitAsync(ct) 立即抛 OCE，后继成为孤儿并劫持锚点。
+        using var h = new SessionToolTestHarness();
+        var root = await h.CreateRootGroupedAsync("root");
+        await h.AddMessageAsync(root.Id, "user", "hello");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var submitter = new StubExecutionSubmitter(
+            ExecutionSubmitResult.Failed("submit boom"), onSubmitting: () => cts.Cancel());
+        var tool = CreateTool(h, submitter);
+
+        var ctx = Context(root.Id);
+        ctx.CancellationToken = cts.Token;
+
+        var result = await tool.ExecuteAsync(Args(new { prompt = "continue work" }), ctx);
+
+        result.Success.Should().BeFalse();
+
+        var targetId = submitter.LastSessionId!;
+        targetId.Should().NotBeNullOrEmpty();
+        h.Sessions.Get(targetId).Should().BeNull("取消令牌下回滚仍须删除孤儿后继");
+
+        var group = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        group!.ResolveActiveId().Should().Be(root.Id, "活跃会话须还原为源锚点");
+        (await h.Groups.ListMembersAsync(group.Id, TestContext.Current.CancellationToken))
+            .Should().NotContain(m => m.Relation == SessionRelation.HandoffSuccessor);
+    }
+
+    [Fact]
     public async Task Handoff_Should_Fail_WhenAuthorizationDenied()
     {
         using var h = new SessionToolTestHarness();
