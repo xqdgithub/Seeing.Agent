@@ -14,7 +14,7 @@ public class McpTool : ITool
     private readonly string _realName;
     private readonly string _description;
     private readonly JsonElement _parametersSchema;
-    private readonly Func<string, Dictionary<string, object?>, Task<McpToolResult>> _executeFunc;
+    private readonly Func<string, Dictionary<string, object?>, CancellationToken, Task<McpToolResult>> _executeFunc;
 
     public string Id => $"{_serverName}_{_realName}";
     public string ServerName => _serverName;
@@ -34,7 +34,7 @@ public class McpTool : ITool
         string realName,
         string description,
         JsonElement parametersSchema,
-        Func<string, Dictionary<string, object?>, Task<McpToolResult>> executeFunc)
+        Func<string, Dictionary<string, object?>, CancellationToken, Task<McpToolResult>> executeFunc)
     {
         _serverName = serverName;
         _realName = realName;
@@ -65,7 +65,8 @@ public class McpTool : ITool
         {
             var args = arguments.ToDictionary();
 
-            var result = await _executeFunc(_realName, args);
+            // 透传调用上下文的取消令牌，使 MCP 传输层能响应取消
+            var result = await _executeFunc(_realName, args, context.CancellationToken);
 
             return new ToolResult
             {
