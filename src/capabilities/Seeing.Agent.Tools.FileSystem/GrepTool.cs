@@ -13,7 +13,6 @@ namespace Seeing.Agent.Core.Tools.FileSystem
     /// </summary>
     public class GrepTool : ToolBase
     {
-        private const int MaxLineLength = 2000;
         private const int DefaultLimit = 100;
         private readonly IExecutionWorld _world;
         private readonly IWorkspacePathGate _pathGate;
@@ -63,7 +62,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             required = new[] { "pattern" }
         });
 
-        public override Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             var pattern = GetStringArgument(arguments, "pattern");
             var searchPath = GetStringArgument(arguments, "path") ?? _world.Cwd;
@@ -71,7 +70,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
 
             if (string.IsNullOrEmpty(pattern))
             {
-                return Task.FromResult(Failure("pattern 参数是必需的"));
+                return Failure("pattern 参数是必需的");
             }
 
             if (!Path.IsPathRooted(searchPath))
@@ -81,7 +80,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
 
             var denied = PathGateHelper.RejectIfDenied(_pathGate, context, searchPath, Failure);
             if (denied != null)
-                return Task.FromResult(denied);
+                return denied;
 
             _logger.LogInformation("Grep 搜索: pattern={Pattern}, path={Path}, include={Include}",
                 pattern, searchPath, includePattern);
@@ -94,21 +93,22 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                 }
                 catch (ArgumentException ex)
                 {
-                    return Task.FromResult(Failure($"无效的正则表达式: {ex.Message}"));
+                    return Failure($"无效的正则表达式: {ex.Message}");
                 }
 
                 if (!_world.FileSystem.Exists(searchPath))
                 {
-                    return Task.FromResult(Failure($"目录不存在: {searchPath}"));
+                    return Failure($"目录不存在: {searchPath}");
                 }
 
                 // Prefer ripgrep via ISubprocess when available; else managed walk + IFileSystem.
-                var matches = RipgrepSearch.Grep(
+                var matches = await RipgrepSearch.GrepAsync(
                     _world,
                     searchPath,
                     pattern,
                     includePattern,
-                    DefaultLimit);
+                    DefaultLimit,
+                    context.CancellationToken);
 
                 var output = new List<string>();
                 if (matches.Count == 0)
@@ -119,8 +119,8 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                 {
                     foreach (var match in matches)
                     {
-                        var truncatedLine = match.LineText.Length > MaxLineLength
-                            ? match.LineText.Substring(0, MaxLineLength) + "..."
+                        var truncatedLine = match.LineText.Length > FileSystemHelper.MaxLineLength
+                            ? match.LineText.Substring(0, FileSystemHelper.MaxLineLength) + "..."
                             : match.LineText;
                         output.Add($"{match.Path}:{match.LineNum}:{truncatedLine}");
                     }
@@ -132,7 +132,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                     }
                 }
 
-                return Task.FromResult(Success(
+                return Success(
                     $"搜索: {pattern}",
                     string.Join("\n", output),
                     new Dictionary<string, object>
@@ -141,15 +141,15 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                         ["path"] = searchPath,
                         ["matches"] = matches.Count,
                         ["truncated"] = matches.Count >= DefaultLimit
-                    }));
+                    });
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Task.FromResult(Failure($"访问被拒绝: {ex.Message}"));
+                return Failure($"访问被拒绝: {ex.Message}");
             }
             catch (Exception ex)
             {
-                return Task.FromResult(Failure(ex, "搜索失败"));
+                return Failure(ex, "搜索失败");
             }
         }
     }

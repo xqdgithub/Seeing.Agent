@@ -325,11 +325,9 @@ namespace Seeing.Agent.Core.Tools.FileSystem
         {
             try
             {
-                var bytes = _fileSystem.ReadAllBytes(filePath);
-                var base64 = Convert.ToBase64String(bytes);
-                var dataUrl = $"data:{mime};base64,{base64}";
+                var size = ReadBinarySize(filePath);
 
-                var result = new ToolResult
+                return new ToolResult
                 {
                     Success = true,
                     Output = $"{typeLabel} 读取成功",
@@ -337,7 +335,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                     {
                         ["type"] = "binary",
                         ["mime"] = mime,
-                        ["size"] = bytes.Length
+                        ["size"] = size
                     },
                     Attachments = new List<FileAttachment>
                     {
@@ -349,15 +347,35 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                         }
                     }
                 };
-
-                result.Metadata["dataUrl"] = dataUrl;
-
-                return result;
             }
             catch (Exception ex)
             {
                 return Failure($"读取 {typeLabel} 失败: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 流式读取二进制文件以获取大小：可 seek 时直接取长度，
+        /// 否则按上限分块读取计数，避免将大文件整体读入内存。
+        /// </summary>
+        private long ReadBinarySize(string filePath)
+        {
+            using var stream = _fileSystem.OpenRead(filePath);
+
+            if (stream.CanSeek)
+                return stream.Length;
+
+            var buffer = new byte[FileSystemHelper.MaxBytes];
+            long total = 0;
+            int read;
+            while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                total += read;
+                if (total >= FileSystemHelper.MaxBytes)
+                    break;
+            }
+
+            return total;
         }
     }
 }

@@ -26,7 +26,11 @@ public class GrepGlobSubprocessTests
                 lastSpec = spec;
                 if (spec.FileName == "rg" && spec.Arguments.Contains("--version"))
                     return new FakeSubprocess("ripgrep 14.0.0\n", exitCode: 0);
-                return new FakeSubprocess("src/a.cs:10:hello match\n", exitCode: 0);
+
+                // rg --json 结构化输出：path.text 为 Windows 绝对路径（盘符冒号不再参与文本解析）
+                var matchJson =
+                    """{"type":"match","data":{"path":{"text":"C:\\repo\\a.cs"},"lines":{"text":"hello match\n"},"line_number":10}}""";
+                return new FakeSubprocess(matchJson + "\n", exitCode: 0);
             },
             fsExists: true);
 
@@ -37,8 +41,10 @@ public class GrepGlobSubprocessTests
 
         result.Success.Should().BeTrue();
         lastSpec!.FileName.Should().Be("rg");
+        lastSpec.Arguments.Should().Contain("--json");
         lastSpec.Arguments.Should().Contain("hello");
         result.Output.Should().Contain("hello match");
+        result.Output.Should().Contain(@"C:\repo\a.cs:10:hello match");
     }
 
     [Fact]

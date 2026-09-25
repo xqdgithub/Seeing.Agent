@@ -91,7 +91,7 @@ public class ReadToolFileSystemTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_PngBinary_UsesReadAllBytesFromInjectedFileSystem()
+    public async Task ExecuteAsync_PngBinary_StreamsFromInjectedFileSystem()
     {
         const string virtualPath = "/workspace/logo.png";
         var pngBytes = new byte[]
@@ -111,8 +111,7 @@ public class ReadToolFileSystemTests
         result.Metadata.Should().ContainKey("type").WhoseValue.Should().Be("binary");
         result.Metadata.Should().ContainKey("mime").WhoseValue.Should().Be("image/png");
         result.Metadata.Should().ContainKey("size").WhoseValue.Should().Be(pngBytes.Length);
-        result.Metadata.Should().ContainKey("dataUrl");
-        ((string)result.Metadata["dataUrl"]).Should().StartWith("data:image/png;base64,");
+        result.Attachments.Should().ContainSingle(a => a.Path == virtualPath);
     }
 
     [Fact]
