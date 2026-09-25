@@ -7,7 +7,7 @@ namespace Seeing.Agent.Mcp.OAuth
     /// <summary>
     /// OAuth 回调服务器 - 使用 HttpListener 监听 localhost
     /// </summary>
-    public class McpOAuthCallbackServer : IDisposable
+    public class McpOAuthCallbackServer : IMcpOAuthCallbackServer, IDisposable
     {
         private readonly ILogger<McpOAuthCallbackServer> _logger;
         private HttpListener? _listener;
