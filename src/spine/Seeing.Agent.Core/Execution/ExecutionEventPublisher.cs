@@ -97,6 +97,9 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
                 if (_subscribers.TryGetValue(sessionId, out var subscribers))
                 {
                     subscribers.Remove(subscriberChannel.Writer);
+                    // 最后一个订阅者退出时移除空列表条目，避免会话级 _subscribers 无界增长
+                    if (subscribers.Count == 0)
+                        _subscribers.TryRemove(sessionId, out _);
                 }
             }
             subscriberChannel.Writer.TryComplete();
@@ -148,13 +151,24 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
                 }
             }
 
-            // Clear the buffer
-            if (_buffers.TryGetValue(sessionId, out var buffer))
+            // 移除并清空缓冲：会话终结后不得残留 CircularBuffer 条目，
+            // 否则长驻宿主按会话无界增长（每会话 100 引用）。
+            if (_buffers.TryRemove(sessionId, out var buffer))
             {
                 buffer.Clear();
             }
         }
     }
+
+    /// <summary>
+    /// 当前缓冲条目数（诊断用，供测试断言会话终结后不残留）。
+    /// </summary>
+    internal int BufferEntryCount => _buffers.Count;
+
+    /// <summary>
+    /// 当前订阅者会话条目数（诊断用，供测试断言最后一个订阅者退出后不残留）。
+    /// </summary>
+    internal int SubscriberEntryCount => _subscribers.Count;
 
     /// <summary>
     /// Disposes all resources.

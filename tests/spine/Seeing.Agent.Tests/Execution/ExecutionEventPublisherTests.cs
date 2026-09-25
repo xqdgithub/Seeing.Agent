@@ -121,6 +121,38 @@ public class ExecutionEventPublisherTests
     }
 
     [Fact]
+    public void CompleteSession_ShouldRemoveBufferEntry()
+    {
+        // I5 回归：CompleteSession 移除缓冲字典条目，避免长驻宿主按会话无界增长
+        using var publisher = CreatePublisher();
+        publisher.Publish("s1", Delta(0));
+        publisher.BufferEntryCount.Should().Be(1);
+
+        publisher.CompleteSession("s1");
+
+        publisher.BufferEntryCount.Should().Be(0);
+        publisher.GetBufferedEvents("s1").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SubscribeAsync_LastSubscriberLeaves_ShouldRemoveSubscriberEntry()
+    {
+        using var publisher = CreatePublisher();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var enumerator = publisher.SubscribeAsync("s1", cts.Token).GetAsyncEnumerator(cts.Token);
+
+        // 迭代器首次推进即完成订阅注册（首个 await 前同步执行）
+        var moveNext = enumerator.MoveNextAsync().AsTask();
+        publisher.Publish("s1", Delta(0));
+        (await moveNext).Should().BeTrue();
+        publisher.SubscriberEntryCount.Should().Be(1);
+
+        await enumerator.DisposeAsync();
+
+        publisher.SubscriberEntryCount.Should().Be(0);
+    }
+
+    [Fact]
     public void Publish_WithInvalidArguments_ShouldBeNoOp()
     {
         using var publisher = CreatePublisher();
