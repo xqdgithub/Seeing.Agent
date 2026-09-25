@@ -13,6 +13,9 @@ public sealed class AgentsBuiltInModule : ISeeingModule
 
     private readonly IAgentStore? _agentStore;
 
+    /// <summary>记录本模块注册的实例，Deactivate 时只注销仍属于自己的定义，避免误删用户同名覆盖。</summary>
+    private readonly Dictionary<string, AgentDefinition> _ownedAgents = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>无 store 的实例仅用于 ConfigureServices（登记 DI）。</summary>
     public AgentsBuiltInModule() : this(null)
     {
@@ -55,20 +58,27 @@ public sealed class AgentsBuiltInModule : ISeeingModule
         {
             cancellationToken.ThrowIfCancellationRequested();
             await _agentStore.RegisterAsync(agent);
+            _ownedAgents[agent.Name] = agent;
         }
     }
 
     /// <inheritdoc />
-    public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
+    public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (_agentStore is null)
-            return Task.CompletedTask;
+            return;
 
-        foreach (var agent in BuiltInAgents.GetBuiltInAgents())
-            _agentStore.Unregister(agent.Name);
+        foreach (var (name, owned) in _ownedAgents)
+        {
+            var current = await _agentStore.GetAsync(name);
 
-        return Task.CompletedTask;
+            // 仅注销仍是本模块注册的实例；用户同名覆盖后指向其他实例，不得误删。
+            if (ReferenceEquals(current, owned))
+                _agentStore.Unregister(name);
+        }
+
+        _ownedAgents.Clear();
     }
 }

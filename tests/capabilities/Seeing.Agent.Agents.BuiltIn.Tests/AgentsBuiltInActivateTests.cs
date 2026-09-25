@@ -65,6 +65,48 @@ public class AgentsBuiltInActivateTests
             .Should().BeEquivalentTo(["build", "plan", "explore", "general", "summary"]);
     }
 
+    [Fact]
+    public async Task DeactivateAsync_WhenUserOverridesBuiltIn_ShouldNotUnregisterUserAgent()
+    {
+        var store = new InMemoryAgentStore();
+        var module = new AgentsBuiltInModule(store);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var ct = TestContext.Current.CancellationToken;
+
+        await module.ActivateAsync(services, ct);
+
+        // 用户以同名注册覆盖内置 build
+        var userBuild = new AgentDefinition { Name = "build", Description = "user override" };
+        await store.RegisterAsync(userBuild);
+
+        await module.DeactivateAsync(services, ct);
+
+        // 被覆盖的 build 不得被误删，且仍指向用户定义
+        store.Has("build").Should().BeTrue();
+        (await store.GetAsync("build")).Should().BeSameAs(userBuild);
+
+        // 其余内置未被覆盖，应正常注销
+        foreach (var name in new[] { "plan", "explore", "general", "summary" })
+            store.Has(name).Should().BeFalse($"{name} 未被覆盖，应随模块停用被注销");
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_CalledTwice_ShouldBeIdempotent()
+    {
+        var store = new InMemoryAgentStore();
+        var module = new AgentsBuiltInModule(store);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var ct = TestContext.Current.CancellationToken;
+
+        await module.ActivateAsync(services, ct);
+        await module.DeactivateAsync(services, ct);
+
+        var act = () => module.DeactivateAsync(services, ct);
+
+        await act.Should().NotThrowAsync();
+        (await store.GetAllAsync()).Should().BeEmpty();
+    }
+
     private sealed class InMemoryAgentStore : IAgentStore
     {
         private readonly Dictionary<string, AgentDefinition> _agents = new(StringComparer.OrdinalIgnoreCase);
