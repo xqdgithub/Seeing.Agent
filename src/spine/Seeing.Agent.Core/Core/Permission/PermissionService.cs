@@ -75,31 +75,6 @@ public class PermissionService : IPermissionService
     }
 
     /// <inheritdoc />
-    public Task<AgentPermissionPolicy> GetPolicyAsync(string agentName, CancellationToken cancellationToken = default)
-    {
-        // 返回一个默认的宽松策略，实际权限由 Agent 自己的 BuildPermissionPolicy() 决定
-        var result = new AgentPermissionPolicy
-        {
-            AgentName = agentName,
-            Rules = new List<PermissionRuleEntry>
-            {
-                PermissionRuleEntry.Allow(PermissionKind.Tool, "*", 0)
-            },
-            AllowedTools = Array.Empty<string>(),
-            AllowedMcpServers = Array.Empty<string>(),
-            DefaultEffect = PermissionEffect.Ask
-        };
-
-        return Task.FromResult(result);
-    }
-
-    /// <inheritdoc />
-    public AgentPermissionPolicy MergePolicies(AgentPermissionPolicy global, AgentPermissionPolicy agent)
-    {
-        return global.Intersect(agent);
-    }
-
-    /// <inheritdoc />
     public void InvalidateCache(string? agentName = null, string? resourcePattern = null)
     {
         // 旧的 5 分钟判定结果缓存已移除（修 S2 陈旧判定）。
@@ -161,7 +136,8 @@ public class PermissionService : IPermissionService
             if (_workspaceGate is not null)
             {
                 var gateError = _workspaceGate.EnsureAllowed(sessionId, normalized.Resource ?? string.Empty);
-                if (gateError is null)
+                // RequireInteraction=true 时不被工作区内/白名单静默放行，落入后续询问（spec §5.1 契约）。
+                if (gateError is null && !normalized.RequireInteraction)
                 {
                     return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy,
                         "路径在工作区内或会话白名单内");
@@ -250,10 +226,15 @@ public class PermissionService : IPermissionService
         if (resolution.Decision == PermissionEffect.Allow && isFilesystem && restrict &&
             !string.IsNullOrWhiteSpace(normalized.Resource))
         {
-            // 7a. 越界审批放行后写入会话白名单（无论 Scope 是否 Once）
-            var directory = ResolveResourceDirectory(normalized.Resource!);
-            if (!string.IsNullOrEmpty(directory) && _grantStore is not null)
-                _grantStore.AddSessionDirectory(sessionId, directory);
+            // 7a. 越界审批放行后写入会话白名单——仅 SessionDirectory 及以上 Scope；
+            //     Once 批准不写（单次批准不得放大为整目录免审，spec §1.2 收紧）。
+            //     正确的目录级记忆语义由 7b 以 kind 精确 + 目录前缀覆盖。
+            if (resolution.Scope != PermissionGrantScope.Once)
+            {
+                var directory = ResolveResourceDirectory(normalized.Resource!);
+                if (!string.IsNullOrEmpty(directory) && _grantStore is not null)
+                    _grantStore.AddSessionDirectory(sessionId, directory);
+            }
         }
 
         // 7b. Scope != Once → 写入决策记忆（Allow/Deny 均记）。

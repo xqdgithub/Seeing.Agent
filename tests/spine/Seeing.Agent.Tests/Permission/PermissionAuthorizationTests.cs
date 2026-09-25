@@ -69,6 +69,23 @@ public class PermissionAuthorizationTests
         h.AssertNoAsk();
     }
 
+    // 步骤 1 边界预检的 RequireInteraction 守卫（spec §5.1）：
+    // 工作区内路径默认静默放行，但 RequireInteraction=true 时不被静默放行，落入后续询问。
+    [Fact]
+    public async Task AuthorizeAsync_InsideWorkspace_RequireInteraction_ShouldAsk()
+    {
+        var h = new Harness();
+        h.Options.Workspace.RestrictToWorkspace = true;
+        h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
+
+        var resolution = await h.Service.AuthorizeAsync(
+            h.Request("filesystem.read", InsidePath, requireInteraction: true), TestContext.Current.CancellationToken);
+
+        resolution.Decision.Should().Be(PermissionEffect.Allow);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.User);
+        h.AssertAskedOnce();
+    }
+
     [Fact]
     public async Task AuthorizeAsync_OutsideWorkspace_NoPresence_ShouldDenyNoChannel()
     {
@@ -83,8 +100,10 @@ public class PermissionAuthorizationTests
         h.AssertNoAsk();
     }
 
+    // 7a 收紧（spec §1.2）：Once 批准不写会话白名单——单次批准不得放大为整目录免审。
+    // 旧行为（无条件 AddSessionDirectory）已按维护者确认的破坏性收紧移除。
     [Fact]
-    public async Task AuthorizeAsync_OutsideWorkspace_ApprovedOnce_ShouldWhitelistDirectoryAndAllow()
+    public async Task AuthorizeAsync_OutsideWorkspace_ApprovedOnce_ShouldNotWhitelistDirectory()
     {
         var h = new Harness();
         h.Options.Workspace.RestrictToWorkspace = true;
@@ -93,8 +112,50 @@ public class PermissionAuthorizationTests
         var resolution = await h.Service.AuthorizeAsync(h.Request("filesystem.write", OutsidePath), TestContext.Current.CancellationToken);
 
         resolution.Decision.Should().Be(PermissionEffect.Allow);
+        h.Store.ContainsSessionPath("s1", OutsidePath).Should().BeFalse();
+        h.Gate.EnsureAllowed("s1", OutsidePath).Should().NotBeNull();
+    }
+
+    // 7a 收紧回归：Once 批准后，同目录第二次 write 仍询问（非免审）。
+    [Fact]
+    public async Task AuthorizeAsync_OutsideWorkspace_ApprovedOnce_SecondWriteSameDirectory_ShouldAskAgain()
+    {
+        var h = new Harness();
+        h.Options.Workspace.RestrictToWorkspace = true;
+        h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
+
+        var siblingPath = Path.Combine(OutsideDir, "sibling.txt");
+        var first = await h.Service.AuthorizeAsync(h.Request("filesystem.write", OutsidePath), TestContext.Current.CancellationToken);
+        first.Decision.Should().Be(PermissionEffect.Allow);
+
+        var second = await h.Service.AuthorizeAsync(h.Request("filesystem.write", siblingPath), TestContext.Current.CancellationToken);
+
+        second.Decision.Should().Be(PermissionEffect.Allow);
+        second.ResolvedBy.Should().Be(PermissionResolvedBy.User);
+        h.AssertAskedTimes(2);
+    }
+
+    // 7a 保持语义：SessionDirectory 批准（Scope != Once）写入会话白名单，同目录后续访问由 gate 直接放行。
+    [Fact]
+    public async Task AuthorizeAsync_OutsideWorkspace_ApprovedSessionDirectory_ShouldWhitelistDirectory()
+    {
+        var h = new Harness();
+        h.Options.Workspace.RestrictToWorkspace = true;
+        h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.SessionDirectory);
+
+        var first = await h.Service.AuthorizeAsync(h.Request("filesystem.write", OutsidePath), TestContext.Current.CancellationToken);
+        first.Decision.Should().Be(PermissionEffect.Allow);
+
         h.Store.ContainsSessionPath("s1", OutsidePath).Should().BeTrue();
         h.Gate.EnsureAllowed("s1", OutsidePath).Should().BeNull();
+
+        h.Manager.Invocations.Clear();
+        var siblingPath = Path.Combine(OutsideDir, "sibling.txt");
+        var second = await h.Service.AuthorizeAsync(h.Request("filesystem.write", siblingPath), TestContext.Current.CancellationToken);
+
+        second.Decision.Should().Be(PermissionEffect.Allow);
+        second.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
+        h.AssertNoAsk();
     }
 
     [Fact]
@@ -711,6 +772,10 @@ public class PermissionAuthorizationTests
         public void AssertAskedOnce() => Manager.Verify(
             m => m.BeginAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()),
             Times.Once);
+
+        public void AssertAskedTimes(int count) => Manager.Verify(
+            m => m.BeginAsync(It.IsAny<PermissionRequest>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(count));
     }
 
     private static IOptionsMonitor<SeeingAgentOptions> OptionsMonitor(SeeingAgentOptions value)

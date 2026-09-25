@@ -7,10 +7,6 @@ public interface IPermissionService
 
     Task<PermissionResult> EvaluateSkillAsync(string skillName, PermissionContext context, CancellationToken ct = default);
 
-    Task<AgentPermissionPolicy> GetPolicyAsync(string agentName, CancellationToken ct = default);
-
-    AgentPermissionPolicy MergePolicies(AgentPermissionPolicy global, AgentPermissionPolicy agent);
-
     void InvalidateCache(string? agentName = null, string? resourcePattern = null);
 
     Task LogAuditAsync(PermissionResult result, PermissionContext context, CancellationToken ct = default);
