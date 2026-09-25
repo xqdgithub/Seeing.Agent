@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
@@ -42,6 +43,10 @@ public static class McpOAuthServiceExtensions
                 tokenClient,
                 name => manager?.GetConfig(name)?.OAuth);
         });
+
+        // 宿主可先行注册自定义浏览器打开器覆盖默认实现（TryAdd 不覆盖已有注册）
+        services.TryAddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
+        services.AddSingleton<IMcpOAuthAuthorizer, McpOAuthAuthorizer>();
 
         return services;
     }

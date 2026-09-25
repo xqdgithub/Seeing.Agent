@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using ModelContextProtocol.Client;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
@@ -10,9 +11,11 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Mcp.Commands;
 using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Management;
+using Seeing.Agent.Mcp.OAuth;
 using Seeing.Agent.Mcp.Policy;
 
 namespace Seeing.Agent.Mcp;
@@ -25,6 +28,7 @@ public sealed class McpModule : ISeeingModule, IUiContribution
     private static readonly IReadOnlyList<string> s_providedSeams = ["mcp"];
 
     private readonly IUiContributionRegistry? _ui;
+    private readonly List<string> _registeredCommandNames = new();
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public McpModule()
@@ -58,6 +62,9 @@ public sealed class McpModule : ISeeingModule, IUiContribution
         TryRegisterConfigSection(services);
         services.AddOptions<McpOptions>();
 
+        // OAuth 宿主接线：注册 Provider/存储/令牌客户端/授权器/浏览器打开器
+        services.AddMcpOAuth();
+
         services.AddSingleton<McpGlobalPolicy>(sp =>
         {
             var options = sp.GetService<Microsoft.Extensions.Options.IOptions<McpOptions>>()?.Value
@@ -79,9 +86,12 @@ public sealed class McpModule : ISeeingModule, IUiContribution
         services.AddSingleton<McpWrapperFactoryRegistry>(sp =>
         {
             var registry = new McpWrapperFactoryRegistry();
+            // OAuth 服务存在时复用于 HTTP 工厂，避免重复创建存储/令牌客户端
+            var oauthStorage = sp.GetService<McpOAuthStorage>();
+            var oauthTokenClient = sp.GetService<McpOAuthTokenClient>();
             registry.Register(new StdioWrapperFactory());
-            registry.Register(new HttpWrapperFactory(HttpTransportMode.StreamableHttp));
-            registry.Register(new HttpWrapperFactory(HttpTransportMode.Sse));
+            registry.Register(new HttpWrapperFactory(HttpTransportMode.StreamableHttp, oauthStorage, oauthTokenClient));
+            registry.Register(new HttpWrapperFactory(HttpTransportMode.Sse, oauthStorage, oauthTokenClient));
             return registry;
         });
 
@@ -125,6 +135,9 @@ public sealed class McpModule : ISeeingModule, IUiContribution
             await manager.InitializeAsync(configs, cancellationToken).ConfigureAwait(false);
         }
 
+        // 登记 OAuth 授权命令（配置在 InitializeAsync 后才可用）
+        RegisterCommands(services);
+
         // 登记动态工具贡献（工具集运行时可变，结算时并入 settledToolIds）
         services.GetService<IDynamicToolContributorRegistry>()
             ?.Register(new McpDynamicToolContributor(manager));
@@ -133,6 +146,8 @@ public sealed class McpModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        UnregisterCommands(services);
+
         _ui?.Unregister(Id);
 
         services.GetService<IDynamicToolContributorRegistry>()?.Unregister(Id);
@@ -143,6 +158,37 @@ public sealed class McpModule : ISeeingModule, IUiContribution
             await manager.ShutdownAsync(cancellationToken).ConfigureAwait(false);
             await manager.UnregisterAllToolsAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>登记 <c>/mcp-auth</c> OAuth 授权命令（缺少授权器或命令注册表时静默跳过）。</summary>
+    private void RegisterCommands(IServiceProvider services)
+    {
+        if (services.GetService<ICommandRegistry>() is not { } registry
+            || services.GetService<IMcpOAuthAuthorizer>() is not { } authorizer)
+        {
+            return;
+        }
+
+        var command = new McpAuthCommand(authorizer);
+        registry.Register(command);
+
+        _registeredCommandNames.Clear();
+        _registeredCommandNames.Add(command.Metadata.Name);
+    }
+
+    /// <summary>注销本模块登记的命令。</summary>
+    private void UnregisterCommands(IServiceProvider services)
+    {
+        if (_registeredCommandNames.Count == 0)
+            return;
+
+        if (services.GetService<ICommandRegistry>() is { } registry)
+        {
+            foreach (var name in _registeredCommandNames)
+                registry.Unregister(name);
+        }
+
+        _registeredCommandNames.Clear();
     }
 
     /// <summary>加载 MCP 配置（复用 <see cref="McpConfigLoader"/>）；无目录信息时返回空集。</summary>

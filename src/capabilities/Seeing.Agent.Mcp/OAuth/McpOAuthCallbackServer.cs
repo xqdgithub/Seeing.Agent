@@ -22,35 +22,40 @@ namespace Seeing.Agent.Mcp.OAuth
             _logger = logger;
         }
 
-        /// <summary>确保服务器运行，返回端口号</summary>
-        public async Task<int> EnsureRunningAsync()
+        /// <summary>确保服务器运行，返回端口号；每次调用都重置回调等待源以支持重复授权。</summary>
+        public Task<int> EnsureRunningAsync()
         {
-            if (_listener != null) return _port;
-
-            _tcs = new TaskCompletionSource<(string Code, string State)>();
-            _listenerCts = new CancellationTokenSource();
-
-            // Find an available port
-            _port = GetAvailablePort();
-
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://localhost:{_port}/");
-
-            try
+            if (_listener == null)
             {
-                _listener.Start();
-            }
-            catch (HttpListenerException ex)
-            {
-                _logger.LogError(ex, "Failed to start HTTP listener on port {Port}", _port);
-                throw;
+                _listenerCts = new CancellationTokenSource();
+
+                // Find an available port
+                _port = GetAvailablePort();
+
+                _listener = new HttpListener();
+                _listener.Prefixes.Add($"http://localhost:{_port}/");
+
+                try
+                {
+                    _listener.Start();
+                }
+                catch (HttpListenerException ex)
+                {
+                    _logger.LogError(ex, "Failed to start HTTP listener on port {Port}", _port);
+                    throw;
+                }
+
+                // Start listening for requests in the background
+                _listenerTask = ListenAsync(_listenerCts.Token);
+
+                _logger.LogInformation("OAuth callback server started on port {Port}", _port);
             }
 
-            // Start listening for requests in the background
-            _listenerTask = ListenAsync(_listenerCts.Token);
+            // 每次授权都重建回调等待源；否则同进程内第二次授权会复用已完成的结果导致 state 校验失败
+            _tcs = new TaskCompletionSource<(string Code, string State)>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
 
-            _logger.LogInformation("OAuth callback server started on port {Port}", _port);
-            return _port;
+            return Task.FromResult(_port);
         }
 
         private int GetAvailablePort()
