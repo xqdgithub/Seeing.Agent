@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Execution;
@@ -89,6 +90,59 @@ public class GrepGlobSubprocessTests
         result.Output.Should().Contain("src/a.cs");
     }
 
+    [Fact]
+    public async Task Grep_WhenRgWritesLargeStderr_ShouldDrainWithoutDeadlock()
+    {
+        // rg 输出大量 stderr：若只读 stdout，stderr 管道会填满导致子进程阻塞/死锁。
+        var stderr = new TrackingTextReader(new string('x', 200_000));
+        var world = CreateWorld(
+            onStart: spec =>
+            {
+                if (spec.FileName == "rg" && spec.Arguments.Contains("--version"))
+                    return new FakeSubprocess("ripgrep 14\n", 0);
+
+                var matchJson =
+                    """{"type":"match","data":{"path":{"text":"C:\\repo\\a.cs"},"lines":{"text":"hit\n"},"line_number":1}}""";
+                return new FakeSubprocess(matchJson + "\n", exitCode: 0, stderr: stderr);
+            },
+            fsExists: true);
+
+        var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { pattern = "hit", path = @"C:\repo" }),
+            new ToolContext { SessionId = "s", CallId = "c" });
+
+        result.Success.Should().BeTrue();
+        stderr.WasRead.Should().BeTrue("stderr 必须被并发排空以释放管道");
+    }
+
+    [Fact]
+    public async Task Grep_WhenRgFailsWithStderr_ShouldLogStderrAndFallback()
+    {
+        var logger = new CapturingLogger();
+        var world = CreateWorld(
+            onStart: spec =>
+            {
+                if (spec.FileName == "rg" && spec.Arguments.Contains("--version"))
+                    return new FakeSubprocess("ripgrep 14\n", 0);
+
+                // 退出码 2 = rg 错误，同时带 stderr 诊断信息
+                return new FakeSubprocess("", exitCode: 2, stderr: new TrackingTextReader("permission denied: boom"));
+            },
+            fsExists: true,
+            enumerateFiles: [@"C:\repo\a.cs"],
+            fileContent: "needle here\n");
+
+        var tool = new GrepTool(logger, world, AllowAllPathGate.Instance);
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { pattern = "needle", path = @"C:\repo" }),
+            new ToolContext { SessionId = "s", CallId = "c" });
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("needle");
+        logger.Messages.Should().Contain(m => m.Contains("boom"));
+    }
+
     private static IExecutionWorld CreateWorld(
         Func<SubprocessSpec, ISubprocess> onStart,
         bool fsExists,
@@ -122,10 +176,10 @@ public class GrepGlobSubprocessTests
 
     private sealed class FakeSubprocess : ISubprocess
     {
-        public FakeSubprocess(string stdout, int exitCode = 0)
+        public FakeSubprocess(string stdout, int exitCode = 0, TextReader? stderr = null)
         {
             StandardOutput = new StringReader(stdout);
-            StandardError = new StringReader("");
+            StandardError = stderr ?? new StringReader("");
             ExitCode = exitCode;
         }
 
@@ -137,5 +191,65 @@ public class GrepGlobSubprocessTests
         public Task WaitForExitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void Kill(bool entireTree = true) { }
         public void Dispose() { }
+    }
+
+    /// <summary>记录是否被读取过的 stderr 读取器，用于断言排空行为。</summary>
+    private sealed class TrackingTextReader : TextReader
+    {
+        private readonly StringReader _inner;
+        private int _read;
+
+        public TrackingTextReader(string content) => _inner = new StringReader(content);
+
+        public bool WasRead => Volatile.Read(ref _read) != 0;
+
+        public override ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Exchange(ref _read, 1);
+            return _inner.ReadAsync(buffer, cancellationToken);
+        }
+
+        public override Task<string> ReadToEndAsync(CancellationToken cancellationToken = default)
+        {
+            Interlocked.Exchange(ref _read, 1);
+            return _inner.ReadToEndAsync(cancellationToken);
+        }
+
+        public override string ReadToEnd()
+        {
+            Interlocked.Exchange(ref _read, 1);
+            return _inner.ReadToEnd();
+        }
+
+        public override int Read(char[] buffer, int index, int count)
+        {
+            Interlocked.Exchange(ref _read, 1);
+            return _inner.Read(buffer, index, count);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                _inner.Dispose();
+            base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>捕获日志消息的 ILogger，用于断言 stderr 诊断。</summary>
+    private sealed class CapturingLogger : ILogger<GrepTool>
+    {
+        public List<string> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 }

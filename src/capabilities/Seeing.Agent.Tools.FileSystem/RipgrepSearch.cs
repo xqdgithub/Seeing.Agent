@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Tools.Support;
 
@@ -16,6 +17,12 @@ internal static class RipgrepSearch
 
     /// <summary>单次搜索子进程的超时。</summary>
     private static readonly TimeSpan SearchTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>搜索子进程 stdout 保留上限（1MB）；超出后继续排空管道但不再累积，避免内存峰值无上限。</summary>
+    private const int MaxSearchOutputChars = 1024 * 1024;
+
+    /// <summary>stderr 诊断信息保留上限（64KB）。</summary>
+    private const int MaxStderrChars = 64 * 1024;
 
     private static readonly SemaphoreSlim s_probeGate = new(1, 1);
     private static bool s_probed;
@@ -78,13 +85,14 @@ internal static class RipgrepSearch
         string pattern,
         string? includePattern,
         int limit,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ILogger? logger = null)
     {
         if (await IsRipgrepAvailableAsync(world.Subprocess, ct).ConfigureAwait(false))
         {
             try
             {
-                var viaRg = await GrepViaRipgrepAsync(world.Subprocess, searchPath, pattern, includePattern, limit, ct)
+                var viaRg = await GrepViaRipgrepAsync(world.Subprocess, searchPath, pattern, includePattern, limit, ct, logger)
                     .ConfigureAwait(false);
                 if (viaRg is not null)
                     return viaRg;
@@ -108,13 +116,14 @@ internal static class RipgrepSearch
         string searchPath,
         string pattern,
         int limit,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ILogger? logger = null)
     {
         if (await IsRipgrepAvailableAsync(world.Subprocess, ct).ConfigureAwait(false))
         {
             try
             {
-                var viaRg = await GlobViaRipgrepAsync(world.Subprocess, searchPath, pattern, limit, ct)
+                var viaRg = await GlobViaRipgrepAsync(world.Subprocess, searchPath, pattern, limit, ct, logger)
                     .ConfigureAwait(false);
                 if (viaRg is not null)
                     return viaRg;
@@ -145,7 +154,8 @@ internal static class RipgrepSearch
         string pattern,
         string? includePattern,
         int limit,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILogger? logger)
     {
         var args = new StringBuilder();
         // --json 输出结构化事件（path/line_number/lines 为独立字段），
@@ -168,13 +178,19 @@ internal static class RipgrepSearch
             RedirectStandardError = true,
         });
 
-        var stdout = await ReadStdoutWithTimeoutAsync(proc, SearchTimeout, ct).ConfigureAwait(false);
+        var (stdout, stderr) = await ReadStdoutWithTimeoutAsync(proc, SearchTimeout, ct).ConfigureAwait(false);
         if (stdout is null)
+        {
+            LogStderr(logger, "grep --json", stderr);
             return null;
+        }
 
         // rg: 0=matches, 1=no matches, 2=error
         if (proc.ExitCode > 1)
+        {
+            LogStderr(logger, "grep --json", stderr);
             return null;
+        }
 
         var matches = new List<GrepMatch>();
         foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -194,7 +210,8 @@ internal static class RipgrepSearch
         string searchPath,
         string pattern,
         int limit,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILogger? logger)
     {
         var args = new StringBuilder();
         args.Append("--files --color never ");
@@ -210,12 +227,18 @@ internal static class RipgrepSearch
             RedirectStandardError = true,
         });
 
-        var stdout = await ReadStdoutWithTimeoutAsync(proc, SearchTimeout, ct).ConfigureAwait(false);
+        var (stdout, stderr) = await ReadStdoutWithTimeoutAsync(proc, SearchTimeout, ct).ConfigureAwait(false);
         if (stdout is null)
+        {
+            LogStderr(logger, "glob --files", stderr);
             return null;
+        }
 
         if (proc.ExitCode > 1)
+        {
+            LogStderr(logger, "glob --files", stderr);
             return null;
+        }
 
         return stdout
             .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -224,11 +247,12 @@ internal static class RipgrepSearch
     }
 
     /// <summary>
-    /// 读取子进程 stdout 并等待退出；内部施加超时（<paramref name="timeout"/>）。
-    /// 超时返回 <see langword="null"/> 并终止进程（交由上层回退托管实现）；
-    /// 外部 <paramref name="ct"/> 取消时原样抛出。
+    /// 并发读取子进程 stdout 与 stderr（必须同时消费两个管道，否则任一方填满都会使子进程阻塞、
+    /// <see cref="ISubprocess.WaitForExitAsync"/> 死锁），并等待退出；内部施加超时（<paramref name="timeout"/>）。
+    /// 超时返回 <c>(null, null)</c> 并终止进程（交由上层回退托管实现）；
+    /// 外部 <paramref name="ct"/> 取消时原样抛出。<paramref name="stderr"/> 供失败诊断。
     /// </summary>
-    private static async Task<string?> ReadStdoutWithTimeoutAsync(
+    private static async Task<(string? Stdout, string? Stderr)> ReadStdoutWithTimeoutAsync(
         ISubprocess proc,
         TimeSpan timeout,
         CancellationToken ct)
@@ -236,11 +260,14 @@ internal static class RipgrepSearch
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(timeout);
 
+        var stdoutTask = ReadTextLimitedAsync(proc.StandardOutput, MaxSearchOutputChars, cts.Token);
+        var stderrTask = ReadTextLimitedAsync(proc.StandardError, MaxStderrChars, cts.Token);
+
         try
         {
-            var stdout = await proc.StandardOutput.ReadToEndAsync(cts.Token).ConfigureAwait(false);
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-            return stdout;
+            return (await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -249,8 +276,36 @@ internal static class RipgrepSearch
         catch (OperationCanceledException)
         {
             TryKill(proc);
-            return null;
+            return (null, null);
         }
+    }
+
+    /// <summary>
+    /// 流式读取文本：累积至 <paramref name="maxChars"/> 后继续读取但不再累积，
+    /// 既排空管道（防子进程阻塞），又避免 <c>ReadToEndAsync</c> 在超大输出下的无上限内存峰值。
+    /// </summary>
+    private static async Task<string> ReadTextLimitedAsync(TextReader reader, int maxChars, CancellationToken ct)
+    {
+        var builder = new StringBuilder(Math.Min(maxChars, 8192));
+        var buffer = new char[8192];
+        int read;
+        while ((read = await reader.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false)) > 0)
+        {
+            var remaining = maxChars - builder.Length;
+            if (remaining > 0)
+                builder.Append(buffer, 0, Math.Min(remaining, read));
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>失败时记录 rg stderr 以便诊断（内容为空则跳过）。</summary>
+    private static void LogStderr(ILogger? logger, string operation, string? stderr)
+    {
+        if (logger is null || string.IsNullOrWhiteSpace(stderr))
+            return;
+
+        logger.LogDebug("ripgrep {Operation} 失败，stderr: {Stderr}", operation, stderr);
     }
 
     /// <summary>探测阶段同步等待（经异步入口 + 超时），失败时终止进程。</summary>
@@ -261,7 +316,10 @@ internal static class RipgrepSearch
 
         try
         {
-            await proc.StandardOutput.ReadToEndAsync(cts.Token).ConfigureAwait(false);
+            // 并发排空 stdout/stderr，避免任一管道填满导致探测死锁。
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
+            var stderrTask = proc.StandardError.ReadToEndAsync(cts.Token);
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
         }
         catch

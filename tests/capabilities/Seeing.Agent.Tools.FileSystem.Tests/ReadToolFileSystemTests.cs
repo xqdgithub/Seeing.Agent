@@ -115,6 +115,50 @@ public class ReadToolFileSystemTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_LargeNonSeekableBinary_ReportsRealSize()
+    {
+        const string virtualPath = "/workspace/huge.png";
+        var pngBytes = new byte[FileSystemHelper.MaxBytes + 12_345];
+        pngBytes[0] = 0x89;
+        pngBytes[1] = 0x50;
+        pngBytes[2] = 0x4E;
+        pngBytes[3] = 0x47;
+
+        var fileSystem = new InMemoryFileSystem();
+        fileSystem.AddBinaryFile(virtualPath, pngBytes);
+        // 模拟不可寻址流（生产 FileStream 可 seek，此处覆盖虚拟/远程文件系统场景）
+        fileSystem.OpenReadTransform = inner => new NonSeekableStream(inner);
+
+        var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { filePath = virtualPath }),
+            new ToolContext());
+
+        result.Success.Should().BeTrue();
+        result.Metadata.Should().ContainKey("size").WhoseValue.Should().Be((long)pngBytes.Length);
+        result.Attachments.Should().ContainSingle(a => a.Path == virtualPath);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_LargeTextFile_StillTruncatesContentByBytes()
+    {
+        const string virtualPath = "/workspace/big.txt";
+        var line = new string('a', 1024);
+        var content = string.Join("\n", Enumerable.Repeat(line, 100));
+        var fileSystem = new InMemoryFileSystem();
+        fileSystem.AddFile(virtualPath, content);
+
+        var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { filePath = virtualPath }),
+            new ToolContext());
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("输出限制在");
+        result.Metadata.Should().ContainKey("truncated").WhoseValue.Should().Be(true);
+    }
+
+    [Fact]
     public async Task WriteTool_ExecuteAsync_UsesInjectedFileSystem()
     {
         const string virtualPath = "/workspace/out.txt";
@@ -179,7 +223,14 @@ public class ReadToolFileSystemTests
         public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken = default) =>
             Task.FromResult(ReadAllBytes(path));
 
-        public Stream OpenRead(string path) => new MemoryStream(ReadAllBytes(path), writable: false);
+        public Stream OpenRead(string path)
+        {
+            var stream = new MemoryStream(ReadAllBytes(path), writable: false);
+            return OpenReadTransform?.Invoke(stream) ?? stream;
+        }
+
+        /// <summary>可选：包装 OpenRead 返回的流，用于模拟不可寻址等场景。</summary>
+        public Func<Stream, Stream>? OpenReadTransform { get; set; }
 
         public async IAsyncEnumerable<string> ReadLinesAsync(
             string path,
@@ -289,5 +340,41 @@ public class ReadToolFileSystemTests
 
         private static bool MatchesPattern(string name, string pattern) =>
             pattern is "*" or "*.*" || string.Equals(name, pattern, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>仅顺序可读的流包装，模拟 <see cref="IFileSystem"/> 返回不可寻址流的场景。</summary>
+    internal sealed class NonSeekableStream : Stream
+    {
+        private readonly Stream _inner;
+
+        public NonSeekableStream(Stream inner) => _inner = inner;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() { }
+
+        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                _inner.Dispose();
+            base.Dispose(disposing);
+        }
     }
 }

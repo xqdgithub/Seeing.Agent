@@ -107,7 +107,7 @@ namespace Seeing.Agent.Tools.FileSystem
             _logger.LogInformation("Glob 搜索: pattern={Pattern}, path={Path}", pattern, searchPath);
 
             // Prefer ripgrep --files via ISubprocess when available; else managed glob walk.
-            var files = await RipgrepSearch.GlobAsync(_world, searchPath, pattern, DefaultLimit, context.CancellationToken);
+            var files = await RipgrepSearch.GlobAsync(_world, searchPath, pattern, DefaultLimit, context.CancellationToken, _logger);
 
             // 构建输出
             var outputLines = new List<string>();

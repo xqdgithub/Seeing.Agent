@@ -336,8 +336,9 @@ namespace Seeing.Agent.Tools.FileSystem
         }
 
         /// <summary>
-        /// 流式读取二进制文件以获取大小：可 seek 时直接取长度，
-        /// 否则按上限分块读取计数，避免将大文件整体读入内存。
+        /// 获取二进制文件真实大小：可寻址流直接取长度；非可寻址流（远程/虚拟文件系统）
+        /// 完整排空计数——只计数不缓存，内存占用恒定，避免把 <c>size</c> 误报为截断到
+        /// <see cref="FileSystemHelper.MaxBytes"/> 后的值（如 100MB 文件报 50KB）。
         /// </summary>
         private long ReadBinarySize(string filePath)
         {
@@ -346,15 +347,11 @@ namespace Seeing.Agent.Tools.FileSystem
             if (stream.CanSeek)
                 return stream.Length;
 
-            var buffer = new byte[FileSystemHelper.MaxBytes];
+            var buffer = new byte[8192];
             long total = 0;
             int read;
             while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
-            {
                 total += read;
-                if (total >= FileSystemHelper.MaxBytes)
-                    break;
-            }
 
             return total;
         }

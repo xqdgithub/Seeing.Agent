@@ -108,7 +108,8 @@ namespace Seeing.Agent.Tools.FileSystem
                     pattern,
                     includePattern,
                     DefaultLimit,
-                    context.CancellationToken);
+                    context.CancellationToken,
+                    _logger);
 
                 var output = new List<string>();
                 if (matches.Count == 0)
