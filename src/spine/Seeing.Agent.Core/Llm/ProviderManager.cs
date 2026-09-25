@@ -235,6 +235,13 @@ public class ProviderManager : IProviderManager, IDisposable
 
     private void OnProvidersChanged(object? sender, ProvidersChangedEventArgs e)
     {
+        // 重入短路：Register/Unregister 会在持有 _sync 的临界区内同步 Raise 本事件
+        // （见 RegisterConfiguredProviders / RefreshConfiguredProviders 内的调用）。
+        // 同线程重入会基于「移除后 / 注册前」的中间快照重复构造并释放 Provider。
+        // 检测到已持有 _sync 时直接返回，由外层临界区在完成自身迁移后保持最终一致。
+        if (Monitor.IsEntered(_sync))
+            return;
+
         lock (_sync)
         {
             foreach (var providerId in _configuredProviderConfigs.Keys.ToArray())

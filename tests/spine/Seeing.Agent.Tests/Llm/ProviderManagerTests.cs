@@ -437,6 +437,44 @@ public class ProviderManagerTests : IDisposable
         savedProviders["siliconflow"].Models.Should().ContainKey("keep-me");
     }
 
+    [Fact]
+    public async Task SaveProviderAsync_ConnectionChange_ShouldNotReenterRegistryChangedAndDuplicateRegister()
+    {
+        // I2 回归：RefreshConfiguredProviders 持 _sync 调 Register/Unregister 会同步 Raise ProvidersChanged；
+        // 同线程重入 OnProvidersChanged 曾导致基于中间快照重复构造/释放被替换 Provider。
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["provider"] = PredefinedProviders.OpenAI("sk-original")
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        var factory = new Mock<ILlmClientFactory>();
+        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
+            .Returns(Mock.Of<ILlmClient>());
+        using var sut = new ProviderManager(
+            configManager,
+            [factory.Object],
+            Mock.Of<IModelConfigManager>(),
+            registry,
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
+            NullLogger<ProviderManager>.Instance);
+
+        var changes = new List<ProvidersChangedEventArgs>();
+        registry.ProvidersChanged += (_, e) => changes.Add(e);
+
+        await sut.SaveProviderAsync(
+            "provider",
+            PredefinedProviders.OpenAI("sk-changed"),
+            ConfigLevel.User,
+            TestContext.Current.CancellationToken);
+
+        // 一次重建应仅 Unregister + Register 各一次（重入会额外 Register）
+        changes.Should().HaveCount(2);
+        changes.Count(e => e.ChangedProviderIds.Contains("provider")).Should().Be(1);
+        changes.Count(e => e.RemovedProviderIds.Contains("provider")).Should().Be(1);
+    }
+
     private async Task<UnifiedConfigManager> CreateConfigManagerAsync(
         SeeingAgentOptions options,
         Dictionary<string, ProviderConfig>? providers = null)
