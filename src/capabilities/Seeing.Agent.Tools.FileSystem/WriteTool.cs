@@ -92,7 +92,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
 
             _logger.LogInformation("写入文件: {FilePath}", filePath);
 
-            var exists = _fileSystem.Exists(filePath) && !IsDirectory(filePath);
+            var exists = _fileSystem.Exists(filePath) && !FileSystemHelper.IsDirectory(_fileSystem, filePath);
             var oldContent = exists
                 ? await _fileSystem.ReadAllTextAsync(filePath, context.CancellationToken)
                 : "";
@@ -127,20 +127,6 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                     ["diff"] = diff
                 }
             );
-        }
-
-        private bool IsDirectory(string path)
-        {
-            try
-            {
-                using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
-                _ = enumerator.MoveNext();
-                return true;
-            }
-            catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or DirectoryNotFoundException)
-            {
-                return false;
-            }
         }
 
         private string GenerateDiff(string filePath, string oldContent, string newContent)

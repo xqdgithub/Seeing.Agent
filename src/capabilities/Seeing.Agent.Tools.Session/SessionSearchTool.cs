@@ -17,6 +17,9 @@ public sealed class SessionSearchTool : SessionToolBase
     private const int MaxContext = 3;
     private const int MaxPreviewChars = 200;
 
+    /// <summary>用户正则匹配超时（ReDoS 防护）。</summary>
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
     /// <summary>创建 SessionSearchTool 实例。</summary>
     public SessionSearchTool(
         ILogger<SessionSearchTool> logger,
@@ -78,7 +81,7 @@ public sealed class SessionSearchTool : SessionToolBase
         Regex regex;
         try
         {
-            regex = new Regex(pattern, RegexOptions.Compiled);
+            regex = new Regex(pattern, RegexOptions.Compiled, RegexTimeout);
         }
         catch (ArgumentException ex)
         {

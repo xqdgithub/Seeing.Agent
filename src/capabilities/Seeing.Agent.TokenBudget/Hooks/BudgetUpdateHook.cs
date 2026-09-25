@@ -86,7 +86,7 @@ public class BudgetUpdateHook : IHookHandler
                 // 缓存到 Session
                 session.CachedInputTokens = providerUsage.InputTokens;
                 session.CachedOutputTokens = providerUsage.OutputTokens;
-                session.CachedUsageUpdatedAt = DateTime.Now;
+                session.CachedUsageUpdatedAt = DateTime.UtcNow;
                 shouldSaveSession = true;
 
                 _logger?.LogDebug("BudgetUpdateHook: Using Provider Usage - Input={InputTokens}, Output={OutputTokens}",

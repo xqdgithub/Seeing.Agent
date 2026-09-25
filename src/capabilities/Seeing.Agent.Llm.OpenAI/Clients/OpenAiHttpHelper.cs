@@ -12,6 +12,9 @@ namespace Seeing.Agent.Llm.OpenAI.Clients;
 /// </summary>
 internal static class OpenAiHttpHelper
 {
+    /// <summary>Debug 日志中请求体的最大字符数。</summary>
+    private const int MaxLoggedBodyChars = 2000;
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -68,7 +71,11 @@ internal static class OpenAiHttpHelper
         IReadOnlyList<ILlmCallInterceptor>? interceptors = null)
     {
         var json = JsonSerializer.Serialize(body, JsonOpts);
-        logger.LogDebug("OpenAI POST {Path}: body={Json}", path, json);
+        // Debug 日志截断请求体，避免大 body/敏感内容刷屏
+        var logBody = json.Length > MaxLoggedBodyChars
+            ? json[..MaxLoggedBodyChars] + "..."
+            : json;
+        logger.LogDebug("OpenAI POST {Path}: body({Length} chars)={Json}", path, json.Length, logBody);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
         var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = content };
 

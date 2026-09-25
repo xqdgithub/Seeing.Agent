@@ -65,7 +65,8 @@ public sealed class SessionTrimTool : SessionToolBase
             return Failure($"会话不存在: {context.SessionId}");
         }
 
-        var active = session.GetActiveMessages();
+        // 快照化：避免并发追加/裁剪时遍历到变动中的集合
+        var active = session.GetActiveMessages().ToList();
         if (active.Count == 0)
             return Failure("会话无活跃消息，无可裁剪内容");
 
@@ -148,7 +149,7 @@ public sealed class SessionTrimTool : SessionToolBase
         var updated = await Sessions.UpdateSessionAsync(
             session.Id,
             s => s.ReplaceMessages(
-                s.Messages.Where(m => string.IsNullOrEmpty(m.Id) || !targetIds.Contains(m.Id))),
+                s.Messages.ToList().Where(m => string.IsNullOrEmpty(m.Id) || !targetIds.Contains(m.Id))),
             ct).ConfigureAwait(false);
 
         var removedCount = targets.Count;

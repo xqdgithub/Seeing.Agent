@@ -18,6 +18,9 @@ namespace Seeing.Agent.Core.Tools.FileSystem
         /// <summary>最大字节限制 (50KB)</summary>
         public const int MaxBytes = 50 * 1024;
 
+        /// <summary>用户正则匹配超时（ReDoS 防护）。</summary>
+        public static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
         /// <summary>单行截断后缀</summary>
         public static string MaxLineSuffix => $"... (行已截断至 {MaxLineLength} 字符)";
 
@@ -80,6 +83,28 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             [".cfg"] = "text/x-ini",
             [".env"] = "text/plain"
         };
+
+        /// <summary>
+        /// 判断路径是否为目录：不存在或不可枚举时返回 false。
+        /// </summary>
+        public static bool IsDirectory(IFileSystem fileSystem, string path)
+        {
+            if (!fileSystem.Exists(path))
+            {
+                return false;
+            }
+
+            try
+            {
+                using var enumerator = fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
+                _ = enumerator.MoveNext();
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or DirectoryNotFoundException)
+            {
+                return false;
+            }
+        }
 
         /// <summary>
         /// 获取文件的 MIME 类型
@@ -362,7 +387,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
         {
             // 将 glob 模式转换为正则表达式
             var regexPattern = ConvertGlobToRegex(pattern);
-            return Regex.IsMatch(path, regexPattern, RegexOptions.IgnoreCase);
+            return Regex.IsMatch(path, regexPattern, RegexOptions.IgnoreCase, RegexTimeout);
         }
 
         /// <summary>
@@ -451,7 +476,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                 {
                     if (files.Count >= limit) break;
 
-                    if (Regex.IsMatch(file, regexPattern, RegexOptions.IgnoreCase))
+                    if (Regex.IsMatch(file, regexPattern, RegexOptions.IgnoreCase, RegexTimeout))
                     {
                         files.Add(file);
                     }
@@ -494,7 +519,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             int limit = 100)
         {
             var matches = new List<GrepMatch>();
-            var regex = new Regex(pattern, RegexOptions.Compiled);
+            var regex = new Regex(pattern, RegexOptions.Compiled, RegexTimeout);
 
             try
             {
@@ -528,7 +553,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             try
             {
                 var includeRegex = includePattern != null
-                    ? new Regex(ConvertGlobToRegex(includePattern), RegexOptions.IgnoreCase | RegexOptions.Compiled)
+                    ? new Regex(ConvertGlobToRegex(includePattern), RegexOptions.IgnoreCase | RegexOptions.Compiled, RegexTimeout)
                     : null;
 
                 // 搜索文件

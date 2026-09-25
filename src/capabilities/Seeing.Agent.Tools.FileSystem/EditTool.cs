@@ -133,7 +133,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             }
 
             // 检查是否为目录
-            if (IsDirectory(filePath))
+            if (FileSystemHelper.IsDirectory(_fileSystem, filePath))
             {
                 return Failure($"路径是目录而非文件: {filePath}");
             }
@@ -210,20 +210,6 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                     ["exists"] = false
                 }
             );
-        }
-
-        private bool IsDirectory(string path)
-        {
-            try
-            {
-                using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
-                _ = enumerator.MoveNext();
-                return true;
-            }
-            catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or DirectoryNotFoundException)
-            {
-                return false;
-            }
         }
 
         /// <summary>

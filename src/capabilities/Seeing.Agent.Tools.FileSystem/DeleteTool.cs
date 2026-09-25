@@ -74,7 +74,7 @@ public class DeleteTool : BuiltInToolBase
             if (!_fileSystem.Exists(path))
                 return Task.FromResult(Failure($"路径不存在: {path}"));
 
-            var isDirectory = IsDirectory(path);
+            var isDirectory = FileSystemHelper.IsDirectory(_fileSystem, path);
             _fileSystem.Delete(path);
             return Task.FromResult(Success(isDirectory
                 ? $"目录已删除: {path}"
@@ -83,20 +83,6 @@ public class DeleteTool : BuiltInToolBase
         catch (Exception ex)
         {
             return Task.FromResult(Failure(ex, "删除失败"));
-        }
-    }
-
-    private bool IsDirectory(string path)
-    {
-        try
-        {
-            using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
-            _ = enumerator.MoveNext();
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or DirectoryNotFoundException)
-        {
-            return false;
         }
     }
 }

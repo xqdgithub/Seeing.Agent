@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Tools.Git;
@@ -32,7 +33,7 @@ public class GitServiceSubprocessTests
         var service = new GitService(
             Mock.Of<ILogger<GitService>>(),
             world,
-            Microsoft.Extensions.Options.Options.Create(new GitOptions()));
+            CreateMonitor(new GitOptions()));
 
         var status = await service.GetStatusAsync(
             cancellationToken: TestContext.Current.CancellationToken);
@@ -62,7 +63,7 @@ public class GitServiceSubprocessTests
         var service = new GitService(
             Mock.Of<ILogger<GitService>>(),
             world,
-            Microsoft.Extensions.Options.Options.Create(new GitOptions()));
+            CreateMonitor(new GitOptions()));
 
         await service.ExecuteAsync(
             "rev-parse",
@@ -71,6 +72,13 @@ public class GitServiceSubprocessTests
 
         captured.Should().NotBeNull();
         captured!.WorkingDirectory.Should().Be("/world-cwd");
+    }
+
+    private static IOptionsMonitor<GitOptions> CreateMonitor(GitOptions options)
+    {
+        var monitor = new Mock<IOptionsMonitor<GitOptions>>();
+        monitor.SetupGet(m => m.CurrentValue).Returns(options);
+        return monitor.Object;
     }
 
     private sealed class FakeExecutionWorld(string cwd, ISubprocessFactory subprocess) : IExecutionWorld

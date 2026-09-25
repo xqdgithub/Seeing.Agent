@@ -11,6 +11,7 @@ public sealed class ConfiguredSystemOneProvider : ISystemOneProvider, IDisposabl
     private readonly SystemOneProviderConfig _config;
     private readonly ISystemOneClientFactory _factory;
     private readonly Lazy<ISystemOneClient> _client;
+    private readonly object _gate = new();
     private bool _disposed;
 
     /// <summary>使用配置与客户端工厂构造 provider（客户端延迟创建）。</summary>
@@ -50,10 +51,14 @@ public sealed class ConfiguredSystemOneProvider : ISystemOneProvider, IDisposabl
     /// <exception cref="ObjectDisposedException">provider 已被释放。</exception>
     public ISystemOneClient GetClient()
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(ConfiguredSystemOneProvider));
+        // 与 Dispose 共用同一把锁，消除"检查后释放"竞态导致返回已释放客户端
+        lock (_gate)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(ConfiguredSystemOneProvider));
 
-        return _client.Value;
+            return _client.Value;
+        }
     }
 
     /// <inheritdoc />
@@ -67,12 +72,15 @@ public sealed class ConfiguredSystemOneProvider : ISystemOneProvider, IDisposabl
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_disposed)
-            return;
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
 
-        _disposed = true;
+            _disposed = true;
 
-        if (_client.IsValueCreated && _client.Value is IDisposable disposable)
-            disposable.Dispose();
+            if (_client.IsValueCreated && _client.Value is IDisposable disposable)
+                disposable.Dispose();
+        }
     }
 }

@@ -9,6 +9,12 @@ namespace Seeing.Agent.Core.Tools.Git;
 /// </summary>
 public class GitLogTool : ITool
 {
+    /// <summary>默认提交条数。</summary>
+    private const int DefaultMaxCount = 20;
+
+    /// <summary>提交条数上限（防止一次拉取过多历史）。</summary>
+    private const int MaxMaxCount = 500;
+
     public string Id => "git_log";
     public string Description => "Get the commit history of the repository";
 
@@ -31,7 +37,9 @@ public class GitLogTool : ITool
             maxCount = new
             {
                 type = "integer",
-                description = "Maximum number of commits to return"
+                minimum = 1,
+                maximum = MaxMaxCount,
+                description = $"Maximum number of commits to return (max {MaxMaxCount})"
             },
             since = new
             {
@@ -54,8 +62,8 @@ public class GitLogTool : ITool
             ? pathProp.GetString()
             : null;
         var maxCount = arguments.TryGetProperty("maxCount", out var countProp)
-            ? countProp.GetInt32()
-            : 20;
+            ? Math.Clamp(countProp.GetInt32(), 1, MaxMaxCount)
+            : DefaultMaxCount;
         var since = arguments.TryGetProperty("since", out var sinceProp)
             ? sinceProp.GetString()
             : null;

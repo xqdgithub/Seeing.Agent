@@ -14,6 +14,7 @@ namespace Seeing.Agent.Core.Tools.Shell;
 /// <summary>
 /// 执行 Shell 命令的 bash 工具。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.TimeoutSkip, "true")]
 public class BashTool : ToolBase
 {
     private const int DefaultTimeoutMs = 120_000;
@@ -136,7 +137,11 @@ public class BashTool : ToolBase
         linkedCts.Cancel();
         try { await Task.WhenAll(stdoutTask, stderrTask); } catch (OperationCanceledException) { }
 
-        await PublishProgressAsync(context, description, outputBuilder, gate, force: true);
+        // 用户取消后不再 emit Running 事件：终态由上层统一渲染为"已取消"
+        if (!context.CancellationToken.IsCancellationRequested)
+        {
+            await PublishProgressAsync(context, description, outputBuilder, gate, force: true);
+        }
 
         var output = AnsiEscape.Strip(outputBuilder.ToString());
         var metadataLines = new List<string>();

@@ -60,7 +60,7 @@ public class AddWorkspacePathTool : BuiltInToolBase
         if (!Path.IsPathRooted(path))
             path = _fileSystem.GetFullPath(Path.Combine(_workingDirectory, path));
 
-        if (!_fileSystem.Exists(path) || !IsDirectory(path))
+        if (!_fileSystem.Exists(path) || !FileSystemHelper.IsDirectory(_fileSystem, path))
             return Task.FromResult(Failure($"目录不存在: {path}"));
 
         if (string.IsNullOrEmpty(context.SessionId))
@@ -69,19 +69,5 @@ public class AddWorkspacePathTool : BuiltInToolBase
         _grantStore.AddSessionDirectory(context.SessionId, path);
 
         return Task.FromResult(Success("路径已加入当前会话的工作区白名单", path));
-    }
-
-    private bool IsDirectory(string path)
-    {
-        try
-        {
-            using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
-            _ = enumerator.MoveNext();
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException or DirectoryNotFoundException)
-        {
-            return false;
-        }
     }
 }

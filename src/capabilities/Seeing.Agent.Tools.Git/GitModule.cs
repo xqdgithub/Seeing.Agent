@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 
@@ -35,7 +34,8 @@ public sealed class GitModule : ISeeingModule
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
-        services.AddSingleton<IOptions<GitOptions>>(_ => Options.Create(new GitOptions()));
+        // 不再用默认值覆盖注册：经 AddOptions 暴露 IOptionsMonitor，支持外部配置与热重载
+        services.AddOptions<GitOptions>();
         services.AddSingleton<IGitService, GitService>();
         services.AddSingleton<GitStatusTool>();
         services.AddSingleton<GitDiffTool>();

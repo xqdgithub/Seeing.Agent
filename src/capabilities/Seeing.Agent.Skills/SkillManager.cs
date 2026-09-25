@@ -260,7 +260,10 @@ namespace Seeing.Agent.Skills
             {
                 if (!Directory.Exists(directory)) continue;
 
-                var skillFiles = Directory.GetFiles(directory, "SKILL.md", SearchOption.AllDirectories);
+                // 同步目录枚举放入线程池，避免在 async 调用链中阻塞当前线程
+                var skillFiles = await Task.Run(
+                    () => Directory.GetFiles(directory, "SKILL.md", SearchOption.AllDirectories),
+                    cancellationToken).ConfigureAwait(false);
                 foreach (var skillFile in skillFiles)
                 {
                     cancellationToken.ThrowIfCancellationRequested();

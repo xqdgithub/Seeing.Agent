@@ -89,7 +89,7 @@ namespace Seeing.Agent.Core.Tools.FileSystem
             {
                 try
                 {
-                    _ = new Regex(pattern, RegexOptions.Compiled);
+                    _ = new Regex(pattern, RegexOptions.Compiled, FileSystemHelper.RegexTimeout);
                 }
                 catch (ArgumentException ex)
                 {

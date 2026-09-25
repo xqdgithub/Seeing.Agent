@@ -114,31 +114,12 @@ namespace Seeing.Agent.Core.Tools.FileSystem
                 return Failure($"文件不存在: {filePath}");
             }
 
-            if (IsDirectory(filePath))
+            if (FileSystemHelper.IsDirectory(_fileSystem, filePath))
             {
                 return ReadDirectory(filePath, offset, limit);
             }
 
             return await ReadFileAsync(filePath, offset, limit, context);
-        }
-
-        private bool IsDirectory(string path)
-        {
-            if (!_fileSystem.Exists(path))
-            {
-                return false;
-            }
-
-            try
-            {
-                using var enumerator = _fileSystem.EnumerateFiles(path, "*", recursive: false).GetEnumerator();
-                _ = enumerator.MoveNext();
-                return true;
-            }
-            catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
-            {
-                return false;
-            }
         }
 
         private ToolResult ReadDirectory(string filePath, int offset, int limit)

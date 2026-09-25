@@ -12,17 +12,21 @@ public class GitService : IGitService
 {
     private readonly ILogger<GitService> _logger;
     private readonly IExecutionWorld _world;
-    private readonly GitOptions _options;
+    private readonly IOptionsMonitor<GitOptions>? _optionsMonitor;
+    private readonly GitOptions _defaultOptions = new();
 
     public GitService(
         ILogger<GitService> logger,
         IExecutionWorld world,
-        IOptions<GitOptions>? options = null)
+        IOptionsMonitor<GitOptions>? options = null)
     {
         _logger = logger;
         _world = world;
-        _options = options?.Value ?? new GitOptions();
+        _optionsMonitor = options;
     }
+
+    /// <summary>实时读取 Git 配置（支持热重载）；无 monitor 时回退默认值。</summary>
+    private GitOptions Options => _optionsMonitor?.CurrentValue ?? _defaultOptions;
 
     public async Task<GitStatus> GetStatusAsync(string? path = null, CancellationToken cancellationToken = default)
     {
@@ -195,14 +199,14 @@ public class GitService : IGitService
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(_options.Timeout);
+            timeoutCts.CancelAfter(Options.Timeout);
 
             var token = timeoutCts.Token;
             var spec = new SubprocessSpec
             {
-                FileName = _options.GitPath,
+                FileName = Options.GitPath,
                 Arguments = string.Join(" ", fullArgs.Select(EscapeArg)),
-                WorkingDirectory = _options.WorkingDirectory ?? _world.Cwd,
+                WorkingDirectory = Options.WorkingDirectory ?? _world.Cwd,
                 CancellationToken = token,
             };
 

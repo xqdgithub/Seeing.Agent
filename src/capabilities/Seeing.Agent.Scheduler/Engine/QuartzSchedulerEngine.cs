@@ -656,7 +656,8 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 triggerBuilder.StartAt(runAtUtc);
                 triggerBuilder.WithSimpleSchedule(x => x
                     .WithRepeatCount(0)
-                    .WithMisfireHandlingInstructionNextWithExistingCount());
+                    // Once 任务错过触发窗口时立即补跑一次，而非按 NextWithExistingCount 直接跳过
+                    .WithMisfireHandlingInstructionFireNow());
                 break;
 
             default:

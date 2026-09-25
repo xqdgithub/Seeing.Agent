@@ -23,9 +23,11 @@ internal sealed class AcpConnectionIdleCleanupHostedService : BackgroundService,
     private readonly AcpModuleActivity _activity;
     private readonly ILogger<AcpConnectionIdleCleanupHostedService> _logger;
     private readonly ModuleHostedRunGate _run = new();
+    // 循环中每轮都会挂起一个 ReadAsync；当计时器获胜时旧读取仍处于 pending，
+    // 下一轮会产生新的读取，故不能声明 SingleReader（否则违反通道契约）。
     private readonly System.Threading.Channels.Channel<string> _wake =
         System.Threading.Channels.Channel.CreateUnbounded<string>(
-            new System.Threading.Channels.UnboundedChannelOptions { SingleReader = true });
+            new System.Threading.Channels.UnboundedChannelOptions { SingleReader = false });
 
     public AcpConnectionIdleCleanupHostedService(
         AcpConnectionOwner connectionOwner,

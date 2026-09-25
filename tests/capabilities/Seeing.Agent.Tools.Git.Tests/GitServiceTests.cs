@@ -102,7 +102,7 @@ public class GitServiceTests
         return new GitService(
             logger.Object,
             world,
-            Mock.Of<IOptions<GitOptions>>(o => o.Value == options));
+            Mock.Of<IOptionsMonitor<GitOptions>>(o => o.CurrentValue == options));
     }
 
     [Fact]

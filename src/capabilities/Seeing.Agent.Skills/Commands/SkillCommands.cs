@@ -69,10 +69,23 @@ public sealed class SkillLoadCommand : ICommand
 
         var expanded = SkillTemplateProcessor.Process(content, skillArgs, skillName);
         var session = await _sessionManager.GetOrLoadAsync(context.SessionId, cancellationToken);
-        if (session.Messages.Count > 0 && session.Messages[^1].Role == MessageRole.User)
+
+        // 假成功修复：仅当末条为 user 消息时才能注入技能内容；否则明确报错而非静默丢弃
+        if (session.Messages.Count == 0 || session.Messages[^1].Role != MessageRole.User)
         {
-            session.Messages[^1].Content = expanded;
+            return CommandResult.Fail(
+                "/skill 需在用户消息之后调用：当前会话末条消息不是用户消息，无法注入技能内容");
         }
+
+        // 走 SessionManager API 持久化，避免只改内存导致刷新后丢失
+        await _sessionManager.UpdateSessionAsync(
+            context.SessionId,
+            s =>
+            {
+                if (s.Messages.Count > 0 && s.Messages[^1].Role == MessageRole.User)
+                    s.Messages[^1].Content = expanded;
+            },
+            cancellationToken);
 
         return new CommandResult
         {
@@ -323,10 +336,23 @@ public sealed class DynamicSkillCommand : ICommand
 
         var expanded = SkillTemplateProcessor.Process(content, context.Arguments ?? "", _skillName);
         var session = await _sessionManager.GetOrLoadAsync(context.SessionId, cancellationToken);
-        if (session.Messages.Count > 0 && session.Messages[^1].Role == MessageRole.User)
+
+        // 假成功修复：仅当末条为 user 消息时才能注入技能内容
+        if (session.Messages.Count == 0 || session.Messages[^1].Role != MessageRole.User)
         {
-            session.Messages[^1].Content = expanded;
+            return CommandResult.Fail(
+                $"/{_skillName} 需在用户消息之后调用：当前会话末条消息不是用户消息，无法注入技能内容");
         }
+
+        // 走 SessionManager API 持久化，避免只改内存导致刷新后丢失
+        await _sessionManager.UpdateSessionAsync(
+            context.SessionId,
+            s =>
+            {
+                if (s.Messages.Count > 0 && s.Messages[^1].Role == MessageRole.User)
+                    s.Messages[^1].Content = expanded;
+            },
+            cancellationToken);
 
         return new CommandResult
         {

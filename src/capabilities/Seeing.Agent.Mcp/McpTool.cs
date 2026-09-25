@@ -60,11 +60,13 @@ public class McpTool : ITool
         }
         catch (Exception ex)
         {
+            // 对齐统一信封：异常信息进 Error 字段，供上层统一渲染
             return new ToolResult
             {
                 Success = false,
                 Title = "MCP 执行错误",
-                Output = ex.Message
+                Output = ex.Message,
+                Error = ex.Message
             };
         }
     }

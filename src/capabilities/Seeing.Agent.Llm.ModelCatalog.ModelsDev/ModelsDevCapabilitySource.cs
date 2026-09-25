@@ -36,6 +36,7 @@ public sealed class ModelsDevCapabilitySource :
 
     private ModelsDevCatalogDocument _builtin = new();
     private ModelsDevCatalogDocument _local = new();
+    private List<ModelCapabilityEntry> _remoteEntries = [];
     private List<ModelCapabilityAlias> _aliases = [];
     private int _remoteEntryCount;
     private int _cachedListTotal;
@@ -105,11 +106,18 @@ public sealed class ModelsDevCapabilitySource :
         try
         {
             MigrateLegacyCatalogIfNeeded();
+
+            // 文件 IO 全部在锁外完成，避免持有 _gate 期间做磁盘读取
+            var builtin = ReadEmbeddedSnapshot();
+            var local = ReadDocumentOrEmpty(_localPath);
+            var remoteEntries = ModelsDevRemoteFile.EnumerateEntries(_remotePath).ToList();
+
             lock (_gate)
             {
-                _builtin = ReadEmbeddedSnapshot();
-                _local = ReadDocumentOrEmpty(_localPath);
-                _remoteEntryCount = ModelsDevRemoteFile.CountEntries(_remotePath);
+                _builtin = builtin;
+                _local = local;
+                _remoteEntries = remoteEntries;
+                _remoteEntryCount = remoteEntries.Count;
                 _remoteTryGetCache.Clear();
                 RebuildAliasesLocked();
                 _cachedListTotal = ComputeListTotalLocked();
@@ -203,11 +211,11 @@ public sealed class ModelsDevCapabilitySource :
         var providerFilter = query.ProviderId?.Trim();
 
         List<ModelCapabilityEntry> curated;
-        string remotePath;
+        List<ModelCapabilityEntry> remoteEntries;
         lock (_gate)
         {
             curated = ModelsDevCatalogMerge.Merge(null, _builtin, _local).Entries?.ToList() ?? [];
-            remotePath = _remotePath;
+            remoteEntries = _remoteEntries;
         }
 
         var curatedKeys = curated
@@ -222,7 +230,7 @@ public sealed class ModelsDevCapabilitySource :
                     yield return e;
             }
 
-            foreach (var remote in ModelsDevRemoteFile.EnumerateEntries(remotePath))
+            foreach (var remote in remoteEntries)
             {
                 var key = ModelsDevCatalogMerge.EntryKey(remote.ProviderId, remote.ModelId);
                 if (curatedKeys.Contains(key))
@@ -298,16 +306,9 @@ public sealed class ModelsDevCapabilitySource :
         ArgumentNullException.ThrowIfNull(entry);
         cancellationToken.ThrowIfCancellationRequested();
 
-        lock (_gate)
-        {
-            UpsertLocalEntryLocked(entry);
-            PersistLocalLocked();
-            RebuildAliasesLocked();
-            _cachedListTotal = ComputeListTotalLocked();
-            _lastLoadedAt = DateTimeOffset.Now;
-            _lastError = null;
-        }
+        var snapshot = UpdateLocalLocked(() => UpsertLocalEntryLocked(entry), clearError: true);
 
+        PersistLocal(snapshot);
         RaiseChanged(ModelCapabilitySourceChangeKind.EntriesEdited);
         return ValueTask.CompletedTask;
     }
@@ -318,16 +319,12 @@ public sealed class ModelsDevCapabilitySource :
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
-        {
+        var snapshot = UpdateLocalLocked(() =>
             _local.Entries.RemoveAll(e =>
                 ProviderEquals(e.ProviderId, providerId) &&
-                string.Equals(e.ModelId, modelId, StringComparison.OrdinalIgnoreCase));
-            PersistLocalLocked();
-            _cachedListTotal = ComputeListTotalLocked();
-            _lastLoadedAt = DateTimeOffset.Now;
-        }
+                string.Equals(e.ModelId, modelId, StringComparison.OrdinalIgnoreCase)));
 
+        PersistLocal(snapshot);
         RaiseChanged(ModelCapabilitySourceChangeKind.EntriesEdited);
         return ValueTask.CompletedTask;
     }
@@ -339,14 +336,9 @@ public sealed class ModelsDevCapabilitySource :
         ArgumentNullException.ThrowIfNull(alias);
         cancellationToken.ThrowIfCancellationRequested();
 
-        lock (_gate)
-        {
-            UpsertLocalAliasLocked(alias);
-            PersistLocalLocked();
-            RebuildAliasesLocked();
-            _lastLoadedAt = DateTimeOffset.Now;
-        }
+        var snapshot = UpdateLocalLocked(() => UpsertLocalAliasLocked(alias));
 
+        PersistLocal(snapshot);
         RaiseChanged(ModelCapabilitySourceChangeKind.AliasesEdited);
         return ValueTask.CompletedTask;
     }
@@ -357,16 +349,12 @@ public sealed class ModelsDevCapabilitySource :
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
-        {
+        var snapshot = UpdateLocalLocked(() =>
             _local.Aliases.RemoveAll(a =>
                 ProviderEquals(a.ProviderId, providerId) &&
-                string.Equals(a.FromModelId, fromModelId, StringComparison.OrdinalIgnoreCase));
-            PersistLocalLocked();
-            RebuildAliasesLocked();
-            _lastLoadedAt = DateTimeOffset.Now;
-        }
+                string.Equals(a.FromModelId, fromModelId, StringComparison.OrdinalIgnoreCase)));
 
+        PersistLocal(snapshot);
         RaiseChanged(ModelCapabilitySourceChangeKind.AliasesEdited);
         return ValueTask.CompletedTask;
     }
@@ -380,18 +368,14 @@ public sealed class ModelsDevCapabilitySource :
         ArgumentNullException.ThrowIfNull(aliases);
         cancellationToken.ThrowIfCancellationRequested();
 
-        lock (_gate)
-        {
+        var snapshot = UpdateLocalLocked(() =>
             _local = new ModelsDevCatalogDocument
             {
                 Entries = entries.ToList(),
                 Aliases = aliases.ToList()
-            };
-            PersistLocalLocked();
-            RebuildAliasesLocked();
-            _lastLoadedAt = DateTimeOffset.Now;
-        }
+            });
 
+        PersistLocal(snapshot);
         RaiseChanged(ModelCapabilitySourceChangeKind.EntriesEdited);
         return ValueTask.CompletedTask;
     }
@@ -415,10 +399,14 @@ public sealed class ModelsDevCapabilitySource :
                 .ConfigureAwait(false);
 
             var doc = ModelsDevApiMapper.Map(json);
+
+            // 先落盘（锁外），再原子替换内存缓存
+            WriteDocumentAtomic(_remotePath, _remoteBackupPath, doc);
+
             lock (_gate)
             {
-                WriteDocumentAtomic(_remotePath, _remoteBackupPath, doc);
-                _remoteEntryCount = doc.Entries?.Count ?? 0;
+                _remoteEntries = doc.Entries?.ToList() ?? [];
+                _remoteEntryCount = _remoteEntries.Count;
                 _remoteTryGetCache.Clear();
                 _cachedListTotal = ComputeListTotalLocked();
                 _lastLoadedAt = DateTimeOffset.Now;
@@ -443,8 +431,7 @@ public sealed class ModelsDevCapabilitySource :
         if (_remoteTryGetCache.TryGetValue(cacheKey, out var cached))
             return cached;
 
-        var found = ModelsDevRemoteFile.TryFind(
-            _remotePath, providerId, modelId, _allowCrossProviderFallback);
+        var found = FindInRemoteEntries(providerId, modelId);
         if (found is null)
             return null;
 
@@ -452,6 +439,29 @@ public sealed class ModelsDevCapabilitySource :
             _remoteTryGetCache.Clear();
         _remoteTryGetCache[cacheKey] = found;
         return found;
+    }
+
+    /// <summary>在已加载的 remote 条目缓存中查找（须在 <see cref="_gate"/> 内调用，无文件 IO）。</summary>
+    private ModelCapabilityEntry? FindInRemoteEntries(string? providerId, string modelId)
+    {
+        ModelCapabilityEntry? generic = null;
+        ModelCapabilityEntry? any = null;
+
+        foreach (var entry in _remoteEntries)
+        {
+            if (!string.Equals(entry.ModelId, modelId, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (ProviderEquals(entry.ProviderId, providerId))
+                return entry;
+
+            if (string.IsNullOrWhiteSpace(entry.ProviderId))
+                generic ??= entry;
+            else if (_allowCrossProviderFallback)
+                any ??= entry;
+        }
+
+        return generic ?? any;
     }
 
     private int ComputeListTotalLocked()
@@ -462,7 +472,7 @@ public sealed class ModelsDevCapabilitySource :
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var overlap = 0;
-        foreach (var remote in ModelsDevRemoteFile.EnumerateEntries(_remotePath))
+        foreach (var remote in _remoteEntries)
         {
             var key = ModelsDevCatalogMerge.EntryKey(remote.ProviderId, remote.ModelId);
             if (curatedKeys.Contains(key))
@@ -513,8 +523,34 @@ public sealed class ModelsDevCapabilitySource :
             _local.Aliases.Add(alias);
     }
 
-    private void PersistLocalLocked()
-        => WriteDocumentAtomic(_localPath, _localBackupPath, _local);
+    /// <summary>
+    /// 在锁内执行本地变更、重建别名并返回待落盘快照；文件 IO 由调用方在锁外完成。
+    /// </summary>
+    private ModelsDevCatalogDocument UpdateLocalLocked(Action mutate, bool clearError = false)
+    {
+        lock (_gate)
+        {
+            mutate();
+            RebuildAliasesLocked();
+            _cachedListTotal = ComputeListTotalLocked();
+            _lastLoadedAt = DateTimeOffset.Now;
+            if (clearError)
+                _lastError = null;
+            return SnapshotLocalLocked();
+        }
+    }
+
+    /// <summary>锁内快照本地文档（浅拷贝列表，避免落盘期间被并发修改）。</summary>
+    private ModelsDevCatalogDocument SnapshotLocalLocked()
+        => new()
+        {
+            Entries = _local.Entries.ToList(),
+            Aliases = _local.Aliases.ToList()
+        };
+
+    /// <summary>锁外持久化本地文档。</summary>
+    private void PersistLocal(ModelsDevCatalogDocument local)
+        => WriteDocumentAtomic(_localPath, _localBackupPath, local);
 
     private static void WriteDocumentAtomic(
         string path,
