@@ -1,6 +1,7 @@
 using System.Net;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
 using Seeing.Agent.Mcp.OAuth;
 using Xunit;
@@ -50,7 +51,13 @@ public class McpOAuthAuthorizerTests : IDisposable
             storage,
             new FakeCallbackServer(),
             tokenClient,
-            _ => config);
+            _ => new McpServerConfig
+            {
+                Name = "server-1",
+                TransportType = McpTransportType.StreamableHttp,
+                Url = new Uri("https://mcp.example.com/mcp"),
+                OAuth = config
+            });
         return (provider, handler);
     }
 

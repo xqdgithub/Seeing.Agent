@@ -6,6 +6,7 @@ using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Mcp.Factory;
+using Seeing.Agent.Mcp.OAuth;
 using Seeing.Agent.Mcp.Policy;
 using System;
 using System.Collections.Generic;
@@ -30,6 +31,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
     private readonly McpWrapperFactoryRegistry _factoryRegistry;
     private readonly IMcpToolRegistry _toolRegistry;
     private readonly McpGlobalPolicy _globalPolicy;
+    private readonly IMcpOAuthConnectionPreparer? _oauthConnectionPreparer;
 
     private readonly Action<string, McpServerStatus> _updateStatusCallback;
     private readonly Func<string, McpServerConfig?> _getConfigFunc;
@@ -46,7 +48,8 @@ internal sealed class McpConnectionCoordinator : IDisposable
         McpGlobalPolicy globalPolicy,
         Action<string, McpServerStatus> updateStatusCallback,
         Func<string, McpServerConfig?> getConfigFunc,
-        Func<string, McpServerStatus?> getStatusFunc)
+        Func<string, McpServerStatus?> getStatusFunc,
+        IMcpOAuthConnectionPreparer? oauthConnectionPreparer = null)
     {
         _serverName = serverName;
         _logger = logger;
@@ -59,6 +62,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
         _updateStatusCallback = updateStatusCallback;
         _getConfigFunc = getConfigFunc;
         _getStatusFunc = getStatusFunc;
+        _oauthConnectionPreparer = oauthConnectionPreparer;
     }
 
     public async Task<McpOperationResult> ConnectAsync(McpServerConfig config, CancellationToken ct)
@@ -114,6 +118,24 @@ internal sealed class McpConnectionCoordinator : IDisposable
         }
 
         UpdateState(CoreMcpConnectionState.Connecting);
+
+        // 连接前 OAuth 预处理：无有效令牌时按配置自动授权或给出可操作提示（非交互宿主不阻塞）
+        if (_oauthConnectionPreparer is not null && config.OAuth is { Disabled: false })
+        {
+            var authResult = await _oauthConnectionPreparer
+                .EnsureAuthorizedAsync(_serverName, config, ct)
+                .ConfigureAwait(false);
+
+            if (!authResult.Success)
+            {
+                var authError = McpErrorInfo.AuthenticationFailed(_serverName, authResult.Error);
+                _logger.LogWarning(
+                    "MCP Server {Server} 连接前 OAuth 预处理未通过: {Error}",
+                    _serverName, authResult.Error);
+                UpdateStateWithError(authError);
+                return McpOperationResult.Failed(_serverName, McpOperationType.Connect, authError);
+            }
+        }
 
         // stdio/HTTP 统一套上 connectionTimeout，避免 uvx 冷启动等场景无限挂起
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

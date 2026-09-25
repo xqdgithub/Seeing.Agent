@@ -57,6 +57,41 @@ public class McpConfigPersistenceOAuthTests
         config.OAuth.RedirectUri.Should().Be("http://localhost:59124/callback");
         config.OAuth.Disabled.Should().BeTrue();
         config.OAuth.UsePkce.Should().BeFalse();
+        config.OAuth.AutoAuthorize.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ParseServerConfig_WithAutoAuthorize_ShouldParseFlag()
+    {
+        const string json = """
+        {
+          "type": "streamableHttp",
+          "url": "https://mcp.example.com/mcp",
+          "oauth": { "autoAuthorize": true }
+        }
+        """;
+
+        var config = CreateSut().ParseServerConfig("s1", ParseJson(json));
+
+        config!.OAuth!.AutoAuthorize.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SerializeServerConfig_WithAutoAuthorize_ShouldWriteFlag()
+    {
+        var config = new McpServerConfig
+        {
+            Name = "s1",
+            TransportType = McpTransportType.StreamableHttp,
+            Url = new Uri("https://mcp.example.com/mcp"),
+            OAuth = new Seeing.Agent.Abstractions.Mcp.OAuth.McpOAuthConfig { AutoAuthorize = true }
+        };
+
+        var json = CreateSut().SerializeServerConfig(config);
+        var oauth = ParseJson(json)
+            .GetProperty("mcpServers").GetProperty("s1").GetProperty("oauth");
+
+        oauth.GetProperty("autoAuthorize").GetBoolean().Should().BeTrue();
     }
 
     [Fact]

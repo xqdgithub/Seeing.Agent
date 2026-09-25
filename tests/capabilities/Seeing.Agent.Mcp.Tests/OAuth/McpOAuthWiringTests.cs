@@ -26,9 +26,12 @@ public class McpOAuthWiringTests
 
         provider.GetService<McpOAuthStorage>().Should().NotBeNull();
         provider.GetService<McpOAuthTokenClient>().Should().NotBeNull();
+        provider.GetService<McpOAuthDiscovery>().Should().NotBeNull();
+        provider.GetService<McpOAuthClientRegistrar>().Should().NotBeNull();
         provider.GetService<IBrowserLauncher>().Should().NotBeNull();
         provider.GetService<IMcpOAuthProvider>().Should().NotBeNull();
         provider.GetService<IMcpOAuthAuthorizer>().Should().NotBeNull();
+        provider.GetService<IMcpOAuthConnectionPreparer>().Should().NotBeNull();
     }
 
     [Fact]

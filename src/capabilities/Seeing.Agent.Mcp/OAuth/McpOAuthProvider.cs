@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
@@ -9,8 +10,10 @@ namespace Seeing.Agent.Mcp.OAuth
     /// <summary>
     /// MCP OAuth 提供者实现 - OAuth 2.1 授权码 + PKCE 流程。
     /// <para>
-    /// 端点来自 server 的 <see cref="McpOAuthConfig"/> 显式配置（不实现元数据自动发现）。
-    /// 若未配置授权/令牌端点，或运行环境无宿主交互能力，则显式失败而非伪造令牌。
+    /// 端点优先取 server 的 <see cref="McpOAuthConfig"/> 显式配置；缺失时按
+    /// RFC 9728 / RFC 8414 从 server URL 自动发现补全，并在无 client_id 且发现到
+    /// registration_endpoint 时按 RFC 7591 动态注册（结果按 server 缓存）。
+    /// 若仍无授权/令牌端点，或运行环境无宿主交互能力，则显式失败而非伪造令牌。
     /// </para>
     /// </summary>
     public class McpOAuthProvider : IMcpOAuthProvider
@@ -19,7 +22,9 @@ namespace Seeing.Agent.Mcp.OAuth
         private readonly McpOAuthStorage _storage;
         private readonly IMcpOAuthCallbackServer _callbackServer;
         private readonly McpOAuthTokenClient _tokenClient;
-        private readonly Func<string, McpOAuthConfig?> _configResolver;
+        private readonly Func<string, McpServerConfig?> _serverResolver;
+        private readonly McpOAuthDiscovery? _discovery;
+        private readonly McpOAuthClientRegistrar? _clientRegistrar;
         private readonly ConcurrentDictionary<string, PendingAuth> _pendingAuths = new();
 
         public McpOAuthProvider(
@@ -27,25 +32,30 @@ namespace Seeing.Agent.Mcp.OAuth
             McpOAuthStorage storage,
             IMcpOAuthCallbackServer callbackServer,
             McpOAuthTokenClient tokenClient,
-            Func<string, McpOAuthConfig?> configResolver)
+            Func<string, McpServerConfig?> serverResolver,
+            McpOAuthDiscovery? discovery = null,
+            McpOAuthClientRegistrar? clientRegistrar = null)
         {
             _logger = logger;
             _storage = storage;
             _callbackServer = callbackServer;
             _tokenClient = tokenClient;
-            _configResolver = configResolver;
+            _serverResolver = serverResolver;
+            _discovery = discovery;
+            _clientRegistrar = clientRegistrar;
         }
 
         public async Task<OAuthStartResult> StartAuthAsync(
             string mcpName,
             CancellationToken cancellationToken = default)
         {
-            var config = RequireEnabledConfig(mcpName);
+            var server = RequireEnabledServer(mcpName);
+            var config = await PrepareConfigAsync(server, server.OAuth!, cancellationToken).ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(config.AuthorizationEndpoint))
             {
                 throw new McpOAuthException(
-                    $"MCP Server {mcpName} 未配置 OAuth 授权端点（McpOAuthConfig.AuthorizationEndpoint）",
+                    $"MCP Server {mcpName} 未配置 OAuth 授权端点（McpOAuthConfig.AuthorizationEndpoint），且元数据发现未补全",
                     mcpName,
                     McpAuthStatus.NeedsAuthorization);
             }
@@ -140,12 +150,17 @@ namespace Seeing.Agent.Mcp.OAuth
             if (token == null || string.IsNullOrEmpty(token.RefreshToken))
                 return new OAuthResult(false, McpAuthStatus.NeedsAuthorization, "No refresh token available");
 
-            var config = _configResolver(mcpName);
-            if (config == null || config.Disabled)
+            McpServerConfig server;
+            try
             {
-                return new OAuthResult(false, McpAuthStatus.NeedsAuthorization,
-                    $"MCP Server {mcpName} 未配置 OAuth，无法刷新令牌");
+                server = RequireEnabledServer(mcpName);
             }
+            catch (McpOAuthException ex)
+            {
+                return new OAuthResult(false, McpAuthStatus.NeedsAuthorization, ex.Message);
+            }
+
+            var config = await PrepareConfigAsync(server, server.OAuth!, cancellationToken).ConfigureAwait(false);
 
             try
             {
@@ -182,10 +197,84 @@ namespace Seeing.Agent.Mcp.OAuth
             return McpAuthStatus.Authenticated;
         }
 
-        private McpOAuthConfig RequireEnabledConfig(string mcpName)
+        /// <summary>
+        /// 补全 OAuth 端点：显式配置优先，缺失时经发现补全；无 client_id 时按需动态注册。
+        /// 发现失败不抛异常，由后续显式校验给出明确错误。
+        /// </summary>
+        private async Task<McpOAuthConfig> PrepareConfigAsync(
+            McpServerConfig server,
+            McpOAuthConfig config,
+            CancellationToken cancellationToken)
         {
-            var config = _configResolver(mcpName);
-            if (config == null)
+            string? registrationEndpoint = null;
+
+            var missingEndpoints = string.IsNullOrWhiteSpace(config.AuthorizationEndpoint)
+                || string.IsNullOrWhiteSpace(config.TokenEndpoint);
+            // 无 client_id 时也需发现以获取 registration_endpoint（即便端点已显式配置）
+            var needsRegistrationEndpoint = string.IsNullOrWhiteSpace(config.ClientId)
+                && _clientRegistrar is not null;
+
+            if (_discovery is not null && server.Url is not null && (missingEndpoints || needsRegistrationEndpoint))
+            {
+                var metadata = await _discovery.DiscoverAsync(server.Url, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (metadata is not null)
+                {
+                    if (string.IsNullOrWhiteSpace(config.AuthorizationEndpoint) &&
+                        !string.IsNullOrWhiteSpace(metadata.AuthorizationEndpoint))
+                    {
+                        config.AuthorizationEndpoint = metadata.AuthorizationEndpoint;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(config.TokenEndpoint) &&
+                        !string.IsNullOrWhiteSpace(metadata.TokenEndpoint))
+                    {
+                        config.TokenEndpoint = metadata.TokenEndpoint;
+                    }
+
+                    registrationEndpoint = metadata.RegistrationEndpoint;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(config.ClientId) &&
+                _clientRegistrar is not null &&
+                !string.IsNullOrWhiteSpace(registrationEndpoint))
+            {
+                var registration = await _clientRegistrar.TryLoadAsync(server.Name).ConfigureAwait(false);
+
+                if (registration is null)
+                {
+                    var redirectUri = await ResolveRedirectUriAsync(config).ConfigureAwait(false);
+                    registration = await _clientRegistrar.RegisterAsync(
+                        server.Name, registrationEndpoint!, redirectUri, config.Scope, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                if (registration is not null)
+                {
+                    config.ClientId = registration.ClientId;
+                    if (string.IsNullOrWhiteSpace(config.ClientSecret))
+                        config.ClientSecret = registration.ClientSecret;
+                }
+            }
+
+            return config;
+        }
+
+        private async Task<string> ResolveRedirectUriAsync(McpOAuthConfig config)
+        {
+            if (!string.IsNullOrWhiteSpace(config.RedirectUri))
+                return config.RedirectUri!;
+
+            await _callbackServer.EnsureRunningAsync().ConfigureAwait(false);
+            return _callbackServer.GetCallbackUrl();
+        }
+
+        private McpServerConfig RequireEnabledServer(string mcpName)
+        {
+            var server = _serverResolver(mcpName);
+            if (server?.OAuth is null)
             {
                 throw new McpOAuthException(
                     $"MCP Server {mcpName} 未配置 OAuth（McpOAuthConfig），无法启动授权",
@@ -193,7 +282,7 @@ namespace Seeing.Agent.Mcp.OAuth
                     McpAuthStatus.NeedsAuthorization);
             }
 
-            if (config.Disabled)
+            if (server.OAuth.Disabled)
             {
                 throw new McpOAuthException(
                     $"MCP Server {mcpName} 的 OAuth 已被禁用",
@@ -201,7 +290,7 @@ namespace Seeing.Agent.Mcp.OAuth
                     McpAuthStatus.NeedsAuthorization);
             }
 
-            return config;
+            return server;
         }
 
         private static string BuildAuthorizationUrl(

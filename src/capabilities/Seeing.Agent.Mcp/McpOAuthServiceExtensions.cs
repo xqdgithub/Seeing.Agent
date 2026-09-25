@@ -25,6 +25,9 @@ public static class McpOAuthServiceExtensions
         services.AddSingleton<IMcpOAuthCallbackServer>(sp =>
             new McpOAuthCallbackServer(sp.GetRequiredService<ILogger<McpOAuthCallbackServer>>()));
         services.AddSingleton<McpOAuthTokenClient>();
+        services.AddSingleton<McpOAuthDiscovery>();
+        services.AddSingleton<McpOAuthClientRegistrationStore>();
+        services.AddSingleton<McpOAuthClientRegistrar>();
 
         services.AddSingleton<IMcpOAuthProvider>(sp =>
         {
@@ -32,21 +35,24 @@ public static class McpOAuthServiceExtensions
             var storage = sp.GetRequiredService<McpOAuthStorage>();
             var callbackServer = sp.GetRequiredService<IMcpOAuthCallbackServer>();
             var tokenClient = sp.GetRequiredService<McpOAuthTokenClient>();
+            var discovery = sp.GetRequiredService<McpOAuthDiscovery>();
+            var registrar = sp.GetRequiredService<McpOAuthClientRegistrar>();
 
-            // IMcpManager 可能尚未注册（仅需授权流程时），缺失则返回 null 由 Provider 显式报错
-            var manager = sp.GetService<IMcpManager>();
-
+            // IMcpManager 延迟解析（避免与连接预处理形成构造期循环依赖）；缺失则返回 null 由 Provider 显式报错
             return new McpOAuthProvider(
                 logger,
                 storage,
                 callbackServer,
                 tokenClient,
-                name => manager?.GetConfig(name)?.OAuth);
+                name => sp.GetService<IMcpManager>()?.GetConfig(name),
+                discovery,
+                registrar);
         });
 
         // 宿主可先行注册自定义浏览器打开器覆盖默认实现（TryAdd 不覆盖已有注册）
         services.TryAddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
         services.AddSingleton<IMcpOAuthAuthorizer, McpOAuthAuthorizer>();
+        services.AddSingleton<IMcpOAuthConnectionPreparer, McpOAuthConnectionPreparer>();
 
         return services;
     }

@@ -28,5 +28,11 @@
 
         /// <summary>是否使用 PKCE</summary>
         public bool UsePkce { get; set; } = true;
+
+        /// <summary>
+        /// 连接时若无有效令牌，是否自动触发授权流（打开浏览器）。
+        /// <para>默认 false：非交互宿主/测试环境不自动弹浏览器，仅返回可操作提示（请运行 /mcp-auth）。</para>
+        /// </summary>
+        public bool AutoAuthorize { get; set; }
     }
 }

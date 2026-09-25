@@ -330,6 +330,9 @@ public class McpConfigPersistence : IMcpConfigPersistence
         if (element.TryGetProperty("usePkce", out var usePkceProp))
             oauth.UsePkce = usePkceProp.GetBoolean();
 
+        if (element.TryGetProperty("autoAuthorize", out var autoAuthorizeProp))
+            oauth.AutoAuthorize = autoAuthorizeProp.GetBoolean();
+
         return oauth;
     }
 
@@ -377,6 +380,9 @@ public class McpConfigPersistence : IMcpConfigPersistence
 
         if (!oauth.UsePkce)
             result["usePkce"] = false;
+
+        if (oauth.AutoAuthorize)
+            result["autoAuthorize"] = true;
 
         return result;
     }

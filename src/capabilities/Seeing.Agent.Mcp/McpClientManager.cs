@@ -29,6 +29,7 @@ namespace Seeing.Agent.Mcp
         private readonly McpGlobalPolicy _globalPolicy;
         private readonly IMcpConfigPersistence _configPersistence;
         private readonly IHttpClientFactory? _httpClientFactory;
+        private readonly OAuth.IMcpOAuthConnectionPreparer? _oauthConnectionPreparer;
 
         private readonly ConcurrentDictionary<string, McpServerStatus> _statuses = new();
         private readonly ConcurrentDictionary<string, McpServerConfig> _configs = new();
@@ -53,7 +54,8 @@ namespace Seeing.Agent.Mcp
             McpWrapperFactoryRegistry factoryRegistry,
             McpGlobalPolicy globalPolicy,
             IMcpConfigPersistence configPersistence,
-            IHttpClientFactory? httpClientFactory = null)
+            IHttpClientFactory? httpClientFactory = null,
+            OAuth.IMcpOAuthConnectionPreparer? oauthConnectionPreparer = null)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -63,6 +65,7 @@ namespace Seeing.Agent.Mcp
             _globalPolicy = globalPolicy;
             _configPersistence = configPersistence;
             _httpClientFactory = httpClientFactory;
+            _oauthConnectionPreparer = oauthConnectionPreparer;
 
             _toolRegistry = new McpToolRegistry(_toolInvoker, _hookManager, logger);
             _processMonitor = new McpProcessMonitor(logger);
@@ -890,7 +893,8 @@ namespace Seeing.Agent.Mcp
                 _globalPolicy,
                 (s, status) => UpdateState(s, status),
                 s => GetConfig(s),
-                s => GetStatus(s)));
+                s => GetStatus(s),
+                _oauthConnectionPreparer));
         }
 
         private async Task<McpToolResult> ExecuteMcpToolAsync(
