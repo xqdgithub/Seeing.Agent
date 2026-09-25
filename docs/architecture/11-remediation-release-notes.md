@@ -49,7 +49,7 @@
 
 | 领域 | 修复 |
 |------|------|
-| 安全 | webfetch 逐跳 SSRF + 流式限长 + DNS rebinding 连接期 IP 固化；ACP 工作区前缀分隔符边界；用户正则 `MatchTimeout`（ReDoS 面） |
+| 安全 | webfetch 逐跳 SSRF 预校验 + 流式限长；ACP 工作区前缀分隔符边界；用户正则 `MatchTimeout`（ReDoS 面）。**DNS rebinding TOCTOU 未消除**（每跳仅做一次 DNS 预校验，实际连接由 HttpClient 重新解析），已列入 [`06`](06-compliance-audit.md) 接受残留 |
 | 事件流 | `ExecutionEventPublisher` 发布、订阅注册+回放同锁（恰一次）；Router 简化 |
 | 执行取消 | CTS 绑定 `ExecutionRecord`（per-execution），`CancelAsync` 按 id 取消且延迟 Dispose；exec1/exec2 闪断根因关闭 |
 | 循环检测 | `LoopDetector` 接线生产路径（per-execution 状态，3 警告 5 终止）；单例字段竞态消除 |
@@ -72,7 +72,7 @@
 | ACP 不触发 chat 级 Hook | `AcpPassthroughExecutor` 不触发 `chat.on_error` 等；取消路径已对齐 Native（`LoopCancelledEvent`）。已知差异，不做增强；详见 [`08 §7.3`](08-permission-authorization-release-notes.md) |
 | MCP server 粒度记忆 | 单 server 批准=信任其全部工具（含后续新增）；按工具隔离属后续演进 |
 | SessionDirectory kind 维度 | 批准 `write` 后同目录 `delete` 仍免审（体验/安全折中） |
-| 接受残留清单 | 6 项（TryAutoApprove 进程级、PathMatches glob、GrantStore 大小写、Gateway scope 恒 Once、RetryMiddleware 缺 IOException、ToolDrainTimeout）+ 2 项文档声明（DangerousCommandGuard、Gateway 生命周期）见 [`06`](06-compliance-audit.md) |
+| 接受残留清单 | 7 项（TryAutoApprove 进程级、PathMatches glob、GrantStore 大小写、Gateway scope 恒 Once、RetryMiddleware 缺 IOException、ToolDrainTimeout、webfetch DNS rebinding TOCTOU）+ 2 项文档声明（DangerousCommandGuard、Gateway 生命周期）见 [`06`](06-compliance-audit.md) |
 | full 场景守门 | `Full` 补 `systemone`/`systemone.tools` 与反射化守门归 Task 16 |
 | 命名空间迁移 | `Seeing.Agent.Core.Tools.*` → `Seeing.Agent.Tools.*` 归 Task 15（尚未执行） |
 

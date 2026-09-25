@@ -165,6 +165,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | `PermissionGrantStore.Lookup` 恒 `OrdinalIgnoreCase` | Linux 大小写敏感文件系统上跨大小写文件可命中 |
 | Gateway 审批回传 scope 恒 `Once` | 协议层无法表达 Session/SessionDirectory 记忆 |
 | `RetryMiddleware` 可重试集合缺 `IOException` | 与 `RetryToolDecorator` 不一致；重试延迟亦不响应取消 |
+| webfetch DNS rebinding TOCTOU | 每跳仅做一次 DNS 预校验，实际连接由 `HttpClient` 重新解析（校验与连接两次解析）；恶意 DNS 可在两次解析间切换至内网 IP。**连接期 IP 固化未实现**（`SocketsHttpHandler.ConnectCallback` 校验/按 IP 直连），属后续演进 |
 | `ToolDrainTimeout` 取消泄漏 | 不响应取消的工具可能拖满排空窗口（10s）后跳过终态，导致任务/进程泄漏（已知边界，见根 `AGENTS.md`） |
 | `DangerousCommandGuard` 令牌化绕过 | guard 语义自述「只拦截灾难性操作」；`xargs` 等令牌化包装可绕过，为设计边界，不做行为增强（批次 5 文档声明项） |
 | Gateway 服务器生命周期与 `gateway` 模块脱钩 | 网关为**宿主级基础设施**（`AddSeeingGatewayServer` 由 sample 组合），不随模块 Activate/Deactivate（设计意图，非债） |
