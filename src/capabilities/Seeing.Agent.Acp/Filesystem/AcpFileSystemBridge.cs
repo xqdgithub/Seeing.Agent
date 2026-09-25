@@ -41,7 +41,7 @@ public sealed class AcpFileSystemBridge
         try
         {
             // 流式限长：最多读取 maxChars 个字符，避免大文件整文件入内存
-            var maxChars = Math.Min(limit ?? DefaultReadLimit * MaxLineLength, MaxBytes);
+            var maxChars = Math.Max(0, Math.Min(limit ?? DefaultReadLimit * MaxLineLength, MaxBytes));
 
             string content;
             await using (var stream = new FileStream(
