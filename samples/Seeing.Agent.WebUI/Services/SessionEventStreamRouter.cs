@@ -12,8 +12,9 @@ namespace Seeing.Agent.WebUI.Services;
 /// <summary>
 /// 会话事件流路由器（Singleton）。
 /// 按 sessionId 对 ExecutionEventPublisher 的流只订阅一次（每会话单 Loop），
-/// 再将事件广播给该会话的全部消费者；支持引用快照去重（skipSet 按 Loop 创建时构建）
-/// 与 replay 补历史。消费者经 IServiceScopeFactory 创建为 Scoped，Router 维护
+/// 再将事件广播给该会话的全部消费者。历史回放统一由 ExecutionEventPublisher 在订阅建立时
+/// 完成（恰好一次语义），Router 不再做手动 replay 或引用快照去重，避免两层去重耦合。
+/// 消费者经 IServiceScopeFactory 创建为 Scoped，Router 维护
 /// circuit → (scope, consumer) 映射，circuit 关闭时统一释放。
 /// <para>
 /// <b>circuit 隔离（C1）</b>：consumer 实例按 circuit 隔离——同会话不同 circuit
@@ -27,7 +28,7 @@ namespace Seeing.Agent.WebUI.Services;
 /// </para>
 /// <para>
 /// <b>loop 重启（I1）</b>：会话空闲清理（CompleteSession）后消费 loop 自然结束；
-/// 消费者已挂载但 loop 已停止时，再次 AttachConsumer 视为需要重启订阅（重建 skipSet + cts + loop）。
+/// 消费者已挂载但 loop 已停止时，再次 AttachConsumer 视为需要重启订阅（重建 cts + loop）。
 /// </para>
 /// <para>
 /// 每 (circuit, session) 可注册多个不同消费者类型：首个会话维度 GetOrCreateConsumer 登记的
@@ -80,17 +81,23 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
     }
 
     /// <summary>
-    /// 注册消费者。已注册且消费 loop 存活时幂等跳过；replay=true 时先补发当前缓冲历史。
-    /// 首个消费者触发该会话的订阅 Loop（引用快照去重）。
+    /// 注册消费者。已注册且消费 loop 存活时幂等跳过。
+    /// 首个消费者触发该会话的订阅 Loop；历史回放由 ExecutionEventPublisher 在订阅建立时统一完成，
+    /// Router 只负责扇出。
+    /// <para>
+    /// <paramref name="replay"/> 保留仅为兼容既有调用点；Router 已不再执行手动 replay
+    /// （改为依赖 publisher 订阅回放），该参数不再影响行为。
+    /// </para>
     /// <para>
     /// I1：消费者已挂载但消费 loop 已停止（会话空闲清理 CompleteSession 后 loop 自然结束、
-    /// <c>Loop=null</c> 但消费者仍挂载）时，视为需要重启订阅——重建 skipSet + cts + consume loop，
+    /// <c>Loop=null</c> 但消费者仍挂载）时，视为需要重启订阅——重建 cts + consume loop，
     /// 使同页新提交（再次 AttachConsumer）可恢复事件消费。
     /// </para>
     /// </summary>
     public void AttachConsumer(string sessionId, IStreamConsumer consumer, bool replay = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _ = replay; // 兼容保留：回放已由 ExecutionEventPublisher 订阅时完成
 
         var sub = _subscriptions.GetOrAdd(sessionId, _ => new SessionSubscription());
         var alreadyMounted = !sub.Consumers.TryAdd(consumer, 0);
@@ -100,14 +107,6 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
             var loop = sub.Loop;
             if (loop != null && !loop.IsCompleted)
                 return; // 已挂载且 loop 存活：幂等跳过
-        }
-
-        var buffered = _orchestrator.GetBufferedEvents(sessionId) ?? Array.Empty<IMessageEvent>();
-
-        if (replay)
-        {
-            foreach (var evt in buffered)
-                SafeInvoke(consumer, evt);
         }
 
         lock (sub)
@@ -120,11 +119,10 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
             // 重启订阅：递增 LoopGeneration，使旧 loop（若其 finally 尚未收尾）不再管理订阅状态
             sub.LoopGeneration++;
             var generation = sub.LoopGeneration;
-            var skipSet = new HashSet<IMessageEvent>(buffered, ReferenceEqualityComparer.Instance);
             var oldCts = sub.Cts;
             var cts = new CancellationTokenSource();
             sub.Cts = cts;
-            sub.Loop = ConsumeLoopAsync(sessionId, sub, cts.Token, skipSet, generation);
+            sub.Loop = ConsumeLoopAsync(sessionId, sub, cts.Token, generation);
             oldCts?.Dispose();
         }
     }
@@ -335,14 +333,12 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
 
     private async Task ConsumeLoopAsync(
         string sessionId, SessionSubscription mySub, CancellationToken ct,
-        HashSet<IMessageEvent> skipSet, int generation)
+        int generation)
     {
         try
         {
             await foreach (var evt in _orchestrator.SubscribeEvents(sessionId, ct))
             {
-                if (skipSet.Contains(evt))
-                    continue;
                 Broadcast(sessionId, evt);
             }
         }

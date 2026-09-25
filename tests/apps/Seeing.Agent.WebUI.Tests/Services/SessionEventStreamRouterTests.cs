@@ -56,16 +56,21 @@ public class SessionEventStreamRouterTests
     }
 
     [Fact]
-    public async Task AttachConsumer_WithReplay_ShouldDeliverBufferedEventsOnce()
+    public async Task AttachConsumer_ShouldBroadcastPublisherReplayedEventOnce()
     {
+        // 批次 3：历史回放统一由 ExecutionEventPublisher 订阅时完成，事件经 SubscribeEvents 流送达。
+        // Router 只负责扇出一次，且不得再调用 orchestrator.GetBufferedEvents 做手动 replay。
         var buffered = new List<IMessageEvent>
         {
             new ToolCallEvent { SessionId = "s1", Type = MessageEventType.ToolCallRunning,
                 ToolCallId = "t1", ToolName = "read", Status = ToolCallStatus.Running }
         };
+        var channel = Channel.CreateUnbounded<IMessageEvent>();
+        // 模拟 publisher 订阅回放：历史事件已在流中
+        await channel.Writer.WriteAsync(buffered[0], TestContext.Current.CancellationToken);
+
         var orchestrator = new Mock<IChatOrchestrator>();
         orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(buffered);
-        var channel = Channel.CreateUnbounded<IMessageEvent>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
              .Returns(channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken));
 
@@ -74,12 +79,15 @@ public class SessionEventStreamRouterTests
         router.AttachConsumer("s1", consumer, replay: true);
 
         await Task.Delay(200, TestContext.Current.CancellationToken);
-        consumer.Events.Should().ContainSingle(); // buffer 补历史一次（replay）
+        consumer.Events.Should().ContainSingle(e => ReferenceEquals(e, buffered[0]));
+        orchestrator.Verify(o => o.GetBufferedEvents(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public async Task AttachConsumer_SkipSet_ShouldNotRedeliverBufferedEvents()
+    public async Task AttachConsumer_ShouldNotConsultOrchestratorBuffer()
     {
+        // 批次 3：Router 不再做手动 replay / skipSet 去重，不读取 orchestrator 缓冲。
+        // 缓冲历史由 publisher 订阅回放负责，Router 仅扇出流中的事件。
         var buffered = new List<IMessageEvent>
         {
             new LoopStartEvent { SessionId = "s1", LoopId = "old" }
@@ -92,10 +100,11 @@ public class SessionEventStreamRouterTests
 
         using var router = CreateRouter(orchestrator);
         var consumer = new FakeConsumer("s1");
-        router.AttachConsumer("s1", consumer); // 非 replay：skipSet 丢弃 buffer 历史
+        router.AttachConsumer("s1", consumer); // 非 replay
 
         await Task.Delay(200, TestContext.Current.CancellationToken);
-        consumer.Events.Should().BeEmpty(); // buffer 历史被 skip
+        consumer.Events.Should().BeEmpty(); // Router 无手动 replay
+        orchestrator.Verify(o => o.GetBufferedEvents(It.IsAny<string>()), Times.Never);
 
         var live = new LoopStartEvent { SessionId = "s1", LoopId = "new" };
         await channel.Writer.WriteAsync(live, TestContext.Current.CancellationToken);

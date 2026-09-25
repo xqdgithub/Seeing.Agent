@@ -7,12 +7,16 @@ using Microsoft.Extensions.Logging;
 namespace Seeing.Agent.Core.Execution;
 
 /// <summary>
-/// Implementation of execution event publisher using Channel per session.
+/// Implementation of execution event publisher using per-subscriber channel.
 /// Supports multiple subscribers and event buffering for reconnection.
+/// <para>
+/// 一致性：<see cref="Publish"/> 的缓冲区写入与订阅者扇出、<see cref="SubscribeAsync"/> 的
+/// 订阅注册与缓冲区回放均在同一 <c>_lock</c> 临界区内完成，保证订阅者在建立瞬间对每个事件
+/// 「恰好一次」——订阅前发布的事件只经回放送达，订阅后发布的事件只经实时扇出送达，不丢不重。
+/// </para>
 /// </summary>
 public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
 {
-    private readonly ConcurrentDictionary<string, Channel<IMessageEvent>> _channels = new();
     private readonly ConcurrentDictionary<string, CircularBuffer<IMessageEvent>> _buffers = new();
     private readonly ConcurrentDictionary<string, List<ChannelWriter<IMessageEvent>>> _subscribers = new();
     private readonly ExecutionOptions _options;
@@ -35,20 +39,13 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
         if (string.IsNullOrEmpty(sessionId) || evt == null)
             return;
 
-        // Add to buffer for reconnection support
-        var buffer = _buffers.GetOrAdd(sessionId, _ => new CircularBuffer<IMessageEvent>(_options.EventBufferSize));
-        buffer.Add(evt);
-
-        // Get or create channel for the session
-        var channel = _channels.GetOrAdd(sessionId, _ => Channel.CreateUnbounded<IMessageEvent>(
-            new UnboundedChannelOptions { SingleReader = false, SingleWriter = false }));
-
-        // Write to channel (non-blocking)
-        channel.Writer.TryWrite(evt);
-
-        // Also write to all direct subscribers
         lock (_lock)
         {
+            // 缓冲区写入与订阅者扇出同锁：订阅注册（含回放）不可能落在两者之间，
+            // 否则事件会同时经回放与扇出送达（恰好一次语义被破坏）。
+            var buffer = _buffers.GetOrAdd(sessionId, _ => new CircularBuffer<IMessageEvent>(_options.EventBufferSize));
+            buffer.Add(evt);
+
             if (_subscribers.TryGetValue(sessionId, out var subscribers))
             {
                 foreach (var writer in subscribers.ToList())
@@ -71,18 +68,18 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
         var subscriberChannel = Channel.CreateUnbounded<IMessageEvent>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
 
-        // Register subscriber
+        // 注册与回放同锁：两者与 Publish 的（缓冲区写入 + 扇出）互斥，
+        // 从而订阅前事件仅回放一次、订阅后事件仅扇出一次，消除双份推送窗口。
         lock (_lock)
         {
             var subscribers = _subscribers.GetOrAdd(sessionId, _ => new List<ChannelWriter<IMessageEvent>>());
             subscribers.Add(subscriberChannel.Writer);
-        }
 
-        // Send buffered events first (for reconnection)
-        var buffer = _buffers.GetOrAdd(sessionId, _ => new CircularBuffer<IMessageEvent>(_options.EventBufferSize));
-        foreach (var evt in buffer.GetAll())
-        {
-            subscriberChannel.Writer.TryWrite(evt);
+            var buffer = _buffers.GetOrAdd(sessionId, _ => new CircularBuffer<IMessageEvent>(_options.EventBufferSize));
+            foreach (var evt in buffer.GetAll())
+            {
+                subscriberChannel.Writer.TryWrite(evt);
+            }
         }
 
         try
@@ -112,8 +109,11 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
         if (string.IsNullOrEmpty(sessionId))
             return new List<IMessageEvent>();
 
-        var buffer = _buffers.GetOrAdd(sessionId, _ => new CircularBuffer<IMessageEvent>(_options.EventBufferSize));
-        return buffer.GetAll();
+        lock (_lock)
+        {
+            var buffer = _buffers.GetOrAdd(sessionId, _ => new CircularBuffer<IMessageEvent>(_options.EventBufferSize));
+            return buffer.GetAll();
+        }
     }
 
     /// <inheritdoc/>
@@ -122,9 +122,12 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
         if (string.IsNullOrEmpty(sessionId))
             return;
 
-        if (_buffers.TryGetValue(sessionId, out var buffer))
+        lock (_lock)
         {
-            buffer.Clear();
+            if (_buffers.TryGetValue(sessionId, out var buffer))
+            {
+                buffer.Clear();
+            }
         }
     }
 
@@ -134,15 +137,9 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
         if (string.IsNullOrEmpty(sessionId))
             return;
 
-        // Complete the main channel
-        if (_channels.TryRemove(sessionId, out var channel))
-        {
-            channel.Writer.TryComplete();
-        }
-
-        // Complete all subscriber channels
         lock (_lock)
         {
+            // Complete all subscriber channels
             if (_subscribers.TryRemove(sessionId, out var subscribers))
             {
                 foreach (var writer in subscribers)
@@ -150,10 +147,13 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
                     writer.TryComplete();
                 }
             }
-        }
 
-        // Clear the buffer
-        ClearBuffer(sessionId);
+            // Clear the buffer
+            if (_buffers.TryGetValue(sessionId, out var buffer))
+            {
+                buffer.Clear();
+            }
+        }
     }
 
     /// <summary>
@@ -166,19 +166,10 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
 
         _disposed = true;
 
-        // Complete all channels (take snapshot to avoid collection modified exception)
-        var channelSnapshot = _channels.ToArray();
-        foreach (var (sessionId, channel) in channelSnapshot)
-        {
-            channel.Writer.TryComplete();
-        }
-        _channels.Clear();
-
-        // Complete all subscribers
         lock (_lock)
         {
-            var subscriberSnapshot = _subscribers.ToArray();
-            foreach (var (_, subscribers) in subscriberSnapshot)
+            // Complete all subscribers
+            foreach (var (_, subscribers) in _subscribers)
             {
                 foreach (var writer in subscribers)
                 {
@@ -186,8 +177,8 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
                 }
             }
             _subscribers.Clear();
-        }
 
-        _buffers.Clear();
+            _buffers.Clear();
+        }
     }
 }
