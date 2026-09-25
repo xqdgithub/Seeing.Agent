@@ -688,5 +688,19 @@ namespace Seeing.Agent.Skills
             _skillInfos[skillInfo.Name!] = skillInfo;
             _logger.LogInformation("Registered skill: {Name}", skillInfo.Name);
         }
+
+        /// <summary>
+        /// 注销技能（模块 Deactivate 时对称撤销内嵌技能）
+        /// </summary>
+        public bool Unregister(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+
+            var removed = _skillInfos.TryRemove(name, out _);
+            if (removed)
+                _logger.LogInformation("Unregistered skill: {Name}", name);
+            return removed;
+        }
     }
 }

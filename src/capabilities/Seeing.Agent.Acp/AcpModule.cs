@@ -1,7 +1,17 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Commands;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Acp.Hosting;
 using Seeing.Agent.Acp.Tools;
 using Seeing.Agent.Acp.Transport;
@@ -9,7 +19,8 @@ using Seeing.Agent.Acp.Transport;
 namespace Seeing.Agent.Acp;
 
 /// <summary>
-/// ACP 能力模块 — id=<c>acp</c>；连接管理器由 Activate/Deactivate 经 <see cref="AcpConnectionOwner"/> 自管。
+/// ACP 能力模块 — id=<c>acp</c>；连接管理器由 Activate/Deactivate 经 <see cref="AcpConnectionOwner"/> 自管，
+/// 并收编透传 Agent、命令与配置重载 Handler 的注册/撤销。
 /// </summary>
 public sealed class AcpModule : ISeeingModule, IUiContribution
 {
@@ -18,6 +29,7 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
     private readonly AcpModuleActivity? _activity;
     private readonly AcpConnectionOwner? _connectionOwner;
     private readonly IUiContributionRegistry? _ui;
+    private readonly List<string> _registeredCommandNames = new();
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public AcpModule()
@@ -77,6 +89,10 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
         _activity.MarkActive();
         _ui?.Register(this);
 
+        await RegisterAgentsAsync(services, cancellationToken).ConfigureAwait(false);
+        AttachReloadHandler(services);
+        RegisterCommands(services);
+
         var tm = services.GetService<IToolManager>();
         if (tm is null)
             return;
@@ -90,6 +106,10 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        UnregisterCommands(services);
+        DetachReloadHandler(services);
+        await UnregisterAgentsAsync(services).ConfigureAwait(false);
+
         var tm = services.GetService<IToolManager>();
         if (tm is not null)
         {
@@ -104,5 +124,113 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
 
         _activity.MarkInactiveAndWake();
         await _connectionOwner.ReleaseAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task RegisterAgentsAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        if (services.GetService<IAgentRegistry>() is not { } agentRegistry
+            || services.GetService<IAcpBackendRegistry>() is not { } backendRegistry
+            || services.GetService<IOptionsMonitor<AcpOptions>>() is not { } options)
+        {
+            return;
+        }
+
+        var logger = services.GetService<ILogger<AcpModule>>() ?? NullLogger<AcpModule>.Instance;
+        await AcpDynamicAgentRegistrar.RegisterAsync(
+            agentRegistry, backendRegistry, options, logger, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task UnregisterAgentsAsync(IServiceProvider services)
+    {
+        if (services.GetService<IAgentRegistry>() is not { } agentRegistry)
+            return;
+
+        var logger = services.GetService<ILogger<AcpModule>>() ?? NullLogger<AcpModule>.Instance;
+
+        IReadOnlyList<AgentDefinition> agents;
+        try
+        {
+            agents = await agentRegistry.GetAgentsAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "ACP 模块停用时枚举透传 Agent 失败，跳过注销");
+            return;
+        }
+
+        foreach (var agent in agents)
+        {
+            if (agent.Runtime == AgentRuntime.AcpPassthrough
+                && agent.Tags.Contains(AcpDynamicAgentRegistrar.AutoTag, StringComparer.OrdinalIgnoreCase))
+            {
+                agentRegistry.UnregisterAgent(agent.Name);
+            }
+        }
+    }
+
+    private static void AttachReloadHandler(IServiceProvider services)
+    {
+        if (services.GetService<IReloadHandlerRegistry>() is { } registry
+            && services.GetService<AcpReloadHandler>() is { } handler)
+        {
+            registry.RegisterHandler(handler);
+        }
+    }
+
+    private static void DetachReloadHandler(IServiceProvider services)
+    {
+        if (services.GetService<IReloadHandlerRegistry>() is { } registry
+            && services.GetService<AcpReloadHandler>() is { } handler)
+        {
+            registry.UnregisterHandler(handler);
+        }
+    }
+
+    private void RegisterCommands(IServiceProvider services)
+    {
+        if (services.GetService<ICommandRegistry>() is not { } registry
+            || services.GetService<ICommandDiscovery>() is not { } discovery)
+        {
+            return;
+        }
+
+        _registeredCommandNames.Clear();
+
+        if (services.GetService<AcpCommands>() is { } acpCommands)
+        {
+            foreach (var command in discovery.DiscoverFromType(acpCommands.GetType(), acpCommands))
+            {
+                registry.Register(command);
+                _registeredCommandNames.Add(command.Metadata.Name);
+            }
+        }
+
+        if (services.GetService<ISkillManager>() is { } skillManager)
+        {
+            foreach (var skill in skillManager.GetAllSkillInfos().Values)
+            {
+                var command = new AcpDynamicSkillCommand(skill.Name, skill.Description);
+                registry.Register(command);
+                _registeredCommandNames.Add(command.Metadata.Name);
+            }
+        }
+    }
+
+    private void UnregisterCommands(IServiceProvider services)
+    {
+        if (_registeredCommandNames.Count == 0)
+            return;
+
+        if (services.GetService<ICommandRegistry>() is { } registry)
+        {
+            foreach (var name in _registeredCommandNames)
+            {
+                var existing = registry.GetCommand(name);
+                // 仅撤销运行时限定命令（AcpPassthrough），避免误删同名默认命令（如内置 /clear）
+                if (existing is not null && existing.Metadata.SupportedRuntimes.Length > 0)
+                    registry.Unregister(name);
+            }
+        }
+        _registeredCommandNames.Clear();
     }
 }

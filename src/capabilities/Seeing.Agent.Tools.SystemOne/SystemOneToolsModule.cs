@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Tools.SystemOne.Skills;
 
@@ -14,6 +16,8 @@ public sealed class SystemOneToolsModule : ISeeingModule
 {
     private static readonly IReadOnlyList<string> s_providedTools =
         ["systemone_ask", "systemone_noul", "systemone_choice", "systemone_score"];
+
+    private readonly List<string> _registeredSkillNames = new();
 
     /// <inheritdoc />
     public string Id => "systemone.tools";
@@ -36,14 +40,21 @@ public sealed class SystemOneToolsModule : ISeeingModule
             services.AddSingleton(sp => new SystemOneTool(
                 captured, sp.GetRequiredService<ILogger<SystemOneTool>>()));
         }
-
-        services.AddModuleHostedService<SystemOneSkillRegistrationHostedService>();
     }
 
     /// <inheritdoc />
     public async Task ActivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (services.GetService<ISkillManager>() is { } skillManager)
+        {
+            var logger = services.GetService<ILogger<SystemOneToolsModule>>()
+                         ?? NullLogger<SystemOneToolsModule>.Instance;
+            _registeredSkillNames.Clear();
+            _registeredSkillNames.AddRange(SystemOneSkillRegistrar.Register(skillManager, logger));
+        }
+
         var tm = services.GetService<IToolManager>();
         if (tm is null)
             return;
@@ -55,6 +66,13 @@ public sealed class SystemOneToolsModule : ISeeingModule
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        if (_registeredSkillNames.Count > 0
+            && services.GetService<ISkillManager>() is { } skillManager)
+        {
+            SystemOneSkillRegistrar.Unregister(skillManager, _registeredSkillNames);
+            _registeredSkillNames.Clear();
+        }
+
         var tm = services.GetService<IToolManager>();
         if (tm is null)
             return;

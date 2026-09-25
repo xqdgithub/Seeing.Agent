@@ -1,30 +1,24 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.Core.Tools.SystemOne.Skills;
+using Seeing.Agent.Core.Tools.SystemOne;
 using Xunit;
 
 namespace Seeing.Agent.Tools.SystemOne.Tests;
 
+/// <summary>SystemOne 内嵌 Skill 随模块 Activate/Deactivate 注册与注销。</summary>
 public class SystemOneSkillRegistrationTests
 {
-    private static ServiceProvider BuildProvider(ISkillManager? skillManager)
+    private static ServiceProvider BuildProvider(ISkillManager skillManager)
     {
         var services = new ServiceCollection();
-        if (skillManager is not null)
-            services.AddSingleton(skillManager);
-
-        services.AddSingleton<ILogger<SystemOneSkillRegistrationHostedService>>(
-            NullLogger<SystemOneSkillRegistrationHostedService>.Instance);
-        services.AddSingleton<SystemOneSkillRegistrationHostedService>();
+        services.AddSingleton(skillManager);
         return services.BuildServiceProvider();
     }
 
     [Fact]
-    public async Task StartAsync_有技能管理器_应注册内嵌技能()
+    public async Task Activate_应注册内嵌技能_Deactivate_应注销()
     {
         SkillInfo? captured = null;
         var skillManager = new Mock<ISkillManager>();
@@ -32,10 +26,10 @@ public class SystemOneSkillRegistrationTests
             .Setup(m => m.RegisterEmbeddedSkill(It.IsAny<SkillInfo>()))
             .Callback<SkillInfo>(s => captured = s);
 
+        var module = new SystemOneToolsModule();
         await using var provider = BuildProvider(skillManager.Object);
-        var hosted = provider.GetRequiredService<SystemOneSkillRegistrationHostedService>();
 
-        await hosted.StartAsync();
+        await module.ActivateAsync(provider);
 
         captured.Should().NotBeNull();
         captured!.Name.Should().Be("systemone-judgment");
@@ -43,26 +37,21 @@ public class SystemOneSkillRegistrationTests
         captured.Content.Should().Contain("systemone_ask");
         captured.Content.Should().Contain("systemone_noul");
         captured.Location.Should().StartWith("systemone/");
-        hosted.IsRunning.Should().BeTrue();
+
+        await module.DeactivateAsync(provider);
+
+        skillManager.Verify(m => m.Unregister("systemone-judgment"), Times.Once);
     }
 
     [Fact]
-    public async Task StartAsync_无技能管理器_不应抛()
+    public async Task Activate_无技能管理器_不应抛()
     {
-        await using var provider = BuildProvider(skillManager: null);
-        var hosted = provider.GetRequiredService<SystemOneSkillRegistrationHostedService>();
+        var services = new ServiceCollection();
+        await using var provider = services.BuildServiceProvider();
+        var module = new SystemOneToolsModule();
 
-        var act = async () => await hosted.StartAsync();
+        var act = async () => await module.ActivateAsync(provider);
 
         await act.Should().NotThrowAsync();
-    }
-
-    [Fact]
-    public void ModuleId_应为systemoneTools()
-    {
-        using var provider = BuildProvider(skillManager: null);
-        var hosted = provider.GetRequiredService<SystemOneSkillRegistrationHostedService>();
-
-        hosted.ModuleId.Should().Be("systemone.tools");
     }
 }

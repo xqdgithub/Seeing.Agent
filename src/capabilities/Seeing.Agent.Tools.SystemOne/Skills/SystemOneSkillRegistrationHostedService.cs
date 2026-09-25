@@ -1,58 +1,21 @@
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Skills;
 
 namespace Seeing.Agent.Core.Tools.SystemOne.Skills;
 
-/// <summary>启动时从嵌入资源注册 SystemOne Skill。</summary>
-public sealed class SystemOneSkillRegistrationHostedService : IModuleHostedService, IHostedService
+/// <summary>SystemOne 内嵌 Skill 注册器 — 供模块 Activate/Deactivate 对称调用。</summary>
+internal static class SystemOneSkillRegistrar
 {
-    /// <summary>所属模块 id。</summary>
-    public const string ModuleIdValue = "systemone.tools";
-
     private static readonly Regex FrontmatterRegex = new(
         @"^---[\r]?[\n](.*?)[\r]?[\n]---[\r]?[\n]?",
         RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.Compiled);
 
-    private readonly IServiceProvider _services;
-    private readonly ILogger<SystemOneSkillRegistrationHostedService> _logger;
-    private bool _running;
-
-    /// <summary>注入服务定位器与日志。</summary>
-    public SystemOneSkillRegistrationHostedService(
-        IServiceProvider services,
-        ILogger<SystemOneSkillRegistrationHostedService> logger)
+    /// <summary>扫描程序集内嵌 SKILL.md 并注册，返回已注册技能名列表。</summary>
+    public static IReadOnlyList<string> Register(ISkillManager skillManager, ILogger logger)
     {
-        _services = services;
-        _logger = logger;
-    }
-
-    /// <inheritdoc />
-    public string ModuleId => ModuleIdValue;
-
-    /// <inheritdoc />
-    public bool IsRunning => _running;
-
-    /// <inheritdoc />
-    public Task StartAsync(CancellationToken cancellationToken = default)
-    {
-        if (_running)
-            return Task.CompletedTask;
-
-        _running = true;
-
-        var skillManager = _services.GetService<ISkillManager>();
-        if (skillManager is null)
-        {
-            _logger.LogWarning("ISkillManager 未注册，跳过 SystemOne skill 注册");
-            return Task.CompletedTask;
-        }
-
-        var assembly = typeof(SystemOneSkillRegistrationHostedService).Assembly;
-        var registered = 0;
+        var assembly = typeof(SystemOneSkillRegistrar).Assembly;
+        var registered = new List<string>();
 
         foreach (var resourceName in assembly.GetManifestResourceNames())
         {
@@ -71,29 +34,29 @@ public sealed class SystemOneSkillRegistrationHostedService : IModuleHostedServi
                 var skill = ParseSkill(reader.ReadToEnd());
                 if (skill is null)
                 {
-                    _logger.LogWarning("解析内嵌 skill 失败：{Resource}", resourceName);
+                    logger.LogWarning("解析内嵌 skill 失败：{Resource}", resourceName);
                     continue;
                 }
 
                 skill.Location = $"systemone/{skill.Name}";
                 skillManager.RegisterEmbeddedSkill(skill);
-                registered++;
+                registered.Add(skill.Name);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "加载内嵌 skill 失败：{Resource}", resourceName);
+                logger.LogWarning(ex, "加载内嵌 skill 失败：{Resource}", resourceName);
             }
         }
 
-        _logger.LogInformation("已注册 {Count} 个内嵌 SystemOne skill", registered);
-        return Task.CompletedTask;
+        logger.LogInformation("已注册 {Count} 个内嵌 SystemOne skill", registered.Count);
+        return registered;
     }
 
-    /// <inheritdoc />
-    public Task StopAsync(CancellationToken cancellationToken = default)
+    /// <summary>注销先前注册的内嵌技能。</summary>
+    public static void Unregister(ISkillManager skillManager, IEnumerable<string> names)
     {
-        _running = false;
-        return Task.CompletedTask;
+        foreach (var name in names)
+            skillManager.Unregister(name);
     }
 
     private static SkillInfo? ParseSkill(string content)

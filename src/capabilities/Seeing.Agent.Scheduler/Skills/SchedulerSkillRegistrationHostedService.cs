@@ -1,56 +1,21 @@
-﻿using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.Abstractions.Modules;
-using System.Text.RegularExpressions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+﻿using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Scheduler.Hosting;
+using Seeing.Agent.Abstractions.Skills;
 
 namespace Seeing.Agent.Scheduler.Skills;
 
-/// <summary>启动时从嵌入资源注册 scheduler cron Skills。</summary>
-public sealed class SchedulerSkillRegistrationHostedService : IHostedService
+/// <summary>Scheduler 内嵌 cron Skill 注册器 — 供模块 Activate/Deactivate 对称调用。</summary>
+internal static class SchedulerSkillRegistrar
 {
-    public const string ModuleId = "scheduler";
-
     private static readonly Regex FrontmatterRegex = new(
         @"^---[\r]?[\n](.*?)[\r]?[\n]---[\r]?[\n]?",
         RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.Compiled);
 
-    private readonly IServiceProvider _services;
-    private readonly SchedulerModuleActivity _activity;
-    private readonly IModuleCatalog? _catalog;
-    private readonly ILogger<SchedulerSkillRegistrationHostedService> _logger;
-
-    public SchedulerSkillRegistrationHostedService(
-        IServiceProvider services,
-        SchedulerModuleActivity activity,
-        ILogger<SchedulerSkillRegistrationHostedService> logger,
-        IModuleCatalog? catalog = null)
+    /// <summary>扫描程序集内嵌 SKILL.md 并注册，返回已注册技能名列表。</summary>
+    public static IReadOnlyList<string> Register(ISkillManager skillManager, ILogger logger)
     {
-        _services = services;
-        _activity = activity;
-        _logger = logger;
-        _catalog = catalog;
-    }
-
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        if (_catalog is not null && !_catalog.IsEnabled(ModuleId))
-            return Task.CompletedTask;
-
-        if (!_activity.IsActive && _catalog is not null)
-            return Task.CompletedTask;
-
-        var skillManager = _services.GetService<ISkillManager>();
-        if (skillManager is null)
-        {
-            _logger.LogWarning("ISkillManager not registered; skipping scheduler skill registration");
-            return Task.CompletedTask;
-        }
-
-        var assembly = typeof(SchedulerSkillRegistrationHostedService).Assembly;
-        var registered = 0;
+        var assembly = typeof(SchedulerSkillRegistrar).Assembly;
+        var registered = new List<string>();
 
         foreach (var resourceName in assembly.GetManifestResourceNames())
         {
@@ -73,25 +38,30 @@ public sealed class SchedulerSkillRegistrationHostedService : IHostedService
                 var skill = ParseSkill(content);
                 if (skill is null)
                 {
-                    _logger.LogWarning("Failed to parse embedded skill resource: {Resource}", resourceName);
+                    logger.LogWarning("Failed to parse embedded skill resource: {Resource}", resourceName);
                     continue;
                 }
 
                 skill.Location = $"scheduler/{skill.Name}";
                 skillManager.RegisterEmbeddedSkill(skill);
-                registered++;
+                registered.Add(skill.Name);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to load embedded skill resource: {Resource}", resourceName);
+                logger.LogWarning(ex, "Failed to load embedded skill resource: {Resource}", resourceName);
             }
         }
 
-        _logger.LogInformation("Registered {Count} embedded scheduler skills", registered);
-        return Task.CompletedTask;
+        logger.LogInformation("Registered {Count} embedded scheduler skills", registered.Count);
+        return registered;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>注销先前注册的内嵌技能。</summary>
+    public static void Unregister(ISkillManager skillManager, IEnumerable<string> names)
+    {
+        foreach (var name in names)
+            skillManager.Unregister(name);
+    }
 
     private static SkillInfo? ParseSkill(string content)
     {

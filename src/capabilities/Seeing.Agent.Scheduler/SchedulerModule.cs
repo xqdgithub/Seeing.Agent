@@ -1,9 +1,15 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Scheduler.Abstractions;
+using Seeing.Agent.Scheduler.Commands;
 using Seeing.Agent.Scheduler.Hosting;
+using Seeing.Agent.Scheduler.Skills;
 using Seeing.Agent.Scheduler.Tools;
 
 namespace Seeing.Agent.Scheduler;
@@ -26,6 +32,8 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
     private readonly SchedulerModuleActivity? _activity;
     private readonly IScheduleManager? _manager;
     private readonly IUiContributionRegistry? _ui;
+    private readonly List<string> _registeredSkillNames = new();
+    private readonly List<string> _registeredCommandNames = new();
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public SchedulerModule()
@@ -86,6 +94,9 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
         _activity.MarkActive();
         _ui?.Register(this);
 
+        RegisterEmbeddedSkills(services);
+        RegisterCommands(services, cancellationToken);
+
         var tm = services.GetService<IToolManager>();
         if (tm is null)
             return;
@@ -104,9 +115,48 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
             await tm.RegisterToolAsync(run, cancellationToken).ConfigureAwait(false);
     }
 
+    private void RegisterEmbeddedSkills(IServiceProvider services)
+    {
+        if (services.GetService<ISkillManager>() is not { } skillManager)
+            return;
+
+        var logger = services.GetService<ILogger<SchedulerModule>>()
+                     ?? NullLogger<SchedulerModule>.Instance;
+        _registeredSkillNames.Clear();
+        _registeredSkillNames.AddRange(SchedulerSkillRegistrar.Register(skillManager, logger));
+    }
+
+    private void RegisterCommands(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        if (services.GetService<ICommandRegistry>() is not { } registry
+            || _manager is null)
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var commands = new ICommand[]
+        {
+            new CronListCommand(_manager),
+            new CronRunCommand(_manager),
+            new HeartbeatRunCommand(_manager)
+        };
+
+        _registeredCommandNames.Clear();
+        foreach (var command in commands)
+        {
+            registry.Register(command);
+            _registeredCommandNames.Add(command.Metadata.Name);
+        }
+    }
+
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        UnregisterCommands(services);
+        UnregisterEmbeddedSkills(services);
+
         var tm = services.GetService<IToolManager>();
         if (tm is not null)
         {
@@ -122,5 +172,28 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
         _activity.MarkInactiveAndWake();
         if (_manager is not null)
             await _manager.StopAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private void UnregisterCommands(IServiceProvider services)
+    {
+        if (_registeredCommandNames.Count == 0)
+            return;
+
+        if (services.GetService<ICommandRegistry>() is { } registry)
+        {
+            foreach (var name in _registeredCommandNames)
+                registry.Unregister(name);
+        }
+        _registeredCommandNames.Clear();
+    }
+
+    private void UnregisterEmbeddedSkills(IServiceProvider services)
+    {
+        if (_registeredSkillNames.Count == 0)
+            return;
+
+        if (services.GetService<ISkillManager>() is { } skillManager)
+            SchedulerSkillRegistrar.Unregister(skillManager, _registeredSkillNames);
+        _registeredSkillNames.Clear();
     }
 }

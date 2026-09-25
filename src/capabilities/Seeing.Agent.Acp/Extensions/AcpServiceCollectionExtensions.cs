@@ -1,8 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -47,7 +45,9 @@ public static class AcpServiceCollectionExtensions
 
         services.AddSingleton<IAcpBackendRegistry, AcpBackendRegistry>();
         services.AddSingleton<IAcpConfigurationReloader, AcpConfigurationReloader>();
-        services.AddSingleton<IReloadHandler, AcpReloadHandler>();
+        // 以具体类型登记，不登记为 IReloadHandler：避免宿主启动期全量挂载，
+        // 改由 AcpModule Activate/Deactivate 动态挂接/撤销（停用后热重载不得复活透传 Agent）。
+        services.AddSingleton<AcpReloadHandler>();
         services.AddSingleton<AcpPermissionBridge>();
         services.AddSingleton<AcpFileSystemBridge>();
         services.AddSingleton<AcpTerminalBridge>();
@@ -83,7 +83,6 @@ public static class AcpServiceCollectionExtensions
         services.AddSingleton<AcpCommands>();
 
         services.AddHostedService<AcpHookRegistrationHostedService>();
-        services.AddHostedService<AcpAgentRegistrationHostedService>();
         services.AddModuleHostedService<AcpConnectionIdleCleanupHostedService>();
 
         // 追加 ACP 运行时实现；门面仍为 AgentExecutorRouter
@@ -92,31 +91,11 @@ public static class AcpServiceCollectionExtensions
     }
 
     /// <summary>
-    /// 初始化 ACP 命令注册（在服务提供者构建后调用）
+    /// 已废弃的 ACP 命令注册入口。命令注册已收编进 <see cref="AcpModule.ActivateAsync"/>，
+    /// 保留空实现仅用于宿主兼容；停用模块时命令由模块 Deactivate 对称撤销。
     /// </summary>
     public static IServiceProvider InitializeAcpCommands(this IServiceProvider services)
     {
-        var registry = services.GetRequiredService<ICommandRegistry>();
-        var discovery = services.GetRequiredService<ICommandDiscovery>();
-
-        // 发现 ACP 命令
-        var acpCommands = services.GetService<AcpCommands>();
-        if (acpCommands != null)
-        {
-            var commands = discovery.DiscoverFromType(acpCommands.GetType(), acpCommands);
-            registry.RegisterAll(commands);
-        }
-
-        // 动态注册 ACP skill 透传命令
-        var skillManager = services.GetService<ISkillManager>();
-        if (skillManager != null)
-        {
-            foreach (var skillInfo in skillManager.GetAllSkillInfos().Values)
-            {
-                registry.Register(new AcpDynamicSkillCommand(skillInfo.Name, skillInfo.Description));
-            }
-        }
-
         return services;
     }
 }

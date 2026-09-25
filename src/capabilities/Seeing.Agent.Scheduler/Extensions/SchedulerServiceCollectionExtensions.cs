@@ -8,7 +8,6 @@ using Microsoft.Extensions.Options;
 using Quartz;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Abstractions;
-using Seeing.Agent.Scheduler.Commands;
 using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Execution;
@@ -17,7 +16,6 @@ using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Persistence;
-using Seeing.Agent.Scheduler.Skills;
 using Seeing.Agent.Scheduler.Tools;
 
 namespace Seeing.Agent.Scheduler.Extensions;
@@ -110,8 +108,6 @@ public static class SchedulerServiceCollectionExtensions
 
         // Hosted Service（管理调度器生命周期）
         services.AddModuleHostedService<ScheduleHostedService>();
-        services.AddHostedService<SchedulerCommandRegistrationHostedService>();
-        services.AddHostedService<SchedulerSkillRegistrationHostedService>();
 
         return services;
     }
@@ -226,8 +222,6 @@ public static class SchedulerServiceCollectionExtensions
 
         // Hosted Service（管理调度器生命周期）
         services.AddModuleHostedService<ScheduleHostedService>();
-        services.AddHostedService<SchedulerCommandRegistrationHostedService>();
-        services.AddHostedService<SchedulerSkillRegistrationHostedService>();
 
         return services;
     }

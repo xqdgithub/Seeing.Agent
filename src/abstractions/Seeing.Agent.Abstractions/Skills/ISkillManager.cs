@@ -22,4 +22,9 @@ public interface ISkillManager
 
     /// <summary>注册内嵌技能（如模块 EmbeddedResource）</summary>
     void RegisterEmbeddedSkill(SkillInfo skillInfo);
+
+    /// <summary>注销技能（模块 Deactivate 时对称撤销内嵌技能）</summary>
+    /// <param name="name">技能名称</param>
+    /// <returns>是否成功注销</returns>
+    bool Unregister(string name);
 }
