@@ -136,7 +136,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
 
         try
         {
-            var root = JsonNode.Parse(await File.ReadAllTextAsync(path, ct)) as JsonObject;
+            var root = JsonNode.Parse(await ReadAllTextLockedAsync(path, ct)) as JsonObject;
             var seeing = root?["SeeingAgent"] as JsonObject;
             return seeing?[sectionName]?.DeepClone();
         }
@@ -429,7 +429,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             return "{}";
         }
         
-        return await File.ReadAllTextAsync(path, ct);
+        return await ReadAllTextLockedAsync(path, ct);
     }
     
     /// <summary>保存原始 JSON</summary>
@@ -493,7 +493,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         
         try
         {
-            var json = await File.ReadAllTextAsync(path, ct);
+            var json = await ReadAllTextLockedAsync(path, ct);
             using var doc = JsonDocument.Parse(json, new JsonDocumentOptions
             {
                 CommentHandling = JsonCommentHandling.Skip,
@@ -526,7 +526,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             
             try
             {
-                var json = await File.ReadAllTextAsync(path, ct);
+                var json = await ReadAllTextLockedAsync(path, ct);
                 var node = JsonNode.Parse(json);
                 if (node != null)
                     target[meta.Key] = node;
@@ -544,7 +544,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
 
             try
             {
-                var node = JsonNode.Parse(await File.ReadAllTextAsync(userPath, ct));
+                var node = JsonNode.Parse(await ReadAllTextLockedAsync(userPath, ct));
                 if (node != null)
                     target[meta.Key] = node;
             }
@@ -565,7 +565,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             {
                 try
                 {
-                    userNode = JsonNode.Parse(await File.ReadAllTextAsync(userPath, ct));
+                    userNode = JsonNode.Parse(await ReadAllTextLockedAsync(userPath, ct));
                 }
                 catch (Exception ex)
                 {
@@ -577,7 +577,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             {
                 try
                 {
-                    projectNode = JsonNode.Parse(await File.ReadAllTextAsync(projectPath, ct));
+                    projectNode = JsonNode.Parse(await ReadAllTextLockedAsync(projectPath, ct));
                 }
                 catch (Exception ex)
                 {
@@ -711,6 +711,30 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     
     private SemaphoreSlim GetFileLock(string path)
         => _fileLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+
+    /// <summary>
+    /// 在文件锁保护下读取文件文本。
+    /// <para>
+    /// 写路径使用 temp 文件 + <see cref="File.Move(string,string,bool)"/> 原子替换；Windows 上
+    /// 目标文件若被并发读句柄（<see cref="FileShare.Read"/>，不含 Delete）打开，替换会失败并抛
+    /// <see cref="UnauthorizedAccessException"/>。因此所有对可写配置文件的读取都必须与写路径共用同一
+    /// <see cref="_fileLocks"/> 锁，保证读/写不重叠。注意：该方法不可在已持有同一文件锁的上下文中调用，
+    /// 锁内读取请直接调用 <see cref="LoadJsonRootAsync"/>。
+    /// </para>
+    /// </summary>
+    private async Task<string> ReadAllTextLockedAsync(string path, CancellationToken ct)
+    {
+        var fileLock = GetFileLock(path);
+        await fileLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            fileLock.Release();
+        }
+    }
 
     private async Task<JsonObject> LoadJsonRootAsync(string path, CancellationToken ct)
     {
