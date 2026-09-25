@@ -170,9 +170,9 @@ namespace Seeing.Agent.Core.Tools.Discovery
         }
 
         /// <summary>
-        /// 检查参数是否为必需
+        /// 检查参数是否为必需（schema 生成与执行期判定共用同一语义）
         /// </summary>
-        private static bool IsRequiredParameter(ParameterInfo param)
+        internal static bool IsRequiredParameter(ParameterInfo param)
         {
             // 有默认值则非必需
             if (param.HasDefaultValue)
@@ -297,7 +297,7 @@ namespace Seeing.Agent.Core.Tools.Discovery
             ILoggerFactory? loggerFactory = null,
             IServiceProvider? serviceProvider = null)
         {
-            var discovered = ToolDiscovery.DiscoverTools(type);
+            var discovered = ToolDiscovery.DiscoverTools(type, loggerFactory?.CreateLogger<ToolDiscovery>());
             var tools = new List<ITool>();
 
             foreach (var d in discovered)

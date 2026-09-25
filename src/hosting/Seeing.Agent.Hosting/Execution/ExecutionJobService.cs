@@ -215,8 +215,25 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             return ExecutionSubmitResult.Failed($"Failed to save message: {ex.Message}");
         }
 
-        // Submit to queue
-        await queue.SubmitAsync(record);
+        // Submit to queue。
+        // 竞态防护：本方法在获取队列后还需异步保存会话，期间 CleanupIdleSessions 可能已回收并
+        // Dispose 该队列实例（GetOrAdd 返回的引用失效）。此时重新获取新队列并重试入队，
+        // 避免已 Dispose 队列的 ObjectDisposedException 外溢。
+        while (true)
+        {
+            try
+            {
+                await queue.SubmitAsync(record);
+                break;
+            }
+            catch (ObjectDisposedException)
+            {
+                if (_disposed)
+                    throw;
+                queue = _sessionQueues.GetOrAdd(sessionId, _ => new SessionExecutionQueue());
+            }
+        }
+
         _executions[executionId] = record;
 
         // Start processing if not already running
@@ -686,6 +703,19 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
 
             // 标记会话 Error 状态：task_status 回落判定依赖 SessionStatus
             MarkSessionError(sessionManager, record.SessionId, record.ErrorMessage);
+
+            // 失败路径兜底：标记未走到终态的工具调用（pending/running）为 cancelled，
+            // 避免异常退出后遗留孤儿的"运行中"工具状态（对齐 OperationCanceledException 路径）。
+            try
+            {
+                var liveSession = sessionManager.Get(record.SessionId);
+                if (IncompleteToolCallMarker.MarkCancelled(liveSession, $"执行失败：{ex.Message}") > 0)
+                    await sessionManager.SaveAsync(record.SessionId);
+            }
+            catch (Exception markerEx)
+            {
+                _logger.LogWarning(markerEx, "失败后标记未完成工具调用异常: {ExecutionId}", record.ExecutionId);
+            }
 
             // Publish error event
             _eventPublisher.Publish(record.SessionId, new ErrorEvent
@@ -1409,12 +1439,20 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
 
         foreach (var sessionId in sessionsToRemove)
         {
-            if (_sessionQueues.TryRemove(sessionId, out var queue))
+            if (!_sessionQueues.TryRemove(sessionId, out var queue))
+                continue;
+
+            // 竞态防护：移除瞬间可能被并发 SubmitAsync 变为活跃（或其排队项尚未处理）。
+            // 此时放回字典，交由后续清理周期处理，避免误弃在途/排队执行导致其永不推进。
+            if (queue.HasActiveExecution || queue.HasQueued)
             {
-                queue.Dispose();
-                _eventPublisher.CompleteSession(sessionId);
-                _logger.LogDebug("Cleaned up idle session queue: {SessionId}", sessionId);
+                _sessionQueues.TryAdd(sessionId, queue);
+                continue;
             }
+
+            queue.Dispose();
+            _eventPublisher.CompleteSession(sessionId);
+            _logger.LogDebug("Cleaned up idle session queue: {SessionId}", sessionId);
         }
     }
 

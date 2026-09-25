@@ -69,32 +69,40 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
     /// <summary>加载所有配置</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
-        lock (_lock)
-        {
-            _cache.Clear();
-        }
-        
-        // 加载 seeing.json 脊柱
+        // 先构建完整新快照（局部变量），最后在锁内一次性替换，消除加载过程中的空缓存/半更新窗口。
         var userSeeing = await LoadFileAsync<SeeingAgentOptions>(ConfigLevel.User, "seeing.json", "SeeingAgent", ct);
         var projectSeeing = await LoadFileAsync<SeeingAgentOptions>(ConfigLevel.Project, "seeing.json", "SeeingAgent", ct);
-        UserSeeingAgent = userSeeing;
-        ProjectSeeingAgent = projectSeeing;
-        SeeingAgent = MergeDeep.Merge(userSeeing ?? new(), projectSeeing ?? new());
+        var mergedSeeing = MergeDeep.Merge(userSeeing ?? new(), projectSeeing ?? new());
 
-        // 能力包嵌套节 → _cache（不进入 SeeingAgentOptions）
-        await LoadSeeingJsonSectionsToCacheAsync(ct);
+        var newCache = new Dictionary<string, object>();
+
+        // 能力包嵌套节 → newCache（不进入 SeeingAgentOptions）
+        await CollectSeeingJsonSectionsToCacheAsync(newCache, ct);
 
         // 加载独立配置文件
         foreach (var meta in _sectionRegistry.Sections.Where(m => m.FileName != "seeing.json"))
         {
-            await LoadSectionToCacheAsync(meta, ct);
+            await CollectSectionToCacheAsync(meta, newCache, ct);
+        }
+
+        lock (_lock)
+        {
+            UserSeeingAgent = userSeeing;
+            ProjectSeeingAgent = projectSeeing;
+            SeeingAgent = mergedSeeing;
+
+            _cache.Clear();
+            foreach (var (key, value) in newCache)
+                _cache[key] = value;
         }
 
         _logger.LogInformation("配置已加载完成");
         OnConfigChanged(Array.Empty<string>());
     }
 
-    private async Task LoadSeeingJsonSectionsToCacheAsync(CancellationToken ct)
+    private async Task CollectSeeingJsonSectionsToCacheAsync(
+        IDictionary<string, object> target,
+        CancellationToken ct)
     {
         foreach (var meta in _sectionRegistry.Sections.Where(m => m.FileName == "seeing.json"))
         {
@@ -113,8 +121,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             if (merged is null)
                 continue;
 
-            lock (_lock)
-                _cache[meta.Key] = merged;
+            target[meta.Key] = merged;
         }
     }
 
@@ -443,7 +450,18 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         }
         
         var path = GetFilePath(level, fileName);
-        await WriteTextAsync(path, json, ct);
+
+        // 复用文件锁：与 SaveToFileAsync/SaveMultipleToFileAsync 串行化同一文件的写入，避免相互覆盖
+        var fileLock = GetFileLock(path);
+        await fileLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await WriteTextAsync(path, json, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            fileLock.Release();
+        }
         
         // 重载配置
         await ReloadAsync(ct);
@@ -495,9 +513,12 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         }
     }
     
-    private async Task LoadSectionToCacheAsync(ConfigSectionMeta meta, CancellationToken ct)
+    private async Task CollectSectionToCacheAsync(
+        ConfigSectionMeta meta,
+        IDictionary<string, object> target,
+        CancellationToken ct)
     {
-        // 独立配置文件直接加载整个文件内容到缓存
+        // 独立配置文件直接加载整个文件内容到目标快照
         if (meta.Scope == ConfigScope.ProjectOnly)
         {
             var path = GetFilePath(ConfigLevel.Project, meta.FileName);
@@ -508,7 +529,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 var json = await File.ReadAllTextAsync(path, ct);
                 var node = JsonNode.Parse(json);
                 if (node != null)
-                    _cache[meta.Key] = node;
+                    target[meta.Key] = node;
             }
             catch (Exception ex)
             {
@@ -525,7 +546,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             {
                 var node = JsonNode.Parse(await File.ReadAllTextAsync(userPath, ct));
                 if (node != null)
-                    _cache[meta.Key] = node;
+                    target[meta.Key] = node;
             }
             catch (Exception ex)
             {
@@ -568,7 +589,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
             {
                 // 合并两个 JsonNode
                 var merged = MergeJsonNodes(userNode ?? new JsonObject(), projectNode ?? new JsonObject());
-                _cache[meta.Key] = merged;
+                target[meta.Key] = merged;
             }
         }
     }
@@ -738,19 +759,35 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
         {
             _cache[sectionName] = value;
 
-            // 脊柱 Options：按属性名同步到 SeeingAgent（无 switch 到 god-object 字段列表）
+            // 脊柱 Options：按属性名同步到 SeeingAgent（无 switch 到 god-object 字段列表）。
+            // 以新实例替换而非原地反射修改，保证 SeeingAgent 快照对读者原子可见（不出现半更新对象）。
             var prop = typeof(SeeingAgentOptions).GetProperty(sectionName);
-            if (prop is { CanWrite: true } &&
-                value is not null &&
-                prop.PropertyType.IsInstanceOfType(value))
+            var assignable = prop is { CanWrite: true } && value is not null &&
+                (prop.PropertyType.IsInstanceOfType(value) ||
+                 (value is string && prop.PropertyType == typeof(string)));
+
+            if (assignable)
             {
-                prop.SetValue(SeeingAgent, value);
-            }
-            else if (prop is { CanWrite: true } && value is string s && prop.PropertyType == typeof(string))
-            {
-                prop.SetValue(SeeingAgent, s);
+                var snapshot = ShallowCloneOptions(SeeingAgent);
+                prop!.SetValue(snapshot, value);
+                SeeingAgent = snapshot;
             }
         }
+    }
+
+    /// <summary>
+    /// 浅拷贝 SeeingAgentOptions：用于以新实例替换快照，避免原地修改被并发读者观察到中间态。
+    /// </summary>
+    private static SeeingAgentOptions ShallowCloneOptions(SeeingAgentOptions source)
+    {
+        var clone = new SeeingAgentOptions();
+        foreach (var property in typeof(SeeingAgentOptions).GetProperties(
+                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (property.CanRead && property.CanWrite)
+                property.SetValue(clone, property.GetValue(source));
+        }
+        return clone;
     }
     
     private void OnConfigChanged(string[] changedSections, IReadOnlyList<string>? changedKeys = null)

@@ -570,7 +570,9 @@ namespace Seeing.Agent.Core.Extensions
 
             // 能力包工具 / Skills / MCP / LLM / Agents.BuiltIn — 由宿主 AddSeeingModule<T> 登记
 
-            // ========== 注册装饰器链（重试→超时→缓存）==========
+            // ========== 注册装饰器链（注册顺序：重试→超时→缓存→输出限长；后注册者居外层）==========
+            // 最终包装顺序：OutputLimiter(Cached(Timeout(Retry(tool))))，即重试在最内层、
+            // 全局超时覆盖整次工具调用的重试总时长；输出限长在最外层处理最终返回结果。
             // 超时由 ToolTimeoutDecorator 在工具执行漏斗内施加：读取工具能力声明
             // （timeout.skip=true 豁免、timeout.budget 指定自身上限），未声明时回落到
             // SeeingAgentOptions.ToolExecutionTimeout 全局兜底（IOptionsMonitor 实时读取）。
@@ -583,20 +585,20 @@ namespace Seeing.Agent.Core.Extensions
 
                 var registry = new ToolDecoratorRegistry(sp);
 
-                // 最外层：重试装饰器（3 次，1 秒间隔，指数退避）
+                // 最内层：重试装饰器（3 次，1 秒间隔，指数退避；先注册=最接近原始工具）
                 registry.Register(tool => new RetryToolDecorator(
                     tool,
                     maxRetries: 3,
                     delay: TimeSpan.FromSeconds(1),
                     logger: loggerFactory.CreateLogger<RetryToolDecorator>()));
 
-                // 中间层：超时装饰器（能力感知，调用时解析 timeout.skip/budget，兜底全局 ToolExecutionTimeout）
+                // 次内层：超时装饰器（包裹重试，全局超时覆盖重试总时长；调用时解析 timeout.skip/budget，兜底全局 ToolExecutionTimeout）
                 registry.Register(tool => new ToolTimeoutDecorator(
                     tool,
                     sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
                     loggerFactory.CreateLogger<ToolTimeoutDecorator>()));
 
-                // 最内层：缓存装饰器（5 分钟过期）— 仅在 IMemoryCache 可用时
+                // 次外层：缓存装饰器（包裹超时；5 分钟过期）— 仅在 IMemoryCache 可用时
                 if (cache != null)
                 {
                     registry.Register(tool => new CachedToolDecorator(

@@ -84,13 +84,13 @@ public class MergeDeepTests
         // Arrange
         var global = new TestConfig { Temperature = 0.5, MaxTokens = 100 };
         var project = new TestConfig { Temperature = 0.3 };
-        var local = new TestConfig { MaxTokens = 200 };
+        var local = new TestConfig { Temperature = 0.25, MaxTokens = 200 };
 
         // Act
         var result = MergeDeep.MergeChain(global, project, local);
 
         // Assert
-        result.Temperature.Should().Be(0.3);
+        result.Temperature.Should().Be(0.25);
         result.MaxTokens.Should().Be(200);
     }
 
@@ -124,6 +124,66 @@ public class MergeDeepTests
         var result = MergeDeep.Merge(baseObj, overrideObj);
 
         result.Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Merge_NumericZero_OverrideWins()
+    {
+        // 决策：数值 0 / TimeSpan.Zero 是合法覆盖值，不再当作“未设置”
+        var baseObj = new NumericConfig { Count = 5, Ratio = 1.5, Interval = TimeSpan.FromSeconds(30) };
+        var overrideObj = new NumericConfig { Count = 0, Ratio = 0, Interval = TimeSpan.Zero };
+
+        var result = MergeDeep.Merge(baseObj, overrideObj);
+
+        result.Count.Should().Be(0);
+        result.Ratio.Should().Be(0);
+        result.Interval.Should().Be(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public void Merge_NullableZero_OverrideWins()
+    {
+        // 可空类型的“未设置”由 null 表达；持有值 0 应覆盖
+        var baseObj = new TestConfig { MaxTokens = 100 };
+        var overrideObj = new TestConfig { MaxTokens = 0 };
+
+        var result = MergeDeep.Merge(baseObj, overrideObj);
+
+        result.MaxTokens.Should().Be(0);
+    }
+
+    [Fact]
+    public void Merge_NullOverride_NestedObject_IsDeepCopied()
+    {
+        // 项目级未设置嵌套对象（null）时，结果不得与用户级来源共享引用
+        var userSource = new NullableNestedConfig
+        {
+            Model = new ModelSettings { Name = "gpt-4", Version = "1" }
+        };
+        var projectSource = new NullableNestedConfig { Model = null };
+
+        var result = MergeDeep.Merge(userSource, projectSource);
+
+        result.Model.Should().NotBeNull();
+        result.Model.Should().NotBeSameAs(userSource.Model);
+        result.Model!.Name = "mutated";
+        userSource.Model!.Name.Should().Be("gpt-4");
+    }
+
+    [Fact]
+    public void Merge_NullOverrideTopLevel_ReturnsDeepCopy()
+    {
+        var userSource = new NullableNestedConfig
+        {
+            Model = new ModelSettings { Name = "gpt-4", Version = "1" }
+        };
+
+        var result = MergeDeep.Merge(userSource, null as NullableNestedConfig);
+
+        result.Should().NotBeSameAs(userSource);
+        result.Model.Should().NotBeSameAs(userSource.Model);
+        result.Model!.Version = "mutated";
+        userSource.Model!.Version.Should().Be("1");
     }
 
     [Fact]
@@ -170,6 +230,18 @@ public class MergeDeepTests
     private class BoolConfig
     {
         public bool Enabled { get; set; }
+    }
+
+    private class NumericConfig
+    {
+        public int Count { get; set; }
+        public double Ratio { get; set; }
+        public TimeSpan Interval { get; set; }
+    }
+
+    private class NullableNestedConfig
+    {
+        public ModelSettings? Model { get; set; }
     }
 
     private class BackendConfig

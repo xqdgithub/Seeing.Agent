@@ -89,6 +89,10 @@ namespace Seeing.Agent.Core.Decorators
         }
 
         /// <inheritdoc />
+        /// <remarks>
+        /// 按注册顺序依次应用：先注册者在内层（最接近原始工具），后注册者在外层，
+        /// 最后注册的装饰器位于最外层（其 <c>ExecuteAsync</c> 最先被调用）。
+        /// </remarks>
         public ITool Apply(ITool tool)
         {
             if (tool == null)
@@ -119,14 +123,14 @@ namespace Seeing.Agent.Core.Decorators
         {
             var registry = new ToolDecoratorRegistry(serviceProvider);
 
-            // 重试装饰器
+            // 重试装饰器（先注册 → 位于内层：单次工具调用的重试由外层装饰器统一包裹）
             if (maxRetries > 1)
             {
                 registry.Register(tool => new RetryToolDecorator(
                     tool, maxRetries, retryDelay));
             }
 
-            // 缓存装饰器（最后应用，最内层）
+            // 缓存装饰器（后注册 → 位于外层：包裹重试装饰器）
             if (serviceProvider != null)
             {
                 var cache = serviceProvider.GetService(typeof(Microsoft.Extensions.Caching.Memory.IMemoryCache))

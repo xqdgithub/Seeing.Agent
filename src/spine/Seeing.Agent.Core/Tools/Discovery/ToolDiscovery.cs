@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Tools;
+using Microsoft.Extensions.Logging;
 using System.Reflection;
 using System.Text.Json;
 
@@ -36,7 +37,9 @@ namespace Seeing.Agent.Core.Tools.Discovery
         /// <summary>
         /// 从类型中发现所有工具方法
         /// </summary>
-        public static List<DiscoveredTool> DiscoverTools(Type type)
+        /// <param name="type">声明工具方法的类型</param>
+        /// <param name="logger">可选的日志器；非法签名跳过时记录警告</param>
+        public static List<DiscoveredTool> DiscoverTools(Type type, ILogger? logger = null)
         {
             var tools = new List<DiscoveredTool>();
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance);
@@ -45,6 +48,16 @@ namespace Seeing.Agent.Core.Tools.Discovery
             {
                 var toolAttr = method.GetCustomAttribute<Seeing.Agent.Abstractions.Tools.ToolAttribute>();
                 if (toolAttr == null) continue;
+
+                // 非法签名（async void / out / ref / 泛型）在反射调用链上无法正确工作：跳过并告警，
+                // 避免在调用期才以异常暴露（Annotation 契约：见 Tools/AGENTS.md ANTI-PATTERNS）。
+                if (IsInvalidSignature(method, out var reason))
+                {
+                    logger?.LogWarning(
+                        "跳过非法工具方法 {DeclaringType}.{Method}：{Reason}",
+                        type.FullName, method.Name, reason);
+                    continue;
+                }
 
                 var tool = new DiscoveredTool
                 {
@@ -65,9 +78,39 @@ namespace Seeing.Agent.Core.Tools.Discovery
         /// <summary>
         /// 从类型中发现所有工具方法
         /// </summary>
-        public static List<DiscoveredTool> DiscoverTools<T>()
+        public static List<DiscoveredTool> DiscoverTools<T>(ILogger? logger = null)
         {
-            return DiscoverTools(typeof(T));
+            return DiscoverTools(typeof(T), logger);
+        }
+
+        /// <summary>
+        /// 校验工具方法签名是否受支持：拒绝 async void / out / ref / 泛型方法。
+        /// </summary>
+        private static bool IsInvalidSignature(MethodInfo method, out string reason)
+        {
+            if (method.ReturnType == typeof(void))
+            {
+                reason = "返回 void（async void 不受支持，必须返回 Task 或 Task<T>）";
+                return true;
+            }
+
+            if (method.IsGenericMethod || method.ContainsGenericParameters)
+            {
+                reason = "泛型方法（反射无法解析类型实参）";
+                return true;
+            }
+
+            foreach (var parameter in method.GetParameters())
+            {
+                if (parameter.IsOut || parameter.ParameterType.IsByRef)
+                {
+                    reason = $"out/ref 参数 '{parameter.Name}'（JSON Schema 不支持）";
+                    return true;
+                }
+            }
+
+            reason = string.Empty;
+            return false;
         }
 
         /// <summary>
@@ -81,14 +124,14 @@ namespace Seeing.Agent.Core.Tools.Discovery
             foreach (var param in method.GetParameters())
             {
                 var paramAttr = param.GetCustomAttribute<Seeing.Agent.Abstractions.Tools.ToolParamAttribute>();
-                var requiredAttr = param.GetCustomAttribute<Seeing.Agent.Abstractions.Tools.RequiredAttribute>();
 
                 var paramSchema = BuildTypeSchema(param.ParameterType, paramAttr?.Description ?? "");
 
                 properties[param.Name!] = paramSchema;
 
-                // 必需参数：没有默认值或标记了 Required
-                if (requiredAttr != null || (!param.HasDefaultValue && requiredAttr == null))
+                // required 语义与 ReflectedTool.IsRequiredParameter 完全对齐，
+                // 避免 schema 声明必需而执行期判为非必需（或反之）的不一致。
+                if (ReflectedTool.IsRequiredParameter(param))
                 {
                     required.Add(param.Name!);
                 }
