@@ -3,7 +3,7 @@ using Seeing.Agent.Abstractions.Agents;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Permissions;

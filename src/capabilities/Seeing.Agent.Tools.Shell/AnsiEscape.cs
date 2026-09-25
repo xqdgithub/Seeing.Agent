@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Seeing.Agent.Core.Tools.Shell;
+namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
 /// 剥离终端 ANSI / VT 转义，避免 WebUI 等非 TTY 界面把颜色码当正文显示。

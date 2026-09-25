@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Xunit;
 
-namespace Seeing.Agent.Core.Tools.Shell.Tests;
+namespace Seeing.Agent.Tools.Shell.Tests;
 
 public class ShellModuleTests
 {

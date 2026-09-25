@@ -4,7 +4,7 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Execution;
 using System.Runtime.InteropServices;
 
-namespace Seeing.Agent.Core.Tools.Shell;
+namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
 /// 默认 Shell 服务实现。可执行文件发现经 <see cref="IExecutionWorld.Subprocess"/>，不直接 Process.Start。

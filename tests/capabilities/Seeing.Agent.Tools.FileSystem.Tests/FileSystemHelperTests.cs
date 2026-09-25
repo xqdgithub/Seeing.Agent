@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Seeing.Agent.Core.Tools.FileSystem;
+using Seeing.Agent.Tools.FileSystem;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools;

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Seeing.Agent.Abstractions.SystemOne;
 
-namespace Seeing.Agent.Core.Tools.SystemOne;
+namespace Seeing.Agent.Tools.SystemOne;
 
 /// <summary>systemone_* 工具入参（解析结果）。</summary>
 internal sealed class SystemOneToolInput

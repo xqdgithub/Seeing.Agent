@@ -9,9 +9,9 @@ using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Embed;
 using Seeing.Agent.Llm.OpenAI;
-using Seeing.Agent.Core.Tools.Basic;
-using Seeing.Agent.Core.Tools.Session;
-using Seeing.Agent.Core.Tools.Question;
+using Seeing.Agent.Tools.Basic;
+using Seeing.Agent.Tools.Session;
+using Seeing.Agent.Tools.Question;
 using Seeing.IO.Local;
 
 // Embed Host Shape 最小用法：

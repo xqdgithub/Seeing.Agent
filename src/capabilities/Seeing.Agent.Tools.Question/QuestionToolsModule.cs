@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 
-namespace Seeing.Agent.Core.Tools.Question;
+namespace Seeing.Agent.Tools.Question;
 
 /// <summary>
 /// 问答工具模块 — 提供 question（结构化单选/多选/文本提问并等待用户作答）。

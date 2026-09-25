@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
-namespace Seeing.Agent.Core.Tools.Session;
+namespace Seeing.Agent.Tools.Session;
 
 /// <summary>
 /// 会话裁剪工具 — 裁剪活跃消息中的早期历史；摘要、最后一条 user 消息及其之后不可裁剪。

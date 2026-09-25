@@ -4,9 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.SystemOne;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 
-namespace Seeing.Agent.Core.Tools.SystemOne;
+namespace Seeing.Agent.Tools.SystemOne;
 
 /// <summary>SystemOne 判别工具：按 <see cref="SystemOneToolKind"/> 参数化（Ask 混合 / Noul / Choice / Score 同类）。</summary>
 public sealed class SystemOneTool : BuiltInToolBase

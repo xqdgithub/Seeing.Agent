@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 
-namespace Seeing.Agent.Core.Tools.Web;
+namespace Seeing.Agent.Tools.Web;
 
 /// <summary>
 /// 网络工具模块 — 提供 webfetch/websearch/codesearch。

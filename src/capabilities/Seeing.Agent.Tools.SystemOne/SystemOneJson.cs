@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Seeing.Agent.Core.Tools.SystemOne;
+namespace Seeing.Agent.Tools.SystemOne;
 
 /// <summary>
 /// systemone_* 工具入参的 JSON 形态归一化。

@@ -2,7 +2,7 @@ using Seeing.Agent.Abstractions.Tools;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace Seeing.Agent.Core.Tools.Git;
+namespace Seeing.Agent.Tools.Git;
 
 /// <summary>
 /// Git Commit 工具 - 提交更改

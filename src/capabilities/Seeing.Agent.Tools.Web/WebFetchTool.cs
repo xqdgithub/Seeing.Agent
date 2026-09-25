@@ -6,9 +6,9 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 
-namespace Seeing.Agent.Core.Tools.Web;
+namespace Seeing.Agent.Tools.Web;
 
 /// <summary>
 /// 网页抓取工具 - 从指定 URL 获取内容

@@ -5,7 +5,7 @@ using Moq;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Questions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Question;
+using Seeing.Agent.Tools.Question;
 using Xunit;
 
 namespace Seeing.Agent.Tools.Question.Tests;

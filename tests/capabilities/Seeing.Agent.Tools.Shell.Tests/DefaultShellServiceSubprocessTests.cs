@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Core.Tools.Shell;
+using Seeing.Agent.Tools.Shell;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools;

@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
-namespace Seeing.Agent.Core.Tools.Session;
+namespace Seeing.Agent.Tools.Session;
 
 /// <summary>
 /// 会话读取工具 — 按区间 / 窗口 / 分页读取会话消息，默认隐藏工具输出与思考内容。

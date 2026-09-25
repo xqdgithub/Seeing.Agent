@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Skills;
 
-namespace Seeing.Agent.Core.Tools.SystemOne.Skills;
+namespace Seeing.Agent.Tools.SystemOne.Skills;
 
 /// <summary>SystemOne 内嵌 Skill 注册器 — 供模块 Activate/Deactivate 对称调用。</summary>
 internal static class SystemOneSkillRegistrar

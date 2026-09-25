@@ -3,7 +3,7 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
 
-namespace Seeing.Agent.Core.Tools.Basic;
+namespace Seeing.Agent.Tools.Basic;
 
 /// <summary>
 /// 基础工具模块 — 提供 current_time；并贡献 /tools 聚合页导航。

@@ -1,12 +1,12 @@
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace Seeing.Agent.Core.Tools.FileSystem
+namespace Seeing.Agent.Tools.FileSystem
 {
     /// <summary>
     /// 内容搜索工具 - 在文件内容中搜索正则表达式模式

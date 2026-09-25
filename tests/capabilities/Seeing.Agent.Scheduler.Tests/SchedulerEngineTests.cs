@@ -8,7 +8,7 @@ using Quartz;
 using Quartz.Impl;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;

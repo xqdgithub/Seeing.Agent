@@ -158,7 +158,7 @@ public class MigrationTests : IDisposable
         var core = typeof(BuiltInScenarios).Assembly;
         var forbidden = new HashSet<string>(StringComparer.Ordinal)
         {
-            "Seeing.Agent.Core.Tools.Git",
+            "Seeing.Agent.Tools.Git",
             "Seeing.Agent.Memory",
             "Seeing.Agent.Scheduler",
         };

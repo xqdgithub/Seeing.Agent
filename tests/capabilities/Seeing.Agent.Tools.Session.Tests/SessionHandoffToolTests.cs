@@ -8,7 +8,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 using Xunit;
 
-namespace Seeing.Agent.Core.Tools.Session.Tests;
+namespace Seeing.Agent.Tools.Session.Tests;
 
 public class SessionHandoffToolTests
 {

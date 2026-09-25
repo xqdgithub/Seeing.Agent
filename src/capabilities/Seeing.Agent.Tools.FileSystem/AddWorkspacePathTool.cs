@@ -1,11 +1,11 @@
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace Seeing.Agent.Core.Tools.FileSystem;
+namespace Seeing.Agent.Tools.FileSystem;
 
 /// <summary>
 /// 请求将路径加入当前会话的工作区白名单。

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Seeing.Agent.Abstractions.SystemOne;
 
-namespace Seeing.Agent.Core.Tools.SystemOne;
+namespace Seeing.Agent.Tools.SystemOne;
 
 /// <summary>
 /// 构建 systemone_* 工具的 JSON Schema（供 4 个工具共用）。

@@ -5,7 +5,7 @@ using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
-namespace Seeing.Agent.Core.Tools.Session;
+namespace Seeing.Agent.Tools.Session;
 
 /// <summary>
 /// 会话交接工具 — 创建交接后继会话、迁移配置并提交首轮执行；失败时回滚。

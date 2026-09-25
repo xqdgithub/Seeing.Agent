@@ -5,11 +5,11 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
-using Seeing.Agent.Core.Tools.Basic;
-using Seeing.Agent.Core.Tools.FileSystem;
-using Seeing.Agent.Core.Tools.Git;
-using Seeing.Agent.Core.Tools.Shell;
-using Seeing.Agent.Core.Tools.Web;
+using Seeing.Agent.Tools.Basic;
+using Seeing.Agent.Tools.FileSystem;
+using Seeing.Agent.Tools.Git;
+using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.Web;
 using Seeing.IO.Local;
 using Xunit;
 
@@ -46,10 +46,10 @@ public class ExecutionWorldTests
         var root = FindRepoRoot();
         var cleanDirs = new[]
         {
-            Path.Combine(root, "src", "Seeing.Agent.Core.Tools.FileSystem"),
-            Path.Combine(root, "src", "Seeing.Agent.Core.Tools.Git"),
-            Path.Combine(root, "src", "Seeing.Agent.Core.Tools.Basic"),
-            Path.Combine(root, "src", "Seeing.Agent.Core.Tools.Web"),
+            Path.Combine(root, "src", "Seeing.Agent.Tools.FileSystem"),
+            Path.Combine(root, "src", "Seeing.Agent.Tools.Git"),
+            Path.Combine(root, "src", "Seeing.Agent.Tools.Basic"),
+            Path.Combine(root, "src", "Seeing.Agent.Tools.Web"),
         };
 
         foreach (var dir in cleanDirs)
@@ -61,7 +61,7 @@ public class ExecutionWorldTests
                 string.Join("; ", hits));
         }
 
-        var shellDir = Path.Combine(root, "src", "Seeing.Agent.Core.Tools.Shell");
+        var shellDir = Path.Combine(root, "src", "Seeing.Agent.Tools.Shell");
         var shellHits = ScanSourceForForbiddenOsCalls(
             shellDir,
             allowlist: ["DefaultShellService.cs", "ProcessExtensions.cs"]);

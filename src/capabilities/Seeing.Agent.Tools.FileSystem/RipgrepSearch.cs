@@ -2,9 +2,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 
-namespace Seeing.Agent.Core.Tools.FileSystem;
+namespace Seeing.Agent.Tools.FileSystem;
 
 /// <summary>
 /// 优先经 <see cref="ISubprocess"/> 调用 ripgrep（<c>rg</c>）；不可用时回退托管枚举 + <see cref="IFileSystem"/>。

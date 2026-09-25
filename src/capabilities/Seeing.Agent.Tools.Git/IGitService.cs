@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Tools.Git;
+namespace Seeing.Agent.Tools.Git;
 
 /// <summary>
 /// Git 服务接口 - 封装 git CLI 操作

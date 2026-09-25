@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Seeing.Agent.Abstractions.Execution;
 
-namespace Seeing.Agent.Core.Tools.FileSystem
+namespace Seeing.Agent.Tools.FileSystem
 {
     /// <summary>
     /// 文件系统辅助类 - 提供文件操作的共享功能

@@ -7,8 +7,8 @@ using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
-using Seeing.Agent.Core.Tools.Basic;
-using Seeing.Agent.Core.Tools.FileSystem;
+using Seeing.Agent.Tools.Basic;
+using Seeing.Agent.Tools.FileSystem;
 using Seeing.IO.Local;
 using Xunit;
 

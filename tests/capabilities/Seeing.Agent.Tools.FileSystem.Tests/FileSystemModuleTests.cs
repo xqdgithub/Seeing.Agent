@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Xunit;
 
-namespace Seeing.Agent.Core.Tools.FileSystem.Tests;
+namespace Seeing.Agent.Tools.FileSystem.Tests;
 
 public class FileSystemModuleTests
 {

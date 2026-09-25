@@ -1,6 +1,6 @@
 using Seeing.Agent.Abstractions.Configuration;
 
-namespace Seeing.Agent.Core.Tools.Shell;
+namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
 /// 危险命令检测器 - 基于 <see cref="ShellOptions"/> 的可配置命令安全检测。

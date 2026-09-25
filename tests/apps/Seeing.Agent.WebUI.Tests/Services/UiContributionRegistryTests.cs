@@ -3,7 +3,7 @@ using FluentAssertions;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
-using Seeing.Agent.Core.Tools.Basic;
+using Seeing.Agent.Tools.Basic;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.Pages;
 

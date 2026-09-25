@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 
-namespace Seeing.Agent.Core.Tools.FileSystem;
+namespace Seeing.Agent.Tools.FileSystem;
 
 /// <summary>
 /// 文件系统工具模块 — 提供 read/write/edit/glob/grep/delete/add_workspace_path。

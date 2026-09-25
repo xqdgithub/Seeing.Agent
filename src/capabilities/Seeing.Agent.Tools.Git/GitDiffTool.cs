@@ -1,7 +1,7 @@
 using Seeing.Agent.Abstractions.Tools;
 using System.Text.Json;
 
-namespace Seeing.Agent.Core.Tools.Git;
+namespace Seeing.Agent.Tools.Git;
 
 /// <summary>
 /// Git Diff 工具 - 获取差异

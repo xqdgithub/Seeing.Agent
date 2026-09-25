@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
-namespace Seeing.Agent.Core.Tools.Session;
+namespace Seeing.Agent.Tools.Session;
 
 /// <summary>
 /// 会话内容搜索工具 — 在会话消息中按正则搜索，支持角色过滤、上下文与分页。

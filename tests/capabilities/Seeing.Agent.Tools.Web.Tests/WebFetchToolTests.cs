@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Tools;
 using Xunit;
 
-namespace Seeing.Agent.Core.Tools.Web.Tests;
+namespace Seeing.Agent.Tools.Web.Tests;
 
 public class WebFetchToolTests
 {

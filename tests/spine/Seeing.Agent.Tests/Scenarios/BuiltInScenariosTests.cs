@@ -93,7 +93,7 @@ public class BuiltInScenariosTests
         core.GetReferencedAssemblies()
             .Select(a => a.Name)
             .Should()
-            .NotContain("Seeing.Agent.Core.Tools.Git",
+            .NotContain("Seeing.Agent.Tools.Git",
                 "BuiltInScenarios 只用字符串模块 id，Core 不得编译引用 Tools.Git");
 
         core.GetTypes()

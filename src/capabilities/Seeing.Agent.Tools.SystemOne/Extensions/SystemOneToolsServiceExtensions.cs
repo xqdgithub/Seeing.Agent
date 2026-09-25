@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 
-namespace Seeing.Agent.Core.Tools.SystemOne.Extensions;
+namespace Seeing.Agent.Tools.SystemOne.Extensions;
 
 /// <summary>SystemOne 工具包 DI 注册扩展。</summary>
 public static class SystemOneToolsServiceExtensions

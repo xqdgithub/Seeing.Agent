@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Seeing.Agent.Core.Tools.Support;
+namespace Seeing.Agent.Tools.Support;
 
 /// <summary>
 /// 内置工具基类 - 提供内置工具的通用功能

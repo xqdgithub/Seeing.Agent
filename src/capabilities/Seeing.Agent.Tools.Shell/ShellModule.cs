@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 
-namespace Seeing.Agent.Core.Tools.Shell;
+namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
 /// Shell 工具模块 — 提供 bash 命令执行。

@@ -17,14 +17,14 @@ using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
 using Seeing.IO.Local;
 using Seeing.Agent.Core.Modules;
-using Seeing.Agent.Core.Tools.Basic;
-using Seeing.Agent.Core.Tools.FileSystem;
-using Seeing.Agent.Core.Tools.Git;
-using Seeing.Agent.Core.Tools.Question;
-using Seeing.Agent.Core.Tools.Shell;
-using Seeing.Agent.Core.Tools.Web;
+using Seeing.Agent.Tools.Basic;
+using Seeing.Agent.Tools.FileSystem;
+using Seeing.Agent.Tools.Git;
+using Seeing.Agent.Tools.Question;
+using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.Web;
 using Seeing.Agent.SystemOne.Extensions;
-using Seeing.Agent.Core.Tools.SystemOne.Extensions;
+using Seeing.Agent.Tools.SystemOne.Extensions;
 
 var builder = Host.CreateApplicationBuilder(args);
 

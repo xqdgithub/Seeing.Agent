@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Tools.SystemOne;
+namespace Seeing.Agent.Tools.SystemOne;
 
 /// <summary>systemone 工具种类（Ask=混合，其余为同类）。</summary>
 public enum SystemOneToolKind

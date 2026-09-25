@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Tools;
 using Xunit;
 
-namespace Seeing.Agent.Core.Tools.Basic.Tests;
+namespace Seeing.Agent.Tools.Basic.Tests;
 
 public class CurrentTimeToolTests
 {

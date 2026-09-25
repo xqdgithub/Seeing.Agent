@@ -2,9 +2,9 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 
-namespace Seeing.Agent.Core.Tools.Web;
+namespace Seeing.Agent.Tools.Web;
 
 /// <summary>
 /// 代码搜索工具 - 使用 Exa MCP API 搜索代码和文档

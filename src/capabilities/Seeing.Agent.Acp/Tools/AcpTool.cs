@@ -11,7 +11,7 @@ using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Acp.Configuration;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Session.Core;
 

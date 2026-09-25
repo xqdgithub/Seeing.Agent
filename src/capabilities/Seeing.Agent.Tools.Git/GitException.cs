@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Tools.Git;
+namespace Seeing.Agent.Tools.Git;
 
 /// <summary>
 /// Git 操作异常

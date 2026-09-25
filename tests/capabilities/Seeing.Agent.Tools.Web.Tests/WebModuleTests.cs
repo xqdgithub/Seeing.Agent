@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Xunit;
 
-namespace Seeing.Agent.Core.Tools.Web.Tests;
+namespace Seeing.Agent.Tools.Web.Tests;
 
 public class WebModuleTests
 {

@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Execution;
 using System.Text.RegularExpressions;
 
-namespace Seeing.Agent.Core.Tools.Git;
+namespace Seeing.Agent.Tools.Git;
 
 /// <summary>
 /// Git 服务实现 - 通过 git CLI 执行操作

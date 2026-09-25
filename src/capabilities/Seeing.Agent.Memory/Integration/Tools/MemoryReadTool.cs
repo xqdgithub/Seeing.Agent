@@ -2,7 +2,7 @@ using Seeing.Agent.Abstractions.Tools;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core;
 

@@ -1,7 +1,7 @@
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 
-namespace Seeing.Agent.Core.Tools.FileSystem;
+namespace Seeing.Agent.Tools.FileSystem;
 
 /// <summary>
 /// 文件工具共用的工作区路径门闸检查。

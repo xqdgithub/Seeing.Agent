@@ -5,10 +5,10 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Questions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using QuestionModel = Seeing.Agent.Abstractions.Questions.Question;
 
-namespace Seeing.Agent.Core.Tools.Question;
+namespace Seeing.Agent.Tools.Question;
 
 /// <summary>
 /// 问答工具 — 向用户提出一个或多个结构化问题并等待作答。

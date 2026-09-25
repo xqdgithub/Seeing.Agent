@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 
-namespace Seeing.Agent.Core.Tools.Basic;
+namespace Seeing.Agent.Tools.Basic;
 
 /// <summary>
 /// 当前时间工具 - 获取本地或指定时区的当前时间（ISO 8601）

@@ -6,7 +6,7 @@ using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
 
-namespace Seeing.Agent.Core.Tools.Session.Tests;
+namespace Seeing.Agent.Tools.Session.Tests;
 
 /// <summary>
 /// 会话工具测试夹具：真实 SessionManager + SessionGroupManager + 内存/文件存储。

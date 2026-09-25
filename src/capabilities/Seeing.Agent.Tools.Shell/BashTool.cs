@@ -4,12 +4,12 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
-namespace Seeing.Agent.Core.Tools.Shell;
+namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
 /// 执行 Shell 命令的 bash 工具。

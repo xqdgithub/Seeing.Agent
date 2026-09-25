@@ -4,9 +4,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.SystemOne.Skills;
+using Seeing.Agent.Tools.SystemOne.Skills;
 
-namespace Seeing.Agent.Core.Tools.SystemOne;
+namespace Seeing.Agent.Tools.SystemOne;
 
 /// <summary>
 /// SystemOne 判别工具模块 — 提供 systemone_ask（混合）+ systemone_noul/choice/score（同类）与内嵌 Skill。

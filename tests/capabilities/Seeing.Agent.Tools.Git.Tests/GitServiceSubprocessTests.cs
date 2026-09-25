@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Core.Tools.Git;
+using Seeing.Agent.Tools.Git;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Git;

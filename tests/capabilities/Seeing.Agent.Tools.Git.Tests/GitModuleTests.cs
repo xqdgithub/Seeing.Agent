@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Xunit;
 
-namespace Seeing.Agent.Core.Tools.Git.Tests;
+namespace Seeing.Agent.Tools.Git.Tests;
 
 public class GitModuleTests
 {

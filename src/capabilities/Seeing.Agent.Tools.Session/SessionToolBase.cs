@@ -2,10 +2,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Tools.Support;
+using Seeing.Agent.Tools.Support;
 using Seeing.Session.Core;
 
-namespace Seeing.Agent.Core.Tools.Session;
+namespace Seeing.Agent.Tools.Session;
 
 /// <summary>
 /// 会话工具共享基类：会话解析、同组判定与跨组授权。

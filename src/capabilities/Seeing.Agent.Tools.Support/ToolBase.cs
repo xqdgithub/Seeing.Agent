@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
 
-namespace Seeing.Agent.Core.Tools.Support;
+namespace Seeing.Agent.Tools.Support;
 
 /// <summary>
 /// Tool 基类 - 提供常用 Tool 实现的便捷方法

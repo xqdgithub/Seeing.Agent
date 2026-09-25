@@ -1,4 +1,4 @@
-namespace Seeing.Agent.Core.Tools.Shell;
+namespace Seeing.Agent.Tools.Shell;
 
 /// <summary>
 /// Shell 服务 — 跨平台 Shell 选择与命令准备。

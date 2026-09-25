@@ -2,7 +2,7 @@ using Seeing.Agent.Abstractions.Tools;
 using System.Text;
 using System.Text.Json;
 
-namespace Seeing.Agent.Core.Tools.Git;
+namespace Seeing.Agent.Tools.Git;
 
 /// <summary>
 /// Git Log 工具 - 获取提交历史

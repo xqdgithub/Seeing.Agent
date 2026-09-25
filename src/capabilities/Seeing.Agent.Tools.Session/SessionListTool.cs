@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
-namespace Seeing.Agent.Core.Tools.Session;
+namespace Seeing.Agent.Tools.Session;
 
 /// <summary>
 /// 会话列表工具 — 列出与当前会话相关的会话，或经授权列出同分区全部会话。
