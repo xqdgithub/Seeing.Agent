@@ -201,9 +201,9 @@
         }
     }
     
-    private void PauseServer(string name)
+    private async Task PauseServer(string name)
     {
-        var result = McpManager.PauseServer(name);
+        var result = await McpManager.PauseServerAsync(name);
         if (!result.Success)
         {
             MessageService.Error(result.Error?.UserMessage ?? "暂停失败");
@@ -214,9 +214,9 @@
         }
     }
     
-    private void ResumeServer(string name)
+    private async Task ResumeServer(string name)
     {
-        var result = McpManager.ResumeServer(name);
+        var result = await McpManager.ResumeServerAsync(name);
         if (!result.Success)
         {
             MessageService.Error(result.Error?.UserMessage ?? "恢复失败");

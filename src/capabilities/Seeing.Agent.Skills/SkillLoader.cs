@@ -16,6 +16,9 @@ public sealed class SkillLoader : IComponentLoader
 {
     public string Type => "Skill";
 
+    /// <inheritdoc />
+    public string ModuleId => "skills";
+
     public async Task<ComponentLoadResult> LoadAsync(
         IServiceProvider services,
         string workspaceRoot,

@@ -369,6 +369,9 @@ namespace Seeing.Agent.Core.Extensions
             services.TryAddSingleton<ModuleLifecycleManager>();
             services.TryAddSingleton<ModuleReloadOptions>();
 
+            // 动态工具贡献注册表：模块 Activate 登记 / Deactivate 撤销，结算时并入 settledToolIds
+            services.TryAddSingleton<IDynamicToolContributorRegistry, DynamicToolContributorRegistry>();
+
             // Shell 配置节（ShellOptions 在 Abstractions；工具能力包由宿主 AddSeeingModule 登记）
             services.GetOrCreateConfigSectionRegistry().Register(
                 new ConfigSectionMeta("Shell", "seeing.json", ConfigScope.Both, typeof(ShellOptions)));

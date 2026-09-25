@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
@@ -112,6 +113,19 @@ public class ComponentManager : IComponentManager, IReloadHandler
             };
         }
 
+        // 模块门控：加载器归属模块未启用时跳过（含 reload 路径）
+        if (IsModuleDisabled(loader.ModuleId))
+        {
+            _logger.LogDebug("{Type} 归属模块 {ModuleId} 未启用，跳过加载", type, loader.ModuleId);
+            return new ComponentLoadResult
+            {
+                Type = type,
+                Success = true,
+                Count = 0,
+                Details = { $"模块 {loader.ModuleId} 未启用，跳过" }
+            };
+        }
+
         try
         {
             var previouslyLoaded = _loadStatus.TryGetValue(type, out var previous) && previous.Success;
@@ -140,6 +154,18 @@ public class ComponentManager : IComponentManager, IReloadHandler
             _loadStatus[type] = result;
             return result;
         }
+    }
+
+    /// <summary>
+    /// 加载器归属模块是否未启用（空 ModuleId 表示不参与门控；无目录时放行）。
+    /// </summary>
+    private bool IsModuleDisabled(string moduleId)
+    {
+        if (string.IsNullOrWhiteSpace(moduleId))
+            return false;
+
+        var catalog = _services.GetService<IModuleCatalog>();
+        return catalog is not null && !catalog.IsEnabled(moduleId);
     }
 
     /// <inheritdoc/>

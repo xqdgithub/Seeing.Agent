@@ -11,6 +11,9 @@ public sealed class McpLoader : IComponentLoader
 {
     public string Type => "Mcp";
 
+    /// <inheritdoc />
+    public string ModuleId => "mcp";
+
     public async Task<ComponentLoadResult> LoadAsync(
         IServiceProvider services,
         string workspaceRoot,
@@ -19,6 +22,20 @@ public sealed class McpLoader : IComponentLoader
         var mcpManager = services.GetRequiredService<McpClientManager>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<McpLoader>();
+
+        // 已由 McpModule.Activate 初始化（模块生命周期为权威入口）时，启动阶段跳过重复初始化
+        if (mcpManager.IsInitialized)
+        {
+            var existing = mcpManager.GetAllConfigs();
+            return new ComponentLoadResult
+            {
+                Type = Type,
+                Success = true,
+                Count = existing.Count,
+                Details = existing.Keys.ToList()
+            };
+        }
+
         var directories = services.GetService<ISeeingDirectories>()
             ?? new WorkspaceSeeingDirectories(workspaceRoot);
 

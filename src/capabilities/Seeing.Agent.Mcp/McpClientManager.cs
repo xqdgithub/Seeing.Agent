@@ -164,41 +164,41 @@ namespace Seeing.Agent.Mcp
             return await coordinator.ReconnectAsync(cancellationToken);
         }
 
-        public McpOperationResult PauseServer(string name)
+        public async Task<McpOperationResult> PauseServerAsync(string name, CancellationToken cancellationToken = default)
         {
             if (!_coordinators.TryGetValue(name, out var coordinator))
                 return McpOperationResult.Failed(name, McpOperationType.Pause,
                     McpErrorInfo.ConfigInvalid(name, "服务器未连接，无法暂停"));
 
-            return Task.Run(() => coordinator.PauseAsync(_shutdownCts.Token)).GetAwaiter().GetResult();
+            return await coordinator.PauseAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public McpOperationResult ResumeServer(string name)
+        public async Task<McpOperationResult> ResumeServerAsync(string name, CancellationToken cancellationToken = default)
         {
             if (!_coordinators.TryGetValue(name, out var coordinator))
                 return McpOperationResult.Failed(name, McpOperationType.Resume,
                     McpErrorInfo.ConfigInvalid(name, "服务器未连接，无法恢复"));
 
-            return Task.Run(() => coordinator.ResumeAsync(_shutdownCts.Token)).GetAwaiter().GetResult();
+            return await coordinator.ResumeAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public int PauseAllServers()
+        public async Task<int> PauseAllServersAsync(CancellationToken cancellationToken = default)
         {
             var count = 0;
-            foreach (var coordinator in _coordinators.Values)
+            foreach (var coordinator in _coordinators.Values.ToList())
             {
-                var result = Task.Run(() => coordinator.PauseAsync(_shutdownCts.Token)).GetAwaiter().GetResult();
+                var result = await coordinator.PauseAsync(cancellationToken).ConfigureAwait(false);
                 if (result.Success) count++;
             }
             return count;
         }
 
-        public int ResumeAllServers()
+        public async Task<int> ResumeAllServersAsync(CancellationToken cancellationToken = default)
         {
             var count = 0;
-            foreach (var coordinator in _coordinators.Values)
+            foreach (var coordinator in _coordinators.Values.ToList())
             {
-                var result = Task.Run(() => coordinator.ResumeAsync(_shutdownCts.Token)).GetAwaiter().GetResult();
+                var result = await coordinator.ResumeAsync(cancellationToken).ConfigureAwait(false);
                 if (result.Success) count++;
             }
             return count;
@@ -704,6 +704,9 @@ namespace Seeing.Agent.Mcp
 
         #region IMcpManager 核心方法
 
+        /// <summary>是否已完成初始化（供 McpLoader 启动阶段避免重复初始化）。</summary>
+        public bool IsInitialized => _initialized;
+
         public async Task InitializeAsync(IReadOnlyDictionary<string, McpServerConfig> configs, CancellationToken cancellationToken = default)
         {
             // 使用 Interlocked.CompareExchange 确保原子性；已初始化时先重置，支持工作区切换后重新初始化
@@ -814,6 +817,29 @@ namespace Seeing.Agent.Mcp
                 new Dictionary<string, object?> { ["timestamp"] = DateTimeOffset.Now });
 
             _logger.LogInformation("MCP Manager 已关闭");
+        }
+
+        /// <inheritdoc />
+        public async Task UnregisterAllToolsAsync(CancellationToken cancellationToken = default)
+        {
+            // 按 server 聚合已注册工具并全部卸载（覆盖非 Connected 状态下的残留）
+            var serverNames = _toolRegistry.GetTools()
+                .Select(t => t.ServerName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var serverName in serverNames)
+            {
+                try
+                {
+                    await _toolRegistry.UnregisterAllToolsAsync(serverName).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "卸载 MCP Server {Server} 工具时发生错误", serverName);
+                }
+            }
         }
 
         #endregion
@@ -956,8 +982,11 @@ namespace Seeing.Agent.Mcp
                 _logger.LogWarning(ex, "关闭 MCP Manager 时发生错误");
             }
 
+            List<McpConnectionCoordinator> coordinators;
             lock (_stateLock)
             {
+                // 先取快照再清空，避免清空后遍历空集合导致协调器未释放
+                coordinators = _coordinators.Values.ToList();
                 _configs.Clear();
                 _statuses.Clear();
                 _coordinators.Clear();
@@ -966,7 +995,7 @@ namespace Seeing.Agent.Mcp
             _reconnector.Stop();
             _processMonitor.Stop();
 
-            foreach (var coordinator in _coordinators.Values)
+            foreach (var coordinator in coordinators)
             {
                 coordinator.Dispose();
             }

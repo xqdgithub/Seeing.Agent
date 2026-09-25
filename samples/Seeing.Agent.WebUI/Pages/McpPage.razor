@@ -337,8 +337,8 @@
         _jsonEditorVisible = true;
     }
     
-    void PauseServer(string name) { McpManager.PauseServer(name); }
-    void ResumeServer(string name) { McpManager.ResumeServer(name); }
+    async Task PauseServer(string name) => await McpManager.PauseServerAsync(name);
+    async Task ResumeServer(string name) => await McpManager.ResumeServerAsync(name);
     async Task ReconnectServer(string name) => await McpManager.ReconnectServerAsync(name);
     
     string GetStateClass(McpServerStatus status) => status.State switch {

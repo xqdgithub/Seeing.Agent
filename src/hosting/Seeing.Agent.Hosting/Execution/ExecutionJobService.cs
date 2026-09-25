@@ -887,6 +887,15 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
                     : null);
             settledToolIds = settlement.SettledToolIds;
 
+            // 动态工具贡献（如 MCP 运行时注册的工具）并入结算集，避免被 ToolManager.settled.Contains 滤出 schema。
+            var dynamicRegistry = services.GetService<IDynamicToolContributorRegistry>();
+            if (dynamicRegistry is not null)
+            {
+                var dynamicIds = dynamicRegistry.GetDynamicToolIds(settlement.EnabledModules);
+                if (dynamicIds.Count > 0)
+                    settledToolIds = MergeDynamicToolIds(settledToolIds, dynamicIds);
+            }
+
             _logger.LogDebug(
                 "会话级结算: session={SessionId}, scenario={Scenario}, modules={ModuleCount}, tools={ToolCount}",
                 session.Id,
@@ -916,6 +925,26 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             .ToArray();
 
         return (settlement, toolSchemas, sectionIds);
+    }
+
+    /// <summary>
+    /// 将 enabled 模块的动态工具贡献并入已结算工具 id 集（去重、稳定排序）。
+    /// </summary>
+    internal static IReadOnlyList<string> MergeDynamicToolIds(
+        IReadOnlyList<string> settledToolIds,
+        IEnumerable<string> dynamicToolIds)
+    {
+        ArgumentNullException.ThrowIfNull(settledToolIds);
+        ArgumentNullException.ThrowIfNull(dynamicToolIds);
+
+        var merged = new HashSet<string>(settledToolIds, StringComparer.OrdinalIgnoreCase);
+        foreach (var id in dynamicToolIds)
+        {
+            if (!string.IsNullOrWhiteSpace(id))
+                merged.Add(id.Trim());
+        }
+
+        return merged.OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     /// <summary>

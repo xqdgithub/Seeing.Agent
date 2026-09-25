@@ -29,6 +29,13 @@ public interface IComponentLoader
     /// <summary>组件类型（字符串标识，如 "Skill" / "Mcp" / "Plugin" / "Rule"）</summary>
     string Type { get; }
 
+    /// <summary>
+    /// 归属能力模块 id（与 <see cref="Modules.ISeeingModule.Id"/> 一致）。
+    /// 非空时由 <c>ComponentManager</c> 检查 <see cref="Modules.IModuleCatalog.IsEnabled"/> 门控；
+    /// 空字符串表示不参与模块门控。
+    /// </summary>
+    string ModuleId { get; }
+
     /// <summary>加载组件</summary>
     Task<ComponentLoadResult> LoadAsync(
         IServiceProvider services,

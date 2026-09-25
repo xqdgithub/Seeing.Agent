@@ -305,6 +305,8 @@ public class ComponentManagerReloadTests
 
         public string Type { get; }
 
+        public string ModuleId => string.Empty;
+
         public int LoadCalls { get; private set; }
 
         public int ReloadCalls { get; private set; }
