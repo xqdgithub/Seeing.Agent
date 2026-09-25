@@ -20,10 +20,17 @@ public class MemoryOptionsTests
     }
 
     [Fact]
+    public void MemoryOptions_ShouldNotExposeModuleEnabledSwitch()
+    {
+        // 模块启停的唯一真相源是模块生命周期（IModuleCatalog / IModuleHostedService），
+        // MemoryOptions 不得再暴露第二套 Enabled 总开关。
+        typeof(MemoryOptions).GetProperty("Enabled").Should().BeNull();
+    }
+
+    [Fact]
     public void Defaults_ShouldMatchSpec()
     {
         var o = new MemoryOptions();
-        o.Enabled.Should().BeTrue();
         o.Capture.AutoCapture.Should().BeTrue();
         o.Capture.MaxSnippetChars.Should().Be(4096);
         o.Capture.QueueCapacity.Should().Be(256);

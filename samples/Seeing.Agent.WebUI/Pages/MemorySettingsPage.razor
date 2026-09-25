@@ -33,9 +33,6 @@
                    ShowIcon="true" Style="margin-bottom: 16px;" />
 
             <Form Model="@_options" Layout="@FormLayout.Vertical">
-                <Card Title="总开关" Style="margin-bottom: 16px;">
-                    <FormItem Label="启用记忆"><Switch @bind-Value="@_options.Enabled" /></FormItem>
-                </Card>
                 <Card Title="捕获" Style="margin-bottom: 16px;">
                     <FormItem Label="自动捕获"><Switch @bind-Value="@_options.Capture.AutoCapture" /></FormItem>
                     <FormItem Label="捕获对话"><Switch @bind-Value="@_options.Capture.CaptureChat" /></FormItem>

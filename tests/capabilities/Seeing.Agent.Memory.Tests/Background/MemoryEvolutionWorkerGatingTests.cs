@@ -85,7 +85,7 @@ public sealed class MemoryEvolutionWorkerGatingTests
     private static MemoryEvolutionWorker CreateWorker(IModuleCatalog catalog, MemoryModuleActivity activity)
     {
         var options = new Mock<IOptionsMonitor<MemoryOptions>>();
-        options.Setup(x => x.CurrentValue).Returns(new MemoryOptions { Enabled = true });
+        options.Setup(x => x.CurrentValue).Returns(new MemoryOptions());
 
         var sessionEvents = new Mock<IMemorySessionEvents>();
         sessionEvents.Setup(x => x.SessionEnded).Returns(new SessionEndedObservable());

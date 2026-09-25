@@ -129,24 +129,22 @@ public sealed class MemoryEvolutionWorker : BackgroundService, IModuleHostedServ
             try
             {
                 var opts = _options.CurrentValue;
-                if (opts.Enabled)
-                {
-                    // 缓冲空闲 flush（默认 5 分钟），与 Evolution 升格解耦
-                    if (opts.Extraction.Enabled)
-                        _flush.FlushIdleSessions();
 
-                    if (opts.Evolution.Enabled)
+                // 缓冲空闲 flush（默认 5 分钟），与 Evolution 升格解耦
+                if (opts.Extraction.Enabled)
+                    _flush.FlushIdleSessions();
+
+                if (opts.Evolution.Enabled)
+                {
+                    var idle = TimeSpan.FromMinutes(Math.Max(1, opts.Evolution.IdleMinutes));
+                    foreach (var sessionId in _activity.GetIdleSessions(idle))
                     {
-                        var idle = TimeSpan.FromMinutes(Math.Max(1, opts.Evolution.IdleMinutes));
-                        foreach (var sessionId in _activity.GetIdleSessions(idle))
-                        {
-                            if (!_moduleActivity.IsActive)
-                                break;
-                            if (opts.Extraction.Enabled)
-                                await _flush.FlushSessionInlineAsync(sessionId, stoppingToken);
-                            await _evolution.EvolveSessionAsync(sessionId, stoppingToken);
-                            _activity.Clear(sessionId);
-                        }
+                        if (!_moduleActivity.IsActive)
+                            break;
+                        if (opts.Extraction.Enabled)
+                            await _flush.FlushSessionInlineAsync(sessionId, stoppingToken);
+                        await _evolution.EvolveSessionAsync(sessionId, stoppingToken);
+                        _activity.Clear(sessionId);
                     }
                 }
             }
@@ -180,8 +178,6 @@ public sealed class MemoryEvolutionWorker : BackgroundService, IModuleHostedServ
             try
             {
                 var opts = _options.CurrentValue;
-                if (!opts.Enabled)
-                    continue;
 
                 // 先同步 flush 提取，再 evolve 升格
                 if (opts.Extraction.Enabled)

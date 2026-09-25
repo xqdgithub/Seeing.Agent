@@ -22,25 +22,25 @@ public class MemoryOptionsProviderReloadTests
     public void ConfigChanged事件_不再自动重载()
     {
         // Arrange
-        var (provider, store) = CreateProvider(new MemoryOptions { Enabled = false });
+        var (provider, store) = CreateProvider(new MemoryOptions { Capture = { MaxSnippetChars = 1000 } });
         store.Setup(x => x.GetSection<MemoryOptions>(ConfigSectionMemoryOptionsStore.SectionName))
-            .Returns(new MemoryOptions { Enabled = true });
+            .Returns(new MemoryOptions { Capture = { MaxSnippetChars = 2000 } });
 
         // Act: 存储变更事件不应再触发 Provider 自订阅重载
         store.Raise(x => x.ConfigChanged += null,
             new ConfigChangedEventArgs { ChangedSections = new[] { ConfigSectionMemoryOptionsStore.SectionName } });
 
         // Assert
-        provider.CurrentValue.Enabled.Should().BeFalse();
+        provider.CurrentValue.Capture.MaxSnippetChars.Should().Be(1000);
     }
 
     [Fact]
     public async Task 通过ReloadHandler_应触发重载()
     {
         // Arrange
-        var (provider, store) = CreateProvider(new MemoryOptions { Enabled = false });
+        var (provider, store) = CreateProvider(new MemoryOptions { Capture = { MaxSnippetChars = 1000 } });
         store.Setup(x => x.GetSection<MemoryOptions>(ConfigSectionMemoryOptionsStore.SectionName))
-            .Returns(new MemoryOptions { Enabled = true });
+            .Returns(new MemoryOptions { Capture = { MaxSnippetChars = 2000 } });
         var handler = new MemoryReloadHandler(provider);
 
         // Act: 由 Handler 触发重载
@@ -49,6 +49,6 @@ public class MemoryOptionsProviderReloadTests
             CancellationToken.None);
 
         // Assert
-        provider.CurrentValue.Enabled.Should().BeTrue();
+        provider.CurrentValue.Capture.MaxSnippetChars.Should().Be(2000);
     }
 }

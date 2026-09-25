@@ -56,9 +56,6 @@ public sealed class MemoryPipeline : IMemoryPipeline
 
     public async Task<BatchPipelineResult> ProcessBatchAsync(MemoryBatch batch, CancellationToken ct = default)
     {
-        if (!_options.Value.Enabled)
-            return new BatchPipelineResult(0, "disabled");
-
         if (!_options.Value.Extraction.Enabled)
             return new BatchPipelineResult(0, "extraction_disabled");
 

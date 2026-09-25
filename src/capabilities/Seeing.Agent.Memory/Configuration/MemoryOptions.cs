@@ -2,7 +2,6 @@ namespace Seeing.Agent.Memory.Configuration;
 
 public sealed class MemoryOptions
 {
-    public bool Enabled { get; set; } = true;
     public MemoryCaptureOptions Capture { get; set; } = new();
     public MemoryFilterOptions Filter { get; set; } = new();
     public MemoryExtractionOptions Extraction { get; set; } = new();

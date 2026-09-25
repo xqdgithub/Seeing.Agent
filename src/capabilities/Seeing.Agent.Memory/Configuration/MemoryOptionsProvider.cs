@@ -47,8 +47,7 @@ public sealed class MemoryOptionsProvider : IOptionsMonitor<MemoryOptions>, IMem
     {
         _current = _store.GetSection<MemoryOptions>(ConfigSectionMemoryOptionsStore.SectionName);
         _logger?.LogDebug(
-            "Memory options reloaded (Enabled={Enabled}, EmbeddingConfigured={EmbeddingConfigured})",
-            _current.Enabled,
+            "Memory options reloaded (EmbeddingConfigured={EmbeddingConfigured})",
             _current.IsEmbeddingConfigured);
         _listeners?.Invoke(_current, Options.DefaultName);
     }

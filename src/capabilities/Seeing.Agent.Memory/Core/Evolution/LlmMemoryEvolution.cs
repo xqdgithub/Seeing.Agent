@@ -40,7 +40,7 @@ public sealed class LlmMemoryEvolution : IMemoryEvolutionService
     public async Task EvolveSessionAsync(string sessionId, CancellationToken ct = default)
     {
         var opts = _options.Value;
-        if (!opts.Enabled || !opts.Evolution.Enabled)
+        if (!opts.Evolution.Enabled)
             return;
 
         var files = await _fileStore.ListByPrefixAsync("daily", ct);
