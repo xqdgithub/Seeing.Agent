@@ -12,7 +12,6 @@ internal class SessionExecutionQueue
 {
     private ExecutionRecord? _currentExecution;
     private readonly Queue<ExecutionRecord> _pendingQueue = new();
-    private CancellationTokenSource? _currentCts;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private DateTime _lastActiveTime = DateTime.UtcNow;
 
@@ -44,11 +43,6 @@ internal class SessionExecutionQueue
     public DateTime LastActiveTime => _lastActiveTime;
 
     /// <summary>
-    /// Gets the cancellation token for the current execution.
-    /// </summary>
-    public CancellationToken CurrentCancellationToken => _currentCts?.Token ?? CancellationToken.None;
-
-    /// <summary>
     /// Submits a new execution request.
     /// If no execution is active, it becomes the current execution.
     /// Otherwise, it is queued.
@@ -56,16 +50,18 @@ internal class SessionExecutionQueue
     /// <param name="record">The execution record to submit.</param>
     public async Task SubmitAsync(ExecutionRecord record)
     {
-        await _lock.WaitAsync();
+        await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
             _lastActiveTime = DateTime.UtcNow;
+
+            // 取消令牌绑定执行记录本身：入队即创建（含排队项），使其在排队期间也可被取消。
+            record.Cts ??= new CancellationTokenSource();
 
             if (_currentExecution == null)
             {
                 // No active execution, start immediately
                 _currentExecution = record;
-                _currentCts = new CancellationTokenSource();
                 record.Status = ExecutionStatus.Pending;
                 record.QueuePosition = 0;
             }
@@ -90,7 +86,7 @@ internal class SessionExecutionQueue
     /// <returns>True if the current execution was started, false if none or not startable.</returns>
     public async Task<bool> StartAsync()
     {
-        await _lock.WaitAsync();
+        await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
             if (_currentExecution != null &&
@@ -112,26 +108,26 @@ internal class SessionExecutionQueue
     /// <summary>
     /// Completes the current execution and starts the next one if queued.
     /// </summary>
-    /// <param name="executionId">The execution ID being completed.</param>
+    /// <param name="record">The execution record being completed.</param>
     /// <param name="status">The final status of the execution.</param>
     /// <returns>The next execution to process, if any.</returns>
-    public async Task<ExecutionRecord?> CompleteAsync(string executionId, ExecutionStatus status)
+    public async Task<ExecutionRecord?> CompleteAsync(ExecutionRecord record, ExecutionStatus status)
     {
-        await _lock.WaitAsync();
+        await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_currentExecution?.ExecutionId == executionId)
+            if (_currentExecution?.ExecutionId == record.ExecutionId)
             {
                 _currentExecution.Status = status;
                 _currentExecution.CompletedAt = DateTime.UtcNow;
-                _currentCts?.Dispose();
-                _currentCts = null;
+                // 记录已终态：释放其专属 CTS
+                record.Cts?.Dispose();
+                record.Cts = null;
 
                 // Get next execution from queue
                 if (_pendingQueue.TryDequeue(out var next))
                 {
                     _currentExecution = next;
-                    _currentCts = new CancellationTokenSource();
                     next.Status = ExecutionStatus.Pending;
                     next.QueuePosition = 0;
                     _lastActiveTime = DateTime.UtcNow;
@@ -144,6 +140,9 @@ internal class SessionExecutionQueue
                 }
             }
 
+            // 记录已被取消/推进（CancelAsync 已提升下一项）：此处兜底释放其 CTS，避免泄漏
+            record.Cts?.Dispose();
+            record.Cts = null;
             return null;
         }
         finally
@@ -159,7 +158,7 @@ internal class SessionExecutionQueue
     /// <returns>True if cancelled, false if not found or already terminal.</returns>
     public async Task<bool> CancelAsync(string executionId)
     {
-        await _lock.WaitAsync();
+        await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
             // Check if it's the current execution
@@ -168,9 +167,9 @@ internal class SessionExecutionQueue
                 if (_currentExecution.Status == ExecutionStatus.Running ||
                     _currentExecution.Status == ExecutionStatus.Pending)
                 {
-                    _currentCts?.Cancel();
-                    _currentCts?.Dispose();
-                    _currentCts = null;
+                    // 只取消本记录专属令牌，不在此 Dispose：执行体可能仍持有该 token，
+                    // 释放延迟至 CompleteAsync（终态）或队列 Dispose，规避 ObjectDisposedException。
+                    _currentExecution.Cts?.Cancel();
                     _currentExecution.Status = ExecutionStatus.Cancelled;
                     _currentExecution.CompletedAt = DateTime.UtcNow;
 
@@ -178,7 +177,6 @@ internal class SessionExecutionQueue
                     if (_pendingQueue.TryDequeue(out var next))
                     {
                         _currentExecution = next;
-                        _currentCts = new CancellationTokenSource();
                         next.Status = ExecutionStatus.Pending;
                         next.QueuePosition = 0;
                         _lastActiveTime = DateTime.UtcNow;
@@ -199,6 +197,10 @@ internal class SessionExecutionQueue
             {
                 if (item.ExecutionId == executionId && !found)
                 {
+                    // 排队项从未被消费，无人持有其 token，可直接取消并释放
+                    item.Cts?.Cancel();
+                    item.Cts?.Dispose();
+                    item.Cts = null;
                     item.Status = ExecutionStatus.Cancelled;
                     item.CompletedAt = DateTime.UtcNow;
                     found = true;
@@ -241,7 +243,7 @@ internal class SessionExecutionQueue
     /// </summary>
     public async Task UpdateQueuePositionsAsync()
     {
-        await _lock.WaitAsync();
+        await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
             var index = 0;
@@ -261,7 +263,13 @@ internal class SessionExecutionQueue
     /// </summary>
     public void Dispose()
     {
-        _currentCts?.Dispose();
+        // 释放当前项与所有排队项各自的 CTS
+        _currentExecution?.Cts?.Dispose();
+        foreach (var item in _pendingQueue)
+        {
+            item.Cts?.Dispose();
+        }
+        _pendingQueue.Clear();
         _lock.Dispose();
     }
 }

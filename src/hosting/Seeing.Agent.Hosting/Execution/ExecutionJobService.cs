@@ -42,7 +42,7 @@ namespace Seeing.Agent.Hosting.Execution;
 /// Background execution service that manages execution jobs independently of UI connections.
 /// Supports queuing per session, event streaming, and automatic cleanup.
 /// </summary>
-public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecutionSubmitter, IExecutionInFlightBoundary
+public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStatusProvider, IExecutionSubmitter, IExecutionInFlightBoundary
 {
     private readonly ConcurrentDictionary<string, SessionExecutionQueue> _sessionQueues = new();
     private readonly ConcurrentDictionary<string, ExecutionRecord> _executions = new();
@@ -232,19 +232,10 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
     }
 
     /// <inheritdoc />
-    public Task<bool> CancelAsync(string executionId, CancellationToken cancellationToken = default)
+    public async Task<bool> CancelAsync(string executionId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(Cancel(executionId));
-    }
 
-    /// <summary>
-    /// Cancels an execution.
-    /// </summary>
-    /// <param name="executionId">The execution ID to cancel.</param>
-    /// <returns>True if cancelled, false if not found or already terminal.</returns>
-    public bool Cancel(string executionId)
-    {
         if (!_executions.TryGetValue(executionId, out var record))
             return false;
 
@@ -254,7 +245,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
         if (!_sessionQueues.TryGetValue(record.SessionId, out var queue))
             return false;
 
-        var cancelled = Task.Run(() => queue.CancelAsync(executionId)).GetAwaiter().GetResult();
+        var cancelled = await queue.CancelAsync(executionId).ConfigureAwait(false);
 
         if (cancelled)
         {
@@ -283,6 +274,15 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
 
         return cancelled;
     }
+
+    /// <summary>
+    /// Cancels an execution.
+    /// </summary>
+    /// <param name="executionId">The execution ID to cancel.</param>
+    /// <returns>True if cancelled, false if not found or already terminal.</returns>
+    /// 同步兼容入口：内部委托 <see cref="CancelAsync"/>；有交互上下文的调用方应优先使用异步入口。
+    public bool Cancel(string executionId)
+        => CancelAsync(executionId).ConfigureAwait(false).GetAwaiter().GetResult();
 
     /// <summary>
     /// 取消会话级联取消：取消指定会话及其所有子会话（Relation==Child）下未终态的执行。
@@ -477,8 +477,21 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
 
         // Mark as running（若已被取消/推进则返回 false，避免把已终态记录重新置 Running）
         if (!await queue.StartAsync())
+        {
+            // 记录已终态（如启动窗口期被取消）：不会再有 finally → CompleteAsync 释放其 CTS，此处兜底释放。
+            // 若返回 false 仅因记录已 Running（非终态），则不得释放，避免破坏在途执行持有的令牌。
+            if (record.IsTerminal)
+            {
+                record.Cts?.Dispose();
+                record.Cts = null;
+            }
             return;
+        }
         record.StartedAt = DateTime.UtcNow;
+
+        // 快照本记录专属取消令牌并全程使用：令牌绑定执行记录，取消后队列推进更换 current 不影响本执行，
+        // 消除“换靶”导致的 exec 串扰（闪断根因）。CTS 已由 Submit/StartAsync 保证非空。
+        var executionToken = record.Cts?.Token ?? CancellationToken.None;
         _loopScheduler?.SetLoopBusy(record.SessionId, true);
 
         _logger.LogInformation("Execution {ExecutionId} started", record.ExecutionId);
@@ -546,7 +559,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             {
                 CommandResultEvent? lastCommandEvent = null;
                 await foreach (var cmdEvent in ProcessCommandAsync(
-                    record.SessionId, inputText, session, context, commandRegistry, queue.CurrentCancellationToken))
+                    record.SessionId, inputText, session, context, commandRegistry, executionToken))
                 {
                     if (cmdEvent != null)
                     {
@@ -589,16 +602,14 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
                 // Execute agent
                 // 取消不再主动 throw：执行器（事件流水线）会产出终态事件（工具 Cancelled / LoopCancelledEvent），
                 // 这些事件必须在取消后仍被处理与发布。OCE 由下方 catch 兜底（执行器未转换为事件的极端情况）。
-                // 快照取消令牌：避免 BuildAgentContext 与 ExecuteAsync 两次读取 CurrentCancellationToken 读到不同值
-                // （取消推进队列后令牌可能已更换，导致上下文与执行器使用的令牌不一致）。
-                var execToken = queue.CurrentCancellationToken;
+                // 令牌已在本方法开头绑定本记录并快照（executionToken），BuildAgentContext 与 ExecuteAsync 共用同一令牌。
                 var loopFailed = false;
                 string? loopError = null;
                 await foreach (var evt in executionRouter.ExecuteAsync(
                     context.Agent,
                     messages,
-                    BuildAgentContext(context, execToken),
-                    execToken))
+                    BuildAgentContext(context, executionToken),
+                    executionToken))
                 {
                     // 事件流语义：LLM/Agent 失败以 ErrorEvent + LoopCompleteEvent(Success=false) 表达（不抛异常）
                     // 若不在此捕获，下方正常结束路径会把 record 标记为 Completed，导致 task_status 无法判定失败。
@@ -710,7 +721,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             });
 
             // Complete the execution and start next
-            var nextExecution = await queue.CompleteAsync(record.ExecutionId, record.Status);
+            var nextExecution = await queue.CompleteAsync(record, record.Status);
 
             // Schedule cleanup
             _ = CleanupExecutionAsync(record.ExecutionId);
@@ -1419,8 +1430,15 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
 
     /// <summary>
     /// Disposes all resources.
+    /// 同步兼容入口：内部委托 <see cref="DisposeAsync"/>；宿主支持时应优先调用异步释放。
     /// </summary>
     public void Dispose()
+        => DisposeAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+
+    /// <summary>
+    /// 异步释放全部资源：取消所有在途执行并释放各执行记录的 CTS。
+    /// </summary>
+    public async ValueTask DisposeAsync()
     {
         if (_disposed)
             return;
@@ -1441,7 +1459,7 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
                     var current = queue.CurrentExecution;
                     if (current == null || current.IsTerminal)
                         break;
-                    queue.CancelAsync(current.ExecutionId).GetAwaiter().GetResult();
+                    await queue.CancelAsync(current.ExecutionId).ConfigureAwait(false);
                 }
             }
             catch
@@ -1452,6 +1470,17 @@ public class ExecutionJobService : IDisposable, IExecutionStatusProvider, IExecu
             queue.Dispose();
         }
         _sessionQueues.Clear();
+
+        // 释放终态执行记录的 CTS：含“已取消并被推出队列、不再被队列引用”的记录，避免泄漏。
+        // 仍在途的记录由其 ProcessExecutionAsync 的 finally → CompleteAsync 负责释放。
+        foreach (var record in _executions.Values)
+        {
+            if (record.IsTerminal)
+            {
+                record.Cts?.Dispose();
+                record.Cts = null;
+            }
+        }
         _executions.Clear();
 
         _logger.LogInformation("ExecutionJobService disposed");

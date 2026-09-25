@@ -1373,13 +1373,13 @@
     private async Task OnCancelExecution()
     {
         // 1) 立即清本地执行态（原子、无 await）
-        var executionId = SessionState.CurrentExecutionId;
         var sessionId = SessionState.SessionId;
         SessionState.CancelExecution();
         SessionState.ExecutionStatus = ExecutionStatus.Cancelled;
         SessionState.CurrentExecutionId = null;
 
-        // 2) 后端取消（尽力而为）
+        // 2) 后端取消（尽力而为）：统一走异步会话级取消，
+        // 原先额外调用的同步阻塞 ChatOrchestrator.Cancel(executionId) 与本次会话级取消重复，已移除。
         if (!string.IsNullOrEmpty(sessionId))
         {
             try
@@ -1400,18 +1400,6 @@
         catch
         {
             // ignore
-        }
-
-        if (!string.IsNullOrEmpty(executionId))
-        {
-            try
-            {
-                ChatOrchestrator.Cancel(executionId);
-            }
-            catch
-            {
-                // ignore
-            }
         }
 
         // 3) 收尾（无论后端结果如何都要执行）

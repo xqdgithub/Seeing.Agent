@@ -73,6 +73,18 @@ public class ExecutionRecord
     public DateTime? QueuedAt { get; set; }
 
     /// <summary>
+    /// 本执行专属的取消令牌源。
+    /// <para>
+    /// 在入队时创建并绑定到执行记录本身：无论该记录成为当前项还是排队项，取消都只作用于本记录。
+    /// 队列推进更换“当前项”不会转移取消目标，从而消除 exec 之间的取消串扰（闪断根因）。
+    /// </para>
+    /// <para>
+    /// 释放时机：记录进入终态（<c>CompleteAsync</c>）或队列整体释放；不在取消瞬间释放，避免执行体仍在使用令牌时触发 ObjectDisposedException。
+    /// </para>
+    /// </summary>
+    public CancellationTokenSource? Cts { get; set; }
+
+    /// <summary>
     /// Whether this execution is in a terminal state.
     /// </summary>
     public bool IsTerminal => Status is ExecutionStatus.Completed
