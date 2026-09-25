@@ -144,6 +144,39 @@ namespace Seeing.Agent.Tests.Detection
         }
 
         [Fact]
+        public void ComputeArgumentsHash_ShouldReturnStableNonEmptyHash_WhenArgumentsEmptyOrNull()
+        {
+            // 无参数工具的 arguments 可能为 null / 空串：必须产出稳定且非空的哈希，
+            // 否则 Check 会因空哈希抛异常，导致整轮 Loop 失败。
+            var hashEmpty = LoopDetector.ComputeArgumentsHash(string.Empty);
+            var hashNull = LoopDetector.ComputeArgumentsHash(null!);
+            var hashEmptyAgain = LoopDetector.ComputeArgumentsHash(string.Empty);
+
+            hashEmpty.Should().NotBeNullOrEmpty();
+            hashNull.Should().Be(hashEmpty);
+            hashEmptyAgain.Should().Be(hashEmpty);
+        }
+
+        [Fact]
+        public void Check_ShouldDetectLoop_ForNoArgumentTool()
+        {
+            // 无参数工具连续调用：空参数哈希应能正常参与检测（连续 3 次告警），不得抛异常。
+            var detector = new LoopDetector(threshold: 3);
+            const string toolName = "noarg_tool";
+            var argsHash = LoopDetector.ComputeArgumentsHash(string.Empty);
+
+            var result1 = detector.Check(toolName, argsHash);
+            var result2 = detector.Check(toolName, argsHash);
+            var result3 = detector.Check(toolName, argsHash);
+
+            result1.ConsecutiveCount.Should().Be(1);
+            result2.ConsecutiveCount.Should().Be(2);
+            result3.IsLoop.Should().BeTrue();
+            result3.ConsecutiveCount.Should().Be(3);
+            result3.RecommendedAction.Should().Be(LoopAction.Warn);
+        }
+
+        [Fact]
         public void RecommendedAction_ShouldBeTerminate_WhenCountExceedsThresholdByTwo()
         {
             var detector = new LoopDetector(threshold: 3);

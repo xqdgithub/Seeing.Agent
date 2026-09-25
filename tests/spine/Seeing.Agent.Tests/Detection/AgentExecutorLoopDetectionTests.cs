@@ -100,6 +100,36 @@ public class AgentExecutorLoopDetectionTests
         complete.Error.Should().Contain("最大步数");
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task ExecuteAsync_SameToolWithoutArguments_FiveTimes_ShouldTerminateWithoutThrowing(string? arguments)
+    {
+        // 无参数工具（arguments 为 null / 空串）不应在 LoopDetector 处抛异常，
+        // 且同样应累计为循环并于第 5 次终止。
+        var llmCalls = 0;
+        var llm = new Mock<ILlmService>();
+        llm.Setup(s => s.CompleteStreamAsync(
+                It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns((string _, ChatRequest _, string? _, CancellationToken _) =>
+            {
+                llmCalls++;
+                return StreamToolCall("loop_tool", arguments);
+            });
+
+        var executor = await CreateExecutorAsync(llm.Object, new LoopTool());
+        var events = await Run(executor, maxSteps: 20);
+
+        var complete = events.OfType<LoopCompleteEvent>().Single();
+        complete.Success.Should().BeFalse();
+        complete.Reason.Should().Be("loop-detected");
+        complete.Error.Should().Contain("循环");
+
+        // 第 3、4 次各一条警告，第 5 次终止。
+        events.OfType<ErrorEvent>().Where(e => e.Source == LoopSource).Should().HaveCount(2);
+        llmCalls.Should().Be(5);
+    }
+
     private static async Task<List<IMessageEvent>> Run(AgentExecutor executor, int maxSteps)
     {
         var agent = new AgentDefinition
@@ -123,7 +153,7 @@ public class AgentExecutorLoopDetectionTests
         return events;
     }
 
-    private static async IAsyncEnumerable<StreamUpdate> StreamToolCall(string name, string arguments)
+    private static async IAsyncEnumerable<StreamUpdate> StreamToolCall(string name, string? arguments)
     {
         yield return new StreamUpdate
         {

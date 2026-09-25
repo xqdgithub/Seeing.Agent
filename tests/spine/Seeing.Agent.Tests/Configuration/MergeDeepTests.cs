@@ -127,29 +127,43 @@ public class MergeDeepTests
     }
 
     [Fact]
-    public void Merge_NumericZero_OverrideWins()
+    public void Merge_NumericZero_DoesNotOverride_UserValue()
     {
-        // 决策：数值 0 / TimeSpan.Zero 是合法覆盖值，不再当作“未设置”
+        // 撤销“数值 0 始终覆盖”：反序列化无法区分“未写”与“写 0”，
+        // 故数值 0 / TimeSpan.Zero 恢复“等于默认值即视为未设置”的原有分层语义。
         var baseObj = new NumericConfig { Count = 5, Ratio = 1.5, Interval = TimeSpan.FromSeconds(30) };
         var overrideObj = new NumericConfig { Count = 0, Ratio = 0, Interval = TimeSpan.Zero };
 
         var result = MergeDeep.Merge(baseObj, overrideObj);
 
-        result.Count.Should().Be(0);
-        result.Ratio.Should().Be(0);
-        result.Interval.Should().Be(TimeSpan.Zero);
+        result.Count.Should().Be(5);
+        result.Ratio.Should().Be(1.5);
+        result.Interval.Should().Be(TimeSpan.FromSeconds(30));
     }
 
     [Fact]
-    public void Merge_NullableZero_OverrideWins()
+    public void Merge_NumericNonZero_StillOverrides()
     {
-        // 可空类型的“未设置”由 null 表达；持有值 0 应覆盖
+        var baseObj = new NumericConfig { Count = 5, Ratio = 1.5, Interval = TimeSpan.FromSeconds(30) };
+        var overrideObj = new NumericConfig { Count = 7, Ratio = 2.5, Interval = TimeSpan.FromSeconds(10) };
+
+        var result = MergeDeep.Merge(baseObj, overrideObj);
+
+        result.Count.Should().Be(7);
+        result.Ratio.Should().Be(2.5);
+        result.Interval.Should().Be(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void Merge_NullableZero_DoesNotOverride()
+    {
+        // 可空数值 0 同样视为“未设置”，保留用户级非零值；null 已由 null 分支处理。
         var baseObj = new TestConfig { MaxTokens = 100 };
         var overrideObj = new TestConfig { MaxTokens = 0 };
 
         var result = MergeDeep.Merge(baseObj, overrideObj);
 
-        result.MaxTokens.Should().Be(0);
+        result.MaxTokens.Should().Be(100);
     }
 
     [Fact]

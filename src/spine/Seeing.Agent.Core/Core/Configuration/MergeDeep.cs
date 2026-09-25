@@ -7,8 +7,8 @@ namespace Seeing.Agent.Core.Configuration
     /// 深度合并工具 - 用于层级配置合并
     /// <para>
     /// 合并规则：
-    /// - 原始类型：覆盖值生效；bool、数值 0、TimeSpan.Zero 亦为合法覆盖（其余类型默认值视为未设置）
-    /// - 可空类型：null 表示未设置，持有值（含 0）一律覆盖
+    /// - 原始类型：覆盖值生效（非默认值时）；bool false 例外，视为合法覆盖
+    /// - 可空类型：null 表示未设置；持有默认值（如 0）同样视为未设置
     /// - 数组：覆盖值替换（非合并）
     /// - 对象：递归属性合并
     /// - 字典：合并键，冲突时覆盖值生效
@@ -78,20 +78,25 @@ namespace Seeing.Agent.Core.Configuration
             if (baseValue == null)
                 return CloneValue(overrideValue);
 
-            // 处理可空类型：可空类型的“未设置”由 null 表达（上方已处理），
-            // 只要持有值（含 0 / false）均为合法覆盖。
-            if (Nullable.GetUnderlyingType(type) != null)
-                return overrideValue;
-
             // 处理原始类型和字符串
             if (IsPrimitiveType(type))
             {
-                // bool 的 false、数值 0、TimeSpan.Zero 都是合法覆盖值（如 Acp.Enabled），不能当作“未设置”
-                if (type == typeof(bool) || IsAlwaysOverrideScalar(type))
+                // bool 的 false 是合法覆盖值（如 Acp.Enabled），不能当作“未设置”
+                if (type == typeof(bool))
                     return overrideValue;
 
                 // 如果覆盖值是默认值，使用基础值
                 if (IsDefault(overrideValue, type))
+                    return baseValue;
+                return overrideValue;
+            }
+
+            // 处理可空类型
+            // 反序列化无法区分“未写”与“写 0”，故默认值（如 0）视为未设置，保留基础值。
+            var underlyingType = Nullable.GetUnderlyingType(type);
+            if (underlyingType != null)
+            {
+                if (IsDefault(overrideValue, underlyingType))
                     return baseValue;
                 return overrideValue;
             }
@@ -158,26 +163,6 @@ namespace Seeing.Agent.Core.Configuration
                    type == typeof(DateTimeOffset) ||
                    type == typeof(TimeSpan) ||
                    type == typeof(Guid);
-        }
-
-        /// <summary>
-        /// 数值 0 / TimeSpan.Zero 亦为合法覆盖的标量类型。
-        /// <para>这些类型的默认值（0）在配置中无法区分“未设置”，因此按决策一律视为合法覆盖值。</para>
-        /// </summary>
-        private static bool IsAlwaysOverrideScalar(Type type)
-        {
-            return type == typeof(int) ||
-                   type == typeof(long) ||
-                   type == typeof(short) ||
-                   type == typeof(byte) ||
-                   type == typeof(sbyte) ||
-                   type == typeof(uint) ||
-                   type == typeof(ulong) ||
-                   type == typeof(ushort) ||
-                   type == typeof(float) ||
-                   type == typeof(double) ||
-                   type == typeof(decimal) ||
-                   type == typeof(TimeSpan);
         }
 
         /// <summary>

@@ -195,12 +195,11 @@ public class LoopDetector
     /// </summary>
     /// <param name="arguments">参数字符串</param>
     /// <returns>SHA256 哈希值</returns>
-    public static string ComputeArgumentsHash(string arguments)
+    public static string ComputeArgumentsHash(string? arguments)
     {
-        if (string.IsNullOrEmpty(arguments))
-            return string.Empty;
-
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(arguments));
+        // 无参数工具（arguments 为 null / 空串）也必须产出稳定且非空的哈希：
+        // 否则 Check 会因空哈希抛 ArgumentNullException，导致整轮 Loop 失败、工具无法执行。
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(arguments ?? string.Empty));
         return Convert.ToHexString(bytes);
     }
 
