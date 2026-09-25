@@ -415,7 +415,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             }
         }
 
-        if (!TryReplaceCache(request.Version, models))
+        if (!TryReplaceCache(request.Version, models, CollectActiveProviderIds()))
         {
             _logger.LogDebug("丢弃过期模型目录刷新 {Version}（当前 {CurrentVersion}）",
                 request.Version, Volatile.Read(ref _refreshVersion));
@@ -435,6 +435,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         CancellationToken ct)
     {
         var slice = await LoadProviderSliceAsync(providerId, ct).ConfigureAwait(false);
+        var activeProviderIds = CollectActiveProviderIds();
 
         lock (_cacheLock)
         {
@@ -451,6 +452,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
                 merged[key] = config;
 
             ReplaceCacheLocked(merged);
+            PruneInactiveProviderVersionsLocked(activeProviderIds);
         }
 
         _logger.LogDebug("已刷新 Provider {ProviderId} 模型目录，共 {Count} 个模型", providerId, slice.Count);
@@ -628,7 +630,10 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         _logger.LogDebug("模型缓存已刷新，共 {Count} 个模型", models.Count);
     }
 
-    private bool TryReplaceCache(long version, IReadOnlyDictionary<string, ModelConfig> models)
+    private bool TryReplaceCache(
+        long version,
+        IReadOnlyDictionary<string, ModelConfig> models,
+        IReadOnlySet<string> activeProviderIds)
     {
         lock (_cacheLock)
         {
@@ -638,10 +643,53 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
                 return false;
 
             ReplaceCacheLocked(models);
+            PruneInactiveProviderVersionsLocked(activeProviderIds);
         }
 
         _logger.LogDebug("模型缓存已刷新，共 {Count} 个模型", models.Count);
         return true;
+    }
+
+    /// <summary>
+    /// 采集当前仍存在的 Provider id 集合（注册表 ∪ 用户级配置）。
+    /// 调用方不得持有 <see cref="_cacheLock"/>，以避免与配置/注册表锁形成反向锁序。
+    /// </summary>
+    private HashSet<string> CollectActiveProviderIds()
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var providerId in _registry.GetProviders().Keys)
+            ids.Add(providerId);
+        foreach (var providerId in GetUserProviders().Keys)
+            ids.Add(providerId);
+
+        return ids;
+    }
+
+    /// <summary>
+    /// 裁剪已不存在 Provider 的刷新版本条目，避免长驻进程在 Provider 反复增删后无界增长。
+    /// 仅在缓存替换成功后调用，且调用方须持有 <see cref="_cacheLock"/>。
+    /// <para>
+    /// 语义安全：被裁剪条目的 Provider 已不在注册表/配置中，其可能存在的在途刷新即使应用也只会
+    /// 移除残留缓存条目；对仍存在的 Provider，其在途判定的作用域版本语义保持不变。
+    /// </para>
+    /// </summary>
+    private void PruneInactiveProviderVersionsLocked(IReadOnlySet<string> activeProviderIds)
+    {
+        if (_latestProviderRefreshVersions.Count == 0)
+            return;
+
+        List<string>? inactive = null;
+        foreach (var providerId in _latestProviderRefreshVersions.Keys)
+        {
+            if (!activeProviderIds.Contains(providerId))
+                (inactive ??= []).Add(providerId);
+        }
+
+        if (inactive is null)
+            return;
+
+        foreach (var providerId in inactive)
+            _latestProviderRefreshVersions.Remove(providerId);
     }
 
     /// <summary>

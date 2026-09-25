@@ -30,7 +30,7 @@ namespace Seeing.Agent.Core.Tools
     /// 此类不重复检查以避免双重验证。
     /// </para>
     /// </summary>
-    public class ToolManager : IToolManager
+    public class ToolManager : IToolManager, IDisposable
     {
         private readonly ILogger<ToolManager> _logger;
         private readonly Abstractions.Hooks.IHookManager _hookManager;
@@ -739,6 +739,19 @@ namespace Seeing.Agent.Core.Tools
             };
 
             return await ExecuteAsync(toolCall, sessionId, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 释放工具管理器持有的资源：写盘门（SemaphoreSlim）含系统句柄，须随宿主关闭显式释放。
+        /// <para>
+        /// 其余字段（<c>_toolStateLock</c>/<c>_registrationLock</c> 为 object，<c>_tools</c> 为
+        /// ConcurrentDictionary）均不持有需释放的资源。
+        /// </para>
+        /// </summary>
+        public void Dispose()
+        {
+            _toolStateWriteGate.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

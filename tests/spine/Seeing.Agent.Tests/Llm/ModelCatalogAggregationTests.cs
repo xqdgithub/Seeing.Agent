@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Configuration;
+using System.Reflection;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -404,6 +405,80 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         await WaitUntilAsync(() => first.CallCount > firstCalls, TimeSpan.FromSeconds(5));
         second.CallCount.Should().Be(secondCalls);
+    }
+
+    [Fact]
+    public async Task ProvidersChanged_ProviderUnregistered_PrunesProviderRefreshVersion()
+    {
+        var config = await CreateConfigAsync(new SeeingAgentOptions());
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        var provider = new MutableModelsProvider("ghost");
+        provider.SetModels([new ModelConfig { Id = "m" }]);
+        registry.Register(provider, ownerExtensionId: "ext");
+
+        await WaitUntilAsync(
+            () => catalog.GetModels().ContainsKey("ghost/m"),
+            TimeSpan.FromSeconds(5));
+        HasProviderRefreshVersion(catalog, "ghost").Should().BeTrue();
+
+        registry.Unregister("ghost");
+
+        await WaitUntilAsync(
+            () => catalog.GetModels().Keys.All(key => !key.StartsWith("ghost/", StringComparison.Ordinal)),
+            TimeSpan.FromSeconds(5));
+
+        HasProviderRefreshVersion(catalog, "ghost").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task FullRefresh_PrunesRefreshVersionsOfInactiveProviders()
+    {
+        var config = await CreateConfigAsync(new SeeingAgentOptions());
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        SetProviderRefreshVersion(catalog, "phantom", 1L);
+        HasProviderRefreshVersion(catalog, "phantom").Should().BeTrue();
+
+        await catalog.RefreshCatalogAsync(ct: TestContext.Current.CancellationToken);
+
+        HasProviderRefreshVersion(catalog, "phantom").Should().BeFalse();
+    }
+
+    private static Dictionary<string, long> GetProviderRefreshVersions(ModelConfigManager catalog)
+    {
+        var field = typeof(ModelConfigManager).GetField(
+            "_latestProviderRefreshVersions",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return (Dictionary<string, long>)field.GetValue(catalog)!;
+    }
+
+    private static object GetCacheLock(ModelConfigManager catalog)
+    {
+        var field = typeof(ModelConfigManager).GetField(
+            "_cacheLock",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return field.GetValue(catalog)!;
+    }
+
+    private static bool HasProviderRefreshVersion(ModelConfigManager catalog, string providerId)
+    {
+        lock (GetCacheLock(catalog))
+            return GetProviderRefreshVersions(catalog).ContainsKey(providerId);
+    }
+
+    private static void SetProviderRefreshVersion(ModelConfigManager catalog, string providerId, long version)
+    {
+        lock (GetCacheLock(catalog))
+            GetProviderRefreshVersions(catalog)[providerId] = version;
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
