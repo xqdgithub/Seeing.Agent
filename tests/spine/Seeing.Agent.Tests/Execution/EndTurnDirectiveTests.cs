@@ -39,7 +39,7 @@ public class EndTurnDirectiveTests
                 return StreamToolCall("end_turn_tool");
             });
 
-        var executor = CreateExecutor(llm.Object, manager => manager.RegisterTool(new EndTurnTool()));
+        var executor = await CreateExecutor(llm.Object, manager => manager.RegisterToolAsync(new EndTurnTool()));
 
         var agent = new AgentDefinition
         {
@@ -84,7 +84,7 @@ public class EndTurnDirectiveTests
                 It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .Returns(StreamToolCall("end_turn_tool"));
 
-        var executor = CreateExecutor(llm.Object, manager => manager.RegisterTool(new EndTurnTool(reason: null)));
+        var executor = await CreateExecutor(llm.Object, manager => manager.RegisterToolAsync(new EndTurnTool(reason: null)));
 
         var agent = new AgentDefinition
         {
@@ -126,13 +126,14 @@ public class EndTurnDirectiveTests
         };
     }
 
-    private static AgentExecutor CreateExecutor(
+    private static async Task<AgentExecutor> CreateExecutor(
         ILlmService llm,
-        Action<ToolManager>? configureTools = null)
+        Func<ToolManager, Task>? configureTools = null)
     {
         var hookManager = new HookManager(NullLogger<HookManager>.Instance);
         var toolManager = new ToolManager(NullLogger<ToolManager>.Instance, hookManager);
-        configureTools?.Invoke(toolManager);
+        if (configureTools is not null)
+            await configureTools(toolManager);
 
         var agentRegistry = new Mock<IAgentRegistry>();
 

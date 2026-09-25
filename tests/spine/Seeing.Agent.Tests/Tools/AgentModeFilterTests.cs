@@ -42,7 +42,7 @@ namespace Seeing.Agent.Tests.Tools
         public async Task GetToolSchemasForMode_ShouldReturnAllRegisteredTools_RegardlessOfMode()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(SampleTools));
+            await invoker.RegisterToolsFromTypeAsync(typeof(SampleTools));
 
             foreach (var mode in new[] { AgentMode.Primary, AgentMode.SubAgent, AgentMode.All })
             {
@@ -56,7 +56,7 @@ namespace Seeing.Agent.Tests.Tools
         public async Task GetToolSchemasForAgentAsync_SubAgentWithDeniedTask_ExcludesTask()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(SampleTools));
+            await invoker.RegisterToolsFromTypeAsync(typeof(SampleTools));
 
             var agent = new AgentDefinition
             {
@@ -75,7 +75,7 @@ namespace Seeing.Agent.Tests.Tools
         public async Task Default_ShouldMatchPrimary_AllTools()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(SampleTools));
+            await invoker.RegisterToolsFromTypeAsync(typeof(SampleTools));
 
             var defaultSchemas = await invoker.GetToolSchemasForModeAsync();
             var primarySchemas = await invoker.GetToolSchemasForModeAsync(AgentMode.Primary);

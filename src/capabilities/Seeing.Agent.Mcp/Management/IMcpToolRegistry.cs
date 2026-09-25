@@ -10,7 +10,7 @@ public interface IMcpToolRegistry
     Task RegisterToolAsync(string serverName, string toolId, McpToolInfo toolInfo, CancellationToken ct = default);
     Task UnregisterToolAsync(string serverName, string toolId, CancellationToken ct = default);
     Task<McpOperationResult> UnregisterAllToolsAsync(string serverName);
-    void UpdateToolExecutor(string serverName, Func<string, Dictionary<string, object?>, Task<McpToolResult>> executor);
+    Task UpdateToolExecutorAsync(string serverName, Func<string, Dictionary<string, object?>, Task<McpToolResult>> executor);
     bool HasTool(string toolId);
     int GetToolCount(string serverName);
 }

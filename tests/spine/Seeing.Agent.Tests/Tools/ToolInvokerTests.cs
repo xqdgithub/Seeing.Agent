@@ -34,22 +34,22 @@ namespace Seeing.Agent.Tests.Tools
         }
 
         [Fact]
-        public void RegisterTool_ShouldAddTool()
+        public async Task RegisterTool_ShouldAddTool()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             var tool = new TestTool();
 
-            invoker.RegisterTool(tool);
+            await invoker.RegisterToolAsync(tool);
 
             invoker.HasTool("test_tool").Should().BeTrue();
         }
 
         [Fact]
-        public void RegisterToolsFromType_ShouldDiscoverAnnotatedMethods()
+        public async Task RegisterToolsFromType_ShouldDiscoverAnnotatedMethods()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
 
-            invoker.RegisterToolsFromType(typeof(TestToolClass));
+            await invoker.RegisterToolsFromTypeAsync(typeof(TestToolClass));
 
             invoker.HasTool("Add").Should().BeTrue();
             invoker.HasTool("greet").Should().BeTrue();
@@ -59,7 +59,7 @@ namespace Seeing.Agent.Tests.Tools
         public async Task ExecuteAsync_ShouldCallToolAndReturnResult()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(TestToolClass));
+            await invoker.RegisterToolsFromTypeAsync(typeof(TestToolClass));
 
             var toolCall = new ToolCall
             {
@@ -102,7 +102,7 @@ namespace Seeing.Agent.Tests.Tools
         public async Task ExecuteAsync_WithDictionaryArgs_ShouldWork()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(TestToolClass));
+            await invoker.RegisterToolsFromTypeAsync(typeof(TestToolClass));
 
             var result = await invoker.ExecuteAsync("Add", new Dictionary<string, object?> { ["a"] = 10, ["b"] = 20 }, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -113,7 +113,7 @@ namespace Seeing.Agent.Tests.Tools
         public async Task GetToolSchemas_ShouldReturnAllSchemas()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(TestToolClass));
+            await invoker.RegisterToolsFromTypeAsync(typeof(TestToolClass));
 
             var schemas = await invoker.GetToolSchemasAsync();
 
@@ -126,7 +126,7 @@ namespace Seeing.Agent.Tests.Tools
         {
             // Arrange
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(TestToolClass));
+            await invoker.RegisterToolsFromTypeAsync(typeof(TestToolClass));
             var agent = new AgentDefinition
             {
                 Name = "test",
@@ -147,7 +147,7 @@ namespace Seeing.Agent.Tests.Tools
         {
             // Arrange
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterToolsFromType(typeof(TestToolClass));
+            await invoker.RegisterToolsFromTypeAsync(typeof(TestToolClass));
             var agent = new AgentDefinition
             {
                 Name = "test",
@@ -172,7 +172,7 @@ namespace Seeing.Agent.Tests.Tools
             var invoker = new ToolManager(
                 _loggerMock.Object, _hookManager,
                 permissionPolicy: permissionPolicy.Object);
-            invoker.RegisterTool(new TestTool());
+            await invoker.RegisterToolAsync(new TestTool());
 
             permissionPolicy
                 .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
@@ -213,7 +213,7 @@ namespace Seeing.Agent.Tests.Tools
             var invoker = new ToolManager(
                 _loggerMock.Object, _hookManager,
                 permissionPolicy: permissionPolicy.Object);
-            invoker.RegisterTool(new TestTool());
+            await invoker.RegisterToolAsync(new TestTool());
 
             permissionPolicy
                 .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
@@ -259,7 +259,7 @@ namespace Seeing.Agent.Tests.Tools
             var invoker = new ToolManager(
                 _loggerMock.Object, _hookManager,
                 permissionPolicy: permissionPolicy.Object);
-            invoker.RegisterTool(new TestTool());
+            await invoker.RegisterToolAsync(new TestTool());
 
             permissionPolicy
                 .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
@@ -302,7 +302,7 @@ namespace Seeing.Agent.Tests.Tools
             var invoker = new ToolManager(
                 _loggerMock.Object, _hookManager,
                 permissionPolicy: permissionPolicy.Object);
-            invoker.RegisterTool(new TestTool());
+            await invoker.RegisterToolAsync(new TestTool());
 
             permissionPolicy
                 .Setup(p => p.Evaluate("test_tool", It.IsAny<JsonElement>()))
@@ -331,7 +331,7 @@ namespace Seeing.Agent.Tests.Tools
         {
             // Arrange -- no policy, no authorizer: tool runs fine
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
-            invoker.RegisterTool(new TestTool());
+            await invoker.RegisterToolAsync(new TestTool());
 
             var toolCall = new ToolCall
             {

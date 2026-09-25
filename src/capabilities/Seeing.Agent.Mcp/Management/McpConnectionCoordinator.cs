@@ -158,7 +158,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
                 return abortedBeforeReady;
 
             // 绑定工具执行器到实际客户端
-            _toolRegistry.UpdateToolExecutor(_serverName, async (toolName, args) =>
+            await _toolRegistry.UpdateToolExecutorAsync(_serverName, async (toolName, args) =>
             {
                 if (_client == null)
                     return new McpToolResult { IsError = true, Content = "MCP 客户端未连接" };

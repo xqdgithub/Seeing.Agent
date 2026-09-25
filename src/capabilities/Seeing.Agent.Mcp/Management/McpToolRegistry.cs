@@ -163,12 +163,13 @@ internal sealed class McpToolRegistry : IMcpToolRegistry
         return McpOperationResult.Succeeded(serverName, McpOperationType.Remove, null);
     }
 
-    public void UpdateToolExecutor(string serverName, Func<string, Dictionary<string, object?>, Task<McpToolResult>> executor)
+    public async Task UpdateToolExecutorAsync(string serverName, Func<string, Dictionary<string, object?>, Task<McpToolResult>> executor)
     {
         if (!_serverTools.TryGetValue(serverName, out var toolIds))
             return;
 
-        foreach (var toolId in toolIds)
+        // 快照工具 ID，避免遍历期间集合被并发修改
+        foreach (var toolId in toolIds.ToArray())
         {
             if (_mcpTools.TryGetValue(toolId, out var tool))
             {
@@ -181,7 +182,7 @@ internal sealed class McpToolRegistry : IMcpToolRegistry
 
                 _mcpTools[toolId] = newTool;
                 _toolInvoker.UnregisterTool(toolId);
-                _toolInvoker.RegisterTool(newTool);
+                await _toolInvoker.RegisterToolAsync(newTool).ConfigureAwait(false);
             }
         }
     }

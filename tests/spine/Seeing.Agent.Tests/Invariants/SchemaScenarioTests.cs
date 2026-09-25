@@ -118,7 +118,7 @@ public class SchemaScenarioTests
         var session = SessionData.Create(scenario: "code");
         var settle = SessionSettlement.Compute(session, catalog, processScenario: "full", userToolsDisabled: null);
 
-        var toolManager = CreateToolManager(
+        var toolManager = await CreateToolManager(
             "git_status", "git_diff", "memory_search", "read", "current_time");
         var agent = new AgentDefinition { Name = "general" };
 
@@ -365,13 +365,13 @@ public class SchemaScenarioTests
         string[]? dependsOn = null) =>
         new(id, tools ?? Array.Empty<string>(), Array.Empty<string>(), dependsOn ?? []);
 
-    private static Seeing.Agent.Core.Tools.ToolManager CreateToolManager(params string[] ids)
+    private static async Task<Seeing.Agent.Core.Tools.ToolManager> CreateToolManager(params string[] ids)
     {
         var manager = new Seeing.Agent.Core.Tools.ToolManager(
             NullLogger<Seeing.Agent.Core.Tools.ToolManager>.Instance,
             new Seeing.Agent.Core.Hooks.HookManager(NullLogger<Seeing.Agent.Core.Hooks.HookManager>.Instance));
         foreach (var id in ids)
-            manager.RegisterTool(new NamedTool(id));
+            await manager.RegisterToolAsync(new NamedTool(id));
         return manager;
     }
 
@@ -422,7 +422,7 @@ public class SchemaScenarioTests
         var runtimeManager = new Mock<IAgentRuntimeManager>();
         runtimeManager.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("general");
 
-        var toolManager = CreateToolManager("git_status", "memory_search", "read", "current_time");
+        var toolManager = await CreateToolManager("git_status", "memory_search", "read", "current_time");
 
         var catalog = new ModuleCatalog();
         catalog.ReplaceAvailable(

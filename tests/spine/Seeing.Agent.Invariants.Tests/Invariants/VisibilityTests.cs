@@ -42,7 +42,7 @@ public class VisibilityTests
         // code scenario ∩ process enabled：filesystem+git，不含 memory
         settlement.SettledToolIds.Should().BeEquivalentTo(["git_status", "read", "write"]);
 
-        var manager = CreateToolManager(["read", "write", "git_status", "memory_search"]);
+        var manager = await CreateToolManager(["read", "write", "git_status", "memory_search"]);
         var agent = new AgentDefinition
         {
             Name = "t",
@@ -95,7 +95,7 @@ public class VisibilityTests
         settlement.SettledToolIds.Should().NotContain("git_commit");
         settlement.SettledToolIds.Should().NotContain("memory_search");
 
-        var manager = CreateToolManager(["read", "write", "git_status", "git_commit", "memory_search"]);
+        var manager = await CreateToolManager(["read", "write", "git_status", "git_commit", "memory_search"]);
         var agent = new AgentDefinition { Name = "t" };
         var schemas = await manager.GetToolSchemasAsync(
             settlement.SettledToolIds, agent, TestContext.Current.CancellationToken);
@@ -108,7 +108,7 @@ public class VisibilityTests
     [Fact]
     public async Task Ask_Permission_Does_Not_Exclude_Tool_From_Schema()
     {
-        var manager = CreateToolManager(["bash"]);
+        var manager = await CreateToolManager(["bash"]);
         var agent = new AgentDefinition
         {
             Name = "t",
@@ -130,12 +130,12 @@ public class VisibilityTests
         schemas.Select(s => s.Function!.Name).Should().Equal("bash");
     }
 
-    private static ToolManager CreateToolManager(IEnumerable<string> ids)
+    private static async Task<ToolManager> CreateToolManager(IEnumerable<string> ids)
     {
         var hooks = new HookManager(NullLogger<HookManager>.Instance);
         var manager = new ToolManager(NullLogger<ToolManager>.Instance, hooks);
         foreach (var id in ids)
-            manager.RegisterTool(new NamedTool(id));
+            await manager.RegisterToolAsync(new NamedTool(id));
         return manager;
     }
 

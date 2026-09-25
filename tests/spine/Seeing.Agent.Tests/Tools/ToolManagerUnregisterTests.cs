@@ -28,10 +28,10 @@ public class ToolManagerUnregisterTests
     }
 
     [Fact]
-    public void UnregisterTool_AfterRegister_RemovesFromGetTools()
+    public async Task UnregisterTool_AfterRegister_RemovesFromGetTools()
     {
         var manager = CreateManager();
-        manager.RegisterTool(new StubTool("demo"));
+        await manager.RegisterToolAsync(new StubTool("demo"));
         manager.HasTool("demo").Should().BeTrue();
 
         var removed = manager.UnregisterTool("demo");

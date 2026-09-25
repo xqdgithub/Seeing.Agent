@@ -41,6 +41,10 @@ namespace Seeing.Agent.Core.Tools
         private readonly IWorkspaceProvider? _workspace;
         private readonly IToolPermissionPolicy? _permissionPolicy;
         private readonly object _toolStateLock = new();
+        // 串行化 tool-state.json 的“快照 + 写盘”段，避免并发写同一文件抛出 IOException
+        private readonly SemaphoreSlim _toolStateWriteGate = new(1, 1);
+        // 收窄“ID 冲突检查 + 赋值”为原子段，避免并发注册同 ID 时的检查-写入竞态
+        private readonly object _registrationLock = new();
         private HashSet<string> _userDisabledTools = new(StringComparer.OrdinalIgnoreCase);
         private HashSet<string> _projectDisabledTools = new(StringComparer.OrdinalIgnoreCase);
 
@@ -201,18 +205,30 @@ namespace Seeing.Agent.Core.Tools
                 ? Path.Combine(_workspace.UserSeeingDirectory, "tool-state.json")
                 : Path.Combine(_workspace.ProjectSeeingDirectory, "tool-state.json");
 
-            HashSet<string> targetSet;
-            lock (_toolStateLock)
+            // 快照与写盘整体串行，保证落盘内容与内存最终状态一致，且同文件不并发写
+            await _toolStateWriteGate.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                targetSet = level == ConfigLevel.User ? _userDisabledTools : _projectDisabledTools;
+                List<string> snapshot;
+                lock (_toolStateLock)
+                {
+                    var targetSet = level == ConfigLevel.User ? _userDisabledTools : _projectDisabledTools;
 
-                if (enabled)
-                    targetSet.Remove(toolId);
-                else
-                    targetSet.Add(toolId);
+                    if (enabled)
+                        targetSet.Remove(toolId);
+                    else
+                        targetSet.Add(toolId);
+
+                    // 快照在锁内生成，写盘使用快照，避免集合在序列化期间被并发修改
+                    snapshot = targetSet.ToList();
+                }
+
+                await SaveDisabledSetAsync(filePath, snapshot, ct).ConfigureAwait(false);
             }
-
-            await SaveDisabledSetAsync(filePath, targetSet, ct).ConfigureAwait(false);
+            finally
+            {
+                _toolStateWriteGate.Release();
+            }
         }
 
         /// <summary>从文件加载禁用 ID 集合</summary>
@@ -247,8 +263,8 @@ namespace Seeing.Agent.Core.Tools
             return result;
         }
 
-        /// <summary>保存禁用 ID 集合到文件</summary>
-        private static async Task SaveDisabledSetAsync(string filePath, HashSet<string> disabledTools, CancellationToken ct)
+        /// <summary>保存禁用 ID 快照到文件</summary>
+        private static async Task SaveDisabledSetAsync(string filePath, IReadOnlyList<string> disabledTools, CancellationToken ct)
         {
             var dir = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -314,21 +330,7 @@ namespace Seeing.Agent.Core.Tools
         }
 
         /// <summary>
-        /// 注册工具（自动应用装饰器）
-        /// </summary>
-        public void RegisterTool(ITool tool)
-        {
-            if (tool == null || string.IsNullOrEmpty(tool.Id))
-            {
-                _logger.LogWarning("尝试注册无效工具，已跳过");
-                return;
-            }
-
-            Task.Run(async () => await RegisterToolAsync(tool)).GetAwaiter().GetResult();
-        }
-
-        /// <summary>
-        /// 注册工具（带 Hook 支持，异步版本）
+        /// 注册工具（带 Hook 支持，自动应用装饰器链；异步）。
         /// </summary>
         public async Task RegisterToolAsync(ITool tool, CancellationToken cancellationToken = default)
         {
@@ -336,13 +338,6 @@ namespace Seeing.Agent.Core.Tools
             {
                 _logger.LogWarning("尝试注册无效工具，已跳过");
                 return;
-            }
-
-            // 检测工具 ID 冲突
-            if (_tools.ContainsKey(tool.Id))
-            {
-                _logger.LogWarning("工具 ID 冲突：'{ToolId}' 已存在，将被新工具覆盖。请检查是否重复注册或命名冲突。",
-                    tool.Id);
             }
 
             // ========== Hook: tool.before_register ==========
@@ -374,7 +369,18 @@ namespace Seeing.Agent.Core.Tools
             // 应用装饰器
             var finalTool = _decoratorRegistry?.Apply(tool) ?? tool;
 
-            _tools[tool.Id] = finalTool;
+            // 冲突检查 + 赋值收窄为同一原子段，避免并发注册同 ID 时检查-写入竞态
+            lock (_registrationLock)
+            {
+                if (_tools.ContainsKey(tool.Id))
+                {
+                    _logger.LogWarning("工具 ID 冲突：'{ToolId}' 已存在，将被新工具覆盖。请检查是否重复注册或命名冲突。",
+                        tool.Id);
+                }
+
+                _tools[tool.Id] = finalTool;
+            }
+
             _logger.LogDebug("注册工具: {ToolId}, Tags={Tags}, Category={Category}",
                 tool.Id, string.Join(",", tool.Tags), tool.Category);
 
@@ -390,32 +396,30 @@ namespace Seeing.Agent.Core.Tools
         }
 
         /// <summary>
-        /// 批量注册工具
+        /// 批量注册工具（异步）
         /// </summary>
-        public void RegisterTools(IEnumerable<ITool> tools)
+        public async Task RegisterToolsAsync(IEnumerable<ITool> tools, CancellationToken cancellationToken = default)
         {
             foreach (var tool in tools)
             {
-                RegisterTool(tool);
+                await RegisterToolAsync(tool, cancellationToken).ConfigureAwait(false);
             }
         }
 
         /// <summary>
-        /// 从类型注册工具（使用注解发现）
+        /// 从类型注册工具（使用注解发现，异步）
         /// </summary>
-        public void RegisterToolsFromType(Type type)
+        public async Task RegisterToolsFromTypeAsync(Type type, CancellationToken cancellationToken = default)
         {
             var tools = Discovery.ToolWrapperFactory.CreateTools(type, null, _serviceProvider);
-            RegisterTools(tools);
+            await RegisterToolsAsync(tools, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// 从类型注册工具（使用注解发现）
+        /// 从类型注册工具（使用注解发现，异步）
         /// </summary>
-        public void RegisterToolsFromType<T>()
-        {
-            RegisterToolsFromType(typeof(T));
-        }
+        public Task RegisterToolsFromTypeAsync<T>(CancellationToken cancellationToken = default)
+            => RegisterToolsFromTypeAsync(typeof(T), cancellationToken);
 
         /// <summary>
         /// 注销工具；未注册时返回 false，并通知工具集变更。
@@ -584,7 +588,7 @@ namespace Seeing.Agent.Core.Tools
                 }
             }
 
-            // 执行工具（装饰器链已在 RegisterTool 时 Apply，处理重试/超时/缓存）
+            // 执行工具（装饰器链已在 RegisterToolAsync 时 Apply，处理重试/超时/缓存）
             var startTime = DateTime.Now;
 
             try

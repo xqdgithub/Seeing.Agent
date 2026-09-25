@@ -19,6 +19,9 @@ public class ProviderManager : IProviderManager, IDisposable
     // Lazy：打断 ModelCapabilityManager → ReloadOrchestrator → ProviderReloadHandler → ProviderManager → MCM 环
     private readonly Lazy<IModelCapabilityManager> _capabilityManager;
     private readonly ILogger<ProviderManager> _logger;
+    // 串行化配置驱动 Provider 的内部字典写路径（刷新 / 注册表变更事件 / 保存 / 删除），
+    // 读路径经不可变快照或防御性快照读取。
+    private readonly object _sync = new();
     private readonly Dictionary<string, ConfiguredLlmProvider> _configuredProviders = [];
     private readonly Dictionary<string, ProviderConfig> _configuredProviderConfigs = [];
 
@@ -232,69 +235,78 @@ public class ProviderManager : IProviderManager, IDisposable
 
     private void OnProvidersChanged(object? sender, ProvidersChangedEventArgs e)
     {
-        foreach (var providerId in _configuredProviderConfigs.Keys.ToArray())
+        lock (_sync)
         {
-            if (e.Providers.ContainsKey(providerId))
-                continue;
-
-            if (!ConfiguredProviders.TryGetValue(providerId, out var currentConfig))
+            foreach (var providerId in _configuredProviderConfigs.Keys.ToArray())
             {
-                _configuredProviders.Remove(providerId);
-                _configuredProviderConfigs.Remove(providerId);
-                continue;
-            }
+                if (e.Providers.ContainsKey(providerId))
+                    continue;
 
-            RegisterConfiguredProvider(providerId, currentConfig);
+                if (!ConfiguredProviders.TryGetValue(providerId, out var currentConfig))
+                {
+                    _configuredProviders.Remove(providerId);
+                    _configuredProviderConfigs.Remove(providerId);
+                    continue;
+                }
+
+                RegisterConfiguredProvider(providerId, currentConfig);
+            }
         }
     }
 
     private void RegisterConfiguredProviders()
     {
-        foreach (var (providerId, providerConfig) in ConfiguredProviders)
-            RegisterConfiguredProvider(providerId, providerConfig);
+        lock (_sync)
+        {
+            foreach (var (providerId, providerConfig) in ConfiguredProviders)
+                RegisterConfiguredProvider(providerId, providerConfig);
+        }
     }
 
     internal void RefreshConfiguredProviders()
     {
-        var currentProviders = ConfiguredProviders;
-        foreach (var providerId in _configuredProviders.Keys.Except(currentProviders.Keys).ToArray())
+        lock (_sync)
         {
-            if (_registry.GetProvider(providerId) is not null &&
-                _registry.GetOwnerExtensionId(providerId) is null)
-                _registry.Unregister(providerId);
-
-            _configuredProviders.Remove(providerId);
-            _configuredProviderConfigs.Remove(providerId);
-            _logger.LogDebug("已移除配置驱动 Provider: {ProviderId}", providerId);
-        }
-
-        foreach (var (providerId, config) in currentProviders)
-        {
-            if (!_configuredProviders.ContainsKey(providerId))
+            var currentProviders = ConfiguredProviders;
+            foreach (var providerId in _configuredProviders.Keys.Except(currentProviders.Keys).ToArray())
             {
+                if (_registry.GetProvider(providerId) is not null &&
+                    _registry.GetOwnerExtensionId(providerId) is null)
+                    _registry.Unregister(providerId);
+
+                _configuredProviders.Remove(providerId);
+                _configuredProviderConfigs.Remove(providerId);
+                _logger.LogDebug("已移除配置驱动 Provider: {ProviderId}", providerId);
+            }
+
+            foreach (var (providerId, config) in currentProviders)
+            {
+                if (!_configuredProviders.ContainsKey(providerId))
+                {
+                    RegisterConfiguredProvider(providerId, config);
+                    continue;
+                }
+
+                if (!RequiresRebuild(_configuredProviderConfigs[providerId], config))
+                    continue;
+
+                var ownerExtensionId = _registry.GetOwnerExtensionId(providerId);
+                if (ownerExtensionId is not null)
+                {
+                    _logger.LogWarning(
+                        "配置驱动 Provider {ProviderId} 已被扩展 {ExtensionId} 覆盖，跳过重建",
+                        providerId,
+                        ownerExtensionId);
+                    continue;
+                }
+
+                if (_registry.GetProvider(providerId) is not null)
+                    _registry.Unregister(providerId);
+
+                _configuredProviders.Remove(providerId);
+                _configuredProviderConfigs.Remove(providerId);
                 RegisterConfiguredProvider(providerId, config);
-                continue;
             }
-
-            if (!RequiresRebuild(_configuredProviderConfigs[providerId], config))
-                continue;
-
-            var ownerExtensionId = _registry.GetOwnerExtensionId(providerId);
-            if (ownerExtensionId is not null)
-            {
-                _logger.LogWarning(
-                    "配置驱动 Provider {ProviderId} 已被扩展 {ExtensionId} 覆盖，跳过重建",
-                    providerId,
-                    ownerExtensionId);
-                continue;
-            }
-
-            if (_registry.GetProvider(providerId) is not null)
-                _registry.Unregister(providerId);
-
-            _configuredProviders.Remove(providerId);
-            _configuredProviderConfigs.Remove(providerId);
-            RegisterConfiguredProvider(providerId, config);
         }
     }
 

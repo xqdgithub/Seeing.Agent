@@ -71,7 +71,7 @@ public class SchemaSnapshotExecutionTests
             });
 
         var session = SessionData.Create(scenario: "code");
-        using var fixture = CreateFixture(session, publisher.Object, executor.Object, withCatalog: true);
+        using var fixture = await CreateFixture(session, publisher.Object, executor.Object, withCatalog: true);
 
         var result = await fixture.Service.SubmitAsync(
             session.Id,
@@ -150,9 +150,9 @@ public class SchemaSnapshotExecutionTests
         var hooks = new Seeing.Agent.Core.Hooks.HookManager(
             NullLogger<Seeing.Agent.Core.Hooks.HookManager>.Instance);
         var manager = new Seeing.Agent.Core.Tools.ToolManager(logger, hooks);
-        manager.RegisterTool(new NamedTool("git_status"));
-        manager.RegisterTool(new NamedTool("memory_search"));
-        manager.RegisterTool(new NamedTool("read"));
+        await manager.RegisterToolAsync(new NamedTool("git_status"));
+        await manager.RegisterToolAsync(new NamedTool("memory_search"));
+        await manager.RegisterToolAsync(new NamedTool("read"));
 
         var agent = new AgentDefinition
         {
@@ -184,7 +184,7 @@ public class SchemaSnapshotExecutionTests
         }
     }
 
-    private static Fixture CreateFixture(
+    private static async Task<Fixture> CreateFixture(
         SessionData session,
         IExecutionEventPublisher publisher,
         IAgentExecutor executor,
@@ -217,10 +217,9 @@ public class SchemaSnapshotExecutionTests
         var toolManager = new Seeing.Agent.Core.Tools.ToolManager(
             NullLogger<Seeing.Agent.Core.Tools.ToolManager>.Instance,
             new Seeing.Agent.Core.Hooks.HookManager(NullLogger<Seeing.Agent.Core.Hooks.HookManager>.Instance));
-        toolManager.RegisterTool(new NamedTool("git_status"));
-        toolManager.RegisterTool(new NamedTool("memory_search"));
-        toolManager.RegisterTool(new NamedTool("read"));
-
+        await toolManager.RegisterToolAsync(new NamedTool("git_status"));
+        await toolManager.RegisterToolAsync(new NamedTool("memory_search"));
+        await toolManager.RegisterToolAsync(new NamedTool("read"));
         var catalog = new ModuleCatalog();
         catalog.ReplaceAvailable(
         [

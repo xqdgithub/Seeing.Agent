@@ -56,25 +56,25 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
         _catalog = catalog;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (_catalog is not null && !_catalog.IsEnabled(ModuleId))
         {
             _logger.LogDebug("Memory module disabled; Bootstrap HostedService no-op");
-            return Task.CompletedTask;
+            return;
         }
 
         if (!_activity.IsActive && _catalog is not null)
-            return Task.CompletedTask;
+            return;
 
-        RegisterToolIfMissing(_searchTool);
-        RegisterToolIfMissing(_writeTool);
-        RegisterToolIfMissing(_readTool);
+        await RegisterToolIfMissingAsync(_searchTool, cancellationToken).ConfigureAwait(false);
+        await RegisterToolIfMissingAsync(_writeTool, cancellationToken).ConfigureAwait(false);
+        await RegisterToolIfMissingAsync(_readTool, cancellationToken).ConfigureAwait(false);
 
         if (!MemoryHookRegistrationGate.TryClaim())
         {
             _logger.LogDebug("Memory hooks already registered; skipping Bootstrap");
-            return Task.CompletedTask;
+            return;
         }
 
         _hookManager.Register(_chat);
@@ -82,15 +82,14 @@ internal sealed class MemoryBootstrapHostedService : IHostedService
         _hookManager.Register(_agentTurn);
         _hookManager.Register(_recall);
         _logger.LogInformation("Memory hooks registered (chat/tool/agent-turn/recall)");
-        return Task.CompletedTask;
     }
 
-    private void RegisterToolIfMissing(ITool tool)
+    private async Task RegisterToolIfMissingAsync(ITool tool, CancellationToken cancellationToken)
     {
         if (_toolManager.GetTool(tool.Id) is not null)
             return;
 
-        _toolManager.RegisterTool(tool);
+        await _toolManager.RegisterToolAsync(tool, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Memory tool registered: {ToolId}", tool.Id);
     }
 
