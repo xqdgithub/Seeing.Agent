@@ -27,6 +27,13 @@ public class SkillCommandsTests
         var mock = new Mock<ISessionManager>();
         mock.Setup(m => m.GetOrLoadAsync(session.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
+        // 命令改为经 UpdateSessionAsync 持久化（走 SessionManager API）
+        mock.Setup(m => m.UpdateSessionAsync(
+                session.Id,
+                It.IsAny<Action<SessionData>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, Action<SessionData>, CancellationToken>((_, action, _) => action(session))
+            .ReturnsAsync(session);
         return mock;
     }
 
@@ -58,7 +65,7 @@ public class SkillCommandsTests
     }
 
     [Fact]
-    public async Task LoadSkill_WhenLastMessageNotUser_ShouldNotRewrite()
+    public async Task LoadSkill_WhenLastMessageNotUser_ShouldFailExplicitly()
     {
         // Arrange
         var session = new SessionData { Id = "s1" };
@@ -69,9 +76,10 @@ public class SkillCommandsTests
         var command = new SkillLoadCommand(skillManager, sessionManager.Object);
 
         // Act
-        await command.ExecuteAsync(new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
+        var result = await command.ExecuteAsync(new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
 
-        // Assert
+        // Assert：末条非 user 时明确报错（修复假成功），且不修改消息
+        result.Success.Should().BeFalse();
         session.Messages[^1].Content.Should().Be("old");
     }
 
@@ -96,7 +104,7 @@ public class SkillCommandsTests
     }
 
     [Fact]
-    public async Task LoadSkill_WhenNoMessages_ShouldNotThrow()
+    public async Task LoadSkill_WhenNoMessages_ShouldFailWithoutThrowing()
     {
         // Arrange
         var session = new SessionData { Id = "s1" };
@@ -109,7 +117,7 @@ public class SkillCommandsTests
         var result = await command.ExecuteAsync(
             new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
 
-        // Assert
-        result.Success.Should().BeTrue();
+        // Assert：无消息时明确报错（修复假成功）
+        result.Success.Should().BeFalse();
     }
 }
