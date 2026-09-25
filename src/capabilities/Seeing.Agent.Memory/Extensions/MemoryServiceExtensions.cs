@@ -138,15 +138,17 @@ public static class MemoryServiceExtensions
         services.TryAddSingleton<ITokenTracker>(sp =>
         {
             var owner = sp.GetRequiredService<SqliteConnectionOwner>();
+            var gate = sp.GetRequiredService<SqliteConnectionGate>();
             var logger = sp.GetRequiredService<ILogger<SqliteTokenTracker>>();
-            return new SqliteTokenTracker(owner, logger);
+            return new SqliteTokenTracker(owner, gate, logger);
         });
 
         services.TryAddSingleton<IQuotaManager>(sp =>
         {
             var owner = sp.GetRequiredService<SqliteConnectionOwner>();
+            var gate = sp.GetRequiredService<SqliteConnectionGate>();
             var logger = sp.GetRequiredService<ILogger<DailyQuotaManager>>();
-            return new DailyQuotaManager(owner, logger);
+            return new DailyQuotaManager(owner, gate, logger);
         });
 
         services.TryAddScoped<IMemoryService, MemoryService>();

@@ -10,24 +10,34 @@ namespace Seeing.Agent.Memory.Core.CostControl;
 public class DailyQuotaManager : IQuotaManager
 {
     private readonly SqliteConnectionSource _connections;
+    private readonly SqliteConnectionGate _gate;
     private readonly ILogger<DailyQuotaManager>? _logger;
     private bool _initialized;
 
     private SqliteConnection Connection => _connections.Get();
 
-    public DailyQuotaManager(SqliteConnectionOwner owner, ILogger<DailyQuotaManager>? logger = null)
+    public DailyQuotaManager(
+        SqliteConnectionOwner owner,
+        SqliteConnectionGate gate,
+        ILogger<DailyQuotaManager>? logger = null)
     {
         _connections = new SqliteConnectionSource(owner ?? throw new ArgumentNullException(nameof(owner)));
+        _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _logger = logger;
     }
 
-    public DailyQuotaManager(SqliteConnection connection, ILogger<DailyQuotaManager>? logger = null)
+    public DailyQuotaManager(
+        SqliteConnection connection,
+        SqliteConnectionGate gate,
+        ILogger<DailyQuotaManager>? logger = null)
     {
         _connections = new SqliteConnectionSource(connection ?? throw new ArgumentNullException(nameof(connection)));
+        _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _logger = logger;
     }
 
-    private async Task EnsureInitializedAsync(CancellationToken ct = default)
+    /// <summary>须在已持有 <see cref="_gate"/> 时调用。</summary>
+    private async Task EnsureInitializedCoreAsync(CancellationToken ct)
     {
         if (_initialized) return;
 
@@ -76,104 +86,107 @@ public class DailyQuotaManager : IQuotaManager
     }
 
     /// <inheritdoc />
-    public async Task<QuotaUsage> GetUsageAsync(string quotaType = "daily", CancellationToken ct = default)
-    {
-        await EnsureInitializedAsync(ct);
-
-        var now = DateTimeOffset.UtcNow;
-        var date = now.ToString("yyyy-MM-dd");
-
-        // 获取限额
-        long limit;
-        var getLimitSql = quotaType == "monthly"
-            ? "SELECT monthly_limit FROM quota_limits WHERE quota_type = @type"
-            : "SELECT daily_limit FROM quota_limits WHERE quota_type = @type";
-
-        using (var cmd = Connection.CreateCommand())
+    public Task<QuotaUsage> GetUsageAsync(string quotaType = "daily", CancellationToken ct = default) =>
+        _gate.RunAsync(async token =>
         {
-            cmd.CommandText = getLimitSql;
-            cmd.Parameters.AddWithValue("@type", quotaType);
-            var result = await cmd.ExecuteScalarAsync(ct);
-            limit = result == null ? 1000000 : Convert.ToInt64(result);
-        }
+            await EnsureInitializedCoreAsync(token);
 
-        // 获取使用量
-        long used;
-        var getUsageSql = quotaType == "monthly"
-            ? @"SELECT COALESCE(SUM(tokens), 0) FROM quota_usage 
+            var now = DateTimeOffset.UtcNow;
+            var date = now.ToString("yyyy-MM-dd");
+
+            // 获取限额
+            long limit;
+            var getLimitSql = quotaType == "monthly"
+                ? "SELECT monthly_limit FROM quota_limits WHERE quota_type = @type"
+                : "SELECT daily_limit FROM quota_limits WHERE quota_type = @type";
+
+            using (var cmd = Connection.CreateCommand())
+            {
+                cmd.CommandText = getLimitSql;
+                cmd.Parameters.AddWithValue("@type", quotaType);
+                var result = await cmd.ExecuteScalarAsync(token);
+                limit = result == null ? 1000000 : Convert.ToInt64(result);
+            }
+
+            // 获取使用量
+            long used;
+            var getUsageSql = quotaType == "monthly"
+                ? @"SELECT COALESCE(SUM(tokens), 0) FROM quota_usage 
                 WHERE quota_type = @type AND date LIKE @datePattern"
-            : @"SELECT COALESCE(SUM(tokens), 0) FROM quota_usage 
+                : @"SELECT COALESCE(SUM(tokens), 0) FROM quota_usage 
                 WHERE quota_type = @type AND date = @date";
 
-        using (var cmd = Connection.CreateCommand())
-        {
-            cmd.CommandText = getUsageSql;
-            cmd.Parameters.AddWithValue("@type", quotaType);
-
-            if (quotaType == "monthly")
+            using (var cmd = Connection.CreateCommand())
             {
-                cmd.Parameters.AddWithValue("@datePattern", now.ToString("yyyy-MM") + "%");
+                cmd.CommandText = getUsageSql;
+                cmd.Parameters.AddWithValue("@type", quotaType);
+
+                if (quotaType == "monthly")
+                {
+                    cmd.Parameters.AddWithValue("@datePattern", now.ToString("yyyy-MM") + "%");
+                }
+                else
+                {
+                    cmd.Parameters.AddWithValue("@date", date);
+                }
+
+                var result = await cmd.ExecuteScalarAsync(token);
+                used = result == null ? 0 : Convert.ToInt64(result);
             }
-            else
-            {
-                cmd.Parameters.AddWithValue("@date", date);
-            }
 
-            var result = await cmd.ExecuteScalarAsync(ct);
-            used = result == null ? 0 : Convert.ToInt64(result);
-        }
+            // 计算重置时间
+            var resetAt = quotaType == "monthly"
+                ? new DateTimeOffset(now.Year, now.Month + 1, 1, 0, 0, 0, now.Offset)
+                : now.Date.AddDays(1);
 
-        // 计算重置时间
-        var resetAt = quotaType == "monthly"
-            ? new DateTimeOffset(now.Year, now.Month + 1, 1, 0, 0, 0, now.Offset)
-            : now.Date.AddDays(1);
+            var usageRate = limit > 0 ? (double)used / limit : 1.0;
 
-        var usageRate = limit > 0 ? (double)used / limit : 1.0;
-
-        return new QuotaUsage(quotaType, used, limit, usageRate, resetAt);
-    }
+            return new QuotaUsage(quotaType, used, limit, usageRate, resetAt);
+        }, ct);
 
     /// <inheritdoc />
-    public async Task SetLimitAsync(string quotaType, long limit, CancellationToken ct = default)
-    {
-        await EnsureInitializedAsync(ct);
+    public Task SetLimitAsync(string quotaType, long limit, CancellationToken ct = default) =>
+        _gate.RunAsync(async token =>
+        {
+            await EnsureInitializedCoreAsync(token);
 
-        var upsertSql = @"
+            var upsertSql = @"
             INSERT INTO quota_limits (quota_type, daily_limit, monthly_limit)
             VALUES (@type, @limit, @limit * 30)
             ON CONFLICT(quota_type) DO UPDATE SET 
                 daily_limit = @limit,
                 monthly_limit = @limit * 30";
 
-        using var cmd = Connection.CreateCommand();
-        cmd.CommandText = upsertSql;
-        cmd.Parameters.AddWithValue("@type", quotaType);
-        cmd.Parameters.AddWithValue("@limit", limit);
-        await cmd.ExecuteNonQueryAsync(ct);
+            using var cmd = Connection.CreateCommand();
+            cmd.CommandText = upsertSql;
+            cmd.Parameters.AddWithValue("@type", quotaType);
+            cmd.Parameters.AddWithValue("@limit", limit);
+            await cmd.ExecuteNonQueryAsync(token);
 
-        _logger?.LogDebug("已设置配额限制: {Type} = {Limit}", quotaType, limit);
-    }
+            _logger?.LogDebug("已设置配额限制: {Type} = {Limit}", quotaType, limit);
+        }, ct);
 
     /// <inheritdoc />
-    public async Task ConsumeAsync(long tokens, string quotaType = "daily", CancellationToken ct = default)
-    {
-        await EnsureInitializedAsync(ct);
+    public Task ConsumeAsync(long tokens, string quotaType = "daily", CancellationToken ct = default) =>
+        _gate.RunAsync(async token =>
+        {
+            await EnsureInitializedCoreAsync(token);
 
-        var now = DateTimeOffset.UtcNow;
-        var date = now.ToString("yyyy-MM-dd");
+            var now = DateTimeOffset.UtcNow;
+            var date = now.ToString("yyyy-MM-dd");
 
-        var insertSql = @"
+            var insertSql = @"
             INSERT INTO quota_usage (quota_type, tokens, date, created_at)
             VALUES (@type, @tokens, @date, @createdAt)";
 
-        using var cmd = Connection.CreateCommand();
-        cmd.CommandText = insertSql;
-        cmd.Parameters.AddWithValue("@type", quotaType);
-        cmd.Parameters.AddWithValue("@tokens", tokens);
-        cmd.Parameters.AddWithValue("@date", date);
-        cmd.Parameters.AddWithValue("@createdAt", now.ToString("O"));
+            using var cmd = Connection.CreateCommand();
+            cmd.CommandText = insertSql;
+            cmd.Parameters.AddWithValue("@type", quotaType);
+            cmd.Parameters.AddWithValue("@tokens", tokens);
+            cmd.Parameters.AddWithValue("@date", date);
+            cmd.Parameters.AddWithValue("@createdAt", now.ToString("O"));
 
-        await cmd.ExecuteNonQueryAsync(ct);
-        _logger?.LogDebug("已消耗配额: {Type} +{Tokens}", quotaType, tokens);
-    }
+            await cmd.ExecuteNonQueryAsync(token);
+            _logger?.LogDebug("已消耗配额: {Type} +{Tokens}", quotaType, tokens);
+        }, ct);
 }
