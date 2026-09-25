@@ -10,6 +10,9 @@ namespace Seeing.Agent.Core.Decorators
     /// </summary>
     public class RetryToolDecorator : ToolDecorator
     {
+        /// <summary>退避上限（10 秒），防止指数增长导致长等待。</summary>
+        private const double MaxBackoffMilliseconds = 10_000d;
+
         private readonly int _maxRetries;
         private readonly TimeSpan _delay;
         private readonly Func<Exception, bool> _isRetryable;
@@ -19,8 +22,8 @@ namespace Seeing.Agent.Core.Decorators
         /// 创建重试装饰器
         /// </summary>
         /// <param name="inner">被包装的工具</param>
-        /// <param name="maxRetries">最大重试次数</param>
-        /// <param name="delay">重试间隔</param>
+        /// <param name="maxRetries">总尝试次数（含首次），至少为 1</param>
+        /// <param name="delay">首次重试间隔，后续按指数退避（上限 10 秒）</param>
         /// <param name="isRetryable">判断异常是否可重试</param>
         /// <param name="logger">可选日志器</param>
         public RetryToolDecorator(
@@ -64,16 +67,24 @@ namespace Seeing.Agent.Core.Decorators
                         return result;
                     }
                 }
-                catch (Exception ex) when (attempt < _maxRetries - 1 && _isRetryable(ex))
+                catch (Exception ex) when (_isRetryable(ex) && !context.CancellationToken.IsCancellationRequested)
                 {
                     lastException = ex;
-                    var delay = TimeSpan.FromMilliseconds(_delay.TotalMilliseconds * (attempt + 1));
+
+                    // 最后一次尝试不再等待，直接落入“重试耗尽”返回块
+                    if (attempt >= _maxRetries - 1)
+                        break;
+
+                    // 指数退避：delay × 2^attempt，并设上限防长等待
+                    var delay = TimeSpan.FromMilliseconds(
+                        Math.Min(_delay.TotalMilliseconds * Math.Pow(2, attempt), MaxBackoffMilliseconds));
 
                     _logger?.LogWarning(
                         "[Retry] 工具执行失败，准备重试: ToolId={ToolId}, Attempt={Attempt}/{Max}, Delay={Delay}ms, Error={Error}",
                         Id, attempt + 1, _maxRetries, delay.TotalMilliseconds, ex.Message);
 
-                    await Task.Delay(delay);
+                    // 传入取消令牌：调用方取消时立即抛出，避免取消后空等
+                    await Task.Delay(delay, context.CancellationToken);
                 }
             }
 

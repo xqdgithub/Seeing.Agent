@@ -10,9 +10,10 @@ namespace Seeing.Agent.Tests.Decorators;
 /// <summary>
 /// RetryToolDecorator 直接测试 — 重试次数、退避时长与异常白名单。
 /// <para>
-/// 锁定语义：总尝试次数 = maxRetries；退避为线性增长（delay × (attempt + 1)）；
+/// 锁定语义：总尝试次数 = maxRetries；退避为指数增长（delay × 2^attempt，上限 10s）；
 /// 可重试异常白名单 = TimeoutException / HttpRequestException / IOException / TaskCanceledException（未取消）；
-/// 非白名单异常立即抛出；白名单异常在**最后一次尝试**不再被捕获而向上抛出；
+/// 非白名单异常立即抛出；白名单异常在**最后一次尝试**也被捕获，耗尽后返回 <c>Failure("重试耗尽")</c>；
+/// 调用方取消（上下文令牌已取消）不属于可重试；
 /// <c>Metadata["retryable"]=true</c> 的失败结果会耗尽重试后返回“重试耗尽”。
 /// </para>
 /// </summary>
@@ -71,7 +72,7 @@ public class RetryToolDecoratorTests
     }
 
     [Fact]
-    public async Task 可重试异常_应尝试最大次数_最后一次尝试后向上抛出()
+    public async Task 可重试异常_耗尽后应返回重试耗尽失败()
     {
         var tool = new ScriptedTool()
             .Throw(new TimeoutException("t1"))
@@ -79,10 +80,12 @@ public class RetryToolDecoratorTests
             .Throw(new TimeoutException("t3"));
         var decorator = CreateDecorator(tool, maxRetries: 3);
 
-        var act = async () => await decorator.ExecuteAsync(Args(), Context());
+        var result = await decorator.ExecuteAsync(Args(), Context());
 
-        await act.Should().ThrowAsync<TimeoutException>().WithMessage("t3");
         tool.CallCount.Should().Be(3, "maxRetries=3 表示总共 3 次尝试");
+        result.Success.Should().BeFalse();
+        result.Title.Should().Be("重试耗尽");
+        result.Error.Should().Be("t3", "最后一次尝试的异常也应被捕获并作为失败返回");
     }
 
     [Fact]
@@ -216,37 +219,55 @@ public class RetryToolDecoratorTests
     }
 
     [Fact]
-    public async Task maxRetries_为1_应只尝试一次且不重试()
+    public async Task maxRetries_为1_应只尝试一次并返回重试耗尽()
     {
         var tool = new ScriptedTool().Throw(new TimeoutException("only"));
         var decorator = CreateDecorator(tool, maxRetries: 1);
 
-        var act = async () => await decorator.ExecuteAsync(Args(), Context());
+        var result = await decorator.ExecuteAsync(Args(), Context());
 
-        await act.Should().ThrowAsync<TimeoutException>().WithMessage("only");
         tool.CallCount.Should().Be(1);
+        result.Success.Should().BeFalse();
+        result.Title.Should().Be("重试耗尽");
+        result.Error.Should().Be("only");
     }
 
     [Fact]
-    public async Task 退避_应随尝试次数线性增长()
+    public async Task 上下文已取消_可重试异常不应被重试()
     {
-        // 线性退避：delay×1 + delay×2 = 150ms（若为固定退避则仅 100ms）
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var tool = new ScriptedTool().Throw(new TimeoutException("cancelled-by-caller"));
+        var decorator = CreateDecorator(tool, maxRetries: 3);
+        var context = new ToolContext { CancellationToken = cts.Token };
+
+        var act = async () => await decorator.ExecuteAsync(Args(), context);
+
+        await act.Should().ThrowAsync<TimeoutException>().WithMessage("cancelled-by-caller");
+        tool.CallCount.Should().Be(1, "调用方已取消时不得吞掉异常继续重试");
+    }
+
+    [Fact]
+    public async Task 退避_应随尝试次数指数增长()
+    {
+        // 指数退避：50×1 + 50×2 + 50×4 = 350ms（线性仅为 50+100+150 = 300ms，固定仅 150ms）
         var baseDelay = TimeSpan.FromMilliseconds(50);
         var tool = new ScriptedTool()
             .Throw(new TimeoutException("1"))
             .Throw(new TimeoutException("2"))
-            .Throw(new TimeoutException("3"));
-        var decorator = CreateDecorator(tool, maxRetries: 3, delay: baseDelay);
+            .Throw(new TimeoutException("3"))
+            .Throw(new TimeoutException("4"));
+        var decorator = CreateDecorator(tool, maxRetries: 4, delay: baseDelay);
 
         var sw = Stopwatch.StartNew();
-        var act = async () => await decorator.ExecuteAsync(Args(), Context());
-        await act.Should().ThrowAsync<TimeoutException>();
+        var result = await decorator.ExecuteAsync(Args(), Context());
         sw.Stop();
 
-        tool.CallCount.Should().Be(3);
+        tool.CallCount.Should().Be(4);
+        result.Title.Should().Be("重试耗尽");
         sw.Elapsed.Should().BeGreaterThanOrEqualTo(
-            TimeSpan.FromMilliseconds(130),
-            "线性退避应产生 50ms + 100ms 的等待；固定退避仅 100ms");
+            TimeSpan.FromMilliseconds(330),
+            "指数退避应产生 50ms + 100ms + 200ms = 350ms 的等待；线性仅 300ms");
     }
 
     private static RetryToolDecorator CreateDecorator(
