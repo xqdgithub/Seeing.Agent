@@ -22,7 +22,7 @@ public class SessionExecutionQueueTests
 
         var cancelled = await queue.CancelAsync("a");
 
-        cancelled.Should().BeTrue();
+        cancelled.Should().Be(ExecutionCancelOutcome.CancelledNotStarted);
         first.Status.Should().Be(ExecutionStatus.Cancelled);
         queue.CurrentExecution.Should().Be(second);
         queue.CurrentExecution!.Status.Should().Be(ExecutionStatus.Pending);
@@ -92,7 +92,7 @@ public class SessionExecutionQueueTests
 
         var cancelled = await queue.CancelAsync("a");
 
-        cancelled.Should().BeTrue();
+        cancelled.Should().Be(ExecutionCancelOutcome.CancelledStarted);
         token.IsCancellationRequested.Should().BeTrue();
         record.Status.Should().Be(ExecutionStatus.Cancelled);
     }
@@ -132,7 +132,7 @@ public class SessionExecutionQueueTests
 
         var cancelled = await queue.CancelAsync("b");
 
-        cancelled.Should().BeTrue();
+        cancelled.Should().Be(ExecutionCancelOutcome.CancelledNotStarted);
         queuedToken.IsCancellationRequested.Should().BeTrue();
         second.Status.Should().Be(ExecutionStatus.Cancelled);
         queue.QueueLength.Should().Be(0);
@@ -153,5 +153,137 @@ public class SessionExecutionQueueTests
 
         await act.Should().NotThrowAsync();
         record.Cts.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CancelAsync_CurrentPendingBeforeStart_ReturnsNotStarted()
+    {
+        // 启动窗口：Submit 后、StartAsync 前取消——判定必须为「未启动」，由调用方发布终态
+        var queue = new SessionExecutionQueue();
+        var record = new ExecutionRecord { ExecutionId = "a", SessionId = "s" };
+
+        await queue.SubmitAsync(record);
+
+        var outcome = await queue.CancelAsync("a");
+
+        outcome.Should().Be(ExecutionCancelOutcome.CancelledNotStarted);
+        record.Status.Should().Be(ExecutionStatus.Cancelled);
+        record.Cts.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CancelAsync_UnknownOrTerminal_ReturnsNotFound()
+    {
+        var queue = new SessionExecutionQueue();
+        var record = new ExecutionRecord { ExecutionId = "a", SessionId = "s" };
+
+        (await queue.CancelAsync("missing")).Should().Be(ExecutionCancelOutcome.NotFound);
+
+        await queue.SubmitAsync(record);
+        await queue.CancelAsync("a");
+        // 已终态：再次取消不得成功（避免重复发布终态）
+        (await queue.CancelAsync("a")).Should().Be(ExecutionCancelOutcome.NotFound);
+    }
+
+    [Fact]
+    public async Task GetSnapshot_ShouldReflectActiveAndQueuedCounts()
+    {
+        var queue = new SessionExecutionQueue();
+        var first = new ExecutionRecord { ExecutionId = "a", SessionId = "s" };
+        var second = new ExecutionRecord { ExecutionId = "b", SessionId = "s" };
+
+        var empty = queue.GetSnapshot();
+        empty.HasActiveExecution.Should().BeFalse();
+        empty.HasQueued.Should().BeFalse();
+        empty.QueueLength.Should().Be(0);
+
+        await queue.SubmitAsync(first);
+        await queue.SubmitAsync(second);
+
+        var active = queue.GetSnapshot();
+        active.HasActiveExecution.Should().BeTrue();
+        active.HasQueued.Should().BeTrue();
+        active.QueueLength.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Dispose_WhileExecutionStarted_ShouldNotDisposeInFlightCts()
+    {
+        // I4 回归：Dispose 在途执行时仅取消，不得释放执行体仍持有的 CTS
+        var queue = new SessionExecutionQueue();
+        var record = new ExecutionRecord { ExecutionId = "a", SessionId = "s" };
+
+        await queue.SubmitAsync(record);
+        await queue.StartAsync();
+        var token = record.Cts!.Token;
+
+        queue.Dispose();
+
+        token.IsCancellationRequested.Should().BeTrue();
+        record.Cts.Should().NotBeNull();
+        var act = () => token.Register(() => { });
+        act.Should().NotThrow();
+
+        // 执行体 finally 仍能释放 CTS
+        await queue.CompleteAsync(record, ExecutionStatus.Cancelled);
+        record.Cts.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Dispose_QueuedExecution_ShouldCancelAndDisposeItsCts()
+    {
+        var queue = new SessionExecutionQueue();
+        var first = new ExecutionRecord { ExecutionId = "a", SessionId = "s" };
+        var queued = new ExecutionRecord { ExecutionId = "b", SessionId = "s" };
+
+        await queue.SubmitAsync(first);
+        await queue.SubmitAsync(queued);
+        await queue.StartAsync();
+
+        queue.Dispose();
+
+        // 排队项从未被消费，可安全取消并释放
+        queued.Status.Should().Be(ExecutionStatus.Cancelled);
+        queued.Cts.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SubmitAsync_AfterDispose_ShouldThrowObjectDisposed()
+    {
+        var queue = new SessionExecutionQueue();
+        queue.Dispose();
+
+        var act = async () => await queue.SubmitAsync(new ExecutionRecord { ExecutionId = "a", SessionId = "s" });
+
+        // Submit 循环据此重取字典中的新队列，避免记录落入孤儿队列
+        await act.Should().ThrowAsync<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public async Task TryRetireIfIdle_WhenActive_ShouldReturnFalseAndKeepAccepting()
+    {
+        var queue = new SessionExecutionQueue();
+        var record = new ExecutionRecord { ExecutionId = "a", SessionId = "s" };
+        await queue.SubmitAsync(record);
+
+        // 有在途项：拒绝退休，调用方据此放回字典/取消
+        queue.TryRetireIfIdle().Should().BeFalse();
+
+        await queue.StartAsync();
+        var token = record.Cts!.Token;
+        (await queue.CancelAsync("a")).Should().Be(ExecutionCancelOutcome.CancelledStarted);
+        token.IsCancellationRequested.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TryRetireIfIdle_WhenEmpty_ShouldRetireAndRejectSubmit()
+    {
+        var queue = new SessionExecutionQueue();
+
+        queue.TryRetireIfIdle().Should().BeTrue();
+        queue.TryRetireIfIdle().Should().BeTrue();
+
+        var act = async () => await queue.SubmitAsync(new ExecutionRecord { ExecutionId = "a", SessionId = "s" });
+        await act.Should().ThrowAsync<ObjectDisposedException>();
     }
 }

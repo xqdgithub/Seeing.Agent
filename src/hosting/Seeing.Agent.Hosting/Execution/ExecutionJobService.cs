@@ -57,6 +57,9 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
     private readonly Timer _cleanupTimer;
     private readonly IAgentLoopScheduler? _loopScheduler;
     private readonly IScenarioCatalog? _scenarioCatalog;
+    // 正在执行的执行体集合（StartAsync 成功后加入，finally 移除）。供 DisposeAsync 有界等待，
+    // 避免在途执行体仍持有取消令牌时释放其 CTS。
+    private readonly ConcurrentDictionary<string, byte> _inFlightExecutions = new();
     private bool _disposed;
 
     /// <summary>
@@ -236,8 +239,8 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
 
         _executions[executionId] = record;
 
-        // Start processing if not already running
-        _ = ProcessQueueAsync(sessionId);
+        // Start processing if not already running（传入实际入队的队列引用，避免清理/替换竞态下按会话重查错队列）
+        _ = ProcessQueueAsync(queue);
 
         var result = record.Status == ExecutionStatus.Queued
             ? ExecutionSubmitResult.Queued(executionId, record.QueuePosition)
@@ -262,34 +265,27 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
         if (!_sessionQueues.TryGetValue(record.SessionId, out var queue))
             return false;
 
-        var cancelled = await queue.CancelAsync(executionId).ConfigureAwait(false);
+        var outcome = await queue.CancelAsync(executionId).ConfigureAwait(false);
+        if (outcome == ExecutionCancelOutcome.NotFound)
+            return false;
 
-        if (cancelled)
+        _logger.LogInformation("Execution {ExecutionId} cancelled", executionId);
+
+        // 终态事件发布方唯一：已启动（Running）项由执行体 finally 统一发布；
+        // 从未启动项（排队项 / 尚未 StartAsync 的当前项）由这里发布。
+        // 判定与状态迁移同一队列锁内完成（outcome），消除取消/启动窗口的重复终态事件。
+        if (outcome == ExecutionCancelOutcome.CancelledNotStarted)
+            PublishCancelledComplete(record.SessionId, executionId);
+
+        // 不终止会话事件流：后续排队项仍需向订阅者发布输出。
+        // 队列取消已推进：启动下一项执行（StartAsync 校验防止双开）
+        var next = queue.CurrentExecution;
+        if (next != null && next.Status == ExecutionStatus.Pending)
         {
-            _logger.LogInformation("Execution {ExecutionId} cancelled", executionId);
-
-            // 执行体已启动（Running）时，完成事件由执行体 finally 统一发布，避免重复。
-            // 从未启动的项（排队项 / 尚未启动的当前项）由这里发布。
-            if (record.StartedAt == default)
-            {
-                _eventPublisher.Publish(record.SessionId, new ExecutionCompleteEvent
-                {
-                    SessionId = record.SessionId,
-                    ExecutionId = executionId,
-                    Status = ExecutionStatus.Cancelled
-                });
-            }
-
-            // 不终止会话事件流：后续排队项仍需向订阅者发布输出。
-            // 队列取消已推进：启动下一项执行（StartAsync 校验防止双开）
-            var next = queue.CurrentExecution;
-            if (next != null && next.Status == ExecutionStatus.Pending)
-            {
-                _ = ProcessExecutionAsync(next);
-            }
+            _ = ProcessExecutionAsync(next, queue);
         }
 
-        return cancelled;
+        return true;
     }
 
     /// <summary>
@@ -342,8 +338,15 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
                 var current = queue.CurrentExecution;
                 if (current == null || current.IsTerminal)
                     break;
-                if (await queue.CancelAsync(current.ExecutionId))
-                    count++;
+
+                var outcome = await queue.CancelAsync(current.ExecutionId);
+                if (outcome == ExecutionCancelOutcome.NotFound)
+                    break;
+
+                count++;
+                // 从未启动项无人发布终态，这里补齐（已启动项由执行体 finally 发布）
+                if (outcome == ExecutionCancelOutcome.CancelledNotStarted)
+                    PublishCancelledComplete(id, current.ExecutionId);
             }
 
             // 队列中残余的排队项（理论为 0，防御性兜底）
@@ -351,8 +354,14 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             {
                 if (queued.IsTerminal)
                     continue;
-                if (await queue.CancelAsync(queued.ExecutionId))
-                    count++;
+
+                var outcome = await queue.CancelAsync(queued.ExecutionId);
+                if (outcome == ExecutionCancelOutcome.NotFound)
+                    continue;
+
+                count++;
+                if (outcome == ExecutionCancelOutcome.CancelledNotStarted)
+                    PublishCancelledComplete(id, queued.ExecutionId);
             }
         }
 
@@ -457,11 +466,9 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
     /// <summary>
     /// Processes the queue for a session.
     /// </summary>
-    private async Task ProcessQueueAsync(string sessionId)
+    /// <param name="queue">实际持有待执行记录的队列引用（不由会话 ID 重查，避免清理/替换竞态错队列）。</param>
+    private async Task ProcessQueueAsync(SessionExecutionQueue queue)
     {
-        if (!_sessionQueues.TryGetValue(sessionId, out var queue))
-            return;
-
         // 只启动当前 Pending 项；后续排队项由 ProcessExecutionAsync.finally → CompleteAsync 链式启动。
         // 禁止 while 循环续跑，否则会与 finally 中的 ProcessExecutionAsync(next) 双开同一条执行。
         var current = queue.CurrentExecution;
@@ -471,13 +478,15 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
         if (current.Status != ExecutionStatus.Pending)
             return;
 
-        await ProcessExecutionAsync(current);
+        await ProcessExecutionAsync(current, queue);
     }
 
     /// <summary>
     /// Processes a single execution.
     /// </summary>
-    private async Task ProcessExecutionAsync(ExecutionRecord record)
+    /// <param name="record">要执行的记录。</param>
+    /// <param name="queue">持有 <paramref name="record"/> 的队列引用（全流程使用同一引用完成 Start/Complete）。</param>
+    private async Task ProcessExecutionAsync(ExecutionRecord record, SessionExecutionQueue queue)
     {
         // Create scope for this execution
         using var scope = _serviceProvider.CreateScope();
@@ -489,8 +498,6 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
         var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
         var executionWorld = scope.ServiceProvider.GetRequiredService<IExecutionWorld>();
         var commandRegistry = scope.ServiceProvider.GetRequiredService<ICommandRegistry>();
-
-        var queue = _sessionQueues[record.SessionId];
 
         // Mark as running（若已被取消/推进则返回 false，避免把已终态记录重新置 Running）
         if (!await queue.StartAsync())
@@ -504,7 +511,10 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             }
             return;
         }
-        record.StartedAt = DateTime.UtcNow;
+
+        // StartAsync 已在该队列锁内写入 StartedAt；此处不再重复写，避免形成「已启动」判定窗口。
+        // 在途执行体登记：DisposeAsync 据此有界等待其走完 finally 后再释放资源。
+        _inFlightExecutions[record.ExecutionId] = 0;
 
         // 快照本记录专属取消令牌并全程使用：令牌绑定执行记录，取消后队列推进更换 current 不影响本执行，
         // 消除“换靶”导致的 exec 串扰（闪断根因）。CTS 已由 Submit/StartAsync 保证非空。
@@ -753,13 +763,16 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             // Complete the execution and start next
             var nextExecution = await queue.CompleteAsync(record, record.Status);
 
+            // 执行体已走完：销在途登记（供 DisposeAsync 判定可否释放资源）
+            _inFlightExecutions.TryRemove(record.ExecutionId, out _);
+
             // Schedule cleanup
             _ = CleanupExecutionAsync(record.ExecutionId);
 
             // Process next in queue（仅由此处启动，避免与 ProcessQueueAsync while 竞态双跑）
             if (nextExecution != null)
             {
-                _ = ProcessExecutionAsync(nextExecution);
+                _ = ProcessExecutionAsync(nextExecution, queue);
             }
             else if (queue.CurrentExecution == null && !queue.HasQueued)
             {
@@ -1455,12 +1468,13 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
 
         foreach (var (sessionId, queue) in snapshot)
         {
-            // Skip if has active execution
-            if (queue.HasActiveExecution || queue.HasQueued)
+            // 锁内快照判定（消除 _pendingQueue.Count / LastActiveTime 的数据竞争）
+            var state0 = queue.GetSnapshot();
+            if (state0.HasActiveExecution || state0.HasQueued)
                 continue;
 
             // Check idle timeout
-            if (now - queue.LastActiveTime > _options.SessionIdleTimeout)
+            if (now - state0.LastActiveTime > _options.SessionIdleTimeout)
             {
                 sessionsToRemove.Add(sessionId);
             }
@@ -1471,18 +1485,86 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             if (!_sessionQueues.TryRemove(sessionId, out var queue))
                 continue;
 
-            // 竞态防护：移除瞬间可能被并发 SubmitAsync 变为活跃（或其排队项尚未处理）。
-            // 此时放回字典，交由后续清理周期处理，避免误弃在途/排队执行导致其永不推进。
-            if (queue.HasActiveExecution || queue.HasQueued)
+            // 原子判定并退休：仅真正空闲的队列可回收；移除瞬间被并发 Submit 变活跃则拒绝（返回 false）。
+            // 该判定在同一队列锁内完成，避免「快照空闲 → Dispose」之间被塞入执行而丢项。
+            if (!queue.TryRetireIfIdle())
             {
-                _sessionQueues.TryAdd(sessionId, queue);
+                // 放回字典成功：交由后续清理周期处理，避免误弃在途/排队执行导致其永不推进。
+                if (_sessionQueues.TryAdd(sessionId, queue))
+                    continue;
+
+                // 放回失败：并发 SubmitAsync 已对已删 key GetOrAdd 出新队列，字典不再指向旧队列。
+                // 旧队列可能仍持有在途/排队项：若直接丢弃则执行永不推进、CTS 泄漏（同会话双开）。
+                // 因此先取消旧队列全部未终态执行（终态唯一发布），再释放。
+                _logger.LogWarning(
+                    "空闲清理检测到并发替换，取消孤儿队列未终态执行: {SessionId}",
+                    sessionId);
+                _ = CancelStaleQueueAsync(sessionId, queue);
                 continue;
             }
 
-            queue.Dispose();
             _eventPublisher.CompleteSession(sessionId);
             _logger.LogDebug("Cleaned up idle session queue: {SessionId}", sessionId);
         }
+    }
+
+    /// <summary>
+    /// 取消已从字典摘除的孤儿队列中的全部未终态执行，随后释放队列。
+    /// 从未启动项由本方法发布终态事件；已启动项由各自执行体 finally 发布。
+    /// </summary>
+    private async Task CancelStaleQueueAsync(string sessionId, SessionExecutionQueue queue)
+    {
+        try
+        {
+            while (true)
+            {
+                var state = queue.GetSnapshot();
+                if (!state.HasActiveExecution && !state.HasQueued)
+                    break;
+
+                var current = queue.CurrentExecution;
+                if (current is { IsTerminal: false })
+                {
+                    var outcome = await queue.CancelAsync(current.ExecutionId).ConfigureAwait(false);
+                    if (outcome == ExecutionCancelOutcome.NotFound)
+                        break;
+                    if (outcome == ExecutionCancelOutcome.CancelledNotStarted)
+                        PublishCancelledComplete(sessionId, current.ExecutionId);
+                    continue;
+                }
+
+                var queued = queue.GetQueuedExecutions().FirstOrDefault(item => !item.IsTerminal);
+                if (queued is null)
+                    break;
+
+                var queuedOutcome = await queue.CancelAsync(queued.ExecutionId).ConfigureAwait(false);
+                if (queuedOutcome == ExecutionCancelOutcome.NotFound)
+                    break;
+                if (queuedOutcome == ExecutionCancelOutcome.CancelledNotStarted)
+                    PublishCancelledComplete(sessionId, queued.ExecutionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "取消孤儿队列执行失败: {SessionId}", sessionId);
+        }
+        finally
+        {
+            queue.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 发布「已取消」终态事件（供从未启动项的唯一发布方使用）。
+    /// </summary>
+    private void PublishCancelledComplete(string sessionId, string executionId)
+    {
+        _eventPublisher.Publish(sessionId, new ExecutionCompleteEvent
+        {
+            SessionId = sessionId,
+            ExecutionId = executionId,
+            Status = ExecutionStatus.Cancelled
+        });
     }
 
     /// <summary>
@@ -1533,16 +1615,30 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             {
                 // ignore
             }
-
-            queue.Dispose();
         }
+
+        // 有界等待在途执行体走完 finally（释放各自 CTS），避免随后过早释放令牌引发 ObjectDisposedException。
+        try
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (_inFlightExecutions.Count > 0 && DateTime.UtcNow < deadline)
+                await Task.Delay(20).ConfigureAwait(false);
+        }
+        catch
+        {
+            // ignore
+        }
+
+        foreach (var (_, queue) in snapshot)
+            queue.Dispose();
+
         _sessionQueues.Clear();
 
-        // 释放终态执行记录的 CTS：含“已取消并被推出队列、不再被队列引用”的记录，避免泄漏。
-        // 仍在途的记录由其 ProcessExecutionAsync 的 finally → CompleteAsync 负责释放。
+        // 仅释放「从未启动」记录的 CTS（StartedAt 默认）：此时无人持有令牌；
+        // 已启动记录的 CTS 由执行体 finally → CompleteAsync 释放，不得在此提前释放。
         foreach (var record in _executions.Values)
         {
-            if (record.IsTerminal)
+            if (record.IsTerminal && record.StartedAt == default)
             {
                 record.Cts?.Dispose();
                 record.Cts = null;

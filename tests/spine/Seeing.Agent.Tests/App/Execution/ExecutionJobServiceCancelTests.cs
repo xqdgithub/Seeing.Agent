@@ -80,6 +80,61 @@ public class ExecutionJobServiceCancelTests
             .Should().Be(1);
     }
 
+    [Fact]
+    public async Task Cancel_QueuedExecution_ShouldPublishExactlyOneCompleteEvent()
+    {
+        var published = new ConcurrentQueue<(string SessionId, IMessageEvent Event)>();
+        var publisher = new Mock<IExecutionEventPublisher>();
+        publisher.Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()))
+            .Callback((string sessionId, IMessageEvent evt) => published.Enqueue((sessionId, evt)));
+        publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
+        publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
+
+        var session = SessionData.Create();
+        var executor = new Mock<IAgentExecutor>();
+        executor.Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken ct)
+                => BlockingStream(ct));
+
+        using var fixture = CreateFixture(session, publisher.Object, executor.Object);
+        var service = fixture.Service;
+
+        var options = new ChatOptions
+        {
+            AgentId = "general",
+            SkipUserMessagePersist = true,
+            SkipInstructionInject = true
+        };
+
+        var first = await service.SubmitAsync(
+            session.Id, ChatInput.FromText("a"), options, TestContext.Current.CancellationToken);
+        first.Success.Should().BeTrue();
+        await WaitUntilAsync(() =>
+            service.GetOverview(session.Id).CurrentExecution?.Status == ExecutionStatus.Running);
+
+        var second = await service.SubmitAsync(
+            session.Id, ChatInput.FromText("b"), options, TestContext.Current.CancellationToken);
+        second.Success.Should().BeTrue();
+        second.Status.Should().Be(ExecutionStatus.Queued);
+
+        var secondId = second.ExecutionId!;
+        service.Cancel(secondId).Should().BeTrue();
+
+        await WaitUntilAsync(() =>
+            published.Any(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == secondId));
+
+        // 从未启动的排队项：终态由 CancelAsync 唯一发布，执行体不会二次发布
+        published.Count(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == secondId)
+            .Should().Be(1);
+
+        // 首个执行仍在途，不受排队项取消影响
+        service.GetOverview(session.Id).CurrentExecution!.ExecutionId.Should().Be(first.ExecutionId);
+    }
+
     private static async IAsyncEnumerable<IMessageEvent> BlockingStream(
         [EnumeratorCancellation] CancellationToken token)
     {
