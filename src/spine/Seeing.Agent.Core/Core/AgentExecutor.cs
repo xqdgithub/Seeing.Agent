@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Detection;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
@@ -45,9 +46,6 @@ public class AgentExecutor : IAgentExecutor
     private readonly Scheduling.IAgentLoopScheduler? _loopScheduler;
     private readonly ITodoStore? _todoStore;
     private readonly ILlmTurnRetryPolicy? _turnRetryPolicy;
-    private bool _todoEmptyReminded;
-    private bool _incompleteReminded;
-    private int _totalToolCallsExecuted;
 
     /// <summary>
     /// 构造 Agent 执行器，注入 LLM、工具、权限、钩子、注册表等核心依赖（后四项为可选）。
@@ -110,17 +108,15 @@ public class AgentExecutor : IAgentExecutor
             context.CancellationToken, cancellationToken);
         var effectiveToken = linkedCts.Token;
 
-        // AgentExecutor 为 Singleton：每次执行重置 Loop 局部状态，避免跨执行泄漏
-        _todoEmptyReminded = false;
-        _incompleteReminded = false;
-        _totalToolCallsExecuted = 0;
+        // AgentExecutor 为 Singleton：所有执行期可变状态挂 per-execution 实例，避免并发 Loop 互相踩踏
+        var state = new LoopExecutionState();
 
         // 事件流水线：生产者保证「LoopStart → 恰一个终态事件」；取消/异常在生产者侧转换为终态事件。
         // 与 ACP 执行器（EventYieldingSink + runTask）同一模式，消费侧只需正常读取。
         var outbound = Channel.CreateUnbounded<IMessageEvent>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
-        var producer = RunProducerAsync(agent, messages, context, effectiveToken, outbound.Writer);
+        var producer = RunProducerAsync(agent, messages, context, effectiveToken, outbound.Writer, state);
 
         try
         {
@@ -144,7 +140,8 @@ public class AgentExecutor : IAgentExecutor
         IReadOnlyList<ChatMessage> messages,
         AgentContext context,
         CancellationToken effectiveToken,
-        ChannelWriter<IMessageEvent> writer)
+        ChannelWriter<IMessageEvent> writer,
+        LoopExecutionState state)
     {
         // ========== 生成 LoopId（一次完整对话循环的唯一标识）==========
         var loopId = Guid.NewGuid().ToString("N");
@@ -193,7 +190,7 @@ public class AgentExecutor : IAgentExecutor
                 }
 
                 // === TodoEmpty 检查：已执行多步但未创建 todo ===
-                if (step >= 2 && !_todoEmptyReminded
+                if (step >= 2 && !state.TodoEmptyReminded
                     && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
                 {
                     var todoList = await LoadTodoList(context.SessionId);
@@ -204,7 +201,7 @@ public class AgentExecutor : IAgentExecutor
                             "请评估当前任务是否需要使用 TodoWrite 规划。");
                         if (reminder != null)
                             history.Add(reminder);
-                        _todoEmptyReminded = true;
+                        state.TodoEmptyReminded = true;
                     }
                 }
 
@@ -469,14 +466,14 @@ public class AgentExecutor : IAgentExecutor
                         var todoList = await LoadTodoList(context.SessionId);
                         if (todoList.HasIncompletePendingOrInProgress())
                         {
-                            if (!_incompleteReminded)
+                            if (!state.IncompleteReminded)
                             {
                                 var reminder = BuildTodoReminderMessage(
                                     SystemReminder.Kinds.TodoIncomplete,
                                     todoList.FormatBrief());
                                 if (reminder != null)
                                     history.Add(reminder);
-                                _incompleteReminded = true;
+                                state.IncompleteReminded = true;
                                 continue; // 不退出，再给一轮
                             }
                             // 第二次仍然未完成 → 信任 agent，允许退出
@@ -498,7 +495,7 @@ public class AgentExecutor : IAgentExecutor
 
                 // 累计工具调用次数
                 if (assistantMessage.ToolCalls != null)
-                    _totalToolCallsExecuted += assistantMessage.ToolCalls.Count;
+                    state.TotalToolCallsExecuted += assistantMessage.ToolCalls.Count;
 
                 // ========== 执行工具调用（内部排空，保证终态送达）==========
                 var (endTurn, endTurnReason) = await ExecuteToolCallsAsync(
@@ -509,7 +506,26 @@ public class AgentExecutor : IAgentExecutor
                     loopId,
                     writer,
                     history,
-                    effectiveToken);
+                    effectiveToken,
+                    state);
+
+                // 循环检测终止：优先于 EndTurn，发出失败终态 + 循环检测原因
+                if (state.TerminateRequested)
+                {
+                    errorMessage = state.TerminationReason ?? "检测到重复的工具调用循环，已终止";
+
+                    await writer.WriteAsync(new LoopCompleteEvent
+                    {
+                        SessionId = context.SessionId,
+                        LoopId = loopId,
+                        TotalSteps = totalSteps,
+                        Duration = DateTime.Now - loopStartTime,
+                        Success = false,
+                        Error = errorMessage,
+                        Reason = "loop-detected"
+                    }, CancellationToken.None);
+                    return;
+                }
 
                 // 工具要求结束本轮：全部工具结束后发出成功的 LoopComplete，不再进入下一轮 LLM
                 if (endTurn)
@@ -671,8 +687,39 @@ public class AgentExecutor : IAgentExecutor
         string loopId,
         ChannelWriter<IMessageEvent> writer,
         List<ChatMessage> history,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LoopExecutionState state)
     {
+        // ========== Doom Loop 检测（单一入口：Check 同时记录并返回判定）==========
+        // 以 (toolId, SHA256(参数 JSON)) 为键，连续 3 次警告、≥5 次终止本 Loop。
+        foreach (var tc in toolCalls)
+        {
+            var detectedName = tc.Function?.Name ?? "";
+            var argumentsHash = LoopDetector.ComputeArgumentsHash(tc.Function?.Arguments ?? string.Empty);
+            var detection = state.LoopDetector.Check(detectedName, argumentsHash);
+
+            if (detection.RecommendedAction == LoopAction.Warn)
+            {
+                await writer.WriteAsync(new ErrorEvent
+                {
+                    SessionId = context.SessionId,
+                    LoopId = loopId,
+                    Message = $"检测到重复的工具调用：{detectedName} 已连续 {detection.ConsecutiveCount} 次，请调整策略",
+                    Source = "loop"
+                }, cancellationToken);
+            }
+            else if (detection.RecommendedAction == LoopAction.Terminate)
+            {
+                state.TerminateRequested = true;
+                state.TerminationReason =
+                    $"检测到重复的工具调用循环：{detectedName} 连续 {detection.ConsecutiveCount} 次相同调用，已终止";
+                _logger.LogWarning(
+                    "[AgentExecutor] Loop 检测到重复工具调用并终止: {ToolName} x{Count}",
+                    detectedName, detection.ConsecutiveCount);
+                return (true, state.TerminationReason);
+            }
+        }
+
         // 先全部 Pending，再并行执行；执行中通过 Channel 交错 Running / Emit / Complete
         foreach (var tc in toolCalls)
         {
@@ -1124,4 +1171,32 @@ public class AgentExecutor : IAgentExecutor
             kind);
         return new ChatMessage { Role = ChatRole.User, Content = content };
     }
+}
+
+/// <summary>
+/// 单次 Agent Loop 执行的可变状态（per-execution）。
+/// <para>
+/// AgentExecutor 注册为 Singleton，所有执行期可变字段必须挂在其实例上并按 Loop 创建，
+/// 否则并发会话会互相踩踏（X5）。同时作为循环检测器（LoopDetector）的 per-Loop 状态挂点。
+/// </para>
+/// </summary>
+internal sealed class LoopExecutionState
+{
+    /// <summary>是否已发送过「未创建 Todo」提醒。</summary>
+    public bool TodoEmptyReminded { get; set; }
+
+    /// <summary>是否已发送过「未完成 Todo」提醒。</summary>
+    public bool IncompleteReminded { get; set; }
+
+    /// <summary>本 Loop 累计执行的工具调用次数。</summary>
+    public int TotalToolCallsExecuted { get; set; }
+
+    /// <summary>本 Loop 专用的循环检测器（参数 SHA256 哈希，连续 3 次警告、5 次终止）。</summary>
+    public LoopDetector LoopDetector { get; } = new(threshold: 3);
+
+    /// <summary>是否已请求终止本 Loop（检测到 Doom Loop）。</summary>
+    public bool TerminateRequested { get; set; }
+
+    /// <summary>循环检测终止原因（<see cref="TerminateRequested"/> 为 true 时填充）。</summary>
+    public string? TerminationReason { get; set; }
 }

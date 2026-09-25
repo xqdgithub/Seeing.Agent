@@ -103,24 +103,12 @@ public class LoopDetector
 
         lock (_lock)
         {
-            // 检查是否与上一次调用相同
-            if (IsSameAsLastCall(toolName, argumentsHash))
-            {
-                CurrentConsecutiveCount++;
-            }
-            else
-            {
-                // 不同调用，重置计数
-                CurrentConsecutiveCount = 1;
-                CurrentToolName = toolName;
-                _currentArgumentsHash = argumentsHash;
-            }
-
-            var isLoop = CurrentConsecutiveCount >= _threshold;
+            // 单一入口：记录历史并更新连续计数（避免 Check/RecordCall 双入口重复计数）
+            RecordCallCore(toolName, argumentsHash);
 
             return new LoopDetectionResult
             {
-                IsLoop = isLoop,
+                IsLoop = CurrentConsecutiveCount >= _threshold,
                 ConsecutiveCount = CurrentConsecutiveCount,
                 ToolName = CurrentToolName,
                 RecommendedAction = DetermineAction(CurrentConsecutiveCount)
@@ -129,10 +117,12 @@ public class LoopDetector
     }
 
     /// <summary>
-    /// 记录一次工具调用
+    /// 记录一次工具调用。
     /// </summary>
     /// <param name="toolName">工具名称</param>
     /// <param name="argumentsHash">参数哈希值</param>
+    [Obsolete("请统一使用 Check(toolName, argumentsHash) 作为单一入口（同时记录并返回判定），" +
+              "RecordCall 仅保留兼容，混用两者会导致重复计数。")]
     public void RecordCall(string toolName, string argumentsHash)
     {
         if (string.IsNullOrEmpty(toolName))
@@ -143,26 +133,34 @@ public class LoopDetector
 
         lock (_lock)
         {
-            // 添加到历史记录
-            _callHistory.AddLast(new CallRecord(toolName, argumentsHash, DateTime.Now));
+            RecordCallCore(toolName, argumentsHash);
+        }
+    }
 
-            // 限制历史记录大小
-            while (_callHistory.Count > MaxHistorySize)
-            {
-                _callHistory.RemoveFirst();
-            }
+    /// <summary>
+    /// 记录调用历史并更新连续计数（Check / RecordCall 的唯一公共实现）。
+    /// </summary>
+    private void RecordCallCore(string toolName, string argumentsHash)
+    {
+        // 添加到历史记录
+        _callHistory.AddLast(new CallRecord(toolName, argumentsHash, DateTime.Now));
 
-            // 更新连续调用计数
-            if (IsSameAsLastCall(toolName, argumentsHash))
-            {
-                CurrentConsecutiveCount++;
-            }
-            else
-            {
-                CurrentConsecutiveCount = 1;
-                CurrentToolName = toolName;
-                _currentArgumentsHash = argumentsHash;
-            }
+        // 限制历史记录大小
+        while (_callHistory.Count > MaxHistorySize)
+        {
+            _callHistory.RemoveFirst();
+        }
+
+        // 更新连续调用计数
+        if (IsSameAsLastCall(toolName, argumentsHash))
+        {
+            CurrentConsecutiveCount++;
+        }
+        else
+        {
+            CurrentConsecutiveCount = 1;
+            CurrentToolName = toolName;
+            _currentArgumentsHash = argumentsHash;
         }
     }
 
