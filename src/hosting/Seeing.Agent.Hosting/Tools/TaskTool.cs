@@ -32,7 +32,7 @@ public class TaskTool : ToolBase
     private readonly IAgentLoopScheduler _loopScheduler;
     private readonly IExecutionSubmitter _executionSubmitter;
     private readonly IExecutionStatusProvider _execStatusProvider;
-    private readonly IExecutionEventPublisher _eventPublisher;
+    private string? _cachedDescription;
 
     public TaskTool(
         ILogger<TaskTool> logger,
@@ -50,12 +50,14 @@ public class TaskTool : ToolBase
         _loopScheduler = loopScheduler;
         _executionSubmitter = executionSubmitter;
         _execStatusProvider = execStatusProvider;
-        _eventPublisher = eventPublisher;
+        // 后台监听已改为轮询 WaitForExecutionAsync（摆脱事件流回放依赖），
+        // 保留 eventPublisher 构造参数以维持 DI 注册与既有测试调用点不变。
+        _ = eventPublisher;
     }
 
     public override string Id => "task";
 
-    public override string Description => BuildDescription();
+    public override string Description => _cachedDescription ??= BuildDescription();
 
     public override JsonElement ParametersSchema => BuildObjectSchema(new Dictionary<string, (string, string, bool, string[]?)>
     {
@@ -199,36 +201,27 @@ public class TaskTool : ToolBase
 
                 var executionId = submitResult.ExecutionId;
 
-                // 后台监听完成 → 通知父会话（复用现有 synthetic 注入语义）
+                // 后台监听完成 → 通知父会话（复用现有 synthetic 注入语义）。
+                // 经 WaitForExecutionAsync 轮询执行记录终态，不再订阅事件流——
+                // 事件订阅依赖回放缓冲，跨子/父会话边界易漏终态。
                 _ = Task.Run(async () =>
                 {
-                    var finalStatus = ExecutionStatus.Pending;
+                    var finalStatus = ExecutionStatus.Failed;
                     string? errorMessage = null;
                     try
                     {
-                        await foreach (var evt in _eventPublisher.SubscribeAsync(childId, CancellationToken.None))
+                        await _executionSubmitter.WaitForExecutionAsync(executionId, CancellationToken.None);
+
+                        var record = _execStatusProvider.GetExecution(executionId);
+                        if (record != null)
                         {
-                            if (evt is ExecutionCompleteEvent ce && ce.ExecutionId == executionId)
-                            {
-                                finalStatus = ce.Status;
-                                break;
-                            }
-                            if (evt is LoopCancelledEvent)
-                            {
-                                finalStatus = ExecutionStatus.Cancelled;
-                                break;
-                            }
-                            if (evt is ErrorEvent err)
-                            {
-                                finalStatus = ExecutionStatus.Failed;
-                                errorMessage = err.Message;
-                                break;
-                            }
+                            finalStatus = record.Status;
+                            errorMessage = record.ErrorMessage;
                         }
                     }
                     catch
                     {
-                        // ignore
+                        // 忽略：无法取得终态时按失败处理
                     }
 
                     try
