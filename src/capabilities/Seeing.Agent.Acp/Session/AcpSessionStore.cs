@@ -38,16 +38,16 @@ public sealed class AcpSessionStore
         return AcpSessionMapping.TryParse(raw);
     }
 
-    public void SaveMapping(string seeingSessionId, AcpSessionMapping mapping)
+    public async Task SaveMappingAsync(string seeingSessionId, AcpSessionMapping mapping)
     {
         // 使用 EnsureSessionAsync 确保 session 存在（如果不存在则创建）
-        var session = Task.Run(() => _sessionManager.EnsureSessionAsync(seeingSessionId)).GetAwaiter().GetResult();
+        var session = await _sessionManager.EnsureSessionAsync(seeingSessionId).ConfigureAwait(false);
         session.Metadata[AcpMetadataKeys.Passthrough(seeingSessionId)] = mapping.Serialize();
-        Persist(session);
+        await PersistAsync(session).ConfigureAwait(false);
         _logger.LogDebug("Saved ACP mapping for session {SessionId}", seeingSessionId);
     }
 
-    public void CopyForFork(string parentSessionId, string childSessionId)
+    public async Task CopyForForkAsync(string parentSessionId, string childSessionId)
     {
         var parent = GetSession(parentSessionId);
         if (parent == null)
@@ -59,18 +59,18 @@ public sealed class AcpSessionStore
 
         var child = RequireSession(childSessionId);
         child.Metadata[AcpMetadataKeys.Passthrough(childSessionId)] = raw;
-        Persist(child);
+        await PersistAsync(child).ConfigureAwait(false);
         _logger.LogDebug("Copied passthrough mapping from {Parent} to {Child}", parentSessionId, childSessionId);
     }
 
-    public void ClearOnDestroy(string seeingSessionId)
+    public async Task ClearOnDestroyAsync(string seeingSessionId)
     {
         var session = GetSession(seeingSessionId);
         if (session == null)
             return;
 
         session.Metadata.Remove(AcpMetadataKeys.Passthrough(seeingSessionId));
-        Persist(session);
+        await PersistAsync(session).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -126,11 +126,11 @@ public sealed class AcpSessionStore
         return session;
     }
 
-    private void Persist(SessionData session)
+    private async Task PersistAsync(SessionData session)
     {
         try
         {
-            Task.Run(() => _sessionManager.SaveAsync(session.Id)).GetAwaiter().GetResult();
+            await _sessionManager.SaveAsync(session.Id).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

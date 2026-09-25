@@ -27,6 +27,17 @@ public interface IAgentStore
     /// <returns>Agent 信息列表</returns>
     Task<IReadOnlyList<AgentDefinition>> GetAllAsync();
 
+    /// <summary>
+    /// 同步获取指定 Agent（内存存储快照读取）。
+    /// <para>
+    /// 仅供同步契约点使用（如 <c>IModelManager.ResolveNativeModel</c>），以避免
+    /// sync-over-async 反模式；实现须为内存读取，<b>不得</b>阻塞 I/O。
+    /// </para>
+    /// </summary>
+    /// <param name="name">Agent 名称</param>
+    /// <returns>Agent 信息，不存在则返回 null</returns>
+    AgentDefinition? Get(string name);
+
     /// <summary>检查 Agent 是否存在</summary>
     /// <param name="name">Agent 名称</param>
     /// <returns>是否存在</returns>

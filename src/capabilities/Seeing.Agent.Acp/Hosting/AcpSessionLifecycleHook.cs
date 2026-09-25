@@ -45,7 +45,7 @@ public sealed class AcpSessionLifecycleHook : IMultiHookHandler
             if (payload.Spec.Point == HookRegistry.SessionDestroyed.Point)
                 await HandleDestroyedAsync(payload).ConfigureAwait(false);
             else if (payload.Spec.Point == SessionForked.Point)
-                HandleForked(payload);
+                await HandleForkedAsync(payload).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -84,11 +84,11 @@ public sealed class AcpSessionLifecycleHook : IMultiHookHandler
 
         // 清除 session 元数据中的 mapping（session 即将删除）
         // 但 mapping 已缓存到 AcpSessionStore，宽限期内仍可恢复
-        _sessionStore.ClearOnDestroy(sessionId);
+        await _sessionStore.ClearOnDestroyAsync(sessionId).ConfigureAwait(false);
         _logger.LogDebug("Cleared ACP passthrough mapping for destroyed session {SessionId}", sessionId);
     }
 
-    private void HandleForked(HookPayload payload)
+    private async Task HandleForkedAsync(HookPayload payload)
     {
         var childId = payload.SessionId;
         if (string.IsNullOrEmpty(childId))
@@ -101,7 +101,7 @@ public sealed class AcpSessionLifecycleHook : IMultiHookHandler
         if (string.IsNullOrEmpty(parentId))
             return;
 
-        _sessionStore.CopyForFork(parentId, childId);
+        await _sessionStore.CopyForForkAsync(parentId, childId).ConfigureAwait(false);
         _logger.LogDebug("Copied ACP passthrough mapping fork {Parent} -> {Child}", parentId, childId);
     }
 }

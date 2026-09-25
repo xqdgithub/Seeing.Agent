@@ -28,21 +28,21 @@ public sealed class AcpTaskStore
         return AcpSessionMapping.TryParse(raw);
     }
 
-    public void SaveMapping(string taskId, AcpSessionMapping mapping)
+    public async Task SaveMappingAsync(string taskId, AcpSessionMapping mapping)
     {
         var session = RequireSession(taskId);
         session.Metadata[AcpMetadataKeys.Task(taskId)] = mapping.Serialize();
-        Persist(session);
+        await PersistAsync(session).ConfigureAwait(false);
     }
 
-    public void ClearOnDestroy(string taskId)
+    public async Task ClearOnDestroyAsync(string taskId)
     {
         var session = GetSession(taskId);
         if (session == null)
             return;
 
         session.Metadata.Remove(AcpMetadataKeys.Task(taskId));
-        Persist(session);
+        await PersistAsync(session).ConfigureAwait(false);
     }
 
     private SessionData? GetSession(string sessionId)
@@ -67,11 +67,11 @@ public sealed class AcpTaskStore
         return session;
     }
 
-    private void Persist(SessionData session)
+    private async Task PersistAsync(SessionData session)
     {
         try
         {
-            Task.Run(() => _sessionManager.SaveAsync(session.Id)).GetAwaiter().GetResult();
+            await _sessionManager.SaveAsync(session.Id).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

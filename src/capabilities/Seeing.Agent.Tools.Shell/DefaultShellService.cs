@@ -139,7 +139,8 @@ public sealed class DefaultShellService : IShellService
             });
 
             var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExitAsync().GetAwaiter().GetResult();
+            // SelectShell 为同步接口（BashTool.Description/Schema getter 依赖），无法异步化；
+            // 此处读取 ExitCode 按其契约在进程未退出时阻塞等待，避免 WaitForExitAsync().GetAwaiter().GetResult() 同步包装。
             if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
                 return output.Split('\n', '\r').FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.Trim();

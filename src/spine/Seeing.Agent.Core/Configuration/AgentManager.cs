@@ -63,22 +63,24 @@ namespace Seeing.Agent.Core.Configuration
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
                 .Build();
-
-            // 两阶段注册：构造时 store 为空；内置人格由 AgentsBuiltInModule.ActivateAsync 写入。
-            // 若 Activate 已先于本构造执行，则在此备份已有定义供 MD 删除后恢复。
-            foreach (var agent in Task.Run(async () => await _agentStore.GetAllAsync()).GetAwaiter().GetResult())
-            {
-                _originalAgents[agent.Name] = agent;
-            }
-
-            _logger.LogInformation("AgentManager 初始化完成，已注册 {Count} 个代理",
-                Task.Run(async () => await _agentStore.GetAllAsync()).GetAwaiter().GetResult().Count);
         }
 
         /// <inheritdoc/>
         public async Task StartAsync(CancellationToken cancellationToken = default)
         {
             _logger.LogInformation("AgentManager 正在初始化...");
+
+            // 两阶段注册：构造时 store 为空；内置人格由 AgentsBuiltInModule.ActivateAsync 写入。
+            // 在 StartAsync（Activate 之后、ApplyMdOverrides 之前）异步备份现有定义供 MD 删除后恢复，
+            // 避免在构造函数中同步包装异步调用。
+            var existingAgents = await _agentStore.GetAllAsync();
+            foreach (var agent in existingAgents)
+            {
+                _originalAgents[agent.Name] = agent;
+            }
+
+            _logger.LogInformation("AgentManager 已备份 {Count} 个代理定义", existingAgents.Count);
+
             await _runtimeManager.InitializeAsync();
             await ApplyMdOverridesAsync();
             _logger.LogInformation("AgentManager 初始化完成");

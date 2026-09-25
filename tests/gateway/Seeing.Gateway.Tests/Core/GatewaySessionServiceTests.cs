@@ -83,7 +83,7 @@ public class GatewaySessionServiceTests
         catalog.Setup(c => c.GetModels()).Returns(new Dictionary<string, ModelConfig>());
 
         var store = new Mock<IAgentStore>();
-        store.Setup(s => s.GetAsync(agent.Name)).ReturnsAsync(agent);
+        store.Setup(s => s.Get(agent.Name)).Returns(agent);
 
         return new ModelManager(catalog.Object, store.Object);
     }

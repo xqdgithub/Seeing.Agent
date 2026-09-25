@@ -150,9 +150,9 @@ public sealed class AcpLifecycleService
         };
 
         if (scope == "tool")
-            _taskStore.SaveMapping(scopeKey, newMapping);
+            await _taskStore.SaveMappingAsync(scopeKey, newMapping).ConfigureAwait(false);
         else
-            _sessionStore.SaveMapping(scopeKey, newMapping);
+            await _sessionStore.SaveMappingAsync(scopeKey, newMapping).ConfigureAwait(false);
 
         _logger.LogInformation(
             "ACP session/new scope={Scope} key={ScopeKey} acpSession={AcpSessionId}",

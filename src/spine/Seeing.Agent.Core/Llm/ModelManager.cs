@@ -41,7 +41,8 @@ public sealed class ModelManager : IModelManager
         if (!string.IsNullOrEmpty(sessionModelRef))
             return sessionModelRef;
 
-        var agent = _agentStore.GetAsync(agentName).GetAwaiter().GetResult();
+        // 同步契约点：IAgentStore.Get 为内存快照读取（不阻塞 I/O），避免 sync-over-async
+        var agent = _agentStore.Get(agentName);
         if (agent?.Model is { ModelId: { Length: > 0 } } modelRef)
             return modelRef.ToString();
 
@@ -117,7 +118,8 @@ public sealed class ModelManager : IModelManager
         if (!string.IsNullOrEmpty(session.SelectedModel))
             return false;
 
-        var agent = _agentStore.GetAsync(agentName).GetAwaiter().GetResult();
+        // 同步契约点：IAgentStore.Get 为内存快照读取（不阻塞 I/O），避免 sync-over-async
+        var agent = _agentStore.Get(agentName);
         if (agent?.Runtime == AgentRuntime.AcpPassthrough)
             return false;
 

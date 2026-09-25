@@ -57,7 +57,11 @@ public class TaskTool : ToolBase
 
     public override string Id => "task";
 
-    public override string Description => _cachedDescription ??= BuildDescription();
+    /// <summary>同步契约回退描述；异步温暖缓存完成前返回。</summary>
+    private const string FallbackDescription =
+        "创建子任务并使用专用 Native Agent 执行。支持传递 task_id 以继续之前的子任务。";
+
+    public override string Description => _cachedDescription ?? FallbackDescription;
 
     public override JsonElement ParametersSchema => BuildObjectSchema(new Dictionary<string, (string, string, bool, string[]?)>
     {
@@ -472,11 +476,23 @@ public class TaskTool : ToolBase
     private static string BuildOutput(string taskId, string state, string body) =>
         $"task_id: {taskId}\nstate: {state}\n\n<task_result>\n{body}\n</task_result>";
 
-    private string BuildDescription()
+    /// <summary>
+    /// 预热工具描述缓存。ITool.Description 为同步契约，getter 内无法 await；
+    /// 由 <see cref="HostingModule.ActivateAsync"/> 在注册前异步取回可委托 Agent 列表并缓存。
+    /// </summary>
+    public async Task WarmDescriptionAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cachedDescription != null)
+            return;
+
+        _cachedDescription = await BuildDescriptionAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> BuildDescriptionAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var taskable = Task.Run(() => _agentRegistry.GetTaskableAgentsAsync()).GetAwaiter().GetResult();
+            var taskable = await _agentRegistry.GetTaskableAgentsAsync().ConfigureAwait(false);
             var agentListText = taskable.Count > 0
                 ? string.Join("\n", taskable.Select(a =>
                     $"- {a.Name}: {a.Description ?? "此子代理应仅由用户手动调用"}"))
@@ -489,7 +505,7 @@ public class TaskTool : ToolBase
         }
         catch
         {
-            return "创建子任务并使用专用 Native Agent 执行。支持传递 task_id 以继续之前的子任务。";
+            return FallbackDescription;
         }
     }
 

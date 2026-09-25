@@ -40,7 +40,11 @@ public sealed class HostingModule : ISeeingModule
             return;
 
         if (services.GetService<TaskTool>() is { } task)
+        {
+            // ITool.Description 为同步契约，注册前异步预热描述缓存（含可委托 Agent 列表）
+            await task.WarmDescriptionAsync(cancellationToken).ConfigureAwait(false);
             await tm.RegisterToolAsync(task, cancellationToken).ConfigureAwait(false);
+        }
         if (services.GetService<TaskStatusTool>() is { } status)
             await tm.RegisterToolAsync(status, cancellationToken).ConfigureAwait(false);
         if (services.GetService<TodoWriteTool>() is { } todo)

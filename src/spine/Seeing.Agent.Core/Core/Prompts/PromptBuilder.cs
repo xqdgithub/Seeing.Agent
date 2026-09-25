@@ -59,34 +59,6 @@ public class PromptBuilder
         return result.Trim();
     }
 
-    /// <summary>
-    /// 同步构建（向后兼容）。内部调用 <see cref="BuildAsync"/>。
-    /// </summary>
-    public string Build(string basePrompt, PromptContext context)
-    {
-        if (string.IsNullOrEmpty(basePrompt))
-            return string.Empty;
-
-        var previousAgent = context.Agent;
-        var previousPrompt = previousAgent?.SystemPrompt;
-        if (previousAgent == null)
-            context.Agent = new Seeing.Agent.Abstractions.Agents.AgentDefinition { SystemPrompt = basePrompt };
-        else
-            previousAgent.SystemPrompt = basePrompt;
-
-        try
-        {
-            return BuildAsync(context).GetAwaiter().GetResult();
-        }
-        finally
-        {
-            if (previousAgent == null)
-                context.Agent = null;
-            else
-                previousAgent.SystemPrompt = previousPrompt;
-        }
-    }
-
     private async Task<string> InjectSectionsAsync(
         string prompt,
         PromptContext context,

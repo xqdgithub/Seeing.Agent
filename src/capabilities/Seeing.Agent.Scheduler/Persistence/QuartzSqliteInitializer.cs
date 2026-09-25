@@ -208,15 +208,21 @@ public static class QuartzSqliteInitializer
         END"
     };
 
-    /// <summary>初始化 Quartz.NET SQLite 数据库表结构</summary>
-    public static async Task InitializeAsync(string connectionString, ILogger? logger = null, CancellationToken ct = default)
+    /// <summary>
+    /// 初始化 Quartz.NET SQLite 数据库表结构。
+    /// <para>
+    /// 提供同步实现：调用点位于 <c>AddQuartz((q, sp) =&gt; ...)</c> 的同步配置委托内，
+    /// 无法 await，故不提供异步包装（避免 <c>GetAwaiter().GetResult()</c> 同步包装反模式）。
+    /// SQLite 本地文件 DDL 在注册期执行，可接受同步阻塞。
+    /// </para>
+    /// </summary>
+    public static void Initialize(string connectionString, ILogger? logger = null)
     {
-        await using var connection = new SqliteConnection(connectionString);
-        await connection.OpenAsync(ct);
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
 
         // 检查表是否已存在
-        var tablesExist = await CheckTablesExistAsync(connection, ct);
-        if (tablesExist)
+        if (CheckTablesExist(connection))
         {
             logger?.LogDebug("Quartz tables already exist, skipping initialization");
             return;
@@ -227,25 +233,25 @@ public static class QuartzSqliteInitializer
         // 创建所有表
         foreach (var sql in CreateTablesSql)
         {
-            await using var command = connection.CreateCommand();
+            using var command = connection.CreateCommand();
             command.CommandText = sql;
-            await command.ExecuteNonQueryAsync(ct);
+            command.ExecuteNonQuery();
         }
 
         // 创建所有触发器
         foreach (var sql in CreateTriggersSql)
         {
-            await using var command = connection.CreateCommand();
+            using var command = connection.CreateCommand();
             command.CommandText = sql;
-            await command.ExecuteNonQueryAsync(ct);
+            command.ExecuteNonQuery();
         }
 
         logger?.LogInformation("Quartz.NET SQLite database schema initialized successfully");
     }
 
-    private static async Task<bool> CheckTablesExistAsync(SqliteConnection connection, CancellationToken ct)
+    private static bool CheckTablesExist(SqliteConnection connection)
     {
-        await using var command = connection.CreateCommand();
+        using var command = connection.CreateCommand();
         command.CommandText = @"
             SELECT COUNT(*) FROM sqlite_master
             WHERE type = 'table' AND name IN (
@@ -253,7 +259,7 @@ public static class QuartzSqliteInitializer
                 'QRTZ_CRON_TRIGGERS', 'QRTZ_FIRED_TRIGGERS', 'QRTZ_SCHEDULER_STATE'
             )";
 
-        var count = Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+        var count = Convert.ToInt32(command.ExecuteScalar());
         return count >= 6; // 至少6个核心表存在
     }
 }

@@ -67,6 +67,15 @@ namespace Seeing.Agent.Core
         }
 
         /// <inheritdoc/>
+        public AgentDefinition? Get(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            return _agents.TryGetValue(name, out var agent) ? agent : null;
+        }
+
+        /// <inheritdoc/>
         public async Task<IReadOnlyList<AgentDefinition>> GetAllAsync()
         {
             var agents = _agents.Values

@@ -176,8 +176,8 @@ public static class SchedulerServiceCollectionExtensions
                     dbPath = $"Data Source={workspaceProvider.ProjectSeeingDirectory}/quartz.db";
                 }
 
-                // 自动初始化 SQLite 数据库表结构
-                Task.Run(() => QuartzSqliteInitializer.InitializeAsync(dbPath, logger)).GetAwaiter().GetResult();
+                // 自动初始化 SQLite 数据库表结构（同步配置委托内无法 await，使用同步初始化）
+                QuartzSqliteInitializer.Initialize(dbPath, logger);
 
                 q.UsePersistentStore(store =>
                 {

@@ -122,6 +122,9 @@ public class AgentsBuiltInActivateTests
         public Task<AgentDefinition?> GetAsync(string name)
             => Task.FromResult(_agents.TryGetValue(name, out var a) ? a : null);
 
+        public AgentDefinition? Get(string name)
+            => _agents.TryGetValue(name, out var a) ? a : null;
+
         public Task<IReadOnlyList<AgentDefinition>> GetAllAsync()
             => Task.FromResult<IReadOnlyList<AgentDefinition>>(_agents.Values.ToList());
 

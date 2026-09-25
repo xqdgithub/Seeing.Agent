@@ -39,7 +39,8 @@ public sealed class McpLoader : IComponentLoader
         var directories = services.GetService<ISeeingDirectories>()
             ?? new WorkspaceSeeingDirectories(workspaceRoot);
 
-        var configs = McpConfigLoader.LoadDefault(directories, logger);
+        var configs = await McpConfigLoader.LoadDefaultAsync(directories, logger, cancellationToken)
+            .ConfigureAwait(false);
 
         var configDict = new Dictionary<string, McpServerConfig>();
         foreach (var config in configs)
@@ -70,7 +71,8 @@ public sealed class McpLoader : IComponentLoader
         var directories = services.GetService<ISeeingDirectories>()
             ?? new WorkspaceSeeingDirectories(workspaceRoot);
 
-        var configs = McpConfigLoader.LoadDefault(directories, logger);
+        var configs = await McpConfigLoader.LoadDefaultAsync(directories, logger, cancellationToken)
+            .ConfigureAwait(false);
 
         var configDict = new Dictionary<string, McpServerConfig>();
         foreach (var config in configs)

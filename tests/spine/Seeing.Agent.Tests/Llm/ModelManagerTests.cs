@@ -240,8 +240,8 @@ public class ModelManagerTests
     {
         var store = new Mock<IAgentStore>();
         store
-            .Setup(s => s.GetAsync(agentName))
-            .ReturnsAsync(new AgentDefinition
+            .Setup(s => s.Get(agentName))
+            .Returns(new AgentDefinition
             {
                 Name = agentName,
                 Runtime = runtime,

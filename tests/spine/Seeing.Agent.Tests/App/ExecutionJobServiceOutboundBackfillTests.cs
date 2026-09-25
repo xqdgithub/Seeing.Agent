@@ -230,7 +230,7 @@ public class ExecutionJobServiceModelSelectionTests
         catalog.Setup(c => c.GetModels()).Returns(new Dictionary<string, ModelConfig>());
 
         var store = new Mock<IAgentStore>();
-        store.Setup(s => s.GetAsync(It.IsAny<string>())).ReturnsAsync(new AgentDefinition
+        store.Setup(s => s.Get(It.IsAny<string>())).Returns(new AgentDefinition
         {
             Name = "build",
             Runtime = AgentRuntime.Native
