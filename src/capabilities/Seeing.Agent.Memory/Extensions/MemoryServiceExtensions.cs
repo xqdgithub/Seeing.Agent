@@ -1,6 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Tools;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
@@ -173,7 +172,6 @@ public static class MemoryServiceExtensions
         services.AddModuleHostedService<MemoryPipelineWorker>();
         services.AddModuleHostedService<MemoryEvolutionWorker>();
         services.AddModuleHostedService<MemoryIndexingService>();
-        services.AddHostedService<MemoryBootstrapHostedService>();
 
         return services;
     }

@@ -195,4 +195,38 @@ public class ReloadOrchestratorTests
         results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Y" } }, TestContext.Current.CancellationToken);
         results.Select(r => r.ComponentId).Should().NotContain("plugin");
     }
+
+    [Fact]
+    public async Task Attach_Detach_单个处理器可动态挂接与撤销()
+    {
+        var (orch, _) = CreateOrchestrator(out _, out _);
+        var handler = new TrackingHandler { ComponentId = "module" };
+
+        orch.Attach(handler);
+        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "X" } }, TestContext.Current.CancellationToken);
+        results.Select(r => r.ComponentId).Should().Contain("module");
+        handler.Received.Should().Contain("X");
+
+        orch.Detach(handler);
+        results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "Y" } }, TestContext.Current.CancellationToken);
+        results.Select(r => r.ComponentId).Should().NotContain("module");
+        handler.Received.Should().NotContain("Y");
+    }
+
+    [Fact]
+    public async Task Attach_幂等_同实例不重复入路由()
+    {
+        var (orch, _) = CreateOrchestrator(out _, out _);
+        var handler = new TrackingHandler { ComponentId = "once" };
+
+        orch.Attach(handler);
+        orch.Attach(handler);
+
+        var results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "A" } }, TestContext.Current.CancellationToken);
+        results.Count(r => r.ComponentId == "once").Should().Be(1, "同实例不应因重复 Attach 而在快照中重复出现");
+
+        orch.Detach(handler);
+        results = await orch.ReloadAsync(new ConfigChange { ChangedSections = new[] { "B" } }, TestContext.Current.CancellationToken);
+        results.Select(r => r.ComponentId).Should().NotContain("once");
+    }
 }

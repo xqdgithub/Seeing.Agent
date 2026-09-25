@@ -73,16 +73,37 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     {
         ArgumentNullException.ThrowIfNull(handlers);
 
-        lock (_stateLock)
-        {
-            foreach (var handler in handlers)
-            {
-                ArgumentNullException.ThrowIfNull(handler);
-                AddToRoutes(handler);
-            }
-        }
+        foreach (var handler in handlers)
+            Attach(handler);
 
         LogRegistrationSummary();
+    }
+
+    /// <summary>
+    /// 挂接单个重载处理器（幂等；同实例不重复入路由）。
+    /// 供模块在 Activate 阶段动态挂接自身 Handler，与启动期一次性全量挂载解耦。
+    /// </summary>
+    public void Attach(IReloadHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+
+        lock (_stateLock)
+        {
+            AddToRoutes(handler);
+        }
+    }
+
+    /// <summary>
+    /// 撤销单个重载处理器。供模块在 Deactivate 阶段对称撤销，防止停用后仍被热重载触发复活。
+    /// </summary>
+    public void Detach(IReloadHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+
+        lock (_stateLock)
+        {
+            RemoveFromRoutes(handler);
+        }
     }
 
     /// <summary>显式触发重载（供手动调用，如未来文件监视/CLI 命令；IReloadSignalBus.PublishAsync 即此方法）</summary>
@@ -148,30 +169,16 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     public void RegisterHandler(IReloadHandler handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        lock (_stateLock)
-        {
-            AddToRoutes(handler);
-            _logger.LogInformation("动态注册重载处理器: {ComponentId}", handler.ComponentId);
-        }
+        Attach(handler);
+        _logger.LogInformation("动态注册重载处理器: {ComponentId}", handler.ComponentId);
     }
 
     /// <inheritdoc/>
     public void UnregisterHandler(IReloadHandler handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        lock (_stateLock)
-        {
-            // 防御性复制：ChangeTypes 可能是可变数组，避免迭代期间被外部修改
-            foreach (var changeType in handler.ChangeTypes.ToArray())
-            {
-                if (_routes.TryGetValue(changeType, out var list))
-                {
-                    list.Remove(handler);
-                    if (list.Count == 0) _routes.Remove(changeType);
-                }
-            }
-            _logger.LogInformation("注销重载处理器: {ComponentId}", handler.ComponentId);
-        }
+        Detach(handler);
+        _logger.LogInformation("注销重载处理器: {ComponentId}", handler.ComponentId);
     }
 
     private void AddToRoutes(IReloadHandler handler)
@@ -182,6 +189,19 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
             if (!_routes.TryGetValue(changeType, out var list))
                 _routes[changeType] = list = new List<IReloadHandler>();
             if (!list.Contains(handler)) list.Add(handler);
+        }
+    }
+
+    private void RemoveFromRoutes(IReloadHandler handler)
+    {
+        // 防御性复制：ChangeTypes 可能是可变数组，避免迭代期间被外部修改
+        foreach (var changeType in handler.ChangeTypes.ToArray())
+        {
+            if (_routes.TryGetValue(changeType, out var list))
+            {
+                list.Remove(handler);
+                if (list.Count == 0) _routes.Remove(changeType);
+            }
         }
     }
 

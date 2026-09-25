@@ -43,7 +43,7 @@ public sealed class ChatMemoryHandler : IHookHandler
         try
         {
             var opts = _options.CurrentValue;
-            if (!opts.Enabled || !opts.Capture.AutoCapture || !opts.Capture.CaptureChat)
+            if (!opts.Capture.AutoCapture || !opts.Capture.CaptureChat)
                 return Task.FromResult(HookResult.Success);
 
             var content = HookDataContract.ChatAfterComplete.Content.GetFrom(payload.Result);
@@ -107,7 +107,7 @@ public sealed class ToolMemoryHandler : IHookHandler
         try
         {
             var opts = _options.CurrentValue;
-            if (!opts.Enabled || !opts.Capture.AutoCapture || !opts.Capture.CaptureTools)
+            if (!opts.Capture.AutoCapture || !opts.Capture.CaptureTools)
                 return Task.FromResult(HookResult.Success);
 
             // 显式开启工具捕获时仍不入缓冲：本版本不支持工具批处理，避免回归高频 LLM。
@@ -151,7 +151,7 @@ public sealed class AgentTurnMemoryHandler : IHookHandler
         try
         {
             var opts = _options.CurrentValue;
-            if (!opts.Enabled || !opts.Extraction.Enabled || opts.Extraction.ExtractEveryNTurns <= 0)
+            if (!opts.Extraction.Enabled || opts.Extraction.ExtractEveryNTurns <= 0)
                 return Task.FromResult(HookResult.Success);
 
             var sessionId = payload.SessionId;

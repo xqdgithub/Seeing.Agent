@@ -31,13 +31,16 @@ public sealed class SystemOneModule : ISeeingModule
         services.AddSingleton<SystemOneProviderManager>();
         services.AddSingleton<ISystemOneProviderRegistry>(sp => sp.GetRequiredService<SystemOneProviderManager>());
         services.AddSingleton<ISystemOneService, SystemOneService>();
-        services.AddSingleton<IReloadHandler, SystemOneReloadHandler>();
+        // 以具体类型登记，不登记为 IReloadHandler：避免宿主启动期全量挂载，
+        // 改由本模块 Activate/Deactivate 动态挂接/撤销（停用后热重载不得复活 provider）。
+        services.AddSingleton<SystemOneReloadHandler>();
     }
 
     /// <inheritdoc />
     public Task ActivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         services.GetRequiredService<SystemOneProviderManager>().Reload();
+        AttachReloadHandler(services);
         return Task.CompletedTask;
     }
 
@@ -45,7 +48,26 @@ public sealed class SystemOneModule : ISeeingModule
     public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        DetachReloadHandler(services);
         services.GetRequiredService<ISystemOneProviderRegistry>().UnregisterByOwner("systemone");
         return Task.CompletedTask;
+    }
+
+    private static void AttachReloadHandler(IServiceProvider services)
+    {
+        if (services.GetService<IReloadHandlerRegistry>() is { } registry
+            && services.GetService<SystemOneReloadHandler>() is { } handler)
+        {
+            registry.RegisterHandler(handler);
+        }
+    }
+
+    private static void DetachReloadHandler(IServiceProvider services)
+    {
+        if (services.GetService<IReloadHandlerRegistry>() is { } registry
+            && services.GetService<SystemOneReloadHandler>() is { } handler)
+        {
+            registry.UnregisterHandler(handler);
+        }
     }
 }

@@ -59,5 +59,16 @@ public sealed class AgentsBuiltInModule : ISeeingModule
     }
 
     /// <inheritdoc />
-    public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (_agentStore is null)
+            return Task.CompletedTask;
+
+        foreach (var agent in BuiltInAgents.GetBuiltInAgents())
+            _agentStore.Unregister(agent.Name);
+
+        return Task.CompletedTask;
+    }
 }

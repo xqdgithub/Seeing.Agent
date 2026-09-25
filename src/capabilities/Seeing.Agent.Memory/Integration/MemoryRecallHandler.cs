@@ -34,9 +34,6 @@ public sealed class MemoryRecallHandler : IHookHandler
         try
         {
             var opts = _options.Value;
-            if (!opts.Enabled)
-                return HookResult.Success;
-
             if (opts.Retrieval.Mode == MemoryRetrievalMode.ToolsOnly)
                 return HookResult.Success;
 

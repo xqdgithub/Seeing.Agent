@@ -31,6 +31,40 @@ public class AgentsBuiltInActivateTests
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
+    [Fact]
+    public async Task DeactivateAsync_ShouldUnregisterBuiltIns()
+    {
+        var store = new InMemoryAgentStore();
+        var module = new AgentsBuiltInModule(store);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var ct = TestContext.Current.CancellationToken;
+
+        await module.ActivateAsync(services, ct);
+        (await store.GetAllAsync()).Should().NotBeEmpty();
+
+        await module.DeactivateAsync(services, ct);
+
+        foreach (var name in new[] { "build", "plan", "explore", "general", "summary" })
+            store.Has(name).Should().BeFalse($"{name} 应随模块停用被注销");
+        (await store.GetAllAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ActivateDeactivateActivate_ShouldBeIdempotent()
+    {
+        var store = new InMemoryAgentStore();
+        var module = new AgentsBuiltInModule(store);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var ct = TestContext.Current.CancellationToken;
+
+        await module.ActivateAsync(services, ct);
+        await module.DeactivateAsync(services, ct);
+        await module.ActivateAsync(services, ct);
+
+        (await store.GetAllAsync()).Select(a => a.Name)
+            .Should().BeEquivalentTo(["build", "plan", "explore", "general", "summary"]);
+    }
+
     private sealed class InMemoryAgentStore : IAgentStore
     {
         private readonly Dictionary<string, AgentDefinition> _agents = new(StringComparer.OrdinalIgnoreCase);

@@ -1,8 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Memory.Core;
+using Seeing.Agent.Memory.Integration;
 using Seeing.Agent.Memory.Integration.Hosting;
 using Seeing.Agent.Memory.Integration.Tools;
 
@@ -80,6 +82,9 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
         _activity.MarkActive();
         _ui?.Register(this);
 
+        // Hook 与本模块生命周期绑定：Activate 登记、Deactivate 撤销，单一真相源为模块启停。
+        RegisterHooks(services);
+
         var tm = services.GetService<IToolManager>();
         if (tm is null)
             return;
@@ -95,6 +100,8 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        UnregisterHooks(services);
+
         var tm = services.GetService<IToolManager>();
         if (tm is not null)
         {
@@ -110,5 +117,35 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
         _activity.MarkInactiveAndWake();
         _connectionOwner.Close();
         await Task.CompletedTask.ConfigureAwait(false);
+    }
+
+    private static void RegisterHooks(IServiceProvider services)
+    {
+        if (services.GetService<IHookManager>() is not { } hooks)
+            return;
+
+        if (services.GetService<ChatMemoryHandler>() is { } chat)
+            hooks.Register(chat);
+        if (services.GetService<ToolMemoryHandler>() is { } tool)
+            hooks.Register(tool);
+        if (services.GetService<AgentTurnMemoryHandler>() is { } turn)
+            hooks.Register(turn);
+        if (services.GetService<MemoryRecallHandler>() is { } recall)
+            hooks.Register(recall);
+    }
+
+    private static void UnregisterHooks(IServiceProvider services)
+    {
+        if (services.GetService<IHookManager>() is not { } hooks)
+            return;
+
+        if (services.GetService<ChatMemoryHandler>() is { } chat)
+            hooks.Remove(chat);
+        if (services.GetService<ToolMemoryHandler>() is { } tool)
+            hooks.Remove(tool);
+        if (services.GetService<AgentTurnMemoryHandler>() is { } turn)
+            hooks.Remove(turn);
+        if (services.GetService<MemoryRecallHandler>() is { } recall)
+            hooks.Remove(recall);
     }
 }
