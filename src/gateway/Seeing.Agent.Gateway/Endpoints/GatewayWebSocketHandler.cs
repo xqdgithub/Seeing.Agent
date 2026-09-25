@@ -268,7 +268,7 @@ public sealed class GatewayWebSocketHandler
             return;
         }
 
-        var cancelled = _orchestrator.Cancel(payload.ExecutionId);
+        var cancelled = await _orchestrator.CancelAsync(payload.ExecutionId, cancellationToken).ConfigureAwait(false);
         await connection.SendFrameAsync(
             GatewayWsFrameSerializer.Create(
                 GatewayWsFrameType.CancelAck,

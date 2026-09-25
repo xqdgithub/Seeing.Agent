@@ -73,9 +73,9 @@ public class ChatOrchestrator : IChatOrchestrator
     }
 
     /// <inheritdoc/>
-    public bool Cancel(string executionId)
+    public Task<bool> CancelAsync(string executionId, CancellationToken cancellationToken = default)
     {
-        return _executionJobService.Cancel(executionId);
+        return _executionJobService.CancelAsync(executionId, cancellationToken);
     }
 
     /// <inheritdoc/>

@@ -27,11 +27,12 @@ public interface IChatOrchestrator
     Task<ExecutionSubmitResult> SubmitAsync(string sessionId, ChatInput input, ChatOptions? options = null);
 
     /// <summary>
-    /// 取消执行
+    /// 取消执行（异步）
     /// </summary>
     /// <param name="executionId">执行 ID</param>
+    /// <param name="cancellationToken">取消令牌</param>
     /// <returns>是否成功取消</returns>
-    bool Cancel(string executionId);
+    Task<bool> CancelAsync(string executionId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 取消会话及其所有子会话下未终态的执行（会话级级联取消）。

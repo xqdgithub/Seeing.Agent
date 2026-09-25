@@ -289,17 +289,8 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
     }
 
     /// <summary>
-    /// Cancels an execution.
-    /// </summary>
-    /// <param name="executionId">The execution ID to cancel.</param>
-    /// <returns>True if cancelled, false if not found or already terminal.</returns>
-    /// 同步兼容入口：内部委托 <see cref="CancelAsync"/>；有交互上下文的调用方应优先使用异步入口。
-    public bool Cancel(string executionId)
-        => CancelAsync(executionId).ConfigureAwait(false).GetAwaiter().GetResult();
-
-    /// <summary>
     /// 取消会话级联取消：取消指定会话及其所有子会话（Relation==Child）下未终态的执行。
-    /// 参考 <see cref="Cancel(string)"/> 的队列推进逻辑：取消当前项后提升下一排队项，
+    /// 参考 <see cref="CancelAsync(string, CancellationToken)"/> 的队列推进逻辑：取消当前项后提升下一排队项，
     /// 循环直至无活跃/排队执行，因此本方法会清空该会话的执行队列。
     /// </summary>
     /// <param name="sessionId">父会话或子会话 ID</param>
@@ -1578,14 +1569,32 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
     }
 
     /// <summary>
-    /// Disposes all resources.
-    /// 同步兼容入口：内部委托 <see cref="DisposeAsync"/>；宿主支持时应优先调用异步释放。
+    /// 释放资源（<see cref="IDisposable"/> 契约，同步快速路径）。
+    /// <para>
+    /// 只做「快速释放」：取消在途/排队执行（不等待执行体结束）、释放清理定时器并回收队列与记录。
+    /// 「有界等待在途执行体走完 finally」的语义完全交给 <see cref="DisposeAsync"/>；宿主支持时应优先
+    /// <c>await DisposeAsync()</c>。此路径不做 <c>GetAwaiter().GetResult()</c> 同步包装，
+    /// 避免阻塞最多 5s，或带 SynchronizationContext 时的死锁风险。
+    /// </para>
     /// </summary>
     public void Dispose()
-        => DisposeAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        _cleanupTimer.Dispose();
+
+        // 与 DisposeAsync 不同，此处无需 CancelAsync 逐项推进队列：SessionExecutionQueue.Dispose
+        // 会同步取消当前项，并在不释放在途 CTS 的前提下回收排队项（在途 CTS 交由执行体 finally 释放）。
+        ReleaseQueuesAndRecords();
+
+        _logger.LogInformation("ExecutionJobService disposed (sync fast path)");
+    }
 
     /// <summary>
-    /// 异步释放全部资源：取消所有在途执行并释放各执行记录的 CTS。
+    /// 异步释放全部资源：取消所有在途执行，有界等待在途执行体走完 finally 后再回收队列与记录。
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -1629,13 +1638,25 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             // ignore
         }
 
-        foreach (var (_, queue) in snapshot)
+        ReleaseQueuesAndRecords();
+
+        _logger.LogInformation("ExecutionJobService disposed");
+    }
+
+    /// <summary>
+    /// 回收全部会话队列并清空执行记录；仅释放「从未启动」记录的 CTS。
+    /// <para>
+    /// 已启动记录的 CTS 由执行体 finally → <see cref="SessionExecutionQueue.CompleteAsync"/> 释放，
+    /// 此处不得提前释放，否则在途执行体仍持有令牌时会触发 ObjectDisposedException。
+    /// </para>
+    /// </summary>
+    private void ReleaseQueuesAndRecords()
+    {
+        foreach (var (_, queue) in _sessionQueues.ToArray())
             queue.Dispose();
 
         _sessionQueues.Clear();
 
-        // 仅释放「从未启动」记录的 CTS（StartedAt 默认）：此时无人持有令牌；
-        // 已启动记录的 CTS 由执行体 finally → CompleteAsync 释放，不得在此提前释放。
         foreach (var record in _executions.Values)
         {
             if (record.IsTerminal && record.StartedAt == default)
@@ -1645,8 +1666,6 @@ public class ExecutionJobService : IDisposable, IAsyncDisposable, IExecutionStat
             }
         }
         _executions.Clear();
-
-        _logger.LogInformation("ExecutionJobService disposed");
     }
 }
 

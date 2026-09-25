@@ -45,14 +45,15 @@ public static class GatewayEndpoints
         return result.Success ? Results.Ok(result) : Results.BadRequest(result);
     }
 
-    private static IResult CancelAsync(
+    private static async Task<IResult> CancelAsync(
         GatewayOrchestratorV2 orchestrator,
-        [FromBody] GatewayCancelRequest body)
+        [FromBody] GatewayCancelRequest body,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(body.ExecutionId))
             return Results.BadRequest(new { error = "executionId is required" });
 
-        var cancelled = orchestrator.Cancel(body.ExecutionId);
+        var cancelled = await orchestrator.CancelAsync(body.ExecutionId, cancellationToken).ConfigureAwait(false);
         return Results.Ok(new { executionId = body.ExecutionId, cancelled });
     }
 

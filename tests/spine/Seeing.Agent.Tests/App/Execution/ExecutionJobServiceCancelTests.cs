@@ -68,7 +68,7 @@ public class ExecutionJobServiceCancelTests
         await WaitUntilAsync(() =>
             service.GetOverview(session.Id).CurrentExecution?.Status == ExecutionStatus.Running);
 
-        var cancelled = service.Cancel(executionId);
+        var cancelled = await service.CancelAsync(executionId);
         cancelled.Should().BeTrue();
 
         await WaitUntilAsync(() =>
@@ -122,7 +122,7 @@ public class ExecutionJobServiceCancelTests
         second.Status.Should().Be(ExecutionStatus.Queued);
 
         var secondId = second.ExecutionId!;
-        service.Cancel(secondId).Should().BeTrue();
+        (await service.CancelAsync(secondId)).Should().BeTrue();
 
         await WaitUntilAsync(() =>
             published.Any(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == secondId));

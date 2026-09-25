@@ -133,12 +133,12 @@ public sealed class GatewayOrchestratorV2
         }
     }
 
-    /// <summary>取消指定执行</summary>
-    public bool Cancel(string executionId)
+    /// <summary>取消指定执行（异步）</summary>
+    public async Task<bool> CancelAsync(string executionId, CancellationToken cancellationToken = default)
     {
         using var scope = _services.CreateScope();
         var chatOrchestrator = scope.ServiceProvider.GetRequiredService<IChatOrchestrator>();
-        var cancelled = chatOrchestrator.Cancel(executionId);
+        var cancelled = await chatOrchestrator.CancelAsync(executionId, cancellationToken).ConfigureAwait(false);
         _runTracker.CancelRun(executionId);
         return cancelled;
     }
