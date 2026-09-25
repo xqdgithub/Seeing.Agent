@@ -78,6 +78,44 @@ public class AcpPassthroughExecutorCancellationTests
         events.OfType<StreamDeltaEvent>().Should().NotBeEmpty();
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenBackendIgnoresCancellation_ShouldStillEmitLoopCancelledEvent()
+    {
+        // Arrange：会话运行器完全不观察取消令牌，模拟挂起/不响应取消的后端
+        var executor = CreateExecutor(new IgnoringCancellationSessionRunner());
+        var context = new AgentContext { SessionId = "sess-stuck" };
+        var messages = new List<ChatMessage> { new() { Role = "user", Content = "hi" } };
+        var agent = new AgentDefinition
+        {
+            Name = "acp-opencode",
+            Runtime = AgentRuntime.AcpPassthrough,
+            AcpBackend = "opencode"
+        };
+
+        using var cts = new CancellationTokenSource();
+        var events = new List<IMessageEvent>();
+
+        // Act：收到 StreamStart 后取消；用硬超时守护，避免回归时测试永久挂起
+        var consume = Task.Run(async () =>
+        {
+            await foreach (var evt in executor.ExecuteAsync(agent, messages, context, cts.Token))
+            {
+                events.Add(evt);
+                if (events.Count == 2)
+                    cts.Cancel();
+            }
+        });
+
+        var completed = await Task.WhenAny(consume, Task.Delay(TimeSpan.FromSeconds(15)));
+
+        // Assert：执行器必须有界终止并产出取消终态
+        completed.Should().BeSameAs(consume, "取消时必须到达 LoopCancelledEvent，不得被不响应取消的后端挂死");
+        await consume;
+
+        events.Should().Contain(e => e is LoopCancelledEvent);
+        events[^1].Should().BeOfType<LoopCancelledEvent>();
+    }
+
     private static AcpPassthroughExecutor CreateExecutor(IAcpSessionRunner runner)
     {
         var acpOptions = new AcpOptions
@@ -108,6 +146,19 @@ public class AcpPassthroughExecutorCancellationTests
             CancellationToken cancellationToken = default)
         {
             await Task.Delay(Timeout.Infinite, cancellationToken);
+            return new AcpRunResult { Success = true, Text = "" };
+        }
+    }
+
+    private sealed class IgnoringCancellationSessionRunner : IAcpSessionRunner
+    {
+        public async Task<AcpRunResult> RunAsync(
+            AcpRunRequest request,
+            IAcpUpdateSink sink,
+            CancellationToken cancellationToken = default)
+        {
+            // 刻意不观察 cancellationToken，模拟不响应取消的后端
+            await Task.Delay(Timeout.Infinite);
             return new AcpRunResult { Success = true, Text = "" };
         }
     }

@@ -14,6 +14,9 @@ namespace Seeing.Agent.Acp.Execution;
 /// </summary>
 public sealed class AcpPassthroughExecutor
 {
+    /// <summary>取消后排空缓冲事件的有界等待上限；超时即强制结束，避免后端不响应取消时挂死。</summary>
+    private static readonly TimeSpan s_drainTimeout = TimeSpan.FromSeconds(2);
+
     private readonly IAcpSessionRunner _sessionRunner;
     private readonly ContentBlockMapper _contentMapper;
     private readonly AcpEventMapper _eventMapper;
@@ -116,7 +119,7 @@ public sealed class AcpPassthroughExecutor
         var cancelled = false;
 
         // 取消时 ReadAllAsync 的 OCE 若直接逃逸迭代器，会跳过下方 LoopCancelledEvent 终态。
-        // 故在此捕获 OCE，再以 CancellationToken.None 排空取消前已产生的事件（对齐 Native AgentExecutor）。
+        // 故在此捕获 OCE，再以有界超时排空取消前已产生的事件（对齐 Native AgentExecutor）。
         await using (var enumerator = sink.ReadAllAsync(cancellationToken).GetAsyncEnumerator(cancellationToken))
         {
             while (true)
@@ -146,11 +149,34 @@ public sealed class AcpPassthroughExecutor
 
         if (cancelled)
         {
-            // 排空取消前已产生的缓冲事件，避免 UI 丢帧
-            await foreach (var evt in sink.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
+            // 取消路径主动关闭 channel（幂等）：排空自然收敛，后端即便忽略取消也不会卡住排空。
+            sink.Complete();
+
+            // 有界排空取消前已产生的缓冲事件，避免 UI 丢帧；超时后强制结束，
+            // 确保无论如何都能到达下方 LoopCancelledEvent 终态。
+            using var drainCts = new CancellationTokenSource(s_drainTimeout);
+            await using var drainEnumerator = sink.ReadAllAsync(drainCts.Token).GetAsyncEnumerator(drainCts.Token);
+            while (true)
             {
+                bool hasNext;
+                try
+                {
+                    hasNext = await drainEnumerator.MoveNextAsync().ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning(
+                        "ACP passthrough drain timed out session={SessionId} loop={LoopId}",
+                        context.SessionId,
+                        loopId);
+                    break;
+                }
+
+                if (!hasNext)
+                    break;
+
                 eventCount++;
-                yield return evt;
+                yield return drainEnumerator.Current;
             }
         }
 
@@ -161,14 +187,34 @@ public sealed class AcpPassthroughExecutor
             loopId);
 
         AcpRunResult result;
-        try
+        if (cancelled)
         {
-            result = await runTask.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            cancelled = true;
+            // 取消路径不再等待可能忽略取消的后端，避免执行器永久挂起；
+            // 附加仅故障观察的续延，防止未观察任务异常。
+            _ = runTask.ContinueWith(
+                static (task, logger) =>
+                {
+                    if (task.Exception is { } ex)
+                        ((ILogger)logger!).LogDebug(ex, "ACP cancelled run task faulted");
+                },
+                _logger,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+
             result = new AcpRunResult { Success = false, Error = "cancelled", Text = "" };
+        }
+        else
+        {
+            try
+            {
+                result = await runTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled = true;
+                result = new AcpRunResult { Success = false, Error = "cancelled", Text = "" };
+            }
         }
 
         if (cancelled)
