@@ -65,8 +65,6 @@ public class ChatOrchestratorDeleteSessionTests
                 commandRegistry: Mock.Of<ICommandRegistry>(),
                 agentSelectionResolver: new AgentSelectionResolver(Mock.Of<IAgentRuntimeManager>()),
                 modelManager: Mock.Of<IModelManager>(),
-                executionQueue: new ChatExecutionQueue(),
-                runTracker: new ChatRunTracker(),
                 logger: NullLogger<ChatOrchestrator>.Instance);
 
             await orchestrator.DeleteSessionAsync(target, TestContext.Current.CancellationToken);

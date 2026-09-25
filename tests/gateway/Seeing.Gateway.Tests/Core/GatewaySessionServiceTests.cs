@@ -14,7 +14,7 @@ using Seeing.Session.Management;
 using Seeing.Session.Storage;
 using Xunit;
 
-namespace Seeing.Agent.Tests.Gateway;
+namespace Seeing.Gateway.Tests.Core;
 
 public class GatewaySessionServiceTests
 {

@@ -35,8 +35,6 @@ public class ChatOrchestrator : IChatOrchestrator
     private readonly ICommandRegistry _commandRegistry;
     private readonly AgentSelectionResolver _agentSelectionResolver;
     private readonly IModelManager _modelManager;
-    private readonly ChatExecutionQueue _executionQueue;
-    private readonly ChatRunTracker _runTracker;
     private readonly IDefaultWorkModeProvider? _defaultWorkMode;
     private readonly ILogger<ChatOrchestrator> _logger;
 
@@ -50,8 +48,6 @@ public class ChatOrchestrator : IChatOrchestrator
         ICommandRegistry commandRegistry,
         AgentSelectionResolver agentSelectionResolver,
         IModelManager modelManager,
-        ChatExecutionQueue executionQueue,
-        ChatRunTracker runTracker,
         ILogger<ChatOrchestrator> logger,
         IDefaultWorkModeProvider? defaultWorkMode = null)
     {
@@ -64,8 +60,6 @@ public class ChatOrchestrator : IChatOrchestrator
         _commandRegistry = commandRegistry;
         _agentSelectionResolver = agentSelectionResolver;
         _modelManager = modelManager;
-        _executionQueue = executionQueue;
-        _runTracker = runTracker;
         _logger = logger;
         _defaultWorkMode = defaultWorkMode;
     }

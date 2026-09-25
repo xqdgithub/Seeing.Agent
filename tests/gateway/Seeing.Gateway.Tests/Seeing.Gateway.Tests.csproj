@@ -28,6 +28,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\gateway\Seeing.Gateway\Seeing.Gateway.csproj" />
     <ProjectReference Include="..\..\..\src\gateway\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />
+    <ProjectReference Include="..\..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
   </ItemGroup>
 
 </Project>

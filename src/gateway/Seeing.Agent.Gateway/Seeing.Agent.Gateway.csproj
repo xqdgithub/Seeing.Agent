@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Seeing.Agent.Tests" />
+    <InternalsVisibleTo Include="Seeing.Gateway.Tests" />
   </ItemGroup>
 
   <ItemGroup>

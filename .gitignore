@@ -387,6 +387,9 @@ FodyWeavers.xsd
 # Local build logs
 build_output.txt
 
+# Sample 插件目录运行时产物（旧构建 DLL，不入库）
+samples/*/plugins/*.dll
+
 # Dev screenshots (not referenced by docs)
 /*.png
 /samples/Seeing.Agent.WebUI/alert_report
@@ -397,8 +400,13 @@ build_output.txt
 /tests/test_screenshot_final.png
 /tests/debug_screenshot.png
 /tests/playwright_test.py
-/tests/playwright_test.py
-/tests/test_results.json
+# tests 顶层评估脚本运行产物
+/tests/stdout.txt
+/tests/stderr.txt
+/tests/test_output.txt
+/tests/test_results_detail.json
+/tests/ux_evaluation.json
+/tests/screenshot*.png
 /docs/superpowers/plans
 /chat-page.yml
 /test-screenshots

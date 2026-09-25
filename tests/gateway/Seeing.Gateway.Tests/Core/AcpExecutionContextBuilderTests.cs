@@ -11,7 +11,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
 using Xunit;
 
-namespace Seeing.Agent.Tests.Gateway;
+namespace Seeing.Gateway.Tests.Core;
 
 public class AcpExecutionContextBuilderTests
 {

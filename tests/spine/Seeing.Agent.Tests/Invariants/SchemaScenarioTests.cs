@@ -70,7 +70,7 @@ public class SchemaScenarioTests
             });
 
         var session = SessionData.Create(scenario: "code");
-        using var fixture = CreateFixture(session, publisher.Object, executor.Object);
+        using var fixture = await CreateFixtureAsync(session, publisher.Object, executor.Object);
 
         var result = await fixture.Service.SubmitAsync(
             session.Id,
@@ -224,7 +224,7 @@ public class SchemaScenarioTests
         var filesystem = new TrackingModule("filesystem", ["read"]);
         var basic = new TrackingModule("basic", ["current_time"]);
 
-        using var fixture = CreateFixture(
+        using var fixture = await CreateFixtureAsync(
             session,
             publisher.Object,
             executor.Object,
@@ -392,7 +392,7 @@ public class SchemaScenarioTests
         }
     }
 
-    private static Fixture CreateFixture(
+    private static async Task<Fixture> CreateFixtureAsync(
         SessionData session,
         IExecutionEventPublisher publisher,
         IAgentExecutor executor,
@@ -441,7 +441,7 @@ public class SchemaScenarioTests
             catalog.ReplaceEnabled(modules.Select(m => m.Id).ToArray());
             lifecycle = new ModuleLifecycleManager(
                 catalog, modules, new ServiceCollection().BuildServiceProvider(), NullLogger<ModuleLifecycleManager>.Instance);
-            lifecycle.ActivateAsync().GetAwaiter().GetResult();
+            await lifecycle.ActivateAsync();
         }
 
         var services = new ServiceCollection();

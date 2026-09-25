@@ -88,14 +88,5 @@ namespace Seeing.Agent.Core.Decorators
                 ? $"tool:{Id}:{scope}::{hash}"
                 : $"tool:{Id}:{scope}:{sessionId}:{hash}";
         }
-
-        /// <summary>
-        /// 清除该工具的所有缓存
-        /// </summary>
-        public void ClearCache(IMemoryCache cache)
-        {
-            // MemoryCache 不支持批量清除，这里只是标记
-            _logger?.LogDebug("[Cache] 请求清除缓存: ToolId={ToolId}", Id);
-        }
     }
 }

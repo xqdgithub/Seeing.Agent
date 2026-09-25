@@ -4,7 +4,7 @@ using Seeing.Gateway.Models;
 using Seeing.Session.Core;
 using Xunit;
 
-namespace Seeing.Agent.Tests.Gateway;
+namespace Seeing.Gateway.Tests.Core;
 
 public class GatewayUserMessageComposerTests
 {

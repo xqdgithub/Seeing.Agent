@@ -30,10 +30,6 @@ public static class HostingServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddChatOrchestrator(this IServiceCollection services)
     {
-        // 注册单例服务（跨会话共享）
-        services.AddSingleton<ChatExecutionQueue>();
-        services.AddSingleton<ChatRunTracker>();
-
         // 注册命令发现（具体类 + Abstractions 端口）
         services.AddSingleton<CommandDiscovery>();
         services.AddSingleton<ICommandDiscovery>(sp => sp.GetRequiredService<CommandDiscovery>());

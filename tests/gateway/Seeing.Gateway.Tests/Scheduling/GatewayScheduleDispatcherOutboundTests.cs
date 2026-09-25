@@ -8,7 +8,7 @@ using Seeing.Gateway.Protocol;
 using Seeing.Session.Core;
 using Xunit;
 
-namespace Seeing.Agent.Tests.Gateway;
+namespace Seeing.Gateway.Tests.Scheduling;
 
 public class GatewayScheduleDispatcherOutboundTests
 {

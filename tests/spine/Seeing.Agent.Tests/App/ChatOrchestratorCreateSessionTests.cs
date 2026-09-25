@@ -201,8 +201,6 @@ public class ChatOrchestratorCreateSessionTests
             commandRegistry: Mock.Of<ICommandRegistry>(),
             agentSelectionResolver: selectionResolver,
             modelManager: modelManager,
-            executionQueue: new ChatExecutionQueue(),
-            runTracker: new ChatRunTracker(),
             logger: NullLogger<ChatOrchestrator>.Instance,
             defaultWorkMode: defaultWorkMode);
     }
