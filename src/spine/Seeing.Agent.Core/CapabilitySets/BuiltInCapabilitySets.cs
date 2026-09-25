@@ -76,6 +76,9 @@ public static class BuiltInCapabilitySets
         "agents.builtin",
         "llm.openai",
         "llm.anthropic",
+        "llm.modelcapabilities",
+        "llm.modelcatalog.builtin",
+        "llm.modelcatalog.modelsdev",
         "basic",
         "filesystem",
         "shell",
@@ -90,6 +93,8 @@ public static class BuiltInCapabilitySets
         "mcp",
         "acp",
         "gateway",
+        "systemone",
+        "systemone.tools",
         ..s_providerModules,
     ];
 

@@ -43,32 +43,18 @@ public class BuiltInScenariosTests
     [Fact]
     public void Full_Should_Enable_All_Implemented_Module_Ids()
     {
-        // 与 BuiltInScenarios.s_fullModules 对齐：新增 ISeeingModule 时须同步进 full
-        string[] expected =
-        [
-            "io.local",
-            "agents.builtin",
-            "llm.openai",
-            "llm.anthropic",
-            "basic",
-            "filesystem",
-            "shell",
-            "git",
-            "subagent",
-            "session.tools",
-            "question.tools",
-            "web",
-            "memory",
-            "scheduler",
-            "skills",
-            "mcp",
-            "acp",
-            "gateway",
-            "provider.deepseek",
-            "provider.opencodezen",
-        ];
+        // 反射发现 src 内全部 ISeeingModule 实现 id，与 Full 求差：消除硬编码双写漂移
+        var implemented = SrcModuleScanner.DiscoverImplementedModuleIds();
 
-        BuiltInScenarios.Full.Modules.Should().BeEquivalentTo(expected, opts => opts.WithStrictOrdering());
+        implemented.Should().NotBeEmpty("扫描器应能从 src 构建产物反射发现内置模块");
+
+        var missing = implemented
+            .Except(BuiltInScenarios.Full.Modules, StringComparer.Ordinal)
+            .ToList();
+
+        missing.Should().BeEmpty(
+            "全部已实现的 ISeeingModule 都必须登记进 BuiltInCapabilitySets.Full；缺失: {0}",
+            string.Join(", ", missing));
     }
 
     [Fact]

@@ -124,6 +124,17 @@ public class MemoryModuleHookLifecycleTests
             return list.Remove(handler);
         }
 
+        public bool Remove(IMultiHookHandler handler)
+        {
+            var removed = false;
+            foreach (var spec in handler.Specs)
+            {
+                if (_handlers.TryGetValue(spec.Point, out var list))
+                    removed |= list.Remove(handler);
+            }
+            return removed;
+        }
+
         public bool Clear(HookSpec spec) => _handlers.Remove(spec.Point);
 
         public int Count(HookSpec spec) => _handlers.TryGetValue(spec.Point, out var list) ? list.Count : 0;

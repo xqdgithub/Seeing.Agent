@@ -109,11 +109,11 @@ rg "SerializingPermissionChannel|DynamicPermissionChannel|DefaultPermissionChann
 # Core 零工具实现：`[Tool(` 应为空；`: ITool\b` 仅剩装饰器/反射基础设施（ToolDecorator/ReflectedTool）
 rg ": ITool\b|\[Tool\(" src/spine
 
-# 能力包内裸 IHostedService 注册（应仅 1 处已知例外：AcpHookRegistrationHostedService，模块门控）
+# 能力包内裸 IHostedService 注册（应为零：长驻执行循环须实现 IModuleHostedService）
 rg "AddHostedService<" src/capabilities -g "*.cs"
 
 # 新项目勿落在 src 根平铺
 # （src 下应仅有 primitives|abstractions|spine|hosting|capabilities|gateway）
 ```
 
-期望：`Core.csproj` 命中仅 `src/hosting/*`；其余命令无命中（或仅文档注释）。权限契约扫描如有命中，须为历史注释说明而非类型引用。`rg ": ITool\b|\[Tool\(" src/spine` 预期：`[Tool(` 空、`: ITool\b` 仅装饰器/反射基础设施；`rg "AddHostedService<" src/capabilities` 预期：仅 `AcpHookRegistrationHostedService`（模块门控 Hook 注册，见 [06 接受残留](06-compliance-audit.md)）。
+期望：`Core.csproj` 命中仅 `src/hosting/*`；其余命令无命中（或仅文档注释）。权限契约扫描如有命中，须为历史注释说明而非类型引用。`rg ": ITool\b|\[Tool\(" src/spine` 预期：`[Tool(` 空、`: ITool\b` 仅装饰器/反射基础设施；`rg "AddHostedService<" src/capabilities` 预期：无命中（注册型资源随 Module 生命周期收编，长驻循环改用 `AddModuleHostedService<T>`）。

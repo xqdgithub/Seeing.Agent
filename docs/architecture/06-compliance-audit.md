@@ -166,7 +166,6 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | Gateway 审批回传 scope 恒 `Once` | 协议层无法表达 Session/SessionDirectory 记忆 |
 | `RetryMiddleware` 可重试集合缺 `IOException` | 与 `RetryToolDecorator` 不一致；重试延迟亦不响应取消 |
 | `ToolDrainTimeout` 取消泄漏 | 不响应取消的工具可能拖满排空窗口（10s）后跳过终态，导致任务/进程泄漏（已知边界，见根 `AGENTS.md`） |
-| `AcpHookRegistrationHostedService` 裸 `IHostedService` | 能力包内唯一裸注册（模块门控 Hook 注册），维持现状；见下方扫描命令 |
 | `DangerousCommandGuard` 令牌化绕过 | guard 语义自述「只拦截灾难性操作」；`xargs` 等令牌化包装可绕过，为设计边界，不做行为增强（批次 5 文档声明项） |
 | Gateway 服务器生命周期与 `gateway` 模块脱钩 | 网关为**宿主级基础设施**（`AddSeeingGatewayServer` 由 sample 组合），不随模块 Activate/Deactivate（设计意图，非债） |
 
@@ -177,9 +176,9 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 rg ": ITool\b|\[Tool\(" src/spine
 → [Tool( 空；: ITool\b 命中 ToolDecorator / ReflectedTool 及泛型约束（基础设施）
 
-# 能力包内裸 IHostedService 注册（唯一已知例外）
+# 能力包内裸 IHostedService 注册（应为零：注册型资源随 Module Activate/Deactivate 收编）
 rg "AddHostedService<" src/capabilities -g "*.cs"
-→ 仅 Seeing.Agent.Acp/Extensions/AcpServiceCollectionExtensions.cs（AcpHookRegistrationHostedService，模块门控）
+→ 无命中；AcpHookRegistrationHostedService 已退役，Hook 注册移入 AcpModule.ActivateAsync/DeactivateAsync
 ```
 
 ---

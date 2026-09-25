@@ -6,6 +6,7 @@ using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Acp.Backends;
@@ -21,6 +22,7 @@ using Seeing.Agent.Acp.Transport;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Hooks;
 using Seeing.Session.Core;
 using Xunit;
 
@@ -127,6 +129,34 @@ public class AcpModuleLifecycleTests
         await module.DeactivateAsync(provider);
 
         registry.HasCommand("demo-skill").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Activate_登记SessionLifecycleHook_Deactivate_撤销()
+    {
+        var options = CreateOptions(new AcpOptions());
+        var activity = new AcpModuleActivity();
+        var owner = new AcpConnectionOwner(() => CreateManager(options));
+        var terminal = new AcpTerminalBridge(NullLogger<AcpTerminalBridge>.Instance);
+        var sessionStore = new AcpSessionStore(Mock.Of<ISessionManager>(), NullLogger<AcpSessionStore>.Instance);
+        var lifecycleHook = new AcpSessionLifecycleHook(
+            sessionStore, owner, terminal, NullLogger<AcpSessionLifecycleHook>.Instance);
+        var hookManager = new HookManager(NullLogger<HookManager>.Instance);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IHookManager>(hookManager);
+        services.AddSingleton(lifecycleHook);
+        await using var provider = services.BuildServiceProvider();
+
+        var module = new AcpModule(activity, owner);
+
+        await module.ActivateAsync(provider, TestContext.Current.CancellationToken);
+        foreach (var spec in lifecycleHook.Specs)
+            hookManager.Count(spec).Should().Be(1, $"Activate 后应登记 {spec.Point}");
+
+        await module.DeactivateAsync(provider, TestContext.Current.CancellationToken);
+        foreach (var spec in lifecycleHook.Specs)
+            hookManager.Count(spec).Should().Be(0, $"Deactivate 后应撤销 {spec.Point}");
     }
 
     private static IOptionsMonitor<AcpOptions> CreateOptions(AcpOptions value)

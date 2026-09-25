@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
@@ -93,6 +94,9 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
         AttachReloadHandler(services);
         RegisterCommands(services);
 
+        // Hook 与本模块生命周期绑定：Activate 登记、Deactivate 撤销（不再依赖裸 HostedService）。
+        RegisterHooks(services);
+
         var tm = services.GetService<IToolManager>();
         if (tm is null)
             return;
@@ -106,6 +110,7 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        UnregisterHooks(services);
         UnregisterCommands(services);
         DetachReloadHandler(services);
         await UnregisterAgentsAsync(services).ConfigureAwait(false);
@@ -184,6 +189,24 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
         {
             registry.UnregisterHandler(handler);
         }
+    }
+
+    private static void RegisterHooks(IServiceProvider services)
+    {
+        if (services.GetService<IHookManager>() is not { } hooks)
+            return;
+
+        if (services.GetService<AcpSessionLifecycleHook>() is { } lifecycle)
+            hooks.RegisterMulti(lifecycle);
+    }
+
+    private static void UnregisterHooks(IServiceProvider services)
+    {
+        if (services.GetService<IHookManager>() is not { } hooks)
+            return;
+
+        if (services.GetService<AcpSessionLifecycleHook>() is { } lifecycle)
+            hooks.Remove(lifecycle);
     }
 
     private void RegisterCommands(IServiceProvider services)

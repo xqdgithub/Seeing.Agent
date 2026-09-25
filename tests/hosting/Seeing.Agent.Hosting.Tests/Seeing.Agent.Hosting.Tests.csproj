@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\hosting\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\src\hosting\Seeing.Agent.Hosting.Web\Seeing.Agent.Hosting.Web.csproj" />
   </ItemGroup>
 
 </Project>

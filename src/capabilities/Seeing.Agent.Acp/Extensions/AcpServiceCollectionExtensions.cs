@@ -82,7 +82,6 @@ public static class AcpServiceCollectionExtensions
         // 注册 ACP 专属命令
         services.AddSingleton<AcpCommands>();
 
-        services.AddHostedService<AcpHookRegistrationHostedService>();
         services.AddModuleHostedService<AcpConnectionIdleCleanupHostedService>();
 
         // 追加 ACP 运行时实现；门面仍为 AgentExecutorRouter

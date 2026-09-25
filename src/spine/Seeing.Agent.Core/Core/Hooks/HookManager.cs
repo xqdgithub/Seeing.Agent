@@ -47,6 +47,20 @@ public class HookManager : IHookManager
     }
 
     /// <summary>
+    /// 从处理器声明的全部钩子点移除该多点处理器，返回是否至少移除一处。
+    /// </summary>
+    public bool Remove(IMultiHookHandler handler)
+    {
+        if (handler == null) return false;
+
+        var removed = false;
+        foreach (var spec in handler.Specs)
+            removed |= RemoveHandler(spec.Point, handler);
+
+        return removed;
+    }
+
+    /// <summary>
     /// 清除指定钩子点下的全部处理器，返回是否有被清除的钩子点。
     /// </summary>
     public bool Clear(HookSpec spec)

@@ -5,6 +5,7 @@ public interface IHookManager
     void Register(IHookHandler handler);
     void RegisterMulti(IMultiHookHandler handler);
     bool Remove(IHookHandler handler);
+    bool Remove(IMultiHookHandler handler);
     bool Clear(HookSpec spec);
     int Count(HookSpec spec);
 
