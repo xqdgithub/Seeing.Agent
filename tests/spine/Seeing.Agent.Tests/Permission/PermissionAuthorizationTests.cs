@@ -666,6 +666,78 @@ public class PermissionAuthorizationTests
             new[] { PermissionGrantScope.Once, PermissionGrantScope.Session });
     }
 
+    // === 批次 1.4：MCP server 粒度资源门（mcp.execute 归资源类，Allow 规则不短路） ===
+
+    // build 默认 Allow(Tool,"*") 不得短路 MCP 资源门——须进入询问（旧行为零审批）。
+    [Fact]
+    public async Task AuthorizeAsync_McpExecute_RuleAllow_ShouldNotShortCircuit()
+    {
+        var h = new Harness();
+        h.SetAgentPolicy("build", PermissionRuleEntry.Allow(PermissionKind.Tool, "*"));
+        h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
+
+        var resolution = await h.Service.AuthorizeAsync(
+            h.Request("mcp.execute", "serverA", agentName: "build"), TestContext.Current.CancellationToken);
+
+        resolution.Decision.Should().Be(PermissionEffect.Allow);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.User);
+        h.AssertAskedOnce();
+    }
+
+    // server 粒度记忆：批一次 server 后，同 server 任意工具（资源恒为 server 名）免审。
+    [Fact]
+    public async Task AuthorizeAsync_McpExecute_ServerGrant_ShouldShortCircuitForSameServer()
+    {
+        var h = new Harness();
+        h.Store.Add("s1", new PermissionGrant("mcp.execute", "serverA", PermissionGrantScope.Session, PermissionEffect.Allow));
+        h.SetupAsk(PermissionEffect.Deny, PermissionGrantScope.Once);
+
+        var resolution = await h.Service.AuthorizeAsync(
+            h.Request("mcp.execute", "serverA"), TestContext.Current.CancellationToken);
+
+        resolution.Decision.Should().Be(PermissionEffect.Allow);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
+        h.AssertNoAsk();
+    }
+
+    // server 记忆不外溢到其它 server——隔离性回归。
+    [Fact]
+    public async Task AuthorizeAsync_McpExecute_ServerGrant_ShouldNotCoverOtherServer()
+    {
+        var h = new Harness();
+        h.Store.Add("s1", new PermissionGrant("mcp.execute", "serverA", PermissionGrantScope.Session, PermissionEffect.Allow));
+        h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
+
+        var resolution = await h.Service.AuthorizeAsync(
+            h.Request("mcp.execute", "serverB"), TestContext.Current.CancellationToken);
+
+        resolution.Decision.Should().Be(PermissionEffect.Allow);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.User);
+        h.AssertAskedOnce();
+    }
+
+    // plan/explore 白名单兜底不变：MCP 工具名不在 AllowedTools → 能力门（tool.execute）直接拒绝。
+    [Fact]
+    public async Task EvaluateToolAsync_McpTool_NotInAllowedTools_ShouldDeny()
+    {
+        var h = new Harness();
+        var context = new PermissionContext
+        {
+            AgentName = "plan",
+            Policy = new AgentPermissionPolicy
+            {
+                AllowedTools = new[] { "read", "grep" },
+                DefaultEffect = PermissionEffect.Ask
+            }
+        };
+
+        var result = await h.Service.EvaluateToolAsync(
+            "serverA_do_thing", null, context, TestContext.Current.CancellationToken);
+
+        result.Effect.Should().Be(PermissionEffect.Deny);
+        result.Reason.Should().Contain("allowed list");
+    }
+
     // === 测试夹具 ===
 
     private sealed class Harness

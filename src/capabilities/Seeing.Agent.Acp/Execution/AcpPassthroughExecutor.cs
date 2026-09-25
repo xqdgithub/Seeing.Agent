@@ -113,14 +113,45 @@ public sealed class AcpPassthroughExecutor
             TaskScheduler.Default);
 
         var eventCount = 0;
-        await foreach (var evt in sink.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        var cancelled = false;
+
+        // 取消时 ReadAllAsync 的 OCE 若直接逃逸迭代器，会跳过下方 LoopCancelledEvent 终态。
+        // 故在此捕获 OCE，再以 CancellationToken.None 排空取消前已产生的事件（对齐 Native AgentExecutor）。
+        await using (var enumerator = sink.ReadAllAsync(cancellationToken).GetAsyncEnumerator(cancellationToken))
         {
-            eventCount++;
-            _logger.LogDebug(
-                "ACP passthrough forwarding event #{Count}: {EventType}",
-                eventCount,
-                evt.Type);
-            yield return evt;
+            while (true)
+            {
+                bool hasNext;
+                try
+                {
+                    hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    cancelled = true;
+                    break;
+                }
+
+                if (!hasNext)
+                    break;
+
+                eventCount++;
+                _logger.LogDebug(
+                    "ACP passthrough forwarding event #{Count}: {EventType}",
+                    eventCount,
+                    enumerator.Current.Type);
+                yield return enumerator.Current;
+            }
+        }
+
+        if (cancelled)
+        {
+            // 排空取消前已产生的缓冲事件，避免 UI 丢帧
+            await foreach (var evt in sink.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
+            {
+                eventCount++;
+                yield return evt;
+            }
         }
 
         _logger.LogInformation(
@@ -130,7 +161,6 @@ public sealed class AcpPassthroughExecutor
             loopId);
 
         AcpRunResult result;
-        var cancelled = false;
         try
         {
             result = await runTask.ConfigureAwait(false);

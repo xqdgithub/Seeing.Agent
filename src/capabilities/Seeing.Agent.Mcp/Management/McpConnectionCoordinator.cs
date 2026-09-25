@@ -157,12 +157,12 @@ internal sealed class McpConnectionCoordinator : IDisposable
             if (await TryAbortConnectIfDisabledAsync(currentStatus, ct) is { } abortedBeforeReady)
                 return abortedBeforeReady;
 
-            // 绑定工具执行器到实际客户端
-            await _toolRegistry.UpdateToolExecutorAsync(_serverName, async (toolName, args) =>
+            // 绑定工具执行器到实际客户端；透传上层取消令牌至 MCP 传输层
+            await _toolRegistry.UpdateToolExecutorAsync(_serverName, async (toolName, args, ct) =>
             {
                 if (_client == null)
                     return new McpToolResult { IsError = true, Content = "MCP 客户端未连接" };
-                return await _client.CallToolAsync(toolName, args, CancellationToken.None);
+                return await _client.CallToolAsync(toolName, args, ct);
             });
 
             var newStatus = McpServerStatusBuilder.From(currentStatus)

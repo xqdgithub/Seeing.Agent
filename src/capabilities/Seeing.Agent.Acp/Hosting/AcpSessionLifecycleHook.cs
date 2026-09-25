@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Session;
+using Seeing.Agent.Acp.Terminal;
 using Seeing.Agent.Acp.Transport;
 using Seeing.Agent.Abstractions.Hooks;
 
@@ -14,15 +15,18 @@ public sealed class AcpSessionLifecycleHook : IMultiHookHandler
 
     private readonly AcpSessionStore _sessionStore;
     private readonly AcpConnectionOwner _connectionOwner;
+    private readonly AcpTerminalBridge _terminalBridge;
     private readonly ILogger<AcpSessionLifecycleHook> _logger;
 
     public AcpSessionLifecycleHook(
         AcpSessionStore sessionStore,
         AcpConnectionOwner connectionOwner,
+        AcpTerminalBridge terminalBridge,
         ILogger<AcpSessionLifecycleHook> logger)
     {
         _sessionStore = sessionStore;
         _connectionOwner = connectionOwner;
+        _terminalBridge = terminalBridge;
         _logger = logger;
     }
 
@@ -56,6 +60,16 @@ public sealed class AcpSessionLifecycleHook : IMultiHookHandler
         var sessionId = payload.SessionId;
         if (string.IsNullOrEmpty(sessionId))
             return;
+
+        // 终端级联清理：会话销毁即回收其名下全部子进程，避免句柄/输出泄漏
+        var releasedTerminals = _terminalBridge.ReleaseBySession(sessionId);
+        if (releasedTerminals > 0)
+        {
+            _logger.LogDebug(
+                "Released {Count} ACP terminals for destroyed session {SessionId}",
+                releasedTerminals,
+                sessionId);
+        }
 
         var mapping = _sessionStore.GetMapping(sessionId);
         if (mapping != null)

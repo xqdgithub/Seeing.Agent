@@ -65,7 +65,7 @@ internal sealed class McpToolRegistry : IMcpToolRegistry
                 toolInfo.Name,
                 toolInfo.Description ?? string.Empty,
                 toolInfo.ParametersSchema,
-                (name, args) => Task.FromResult(new McpToolResult { IsError = true, Content = "工具执行器未设置" }));
+                (name, args, ct) => Task.FromResult(new McpToolResult { IsError = true, Content = "工具执行器未设置" }));
 
             _mcpTools[toolId] = mcpTool;
             toolNames.Add(toolId);
@@ -163,7 +163,7 @@ internal sealed class McpToolRegistry : IMcpToolRegistry
         return McpOperationResult.Succeeded(serverName, McpOperationType.Remove, null);
     }
 
-    public async Task UpdateToolExecutorAsync(string serverName, Func<string, Dictionary<string, object?>, Task<McpToolResult>> executor)
+    public async Task UpdateToolExecutorAsync(string serverName, Func<string, Dictionary<string, object?>, CancellationToken, Task<McpToolResult>> executor)
     {
         if (!_serverTools.TryGetValue(serverName, out var toolIds))
             return;

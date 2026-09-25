@@ -314,11 +314,18 @@ public class PermissionService : IPermissionService
     private static bool IsFilesystemKind(string? permissionKind) =>
         permissionKind?.StartsWith("filesystem.", StringComparison.OrdinalIgnoreCase) == true;
 
-    /// <summary>资源类 kind（filesystem.* / shell.* / network.*）：其 Agent 规则 Allow 不短路，须走审批。</summary>
+    /// <summary>
+    /// 资源类 kind（filesystem.* / shell.* / network.* / mcp.*）：其 Agent 规则 Allow 不短路，须走审批。
+    /// <para>
+    /// <c>mcp.*</c> 纳入资源类：MCP 工具以 <c>mcp.execute</c> + resource=server 名发起 server 粒度审批，
+    /// 否则 build 的 <c>Allow(Tool,"*")</c> 会在步骤 3b 短路放行，导致 MCP 工具零审批。
+    /// </para>
+    /// </summary>
     private static bool IsResourceKind(string? permissionKind) =>
         IsFilesystemKind(permissionKind) ||
         permissionKind?.StartsWith("shell.", StringComparison.OrdinalIgnoreCase) == true ||
-        permissionKind?.StartsWith("network.", StringComparison.OrdinalIgnoreCase) == true;
+        permissionKind?.StartsWith("network.", StringComparison.OrdinalIgnoreCase) == true ||
+        permissionKind?.StartsWith("mcp.", StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>取资源所在目录（<c>Path.GetFullPath</c> → <c>GetDirectoryName</c>）；失败返回 null。</summary>
     private string? ResolveResourceDirectory(string resource)

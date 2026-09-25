@@ -1,5 +1,6 @@
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Permissions;
 using System.Text.Json;
 
 namespace Seeing.Agent.Mcp;
@@ -44,6 +45,22 @@ public class McpTool : ITool
 
     public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
+        // server 粒度资源门：以 mcp.execute kind、resource=server 名发起审批（无授权器时跳过）。
+        var gate = await McpToolPermissionGate
+            .AuthorizeAsync(_serverName, _realName, arguments, context)
+            .ConfigureAwait(false);
+
+        if (gate is { Decision: not PermissionEffect.Allow })
+        {
+            return new ToolResult
+            {
+                Success = false,
+                Title = "MCP 授权未通过",
+                Output = gate.Reason ?? "权限被拒绝",
+                Error = gate.Reason ?? "Permission denied"
+            };
+        }
+
         try
         {
             var args = arguments.ToDictionary();

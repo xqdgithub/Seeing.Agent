@@ -19,7 +19,7 @@ public sealed class AcpFileSystemBridge
         _logger = logger;
     }
 
-    public Task<ReadTextFileResponse> ReadTextFileAsync(
+    public async Task<ReadTextFileResponse> ReadTextFileAsync(
         string path,
         string sessionId,
         string workingDirectory,
@@ -32,36 +32,83 @@ public sealed class AcpFileSystemBridge
         if (!TryResolvePath(path, workingDirectory, out var fullPath))
         {
             _logger.LogWarning("ACP read denied (path outside workspace): {Path}", path);
-            return Task.FromResult(new ReadTextFileResponse { Content = "" });
+            return new ReadTextFileResponse { Content = "" };
         }
 
         if (!File.Exists(fullPath))
-            return Task.FromResult(new ReadTextFileResponse { Content = "" });
+            return new ReadTextFileResponse { Content = "" };
 
         try
         {
-            var content = File.ReadAllText(fullPath);
+            // 流式限长：最多读取 maxChars 个字符，避免大文件整文件入内存
+            var maxChars = Math.Min(limit ?? DefaultReadLimit * MaxLineLength, MaxBytes);
 
-            if (line.HasValue && line.Value > 0)
+            string content;
+            await using (var stream = new FileStream(
+                fullPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite,
+                bufferSize: 4096,
+                useAsync: true))
+            using (var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true))
             {
-                var lines = content.Split('\n');
-                content = line.Value <= lines.Length ? lines[line.Value - 1] : "";
+                content = line.HasValue && line.Value > 0
+                    ? await ReadLineAsync(reader, line.Value, cancellationToken).ConfigureAwait(false) ?? ""
+                    : await ReadLimitedAsync(reader, maxChars, cancellationToken).ConfigureAwait(false);
             }
 
-            var maxChars = limit ?? DefaultReadLimit * MaxLineLength;
             if (content.Length > maxChars)
                 content = content[..maxChars];
 
-            if (content.Length > MaxBytes)
-                content = content[..MaxBytes];
-
-            return Task.FromResult(new ReadTextFileResponse { Content = content });
+            return new ReadTextFileResponse { Content = content };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "ACP read failed for {Path}", fullPath);
-            return Task.FromResult(new ReadTextFileResponse { Content = "" });
+            return new ReadTextFileResponse { Content = "" };
         }
+    }
+
+    private static async Task<string> ReadLimitedAsync(
+        StreamReader reader,
+        int maxChars,
+        CancellationToken cancellationToken)
+    {
+        if (maxChars <= 0)
+            return string.Empty;
+
+        var buffer = new char[maxChars];
+        var total = 0;
+
+        while (total < buffer.Length)
+        {
+            var read = await reader
+                .ReadAsync(buffer.AsMemory(total, buffer.Length - total), cancellationToken)
+                .ConfigureAwait(false);
+            if (read == 0)
+                break;
+
+            total += read;
+        }
+
+        return new string(buffer, 0, total);
+    }
+
+    private static async Task<string?> ReadLineAsync(
+        StreamReader reader,
+        int lineNumber,
+        CancellationToken cancellationToken)
+    {
+        string? current = null;
+        for (var i = 1; i <= lineNumber; i++)
+        {
+            current = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            if (current == null)
+                return null;
+        }
+
+        return current;
     }
 
     public Task<WriteTextFileResponse?> WriteTextFileAsync(
