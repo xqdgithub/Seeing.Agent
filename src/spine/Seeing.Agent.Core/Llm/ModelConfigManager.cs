@@ -22,6 +22,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     private readonly object _cacheLock = new();
     private readonly object _disposeLock = new();
     private long _refreshVersion;
+    private long _latestFullRefreshVersion;
+    private readonly Dictionary<string, long> _latestProviderRefreshVersions =
+        new(StringComparer.OrdinalIgnoreCase);
     private Task? _refreshShutdown;
 
     // 模型索引缓存
@@ -342,6 +345,10 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             }
 
             version = ++_refreshVersion;
+            if (providerId is null)
+                _latestFullRefreshVersion = version;
+            else
+                _latestProviderRefreshVersions[providerId] = version;
             if (completion is not null)
                 _refreshWaiters.Add((version, completion));
         }
@@ -431,7 +438,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
         lock (_cacheLock)
         {
-            if (request.Version != _refreshVersion)
+            if (IsProviderRefreshStaleLocked(request.Version, providerId))
             {
                 _logger.LogDebug("丢弃过期单 Provider 刷新 {Version}（当前 {CurrentVersion}）",
                     request.Version, _refreshVersion);
@@ -625,7 +632,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     {
         lock (_cacheLock)
         {
-            if (version != _refreshVersion)
+            // 仅当存在更新的「全量」刷新时才判定过期：按 Provider 粒度的刷新不覆盖其他 Provider，
+            // 若据此丢弃在途全量刷新会导致其 Provider 的模型永久丢失（见 ModelCatalogAggregationTests）。
+            if (version < _latestFullRefreshVersion)
                 return false;
 
             ReplaceCacheLocked(models);
@@ -633,6 +642,19 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
         _logger.LogDebug("模型缓存已刷新，共 {Count} 个模型", models.Count);
         return true;
+    }
+
+    /// <summary>
+    /// 判定按 Provider 粒度的刷新是否已过期：存在更新的全量刷新，或针对同一 Provider 的更新刷新时，
+    /// 该结果不再应用到缓存（调用方须持有 <see cref="_cacheLock"/>）。
+    /// </summary>
+    private bool IsProviderRefreshStaleLocked(long version, string providerId)
+    {
+        if (version < _latestFullRefreshVersion)
+            return true;
+
+        return _latestProviderRefreshVersions.TryGetValue(providerId, out var latestProviderVersion)
+            && version < latestProviderVersion;
     }
 
     private void ReplaceCacheLocked(IReadOnlyDictionary<string, ModelConfig> models)
