@@ -2,7 +2,7 @@
 
 > **权威规格：** [模块化架构设计](../superpowers/specs/2026-09-08-modular-architecture-design.md)  
 > **本文档集：** 日常开发落地规范；与规格冲突时以规格为准，并应提 PR 同步两边。  
-> **更新日期：** 2026-09-18（会话持久化写回：文档同步 + release notes）  
+> **更新日期：** 2026-09-25（全项目整改：文档漂移修复、接受残留清单、release notes）  
 > **深化说明：** [architecture-docs-deepen-design](../superpowers/specs/2026-09-08-architecture-docs-deepen-design.md)
 
 ## 新人 5 分钟
@@ -27,6 +27,7 @@
 | [08 权限授权子系统 Release Notes](08-permission-authorization-release-notes.md) | 破坏性变更清单、行为差异、已知边界 |
 | [09 会话工具与会话组 Release Notes](09-session-tools-and-groups-release-notes.md) | 会话组并发/缓存、交接幂等与回滚、已知边界 |
 | [10 会话持久化写回 Release Notes](10-session-persistence-release-notes.md) | 写回调度/去抖合并、破坏性契约变更、选项与已知边界 |
+| [11 全项目整改 Release Notes](11-remediation-release-notes.md) | 2026-09-25 批次 1–7 行为变更、破坏性契约、接受残留 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 
@@ -105,8 +106,14 @@ rg "AddSeeingAgent\b" src samples -g "*.cs"
 # （允许注释中的历史说明，如 IWorkspaceWhitelist→IPermissionGrantStore）
 rg "SerializingPermissionChannel|DynamicPermissionChannel|DefaultPermissionChannel|IPermissionMemory|SessionPermissionMemory|IWorkspaceWhitelist|SessionWorkspaceWhitelist|IPermissionCache|PermissionCacheKey|PermissionMiddleware|IPermissionEventSink|PermissionChannelResult|BlazorPermissionChannel|PermissionRunContext|SetRunContext|PermissionResponseEvent" src samples tests
 
+# Core 零工具实现：`[Tool(` 应为空；`: ITool\b` 仅剩装饰器/反射基础设施（ToolDecorator/ReflectedTool）
+rg ": ITool\b|\[Tool\(" src/spine
+
+# 能力包内裸 IHostedService 注册（应仅 1 处已知例外：AcpHookRegistrationHostedService，模块门控）
+rg "AddHostedService<" src/capabilities -g "*.cs"
+
 # 新项目勿落在 src 根平铺
 # （src 下应仅有 primitives|abstractions|spine|hosting|capabilities|gateway）
 ```
 
-期望：`Core.csproj` 命中仅 `src/hosting/*`；其余命令无命中（或仅文档注释）。权限契约扫描如有命中，须为历史注释说明而非类型引用。
+期望：`Core.csproj` 命中仅 `src/hosting/*`；其余命令无命中（或仅文档注释）。权限契约扫描如有命中，须为历史注释说明而非类型引用。`rg ": ITool\b|\[Tool\(" src/spine` 预期：`[Tool(` 空、`: ITool\b` 仅装饰器/反射基础设施；`rg "AddHostedService<" src/capabilities` 预期：仅 `AcpHookRegistrationHostedService`（模块门控 Hook 注册，见 [06 接受残留](06-compliance-audit.md)）。

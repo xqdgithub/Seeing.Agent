@@ -34,6 +34,13 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 | `IModuleHostedService` | 与 `IHostedService` 同实例；可停可复活 |
 | Middleware | Transient |
 
+**工具装饰器链（实际语义，2026-09-25 校正）：** 注册顺序为「重试→超时→缓存→输出限长」，`ToolDecoratorRegistry.Apply` 按注册顺序依次包裹（**后注册者居外层**），最终包装为
+`ToolOutputLimiter(Cached(Timeout(Retry(tool))))`：
+- `RetryToolDecorator` 在最内层（3 次、1s 指数退避；可重试集合 `TimeoutException`/`HttpRequestException`/`TaskCanceledException`/`IOException`）；
+- `ToolTimeoutDecorator` 包裹重试，**全局超时覆盖重试总时长**（能力声明 `timeout.skip`/`timeout.budget`，兜底 `SeeingAgentOptions.ToolExecutionTimeout`）；
+- `ToolOutputLimiterDecorator` 在最外层处理最终返回结果；缓存默认关闭（仅 `cache.enabled=true` 的外部工具生效）。
+注册点：`ServiceCollectionExtensions`（`AddSeeingCore` 内 `IToolDecoratorRegistry` 工厂）；`ToolManager.RegisterToolAsync` 时 `Apply()`。
+
 ## 4. 强制检查清单（每个 PR）
 
 ### 依赖

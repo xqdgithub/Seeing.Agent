@@ -1,7 +1,7 @@
 # Seeing.Agent 项目知识库
 
-**生成时间:** 2026-07-31（架构文档增量深化：2026-09-08）
-**Branch:** feature/modular-architecture（以当前分支为准）
+**生成时间:** 2026-07-31（架构文档增量深化：2026-09-08；文档漂移修复：2026-09-25）
+**Branch:** master（以当前分支为准）
 **目标框架:** .NET 10.0
 **语言:** C#
 
@@ -18,7 +18,11 @@
 - [开发规范与反模式](docs/architecture/04-development-standards.md)
 - [扩展指南](docs/architecture/05-extension-guide.md)
 - [合规审查 / 现状债](docs/architecture/06-compliance-audit.md)
+- [WebUI 统一模型选择](docs/architecture/07-webui-model-picker.md)
 - [权限授权子系统 Release Notes](docs/architecture/08-permission-authorization-release-notes.md)
+- [会话工具与会话组 Release Notes](docs/architecture/09-session-tools-and-groups-release-notes.md)
+- [会话持久化写回 Release Notes](docs/architecture/10-session-persistence-release-notes.md)
+- [全项目整改 Release Notes](docs/architecture/11-remediation-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
@@ -78,7 +82,7 @@ Seeing.Agent/
 | 子 Agent / Task | `src/hosting/Seeing.Agent.Hosting/` Task 工具 | Session-first |
 | 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
 | WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |
-| Hook | `src/spine/Seeing.Agent.Core/` HookManager | `HookPoints.*` 常量 |
+| Hook | `HookManager` 在 `src/spine/Seeing.Agent.Core/Core/Hooks/`；`HookPoints.*` 常量在 `src/primitives/Seeing.Session/Hooks/HookPoints.cs`（原语层） | 用 `HookPoints.*`，禁止魔法字符串 |
 | 权限（授权/审批） | 引擎/Manager/Store 在 `src/spine/Seeing.Agent.Core/Core/Permission/`；契约在 `src/abstractions/Seeing.Agent.Abstractions/Permissions/`；宿主通道 `Hosting.Web`/`Gateway` | `IPermissionAuthorizer` 决策链；在途真相源 `IPermissionRequestManager`；呈现判定 `IPermissionPresentationStore.CanSurface` + 宿主呈现端 `IPermissionPresenter`；见 `docs/architecture/08` |
 | MCP | `src/capabilities/Seeing.Agent.Mcp/` | 能力模块，非 Core |
 | DI 注册入口 | Core `AddSeeingCore` + 各包 `AddSeeingModule*` | `InitializeSeeingAsync` 在 Host.Start 前 |
@@ -140,11 +144,10 @@ public static async Task<string> GetWeather(
 ### 内部 Helper 类
 | 文件 | 用途 |
 |------|------|
-| `FileSystemHelper.cs` | 文件操作封装、MIME 类型、截断 |
-| `OutputTruncator.cs` | 输出限制（行数/字节/行长度） |
-| `BinaryFileDetector.cs` | 二进制检测（扩展名+内容采样） |
-| `MergeDeep.cs` | 配置深度合并算法 |
-| `TokenCounterHelper.cs` | Token 计数（Session.Compression 命名空间） |
+| `FileSystemHelper.cs`（`src/capabilities/Seeing.Agent.Tools.FileSystem/`） | 文件操作封装、MIME 类型、截断 |
+| `MergeDeep.cs`（`src/spine/Seeing.Agent.Core/Core/Configuration/`） | 配置深度合并算法 |
+
+> `OutputTruncator` / `BinaryFileDetector` / `TokenCounterHelper` 已随死代码清理移除或将能力上收；Helper 归属以实际所在包为准。
 
 ### 文件系统限制
 | 限制项 | 默认值 |
@@ -156,9 +159,9 @@ public static async Task<string> GetWeather(
 | Glob 文件 | 100 个 |
 
 ### 工具装饰器链
-- **注册**: `IToolDecoratorRegistry` 在 DI 中注册为 Singleton，`ToolManager` 在 `RegisterTool()` 时自动 `Apply()` 装饰器
-- **链顺序**: RetryToolDecorator（最外层）→ ToolTimeoutDecorator → CachedToolDecorator（最内层，可选）
-- **默认**: 3 次重试（1s 间隔指数退避）→ 超时（能力感知，兜底全局 `ToolExecutionTimeout`）→ 缓存默认关闭（内置工具均不声明缓存，因读取磁盘/仓库即时状态易产生脏数据）
+- **注册**: `IToolDecoratorRegistry` 在 DI 中注册为 Singleton；按「注册顺序：重试→超时→缓存→输出限长」登记，**后注册者居外层**；`ToolManager.RegisterToolAsync()` 时自动 `Apply()`。
+- **实际包装顺序**: `ToolOutputLimiter(Cached(Timeout(Retry(tool))))`——重试在最内层；全局超时覆盖整次工具调用（含重试总时长）；输出限长在最外层处理最终返回结果。
+- **默认**: 3 次重试（1s 间隔指数退避）→ 超时（能力感知，兜底全局 `ToolExecutionTimeout`）→ 缓存默认关闭（内置工具均不声明缓存，因读取磁盘/仓库即时状态易产生脏数据）。
 - **重试异常**: `TimeoutException`, `HttpRequestException`, `TaskCanceledException`, `IOException`
 - **超时职责**: `ToolTimeoutDecorator` 在工具执行漏斗内施加超时——读取工具能力 `timeout.skip=true`（豁免）或 `timeout.budget`（自身上限），未声明时回落到 `SeeingAgentOptions.ToolExecutionTimeout`（IOptionsMonitor 实时读取，支持热重载；默认 null 关闭）。超时返回 `Failure` + `Title="执行超时"` + `Metadata["timeout"]=true`，由上层统一渲染"执行超时"。
 
@@ -196,20 +199,20 @@ public static async Task<string> GetWeather(
 
 ## 已知问题 / 架构债
 
-模块化合规债以 **[`docs/architecture/06-compliance-audit.md`](docs/architecture/06-compliance-audit.md)** 为准（P0：扩展包去 Core 引用、工具 Activate 挂载、Hosting→Skills 硬引用）。
+模块化合规债以 **[`docs/architecture/06-compliance-audit.md`](docs/architecture/06-compliance-audit.md)** 为准。历史 P0（扩展包去 Core 引用、工具 Activate 挂载、Hosting→Skills 硬引用）**均已关闭**（见 06，2026-09-08 复扫全绿；2026-09-25 全项目审查再次确认并补充接受残留清单）。
 
 以下为历史条目摘要（部分已关闭）：
 | 优先级 | 问题 | 状态 |
 |--------|------|------|
-| **P0** | 装饰器链未注册 DI | 修复中（Phase 2） |
-| **P0** | TimeoutToolContext 丢失字段 | 修复中（Phase 2） |
-| **P1** | HookManager 缺少移除能力 | 待修复 |
-| **P1** | ProviderConfig 字段未消费 | 修复中（Phase 5） |
-| **P1** | ExecutionStateManager 缺 IDisposable | 修复中（Phase 3） |
-| **P2** | SessionForker.CloneMessage 浅拷贝 | 修复中（Phase 3） |
-| **P2** | ISession 旧体系未清理 | 修复中（Phase 3） |
-| **P2** | CountTokens 4 处重复 | 修复中（Phase 3） |
-| **P3** | HMAC 密钥不持久化 | 修复中（Phase 5） |
+| **P0** | 装饰器链未注册 DI | **已完成**（2026-09-25 复核：DI 注册 + 链序语义见上） |
+| **P0** | TimeoutToolContext 丢失字段 | **已完成**（2026-09-25 复核） |
+| **P1** | HookManager 缺少移除能力 | **已完成**（`Remove`/`Clear`/`Count` + 锁排序） |
+| **P1** | ProviderConfig 字段未消费 | **已复核**（2026-09-25：字段随客户端工厂/ProviderManager 消费） |
+| **P1** | ExecutionStateManager 缺 IDisposable | **已完成**（死代码已删除，2026-09-25） |
+| **P2** | SessionForker.CloneMessage 浅拷贝 | **已完成**（深拷贝 + 测试锁定） |
+| **P2** | ISession 旧体系未清理 | **已完成**（大体清理） |
+| **P2** | CountTokens 4 处重复 | **已完成**（源码已无该符号） |
+| **P3** | HMAC 密钥不持久化 | **已完成**（LocalAppData 持久化 + TOCTOU 处理） |
 | **P1** | IAgent/AgentBase/IAgentManager 死代码体系未清理 | **已完成**（2026-08-18 解耦重构：IAgentExecutor 统一执行入口 + Registry 拆分） |
 | **P1** | Todo 魔法键后门（TodoManager/TodoReadTool 孤儿） | **已完成**（ITodoStore 端口-适配器化，SessionContextTodoStore） |
 | **P1** | Seeing.Gateway 反向依赖主库 | **已完成**（协议层独立，仅依赖 Abstractions） |
@@ -254,8 +257,8 @@ dotnet run --project samples/Seeing.Agent.Cli
 - **中央包管理**: 启用
 - **外部子仓库**: `CommandLineUtils/`、`command-line-api/` 非本项目代码
 - **日志规范**: 结构化日志 `{PropertyName}` 格式
-- **装饰器链**: 重试（最外层）→ 缓存（最内层）；超时由工具自身 + AgentExecutor 全局兜底负责
+- **装饰器链**: 实际包装 `OutputLimiter(Cached(Timeout(Retry(tool))))`；重试最内层，全局超时覆盖整次调用（含重试总时长），输出限长最外层。详见上文「工具装饰器链」
 - **循环检测**: SHA256 参数哈希，连续 3 次警告，5 次终止
 - **解决方案格式**: `.slnx`（VS 2022 17.13+ 新格式）
 - **测试命名**: `{方法}_{场景}_Should{预期结果}` 或 AAA 注释分区
-- **内置 Agent**: build(默认)/plan(计划)/explore(探索)/general(通用)/title(标题)/summary(摘要)
+- **内置 Agent**: build(默认)/plan(计划)/explore(探索)/general(通用)/summary(摘要)

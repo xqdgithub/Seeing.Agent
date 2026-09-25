@@ -30,15 +30,21 @@
 | `Seeing.Agent.Tools.Web` | `web` | fetch/search |
 | `Seeing.Agent.Tools.Git` | `git` | git_* |
 | `Seeing.Agent.Tools.Session` | `session.tools` | session_list/search/read/trim/handoff |
+| `Seeing.Agent.Tools.Question` | `question.tools` | 交互式提问工具（single/text） |
 | `Seeing.Agent.Tools.Basic` | `basic` | current_time |
 | `Seeing.Agent.Tools.Support` | — | ToolBase 等共享；**不是** `ISeeingModule` |
 | `Seeing.Agent.Skills` | `skills` | skill；命令经 `ICommand` 贡献 |
-| `Seeing.Agent.Mcp` | `mcp` | MCP 连接与代理工具 |
+| `Seeing.Agent.Mcp` | `mcp` | MCP 连接与代理工具；工具经 `mcp.execute`（resource=server）server 粒度审批 |
 | `Seeing.Agent.Llm.OpenAI` | `llm.openai` | ILlmClientFactory |
 | `Seeing.Agent.Llm.Anthropic` | `llm.anthropic` | ILlmClientFactory |
+| `Seeing.Agent.Llm.ModelCapabilities` | `llm.modelcapabilities` | 模型能力元数据源注册与查询（`IModelCapabilitySource`） |
+| `Seeing.Agent.Llm.ModelCatalog.Builtin` | `llm.modelcatalog.builtin` | 内置精简能力目录；`DependsOn: llm.modelcapabilities` |
+| `Seeing.Agent.Llm.ModelCatalog.ModelsDev` | `llm.modelcatalog.modelsdev` | models.dev 远程目录（分页缓存）；`DependsOn: llm.modelcapabilities` |
 | `Seeing.Agent.Agents.BuiltIn` | `agents.builtin` | build/plan/explore/general… |
 | `Seeing.Agent.Scheduler` | `scheduler` | cron / heartbeat |
 | `Seeing.Agent.Memory` | `memory` | 记忆 |
+| `Seeing.Agent.SystemOne` | `systemone` | SystemOne 集成（ReloadHandler 挂接式；provider owner=systemone） |
+| `Seeing.Agent.Tools.SystemOne` | `systemone.tools` | SystemOne 工具；`DependsOn: systemone` |
 | `Seeing.Agent.Acp` | `acp` | ACP 执行实现 |
 | `Seeing.Agent.TokenBudget` | — | Token 预算 Hook（可无模块 id；经扩展方法挂 Hook） |
 | `Seeing.Provider.DeepSeek`（`plugs/providers/`） | `provider.deepseek` | DeepSeek 网关 Provider；`DependsOn: llm.openai` |
@@ -49,6 +55,8 @@
 **Provider 插件 vs 协议模块：** `llm.openai` / `llm.anthropic` 登记 `ILlmClientFactory`；`provider.*` 在 Activate 时登记 `ILlmProvider` 到 `IProviderRegistry`，创建客户端时经 `IEnumerable<ILlmClientFactory>` 按 `SupportsType` 解析（禁止注入单个工厂）。
 
 **Support 包注意：** Hosting 可引用 `Tools.Support` 以复用 Task/Todo 基类；**不得**因此再引用 `Tools.FileSystem` 等具体能力包。
+
+**ACP Hook 面差异（明示）：** ACP 执行路径（`AcpPassthroughExecutor`）**不触发 chat 级 Hook**（如 `chat.on_error`）——Native 路径的横切能力在 ACP 路径缺位；取消路径已对齐 Native（产出 `LoopCancelledEvent`）。属已知差异，不做行为增强，详见 [`08 §7.3`](08-permission-authorization-release-notes.md)。
 
 ## 4. Gateway 族（`src/gateway/`）
 
@@ -109,7 +117,7 @@ Sample **自己** `ProjectReference` 能力包；Shape 包不代引用。
 
 结算：`scenario.modules ∩ available`；未引用包的 id 告警忽略。宿主引用了 plug 但场景模块列表未含其 id 时，Provider **不会** Activate（模型页看不到、无法拉模型）。
 
-`full` 维护约定：新增 `ISeeingModule` 时同步写入 `BuiltInScenarios` 的 `s_fullModules`，并更新 `BuiltInScenariosTests.Full_Should_Enable_All_Implemented_Module_Ids`。
+`full` 维护约定：新增 `ISeeingModule` 时同步写入 `BuiltInCapabilitySets.Full`（`src/spine/Seeing.Agent.Core/CapabilitySets/`），并更新 `BuiltInScenariosTests.Full_Should_Enable_All_Implemented_Module_Ids`（目标态为反射发现全部 `ISeeingModule` id 求差，见 06 开放项）。
 
 ## 8. WebUI 贡献
 

@@ -1,10 +1,10 @@
 # 08 权限授权子系统 Release Notes
 
-**日期：** 2026-09-17
+**日期：** 2026-09-17（增量：2026-09-25 安全收紧与 MCP 授权门，见 §7）
 **分支：** `feature/permission-authorization-refactor`
-**设计规格：** [`2026-09-17-permission-authorization-subsystem-design.md`](../superpowers/specs/2026-09-17-permission-authorization-subsystem-design.md)（v4.2）
-**实施计划：** [`2026-09-17-permission-authorization-subsystem.md`](../superpowers/plans/2026-09-17-permission-authorization-subsystem.md)
-**合规记录：** [`06-compliance-audit.md` §权限授权子系统复扫](06-compliance-audit.md)
+**设计规格：** 原设计规格文件已失落（历史断链）；行为契约以本 release notes 为准。
+**合规记录：** [`06-compliance-audit.md` §权限授权子系统复扫](06-compliance-audit.md)  
+**后续整改：** [`11 全项目整改 Release Notes`](11-remediation-release-notes.md)（2026-09-25）
 
 ---
 
@@ -112,3 +112,26 @@
 - **宿主**：不要设置 `ChatOptions.PermissionChannel`；改为注册 `IPermissionChannel`（Host Shape），并向 `IPermissionPresentationStore` 注册 `IPermissionPresenter` 声明可呈现的会话集合。
 - **审批请求回传**：使用 `IPermissionRequestManager.TryResolve(requestId, decision, scope, resolvedBy, reason, expectedSessionId)`（幂等）。
 - **事件订阅**：监听 `PermissionRequestEvent` / `PermissionResolvedEvent`（`MessageEventType.PermissionResolved`）。
+
+---
+
+## 7. 增量变更（2026-09-25 全项目整改）
+
+来源：批次 1 安全止损、批次 1.4 MCP 授权门；汇总见 [`11 全项目整改 Release Notes`](11-remediation-release-notes.md)。
+
+### 7.1 行为差异（同输入不同结果）
+
+1. **Once 批准不再写入会话白名单**：越界审批放行后，仅当 `resolution.Scope != PermissionGrantScope.Once`（SessionDirectory 及以上）才写入目录白名单。对 `filesystem.write` 选「本次允许」后，同目录再次访问（含 delete）仍会询问。**破坏性收紧**（旧行为：Once 批准即整目录免审）。
+2. **`RequireInteraction=true` 绕过工作区白名单**：步骤 1 边界预检的 Allow 分支新增 `!normalized.RequireInteraction` 守卫——即便命中华名单/工作区 gate，`RequireInteraction` 请求仍进入询问（对齐契约；否则后端工具调用可被静默放行）。
+3. **MCP 工具 server 粒度审批**：MCP 工具以 `mcp.execute` kind、resource=server 名发起资源审批（`McpToolPermissionGate`）；`PermissionService.IsResourceKind` 将 `mcp.` 前缀纳入资源类，Agent 的 `Allow(Tool,"*")` 不再短路。审批记忆按 **server 粒度**（批准一次=信任该 server 全部工具）。`plan`/`explore` 的 `AllowedTools` 白名单继续兜底。
+
+### 7.2 已知边界（互补）
+
+| 边界 | 说明 |
+|------|------|
+| MCP server 粒度记忆上限 | 单 server 批准即信任其全部工具（含后续新增工具）；按工具隔离属后续演进 |
+| SessionDirectory 批准的 kind 维度 | 批准 `write` 后同目录 `delete` 仍免审（体验/安全折中，维护者知情接受；见 06 接受残留） |
+
+### 7.3 ACP 执行路径 Hook 面差异（明示）
+
+ACP（`AcpPassthroughExecutor`）当前**不触发 chat 级 Hook**（如 `chat.on_error`）——Native 路径的横切能力在 ACP 路径缺位；取消路径已对齐 Native（排空后产出 `LoopCancelledEvent`）。此为**已知差异**，不做行为增强（spec §4 E）。
