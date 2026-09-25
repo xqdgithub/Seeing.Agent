@@ -1,5 +1,6 @@
 using System.Reflection;
 using FluentAssertions;
+using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Scenarios;
 using Xunit;
 
@@ -43,18 +44,35 @@ public class BuiltInScenariosTests
     [Fact]
     public void Full_Should_Enable_All_Implemented_Module_Ids()
     {
-        // 反射发现 src 内全部 ISeeingModule 实现 id，与 Full 求差：消除硬编码双写漂移
+        // 反射发现 src 内全部 ISeeingModule 实现 id，与 Full 求差：消除硬编码双写漂移。
+        // 语义：Full 覆盖全部已实现模块，仅显式豁免 FullExcludedModules（可选在线外部源）。
         var implemented = SrcModuleScanner.DiscoverImplementedModuleIds();
 
         implemented.Should().NotBeEmpty("扫描器应能从 src 构建产物反射发现内置模块");
 
         var missing = implemented
             .Except(BuiltInScenarios.Full.Modules, StringComparer.Ordinal)
+            .Except(BuiltInCapabilitySets.FullExcludedModules, StringComparer.Ordinal)
             .ToList();
 
         missing.Should().BeEmpty(
-            "全部已实现的 ISeeingModule 都必须登记进 BuiltInCapabilitySets.Full；缺失: {0}",
+            "全部已实现的 ISeeingModule 都必须登记进 BuiltInCapabilitySets.Full（或在 FullExcludedModules 显式豁免）；缺失: {0}",
             string.Join(", ", missing));
+    }
+
+    [Fact]
+    public void FullExcludedModules_Should_Be_Implemented_And_Absent_From_Full()
+    {
+        // 豁免清单自检：豁免项必须真实存在且确实不在 Full，避免陈旧/错误豁免削弱守门语义
+        var implemented = SrcModuleScanner.DiscoverImplementedModuleIds();
+
+        foreach (var excluded in BuiltInCapabilitySets.FullExcludedModules)
+        {
+            implemented.Should().Contain(excluded,
+                "FullExcludedModules 中的 '{0}' 必须是真实存在的已实现模块", excluded);
+            BuiltInScenarios.Full.Modules.Should().NotContain(excluded,
+                "FullExcludedModules 中的 '{0}' 不应出现在 Full 中", excluded);
+        }
     }
 
     [Fact]

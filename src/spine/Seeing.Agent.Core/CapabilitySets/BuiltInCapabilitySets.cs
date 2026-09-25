@@ -68,7 +68,8 @@ public static class BuiltInCapabilitySets
     ];
 
     /// <summary>
-    /// 全量能力集：当前仓库已实现的全部 <c>ISeeingModule</c> id（字符串，不引用能力包类型）。
+    /// 全量能力集：当前仓库已实现的全部 <c>ISeeingModule</c> id（字符串，不引用能力包类型），
+    /// 但显式排除 <see cref="FullExcludedModules"/> 中的可选在线外部源。
     /// </summary>
     public static IReadOnlyList<string> Full { get; } =
     [
@@ -78,7 +79,6 @@ public static class BuiltInCapabilitySets
         "llm.anthropic",
         "llm.modelcapabilities",
         "llm.modelcatalog.builtin",
-        "llm.modelcatalog.modelsdev",
         "basic",
         "filesystem",
         "shell",
@@ -96,6 +96,21 @@ public static class BuiltInCapabilitySets
         "systemone",
         "systemone.tools",
         ..s_providerModules,
+    ];
+
+    /// <summary>
+    /// 有意不纳入 <see cref="Full"/> 的已实现模块 id（反射守门测试的显式豁免清单 SSOT）。
+    /// </summary>
+    /// <remarks>
+    /// <c>llm.modelcatalog.modelsdev</c>：models.dev 在线外部模型目录源。其 <c>ActivateAsync</c>
+    /// 仅加载本地/嵌入目录、不发起网络请求；但 <c>RefreshAsync</c> 会访问 models.dev（失败降级为保留本地目录并事件通知）。
+    /// 作为带网络副作用的可选外部源，不适合默认随 Full/Dev 启用——须由宿主显式 <c>AddSeeingModule</c> 登记
+    /// （WebUI 即采用此可选策略，设置页注明"models.dev 全量源默认不加载"）。
+    /// 新增豁免项须同步评估其默认启用的副作用。
+    /// </remarks>
+    public static IReadOnlyList<string> FullExcludedModules { get; } =
+    [
+        "llm.modelcatalog.modelsdev",
     ];
 
     /// <summary>最小档能力集定义（仅核心模块集 Minimal）。</summary>
