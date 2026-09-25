@@ -50,7 +50,7 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
         TimeSpan Budget,
         int MaxRetries);
 
-    private sealed class RetryingLlmClient : ILlmClient
+    private sealed class RetryingLlmClient : ILlmClient, IDisposable
     {
         private readonly ILlmClient _inner;
         private readonly LlmRetrySettings _settings;
@@ -65,6 +65,16 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
 
         public string ProviderId => _inner.ProviderId;
         public string ProviderType => _inner.ProviderType;
+
+        /// <summary>
+        /// 向内层转发释放：ConfiguredLlmProvider.DisposeAsync 持有的是装饰后的对象，
+        /// 不转发会导致内层客户端（自建 HttpClient/handler 连接池）泄漏。
+        /// </summary>
+        public void Dispose()
+        {
+            if (_inner is IDisposable disposable)
+                disposable.Dispose();
+        }
 
         public async Task<ChatResponse> CompleteAsync(
             ChatRequest request,

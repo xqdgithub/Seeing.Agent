@@ -10,12 +10,13 @@ namespace Seeing.Agent.Llm.OpenAI.Clients;
 /// OpenAI Chat Completions API 客户端（原生 HTTP 实现）。
 /// 直接解析 SSE 流，正确提取 choices[0].delta.reasoning_content。
 /// </summary>
-public class OpenAiChatClient : ILlmClient
+public class OpenAiChatClient : ILlmClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ProviderConfig _config;
     private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
+    private readonly bool _ownsHttpClient;
 
     public string ProviderId => _config.Id;
     public string ProviderType => ProviderTypes.OpenAi;
@@ -36,9 +37,22 @@ public class OpenAiChatClient : ILlmClient
 
         // 保留调用方传入的 handler（包括 Provider 专用代理）；
         // 单测等已配置 BaseAddress 的 HttpClient 也继续直接复用。
-        _httpClient = httpClient.BaseAddress != null
-            ? httpClient
-            : ConfigureFactoryClient(httpClient, config, logger);
+        // 已配置 BaseAddress 的共享 HttpClient 不被拥有（Dispose 时不释放）；
+        // 工厂新建的 HttpClient 在此配置并由客户端拥有（须在配置前判定所有权）。
+        var ownsClient = httpClient.BaseAddress == null;
+        _httpClient = ownsClient
+            ? ConfigureFactoryClient(httpClient, config, logger)
+            : httpClient;
+        _ownsHttpClient = ownsClient;
+    }
+
+    /// <summary>
+    /// 释放自建 HttpClient（共享客户端不释放）。
+    /// </summary>
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+            _httpClient.Dispose();
     }
 
     private IReadOnlyList<ILlmCallInterceptor> ResolveInterceptors()
@@ -59,7 +73,7 @@ public class OpenAiChatClient : ILlmClient
         _logger.LogDebug("ChatCompletions 非流式: Model={Model}", request.Model);
 
         var body = BuildRequest(request, stream: false);
-        var response = await OpenAiHttpHelper.PostJsonAsync(
+        using var response = await OpenAiHttpHelper.PostJsonAsync(
             _httpClient, "chat/completions", body, _logger, ct, _config, call, ResolveInterceptors());
         await OpenAiHttpHelper.EnsureSuccessAsync(response, _logger, ct);
 
@@ -76,7 +90,7 @@ public class OpenAiChatClient : ILlmClient
         _logger.LogDebug("ChatCompletions 流式: Model={Model}", request.Model);
 
         var body = BuildRequest(request, stream: true);
-        var response = await OpenAiHttpHelper.PostJsonAsync(
+        using var response = await OpenAiHttpHelper.PostJsonAsync(
             _httpClient, "chat/completions", body, _logger, ct, _config, call, ResolveInterceptors());
         await OpenAiHttpHelper.EnsureSuccessAsync(response, _logger, ct);
 
@@ -213,6 +227,11 @@ public class OpenAiChatClient : ILlmClient
             TopP = request.TopP,
             Messages = BuildMessages(request)
         };
+
+        // 流式请求声明 include_usage：官方 API 默认不发送 usage chunk，
+        // 缺失会导致 TokenBudget 回退字符估算（预算/压缩阈值失真）
+        if (stream)
+            body.StreamOptions = new ChatCompletionStreamOptions { IncludeUsage = true };
 
         if (request.Tools?.Count > 0)
         {
@@ -458,6 +477,19 @@ public class OpenAiChatClient : ILlmClient
             foreach (var kv in _byIndex.OrderBy(x => x.Key))
             {
                 if (string.IsNullOrEmpty(kv.Value.Name)) continue;
+
+                // 对齐 Anthropic 的 Parse 校验：分片拼出的非法 JSON 参数回退 "{}"，避免下游解析崩溃
+                var args = kv.Value.Args.Length > 0 ? kv.Value.Args.ToString() : "{}";
+                if (!string.IsNullOrWhiteSpace(args))
+                {
+                    try { using var _ = JsonDocument.Parse(args); }
+                    catch (JsonException) { args = "{}"; }
+                }
+                else
+                {
+                    args = "{}";
+                }
+
                 list.Add(new ToolCall
                 {
                     Id = kv.Value.Id,
@@ -465,7 +497,7 @@ public class OpenAiChatClient : ILlmClient
                     Function = new FunctionCall
                     {
                         Name = kv.Value.Name,
-                        Arguments = kv.Value.Args.Length > 0 ? kv.Value.Args.ToString() : "{}"
+                        Arguments = args
                     }
                 });
             }

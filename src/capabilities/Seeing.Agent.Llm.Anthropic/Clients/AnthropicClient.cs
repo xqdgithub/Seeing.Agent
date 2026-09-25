@@ -11,12 +11,13 @@ namespace Seeing.Agent.Llm.Anthropic.Clients;
 /// Anthropic 客户端 - 使用 HTTP API 发送请求
 /// 只负责发送请求和接收响应，不负责模型定义
 /// </summary>
-public class AnthropicClient : ILlmClient
+public class AnthropicClient : ILlmClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ProviderConfig _config;
     private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
+    private readonly bool _ownsHttpClient;
 
     /// <summary>Anthropic API 版本</summary>
     private const string ApiVersion = "2023-06-01";
@@ -38,12 +39,34 @@ public class AnthropicClient : ILlmClient
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _httpClient = httpClient;
+        ArgumentNullException.ThrowIfNull(httpClient);
         _interceptorRegistry = interceptorRegistry;
 
         // 允许匿名网关：ApiKey 与 x-api-key 头均可缺省，缺失时直接不发送认证头
 
-        // 配置 HTTP 客户端
+        if (httpClient.BaseAddress != null)
+        {
+            // 调用方已配置 BaseAddress 的共享 HttpClient：直接复用，不篡改其配置，也不拥有
+            _httpClient = httpClient;
+            _ownsHttpClient = false;
+        }
+        else
+        {
+            // 工厂新建的 HttpClient：在此配置 BaseAddress/超时/请求头，并由客户端拥有
+            ConfigureHttpClient(httpClient, config);
+            _httpClient = httpClient;
+            _ownsHttpClient = true;
+        }
+
+        _logger.LogDebug("Anthropic 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}, OwnsHttpClient={OwnsHttpClient}",
+            ProviderId, _httpClient.BaseAddress, _ownsHttpClient);
+    }
+
+    /// <summary>
+    /// 配置自建 HttpClient 的 BaseAddress / 超时 / 请求头（不影响共享客户端）。
+    /// </summary>
+    private static void ConfigureHttpClient(HttpClient httpClient, ProviderConfig config)
+    {
         var baseUrl = config.BaseUrl ?? "https://api.anthropic.com";
 
         // 确保 Base URL 以 / 结尾，这样相对路径才能正确追加
@@ -51,25 +74,31 @@ public class AnthropicClient : ILlmClient
         if (!baseUrl.EndsWith("/", StringComparison.Ordinal))
             baseUrl += "/";
 
-        _httpClient.BaseAddress = new Uri(baseUrl);
-        _httpClient.Timeout = TimeSpan.FromMilliseconds(config.Timeout > 0 ? config.Timeout : 300000);
+        httpClient.BaseAddress = new Uri(baseUrl);
+        httpClient.Timeout = TimeSpan.FromMilliseconds(config.Timeout > 0 ? config.Timeout : 300000);
 
-        _httpClient.DefaultRequestHeaders.Clear();
+        httpClient.DefaultRequestHeaders.Clear();
         if (!HttpHeaderHelper.Contains(config.Headers, "x-api-key") &&
             !string.IsNullOrEmpty(config.ApiKey))
-            _httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
-        _httpClient.DefaultRequestHeaders.Add("anthropic-version", ApiVersion);
+            httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
+        httpClient.DefaultRequestHeaders.Add("anthropic-version", ApiVersion);
 
         // 使用特定格式的 User-Agent（跳过验证以支持多 product token 格式）
         // 格式：opencode/1.2.26 ai-sdk/provider-utils/3.0.21 runtime/bun/1.3.10
-        _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "opencode/1.2.26 ai-sdk/provider-utils/3.0.21 runtime/bun/1.3.10");
+        httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "opencode/1.2.26 ai-sdk/provider-utils/3.0.21 runtime/bun/1.3.10");
 
-        _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+        httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
-        HttpHeaderHelper.Apply(_httpClient, _config.Headers);
+        HttpHeaderHelper.Apply(httpClient, config.Headers);
+    }
 
-        _logger.LogDebug("Anthropic 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}",
-            ProviderId, baseUrl);
+    /// <summary>
+    /// 释放自建 HttpClient（共享客户端不释放）。
+    /// </summary>
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+            _httpClient.Dispose();
     }
 
     private IReadOnlyList<ILlmCallInterceptor> ResolveInterceptors()
@@ -93,7 +122,7 @@ public class AnthropicClient : ILlmClient
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages") { Content = content };
         OutboundPipeline.Apply(httpRequest, staticHeaders: null, call, ResolveInterceptors(), ProviderId, ProviderType);
 
-        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -122,7 +151,7 @@ public class AnthropicClient : ILlmClient
         };
         OutboundPipeline.Apply(httpRequest, staticHeaders: null, call, ResolveInterceptors(), ProviderId, ProviderType);
 
-        var response = await _httpClient.SendAsync(
+        using var response = await _httpClient.SendAsync(
             httpRequest,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
@@ -137,6 +166,9 @@ public class AnthropicClient : ILlmClient
         var toolBlocks = new Dictionary<int, AnthropicStreamingToolBlock>();
         var streamFinalizeSent = false;
         TokenUsage? lastStreamUsage = null;
+        // message_start 事件的 message.usage.input_tokens 缓存：
+        // Anthropic 流式下 input_tokens 只在 message_start 出现，message_delta 的 usage 只含最终 output_tokens
+        var streamInputTokens = 0;
         var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
         string? line;
@@ -231,11 +263,19 @@ public class AnthropicClient : ILlmClient
                 }
             }
 
+            if (string.Equals(evt.Type, "message_start", StringComparison.Ordinal) && evt.Message?.Usage != null)
+            {
+                // 缓存 message_start 的 input_tokens（流式中 input 侧 usage 的唯一来源）
+                streamInputTokens = Math.Max(streamInputTokens, evt.Message.Usage.InputTokens);
+            }
+
             if (string.Equals(evt.Type, "message_delta", StringComparison.Ordinal) && evt.Usage != null)
             {
+                // message_delta 的 usage 携带最终 output_tokens（input_tokens 常为 0）；
+                // input 侧取 message_start 缓存与 delta 回填的较大值以兼容网关
                 lastStreamUsage = new TokenUsage
                 {
-                    InputTokens = evt.Usage.InputTokens,
+                    InputTokens = Math.Max(streamInputTokens, evt.Usage.InputTokens),
                     OutputTokens = evt.Usage.OutputTokens
                 };
             }
@@ -248,7 +288,7 @@ public class AnthropicClient : ILlmClient
                     Id = responseId,
                     IsComplete = true,
                     ToolCallDeltas = tools,
-                    Usage = lastStreamUsage
+                    Usage = lastStreamUsage ?? BuildStreamInputOnlyUsage(streamInputTokens)
                 };
                 streamFinalizeSent = true;
             }
@@ -262,10 +302,16 @@ public class AnthropicClient : ILlmClient
                 Id = responseId,
                 IsComplete = true,
                 ToolCallDeltas = tools,
-                Usage = lastStreamUsage
+                Usage = lastStreamUsage ?? BuildStreamInputOnlyUsage(streamInputTokens)
             };
         }
     }
+
+    /// <summary>异常流（缺 message_delta）下仍上报 message_start 缓存的 input_tokens。</summary>
+    private static TokenUsage? BuildStreamInputOnlyUsage(int streamInputTokens)
+        => streamInputTokens > 0
+            ? new TokenUsage { InputTokens = streamInputTokens }
+            : null;
 
     private static List<ToolCall>? BuildToolCallsFromAnthropicStream(Dictionary<int, AnthropicStreamingToolBlock> toolBlocks)
     {
@@ -725,6 +771,10 @@ public class AnthropicClient : ILlmClient
     {
         [JsonPropertyName("id")]
         public string? Id { get; set; }
+
+        /// <summary>message_start 事件 message 节点内的 usage（流式 input_tokens 的唯一来源）</summary>
+        [JsonPropertyName("usage")]
+        public AnthropicUsage? Usage { get; set; }
     }
 
     private class AnthropicDelta

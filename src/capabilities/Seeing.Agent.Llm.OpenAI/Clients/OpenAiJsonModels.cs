@@ -39,6 +39,18 @@ internal class ChatCompletionRequest
     [JsonPropertyName("reasoning_effort")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ReasoningEffort { get; set; }
+
+    /// <summary>流式选项（stream=true 时声明 include_usage 以获得 trailing usage chunk）</summary>
+    [JsonPropertyName("stream_options")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ChatCompletionStreamOptions? StreamOptions { get; set; }
+}
+
+/// <summary>Chat Completions 流式选项。</summary>
+internal class ChatCompletionStreamOptions
+{
+    [JsonPropertyName("include_usage")]
+    public bool IncludeUsage { get; set; }
 }
 
 internal class ChatCompletionThinking
@@ -268,11 +280,38 @@ internal class ResponsesRequest
 
 internal class ResponsesInputItem
 {
+    /// <summary>item 类型：null=普通消息；"function_call" / "function_call_output"=工具调用往返</summary>
+    [JsonPropertyName("type")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Type { get; set; }
+
     [JsonPropertyName("role")]
-    public string Role { get; set; } = "";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Role { get; set; }
 
     [JsonPropertyName("content")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Content { get; set; }
+
+    /// <summary>工具调用关联 ID（function_call / function_call_output）</summary>
+    [JsonPropertyName("call_id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CallId { get; set; }
+
+    /// <summary>function_call 的函数名</summary>
+    [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name { get; set; }
+
+    /// <summary>function_call 的参数 JSON 字符串</summary>
+    [JsonPropertyName("arguments")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Arguments { get; set; }
+
+    /// <summary>function_call_output 的结果内容</summary>
+    [JsonPropertyName("output")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Output { get; set; }
 }
 
 internal class ResponsesTool

@@ -11,12 +11,13 @@ namespace Seeing.Agent.Llm.OpenAI.Clients;
 /// 发送到 POST /responses，解析 event: + data: 双行 SSE。
 /// 映射到 ILlmClient 的统一 StreamUpdate / ChatResponse 接口。
 /// </summary>
-public class OpenAiResponsesClient : ILlmClient
+public class OpenAiResponsesClient : ILlmClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ProviderConfig _config;
     private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
+    private readonly bool _ownsHttpClient;
 
     public string ProviderId => _config.Id;
     public string ProviderType => ProviderTypes.OpenAi;
@@ -29,14 +30,28 @@ public class OpenAiResponsesClient : ILlmClient
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        ArgumentNullException.ThrowIfNull(httpClient);
         _interceptorRegistry = interceptorRegistry;
 
         // 允许匿名网关：ApiKey 与 Authorization 头均可缺省，缺失时直接不发送认证头
 
         // 复用工厂传入的 HttpClient，不能在这里 new HttpClient()，否则会绕过 Provider 代理。
-        _httpClient = httpClient.BaseAddress != null
-            ? httpClient
-            : ConfigureFactoryClient(httpClient, config, logger);
+        // 已配置 BaseAddress 的共享 HttpClient 不被拥有（Dispose 时不释放）；
+        // 工厂新建的 HttpClient 在此配置并由客户端拥有（须在配置前判定所有权）。
+        var ownsClient = httpClient.BaseAddress == null;
+        _httpClient = ownsClient
+            ? ConfigureFactoryClient(httpClient, config, logger)
+            : httpClient;
+        _ownsHttpClient = ownsClient;
+    }
+
+    /// <summary>
+    /// 释放自建 HttpClient（共享客户端不释放）。
+    /// </summary>
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+            _httpClient.Dispose();
     }
 
     private IReadOnlyList<ILlmCallInterceptor> ResolveInterceptors()
@@ -57,7 +72,7 @@ public class OpenAiResponsesClient : ILlmClient
         _logger.LogDebug("ResponsesAPI 非流式: Model={Model}", request.Model);
 
         var body = BuildRequest(request, stream: false);
-        var response = await OpenAiHttpHelper.PostJsonAsync(
+        using var response = await OpenAiHttpHelper.PostJsonAsync(
             _httpClient, "responses", body, _logger, ct, _config, call, ResolveInterceptors());
         await OpenAiHttpHelper.EnsureSuccessAsync(response, _logger, ct);
 
@@ -74,7 +89,7 @@ public class OpenAiResponsesClient : ILlmClient
         _logger.LogDebug("ResponsesAPI 流式: Model={Model}", request.Model);
 
         var body = BuildRequest(request, stream: true);
-        var response = await OpenAiHttpHelper.PostJsonAsync(
+        using var response = await OpenAiHttpHelper.PostJsonAsync(
             _httpClient, "responses", body, _logger, ct, _config, call, ResolveInterceptors());
         await OpenAiHttpHelper.EnsureSuccessAsync(response, _logger, ct);
 
@@ -216,13 +231,42 @@ public class OpenAiResponsesClient : ILlmClient
 
         foreach (var msg in request.Messages)
         {
+            // 工具调用结果 → function_call_output item（以 call_id 关联）
+            // 旧实现把 tool 消息伪装成 assistant 文本，第二轮起工具调用关联断裂
+            if (msg.Role == ChatRole.Tool)
+            {
+                input.Add(new ResponsesInputItem
+                {
+                    Type = "function_call_output",
+                    CallId = msg.ToolCallId ?? "",
+                    Output = msg.Content
+                });
+                continue;
+            }
+
+            // assistant 消息带工具调用 → 每个调用映射为 function_call input item
+            // （输出侧 MapResponse 已支持 function_call，此处补齐输入侧对称映射）
+            if (msg.Role == ChatRole.Assistant && msg.ToolCalls?.Count > 0)
+            {
+                if (!string.IsNullOrEmpty(msg.Content))
+                    input.Add(new ResponsesInputItem { Role = "assistant", Content = msg.Content });
+
+                foreach (var tc in msg.ToolCalls)
+                {
+                    input.Add(new ResponsesInputItem
+                    {
+                        Type = "function_call",
+                        CallId = tc.Id,
+                        Name = tc.Function?.Name ?? "",
+                        Arguments = tc.Function?.Arguments ?? "{}"
+                    });
+                }
+                continue;
+            }
+
             input.Add(new ResponsesInputItem
             {
-                Role = msg.Role switch
-                {
-                    ChatRole.Tool => "assistant", // Responses API 工具调用结果包含在 assistant 消息里
-                    _ => msg.Role
-                },
+                Role = msg.Role,
                 Content = msg.Content
             });
         }
