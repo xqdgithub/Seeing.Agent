@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Mcp.OAuth;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Seeing.Agent.Abstractions.Configuration;
@@ -195,6 +196,10 @@ public class McpConfigPersistence : IMcpConfigPersistence
                     config.Priority = priority;
             }
 
+            // OAuth 配置（可选，缺失时行为不变）
+            if (element.TryGetProperty("oauth", out var oauthProp) && oauthProp.ValueKind == JsonValueKind.Object)
+                config.OAuth = ParseOAuthConfig(oauthProp);
+
             return config;
         }
         catch (Exception ex)
@@ -285,6 +290,78 @@ public class McpConfigPersistence : IMcpConfigPersistence
 
         if (config.Priority != McpServerPriority.Normal)
             result["priority"] = config.Priority.ToString().ToLowerInvariant();
+
+        // OAuth 配置（仅当存在时输出）
+        if (config.OAuth != null)
+            result["oauth"] = SerializeOAuthConfigAsObject(config.OAuth);
+
+        return result;
+    }
+
+    /// <summary>
+    /// 解析 OAuth 配置（部分字段可选，缺失时保留默认值）
+    /// </summary>
+    private static McpOAuthConfig ParseOAuthConfig(JsonElement element)
+    {
+        var oauth = new McpOAuthConfig();
+
+        if (element.TryGetProperty("authorizationEndpoint", out var authEndpointProp))
+            oauth.AuthorizationEndpoint = authEndpointProp.GetString();
+
+        if (element.TryGetProperty("tokenEndpoint", out var tokenEndpointProp))
+            oauth.TokenEndpoint = tokenEndpointProp.GetString();
+
+        if (element.TryGetProperty("clientId", out var clientIdProp))
+            oauth.ClientId = clientIdProp.GetString();
+
+        if (element.TryGetProperty("clientSecret", out var clientSecretProp))
+            oauth.ClientSecret = clientSecretProp.GetString();
+
+        if (element.TryGetProperty("scope", out var scopeProp))
+            oauth.Scope = scopeProp.GetString();
+
+        if (element.TryGetProperty("redirectUri", out var redirectUriProp))
+            oauth.RedirectUri = redirectUriProp.GetString();
+
+        if (element.TryGetProperty("disabled", out var disabledProp))
+            oauth.Disabled = disabledProp.GetBoolean();
+
+        if (element.TryGetProperty("usePkce", out var usePkceProp))
+            oauth.UsePkce = usePkceProp.GetBoolean();
+
+        return oauth;
+    }
+
+    /// <summary>
+    /// 序列化 OAuth 配置为对象（仅输出非空/非默认值字段）
+    /// </summary>
+    private static Dictionary<string, object> SerializeOAuthConfigAsObject(McpOAuthConfig oauth)
+    {
+        var result = new Dictionary<string, object>();
+
+        if (!string.IsNullOrEmpty(oauth.AuthorizationEndpoint))
+            result["authorizationEndpoint"] = oauth.AuthorizationEndpoint;
+
+        if (!string.IsNullOrEmpty(oauth.TokenEndpoint))
+            result["tokenEndpoint"] = oauth.TokenEndpoint;
+
+        if (!string.IsNullOrEmpty(oauth.ClientId))
+            result["clientId"] = oauth.ClientId;
+
+        if (!string.IsNullOrEmpty(oauth.ClientSecret))
+            result["clientSecret"] = oauth.ClientSecret;
+
+        if (!string.IsNullOrEmpty(oauth.Scope))
+            result["scope"] = oauth.Scope;
+
+        if (!string.IsNullOrEmpty(oauth.RedirectUri))
+            result["redirectUri"] = oauth.RedirectUri;
+
+        if (oauth.Disabled)
+            result["disabled"] = true;
+
+        if (!oauth.UsePkce)
+            result["usePkce"] = false;
 
         return result;
     }
