@@ -483,11 +483,12 @@ namespace Seeing.Agent.Core.Tools
             CancellationToken cancellationToken = default,
             Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync = null,
             IPermissionAuthorizer? permissionAuthorizer = null)
-            => ExecuteAsync(toolCall, sessionId, cancellationToken, emitAsync, permissionAuthorizer, agentName: null);
+            => ExecuteAsync(toolCall, sessionId, cancellationToken, emitAsync, permissionAuthorizer, agent: null);
 
         /// <summary>
         /// 执行工具调用（带重试支持）。
-        /// <paramref name="agentName"/> 为当前执行所属 Agent，用于资源门 Agent 规则（spec §5.1 步骤 3）。
+        /// <paramref name="agent"/> 为当前执行所属 Agent，用于资源门 Agent 规则（spec §5.1 步骤 3）
+        /// 及 <see cref="ToolContext.Agent"/> 透传。
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(
             ToolCall toolCall,
@@ -495,9 +496,10 @@ namespace Seeing.Agent.Core.Tools
             CancellationToken cancellationToken,
             Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync,
             IPermissionAuthorizer? permissionAuthorizer,
-            string? agentName)
+            AgentDefinition? agent)
         {
             var toolId = toolCall.Name;
+            var agentName = agent?.Name;
 
             // 检查工具是否启用
             if (!IsToolEnabled(toolId))
@@ -599,6 +601,7 @@ namespace Seeing.Agent.Core.Tools
                 {
                     SessionId = sessionId,
                     CallId = toolCall.Id,
+                    Agent = agent,
                     CancellationToken = cancellationToken,
                     EventSink = sink,
                     MetadataSink = sink,

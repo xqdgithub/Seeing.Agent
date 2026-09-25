@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 
@@ -17,7 +18,12 @@ internal static class McpToolPermissionGate
     internal const string PermissionKindMcpExecute = "mcp.execute";
 
     /// <summary>
-    /// 发起 server 粒度审批。无授权器（脱离执行链的直调）时返回 null，表示跳过检查（与既有资源门语义一致）。
+    /// 发起 server 粒度审批。
+    /// <para>
+    /// 授权器解析：优先用执行级 <see cref="ToolContext.PermissionAuthorizer"/>（ToolManager 从执行链注入），
+    /// 缺失时回退 <see cref="IPermissionAuthorizerFactory"/>（对齐既有资源门模式）。
+    /// 两者均不可用时 fail-closed 返回 Deny——绝不静默放行（脱离执行链直调亦然）。
+    /// </para>
     /// </summary>
     internal static async Task<PermissionResolution?> AuthorizeAsync(
         string serverName,
@@ -25,8 +31,26 @@ internal static class McpToolPermissionGate
         JsonElement arguments,
         ToolContext context)
     {
-        if (context.PermissionAuthorizer is not { } authorizer)
-            return null;
+        var authorizer = context.PermissionAuthorizer;
+        if (authorizer is null)
+        {
+            var factory = context.Services?.GetService<IPermissionAuthorizerFactory>();
+            if (factory is not null)
+                authorizer = factory.Create(context.SessionId);
+        }
+
+        if (authorizer is null)
+        {
+            return new PermissionResolution
+            {
+                RequestId = context.CallId ?? Guid.NewGuid().ToString("N"),
+                SessionId = context.SessionId,
+                CallId = context.CallId,
+                Decision = PermissionEffect.Deny,
+                ResolvedBy = PermissionResolvedBy.Policy,
+                Reason = "无权限授权器，已拒绝（fail-closed）"
+            };
+        }
 
         return await authorizer.AuthorizeAsync(new PermissionRequest
         {

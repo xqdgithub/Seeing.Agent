@@ -925,7 +925,7 @@ public class AgentExecutor : IAgentExecutor
         try
         {
             result = await _tools.ExecuteAsync(
-                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent.Name).ConfigureAwait(false);
+                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

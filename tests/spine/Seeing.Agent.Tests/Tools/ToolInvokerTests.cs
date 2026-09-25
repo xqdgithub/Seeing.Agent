@@ -284,7 +284,7 @@ namespace Seeing.Agent.Tests.Tools
 
             // Act
             var result = await invoker.ExecuteAsync(toolCall, "session-1",
-                CancellationToken.None, null, permissionAuthorizer.Object, "build");
+                CancellationToken.None, null, permissionAuthorizer.Object, new Seeing.Agent.Abstractions.Agents.AgentDefinition { Name = "build" });
 
             // Assert
             result.Success.Should().BeTrue();

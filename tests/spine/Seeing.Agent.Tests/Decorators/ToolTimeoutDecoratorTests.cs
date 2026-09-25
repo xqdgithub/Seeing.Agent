@@ -2,6 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
@@ -57,6 +59,23 @@ public class ToolTimeoutDecoratorTests
         public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
         public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
             => Task.FromResult(new ToolResult { Success = true, Output = "ok" });
+    }
+
+    /// <summary>捕获执行上下文的工具：用于断言装饰器透视执行时全字段透传。</summary>
+    private sealed class CapturingTool : ITool
+    {
+        public string Id => "capture";
+        public string Description => "捕获上下文";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+        public ToolContext? Captured { get; private set; }
+
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        {
+            Captured = context;
+            return Task.FromResult(new ToolResult { Success = true, Output = "ok" });
+        }
     }
 
     /// <summary>构造装饰器，全局兜底超时 = globalTimeout。</summary>
@@ -143,5 +162,46 @@ public class ToolTimeoutDecoratorTests
 
         var ex = await Record.ExceptionAsync(() => task);
         ex.Should().BeAssignableTo<OperationCanceledException>();
+    }
+
+    // C5 回归：超时装饰器重建 ToolContext 时必须全字段透传（尤其 PermissionAuthorizer），
+    // 否则 MCP 授权门收到 null 授权器 → 安全绕过。
+    [Fact]
+    public async Task GlobalTimeout_ShouldForwardAllContextFields()
+    {
+        var capturing = new CapturingTool();
+        var decorator = CreateDecorator(capturing, TimeSpan.FromSeconds(30));
+
+        var authorizer = new Mock<IPermissionAuthorizer>().Object;
+        var metadataSink = new Mock<IToolMetadataSink>().Object;
+        var eventSink = new Mock<IToolEventSink>().Object;
+        var services = new Mock<IServiceProvider>().Object;
+        var agent = new AgentDefinition { Name = "plan" };
+        var context = new ToolContext
+        {
+            SessionId = "s1",
+            MessageId = "m1",
+            CallId = "c1",
+            Agent = agent,
+            PermissionAuthorizer = authorizer,
+            MetadataSink = metadataSink,
+            EventSink = eventSink,
+            Services = services,
+            CancellationToken = CancellationToken.None
+        };
+
+        var result = await decorator.ExecuteAsync(JsonDocument.Parse("{}").RootElement, context);
+
+        result.Success.Should().BeTrue();
+        capturing.Captured.Should().NotBeNull();
+        capturing.Captured!.SessionId.Should().Be("s1");
+        capturing.Captured.MessageId.Should().Be("m1");
+        capturing.Captured.CallId.Should().Be("c1");
+        capturing.Captured.Agent.Should().BeSameAs(agent);
+        capturing.Captured.PermissionAuthorizer.Should().BeSameAs(authorizer);
+        capturing.Captured.MetadataSink.Should().BeSameAs(metadataSink);
+        capturing.Captured.EventSink.Should().BeSameAs(eventSink);
+        capturing.Captured.Services.Should().BeSameAs(services);
+        capturing.Captured.CancellationToken.Should().NotBe(context.CancellationToken);
     }
 }

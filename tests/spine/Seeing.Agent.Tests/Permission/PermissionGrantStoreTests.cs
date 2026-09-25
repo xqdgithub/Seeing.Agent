@@ -165,6 +165,8 @@ public class PermissionGrantStoreTests
     [InlineData("filesystem.external", PermissionKind.File)]
     [InlineData("shell.run", PermissionKind.Shell)]
     [InlineData("network.http", PermissionKind.Network)]
+    [InlineData("mcp.execute", PermissionKind.McpTool)]
+    [InlineData("mcp.tool", PermissionKind.McpTool)]
     [InlineData("unknown.kind", PermissionKind.Tool)]
     [InlineData(null, PermissionKind.Tool)]
     public void PermissionKindMapper_ShouldMapKindStrings(string? kind, PermissionKind expected)

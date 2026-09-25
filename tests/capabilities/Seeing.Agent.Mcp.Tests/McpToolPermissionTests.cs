@@ -1,5 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Mcp;
@@ -35,13 +37,32 @@ public class McpToolPermissionTests
     }
 
     [Fact]
-    public async Task AuthorizeAsync_NoAuthorizer_ShouldReturnNull()
+    public async Task AuthorizeAsync_NoAuthorizerAndNoFactory_ShouldDeny()
     {
+        // fail-closed：脱离执行链直调且无工厂回退时，必须拒绝而非静默放行。
         var context = new ToolContext { SessionId = "s1" };
 
         var resolution = await McpToolPermissionGate.AuthorizeAsync("serverA", "do_thing", EmptyArgs(), context);
 
-        resolution.Should().BeNull();
+        resolution.Should().NotBeNull();
+        resolution!.Decision.Should().Be(PermissionEffect.Deny);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_NoAuthorizerButFactory_ShouldFallbackToFactory()
+    {
+        var authorizer = new FakePermissionAuthorizer();
+        var factory = new Mock<IPermissionAuthorizerFactory>();
+        factory.Setup(f => f.Create("s1", null)).Returns(authorizer);
+        var services = new Mock<IServiceProvider>();
+        services.Setup(s => s.GetService(typeof(IPermissionAuthorizerFactory))).Returns(factory.Object);
+        var context = new ToolContext { SessionId = "s1", Services = services.Object };
+
+        var resolution = await McpToolPermissionGate.AuthorizeAsync("serverA", "do_thing", EmptyArgs(), context);
+
+        resolution.Should().NotBeNull();
+        resolution!.Decision.Should().Be(PermissionEffect.Allow);
+        authorizer.Requests.Should().ContainSingle();
     }
 
     [Fact]

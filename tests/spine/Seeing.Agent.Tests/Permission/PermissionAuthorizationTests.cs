@@ -716,6 +716,24 @@ public class PermissionAuthorizationTests
         h.AssertAskedOnce();
     }
 
+    // I2 回归：mcp.execute 经 PermissionKindMapper 映射为 McpTool，
+    // 使 plan/explore 的 Deny(McpTool,"*") 生效（此前落默认 Tool → 规则静默失配而被弱化）。
+    [Fact]
+    public async Task AuthorizeAsync_McpExecute_AgentDenyMcpTool_ShouldDeny()
+    {
+        var h = new Harness();
+        h.SetAgentPolicy("plan", PermissionEffect.Deny,
+            PermissionRuleEntry.Deny(PermissionKind.McpTool, "*", 100));
+        h.SetupAsk(PermissionEffect.Allow, PermissionGrantScope.Once);
+
+        var resolution = await h.Service.AuthorizeAsync(
+            h.Request("mcp.execute", "serverA", agentName: "plan"), TestContext.Current.CancellationToken);
+
+        resolution.Decision.Should().Be(PermissionEffect.Deny);
+        resolution.ResolvedBy.Should().Be(PermissionResolvedBy.Policy);
+        h.AssertNoAsk();
+    }
+
     // plan/explore 白名单兜底不变：MCP 工具名不在 AllowedTools → 能力门（tool.execute）直接拒绝。
     [Fact]
     public async Task EvaluateToolAsync_McpTool_NotInAllowedTools_ShouldDeny()

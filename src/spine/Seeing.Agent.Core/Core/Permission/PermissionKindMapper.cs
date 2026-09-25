@@ -3,7 +3,7 @@ using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>
-/// 权限 kind 字符串（<c>tool.execute</c> / <c>filesystem.*</c> / <c>shell.*</c> / <c>network.*</c>）
+/// 权限 kind 字符串（<c>tool.execute</c> / <c>filesystem.*</c> / <c>shell.*</c> / <c>network.*</c> / <c>mcp.*</c>）
 /// 到 <see cref="PermissionKind"/> 的纯函数映射。
 /// </summary>
 public static class PermissionKindMapper
@@ -25,6 +25,9 @@ public static class PermissionKindMapper
 
         if (permissionKind.StartsWith("network.", StringComparison.OrdinalIgnoreCase))
             return PermissionKind.Network;
+
+        if (permissionKind.StartsWith("mcp.", StringComparison.OrdinalIgnoreCase))
+            return PermissionKind.McpTool;
 
         return PermissionKind.Tool;
     }

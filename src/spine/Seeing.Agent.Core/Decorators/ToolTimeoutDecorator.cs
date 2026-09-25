@@ -61,18 +61,8 @@ namespace Seeing.Agent.Core.Decorators
             timeoutCts.CancelAfter(timeout);
             var timeoutToken = timeoutCts.Token;
 
-            // 透视执行上下文：仅替换取消令牌，其余字段不变
-            var timedContext = new ToolContext
-            {
-                SessionId = context.SessionId,
-                MessageId = context.MessageId,
-                CallId = context.CallId,
-                Agent = context.Agent,
-                CancellationToken = timeoutToken,
-                MetadataSink = context.MetadataSink,
-                EventSink = context.EventSink,
-                Services = context.Services
-            };
+            // 透视执行上下文：仅替换取消令牌，其余字段经 WithCancellationToken 全量透传
+            var timedContext = context.WithCancellationToken(timeoutToken);
 
             try
             {

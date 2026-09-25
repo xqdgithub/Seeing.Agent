@@ -30,6 +30,18 @@ namespace Seeing.Agent.Abstractions.Tools
         /// 执行级授权器（由 ToolManager 从执行链注入；工具须优先使用，缺失时回退工厂）。
         /// </summary>
         public IPermissionAuthorizer? PermissionAuthorizer { get; set; }
+
+        /// <summary>
+        /// 克隆本上下文并替换取消令牌（供装饰器透视执行使用）。
+        /// 通过 <see cref="object.MemberwiseClone"/> 复制，保证所有字段（含未来新增字段）完整透传，
+        /// 避免逐字段重建导致的遗漏（如授权器丢失引发安全绕过）。
+        /// </summary>
+        public ToolContext WithCancellationToken(CancellationToken cancellationToken)
+        {
+            var clone = (ToolContext)MemberwiseClone();
+            clone.CancellationToken = cancellationToken;
+            return clone;
+        }
     }
 
     /// <summary>
