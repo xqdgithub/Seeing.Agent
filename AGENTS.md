@@ -161,7 +161,7 @@ public static async Task<string> GetWeather(
 ### 工具装饰器链
 - **注册**: `IToolDecoratorRegistry` 在 DI 中注册为 Singleton；按「注册顺序：重试→超时→缓存→输出限长」登记，**后注册者居外层**；`ToolManager.RegisterToolAsync()` 时自动 `Apply()`。
 - **实际包装顺序**: `ToolOutputLimiter(Cached(Timeout(Retry(tool))))`——重试在最内层；全局超时覆盖整次工具调用（含重试总时长）；输出限长在最外层处理最终返回结果。
-- **默认**: 3 次重试（1s 间隔指数退避）→ 超时（能力感知，兜底全局 `ToolExecutionTimeout`）→ 缓存默认关闭（内置工具均不声明缓存，因读取磁盘/仓库即时状态易产生脏数据）。
+- **默认**: 最多 3 次尝试（`maxRetries=3` 是**总尝试次数（含首次）**，即最多 2 次重试；首次退避 1s，之后指数退避 `1s×2^attempt`，上限 10s；耗尽返回 `Failure`，`Title="重试耗尽"`）→ 超时（能力感知，兜底全局 `ToolExecutionTimeout`）→ 缓存默认关闭（内置工具均不声明缓存，因读取磁盘/仓库即时状态易产生脏数据）。
 - **重试异常**: `TimeoutException`, `HttpRequestException`, `TaskCanceledException`, `IOException`
 - **超时职责**: `ToolTimeoutDecorator` 在工具执行漏斗内施加超时——读取工具能力 `timeout.skip=true`（豁免）或 `timeout.budget`（自身上限），未声明时回落到 `SeeingAgentOptions.ToolExecutionTimeout`（IOptionsMonitor 实时读取，支持热重载；默认 null 关闭）。超时返回 `Failure` + `Title="执行超时"` + `Metadata["timeout"]=true`，由上层统一渲染"执行超时"。
 

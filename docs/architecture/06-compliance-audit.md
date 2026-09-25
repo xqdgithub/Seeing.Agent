@@ -136,7 +136,53 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | 取消正确性 | ✅ | CTS 绑定 `ExecutionRecord`（per-execution），窗口期取消不再偷换 |
 | 装饰器链序 | ✅ | 实际 `OutputLimiter(Cached(Timeout(Retry(tool))))`（补齐链序断言测试） |
 | schema 单点 | ✅ | MCP 动态工具经 `IDynamicToolContributor` 并入 settledToolIds |
-| full 场景守门 | ⚠️ 开放 | `Full` 清单补 `systemone`/`systemone.tools` 与反射化守门归 Task 16 |
+| full 场景守门 | ✅ 完成 | `Full` 清单补 `systemone`/`systemone.tools`；反射守门（`BuiltInScenariosTests` 反射发现全部 `ISeeingModule` 求差）+ `FullExcludedModules` 显式豁免在线源 `llm.modelcatalog.modelsdev`（`2c934db` + `ead35e3`） |
+
+### 2026-09-25 整改覆盖矩阵（P0/P1 逐条落档）
+
+> 审查报告去重计 **P0×4 / P1×28**；交叉印证项折叠为：X1→P1-12、X2→P1-13、X3→P0-2、X5→并发（P1 组）、X7→P1-19。下表按报告枚举编号逐条落档（P0-1..4、P1-1..31 + X5/X6），**全部已闭环**；提交为 `master` 上对应修复。
+
+| 报告项 | 状态 | 提交 | 备注 |
+|--------|------|------|------|
+| P0-1 webfetch 重定向 SSRF | ✅ | `c5898fc` | 禁用自动重定向，逐跳校验 + 流式限长 |
+| P0-2 MCP 模块生命周期脱钩 | ✅ | `eb54f90` | Activate/Deactivate 对称；`LoadAllAsync` 加模块门控 |
+| P0-3 SystemOne 停用后复活 | ✅ | `179d351` | ReloadHandler 随模块激活挂接 |
+| P0-4 Core 残留工具死代码 | ✅ | `49014dc` | 删除 `Tools/BuiltIn/Plan/` + 扫描命令补盲区 |
+| P1-1 单次批准写目录白名单 | ✅ | `2168eaf` | 仅 `Scope != Once` 写白名单 |
+| P1-2 MCP 工具零审批 | ✅ | `212518f`+`8515cfb` | server 粒度授权门；`mcp.execute`→`McpTool` 映射、Authorizer 透传 |
+| P1-3 ACP 工作区前缀逃逸 | ✅ | `c5898fc` | `root + SeparatorChar` 边界 |
+| P1-4 权限文档断链 | ✅ | `21810b3` | 08/06 显式标注规格失落，契约以 08 为准 |
+| P1-5 取消令牌槽位偷换 | ✅ | `8f80fff`+`82baaf5` | CTS 绑定 `ExecutionRecord`；窗口重复终态/延迟释放 |
+| P1-6 装饰器链序与注释相反 | ✅ | `867f1bf` | 保留 `Timeout(Retry)` 语义，修正相反注释（链序未变） |
+| P1-7 SnapshotStorage 通配符路径 | ✅ | `995828d` | 删除零消费者死代码（后补） |
+| P1-8 LoopDetector 未接线 | ✅ | `6b6644c`+`5ba2d54` | per-execution 状态接线（3 警告 5 终止）；空参数不抛异常 |
+| P1-9 ProviderManager Dictionary 竞态 | ✅ | `03fb960`+`599716b` | 快照入锁；注册移出锁避免事件重入 |
+| P1-10 ToolManager 同步阻塞 + 锁外遍历 | ✅ | `03fb960` | `RegisterToolAsync`；快照入锁 |
+| P1-11 ACP 取消事件不可达 | ✅ | `751cd50`+`a500846` | OCE 排空对齐 Native（`LoopCancelledEvent`）；排空有界化 |
+| P1-12 X1 主 channel 无消费者 | ✅ | `1b495a5`+`e766dc7` | 移除无消费者主通道；CompleteSession 清缓冲 |
+| P1-13 X2 订阅/回放竞态 | ✅ | `1b495a5` | 发布/订阅同锁（恰一次） |
+| P1-14 SessionData 半线程安全 | ✅ | `4451b53` | `Messages`/`Clone`/`ClearMessages` 入锁全快照 |
+| P1-15 handoff 回滚复用已取消 ct | ✅ | `4451b53` | 回滚用 `CancellationToken.None` |
+| P1-16 Destroyed 事件未发布 | ✅ | `4451b53` | `session.destroyed` → 收敛在途 + `ClearSession` |
+| P1-17 Windows grep 匹配丢弃 | ✅ | `19140ee` | ripgrep `--json` 解析 + 异步超时 |
+| P1-18 codesearch 参数名错误 | ✅ | `7ade54e` | `parameters`→`params`（后补） |
+| P1-19 MCP 工具执行不可取消 | ✅ | `751cd50` | executor 委托接入 `CancellationToken` |
+| P1-20 Anthropic 流式 input_tokens=0 | ✅ | `38f17ea` | 解析 `message_start` usage |
+| P1-21 OpenAI 流式缺 include_usage | ✅ | `38f17ea` | 声明 `stream_options.include_usage` |
+| P1-22 Responses 多轮工具调用损坏 | ✅ | `38f17ea` | 输入侧补 `function_call`/`function_call_output` |
+| P1-23 LLM 客户端泄漏链 | ✅ | `38f17ea` | `IDisposable` 释放链 |
+| P1-24 Memory CostControl 绕过 gate | ✅ | `c544804` | 经 `SqliteConnectionGate` |
+| P1-25 ACP Terminal 句柄泄漏 | ✅ | `751cd50`+`c44ff3e` | 终端级清理；读取限制负值钳制 |
+| P1-26 MCP 动态工具 schema 断裂 | ✅ | `eb54f90` | `IDynamicToolContributor` 并入 settled ids |
+| P1-27 AgentsBuiltIn Deactivate 空操作 | ✅ | `179d351`+`fe86f1d` | 按来源注销，不误删用户同名 |
+| P1-28 full 场景守门失守 | ✅ | `2c934db`+`ead35e3` | 反射守门 + `FullExcludedModules`（modelsdev 显式豁免） |
+| P1-29 Memory Bootstrap Hook 不注销 | ✅ | `179d351`+`a7579b0` | Hook 随模块 Activate/Deactivate；删除顶层 `Enabled` |
+| P1-30 ACP passthrough 注册脱钩 | ✅ | `e2eb171`+`2c934db` | 注册/命令随模块生命周期；ACP Hook 收编 |
+| P1-31 Hosting.Web 权限通道零测试 | ✅ | `2c934db` | 补 `EventStreamPermissionChannelTests` |
+| X5 AgentExecutor 实例字段竞态 | ✅ | `6b6644c` | per-execution 循环状态 |
+| X6 同步包装 async 残留 | ✅ | `4a12e5e` | 消除系统性 `Task.Run().GetResult()`/裸阻断 |
+
+**矩阵生成后补记（审查 B / 后续修复）：** 并发 I1–I5 → `03fb960`（ToolManager/ProviderManager 快照入锁、注册异步化）、`82baaf5`（取消/启动窗口重复终态、队列丢项、CTS 延迟释放）、`599716b`（ProviderManager 注册移出锁避免事件重入）；MergeDeep 数值 0 分层语义 → `5ba2d54`（撤销「数值 0 始终覆盖」，恢复 null 分支深拷贝）；MCP 审批安全 → `8515cfb`；ACP/Agents 生命周期 → `179d351`、`e2eb171`、`fe86f1d`、`a500846`、`2c934db`；`RetryMiddleware` 补 `IOException` + 指数退避 + 退避响应取消 → `8ae5f3f`（已从接受残留清单移出）；`RetryToolDecorator` 重试次数语义（审查 B I6）→ 根 `AGENTS.md`「工具装饰器链」已校正（`maxRetries=3` 为总尝试次数含首次）。
 
 ### Abstractions 纯函数豁免清单（显式）
 
@@ -164,7 +210,6 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | `PermissionRuleEntry.PathMatches` 相对 glob | 相对 glob 对绝对路径失效；Windows 大小写语义不一致（`*.PEM` vs `key.pem` Deny 存在绕过面） |
 | `PermissionGrantStore.Lookup` 恒 `OrdinalIgnoreCase` | Linux 大小写敏感文件系统上跨大小写文件可命中 |
 | Gateway 审批回传 scope 恒 `Once` | 协议层无法表达 Session/SessionDirectory 记忆 |
-| `RetryMiddleware` 可重试集合缺 `IOException` | 与 `RetryToolDecorator` 不一致；重试延迟亦不响应取消 |
 | webfetch DNS rebinding TOCTOU | 每跳仅做一次 DNS 预校验，实际连接由 `HttpClient` 重新解析（校验与连接两次解析）；恶意 DNS 可在两次解析间切换至内网 IP。**连接期 IP 固化未实现**（`SocketsHttpHandler.ConnectCallback` 校验/按 IP 直连），属后续演进 |
 | `ToolDrainTimeout` 取消泄漏 | 不响应取消的工具可能拖满排空窗口（10s）后跳过终态，导致任务/进程泄漏（已知边界，见根 `AGENTS.md`） |
 | `DangerousCommandGuard` 令牌化绕过 | guard 语义自述「只拦截灾难性操作」；`xargs` 等令牌化包装可绕过，为设计边界，不做行为增强（批次 5 文档声明项） |

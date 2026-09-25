@@ -38,7 +38,7 @@
 1. **Once 批准不再写入会话目录白名单**：仅 `Scope != Once`（SessionDirectory 及以上）写白名单；「本次允许」后同目录再次访问仍询问。详见 [`08 §7.1`](08-permission-authorization-release-notes.md)。
 2. **`RequireInteraction=true` 绕过工作区白名单**：边界预检 Allow 分支补 `!RequireInteraction` 守卫。
 3. **MCP 工具 server 粒度审批**：MCP 工具以 `mcp.execute` kind、resource=server 名发起审批；Agent 的 `Allow(Tool,"*")` 不再短路；批准记忆按 server 粒度。
-4. **Memory 第二套开关收尾**：Hook 层与提示注入不再读取 `MemoryOptions.Enabled`（模块启停为单一真相源）；退役 `MemoryBootstrapHostedService` 与进程级 `MemoryHookRegistrationGate`，4 个 Hook 随模块 `Activate/Deactivate` 登记/撤销。**配置迁移**：以模块 enabled 控制记忆 Hook/召回；`MemoryOptions.Enabled` 字段保留（后台管线仍读取，属遗留字段，后续统一）。
+4. **Memory 第二套开关收尾**：Hook 层与提示注入不再读取 `MemoryOptions.Enabled`（模块启停为单一真相源）；退役 `MemoryBootstrapHostedService` 与进程级 `MemoryHookRegistrationGate`，4 个 Hook 随模块 `Activate/Deactivate` 登记/撤销。**配置迁移**：以模块 enabled 控制记忆 Hook/召回；`MemoryOptions.Enabled` 顶层字段**已删除**（含后台 worker 读取与 WebUI 总开关），记忆启停单一真相源归模块生命周期（`a7579b0`）。
 5. **`/skill` 假成功改明确失败**：当会话末条消息非 user 时，`/skill` 返回 `CommandResult.Fail`（此前静默丢弃并报成功）；并通过 `SessionManager.UpdateSessionAsync` 持久化，避免刷新丢失。
 6. **ACP 命令/skill 注册依赖模块激活**：ACP 命令、动态 skill 命令随 `AcpModule.Activate` 注册、`Deactivate` 注销（此前宿主启动即注册，模块停用后仍可见）。
 7. **TaskCard `FailStep` 取消不写 `Error`**：区分取消与错误——`cancelled=true` 时不写 `ToolCall.Error`（父工具状态由事件流权威置为 cancelled），避免卡片误渲染为错误。
@@ -62,6 +62,8 @@
 | 配置 | `MergeDeep` 数值 0 视为合法覆盖 + null 分支深拷贝；`UnifiedConfigManager` 原子替换 + 文件锁 |
 | 工具发现 | 拒绝 `async void`/`out`/`ref`/泛型；required 语义对齐 |
 | 杂项 | `DateTime.Now` → `UtcNow`；`IsDirectory` 上移 `FileSystemHelper`（消 5 处复制）；静默吞异常补日志；流式 EOF 补中断标记 |
+| 重试中间件 | `RetryMiddleware` 可重试集合补 `IOException`，改为指数退避（`1s×2^attempt`，上限 10s）且退避等待响应取消（`8ae5f3f`） |
+| 守门/文档 | `Full` 清单补 `systemone`/`systemone.tools` 并反射化守门（`2c934db` + `ead35e3`）；命名空间迁移 `Seeing.Agent.Core.Tools.*` → `Seeing.Agent.Tools.*`（`e1c23eb`，零残留） |
 
 ---
 
@@ -72,9 +74,7 @@
 | ACP 不触发 chat 级 Hook | `AcpPassthroughExecutor` 不触发 `chat.on_error` 等；取消路径已对齐 Native（`LoopCancelledEvent`）。已知差异，不做增强；详见 [`08 §7.3`](08-permission-authorization-release-notes.md) |
 | MCP server 粒度记忆 | 单 server 批准=信任其全部工具（含后续新增）；按工具隔离属后续演进 |
 | SessionDirectory kind 维度 | 批准 `write` 后同目录 `delete` 仍免审（体验/安全折中） |
-| 接受残留清单 | 7 项（TryAutoApprove 进程级、PathMatches glob、GrantStore 大小写、Gateway scope 恒 Once、RetryMiddleware 缺 IOException、ToolDrainTimeout、webfetch DNS rebinding TOCTOU）+ 2 项文档声明（DangerousCommandGuard、Gateway 生命周期）见 [`06`](06-compliance-audit.md) |
-| full 场景守门 | `Full` 补 `systemone`/`systemone.tools` 与反射化守门归 Task 16 |
-| 命名空间迁移 | `Seeing.Agent.Core.Tools.*` → `Seeing.Agent.Tools.*` 归 Task 15（尚未执行） |
+| 接受残留清单 | 6 项（TryAutoApprove 进程级、PathMatches glob、GrantStore 大小写、Gateway scope 恒 Once、ToolDrainTimeout、webfetch DNS rebinding TOCTOU）+ 2 项文档声明（DangerousCommandGuard、Gateway 生命周期）见 [`06`](06-compliance-audit.md)；原「`RetryMiddleware` 缺 `IOException`」已由 `8ae5f3f` 修复并移出 |
 
 ---
 
@@ -82,7 +82,7 @@
 
 - **工具注册**：`RegisterTool(...)` → `await RegisterToolAsync(...)`；`RegisterTools`/`RegisterToolsFromType` 同步包装已删除。
 - **MCP 控制**：`Pause/ResumeServer(s)` → `...Async` 版本（`IMcpController`）。
-- **记忆开关**：移除对 `MemoryOptions.Enabled` 的 Hook/召回层依赖，改用模块启停（`seeing.json` 模块 enabled）；该字段仅后台管线仍读取。
+- **记忆开关**：`MemoryOptions.Enabled` 顶层字段已删除（`a7579b0`）；记忆启停单一真相源为模块启停（`seeing.json` 模块 enabled）。
 - **MCP 审批**：MCP 工具首调会以 server 粒度发起审批；如需放行可批准一次（记忆整 server）或用 Agent `AllowedTools` 白名单（`plan`/`explore` 默认兜底）。
 - **Once 审批**：如依赖「一次批准整目录免审」的旧行为，需改为 SessionDirectory 及以上 scope。
 
