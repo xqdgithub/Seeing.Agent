@@ -10,13 +10,13 @@ public class ToolCallDisplayFormatterTests
     public void TryParseParameters_Object_ShouldReturnNameAndValues()
     {
         // Raw string: \\ in JSON → one backslash in the parsed path
-        var json = """{"filePath":"E:\\a.cs","content":"hello"}""";
+        var json = """{"path":"E:\\a.cs","content":"hello"}""";
 
         var ok = ToolCallDisplayFormatter.TryParseParameters(json, out var entries);
 
         ok.Should().BeTrue();
         entries.Should().HaveCount(2);
-        entries[0].Name.Should().Be("filePath");
+        entries[0].Name.Should().Be("path");
         entries[0].Value.Should().Be(@"E:\a.cs");
         entries[1].Name.Should().Be("content");
         entries[1].Value.Should().Be("hello");
@@ -98,11 +98,11 @@ public class ToolCallDisplayFormatterTests
     {
         var entries = new[]
         {
-            new ToolCallParameterEntry("filePath", @"E:\a.cs", false),
+            new ToolCallParameterEntry("path", @"E:\a.cs", false),
             new ToolCallParameterEntry("content", "hi", false)
         };
 
         ToolCallDisplayFormatter.FormatKeyValueCopyText(entries)
-            .Should().Be("filePath: E:\\a.cs\ncontent: hi");
+            .Should().Be("path: E:\\a.cs\ncontent: hi");
     }
 }

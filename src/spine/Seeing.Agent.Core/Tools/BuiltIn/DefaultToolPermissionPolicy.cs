@@ -24,9 +24,9 @@ public sealed class DefaultToolPermissionPolicy : IToolPermissionPolicy
 
     private static readonly Dictionary<string, Mapping> Mappings = new()
     {
-        ["read"]                = new("filesystem.read",               "filePath"),
-        ["write"]               = new("filesystem.write",              "filePath"),
-        ["edit"]                = new("filesystem.write",              "filePath"),
+        ["read"]                = new("filesystem.read",               "path"),
+        ["write"]               = new("filesystem.write",              "path"),
+        ["edit"]                = new("filesystem.write",              "path"),
         ["grep"]                = new("filesystem.read",               "path"),
         ["glob"]                = new("filesystem.read",               "path"),
         ["delete"]              = new("filesystem.delete",             "path"),

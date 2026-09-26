@@ -21,7 +21,7 @@ public class ReadToolFileSystemTests
 
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { filePath = virtualPath }),
+            JsonSerializer.SerializeToElement(new { path = virtualPath }),
             new ToolContext());
 
         result.Success.Should().BeTrue();
@@ -45,7 +45,7 @@ public class ReadToolFileSystemTests
 
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { filePath = dirPath }),
+            JsonSerializer.SerializeToElement(new { path = dirPath }),
             new ToolContext());
 
         result.Success.Should().BeTrue();
@@ -64,7 +64,7 @@ public class ReadToolFileSystemTests
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
 
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { filePath = "/workspace/missing.txt" }),
+            JsonSerializer.SerializeToElement(new { path = "/workspace/missing.txt" }),
             new ToolContext());
 
         result.Success.Should().BeFalse();
@@ -80,7 +80,7 @@ public class ReadToolFileSystemTests
 
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { filePath = virtualPath, offset = 2, limit = 2 }),
+            JsonSerializer.SerializeToElement(new { path = virtualPath, offset = 2, limit = 2 }),
             new ToolContext());
 
         result.Success.Should().BeTrue();
@@ -104,7 +104,7 @@ public class ReadToolFileSystemTests
 
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { filePath = virtualPath }),
+            JsonSerializer.SerializeToElement(new { path = virtualPath }),
             new ToolContext());
 
         result.Success.Should().BeTrue();
@@ -131,7 +131,7 @@ public class ReadToolFileSystemTests
 
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { filePath = virtualPath }),
+            JsonSerializer.SerializeToElement(new { path = virtualPath }),
             new ToolContext());
 
         result.Success.Should().BeTrue();
@@ -150,7 +150,7 @@ public class ReadToolFileSystemTests
 
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { filePath = virtualPath }),
+            JsonSerializer.SerializeToElement(new { path = virtualPath }),
             new ToolContext());
 
         result.Success.Should().BeTrue();
@@ -167,7 +167,7 @@ public class ReadToolFileSystemTests
 
         var tool = new WriteTool(NullLogger<WriteTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { filePath = virtualPath, content = "hello seam" }),
+            JsonSerializer.SerializeToElement(new { path = virtualPath, content = "hello seam" }),
             new ToolContext());
 
         result.Success.Should().BeTrue();

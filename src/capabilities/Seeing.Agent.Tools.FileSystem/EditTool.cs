@@ -50,7 +50,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 type = "object",
                 properties = new
                 {
-                    filePath = new
+                    path = new
                     {
                         type = "string",
                         description = "要修改的文件的绝对路径"
@@ -71,7 +71,7 @@ namespace Seeing.Agent.Tools.FileSystem
                         description = "替换所有匹配项（默认为 false）"
                     }
                 },
-                required = new[] { "filePath", "oldString", "newString" }
+                required = new[] { "path", "oldString", "newString" }
             };
 
             return JsonSerializer.SerializeToElement(schema);
@@ -79,11 +79,11 @@ namespace Seeing.Agent.Tools.FileSystem
 
         public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
-            // 获取 filePath 参数
-            var filePath = GetStringArgument(arguments, "filePath");
+            // 获取 path 参数
+            var filePath = GetStringArgument(arguments, "path");
             if (string.IsNullOrEmpty(filePath))
             {
-                return Failure("缺少必需参数: filePath");
+                return Failure("缺少必需参数: path");
             }
 
             // 获取 oldString 参数
@@ -170,7 +170,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 "编辑应用成功。",
                 new Dictionary<string, object>
                 {
-                    ["filePath"] = filePath,
+                    ["path"] = filePath,
                     ["diff"] = diff
                 }
             );
@@ -206,7 +206,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 "新文件已创建。",
                 new Dictionary<string, object>
                 {
-                    ["filePath"] = filePath,
+                    ["path"] = filePath,
                     ["exists"] = false
                 }
             );

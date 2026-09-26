@@ -54,7 +54,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 type = "object",
                 properties = new
                 {
-                    filePath = new
+                    path = new
                     {
                         type = "string",
                         description = "要读取的文件或目录的绝对路径"
@@ -71,7 +71,7 @@ namespace Seeing.Agent.Tools.FileSystem
                         description = $"最大读取行数（默认 {FileSystemHelper.DefaultReadLimit}）"
                     }
                 },
-                required = new[] { "filePath" }
+                required = new[] { "path" }
             };
 
             return JsonSerializer.SerializeToElement(schema);
@@ -79,10 +79,10 @@ namespace Seeing.Agent.Tools.FileSystem
 
         public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
-            var filePath = GetStringArgument(arguments, "filePath");
+            var filePath = GetStringArgument(arguments, "path");
             if (string.IsNullOrEmpty(filePath))
             {
-                return Failure("缺少必需参数: filePath");
+                return Failure("缺少必需参数: path");
             }
 
             var offset = GetIntArgument(arguments, "offset") ?? 1;

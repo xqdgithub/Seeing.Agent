@@ -20,22 +20,22 @@ public class DefaultToolPermissionPolicyTests
     }
 
     [Fact]
-    public void Evaluate_ReadTool_ReturnsFilesystemReadWithFilePath()
+    public void Evaluate_ReadTool_ReturnsFilesystemReadWithPath()
     {
-        var args = JsonSerializer.SerializeToElement(new { filePath = "/home/user/readme.md" });
+        var args = JsonSerializer.SerializeToElement(new { path = "/home/user/readme.md" });
         var check = _policy.Evaluate("read", args);
         check.Should().NotBeNull();
         check!.PermissionKind.Should().Be("filesystem.read");
         check.Resource.Should().Be("/home/user/readme.md");
         check.Patterns.Should().BeNull();
-        check.Metadata.Should().ContainKey("filePath");
-        check.Metadata!["filePath"].Should().Be("/home/user/readme.md");
+        check.Metadata.Should().ContainKey("path");
+        check.Metadata!["path"].Should().Be("/home/user/readme.md");
     }
 
     [Fact]
-    public void Evaluate_WriteTool_ReturnsFilesystemWriteWithFilePath()
+    public void Evaluate_WriteTool_ReturnsFilesystemWriteWithPath()
     {
-        var args = JsonSerializer.SerializeToElement(new { filePath = "/tmp/output.txt" });
+        var args = JsonSerializer.SerializeToElement(new { path = "/tmp/output.txt" });
         var check = _policy.Evaluate("write", args);
         check.Should().NotBeNull();
         check!.PermissionKind.Should().Be("filesystem.write");
@@ -43,9 +43,9 @@ public class DefaultToolPermissionPolicyTests
     }
 
     [Fact]
-    public void Evaluate_EditTool_ReturnsFilesystemWriteWithFilePath()
+    public void Evaluate_EditTool_ReturnsFilesystemWriteWithPath()
     {
-        var args = JsonSerializer.SerializeToElement(new { filePath = "/app/config.json" });
+        var args = JsonSerializer.SerializeToElement(new { path = "/app/config.json" });
         var check = _policy.Evaluate("edit", args);
         check.Should().NotBeNull();
         check!.PermissionKind.Should().Be("filesystem.write");
@@ -202,11 +202,11 @@ public class DefaultToolPermissionPolicyTests
     [Fact]
     public void Evaluate_ReadTool_MetadataIncludesAllArgs()
     {
-        var args = JsonSerializer.SerializeToElement(new { filePath = "/a.txt", offset = 10, limit = 50 });
+        var args = JsonSerializer.SerializeToElement(new { path = "/a.txt", offset = 10, limit = 50 });
         var check = _policy.Evaluate("read", args);
         check.Should().NotBeNull();
-        check!.Metadata.Should().ContainKey("filePath");
-        check.Metadata!["filePath"].Should().Be("/a.txt");
+        check!.Metadata.Should().ContainKey("path");
+        check.Metadata!["path"].Should().Be("/a.txt");
         check.Metadata.Should().ContainKey("offset");
         check.Metadata!["offset"].Should().Be(10);
         check.Metadata.Should().ContainKey("limit");
