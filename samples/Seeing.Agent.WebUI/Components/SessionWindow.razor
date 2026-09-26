@@ -931,29 +931,35 @@
             && !string.Equals(evt.SessionId, SessionState.SessionId, StringComparison.Ordinal))
             return;
 
-        _sync.ProcessEvent(evt);
-
-        EnsureRetryTimer();
-
-        if (evt is ExecutionCompleteEvent completeEvt && _handler != null && !_handler.IsStreamActive)
+        // 事件流由后台线程广播（Router.ConsumeLoopAsync → OnStateChanged）；
+        // 时间线等 UI 状态的变更与渲染必须回到 Blazor 同步上下文串行执行，
+        // 否则会与 Dispatcher 渲染线程并发操作同一集合，抛出 "Collection was modified"。
+        await InvokeAsync(() =>
         {
-            SessionState.ExecutionStatus = completeEvt.Status;
-            SessionState.CurrentExecutionId = null;
-            SessionState.CompleteExecution();
-            SyncContextState();
-        }
+            _sync.ProcessEvent(evt);
 
-        if (evt is NavigateEvent navEvt && !string.IsNullOrEmpty(navEvt.Target))
-            NavigationManager.NavigateTo(navEvt.Target);
-        else if (evt is CommandResultEvent commandEvt && !string.IsNullOrEmpty(commandEvt.NavigationTarget))
-            NavigationManager.NavigateTo(commandEvt.NavigationTarget);
-        else if (evt is ToolCallEvent handoffEvt && TryResolveHandoffTarget(handoffEvt, out var handoffTarget))
-            // 交接成功：由结果元数据驱动导航到后继（兜底仅限交接驱动，不对用户点击切换做 URL 同步）
-            NavigationManager.NavigateTo($"/session/{handoffTarget}");
-        else if (evt is CompactionFailedEvent cfe && !string.IsNullOrEmpty(cfe.ErrorMessage))
-            MessageService.Error($"压缩失败: {cfe.ErrorMessage}");
+            EnsureRetryTimer();
 
-        await InvokeAsync(StateHasChanged);
+            if (evt is ExecutionCompleteEvent completeEvt && _handler != null && !_handler.IsStreamActive)
+            {
+                SessionState.ExecutionStatus = completeEvt.Status;
+                SessionState.CurrentExecutionId = null;
+                SessionState.CompleteExecution();
+                SyncContextState();
+            }
+
+            if (evt is NavigateEvent navEvt && !string.IsNullOrEmpty(navEvt.Target))
+                NavigationManager.NavigateTo(navEvt.Target);
+            else if (evt is CommandResultEvent commandEvt && !string.IsNullOrEmpty(commandEvt.NavigationTarget))
+                NavigationManager.NavigateTo(commandEvt.NavigationTarget);
+            else if (evt is ToolCallEvent handoffEvt && TryResolveHandoffTarget(handoffEvt, out var handoffTarget))
+                // 交接成功：由结果元数据驱动导航到后继（兜底仅限交接驱动，不对用户点击切换做 URL 同步）
+                NavigationManager.NavigateTo($"/session/{handoffTarget}");
+            else if (evt is CompactionFailedEvent cfe && !string.IsNullOrEmpty(cfe.ErrorMessage))
+                MessageService.Error($"压缩失败: {cfe.ErrorMessage}");
+
+            StateHasChanged();
+        });
     }
 
     /// <summary>
@@ -1015,8 +1021,14 @@
         var aggId = ResolveAggregatorSessionId();
         if (!string.Equals(EffectiveSessionId, aggId, StringComparison.Ordinal))
             return;
-        Timeline.SyncAssistantMessage(msg, EffectiveSessionId);
-        _ = InvokeAsync(StateHasChanged);
+
+        // 聚合器回调来自子会话事件流后台线程；时间线变更必须调度回 Blazor 同步上下文，
+        // 与渲染线程串行，避免并发修改集合。
+        _ = InvokeAsync(() =>
+        {
+            Timeline.SyncAssistantMessage(msg, EffectiveSessionId);
+            StateHasChanged();
+        });
     }
 
     /// <summary>

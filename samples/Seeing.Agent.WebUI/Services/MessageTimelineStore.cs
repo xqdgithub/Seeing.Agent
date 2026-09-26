@@ -6,6 +6,19 @@ namespace Seeing.Agent.WebUI.Services;
 
 /// <summary>
 /// Session-scoped timeline of chat items (user / assistant turns / system / special kinds).
+/// <para>
+/// 线程契约：本类是有状态的 UI 投影，<b>只允许在 UI 线程</b>（WebUI 即 Blazor Dispatcher）变更。
+/// <see cref="ResetFromSession"/>、<see cref="SyncAssistantMessage"/>、<see cref="CompleteTurn"/>、
+/// <see cref="ReconcileAppendFromSession"/> 等入口若由事件流后台线程触发
+/// （<c>IStreamConsumer.OnEvent</c>、<c>TaskCardAggregator.AssistantChanged</c> 等），
+/// 调用方<b>必须先切回 UI 线程</b>（组件内 <c>InvokeAsync</c>）再调用，
+/// 否则会与渲染线程并发修改集合，抛出 "Collection was modified"。
+/// </para>
+/// <para>
+/// 与数据层的分工：共享真相源 <see cref="SessionData.Messages"/> 由 Session 层以锁内快照
+/// 保证跨线程读安全（后台职责）；本类是需保留增量/展开态的活投影，无法返回快照，
+/// 故线程亲和性由 UI 层负责。
+/// </para>
 /// </summary>
 public sealed class MessageTimelineStore
 {
