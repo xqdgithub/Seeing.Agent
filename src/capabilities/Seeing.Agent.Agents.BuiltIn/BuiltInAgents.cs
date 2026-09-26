@@ -37,7 +37,7 @@ public static class BuiltInAgents
             Description = "默认主代理。拥有完整权限，可执行所有工具（包括 MCP 工具、文件操作、Shell 命令）。" +
                 "适用于需要完整能力的任务，如代码编写、文件编辑、命令执行等。",
             Mode = AgentMode.All,
-            MaxSteps = 64,
+            MaxSteps = 9999,
             Temperature = 0.7,
             IsNative = true,
             IsHidden = false,
@@ -122,7 +122,7 @@ public static class BuiltInAgents
                 "禁用 Shell 命令、代码编辑和 MCP 工具。",
             Mode = AgentMode.All,
             IsNative = true,
-            MaxSteps = 64,
+            MaxSteps = 9999,
             Temperature = 0.7,
             IsHidden = false,
             SystemPrompt = """
@@ -229,7 +229,7 @@ public static class BuiltInAgents
             Mode = AgentMode.SubAgent,
             IsNative = true,
             IsHidden = false,
-            MaxSteps = 64,
+            MaxSteps = 9999,
             Temperature = 0.3,
             SystemPrompt = """
 你是代码库探索专家，擅长快速、准确地导航和探索代码库。
@@ -295,7 +295,7 @@ public static class BuiltInAgents
             Mode = AgentMode.SubAgent,
             IsNative = true,
             IsHidden = true,
-            MaxSteps = 64,
+            MaxSteps = 9999,
             Temperature = 0.7,
             SystemPrompt = """
 你是通用代理，用于研究复杂问题和执行多步骤任务。

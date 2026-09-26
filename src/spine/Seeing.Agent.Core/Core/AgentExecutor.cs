@@ -150,7 +150,7 @@ public class AgentExecutor : IAgentExecutor
         TokenUsage? totalUsage = null;
         string? errorMessage = null;
 
-        var maxSteps = agent.MaxSteps ?? 32;
+        var maxSteps = agent.MaxSteps ?? 9999;
         var history = messages.ToList();
 
         // 执行级权限授权器（能力门 / 资源门共用）；缺失时能力门 NeedsConfirmation 按拒绝处理
