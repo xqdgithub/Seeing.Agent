@@ -126,12 +126,12 @@ public class ModelCapabilityManagerTests
 
         await manager.NotifyChangedAsync(
             ModelCapabilitiesChangeReason.SourceDataChanged,
-            affectedSourceIds: ["modelsdev"],
+            affectedSourceIds: ["builtin"],
             sourceKind: ModelCapabilitySourceChangeKind.Reloaded, cancellationToken: TestContext.Current.CancellationToken);
 
         var published = bus.Signals.OfType<ModelCapabilitiesChange>().Should().ContainSingle().Subject;
         published.Reason.Should().Be(ModelCapabilitiesChangeReason.SourceDataChanged);
-        published.AffectedSourceIds.Should().Equal("modelsdev");
+        published.AffectedSourceIds.Should().Equal("builtin");
         published.SourceKind.Should().Be(ModelCapabilitySourceChangeKind.Reloaded);
     }
 

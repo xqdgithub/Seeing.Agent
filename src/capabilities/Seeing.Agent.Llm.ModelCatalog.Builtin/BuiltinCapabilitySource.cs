@@ -7,7 +7,7 @@ using Seeing.Agent.Abstractions.Llm;
 namespace Seeing.Agent.Llm.ModelCatalog.Builtin;
 
 /// <summary>
-/// 内置精简能力目录：嵌入常见模型（含思考档位）+ local 覆盖；无 models.dev 远程。
+/// 内置精简能力目录：嵌入常见模型（含思考档位）+ local 覆盖；纯本地，无远程拉取。
 /// </summary>
 public sealed class BuiltinCapabilitySource : IBatchEditableModelCapabilitySource
 {

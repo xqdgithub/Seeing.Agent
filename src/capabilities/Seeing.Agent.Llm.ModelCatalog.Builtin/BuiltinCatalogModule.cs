@@ -9,7 +9,7 @@ namespace Seeing.Agent.Llm.ModelCatalog.Builtin;
 
 /// <summary>
 /// 内置精简能力目录模块 — id=<c>llm.modelcatalog.builtin</c>；DependsOn llm.modelcapabilities。
-/// 不含 models.dev 远程拉取。
+/// 仅嵌入资源 + local 覆盖，不发起任何网络请求。
 /// </summary>
 public sealed class BuiltinCatalogModule : ISeeingModule
 {

@@ -136,7 +136,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | 取消正确性 | ✅ | CTS 绑定 `ExecutionRecord`（per-execution），窗口期取消不再偷换 |
 | 装饰器链序 | ✅ | 实际 `OutputLimiter(Cached(Timeout(Retry(tool))))`（补齐链序断言测试） |
 | schema 单点 | ✅ | MCP 动态工具经 `IDynamicToolContributor` 并入 settledToolIds |
-| full 场景守门 | ✅ 完成 | `Full` 清单补 `systemone`/`systemone.tools`；反射守门（`BuiltInScenariosTests` 反射发现全部 `ISeeingModule` 求差）+ `FullExcludedModules` 显式豁免在线源 `llm.modelcatalog.modelsdev`（`2c934db` + `ead35e3`） |
+| full 场景守门 | ✅ 完成 | `Full` 清单补 `systemone`/`systemone.tools`；反射守门（`BuiltInScenariosTests` 反射发现全部 `ISeeingModule` 求差）+ `FullExcludedModules` 显式豁免在线源（`2c934db` + `ead35e3`）。2026-09-30：唯一豁免项 `llm.modelcatalog.modelsdev` 随该项目移除，`FullExcludedModules` 现为空清单，守门机制保留 |
 
 ### 2026-09-25 整改覆盖矩阵（P0/P1 逐条落档）
 
@@ -175,7 +175,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | P1-25 ACP Terminal 句柄泄漏 | ✅ | `751cd50`+`c44ff3e` | 终端级清理；读取限制负值钳制 |
 | P1-26 MCP 动态工具 schema 断裂 | ✅ | `eb54f90` | `IDynamicToolContributor` 并入 settled ids |
 | P1-27 AgentsBuiltIn Deactivate 空操作 | ✅ | `179d351`+`fe86f1d` | 按来源注销，不误删用户同名 |
-| P1-28 full 场景守门失守 | ✅ | `2c934db`+`ead35e3` | 反射守门 + `FullExcludedModules`（modelsdev 显式豁免） |
+| P1-28 full 场景守门失守 | ✅ | `2c934db`+`ead35e3` | 反射守门 + `FullExcludedModules`（在线源显式豁免；2026-09-30 豁免项随 modelsdev 移除，清单现为空） |
 | P1-29 Memory Bootstrap Hook 不注销 | ✅ | `179d351`+`a7579b0` | Hook 随模块 Activate/Deactivate；删除顶层 `Enabled` |
 | P1-30 ACP passthrough 注册脱钩 | ✅ | `e2eb171`+`2c934db` | 注册/命令随模块生命周期；ACP Hook 收编 |
 | P1-31 Hosting.Web 权限通道零测试 | ✅ | `2c934db` | 补 `EventStreamPermissionChannelTests` |

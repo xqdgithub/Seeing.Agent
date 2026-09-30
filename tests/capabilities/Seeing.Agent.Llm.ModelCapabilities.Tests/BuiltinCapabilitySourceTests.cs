@@ -37,7 +37,7 @@ public class BuiltinCapabilitySourceTests
             entries.Where(e => !string.Equals(e.ProviderId, "opencode-zen", StringComparison.OrdinalIgnoreCase))
                 .Should().OnlyContain(e => string.IsNullOrWhiteSpace(e.ProviderId));
 
-            // 体量精简：不应是 models.dev 全量
+            // 体量精简：仅精选主流模型，非全量目录
             entries.Count.Should().BeLessThan(80);
         }
         finally

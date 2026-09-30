@@ -476,7 +476,9 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "video",
+          "pdf"
         ],
         "output": [
           "text"
@@ -665,7 +667,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "video"
         ],
         "output": [
           "text"
@@ -813,7 +816,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "video"
         ],
         "output": [
           "text"
@@ -989,7 +993,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1033,7 +1038,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1081,7 +1087,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1129,7 +1136,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1177,7 +1185,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1225,7 +1234,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1269,7 +1279,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1290,6 +1301,14 @@
             {
               "key": "high",
               "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
             }
           ]
         }
@@ -1305,7 +1324,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1326,6 +1346,14 @@
             {
               "key": "high",
               "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
             }
           ]
         }
@@ -1341,7 +1369,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1362,6 +1391,14 @@
             {
               "key": "high",
               "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
             }
           ]
         }
@@ -1377,7 +1414,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1421,7 +1459,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1442,6 +1481,14 @@
             {
               "key": "high",
               "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
             }
           ]
         }
@@ -1457,7 +1504,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1482,6 +1530,10 @@
             {
               "key": "high",
               "label": "高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
             }
           ]
         }
@@ -1497,7 +1549,9 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "video",
+          "pdf"
         ],
         "output": [
           "text"
@@ -1534,7 +1588,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "video"
         ],
         "output": [
           "text"
@@ -1608,7 +1663,8 @@
       "modalities": {
         "input": [
           "text",
-          "image"
+          "image",
+          "video"
         ],
         "output": [
           "text"
@@ -1665,6 +1721,771 @@
         "output": [
           "text"
         ]
+      }
+    },
+    {
+      "modelId": "deepseek-v4-flash-vision-exp",
+      "name": "DeepSeek V4 Flash Vision Exp",
+      "limit": {
+        "context": 1000000,
+        "output": 393216
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            {
+              "key": "disabled",
+              "label": "关闭"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "gpt-5.5",
+      "name": "GPT-5.5",
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "none",
+              "label": "关闭"
+            },
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "gpt-5.5-pro",
+      "name": "GPT-5.5 Pro",
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "none",
+              "label": "关闭"
+            },
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "gpt-6-sol",
+      "name": "GPT-6 Sol",
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "none",
+              "label": "关闭"
+            },
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "gpt-6.1-sol",
+      "name": "GPT-6.1 Sol",
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "claude-opus-5-5",
+      "name": "Claude Opus 5.5",
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "claude-sonnet-5-5",
+      "name": "Claude Sonnet 5.5",
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "claude-fable-5",
+      "name": "Claude Fable 5",
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "grok-4.5",
+      "name": "Grok 4.5",
+      "limit": {
+        "context": 500000,
+        "output": 500000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "grok-4.6",
+      "name": "Grok 4.6",
+      "limit": {
+        "context": 500000,
+        "output": 500000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "grok-4.7",
+      "name": "Grok 4.7",
+      "limit": {
+        "context": 500000,
+        "output": 500000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "levels": [
+            {
+              "key": "low",
+              "label": "低"
+            },
+            {
+              "key": "medium",
+              "label": "中"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "xhigh",
+              "label": "极高"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "qwen3.7-flash",
+      "name": "Qwen3.7 Flash",
+      "limit": {
+        "context": 1000000,
+        "output": 131072
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            {
+              "key": "disabled",
+              "label": "关闭"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "modelId": "qwen3.8-omni-flash",
+      "name": "Qwen3.8 Omni Flash",
+      "limit": {
+        "context": 1000000,
+        "output": 131072
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            {
+              "key": "disabled",
+              "label": "关闭"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "mimo-v2.6-flash-free",
+      "name": "MiMo-V2.6-Flash Free",
+      "limit": {
+        "context": 200000,
+        "output": 32000
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            {
+              "key": "disabled",
+              "label": "关闭"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      },
+      "pricing": {
+        "input": 0,
+        "output": 0
+      }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "space-bunny-free",
+      "name": "Space Bunny Free",
+      "limit": {
+        "context": 1048576,
+        "output": 524288
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            {
+              "key": "disabled",
+              "label": "关闭"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      },
+      "pricing": {
+        "input": 0,
+        "output": 0
+      }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "longcat-2.5-preview-free",
+      "name": "LongCat 2.5 Preview Free",
+      "limit": {
+        "context": 1000000,
+        "output": 131072
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            {
+              "key": "disabled",
+              "label": "关闭"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      },
+      "pricing": {
+        "input": 0,
+        "output": 0
+      }
+    },
+    {
+      "providerId": "opencode-zen",
+      "modelId": "x-preview-f-free",
+      "name": "Ox Alpha Free (Unlimited)",
+      "limit": {
+        "context": 1000000,
+        "output": 131072
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "options": {
+        "thinking": {
+          "supported": true,
+          "interleaved": "reasoning_content",
+          "levels": [
+            {
+              "key": "disabled",
+              "label": "关闭"
+            },
+            {
+              "key": "high",
+              "label": "高"
+            },
+            {
+              "key": "max",
+              "label": "最大"
+            }
+          ]
+        }
+      },
+      "pricing": {
+        "input": 0,
+        "output": 0
       }
     }
   ],

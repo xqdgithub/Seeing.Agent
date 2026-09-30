@@ -69,7 +69,6 @@ builder.Services.AddSeeingModule<OpenAiLlmModule>(registry);
 builder.Services.AddSeeingModule<AnthropicLlmModule>(registry);
 builder.Services.AddSeeingModule<ModelCapabilitiesModule>(registry);
 builder.Services.AddSeeingModule<BuiltinCatalogModule>(registry);
-// models.dev 全量目录可选：需要时再 AddSeeingModule<ModelsDevCatalogModule>
 builder.Services.AddSeeingModule<DeepSeekLlmModule>(registry);
 builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
 builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);

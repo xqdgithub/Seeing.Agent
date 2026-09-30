@@ -38,8 +38,7 @@
 | `Seeing.Agent.Llm.OpenAI` | `llm.openai` | ILlmClientFactory |
 | `Seeing.Agent.Llm.Anthropic` | `llm.anthropic` | ILlmClientFactory |
 | `Seeing.Agent.Llm.ModelCapabilities` | `llm.modelcapabilities` | 模型能力元数据源注册与查询（`IModelCapabilitySource`） |
-| `Seeing.Agent.Llm.ModelCatalog.Builtin` | `llm.modelcatalog.builtin` | 内置精简能力目录；`DependsOn: llm.modelcapabilities` |
-| `Seeing.Agent.Llm.ModelCatalog.ModelsDev` | `llm.modelcatalog.modelsdev` | models.dev 远程目录（分页缓存）；`DependsOn: llm.modelcapabilities` |
+| `Seeing.Agent.Llm.ModelCatalog.Builtin` | `llm.modelcatalog.builtin` | 内置精简能力目录（嵌入 `catalog.json` + local 覆盖，含思考档位；无网络）；`DependsOn: llm.modelcapabilities` |
 | `Seeing.Agent.Agents.BuiltIn` | `agents.builtin` | build/plan/explore/general… |
 | `Seeing.Agent.Scheduler` | `scheduler` | cron / heartbeat |
 | `Seeing.Agent.Memory` | `memory` | 记忆 |

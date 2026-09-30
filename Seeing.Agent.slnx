@@ -38,7 +38,6 @@
     <Project Path="src/capabilities/Seeing.Agent.Llm.Anthropic/Seeing.Agent.Llm.Anthropic.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.ModelCapabilities/Seeing.Agent.Llm.ModelCapabilities.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.ModelCatalog.Builtin/Seeing.Agent.Llm.ModelCatalog.Builtin.csproj" />
-    <Project Path="src/capabilities/Seeing.Agent.Llm.ModelCatalog.ModelsDev/Seeing.Agent.Llm.ModelCatalog.ModelsDev.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.OpenAI/Seeing.Agent.Llm.OpenAI.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Mcp/Seeing.Agent.Mcp.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
