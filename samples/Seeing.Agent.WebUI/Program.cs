@@ -37,6 +37,7 @@ using Seeing.Agent.TokenBudget.Extensions;
 using Seeing.Agent.SystemOne.Extensions;
 using Seeing.Agent.Tools.SystemOne.Extensions;
 using Seeing.Provider.DeepSeek;
+using Seeing.Provider.MiMo;
 using Seeing.Provider.OpenCodeZen;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -70,6 +71,7 @@ builder.Services.AddSeeingModule<AnthropicLlmModule>(registry);
 builder.Services.AddSeeingModule<ModelCapabilitiesModule>(registry);
 builder.Services.AddSeeingModule<BuiltinCatalogModule>(registry);
 builder.Services.AddSeeingModule<DeepSeekLlmModule>(registry);
+builder.Services.AddSeeingModule<MiMoLlmModule>(registry);
 builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
 builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
 builder.Services.AddSeeingAcp(registry);

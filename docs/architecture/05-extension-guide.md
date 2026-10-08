@@ -33,7 +33,7 @@
 3. 模块 `ConfigureServices` 登记工厂；由 Core `ProviderManager` 聚合。  
 4. 旧 `providers.json` PascalCase 由 `ProviderTypes.Normalize` 兼容；写盘用小写。
 
-### 品牌网关插件（DeepSeek / OpenCodeZen 类）
+### 品牌网关插件（DeepSeek / MiMo / OpenCodeZen 类）
 
 1. 包可放 `plugs/providers/`；实现 `ILlmProvider` / `IConfigurableLlmProvider`（**禁止**引用 Core；工厂解析用 `LlmClientFactoryResolver`）。  
 2. 实现 `ISeeingModule`（如 `provider.deepseek`），`DependsOn: ["llm.openai"]`（若走 OpenAI 兼容协议）。  

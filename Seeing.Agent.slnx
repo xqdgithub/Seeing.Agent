@@ -11,6 +11,7 @@
   </Folder>
   <Folder Name="/plugs/providers/">
     <Project Path="plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />
+    <Project Path="plugs/providers/Seeing.Provider.MiMo/Seeing.Provider.MiMo.csproj" />
     <Project Path="plugs/providers/Seeing.Provider.OpenCodeZen/Seeing.Provider.OpenCodeZen.csproj" />
   </Folder>
   <Folder Name="/src/primitives/">
@@ -109,6 +110,7 @@
   </Folder>
   <Folder Name="/tests/plugs/">
     <Project Path="tests/plugs/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />
+    <Project Path="tests/plugs/Seeing.Provider.MiMo.Tests/Seeing.Provider.MiMo.Tests.csproj" />
     <Project Path="tests/plugs/Seeing.Provider.OpenCodeZen.Tests/Seeing.Provider.OpenCodeZen.Tests.csproj" />
   </Folder>
   <Folder Name="/解决方案项/" />

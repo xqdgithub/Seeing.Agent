@@ -49,6 +49,7 @@
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.SystemOne\Seeing.Agent.Tools.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.IO.Local\Seeing.IO.Local.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.DeepSeek\Seeing.Provider.DeepSeek.csproj" />
+    <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.MiMo\Seeing.Provider.MiMo.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.OpenCodeZen\Seeing.Provider.OpenCodeZen.csproj" />
   </ItemGroup>
 

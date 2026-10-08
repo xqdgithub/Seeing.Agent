@@ -47,6 +47,7 @@
 | `Seeing.Agent.Acp` | `acp` | ACP 执行实现 |
 | `Seeing.Agent.TokenBudget` | — | Token 预算 Hook（可无模块 id；经扩展方法挂 Hook） |
 | `Seeing.Provider.DeepSeek`（`plugs/providers/`） | `provider.deepseek` | DeepSeek 网关 Provider；`DependsOn: llm.openai` |
+| `Seeing.Provider.MiMo`（`plugs/providers/`） | `provider.mimo` | 小米 MiMo 网关 Provider；`DependsOn: llm.openai` |
 | `Seeing.Provider.OpenCodeZen`（`plugs/providers/`） | `provider.opencodezen` | OpenCode Zen 网关 Provider；`DependsOn: llm.openai` |
 
 `subagent` 为 Hosting 级能力（Task 工具）；内置场景字符串里可出现该 id。
@@ -97,7 +98,7 @@
 | `samples/Seeing.Agent.Embed.Demo` | Embed Shape 演示 |
 | `samples/Seeing.Gateway.ChannelHost` | 通道外进程宿主 |
 | `samples/Seeing.Gateway.*.Demo` | 通道演示 |
-| `plugs/providers/Seeing.Provider.*` | 可选 LLM Provider 插件（DeepSeek、OpenCodeZen） |
+| `plugs/providers/Seeing.Provider.*` | 可选 LLM Provider 插件（DeepSeek、MiMo、OpenCodeZen） |
 
 Sample **自己** `ProjectReference` 能力包；Shape 包不代引用。
 
@@ -108,7 +109,7 @@ Sample **自己** `ProjectReference` 能力包；Shape 包不代引用。
 
 | 名 | 默认 Agent | 模块意图（摘要） |
 |----|------------|------------------|
-| minimal | general | io.local + agents.builtin + llm.openai + basic + provider.deepseek/opencodezen |
+| minimal | general | io.local + agents.builtin + llm.openai + basic + provider.deepseek/mimo/opencodezen |
 | code | build | + filesystem/shell/git/subagent + providers |
 | work | general | + filesystem/web/memory/scheduler + providers |
 | research | explore | + web/memory + providers |

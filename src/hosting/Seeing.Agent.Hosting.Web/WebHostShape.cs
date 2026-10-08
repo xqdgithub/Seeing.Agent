@@ -35,6 +35,7 @@ public static class WebHostShape
         "llm.openai",
         "llm.anthropic",
         "provider.deepseek",
+        "provider.mimo",
         "provider.opencodezen",
         "skills",
         "mcp",

@@ -10,6 +10,7 @@ public static class BuiltInCapabilitySets
     private static readonly IReadOnlyList<string> s_providerModules =
     [
         "provider.deepseek",
+        "provider.mimo",
         "provider.opencodezen",
     ];
 

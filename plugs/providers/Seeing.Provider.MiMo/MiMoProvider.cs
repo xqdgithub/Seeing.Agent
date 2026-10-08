@@ -1,0 +1,242 @@
+using Seeing.Agent.Abstractions.Configuration;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.ConfigSchema;
+
+namespace Seeing.Provider.MiMo;
+
+public sealed class MiMoProvider : ILlmProvider, IConfigurableLlmProvider, IAsyncDisposable
+{
+    public const string ExtensionId = "seeing.provider.mimo";
+    public static readonly TimeSpan ModelsCacheTtl = TimeSpan.FromMinutes(5);
+
+    private readonly MiMoConfigStore _store;
+    private readonly IReadOnlyList<ILlmClientFactory> _factories;
+    private readonly IProviderRegistry _registry;
+    private readonly MiMoModelsClient _modelsClient;
+    private readonly IModelCapabilityManager _capabilityManager;
+    private readonly ILogger<MiMoProvider> _logger;
+    private readonly object _gate = new();
+    private string? _apiKey;
+    private ILlmClient? _client;
+    private IReadOnlyList<ModelConfig>? _modelsCache;
+    private DateTimeOffset _modelsCachedAt;
+    private int _disposed;
+
+    public MiMoProvider(
+        MiMoConfigStore store,
+        IEnumerable<ILlmClientFactory> factories,
+        IProviderRegistry registry,
+        MiMoModelsClient modelsClient,
+        IModelCapabilityManager capabilityManager,
+        ILogger<MiMoProvider> logger)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _factories = (factories ?? throw new ArgumentNullException(nameof(factories))).ToArray();
+        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+        _modelsClient = modelsClient ?? throw new ArgumentNullException(nameof(modelsClient));
+        _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public string Id => "mimo";
+
+    public string? Name => "MiMo";
+
+    public int MaxRetries => 3;
+
+    public async Task WarmupAsync(CancellationToken ct = default)
+    {
+        var options = await _store.LoadAsync(ct).ConfigureAwait(false);
+        lock (_gate)
+        {
+            _apiKey = options.ApiKey;
+        }
+    }
+
+    public ILlmClient GetClient()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            return _client ??= CreateClient();
+        }
+    }
+
+    public async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? apiKey;
+        lock (_gate)
+        {
+            apiKey = _apiKey;
+            if (string.IsNullOrWhiteSpace(apiKey))
+                return Array.Empty<ModelConfig>();
+
+            if (_modelsCache is not null &&
+                DateTimeOffset.Now - _modelsCachedAt < ModelsCacheTtl)
+            {
+                return _modelsCache;
+            }
+        }
+
+        var models = (await _modelsClient.ListModelsAsync(apiKey, cancellationToken)
+            .ConfigureAwait(false)).ToList();
+
+        for (var i = 0; i < models.Count; i++)
+        {
+            models[i] = await _capabilityManager
+                .TryEnrichIfEnabledAsync(models[i], cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        lock (_gate)
+        {
+            if (string.Equals(_apiKey, apiKey, StringComparison.Ordinal))
+            {
+                _modelsCache = models;
+                _modelsCachedAt = DateTimeOffset.Now;
+            }
+        }
+
+        return models;
+    }
+
+    public IReadOnlyList<ConfigFieldSchema>? GetConfigSchema()
+        => OptionsSchemaBuilder.FromType(typeof(MiMoOptions));
+
+    public async Task<IReadOnlyDictionary<string, object?>> LoadConfigAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var options = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return new Dictionary<string, object?>
+        {
+            ["ApiKey"] = options.ApiKey
+        };
+    }
+
+    public async Task SaveConfigAsync(
+        IReadOnlyDictionary<string, object?> values,
+        ConfigLevel level,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        _ = level;
+
+        var apiKey = GetString(values, "ApiKey");
+        await _store.SaveAsync(
+            new MiMoOptions { ApiKey = apiKey },
+            cancellationToken).ConfigureAwait(false);
+
+        ILlmClient? oldClient;
+        lock (_gate)
+        {
+            _apiKey = apiKey;
+            _modelsCache = null;
+            _modelsCachedAt = default;
+            oldClient = InvalidateClient();
+        }
+
+        await DisposeClientAsync(oldClient).ConfigureAwait(false);
+        _registry.Register(this, ExtensionId);
+    }
+
+    public Task<bool> TestConnectionAsync(
+        string modelId,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            if (string.IsNullOrWhiteSpace(_apiKey))
+                return Task.FromResult(false);
+        }
+
+        return GetClient().TestConnectionAsync(modelId, call: null, cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ILlmClient? client;
+        lock (_gate)
+        {
+            if (_disposed != 0)
+                return;
+
+            Volatile.Write(ref _disposed, 1);
+            client = InvalidateClient();
+            _modelsCache = null;
+        }
+
+        await DisposeClientAsync(client).ConfigureAwait(false);
+    }
+
+    private ILlmClient CreateClient()
+    {
+        try
+        {
+            var factory = LlmClientFactoryResolver.Require(_factories, ProviderTypes.OpenAi);
+            return factory.Create(new ProviderConfig
+            {
+                Id = Id,
+                Type = ProviderTypes.OpenAi,
+                Name = Name,
+                BaseUrl = MiMoModelsClient.DefaultBaseUrl,
+                ApiKey = _apiKey
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "创建 MiMo Provider 客户端失败");
+            throw;
+        }
+    }
+
+    private ILlmClient? InvalidateClient()
+    {
+        var oldClient = _client;
+        _client = null;
+        return oldClient;
+    }
+
+    private async ValueTask DisposeClientAsync(ILlmClient? client)
+    {
+        if (client is null)
+            return;
+
+        try
+        {
+            switch (client)
+            {
+                case IAsyncDisposable asyncDisposable:
+                    await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                    break;
+                case IDisposable disposable:
+                    disposable.Dispose();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "释放 MiMo Provider 客户端失败");
+        }
+    }
+
+    private static string? GetString(
+        IReadOnlyDictionary<string, object?> values,
+        string key)
+    {
+        if (!values.TryGetValue(key, out var raw) || raw is null)
+            return null;
+
+        return raw switch
+        {
+            string value => value,
+            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString(),
+            _ => raw.ToString()
+        };
+    }
+}

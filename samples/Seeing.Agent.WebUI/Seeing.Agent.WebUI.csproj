@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\primitives\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Memory\Seeing.Agent.Memory.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.DeepSeek\Seeing.Provider.DeepSeek.csproj" />
+    <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.MiMo\Seeing.Provider.MiMo.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.OpenCodeZen\Seeing.Provider.OpenCodeZen.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.TokenBudget\Seeing.Agent.TokenBudget.csproj" />

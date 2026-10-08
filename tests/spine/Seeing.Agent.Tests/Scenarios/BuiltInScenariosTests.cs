@@ -21,7 +21,7 @@ public class BuiltInScenariosTests
     {
         BuiltInScenarios.Minimal.Modules.Should().Equal(
             "io.local", "agents.builtin", "llm.openai", "basic",
-            "provider.deepseek", "provider.opencodezen");
+            "provider.deepseek", "provider.mimo", "provider.opencodezen");
         BuiltInScenarios.Minimal.DefaultAgent.Should().Be("general");
 
         BuiltInScenarios.Code.Modules.Should().Contain(
@@ -37,7 +37,7 @@ public class BuiltInScenariosTests
 
         BuiltInScenarios.Full.Modules.Should().Contain(
             "git", "memory", "mcp", "skills", "acp", "gateway",
-            "provider.deepseek", "provider.opencodezen");
+            "provider.deepseek", "provider.mimo", "provider.opencodezen");
         BuiltInScenarios.Full.DefaultAgent.Should().Be("build");
     }
 
@@ -84,7 +84,7 @@ public class BuiltInScenariosTests
                 continue;
 
             scenario.Modules.Should().Contain(
-                ["provider.deepseek", "provider.opencodezen"],
+                ["provider.deepseek", "provider.mimo", "provider.opencodezen"],
                 because: "OpenAI 兼容网关插件须随 llm.openai 进入结算启用集，否则不会 Activate/拉模型");
         }
     }

@@ -33,6 +33,7 @@ public static class TuiHostShape
         "llm.openai",
         "llm.anthropic",
         "provider.deepseek",
+        "provider.mimo",
         "provider.opencodezen",
         "skills",
         "mcp",

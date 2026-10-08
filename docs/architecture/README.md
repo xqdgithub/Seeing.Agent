@@ -57,7 +57,7 @@ tests/
   apps/            WebUI.Tests, Cli.Tests, Tui.Tests
   plugs/           Provider.*Tests
 samples/           WebUI, Tui, Gateway.Server, Cli, Embed.Demo, …
-plugs/providers/   DeepSeek, OpenCodeZen
+plugs/providers/   DeepSeek, MiMo, OpenCodeZen
 ```
 
 `.slnx` 使用同名虚拟 Folder。新增项目必须放进对应分类目录，禁止再平铺回 `src/` 根下。
