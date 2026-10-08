@@ -1,0 +1,64 @@
+samples/Seeing.Agent.Tui/Seeing.Agent.Tui.csproj
+  s_8ad5eb82b2b14f::t_9ef875281993a9 52
+plugs/providers/Seeing.Provider.MiMo/MiMoProvider.cs
+  s_8ad5eb82b2b14f::t_b9daf7ef61e872 1-242
+docs/architecture/05-extension-guide.md
+  s_8ad5eb82b2b14f::t_dfa686aa9dfdea 36
+tests/plugs/Seeing.Provider.MiMo.Tests/Seeing.Provider.MiMo.Tests.csproj
+  s_8ad5eb82b2b14f::t_27940887370004 1-26
+plugs/providers/Seeing.Provider.MiMo/MiMoOptions.cs
+  s_8ad5eb82b2b14f::t_ca5564d8206237 1-11
+Seeing.Agent.slnx
+  s_8ad5eb82b2b14f::t_0a4a406b43cb03 113
+samples/Seeing.Agent.WebUI/Program.cs
+  s_8ad5eb82b2b14f::t_ef896277a045d3 74
+tests/plugs/Seeing.Provider.MiMo.Tests/MiMoConfigStoreTests.cs
+  s_8ad5eb82b2b14f::t_ae5f263ac56568 1-74
+plugs/providers/Seeing.Provider.MiMo/Seeing.Provider.MiMo.csproj
+  s_8ad5eb82b2b14f::t_ac574bca290931 1-17
+tests/spine/Seeing.Agent.Tests/Scenarios/BuiltInScenariosTests.cs
+  s_8ad5eb82b2b14f::t_0feebf12f211b0 87
+  s_8ad5eb82b2b14f::t_5ff03dd283f43c 40
+plugs/providers/Seeing.Provider.MiMo/MiMoLlmModule.cs
+  s_8ad5eb82b2b14f::t_49f1493df28be9 1-60
+plugs/providers/Seeing.Provider.MiMo/MiMoConfigStore.cs
+  s_8ad5eb82b2b14f::t_300c556d04d2bc 1-65
+tests/plugs/Seeing.Provider.MiMo.Tests/MiMoProviderTests.cs
+  s_8ad5eb82b2b14f::t_a689b8a6494873 1-269
+tests/plugs/Seeing.Provider.MiMo.Tests/MiMoLlmModuleTests.cs
+  s_8ad5eb82b2b14f::t_da319550b86c2c 1-51
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_8ad5eb82b2b14f::t_2ed76fbc670233 36
+src/hosting/Seeing.Agent.Hosting.Web/WebHostShape.cs
+  s_8ad5eb82b2b14f::t_fc163a65e4391a 38
+samples/Seeing.Agent.Tui/Program.cs
+  s_8ad5eb82b2b14f::t_0bab7dafbde650 38,70
+docs/architecture/02-modules.md
+  s_8ad5eb82b2b14f::t_3fa0fbe1598e21 50,101,112
+tests/plugs/Seeing.Provider.MiMo.Tests/MiMoModelsClientTests.cs
+  s_8ad5eb82b2b14f::t_be901df0ef6d1d 1-102
+src/hosting/Seeing.Agent.Hosting.Tui/TuiHostShape.cs
+  s_8ad5eb82b2b14f::t_6cf88b405f94af 36
+docs/architecture/README.md
+  s_8ad5eb82b2b14f::t_cb2fc098233baf 60
+plugs/providers/Seeing.Provider.MiMo/MiMoModelsClient.cs
+  s_8ad5eb82b2b14f::t_4939ba5e14fdc6 1-89
+src/spine/Seeing.Agent.Core/CapabilitySets/BuiltInCapabilitySets.cs
+  s_8ad5eb82b2b14f::t_a5126e57fb7d71 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "821253f35651d09827d821ee2c92c69a366e53b6",
+  "prompts": {},
+  "sessions": {
+    "s_8ad5eb82b2b14f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ee68f4d35ffec816WaEX1YMXhT",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
