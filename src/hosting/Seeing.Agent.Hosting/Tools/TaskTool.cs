@@ -313,7 +313,8 @@ public class TaskTool : ToolBase
                     $"后台任务已启动，任务ID: {session.Id}。\n\n" +
                     $"【重要】请继续处理其他不依赖此任务的工作。" +
                     $"只有当后续工作必须依赖此任务结果时，才使用task_status的wait=true等待。" +
-                    $"系统会在任务完成时自动注入通知。"));
+                    $"系统会在任务完成时自动注入通知。"),
+                    BuildTaskMetadata(session.Id, agentInfo.Name, description, background: true));
             }
 
             var result = await _executionSubmitter.SubmitAsync(session.Id,
@@ -346,11 +347,7 @@ public class TaskTool : ToolBase
             var outputText = ReadChildResult(session.Id);
 
             return Success(description, BuildOutput(session.Id, "completed", outputText),
-                new Dictionary<string, object>
-                {
-                    ["sessionId"] = session.Id,
-                    ["agent"] = agentInfo.Name
-                });
+                BuildTaskMetadata(session.Id, agentInfo.Name, description, background: false));
         }
         catch (OperationCanceledException)
         {
@@ -388,6 +385,19 @@ public class TaskTool : ToolBase
             [SystemReminder.MetadataKeys.Source] = SystemReminder.Sources.Task,
             [SystemReminder.MetadataKeys.Kind] = reminderKind,
             [SystemReminder.MetadataKeys.TaskId] = childId
+        };
+
+    /// <summary>
+    /// 构建 task 工具结果的权威元数据（供 ChatEventTracker 映射到 SessionToolCall.Task*）。
+    /// </summary>
+    private static Dictionary<string, object> BuildTaskMetadata(
+        string childId, string agent, string description, bool background) =>
+        new()
+        {
+            [TaskMetadataKeys.TaskId] = childId,
+            [TaskMetadataKeys.TaskAgent] = agent,
+            [TaskMetadataKeys.TaskDescription] = description,
+            [TaskMetadataKeys.TaskBackground] = background
         };
 
     /// <summary>

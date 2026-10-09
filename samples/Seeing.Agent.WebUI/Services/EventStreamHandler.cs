@@ -8,7 +8,6 @@ using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
 using Seeing.Agent.TokenBudget.Api.Responses;
 using Seeing.Agent.TokenBudget;
-using System.Text;
 
 namespace Seeing.Agent.WebUI.Services
 {
@@ -86,16 +85,6 @@ namespace Seeing.Agent.WebUI.Services
         private SessionMessage? _currentAssistantMessage;
 
         /// <summary>
-        /// 当前 Loop 累积的思考内容（跨多轮 LLM 调用）
-        /// </summary>
-        private readonly StringBuilder _accumulatedReasoning = new();
-
-        /// <summary>
-        /// 当前 Loop 累积的内容（跨多轮 LLM 调用）
-        /// </summary>
-        private readonly StringBuilder _accumulatedContent = new();
-
-        /// <summary>
         /// 当前 Loop ID
         /// </summary>
         private string? _currentLoopId;
@@ -109,12 +98,6 @@ namespace Seeing.Agent.WebUI.Services
         /// 当前 Step 索引
         /// </summary>
         private int _currentStep = 0;
-
-        /// <summary>
-        /// 工具调用的内容位置（UI 层自行管理）
-        /// Key: ToolCallId, Value: 工具调用首次出现时的内容长度
-        /// </summary>
-        private readonly Dictionary<string, int> _toolCallPositions = new();
 
         /// <summary>
         /// 当前活跃执行 ID（ExecutionStarted/Complete 配对）
@@ -295,8 +278,9 @@ namespace Seeing.Agent.WebUI.Services
                     HandleTodoUpdate((TodoUpdateEvent)evt);
                     break;
 
+                // ModeUpdate：会话写入（SelectedAcpMode）由服务端 ChatEventTracker 独占；
+                // UI 侧时间线刷新由 SessionWindowTimelineSync 消费，此处仅触发 OnStateChanged。
                 case MessageEventType.ModeUpdate:
-                    HandleModeUpdate((ModeUpdateEvent)evt);
                     break;
 
                 // 压缩事件（compaction.* 字符串类型）
@@ -380,12 +364,7 @@ namespace Seeing.Agent.WebUI.Services
 
             // 清空当前助手消息，准备接收新的 Loop
             _currentAssistantMessage = null;
-            _toolCallPositions.Clear();
             _currentStep = 0;  // ✅ 重置 step，新 Loop 从 0 开始
-
-            // 清空累积缓冲区
-            _accumulatedReasoning.Clear();
-            _accumulatedContent.Clear();
 
             // 新一轮执行开始：清除上一轮遗留的错误展示态
             LastError = null;
@@ -425,9 +404,6 @@ namespace Seeing.Agent.WebUI.Services
 
             _currentStep = evt.Step;
             _currentAssistantMessage = null;
-            _toolCallPositions.Clear();
-            _accumulatedContent.Clear();
-            _accumulatedReasoning.Clear();
         }
 
         private void HandleStreamDelta(StreamDeltaEvent evt)
@@ -439,11 +415,6 @@ namespace Seeing.Agent.WebUI.Services
                 _currentLoopId = evt.LoopId;
 
             EnsureCurrentAssistantMessage(evt.SessionId);
-
-            if (!string.IsNullOrEmpty(evt.ContentDelta))
-                _accumulatedContent.Append(evt.ContentDelta);
-            if (!string.IsNullOrEmpty(evt.ReasoningDelta))
-                _accumulatedReasoning.Append(evt.ReasoningDelta);
         }
 
         private void HandleStreamComplete(StreamCompleteEvent evt)
@@ -457,7 +428,7 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 处理工具调用事件 - 支持状态流转
+        /// 处理工具调用事件 - 仅绑定当前助手消息指针（会话写入由服务端 ChatEventTracker 独占）。
         /// </summary>
         private void HandleToolCall(ToolCallEvent evt)
         {
@@ -478,150 +449,13 @@ namespace Seeing.Agent.WebUI.Services
                 }
             }
 
-            // 设置 LoopId
-            if (!string.IsNullOrEmpty(evt.LoopId))
-            {
-                _currentAssistantMessage.LoopId = evt.LoopId;
-            }
-
-            // 确保工具调用列表存在
-            if (_currentAssistantMessage.ToolCalls == null)
-            {
-                _currentAssistantMessage.ToolCalls = new List<SessionToolCall>();
-            }
-
-            // 查找或创建工具调用
-            var toolCall = _currentAssistantMessage.ToolCalls.Find(t => t.Id == evt.ToolCallId);
-            if (toolCall == null)
-            {
-                // UI 层自行记录内容位置：在工具调用首次创建时记录当前内容长度
-                var contentPosition = _currentAssistantMessage.Content?.Length ?? 0;
-
-                var toolCallId = evt.ToolCallId ?? Guid.NewGuid().ToString();
-                toolCall = new SessionToolCall
-                {
-                    Id = toolCallId,
-                    Name = evt.ToolName ?? string.Empty,
-                    Arguments = FormatArgumentsJson(evt.Arguments)
-                };
-                _currentAssistantMessage.ToolCalls.Add(toolCall);
-
-                // 记录该工具调用的内容位置（用于渲染）
-                _toolCallPositions[toolCallId] = contentPosition;
-            }
-            else if (string.IsNullOrEmpty(toolCall.Name) && !string.IsNullOrEmpty(evt.ToolName))
-            {
-                toolCall.Name = evt.ToolName;
-            }
-
-            // 根据状态更新显示
-            toolCall.Status = MapToolCallStatus(evt.Status);
-
-            if (!string.IsNullOrEmpty(evt.Output))
-            {
-                toolCall.Result = evt.Output;
-            }
-
-            if (!string.IsNullOrEmpty(evt.Error))
-            {
-                toolCall.Error = evt.Error;
-            }
-
-            if (!string.IsNullOrEmpty(evt.Title))
-            {
-                toolCall.Title = evt.Title;
-            }
-
-            if (evt.Metadata is { Count: > 0 })
-            {
-                toolCall.Metadata = new Dictionary<string, object>(evt.Metadata);
-            }
-
-            if (evt.Duration is { } duration)
-            {
-                toolCall.DurationMs = duration.TotalMilliseconds;
-            }
-
-            // 仅 task 工具回填 Task*；禁止用 Output 文本给 bash 等工具打上 TaskId
-            if (string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase))
-            {
-                TryFillTaskFieldsFromArguments(toolCall);
-                TryFillTaskIdFromResult(toolCall);
-            }
-
-            // 处理 todowrite 工具：提取 Todo 列表并更新 SessionState
+            // 处理 todowrite 工具：提取 Todo 列表并更新 UI 本地态
             if (evt.ToolName?.ToLowerInvariant() == "todowrite" &&
                 evt.Status == ToolCallStatus.Success &&
                 !string.IsNullOrEmpty(evt.Output))
             {
                 UpdateTodoList(evt.SessionId, evt.Output);
             }
-        }
-
-        private static void TryFillTaskFieldsFromArguments(SessionToolCall toolCall)
-        {
-            if (!string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase))
-                return;
-            if (string.IsNullOrWhiteSpace(toolCall.Arguments))
-                return;
-
-            try
-            {
-                using var doc = System.Text.Json.JsonDocument.Parse(toolCall.Arguments);
-                var root = doc.RootElement;
-                if (string.IsNullOrEmpty(toolCall.TaskDescription) &&
-                    root.TryGetProperty("description", out var desc) &&
-                    desc.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    toolCall.TaskDescription = desc.GetString();
-                }
-
-                if (string.IsNullOrEmpty(toolCall.TaskAgent) &&
-                    root.TryGetProperty("subagent_type", out var agent) &&
-                    agent.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    toolCall.TaskAgent = agent.GetString();
-                }
-
-                if (root.TryGetProperty("background", out var bg) &&
-                    bg.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
-                {
-                    toolCall.TaskBackground = bg.GetBoolean();
-                }
-                else if (root.TryGetProperty("run_in_background", out var bg2) &&
-                         bg2.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
-                {
-                    toolCall.TaskBackground = bg2.GetBoolean();
-                }
-            }
-            catch
-            {
-                // ignore malformed args
-            }
-        }
-
-        private static void TryFillTaskIdFromResult(SessionToolCall toolCall)
-        {
-            if (!string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase))
-                return;
-            if (!string.IsNullOrEmpty(toolCall.TaskId) || string.IsNullOrWhiteSpace(toolCall.Result))
-                return;
-
-            const string prefix = "task_id:";
-            var idx = toolCall.Result.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0)
-                return;
-
-            var start = idx + prefix.Length;
-            while (start < toolCall.Result.Length && char.IsWhiteSpace(toolCall.Result[start]))
-                start++;
-
-            var end = start;
-            while (end < toolCall.Result.Length && !char.IsWhiteSpace(toolCall.Result[end]))
-                end++;
-
-            if (end > start)
-                toolCall.TaskId = toolCall.Result[start..end];
         }
 
         /// <summary>
@@ -775,17 +609,6 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 处理模式更新事件 - 从 ACP CurrentModeUpdate 映射
-        /// </summary>
-        private void HandleModeUpdate(ModeUpdateEvent evt)
-        {
-            // 更新绑定会话的 ACP Mode
-            var session = _sessionManager.Get(SessionId);
-            if (session != null)
-                session.SelectedAcpMode = evt.ModeId;
-        }
-
-        /// <summary>
         /// 映射 Todo 状态
         /// </summary>
         private static TodoStatusViewModel MapTodoStatus(TodoStatus status) => status switch
@@ -856,54 +679,6 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 将 Core 层 ToolCallStatus 映射为 WebUI 显示状态
-        /// </summary>
-        private static string MapToolCallStatus(ToolCallStatus status) => status switch
-        {
-            ToolCallStatus.Pending => "pending",
-            ToolCallStatus.Running => "running",
-            ToolCallStatus.Success => "success",
-            ToolCallStatus.Failed => "failed",
-            ToolCallStatus.Rejected => "rejected",
-            ToolCallStatus.Cancelled => "cancelled",
-            _ => "unknown"
-        };
-
-        /// <summary>
-        /// 格式化 Arguments 为 JSON 字符串（确保格式正确）
-        /// </summary>
-        private static string FormatArgumentsJson(object? arguments)
-        {
-            if (arguments == null) return "{}";
-
-            // 如果已经是 JSON 字符串，直接返回
-            if (arguments is string str)
-            {
-                // 验证是否为有效 JSON
-                try
-                {
-                    System.Text.Json.JsonSerializer.Deserialize<object>(str);
-                    return str;
-                }
-                catch
-                {
-                    // 不是有效 JSON，包装为 JSON 字符串值
-                    return System.Text.Json.JsonSerializer.Serialize(str);
-                }
-            }
-
-            // 其他类型（字典等），序列化为 JSON
-            try
-            {
-                return System.Text.Json.JsonSerializer.Serialize(arguments);
-            }
-            catch
-            {
-                return "{}";
-            }
-        }
-
-        /// <summary>
         /// 确保有当前助手消息（用于流式增量）
         /// </summary>
         private void EnsureCurrentAssistantMessage(string evtSessionId)
@@ -927,8 +702,6 @@ namespace Seeing.Agent.WebUI.Services
             if (existing != null)
             {
                 _currentAssistantMessage = existing;
-                if (!string.IsNullOrEmpty(_currentLoopId))
-                    _currentAssistantMessage.LoopId = _currentLoopId;
             }
         }
 
@@ -941,9 +714,6 @@ namespace Seeing.Agent.WebUI.Services
             _currentLoopId = null;
             _currentLoop = null;
             _currentStep = 0;
-            _toolCallPositions.Clear();
-            _accumulatedReasoning.Clear();
-            _accumulatedContent.Clear();
         }
 
         /// <summary>
@@ -956,159 +726,6 @@ namespace Seeing.Agent.WebUI.Services
             OnPermissionRequest = null;
             OnPermissionResolved = null;
             ClearCache();
-        }
-
-        /// <summary>
-        /// 同步 UI 上未完成 Task 的展示状态。落盘由 ExecutionJobService 在取消时完成。
-        /// </summary>
-        public Task<int> MarkIncompleteTasksCancelledAsync(string reason = "用户取消", bool persist = false)
-        {
-            var session = EnsureCurrentSessionRef();
-            var count = 0;
-
-            void Mark(SessionToolCall tc)
-            {
-                if (!IsIncompleteTaskToolCall(tc))
-                    return;
-
-                tc.Status = "cancelled";
-                tc.Error = reason;
-                count++;
-            }
-
-            if (_currentAssistantMessage?.ToolCalls != null)
-            {
-                foreach (var tc in _currentAssistantMessage.ToolCalls)
-                    Mark(tc);
-            }
-
-            if (session?.Messages != null)
-            {
-                foreach (var msg in session.Messages)
-                {
-                    if (msg.ToolCalls == null)
-                        continue;
-                    foreach (var tc in msg.ToolCalls)
-                        Mark(tc);
-                }
-            }
-
-            // persist 参数保留兼容；执行轨迹落盘一律由服务端负责
-            _ = persist;
-            OnStateChanged?.Invoke(null);
-            return Task.FromResult(count);
-        }
-
-        /// <summary>
-        /// 加载会话后：若 Task 仍为 running/pending 且后台 Job 已不存在，标记为已取消
-        /// </summary>
-        public async Task<int> ReconcileOrphanTaskCardsAsync(
-            Func<string, Task<bool>> isTaskStillActiveAsync,
-            string reason = "任务已中断（进程关闭或取消）")
-        {
-            var session = _sessionManager.Get(SessionId);
-            if (session?.Messages == null)
-                return 0;
-
-            var count = 0;
-            foreach (var msg in session.Messages)
-            {
-                if (msg.ToolCalls == null)
-                    continue;
-
-                foreach (var tc in msg.ToolCalls)
-                {
-                    if (!IsIncompleteTaskToolCall(tc))
-                        continue;
-
-                    var taskId = tc.TaskId;
-                    if (string.IsNullOrEmpty(taskId))
-                    {
-                        tc.Status = "cancelled";
-                        tc.Error = reason;
-                        count++;
-                        continue;
-                    }
-
-                    var stillActive = false;
-                    try
-                    {
-                        stillActive = await isTaskStillActiveAsync(taskId);
-                    }
-                    catch
-                    {
-                        stillActive = false;
-                    }
-
-                    if (stillActive)
-                        continue;
-
-                    tc.Status = "cancelled";
-                    tc.Error = reason;
-                    count++;
-                }
-            }
-
-            if (count > 0 && session != null)
-            {
-                // 加载期孤儿修复：需写回存储（非执行流路径）
-                await _sessionManager.SaveAsync(session.Id);
-            }
-
-            return count;
-        }
-
-        private static bool IsIncompleteTaskToolCall(SessionToolCall tc)
-        {
-            if (tc == null)
-                return false;
-
-            var isTask = !string.IsNullOrEmpty(tc.TaskId)
-                || string.Equals(tc.Name, "task", StringComparison.OrdinalIgnoreCase);
-
-            if (!isTask)
-                return false;
-
-            var status = tc.Status?.ToLowerInvariant();
-            return status is "running" or "pending";
-        }
-
-        /// <summary>
-        /// 获取当前助手消息的内容（用于 UI 显示）
-        /// </summary>
-        public string GetCurrentAssistantContent()
-        {
-            // 优先返回累积内容（跨多轮），否则返回当前消息内容
-            return _accumulatedContent.Length > 0
-                ? _accumulatedContent.ToString()
-                : _currentAssistantMessage?.Content ?? "";
-        }
-
-        /// <summary>
-        /// 获取当前助手消息的推理内容（用于 UI 显示）
-        /// </summary>
-        public string? GetCurrentAssistantReasoning()
-        {
-            // 优先返回累积推理内容（跨多轮），否则返回当前消息内容
-            return _accumulatedReasoning.Length > 0
-                ? _accumulatedReasoning.ToString()
-                : _currentAssistantMessage?.ReasoningContent;
-        }
-
-        /// <summary>
-        /// 获取当前助手消息的工具调用（用于 UI 显示）
-        /// </summary>
-        public List<SessionToolCall>? GetCurrentAssistantToolCalls()
-        {
-            return _currentAssistantMessage?.ToolCalls;
-        }
-
-        /// <summary>
-        /// 获取工具调用的内容位置（UI 层自行管理）
-        /// </summary>
-        public Dictionary<string, int> GetToolCallPositions()
-        {
-            return _toolCallPositions;
         }
 
         /// <summary>

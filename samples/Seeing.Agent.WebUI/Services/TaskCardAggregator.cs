@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Execution;
@@ -284,8 +285,8 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
         if (existing != null) steps[steps.IndexOf(existing)] = merged;
         else steps.Add(merged);
 
-        // 并发写契约：整体替换列表引用（调用方 _writeLock 串行化）
-        toolCall.TaskSteps = steps;
+        // 并发写契约：整体替换不可变列表引用（调用方 _writeLock 串行化）
+        toolCall.TaskSteps = steps.ToImmutableList();
         return true;
     }
 

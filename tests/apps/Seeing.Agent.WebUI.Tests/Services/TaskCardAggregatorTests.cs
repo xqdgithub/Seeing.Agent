@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Threading.Channels;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,7 +24,7 @@ public class TaskCardAggregatorTests
         parent.Id = parentId;
         var msg = SessionMessage.AssistantMessage("thinking");
         var tc = new SessionToolCall { Id = toolCallId, Name = "task", Status = "running" };
-        msg.ToolCalls = new List<SessionToolCall> { tc };
+        msg.ToolCalls = ImmutableList.Create(tc);
         parent.AddMessage(msg);
         return parent;
     }
@@ -235,7 +236,7 @@ public class TaskCardAggregatorTests
         var msg = SessionMessage.AssistantMessage("thinking");
         var tc1 = new SessionToolCall { Id = "call-1", Name = "task", Status = "running" };
         var tc2 = new SessionToolCall { Id = "call-2", Name = "task", Status = "running" };
-        msg.ToolCalls = new List<SessionToolCall> { tc1, tc2 };
+        msg.ToolCalls = ImmutableList.Create(tc1, tc2);
         parent.AddMessage(msg);
 
         var child1 = CreateChild("child1", "call-1");
@@ -356,7 +357,7 @@ public class TaskCardAggregatorTests
         var msg = SessionMessage.AssistantMessage("thinking");
         var tc1 = new SessionToolCall { Id = "call-1", Name = "task", Status = "running" };
         var tc3 = new SessionToolCall { Id = "call-3", Name = "task", Status = "running" };
-        msg.ToolCalls = new List<SessionToolCall> { tc1, tc3 };
+        msg.ToolCalls = ImmutableList.Create(tc1, tc3);
         parent1Data.AddMessage(msg);
 
         var child1 = CreateChild("child1", "call-1");

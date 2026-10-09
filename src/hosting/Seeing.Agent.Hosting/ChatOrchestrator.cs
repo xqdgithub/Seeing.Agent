@@ -91,6 +91,72 @@ public class ChatOrchestrator : IChatOrchestrator
     }
 
     /// <inheritdoc/>
+    public async Task<int> ReconcileIncompleteTasksAsync(
+        string sessionId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return 0;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // 会话自身仍在执行（如前台 task 阻塞父 Loop 期间刷新页面）：TaskId 尚未回填，
+        // 不能把在途 task 误判为孤儿取消。
+        if (_executionJobService.GetOverview(sessionId).HasActiveExecution)
+            return 0;
+
+        var session = _sessionManager.Get(sessionId) ?? await _sessionManager.LoadAsync(sessionId);
+        if (session?.Messages == null)
+            return 0;
+
+        var count = 0;
+        foreach (var msg in session.Messages)
+        {
+            if (msg.ToolCalls == null)
+                continue;
+
+            foreach (var tc in msg.ToolCalls)
+            {
+                if (!IsIncompleteTaskToolCall(tc))
+                    continue;
+
+                var taskId = tc.TaskId;
+                var stillActive = !string.IsNullOrEmpty(taskId)
+                    && _executionJobService.GetOverview(taskId).HasActiveExecution;
+
+                if (stillActive)
+                    continue;
+
+                tc.Status = "cancelled";
+                tc.Error = "任务已中断（进程关闭或取消）";
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            await _sessionManager.SaveAsync(sessionId);
+            _logger.LogInformation(
+                "Reconciled {Count} incomplete task card(s) for session {SessionId}", count, sessionId);
+        }
+
+        return count;
+    }
+
+    private static bool IsIncompleteTaskToolCall(SessionToolCall tc)
+    {
+        if (tc == null)
+            return false;
+
+        var isTask = !string.IsNullOrEmpty(tc.TaskId)
+            || string.Equals(tc.Name, "task", StringComparison.OrdinalIgnoreCase);
+        if (!isTask)
+            return false;
+
+        var status = tc.Status?.ToLowerInvariant();
+        return status is "running" or "pending";
+    }
+
+    /// <inheritdoc/>
     public ExecutionRecord? GetExecution(string executionId)
     {
         return _executionJobService.GetExecution(executionId);

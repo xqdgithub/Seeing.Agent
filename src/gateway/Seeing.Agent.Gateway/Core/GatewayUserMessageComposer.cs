@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Net;
 using System.Text;
 using Seeing.Gateway.Models;
@@ -41,7 +42,7 @@ internal static class GatewayUserMessageComposer
             message = SessionMessage.UserMessageWithParts(parts);
         }
 
-        message.Metadata = BuildQuoteMetadata(quote);
+        message.Metadata = BuildQuoteMetadata(quote).ToImmutableDictionary();
         return message;
     }
 

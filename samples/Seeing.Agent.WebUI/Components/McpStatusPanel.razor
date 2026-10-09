@@ -166,11 +166,12 @@
         RefreshStatuses();
     }
     
-    private void OnStateChanged(object? sender, EventArgs e)
+    private void OnStateChanged(object? sender, EventArgs e) => _ = InvokeAsync(() =>
     {
+        // McpStateService.StateChanged 可能由后台连接状态回调触发；状态投影回到同步上下文。
         RefreshStatuses();
-        InvokeAsync(StateHasChanged);
-    }
+        StateHasChanged();
+    });
     
     private void RefreshStatuses()
     {

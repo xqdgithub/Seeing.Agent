@@ -1,8 +1,10 @@
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
+using System.Collections.Immutable;
 using System.Text.Json;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting.Execution;
@@ -78,14 +80,16 @@ internal class ChatEventTracker
 
                         if (streamComplete.Message.ToolCalls is { Count: > 0 })
                         {
-                            _currentAssistantMessage.ToolCalls ??= new List<SessionToolCall>();
+                            // publish-on-write：结构变更整体替换不可变列表引用，读者持旧快照不受影响。
+                            var nextToolCalls = _currentAssistantMessage.ToolCalls
+                                ?? ImmutableList<SessionToolCall>.Empty;
                             foreach (var tc in streamComplete.Message.ToolCalls)
                             {
                                 if (string.IsNullOrEmpty(tc.Id))
                                     continue;
-                                if (_currentAssistantMessage.ToolCalls.Exists(t => t.Id == tc.Id))
+                                if (nextToolCalls.Any(t => t.Id == tc.Id))
                                     continue;
-                                _currentAssistantMessage.ToolCalls.Add(new SessionToolCall
+                                nextToolCalls = nextToolCalls.Add(new SessionToolCall
                                 {
                                     Id = tc.Id,
                                     Name = tc.Name,
@@ -95,6 +99,8 @@ internal class ChatEventTracker
                                     Status = "pending"
                                 });
                             }
+
+                            _currentAssistantMessage.ToolCalls = nextToolCalls;
                         }
                     }
                 }
@@ -105,10 +111,11 @@ internal class ChatEventTracker
                 if (_currentAssistantMessage == null)
                     break;
 
-                _currentAssistantMessage.ToolCalls ??= new List<SessionToolCall>();
+                var currentToolCalls = _currentAssistantMessage.ToolCalls
+                    ?? ImmutableList<SessionToolCall>.Empty;
 
                 var toolCallId = toolCall.ToolCallId ?? Guid.NewGuid().ToString("N");
-                var existing = _currentAssistantMessage.ToolCalls.Find(t => t.Id == toolCallId);
+                var existing = currentToolCalls.FirstOrDefault(t => t.Id == toolCallId);
                 if (existing == null)
                 {
                     existing = new SessionToolCall
@@ -117,7 +124,8 @@ internal class ChatEventTracker
                         Name = toolCall.ToolName ?? string.Empty,
                         Arguments = FormatArguments(toolCall.Arguments)
                     };
-                    _currentAssistantMessage.ToolCalls.Add(existing);
+                    // publish-on-write：整体替换不可变列表引用，读者持旧快照不受影响。
+                    _currentAssistantMessage.ToolCalls = currentToolCalls.Add(existing);
                 }
 
                 existing.Status = toolCall.Status switch
@@ -137,9 +145,12 @@ internal class ChatEventTracker
                 if (toolCall.Title != null)
                     existing.Title = toolCall.Title;
                 if (toolCall.Metadata is { Count: > 0 })
-                    existing.Metadata = new Dictionary<string, object>(toolCall.Metadata);
+                    existing.Metadata = ImmutableDictionary.CreateRange(toolCall.Metadata);
                 if (toolCall.Duration is { } duration)
                     existing.DurationMs = duration.TotalMilliseconds;
+
+                // task 工具：Task* 权威来源为 TaskTool 结果 Metadata；Running 态无 Metadata 时从 Arguments 回填展示字段。
+                ApplyTaskFields(existing, toolCall);
                 break;
 
             case ErrorEvent:
@@ -216,9 +227,9 @@ internal class ChatEventTracker
         _currentAssistantMessage.LoopId = _currentLoopId;
         if (_pendingSchemaSnapshot != null)
         {
-            _currentAssistantMessage.Metadata ??= new Dictionary<string, object>();
-            _currentAssistantMessage.Metadata[SchemaSnapshotMetadataKey] =
-                DeepCloneObject(_pendingSchemaSnapshot);
+            _currentAssistantMessage.Metadata =
+                (_currentAssistantMessage.Metadata ?? ImmutableDictionary<string, object>.Empty)
+                    .SetItem(SchemaSnapshotMetadataKey, DeepCloneObject(_pendingSchemaSnapshot));
         }
 
         session.AddMessage(_currentAssistantMessage);
@@ -231,16 +242,16 @@ internal class ChatEventTracker
         if (session.Messages.Count > 0)
         {
             target = session.Messages[^1];
-            target.Metadata ??= new Dictionary<string, object>();
         }
         else
         {
             target = SessionMessage.SystemMessage(string.Empty);
-            target.Metadata = new Dictionary<string, object>();
+            target.Metadata = ImmutableDictionary<string, object>.Empty;
             session.AddMessage(target);
         }
 
-        target.Metadata[SchemaSnapshotMetadataKey] = DeepCloneObject(payload);
+        target.Metadata = (target.Metadata ?? ImmutableDictionary<string, object>.Empty)
+            .SetItem(SchemaSnapshotMetadataKey, DeepCloneObject(payload));
     }
 
     private static Dictionary<string, object> BuildSchemaSnapshotPayload(SchemaSnapshotEvent snapshot)
@@ -283,5 +294,94 @@ internal class ChatEventTracker
             return str;
 
         return JsonSerializer.Serialize(arguments);
+    }
+
+    /// <summary>
+    /// 将 task 工具调用的 Task* 字段映射到 <see cref="SessionToolCall"/>。
+    /// 权威来源为 <see cref="TaskMetadataKeys"/>（TaskTool 结果 Metadata）；
+    /// Running 态无 Metadata 时从 Arguments 回填展示字段（description/subagent_type/background）。
+    /// </summary>
+    private static void ApplyTaskFields(SessionToolCall toolCall, ToolCallEvent evt)
+    {
+        if (!string.Equals(toolCall.Name, "task", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (evt.Metadata is { Count: > 0 } meta)
+        {
+            if (ReadString(meta, TaskMetadataKeys.TaskId) is { Length: > 0 } id)
+                toolCall.TaskId = id;
+            if (ReadString(meta, TaskMetadataKeys.TaskAgent) is { Length: > 0 } agent)
+                toolCall.TaskAgent = agent;
+            if (ReadString(meta, TaskMetadataKeys.TaskDescription) is { Length: > 0 } desc)
+                toolCall.TaskDescription = desc;
+            if (meta.TryGetValue(TaskMetadataKeys.TaskBackground, out var bg))
+                toolCall.TaskBackground = ToBool(bg);
+        }
+
+        // Running 态（或 Metadata 缺字段）：从 Arguments 回填展示字段
+        if (string.IsNullOrEmpty(toolCall.TaskDescription)
+            || string.IsNullOrEmpty(toolCall.TaskAgent))
+        {
+            FillTaskFieldsFromArguments(toolCall, evt.Arguments);
+        }
+    }
+
+    private static string? ReadString(IReadOnlyDictionary<string, object> meta, string key)
+        => meta.TryGetValue(key, out var value) ? value?.ToString() : null;
+
+    private static bool ToBool(object? value) => value switch
+    {
+        bool b => b,
+        string s => bool.TryParse(s, out var r) && r,
+        _ => false
+    };
+
+    private static void FillTaskFieldsFromArguments(SessionToolCall toolCall, object? arguments)
+    {
+        var json = arguments switch
+        {
+            null => null,
+            string s => s,
+            _ => JsonSerializer.Serialize(arguments)
+        };
+        if (string.IsNullOrWhiteSpace(json))
+            return;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return;
+
+            if (string.IsNullOrEmpty(toolCall.TaskDescription)
+                && root.TryGetProperty("description", out var desc)
+                && desc.ValueKind == JsonValueKind.String)
+            {
+                toolCall.TaskDescription = desc.GetString();
+            }
+
+            if (string.IsNullOrEmpty(toolCall.TaskAgent)
+                && root.TryGetProperty("subagent_type", out var agent)
+                && agent.ValueKind == JsonValueKind.String)
+            {
+                toolCall.TaskAgent = agent.GetString();
+            }
+
+            if (root.TryGetProperty("background", out var bg)
+                && bg.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                toolCall.TaskBackground = bg.GetBoolean();
+            }
+            else if (root.TryGetProperty("run_in_background", out var bg2)
+                     && bg2.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                toolCall.TaskBackground = bg2.GetBoolean();
+            }
+        }
+        catch
+        {
+            // 参数非法 JSON：忽略回填
+        }
     }
 }

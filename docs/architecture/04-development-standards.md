@@ -96,6 +96,30 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 | 新项目平铺在 `src/Xxx` | 放入分类子目录 |
 | Activate 开连接、Deactivate 不关 | 对称生命周期 |
 | 用 appsettings 覆盖 SeeingAgent 真相 | 只写 `seeing.json` |
+| 对 `SessionMessage`/`SessionToolCall` 集合属性原地 `Add/Remove/索引写` | **publish-on-write**：整体替换不可变集合引用（`x.ToolCalls = x.ToolCalls.Add(tc)`、`x.Metadata = x.Metadata.SetItem(k,v)`） |
+| 宿主（WebUI/TUI/Gateway）直接写 `SessionData` 消息内容 | 只读投影；写入统一由 Hosting 权威路径（`ChatEventTracker`）完成 |
+
+### 5.1 消息内容并发契约（publish-on-write）
+
+`SessionMessage` / `SessionToolCall` 的集合成员（`ToolCalls`/`Parts`/`Metadata`/`TaskSteps`）为**不可变集合**（`ImmutableList`/`ImmutableDictionary`）。契约：
+
+1. 结构变更**只能整体替换属性引用**（`= x.Add(...)` / `= x.SetItem(...)`），禁止原地修改。
+2. 读取方（Dispatcher 渲染、LLM 出站构造、落盘、工具）直接持引用枚举，无需锁；后台写者发布新快照，读者持旧快照不受影响。
+3. 元素标量字段（`SessionToolCall.Status/Result` 等）仍为原子引用/值写，允许；不构成集合破坏。
+
+与 `SessionData.Messages` 的"锁内快照"契约互补：前者覆盖元素级集合，后者覆盖消息列表容器。详见 [`2026-10-08-session-message-immutable-concurrency-design.md`](../superpowers/specs/2026-10-08-session-message-immutable-concurrency-design.md)。
+
+### 5.2 单一权威写入者契约
+
+**执行期 `SessionData` 消息内容只有唯一写入者 `ChatEventTracker`（Hosting）。**
+
+1. 执行路径：`ExecutionJobService` **先投影（`ChatEventTracker.ApplyEvent`）再发布事件**，宿主收到事件时会话已写好。
+2. 宿主（WebUI `EventStreamHandler`、TUI、Gateway）均为**只读投影**：订阅事件维护本地 UI 态、从 `SessionData` 派生视图；**禁止**直接写执行期消息内容（`SessionMessage`/`SessionToolCall` 的字段，含元素标量）。
+3. 需要「投影写入」的语义（如 task 的 `TaskId/TaskAgent/TaskDescription/TaskBackground`、取消/加载的未完成标记）由 Hosting 权威路径完成：task 字段经 `TaskTool` 结果 `Metadata`（`TaskMetadataKeys`）→ `ChatEventTracker` 映射；未完成标记经 `IncompleteToolCallMarker` / `IChatOrchestrator.ReconcileIncompleteTasksAsync`。
+4. 宿主需写执行期消息内容时，一律上提为 `IChatOrchestrator` 服务端方法。
+5. **例外**：宿主在**非执行期**注入的会话级系统消息（如 Gateway 取消/错误横幅 `AddMessage`、会话重置）与 `SelectedModel/SelectedAcpMode` 用户显式选择不属执行期投影，仍由宿主负责。
+
+详见 [`2026-10-09-single-writer-eventstream-design.md`](../superpowers/specs/2026-10-09-single-writer-eventstream-design.md)。
 
 ## 6. 常见错误 PR 对照
 

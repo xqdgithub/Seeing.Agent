@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -129,7 +130,7 @@ public class SchemaSnapshotExecutionTests
                 ["toolIds"] = toolIds,
                 ["sectionIds"] = new List<string> { "tools" }
             }
-        };
+        }.ToImmutableDictionary();
 
         var clone = original.Clone();
         clone.Metadata.Should().NotBeSameAs(original.Metadata);

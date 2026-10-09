@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
@@ -86,7 +87,7 @@ namespace Seeing.Agent.WebUI.Services
             {
                 sessionMessage.Parts = chatMessage.Parts
                     .Select(ToSessionContentPart)
-                    .ToList();
+                    .ToImmutableList();
             }
 
             // 转换工具调用
@@ -94,7 +95,7 @@ namespace Seeing.Agent.WebUI.Services
             {
                 sessionMessage.ToolCalls = chatMessage.ToolCalls
                     .Select(ToSessionToolCall)
-                    .ToList();
+                    .ToImmutableList();
             }
 
             return sessionMessage;

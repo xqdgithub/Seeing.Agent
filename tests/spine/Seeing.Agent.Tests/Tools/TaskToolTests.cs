@@ -70,6 +70,12 @@ public class TaskToolTests
         result.Output.Should().Contain("<task_result>");
         result.Output.Should().Contain("final answer");
 
+        // 结果 Metadata 携带 Task* 权威字段（供 ChatEventTracker 映射）
+        result.Metadata[TaskMetadataKeys.TaskId].Should().Be(fixture.Child.Id);
+        result.Metadata[TaskMetadataKeys.TaskAgent].Should().Be("explore");
+        result.Metadata[TaskMetadataKeys.TaskDescription].Should().Be("explore auth");
+        result.Metadata[TaskMetadataKeys.TaskBackground].Should().Be(false);
+
         // 子会话应有 assistant 消息（由执行引擎投影落盘）
         fixture.Child.GetActiveMessages()
             .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase))

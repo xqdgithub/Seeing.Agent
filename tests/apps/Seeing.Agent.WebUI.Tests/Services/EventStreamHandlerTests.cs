@@ -31,7 +31,7 @@ public class EventStreamHandlerTests
     }
 
     [Fact]
-    public async Task ProcessEventAsync_ToolCallRunning_ShouldWriteToolCallToOwnSession()
+    public async Task ProcessEventAsync_ToolCallRunning_ShouldNotWriteSessionModel()
     {
         var session = SessionData.Create("p1", "general");
         session.AddMessage(SessionMessage.AssistantMessage("先导内容"));
@@ -46,9 +46,9 @@ public class EventStreamHandlerTests
             Status = ToolCallStatus.Running
         });
 
+        // 会话写入由服务端 ChatEventTracker 独占；UI 不再写入 SessionData
         var msg = session.Messages.Last(m => m.Role == "assistant");
-        msg.ToolCalls.Should().ContainSingle(t => t.Id == "t1");
-        msg.ToolCalls[0].Status.Should().Be("running");
+        msg.ToolCalls.Should().BeNull();
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class EventStreamHandlerTests
     }
 
     [Fact]
-    public async Task ProcessEventAsync_BashOutputWithTaskIdLiteral_ShouldNotSetTaskId()
+    public async Task ProcessEventAsync_BashOutputWithTaskIdLiteral_ShouldNotWriteSessionModel()
     {
         var session = SessionData.Create("p1", "general");
         session.AddMessage(SessionMessage.AssistantMessage("x"));
@@ -174,16 +174,13 @@ public class EventStreamHandlerTests
             Title = "echo"
         });
 
-        var tc = session.Messages.Last(m => m.Role == "assistant").ToolCalls!.Single(t => t.Id == "b1");
-        tc.Name.Should().Be("bash");
-        tc.TaskId.Should().BeNullOrEmpty();
-        tc.TaskDescription.Should().BeNullOrEmpty();
-        ToolCallViewModel.FromSessionToolCall(tc, "s1").IsTaskTool.Should().BeFalse();
-        ToolCallViewModel.FromSessionToolCall(tc, "s1").IsBashTool.Should().BeTrue();
+        // 会话写入由服务端独占；UI 不写 ToolCalls（故不会误标 TaskId）
+        var msg = session.Messages.Last(m => m.Role == "assistant");
+        msg.ToolCalls.Should().BeNull();
     }
 
     [Fact]
-    public async Task ProcessEventAsync_TaskTool_ShouldStillFillTaskIdFromResult()
+    public async Task ProcessEventAsync_TaskTool_ShouldNotWriteSessionModel()
     {
         var session = SessionData.Create("p1", "general");
         session.AddMessage(SessionMessage.AssistantMessage("x"));
@@ -200,11 +197,8 @@ public class EventStreamHandlerTests
             Output = "task_id: child-sid-1\n"
         });
 
-        var tc = session.Messages.Last(m => m.Role == "assistant").ToolCalls!.Single(t => t.Id == "t1");
-        tc.TaskId.Should().Be("child-sid-1");
-        tc.TaskDescription.Should().Be("探索");
-        tc.TaskAgent.Should().Be("explore");
-        ToolCallViewModel.FromSessionToolCall(tc, "s1").IsTaskTool.Should().BeTrue();
+        var msg = session.Messages.Last(m => m.Role == "assistant");
+        msg.ToolCalls.Should().BeNull();
     }
 
     [Fact]

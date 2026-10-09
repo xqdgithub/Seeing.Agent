@@ -474,14 +474,19 @@
 
     private void OnWindowsChanged()
     {
-        _windows = _registry?.Windows ?? Array.Empty<SessionWindowRegistry.WindowNode>();
-        var active = _registry?.ActiveSessionId;
-        if (!string.IsNullOrEmpty(active))
-            _activeSessionId = active;
-        RebuildSidebar();
-        _ = InvokeAsync(StateHasChanged);
-        // 组快照随 WindowsChanged 重新拉取（不新增 ISessionGroupEventBus 订阅）
-        _ = RefreshRelationSafelyAsync();
+        // SessionWindowRegistry.WindowsChanged 由组事件后台循环（ConfigureAwait(false)）触发；
+        // 窗口集合/活跃会话/侧栏等 UI 投影必须回到 Blazor 同步上下文串行变更，避免与渲染线程竞态。
+        _ = InvokeAsync(async () =>
+        {
+            _windows = _registry?.Windows ?? Array.Empty<SessionWindowRegistry.WindowNode>();
+            var active = _registry?.ActiveSessionId;
+            if (!string.IsNullOrEmpty(active))
+                _activeSessionId = active;
+            RebuildSidebar();
+            StateHasChanged();
+            // 组快照随 WindowsChanged 重新拉取（在同步上下文内 await，续体保持在 UI 线程）
+            await RefreshRelationSafelyAsync();
+        });
     }
 
     private void OnPermissionChanged() => _ = InvokeAsync(() =>

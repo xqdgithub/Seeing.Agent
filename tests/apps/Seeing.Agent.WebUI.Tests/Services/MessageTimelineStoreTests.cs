@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Core.Reminders;
@@ -13,7 +14,7 @@ public class MessageTimelineStoreTests
     private static SessionMessage Msg(
         string id, string role, string content,
         string? loopId = null, int step = 0,
-        Dictionary<string, object>? metadata = null)
+        IReadOnlyDictionary<string, object>? metadata = null)
         => new()
         {
             Id = id,
@@ -22,7 +23,7 @@ public class MessageTimelineStoreTests
             LoopId = loopId,
             Step = step,
             CreatedAt = DateTime.UtcNow,
-            Metadata = metadata
+            Metadata = metadata?.ToImmutableDictionary()
         };
 
     [Fact]
@@ -99,8 +100,8 @@ public class MessageTimelineStoreTests
         store.ResetFromSession(
         [
             Msg("r1", "user", reminderContent),
-            Msg("c1", "assistant", "summary", metadata: new() { ["is_compaction_summary"] = true }),
-            Msg("p1", "user", "instructions", metadata: new() { ["projectInstructions"] = true }),
+            Msg("c1", "assistant", "summary", metadata: new Dictionary<string, object> { ["is_compaction_summary"] = true }),
+            Msg("p1", "user", "instructions", metadata: new Dictionary<string, object> { ["projectInstructions"] = true }),
             Msg("sys", "system", "note"),
         ], "s1");
 
@@ -218,16 +219,14 @@ public class MessageTimelineStoreTests
     {
         var store = new MessageTimelineStore();
         var withTool = Msg("a1", "assistant", "partial", loopId: "L1");
-        withTool.ToolCalls =
-        [
+        withTool.ToolCalls = ImmutableList.Create(
             new SessionToolCall
             {
                 Id = "tc1",
                 Name = "read",
                 Status = "running",
                 Arguments = "{}"
-            }
-        ];
+            });
 
         store.ResetFromSession([withTool], "s1");
 
@@ -236,8 +235,7 @@ public class MessageTimelineStoreTests
         var revBefore = store.Items[0].Revision;
 
         var updated = Msg("a1", "assistant", "partial + more", loopId: "L1");
-        updated.ToolCalls =
-        [
+        updated.ToolCalls = ImmutableList.Create(
             new SessionToolCall
             {
                 Id = "tc1",
@@ -245,8 +243,7 @@ public class MessageTimelineStoreTests
                 Status = "completed",
                 Arguments = "{}",
                 Result = "file contents"
-            }
-        ];
+            });
 
         store.SyncAssistantMessage(updated, "s1", isComplete: false);
 
@@ -314,7 +311,7 @@ public class MessageTimelineStoreTests
     {
         var msg = Msg("a1", "assistant", "");
         msg.ReasoningContent = "plan";
-        msg.ToolCalls = [new SessionToolCall { Id = "t1", Name = "read" }];
+        msg.ToolCalls = ImmutableList.Create(new SessionToolCall { Id = "t1", Name = "read" });
 
         MessageViewModelFactory.DeriveIsReasoningComplete(msg, isComplete: false).Should().BeTrue();
     }
@@ -353,30 +350,26 @@ public class MessageTimelineStoreTests
     {
         var store = new MessageTimelineStore();
         var first = Msg("a1", "assistant", "hi", loopId: "L1");
-        first.ToolCalls =
-        [
+        first.ToolCalls = ImmutableList.Create(
             new SessionToolCall
             {
                 Id = "tc1",
                 Name = "task",
                 Status = "running",
-                TaskSteps = [new SessionTaskStep { ToolCallId = "s1", Status = "running", Preview = "a" }]
-            }
-        ];
+                TaskSteps = ImmutableList.Create(new SessionTaskStep { ToolCallId = "s1", Status = "running", Preview = "a" })
+            });
         store.SyncAssistantMessage(first, "s1", isComplete: false);
         var rev = store.Items[0].Revision;
 
         var second = Msg("a1", "assistant", "hi", loopId: "L1");
-        second.ToolCalls =
-        [
+        second.ToolCalls = ImmutableList.Create(
             new SessionToolCall
             {
                 Id = "tc1",
                 Name = "task",
                 Status = "running",
-                TaskSteps = [new SessionTaskStep { ToolCallId = "s1", Status = "completed", Preview = "a" }]
-            }
-        ];
+                TaskSteps = ImmutableList.Create(new SessionTaskStep { ToolCallId = "s1", Status = "completed", Preview = "a" })
+            });
         store.SyncAssistantMessage(second, "s1", isComplete: false);
         store.Items[0].Revision.Should().BeGreaterThan(rev);
     }

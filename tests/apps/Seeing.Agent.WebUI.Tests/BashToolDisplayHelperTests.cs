@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentAssertions;
 using Seeing.Agent.WebUI.Helpers;
 using Seeing.Agent.WebUI.Models;
@@ -32,7 +33,7 @@ public class BashToolDisplayHelperTests
                 ["exit"] = 0,
                 ["timedOut"] = false,
                 ["aborted"] = false
-            }
+            }.ToImmutableDictionary()
         }, "s");
 
         var card = BashCardModel.From(vm);
@@ -52,7 +53,7 @@ public class BashToolDisplayHelperTests
             Id = "1",
             Name = "bash",
             Status = "success",
-            Metadata = new Dictionary<string, object> { ["durationMs"] = 99.0 }
+            Metadata = new Dictionary<string, object> { ["durationMs"] = 99.0 }.ToImmutableDictionary()
         }, "s");
         vm.DurationMs.Should().Be(99.0);
     }

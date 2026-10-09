@@ -28,6 +28,8 @@
 | [09 会话工具与会话组 Release Notes](09-session-tools-and-groups-release-notes.md) | 会话组并发/缓存、交接幂等与回滚、已知边界 |
 | [10 会话持久化写回 Release Notes](10-session-persistence-release-notes.md) | 写回调度/去抖合并、破坏性契约变更、选项与已知边界 |
 | [11 全项目整改 Release Notes](11-remediation-release-notes.md) | 2026-09-25 批次 1–7 行为变更、破坏性契约、接受残留 |
+| [12 SessionMessage 内容不可变并发契约 Release Notes](12-session-message-immutability-release-notes.md) | publish-on-write 契约、不可变集合破坏性变更、迁移对照 |
+| [13 单一权威写入者 Release Notes](13-single-writer-release-notes.md) | EventStreamHandler 去写、Task* Metadata 权威来源、边界写入上收 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

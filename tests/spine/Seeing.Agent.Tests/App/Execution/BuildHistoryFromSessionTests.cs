@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Hosting.Execution;
@@ -32,7 +33,7 @@ public class BuildHistoryFromSessionTests
         var session = SessionData.Create();
         session.AddMessage(SessionMessage.UserMessage("hi"));
         var transient = SessionMessage.SystemMessage("anything");
-        transient.Metadata = new Dictionary<string, object> { ["transient"] = true };
+        transient.Metadata = new Dictionary<string, object> { ["transient"] = true }.ToImmutableDictionary();
         session.AddMessage(transient);
 
         var history = ExecutionJobService.BuildHistoryFromSession(session);

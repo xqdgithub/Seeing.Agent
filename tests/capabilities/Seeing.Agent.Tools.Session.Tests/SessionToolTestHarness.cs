@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
@@ -66,7 +67,7 @@ internal sealed class SessionToolTestHarness : IDisposable
             ReasoningContent = reasoning,
             Step = step,
             IsSummary = isSummary,
-            ToolCalls = toolCalls,
+            ToolCalls = toolCalls?.ToImmutableList(),
             ToolName = toolName,
             CreatedAt = DateTime.UtcNow,
         };

@@ -23,6 +23,8 @@
 - [会话工具与会话组 Release Notes](docs/architecture/09-session-tools-and-groups-release-notes.md)
 - [会话持久化写回 Release Notes](docs/architecture/10-session-persistence-release-notes.md)
 - [全项目整改 Release Notes](docs/architecture/11-remediation-release-notes.md)
+- [SessionMessage 内容不可变并发契约 Release Notes](docs/architecture/12-session-message-immutability-release-notes.md)
+- [单一权威写入者 Release Notes](docs/architecture/13-single-writer-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 

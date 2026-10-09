@@ -212,11 +212,13 @@
         RefreshChildCards();
     }
 
-    private void OnPermissionChanged()
+    private void OnPermissionChanged() => _ = InvokeAsync(() =>
     {
+        // PermissionInboxView.Changed 由后台 Task.Run 触发；卡片列表与展开态等 UI 投影
+        // 必须在 Blazor 同步上下文串行变更，避免与渲染线程并发操作同一集合/共享 ViewModel。
         RefreshChildCards();
-        _ = InvokeAsync(StateHasChanged);
-    }
+        StateHasChanged();
+    });
 
     /// <summary>取子会话（ToolCall.TaskId）在途权限卡片；有待审批时默认展开。</summary>
     private void RefreshChildCards()

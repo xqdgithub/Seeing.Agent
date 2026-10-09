@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Execution;
@@ -17,11 +18,9 @@ public class ExecutionJobServiceBuildHistoryTests
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
-            ToolCalls = new List<SessionToolCall>
-            {
-                new() { Id = "call_1", Name = "read", Result = "文件内容A", Status = "success" },
-                new() { Id = "call_2", Name = "glob", Result = "匹配结果B", Status = "success" }
-            }
+            ToolCalls = ImmutableList.Create(
+                new SessionToolCall { Id = "call_1", Name = "read", Result = "文件内容A", Status = "success" },
+                new SessionToolCall { Id = "call_2", Name = "glob", Result = "匹配结果B", Status = "success" })
         });
         session.AddMessage(SessionMessage.UserMessage("继续"));
 
@@ -64,10 +63,8 @@ public class ExecutionJobServiceBuildHistoryTests
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
-            ToolCalls = new List<SessionToolCall>
-            {
-                new() { Id = "call_e", Name = "read", Result = "", Error = "执行失败", Status = "failed" }
-            }
+            ToolCalls = ImmutableList.Create(
+                new SessionToolCall { Id = "call_e", Name = "read", Result = "", Error = "执行失败", Status = "failed" })
         });
 
         var history = ExecutionJobService.BuildHistoryFromSession(session);
@@ -89,10 +86,8 @@ public class ExecutionJobServiceBuildHistoryTests
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
-            ToolCalls = new List<SessionToolCall>
-            {
-                new() { Id = "call_r", Name = "read", Status = "rejected" }
-            }
+            ToolCalls = ImmutableList.Create(
+                new SessionToolCall { Id = "call_r", Name = "read", Status = "rejected" })
         });
 
         var history = ExecutionJobService.BuildHistoryFromSession(session);

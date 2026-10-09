@@ -243,7 +243,7 @@ public class ToolCallViewModel
         }
     }
 
-    private static void ApplyDurationFromLegacyMetadata(ToolCallViewModel vm, Dictionary<string, object>? metadata)
+    private static void ApplyDurationFromLegacyMetadata(ToolCallViewModel vm, IReadOnlyDictionary<string, object>? metadata)
     {
         if (metadata == null || vm.DurationMs.HasValue)
             return;

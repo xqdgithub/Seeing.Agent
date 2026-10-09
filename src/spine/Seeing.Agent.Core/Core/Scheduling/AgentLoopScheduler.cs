@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
 
@@ -97,7 +98,7 @@ public sealed class AgentLoopScheduler : IAgentLoopScheduler
             Role = "user",
             Content = text,
             CreatedAt = DateTime.UtcNow,
-            Metadata = meta
+            Metadata = meta.ToImmutableDictionary()
         };
 
         await _sessionManager.AddMessageAsync(sessionId, message, ct);

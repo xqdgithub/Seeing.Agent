@@ -343,11 +343,11 @@
 
         // 会话级自动批准：读取全局默认值 + 订阅热更
         _globalAutoApprove = SeeingAgentOptions.CurrentValue.Permission?.AutoApproveAll ?? false;
-        _seeingAgentOptionsSubscription = SeeingAgentOptions.OnChange((opts, name) =>
+        _seeingAgentOptionsSubscription = SeeingAgentOptions.OnChange((opts, name) => _ = InvokeAsync(() =>
         {
             _globalAutoApprove = opts.Permission?.AutoApproveAll ?? false;
-            _ = InvokeAsync(StateHasChanged);
-        });
+            StateHasChanged();
+        }));
 
         // 加载命令列表（从后端）
         await LoadCommandsFromBackend();
@@ -490,11 +490,12 @@
 
         if (!string.IsNullOrEmpty(SessionState.SessionId))
         {
-            _budgetSubscription = BudgetNotifier.Subscribe(SessionState.SessionId, status =>
+            _budgetSubscription = BudgetNotifier.Subscribe(SessionState.SessionId, status => _ = InvokeAsync(() =>
             {
+                // 预算通知可能来自后台线程；SessionState 投影回到同步上下文变更。
                 SessionState.UpdateBudgetStatus(status);
-                _ = InvokeAsync(StateHasChanged);
-            });
+                StateHasChanged();
+            }));
         }
     }
 
@@ -512,16 +513,20 @@
         if (evt.Type != SessionEventType.Updated)
             return;
 
-        var current = SessionState.CurrentSession;
-        if (current == null ||
-            !string.Equals(evt.SessionId, current.Id, StringComparison.Ordinal))
-            return;
+        // SessionEventPublisher.Events 可能由后台持久化线程推送；标题写回 UI 投影回到同步上下文。
+        _ = InvokeAsync(() =>
+        {
+            var current = SessionState.CurrentSession;
+            if (current == null ||
+                !string.Equals(evt.SessionId, current.Id, StringComparison.Ordinal))
+                return;
 
-        var newTitle = evt.Data?.Title;
-        if (string.IsNullOrEmpty(newTitle))
-            newTitle = SessionManager.Get(evt.SessionId)?.Title;
+            var newTitle = evt.Data?.Title;
+            if (string.IsNullOrEmpty(newTitle))
+                newTitle = SessionManager.Get(evt.SessionId)?.Title;
 
-        ApplyTitleToUi(newTitle);
+            ApplyTitleToUi(newTitle);
+        });
     }
 
     /// <summary>
@@ -1404,15 +1409,8 @@
             }
         }
 
-        try
-        {
-            if (_handler != null)
-                await _handler.MarkIncompleteTasksCancelledAsync("用户取消");
-        }
-        catch
-        {
-            // ignore
-        }
+        // 未完成 Task 的取消标记由服务端 CancelBySessionAsync → 执行体 catch(OCE) 统一落盘，
+        // UI 不再直接写 SessionData。
 
         // 3) 收尾（无论后端结果如何都要执行）
         SessionState.CompleteExecution();
@@ -1426,13 +1424,13 @@
 
     private async Task ReconcileIncompleteTasksAsync()
     {
-        if (_handler == null)
+        var sessionId = SessionState.CurrentSession?.Id;
+        if (string.IsNullOrEmpty(sessionId))
             return;
 
         try
         {
-            var n = await _handler.ReconcileOrphanTaskCardsAsync(taskId =>
-                Task.FromResult(ChatOrchestrator.GetOverview(taskId)?.HasActiveExecution == true));
+            var n = await ChatOrchestrator.ReconcileIncompleteTasksAsync(sessionId);
 
             if (n > 0)
                 ResetTimelineFromSession();
@@ -1836,8 +1834,8 @@
         // 2026-08-27 修复：Dispose 不再取消后端执行 / 标记未完成 Task 为取消。
         // 刷新页面 / 导航离开 / 关闭标签都会触发 Blazor circuit 关闭 → Dispose；
         // 原先在此调用 CancelBySessionAsync 会取消整个会话的后端执行（表现为"对话已取消: user"），
-        // 且 MarkIncompleteTasksCancelledAsync 会把仍进行中的子任务标记为取消。
+        // 且把仍进行中的子任务标记为取消。
         // 现改为仅清理 UI 订阅：后端执行继续，重新打开会话经 Reconcile 恢复进度/结果。
-        // 用户主动取消仍走 OnCancelExecution（保留）。
+        // 用户主动取消仍走 OnCancelExecution（保留）；未完成标记一律由服务端落盘。
     }
 }

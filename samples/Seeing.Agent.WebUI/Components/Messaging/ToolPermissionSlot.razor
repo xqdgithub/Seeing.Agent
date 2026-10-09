@@ -37,11 +37,12 @@
 
     protected override void OnParametersSet() => Refresh();
 
-    private void OnCardsChanged()
+    private void OnCardsChanged() => _ = InvokeAsync(() =>
     {
+        // PermissionInboxView.Changed 由后台 Task.Run 触发；投影变更回到同步上下文执行。
         Refresh();
-        _ = InvokeAsync(StateHasChanged);
-    }
+        StateHasChanged();
+    });
 
     /// <summary>取本工具调用关联的在途卡片（决议后从槽位移除）。</summary>
     private void Refresh()

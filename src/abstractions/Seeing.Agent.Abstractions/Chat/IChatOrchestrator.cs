@@ -50,6 +50,15 @@ public interface IChatOrchestrator
     SessionExecutionOverview GetOverview(string sessionId);
 
     /// <summary>
+    /// 和解加载会话时残留的「执行中」task 卡片：将 running/pending 且无活跃执行的 task 工具调用
+    /// 标记为 cancelled 并落盘。由服务端负责领域模型写入，UI 不再直接写 SessionData。
+    /// </summary>
+    /// <param name="sessionId">会话 ID</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>被标记为取消的 task 数量</returns>
+    Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 获取单个执行记录
     /// </summary>
     /// <param name="executionId">执行 ID</param>

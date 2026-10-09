@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentAssertions;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Execution;
@@ -16,10 +17,8 @@ public class IncompleteToolCallMarkerTests
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
-            ToolCalls = new List<SessionToolCall>
-            {
-                new() { Id = "call_read", Name = "read", Status = "running" }
-            }
+            ToolCalls = ImmutableList.Create(
+                new SessionToolCall { Id = "call_read", Name = "read", Status = "running" })
         });
 
         var count = IncompleteToolCallMarker.MarkCancelled(session, "用户取消");
@@ -37,10 +36,8 @@ public class IncompleteToolCallMarkerTests
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
-            ToolCalls = new List<SessionToolCall>
-            {
-                new() { Id = "call_task", Name = "task", TaskId = "child_1", Status = "pending" }
-            }
+            ToolCalls = ImmutableList.Create(
+                new SessionToolCall { Id = "call_task", Name = "task", TaskId = "child_1", Status = "pending" })
         });
 
         var count = IncompleteToolCallMarker.MarkCancelled(session, "超时");
@@ -58,12 +55,10 @@ public class IncompleteToolCallMarkerTests
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
-            ToolCalls = new List<SessionToolCall>
-            {
-                new() { Id = "call_ok", Name = "read", Status = "success", Result = "ok" },
-                new() { Id = "call_fail", Name = "glob", Status = "failed", Error = "boom" },
-                new() { Id = "call_rej", Name = "write", Status = "rejected", Error = "denied" }
-            }
+            ToolCalls = ImmutableList.Create(
+                new SessionToolCall { Id = "call_ok", Name = "read", Status = "success", Result = "ok" },
+                new SessionToolCall { Id = "call_fail", Name = "glob", Status = "failed", Error = "boom" },
+                new SessionToolCall { Id = "call_rej", Name = "write", Status = "rejected", Error = "denied" })
         });
 
         var count = IncompleteToolCallMarker.MarkCancelled(session, "用户取消");
@@ -82,11 +77,9 @@ public class IncompleteToolCallMarkerTests
         {
             Role = MessageRole.Assistant,
             Content = string.Empty,
-            ToolCalls = new List<SessionToolCall>
-            {
-                new() { Id = "call_running", Name = "read", Status = "running" },
-                new() { Id = "call_done", Name = "read", Status = "success", Result = "ok" }
-            }
+            ToolCalls = ImmutableList.Create(
+                new SessionToolCall { Id = "call_running", Name = "read", Status = "running" },
+                new SessionToolCall { Id = "call_done", Name = "read", Status = "success", Result = "ok" })
         });
 
         var count = IncompleteToolCallMarker.MarkCancelled(session, "取消");

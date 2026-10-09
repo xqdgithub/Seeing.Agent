@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.Json.Serialization;
 
 namespace Seeing.Session.Core
@@ -125,7 +126,7 @@ namespace Seeing.Session.Core
 
         /// <summary>工具元数据（exit / timedOut 等工具私有键；勿塞 duration）</summary>
         [JsonPropertyName("metadata")]
-        public Dictionary<string, object>? Metadata { get; set; }
+        public ImmutableDictionary<string, object>? Metadata { get; set; }
 
         /// <summary>执行耗时（毫秒）</summary>
         [JsonPropertyName("duration_ms")]
@@ -149,7 +150,7 @@ namespace Seeing.Session.Core
 
         /// <summary>子任务步骤（TaskProgress 投影）</summary>
         [JsonPropertyName("task_steps")]
-        public List<SessionTaskStep>? TaskSteps { get; set; }
+        public ImmutableList<SessionTaskStep>? TaskSteps { get; set; }
 
         /// <summary>深拷贝工具调用（含 Task 卡片字段）</summary>
         public SessionToolCall Clone()
@@ -164,7 +165,7 @@ namespace Seeing.Session.Core
                 Status = Status,
                 Error = Error,
                 Title = Title,
-                Metadata = Metadata == null ? null : new Dictionary<string, object>(Metadata),
+                Metadata = Metadata == null ? null : ImmutableDictionary.CreateRange(Metadata),
                 DurationMs = DurationMs,
                 TaskId = TaskId,
                 TaskAgent = TaskAgent,
@@ -178,7 +179,7 @@ namespace Seeing.Session.Core
                     Status = s.Status,
                     Preview = s.Preview,
                     Timestamp = s.Timestamp
-                }).ToList()
+                }).ToImmutableList()
             };
         }
     }
@@ -273,7 +274,7 @@ namespace Seeing.Session.Core
 
         /// <summary>多模态内容段列表（图片、文件、音频等）</summary>
         [JsonPropertyName("parts")]
-        public List<SessionContentPart>? Parts { get; set; }
+        public ImmutableList<SessionContentPart>? Parts { get; set; }
 
         /// <summary>推理/思考内容（用于 DeepSeek-R1 等思考模型）</summary>
         [JsonPropertyName("reasoning_content")]
@@ -285,7 +286,7 @@ namespace Seeing.Session.Core
 
         /// <summary>工具调用列表（Assistant 消息发起的工具调用请求）</summary>
         [JsonPropertyName("tool_calls")]
-        public List<SessionToolCall>? ToolCalls { get; set; }
+        public ImmutableList<SessionToolCall>? ToolCalls { get; set; }
 
         /// <summary>工具调用 ID（Tool 消息中标识对应的工具调用）</summary>
         [JsonPropertyName("tool_call_id")]
@@ -313,7 +314,7 @@ namespace Seeing.Session.Core
 
         /// <summary>额外元数据</summary>
         [JsonPropertyName("metadata")]
-        public Dictionary<string, object>? Metadata { get; set; }
+        public ImmutableDictionary<string, object>? Metadata { get; set; }
 
         /// <summary>是否是思考消息（包含推理内容）</summary>
         [JsonIgnore]
@@ -348,10 +349,10 @@ namespace Seeing.Session.Core
                     FileName = p.FileName,
                     FileId = p.FileId,
                     ImageDetail = p.ImageDetail
-                }).ToList(),
+                }).ToImmutableList(),
                 ReasoningContent = ReasoningContent,
                 ReasoningSignature = ReasoningSignature,
-                ToolCalls = ToolCalls?.Select(t => t.Clone()).ToList(),
+                ToolCalls = ToolCalls?.Select(t => t.Clone()).ToImmutableList(),
                 ToolCallId = ToolCallId,
                 ToolName = ToolName,
                 CreatedAt = CreatedAt,
@@ -368,12 +369,13 @@ namespace Seeing.Session.Core
             };
         }
 
-        private static Dictionary<string, object> DeepCloneMetadata(Dictionary<string, object> source)
+        private static ImmutableDictionary<string, object> DeepCloneMetadata(
+            IEnumerable<KeyValuePair<string, object>> source)
         {
-            var clone = new Dictionary<string, object>(source.Count, StringComparer.Ordinal);
+            var builder = ImmutableDictionary.CreateBuilder<string, object>(StringComparer.Ordinal);
             foreach (var (key, value) in source)
-                clone[key] = DeepCloneMetadataValue(value);
-            return clone;
+                builder[key] = DeepCloneMetadataValue(value);
+            return builder.ToImmutable();
         }
 
         private static object DeepCloneMetadataValue(object value) => value switch
@@ -430,7 +432,7 @@ namespace Seeing.Session.Core
             {
                 Id = NewId(),
                 Role = MessageRole.User,
-                Parts = parts
+                Parts = parts.ToImmutableList()
             };
         }
 
@@ -441,11 +443,9 @@ namespace Seeing.Session.Core
             {
                 Id = NewId(),
                 Role = MessageRole.User,
-                Parts = new List<SessionContentPart>
-                {
+                Parts = ImmutableList.Create(
                     SessionContentPart.CreateText(text),
-                    SessionContentPart.CreateImageFromUrl(imageUrl)
-                }
+                    SessionContentPart.CreateImageFromUrl(imageUrl))
             };
         }
 
@@ -480,7 +480,7 @@ namespace Seeing.Session.Core
                 Id = NewId(),
                 Role = MessageRole.Assistant,
                 Content = content ?? string.Empty,
-                ToolCalls = toolCalls
+                ToolCalls = toolCalls.ToImmutableList()
             };
         }
 
@@ -513,8 +513,7 @@ namespace Seeing.Session.Core
         /// <summary>创建带元数据的消息</summary>
         public SessionMessage WithMetadata(string key, object value)
         {
-            Metadata ??= new Dictionary<string, object>();
-            Metadata[key] = value;
+            Metadata = (Metadata ?? ImmutableDictionary<string, object>.Empty).SetItem(key, value);
             return this;
         }
 
