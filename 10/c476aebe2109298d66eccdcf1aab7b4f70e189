@@ -1,0 +1,152 @@
+docs/architecture/13-single-writer-release-notes.md
+  s_65c7fc91aea5f6::t_251edbed076ac6 65
+  s_65c7fc91aea5f6::t_a605461a3a5964 1-41,43-55,57-64
+  s_65c7fc91aea5f6::t_59ac15bd759a2b 42
+  s_65c7fc91aea5f6::t_65fcbe6900e74b 56
+tests/apps/Seeing.Agent.WebUI.Tests/Services/EventStreamHandlerTests.cs
+  s_65c7fc91aea5f6::t_22c7b5aa701454 34,49,51
+  s_65c7fc91aea5f6::t_fa660444121720 159,177-179,183,200-201
+tests/primitives/Seeing.Session.Tests/SessionMessageImmutabilityTests.cs
+  s_65c7fc91aea5f6::t_c8b13778672169 1-79
+samples/Seeing.Agent.WebUI/Models/ToolCallViewModel.cs
+  s_65c7fc91aea5f6::t_cc183929fa518a 246
+samples/Seeing.Agent.WebUI/Components/Messaging/ToolQuestionSlot.razor
+  s_65c7fc91aea5f6::t_c795d1363e705a 36,38,40-41
+src/primitives/Seeing.Session/Core/SessionMessage.cs
+  s_65c7fc91aea5f6::t_a288c7b65b57fe 168,182
+  s_65c7fc91aea5f6::t_59bb72ec5bdd96 277
+  s_65c7fc91aea5f6::t_bb7d3416a9a4af 317
+  s_65c7fc91aea5f6::t_9fa50568c497e8 129
+  s_65c7fc91aea5f6::t_7009dad190dbbe 153
+  s_65c7fc91aea5f6::t_32d3a5c47221f0 1
+  s_65c7fc91aea5f6::t_f2f8f6a4c543f5 289
+  s_65c7fc91aea5f6::t_7b3aa0fedffb6e 372-373,375,377-378
+  s_65c7fc91aea5f6::t_ee13d09c280707 435,446,448
+  s_65c7fc91aea5f6::t_fb76e696d5ad95 352,355
+  s_65c7fc91aea5f6::t_ff99a491a968aa 483
+  s_65c7fc91aea5f6::t_44fa75d94deefb 516
+src/spine/Seeing.Agent.Core/Core/Scheduling/AgentLoopScheduler.cs
+  s_65c7fc91aea5f6::t_ed79fe35d343f9 2
+  s_65c7fc91aea5f6::t_0d6b7f2127eef9 101
+tests/spine/Seeing.Agent.Tests/App/Execution/SchemaSnapshotExecutionTests.cs
+  s_65c7fc91aea5f6::t_8e8442ec921ee4 133
+  s_65c7fc91aea5f6::t_825a4bae440146 2
+tests/spine/Seeing.Agent.Tests/Tools/TaskToolTests.cs
+  s_65c7fc91aea5f6::t_8ffdfd79d3a0e6 73-78
+tests/apps/Seeing.Agent.WebUI.Tests/BashToolDisplayHelperTests.cs
+  s_65c7fc91aea5f6::t_6c60c71ada9fb2 1
+  s_65c7fc91aea5f6::t_debfd5ab9e2b4f 36
+  s_65c7fc91aea5f6::t_04233e8beb94a5 56
+src/abstractions/Seeing.Agent.Abstractions/Chat/IChatOrchestrator.cs
+  s_65c7fc91aea5f6::t_f46436a0629cff 53-60
+samples/Seeing.Agent.WebUI/Components/Messaging/TaskMessageComponent.razor
+  s_65c7fc91aea5f6::t_4d9a9c0c8578a9 215,217-218,220-221
+docs/architecture/12-session-message-immutability-release-notes.md
+  s_65c7fc91aea5f6::t_bf5e72e1ca5110 1-64,66
+  s_65c7fc91aea5f6::t_1eca0791d96396 65
+samples/Seeing.Agent.WebUI/Services/EventStreamHandler.cs
+  s_65c7fc91aea5f6::t_342e597d9b1174 281
+  s_65c7fc91aea5f6::t_cb97f0d1c3ad58 282
+  s_65c7fc91aea5f6::t_0a7abf2050821b 431,452
+src/hosting/Seeing.Agent.Hosting/Tools/TaskTool.cs
+  s_65c7fc91aea5f6::t_14cf3618f00180 350
+  s_65c7fc91aea5f6::t_ff60e1de14b84f 316-317
+  s_65c7fc91aea5f6::t_c17a2a9a502078 390-401
+samples/Seeing.Agent.WebUI/Pages/Conference.razor
+  s_65c7fc91aea5f6::t_27cdfeaaadeebc 477-489
+samples/Seeing.Agent.WebUI/Services/SessionMessageConverter.cs
+  s_65c7fc91aea5f6::t_54ead7b7157d43 90,98
+  s_65c7fc91aea5f6::t_734e44b9b2677b 1
+tests/spine/Seeing.Agent.Tests/App/IncompleteToolCallMarkerTests.cs
+  s_65c7fc91aea5f6::t_0d43cc983dc158 1,20-21,39-40,58-61,80-82
+samples/Seeing.Agent.WebUI/Components/SessionWindow.razor
+  s_65c7fc91aea5f6::t_6c0e14c887bdde 1427
+  s_65c7fc91aea5f6::t_8bd9a3ca2d43f0 1412-1413
+  s_65c7fc91aea5f6::t_82fe00a5f35c42 346,349-350
+  s_65c7fc91aea5f6::t_eec5654ba514e5 1428,1433
+  s_65c7fc91aea5f6::t_96e9bc7d8868a5 1837,1839
+  s_65c7fc91aea5f6::t_3c6f8455d8676d 516-522,524-526,528-529
+  s_65c7fc91aea5f6::t_3d2072c6340ae2 493,495,497-498
+tests/apps/Seeing.Agent.WebUI.Tests/Services/MessageTimelineStoreTests.cs
+  s_65c7fc91aea5f6::t_b0b10a5f615a02 1
+  s_65c7fc91aea5f6::t_41fbd4296ff326 314
+  s_65c7fc91aea5f6::t_e8cbae09157ebb 222,229
+  s_65c7fc91aea5f6::t_71108c07ae42e5 353,359-360
+  s_65c7fc91aea5f6::t_f9af716c725865 103-104
+  s_65c7fc91aea5f6::t_6345d3c938b9a6 238,246
+  s_65c7fc91aea5f6::t_add9ef0fc78e70 17,26
+  s_65c7fc91aea5f6::t_5a795c3d3826ec 365,371-372
+src/gateway/Seeing.Agent.Gateway/Core/GatewayUserMessageComposer.cs
+  s_65c7fc91aea5f6::t_fbd649215a6096 1
+  s_65c7fc91aea5f6::t_f0d0b18b1ab075 45
+tests/spine/Seeing.Agent.Tests/App/ExecutionJobServiceBuildHistoryTests.cs
+  s_65c7fc91aea5f6::t_e4725ace64b875 1,21-23,66-67,89-90
+tests/spine/Seeing.Agent.Tests/App/Execution/BuildHistoryFromSessionTests.cs
+  s_65c7fc91aea5f6::t_b686772ec187d1 1
+  s_65c7fc91aea5f6::t_a58edd735d90bf 36
+AGENTS.md
+  s_65c7fc91aea5f6::t_423f7e2f2fdb05 26
+  s_65c7fc91aea5f6::t_44da6c2fa8fc1f 27
+samples/Seeing.Agent.WebUI/Components/McpStatusPanel.razor
+  s_65c7fc91aea5f6::t_f75ce0fac10a66 169,171,173-174
+tests/spine/Seeing.Agent.Tests/App/ChatOrchestratorReconcileTests.cs
+  s_65c7fc91aea5f6::t_0b03ec9871ce71 3,12,14,21
+  s_65c7fc91aea5f6::t_d261a1af9c9b7c 1-2,4-11,13,15-20,22-34,37,72,74-77,79-93,95,97,100-102,104,106-121,123-138,140-148,203
+  s_65c7fc91aea5f6::t_b5a59bcf3174e1 35-36,38-71,73,78,94,96,98-99
+  s_65c7fc91aea5f6::t_ab7d54885c1321 149-170,172-202
+  s_65c7fc91aea5f6::t_6c98a4d39a3b61 171
+  s_65c7fc91aea5f6::t_f4a5876001ac25 103,105,122,139
+tests/capabilities/Seeing.Agent.Tools.Session.Tests/SessionToolTestHarness.cs
+  s_65c7fc91aea5f6::t_172bd4b3b49568 70
+  s_65c7fc91aea5f6::t_e4ad8f49740136 1
+samples/Seeing.Agent.WebUI/Components/Messaging/ToolPermissionSlot.razor
+  s_65c7fc91aea5f6::t_caec9cba362576 40,42,44-45
+tests/apps/Seeing.Agent.WebUI.Tests/Services/TaskCardAggregatorTests.cs
+  s_65c7fc91aea5f6::t_2bbab9d55356b6 1,27,239,360
+src/abstractions/Seeing.Agent.Abstractions/Tools/TaskMetadataKeys.cs
+  s_65c7fc91aea5f6::t_4aee10c06ce020 1-25
+src/hosting/Seeing.Agent.Hosting/Execution/ChatEventTracker.cs
+  s_65c7fc91aea5f6::t_14161405ddd556 102
+  s_65c7fc91aea5f6::t_0623ac0bcb401b 249,253-254
+  s_65c7fc91aea5f6::t_4fc75028381e81 298-386
+  s_65c7fc91aea5f6::t_266c530bc642b4 4
+  s_65c7fc91aea5f6::t_b66a6752122d53 148
+  s_65c7fc91aea5f6::t_4789ed033b50b6 114-115,118,127-128
+  s_65c7fc91aea5f6::t_173cdfb84d999a 151-153
+  s_65c7fc91aea5f6::t_a1eb9318d23adb 7
+  s_65c7fc91aea5f6::t_0636cff7658e56 83-85,90,92,103
+  s_65c7fc91aea5f6::t_6d70459a909ff5 230-232
+docs/architecture/04-development-standards.md
+  s_65c7fc91aea5f6::t_0bd82baef5f2fb 100
+  s_65c7fc91aea5f6::t_cd063937cfdded 102-122
+  s_65c7fc91aea5f6::t_65f833ff6304cb 99
+docs/architecture/README.md
+  s_65c7fc91aea5f6::t_c347f97b734d06 32
+  s_65c7fc91aea5f6::t_13f1b114a63e18 31
+samples/Seeing.Agent.WebUI/Services/TaskCardAggregator.cs
+  s_65c7fc91aea5f6::t_e7a74b81d30659 288-289
+  s_65c7fc91aea5f6::t_c030f854638969 2
+src/hosting/Seeing.Agent.Hosting/ChatOrchestrator.cs
+  s_65c7fc91aea5f6::t_569f5dfd605608 94-99,107-158
+  s_65c7fc91aea5f6::t_df7e00b1abdb58 100-106
+samples/Seeing.Agent.WebUI/Pages/Session.razor
+  s_65c7fc91aea5f6::t_f8a829a6167598 335-347
+tests/spine/Seeing.Agent.Tests/App/Execution/ChatEventTrackerTaskFieldTests.cs
+  s_65c7fc91aea5f6::t_7b4400e37756db 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "10c476aebe2109298d66eccdcf1aab7b4f70e189",
+  "prompts": {},
+  "sessions": {
+    "s_65c7fc91aea5f6": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ee51fc590ffeddF4BBjjJudn1e",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
