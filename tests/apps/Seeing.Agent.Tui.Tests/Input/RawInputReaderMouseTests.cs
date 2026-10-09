@@ -123,6 +123,55 @@ public class RawInputReaderMouseTests
     }
 
     [Fact]
+    public void Drain_X10MouseWheelDown_ShouldEmitWheelWithoutLeakingCoordinates()
+    {
+        // 终端不支持 SGR-1006 时回退 X10：ESC [ M <32+btn> <32+col> <32+row>。
+        // 回归：坐标字节（'a''V''1'）绝不能漏进输入框。
+        var items = Feed("\x1b[MaV1");
+
+        items.Should().Equal(new TuiRawMouse(TuiMouseButton.WheelDown, TuiMousePhase.Press, 54, 17));
+    }
+
+    [Fact]
+    public void Drain_X10MouseLeftPress_ShouldEmitLeftPress()
+    {
+        var items = Feed("\x1b[M *%");
+
+        items.Should().Equal(new TuiRawMouse(TuiMouseButton.Left, TuiMousePhase.Press, 10, 5));
+    }
+
+    [Fact]
+    public void Drain_X10MouseWheelUp_ShouldEmitWheelUp()
+    {
+        var items = Feed("\x1b[M`A5");
+
+        items.Should().Equal(new TuiRawMouse(TuiMouseButton.WheelUp, TuiMousePhase.Press, 33, 21));
+    }
+
+    [Fact]
+    public void Drain_X10MouseSplitAcrossReads_ShouldEmitOnlyAfterThirdParam()
+    {
+        var reader = new RawInputReader(mouseEnabled: true);
+
+        var prefix = Feed(reader, "\x1b[M"u8.ToArray());
+        var mid = Feed(reader, "a"u8.ToArray());
+        var final = Feed(reader, "V1"u8.ToArray());
+
+        prefix.Should().BeEmpty();
+        mid.Should().BeEmpty();
+        final.Should().Equal(new TuiRawMouse(TuiMouseButton.WheelDown, TuiMousePhase.Press, 54, 17));
+    }
+
+    [Fact]
+    public void Drain_X10MouseRelease_ShouldEmitReleasePhase()
+    {
+        // X10 释放：按钮字节低 2 位为 3。
+        var items = Feed("\x1b[M#0%");
+
+        items.Should().Equal(new TuiRawMouse(TuiMouseButton.None, TuiMousePhase.Release, 16, 5));
+    }
+
+    [Fact]
     public void Drain_DsrCursorReport_ShouldRouteToProbeAndNotEmitInput()
     {
         // Arrange

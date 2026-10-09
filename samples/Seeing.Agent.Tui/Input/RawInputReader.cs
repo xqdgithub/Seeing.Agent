@@ -296,6 +296,20 @@ public sealed class RawInputReader : IRawInputSource
                         continue;
                     }
 
+                    // X10 鼠标：ESC [ M <32+btn> <32+col> <32+row>（无终字节，共 6 字节）。
+                    // 不支持 SGR-1006 的终端（如 Windows conhost）会回退到此编码；不识别则坐标字节会漏成文本。
+                    if (_pending[2] == (byte)'M')
+                    {
+                        if (_pending.Count < 6)
+                            return;
+
+                        var mouse = TryDecodeX10Mouse(_pending[3], _pending[4], _pending[5]);
+                        RemoveFrontLocked(6);
+                        if (mouse is not null)
+                            EmitTokenLocked(mouse);
+                        continue;
+                    }
+
                     // DSR 光标位置回复：ESC [ row ; col R —— 旁路直达探针，不产 TuiRawInput、不写按键通道。
                     if (_pending[end] == (byte)'R' &&
                         TryParseDsrRow(CollectionsMarshal.AsSpan(_pending)[2..end], out var cursorRow))
@@ -539,6 +553,41 @@ public sealed class RawInputReader : IRawInputSource
         2 => TuiMouseButton.Right,
         _ => TuiMouseButton.None,
     };
+
+    /// <summary>
+    /// 解析 X10 鼠标事件三个原始字节（<c>Cb Cx Cy</c>，均已 +32 偏移）。
+    /// 解码按位：0x40（滚轮，恒 Press）→ 0x20（Motion）→ 低 2 位（3=Release）；坐标可能为 0。
+    /// </summary>
+    internal static TuiRawMouse? TryDecodeX10Mouse(byte cb, byte cx, byte cy)
+    {
+        if (cb < 32 || cx < 32 || cy < 32)
+            return null;
+
+        var buttonCode = cb - 32;
+        var col = cx - 32;
+        var row = cy - 32;
+
+        TuiMouseButton button;
+        TuiMousePhase phase;
+        if ((buttonCode & 0x40) != 0)
+        {
+            button = (buttonCode & 0x03) == 0 ? TuiMouseButton.WheelUp : TuiMouseButton.WheelDown;
+            phase = TuiMousePhase.Press;
+        }
+        else if ((buttonCode & 0x20) != 0)
+        {
+            button = MapMouseButton(buttonCode & 0x03);
+            phase = TuiMousePhase.Motion;
+        }
+        else
+        {
+            var low = buttonCode & 0x03;
+            button = low == 3 ? TuiMouseButton.None : MapMouseButton(low);
+            phase = low == 3 ? TuiMousePhase.Release : TuiMousePhase.Press;
+        }
+
+        return new TuiRawMouse(button, phase, col, row);
+    }
 
     /// <summary>解析 DSR 光标回复 <c>ESC [ row ; col R</c> 的参数段取 row（空段按 1 基默认）。</summary>
     private static bool TryParseDsrRow(ReadOnlySpan<byte> parameters, out int row)
