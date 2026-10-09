@@ -137,6 +137,61 @@ public class TaskToolTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_Background_WhenParentCancelled_ShouldNotNotifyOrResumeParent()
+    {
+        using var fixture = new TaskToolFixture(executor: BlockingExecutor());
+        var tool = new TaskTool(
+            NullLogger<TaskTool>.Instance,
+            fixture.SessionManager.Object,
+            fixture.GroupManager.Object,
+            fixture.AgentRegistry.Object,
+            fixture.LoopScheduler.Object,
+            fixture.ExecService,
+            fixture.ExecService,
+            fixture.EventPublisher);
+
+        using var parentCts = new CancellationTokenSource();
+        var context = new ToolContext
+        {
+            SessionId = fixture.ParentId,
+            CallId = "call-cancel",
+            CancellationToken = parentCts.Token
+        };
+
+        var result = await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new
+            {
+                description = "explore auth",
+                prompt = "find auth config",
+                subagent_type = "explore",
+                background = true
+            }),
+            context);
+
+        result.Success.Should().BeTrue();
+
+        // 等待后台子执行进入 Running
+        await WaitUntilAsync(() =>
+            fixture.ExecService.GetOverview(fixture.Child.Id).CurrentExecution?.Status == ExecutionStatus.Running);
+
+        // 模拟用户取消主会话：父执行令牌取消 → 级联取消后台子执行
+        parentCts.Cancel();
+
+        // 等待子执行进入终态
+        await WaitUntilAsync(() =>
+            fixture.ExecService.GetOverview(fixture.Child.Id).CurrentExecution == null);
+
+        // 给 watcher 收尾留出窗口
+        await Task.Delay(500);
+
+        // 父会话被取消后，不得再注入 synthetic 通知或触发 idle resume（否则已取消的主会话会被重新启动）
+        fixture.SyntheticInvocations.Should().BeEmpty();
+        fixture.LoopScheduler.Verify(
+            l => l.TryResumeWhenIdleAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_CreateChild_ShouldPassParentScenario()
     {
         using var fixture = new TaskToolFixture(executor: BuildExecutor("ok"));
@@ -298,6 +353,26 @@ public class TaskToolTests
             SessionId = "",
             Message = new ChatMessage { Role = ChatRole.Assistant, Content = content }
         };
+    }
+
+    private static IAgentExecutor BlockingExecutor()
+    {
+        var mock = new Mock<IAgentExecutor>();
+        mock.Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken ct)
+                => BlockingStream(ct));
+        return mock.Object;
+    }
+
+    private static async IAsyncEnumerable<IMessageEvent> BlockingStream(
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.Delay(10000, ct);
+        yield break;
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)

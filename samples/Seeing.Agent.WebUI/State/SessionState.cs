@@ -293,6 +293,32 @@ namespace Seeing.Agent.WebUI.State
         }
 
         /// <summary>
+        /// 同步「执行已开始」事件（服务端可能由 idle resume 主动发起新执行，
+        /// 此时 UI 未经过 Submit 流程，需据此恢复执行态，否则取消按钮/执行中徽标缺失）。
+        /// 已在执行中则仅更新执行 ID，复用现有取消令牌，保持幂等。
+        /// </summary>
+        /// <param name="executionId">服务端执行 ID</param>
+        public void SyncExecutionStarted(string executionId)
+        {
+            if (_disposed)
+                return;
+
+            CurrentExecutionId = executionId;
+            ExecutionStatus = global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Running;
+
+            // 非阻塞尝试获取执行锁（UI 空闲时成功；已执行中则失败，保持既有令牌）
+            if (!IsExecuting)
+                TryStartExecution();
+
+            // 令牌缺失/已取消时补建，保证取消按钮可用（如取消后服务端 resume 场景）
+            if (_cancellationTokenSource == null || _cancellationTokenSource.IsCancellationRequested)
+            {
+                _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = new CancellationTokenSource();
+            }
+        }
+
+        /// <summary>
         /// 设置当前会话
         /// </summary>
         public void SetSession(SessionData session)

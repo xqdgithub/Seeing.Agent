@@ -945,11 +945,21 @@
 
             EnsureRetryTimer();
 
+            // 执行开始：服务端可能由 idle resume（如后台任务完成）主动发起新执行，
+            // UI 未经过 Submit 流程，需据此恢复执行态，否则取消按钮/执行中徽标缺失。
+            if (evt is ExecutionStartedEvent startedEvt)
+            {
+                SessionState.SyncExecutionStarted(startedEvt.ExecutionId);
+                _executionStartedAtUtc ??= DateTime.UtcNow;
+                SyncContextState();
+            }
+
             if (evt is ExecutionCompleteEvent completeEvt && _handler != null && !_handler.IsStreamActive)
             {
                 SessionState.ExecutionStatus = completeEvt.Status;
                 SessionState.CurrentExecutionId = null;
                 SessionState.CompleteExecution();
+                _executionStartedAtUtc = null;
                 SyncContextState();
             }
 

@@ -197,6 +197,9 @@ public class TaskTool : ToolBase
                 var parentSessionId = context.SessionId;
                 var desc = description;
                 var childId = session.Id;
+                // 父执行取消令牌：父会话被取消时子执行会级联取消，
+                // 此时不得再向父注入通知或触发 idle resume，否则会把用户已取消的主会话重新拉起。
+                var parentToken = context.CancellationToken;
 
                 var submitResult = await _executionSubmitter.SubmitAsync(session.Id,
                     new ChatInput { Text = userPrompt }, submitOptions, context.CancellationToken);
@@ -230,6 +233,11 @@ public class TaskTool : ToolBase
 
                     try
                     {
+                        // 父会话已取消：子执行因级联取消而进入 Cancelled，属预期结果，
+                        // 不应向父注入 synthetic 通知，也不应触发 idle resume（否则重新启动已取消的主会话）。
+                        if (parentToken.IsCancellationRequested)
+                            return;
+
                         switch (finalStatus)
                         {
                             case ExecutionStatus.Completed:
