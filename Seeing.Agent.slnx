@@ -9,6 +9,7 @@
     <Project Path="samples/Seeing.Gateway.Server/Seeing.Gateway.Server.csproj" />
     <Project Path="samples/Seeing.Gateway.WeCom.Demo/Seeing.Gateway.WeCom.Demo.csproj" />
   </Folder>
+  <Folder Name="/plugs/" />
   <Folder Name="/plugs/providers/">
     <Project Path="plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />
     <Project Path="plugs/providers/Seeing.Provider.MiMo/Seeing.Provider.MiMo.csproj" />
@@ -19,6 +20,7 @@
     <Project Path="src/primitives/Seeing.Session/Seeing.Session.csproj" />
     <Project Path="src/primitives/Seeing.TokenEstimation/Seeing.TokenEstimation.csproj" />
   </Folder>
+  <Folder Name="/src/" />
   <Folder Name="/src/abstractions/">
     <Project Path="src/abstractions/Seeing.Agent.Abstractions/Seeing.Agent.Abstractions.csproj" />
   </Folder>
@@ -103,6 +105,7 @@
     <Project Path="tests/gateway/Seeing.Gateway.Tests/Seeing.Gateway.Tests.csproj" />
     <Project Path="tests/gateway/Seeing.Gateway.WeCom.Tests/Seeing.Gateway.WeCom.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/" />
   <Folder Name="/tests/apps/">
     <Project Path="tests/apps/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.Tui.Tests/Seeing.Agent.Tui.Tests.csproj" />
