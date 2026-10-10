@@ -1,0 +1,24 @@
+tests/apps/Seeing.Agent.Tui.Tests/Input/RawInputReaderMouseTests.cs
+  s_8123ed582c8e5f::t_287b994d3bc37d 231-232,247-248
+  s_8123ed582c8e5f::t_631c933370a2fb 217-230,233-246,249-250
+samples/Seeing.Agent.Tui/Input/RawInputReader.cs
+  s_8123ed582c8e5f::t_bb84af675d6dd7 40-42,47,49
+  s_8123ed582c8e5f::t_0fc9cecfc4dc81 702-704,710
+  s_8123ed582c8e5f::t_27b3d18759720b 39,43-46,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "e6c10c9a64534c1d78bf195612760b1ff7d76182",
+  "prompts": {},
+  "sessions": {
+    "s_8123ed582c8e5f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_edc4ba4d4ffeCPXXwuonUPKBqg",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
