@@ -382,6 +382,54 @@ public sealed class TuiRendererTests
     }
 
     [Fact]
+    public void BuildActiveView_RunningToolWithOutput_ShouldRenderStreamingOutput()
+    {
+        // 执行中的工具（如 bash）会以 Running + 累积 Output 流式上报；若只在终态渲染 body，
+        // 流式输出永不进入画面，表现为「卡住」。Running 时也应展示已到达的输出。
+        var state = NewState(new TuiBlock
+        {
+            Key = "tool:call_1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState
+            {
+                CallId = "call_1",
+                Name = "bash",
+                Status = TuiToolStatus.Running,
+                Arguments = "echo hi",
+                Output = "line1\nline2",
+            },
+        });
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(state, new TuiInputEditorState(), 100));
+
+        text.Should().Contain("line1");
+        text.Should().Contain("line2");
+    }
+
+    [Fact]
+    public void BuildActiveView_RunningToolWithoutOutput_ShouldNotThrow()
+    {
+        var state = NewState(new TuiBlock
+        {
+            Key = "tool:call_1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState
+            {
+                CallId = "call_1",
+                Name = "bash",
+                Status = TuiToolStatus.Running,
+                Arguments = "sleep 10",
+            },
+        });
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var act = () => Render(renderer.BuildActiveView(state, new TuiInputEditorState(), 100));
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
     public void BuildActiveView_WhenMaxLinesClips_ShouldKeepTailAndInputAndStatusBar()
     {
         var input = new TuiInputEditorState();

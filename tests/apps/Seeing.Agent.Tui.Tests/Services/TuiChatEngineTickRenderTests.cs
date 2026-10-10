@@ -84,4 +84,45 @@ public sealed class TuiChatEngineTickRenderTests
         a.Should().NotBe(b with { GlobalAutoApprove = false });
         a.Should().NotBe(new StatusSignature(null, true, @"D:\work"));
     }
+
+    [Fact]
+    public void CountActiveChars_ShouldIncludeRunningToolOutput()
+    {
+        // 执行中工具的流式输出必须计入「活动字符数」，否则周期 tick 的脏检查判定「无变化」，
+        // 工具输出增长不会触发重绘（表现为执行期间界面卡住）。
+        var state = new TuiViewState { SessionId = "s" };
+        state.Upsert(new TuiBlock
+        {
+            Key = "tool:call_1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState
+            {
+                CallId = "call_1",
+                Name = "bash",
+                Status = TuiToolStatus.Running,
+                Output = "hello world",
+            },
+        });
+
+        TuiChatEngine.CountActiveChars(state).Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void CountActiveChars_ShouldGrowAsRunningToolOutputGrows()
+    {
+        var state = new TuiViewState { SessionId = "s" };
+        var tool = new TuiToolState { CallId = "call_1", Name = "bash", Status = TuiToolStatus.Running, Output = "a" };
+        state.Upsert(new TuiBlock { Key = "tool:call_1", Kind = TuiBlockKind.Tool, Tool = tool });
+
+        var before = TuiChatEngine.CountActiveChars(state);
+
+        state.Upsert(new TuiBlock
+        {
+            Key = "tool:call_1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState { CallId = "call_1", Name = "bash", Status = TuiToolStatus.Running, Output = "a\nb\nc" },
+        });
+
+        TuiChatEngine.CountActiveChars(state).Should().BeGreaterThan(before);
+    }
 }

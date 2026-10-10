@@ -407,7 +407,9 @@ public sealed class TuiRenderer
                 $"[grey]  {StatusIcon(step.Status)} {Markup.Escape(step.ToolName)} {Markup.Escape(step.Summary)}[/]"));
         }
 
-        if (tool.Status is TuiToolStatus.Success or TuiToolStatus.Failed or TuiToolStatus.Rejected or TuiToolStatus.Cancelled)
+        // Running 也渲染 body：bash 等工具以 Running + 累积 Output 流式上报，
+        // 若只在终态渲染，流式输出永不进入画面（表现为执行期间界面卡住）。
+        if (tool.Status is TuiToolStatus.Running or TuiToolStatus.Success or TuiToolStatus.Failed or TuiToolStatus.Rejected or TuiToolStatus.Cancelled)
             AddToolBody(rows, tool);
 
         return new Rows(rows);
