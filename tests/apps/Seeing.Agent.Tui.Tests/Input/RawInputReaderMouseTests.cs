@@ -214,4 +214,38 @@ public class RawInputReaderMouseTests
             new TuiRawMouse(TuiMouseButton.Left, TuiMousePhase.Press, 1, 1),
             new TuiRawEscape("\x1b[A"));
     }
+
+    [Fact]
+    public async Task Drain_X10MouseSplitAfterLoneEsc_ShouldNotLeakCoordinatesAsText()
+    {
+        // 回归：某些终端（如 conhost 的 VT 输入）会把鼠标序列的 ESC 与后续字节拆成两次读。
+        // 若孤立 ESC 被当作独立 Esc 键提前 flush，随后的 " [M<cb><cx><cy>" 会被当普通文本插入输入框
+        //（表现为点击后输入框出现字母数字/乱码）。ESC 与序列同源，不得泄漏为文本。
+        var reader = new RawInputReader(mouseEnabled: true);
+        var items = new List<TuiRawInput>();
+
+        items.AddRange(Feed(reader, "\x1b"u8.ToArray()));
+        await Task.Delay(80, TestContext.Current.CancellationToken); // 超过孤立 ESC 的 flush 窗口
+        items.AddRange(Feed(reader, "[M *%"u8.ToArray()));
+
+        items.Where(i => i is TuiRawText).Cast<TuiRawText>()
+            .Should().NotContain(t => t.Value.Contains("[M"));
+        items.OfType<TuiRawMouse>().Should().Contain(new TuiRawMouse(TuiMouseButton.Left, TuiMousePhase.Press, 10, 5));
+    }
+
+    [Fact]
+    public async Task Drain_SgrMouseSplitAfterLoneEsc_ShouldNotLeakCoordinatesAsText()
+    {
+        // 同上，SGR 编码（ESC [ < ... M）在 ESC 被拆分时也不得泄漏坐标/参数为文本。
+        var reader = new RawInputReader(mouseEnabled: true);
+        var items = new List<TuiRawInput>();
+
+        items.AddRange(Feed(reader, "\x1b"u8.ToArray()));
+        await Task.Delay(80, TestContext.Current.CancellationToken);
+        items.AddRange(Feed(reader, "[<0;10;5M"u8.ToArray()));
+
+        items.Where(i => i is TuiRawText).Cast<TuiRawText>()
+            .Should().NotContain(t => t.Value.Contains("<"));
+        items.OfType<TuiRawMouse>().Should().Contain(new TuiRawMouse(TuiMouseButton.Left, TuiMousePhase.Press, 10, 5));
+    }
 }

@@ -36,6 +36,17 @@ public sealed class RawInputReader : IRawInputSource
     private const uint EnableVirtualTerminalInput = 0x0200;
     private const int StdInputHandle = -10;
 
+    /// <summary>孤立 ESC 等待窗口（非鼠标模式）：超时仍无后续字节才作为独立 Esc 键。</summary>
+    private const int EscapeInitialDelayMs = 35;
+
+    /// <summary>
+    /// 孤立 ESC 等待窗口（鼠标模式，更宽）：某些终端会把鼠标/DSR 序列的 <c>ESC</c> 与后续字节
+    /// （如 <c>[M…</c>）拆成两次读取；窗口过短会把 Esc 提前 emit，随后失去前缀的坐标字节被当普通文本
+    /// 插入输入框（表现为点击后输入框出现字母数字/乱码）。序列由终端原子生成、续段紧随其后到达，
+    /// 窗口内 pending 变长即由 CSI 分支正确重组。
+    /// </summary>
+    private const int EscapeMouseDelayMs = 150;
+
     private static readonly byte[] PasteStartSeq = "\x1b[200~"u8.ToArray();
     private static readonly byte[] PasteEndSeq = "\x1b[201~"u8.ToArray();
 
@@ -688,12 +699,15 @@ public sealed class RawInputReader : IRawInputSource
             return;
 
         _escapeFlushScheduled = true;
+        // 鼠标模式下窗口更宽：终端可能把鼠标/DSR 序列的 ESC 与后续字节拆成两次读，窗口过短会提前 emit Esc，
+        // 使失去前缀的坐标字节泄漏为输入框文本。序列续段紧随到达，窗口内 pending 变长即走 CSI 分支重组。
+        var delayMs = _mouseEnabled ? EscapeMouseDelayMs : EscapeInitialDelayMs;
         var token = _cts.Token;
         _ = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(35, token).ConfigureAwait(false);
+                await Task.Delay(delayMs, token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
