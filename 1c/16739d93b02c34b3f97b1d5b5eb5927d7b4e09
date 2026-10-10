@@ -1,0 +1,25 @@
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiChatEngineTickRenderTests.cs
+  s_8123ed582c8e5f::t_cde3e997dd9712 87-127
+samples/Seeing.Agent.Tui/Services/TuiChatEngine.cs
+  s_8123ed582c8e5f::t_c0e62a6fdd577e 1945-1952,1962
+samples/Seeing.Agent.Tui/Rendering/TuiRenderer.cs
+  s_8123ed582c8e5f::t_b68307b0c192e5 410-412
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/TuiRendererTests.cs
+  s_8123ed582c8e5f::t_b761323f659f72 385-431
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "1c16739d93b02c34b3f97b1d5b5eb5927d7b4e09",
+  "prompts": {},
+  "sessions": {
+    "s_8123ed582c8e5f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_edc4ba4d4ffeCPXXwuonUPKBqg",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
