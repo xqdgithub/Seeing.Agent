@@ -41,9 +41,9 @@ public sealed class SessionWindowContext
     public string? SuccessorTitle { get; internal set; }
 
     // ---- 能力标记（由 SessionWindow 按组内成员 Relation 经 ApplyCapabilities 计算） ----
-    /// <summary>是否为 Child 关系成员（只读子会话）</summary>
+    /// <summary>是否为 Child 关系成员（子会话）</summary>
     public bool IsChild { get; internal set; }
-    /// <summary>只读视图（Child：禁止提交/编辑）</summary>
+    /// <summary>只读视图（会话入站运行时后子会话允许输入，恒为 false；保留标记供将来只读场景）</summary>
     public bool IsReadOnly { get; internal set; }
     /// <summary>允许切换会话级自动批准（Child 禁止）</summary>
     public bool AllowAutoApproveChange { get; internal set; }
@@ -70,15 +70,23 @@ public sealed class SessionWindowContext
     /// <summary>允许新建会话（Child 禁止）</summary>
     public bool CanCreateSession { get; internal set; }
 
+    /// <summary>允许推送当前产出给父会话（仅 Child）</summary>
+    public bool CanPushToParent { get; internal set; }
+    /// <summary>允许交还父会话（仅 Child 且 Owner==Human）</summary>
+    public bool CanReleaseToParent { get; internal set; }
+    /// <summary>允许中断当前轮并继续消费排队消息（有排队未读且正在执行）</summary>
+    public bool CanInterruptAndRun { get; internal set; }
+
     /// <summary>
     /// 按组内成员关系计算窗口能力标记：
-    /// Child（<see cref="SessionRelation.Child"/>）为只读子会话——禁改名/清空/出站绑定/自动批准切换，
-    /// 隐藏场景徽标与模型/ACP 选择，但可分离为独立会话并在有父时返回父会话。
+    /// Child（<see cref="SessionRelation.Child"/>）会话允许输入/提交（会话入站运行时已放开子会话介入），
+    /// 禁改名/清空/出站绑定/自动批准切换，隐藏场景徽标与模型/ACP 选择，但可分离为独立会话、返回父会话、
+    /// 推送产出给父会话。
     /// </summary>
     public void ApplyCapabilities(bool isChild, bool hasParent)
     {
         IsChild = isChild;
-        IsReadOnly = isChild;
+        IsReadOnly = false;
         AllowAutoApproveChange = !isChild;
         ShowScenarioBadge = !isChild;
         ShowSubAgentBadge = isChild;
@@ -91,6 +99,7 @@ public sealed class SessionWindowContext
         CanEditOutboundBinding = !isChild;
         CanClear = !isChild;
         CanCreateSession = !isChild;
+        CanPushToParent = isChild && hasParent;
     }
 
     public bool IsQueued { get; internal set; }
@@ -115,6 +124,13 @@ public sealed class SessionWindowContext
     /// <summary>有效场景名（session.Scenario ?? 进程级）。</summary>
     public string? EffectiveScenario { get; internal set; }
 
+    /// <summary>当前会话归属（Parent/Human/Self）。</summary>
+    public Seeing.Agent.Abstractions.Sessions.SessionOwner Owner { get; internal set; }
+    /// <summary>接管时间（Owner==Human 时非空）。</summary>
+    public DateTimeOffset? TakenOverAt { get; internal set; }
+    /// <summary>接管人（Owner==Human 时非空）。</summary>
+    public string? TakenOverBy { get; internal set; }
+
     // ---- 操作（窗口内实现） ----
     public Func<string, Task>? SetAgentAsync { get; internal set; }
     public Func<string, Task>? SetModelAsync { get; internal set; }
@@ -129,6 +145,12 @@ public sealed class SessionWindowContext
     public Func<string>? GetWorkspace { get; internal set; }
     /// <summary>保存出站绑定（ChannelId/UserId 已由 UI 规范化，窗口实现负责持久化）</summary>
     public Func<string?, string?, Task>? SaveOutboundAsync { get; internal set; }
+    /// <summary>中断当前轮并立即消费排队未读（"中断并执行"）。</summary>
+    public Func<Task>? InterruptAndRunAsync { get; internal set; }
+    /// <summary>推送子会话当前产出给父会话（默认谱系父会话）。</summary>
+    public Func<Task>? PushToParentAsync { get; internal set; }
+    /// <summary>交还父会话（Owner → Parent，不停止会话）。</summary>
+    public Func<Task>? ReleaseToParentAsync { get; internal set; }
 
     // ---- 事件 ----
     public event Action? StateChanged;

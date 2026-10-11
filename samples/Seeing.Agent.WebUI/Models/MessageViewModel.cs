@@ -120,4 +120,57 @@ public class MessageViewModel
     /// 是否包含文件（非图片）
     /// </summary>
     public bool HasFiles => Parts?.Any(p => p.IsFile) ?? false;
+
+    // ---- 入站来源（inbox.* 元数据投影；仅入站消息非空） ----
+
+    /// <summary>入站发送方类型：human | session | system（null = 非入站消息）。</summary>
+    public string? InboxSenderKind { get; set; }
+
+    /// <summary>入站发送方标识（来源会话 Id / 子系统标签）。</summary>
+    public string? InboxSenderId { get; set; }
+
+    /// <summary>入站发送方显示名。</summary>
+    public string? InboxSenderName { get; set; }
+
+    /// <summary>入站来源标签（task/cron/…）。</summary>
+    public string? InboxSource { get; set; }
+
+    /// <summary>入站种类（completed/failed/…）。</summary>
+    public string? InboxKind { get; set; }
+
+    /// <summary>入站呈现身份：user | system | assistant | none。</summary>
+    public string? InboxPresentation { get; set; }
+
+    /// <summary>是否为非人类来源的入站消息（用于来源徽章与视觉区分）。</summary>
+    public bool IsExternalInbox =>
+        !string.IsNullOrEmpty(InboxSenderKind)
+        && !string.Equals(InboxSenderKind, "human", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>来源徽章文本（非人类来源）；否则 null。</summary>
+    public string? InboxBadgeText => InboxSenderKind?.ToLowerInvariant() switch
+    {
+        "session" => "子会话",
+        "system" => "系统",
+        _ => null
+    };
+
+    /// <summary>来源徽章悬停提示（含 inbox.* 元数据）。</summary>
+    public string InboxTooltip
+    {
+        get
+        {
+            var lines = new List<string> { $"来源: {InboxSenderKind ?? "-"}" };
+            if (!string.IsNullOrEmpty(InboxSenderName))
+                lines.Add($"名称: {InboxSenderName}");
+            if (!string.IsNullOrEmpty(InboxSenderId))
+                lines.Add($"inbox.sender_id: {InboxSenderId}");
+            if (!string.IsNullOrEmpty(InboxPresentation))
+                lines.Add($"inbox.presentation: {InboxPresentation}");
+            if (!string.IsNullOrEmpty(InboxSource))
+                lines.Add($"inbox.source: {InboxSource}");
+            if (!string.IsNullOrEmpty(InboxKind))
+                lines.Add($"inbox.kind: {InboxKind}");
+            return string.Join("\n", lines);
+        }
+    }
 }

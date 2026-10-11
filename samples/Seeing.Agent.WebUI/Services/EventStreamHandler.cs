@@ -147,6 +147,9 @@ namespace Seeing.Agent.WebUI.Services
         /// <summary>最近一次执行错误（仅展示，不写入 Messages/LLM 历史）。</summary>
         public string? LastError { get; private set; }
 
+        /// <summary>最近一条收件箱通知（跨会话投递；仅 UI 展示，不落盘）。</summary>
+        public InboxNoticeViewModel? LastInboxNotice { get; private set; }
+
         /// <summary>
         /// UI 更新回调（携带触发事件；非事件流触发的刷新传 null）
         /// </summary>
@@ -276,6 +279,11 @@ namespace Seeing.Agent.WebUI.Services
 
                 case MessageEventType.TodoUpdate:
                     HandleTodoUpdate((TodoUpdateEvent)evt);
+                    break;
+
+                // 收件箱通知（跨会话消息投递）：投影为一条 UI 通知条，不落盘、不进 LLM 历史
+                case MessageEventType.InboxNotice:
+                    HandleInboxNotice((InboxNoticeEvent)evt);
                     break;
 
                 // ModeUpdate：会话写入（SelectedAcpMode）由服务端 ChatEventTracker 独占；
@@ -581,6 +589,24 @@ namespace Seeing.Agent.WebUI.Services
         {
             // 警告事件可以显示通知，但不需要更新状态（状态由 BudgetStatusEvent 更新）
             // OnStateChanged 会触发 UI 刷新
+        }
+
+        /// <summary>
+        /// 处理收件箱通知事件（跨会话消息投递到本会话）：投影为 UI 通知视图模型，
+        /// 供窗口渲染内联通知条；不落盘、不进 LLM 历史。
+        /// </summary>
+        private void HandleInboxNotice(InboxNoticeEvent evt)
+        {
+            LastInboxNotice = new InboxNoticeViewModel
+            {
+                SessionId = evt.SessionId,
+                SenderKind = evt.SenderKind,
+                SenderId = evt.SenderId,
+                SourceTag = evt.SourceTag,
+                Kind = evt.Kind,
+                Body = evt.Body,
+                Timestamp = evt.Timestamp
+            };
         }
 
         /// <summary>

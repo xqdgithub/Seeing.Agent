@@ -11,6 +11,17 @@
             @GetRoleDisplayName()
         </span>
         
+        @* 来源徽章（非人类来源入站消息：子会话/系统） *@
+        @if (!string.IsNullOrEmpty(SourceBadgeText))
+        {
+            <span class="inbox-source-badge @GetSourceBadgeClass()"
+                  title="@SourceBadgeTooltip"
+                  style="margin-left: var(--space-2); display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;">
+                <Icon Type="@GetSourceBadgeIcon()" Style="font-size: 11px;" />
+                @SourceBadgeText
+            </span>
+        }
+
         @* 额外标签（如 Loop 标签） *@
         @if (Tags != null)
         {
@@ -65,7 +76,6 @@
     /// </summary>
     [Parameter]
     public string Role { get; set; } = "assistant";
-
     /// <summary>
     /// 时间戳
     /// </summary>
@@ -113,6 +123,46 @@
     /// </summary>
     [Parameter]
     public string? CustomRoleName { get; set; }
+
+    /// <summary>
+    /// 来源徽章文本（非人类来源时非空；如"子会话"/"系统"）。
+    /// </summary>
+    [Parameter]
+    public string? SourceBadgeText { get; set; }
+
+    /// <summary>
+    /// 来源类型：session | system（决定视觉区分）。
+    /// </summary>
+    [Parameter]
+    public string? SourceKind { get; set; }
+
+    /// <summary>
+    /// 来源徽章悬停提示（含 inbox.* 元数据）。
+    /// </summary>
+    [Parameter]
+    public string? SourceBadgeTooltip { get; set; }
+
+    /// <summary>
+    /// 来源徽章图标。
+    /// </summary>
+    private string GetSourceBadgeIcon() =>
+        SourceKind?.ToLowerInvariant() switch
+        {
+            "session" => IconType.Outline.Robot,
+            "system" => IconType.Outline.Setting,
+            _ => IconType.Outline.Tag
+        };
+
+    /// <summary>
+    /// 来源徽章视觉类：子会话用蓝色系、系统用紫色系，与非入站消息区分。
+    /// </summary>
+    private string GetSourceBadgeClass() =>
+        SourceKind?.ToLowerInvariant() switch
+        {
+            "session" => "inbox-source-badge--session",
+            "system" => "inbox-source-badge--system",
+            _ => "inbox-source-badge--other"
+        };
 
     /// <summary>
     /// 获取角色图标
@@ -198,3 +248,25 @@
         public string? Icon { get; set; }
     }
 }
+
+<style>
+    .inbox-source-badge {
+        border: 1px solid transparent;
+        white-space: nowrap;
+    }
+    .inbox-source-badge--session {
+        background: var(--color-info-bg, #e6f4ff);
+        border-color: var(--color-info-border, #91caff);
+        color: var(--color-info, #0958d9);
+    }
+    .inbox-source-badge--system {
+        background: var(--color-purple-bg, #f9f0ff);
+        border-color: var(--color-purple-border, #d3adf7);
+        color: var(--color-purple, #531dab);
+    }
+    .inbox-source-badge--other {
+        background: var(--color-fill-secondary, #f5f5f5);
+        border-color: var(--color-border, #d9d9d9);
+        color: var(--color-text-secondary, #666);
+    }
+</style>

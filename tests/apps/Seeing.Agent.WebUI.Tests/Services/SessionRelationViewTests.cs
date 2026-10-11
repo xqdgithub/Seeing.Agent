@@ -36,10 +36,10 @@ public class SessionRelationViewTests
     }
 
     [Fact]
-    public void BadgeText_Child_ShouldReturnChildReadOnly()
+    public void BadgeText_Child_ShouldReturnChild()
     {
         SessionRelationView.BadgeText(SessionRelation.Child, isAnchor: false, label: null)
-            .Should().Be("子代理（只读）");
+            .Should().Be("子代理");
     }
 
     [Fact]
@@ -57,10 +57,10 @@ public class SessionRelationViewTests
     }
 
     [Fact]
-    public void BadgeText_ChildWithAnchor_ShouldReturnChildReadOnlyMissingMainLine()
+    public void BadgeText_ChildWithAnchor_ShouldReturnChildMissingMainLine()
     {
         SessionRelationView.BadgeText(SessionRelation.Child, isAnchor: true, label: null)
-            .Should().Be("子代理（只读）·主线缺失");
+            .Should().Be("子代理 · 主线缺失");
     }
 
     [Fact]

@@ -96,6 +96,9 @@ public class MessageRenderPipeline : IMessageRenderPipeline
             builder.AddAttribute(4, "Timestamp", message.Timestamp);
             builder.AddAttribute(5, "Status", DetermineStatus(message));
             builder.AddAttribute(6, "ShowStatusIndicator", !message.IsComplete);
+            builder.AddAttribute(7, "SourceBadgeText", message.InboxBadgeText);
+            builder.AddAttribute(8, "SourceKind", message.InboxSenderKind);
+            builder.AddAttribute(9, "SourceBadgeTooltip", message.IsExternalInbox ? message.InboxTooltip : null);
             builder.CloseComponent();
 
             // 渲染内容块

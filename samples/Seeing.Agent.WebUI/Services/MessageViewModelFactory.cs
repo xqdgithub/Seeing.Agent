@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Abstractions.Reminders;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
@@ -41,6 +42,18 @@ public static class MessageViewModelFactory
         viewModel.IsCompactionSummary = msg.IsSummary
             || msg.Metadata?.TryGetValue("is_compaction_summary", out _) == true;
         // IsCompacted 不在此设置：由时间线构建时按"摘要位置"推导（摘要之前 = 已压缩历史）
+
+        // 入站来源（inbox.*）：仅入站消息带此元数据，用于来源徽章与视觉区分
+        if (msg.Metadata is { } inboxMeta
+            && inboxMeta.TryGetValue(InboxMetadataKeys.SenderKind, out var senderKindObj))
+        {
+            viewModel.InboxSenderKind = senderKindObj?.ToString();
+            viewModel.InboxSenderId = GetMetaString(inboxMeta, InboxMetadataKeys.SenderId);
+            viewModel.InboxSenderName = GetMetaString(inboxMeta, InboxMetadataKeys.SenderName);
+            viewModel.InboxSource = GetMetaString(inboxMeta, InboxMetadataKeys.Source);
+            viewModel.InboxKind = GetMetaString(inboxMeta, InboxMetadataKeys.Kind);
+            viewModel.InboxPresentation = GetMetaString(inboxMeta, InboxMetadataKeys.Presentation);
+        }
 
         if (SystemReminderRenderer.TryParse(msg.Content ?? "", out var reminderParts))
         {
@@ -84,6 +97,22 @@ public static class MessageViewModelFactory
         }
 
         return viewModel;
+    }
+
+    /// <summary>
+    /// 读取元数据字符串值（兼容 string / JsonElement）。
+    /// </summary>
+    private static string? GetMetaString(IReadOnlyDictionary<string, object> metadata, string key)
+    {
+        if (!metadata.TryGetValue(key, out var raw) || raw is null)
+            return null;
+
+        return raw switch
+        {
+            string s => s,
+            System.Text.Json.JsonElement je when je.ValueKind == System.Text.Json.JsonValueKind.String => je.GetString(),
+            _ => raw.ToString()
+        };
     }
 
     /// <summary>

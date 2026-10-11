@@ -6,14 +6,15 @@ namespace Seeing.Agent.WebUI.Tests.Services;
 public class SessionWindowContextCapabilityTests
 {
     [Fact]
-    public void ApplyCapabilities_Child_ShouldBeReadOnlyDetachableAndRestricted()
+    public void ApplyCapabilities_Child_ShouldAllowInputButKeepRestrictedCapabilities()
     {
         var ctx = new SessionWindowContext();
 
         ctx.ApplyCapabilities(isChild: true, hasParent: true);
 
         ctx.IsChild.Should().BeTrue();
-        ctx.IsReadOnly.Should().BeTrue();
+        // 子会话现允许输入/提交（SessionInbox 接管机制）；其余能力仍受限
+        ctx.IsReadOnly.Should().BeFalse();
         ctx.AllowAutoApproveChange.Should().BeFalse();
         ctx.ShowScenarioBadge.Should().BeFalse();
         ctx.ShowSubAgentBadge.Should().BeTrue();

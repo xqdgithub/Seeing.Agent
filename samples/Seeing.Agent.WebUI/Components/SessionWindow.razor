@@ -4,6 +4,8 @@
 @using Seeing.Agent.WebUI.State
 @using Seeing.Agent.WebUI.Shared
 @using Seeing.Agent.Abstractions.Events
+@using Seeing.Agent.Abstractions.Reminders
+@using Seeing.Agent.Abstractions.Sessions
 @using Services = Seeing.Agent.WebUI.Services
 @using Core = Seeing.Agent.Core
 @using Seeing.Session.Core
@@ -114,52 +116,82 @@
                         <span>@_handler.LastError</span>
                     </div>
                 }
+                @if (_handler?.LastInboxNotice is { } inboxNotice)
+                {
+                    <div class="inbox-notice-banner" role="status" title="@GetInboxNoticeTooltip(inboxNotice)">
+                        <Icon Type="@GetInboxNoticeIcon(inboxNotice)" />
+                        <span class="inbox-notice-source">@inboxNotice.SenderDisplay</span>
+                        <span class="inbox-notice-body">@inboxNotice.DisplayText</span>
+                    </div>
+                }
 
-                <!-- 输入区域：仅在非空状态时显示；SubAgent 子会话只读 -->
+                <!-- 输入区域：仅在非空状态时显示；子会话已放开输入（会话入站运行时） -->
                 @if (!ShowEmptyState)
                 {
                     <div Class="session-input-container">
-                        @if (Context.IsReadOnly)
+                        @* 子会话操作条：推送当前产出给父会话 / 交还父会话（仅 Child） *@
+                        @if (Context.IsChild && (Context.CanPushToParent || Context.CanReleaseToParent))
                         {
-                            <div class="subagent-readonly-banner" style="padding: 12px 16px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                                <Icon Type="@IconType.Outline.Eye" />
-                                <span style="flex: 1;">当前为 Task 子会话（只读）。可返回主会话，或分叉为独立会话后再继续对话。</span>
-                                @if (!string.IsNullOrEmpty(_parentSessionId))
+                            <div class="subagent-actions-bar" style="padding: 8px 12px; margin-bottom: 8px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                <Icon Type="@IconType.Outline.Robot" />
+                                <span style="flex: 1; font-size: 13px; color: var(--color-text-secondary);">
+                                    @(Context.Owner == Seeing.Agent.Abstractions.Sessions.SessionOwner.Human
+                                        ? $"已被你接管{(Context.TakenOverAt.HasValue ? $"（{Context.TakenOverAt.Value.LocalDateTime:yyyy-MM-dd HH:mm}）" : "")}；完成时不会唤醒父会话。"
+                                        : "子会话可直接输入并接管；完成上报将唤醒父会话。")
+                                </span>
+                                @if (Context.CanPushToParent)
                                 {
-                                    <Button Type="@ButtonType.Default"
-                                            Size="@ButtonSize.Small"
-                                            Icon="@IconType.Outline.ArrowLeft"
-                                            OnClick="@ReturnToParentSession">
-                                        返回主会话
-                                    </Button>
+                                    <Tooltip Title="把当前产出作为通知推送给父会话（不生成新总结）">
+                                        <Button Type="@ButtonType.Default"
+                                                Size="@ButtonSize.Small"
+                                                Icon="@IconType.Outline.Send"
+                                                OnClick="@OnPushToParent">
+                                            推送产出
+                                        </Button>
+                                    </Tooltip>
                                 }
+                                @if (Context.CanReleaseToParent)
+                                {
+                                    <Tooltip Title="交还父会话（仅改归属，不停止会话）">
+                                        <Button Type="@ButtonType.Default"
+                                                Size="@ButtonSize.Small"
+                                                Icon="@IconType.Outline.Swap"
+                                                OnClick="@OnReleaseToParent">
+                                            交还父会话
+                                        </Button>
+                                    </Tooltip>
+                                }
+                            </div>
+                        }
+                        @* 中断并执行：有排队未读且正在执行时显示 *@
+                        @if (Context.CanInterruptAndRun)
+                        {
+                            <div class="interrupt-and-run-bar" style="padding: 8px 12px; margin-bottom: 8px; background: var(--color-warning-bg, #fff7e6); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                <Icon Type="@IconType.Outline.Thunderbolt" />
+                                <span style="flex: 1; font-size: 13px;">当前有 @Context.PendingInputCount 条排队消息，可中断当前轮并立即执行。</span>
                                 <Button Type="@ButtonType.Primary"
                                         Size="@ButtonSize.Small"
-                                        Icon="@IconType.Outline.Copy"
-                                        OnClick="@OnBranchSession">
-                                    分叉为独立会话
+                                        OnClick="@OnInterruptAndRun">
+                                    中断并执行
                                 </Button>
                             </div>
                         }
-                        else
-                        {
-                            <SlotHost SlotName="session_prompt"
-                                      SessionScenario="@SessionState.CurrentSession?.Scenario" />
-                            <PromptInput IsProcessing="@SessionState.HasActiveExecution"
-                                         Placeholder="@GetPlaceholderText()"
-                                         HelpText="@GetHelpText()"
-                                         AvailableCommands="@_availableCommands"
-                                         SessionState="SessionState"
-                                         CancellationTokenSource="@SessionState.CancellationTokenSource"
-                                         BudgetStatus="SessionState.BudgetStatus"
-                                         AutoApprove="@CurrentAutoApprove"
-                                         OnAutoApproveChanged="@OnAutoApproveChanged"
-                                         GlobalAutoApprove="@_globalAutoApprove"
-                                         AutoApproveDisabled="@(!Context.AllowAutoApproveChange)"
-                                         OnCompactRequested="OnCompactRequested"
-                                         OnSubmitCallback="@OnSubmitMessage"
-                                         OnCancelCallback="@OnCancelExecution" />
-                        }
+                        <SlotHost SlotName="session_prompt"
+                                  SessionScenario="@SessionState.CurrentSession?.Scenario" />
+                        <PromptInput IsProcessing="@SessionState.HasActiveExecution"
+                                     Placeholder="@GetPlaceholderText()"
+                                     HelpText="@GetHelpText()"
+                                     AvailableCommands="@_availableCommands"
+                                     SessionState="SessionState"
+                                     CancellationTokenSource="@SessionState.CancellationTokenSource"
+                                     BudgetStatus="SessionState.BudgetStatus"
+                                     AutoApprove="@CurrentAutoApprove"
+                                     OnAutoApproveChanged="@OnAutoApproveChanged"
+                                     GlobalAutoApprove="@_globalAutoApprove"
+                                     AutoApproveDisabled="@(!Context.AllowAutoApproveChange)"
+                                     OnCompactRequested="OnCompactRequested"
+                                     OnSubmitCallback="@OnSubmitMessage"
+                                     OnCancelCallback="@OnCancelExecution" />
                     </div>
                 }
             </div>
@@ -261,6 +293,20 @@
     .error-banner {
         background: var(--color-error-bg, #fff1f0);
         color: var(--color-error, #cf1322);
+    }
+    .inbox-notice-banner {
+        display: flex; gap: 8px; align-items: center;
+        padding: 8px 12px; margin: 8px 0; border-radius: 6px;
+        background: var(--color-info-bg, #e6f4ff);
+        border: 1px solid var(--color-info-border, #91caff);
+        color: var(--color-info, #0958d9);
+        font-size: 13px;
+    }
+    .inbox-notice-source {
+        font-weight: 600; flex-shrink: 0;
+    }
+    .inbox-notice-body {
+        flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     @@keyframes retry-spin { to { transform: rotate(360deg); } }
 </style>
@@ -391,6 +437,9 @@
         Context.ReturnToParent = ReturnToParentSession;
         Context.GetWorkspace = GetWorkspace;
         Context.SaveOutboundAsync = SaveOutboundAsync;
+        Context.InterruptAndRunAsync = OnInterruptAndRun;
+        Context.PushToParentAsync = OnPushToParent;
+        Context.ReleaseToParentAsync = OnReleaseToParent;
     }
 
     /// <summary>
@@ -1076,6 +1125,15 @@
         Context.EffectiveScenario = Services.SessionShellVisibility.ResolveEffectiveScenario(
             s?.Scenario,
             SeeingAgentOptions.CurrentValue.Scenario);
+
+        // 会话归属（接管态）：Owner==Human 时展示接管时间/接管人，并允许"交还父会话"
+        var control = s?.GetControl();
+        Context.Owner = control?.Owner ?? Seeing.Agent.Abstractions.Sessions.SessionOwner.Parent;
+        Context.TakenOverAt = control?.TakenOverAt;
+        Context.TakenOverBy = control?.TakenOverBy;
+        Context.CanReleaseToParent = Context.IsChild && Context.Owner == Seeing.Agent.Abstractions.Sessions.SessionOwner.Human;
+        Context.CanInterruptAndRun = SessionState.PendingInputCount > 0 && SessionState.HasActiveExecution;
+
         Context.NotifyStateChanged();
         ReportExecutionState();
         _ = InvokeAsync(StateHasChanged); // 渲染自触发：外层头部读新值
@@ -1271,12 +1329,6 @@
     /// </summary>
     private async Task OnSubmitMessage(PromptSubmitEventArgs args)
     {
-        if (Context.IsReadOnly)
-        {
-            ErrorMessage = "子会话为只读，请先分叉为独立会话后再发送消息";
-            return;
-        }
-
         // 验证输入
         if (string.IsNullOrWhiteSpace(args.Text) && args.Attachments.Count == 0)
         {
@@ -1443,6 +1495,118 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>
+    /// 中断并执行：停止当前轮但保留消费循环，立即消费排队未读（<see cref="ISessionRuntime.InterruptAsync"/>）。
+    /// 与"取消执行"（<see cref="OnCancelExecution"/> 走 StopAsync 终止循环）区别在于循环去向。
+    /// </summary>
+    private async Task OnInterruptAndRun()
+    {
+        var sessionId = SessionState.SessionId;
+        if (string.IsNullOrEmpty(sessionId))
+            return;
+
+        // 本地立即标记当前轮结束（保持与 Interrupt 语义一致），排队未读由循环继续消费
+        SessionState.CancelExecution();
+        SessionState.ExecutionStatus = ExecutionStatus.Pending;
+        SessionState.CurrentExecutionId = null;
+
+        try
+        {
+            await SessionRuntime.InterruptAsync(sessionId);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"中断失败: {ex.Message}");
+        }
+
+        SyncTimelineAssistantFromStream(isComplete: true);
+        CompleteCurrentTimelineTurn();
+        ReconcileTimelineFromSession();
+        SyncContextState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 推送子会话当前产出给父会话（默认谱系父会话）：
+    /// 取子会话最后 assistant 输出构造 system-reminder 信封 → <see cref="ISessionRuntime.DeliverAsync"/>。
+    /// 不跑新执行、不生成总结；<c>Sender=Session(child)</c>、<c>Presentation=System</c>、<c>Delivery=Wake</c>。
+    /// </summary>
+    private async Task OnPushToParent()
+    {
+        var parentId = _parentSessionId;
+        if (string.IsNullOrEmpty(parentId))
+        {
+            MessageService.Warning("未找到父会话，无法推送");
+            return;
+        }
+
+        var childId = SessionState.SessionId;
+        var body = BuildChildOutputReport(SessionState.CurrentSession);
+
+        try
+        {
+            var result = await SessionRuntime.DeliverAsync(new InboxMessage
+            {
+                TargetSessionId = parentId,
+                Sender = new InboxSender { Kind = InboxSenderKind.Session, Id = childId },
+                Body = body,
+                Delivery = InboxDelivery.Wake,
+                Presentation = InboxPresentation.System,
+                SourceTag = SystemReminder.Sources.Task,
+                Kind = SystemReminder.Kinds.Completed
+            });
+
+            if (result.Success)
+                MessageService.Success("已推送子会话产出给父会话");
+            else
+                MessageService.Error($"推送失败: {result.Error}");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"推送失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 交还父会话：仅改归属 <c>Owner → Parent</c>（不停止会话、不改执行态）。
+    /// 交还后子会话完成上报恢复为唤醒父会话。
+    /// </summary>
+    private async Task OnReleaseToParent()
+    {
+        var session = SessionState.CurrentSession;
+        if (session == null)
+            return;
+
+        session.SetOwner(SessionOwner.Parent, null);
+        session.UpdatedAt = DateTime.Now;
+        await SessionManager.SaveAsync(session.Id);
+
+        MessageService.Success("已交还父会话");
+        SyncContextState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 构造子会话产出上报正文：最后一条非摘要 assistant 输出（截断）+ 状态摘要。
+    /// 对齐 TaskTool 完成上报的 body 构造（system-reminder 信封由 DeliverAsync 统一包裹）。
+    /// </summary>
+    private static string BuildChildOutputReport(SessionData? session)
+    {
+        var sb = new System.Text.StringBuilder();
+        var sessionId = session?.Id ?? "";
+        sb.Append($"子会话产出推送\nsession_id: {sessionId}\n");
+
+        var lastAssistant = session?.Messages
+            .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase) && !m.IsSummary);
+
+        var output = lastAssistant?.Content?.Trim();
+        if (string.IsNullOrEmpty(output))
+            output = "子会话暂无输出内容。";
+
+        sb.Append($"\n<task_result>\n{output}\n</task_result>");
+        return sb.ToString();
+    }
+
     private async Task ReconcileIncompleteTasksAsync()
     {
         var sessionId = SessionState.CurrentSession?.Id;
@@ -1511,13 +1675,22 @@
     {
         if (SessionState.CurrentSession == null) return;
 
-        var title = Context.IsChild
+        var wasChild = Context.IsChild;
+        var title = wasChild
             ? $"{SessionState.Title} (独立会话)"
             : $"{SessionState.Title} (分支)";
 
         var branchedSession = await SessionDirectory.BranchAsync(SessionState.CurrentSession.Id, title);
 
-        MessageService.Success(Context.IsChild
+        // 分离为独立会话（detach）：归属置 Self（spec §8.1 流转表）
+        if (wasChild)
+        {
+            branchedSession.SetOwner(SessionOwner.Self, null);
+            branchedSession.UpdatedAt = DateTime.Now;
+            await SessionManager.SaveAsync(branchedSession.Id);
+        }
+
+        MessageService.Success(wasChild
             ? "已分叉为独立会话，可继续对话"
             : "会话已分支");
 
@@ -1604,6 +1777,28 @@
     private void OnClearError()
     {
         ErrorMessage = null;
+    }
+
+    /// <summary>收件箱通知图标（按发送方类型区分）。</summary>
+    private static string GetInboxNoticeIcon(Seeing.Agent.WebUI.Models.InboxNoticeViewModel notice) =>
+        notice.SenderKind.ToLowerInvariant() switch
+        {
+            "session" => IconType.Outline.Robot,
+            "system" => IconType.Outline.Setting,
+            _ => IconType.Outline.Bell
+        };
+
+    /// <summary>收件箱通知悬停提示（含来源元数据）。</summary>
+    private static string GetInboxNoticeTooltip(Seeing.Agent.WebUI.Models.InboxNoticeViewModel notice)
+    {
+        var parts = new List<string> { $"来源: {notice.SenderKind}" };
+        if (!string.IsNullOrEmpty(notice.SenderId))
+            parts.Add($"inbox.sender_id: {notice.SenderId}");
+        if (!string.IsNullOrEmpty(notice.SourceTag))
+            parts.Add($"inbox.source: {notice.SourceTag}");
+        if (!string.IsNullOrEmpty(notice.Kind))
+            parts.Add($"inbox.kind: {notice.Kind}");
+        return string.Join("\n", parts);
     }
 
     /// <summary>

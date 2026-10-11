@@ -31,7 +31,7 @@ public static class SessionRelationView
         if (isAnchor)
         {
             if (relation == SessionRelation.Child)
-                return "子代理（只读）·主线缺失";
+                return "子代理 · 主线缺失";
             if (relation == SessionRelation.HandoffSuccessor)
                 return "主线 · 交接后继";
             return "主线";
@@ -44,7 +44,7 @@ public static class SessionRelationView
                 : $"已交接 → {successorTitle}",
             SessionRelation.HandoffSuccessor => "交接后继",
             SessionRelation.Fork => (label?.StartsWith(TrimBackupPrefix, StringComparison.Ordinal) ?? false) ? "备份" : "分叉",
-            SessionRelation.Child => "子代理（只读）",
+            SessionRelation.Child => "子代理",
             _ => "会话"
         };
     }
