@@ -52,15 +52,30 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
             // reminder（用户输入）→ System 信封，落盘不唤醒（spec §9）
             if (!string.IsNullOrEmpty(request.UserInput))
             {
+                // 既有调用方（AgentJob/HeartbeatJob）已包裹为 system-reminder 信封；此处解包后
+                // 由运行时以 Presentation=System 统一重渲染（避免双重包裹），并沿用原信封的
+                // source/kind（cron / heartbeat），保持既有语义。
+                var source = SystemReminder.Sources.Job;
+                var kind = SystemReminder.Kinds.Cron;
+                var body = request.UserInput;
+                if (_reminders.TryParse(request.UserInput!, out var parts))
+                {
+                    body = parts.Task;
+                    if (!string.IsNullOrEmpty(parts.Source))
+                        source = parts.Source;
+                    if (!string.IsNullOrEmpty(parts.Kind))
+                        kind = parts.Kind;
+                }
+
                 await _runtime.DeliverAsync(new InboxMessage
                 {
                     TargetSessionId = request.SessionId,
                     Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "gateway" },
-                    Body = request.UserInput,
+                    Body = body,
                     Delivery = InboxDelivery.Inject,
                     Presentation = InboxPresentation.System,
-                    SourceTag = SystemReminder.Sources.Job,
-                    Kind = SystemReminder.Kinds.Cron
+                    SourceTag = source,
+                    Kind = kind
                 }, ct).ConfigureAwait(false);
             }
 

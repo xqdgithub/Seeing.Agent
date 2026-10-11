@@ -21,6 +21,21 @@ public sealed record InboxMessage
     public string? IdempotencyKey { get; init; }
     public string? AgentId { get; init; }
     public string? ModelId { get; init; }
+
+    /// <summary>并发通道 ID（Gateway 用于队列隔离/出站回填）。</summary>
+    public string? ChannelId { get; init; }
+
+    /// <summary>用户 ID（Gateway 用于审计/出站回填）。</summary>
+    public string? UserId { get; init; }
+
+    /// <summary>思考强度档位 key（可选，覆盖会话 SelectedThinkingEffort）。</summary>
+    public string? ThinkingEffort { get; init; }
+
+    /// <summary>ACP Mode ID（可选）。</summary>
+    public string? ModeId { get; init; }
+
+    /// <summary>工作目录（可选，覆盖会话默认）。</summary>
+    public string? WorkingDirectory { get; init; }
 }
 
 public sealed record InboxResult

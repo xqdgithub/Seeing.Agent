@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
@@ -75,16 +76,11 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         using var scope = _services.CreateScope();
         var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
 
-        // 1. 解析目标会话（不存在 → Failed）
-        SessionData session;
-        try
-        {
-            session = await sessionManager.GetOrLoadAsync(sessionId, ct).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException)
-        {
-            return InboxResult.Failed($"Session not found: {sessionId}");
-        }
+        // 1. 确保目标会话存在（缓存 → 存储 → 自动创建，对齐旧 SubmitAsync 的 EnsureSessionAsync 语义）
+        var session = await sessionManager.EnsureSessionAsync(
+            sessionId,
+            scenario: scope.ServiceProvider.GetService<IDefaultWorkModeProvider>()?.GetDefaultScenario())
+            .ConfigureAwait(false);
 
         // 2. 鉴权：跨组鉴权在 Task 3.3 的工具层（session_inbox_send 走 tool.execute 门）实现；
         //    运行时入口暂直接放行（与 spec §11「缺失授权器则放行」一致）。
@@ -293,7 +289,12 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         record.Options = new ChatOptions
                         {
                             AgentId = LastNonEmptyMeta(pending, InboxMetadataKeys.AgentId),
-                            ModelId = LastNonEmptyMeta(pending, InboxMetadataKeys.ModelId)
+                            ModelId = LastNonEmptyMeta(pending, InboxMetadataKeys.ModelId),
+                            ChannelId = LastNonEmptyMeta(pending, InboxMetadataKeys.ChannelId),
+                            UserId = LastNonEmptyMeta(pending, InboxMetadataKeys.UserId),
+                            ThinkingEffort = LastNonEmptyMeta(pending, InboxMetadataKeys.ThinkingEffort),
+                            ModeId = LastNonEmptyMeta(pending, InboxMetadataKeys.ModeId),
+                            WorkingDirectory = LastNonEmptyMeta(pending, InboxMetadataKeys.WorkingDirectory)
                         };
 
                         await _runner.RunOnceAsync(record, batch, record.Cts.Token).ConfigureAwait(false);
@@ -426,15 +427,52 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             metadata[InboxMetadataKeys.AgentId] = message.AgentId!;
         if (!string.IsNullOrEmpty(message.ModelId))
             metadata[InboxMetadataKeys.ModelId] = message.ModelId!;
+        if (!string.IsNullOrEmpty(message.ChannelId))
+            metadata[InboxMetadataKeys.ChannelId] = message.ChannelId!;
+        if (!string.IsNullOrEmpty(message.UserId))
+            metadata[InboxMetadataKeys.UserId] = message.UserId!;
+        if (!string.IsNullOrEmpty(message.ThinkingEffort))
+            metadata[InboxMetadataKeys.ThinkingEffort] = message.ThinkingEffort!;
+        if (!string.IsNullOrEmpty(message.ModeId))
+            metadata[InboxMetadataKeys.ModeId] = message.ModeId!;
+        if (!string.IsNullOrEmpty(message.WorkingDirectory))
+            metadata[InboxMetadataKeys.WorkingDirectory] = message.WorkingDirectory!;
 
         return new SessionMessage
         {
             Id = Guid.NewGuid().ToString("N"),
             Role = role,
             Content = content,
+            Parts = BuildContentParts(content, message.Attachments),
             CreatedAt = DateTime.UtcNow,
             Metadata = metadata.ToImmutable()
         };
+    }
+
+    /// <summary>
+    /// 构造消息内容段：有附件时转成多模态 Parts（文本 + image/file），否则返回 null 走纯文本。
+    /// 对齐旧 <c>ExecutionRunner.BuildUserMessage</c> 的附件映射。
+    /// </summary>
+    private static ImmutableList<SessionContentPart>? BuildContentParts(
+        string content,
+        IReadOnlyList<ChatAttachment>? attachments)
+    {
+        if (attachments is not { Count: > 0 })
+            return null;
+
+        var parts = new List<SessionContentPart>();
+        if (!string.IsNullOrWhiteSpace(content))
+            parts.Add(SessionContentPart.CreateText(content));
+
+        foreach (var att in attachments)
+        {
+            if (att.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                parts.Add(SessionContentPart.CreateImageFromBase64(att.Base64Data, att.MimeType));
+            else
+                parts.Add(SessionContentPart.CreateFileFromBase64(att.Base64Data, att.MimeType, att.FileName));
+        }
+
+        return parts.ToImmutableList();
     }
 
     private void PublishNotice(InboxMessage message)

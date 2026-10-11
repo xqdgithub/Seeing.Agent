@@ -68,7 +68,11 @@ public sealed class GatewayOrchestratorV2
                     Attachments = input.Attachments,
                     SourceTag = request.ChannelId,
                     AgentId = request.AgentId,
-                    ModelId = request.ModelId
+                    ModelId = request.ModelId,
+                    ChannelId = request.ChannelId,
+                    UserId = request.UserId,
+                    ThinkingEffort = request.ThinkingEffort,
+                    ModeId = request.ModeId
                 },
                 cancellationToken).ConfigureAwait(false);
 
