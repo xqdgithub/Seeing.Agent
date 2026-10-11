@@ -17,12 +17,15 @@ public interface IInstructionManager
 
     /// <summary>
     /// 对比会话已记录的指纹，仅在指令文件变化时向会话注入更新内容。
+    /// <para><paramref name="insertBeforeMessageId"/> 非空且命中时，指令消息插入到该消息之前
+    /// （恢复「指令在用户命令之前」的历史顺序）；未命中则追加到末尾。</para>
     /// </summary>
     Task<InstructionInjectResult> InjectIfNeededAsync(
         SessionData session,
         string cwd,
         string workspaceRoot,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? insertBeforeMessageId = null);
 
     /// <summary>
     /// 读取会话当前的指令文件指纹快照。

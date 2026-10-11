@@ -39,7 +39,8 @@ namespace Seeing.Agent.Hosting.Execution;
 internal sealed record InboxBatch(
     IReadOnlyList<SessionMessage> Inputs,
     bool HasUserInput,
-    string? FirstUserText);
+    string? FirstUserText,
+    string? FirstUserMessageId = null);
 
 /// <summary>跑一轮执行的端口（供 SessionRuntime 注入与测试 mock）。</summary>
 internal interface IExecutionRunner
@@ -140,7 +141,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
                             session,
                             cwd,
                             workspaceProvider.GetProjectRoot(),
-                            CancellationToken.None);
+                            CancellationToken.None,
+                            batch.FirstUserMessageId);
                     }
                     catch (Exception ex)
                     {
@@ -945,21 +947,23 @@ internal sealed class ExecutionRunner : IExecutionRunner
         }
 
         // 根据 CommandResult 决定是否继续
-        if (!result.ShouldContinue || result.ShouldExit)
+        // 命令结果事件总是发布：短路命令据此终止本轮；继续类命令（如 /skill 展开、
+        // Markdown 模板）借此携带 NeedsRefresh，让 UI 刷新被命令改写的消息内容
+        // （否则内容已改并落盘但界面不刷新，需手动刷新页面才可见）。
+        yield return new CommandResultEvent
         {
-            yield return new CommandResultEvent
-            {
-                SessionId = sessionId,
-                CommandName = cmdName,
-                Success = result.Success,
-                Message = result.Success ? result.Message : result.ErrorMessage,
-                NavigationTarget = result.GetNavigationTarget(),
-                NeedsRefresh = result.NeedsRefresh,
-                // 短路标志：宿主据此跳过 Agent 执行，不再把命令文本发给大模型
-                ShouldContinue = result.ShouldContinue && !result.ShouldExit
-            };
+            SessionId = sessionId,
+            CommandName = cmdName,
+            Success = result.Success,
+            Message = result.Success ? result.Message : result.ErrorMessage,
+            NavigationTarget = result.GetNavigationTarget(),
+            NeedsRefresh = result.NeedsRefresh,
+            // 短路标志：宿主据此跳过 Agent 执行，不再把命令文本发给大模型
+            ShouldContinue = result.ShouldContinue && !result.ShouldExit
+        };
+
+        if (!result.ShouldContinue || result.ShouldExit)
             yield break;
-        }
 
         // 继续执行 Agent
         yield return null;

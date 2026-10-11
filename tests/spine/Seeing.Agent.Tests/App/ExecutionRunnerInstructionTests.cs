@@ -50,7 +50,7 @@ public class ExecutionRunnerInstructionTests
         session.Messages.Select(message => message.Content)
             .Should().Contain("injected instructions");
         instructionManager.Verify(manager => manager.InjectIfNeededAsync(
-            session, "resolved-cwd", "workspace-root", It.IsAny<CancellationToken>()), Times.Once);
+            session, "resolved-cwd", "workspace-root", It.IsAny<CancellationToken>(), It.IsAny<string?>()), Times.Once);
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class ExecutionRunnerInstructionTests
 
         session.Messages.Should().NotContain(message => message.Content == "injected instructions");
         instructionManager.Verify(manager => manager.InjectIfNeededAsync(
-            It.IsAny<SessionData>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<SessionData>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()), Times.Never);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class ExecutionRunnerInstructionTests
         var instructionManager = new Mock<IInstructionManager>();
         instructionManager
             .Setup(manager => manager.InjectIfNeededAsync(
-                session, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                session, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ThrowsAsync(new InvalidOperationException("injection failed"));
         var runner = CreateRunner(session, instructionManager.Object, "workspace-root");
 
@@ -139,8 +139,8 @@ public class ExecutionRunnerInstructionTests
         var instructionManager = new Mock<IInstructionManager>();
         instructionManager
             .Setup(manager => manager.InjectIfNeededAsync(
-                expectedSession, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<SessionData, string, string, CancellationToken>((session, _, _, _) =>
+                expectedSession, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Callback<SessionData, string, string, CancellationToken, string?>((session, _, _, _, _) =>
                 session.AddMessage(SessionMessage.UserMessage("injected instructions")))
             .ReturnsAsync(new InstructionInjectResult { Injected = true });
         return instructionManager;

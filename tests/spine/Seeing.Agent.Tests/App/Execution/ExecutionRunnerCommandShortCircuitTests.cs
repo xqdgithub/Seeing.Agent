@@ -128,6 +128,11 @@ public class ExecutionRunnerCommandShortCircuitTests
             It.IsAny<IReadOnlyList<ChatMessage>>(),
             It.IsAny<AgentContext>(),
             It.IsAny<CancellationToken>()), Times.Once, "shouldContinue=true 的命令应继续执行 Agent");
+
+        // 继续类命令也必须发布 CommandResultEvent：否则 NeedsRefresh 无法驱动 UI 刷新
+        // （如 /skill 展开改写消息后，界面仍显示命令原文，需手动刷新才更新）。
+        var commandEvent = published.Select(x => x.Event).OfType<CommandResultEvent>().Single();
+        commandEvent.ShouldContinue.Should().BeTrue();
     }
 
     [Fact]
@@ -171,6 +176,51 @@ public class ExecutionRunnerCommandShortCircuitTests
         session.Messages.Should().NotContain(m => m.Content == "/compact");
         session.Messages.Should().NotContain(m =>
             m.Metadata != null && m.Metadata.ContainsKey("is_command"));
+    }
+
+    [Fact]
+    public async Task RunOnce_WhenCommandDoesNotDeclareContinue_ShouldShortCircuitByDefault()
+    {
+        // P3-1 回归：控制/展示类命令未显式声明 shouldContinue 时默认短路，不再执行 Agent。
+        var session = SessionData.Create();
+        session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("/tools"));
+
+        var command = new Mock<ICommand>();
+        command.Setup(c => c.Metadata)
+            .Returns(CommandMetadata.Simple("tools", "列出工具", category: CommandCategory.Tools));
+        command.Setup(c => c.ExecuteAsync(It.IsAny<CommandContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CommandResult.Ok("tool list"));
+
+        var commandRegistry = new Mock<ICommandRegistry>();
+        commandRegistry.Setup(r => r.GetCommand("tools", AgentRuntime.Native))
+            .Returns(command.Object);
+
+        var executor = new Mock<IAgentExecutor>();
+        executor.Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(EmptyStream());
+
+        var publisher = new Mock<IExecutionEventPublisher>();
+        publisher.Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()));
+        publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
+        publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
+
+        var runner = CreateRunner(
+            session, publisher.Object, commandRegistry.Object, executor.Object);
+
+        await runner.RunOnceAsync(
+            NewRecord(session.Id, "/tools"), NewBatch(), TestContext.Current.CancellationToken);
+
+        command.Verify(c => c.ExecuteAsync(It.IsAny<CommandContext>(), It.IsAny<CancellationToken>()), Times.Once);
+        executor.Verify(e => e.ExecuteAsync(
+            It.IsAny<AgentDefinition>(),
+            It.IsAny<IReadOnlyList<ChatMessage>>(),
+            It.IsAny<AgentContext>(),
+            It.IsAny<CancellationToken>()), Times.Never, "未声明继续的命令默认短路，不得执行 Agent");
     }
 
     [Fact]

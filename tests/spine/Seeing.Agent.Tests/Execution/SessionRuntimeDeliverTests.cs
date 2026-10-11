@@ -29,6 +29,7 @@ public class SessionRuntimeDeliverTests
         public int MaxActive => Volatile.Read(ref _maxActive);
 
         public readonly List<InboxBatch> Batches = new();
+        public readonly List<ExecutionRecord> Records = new();
         public Func<Task>? OnRunAsync { get; set; }
 
         public async Task<ExecutionRecord> RunOnceAsync(
@@ -38,7 +39,10 @@ public class SessionRuntimeDeliverTests
             var active = Interlocked.Increment(ref _active);
             UpdateMax(active);
             lock (Batches)
+            {
                 Batches.Add(batch);
+                Records.Add(record);
+            }
 
             try
             {
@@ -235,6 +239,46 @@ public class SessionRuntimeDeliverTests
         // 落盘后加载模拟：不进 LLM 历史
         var history = ExecutionRunner.BuildHistoryFromSession(session);
         history.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Wake_WithSlashCommand_ShouldSetRecordInputTextToCommand()
+    {
+        // 复现「斜杠命令被当普通文本」问题：运行时须把本批 user 文本回填到 record.Input.Text，
+        // 否则 ExecutionRunner 的 IsCommandInput(record.Input?.Text) 判定失败 → 命令透传给 LLM。
+        var runtime = CreateRuntime(out var sessionManager, out var runner, out _);
+        await sessionManager.EnsureSessionAsync("s1");
+
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Wake, body: "/compact"));
+
+        await WaitUntilAsync(() => runner.RunCount >= 1);
+        await Task.Delay(100);
+
+        runner.Records.Should().NotBeEmpty();
+        runner.Records[0].Input.Should().NotBeNull();
+        runner.Records[0].Input!.Text.Should().Be("/compact");
+    }
+
+    [Fact]
+    public async Task Wake_MergedBatch_ShouldSetRecordInputTextToLastUserText()
+    {
+        // P1-2 回归：忙碌合并批（hello + /compact）须以「末条 user 文本」作为命令判定输入，
+        // 否则命令被当普通对话文本透传 LLM。批内普通消息仍保留在历史。
+        var runtime = CreateRuntime(out var sessionManager, out var runner, out _);
+        await sessionManager.EnsureSessionAsync("s1");
+
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject, body: "hello"));
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Wake, body: "/compact"));
+
+        await WaitUntilAsync(() => runner.RunCount >= 1);
+        await Task.Delay(100);
+
+        runner.Records.Should().NotBeEmpty();
+        runner.Records[0].Input!.Text.Should().Be("/compact", "命令判定须取本批末条 user 文本");
+
+        // 批内首条普通消息保留在历史（不丢内容）
+        var session = sessionManager.Get("s1")!;
+        session.Messages.Should().Contain(m => m.Content == "hello");
     }
 
     private sealed class RecordingPublisher : IExecutionEventPublisher

@@ -101,7 +101,9 @@ public sealed class TuiSessionController
             Presentation = InboxPresentation.User,
             Attachments = input.Attachments,
             AgentId = NullIfEmpty(current.AgentId),
-            ModelId = NullIfEmpty(current.ModelId)
+            ModelId = NullIfEmpty(current.ModelId),
+            ModeId = NullIfEmpty(current.AcpMode),
+            ThinkingEffort = NullIfEmpty(current.ThinkingEffort)
         }, ct);
 
         if (result.Success)

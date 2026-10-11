@@ -39,7 +39,8 @@ public sealed class InstructionManager : IInstructionManager
         SessionData session,
         string cwd,
         string workspaceRoot,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? insertBeforeMessageId = null)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -63,8 +64,16 @@ public sealed class InstructionManager : IInstructionManager
                 ? ProjectInstructions.Reasons.CwdChange
                 : ProjectInstructions.Reasons.ContentChange;
 
-        session.AddMessage(
-            ProjectInstructionsRenderer.CreateUserMessage(normalizedCwd, reason, changed));
+        var message = ProjectInstructionsRenderer.CreateUserMessage(normalizedCwd, reason, changed);
+
+        // 插入到本批用户命令之前，恢复「指令在用户命令之前」的历史顺序；
+        // 锚点缺失（纯系统唤醒等无 user 输入批次）时回退追加。
+        var anchorIndex = session.IndexOfMessage(insertBeforeMessageId);
+        if (anchorIndex >= 0)
+            session.InsertMessage(anchorIndex, message);
+        else
+            session.AddMessage(message);
+
         InstructionFingerprintStore.MergeAndSave(session, normalizedCwd, changed);
 
         _logger.LogDebug(

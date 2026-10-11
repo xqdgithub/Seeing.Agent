@@ -361,7 +361,7 @@ namespace Seeing.Agent.Core.Commands.Discovery
                 try
                 {
                     var output = RenderTemplate(_template, context.Arguments);
-                    return Task.FromResult(CommandResult.Ok(output));
+                    return Task.FromResult(CommandResult.Ok(output, shouldContinue: true));
                 }
                 catch (Exception ex)
                 {

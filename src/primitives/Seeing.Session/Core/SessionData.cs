@@ -288,6 +288,18 @@ namespace Seeing.Session.Core
         }
 
         /// <summary>
+        /// 按消息 Id 查找索引；未命中返回 -1。
+        /// </summary>
+        public int IndexOfMessage(string? messageId)
+        {
+            if (string.IsNullOrEmpty(messageId))
+                return -1;
+
+            lock (_messagesGate)
+                return _messages.FindIndex(m => string.Equals(m.Id, messageId, StringComparison.Ordinal));
+        }
+
+        /// <summary>
         /// 按引用移除指定消息；返回是否移除。
         /// </summary>
         public bool RemoveMessage(SessionMessage message)

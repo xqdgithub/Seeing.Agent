@@ -94,6 +94,28 @@ public sealed class InstructionManagerTests : IDisposable
         manager.GetFingerprints(session).Cwd.Should().Be(Path.GetFullPath(nested));
     }
 
+    [Fact]
+    public async Task InjectIfNeededAsync_WithAnchor_InsertsBeforeUserCommandMessage()
+    {
+        // P1-1 回归：新架构下用户命令先落盘、指令后注入。锚点命中时指令须插入到用户命令之前，
+        // 恢复「指令在用户命令之前」顺序，使「末条=用户命令」重新成立。
+        var ct = TestContext.Current.CancellationToken;
+        Directory.CreateDirectory(_root);
+        await File.WriteAllTextAsync(Path.Combine(_root, "AGENTS.md"), "root instructions", ct);
+        var session = new SessionData();
+        var userCommand = SessionMessage.UserMessage("/skill demo");
+        session.AddMessage(userCommand);
+        var manager = CreateManager();
+
+        var result = await manager.InjectIfNeededAsync(
+            session, _root, _root, ct, insertBeforeMessageId: userCommand.Id);
+
+        result.Injected.Should().BeTrue();
+        session.Messages.Should().HaveCount(2);
+        session.Messages[0].Metadata!.Should().ContainKey(ProjectInstructions.MetadataKeys.ProjectInstructions);
+        session.Messages[1].Content.Should().Be("/skill demo", "用户命令应保持在指令之后（末条）");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

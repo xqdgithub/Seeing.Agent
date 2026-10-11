@@ -160,11 +160,11 @@ namespace Seeing.Agent.Abstractions.Commands
         public bool NeedsRefresh { get; init; } = false;
 
         /// <summary>
-        /// 是否继续执行 Agent（默认 true）
-        /// <para>false = 命令已完全处理，不再执行 Agent</para>
-        /// <para>true = 继续执行 Agent（透传或 Skill 展开）</para>
+        /// 是否继续执行 Agent（默认 false）
+        /// <para>false = 命令已完全处理，不再执行 Agent（控制/展示类命令的默认语义）</para>
+        /// <para>true = 继续执行 Agent（仅需透传或展开内容的命令显式声明，如 Skill 展开、Markdown 模板）</para>
         /// </summary>
-        public bool ShouldContinue { get; init; } = true;
+        public bool ShouldContinue { get; init; } = false;
 
         /// <summary>
         /// 命令执行后是否移除命令消息（用户输入的命令文本），默认 true。
@@ -177,8 +177,8 @@ namespace Seeing.Agent.Abstractions.Commands
         /// <summary>附加数据</summary>
         public Dictionary<string, object>? Metadata { get; init; }
 
-        /// <summary>创建成功结果</summary>
-        public static CommandResult Ok(string? message = null, bool needsRefresh = false, bool shouldContinue = true)
+        /// <summary>创建成功结果（默认不继续执行 Agent）</summary>
+        public static CommandResult Ok(string? message = null, bool needsRefresh = false, bool shouldContinue = false)
             => new() { Success = true, Message = message, NeedsRefresh = needsRefresh, ShouldContinue = shouldContinue };
 
         /// <summary>创建退出结果</summary>

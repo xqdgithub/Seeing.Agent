@@ -263,22 +263,22 @@ public class CommandRegistryRuntimeTests
     }
 
     [Fact]
-    public void CommandResult_ShouldContinue_ShouldDefaultToTrue()
+    public void CommandResult_ShouldContinue_ShouldDefaultToFalse()
     {
-        // Act
+        // 默认短路：未显式声明继续的命令（控制/展示类）不再执行 Agent
         var result = CommandResult.Ok("test");
 
         // Assert
-        result.ShouldContinue.Should().BeTrue();
+        result.ShouldContinue.Should().BeFalse();
     }
 
     [Fact]
-    public void CommandResult_ShouldContinue_CanBeSetToFalse()
+    public void CommandResult_ShouldContinue_CanBeSetToTrue()
     {
         // Act
-        var result = CommandResult.Ok("test", shouldContinue: false);
+        var result = CommandResult.Ok("test", shouldContinue: true);
 
         // Assert
-        result.ShouldContinue.Should().BeFalse();
+        result.ShouldContinue.Should().BeTrue();
     }
 }

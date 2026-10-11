@@ -141,7 +141,7 @@ public class ExecutionRunnerCompactionTests
 
         var instructionManager = new Mock<IInstructionManager>();
         instructionManager.Setup(m => m.InjectIfNeededAsync(
-                It.IsAny<SessionData>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<SessionData>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(new InstructionInjectResult { Injected = false });
 
         var modelManager = new Mock<IModelManager>();

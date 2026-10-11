@@ -268,28 +268,22 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         state.PendingInputCount = 0;
                         Touch(sessionId);
 
-                        var hasUserInput = pending.Any(m =>
-                            string.Equals(GetMetaString(m.Metadata, InboxMetadataKeys.Presentation),
-                                "user", StringComparison.OrdinalIgnoreCase));
-                        var firstUserText = pending
-                            .FirstOrDefault(m => string.Equals(
+                        var userMessages = pending
+                            .Where(m => string.Equals(
                                 GetMetaString(m.Metadata, InboxMetadataKeys.Presentation),
                                 "user", StringComparison.OrdinalIgnoreCase))
-                            ?.Content;
-                        var batch = new InboxBatch(pending, hasUserInput, firstUserText);
+                            .ToList();
+                        var hasUserInput = userMessages.Count > 0;
+                        var firstUserMessage = userMessages.FirstOrDefault();
+                        var lastUserMessage = userMessages.LastOrDefault();
+                        var firstUserText = firstUserMessage?.Content;
 
-                        // 回填命令/标题所需输入与模型/Agent 选择：取本批最后一条非空元数据。
-                        // FirstUserText 为空但本批含 user 输入时，回退到本批最后一条 user 文本。
-                        var inputText = firstUserText;
-                        if (string.IsNullOrEmpty(inputText) && hasUserInput)
-                        {
-                            inputText = pending
-                                .LastOrDefault(m => string.Equals(
-                                    GetMetaString(m.Metadata, InboxMetadataKeys.Presentation),
-                                    "user", StringComparison.OrdinalIgnoreCase))
-                                ?.Content;
-                        }
-                        record.Input = new ChatInput { Text = inputText ?? string.Empty };
+                        // 指令注入锚点：本批首条 user 消息 Id（指令插入到用户命令之前）。
+                        var batch = new InboxBatch(pending, hasUserInput, firstUserText, firstUserMessage?.Id);
+
+                        // 命令判定与标题统一取本批「最后一条 user 文本」：
+                        // 合并消费下命令通常是最后一条（如 hello + /compact），取末条才能识别命令。
+                        record.Input = new ChatInput { Text = lastUserMessage?.Content ?? string.Empty };
                         record.Options = new ChatOptions
                         {
                             AgentId = LastNonEmptyMeta(pending, InboxMetadataKeys.AgentId),

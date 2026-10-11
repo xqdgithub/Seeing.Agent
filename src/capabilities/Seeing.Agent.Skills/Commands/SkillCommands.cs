@@ -70,21 +70,19 @@ public sealed class SkillLoadCommand : ICommand
         var expanded = SkillTemplateProcessor.Process(content, skillArgs, skillName);
         var session = await _sessionManager.GetOrLoadAsync(context.SessionId, cancellationToken);
 
-        // 假成功修复：仅当末条为 user 消息时才能注入技能内容；否则明确报错而非静默丢弃
-        if (session.Messages.Count == 0 || session.Messages[^1].Role != MessageRole.User)
+        // 定位命令消息：按命令原文匹配对应 user 消息。
+        // 新架构下用户消息先由 DeliverAsync 落盘、项目指令随后注入，命令消息不再是末条，
+        // 盲取 [^1] 会误改指令消息并残留命令文本（透传 LLM）。
+        if (!SkillCommandMessageLocator.HasMatch(session, context.Input))
         {
             return CommandResult.Fail(
-                "/skill 需在用户消息之后调用：当前会话末条消息不是用户消息，无法注入技能内容");
+                "/skill 需在用户消息之后调用：当前会话未找到对应的用户命令消息，无法注入技能内容");
         }
 
         // 走 SessionManager API 持久化，避免只改内存导致刷新后丢失
         await _sessionManager.UpdateSessionAsync(
             context.SessionId,
-            s =>
-            {
-                if (s.Messages.Count > 0 && s.Messages[^1].Role == MessageRole.User)
-                    s.Messages[^1].Content = expanded;
-            },
+            s => SkillCommandMessageLocator.Replace(s, context.Input, expanded),
             cancellationToken);
 
         return new CommandResult
@@ -92,6 +90,7 @@ public sealed class SkillLoadCommand : ICommand
             Success = true,
             Message = $"Loaded skill: {skillName}",
             NeedsRefresh = true,
+            ShouldContinue = true,
             RemoveCommandMessage = false
         };
     }
@@ -297,6 +296,47 @@ public static class SkillTemplateProcessor
 }
 
 /// <summary>
+/// 定位 skill 命令对应的用户消息：按命令原文（<see cref="CommandContext.Input"/>）匹配最后一条 user 消息。
+/// <para>新架构下用户消息先由 <c>SessionRuntime.DeliverAsync</c> 落盘、项目指令随后由
+/// <c>ExecutionRunner</c> 注入，命令消息不再是会话末条。盲取末条会误改指令消息并残留命令文本
+/// （命令文本原样透传给 LLM）。</para>
+/// </summary>
+internal static class SkillCommandMessageLocator
+{
+    /// <summary>是否存在与命令原文匹配的 user 消息。</summary>
+    public static bool HasMatch(SessionData session, string? input)
+        => FindMessage(session, input) is not null;
+
+    /// <summary>将匹配的命令 user 消息内容替换为 <paramref name="content"/>。</summary>
+    public static void Replace(SessionData session, string? input, string content)
+    {
+        var message = FindMessage(session, input);
+        if (message is not null)
+            message.Content = content;
+    }
+
+    /// <summary>按内容匹配最后一条 user 消息（命中当前命令）；未命中返回 null。</summary>
+    private static SessionMessage? FindMessage(SessionData session, string? input)
+    {
+        if (session is null || string.IsNullOrEmpty(input))
+            return null;
+
+        var messages = session.Messages;
+        for (var i = messages.Count - 1; i >= 0; i--)
+        {
+            var message = messages[i];
+            if (string.Equals(message.Role, MessageRole.User, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(message.Content, input, StringComparison.Ordinal))
+            {
+                return message;
+            }
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
 /// 动态 Skill 命令 - 为每个已注册的 skill 自动创建命令（Native 版本）
 /// </summary>
 public sealed class DynamicSkillCommand : ICommand
@@ -337,21 +377,17 @@ public sealed class DynamicSkillCommand : ICommand
         var expanded = SkillTemplateProcessor.Process(content, context.Arguments ?? "", _skillName);
         var session = await _sessionManager.GetOrLoadAsync(context.SessionId, cancellationToken);
 
-        // 假成功修复：仅当末条为 user 消息时才能注入技能内容
-        if (session.Messages.Count == 0 || session.Messages[^1].Role != MessageRole.User)
+        // 定位命令消息：按命令原文匹配对应 user 消息（新架构下命令消息不再是末条）。
+        if (!SkillCommandMessageLocator.HasMatch(session, context.Input))
         {
             return CommandResult.Fail(
-                $"/{_skillName} 需在用户消息之后调用：当前会话末条消息不是用户消息，无法注入技能内容");
+                $"/{_skillName} 需在用户消息之后调用：当前会话未找到对应的用户命令消息，无法注入技能内容");
         }
 
         // 走 SessionManager API 持久化，避免只改内存导致刷新后丢失
         await _sessionManager.UpdateSessionAsync(
             context.SessionId,
-            s =>
-            {
-                if (s.Messages.Count > 0 && s.Messages[^1].Role == MessageRole.User)
-                    s.Messages[^1].Content = expanded;
-            },
+            s => SkillCommandMessageLocator.Replace(s, context.Input, expanded),
             cancellationToken);
 
         return new CommandResult
@@ -359,6 +395,7 @@ public sealed class DynamicSkillCommand : ICommand
             Success = true,
             Message = $"Loaded skill: {_skillName}",
             NeedsRefresh = true,
+            ShouldContinue = true,
             RemoveCommandMessage = false
         };
     }

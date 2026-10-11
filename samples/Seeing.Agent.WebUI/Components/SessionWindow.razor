@@ -1436,7 +1436,12 @@
                 Presentation = InboxPresentation.User,
                 Attachments = input.Attachments,
                 AgentId = options.AgentId,
-                ModelId = options.ModelId
+                ModelId = options.ModelId,
+                ModeId = options.ModeId,
+                WorkingDirectory = options.WorkingDirectory,
+                ThinkingEffort = string.IsNullOrWhiteSpace(SessionState.SelectedThinkingEffort)
+                    ? null
+                    : SessionState.SelectedThinkingEffort
             });
 
             if (!result.Success)

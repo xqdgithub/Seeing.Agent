@@ -38,11 +38,11 @@ public class SkillCommandsTests
     }
 
     [Fact]
-    public async Task LoadSkill_WhenExpanded_ShouldRewriteLastUserMessage()
+    public async Task LoadSkill_WhenExpanded_ShouldRewriteMatchingUserMessage()
     {
         // Arrange
         var session = new SessionData { Id = "s1" };
-        session.AddMessage(SessionMessage.UserMessage("/skill demo"));
+        session.AddMessage(SessionMessage.UserMessage("/skill demo arg"));
         var skill = new SkillInfo
         {
             Name = "demo",
@@ -55,13 +55,43 @@ public class SkillCommandsTests
 
         // Act
         var result = await command.ExecuteAsync(
-            new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
+            new CommandContext { SessionId = "s1", Input = "/skill demo arg", Arguments = "demo arg" },
+            TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();
         result.NeedsRefresh.Should().BeTrue("命令修改了消息内容，UI 需刷新展示");
         result.RemoveCommandMessage.Should().BeFalse("命令声明保留命令消息（内容已替换为展开结果）");
         session.Messages[^1].Content.Should().Contain("skill arg content");
+    }
+
+    [Fact]
+    public async Task LoadSkill_WhenInstructionMessageFollowsCommand_ShouldRewriteCommandNotInstruction()
+    {
+        // 回归：新架构下用户命令先落盘、项目指令随后注入，命令消息不再是末条。
+        // 命令必须按原文定位目标消息，不得盲改末条（否则改坏指令消息且命令文本残留透传 LLM）。
+        var session = new SessionData { Id = "s1" };
+        session.AddMessage(SessionMessage.UserMessage("/skill demo arg"));
+        session.AddMessage(SessionMessage.UserMessage("<project-instructions>...</project-instructions>"));
+
+        var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
+        var skillManager = CreateSkillManager(skill);
+        var sessionManager = CreateSessionManager(session);
+        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+
+        // Act
+        var result = await command.ExecuteAsync(
+            new CommandContext { SessionId = "s1", Input = "/skill demo arg", Arguments = "demo arg" },
+            TestContext.Current.CancellationToken);
+
+        // Assert：命令消息被替换，指令消息保持不变，命令文本不残留
+        result.Success.Should().BeTrue();
+        session.Messages.Should().Contain(m => m.Content.Contains("skill arg content"),
+            "命令消息应被替换为技能展开内容");
+        session.Messages.Should().Contain(m => m.Content.Contains("project-instructions"),
+            "指令消息不得被误改");
+        session.Messages.Should().NotContain(m => m.Content == "/skill demo arg",
+            "命令文本不得残留（否则透传 LLM）");
     }
 
     [Fact]
@@ -76,31 +106,56 @@ public class SkillCommandsTests
         var command = new SkillLoadCommand(skillManager, sessionManager.Object);
 
         // Act
-        var result = await command.ExecuteAsync(new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
+        var result = await command.ExecuteAsync(
+            new CommandContext { SessionId = "s1", Input = "/skill demo arg", Arguments = "demo arg" },
+            TestContext.Current.CancellationToken);
 
-        // Assert：末条非 user 时明确报错（修复假成功），且不修改消息
+        // Assert：无匹配命令消息时明确报错（修复假成功），且不修改消息
         result.Success.Should().BeFalse();
         session.Messages[^1].Content.Should().Be("old");
     }
 
     [Fact]
-    public async Task DynamicSkillCommand_WhenExpanded_ShouldRewriteLastUserMessage()
+    public async Task DynamicSkillCommand_WhenExpanded_ShouldRewriteMatchingUserMessage()
     {
         // Arrange
         var session = new SessionData { Id = "s1" };
-        session.AddMessage(SessionMessage.UserMessage("/demo"));
+        session.AddMessage(SessionMessage.UserMessage("/demo arg"));
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
         var sessionManager = CreateSessionManager(session);
         var command = new DynamicSkillCommand(sessionManager.Object, skill);
 
         // Act
-        var result = await command.ExecuteAsync(new CommandContext { SessionId = "s1", Arguments = "arg" }, TestContext.Current.CancellationToken);
+        var result = await command.ExecuteAsync(
+            new CommandContext { SessionId = "s1", Input = "/demo arg", Arguments = "arg" },
+            TestContext.Current.CancellationToken);
 
         // Assert
         result.Success.Should().BeTrue();
         result.NeedsRefresh.Should().BeTrue();
         result.RemoveCommandMessage.Should().BeFalse("命令声明保留命令消息（内容已替换为展开结果）");
         session.Messages[^1].Content.Should().Contain("skill arg content");
+    }
+
+    [Fact]
+    public async Task DynamicSkillCommand_WhenInstructionMessageFollowsCommand_ShouldRewriteCommandNotInstruction()
+    {
+        var session = new SessionData { Id = "s1" };
+        session.AddMessage(SessionMessage.UserMessage("/demo arg"));
+        session.AddMessage(SessionMessage.UserMessage("<project-instructions>...</project-instructions>"));
+
+        var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
+        var sessionManager = CreateSessionManager(session);
+        var command = new DynamicSkillCommand(sessionManager.Object, skill);
+
+        var result = await command.ExecuteAsync(
+            new CommandContext { SessionId = "s1", Input = "/demo arg", Arguments = "arg" },
+            TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        session.Messages.Should().Contain(m => m.Content.Contains("skill arg content"));
+        session.Messages.Should().Contain(m => m.Content.Contains("project-instructions"));
+        session.Messages.Should().NotContain(m => m.Content == "/demo arg");
     }
 
     [Fact]
@@ -115,7 +170,8 @@ public class SkillCommandsTests
 
         // Act
         var result = await command.ExecuteAsync(
-            new CommandContext { SessionId = "s1", Arguments = "demo arg" }, TestContext.Current.CancellationToken);
+            new CommandContext { SessionId = "s1", Input = "/skill demo arg", Arguments = "demo arg" },
+            TestContext.Current.CancellationToken);
 
         // Assert：无消息时明确报错（修复假成功）
         result.Success.Should().BeFalse();
