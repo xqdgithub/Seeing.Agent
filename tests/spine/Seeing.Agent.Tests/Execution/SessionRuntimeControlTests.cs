@@ -26,12 +26,15 @@ public class SessionRuntimeControlTests
         private int _runCount;
 
         public int RunCount => Volatile.Read(ref _runCount);
+        public readonly List<string> SessionIds = new();
         public Func<Task>? OnRunAsync { get; set; }
 
         public async Task<ExecutionRecord> RunOnceAsync(
             ExecutionRecord record, InboxBatch batch, CancellationToken executionToken)
         {
             Interlocked.Increment(ref _runCount);
+            lock (SessionIds)
+                SessionIds.Add(record.SessionId);
 
             if (OnRunAsync is not null)
                 await OnRunAsync();
@@ -80,7 +83,8 @@ public class SessionRuntimeControlTests
         out RecordingPublisher publisher,
         ISessionGroupManager? groupManager = null,
         TimeSpan? sessionIdleTimeout = null,
-        SessionManager? existingSessionManager = null)
+        SessionManager? existingSessionManager = null,
+        int maxConcurrent = -1)
     {
         sessionManager = existingSessionManager ?? new SessionManager(logger: NullLogger<SessionManager>.Instance);
         runner = new FakeRunner();
@@ -95,7 +99,7 @@ public class SessionRuntimeControlTests
 
         var options = new ExecutionOptions
         {
-            MaxConcurrentExecutions = -1,
+            MaxConcurrentExecutions = maxConcurrent,
             SessionIdleTimeout = sessionIdleTimeout ?? TimeSpan.FromMinutes(30),
             // 拉长清理间隔，避免定时器在测试期间自动触发
             CleanupInterval = TimeSpan.FromHours(1)
@@ -213,6 +217,38 @@ public class SessionRuntimeControlTests
 
         await WaitUntilAsync(() => runner.RunCount == 1);
         sessionManager.Get("s1")!.Metadata.Should().NotContainKey(SessionControlKeys.StopReason);
+    }
+
+    [Fact]
+    public async Task Stop_DuringGlobalConcurrencyWait_ShouldPreventThatRound()
+    {
+        // 全局并发=1：s1 独占并发槽并阻塞执行体，s2 的循环将在全局并发等待窗口内排队。
+        var runtime = CreateRuntime(out var sessionManager, out var runner, out _, maxConcurrent: 1);
+        await sessionManager.EnsureSessionAsync("s1");
+        await sessionManager.EnsureSessionAsync("s2");
+
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runner.OnRunAsync = () => release.Task;
+
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Wake));
+        await WaitUntilAsync(() => runtime.GetOverview("s1").CurrentExecution is not null);
+
+        // s2 唤醒：其循环已完成 gate 段（标记 consumed）并阻塞在全局并发等待。
+        await runtime.DeliverAsync(Msg("s2", InboxDelivery.Wake, body: "s2"));
+        await WaitUntilAsync(() =>
+            sessionManager.Get("s2")!.Messages.Any(m =>
+                m.Metadata?.ContainsKey(InboxMetadataKeys.Presentation) == true
+                && Equals(m.Metadata![InboxMetadataKeys.Consumed], true)));
+
+        // 在全局并发等待窗口内 Stop s2：此时 s2 尚无 record，取消 Cts 无从生效。
+        await runtime.StopAsync("s2");
+
+        // 放行 s1 → 全局并发放行 s2，但 Stop 校验应使其不执行本轮。
+        release.SetResult();
+        await Task.Delay(400);
+
+        runner.SessionIds.Should().ContainSingle().Which.Should().Be("s1");
+        runtime.GetOverview("s2").CurrentExecution.Should().BeNull();
     }
 
     [Fact]

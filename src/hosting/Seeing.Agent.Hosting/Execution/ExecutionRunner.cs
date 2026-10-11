@@ -717,38 +717,6 @@ internal sealed class ExecutionRunner : IExecutionRunner
     }
 
     /// <summary>
-    /// Builds user message from input.
-    /// </summary>
-    internal static SessionMessage BuildUserMessage(ChatInput input)
-    {
-        var parts = new List<SessionContentPart>();
-
-        if (!string.IsNullOrWhiteSpace(input.Text))
-        {
-            parts.Add(SessionContentPart.CreateText(input.Text));
-        }
-
-        if (input.Attachments != null && input.Attachments.Count > 0)
-        {
-            foreach (var att in input.Attachments)
-            {
-                if (att.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                {
-                    parts.Add(SessionContentPart.CreateImageFromBase64(att.Base64Data, att.MimeType));
-                }
-                else
-                {
-                    parts.Add(SessionContentPart.CreateFileFromBase64(att.Base64Data, att.MimeType, att.FileName));
-                }
-            }
-        }
-
-        return parts.Count > 1 || (input.Attachments != null && input.Attachments.Count > 0)
-            ? SessionMessage.UserMessageWithParts(parts)
-            : SessionMessage.UserMessage(input.Text ?? "");
-    }
-
-    /// <summary>
     /// Builds history from session.
     /// </summary>
     internal static List<ChatMessage> BuildHistoryFromSession(SessionData session)

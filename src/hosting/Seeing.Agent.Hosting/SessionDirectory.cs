@@ -20,6 +20,7 @@ public sealed class SessionDirectory : ISessionDirectory
     private readonly ISessionGroupManager _groupManager;
     private readonly AgentSelectionResolver _agentSelectionResolver;
     private readonly IModelManager _modelManager;
+    private readonly ISessionRuntime _runtime;
     private readonly ILogger<SessionDirectory> _logger;
     private readonly IDefaultWorkModeProvider? _defaultWorkMode;
 
@@ -28,6 +29,7 @@ public sealed class SessionDirectory : ISessionDirectory
         ISessionGroupManager groupManager,
         AgentSelectionResolver agentSelectionResolver,
         IModelManager modelManager,
+        ISessionRuntime runtime,
         ILogger<SessionDirectory> logger,
         IDefaultWorkModeProvider? defaultWorkMode = null)
     {
@@ -35,6 +37,7 @@ public sealed class SessionDirectory : ISessionDirectory
         _groupManager = groupManager;
         _agentSelectionResolver = agentSelectionResolver;
         _modelManager = modelManager;
+        _runtime = runtime;
         _logger = logger;
         _defaultWorkMode = defaultWorkMode;
     }
@@ -105,7 +108,10 @@ public sealed class SessionDirectory : ISessionDirectory
     /// <inheritdoc/>
     public async Task DeleteAsync(string sessionId, CancellationToken ct = default)
     {
-        // 交给组管理器递归删除 Child 子树；在途执行取消由运行时/上层 StopAsync 负责。
+        // 先中断在途消费循环（含级联子会话），避免删除后仍照常跑一轮写回已删会话。
+        await _runtime.StopAsync(sessionId, ct).ConfigureAwait(false);
+
+        // 交给组管理器递归删除 Child 子树。
         await _groupManager.RemoveSessionAsync(sessionId, ct);
         _logger.LogInformation("Deleted session: {SessionId}", sessionId);
     }

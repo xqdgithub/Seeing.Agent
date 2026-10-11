@@ -24,7 +24,6 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionGates = new();
     private readonly ConcurrentDictionary<string, Task> _activeLoops = new();
     private readonly ConcurrentDictionary<string, byte> _stoppedSessions = new();
-    private readonly ConcurrentDictionary<string, ExecutionRecord> _executions = new();
     private readonly SemaphoreSlim _globalConcurrency;
     private readonly IExecutionRunner _runner;
     private readonly IExecutionEventPublisher _publisher;
@@ -249,6 +248,11 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     await _globalConcurrency.WaitAsync(ct).ConfigureAwait(false);
                     try
                     {
+                        // Stop 可能落在「全局并发等待期间」——此时 record 尚未创建，取消 record.Cts 无从生效。
+                        // 放行后、创建 record 前再次校验停止态；命中则本轮不执行，退出循环。
+                        if (_stoppedSessions.ContainsKey(sessionId) || ct.IsCancellationRequested)
+                            break;
+
                         var executionId = $"exec_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}"[..24];
                         record = new ExecutionRecord
                         {
@@ -303,6 +307,13 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     finally
                     {
                         _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).CurrentExecution = null;
+                        // 本轮终态后释放专属 CTS：RunOnceAsync 已返回（含取消路径），执行体不再持有令牌。
+                        // Stop/Interrupt 与释放存在窄竞态，二者均捕获 ObjectDisposedException，视为已终态。
+                        if (record is not null)
+                        {
+                            record.Cts?.Dispose();
+                            record.Cts = null;
+                        }
                         _globalConcurrency.Release();
                     }
                 }
@@ -909,7 +920,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
     /// <summary>
     /// 定时回收空闲会话的运行态：超过 <see cref="ExecutionOptions.SessionIdleTimeout"/> 无活动
-    /// 且无在途执行时，清理 <c>_states</c>/<c>_sessionGates</c>/<c>_stoppedSessions</c>/<c>_executions</c>。
+    /// 且无在途执行时，清理 <c>_states</c>/<c>_sessionGates</c>/<c>_stoppedSessions</c>。
     /// </summary>
     internal void CleanupIdleSessions()
     {
@@ -929,12 +940,6 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
             if (_sessionGates.TryRemove(sessionId, out var gate))
                 gate.Dispose();
-
-            foreach (var key in _executions.Keys.Where(k =>
-                _executions.TryGetValue(k, out var rec) && rec.SessionId == sessionId).ToArray())
-            {
-                _executions.TryRemove(key, out _);
-            }
 
             _logger.LogDebug("回收空闲会话运行态: SessionId={SessionId}", sessionId);
         }

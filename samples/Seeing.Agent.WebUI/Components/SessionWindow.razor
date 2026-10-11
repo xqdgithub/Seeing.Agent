@@ -1745,11 +1745,12 @@
         {
             var sessionId = SessionState.CurrentSession.Id;
 
-            // 先删除子会话（Task 工具创建的 SubAgent 会话）；组变更事件会驱动窗口注册表自动移除
+            // 先删除子会话（Task 工具创建的 SubAgent 会话）；经 SessionDirectory 统一先 Stop 再删，
+            // 避免在途消费循环写回已删会话。组变更事件会驱动窗口注册表自动移除。
             var children = await GroupManager.ListChildrenAsync(sessionId);
             foreach (var child in children)
             {
-                await GroupManager.RemoveSessionAsync(child.Id);
+                await SessionDirectory.DeleteAsync(child.Id);
             }
 
             SessionState.CurrentSession.ClearMessages();

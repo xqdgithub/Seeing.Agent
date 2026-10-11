@@ -12,6 +12,7 @@ using Seeing.Agent.Core.Models;
 using Seeing.Agent.Hosting;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Xunit;
@@ -168,6 +169,7 @@ public class SessionDirectoryCreateSessionTests
             groupManager,
             new AgentSelectionResolver(runtimeManager),
             modelManager,
+            new Mock<ISessionRuntime>().Object,
             NullLogger<SessionDirectory>.Instance,
             defaultWorkMode);
     }
