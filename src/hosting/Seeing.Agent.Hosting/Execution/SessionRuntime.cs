@@ -30,6 +30,12 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     private readonly ExecutionOptions _options;
     private readonly ILogger<SessionRuntime> _logger;
     private readonly CancellationTokenSource _disposeCts = new();
+    private readonly ConcurrentDictionary<string, DateTime> _lastActive = new();
+    private readonly Timer? _cleanupTimer;
+    private int _disposed;
+
+    /// <summary>WaitForIdleAsync 安全上限（防死循环；正常路径由调用方 CancellationToken 控制）。</summary>
+    private static readonly TimeSpan WaitForIdleSafetyTimeout = TimeSpan.FromMinutes(10);
 
     internal SessionRuntime(
         IExecutionRunner runner,
@@ -44,6 +50,15 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         _options = options;
         _logger = logger;
         _globalConcurrency = new SemaphoreSlim(options.MaxConcurrentExecutions <= 0 ? int.MaxValue : options.MaxConcurrentExecutions);
+
+        if (options.CleanupInterval > TimeSpan.Zero)
+        {
+            _cleanupTimer = new Timer(
+                _ => { CleanupIdleSessions(); },
+                state: null,
+                dueTime: options.CleanupInterval,
+                period: options.CleanupInterval);
+        }
     }
 
     public async Task<InboxResult> DeliverAsync(InboxMessage message, CancellationToken ct = default)
@@ -54,6 +69,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             return InboxResult.Failed("TargetSessionId is required");
 
         var sessionId = message.TargetSessionId;
+        Touch(sessionId);
 
         using var scope = _services.CreateScope();
         var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
@@ -246,6 +262,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         var state = _states.GetOrAdd(sessionId, _ => new SessionExecutionState());
                         state.CurrentExecution = record;
                         state.PendingInputCount = 0;
+                        Touch(sessionId);
 
                         var hasUserInput = pending.Any(m =>
                             string.Equals(GetMetaString(m.Metadata, InboxMetadataKeys.Presentation),
@@ -458,22 +475,353 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
     }
 
-    public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) => throw new NotImplementedException();
-    public Task<int> StopAsync(string sessionId, CancellationToken ct = default) => throw new NotImplementedException();
-    public Task<int> CancelAllInFlightAsync(CancellationToken ct = default) => throw new NotImplementedException();
-    public Task WaitForIdleAsync(string sessionId, CancellationToken ct = default) => throw new NotImplementedException();
-    public SessionExecutionOverview GetOverview(string sessionId) => throw new NotImplementedException();
-    public bool HasAnyActiveExecution() => throw new NotImplementedException();
-    public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId) => throw new NotImplementedException();
-    public IAsyncEnumerable<IMessageEvent> SubscribeEvents(string sessionId, CancellationToken ct = default) => throw new NotImplementedException();
-    public Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default) => throw new NotImplementedException();
+    public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default)
+    {
+        // 停当前轮：取消当前执行体；consumed 不回退，循环继续消费剩余未读。
+        // 不触碰 _stoppedSessions（Stop 与 Interrupt 的唯一区别在循环去向）。
+        Touch(sessionId);
+        var cts = _states.TryGetValue(sessionId, out var state) ? state.CurrentExecution?.Cts : null;
+        if (cts is null)
+            return Task.FromResult(false);
+
+        try
+        {
+            cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 执行体已进入终态并释放令牌：视为无可中断目标。
+            return Task.FromResult(false);
+        }
+
+        return Task.FromResult(true);
+    }
+
+    public async Task<int> StopAsync(string sessionId, CancellationToken ct = default)
+    {
+        // 级联范围：自身 + 所有 Child 子会话（父停止即放弃整棵子树，不论子是否被人接管）。
+        var targets = new List<string> { sessionId };
+        try
+        {
+            using var scope = _services.CreateScope();
+            var groupManager = scope.ServiceProvider.GetService<ISessionGroupManager>();
+            if (groupManager is not null)
+            {
+                var children = await groupManager.ListChildrenAsync(sessionId, ct).ConfigureAwait(false);
+                targets.AddRange(children.Select(c => c.Id));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "级联停止子会话枚举失败: SessionId={SessionId}", sessionId);
+        }
+
+        // 1. 先对子会话写 stop_reason 并落盘（先于加入 stopped 与取消，保证监听器读到时标记已可见）
+        if (targets.Count > 1)
+        {
+            try
+            {
+                using var scope = _services.CreateScope();
+                var sessionManager = scope.ServiceProvider.GetService<ISessionManager>();
+                if (sessionManager is not null)
+                {
+                    foreach (var childId in targets.Skip(1))
+                    {
+                        try
+                        {
+                            var child = sessionManager.Get(childId) ?? await sessionManager.LoadAsync(childId).ConfigureAwait(false);
+                            if (child is null)
+                                continue;
+
+                            child.Metadata[SessionControlKeys.StopReason] = SessionControlKeys.StopReasonCascadedFromParent;
+                            await sessionManager.SaveAsync(childId).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "写级联停止标记失败: ChildSessionId={ChildSessionId}", childId);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "级联停止标记会话解析失败: SessionId={SessionId}", sessionId);
+            }
+        }
+
+        // 2. 加入停止态（自身 + 子会话）
+        foreach (var id in targets)
+            _stoppedSessions[id] = 0;
+
+        // 3. 取消当前执行体
+        var cancelled = 0;
+        foreach (var id in targets)
+        {
+            Touch(id);
+            var cts = _states.TryGetValue(id, out var state) ? state.CurrentExecution?.Cts : null;
+            if (cts is null)
+                continue;
+
+            try
+            {
+                cts.Cancel();
+                cancelled++;
+            }
+            catch (ObjectDisposedException)
+            {
+                // 已终态：不计入
+            }
+        }
+
+        _logger.LogInformation(
+            "会话已停止: SessionId={SessionId}, Cascaded={Cascaded}, Cancelled={Cancelled}",
+            sessionId, targets.Count - 1, cancelled);
+        return cancelled;
+    }
+
+    public async Task<int> CancelAllInFlightAsync(CancellationToken ct = default)
+    {
+        // 对活跃循环快照逐个 Stop（进程级：热重载/关闭时强制取消消费）。
+        var sessionIds = _activeLoops.Keys.ToArray();
+        var cancelled = 0;
+        foreach (var sessionId in sessionIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                cancelled += await StopAsync(sessionId, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "取消活跃会话失败: SessionId={SessionId}", sessionId);
+            }
+        }
+
+        return cancelled;
+    }
+
+    public async Task WaitForIdleAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return;
+
+        // Stop 态视为 idle：循环已（或即将）退出，直接返回。
+        if (_stoppedSessions.ContainsKey(sessionId))
+            return;
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token);
+        var token = linked.Token;
+        var deadline = DateTime.UtcNow + WaitForIdleSafetyTimeout;
+
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+
+            if (!_activeLoops.ContainsKey(sessionId))
+            {
+                // 循环未在跑：要么已 Stop（上面已返回），要么无未读 Wake → idle。
+                if (_stoppedSessions.ContainsKey(sessionId) || !HasUnreadWake(sessionId))
+                    return;
+            }
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                _logger.LogWarning("WaitForIdleAsync 超时退出: SessionId={SessionId}", sessionId);
+                return;
+            }
+
+            await Task.Delay(25, token).ConfigureAwait(false);
+        }
+    }
+
+    public SessionExecutionOverview GetOverview(string sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId) || !_states.TryGetValue(sessionId, out var state))
+            return new SessionExecutionOverview();
+
+        var pending = state.PendingInputCount;
+        if (state.CurrentExecution is null)
+            pending = CountUnreadForSession(sessionId);
+
+        return new SessionExecutionOverview
+        {
+            CurrentExecution = state.CurrentExecution,
+            LastExecution = state.LastExecution,
+            PendingInputCount = pending
+        };
+    }
+
+    public bool HasAnyActiveExecution() =>
+        _states.Values.Any(s => s.CurrentExecution != null);
+
+    public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId) =>
+        _publisher.GetBufferedEvents(sessionId);
+
+    public IAsyncEnumerable<IMessageEvent> SubscribeEvents(string sessionId, CancellationToken ct = default) =>
+        _publisher.SubscribeAsync(sessionId, ct);
+
+    public async Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return 0;
+
+        ct.ThrowIfCancellationRequested();
+
+        // 会话自身仍在执行（如前台 task 阻塞父 Loop 期间刷新页面）：TaskId 尚未回填，
+        // 不能把在途 task 误判为孤儿取消。
+        if (GetOverview(sessionId).HasActiveExecution)
+            return 0;
+
+        using var scope = _services.CreateScope();
+        var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+
+        var session = sessionManager.Get(sessionId) ?? await sessionManager.LoadAsync(sessionId).ConfigureAwait(false);
+        if (session?.Messages == null)
+            return 0;
+
+        var count = 0;
+        foreach (var msg in session.Messages)
+        {
+            if (msg.ToolCalls == null)
+                continue;
+
+            foreach (var tc in msg.ToolCalls)
+            {
+                if (!IsIncompleteTaskToolCall(tc))
+                    continue;
+
+                var taskId = tc.TaskId;
+                var stillActive = !string.IsNullOrEmpty(taskId)
+                    && GetOverview(taskId).HasActiveExecution;
+
+                if (stillActive)
+                    continue;
+
+                tc.Status = "cancelled";
+                tc.Error = "任务已中断（进程关闭或取消）";
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+            _logger.LogInformation(
+                "Reconciled {Count} incomplete task card(s) for session {SessionId}", count, sessionId);
+        }
+
+        return count;
+    }
+
+    private static bool IsIncompleteTaskToolCall(SessionToolCall tc)
+    {
+        if (tc == null)
+            return false;
+
+        var isTask = !string.IsNullOrEmpty(tc.TaskId)
+            || string.Equals(tc.Name, "task", StringComparison.OrdinalIgnoreCase);
+        if (!isTask)
+            return false;
+
+        var status = tc.Status?.ToLowerInvariant();
+        return status is "running" or "pending";
+    }
 
     // IExecutionInFlightBoundary
-    public bool HasInFlight() => throw new NotImplementedException();
-    public IReadOnlyList<string> ListInFlightExecutionIds() => throw new NotImplementedException();
+    public bool HasInFlight() => HasAnyActiveExecution();
+
+    public IReadOnlyList<string> ListInFlightExecutionIds() =>
+        _states.Values
+            .Select(s => s.CurrentExecution?.ExecutionId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Cast<string>()
+            .ToArray();
+
+    /// <summary>记录会话最近活动时间（供 CleanupIdleSessions 空闲回收）。</summary>
+    private void Touch(string sessionId) => _lastActive[sessionId] = DateTime.UtcNow;
+
+    /// <summary>会话是否存在未读 Wake 输入（consumed=false && delivery=wake）。</summary>
+    private bool HasUnreadWake(string sessionId)
+    {
+        try
+        {
+            using var scope = _services.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetService<ISessionManager>();
+            var session = sessionManager?.Get(sessionId);
+            if (session is null)
+                return false;
+
+            return session.Messages.Any(m =>
+                IsPendingInboxMessage(m)
+                && string.Equals(GetMetaString(m.Metadata, InboxMetadataKeys.Delivery),
+                    "wake", StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>实时计算会话未消费输入数（不含外部产出写回）；会话不可用时返回 0。</summary>
+    private int CountUnreadForSession(string sessionId)
+    {
+        try
+        {
+            using var scope = _services.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetService<ISessionManager>();
+            var session = sessionManager?.Get(sessionId);
+            return session is null ? 0 : CountUnread(session);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// 定时回收空闲会话的运行态：超过 <see cref="ExecutionOptions.SessionIdleTimeout"/> 无活动
+    /// 且无在途执行时，清理 <c>_states</c>/<c>_sessionGates</c>/<c>_stoppedSessions</c>/<c>_executions</c>。
+    /// </summary>
+    internal void CleanupIdleSessions()
+    {
+        var cutoff = DateTime.UtcNow - _options.SessionIdleTimeout;
+        foreach (var (sessionId, lastActive) in _lastActive.ToArray())
+        {
+            if (lastActive > cutoff)
+                continue;
+            if (_activeLoops.ContainsKey(sessionId))
+                continue;
+            if (_states.TryGetValue(sessionId, out var state) && state.CurrentExecution is not null)
+                continue;
+
+            _lastActive.TryRemove(sessionId, out _);
+            _states.TryRemove(sessionId, out _);
+            _stoppedSessions.TryRemove(sessionId, out _);
+
+            if (_sessionGates.TryRemove(sessionId, out var gate))
+                gate.Dispose();
+
+            foreach (var key in _executions.Keys.Where(k =>
+                _executions.TryGetValue(k, out var rec) && rec.SessionId == sessionId).ToArray())
+            {
+                _executions.TryRemove(key, out _);
+            }
+
+            _logger.LogDebug("回收空闲会话运行态: SessionId={SessionId}", sessionId);
+        }
+    }
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        _cleanupTimer?.Dispose();
+
         try
         {
             _disposeCts.Cancel();
