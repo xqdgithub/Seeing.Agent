@@ -28,7 +28,6 @@ using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Questions;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Core.Prompts;
-using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Core.Decorators;
@@ -686,8 +685,6 @@ namespace Seeing.Agent.Core.Extensions
 
             // 命令执行服务（触发 command.execute.before Hook）
             services.AddSingleton<ICommandService, CommandService>();
-
-            services.AddSingleton<IAgentLoopScheduler, AgentLoopScheduler>();
 
             // 命令注册表（插件加载与扩展命令注册需要）
             services.AddSingleton<ICommandRegistry, CommandRegistry>();

@@ -1,8 +1,10 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
@@ -157,52 +159,75 @@ internal sealed class RecordingPermissionAuthorizer : IPermissionAuthorizer
     }
 }
 
-/// <summary>记录提交参数并返回预设结果的执行提交桩。</summary>
-internal sealed class StubExecutionSubmitter : IExecutionSubmitter
+/// <summary>记录投递参数并返回预设结果的会话运行时桩。</summary>
+internal sealed class StubSessionRuntime : ISessionRuntime
 {
-    private readonly ExecutionSubmitResult _result;
-    private readonly Action? _onSubmitting;
+    private readonly InboxResult _result;
+    private readonly Action? _onDelivering;
+    private readonly ISessionManager? _sessions;
 
     public string? LastSessionId { get; private set; }
-    public ChatInput? LastInput { get; private set; }
-    public ChatOptions? LastOptions { get; private set; }
-    public string? LastCancelledExecutionId { get; private set; }
-    public int SubmitCount { get; private set; }
+    public string? LastBody { get; private set; }
+    public string? LastAgentId { get; private set; }
+    public string? LastModelId { get; private set; }
+    public int DeliverCount { get; private set; }
+    public List<string> StoppedSessions { get; } = new();
 
-    public StubExecutionSubmitter(ExecutionSubmitResult result, Action? onSubmitting = null)
+    public StubSessionRuntime(InboxResult result, Action? onDelivering = null, ISessionManager? sessions = null)
     {
         _result = result;
-        _onSubmitting = onSubmitting;
+        _onDelivering = onDelivering;
+        _sessions = sessions;
     }
 
-    public Task<ExecutionSubmitResult> SubmitAsync(
-        string sessionId,
-        ChatInput input,
-        ChatOptions? options = null,
-        CancellationToken cancellationToken = default)
+    public async Task<InboxResult> DeliverAsync(InboxMessage message, CancellationToken ct = default)
     {
-        SubmitCount++;
-        LastSessionId = sessionId;
-        LastInput = input;
-        LastOptions = options;
-        // 允许测试在提交期间取消令牌，模拟"提交失败伴随取消"的真实场景
-        _onSubmitting?.Invoke();
-        return Task.FromResult(_result);
+        DeliverCount++;
+        LastSessionId = message.TargetSessionId;
+        LastBody = message.Body;
+        LastAgentId = message.AgentId;
+        LastModelId = message.ModelId;
+
+        // 模拟真实运行时：Presentation=User 的入站消息落盘为 user 消息
+        if (_sessions is not null && message.Presentation == InboxPresentation.User)
+        {
+            await _sessions.AddMessageAsync(
+                message.TargetSessionId, SessionMessage.UserMessage(message.Body ?? string.Empty), ct);
+        }
+
+        // 允许测试在投递期间取消令牌，模拟"投递失败伴随取消"的真实场景
+        _onDelivering?.Invoke();
+        return _result;
     }
 
-    public Task<bool> CancelAsync(string executionId, CancellationToken cancellationToken = default)
+    public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) =>
+        Task.FromResult(true);
+
+    public Task<int> StopAsync(string sessionId, CancellationToken ct = default)
     {
-        LastCancelledExecutionId = executionId;
-        return Task.FromResult(true);
+        StoppedSessions.Add(sessionId);
+        return Task.FromResult(0);
     }
 
-    public Task<int> CancelBySessionAsync(string sessionId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(0);
+    public Task<int> CancelAllInFlightAsync(CancellationToken ct = default) => Task.FromResult(0);
 
-    public Task WaitForExecutionAsync(string executionId, CancellationToken cancellationToken = default) =>
-        Task.CompletedTask;
+    public Task WaitForIdleAsync(string sessionId, CancellationToken ct = default) => Task.CompletedTask;
 
-    public Task<int> CancelAllInFlightAsync(CancellationToken cancellationToken = default) =>
+    public SessionExecutionOverview GetOverview(string sessionId) => new();
+
+    public bool HasAnyActiveExecution() => false;
+
+    public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId) =>
+        Array.Empty<IMessageEvent>();
+
+    public async IAsyncEnumerable<IMessageEvent> SubscribeEvents(
+        string sessionId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    public Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default) =>
         Task.FromResult(0);
 }
 

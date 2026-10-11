@@ -52,7 +52,7 @@ public sealed class TuiViewState
     public string? AcpMode { get; set; }
     public string? ActiveExecutionId { get; set; }
     public bool IsExecuting { get; set; }
-    public int QueueLength { get; set; }
+    public int PendingInputCount { get; set; }
     public string? LastError { get; set; }
     public IReadOnlyList<TuiTodo> Todos { get; set; } = [];
     public TuiBudget? Budget { get; set; }

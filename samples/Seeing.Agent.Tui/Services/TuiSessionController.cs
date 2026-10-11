@@ -1,5 +1,4 @@
-using Seeing.Agent.Abstractions.Chat;
-using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Session.Core;
 
@@ -7,23 +6,23 @@ namespace Seeing.Agent.Tui.Services;
 
 /// <summary>
 /// 单活跃会话控制：会话生命周期（新建/切换/继续/CRUD/分支）+ 提交/取消 + 配置切换。
-/// <para>取消一律走 <see cref="IExecutionSubmitter.CancelAsync"/>，禁止同步阻塞的 <see cref="IChatOrchestrator.Cancel"/>。</para>
+/// <para>取消一律走 <see cref="ISessionRuntime.StopAsync"/>，禁止同步阻塞的取消。</para>
 /// </summary>
 public sealed class TuiSessionController
 {
-    private readonly IChatOrchestrator _orchestrator;
-    private readonly IExecutionSubmitter _submitter;
+    private readonly ISessionRuntime _runtime;
+    private readonly ISessionDirectory _directory;
     private readonly ISessionManager _sessionManager;
     private readonly ISessionGroupManager _groupManager;
 
     public TuiSessionController(
-        IChatOrchestrator orchestrator,
-        IExecutionSubmitter submitter,
+        ISessionRuntime runtime,
+        ISessionDirectory directory,
         ISessionManager sessionManager,
         ISessionGroupManager groupManager)
     {
-        _orchestrator = orchestrator;
-        _submitter = submitter;
+        _runtime = runtime;
+        _directory = directory;
         _sessionManager = sessionManager;
         _groupManager = groupManager;
     }
@@ -36,14 +35,14 @@ public sealed class TuiSessionController
 
     public async Task<TuiViewState> NewAsync(string? title, CancellationToken ct = default)
     {
-        var session = await _orchestrator.CreateSessionAsync(title, null, null, ct);
+        var session = await _directory.CreateAsync(title, null, null, ct);
         await ActivateAsync(session, ct);
         return Current!;
     }
 
     public async Task<bool> SwitchAsync(string sessionId, CancellationToken ct = default)
     {
-        var session = await _orchestrator.GetSessionAsync(sessionId, ct);
+        var session = await _directory.GetAsync(sessionId, ct);
         if (session is null)
             return false;
 
@@ -63,12 +62,12 @@ public sealed class TuiSessionController
     }
 
     public async Task<IReadOnlyList<SessionData>> ListAsync(CancellationToken ct = default)
-        => await _orchestrator.ListSessionsAsync(ct) ?? [];
+        => await _directory.ListAsync(ct) ?? [];
 
     public async Task RenameAsync(string title, CancellationToken ct = default)
     {
         var current = EnsureCurrent();
-        await _orchestrator.RenameSessionAsync(current.SessionId, title, ct);
+        await _directory.RenameAsync(current.SessionId, title, ct);
         current.Title = title;
         current.Touch();
     }
@@ -76,7 +75,7 @@ public sealed class TuiSessionController
     public async Task DeleteAsync(CancellationToken ct = default)
     {
         var current = EnsureCurrent();
-        await _orchestrator.DeleteSessionAsync(current.SessionId, ct);
+        await _directory.DeleteAsync(current.SessionId, ct);
         Current = null;
         await ContinueLatestAsync(ct);
     }
@@ -84,27 +83,32 @@ public sealed class TuiSessionController
     public async Task<TuiViewState> ForkAsync(CancellationToken ct = default)
     {
         var current = EnsureCurrent();
-        var branch = await _orchestrator.BranchSessionAsync(current.SessionId, null, ct);
+        var branch = await _directory.BranchAsync(current.SessionId, null, ct);
         await ActivateAsync(branch, ct);
         return Current!;
     }
 
-    public async Task<ExecutionSubmitResult> SubmitAsync(ChatInput input, CancellationToken ct = default)
+    public async Task<InboxResult> SubmitAsync(ChatInput input, CancellationToken ct = default)
     {
         var current = EnsureCurrent();
-        var options = new ChatOptions
-        {
-            AgentId = NullIfEmpty(current.AgentId),
-            ModelId = NullIfEmpty(current.ModelId),
-            ThinkingEffort = NullIfEmpty(current.ThinkingEffort),
-        };
 
-        var result = await _orchestrator.SubmitAsync(current.SessionId, input, options);
+        var result = await _runtime.DeliverAsync(new InboxMessage
+        {
+            TargetSessionId = current.SessionId,
+            Sender = new InboxSender { Kind = InboxSenderKind.Human },
+            Body = input.Text,
+            Delivery = InboxDelivery.Wake,
+            Presentation = InboxPresentation.User,
+            Attachments = input.Attachments,
+            AgentId = NullIfEmpty(current.AgentId),
+            ModelId = NullIfEmpty(current.ModelId)
+        }, ct);
+
         if (result.Success)
         {
             current.ActiveExecutionId = result.ExecutionId;
             current.IsExecuting = true;
-            current.QueueLength = result.QueuePosition;
+            current.PendingInputCount = result.PendingInputCount;
             current.Touch();
         }
 
@@ -113,18 +117,18 @@ public sealed class TuiSessionController
 
     public async Task CancelAsync(CancellationToken ct = default)
     {
-        var executionId = Current?.ActiveExecutionId;
-        if (string.IsNullOrEmpty(executionId))
+        var current = Current;
+        if (current is null || string.IsNullOrEmpty(current.SessionId))
             return;
 
-        await _submitter.CancelAsync(executionId, ct);
+        await _runtime.StopAsync(current.SessionId, ct);
     }
 
     /// <summary>级联取消活跃会话及其子会话下的全部未终态执行（<c>/cancel all</c>）。</summary>
     public async Task<int> CancelAllAsync(CancellationToken ct = default)
     {
         var current = EnsureCurrent();
-        return await _submitter.CancelBySessionAsync(current.SessionId, ct);
+        return await _runtime.StopAsync(current.SessionId, ct);
     }
 
     public async Task SetAgentAsync(string agentId, CancellationToken ct = default)

@@ -80,13 +80,13 @@ internal static class Program
             try
             {
                 var submit = await client.SubmitAsync(request);
-                if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+                if (!submit.Success)
                 {
                     global::System.Console.WriteLine($"[error] {submit.Error ?? "Submit failed"}");
                     continue;
                 }
 
-                await foreach (var gatewayEvent in client.SubscribeAsync(sessionId, submit.ExecutionId))
+                await foreach (var gatewayEvent in client.SubscribeAsync(sessionId))
                 {
                     PrintEvent(gatewayEvent);
                 }

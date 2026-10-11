@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Core.Configuration;
@@ -133,8 +133,8 @@ static void AddTuiServices(IServiceCollection services)
     services.AddSingleton<ITerminalSurface, SpectreTerminalSurface>();
     services.AddSingleton<Func<string, ITuiEventPump>>(sp =>
     {
-        var orchestrator = sp.GetRequiredService<IChatOrchestrator>();
-        return sessionId => new TuiEventPump(orchestrator, sessionId);
+        var runtime = sp.GetRequiredService<ISessionRuntime>();
+        return sessionId => new TuiEventPump(runtime, sessionId);
     });
     services.AddSingleton<TuiSurfaceProvider>();
     services.AddSingleton<TuiSessionController>();

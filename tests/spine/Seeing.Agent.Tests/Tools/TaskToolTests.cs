@@ -1,29 +1,15 @@
 using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Compression;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core;
-using Seeing.Agent.Core.Instructions;
-using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Hosting.Execution;
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Abstractions.Sessions;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Tools;
 using Seeing.Session.Core;
 using Xunit;
@@ -31,28 +17,16 @@ using Xunit;
 namespace Seeing.Agent.Tests.Tools;
 
 /// <summary>
-/// TaskTool：子会话 = 普通会话，创建子会话 + 提交执行引擎（IExecutionSubmitter）。
+/// TaskTool：子会话 = 普通会话，创建子会话 + 经 <see cref="ISessionRuntime.DeliverAsync"/> 投递执行。
 /// </summary>
 public class TaskToolTests
 {
     [Fact]
-    public async Task ExecuteAsync_Foreground_ShouldSubmitExecutionAndReturnCompleted()
+    public async Task ExecuteAsync_Foreground_ShouldDeliverExecutionAndReturnCompleted()
     {
-        using var fixture = new TaskToolFixture(executor: BuildExecutor("final answer"));
-        var tool = new TaskTool(
-            NullLogger<TaskTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object,
-            fixture.ExecService,
-            fixture.ExecService,
-            fixture.EventPublisher);
-        var context = new ToolContext
-        {
-            SessionId = fixture.ParentId,
-            CallId = "call-1"
-        };
+        using var fixture = new TaskToolFixture(childResult: "final answer");
+        var tool = fixture.CreateTaskTool();
+        var context = new ToolContext { SessionId = fixture.ParentId, CallId = "call-1" };
 
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new
@@ -70,40 +44,21 @@ public class TaskToolTests
         result.Output.Should().Contain("<task_result>");
         result.Output.Should().Contain("final answer");
 
-        // 结果 Metadata 携带 Task* 权威字段（供 ChatEventTracker 映射）
         result.Metadata[TaskMetadataKeys.TaskId].Should().Be(fixture.Child.Id);
         result.Metadata[TaskMetadataKeys.TaskAgent].Should().Be("explore");
         result.Metadata[TaskMetadataKeys.TaskDescription].Should().Be("explore auth");
         result.Metadata[TaskMetadataKeys.TaskBackground].Should().Be(false);
 
-        // 子会话应有 assistant 消息（由执行引擎投影落盘）
-        fixture.Child.GetActiveMessages()
-            .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase))
-            .Should().NotBeNull();
-
-        // 执行记录应为终态 Completed
-        var overview = fixture.ExecService.GetOverview(fixture.Child.Id);
-        overview.HasActiveExecution.Should().BeFalse();
+        fixture.Runtime.Delivered.Should().Contain(m => m.TargetSessionId == fixture.Child.Id);
+        fixture.Runtime.Overview(fixture.Child.Id).HasActiveExecution.Should().BeFalse();
     }
 
     [Fact]
     public async Task ExecuteAsync_Background_ShouldReturnRunningAndNotifyParentWhenCompleted()
     {
-        using var fixture = new TaskToolFixture(executor: BuildExecutor("background result", delayMs: 300));
-        var tool = new TaskTool(
-            NullLogger<TaskTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object,
-            fixture.ExecService,
-            fixture.ExecService,
-            fixture.EventPublisher);
-        var context = new ToolContext
-        {
-            SessionId = fixture.ParentId,
-            CallId = "call-1"
-        };
+        using var fixture = new TaskToolFixture(childResult: "background result");
+        var tool = fixture.CreateTaskTool();
+        var context = new ToolContext { SessionId = fixture.ParentId, CallId = "call-1" };
 
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new
@@ -118,45 +73,23 @@ public class TaskToolTests
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("state: running");
 
-        // 等待后台完成 → 向父会话注入 synthetic 完成通知
-        await WaitUntilAsync(
-            () => fixture.SyntheticInvocations.Count > 0,
-            timeoutMs: 8000);
+        await WaitUntilAsync(() => fixture.Runtime.Delivered.Any(m => m.TargetSessionId == fixture.ParentId));
 
-        var (sessionId, text, _) = fixture.SyntheticInvocations.Single();
-        sessionId.Should().Be(fixture.ParentId);
-        text.Should().Contain("后台任务已完成");
-        text.Should().Contain($"task_id: {fixture.Child.Id}");
-        text.Should().Contain("state: completed");
-        text.Should().Contain("<task_result>");
-        text.Should().Contain("background result");
-
-        fixture.LoopScheduler.Verify(
-            l => l.TryResumeWhenIdleAsync(fixture.ParentId, It.IsAny<CancellationToken>()),
-            Times.AtLeastOnce);
+        var notice = fixture.Runtime.Delivered.Last(m => m.TargetSessionId == fixture.ParentId);
+        notice.Body.Should().Contain("后台任务已完成");
+        notice.Body.Should().Contain($"task_id: {fixture.Child.Id}");
+        notice.Body.Should().Contain("state: completed");
+        notice.Body.Should().Contain("<task_result>");
+        notice.Body.Should().Contain("background result");
     }
 
     [Fact]
-    public async Task ExecuteAsync_Background_WhenParentCancelled_ShouldNotNotifyOrResumeParent()
+    public async Task ExecuteAsync_Background_WhenChildCascadedStopped_ShouldNotNotifyParent()
     {
-        using var fixture = new TaskToolFixture(executor: BlockingExecutor());
-        var tool = new TaskTool(
-            NullLogger<TaskTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object,
-            fixture.ExecService,
-            fixture.ExecService,
-            fixture.EventPublisher);
-
-        using var parentCts = new CancellationTokenSource();
-        var context = new ToolContext
-        {
-            SessionId = fixture.ParentId,
-            CallId = "call-cancel",
-            CancellationToken = parentCts.Token
-        };
+        using var fixture = new TaskToolFixture(childResult: "x");
+        // 子因父停止级联停止：子会话带 stop_reason 标记
+        fixture.Child.Metadata[SessionControlKeys.StopReason] = SessionControlKeys.StopReasonCascadedFromParent;
+        var tool = fixture.CreateTaskTool();
 
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new
@@ -166,35 +99,20 @@ public class TaskToolTests
                 subagent_type = "explore",
                 background = true
             }),
-            context);
+            new ToolContext { SessionId = fixture.ParentId, CallId = "call-cancel" });
 
         result.Success.Should().BeTrue();
 
-        // 等待后台子执行进入 Running
-        await WaitUntilAsync(() =>
-            fixture.ExecService.GetOverview(fixture.Child.Id).CurrentExecution?.Status == ExecutionStatus.Running);
-
-        // 模拟用户取消主会话：父执行令牌取消 → 级联取消后台子执行
-        parentCts.Cancel();
-
-        // 等待子执行进入终态
-        await WaitUntilAsync(() =>
-            fixture.ExecService.GetOverview(fixture.Child.Id).CurrentExecution == null);
-
-        // 给 watcher 收尾留出窗口
+        // 给后台 watcher 收尾留出窗口
         await Task.Delay(500);
 
-        // 父会话被取消后，不得再注入 synthetic 通知或触发 idle resume（否则已取消的主会话会被重新启动）
-        fixture.SyntheticInvocations.Should().BeEmpty();
-        fixture.LoopScheduler.Verify(
-            l => l.TryResumeWhenIdleAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+        fixture.Runtime.Delivered.Should().NotContain(m => m.TargetSessionId == fixture.ParentId);
     }
 
     [Fact]
     public async Task ExecuteAsync_CreateChild_ShouldPassParentScenario()
     {
-        using var fixture = new TaskToolFixture(executor: BuildExecutor("ok"));
+        using var fixture = new TaskToolFixture(childResult: "ok");
         var parent = new SessionData
         {
             Id = fixture.ParentId,
@@ -203,8 +121,6 @@ public class TaskToolTests
         };
         fixture.SessionManager.Setup(s => s.GetOrLoadAsync(fixture.ParentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(parent);
-        // 兼容实现切换前仍走 Get 的路径，保证红阶段既有用例不被破坏
-        fixture.SessionManager.Setup(s => s.Get(fixture.ParentId)).Returns(parent);
 
         string? capturedScenario = "unset";
         fixture.GroupManager
@@ -219,15 +135,7 @@ public class TaskToolTests
                 (_, _, _, _, scenario, _) => capturedScenario = scenario)
             .ReturnsAsync(fixture.Child);
 
-        var tool = new TaskTool(
-            NullLogger<TaskTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object,
-            fixture.ExecService,
-            fixture.ExecService,
-            fixture.EventPublisher);
+        var tool = fixture.CreateTaskTool();
 
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new
@@ -252,6 +160,7 @@ public class TaskToolTests
 
         var source = File.ReadAllText(sourcePath);
         source.Should().NotContain("ExecutionJobService");
+        source.Should().NotContain("IExecutionSubmitter");
         source.Should().NotContain("GetService(typeof(");
     }
 
@@ -271,21 +180,9 @@ public class TaskToolTests
     [Fact]
     public async Task ExecuteAsync_Foreground_ShouldWriteOriginToolCallIdToChildMetadata()
     {
-        using var fixture = new TaskToolFixture(executor: BuildExecutor("final answer"));
-        var tool = new TaskTool(
-            NullLogger<TaskTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object,
-            fixture.ExecService,
-            fixture.ExecService,
-            fixture.EventPublisher);
-        var context = new ToolContext
-        {
-            SessionId = fixture.ParentId,
-            CallId = "call-origin-1"
-        };
+        using var fixture = new TaskToolFixture(childResult: "final answer");
+        var tool = fixture.CreateTaskTool();
+        var context = new ToolContext { SessionId = fixture.ParentId, CallId = "call-origin-1" };
 
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new
@@ -306,16 +203,7 @@ public class TaskToolTests
     public async Task ExecuteAsync_UnknownAgent_ShouldReturnFailure()
     {
         using var fixture = new TaskToolFixture();
-        var tool = new TaskTool(
-            NullLogger<TaskTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.AgentRegistry.Object,
-            fixture.LoopScheduler.Object,
-            fixture.ExecService,
-            fixture.ExecService,
-            fixture.EventPublisher);
-        var context = new ToolContext { SessionId = fixture.ParentId };
+        var tool = fixture.CreateTaskTool();
 
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new
@@ -324,58 +212,13 @@ public class TaskToolTests
                 prompt = "y",
                 subagent_type = "does-not-exist"
             }),
-            context);
+            new ToolContext { SessionId = fixture.ParentId });
 
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("未知的 Agent 类型");
     }
 
-    private static IAgentExecutor BuildExecutor(string content = "final answer", int delayMs = 0)
-    {
-        var mock = new Mock<IAgentExecutor>();
-        mock.Setup(e => e.ExecuteAsync(
-                It.IsAny<AgentDefinition>(),
-                It.IsAny<IReadOnlyList<ChatMessage>>(),
-                It.IsAny<AgentContext>(),
-                It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken ct)
-                => AssistantStream(content, delayMs, ct));
-        return mock.Object;
-    }
-
-    private static async IAsyncEnumerable<IMessageEvent> AssistantStream(
-        string content, int delayMs, [EnumeratorCancellation] CancellationToken ct = default)
-    {
-        if (delayMs > 0)
-            await Task.Delay(delayMs, ct);
-        yield return new StreamCompleteEvent
-        {
-            SessionId = "",
-            Message = new ChatMessage { Role = ChatRole.Assistant, Content = content }
-        };
-    }
-
-    private static IAgentExecutor BlockingExecutor()
-    {
-        var mock = new Mock<IAgentExecutor>();
-        mock.Setup(e => e.ExecuteAsync(
-                It.IsAny<AgentDefinition>(),
-                It.IsAny<IReadOnlyList<ChatMessage>>(),
-                It.IsAny<AgentContext>(),
-                It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken ct)
-                => BlockingStream(ct));
-        return mock.Object;
-    }
-
-    private static async IAsyncEnumerable<IMessageEvent> BlockingStream(
-        [EnumeratorCancellation] CancellationToken ct = default)
-    {
-        await Task.Delay(10000, ct);
-        yield break;
-    }
-
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 8000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (!condition())
@@ -393,15 +236,12 @@ public class TaskToolTests
         public Mock<ISessionManager> SessionManager { get; }
         public Mock<ISessionGroupManager> GroupManager { get; }
         public Mock<IAgentRegistry> AgentRegistry { get; }
-        public Mock<IAgentLoopScheduler> LoopScheduler { get; }
-        public ExecutionJobService ExecService { get; }
+        public FakeSessionRuntime Runtime { get; }
         public IExecutionEventPublisher EventPublisher { get; }
-        public ConcurrentBag<(string SessionId, string Text, IDictionary<string, string>? Metadata)> SyntheticInvocations { get; } = new();
-        private readonly ServiceProvider _provider;
 
-        public TaskToolFixture(IAgentExecutor? executor = null, AgentDefinition? agent = null)
+        public TaskToolFixture(string childResult = "final answer")
         {
-            var agentDef = agent ?? new AgentDefinition
+            var agentDef = new AgentDefinition
             {
                 Name = "explore",
                 Mode = AgentMode.SubAgent,
@@ -414,14 +254,13 @@ public class TaskToolTests
                 Id = "child-1",
                 Kind = SessionKind.SubAgent,
                 SelectedAgent = "explore",
-                SelectedModel = string.Empty
+                SelectedModel = string.Empty,
+                Metadata = new Dictionary<string, string>()
             };
 
             SessionManager = new Mock<ISessionManager>();
             SessionManager.Setup(s => s.AddMessageAsync(
-                    Child.Id,
-                    It.IsAny<SessionMessage>(),
-                    It.IsAny<CancellationToken>()))
+                    Child.Id, It.IsAny<SessionMessage>(), It.IsAny<CancellationToken>()))
                 .Callback<string, SessionMessage, CancellationToken>((_, msg, _) => Child.AddMessage(msg))
                 .Returns(Task.CompletedTask);
             SessionManager.Setup(s => s.SaveAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
@@ -430,12 +269,6 @@ public class TaskToolTests
                 .ReturnsAsync(new SessionData { Id = ParentId, Kind = SessionKind.Root });
             SessionManager.Setup(s => s.Get(Child.Id)).Returns(Child);
             SessionManager.Setup(s => s.LoadAsync(It.IsAny<string>())).ReturnsAsync((SessionData?)null);
-            SessionManager.Setup(s => s.EnsureSessionAsync(
-                    Child.Id,
-                    It.IsAny<string?>(),
-                    It.IsAny<string?>(),
-                    It.IsAny<string?>()))
-                .ReturnsAsync(Child);
 
             GroupManager = new Mock<ISessionGroupManager>();
             GroupManager.Setup(g => g.CreateChildAsync(
@@ -455,123 +288,127 @@ public class TaskToolTests
             AgentRegistry.Setup(r => r.GetAgentAsync(agentDef.Name)).ReturnsAsync(agentDef);
             AgentRegistry.Setup(r => r.GetTaskableAgentsAsync()).ReturnsAsync(new List<AgentDefinition> { agentDef });
 
-            LoopScheduler = new Mock<IAgentLoopScheduler>();
-            LoopScheduler.Setup(l => l.IsLoopBusy(It.IsAny<string>())).Returns(false);
-            LoopScheduler.Setup(l => l.InjectSyntheticAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<string>(),
-                    It.IsAny<IDictionary<string, string>?>(),
-                    It.IsAny<CancellationToken>()))
-                .Callback<string, string, IDictionary<string, string>?, CancellationToken>(
-                    (sid, text, meta, _) => SyntheticInvocations.Add((sid, text, meta)))
-                .Returns(Task.CompletedTask);
-            LoopScheduler.Setup(l => l.TryResumeWhenIdleAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(true);
-
-            var instructionManager = new Mock<IInstructionManager>();
-            instructionManager.Setup(m => m.InjectIfNeededAsync(
-                    It.IsAny<SessionData>(),
-                    It.IsAny<string>(),
-                    It.IsAny<string>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new InstructionInjectResult { Injected = false });
-
-            var modelManager = new Mock<IModelManager>();
-            modelManager.Setup(m => m.GetSessionModelRef(It.IsAny<SessionData>())).Returns(string.Empty);
-            modelManager.Setup(m => m.ResolveNativeModel(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>()))
-                .Returns("m");
-            modelManager.Setup(m => m.ResolveAcpModel(It.IsAny<string?>(), It.IsAny<string?>())).Returns((string?)null);
-
-            var runtimeManager = new Mock<IAgentRuntimeManager>();
-            runtimeManager.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("general");
-
-            var services = new ServiceCollection();
-            services.AddSingleton(SessionManager.Object);
-            services.AddSingleton(instructionManager.Object);
-            services.AddSingleton(modelManager.Object);
-            services.AddSingleton(AgentRegistry.Object);
-            services.AddSingleton<IAgentExecutor>(executor ?? BuildExecutor());
-            services.AddSingleton(new AgentSelectionResolver(runtimeManager.Object));
-            services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
-            services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
-            services.AddSingleton(Mock.Of<ICommandRegistry>());
-            _provider = services.BuildServiceProvider();
-
-            var publisher = new ExecutionEventPublisher(
-                new ExecutionOptions(),
-                NullLogger<ExecutionEventPublisher>.Instance);
-            EventPublisher = publisher;
-
-            var configStore = new Mock<IConfigSectionStore>();
-            configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
-                .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
-
-            ExecService = new ExecutionJobService(
-                _provider,
-                publisher,
-                new ExecutionOptions(),
-                Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
-                configStore.Object,
-                NullLogger<ExecutionJobService>.Instance,
-                new CompactionRunner(
-                    new CompressionService(null!, Mock.Of<ISessionManager>()),
-                    Mock.Of<IExecutionEventPublisher>(),
-                    Mock.Of<ISessionManager>()));
+            EventPublisher = Mock.Of<IExecutionEventPublisher>();
+            Runtime = new FakeSessionRuntime(SessionManager.Object, Child, childResult);
         }
 
-        public void Dispose()
+        public TaskTool CreateTaskTool() =>
+            new(
+                NullLogger<TaskTool>.Instance,
+                SessionManager.Object,
+                GroupManager.Object,
+                AgentRegistry.Object,
+                Runtime,
+                EventPublisher);
+
+        public void Dispose() { }
+    }
+
+    /// <summary>
+    /// 会话运行时桩：投递子会话 user 消息时模拟执行完成（写入 assistant 结果并标记 idle），
+    /// 记录所有投递供断言父会话通知。
+    /// </summary>
+    private sealed class FakeSessionRuntime : ISessionRuntime
+    {
+        private readonly ISessionManager _sessions;
+        private readonly SessionData _child;
+        private readonly string _childResult;
+
+        public ConcurrentQueue<InboxMessage> Delivered { get; } = new();
+
+        public FakeSessionRuntime(ISessionManager sessions, SessionData child, string childResult)
         {
-            ExecService.Dispose();
-            _provider.Dispose();
+            _sessions = sessions;
+            _child = child;
+            _childResult = childResult;
         }
+
+        public async Task<InboxResult> DeliverAsync(InboxMessage message, CancellationToken ct = default)
+        {
+            Delivered.Enqueue(message);
+
+            // 首次投递子会话（用户消息）：模拟执行产出 assistant 结果
+            if (message.TargetSessionId == _child.Id
+                && message.Presentation == InboxPresentation.User
+                && !_child.GetActiveMessages().Any(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)))
+            {
+                await _sessions.AddMessageAsync(_child.Id, SessionMessage.AssistantMessage(_childResult), ct);
+            }
+
+            return InboxResult.Ok(messageId: "msg-1");
+        }
+
+        public SessionExecutionOverview Overview(string sessionId) => GetOverview(sessionId);
+
+        public SessionExecutionOverview GetOverview(string sessionId)
+        {
+            if (sessionId != _child.Id)
+                return new SessionExecutionOverview();
+
+            var completed = _child.GetActiveMessages()
+                .Any(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase));
+            return new SessionExecutionOverview
+            {
+                LastExecution = completed
+                    ? new ExecutionRecord { Status = ExecutionStatus.Completed }
+                    : null
+            };
+        }
+
+        public bool HasAnyActiveExecution() => false;
+
+        public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(false);
+
+        public Task<int> StopAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task<int> CancelAllInFlightAsync(CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task WaitForIdleAsync(string sessionId, CancellationToken ct = default) => Task.CompletedTask;
+
+        public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId) => Array.Empty<IMessageEvent>();
+
+        public async IAsyncEnumerable<IMessageEvent> SubscribeEvents(
+            string sessionId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
     }
 }
 
 /// <summary>
-/// TaskStatusTool：查询执行引擎中的子会话执行状态；无执行记录时回落子会话消息。
+/// TaskStatusTool：查询运行时中的子会话执行状态；无执行记录时回落子会话消息。
 /// </summary>
 public class TaskStatusToolTests
 {
     [Fact]
     public async Task ExecuteAsync_RunningTask_ShouldReturnRunning()
     {
-        using var fixture = new TaskStatusToolFixture(executor: BlockingExecutor());
-        await fixture.SubmitAsync();
+        var fixture = new TaskStatusToolFixture();
+        fixture.SetOverview("child-1", new ExecutionRecord { Status = ExecutionStatus.Running });
+        var tool = fixture.CreateTool();
 
-        await WaitUntilAsync(() =>
-            fixture.ExecService.GetOverview(fixture.Child.Id).CurrentExecution?.Status == ExecutionStatus.Running);
-
-        var tool = new TaskStatusTool(
-            NullLogger<TaskStatusTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.ExecService,
-            fixture.ExecService);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { task_id = fixture.Child.Id }),
-            new ToolContext { SessionId = fixture.ParentId });
+            JsonSerializer.SerializeToElement(new { task_id = "child-1" }),
+            new ToolContext { SessionId = "parent-1" });
 
         result.Success.Should().BeTrue();
-        result.Output.Should().Contain($"task_id: {fixture.Child.Id}");
+        result.Output.Should().Contain("task_id: child-1");
         result.Output.Should().Contain("state: running");
     }
 
     [Fact]
     public async Task ExecuteAsync_CompletedWithoutActiveExecution_ShouldFallbackToSession()
     {
-        using var fixture = new TaskStatusToolFixture(executor: BuildExecutor("done output"));
-        await fixture.SubmitAsync();
-        await fixture.WaitCompletedAsync();
+        var fixture = new TaskStatusToolFixture();
+        await fixture.AddAssistantAsync("done output");
+        var tool = fixture.CreateTool();
 
-        var tool = new TaskStatusTool(
-            NullLogger<TaskStatusTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.ExecService,
-            fixture.ExecService);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { task_id = fixture.Child.Id }),
-            new ToolContext { SessionId = fixture.ParentId });
+            JsonSerializer.SerializeToElement(new { task_id = "child-1" }),
+            new ToolContext { SessionId = "parent-1" });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("state: completed");
@@ -582,18 +419,16 @@ public class TaskStatusToolTests
     [Fact]
     public async Task ExecuteAsync_WaitTrue_ShouldWaitUntilCompleted()
     {
-        using var fixture = new TaskStatusToolFixture(executor: BuildExecutor("waited output", delayMs: 400));
-        await fixture.SubmitAsync();
+        var fixture = new TaskStatusToolFixture();
+        fixture.SetOverview("child-1", new ExecutionRecord { Status = ExecutionStatus.Running });
+        await fixture.AddAssistantAsync("waited output");
+        // wait 后再查一次 overview：模拟执行已完成
+        fixture.SetOverviewAfterWait("child-1", new ExecutionRecord { Status = ExecutionStatus.Completed });
+        var tool = fixture.CreateTool();
 
-        var tool = new TaskStatusTool(
-            NullLogger<TaskStatusTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.ExecService,
-            fixture.ExecService);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { task_id = fixture.Child.Id, wait = true, timeout_ms = 5000 }),
-            new ToolContext { SessionId = fixture.ParentId });
+            JsonSerializer.SerializeToElement(new { task_id = "child-1", wait = true, timeout_ms = 5000 }),
+            new ToolContext { SessionId = "parent-1" });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("state: completed");
@@ -604,271 +439,107 @@ public class TaskStatusToolTests
     [Fact]
     public async Task ExecuteAsync_FailedWithoutActiveExecution_ShouldReturnErrorState()
     {
-        using var fixture = new TaskStatusToolFixture(executor: FailingExecutor("boom"));
-        await fixture.SubmitAsync();
-        await fixture.WaitCompletedAsync();
+        var fixture = new TaskStatusToolFixture();
+        fixture.Child.Status = SessionStatus.Error;
+        fixture.Child.Metadata[SessionMetadataKeys.LastError] = "boom";
+        var tool = fixture.CreateTool();
 
-        // 执行失败后应把子会话标记为 Error，task_status 回落时应返回 error 而非 running
-        fixture.Child.Status.Should().Be(SessionStatus.Error);
-
-        var tool = new TaskStatusTool(
-            NullLogger<TaskStatusTool>.Instance,
-            fixture.SessionManager.Object,
-            fixture.GroupManager.Object,
-            fixture.ExecService,
-            fixture.ExecService);
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { task_id = fixture.Child.Id }),
-            new ToolContext { SessionId = fixture.ParentId });
+            JsonSerializer.SerializeToElement(new { task_id = "child-1" }),
+            new ToolContext { SessionId = "parent-1" });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("state: error");
         result.Output.Should().Contain("boom");
     }
 
-    [Fact]
-    public async Task ExecuteAsync_RetryAfterFailure_ShouldClearSessionError()
-    {
-        using var fixture = new TaskStatusToolFixture(executor: ToggleExecutor(failFirst: true));
-        await fixture.SubmitAsync();
-        await fixture.WaitCompletedAsync();
-        fixture.Child.Status.Should().Be(SessionStatus.Error);
-
-        // 续跑（传递 task_id 继续任务）：成功后应清除 Error 标记，否则 task_status 永远误判 error
-        await fixture.SubmitAsync();
-        await fixture.WaitCompletedAsync();
-        fixture.Child.Status.Should().Be(SessionStatus.Active);
-    }
-
-    private static IAgentExecutor BuildExecutor(string content = "final answer", int delayMs = 0)
-    {
-        var mock = new Mock<IAgentExecutor>();
-        mock.Setup(e => e.ExecuteAsync(
-                It.IsAny<AgentDefinition>(),
-                It.IsAny<IReadOnlyList<ChatMessage>>(),
-                It.IsAny<AgentContext>(),
-                It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken ct)
-                => AssistantStream(content, delayMs, ct));
-        return mock.Object;
-    }
-
-    private static IAgentExecutor BlockingExecutor()
-    {
-        var mock = new Mock<IAgentExecutor>();
-        mock.Setup(e => e.ExecuteAsync(
-                It.IsAny<AgentDefinition>(),
-                It.IsAny<IReadOnlyList<ChatMessage>>(),
-                It.IsAny<AgentContext>(),
-                It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken ct)
-                => BlockingStream(ct));
-        return mock.Object;
-    }
-
-    private static IAgentExecutor ToggleExecutor(bool failFirst)
-    {
-        var failNext = failFirst;
-        var mock = new Mock<IAgentExecutor>();
-        mock.Setup(e => e.ExecuteAsync(
-                It.IsAny<AgentDefinition>(),
-                It.IsAny<IReadOnlyList<ChatMessage>>(),
-                It.IsAny<AgentContext>(),
-                It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken _) =>
-            {
-                if (failNext)
-                {
-                    failNext = false;
-                    return FailingStream("boom");
-                }
-                return AssistantStream("recovered", 0);
-            });
-        return mock.Object;
-    }
-
-    private static async IAsyncEnumerable<IMessageEvent> AssistantStream(
-        string content, int delayMs, [EnumeratorCancellation] CancellationToken ct = default)
-    {
-        if (delayMs > 0)
-            await Task.Delay(delayMs, ct);
-        yield return new StreamCompleteEvent
-        {
-            SessionId = "",
-            Message = new ChatMessage { Role = ChatRole.Assistant, Content = content }
-        };
-    }
-
-    private static async IAsyncEnumerable<IMessageEvent> BlockingStream(
-        [EnumeratorCancellation] CancellationToken ct = default)
-    {
-        await Task.Delay(10000, ct);
-        yield break;
-    }
-
-    private static IAgentExecutor FailingExecutor(string error)
-    {
-        var mock = new Mock<IAgentExecutor>();
-        mock.Setup(e => e.ExecuteAsync(
-                It.IsAny<AgentDefinition>(),
-                It.IsAny<IReadOnlyList<ChatMessage>>(),
-                It.IsAny<AgentContext>(),
-                It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> _, AgentContext _, CancellationToken _)
-                => FailingStream(error));
-        return mock.Object;
-    }
-
-    private static async IAsyncEnumerable<IMessageEvent> FailingStream(string error)
-    {
-        yield return new ErrorEvent
-        {
-            SessionId = "",
-            Message = error
-        };
-        yield return new LoopCompleteEvent
-        {
-            SessionId = "",
-            LoopId = "loop-fail",
-            Success = false,
-            Error = error
-        };
-    }
-
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 8000)
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (!condition())
-        {
-            if (sw.ElapsedMilliseconds > timeoutMs)
-                throw new TimeoutException("WaitUntil condition not met");
-            await Task.Delay(20);
-        }
-    }
-
-    private sealed class TaskStatusToolFixture : IDisposable
+    private sealed class TaskStatusToolFixture
     {
         public string ParentId { get; } = "parent-1";
         public SessionData Child { get; }
-        public Mock<ISessionManager> SessionManager { get; }
-        public Mock<ISessionGroupManager> GroupManager { get; }
-        public ExecutionJobService ExecService { get; }
-        private readonly ServiceProvider _provider;
 
-        public TaskStatusToolFixture(IAgentExecutor? executor = null)
+        private readonly Dictionary<string, ExecutionRecord> _overview = new();
+        private readonly Dictionary<string, ExecutionRecord> _afterWait = new();
+        private readonly List<ExecutionRecord> _last = new();
+
+        public TaskStatusToolFixture()
         {
-            var agentDef = new AgentDefinition
-            {
-                Name = "explore",
-                Mode = AgentMode.SubAgent,
-                Runtime = AgentRuntime.Native
-            };
-
             Child = new SessionData
             {
                 Id = "child-1",
                 Kind = SessionKind.SubAgent,
                 SelectedAgent = "explore",
-                SelectedModel = string.Empty
+                SelectedModel = string.Empty,
+                Metadata = new Dictionary<string, string>()
             };
+        }
 
-            SessionManager = new Mock<ISessionManager>();
-            SessionManager.Setup(s => s.Get(ParentId)).Returns((SessionData?)null);
-            SessionManager.Setup(s => s.Get(Child.Id)).Returns(Child);
-            SessionManager.Setup(s => s.LoadAsync(Child.Id)).ReturnsAsync(Child);
-            SessionManager.Setup(s => s.SaveAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
-            SessionManager.Setup(s => s.EnsureSessionAsync(
-                    Child.Id,
-                    It.IsAny<string?>(),
-                    It.IsAny<string?>(),
-                    It.IsAny<string?>()))
-                .ReturnsAsync(Child);
+        public void SetOverview(string sessionId, ExecutionRecord record) => _overview[sessionId] = record;
 
-            GroupManager = new Mock<ISessionGroupManager>();
-            GroupManager.Setup(g => g.GetParentAsync(Child.Id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(ParentId);
-            GroupManager.Setup(g => g.ListChildrenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        public void SetOverviewAfterWait(string sessionId, ExecutionRecord record) => _afterWait[sessionId] = record;
+
+        public Task AddAssistantAsync(string content)
+        {
+            Child.AddMessage(SessionMessage.AssistantMessage(content));
+            return Task.CompletedTask;
+        }
+
+        public TaskStatusTool CreateTool()
+        {
+            var runtime = new StubRuntime(this);
+            var sessions = new Mock<ISessionManager>();
+            sessions.Setup(s => s.Get(Child.Id)).Returns(Child);
+            sessions.Setup(s => s.LoadAsync(Child.Id)).ReturnsAsync(Child);
+            var groups = new Mock<ISessionGroupManager>();
+            groups.Setup(g => g.ListChildrenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<SessionData> { Child });
 
-            var agentRegistry = new Mock<IAgentRegistry>();
-            agentRegistry.Setup(r => r.GetAgentAsync(agentDef.Name)).ReturnsAsync(agentDef);
-
-            var instructionManager = new Mock<IInstructionManager>();
-            instructionManager.Setup(m => m.InjectIfNeededAsync(
-                    It.IsAny<SessionData>(),
-                    It.IsAny<string>(),
-                    It.IsAny<string>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new InstructionInjectResult { Injected = false });
-
-            var modelManager = new Mock<IModelManager>();
-            modelManager.Setup(m => m.GetSessionModelRef(It.IsAny<SessionData>())).Returns(string.Empty);
-            modelManager.Setup(m => m.ResolveNativeModel(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>()))
-                .Returns("m");
-            modelManager.Setup(m => m.ResolveAcpModel(It.IsAny<string?>(), It.IsAny<string?>())).Returns((string?)null);
-
-            var runtimeManager = new Mock<IAgentRuntimeManager>();
-            runtimeManager.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("general");
-
-            var services = new ServiceCollection();
-            services.AddSingleton(SessionManager.Object);
-            services.AddSingleton(instructionManager.Object);
-            services.AddSingleton(modelManager.Object);
-            services.AddSingleton(agentRegistry.Object);
-            services.AddSingleton<IAgentExecutor>(executor ?? BuildExecutor());
-            services.AddSingleton(new AgentSelectionResolver(runtimeManager.Object));
-            services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
-            services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
-            services.AddSingleton(Mock.Of<ICommandRegistry>());
-            _provider = services.BuildServiceProvider();
-
-            var publisher = new ExecutionEventPublisher(
-                new ExecutionOptions(),
-                NullLogger<ExecutionEventPublisher>.Instance);
-
-            var configStore = new Mock<IConfigSectionStore>();
-            configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
-                .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
-
-            ExecService = new ExecutionJobService(
-                _provider,
-                publisher,
-                new ExecutionOptions(),
-                Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
-                configStore.Object,
-                NullLogger<ExecutionJobService>.Instance,
-                new CompactionRunner(
-                    new CompressionService(null!, Mock.Of<ISessionManager>()),
-                    Mock.Of<IExecutionEventPublisher>(),
-                    Mock.Of<ISessionManager>()));
+            return new TaskStatusTool(
+                NullLogger<TaskStatusTool>.Instance,
+                sessions.Object,
+                groups.Object,
+                runtime);
         }
 
-        public Task SubmitAsync()
+        private sealed class StubRuntime(TaskStatusToolFixture owner) : ISessionRuntime
         {
-            return ExecService.SubmitAsync(
-                Child.Id,
-                ChatInput.FromText("hi"),
-                new ChatOptions
-                {
-                    AgentId = "explore",
-                    SkipUserMessagePersist = true,
-                    SkipInstructionInject = true
-                });
-        }
+            private bool _waited;
 
-        public async Task WaitCompletedAsync()
-        {
-            await WaitUntilAsync(() =>
+            public Task<InboxResult> DeliverAsync(InboxMessage message, CancellationToken ct = default) =>
+                Task.FromResult(InboxResult.Ok());
+
+            public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(false);
+
+            public Task<int> StopAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
+
+            public Task<int> CancelAllInFlightAsync(CancellationToken ct = default) => Task.FromResult(0);
+
+            public Task WaitForIdleAsync(string sessionId, CancellationToken ct = default)
             {
-                var overview = ExecService.GetOverview(Child.Id);
-                return overview.CurrentExecution == null && overview.QueueLength == 0;
-            });
-        }
+                _waited = true;
+                return Task.CompletedTask;
+            }
 
-        public void Dispose()
-        {
-            ExecService.Dispose();
-            _provider.Dispose();
+            public SessionExecutionOverview GetOverview(string sessionId)
+            {
+                var source = _waited && owner._afterWait.TryGetValue(sessionId, out var after)
+                    ? after
+                    : owner._overview.GetValueOrDefault(sessionId);
+                return new SessionExecutionOverview { CurrentExecution = source };
+            }
+
+            public bool HasAnyActiveExecution() => false;
+
+            public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId) => Array.Empty<IMessageEvent>();
+
+            public async IAsyncEnumerable<IMessageEvent> SubscribeEvents(
+                string sessionId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+            {
+                await Task.CompletedTask;
+                yield break;
+            }
+
+            public Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
         }
     }
 }

@@ -103,6 +103,6 @@ public class AgentExecutorTurnRetryTests
             llm, toolManager, permission.Object, hookManager, agentRegistry.Object,
             new PromptBuilder(Array.Empty<IPromptSectionContributor>()), modelManager.Object,
             NullLogger<AgentExecutor>.Instance,
-            sessionManager: null, loopScheduler: null, todoStore: null, turnRetryPolicy: retryPolicy);
+            sessionManager: null, todoStore: null, turnRetryPolicy: retryPolicy);
     }
 }

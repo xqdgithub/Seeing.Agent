@@ -324,20 +324,17 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
                 _commonOptions.Model);
 
             var reply = new GatewayAssistantReplyCollector();
-            string? executionId = null;
 
             try
             {
                 var submit = await _gatewayFacade.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
-                if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+                if (!submit.Success)
                 {
                     await streamState.FailAsync(submit.Error ?? "Submit failed", cancellationToken).ConfigureAwait(false);
                     return;
                 }
 
-                executionId = submit.ExecutionId;
-
-                await foreach (var gatewayEvent in _gatewayFacade.SubscribeAsync(sessionId, executionId, cancellationToken)
+                await foreach (var gatewayEvent in _gatewayFacade.SubscribeAsync(sessionId, cancellationToken)
                                    .ConfigureAwait(false))
                 {
                     var disposition = reply.Apply(gatewayEvent);
@@ -398,8 +395,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
             catch (OperationCanceledException)
             {
                 _logger.LogWarning("WeCom 消息处理超时: SessionId={SessionId}", sessionId);
-                if (!string.IsNullOrEmpty(executionId))
-                    await _gatewayFacade.CancelAsync(executionId, CancellationToken.None).ConfigureAwait(false);
+                await _gatewayFacade.CancelAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
                 await streamState.FailAsync("处理超时，请稍后重试", CancellationToken.None).ConfigureAwait(false);
                 _sessionTracker.Touch(parsed);
             }

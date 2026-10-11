@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
@@ -14,16 +13,16 @@ namespace Seeing.Agent.Tools.Session;
 [ToolCapability(ToolCapabilityKeys.CacheEnabled, "false")]
 public sealed class SessionHandoffTool : SessionToolBase
 {
-    private readonly IExecutionSubmitter _submitter;
+    private readonly ISessionRuntime _runtime;
 
     /// <summary>创建 SessionHandoffTool 实例。</summary>
     public SessionHandoffTool(
         ILogger<SessionHandoffTool> logger,
         ISessionManager sessions,
         ISessionGroupManager groups,
-        IExecutionSubmitter submitter) : base(logger, sessions, groups)
+        ISessionRuntime runtime) : base(logger, sessions, groups)
     {
-        _submitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
+        _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
     }
 
     /// <inheritdoc />
@@ -122,29 +121,21 @@ public sealed class SessionHandoffTool : SessionToolBase
                     source.Id, s => s.Metadata[inflightKey] = successor.Id, ct).ConfigureAwait(false);
             }
 
-            await Sessions.AddMessageAsync(successor.Id, new SessionMessage
+            // 后继 user 消息由 DeliverAsync 统一落盘（不再预落盘）。
+            var submit = await _runtime.DeliverAsync(new InboxMessage
             {
-                Role = MessageRole.User,
-                Content = prompt,
-                CreatedAt = DateTime.UtcNow,
+                TargetSessionId = successor.Id,
+                Sender = new InboxSender { Kind = InboxSenderKind.Human },
+                Body = prompt,
+                Delivery = InboxDelivery.Wake,
+                Presentation = InboxPresentation.User,
+                AgentId = successor.SelectedAgent,
+                ModelId = successor.SelectedModel,
             }, ct).ConfigureAwait(false);
 
-            var submit = await _submitter.SubmitAsync(
-                successor.Id,
-                new ChatInput { Text = prompt },
-                new ChatOptions
-                {
-                    AgentId = successor.SelectedAgent,
-                    ModelId = successor.SelectedModel,
-                    SkipUserMessagePersist = true,
-                },
-                ct).ConfigureAwait(false);
-
-            if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+            if (!submit.Success)
             {
-                if (!string.IsNullOrEmpty(submit.ExecutionId))
-                    await _submitter.CancelAsync(submit.ExecutionId, ct).ConfigureAwait(false);
-
+                await _runtime.StopAsync(successor.Id, CancellationToken.None).ConfigureAwait(false);
                 await RollbackAsync(successor.Id, group?.Id, originalActiveId).ConfigureAwait(false);
                 return Failure(submit.Error ?? "交接执行提交失败");
             }
@@ -154,7 +145,6 @@ public sealed class SessionHandoffTool : SessionToolBase
                 new Dictionary<string, object>
                 {
                     ["target_session_id"] = successor.Id,
-                    ["execution_id"] = submit.ExecutionId,
                 });
             result.TurnDirective = ToolTurnDirective.EndTurn;
             result.TurnDirectiveReason = "handoff";

@@ -27,7 +27,8 @@
 @inject CircuitContext CircuitContext
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
-@inject IChatOrchestrator ChatOrchestrator
+@inject ISessionRuntime SessionRuntime
+@inject ISessionDirectory SessionDirectory
 @inject Abstractions.Agents.IAgentRegistry AgentRegistry
 @inject Core.AgentSelectionResolver AgentSelectionResolver
 @inject IWorkspaceProvider WorkspaceProvider
@@ -448,7 +449,7 @@
             return current.Id;
         }
 
-        var sessions = await ChatOrchestrator.ListSessionsAsync();
+        var sessions = await SessionDirectory.ListAsync();
         if (sessions.Count > 0)
         {
             var id = sessions.First().Id;
@@ -464,18 +465,18 @@
     }
 
     /// <summary>
-    /// 从 ExecutionJobService 恢复会话执行状态（仅恢复展示态，不再自起订阅）。
+    /// 从 SessionRuntime 恢复会话执行状态（仅恢复展示态，不再自起订阅）。
     /// 事件流订阅已由 EnsureStreamBinding 经 Router 建立，用于页面刷新恢复与切换会话恢复。
     /// </summary>
     private void RestoreExecutionFromOverview(string sessionId)
     {
-        var overview = ChatOrchestrator.GetOverview(sessionId);
+        var overview = SessionRuntime.GetOverview(sessionId);
         if (overview?.CurrentExecution == null)
             return;
 
         // 恢复执行状态
         SessionState.ExecutionStatus = overview.CurrentExecution.Status;
-        SessionState.QueuePosition = overview.CurrentExecution.QueuePosition;
+        SessionState.PendingInputCount = overview.PendingInputCount;
         SessionState.CurrentExecutionId = overview.CurrentExecution.ExecutionId;
         _executionStartedAtUtc = overview.CurrentExecution.StartedAt == default
             ? null
@@ -622,7 +623,7 @@
         EnsureSyncForSession(sessionId);
         IsLoadingSession = true;
 
-        var sessionData = await ChatOrchestrator.GetSessionAsync(sessionId);
+        var sessionData = await SessionDirectory.GetAsync(sessionId);
 
         if (sessionData == null)
         {
@@ -805,9 +806,9 @@
         Router.AttachConsumer(sessionId, _handler);
 
         // M3：页面刷新/会话切换产生的新 handler 无活跃执行 ID（_activeExecutionId=null），
-        // 从 ExecutionJobService overview 恢复当前非终态执行，避免首个 ExecutionComplete 因
+        // 从 SessionRuntime overview 恢复当前非终态执行，避免首个 ExecutionComplete 因
         // ExecutionId 不匹配被忽略（排队/多执行场景执行态无法正确配对清理）。
-        var overview = ChatOrchestrator.GetOverview(sessionId);
+        var overview = SessionRuntime.GetOverview(sessionId);
         if (overview?.CurrentExecution != null && !overview.CurrentExecution.IsTerminal)
             _handler.RestoreExecution(overview.CurrentExecution.ExecutionId, overview.CurrentExecution.Status);
 
@@ -1061,7 +1062,7 @@
         Context.Label = _groupMember?.Label;
         Context.SuccessorTitle = GetSuccessorTitle();
         Context.IsQueued = SessionState.IsQueued;
-        Context.QueuePosition = SessionState.QueuePosition;
+        Context.PendingInputCount = SessionState.PendingInputCount;
         Context.HasActiveExecution = SessionState.HasActiveExecution;
         Context.IsExecuting = SessionState.IsExecuting;
         Context.SelectedAgent = SessionState.SelectedAgent;
@@ -1357,7 +1358,17 @@
             _executionStartedAtUtc = DateTime.UtcNow;
 
             // 提交执行（用户消息会立即保存）
-            var result = await ChatOrchestrator.SubmitAsync(SessionState.SessionId, input, options);
+            var result = await SessionRuntime.DeliverAsync(new InboxMessage
+            {
+                TargetSessionId = SessionState.SessionId,
+                Sender = new InboxSender { Kind = InboxSenderKind.Human },
+                Body = input.Text,
+                Delivery = InboxDelivery.Wake,
+                Presentation = InboxPresentation.User,
+                Attachments = input.Attachments,
+                AgentId = options.AgentId,
+                ModelId = options.ModelId
+            });
 
             if (!result.Success)
             {
@@ -1373,9 +1384,9 @@
             Timeline.RequestPinToBottom();
             _currentStreamingMessageId = string.Empty;
 
-            // 更新 UI 状态
-            SessionState.ExecutionStatus = result.Status;
-            SessionState.QueuePosition = result.QueuePosition;
+            // 更新 UI 状态（InboxResult 无可靠 ExecutionId，保留尽力而为值）
+            SessionState.ExecutionStatus = ExecutionStatus.Pending;
+            SessionState.PendingInputCount = result.PendingInputCount;
             SessionState.CurrentExecutionId = result.ExecutionId;
 
             SyncContextState();
@@ -1406,12 +1417,12 @@
         SessionState.CurrentExecutionId = null;
 
         // 2) 后端取消（尽力而为）：统一走异步会话级取消，
-        // 原先额外调用的同步阻塞 ChatOrchestrator.Cancel(executionId) 与本次会话级取消重复，已移除。
+        // 原先额外调用的同步阻塞 SessionRuntime.Interrupt 与本次会话级取消重复，已移除。
         if (!string.IsNullOrEmpty(sessionId))
         {
             try
             {
-                await ChatOrchestrator.CancelBySessionAsync(sessionId);
+                await SessionRuntime.StopAsync(sessionId);
             }
             catch
             {
@@ -1419,7 +1430,7 @@
             }
         }
 
-        // 未完成 Task 的取消标记由服务端 CancelBySessionAsync → 执行体 catch(OCE) 统一落盘，
+        // 未完成 Task 的取消标记由服务端 SessionRuntime.StopAsync → 执行体 catch(OCE) 统一落盘，
         // UI 不再直接写 SessionData。
 
         // 3) 收尾（无论后端结果如何都要执行）
@@ -1440,7 +1451,7 @@
 
         try
         {
-            var n = await ChatOrchestrator.ReconcileIncompleteTasksAsync(sessionId);
+            var n = await SessionRuntime.ReconcileIncompleteTasksAsync(sessionId);
 
             if (n > 0)
                 ResetTimelineFromSession();
@@ -1470,7 +1481,7 @@
     {
         try
         {
-            var session = await ChatOrchestrator.CreateSessionAsync(
+            var session = await SessionDirectory.CreateAsync(
                 workingDirectory: WorkspaceProvider.GetProjectRoot());
             NavigationManager.NavigateTo($"/session/{session.Id}");
         }
@@ -1488,7 +1499,7 @@
         if (string.IsNullOrWhiteSpace(title) || SessionState.CurrentSession == null)
             return;
 
-        await ChatOrchestrator.RenameSessionAsync(SessionState.CurrentSession.Id, title.Trim());
+        await SessionDirectory.RenameAsync(SessionState.CurrentSession.Id, title.Trim());
         MessageService.Success("会话已重命名");
         await InvokeAsync(StateHasChanged);
     }
@@ -1504,7 +1515,7 @@
             ? $"{SessionState.Title} (独立会话)"
             : $"{SessionState.Title} (分支)";
 
-        var branchedSession = await ChatOrchestrator.BranchSessionAsync(SessionState.CurrentSession.Id, title);
+        var branchedSession = await SessionDirectory.BranchAsync(SessionState.CurrentSession.Id, title);
 
         MessageService.Success(Context.IsChild
             ? "已分叉为独立会话，可继续对话"
@@ -1608,7 +1619,7 @@
             return;
         }
 
-        // 复用提交链路：ChatOrchestrator 识别 /compact 命令 → shouldContinue:false 终止循环
+        // 复用提交链路：SessionRuntime 识别 /compact 命令 → shouldContinue:false 终止循环
         // → CommandResultEvent(NeedsRefresh=true) → OnHandlerChanged 刷新时间线
         await OnSubmitMessage(new PromptSubmitEventArgs { Text = "/compact" });
     }
@@ -1843,7 +1854,7 @@
 
         // 2026-08-27 修复：Dispose 不再取消后端执行 / 标记未完成 Task 为取消。
         // 刷新页面 / 导航离开 / 关闭标签都会触发 Blazor circuit 关闭 → Dispose；
-        // 原先在此调用 CancelBySessionAsync 会取消整个会话的后端执行（表现为"对话已取消: user"），
+        // 原先在此调用 SessionRuntime.StopAsync 会取消整个会话的后端执行（表现为"对话已取消: user"），
         // 且把仍进行中的子任务标记为取消。
         // 现改为仅清理 UI 订阅：后端执行继续，重新打开会话经 Reconcile 恢复进度/结果。
         // 用户主动取消仍走 OnCancelExecution（保留）；未完成标记一律由服务端落盘。

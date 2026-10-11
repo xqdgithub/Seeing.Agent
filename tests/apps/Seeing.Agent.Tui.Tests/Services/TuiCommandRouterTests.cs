@@ -1,8 +1,7 @@
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Chat;
-using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Scenarios;
@@ -92,44 +91,44 @@ public sealed class TuiCommandRouterTests
     [Fact]
     public async Task ExecuteAsync_LocalCommands_ShouldBeCaseInsensitive()
     {
-        var (controller, orchestrator, _, _) = NewController();
+        var (controller, directory, _, _) = NewController();
 
         await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
         var result = await new TuiCommandRouter().ExecuteAsync("/RENAME Hello", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.ForwardText.Should().BeNull();
-        orchestrator.Verify(o => o.RenameSessionAsync("ses_x", "Hello", It.IsAny<CancellationToken>()), Times.Once);
+        directory.Verify(o => o.RenameAsync("ses_x", "Hello", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task ExecuteAsync_NewWithTitle_ShouldCreateSession_AndNotForward()
     {
-        var (controller, orchestrator, _, _) = NewController();
+        var (controller, directory, _, _) = NewController();
 
         var result = await new TuiCommandRouter().ExecuteAsync("/new My Title", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.ForwardText.Should().BeNull();
         result.Output.Should().NotBeNull();
-        orchestrator.Verify(
-            o => o.CreateSessionAsync("My Title", null, null, It.IsAny<CancellationToken>()),
+        directory.Verify(
+            o => o.CreateAsync("My Title", null, null, It.IsAny<CancellationToken>()),
             Times.Once);
         controller.Current.Should().NotBeNull();
     }
 
     [Fact]
-    public async Task ExecuteAsync_RenameWithoutTitle_ShouldNotCallOrchestrator()
+    public async Task ExecuteAsync_RenameWithoutTitle_ShouldNotCallDirectory()
     {
-        var (controller, orchestrator, _, _) = NewController();
+        var (controller, directory, _, _) = NewController();
         await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
         var result = await new TuiCommandRouter().ExecuteAsync("/rename", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         result.Output.Should().NotBeNull();
-        orchestrator.Verify(
-            o => o.RenameSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+        directory.Verify(
+            o => o.RenameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -235,19 +234,19 @@ public sealed class TuiCommandRouterTests
     [Fact]
     public async Task ExecuteAsync_ResumeWithArgument_ShouldSwitchActiveSession()
     {
-        var (controller, orchestrator, _, _) = NewController();
+        var (controller, directory, _, _) = NewController();
         var result = await new TuiCommandRouter().ExecuteAsync("/resume ses_x", Context(controller), TestContext.Current.CancellationToken);
 
         result.Handled.Should().BeTrue();
         controller.Current!.SessionId.Should().Be("ses_x");
-        orchestrator.Verify(o => o.GetSessionAsync("ses_x", It.IsAny<CancellationToken>()), Times.Once);
+        directory.Verify(o => o.GetAsync("ses_x", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task ExecuteAsync_SessionsNoArg_ShouldPromptAndSwitch()
     {
-        var (controller, orchestrator, _, _) = NewController();
-        orchestrator.Setup(o => o.ListSessionsAsync(It.IsAny<CancellationToken>()))
+        var (controller, directory, _, _) = NewController();
+        directory.Setup(o => o.ListAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SessionData>
             {
                 new() { Id = "ses_a", Title = "A", UpdatedAt = DateTime.Now.AddMinutes(-5) },
@@ -266,8 +265,8 @@ public sealed class TuiCommandRouterTests
     [Fact]
     public async Task ExecuteAsync_SessionsNoArgEmpty_ShouldNotPrompt()
     {
-        var (controller, orchestrator, _, _) = NewController();
-        orchestrator.Setup(o => o.ListSessionsAsync(It.IsAny<CancellationToken>()))
+        var (controller, directory, _, _) = NewController();
+        directory.Setup(o => o.ListAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SessionData>());
         var surface = new ScriptedSurface();
 
@@ -280,8 +279,8 @@ public sealed class TuiCommandRouterTests
     [Fact]
     public async Task ExecuteAsync_ResumeNoArg_ShouldPromptAndSwitch()
     {
-        var (controller, orchestrator, _, _) = NewController();
-        orchestrator.Setup(o => o.ListSessionsAsync(It.IsAny<CancellationToken>()))
+        var (controller, directory, _, _) = NewController();
+        directory.Setup(o => o.ListAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SessionData>
             {
                 new() { Id = "ses_a", Title = "A", UpdatedAt = DateTime.Now },
@@ -488,13 +487,13 @@ public sealed class TuiCommandRouterTests
     [Fact]
     public async Task ExecuteAsync_CancelAll_ShouldCallCascade()
     {
-        var (controller, _, _, submitter) = NewController();
+        var (controller, _, _, runtime) = NewController();
         await controller.SwitchAsync("ses_x", TestContext.Current.CancellationToken);
 
         await new TuiCommandRouter().ExecuteAsync("/cancel all", Context(controller), TestContext.Current.CancellationToken);
 
-        submitter.Verify(
-            s => s.CancelBySessionAsync("ses_x", It.IsAny<CancellationToken>()),
+        runtime.Verify(
+            s => s.StopAsync("ses_x", It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -576,39 +575,39 @@ public sealed class TuiCommandRouterTests
             llm ?? new Mock<ILlmService>().Object,
             scenarios ?? new Mock<IScenarioCatalog>().Object);
 
-    private static (TuiSessionController Controller, Mock<IChatOrchestrator> Orchestrator, Mock<ISessionManager> SessionManager, Mock<IExecutionSubmitter> Submitter) NewController()
+    private static (TuiSessionController Controller, Mock<ISessionDirectory> Directory, Mock<ISessionManager> SessionManager, Mock<ISessionRuntime> Runtime) NewController()
     {
-        var orchestrator = new Mock<IChatOrchestrator>();
-        orchestrator
-            .Setup(o => o.CreateSessionAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        var directory = new Mock<ISessionDirectory>();
+        directory
+            .Setup(o => o.CreateAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => SessionData.Create());
-        orchestrator
-            .Setup(o => o.GetSessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        directory
+            .Setup(o => o.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string id, CancellationToken _) =>
             {
                 var session = SessionData.Create();
                 session.Id = id;
                 return session;
             });
-        orchestrator
-            .Setup(o => o.ListSessionsAsync(It.IsAny<CancellationToken>()))
+        directory
+            .Setup(o => o.ListAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SessionData>());
 
-        var submitter = new Mock<IExecutionSubmitter>();
-        submitter
-            .Setup(s => s.CancelBySessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        var runtime = new Mock<ISessionRuntime>();
+        runtime
+            .Setup(s => s.StopAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
         var sessionManager = new Mock<ISessionManager>();
         var groupManager = new Mock<ISessionGroupManager>();
 
         var controller = new TuiSessionController(
-            orchestrator.Object,
-            submitter.Object,
+            runtime.Object,
+            directory.Object,
             sessionManager.Object,
             groupManager.Object);
 
-        return (controller, orchestrator, sessionManager, submitter);
+        return (controller, directory, sessionManager, runtime);
     }
 
     /// <summary>按脚本返回选择结果的终端出口替身，避免真实交互提示。</summary>

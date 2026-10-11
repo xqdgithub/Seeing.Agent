@@ -4,7 +4,7 @@
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @using Seeing.Agent.Hosting
-@inject IChatOrchestrator ChatOrchestrator
+@inject ISessionDirectory SessionDirectory
 @inject ISessionManager SessionManager
 @inject IWorkspaceProvider WorkspaceProvider
 @inject IMessageService MessageService
@@ -333,7 +333,7 @@
 
         try
         {
-            var session = await ChatOrchestrator.GetSessionAsync(_editingSessionId);
+            var session = await SessionDirectory.GetAsync(_editingSessionId);
             if (session == null)
             {
                 MessageService.Error("会话不存在");
@@ -370,7 +370,7 @@
     {
         try
         {
-            var sessions = await ChatOrchestrator.ListSessionsAsync();
+            var sessions = await SessionDirectory.ListAsync();
             
             _filteredSessions = sessions
                 .Where(s => string.IsNullOrEmpty(_searchText) || 
@@ -455,7 +455,7 @@
         {
             try
             {
-                await ChatOrchestrator.DeleteSessionAsync(id);
+                await SessionDirectory.DeleteAsync(id);
                 _selectedIds.Remove(id);
                 deleted++;
             }
@@ -474,7 +474,7 @@
     {
         try
         {
-            var session = await ChatOrchestrator.CreateSessionAsync(
+            var session = await SessionDirectory.CreateAsync(
                 workingDirectory: WorkspaceProvider.GetProjectRoot());
             MessageService.Success("会话已创建");
             NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
@@ -489,7 +489,7 @@
     {
         try
         {
-            await ChatOrchestrator.DeleteSessionAsync(id);
+            await SessionDirectory.DeleteAsync(id);
             MessageService.Success("会话已删除");
             await RefreshSessionsAsync();
             StateHasChanged();
@@ -506,7 +506,7 @@
     {
         try
         {
-            var session = await ChatOrchestrator.BranchSessionAsync(id);
+            var session = await SessionDirectory.BranchAsync(id);
             MessageService.Success("会话已分支");
             NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
         }

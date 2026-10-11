@@ -1,7 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Reminders;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Gateway.Scheduling;
 using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Gateway.Protocol;
@@ -24,6 +27,7 @@ public class GatewayScheduleDispatcherOutboundTests
         GatewayChannelOutboundPayload? captured = null;
 
         var dispatcher = new GatewayScheduleDispatcher(
+            new StubSessionRuntime(),
             sessionManager.Object,
             Mock.Of<ISystemReminderRenderer>(),
             NullLogger<GatewayScheduleDispatcher>.Instance,
@@ -64,6 +68,7 @@ public class GatewayScheduleDispatcherOutboundTests
         var outboundCalls = 0;
 
         var dispatcher = new GatewayScheduleDispatcher(
+            new StubSessionRuntime(),
             sessionManager.Object,
             Mock.Of<ISystemReminderRenderer>(),
             NullLogger<GatewayScheduleDispatcher>.Instance,
@@ -97,5 +102,34 @@ public class GatewayScheduleDispatcherOutboundTests
         mock.Setup(m => m.AddMessageAsync(session.Id, It.IsAny<SessionMessage>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         return mock;
+    }
+
+    private sealed class StubSessionRuntime : ISessionRuntime
+    {
+        public Task<InboxResult> DeliverAsync(InboxMessage message, CancellationToken ct = default) =>
+            Task.FromResult(InboxResult.Ok());
+
+        public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(false);
+
+        public Task<int> StopAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task<int> CancelAllInFlightAsync(CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task WaitForIdleAsync(string sessionId, CancellationToken ct = default) => Task.CompletedTask;
+
+        public SessionExecutionOverview GetOverview(string sessionId) => new();
+
+        public bool HasAnyActiveExecution() => false;
+
+        public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId) => Array.Empty<IMessageEvent>();
+
+        public async IAsyncEnumerable<IMessageEvent> SubscribeEvents(
+            string sessionId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
     }
 }

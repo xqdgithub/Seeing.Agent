@@ -204,18 +204,18 @@ public sealed class GatewayWebSocketHandler
                         ExecutionId = submit.ExecutionId,
                         Success = submit.Success,
                         Error = submit.Error,
-                        QueuePosition = submit.QueuePosition
+                        PendingInputCount = submit.PendingInputCount
                     }),
                 cancellationToken).ConfigureAwait(false);
 
-            if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+            if (!submit.Success)
                 return;
 
             _connectionManager.SubscribeSession(connection.ConnectionId, request.SessionId);
 
             string? loopId = null;
-            await foreach (var gatewayEvent in _orchestrator.SubscribeExecutionEventsAsync(
-                               request.SessionId, submit.ExecutionId, cancellationToken))
+            await foreach (var gatewayEvent in _orchestrator.SubscribeSessionEventsAsync(
+                               request.SessionId, cancellationToken))
             {
                 loopId = gatewayEvent.LoopId ?? loopId;
                 await connection.SendFrameAsync(
@@ -229,7 +229,6 @@ public sealed class GatewayWebSocketHandler
                 new GatewayExecutionCompletePayload
                 {
                     SessionId = request.SessionId,
-                    ExecutionId = submit.ExecutionId,
                     LoopId = loopId
                 },
                 cancellationToken);
@@ -262,18 +261,18 @@ public sealed class GatewayWebSocketHandler
         }
 
         var payload = frame.Payload.Value.Deserialize<GatewayCancelPayload>(GatewayWsFrameSerializer.JsonOptions);
-        if (payload == null || string.IsNullOrWhiteSpace(payload.ExecutionId))
+        if (payload == null || string.IsNullOrWhiteSpace(payload.SessionId))
         {
-            await SendErrorAsync(connection, "executionId is required", "invalid_payload");
+            await SendErrorAsync(connection, "sessionId is required", "invalid_payload");
             return;
         }
 
-        var cancelled = await _orchestrator.CancelAsync(payload.ExecutionId, cancellationToken).ConfigureAwait(false);
+        var cancelled = await _orchestrator.CancelAsync(payload.SessionId, cancellationToken).ConfigureAwait(false);
         await connection.SendFrameAsync(
             GatewayWsFrameSerializer.Create(
                 GatewayWsFrameType.CancelAck,
                 frame.Id,
-                new GatewayCancelAckPayload { ExecutionId = payload.ExecutionId, Cancelled = cancelled }),
+                new GatewayCancelAckPayload { SessionId = payload.SessionId, Cancelled = cancelled }),
             cancellationToken);
     }
 

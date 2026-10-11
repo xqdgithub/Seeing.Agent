@@ -18,6 +18,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Modules;
@@ -764,6 +765,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             if (IsRuntimeNotificationMessage(msg))
                 continue;
 
+            if (IsNonHistoryInboxMessage(msg))
+                continue;
+
             var chatMessage = new ChatMessage
             {
                 Role = msg.Role,
@@ -869,6 +873,25 @@ internal sealed class ExecutionRunner : IExecutionRunner
             || msg.Content.StartsWith("压缩失败", StringComparison.Ordinal)
             || msg.Content.StartsWith("⚠️ 执行已取消", StringComparison.Ordinal)
             || msg.Content.StartsWith("❌ 执行出错", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 入站消息中 <c>inbox.presentation=none</c>（可持久化展示但不进 LLM 历史，如 Gateway 横幅）。
+    /// 落盘再加载后 Metadata 值可能为 <see cref="JsonElement"/>，故用 <c>ToString()</c> 兼容。
+    /// </summary>
+    private static bool IsNonHistoryInboxMessage(SessionMessage msg)
+    {
+        if (msg.Metadata?.TryGetValue(InboxMetadataKeys.Presentation, out var raw) != true || raw is null)
+            return false;
+
+        var presentation = raw switch
+        {
+            string s => s,
+            JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+            _ => raw.ToString()
+        };
+
+        return string.Equals(presentation, "none", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -9,7 +9,7 @@ namespace Seeing.Agent.WebUI.State
     /// <summary>
     /// 应用全局状态，管理用户、主题、Agent/Model 列表
     /// <para>
-    /// 会话列表由 IChatOrchestrator 统一管理
+    /// 会话列表由 ISessionDirectory 统一管理
     /// </para>
     /// <para>
     /// 当前会话的 Agent/Model 由 SessionState 管理
@@ -44,7 +44,7 @@ namespace Seeing.Agent.WebUI.State
         /// <summary>可用的 Model 列表（从 LlmService 获取）</summary>
         public IReadOnlyDictionary<string, ModelConfig> AvailableModels { get; set; } = new Dictionary<string, ModelConfig>();
 
-        /// <summary>当前会话 ID（由 IChatOrchestrator 管理）</summary>
+        /// <summary>当前会话 ID（由 ISessionDirectory 管理）</summary>
         public string CurrentSessionId { get; set; } = "";
 
         /// <summary>侧边栏是否折叠</summary>

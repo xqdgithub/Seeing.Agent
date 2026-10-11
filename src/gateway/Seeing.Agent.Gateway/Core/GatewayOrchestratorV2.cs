@@ -2,23 +2,26 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Chat;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Interactions;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Permission;
-using Seeing.Agent.Abstractions.Events;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Gateway.Core;
 
 /// <summary>
-/// Gateway 聊天编排器 — Submit / Subscribe / Cancel，对齐 IChatOrchestrator。
+/// Gateway 会话编排器 — Deliver / Subscribe / Cancel（会话级，对齐 ISessionRuntime）。
 /// </summary>
 public sealed class GatewayOrchestratorV2
 {
+    /// <summary>空闲后订阅收口前的尾部排空窗口（尽力转发环形缓冲尾部事件）。</summary>
+    private static readonly TimeSpan IdleDrainGrace = TimeSpan.FromMilliseconds(50);
+
     private readonly IServiceProvider _services;
     private readonly GatewayOptions _options;
     private readonly GatewayRunTracker _runTracker;
@@ -39,7 +42,7 @@ public sealed class GatewayOrchestratorV2
         _logger = logger;
     }
 
-    /// <summary>提交执行（非阻塞）</summary>
+    /// <summary>提交执行（非阻塞）：以 Human 用户消息投递并唤醒会话消费循环。</summary>
     public async Task<GatewaySubmitResult> SubmitAsync(
         GatewayRequest request,
         CancellationToken cancellationToken = default)
@@ -51,17 +54,28 @@ public sealed class GatewayOrchestratorV2
         try
         {
             using var scope = _services.CreateScope();
-            var chatOrchestrator = scope.ServiceProvider.GetRequiredService<IChatOrchestrator>();
+            var runtime = scope.ServiceProvider.GetRequiredService<ISessionRuntime>();
             var input = BuildChatInput(request);
-            var options = BuildChatOptions(request);
 
-            var result = await chatOrchestrator.SubmitAsync(sessionId, input, options).ConfigureAwait(false);
-            if (!result.Success || string.IsNullOrEmpty(result.ExecutionId))
-            {
+            var result = await runtime.DeliverAsync(
+                new InboxMessage
+                {
+                    TargetSessionId = sessionId,
+                    Sender = new InboxSender { Kind = InboxSenderKind.Human, Id = request.UserId },
+                    Body = input.Text,
+                    Delivery = InboxDelivery.Wake,
+                    Presentation = InboxPresentation.User,
+                    Attachments = input.Attachments,
+                    SourceTag = request.ChannelId,
+                    AgentId = request.AgentId,
+                    ModelId = request.ModelId
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            if (!result.Success)
                 return GatewaySubmitResult.Failed(sessionId, result.Error ?? "Submit failed");
-            }
 
-            return GatewaySubmitResult.Succeeded(sessionId, result.ExecutionId, result.QueuePosition);
+            return GatewaySubmitResult.Succeeded(sessionId, result.ExecutionId, result.PendingInputCount);
         }
         finally
         {
@@ -69,10 +83,12 @@ public sealed class GatewayOrchestratorV2
         }
     }
 
-    /// <summary>订阅指定 execution 的 Gateway 事件，直到匹配的 ExecutionComplete。</summary>
-    public async IAsyncEnumerable<GatewayEvent> SubscribeExecutionEventsAsync(
+    /// <summary>
+    /// 会话级订阅：流式转发会话事件，直到消费循环空闲（<see cref="ISessionRuntime.WaitForIdleAsync"/> 语义）
+    /// 或取消/超时。不再按 executionId 过滤。
+    /// </summary>
+    public async IAsyncEnumerable<GatewayEvent> SubscribeSessionEventsAsync(
         string sessionId,
-        string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // 每订阅一个独立呈现端实例：注册/注销与订阅同生命周期，等价于原引用计数语义；
@@ -82,14 +98,14 @@ public sealed class GatewayOrchestratorV2
         presentation.Register(presenter);
         try
         {
-            var runCts = _runTracker.RegisterRun(executionId, sessionId);
+            var runCts = _runTracker.RegisterRun(sessionId);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, runCts.Token);
 
             var runState = new ChatRunState();
             Exception? fault = null;
             var cancelled = false;
 
-            await using var enumerator = StreamExecutionEventsAsync(sessionId, executionId, linkedCts.Token, runState)
+            await using var enumerator = StreamSessionEventsAsync(sessionId, linkedCts.Token, runState)
                 .GetAsyncEnumerator(linkedCts.Token);
 
             while (true)
@@ -113,18 +129,17 @@ public sealed class GatewayOrchestratorV2
                 if (!hasNext)
                     break;
 
-                yield return enumerator.Current with { ExecutionId = executionId };
+                yield return enumerator.Current;
             }
 
-            _runTracker.UnregisterRun(executionId);
+            _runTracker.UnregisterRun(sessionId);
 
             if (cancelled)
-                yield return await BuildCancelledEventAsync(sessionId, runState) with { ExecutionId = executionId };
+                yield return await BuildCancelledEventAsync(sessionId);
             else if (fault != null)
             {
-                _logger.LogError(fault, "Gateway 执行订阅失败: SessionId={SessionId}, ExecutionId={ExecutionId}",
-                    sessionId, executionId);
-                yield return await BuildErrorEventAsync(sessionId, runState, fault) with { ExecutionId = executionId };
+                _logger.LogError(fault, "Gateway 会话订阅失败: SessionId={SessionId}", sessionId);
+                yield return await BuildErrorEventAsync(sessionId, fault);
             }
         }
         finally
@@ -133,23 +148,23 @@ public sealed class GatewayOrchestratorV2
         }
     }
 
-    /// <summary>取消指定执行（异步）</summary>
-    public async Task<bool> CancelAsync(string executionId, CancellationToken cancellationToken = default)
+    /// <summary>取消会话（异步）：停止会话消费循环并取消在途执行。</summary>
+    public async Task<bool> CancelAsync(string sessionId, CancellationToken cancellationToken = default)
     {
         using var scope = _services.CreateScope();
-        var chatOrchestrator = scope.ServiceProvider.GetRequiredService<IChatOrchestrator>();
-        var cancelled = await chatOrchestrator.CancelAsync(executionId, cancellationToken).ConfigureAwait(false);
-        _runTracker.CancelRun(executionId);
-        return cancelled;
+        var runtime = scope.ServiceProvider.GetRequiredService<ISessionRuntime>();
+        var stopped = await runtime.StopAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        _runTracker.CancelRun(sessionId);
+        return stopped > 0;
     }
 
-    private async IAsyncEnumerable<GatewayEvent> StreamExecutionEventsAsync(
+    private async IAsyncEnumerable<GatewayEvent> StreamSessionEventsAsync(
         string sessionId,
-        string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken,
         ChatRunState runState)
     {
-        var sessionManager = _services.GetRequiredService<ISessionManager>();
+        using var scope = _services.CreateScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<ISessionRuntime>();
 
         var outputChannel = Channel.CreateUnbounded<GatewayEvent>(new UnboundedChannelOptions
         {
@@ -157,13 +172,30 @@ public sealed class GatewayOrchestratorV2
             SingleWriter = false
         });
 
-        var executionTask = MapSubscriptionAsync(
-            sessionId,
-            executionId,
-            runState,
-            sessionManager,
-            outputChannel.Writer,
-            cancellationToken);
+        using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        var pumpTask = Task.Run(
+            () => PumpSessionEventsAsync(runtime, sessionId, runState, outputChannel.Writer, pumpCts.Token),
+            CancellationToken.None);
+
+        // 会话空闲即收口：空闲后留短暂窗口排空环形缓冲尾部，再完成通道并停止订阅泵。
+        var idleTask = Task.Run(async () =>
+        {
+            try
+            {
+                await runtime.WaitForIdleAsync(sessionId, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(IdleDrainGrace, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // 订阅被取消（用户取消 / 连接断开）
+            }
+            finally
+            {
+                outputChannel.Writer.TryComplete();
+                TryCancel(pumpCts);
+            }
+        }, CancellationToken.None);
 
         try
         {
@@ -173,32 +205,24 @@ public sealed class GatewayOrchestratorV2
         finally
         {
             outputChannel.Writer.TryComplete();
-            await executionTask;
+            TryCancel(pumpCts);
+            await AwaitQuietlyAsync(pumpTask).ConfigureAwait(false);
+            await AwaitQuietlyAsync(idleTask).ConfigureAwait(false);
         }
     }
 
-    private async Task MapSubscriptionAsync(
+    private async Task PumpSessionEventsAsync(
+        ISessionRuntime runtime,
         string sessionId,
-        string executionId,
         ChatRunState runState,
-        ISessionManager sessionManager,
         ChannelWriter<GatewayEvent> outputWriter,
         CancellationToken cancellationToken)
     {
-        using var scope = _services.CreateScope();
-        var chatOrchestrator = scope.ServiceProvider.GetRequiredService<IChatOrchestrator>();
-
         try
         {
-            await foreach (var chatEvent in chatOrchestrator.SubscribeEvents(sessionId, cancellationToken))
+            await foreach (var chatEvent in runtime.SubscribeEvents(sessionId, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                if (chatEvent is ExecutionCompleteEvent complete
-                    && !string.Equals(complete.ExecutionId, executionId, StringComparison.Ordinal))
-                {
-                    continue;
-                }
 
                 if (chatEvent.LoopId != null)
                     runState.CurrentLoopId = chatEvent.LoopId;
@@ -208,36 +232,58 @@ public sealed class GatewayOrchestratorV2
 
                 if (ChatEventMapper.TryMap(chatEvent, out var gatewayEvent) && gatewayEvent != null)
                 {
-                    await outputWriter.WriteAsync(
-                        gatewayEvent with { ExecutionId = executionId },
-                        cancellationToken);
-                }
-
-                if (chatEvent is ExecutionCompleteEvent done
-                    && string.Equals(done.ExecutionId, executionId, StringComparison.Ordinal))
-                {
-                    break;
+                    await outputWriter.WriteAsync(gatewayEvent, cancellationToken).ConfigureAwait(false);
                 }
             }
-
-            await sessionManager.SaveAsync(sessionId);
-            // 订阅结束前落盘：确保本轮会话状态已持久化；写回失败不得中断事件流收尾
-            try
-            {
-                await sessionManager.FlushAsync(sessionId, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "订阅结束落盘失败，已跳过: SessionId={SessionId}", sessionId);
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 订阅收口 / 取消：正常结束
         }
         finally
         {
             outputWriter.TryComplete();
+            await PersistSessionAsync(sessionId).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>订阅结束前落盘：确保本轮会话状态已持久化；写回失败不得中断事件流收尾。</summary>
+    private async Task PersistSessionAsync(string sessionId)
+    {
+        try
+        {
+            using var scope = _services.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+            await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+            await sessionManager.FlushAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "订阅结束落盘失败，已跳过: SessionId={SessionId}", sessionId);
+        }
+    }
+
+    private static void TryCancel(CancellationTokenSource cts)
+    {
+        try
+        {
+            cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已释放
+        }
+    }
+
+    private static async Task AwaitQuietlyAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch
+        {
+            // 收尾任务异常隔离：订阅主路径不得因此中断
         }
     }
 
@@ -290,37 +336,10 @@ public sealed class GatewayOrchestratorV2
         };
     }
 
-    private ChatOptions BuildChatOptions(GatewayRequest request)
+    private async Task<GatewayEvent> BuildCancelledEventAsync(string sessionId)
     {
-        return new ChatOptions
-        {
-            AgentId = request.AgentId,
-            ModelId = request.ModelId,
-            ThinkingEffort = request.ThinkingEffort,
-            ModeId = request.ModeId,
-            ChannelId = request.ChannelId,
-            UserId = request.UserId,
-            WorkingDirectory = null
-        };
-    }
-
-    private async Task<GatewayEvent> BuildCancelledEventAsync(string sessionId, ChatRunState runState)
-    {
-        if (runState.Session != null)
-        {
-            runState.Session.AddMessage(SessionMessage.SystemMessage("⚠️ 执行已取消").WithMetadata("transient", true));
-            var sessionManager = _services.GetRequiredService<ISessionManager>();
-            await sessionManager.SaveAsync(sessionId);
-            // 取消响应前尽力落盘；写回失败仅记 Warning，仍返回取消事件
-            try
-            {
-                await sessionManager.FlushAsync(sessionId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "取消事件落盘失败，已跳过: SessionId={SessionId}", sessionId);
-            }
-        }
+        // spec §9：取消横幅保留持久化、不唤醒（Sender=System, Presentation=None, Delivery=Inject）
+        await DeliverSystemBannerAsync(sessionId, "⚠️ 执行已取消").ConfigureAwait(false);
 
         return new GatewayEvent
         {
@@ -331,23 +350,10 @@ public sealed class GatewayOrchestratorV2
         };
     }
 
-    private async Task<GatewayEvent> BuildErrorEventAsync(string sessionId, ChatRunState runState, Exception ex)
+    private async Task<GatewayEvent> BuildErrorEventAsync(string sessionId, Exception ex)
     {
-        if (runState.Session != null)
-        {
-            runState.Session.AddMessage(SessionMessage.SystemMessage($"❌ 执行出错: {ex.Message}").WithMetadata("transient", true));
-            var sessionManager = _services.GetRequiredService<ISessionManager>();
-            await sessionManager.SaveAsync(sessionId);
-            // 错误响应前尽力落盘；写回失败仅记 Warning，仍返回错误事件
-            try
-            {
-                await sessionManager.FlushAsync(sessionId);
-            }
-            catch (Exception flushEx)
-            {
-                _logger.LogWarning(flushEx, "错误事件落盘失败，已跳过: SessionId={SessionId}", sessionId);
-            }
-        }
+        // spec §9：错误横幅保留持久化、不唤醒（Sender=System, Presentation=None, Delivery=Inject）
+        await DeliverSystemBannerAsync(sessionId, $"❌ 执行出错: {ex.Message}").ConfigureAwait(false);
 
         return new GatewayEvent
         {
@@ -360,6 +366,30 @@ public sealed class GatewayOrchestratorV2
                 ErrorSource = "gateway.orchestrator"
             }
         };
+    }
+
+    private async Task DeliverSystemBannerAsync(string sessionId, string body)
+    {
+        try
+        {
+            using var scope = _services.CreateScope();
+            var runtime = scope.ServiceProvider.GetRequiredService<ISessionRuntime>();
+            await runtime.DeliverAsync(
+                new InboxMessage
+                {
+                    TargetSessionId = sessionId,
+                    Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "gateway" },
+                    Body = body,
+                    Delivery = InboxDelivery.Inject,
+                    Presentation = InboxPresentation.None,
+                    SourceTag = "gateway"
+                },
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Gateway 横幅投递失败，已跳过: SessionId={SessionId}", sessionId);
+        }
     }
 
     private sealed class ChatRunState

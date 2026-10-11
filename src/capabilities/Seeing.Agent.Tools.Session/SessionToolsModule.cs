@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Tools;
 
 namespace Seeing.Agent.Tools.Session;
 
 /// <summary>
-/// 会话工具模块 — 提供 session_list/search/read/trim/handoff。
+/// 会话工具模块 — 提供 session_list/search/read/trim/handoff/inbox_send/takeover/release。
 /// <para>只依赖 Abstractions + Seeing.Session + Tools.Support；不引用 Core。</para>
 /// </summary>
 public sealed class SessionToolsModule : ISeeingModule
@@ -19,6 +19,9 @@ public sealed class SessionToolsModule : ISeeingModule
         "session_read",
         "session_trim",
         "session_handoff",
+        "session_inbox_send",
+        "session_takeover",
+        "session_release",
     ];
 
     /// <inheritdoc />
@@ -41,6 +44,9 @@ public sealed class SessionToolsModule : ISeeingModule
         services.AddSingleton<SessionReadTool>();
         services.AddSingleton<SessionTrimTool>();
         services.AddSingleton<SessionHandoffTool>();
+        services.AddSingleton<SessionInboxSendTool>();
+        services.AddSingleton<SessionTakeoverTool>();
+        services.AddSingleton<SessionReleaseTool>();
     }
 
     /// <inheritdoc />
@@ -59,16 +65,22 @@ public sealed class SessionToolsModule : ISeeingModule
             services.GetRequiredService<SessionReadTool>(), cancellationToken).ConfigureAwait(false);
         await tm.RegisterToolAsync(
             services.GetRequiredService<SessionTrimTool>(), cancellationToken).ConfigureAwait(false);
+        await tm.RegisterToolAsync(
+            services.GetRequiredService<SessionTakeoverTool>(), cancellationToken).ConfigureAwait(false);
+        await tm.RegisterToolAsync(
+            services.GetRequiredService<SessionReleaseTool>(), cancellationToken).ConfigureAwait(false);
 
-        if (services.GetService<IExecutionSubmitter>() is not null)
+        if (services.GetService<ISessionRuntime>() is not null)
         {
             await tm.RegisterToolAsync(
                 services.GetRequiredService<SessionHandoffTool>(), cancellationToken).ConfigureAwait(false);
+            await tm.RegisterToolAsync(
+                services.GetRequiredService<SessionInboxSendTool>(), cancellationToken).ConfigureAwait(false);
         }
         else
         {
             services.GetService<ILogger<SessionToolsModule>>()?.LogWarning(
-                "IExecutionSubmitter 未注册，session_handoff 未挂载");
+                "ISessionRuntime 未注册，session_handoff / session_inbox_send 未挂载");
         }
     }
 

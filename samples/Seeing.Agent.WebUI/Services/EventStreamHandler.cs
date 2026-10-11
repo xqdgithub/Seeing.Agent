@@ -105,7 +105,7 @@ namespace Seeing.Agent.WebUI.Services
         private string? _activeExecutionId;
 
         /// <summary>
-        /// 当前执行状态（来自 ExecutionJobService 事件）
+        /// 当前执行状态（来自 SessionRuntime 事件）
         /// </summary>
         public ExecutionStatus? ExecutionStatus { get; private set; }
 
@@ -181,7 +181,7 @@ namespace Seeing.Agent.WebUI.Services
         public string? GetCurrentLoopId() => _currentLoopId;
 
         /// <summary>
-        /// 恢复活跃执行 ID 与状态（页面刷新/切换产生新 handler 后，从 ExecutionJobService overview 恢复）。
+        /// 恢复活跃执行 ID 与状态（页面刷新/切换产生新 handler 后，从 SessionRuntime overview 恢复）。
         /// 避免新 handler 的 <c>_activeExecutionId</c> 为 null 时，首个 ExecutionComplete 因 ExecutionId
         /// 不匹配而被忽略，导致排队/多执行场景下执行态无法正确配对清理。
         /// </summary>
@@ -199,7 +199,7 @@ namespace Seeing.Agent.WebUI.Services
         public AgentLoopInfo? GetCurrentLoop() => _currentLoop;
 
         /// <summary>
-        /// 处理 Core 层消息事件（仅驱动 UI 展示；会话落盘由 ExecutionJobService 完成）
+        /// 处理 Core 层消息事件（仅驱动 UI 展示；会话落盘由 SessionRuntime 完成）
         /// </summary>
         public Task ProcessEventAsync(IMessageEvent evt)
         {
@@ -552,7 +552,7 @@ namespace Seeing.Agent.WebUI.Services
         private void HandleSkillContent(SkillContentEvent evt)
         {
             // 更新当前用户消息的内容为展开后的 Skill 内容
-            // ChatOrchestrator 已经更新了 Session 中的消息，这里只需要触发 UI 刷新
+            // SessionRuntime 已经更新了 Session 中的消息，这里只需要触发 UI 刷新
             // OnStateChanged 会在 ProcessEventAsync 末尾调用
         }
 

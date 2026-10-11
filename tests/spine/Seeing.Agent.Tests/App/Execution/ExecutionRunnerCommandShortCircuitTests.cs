@@ -27,13 +27,12 @@ using Xunit;
 namespace Seeing.Agent.Tests.App.Execution;
 
 /// <summary>
-/// 命令短路测试：命令要求结束本轮（shouldContinue=false）时，宿主不得再执行 Agent
-/// （避免把命令文本作为普通消息发送给大模型）。
+/// 命令短路测试（迁入 ExecutionRunner）：命令要求结束本轮（shouldContinue=false）时，宿主不得再执行 Agent。
 /// </summary>
-public class ExecutionJobServiceCommandShortCircuitTests
+public class ExecutionRunnerCommandShortCircuitTests
 {
     [Fact]
-    public async Task Execute_WhenCommandReturnsShouldContinueFalse_ShouldNotExecuteAgent()
+    public async Task RunOnce_WhenCommandReturnsShouldContinueFalse_ShouldNotExecuteAgent()
     {
         // Arrange
         var session = SessionData.Create();
@@ -64,28 +63,12 @@ public class ExecutionJobServiceCommandShortCircuitTests
         publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
-        var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
-
-        using var fixture = CreateFixture(
-            session, publisher.Object, optionsMonitor.Object, commandRegistry.Object, executor.Object);
-        var service = fixture.Service;
+        var runner = CreateRunner(
+            session, publisher.Object, commandRegistry.Object, executor.Object);
 
         // Act
-        var result = await service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("/compact"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipUserMessagePersist = true,
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent));
+        await runner.RunOnceAsync(
+            NewRecord(session.Id, "/compact"), NewBatch(), TestContext.Current.CancellationToken);
 
         // Assert：命令已执行且短路
         command.Verify(c => c.ExecuteAsync(It.IsAny<CommandContext>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -100,7 +83,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
     }
 
     [Fact]
-    public async Task Execute_WhenCommandShouldContinue_ShouldExecuteAgent()
+    public async Task RunOnce_WhenCommandShouldContinue_ShouldExecuteAgent()
     {
         // Arrange
         var session = SessionData.Create();
@@ -131,28 +114,12 @@ public class ExecutionJobServiceCommandShortCircuitTests
         publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
-        var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
-
-        using var fixture = CreateFixture(
-            session, publisher.Object, optionsMonitor.Object, commandRegistry.Object, executor.Object);
-        var service = fixture.Service;
+        var runner = CreateRunner(
+            session, publisher.Object, commandRegistry.Object, executor.Object);
 
         // Act
-        var result = await service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("/cont"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipUserMessagePersist = true,
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent));
+        await runner.RunOnceAsync(
+            NewRecord(session.Id, "/cont"), NewBatch(), TestContext.Current.CancellationToken);
 
         // Assert：命令执行后继续 Agent
         command.Verify(c => c.ExecuteAsync(It.IsAny<CommandContext>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -164,12 +131,12 @@ public class ExecutionJobServiceCommandShortCircuitTests
     }
 
     [Fact]
-    public async Task Execute_WhenCommandShortCircuits_ShouldRemoveCommandMessageFromSession()
+    public async Task RunOnce_WhenCommandShortCircuits_ShouldRemoveCommandMessageFromSession()
     {
         // 命令不是用户消息：消费成功后命令文本必须从会话移除，不得残留在历史/时间线
-        // Arrange
         var session = SessionData.Create();
         session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("/compact"));
 
         var command = new Mock<ICommand>();
         command.Setup(c => c.Metadata)
@@ -189,34 +156,16 @@ public class ExecutionJobServiceCommandShortCircuitTests
                 It.IsAny<CancellationToken>()))
             .Returns(EmptyStream());
 
-        var published = new ConcurrentQueue<(string SessionId, IMessageEvent Event)>();
         var publisher = new Mock<IExecutionEventPublisher>();
-        publisher.Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()))
-            .Callback((string sessionId, IMessageEvent evt) => published.Enqueue((sessionId, evt)));
+        publisher.Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()));
         publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
-        var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
+        var runner = CreateRunner(
+            session, publisher.Object, commandRegistry.Object, executor.Object);
 
-        using var fixture = CreateFixture(
-            session, publisher.Object, optionsMonitor.Object, commandRegistry.Object, executor.Object);
-        var service = fixture.Service;
-
-        // Act
-        var result = await service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("/compact"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent));
+        await runner.RunOnceAsync(
+            NewRecord(session.Id, "/compact"), NewBatch(), TestContext.Current.CancellationToken);
 
         // Assert：命令文本已从会话移除
         session.Messages.Should().NotContain(m => m.Content == "/compact");
@@ -225,12 +174,12 @@ public class ExecutionJobServiceCommandShortCircuitTests
     }
 
     [Fact]
-    public async Task Execute_WhenCommandNotRegistered_ShouldKeepUserMessage()
+    public async Task RunOnce_WhenCommandNotRegistered_ShouldKeepUserMessageAndExecuteAgent()
     {
         // 未知命令透传 Agent，文本必须保留为普通用户消息
-        // Arrange
         var session = SessionData.Create();
         session.AddMessage(SessionMessage.UserMessage("a"));
+        session.AddMessage(SessionMessage.UserMessage("/unknown"));
 
         var commandRegistry = new Mock<ICommandRegistry>();
         commandRegistry.Setup(r => r.GetCommand("unknown", AgentRuntime.Native))
@@ -244,36 +193,17 @@ public class ExecutionJobServiceCommandShortCircuitTests
                 It.IsAny<CancellationToken>()))
             .Returns(EmptyStream());
 
-        var published = new ConcurrentQueue<(string SessionId, IMessageEvent Event)>();
         var publisher = new Mock<IExecutionEventPublisher>();
-        publisher.Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()))
-            .Callback((string sessionId, IMessageEvent evt) => published.Enqueue((sessionId, evt)));
+        publisher.Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()));
         publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
-        var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
+        var runner = CreateRunner(
+            session, publisher.Object, commandRegistry.Object, executor.Object);
 
-        using var fixture = CreateFixture(
-            session, publisher.Object, optionsMonitor.Object, commandRegistry.Object, executor.Object);
-        var service = fixture.Service;
+        await runner.RunOnceAsync(
+            NewRecord(session.Id, "/unknown"), NewBatch(), TestContext.Current.CancellationToken);
 
-        // Act
-        var result = await service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("/unknown"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent));
-
-        // Assert：未知命令文本保留（作为普通消息透传 Agent）
         executor.Verify(e => e.ExecuteAsync(
             It.IsAny<AgentDefinition>(),
             It.IsAny<IReadOnlyList<ChatMessage>>(),
@@ -283,12 +213,12 @@ public class ExecutionJobServiceCommandShortCircuitTests
     }
 
     [Fact]
-    public async Task Execute_WhenCommandRetainsCommandMessage_ShouldKeepRewrittenMessage()
+    public async Task RunOnce_WhenCommandRetainsCommandMessage_ShouldKeepRewrittenMessage()
     {
         // /skill 类命令：命令声明保留命令消息（RemoveCommandMessage=false）并内部把内容
         // 替换为展开内容，宿主按命令决策跳过移除，展开内容保留供 Agent 继续使用。
-        // Arrange
         var session = SessionData.Create();
+        session.AddMessage(SessionMessage.UserMessage("/skill demo"));
 
         var command = new Mock<ICommand>();
         command.Setup(c => c.Metadata)
@@ -319,34 +249,16 @@ public class ExecutionJobServiceCommandShortCircuitTests
                 It.IsAny<CancellationToken>()))
             .Returns(EmptyStream());
 
-        var published = new ConcurrentQueue<(string SessionId, IMessageEvent Event)>();
         var publisher = new Mock<IExecutionEventPublisher>();
-        publisher.Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()))
-            .Callback((string sessionId, IMessageEvent evt) => published.Enqueue((sessionId, evt)));
+        publisher.Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()));
         publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
-        var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
+        var runner = CreateRunner(
+            session, publisher.Object, commandRegistry.Object, executor.Object);
 
-        using var fixture = CreateFixture(
-            session, publisher.Object, optionsMonitor.Object, commandRegistry.Object, executor.Object);
-        var service = fixture.Service;
-
-        // Act
-        var result = await service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("/skill demo"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent));
+        await runner.RunOnceAsync(
+            NewRecord(session.Id, "/skill demo"), NewBatch(), TestContext.Current.CancellationToken);
 
         // Assert：命令内部改写的消息被保留，宿主未按原命令文本移除
         session.Messages.Should().ContainSingle(m =>
@@ -355,20 +267,30 @@ public class ExecutionJobServiceCommandShortCircuitTests
         session.Messages.Should().NotContain(m => m.Content == "/skill demo");
     }
 
-    private static Fixture CreateFixture(
+    private static ExecutionRecord NewRecord(string sessionId, string inputText) => new()
+    {
+        ExecutionId = "exec-1",
+        SessionId = sessionId,
+        Status = ExecutionStatus.Running,
+        Input = new ChatInput { Text = inputText },
+        Options = new ChatOptions { AgentId = "general", SkipInstructionInject = true }
+    };
+
+    private static InboxBatch NewBatch() =>
+        new(new List<SessionMessage>(), HasUserInput: false, FirstUserText: null);
+
+    private static ExecutionRunner CreateRunner(
         SessionData session,
         IExecutionEventPublisher publisher,
-        IOptionsMonitor<SeeingAgentOptions> optionsMonitor,
         ICommandRegistry commandRegistry,
         IAgentExecutor executor)
     {
         var sessionManager = new Mock<ISessionManager>();
         sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
-        sessionManager.Setup(m => m.GetOrLoadAsync(session.Id, It.IsAny<CancellationToken>())).ReturnsAsync(session);
+        sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns(session);
         sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);
-        sessionManager.Setup(m => m.SaveAndNotifyAsync(session.Id, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        sessionManager.Setup(m => m.FlushAsync(session.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var modelManager = new Mock<IModelManager>();
         modelManager.Setup(m => m.ResolveAcpModel(It.IsAny<string?>(), It.IsAny<string?>())).Returns((string?)null);
@@ -388,7 +310,7 @@ public class ExecutionJobServiceCommandShortCircuitTests
         services.AddSingleton(executor);
         services.AddSingleton(new AgentSelectionResolver(runtimeManager.Object));
         services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
-            services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
+        services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
         services.AddSingleton(commandRegistry);
         var provider = services.BuildServiceProvider();
 
@@ -396,47 +318,21 @@ public class ExecutionJobServiceCommandShortCircuitTests
         configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
             .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
 
-        var service = new ExecutionJobService(
+        return new ExecutionRunner(
             provider,
             publisher,
             new ExecutionOptions(),
-            optionsMonitor,
+            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
             configStore.Object,
-            NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(
                 new CompressionService(null!, sessionManager.Object),
                 publisher,
-                sessionManager.Object));
-
-        return new Fixture(service, provider);
+                sessionManager.Object),
+            NullLogger<ExecutionRunner>.Instance);
     }
 
     private static async IAsyncEnumerable<IMessageEvent> EmptyStream()
     {
         yield break;
-    }
-
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 10000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
-        {
-            if (DateTime.UtcNow > deadline)
-            {
-                throw new TimeoutException("等待条件超时");
-            }
-            await Task.Delay(50);
-        }
-    }
-
-    private sealed class Fixture(ExecutionJobService service, ServiceProvider provider) : IDisposable
-    {
-        public ExecutionJobService Service { get; } = service;
-
-        public void Dispose()
-        {
-            Service.Dispose();
-            provider.Dispose();
-        }
     }
 }

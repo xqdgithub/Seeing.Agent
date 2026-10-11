@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Chat;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Session.Core;
@@ -47,7 +47,7 @@ namespace Seeing.Agent.WebUI.Services;
 /// </summary>
 public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposable
 {
-    private readonly IChatOrchestrator _orchestrator;
+    private readonly ISessionRuntime _runtime;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SessionEventStreamRouter> _logger;
 
@@ -71,11 +71,11 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
     private bool _disposed;
 
     public SessionEventStreamRouter(
-        IChatOrchestrator orchestrator,
+        ISessionRuntime runtime,
         IServiceScopeFactory scopeFactory,
         ILogger<SessionEventStreamRouter> logger)
     {
-        _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
+        _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -337,7 +337,7 @@ public sealed class SessionEventStreamRouter : ICircuitResourceCleanup, IDisposa
     {
         try
         {
-            await foreach (var evt in _orchestrator.SubscribeEvents(sessionId, ct))
+            await foreach (var evt in _runtime.SubscribeEvents(sessionId, ct))
             {
                 Broadcast(sessionId, evt);
             }

@@ -4,7 +4,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Seeing.Agent.Abstractions.Chat;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Interactions;
@@ -22,14 +22,14 @@ namespace Seeing.Gateway.Tests.Core;
 public class GatewayOrchestratorPresentationTests
 {
     [Fact]
-    public async Task SubscribeExecutionEvents_ShouldRegisterAndUnregisterPresenter()
+    public async Task SubscribeSessionEvents_ShouldRegisterAndUnregisterPresenter()
     {
         var store = new FakePermissionPresentationStore();
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var orchestrator = CreateOrchestrator(BuildProvider(store, _ => GatedEventsAsync(gate.Task)));
 
         var enumerator = orchestrator
-            .SubscribeExecutionEventsAsync("ses_1", "exec_1", TestContext.Current.CancellationToken)
+            .SubscribeSessionEventsAsync("ses_1", TestContext.Current.CancellationToken)
             .GetAsyncEnumerator(TestContext.Current.CancellationToken);
 
         var moveTask = enumerator.MoveNextAsync().AsTask();
@@ -43,19 +43,19 @@ public class GatewayOrchestratorPresentationTests
     }
 
     [Fact]
-    public async Task SubscribeExecutionEvents_WhenStreamFaults_ShouldStillUnregisterPresenter()
+    public async Task SubscribeSessionEvents_WhenStreamFaults_ShouldStillUnregisterPresenter()
     {
         var store = new FakePermissionPresentationStore();
         var orchestrator = CreateOrchestrator(
             BuildProvider(store, _ => ThrowingEventsAsync(TestContext.Current.CancellationToken)));
 
         var events = new List<GatewayEvent>();
-        await foreach (var e in orchestrator.SubscribeExecutionEventsAsync("ses_1", "exec_1", TestContext.Current.CancellationToken))
+        await foreach (var e in orchestrator.SubscribeSessionEventsAsync("ses_1", TestContext.Current.CancellationToken))
         {
             events.Add(e);
         }
 
-        events.Should().Contain(e => e.Object == GatewayEventObject.Error);
+        // 订阅泵异常仍须在 finally 注销 presenter（异常不外泄为错误帧）
         store.CanSurface("ses_1").Should().BeFalse();
     }
 
@@ -69,10 +69,10 @@ public class GatewayOrchestratorPresentationTests
         var orchestrator = CreateOrchestrator(BuildProvider(store, i => GatedEventsAsync(gates[i])));
 
         var enumA = orchestrator
-            .SubscribeExecutionEventsAsync("ses_1", "exec_a", TestContext.Current.CancellationToken)
+            .SubscribeSessionEventsAsync("ses_1", TestContext.Current.CancellationToken)
             .GetAsyncEnumerator(TestContext.Current.CancellationToken);
         var enumB = orchestrator
-            .SubscribeExecutionEventsAsync("ses_1", "exec_b", TestContext.Current.CancellationToken)
+            .SubscribeSessionEventsAsync("ses_1", TestContext.Current.CancellationToken)
             .GetAsyncEnumerator(TestContext.Current.CancellationToken);
 
         var moveA = enumA.MoveNextAsync().AsTask();
@@ -99,16 +99,19 @@ public class GatewayOrchestratorPresentationTests
         Func<int, IAsyncEnumerable<IMessageEvent>> eventsFactory)
     {
         var call = 0;
-        var chatOrchestrator = new Mock<IChatOrchestrator>();
-        chatOrchestrator
+        var runtime = new Mock<ISessionRuntime>();
+        runtime
             .Setup(c => c.SubscribeEvents(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(() => eventsFactory(Interlocked.Increment(ref call) - 1));
+        runtime
+            .Setup(c => c.WaitForIdleAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         var sessionManager = new Mock<ISessionManager>();
         sessionManager.Setup(s => s.SaveAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
 
         var services = new ServiceCollection();
         services.AddSingleton<IPermissionSurfaceRegistry>(store);
-        services.AddSingleton(chatOrchestrator.Object);
+        services.AddSingleton(runtime.Object);
         services.AddSingleton(sessionManager.Object);
         return services.BuildServiceProvider();
     }
@@ -118,7 +121,7 @@ public class GatewayOrchestratorPresentationTests
             provider,
             new GatewayOptions(),
             new GatewayRunTracker(),
-            new SessionExecutionQueue(),
+            new Seeing.Agent.Gateway.Core.SessionExecutionQueue(),
             NullLogger<GatewayOrchestratorV2>.Instance);
 
     private static async IAsyncEnumerable<IMessageEvent> GatedEventsAsync(

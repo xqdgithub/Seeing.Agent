@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 using Xunit;
@@ -18,7 +18,7 @@ public class SessionToolsModuleTests
     }
 
     [Fact]
-    public void ProvidedTools_ContainsFiveSessionTools()
+    public void ProvidedTools_ContainsEightSessionTools()
     {
         var module = new SessionToolsModule();
         module.ProvidedTools.Should().BeEquivalentTo(
@@ -28,6 +28,9 @@ public class SessionToolsModuleTests
             "session_read",
             "session_trim",
             "session_handoff",
+            "session_inbox_send",
+            "session_takeover",
+            "session_release",
         ]);
     }
 
@@ -46,7 +49,7 @@ public class SessionToolsModuleTests
     }
 
     [Fact]
-    public async Task Activate_Should_RegisterAllFiveTools_WhenSubmitterAvailable()
+    public async Task Activate_Should_RegisterAllEightTools_WhenRuntimeAvailable()
     {
         var (manager, registered, _) = BuildToolManager();
 
@@ -54,7 +57,7 @@ public class SessionToolsModuleTests
         services.AddLogging();
         services.AddSingleton(Mock.Of<ISessionManager>());
         services.AddSingleton(Mock.Of<ISessionGroupManager>());
-        services.AddSingleton(Mock.Of<IExecutionSubmitter>());
+        services.AddSingleton(Mock.Of<ISessionRuntime>());
         services.AddSingleton(manager.Object);
 
         var module = new SessionToolsModule();
@@ -69,12 +72,15 @@ public class SessionToolsModuleTests
             "session_search",
             "session_read",
             "session_trim",
+            "session_takeover",
+            "session_release",
             "session_handoff",
+            "session_inbox_send",
         ]);
     }
 
     [Fact]
-    public async Task Activate_Should_SkipHandoff_WhenSubmitterMissing()
+    public async Task Activate_Should_SkipHandoffAndInboxSend_WhenRuntimeMissing()
     {
         var (manager, registered, _) = BuildToolManager();
 
@@ -96,8 +102,11 @@ public class SessionToolsModuleTests
             "session_search",
             "session_read",
             "session_trim",
+            "session_takeover",
+            "session_release",
         ]);
         registered.Should().NotContain("session_handoff");
+        registered.Should().NotContain("session_inbox_send");
     }
 
     [Fact]
@@ -109,7 +118,7 @@ public class SessionToolsModuleTests
         services.AddLogging();
         services.AddSingleton(Mock.Of<ISessionManager>());
         services.AddSingleton(Mock.Of<ISessionGroupManager>());
-        services.AddSingleton(Mock.Of<IExecutionSubmitter>());
+        services.AddSingleton(Mock.Of<ISessionRuntime>());
         services.AddSingleton(manager.Object);
 
         var module = new SessionToolsModule();

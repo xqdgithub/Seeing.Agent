@@ -47,7 +47,6 @@ public class GatewayWsFrameSerializerTests
         var payload = new GatewayExecutionCompletePayload
         {
             SessionId = "ses_1",
-            ExecutionId = "exec_1",
             LoopId = "loop_1"
         };
 
@@ -59,7 +58,6 @@ public class GatewayWsFrameSerializerTests
 
         var roundTrip = parsed.Payload!.Value.Deserialize<GatewayExecutionCompletePayload>(GatewayWsFrameSerializer.JsonOptions);
         roundTrip!.SessionId.Should().Be("ses_1");
-        roundTrip.ExecutionId.Should().Be("exec_1");
         roundTrip.LoopId.Should().Be("loop_1");
     }
 

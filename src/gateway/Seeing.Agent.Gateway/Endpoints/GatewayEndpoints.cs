@@ -50,24 +50,23 @@ public static class GatewayEndpoints
         [FromBody] GatewayCancelRequest body,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(body.ExecutionId))
-            return Results.BadRequest(new { error = "executionId is required" });
+        if (string.IsNullOrWhiteSpace(body.SessionId))
+            return Results.BadRequest(new { error = "sessionId is required" });
 
-        var cancelled = await orchestrator.CancelAsync(body.ExecutionId, cancellationToken).ConfigureAwait(false);
-        return Results.Ok(new { executionId = body.ExecutionId, cancelled });
+        var cancelled = await orchestrator.CancelAsync(body.SessionId, cancellationToken).ConfigureAwait(false);
+        return Results.Ok(new { sessionId = body.SessionId, cancelled });
     }
 
     private static async Task SubscribeEventsAsync(
         HttpContext httpContext,
         GatewayOrchestratorV2 orchestrator,
         [FromQuery] string sessionId,
-        [FromQuery] string executionId,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(executionId))
+        if (string.IsNullOrWhiteSpace(sessionId))
         {
             httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await httpContext.Response.WriteAsJsonAsync(new { error = "sessionId and executionId are required" }, cancellationToken);
+            await httpContext.Response.WriteAsJsonAsync(new { error = "sessionId is required" }, cancellationToken);
             return;
         }
 
@@ -75,7 +74,7 @@ public static class GatewayEndpoints
         httpContext.Response.Headers.CacheControl = "no-cache";
         httpContext.Response.Headers.Connection = "keep-alive";
 
-        await foreach (var gatewayEvent in orchestrator.SubscribeExecutionEventsAsync(sessionId, executionId, cancellationToken))
+        await foreach (var gatewayEvent in orchestrator.SubscribeSessionEventsAsync(sessionId, cancellationToken))
         {
             var json = JsonSerializer.Serialize(gatewayEvent, JsonOptions);
             await httpContext.Response.WriteAsync($"data: {json}\n\n", cancellationToken);
@@ -144,10 +143,10 @@ public static class GatewayEndpoints
         });
 }
 
-/// <summary>取消执行请求体</summary>
+/// <summary>取消执行请求体（会话级）</summary>
 public record GatewayCancelRequest
 {
-    public required string ExecutionId { get; init; }
+    public required string SessionId { get; init; }
 }
 
 /// <summary>权限响应请求体</summary>

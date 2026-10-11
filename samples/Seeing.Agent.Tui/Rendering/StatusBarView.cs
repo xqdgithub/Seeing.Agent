@@ -120,8 +120,8 @@ public static class StatusBarView
             PriorityMandatory,
             Mandatory: true));
 
-        if (state.QueueLength > 0)
-            segments.Add(new Segment("[cyan]", $"队列 {state.QueueLength}", PriorityQueue));
+        if (state.PendingInputCount > 0)
+            segments.Add(new Segment("[cyan]", $"队列 {state.PendingInputCount}", PriorityQueue));
 
         if (pendingApprovals > 0)
             segments.Add(new Segment("[red]", $"待批 {pendingApprovals}", PriorityPendingApprovals));

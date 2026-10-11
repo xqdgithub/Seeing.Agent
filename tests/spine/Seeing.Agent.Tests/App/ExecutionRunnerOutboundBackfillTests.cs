@@ -14,7 +14,7 @@ using Xunit;
 
 namespace Seeing.Agent.Tests.App;
 
-public class ExecutionJobServiceOutboundBackfillTests
+public class ExecutionRunnerOutboundBackfillTests
 {
     [Fact]
     public void TryBackfillSessionOutbound_EmptyFields_ShouldFillFromInbound()
@@ -23,7 +23,7 @@ public class ExecutionJobServiceOutboundBackfillTests
         session.ChannelId = null;
         session.UserId = null;
 
-        var changed = ExecutionJobService.TryBackfillSessionOutbound(session, "  qq  ", "  u1  ");
+        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "  qq  ", "  u1  ");
 
         changed.Should().BeTrue();
         session.ChannelId.Should().Be("qq");
@@ -37,7 +37,7 @@ public class ExecutionJobServiceOutboundBackfillTests
         session.ChannelId = "wecom";
         session.UserId = "existing";
 
-        var changed = ExecutionJobService.TryBackfillSessionOutbound(session, "qq", "u1");
+        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "qq", "u1");
 
         changed.Should().BeFalse();
         session.ChannelId.Should().Be("wecom");
@@ -51,7 +51,7 @@ public class ExecutionJobServiceOutboundBackfillTests
         session.ChannelId = "   ";
         session.UserId = "";
 
-        var changed = ExecutionJobService.TryBackfillSessionOutbound(session, "qq", "u1");
+        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "qq", "u1");
 
         changed.Should().BeTrue();
         session.ChannelId.Should().Be("qq");
@@ -65,7 +65,7 @@ public class ExecutionJobServiceOutboundBackfillTests
         session.ChannelId = null;
         session.UserId = null;
 
-        var changed = ExecutionJobService.TryBackfillSessionOutbound(session, "  ", null);
+        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "  ", null);
 
         changed.Should().BeFalse();
         session.ChannelId.Should().BeNull();
@@ -79,7 +79,7 @@ public class ExecutionJobServiceOutboundBackfillTests
         session.ChannelId = null;
         session.UserId = "keep";
 
-        var changed = ExecutionJobService.TryBackfillSessionOutbound(session, "qq", "ignored");
+        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "qq", "ignored");
 
         changed.Should().BeTrue();
         session.ChannelId.Should().Be("qq");
@@ -87,7 +87,7 @@ public class ExecutionJobServiceOutboundBackfillTests
     }
 }
 
-public class ExecutionJobServiceModelSelectionTests
+public class ExecutionRunnerModelSelectionTests
 {
     private readonly IModelManager _modelManager = CreateModelManager();
 
@@ -98,7 +98,7 @@ public class ExecutionJobServiceModelSelectionTests
         session.SelectedModel = string.Empty;
         session.SelectedAcpMode = string.Empty;
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "gpt-4o", "ask", _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "gpt-4o", "ask", _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("gpt-4o");
@@ -112,7 +112,7 @@ public class ExecutionJobServiceModelSelectionTests
         session.SelectedModel = "gpt-4o-mini";
         session.SelectedAcpMode = "build";
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "claude-sonnet-4-20250514", "ask", _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "claude-sonnet-4-20250514", "ask", _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("claude-sonnet-4-20250514");
@@ -126,7 +126,7 @@ public class ExecutionJobServiceModelSelectionTests
         session.SelectedModel = string.Empty;
         session.SelectedAcpMode = "build";
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "gpt-4o", null, _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "gpt-4o", null, _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("gpt-4o");
@@ -140,7 +140,7 @@ public class ExecutionJobServiceModelSelectionTests
         session.SelectedModel = "gpt-4o-mini";
         session.SelectedAcpMode = string.Empty;
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, null, "ask", _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, null, "ask", _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("gpt-4o-mini");
@@ -154,7 +154,7 @@ public class ExecutionJobServiceModelSelectionTests
         session.SelectedModel = "gpt-4o";
         session.SelectedAcpMode = "build";
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "  ", null, _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "  ", null, _modelManager);
 
         changed.Should().BeFalse();
         session.SelectedModel.Should().Be("gpt-4o");
@@ -166,7 +166,7 @@ public class ExecutionJobServiceModelSelectionTests
     {
         var session = SessionData.Create();
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "  gpt-4o  ", "  ask  ", _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "  gpt-4o  ", "  ask  ", _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("gpt-4o");
@@ -182,7 +182,7 @@ public class ExecutionJobServiceModelSelectionTests
 
         Thread.Sleep(10);
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "gpt-4o", null, _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "gpt-4o", null, _modelManager);
 
         changed.Should().BeTrue();
         session.UpdatedAt.Should().BeAfter(originalUpdatedAt);
@@ -194,7 +194,7 @@ public class ExecutionJobServiceModelSelectionTests
         var session = SessionData.Create();
         session.SelectedModel = "openai/gpt-4o-mini";
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "openai/gpt-4o", null, _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "openai/gpt-4o", null, _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("openai/gpt-4o");
@@ -205,7 +205,7 @@ public class ExecutionJobServiceModelSelectionTests
     {
         var session = SessionData.Create();
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "Qwen/Qwen3-VL-Embedding-8B", null, _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "Qwen/Qwen3-VL-Embedding-8B", null, _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("Qwen/Qwen3-VL-Embedding-8B");
@@ -217,7 +217,7 @@ public class ExecutionJobServiceModelSelectionTests
         var session = SessionData.Create();
         session.SelectedModel = "seeing-coding-plan/GLM-5";
 
-        var changed = ExecutionJobService.ApplyInboundModelAndMode(session, "openai/gpt-4o", null, _modelManager);
+        var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "openai/gpt-4o", null, _modelManager);
 
         changed.Should().BeTrue();
         session.SelectedModel.Should().Be("openai/gpt-4o");

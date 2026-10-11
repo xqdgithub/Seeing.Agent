@@ -11,16 +11,17 @@ public sealed class GatewaySubmitResult
 
     public string? ExecutionId { get; init; }
 
-    public int QueuePosition { get; init; }
+    /// <summary>会话未消费输入数（原 QueuePosition，改会话级后不再表示执行队列位次）。</summary>
+    public int PendingInputCount { get; init; }
 
     public string? Error { get; init; }
 
-    public static GatewaySubmitResult Succeeded(string sessionId, string executionId, int queuePosition = 0) => new()
+    public static GatewaySubmitResult Succeeded(string sessionId, string? executionId, int pendingInputCount = 0) => new()
     {
         Success = true,
         SessionId = sessionId,
         ExecutionId = executionId,
-        QueuePosition = queuePosition
+        PendingInputCount = pendingInputCount
     };
 
     public static GatewaySubmitResult Failed(string sessionId, string error) => new()

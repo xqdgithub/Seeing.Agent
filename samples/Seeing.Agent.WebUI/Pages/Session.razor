@@ -27,7 +27,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @inject IMessageService MessageService
-@inject IChatOrchestrator ChatOrchestrator
+@inject ISessionDirectory SessionDirectory
 @inject IWorkspaceProvider WorkspaceProvider
 @inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
@@ -185,7 +185,7 @@
                            OnSelect="OnTileClick"
                            OnNodeAction="OnRelationNodeAction" />
 
-    @* 关系抽屉触发的重命名弹窗（走既有 ChatOrchestrator.RenameSessionAsync） *@
+    @* 关系抽屉触发的重命名弹窗（走既有 SessionDirectory.RenameAsync） *@
     <Modal Title="重命名会话"
            Visible="@(_renameSessionId != null)"
            OnOk="ConfirmRenameAsync"
@@ -244,7 +244,7 @@
         // 解析主会话：路由参数优先，否则最近 Root 会话（ListSessionsAsync 仅返回 Root，避免子会话被误选为主会话）
         var mainId = !string.IsNullOrEmpty(SessionId)
             ? SessionId
-            : (await ChatOrchestrator.ListSessionsAsync()).FirstOrDefault()?.Id;
+            : (await SessionDirectory.ListAsync()).FirstOrDefault()?.Id;
         if (string.IsNullOrEmpty(mainId))
         {
             // 无任何会话：主窗由 SessionWindow 空态兜底（_activeSessionId 保持空）
@@ -479,7 +479,7 @@
 
         try
         {
-            await ChatOrchestrator.RenameSessionAsync(id, title);
+            await SessionDirectory.RenameAsync(id, title);
         }
         catch (Exception ex)
         {
@@ -496,7 +496,7 @@
         var groupId = _registry?.GroupId;
         try
         {
-            await ChatOrchestrator.DeleteSessionAsync(sessionId);
+            await SessionDirectory.DeleteAsync(sessionId);
         }
         catch (Exception ex)
         {
@@ -597,7 +597,7 @@
     {
         try
         {
-            var session = await ChatOrchestrator.CreateSessionAsync(
+            var session = await SessionDirectory.CreateAsync(
                 workingDirectory: WorkspaceProvider.GetProjectRoot());
             NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
         }
@@ -633,7 +633,7 @@
         var session = GlobalSessionState.CurrentSession;
         if (session == null) return;
 
-        var branched = await ChatOrchestrator.BranchSessionAsync(session.Id, $"{session.Title} (分支)");
+        var branched = await SessionDirectory.BranchAsync(session.Id, $"{session.Title} (分支)");
         NavigationManager.NavigateTo($"/session/{branched.Id}");
     }
 

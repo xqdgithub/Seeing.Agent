@@ -7,7 +7,7 @@
 @using Seeing.Session.Core
 @using Seeing.Agent.Hosting
 @inject SessionState SessionState
-@inject IChatOrchestrator ChatOrchestrator
+@inject ISessionDirectory SessionDirectory
 @inject AppState AppState
 @inject IWorkspaceProvider WorkspaceProvider
 @inject IAgentRegistry AgentRegistry
@@ -248,7 +248,7 @@
     
     protected override async Task OnInitializedAsync()
     {
-        var sessions = await ChatOrchestrator.ListSessionsAsync();
+        var sessions = await SessionDirectory.ListAsync();
         _sessionCount = sessions.Count;
         
         var agents = await AgentRegistry.GetPrimaryAgentsAsync();
@@ -263,7 +263,7 @@
             AppState.CurrentSessionId = recentSession.Id;
 
             // 加载最近会话的消息
-            var sessionData = await ChatOrchestrator.GetSessionAsync(recentSession.Id);
+            var sessionData = await SessionDirectory.GetAsync(recentSession.Id);
             if (sessionData?.Messages != null && sessionData.Messages.Count > 0)
             {
                 _recentMessages = sessionData.Messages
@@ -291,7 +291,7 @@
         // 使用配置中的默认智能体
         var defaultAgent = await RuntimeManager.GetDefaultAgentNameAsync();
         
-        var newSession = await ChatOrchestrator.CreateSessionAsync(
+        var newSession = await SessionDirectory.CreateAsync(
             "新会话", 
             defaultAgent,
             WorkspaceProvider.GetProjectRoot());

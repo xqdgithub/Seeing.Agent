@@ -48,6 +48,37 @@ public abstract class SessionToolBase : ToolBase
     }
 
     /// <summary>
+    /// 目标会话是否在当前会话的默认可达范围（同组 + 父链）。
+    /// <para>父链双向：当前会话的祖先链或目标会话的祖先链包含对方即视为可达。</para>
+    /// </summary>
+    protected async Task<bool> IsInScopeAsync(
+        string currentSessionId, string targetSessionId, CancellationToken ct)
+    {
+        if (await IsSameGroupAsync(currentSessionId, targetSessionId, ct).ConfigureAwait(false))
+            return true;
+
+        return await IsAncestorAsync(targetSessionId, currentSessionId, ct).ConfigureAwait(false)
+            || await IsAncestorAsync(currentSessionId, targetSessionId, ct).ConfigureAwait(false);
+    }
+
+    private async Task<bool> IsAncestorAsync(string ancestorId, string descendantId, CancellationToken ct)
+    {
+        var current = descendantId;
+        var guard = 0;
+        while (!string.IsNullOrEmpty(current) && guard++ < 64)
+        {
+            var parent = await Groups.GetParentAsync(current, ct).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(parent))
+                return false;
+            if (string.Equals(parent, ancestorId, StringComparison.Ordinal))
+                return true;
+            current = parent!;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// 跨组访问授权：授权工厂缺失时放行（宿主未接入授权链）；
     /// 拒绝返回 <see cref="ToolResult"/>，允许返回 <c>null</c>。
     /// </summary>

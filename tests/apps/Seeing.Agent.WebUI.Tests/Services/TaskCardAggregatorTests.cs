@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Chat;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
@@ -14,7 +14,7 @@ namespace Seeing.Agent.WebUI.Tests.Services;
 
 public class TaskCardAggregatorTests
 {
-    private static SessionEventStreamRouter CreateRouter(Mock<IChatOrchestrator> orchestrator)
+    private static SessionEventStreamRouter CreateRouter(Mock<ISessionRuntime> orchestrator)
         => new(orchestrator.Object, Mock.Of<IServiceScopeFactory>(),
             NullLogger<SessionEventStreamRouter>.Instance);
 
@@ -64,10 +64,10 @@ public class TaskCardAggregatorTests
         Mock<ISessionGroupManager> gm)
         => new(router, sm.Object, new TaskSessionResolver(gm.Object));
 
-    private static Mock<IChatOrchestrator> CreateOrchestratorMock(
+    private static Mock<ISessionRuntime> CreateOrchestratorMock(
         Dictionary<string, Channel<IMessageEvent>> channels)
     {
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         orchestrator.Setup(o => o.GetBufferedEvents(It.IsAny<string>())).Returns(new List<IMessageEvent>());
         orchestrator.Setup(o => o.SubscribeEvents(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns((string sessionId, CancellationToken _) => channels[sessionId].Reader.ReadAllAsync());

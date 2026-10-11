@@ -143,7 +143,7 @@ builder.Services.AddSingleton<Seeing.Agent.TokenBudget.IBudgetStatusNotifier, Bu
 // TokenBudget Hooks (依赖 IBudgetStatusNotifier)
 builder.Services.AddTokenBudgetHooks();
 
-// === ChatOrchestrator 统一入口 ===
+// === 会话运行时（ISessionRuntime）+ 会话目录（ISessionDirectory）统一入口 ===
 builder.Services.AddChatOrchestrator();
 
 // === 执行引擎（后台执行服务）===

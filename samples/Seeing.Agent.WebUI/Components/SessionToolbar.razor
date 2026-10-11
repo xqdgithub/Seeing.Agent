@@ -64,9 +64,9 @@
                 {
                     <Badge Status="@BadgeStatus.Default" Text="@Services.SessionRelationView.BadgeText(Context.Relation, Context.IsAnchor, Context.Label, Context.SuccessorTitle)" />
                 }
-                @if (Context.IsQueued)
+                @if (Context.PendingInputCount > 0)
                 {
-                    <Badge Status="@BadgeStatus.Default" Text="@($"排队中 ({Context.QueuePosition})" )" />
+                    <Badge Status="@BadgeStatus.Default" Text="@($"待处理 ({Context.PendingInputCount})" )" />
                 }
                 else if (Context.HasActiveExecution)
                 {

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Abstractions.Runtime;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Execution;
@@ -8,39 +9,28 @@ namespace Seeing.Agent.Tests.Execution;
 public class ExecutionAbstractionsContractsTests
 {
     [Fact]
-    public void IExecutionStatusProvider_ShouldDeclareOverviewAndGetExecution()
+    public void ISessionRuntime_ShouldDeclareDeliverInterruptStopAndOverview()
     {
-        var type = typeof(IExecutionStatusProvider);
+        var type = typeof(ISessionRuntime);
 
-        type.GetMethod(nameof(IExecutionStatusProvider.GetOverview), [typeof(string)])
-            !.ReturnType.Should().Be(typeof(SessionExecutionOverview));
-        type.GetMethod(nameof(IExecutionStatusProvider.GetExecution), [typeof(string)])
-            !.ReturnType.Should().Be(typeof(ExecutionRecord));
-        type.GetMethod(nameof(IExecutionStatusProvider.HasAnyActiveExecution), Type.EmptyTypes)
-            !.ReturnType.Should().Be(typeof(bool));
-    }
+        var deliver = type.GetMethod(nameof(ISessionRuntime.DeliverAsync));
+        deliver.Should().NotBeNull();
+        deliver!.ReturnType.Should().Be(typeof(Task<InboxResult>));
+        deliver.GetParameters()[0].ParameterType.Should().Be(typeof(InboxMessage));
 
-    [Fact]
-    public void IExecutionSubmitter_ShouldDeclareSubmitCancelAndWait()
-    {
-        var type = typeof(IExecutionSubmitter);
-
-        var submit = type.GetMethod(nameof(IExecutionSubmitter.SubmitAsync));
-        submit.Should().NotBeNull();
-        submit!.ReturnType.Should().Be(typeof(Task<ExecutionSubmitResult>));
-        submit.GetParameters().Should().HaveCount(4);
-        submit.GetParameters()[0].ParameterType.Should().Be(typeof(string));
-        submit.GetParameters()[1].ParameterType.Should().Be(typeof(ChatInput));
-        submit.GetParameters()[2].ParameterType.Should().Be(typeof(ChatOptions));
-        submit.GetParameters()[3].ParameterType.Should().Be(typeof(CancellationToken));
-
-        type.GetMethod(nameof(IExecutionSubmitter.CancelAsync), [typeof(string), typeof(CancellationToken)])
+        type.GetMethod(nameof(ISessionRuntime.InterruptAsync), [typeof(string), typeof(CancellationToken)])
             !.ReturnType.Should().Be(typeof(Task<bool>));
-        type.GetMethod(nameof(IExecutionSubmitter.CancelBySessionAsync), [typeof(string), typeof(CancellationToken)])
+        type.GetMethod(nameof(ISessionRuntime.StopAsync), [typeof(string), typeof(CancellationToken)])
             !.ReturnType.Should().Be(typeof(Task<int>));
-        type.GetMethod(nameof(IExecutionSubmitter.WaitForExecutionAsync), [typeof(string), typeof(CancellationToken)])
+        type.GetMethod(nameof(ISessionRuntime.CancelAllInFlightAsync), [typeof(CancellationToken)])
+            !.ReturnType.Should().Be(typeof(Task<int>));
+        type.GetMethod(nameof(ISessionRuntime.WaitForIdleAsync), [typeof(string), typeof(CancellationToken)])
             !.ReturnType.Should().Be(typeof(Task));
-        type.GetMethod(nameof(IExecutionSubmitter.CancelAllInFlightAsync), [typeof(CancellationToken)])
+        type.GetMethod(nameof(ISessionRuntime.GetOverview), [typeof(string)])
+            !.ReturnType.Should().Be(typeof(SessionExecutionOverview));
+        type.GetMethod(nameof(ISessionRuntime.HasAnyActiveExecution), Type.EmptyTypes)
+            !.ReturnType.Should().Be(typeof(bool));
+        type.GetMethod(nameof(ISessionRuntime.ReconcileIncompleteTasksAsync), [typeof(string), typeof(CancellationToken)])
             !.ReturnType.Should().Be(typeof(Task<int>));
     }
 

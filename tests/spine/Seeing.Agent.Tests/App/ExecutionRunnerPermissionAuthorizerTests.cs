@@ -17,15 +17,15 @@ using Xunit;
 namespace Seeing.Agent.Tests.App;
 
 /// <summary>
-/// ExecutionJobService 执行级授权器构造测试：
+/// ExecutionRunner 执行级授权器构造测试：
 /// 经 <see cref="IPermissionAuthorizerFactory"/> 构造，并把 SessionId + 执行级覆盖（AutoApprove）透传。
 /// </summary>
-public class ExecutionJobServicePermissionAuthorizerTests
+public class ExecutionRunnerPermissionAuthorizerTests
 {
     [Fact]
     public void ResolvePermissionAuthorizer_ShouldCreateViaFactory_WithSessionAndOverride()
     {
-        using var service = CreateService();
+        var service = CreateRunner();
         var authorizer = Mock.Of<IPermissionAuthorizer>();
         var factory = new Mock<IPermissionAuthorizerFactory>();
         factory.Setup(f => f.Create("session-1", SessionAutoApprove.Enabled)).Returns(authorizer);
@@ -42,7 +42,7 @@ public class ExecutionJobServicePermissionAuthorizerTests
     [Fact]
     public void ResolvePermissionAuthorizer_NullOverride_ShouldPassNull()
     {
-        using var service = CreateService();
+        var service = CreateRunner();
         var authorizer = Mock.Of<IPermissionAuthorizer>();
         var factory = new Mock<IPermissionAuthorizerFactory>();
         factory.Setup(f => f.Create("session-2", null)).Returns(authorizer);
@@ -59,7 +59,7 @@ public class ExecutionJobServicePermissionAuthorizerTests
     [Fact]
     public void ResolvePermissionAuthorizer_NoFactory_ShouldReturnNull()
     {
-        using var service = CreateService();
+        var service = CreateRunner();
         var services = new Mock<IServiceProvider>();
 
         var result = service.ResolvePermissionAuthorizer(services.Object, "session-3", SessionAutoApprove.FollowGlobal);
@@ -67,15 +67,18 @@ public class ExecutionJobServicePermissionAuthorizerTests
         result.Should().BeNull();
     }
 
-    private static ExecutionJobService CreateService()
+    private static ExecutionRunner CreateRunner()
     {
-        return new ExecutionJobService(
+        return new ExecutionRunner(
             Mock.Of<IServiceProvider>(),
             Mock.Of<IExecutionEventPublisher>(),
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(),
             Mock.Of<IConfigSectionStore>(),
-            NullLogger<ExecutionJobService>.Instance,
-            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
+            new CompactionRunner(
+                new CompressionService(null!, Mock.Of<ISessionManager>()),
+                Mock.Of<IExecutionEventPublisher>(),
+                Mock.Of<ISessionManager>()),
+            NullLogger<ExecutionRunner>.Instance);
     }
 }

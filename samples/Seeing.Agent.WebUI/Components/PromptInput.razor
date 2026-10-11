@@ -463,7 +463,7 @@
         _selectedCommand = "";
         await SetDropdownStateAsync(false);
 
-        // 所有命令（包括内置命令）都插入到输入框，由 ChatOrchestrator 处理
+        // 所有命令（包括内置命令）都插入到输入框，由 SessionRuntime 处理
         var lastSlashIndex = InputText.LastIndexOf('/');
         if (lastSlashIndex >= 0)
         {
@@ -701,7 +701,7 @@
         _isSubmitting = true;
         var trimmedInput = InputText.Trim();
 
-        // 所有输入（包括命令）都发送给 ChatOrchestrator 处理
+        // 所有输入（包括命令）都发送给 SessionRuntime 处理
         var submitArgs = new PromptSubmitEventArgs
         {
             Text = trimmedInput,

@@ -6,8 +6,8 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Hosting.Tools;
 using Seeing.Session.Core;
 using Xunit;
@@ -17,6 +17,8 @@ namespace Seeing.Agent.Tests.Tools;
 /// <summary>
 /// TaskTool 审批策略继承：子会话不冻结父会话三态到执行级 Override，
 /// 由 EffectivePermissionPolicy 沿父链实时解析（父会话切换即时作用于子代理）。
+/// 新架构下 TaskTool 不再构造 ChatOptions/AutoApprove，改为经 ISessionRuntime.DeliverAsync
+/// 投递入站消息——结构上即不可能冻结父会话审批态。
 /// </summary>
 public class TaskToolAutoApproveInheritanceTests
 {
@@ -38,8 +40,10 @@ public class TaskToolAutoApproveInheritanceTests
             new ToolContext { SessionId = fixture.ParentId, CallId = "call-new" });
 
         result.Success.Should().BeTrue();
-        fixture.SubmittedOptions.Should().NotBeNull();
-        fixture.SubmittedOptions!.AutoApprove.Should().Be(SessionAutoApprove.FollowGlobal);
+        fixture.LastDelivered.Should().NotBeNull();
+        fixture.LastDelivered!.TargetSessionId.Should().Be(fixture.Child.Id);
+        // 子会话审批态不被父会话三态冻结：保持 FollowGlobal（沿父链实时解析）
+        fixture.Child.AutoApprove.Should().Be(SessionAutoApprove.FollowGlobal);
     }
 
     [Theory]
@@ -61,8 +65,9 @@ public class TaskToolAutoApproveInheritanceTests
             new ToolContext { SessionId = fixture.ParentId, CallId = "call-resume" });
 
         result.Success.Should().BeTrue();
-        fixture.SubmittedOptions.Should().NotBeNull();
-        fixture.SubmittedOptions!.AutoApprove.Should().Be(SessionAutoApprove.FollowGlobal);
+        fixture.LastDelivered.Should().NotBeNull();
+        fixture.LastDelivered!.TargetSessionId.Should().Be(fixture.Child.Id);
+        fixture.Child.AutoApprove.Should().Be(SessionAutoApprove.FollowGlobal);
     }
 
     private sealed class Fixture
@@ -73,11 +78,9 @@ public class TaskToolAutoApproveInheritanceTests
         public Mock<ISessionManager> SessionManager { get; } = new();
         public Mock<ISessionGroupManager> GroupManager { get; } = new();
         public Mock<IAgentRegistry> AgentRegistry { get; } = new();
-        public Mock<IAgentLoopScheduler> LoopScheduler { get; } = new();
-        public Mock<IExecutionStatusProvider> StatusProvider { get; } = new();
-        public Mock<IExecutionSubmitter> Submitter { get; } = new();
+        public Mock<ISessionRuntime> Runtime { get; } = new();
         public Mock<IExecutionEventPublisher> EventPublisher { get; } = new();
-        public ChatOptions? SubmittedOptions { get; private set; }
+        public InboxMessage? LastDelivered { get; private set; }
         public TaskTool Tool { get; }
 
         public Fixture(SessionAutoApprove parentAutoApprove)
@@ -133,30 +136,23 @@ public class TaskToolAutoApproveInheritanceTests
 
             AgentRegistry.Setup(r => r.GetAgentAsync("explore")).ReturnsAsync(agentDef);
 
-            LoopScheduler.Setup(l => l.IsLoopBusy(It.IsAny<string>())).Returns(false);
-
-            StatusProvider.Setup(p => p.GetOverview(It.IsAny<string>()))
-                .Returns(new SessionExecutionOverview());
-
-            Submitter.Setup(s => s.SubmitAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<ChatInput>(),
-                    It.IsAny<ChatOptions?>(),
-                    It.IsAny<CancellationToken>()))
-                .Callback<string, ChatInput, ChatOptions?, CancellationToken>(
-                    (_, _, options, _) => SubmittedOptions = options)
-                .ReturnsAsync(ExecutionSubmitResult.Succeeded("exec-1"));
-            Submitter.Setup(s => s.WaitForExecutionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            Runtime.Setup(r => r.DeliverAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+                .Callback<InboxMessage, CancellationToken>((msg, _) => LastDelivered = msg)
+                .ReturnsAsync(InboxResult.Ok(messageId: "msg-1"));
+            Runtime.Setup(r => r.WaitForIdleAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
+            Runtime.Setup(r => r.GetOverview(It.IsAny<string>()))
+                .Returns(new SessionExecutionOverview
+                {
+                    LastExecution = new ExecutionRecord { Status = ExecutionStatus.Completed }
+                });
 
             Tool = new TaskTool(
                 NullLogger<TaskTool>.Instance,
                 SessionManager.Object,
                 GroupManager.Object,
                 AgentRegistry.Object,
-                LoopScheduler.Object,
-                Submitter.Object,
-                StatusProvider.Object,
+                Runtime.Object,
                 EventPublisher.Object);
         }
     }

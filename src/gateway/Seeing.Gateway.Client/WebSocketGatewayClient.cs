@@ -133,18 +133,18 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         }
     }
 
-    public async Task<GatewayCancelAckPayload> CancelAsync(string executionId, CancellationToken cancellationToken = default)
+    public async Task<GatewayCancelAckPayload> CancelAsync(string sessionId, CancellationToken cancellationToken = default)
     {
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
         var requestId = Guid.NewGuid().ToString("N");
         var frame = GatewayWsFrameSerializer.Create(
             GatewayWsFrameType.Cancel,
             requestId,
-            new GatewayCancelPayload { ExecutionId = executionId });
+            new GatewayCancelPayload { SessionId = sessionId });
 
         var tcs = new TaskCompletionSource<GatewayCancelAckPayload>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_cancelAckWaiters.TryAdd(requestId, tcs))
-            return new GatewayCancelAckPayload { ExecutionId = executionId, Cancelled = false };
+            return new GatewayCancelAckPayload { SessionId = sessionId, Cancelled = false };
 
         await SendFrameAsync(frame, cancellationToken).ConfigureAwait(false);
 
@@ -157,7 +157,7 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new GatewayCancelAckPayload { ExecutionId = executionId, Cancelled = false };
+            return new GatewayCancelAckPayload { SessionId = sessionId, Cancelled = false };
         }
         finally
         {
@@ -481,7 +481,7 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         var result = ack == null
             ? GatewaySubmitResult.Failed("", "Empty submit ack")
             : ack.Success
-                ? GatewaySubmitResult.Succeeded(ack.SessionId, ack.ExecutionId ?? "", ack.QueuePosition)
+                ? GatewaySubmitResult.Succeeded(ack.SessionId, ack.ExecutionId, ack.PendingInputCount)
                 : GatewaySubmitResult.Failed(ack.SessionId, ack.Error ?? "Submit failed");
 
         tcs.TrySetResult(result);
@@ -496,7 +496,7 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         if (!_cancelAckWaiters.TryRemove(inbound.Id, out var tcs))
             return false;
 
-        tcs.TrySetResult(inbound.CancelAck ?? new GatewayCancelAckPayload { ExecutionId = "", Cancelled = false });
+        tcs.TrySetResult(inbound.CancelAck ?? new GatewayCancelAckPayload { SessionId = "", Cancelled = false });
         return true;
     }
 
@@ -542,7 +542,6 @@ public sealed class WebSocketGatewayClientFacade : IGatewayClient, IAsyncDisposa
 
     public async IAsyncEnumerable<GatewayEvent> SubscribeAsync(
         string sessionId,
-        string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await _subscribeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -552,15 +551,11 @@ public sealed class WebSocketGatewayClientFacade : IGatewayClient, IAsyncDisposa
             {
                 switch (inbound.Type)
                 {
-                    case GatewayWsFrameType.ChatEvent when inbound.Event != null
-                        && (inbound.Event.ExecutionId == null
-                            || string.Equals(inbound.Event.ExecutionId, executionId, StringComparison.Ordinal)):
+                    case GatewayWsFrameType.ChatEvent when inbound.Event != null:
                         yield return inbound.Event;
                         break;
 
-                    case GatewayWsFrameType.ExecutionComplete
-                        when inbound.ExecutionComplete != null
-                             && string.Equals(inbound.ExecutionComplete.ExecutionId, executionId, StringComparison.Ordinal):
+                    case GatewayWsFrameType.ExecutionComplete:
                         yield break;
 
                     case GatewayWsFrameType.ChatError:
@@ -574,8 +569,8 @@ public sealed class WebSocketGatewayClientFacade : IGatewayClient, IAsyncDisposa
         }
     }
 
-    public async Task CancelAsync(string executionId, CancellationToken cancellationToken = default) =>
-        await _connection.CancelAsync(executionId, cancellationToken).ConfigureAwait(false);
+    public async Task CancelAsync(string sessionId, CancellationToken cancellationToken = default) =>
+        await _connection.CancelAsync(sessionId, cancellationToken).ConfigureAwait(false);
 
     public Task<GatewayPermissionRespondResult> RespondPermissionAsync(
         string sessionId,

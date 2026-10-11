@@ -2,8 +2,8 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 using Xunit;
@@ -12,8 +12,8 @@ namespace Seeing.Agent.Tools.Session.Tests;
 
 public class SessionHandoffToolTests
 {
-    private static SessionHandoffTool CreateTool(SessionToolTestHarness h, IExecutionSubmitter submitter) =>
-        new(NullLogger<SessionHandoffTool>.Instance, h.Sessions, h.Groups, submitter);
+    private static SessionHandoffTool CreateTool(SessionToolTestHarness h, ISessionRuntime runtime) =>
+        new(NullLogger<SessionHandoffTool>.Instance, h.Sessions, h.Groups, runtime);
 
     private static JsonElement Args(object value) => JsonSerializer.SerializeToElement(value);
 
@@ -32,7 +32,7 @@ public class SessionHandoffToolTests
             NullLogger<SessionHandoffTool>.Instance,
             new Mock<ISessionManager>().Object,
             new Mock<ISessionGroupManager>().Object,
-            new StubExecutionSubmitter(ExecutionSubmitResult.Failed("x")));
+            new StubSessionRuntime(InboxResult.Failed("x")));
 
         tool.Capabilities.Should().NotBeNull();
         tool.Capabilities!["timeout.skip"].Should().Be("true");
@@ -45,9 +45,9 @@ public class SessionHandoffToolTests
         using var h = new SessionToolTestHarness();
         var root = await h.CreateRootGroupedAsync("root");
         await h.AddMessageAsync(root.Id, "user", "hello");
-        var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Succeeded("exec-1"));
+        var runtime = new StubSessionRuntime(InboxResult.Ok(messageId: "exec-1"), sessions: h.Sessions);
         var factory = new StubPermissionAuthorizerFactory(PermissionEffect.Allow);
-        var tool = CreateTool(h, submitter);
+        var tool = CreateTool(h, runtime);
 
         var result = await tool.ExecuteAsync(
             Args(new { prompt = "continue work", title = "handoff" }), Context(root.Id, factory));
@@ -71,11 +71,10 @@ public class SessionHandoffToolTests
         target.Messages[0].Role.Should().Be("user");
         target.Messages[0].Content.Should().Be("continue work");
 
-        submitter.LastSessionId.Should().Be(targetId);
-        submitter.LastInput!.Text.Should().Be("continue work");
-        submitter.LastOptions!.SkipUserMessagePersist.Should().BeTrue();
-        submitter.LastOptions.AgentId.Should().Be(target.SelectedAgent);
-        submitter.LastOptions.ModelId.Should().Be(target.SelectedModel);
+        runtime.LastSessionId.Should().Be(targetId);
+        runtime.LastBody.Should().Be("continue work");
+        runtime.LastAgentId.Should().Be(target.SelectedAgent);
+        runtime.LastModelId.Should().Be(target.SelectedModel);
 
         factory.LastRequest.Should().NotBeNull();
         factory.LastRequest!.Resource.Should().Be("session_handoff");
@@ -87,8 +86,8 @@ public class SessionHandoffToolTests
         using var h = new SessionToolTestHarness();
         var root = await h.CreateRootGroupedAsync("root");
         await h.AddMessageAsync(root.Id, "user", "hello");
-        var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Succeeded("exec-1"));
-        var tool = CreateTool(h, submitter);
+        var runtime = new StubSessionRuntime(InboxResult.Ok(messageId: "exec-1"), sessions: h.Sessions);
+        var tool = CreateTool(h, runtime);
         var ctx = Context(root.Id);
         ctx.CallId = "call-42";
 
@@ -107,7 +106,7 @@ public class SessionHandoffToolTests
         var group = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var members = await h.Groups.ListMembersAsync(group!.Id, TestContext.Current.CancellationToken);
         members.Count(m => m.Relation == SessionRelation.HandoffSuccessor).Should().Be(1);
-        submitter.SubmitCount.Should().Be(1);
+        runtime.DeliverCount.Should().Be(1);
     }
 
     [Fact]
@@ -116,8 +115,8 @@ public class SessionHandoffToolTests
         using var h = new SessionToolTestHarness();
         var root = await h.CreateRootGroupedAsync("root");
         await h.AddMessageAsync(root.Id, "user", "hello");
-        var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Failed("submit boom"));
-        var tool = CreateTool(h, submitter);
+        var runtime = new StubSessionRuntime(InboxResult.Failed("submit boom"), sessions: h.Sessions);
+        var tool = CreateTool(h, runtime);
 
         var result = await tool.ExecuteAsync(
             Args(new { prompt = "continue work" }), Context(root.Id));
@@ -125,7 +124,7 @@ public class SessionHandoffToolTests
         result.Success.Should().BeFalse();
         result.TurnDirective.Should().Be(ToolTurnDirective.Continue);
 
-        var targetId = submitter.LastSessionId!;
+        var targetId = runtime.LastSessionId!;
         targetId.Should().NotBeNullOrEmpty();
         h.Sessions.Get(targetId).Should().BeNull();
 
@@ -145,9 +144,9 @@ public class SessionHandoffToolTests
         await h.AddMessageAsync(root.Id, "user", "hello");
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        var submitter = new StubExecutionSubmitter(
-            ExecutionSubmitResult.Failed("submit boom"), onSubmitting: () => cts.Cancel());
-        var tool = CreateTool(h, submitter);
+        var runtime = new StubSessionRuntime(
+            InboxResult.Failed("submit boom"), onDelivering: () => cts.Cancel(), sessions: h.Sessions);
+        var tool = CreateTool(h, runtime);
 
         var ctx = Context(root.Id);
         ctx.CancellationToken = cts.Token;
@@ -156,7 +155,7 @@ public class SessionHandoffToolTests
 
         result.Success.Should().BeFalse();
 
-        var targetId = submitter.LastSessionId!;
+        var targetId = runtime.LastSessionId!;
         targetId.Should().NotBeNullOrEmpty();
         h.Sessions.Get(targetId).Should().BeNull("取消令牌下回滚仍须删除孤儿后继");
 
@@ -171,9 +170,9 @@ public class SessionHandoffToolTests
     {
         using var h = new SessionToolTestHarness();
         var root = await h.CreateRootGroupedAsync("root");
-        var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Succeeded("exec-1"));
+        var runtime = new StubSessionRuntime(InboxResult.Ok(messageId: "exec-1"), sessions: h.Sessions);
         var factory = new StubPermissionAuthorizerFactory(PermissionEffect.Deny);
-        var tool = CreateTool(h, submitter);
+        var tool = CreateTool(h, runtime);
 
         var groupBefore = await h.Groups.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
         var membersBefore = await h.Groups.ListMembersAsync(groupBefore!.Id, TestContext.Current.CancellationToken);
@@ -182,7 +181,7 @@ public class SessionHandoffToolTests
             Args(new { prompt = "continue work" }), Context(root.Id, factory));
 
         result.Success.Should().BeFalse();
-        submitter.LastSessionId.Should().BeNull();
+        runtime.LastSessionId.Should().BeNull();
 
         var membersAfter = await h.Groups.ListMembersAsync(groupBefore.Id, TestContext.Current.CancellationToken);
         membersAfter.Should().HaveCount(membersBefore.Count);
@@ -204,16 +203,16 @@ public class SessionHandoffToolTests
             IsAnchor = false,
         }, TestContext.Current.CancellationToken);
 
-        var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Succeeded("exec-1"));
+        var runtime = new StubSessionRuntime(InboxResult.Ok(messageId: "exec-1"), sessions: h.Sessions);
         var factory = new StubPermissionAuthorizerFactory(PermissionEffect.Allow);
-        var tool = CreateTool(h, submitter);
+        var tool = CreateTool(h, runtime);
 
         var result = await tool.ExecuteAsync(
             Args(new { prompt = "continue work" }), Context(root.Id, factory));
 
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("锚点");
-        submitter.SubmitCount.Should().Be(0);
+        runtime.DeliverCount.Should().Be(0);
 
         var members = await h.Groups.ListMembersAsync(group.Id, TestContext.Current.CancellationToken);
         members.Should().NotContain(m => m.Relation == SessionRelation.HandoffSuccessor);
@@ -224,8 +223,8 @@ public class SessionHandoffToolTests
     {
         using var h = new SessionToolTestHarness();
         var root = await h.CreateRootGroupedAsync("root");
-        var submitter = new StubExecutionSubmitter(ExecutionSubmitResult.Succeeded("exec-1"));
-        var tool = CreateTool(h, submitter);
+        var runtime = new StubSessionRuntime(InboxResult.Ok(messageId: "exec-1"), sessions: h.Sessions);
+        var tool = CreateTool(h, runtime);
 
         var result = await tool.ExecuteAsync(Args(new { }), Context(root.Id));
 

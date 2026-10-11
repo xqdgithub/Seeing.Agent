@@ -64,17 +64,16 @@ public record GatewaySubmitAckPayload
 
     public string? Error { get; init; }
 
-    public int QueuePosition { get; init; }
+    /// <summary>会话未消费输入数（原 QueuePosition，改会话级后不再表示执行队列位次）。</summary>
+    public int PendingInputCount { get; init; }
 }
 
 /// <summary>
-/// execution.complete 帧 payload
+/// execution.complete 帧 payload（会话级：一轮消费循环空闲）
 /// </summary>
 public record GatewayExecutionCompletePayload
 {
     public required string SessionId { get; init; }
-
-    public required string ExecutionId { get; init; }
 
     public string? LoopId { get; init; }
 }
@@ -127,19 +126,19 @@ public record GatewayWsErrorPayload
 }
 
 /// <summary>
-/// cancel 帧 payload
+/// cancel 帧 payload（会话级取消）
 /// </summary>
 public record GatewayCancelPayload
 {
-    public required string ExecutionId { get; init; }
+    public required string SessionId { get; init; }
 }
 
 /// <summary>
-/// cancel.ack 帧 payload
+/// cancel.ack 帧 payload（会话级取消）
 /// </summary>
 public record GatewayCancelAckPayload
 {
-    public required string ExecutionId { get; init; }
+    public required string SessionId { get; init; }
 
     public bool Cancelled { get; init; }
 }

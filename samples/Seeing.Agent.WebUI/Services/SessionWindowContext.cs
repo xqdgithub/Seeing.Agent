@@ -94,7 +94,8 @@ public sealed class SessionWindowContext
     }
 
     public bool IsQueued { get; internal set; }
-    public int QueuePosition { get; internal set; }
+    /// <summary>当前会话未消费输入数（仅 UI 展示）。</summary>
+    public int PendingInputCount { get; internal set; }
     public bool HasActiveExecution { get; internal set; }
     public bool IsExecuting { get; internal set; }
     public string SelectedAgent { get; internal set; } = string.Empty;

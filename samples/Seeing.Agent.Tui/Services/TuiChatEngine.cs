@@ -9,6 +9,7 @@ using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Questions;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
@@ -53,7 +54,7 @@ public sealed class TuiChatEngine
     private readonly IPermissionSurfaceRegistry _permissionRegistry;
     private readonly IQuestionSurfaceRegistry _questionRegistry;
     private readonly ISessionGroupManager _groups;
-    private readonly IExecutionSubmitter _submitter;
+    private readonly ISessionRuntime _runtime;
     private readonly ISessionStore _sessionStore;
     private readonly ISessionGroupStore _groupStore;
     private readonly Func<string, ITuiEventPump> _pumpFactory;
@@ -63,7 +64,6 @@ public sealed class TuiChatEngine
     private readonly IModelConfigManager _models;
     private readonly ILlmService _llm;
     private readonly IScenarioCatalog _scenarios;
-    private readonly IExecutionStatusProvider _executionStatus;
     private readonly ITuiAnchorProbe _anchor;
 
     // 状态栏数据源：工作目录取项目根（缺失时回落进程 cwd）；上下文用量取 TokenBudget 快照；
@@ -129,7 +129,7 @@ public sealed class TuiChatEngine
         IPermissionSurfaceRegistry permissionRegistry,
         IQuestionSurfaceRegistry questionRegistry,
         ISessionGroupManager groups,
-        IExecutionSubmitter submitter,
+        ISessionRuntime runtime,
         ISessionStore sessionStore,
         ISessionGroupStore groupStore,
         Func<string, ITuiEventPump> pumpFactory,
@@ -139,7 +139,6 @@ public sealed class TuiChatEngine
         IModelConfigManager models,
         ILlmService llm,
         IScenarioCatalog scenarios,
-        IExecutionStatusProvider executionStatus,
         ITuiAnchorProbe anchor,
         IHostApplicationLifetime? hostLifetime = null,
         ILogger<TuiChatEngine>? logger = null,
@@ -159,7 +158,7 @@ public sealed class TuiChatEngine
         _permissionRegistry = permissionRegistry ?? throw new ArgumentNullException(nameof(permissionRegistry));
         _questionRegistry = questionRegistry ?? throw new ArgumentNullException(nameof(questionRegistry));
         _groups = groups ?? throw new ArgumentNullException(nameof(groups));
-        _submitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
+        _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
         _groupStore = groupStore ?? throw new ArgumentNullException(nameof(groupStore));
         _pumpFactory = pumpFactory ?? throw new ArgumentNullException(nameof(pumpFactory));
@@ -169,7 +168,6 @@ public sealed class TuiChatEngine
         _models = models ?? throw new ArgumentNullException(nameof(models));
         _llm = llm ?? throw new ArgumentNullException(nameof(llm));
         _scenarios = scenarios ?? throw new ArgumentNullException(nameof(scenarios));
-        _executionStatus = executionStatus ?? throw new ArgumentNullException(nameof(executionStatus));
         _anchor = anchor ?? throw new ArgumentNullException(nameof(anchor));
         _workspace = workspace;
         _budgetNotifier = budgetNotifier;
@@ -1916,7 +1914,7 @@ public sealed class TuiChatEngine
                 if (string.IsNullOrEmpty(sessionId) || string.Equals(sessionId, activeSessionId, StringComparison.Ordinal))
                     continue;
 
-                if (_executionStatus.GetOverview(sessionId).HasActiveExecution)
+                if (_runtime.GetOverview(sessionId).HasActiveExecution)
                     count++;
             }
 
@@ -2127,7 +2125,7 @@ public sealed class TuiChatEngine
 
         try
         {
-            await _submitter.CancelAllInFlightAsync().ConfigureAwait(false);
+            await _runtime.CancelAllInFlightAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {

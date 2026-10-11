@@ -1,22 +1,15 @@
-using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Configuration;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using Seeing.Agent.Abstractions.Chat;
-using Seeing.Agent.Hosting;
-using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Hosting.Execution;
-using Seeing.Agent.Core.Commands;
-using Seeing.Agent.Core.Compression;
-using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
+using Seeing.Agent.Core.Models;
+using Seeing.Agent.Hosting;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Session.Core;
@@ -25,10 +18,13 @@ using Xunit;
 
 namespace Seeing.Agent.Tests.App;
 
-public class ChatOrchestratorCreateSessionTests
+/// <summary>
+/// SessionDirectory.CreateAsync：默认 Agent / 默认模型种子逻辑（自 ChatOrchestrator 迁出）。
+/// </summary>
+public class SessionDirectoryCreateSessionTests
 {
     [Fact]
-    public async Task CreateSessionAsync_ShouldSeedDefaultAgentAndDefaultModel()
+    public async Task CreateAsync_ShouldSeedDefaultAgentAndDefaultModel()
     {
         var sessionManager = new SessionManager(logger: NullLogger<SessionManager>.Instance);
         var options = Options.Create(new SeeingAgentOptions
@@ -49,13 +45,9 @@ public class ChatOrchestratorCreateSessionTests
 
         var modelManager = CreateModelManager(options.Value, buildAgent);
 
-        var orchestrator = CreateOrchestrator(
-            sessionManager,
-            registry.Object,
-            new AgentSelectionResolver(runtime.Object),
-            modelManager);
+        var directory = CreateDirectory(sessionManager, registry.Object, runtime.Object, modelManager);
 
-        var session = await orchestrator.CreateSessionAsync(title: "新会话", cancellationToken: TestContext.Current.CancellationToken);
+        var session = await directory.CreateAsync(title: "新会话", ct: TestContext.Current.CancellationToken);
 
         session.SelectedAgent.Should().Be("build");
         session.SelectedModel.Should().Be("openai/gpt-4o");
@@ -63,7 +55,7 @@ public class ChatOrchestratorCreateSessionTests
     }
 
     [Fact]
-    public async Task CreateSessionAsync_ForAcpAgent_ShouldNotSeedNativeDefaultModel()
+    public async Task CreateAsync_ForAcpAgent_ShouldNotSeedNativeDefaultModel()
     {
         var sessionManager = new SessionManager(logger: NullLogger<SessionManager>.Instance);
         var options = Options.Create(new SeeingAgentOptions
@@ -84,20 +76,16 @@ public class ChatOrchestratorCreateSessionTests
 
         var modelManager = CreateModelManager(options.Value, acpAgent);
 
-        var orchestrator = CreateOrchestrator(
-            sessionManager,
-            registry.Object,
-            new AgentSelectionResolver(runtime.Object),
-            modelManager);
+        var directory = CreateDirectory(sessionManager, registry.Object, runtime.Object, modelManager);
 
-        var session = await orchestrator.CreateSessionAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var session = await directory.CreateAsync(ct: TestContext.Current.CancellationToken);
 
         session.SelectedAgent.Should().Be("acp-cursor");
         session.SelectedModel.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task CreateSessionAsync_WhenAgentHasModel_ShouldPreferAgentModelOverDefault()
+    public async Task CreateAsync_WhenAgentHasModel_ShouldPreferAgentModelOverDefault()
     {
         var sessionManager = new SessionManager(logger: NullLogger<SessionManager>.Instance);
         var options = Options.Create(new SeeingAgentOptions
@@ -119,19 +107,15 @@ public class ChatOrchestratorCreateSessionTests
 
         var modelManager = CreateModelManager(options.Value, buildAgent);
 
-        var orchestrator = CreateOrchestrator(
-            sessionManager,
-            registry.Object,
-            new AgentSelectionResolver(runtime.Object),
-            modelManager);
+        var directory = CreateDirectory(sessionManager, registry.Object, runtime.Object, modelManager);
 
-        var session = await orchestrator.CreateSessionAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var session = await directory.CreateAsync(ct: TestContext.Current.CancellationToken);
 
         session.SelectedModel.Should().Be("anthropic/claude-sonnet");
     }
 
     [Fact]
-    public async Task CreateSessionAsync_ShouldMaterializeProcessDefaultScenario()
+    public async Task CreateAsync_ShouldMaterializeProcessDefaultScenario()
     {
         var sessionManager = new SessionManager(logger: NullLogger<SessionManager>.Instance);
         var options = Options.Create(new SeeingAgentOptions
@@ -155,54 +139,37 @@ public class ChatOrchestratorCreateSessionTests
         var workMode = new Mock<IDefaultWorkModeProvider>();
         workMode.Setup(w => w.GetDefaultScenario()).Returns("code");
 
-        var orchestrator = CreateOrchestrator(
-            sessionManager,
-            registry.Object,
-            new AgentSelectionResolver(runtime.Object),
-            modelManager,
-            workMode.Object);
+        var directory = CreateDirectory(sessionManager, registry.Object, runtime.Object, modelManager, workMode.Object);
 
-        var session = await orchestrator.CreateSessionAsync(title: "场景会话", cancellationToken: TestContext.Current.CancellationToken);
+        var session = await directory.CreateAsync(title: "场景会话", ct: TestContext.Current.CancellationToken);
 
         session.Scenario.Should().Be("code");
         await sessionManager.SaveAsync(session.Id);
         sessionManager.Get(session.Id)!.Scenario.Should().Be("code");
     }
 
-    private static ChatOrchestrator CreateOrchestrator(
+    private static SessionDirectory CreateDirectory(
         ISessionManager sessionManager,
         IAgentRegistry agentRegistry,
-        AgentSelectionResolver selectionResolver,
+        IAgentRuntimeManager runtimeManager,
         IModelManager modelManager,
         IDefaultWorkModeProvider? defaultWorkMode = null)
     {
-        var executionJobService = new ExecutionJobService(
-            serviceProvider: Mock.Of<IServiceProvider>(),
-            eventPublisher: Mock.Of<IExecutionEventPublisher>(),
-            options: new ExecutionOptions(),
-            seeingAgentOptions: Mock.Of<Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions>>(
-                m => m.CurrentValue == new SeeingAgentOptions()),
-            configStore: Mock.Of<IConfigSectionStore>(),
-            logger: NullLogger<ExecutionJobService>.Instance,
-            compactionRunner: new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
+        _ = agentRegistry;
+        var groupManager = new SessionGroupManager(
+            sessionManager,
+            new Seeing.Session.Storage.FileSessionGroupStore(
+                Path.Combine(Path.GetTempPath(), "seeing-grp-tests", Guid.NewGuid().ToString("N"))),
+            new SessionForker(NullLogger<SessionForker>.Instance, sessionManager),
+            NullLogger<SessionGroupManager>.Instance);
 
-        return new ChatOrchestrator(
-            executionJobService: executionJobService,
-            sessionManager: sessionManager,
-            groupManager: new SessionGroupManager(
-                sessionManager,
-                new Seeing.Session.Storage.FileSessionGroupStore(
-                    Path.Combine(Path.GetTempPath(), "seeing-grp-tests", Guid.NewGuid().ToString("N"))),
-                new SessionForker(NullLogger<SessionForker>.Instance, sessionManager),
-                NullLogger<SessionGroupManager>.Instance),
-            agentRegistry: agentRegistry,
-            workspaceProvider: Mock.Of<IWorkspaceProvider>(),
-            executionRouter: Mock.Of<IAgentExecutor>(),
-            commandRegistry: Mock.Of<ICommandRegistry>(),
-            agentSelectionResolver: selectionResolver,
-            modelManager: modelManager,
-            logger: NullLogger<ChatOrchestrator>.Instance,
-            defaultWorkMode: defaultWorkMode);
+        return new SessionDirectory(
+            sessionManager,
+            groupManager,
+            new AgentSelectionResolver(runtimeManager),
+            modelManager,
+            NullLogger<SessionDirectory>.Instance,
+            defaultWorkMode);
     }
 
     private static IModelManager CreateModelManager(

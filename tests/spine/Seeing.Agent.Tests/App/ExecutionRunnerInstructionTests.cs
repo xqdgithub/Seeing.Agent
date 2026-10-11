@@ -4,10 +4,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Core;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Abstractions.Configuration;
@@ -24,67 +26,52 @@ using Xunit;
 
 namespace Seeing.Agent.Tests.App;
 
-public class ExecutionJobServiceInstructionTests
+/// <summary>
+/// ExecutionRunner.RunOnceAsync：执行前职责（指令注入、cwd 更新）。
+/// 入站 user 消息已由 ISessionRuntime.DeliverAsync 落盘，本轮不再落盘（SkipUserMessagePersist 语义恒真）。
+/// </summary>
+public class ExecutionRunnerInstructionTests
 {
     [Fact]
-    public async Task SubmitAsync_ShouldInjectBeforeUserMessageAndUpdateWorkingDirectory()
+    public async Task RunOnce_ShouldInjectInstructionsAndUpdateWorkingDirectory()
     {
         var session = SessionData.Create();
         session.WorkingDirectory = "old-cwd";
         var instructionManager = CreateInstructionManager(session);
-        using var fixture = CreateFixture(session, instructionManager.Object, "workspace-root");
+        var runner = CreateRunner(session, instructionManager.Object, "workspace-root");
 
-        var result = await fixture.Service.SubmitAsync(
-            session.Id,
-            new ChatInput { Text = "real user message" },
-            new ChatOptions { WorkingDirectory = "resolved-cwd" }, TestContext.Current.CancellationToken);
+        var record = await runner.RunOnceAsync(
+            NewRecord(session.Id, workingDirectory: "resolved-cwd"),
+            NewBatch(),
+            TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
+        record.Status.Should().BeOneOf(ExecutionStatus.Completed, ExecutionStatus.Failed);
         session.WorkingDirectory.Should().Be("resolved-cwd");
         session.Messages.Select(message => message.Content)
-            .Should().ContainInOrder("injected instructions", "real user message");
+            .Should().Contain("injected instructions");
         instructionManager.Verify(manager => manager.InjectIfNeededAsync(
             session, "resolved-cwd", "workspace-root", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task SubmitAsync_WhenSkippingUserPersist_ShouldStillInjectInstructions()
+    public async Task RunOnce_WhenInstructionInjectionIsSkipped_ShouldNotInject()
     {
         var session = SessionData.Create();
         var instructionManager = CreateInstructionManager(session);
-        using var fixture = CreateFixture(session, instructionManager.Object, "workspace-root");
+        var runner = CreateRunner(session, instructionManager.Object, "workspace-root");
 
-        var result = await fixture.Service.SubmitAsync(
-            session.Id,
-            new ChatInput { Text = "not persisted" },
-            new ChatOptions { SkipUserMessagePersist = true }, TestContext.Current.CancellationToken);
+        await runner.RunOnceAsync(
+            NewRecord(session.Id, skipInstructionInject: true),
+            NewBatch(),
+            TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        session.Messages.Should().ContainSingle(message => message.Content == "injected instructions");
-        instructionManager.Verify(manager => manager.InjectIfNeededAsync(
-            session, "workspace-root", "workspace-root", It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task SubmitAsync_WhenInstructionInjectionIsSkipped_ShouldNotInject()
-    {
-        var session = SessionData.Create();
-        var instructionManager = CreateInstructionManager(session);
-        using var fixture = CreateFixture(session, instructionManager.Object, "workspace-root");
-
-        var result = await fixture.Service.SubmitAsync(
-            session.Id,
-            new ChatInput { Text = "real user message" },
-            new ChatOptions { SkipInstructionInject = true }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-        session.Messages.Should().ContainSingle(message => message.Content == "real user message");
+        session.Messages.Should().NotContain(message => message.Content == "injected instructions");
         instructionManager.Verify(manager => manager.InjectIfNeededAsync(
             It.IsAny<SessionData>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task SubmitAsync_WhenInstructionInjectionFails_ShouldContinueSubmitting()
+    public async Task RunOnce_WhenInstructionInjectionFails_ShouldContinueExecution()
     {
         var session = SessionData.Create();
         var instructionManager = new Mock<IInstructionManager>();
@@ -92,16 +79,36 @@ public class ExecutionJobServiceInstructionTests
             .Setup(manager => manager.InjectIfNeededAsync(
                 session, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("injection failed"));
-        using var fixture = CreateFixture(session, instructionManager.Object, "workspace-root");
+        var runner = CreateRunner(session, instructionManager.Object, "workspace-root");
 
-        var result = await fixture.Service.SubmitAsync(
-            session.Id,
-            new ChatInput { Text = "real user message" },
-            options: null, TestContext.Current.CancellationToken);
+        var record = await runner.RunOnceAsync(
+            NewRecord(session.Id),
+            NewBatch(),
+            TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        session.Messages.Should().ContainSingle(message => message.Content == "real user message");
+        // 注入失败仅告警，不中断本轮：执行体仍被调用并产出终态
+        record.Status.Should().NotBe(ExecutionStatus.Pending);
     }
+
+    private static ExecutionRecord NewRecord(
+        string sessionId,
+        string? workingDirectory = null,
+        bool skipInstructionInject = false) => new()
+    {
+        ExecutionId = "exec-1",
+        SessionId = sessionId,
+        Status = ExecutionStatus.Running,
+        Input = new ChatInput { Text = "real user message" },
+        Options = new ChatOptions
+        {
+            AgentId = "general",
+            WorkingDirectory = workingDirectory,
+            SkipInstructionInject = skipInstructionInject
+        }
+    };
+
+    private static InboxBatch NewBatch() =>
+        new(new List<SessionMessage> { SessionMessage.UserMessage("real user message") }, HasUserInput: false, FirstUserText: null);
 
     private static Mock<IInstructionManager> CreateInstructionManager(SessionData expectedSession)
     {
@@ -115,7 +122,7 @@ public class ExecutionJobServiceInstructionTests
         return instructionManager;
     }
 
-    private static Fixture CreateFixture(
+    private static ExecutionRunner CreateRunner(
         SessionData session,
         IInstructionManager instructionManager,
         string workspaceRoot)
@@ -124,32 +131,51 @@ public class ExecutionJobServiceInstructionTests
         sessionManager
             .Setup(manager => manager.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
+        sessionManager.Setup(manager => manager.Get(It.IsAny<string>())).Returns(session);
         sessionManager.Setup(manager => manager.SaveAsync(session.Id)).Returns(Task.CompletedTask);
+        sessionManager.Setup(manager => manager.FlushAsync(session.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var executor = new Mock<IAgentExecutor>();
+        executor.Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(EmptyStream());
+
+        var agentRegistry = new Mock<IAgentRegistry>();
+        agentRegistry.Setup(r => r.GetAgentAsync(It.IsAny<string>()))
+            .ReturnsAsync(new AgentDefinition { Name = "general", Runtime = AgentRuntime.Native });
 
         var services = new ServiceCollection();
         services.AddSingleton(sessionManager.Object);
         services.AddSingleton(CreateModelManager());
         services.AddSingleton(instructionManager);
+        services.AddSingleton(executor.Object);
+        services.AddSingleton(agentRegistry.Object);
+        services.AddSingleton(new AgentSelectionResolver(Mock.Of<IAgentRuntimeManager>()));
         services.AddSingleton(Mock.Of<IWorkspaceProvider>(
             workspace => workspace.ProjectSeeingDirectory == Path.Combine(workspaceRoot, ".seeing")));
         services.AddSingleton(Mock.Of<IExecutionWorld>(world => world.Cwd == workspaceRoot));
+        services.AddSingleton(Mock.Of<ICommandRegistry>());
         var provider = services.BuildServiceProvider();
 
         var configStore = new Mock<IConfigSectionStore>();
         configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
             .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
 
-        var service = new ExecutionJobService(
+        return new ExecutionRunner(
             provider,
             Mock.Of<IExecutionEventPublisher>(),
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(
                 monitor => monitor.CurrentValue == new SeeingAgentOptions()),
             configStore.Object,
-            NullLogger<ExecutionJobService>.Instance,
-            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
-
-        return new Fixture(service, provider);
+            new CompactionRunner(
+                new CompressionService(null!, Mock.Of<ISessionManager>()),
+                Mock.Of<IExecutionEventPublisher>(),
+                Mock.Of<ISessionManager>()),
+            NullLogger<ExecutionRunner>.Instance);
     }
 
     private static IModelManager CreateModelManager()
@@ -168,14 +194,9 @@ public class ExecutionJobServiceInstructionTests
         return new ModelManager(catalog.Object, store.Object);
     }
 
-    private sealed class Fixture(ExecutionJobService service, ServiceProvider provider) : IDisposable
+    private static async IAsyncEnumerable<IMessageEvent> EmptyStream()
     {
-        public ExecutionJobService Service { get; } = service;
-
-        public void Dispose()
-        {
-            Service.Dispose();
-            provider.Dispose();
-        }
+        await Task.CompletedTask;
+        yield break;
     }
 }

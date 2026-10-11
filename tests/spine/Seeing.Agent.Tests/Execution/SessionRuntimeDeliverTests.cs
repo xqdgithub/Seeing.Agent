@@ -211,6 +211,32 @@ public class SessionRuntimeDeliverTests
         ((RecordingPublisher)publisher).Events.Should().ContainSingle(e => e is InboxNoticeEvent);
     }
 
+    [Fact]
+    public async Task NonePresentation_Inject_ShouldPersistButNotEnterHistoryOrWake()
+    {
+        var runtime = CreateRuntime(out var sessionManager, out var runner, out _);
+        await sessionManager.EnsureSessionAsync("s1");
+
+        var result = await runtime.DeliverAsync(
+            Msg("s1", InboxDelivery.Inject, InboxPresentation.None, body: "已取消"));
+
+        result.Success.Should().BeTrue();
+        await Task.Delay(300);
+        runner.RunCount.Should().Be(0);
+
+        var session = sessionManager.Get("s1")!;
+        session.Messages.Should().ContainSingle();
+        var msg = session.Messages[0];
+        msg.Role.Should().Be(MessageRole.System);
+        msg.Content.Should().Be("已取消");
+        msg.Metadata![InboxMetadataKeys.Presentation].Should().Be("none");
+        msg.Metadata![InboxMetadataKeys.Consumed].Should().Be(true);
+
+        // 落盘后加载模拟：不进 LLM 历史
+        var history = ExecutionRunner.BuildHistoryFromSession(session);
+        history.Should().BeEmpty();
+    }
+
     private sealed class RecordingPublisher : IExecutionEventPublisher
     {
         public readonly List<IMessageEvent> Events = new();

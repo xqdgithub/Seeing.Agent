@@ -43,7 +43,7 @@ public class SchemaScenarioTests
     {
         typeof(AgentExecutor)
             .GetMethod("GetToolSchemas", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-            .Should().BeNull("schema 唯一计算点在 ExecutionJobService；executor 只读 context.ToolSchemas");
+            .Should().BeNull("schema 唯一计算点在 ExecutionRunner；executor 只读 context.ToolSchemas");
     }
 
     [Fact]
@@ -72,19 +72,8 @@ public class SchemaScenarioTests
         var session = SessionData.Create(scenario: "code");
         using var fixture = await CreateFixtureAsync(session, publisher.Object, executor.Object);
 
-        var result = await fixture.Service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("hi"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipUserMessagePersist = true,
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == result.ExecutionId));
+        var record = await fixture.Runner.RunOnceAsync(
+            NewRecord(session.Id), NewBatch(), TestContext.Current.CancellationToken);
 
         var snapshot = published.Select(p => p.Event).OfType<SchemaSnapshotEvent>().Single();
         captured.Should().NotBeNull();
@@ -234,12 +223,8 @@ public class SchemaScenarioTests
         var activatedBefore = fixture.Lifecycle!.Activated.OrderBy(x => x).ToArray();
         activatedBefore.Should().BeEquivalentTo(["basic", "filesystem", "git", "memory"]);
 
-        var r1 = await fixture.Service.SubmitAsync(
-            session.Id, ChatInput.FromText("1"),
-            new ChatOptions { AgentId = "general", SkipUserMessagePersist = true, SkipInstructionInject = true }, TestContext.Current.CancellationToken);
-        r1.Success.Should().BeTrue();
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == r1.ExecutionId));
+        var r1 = await fixture.Runner.RunOnceAsync(
+            NewRecord(session.Id), NewBatch(), TestContext.Current.CancellationToken);
 
         var snap1 = published.Select(p => p.Event).OfType<SchemaSnapshotEvent>()
             .Last(s => s.ExecutionId == r1.ExecutionId);
@@ -248,12 +233,8 @@ public class SchemaScenarioTests
 
         session.Scenario = "work";
 
-        var r2 = await fixture.Service.SubmitAsync(
-            session.Id, ChatInput.FromText("2"),
-            new ChatOptions { AgentId = "general", SkipUserMessagePersist = true, SkipInstructionInject = true }, TestContext.Current.CancellationToken);
-        r2.Success.Should().BeTrue();
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == r2.ExecutionId));
+        var r2 = await fixture.Runner.RunOnceAsync(
+            NewRecord(session.Id), NewBatch(), TestContext.Current.CancellationToken);
 
         var snap2 = published.Select(p => p.Event).OfType<SchemaSnapshotEvent>()
             .Last(s => s.ExecutionId == r2.ExecutionId);
@@ -469,32 +450,43 @@ public class SchemaScenarioTests
         configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
             .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
 
-        var service = new ExecutionJobService(
+        var runner = new ExecutionRunner(
             provider,
             publisher,
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
             configStore.Object,
-            NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(
                 new CompressionService(null!, Mock.Of<ISessionManager>()),
                 Mock.Of<IExecutionEventPublisher>(),
-                Mock.Of<ISessionManager>()));
+                Mock.Of<ISessionManager>()),
+            NullLogger<ExecutionRunner>.Instance);
 
-        return new Fixture(service, provider, lifecycle);
+        return new Fixture(runner, provider, lifecycle);
     }
 
+    private static ExecutionRecord NewRecord(string sessionId) => new()
+    {
+        ExecutionId = $"exec_{Guid.NewGuid():N}"[..16],
+        SessionId = sessionId,
+        Status = ExecutionStatus.Running,
+        Input = new ChatInput { Text = "hi" },
+        Options = new ChatOptions { AgentId = "general", SkipInstructionInject = true }
+    };
+
+    private static InboxBatch NewBatch() =>
+        new(new List<SessionMessage>(), HasUserInput: false, FirstUserText: null);
+
     private sealed class Fixture(
-        ExecutionJobService service,
+        ExecutionRunner runner,
         ServiceProvider provider,
         ModuleLifecycleManager? lifecycle) : IDisposable
     {
-        public ExecutionJobService Service { get; } = service;
+        public ExecutionRunner Runner { get; } = runner;
         public ModuleLifecycleManager? Lifecycle { get; } = lifecycle;
 
         public void Dispose()
         {
-            Service.Dispose();
             provider.Dispose();
         }
     }

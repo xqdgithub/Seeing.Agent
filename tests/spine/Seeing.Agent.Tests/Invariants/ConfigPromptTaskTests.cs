@@ -121,7 +121,7 @@ public class ConfigPromptTaskTests
                 .Select(p => p.ParameterType)
                 .ToList();
 
-            sourceHints.Should().NotContain(typeof(Seeing.Agent.Hosting.Execution.ExecutionJobService));
+            sourceHints.Should().NotContain(typeof(Seeing.Agent.Hosting.Execution.ExecutionRunner));
             sourceHints.Should().NotContain(t => t.Name == "ExecutionJobService");
         }
 
@@ -138,7 +138,7 @@ public class ConfigPromptTaskTests
             var text = File.ReadAllText(taskToolSource);
             text.Should().NotContain("context.Services");
             text.Should().NotContain("ExecutionJobService");
-            text.Should().Contain("IExecutionSubmitter");
+            text.Should().Contain("ISessionRuntime");
         }
 
         if (File.Exists(taskStatusSource))
@@ -146,7 +146,7 @@ public class ConfigPromptTaskTests
             var text = File.ReadAllText(taskStatusSource);
             text.Should().NotContain("context.Services");
             text.Should().NotContain("ExecutionJobService");
-            text.Should().Contain("IExecutionSubmitter");
+            text.Should().Contain("ISessionRuntime");
         }
     }
 
@@ -157,8 +157,7 @@ public class ConfigPromptTaskTests
             .Select(p => p.ParameterType)
             .ToList();
 
-        paramTypes.Should().Contain(typeof(IExecutionSubmitter));
-        paramTypes.Should().Contain(typeof(IExecutionStatusProvider));
+        paramTypes.Should().Contain(typeof(Seeing.Agent.Abstractions.Runtime.ISessionRuntime));
         if (toolType == typeof(TaskTool))
             paramTypes.Should().Contain(typeof(IExecutionEventPublisher));
 

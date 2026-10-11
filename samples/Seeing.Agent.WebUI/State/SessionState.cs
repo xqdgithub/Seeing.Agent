@@ -163,17 +163,17 @@ namespace Seeing.Agent.WebUI.State
         /// </summary>
         public DateTime LastUpdated => CurrentSession?.UpdatedAt ?? DateTime.Now;
 
-        #region 执行状态（来自 ExecutionJobService）
+        #region 执行状态（来自 SessionRuntime）
 
         /// <summary>
-        /// 当前执行状态（来自 ExecutionJobService）
+        /// 当前执行状态（来自 SessionRuntime）
         /// </summary>
         public ExecutionStatus? ExecutionStatus { get; set; }
 
         /// <summary>
-        /// 当前队列位置（0 = 正在执行，>0 = 排队中）
+        /// 当前会话未消费输入数（仅 UI 展示）
         /// </summary>
-        public int QueuePosition { get; set; }
+        public int PendingInputCount { get; set; }
 
         /// <summary>
         /// 当前执行 ID

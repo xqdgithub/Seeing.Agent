@@ -17,7 +17,7 @@ public interface IGatewayConnection : IAsyncDisposable
 
     IAsyncEnumerable<GatewayInbound> ReceiveAsync(CancellationToken cancellationToken = default);
 
-    Task<GatewayCancelAckPayload> CancelAsync(string executionId, CancellationToken cancellationToken = default);
+    Task<GatewayCancelAckPayload> CancelAsync(string sessionId, CancellationToken cancellationToken = default);
 
     Task<GatewayPermissionRespondResult> RespondPermissionAsync(
         string sessionId,

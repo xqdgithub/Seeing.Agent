@@ -38,10 +38,9 @@ public sealed class HttpGatewayClient : IGatewayClient
 
     public async IAsyncEnumerable<GatewayEvent> SubscribeAsync(
         string sessionId,
-        string executionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var query = $"sessionId={Uri.EscapeDataString(sessionId)}&executionId={Uri.EscapeDataString(executionId)}";
+        var query = $"sessionId={Uri.EscapeDataString(sessionId)}";
         using var httpRequest = new HttpRequestMessage(HttpMethod.Get, $"api/gateway/events?{query}");
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
@@ -59,11 +58,11 @@ public sealed class HttpGatewayClient : IGatewayClient
         }
     }
 
-    public async Task CancelAsync(string executionId, CancellationToken cancellationToken = default)
+    public async Task CancelAsync(string sessionId, CancellationToken cancellationToken = default)
     {
         using var response = await _httpClient.PostAsJsonAsync(
             "api/gateway/cancel",
-            new { executionId },
+            new { sessionId },
             GatewayJsonOptions.Default,
             cancellationToken).ConfigureAwait(false);
 

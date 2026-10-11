@@ -101,8 +101,10 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
 
         // 4. 落盘消息（Presentation → Role 映射 + inbox.* 元数据）
+        // 落盘判定基于 Delivery：Notify 仅出 UI 通知不落盘；Inject/Wake 均落盘（含 Presentation=None，
+        // 如 Gateway 取消/错误横幅——可持久化展示但不进 LLM 历史）。
         string? persistedMessageId = null;
-        if (message.Presentation != InboxPresentation.None)
+        if (message.Delivery != InboxDelivery.Notify)
         {
             var persisted = BuildInboxMessage(message, scope.ServiceProvider);
             persistedMessageId = persisted.Id;
@@ -139,7 +141,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         switch (message.Delivery)
         {
             case InboxDelivery.Notify:
-                // 只出 UI 通知，不唤醒（Presentation=None 时亦不落盘，见步骤 4）
+                // 只出 UI 通知，不唤醒、不落盘（见步骤 4）
                 PublishNotice(message);
                 return InboxResult.Ok(messageId: persistedMessageId);
 
@@ -386,6 +388,14 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                 role = MessageRole.Assistant;
                 content = message.Body ?? string.Empty;
                 consumed = true; // 外部产出写回：落盘即已消费，不参与未读、不唤醒
+                break;
+
+            case InboxPresentation.None:
+                // 可持久化展示但不进 LLM 历史（如 Gateway 取消/错误横幅）：
+                // 系统角色承载，落盘即已消费，不参与未读、不唤醒。
+                role = MessageRole.System;
+                content = message.Body ?? string.Empty;
+                consumed = true;
                 break;
 
             default: // User

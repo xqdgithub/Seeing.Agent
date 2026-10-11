@@ -33,7 +33,7 @@ using Xunit;
 namespace Seeing.Agent.Tests.App.Execution;
 
 /// <summary>
-/// P7-T10：schema 唯一计算点 + SchemaSnapshotEvent 与 ChatRequest.Tools 同源。
+/// P7-T10：schema 唯一计算点 + SchemaSnapshotEvent 与 ChatRequest.Tools 同源（经 ExecutionRunner.RunOnceAsync）。
 /// </summary>
 public class SchemaSnapshotExecutionTests
 {
@@ -49,7 +49,7 @@ public class SchemaSnapshotExecutionTests
     }
 
     [Fact]
-    public async Task SubmitAsync_EmitsSchemaSnapshot_MatchingAgentContextToolSchemas()
+    public async Task RunOnce_EmitsSchemaSnapshot_MatchingAgentContextToolSchemas()
     {
         var published = new ConcurrentQueue<(string SessionId, IMessageEvent Event)>();
         var publisher = new Mock<IExecutionEventPublisher>();
@@ -72,22 +72,10 @@ public class SchemaSnapshotExecutionTests
             });
 
         var session = SessionData.Create(scenario: "code");
-        using var fixture = await CreateFixture(session, publisher.Object, executor.Object, withCatalog: true);
+        var runner = await CreateRunnerAsync(session, publisher.Object, executor.Object);
 
-        var result = await fixture.Service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("hi"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipUserMessagePersist = true,
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent c && c.ExecutionId == result.ExecutionId));
+        var record = await runner.RunOnceAsync(
+            NewRecord(session.Id), NewBatch(), TestContext.Current.CancellationToken);
 
         var snapshot = published.Select(p => p.Event).OfType<SchemaSnapshotEvent>().Single();
         capturedContext.Should().NotBeNull();
@@ -103,7 +91,7 @@ public class SchemaSnapshotExecutionTests
             .Should().Equal(contextToolIds);
 
         snapshot.SessionId.Should().Be(session.Id);
-        snapshot.ExecutionId.Should().Be(result.ExecutionId);
+        snapshot.ExecutionId.Should().Be(record.ExecutionId);
         snapshot.ToolIds.Should().Contain("git_status");
         snapshot.ToolIds.Should().NotContain("memory_search");
         snapshot.SectionIds.Should().Contain("tools");
@@ -114,7 +102,7 @@ public class SchemaSnapshotExecutionTests
         metaMsg.Should().NotBeNull();
         var payload = metaMsg!.Metadata![ChatEventTracker.SchemaSnapshotMetadataKey]
             .Should().BeAssignableTo<IDictionary<string, object>>().Subject;
-        payload["executionId"].Should().Be(result.ExecutionId);
+        payload["executionId"].Should().Be(record.ExecutionId);
     }
 
     [Fact]
@@ -168,34 +156,35 @@ public class SchemaSnapshotExecutionTests
         schemas.Select(s => s.Function!.Name).Should().BeEquivalentTo(["git_status", "read"]);
     }
 
+    private static ExecutionRecord NewRecord(string sessionId) => new()
+    {
+        ExecutionId = "exec-1",
+        SessionId = sessionId,
+        Status = ExecutionStatus.Running,
+        Input = new ChatInput { Text = "hi" },
+        Options = new ChatOptions { AgentId = "general", SkipInstructionInject = true }
+    };
+
+    private static InboxBatch NewBatch() =>
+        new(new List<SessionMessage>(), HasUserInput: false, FirstUserText: null);
+
     private static async IAsyncEnumerable<IMessageEvent> EmptyStream()
     {
         await Task.CompletedTask;
         yield break;
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 8000)
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (!condition())
-        {
-            if (sw.ElapsedMilliseconds > timeoutMs)
-                throw new TimeoutException("WaitUntil condition not met");
-            await Task.Delay(20);
-        }
-    }
-
-    private static async Task<Fixture> CreateFixture(
+    private static async Task<ExecutionRunner> CreateRunnerAsync(
         SessionData session,
         IExecutionEventPublisher publisher,
-        IAgentExecutor executor,
-        bool withCatalog)
+        IAgentExecutor executor)
     {
         var sessionManager = new Mock<ISessionManager>();
         sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
         sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns(session);
         sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);
+        sessionManager.Setup(m => m.FlushAsync(session.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var instructionManager = new Mock<IInstructionManager>();
         instructionManager.Setup(m => m.InjectIfNeededAsync(
@@ -246,8 +235,7 @@ public class SchemaSnapshotExecutionTests
         services.AddSingleton(Mock.Of<ICommandRegistry>());
         services.AddSingleton<IToolManager>(toolManager);
         services.AddSingleton(toolManager);
-        if (withCatalog)
-            services.AddSingleton<IModuleCatalog>(catalog);
+        services.AddSingleton<IModuleCatalog>(catalog);
         services.AddSingleton(new ProcessSettlementOptions { HostDefaultScenario = "full" });
         services.AddSingleton<IPromptSectionContributor>(section);
         var provider = services.BuildServiceProvider();
@@ -256,27 +244,14 @@ public class SchemaSnapshotExecutionTests
         configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
             .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = false });
 
-        var service = new ExecutionJobService(
+        return new ExecutionRunner(
             provider,
             publisher,
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
             configStore.Object,
-            NullLogger<ExecutionJobService>.Instance,
-            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()));
-
-        return new Fixture(service, provider);
-    }
-
-    private sealed class Fixture(ExecutionJobService service, ServiceProvider provider) : IDisposable
-    {
-        public ExecutionJobService Service { get; } = service;
-
-        public void Dispose()
-        {
-            Service.Dispose();
-            provider.Dispose();
-        }
+            new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()),
+            NullLogger<ExecutionRunner>.Instance);
     }
 
     private sealed class NamedTool(string id) : ITool

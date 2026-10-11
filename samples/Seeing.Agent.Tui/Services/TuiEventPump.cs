@@ -1,6 +1,6 @@
 using System.Threading.Channels;
-using Seeing.Agent.Abstractions.Chat;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Runtime;
 
 namespace Seeing.Agent.Tui.Services;
 
@@ -13,7 +13,7 @@ public interface ITuiEventPump : IAsyncDisposable
 }
 
 /// <summary>
-/// 单会话事件泵：订阅 <see cref="IChatOrchestrator.SubscribeEvents"/>（订阅时自动回放环形缓冲），泵入通道。
+/// 单会话事件泵：订阅 <see cref="ISessionRuntime.SubscribeEvents"/>（订阅时自动回放环形缓冲），泵入通道。
 /// <para>
 /// 通道刻意<b>无界</b>：事件是执行正确性的载体，丢弃会破坏账本/视图一致性；
 /// 故内存有界性由消费端持续排空保证（TUI 主编循环与 task 追踪消费循环均持续读取）。
@@ -21,16 +21,16 @@ public interface ITuiEventPump : IAsyncDisposable
 /// </summary>
 public sealed class TuiEventPump : ITuiEventPump
 {
-    private readonly IChatOrchestrator _orchestrator;
+    private readonly ISessionRuntime _runtime;
     private readonly Channel<IMessageEvent> _channel =
         Channel.CreateUnbounded<IMessageEvent>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
 
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
-    public TuiEventPump(IChatOrchestrator orchestrator, string sessionId)
+    public TuiEventPump(ISessionRuntime runtime, string sessionId)
     {
-        _orchestrator = orchestrator;
+        _runtime = runtime;
         SessionId = sessionId;
     }
 
@@ -45,7 +45,7 @@ public sealed class TuiEventPump : ITuiEventPump
         {
             try
             {
-                await foreach (var evt in _orchestrator.SubscribeEvents(SessionId, _cts.Token))
+                await foreach (var evt in _runtime.SubscribeEvents(SessionId, _cts.Token))
                     await _channel.Writer.WriteAsync(evt, _cts.Token);
             }
             catch (OperationCanceledException)

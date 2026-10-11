@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Chat;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
@@ -36,8 +36,8 @@ using var host = builder.Build();
 await host.Services.InitializeSeeingAsync();
 
 var shape = host.Services.GetRequiredService<HostShapeDescriptor>();
-var orchestrator = host.Services.GetRequiredService<IChatOrchestrator>();
+var runtime = host.Services.GetRequiredService<ISessionRuntime>();
 
 Console.WriteLine($"Embed host ready: shape={shape.Id}, scenario={shape.DefaultScenario}");
 Console.WriteLine($"Carriable modules: {string.Join(", ", shape.CarriableModuleTypes)}");
-Console.WriteLine($"IChatOrchestrator: {orchestrator.GetType().Name}");
+Console.WriteLine($"ISessionRuntime: {runtime.GetType().Name}");

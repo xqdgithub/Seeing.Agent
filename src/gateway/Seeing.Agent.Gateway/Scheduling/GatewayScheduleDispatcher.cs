@@ -1,16 +1,18 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Reminders;
-using Seeing.Agent.Gateway.Core;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Scheduling;
+using Seeing.Agent.Gateway.Core;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Gateway.Scheduling;
 
-/// <summary>Gateway 通道投递 — 写入 Session、推送 WebSocket 事件、按 channel 出站</summary>
+/// <summary>Gateway 通道投递 — 经会话运行时写回（不唤醒），推送 WebSocket 事件、按 channel 出站</summary>
 public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
 {
+    private readonly ISessionRuntime _runtime;
     private readonly ISessionManager _sessionManager;
     private readonly ISystemReminderRenderer _reminders;
     private readonly GatewayConnectionManager? _connectionManager;
@@ -18,12 +20,14 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
     private readonly ILogger<GatewayScheduleDispatcher> _logger;
 
     public GatewayScheduleDispatcher(
+        ISessionRuntime runtime,
         ISessionManager sessionManager,
         ISystemReminderRenderer reminders,
         ILogger<GatewayScheduleDispatcher> logger,
         GatewayConnectionManager? connectionManager = null,
         Func<GatewayChannelOutboundPayload, bool>? pushChannelOutbound = null)
     {
+        _runtime = runtime;
         _sessionManager = sessionManager;
         _reminders = reminders;
         _connectionManager = connectionManager;
@@ -43,17 +47,34 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
 
         try
         {
-            var session = _sessionManager.Get(request.SessionId)
-                ?? await _sessionManager.EnsureSessionAsync(request.SessionId).ConfigureAwait(false);
+            var session = await _sessionManager.EnsureSessionAsync(request.SessionId).ConfigureAwait(false);
 
+            // reminder（用户输入）→ System 信封，落盘不唤醒（spec §9）
             if (!string.IsNullOrEmpty(request.UserInput))
             {
-                var userMessage = _reminders.ToUserMessage(request.UserInput);
-                await _sessionManager.AddMessageAsync(request.SessionId, userMessage, ct).ConfigureAwait(false);
+                await _runtime.DeliverAsync(new InboxMessage
+                {
+                    TargetSessionId = request.SessionId,
+                    Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "gateway" },
+                    Body = request.UserInput,
+                    Delivery = InboxDelivery.Inject,
+                    Presentation = InboxPresentation.System,
+                    SourceTag = SystemReminder.Sources.Job,
+                    Kind = SystemReminder.Kinds.Cron
+                }, ct).ConfigureAwait(false);
             }
 
-            var assistantMessage = SessionMessage.AssistantMessage(request.Content);
-            await _sessionManager.AddMessageAsync(request.SessionId, assistantMessage, ct).ConfigureAwait(false);
+            // 产出写回 → Assistant，落盘即 consumed、不唤醒（spec §9）
+            await _runtime.DeliverAsync(new InboxMessage
+            {
+                TargetSessionId = request.SessionId,
+                Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "gateway" },
+                Body = request.Content,
+                Delivery = InboxDelivery.Inject,
+                Presentation = InboxPresentation.Assistant,
+                SourceTag = $"scheduler.{request.Source}",
+                Kind = SystemReminder.Kinds.Cron
+            }, ct).ConfigureAwait(false);
 
             if (!suppressPush && _connectionManager != null)
             {

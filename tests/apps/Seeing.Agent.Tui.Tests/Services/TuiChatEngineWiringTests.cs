@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Abstractions.Chat;
-using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Hosting.Tui;
 using Seeing.Agent.Hosting.Tui.Permissions;
@@ -22,8 +21,8 @@ public sealed class TuiChatEngineWiringTests
         services.AddSeeingHostingTui();
 
         services.Should().Contain(d => d.ServiceType == typeof(HostShapeDescriptor));
-        services.Should().Contain(d => d.ServiceType == typeof(IChatOrchestrator));
-        services.Should().Contain(d => d.ServiceType == typeof(IExecutionSubmitter));
+        services.Should().Contain(d => d.ServiceType == typeof(ISessionRuntime));
+        services.Should().Contain(d => d.ServiceType == typeof(ISessionDirectory));
         services.Should().Contain(d => d.ServiceType == typeof(IPermissionChannel));
 
         using var provider = services.BuildServiceProvider();

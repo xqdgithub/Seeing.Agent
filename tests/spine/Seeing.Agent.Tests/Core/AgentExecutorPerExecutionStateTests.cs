@@ -186,7 +186,6 @@ public class AgentExecutorPerExecutionStateTests
             modelManager.Object,
             NullLogger<AgentExecutor>.Instance,
             sessionManager: null,
-            loopScheduler: null,
             todoStore: todoStore,
             turnRetryPolicy: null);
     }

@@ -8,7 +8,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @inject IMessageService MessageService
-@inject IChatOrchestrator ChatOrchestrator
+@inject ISessionDirectory SessionDirectory
 @inject ISessionManager SessionManager
 @inject ISessionGroupManager GroupManager
 @inject SessionState GlobalSessionState
@@ -97,7 +97,7 @@
                                OnSelect="OnTileClick"
                                OnNodeAction="OnRelationNodeAction" />
 
-        @* 关系抽屉触发的重命名弹窗（走既有 ChatOrchestrator.RenameSessionAsync） *@
+        @* 关系抽屉触发的重命名弹窗（走既有 SessionDirectory.RenameAsync） *@
         <Modal Title="重命名会话"
                Visible="@(_renameSessionId != null)"
                OnOk="ConfirmRenameAsync"
@@ -338,7 +338,7 @@
 
         try
         {
-            await ChatOrchestrator.RenameSessionAsync(id, title);
+            await SessionDirectory.RenameAsync(id, title);
         }
         catch (Exception ex)
         {
@@ -353,7 +353,7 @@
     {
         try
         {
-            await ChatOrchestrator.DeleteSessionAsync(sessionId);
+            await SessionDirectory.DeleteAsync(sessionId);
         }
         catch (Exception ex)
         {

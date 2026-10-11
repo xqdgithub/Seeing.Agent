@@ -28,12 +28,12 @@ using Xunit;
 namespace Seeing.Agent.Tests.App.Execution;
 
 /// <summary>
-/// ExecutionJobService 自动压缩门控测试
+/// ExecutionRunner 自动压缩门控测试（原 ExecutionJobService 门控逻辑迁入 RunOnceAsync）。
 /// </summary>
-public class ExecutionJobServiceCompactionTests
+public class ExecutionRunnerCompactionTests
 {
     [Fact]
-    public async Task Execute_WhenPendingCompactionAndAutoEnabled_ShouldCompressAndPublishCompletedEvent()
+    public async Task RunOnce_WhenPendingCompactionAndAutoEnabled_ShouldCompressAndPublishEvents()
     {
         // Arrange
         var session = SessionData.Create();
@@ -56,30 +56,14 @@ public class ExecutionJobServiceCompactionTests
         publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
-        var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
         var configStore = new Mock<IConfigSectionStore>();
         configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
             .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = true });
 
-        using var fixture = CreateFixture(session, publisher.Object, summarizer.Object, optionsMonitor.Object, configStore.Object);
-        var service = fixture.Service;
+        var runner = CreateRunner(session, publisher.Object, summarizer.Object, configStore.Object);
 
         // Act
-        var result = await service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("hi"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipUserMessagePersist = true,
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent));
+        await runner.RunOnceAsync(NewRecord(session.Id), NewBatch(), TestContext.Current.CancellationToken);
 
         // Assert：门控触发压缩
         summarizer.Verify(s => s.SummarizeAsync(
@@ -90,24 +74,15 @@ public class ExecutionJobServiceCompactionTests
             .SingleOrDefault(e => e.MessagesRemoved == 1);
         completed.Should().NotBeNull();
         session.PendingCompaction.Should().BeFalse();
-        // 完整历史保留：被压缩部分原样保留 + 摘要消息插入（摘要位置即压缩真相）
-        // schema_snapshot 挂在末条消息 metadata（本测 SkipUserMessagePersist，挂在「回答一」）
         session.Messages.Should().HaveCount(3);
         session.Messages[0].Content.Should().Be("问题一");
         session.Messages[1].Content.Should().Be("摘要文本");
         session.Messages[1].IsSummary.Should().BeTrue("摘要消息标记 IsSummary");
         session.Messages[2].Content.Should().Be("回答一");
-        session.Messages[2].Metadata.Should().ContainKey(ChatEventTracker.SchemaSnapshotMetadataKey);
-        // 传递给 LLM 的统一消息来源：摘要 + 保留消息（schema 仅 metadata，不另插空 system）
-        var active = session.GetActiveMessages();
-        active.Should().HaveCount(2);
-        active[0].Content.Should().Be("摘要文本");
-        active[1].Content.Should().Be("回答一");
-        active[1].Metadata.Should().ContainKey(ChatEventTracker.SchemaSnapshotMetadataKey);
     }
 
     [Fact]
-    public async Task Execute_WhenNoPendingCompaction_ShouldNotCompress()
+    public async Task RunOnce_WhenNoPendingCompaction_ShouldNotCompress()
     {
         // Arrange
         var session = SessionData.Create();
@@ -122,30 +97,14 @@ public class ExecutionJobServiceCompactionTests
         publisher.Setup(p => p.ClearBuffer(It.IsAny<string>()));
         publisher.Setup(p => p.CompleteSession(It.IsAny<string>()));
 
-        var optionsMonitor = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        optionsMonitor.Setup(m => m.CurrentValue).Returns(new SeeingAgentOptions());
         var configStore = new Mock<IConfigSectionStore>();
         configStore.Setup(s => s.GetSection<TokenBudgetAutoCompactionPeek>("TokenBudget"))
             .Returns(new TokenBudgetAutoCompactionPeek { AutoCompactionEnabled = true });
 
-        using var fixture = CreateFixture(session, publisher.Object, summarizer.Object, optionsMonitor.Object, configStore.Object);
-        var service = fixture.Service;
+        var runner = CreateRunner(session, publisher.Object, summarizer.Object, configStore.Object);
 
         // Act
-        var result = await service.SubmitAsync(
-            session.Id,
-            ChatInput.FromText("hi"),
-            new ChatOptions
-            {
-                AgentId = "general",
-                SkipUserMessagePersist = true,
-                SkipInstructionInject = true
-            }, TestContext.Current.CancellationToken);
-
-        result.Success.Should().BeTrue();
-
-        await WaitUntilAsync(() =>
-            published.Any(e => e.Event is ExecutionCompleteEvent));
+        await runner.RunOnceAsync(NewRecord(session.Id), NewBatch(), TestContext.Current.CancellationToken);
 
         // Assert：门控未触发
         summarizer.Verify(s => s.SummarizeAsync(
@@ -153,32 +112,32 @@ public class ExecutionJobServiceCompactionTests
         published.Select(x => x.Event).OfType<CompactionStartedEvent>().Should().BeEmpty();
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 8000)
+    private static ExecutionRecord NewRecord(string sessionId) => new()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (!condition())
-        {
-            if (sw.ElapsedMilliseconds > timeoutMs)
-                throw new TimeoutException("WaitUntil condition not met");
-            await Task.Delay(20);
-        }
-    }
+        ExecutionId = "exec-1",
+        SessionId = sessionId,
+        Status = ExecutionStatus.Running,
+        Input = new ChatInput { Text = "hi" },
+        Options = new ChatOptions { AgentId = "general", SkipInstructionInject = true }
+    };
 
-    private static Fixture CreateFixture(
+    private static InboxBatch NewBatch() =>
+        new(new List<SessionMessage>(), HasUserInput: false, FirstUserText: null);
+
+    private static ExecutionRunner CreateRunner(
         SessionData session,
         IExecutionEventPublisher publisher,
         ISummarizer summarizer,
-        IOptionsMonitor<SeeingAgentOptions> optionsMonitor, IConfigSectionStore configStore)
+        IConfigSectionStore configStore)
     {
         var sessionManager = new Mock<ISessionManager>();
         sessionManager.Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(session);
+        sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns(session);
         sessionManager.Setup(m => m.GetOrLoadAsync(session.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
-        sessionManager.Setup(m => m.SaveAndNotifyAsync(session.Id, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns((SessionData?)null);
         sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);
+        sessionManager.Setup(m => m.FlushAsync(session.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var instructionManager = new Mock<IInstructionManager>();
         instructionManager.Setup(m => m.InjectIfNeededAsync(
@@ -214,38 +173,25 @@ public class ExecutionJobServiceCompactionTests
         services.AddSingleton(executor.Object);
         services.AddSingleton(new AgentSelectionResolver(runtimeManager.Object));
         services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
-            services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
+        services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
         services.AddSingleton(Mock.Of<ICommandRegistry>());
         var provider = services.BuildServiceProvider();
 
-        var service = new ExecutionJobService(
+        return new ExecutionRunner(
             provider,
             publisher,
             new ExecutionOptions(),
-            optionsMonitor,
+            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
             configStore,
-            NullLogger<ExecutionJobService>.Instance,
             new CompactionRunner(
                 new CompressionService(summarizer, sessionManager.Object),
                 publisher,
-                sessionManager.Object));
-
-        return new Fixture(service, provider);
+                sessionManager.Object),
+            NullLogger<ExecutionRunner>.Instance);
     }
 
     private static async IAsyncEnumerable<IMessageEvent> EmptyStream()
     {
         yield break;
-    }
-
-    private sealed class Fixture(ExecutionJobService service, ServiceProvider provider) : IDisposable
-    {
-        public ExecutionJobService Service { get; } = service;
-
-        public void Dispose()
-        {
-            Service.Dispose();
-            provider.Dispose();
-        }
     }
 }

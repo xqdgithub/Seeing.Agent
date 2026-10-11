@@ -43,7 +43,6 @@ public class AgentExecutor : IAgentExecutor
     private readonly IModelManager _modelManager;
     private readonly ILogger<AgentExecutor> _logger;
     private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
-    private readonly Scheduling.IAgentLoopScheduler? _loopScheduler;
     private readonly ITodoStore? _todoStore;
     private readonly ILlmTurnRetryPolicy? _turnRetryPolicy;
 
@@ -60,7 +59,6 @@ public class AgentExecutor : IAgentExecutor
         IModelManager modelManager,
         ILogger<AgentExecutor> logger,
         Seeing.Session.Core.ISessionManager? sessionManager = null,
-        Scheduling.IAgentLoopScheduler? loopScheduler = null,
         ITodoStore? todoStore = null,
         ILlmTurnRetryPolicy? turnRetryPolicy = null)
     {
@@ -73,7 +71,6 @@ public class AgentExecutor : IAgentExecutor
         _modelManager = modelManager;
         _logger = logger;
         _sessionManager = sessionManager;
-        _loopScheduler = loopScheduler;
         _todoStore = todoStore;
         _turnRetryPolicy = turnRetryPolicy;
     }

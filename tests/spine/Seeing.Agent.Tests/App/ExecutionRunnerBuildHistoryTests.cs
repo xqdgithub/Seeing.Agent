@@ -8,7 +8,7 @@ using Xunit;
 
 namespace Seeing.Agent.Tests.App;
 
-public class ExecutionJobServiceBuildHistoryTests
+public class ExecutionRunnerBuildHistoryTests
 {
     [Fact]
     public void BuildHistoryFromSession_AssistantToolCallsWithResults_ShouldEmitFollowingToolMessages()
@@ -24,7 +24,7 @@ public class ExecutionJobServiceBuildHistoryTests
         });
         session.AddMessage(SessionMessage.UserMessage("继续"));
 
-        var history = ExecutionJobService.BuildHistoryFromSession(session);
+        var history = ExecutionRunner.BuildHistoryFromSession(session);
 
         history.Should().HaveCount(4);
         history[0].Role.Should().Be(ChatRole.Assistant);
@@ -47,7 +47,7 @@ public class ExecutionJobServiceBuildHistoryTests
         var session = SessionData.Create();
         session.AddMessage(SessionMessage.ToolMessage("结果", "call_x", "read"));
 
-        var history = ExecutionJobService.BuildHistoryFromSession(session);
+        var history = ExecutionRunner.BuildHistoryFromSession(session);
 
         history.Should().HaveCount(1);
         history[0].Role.Should().Be(ChatRole.Tool);
@@ -67,7 +67,7 @@ public class ExecutionJobServiceBuildHistoryTests
                 new SessionToolCall { Id = "call_e", Name = "read", Result = "", Error = "执行失败", Status = "failed" })
         });
 
-        var history = ExecutionJobService.BuildHistoryFromSession(session);
+        var history = ExecutionRunner.BuildHistoryFromSession(session);
 
         history.Should().HaveCount(2);
         history[1].Role.Should().Be(ChatRole.Tool);
@@ -90,7 +90,7 @@ public class ExecutionJobServiceBuildHistoryTests
                 new SessionToolCall { Id = "call_r", Name = "read", Status = "rejected" })
         });
 
-        var history = ExecutionJobService.BuildHistoryFromSession(session);
+        var history = ExecutionRunner.BuildHistoryFromSession(session);
 
         history.Should().HaveCount(2);
         history[1].Role.Should().Be(ChatRole.Tool);

@@ -271,18 +271,16 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
                 mediaParts);
 
             var reply = new GatewayAssistantReplyCollector();
-            string? executionId = null;
 
             var submit = await _gatewayFacade.SubmitAsync(request, jobToken).ConfigureAwait(false);
-            if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+            if (!submit.Success)
             {
                 await _qqHttp.SendTextAsync(parsed, submit.Error ?? "提交失败", cancellationToken: CancellationToken.None)
                     .ConfigureAwait(false);
                 return;
             }
 
-            executionId = submit.ExecutionId;
-            await foreach (var gatewayEvent in _gatewayFacade.SubscribeAsync(sessionId, executionId, jobToken)
+            await foreach (var gatewayEvent in _gatewayFacade.SubscribeAsync(sessionId, jobToken)
                                .ConfigureAwait(false))
             {
                 var disposition = reply.Apply(gatewayEvent);

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Chat;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
 
@@ -31,7 +31,7 @@ public class SessionEventStreamRouterTests
     }
 
     private static SessionEventStreamRouter CreateRouter(
-        Mock<IChatOrchestrator> orchestrator, IServiceScopeFactory? scopeFactory = null)
+        Mock<ISessionRuntime> orchestrator, IServiceScopeFactory? scopeFactory = null)
         => new(orchestrator.Object, scopeFactory ?? Mock.Of<IServiceScopeFactory>(),
             NullLogger<SessionEventStreamRouter>.Instance);
 
@@ -40,7 +40,7 @@ public class SessionEventStreamRouterTests
     {
         var evt = new LoopStartEvent { SessionId = "s1", LoopId = "l1" };
         var channel = Channel.CreateUnbounded<IMessageEvent>();
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
              .Returns(channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken));
 
@@ -69,7 +69,7 @@ public class SessionEventStreamRouterTests
         // 模拟 publisher 订阅回放：历史事件已在流中
         await channel.Writer.WriteAsync(buffered[0], TestContext.Current.CancellationToken);
 
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(buffered);
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
              .Returns(channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken));
@@ -92,7 +92,7 @@ public class SessionEventStreamRouterTests
         {
             new LoopStartEvent { SessionId = "s1", LoopId = "old" }
         };
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(buffered);
         var channel = Channel.CreateUnbounded<IMessageEvent>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
@@ -122,7 +122,7 @@ public class SessionEventStreamRouterTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         using var router = CreateRouter(orchestrator, scopeFactory.Object);
         router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
 
@@ -142,7 +142,7 @@ public class SessionEventStreamRouterTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         using var router = CreateRouter(orchestrator, scopeFactory.Object);
 
         var first = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
@@ -168,7 +168,7 @@ public class SessionEventStreamRouterTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         using var router = CreateRouter(orchestrator, scopeFactory.Object);
 
         var first = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
@@ -195,7 +195,7 @@ public class SessionEventStreamRouterTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         using var router = CreateRouter(orchestrator, scopeFactory.Object);
 
         // 主 consumer：FakeConsumer；辅助 consumer：FakeConsumer2
@@ -225,7 +225,7 @@ public class SessionEventStreamRouterTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         using var router = CreateRouter(orchestrator, scopeFactory.Object);
 
         var circuit1 = router.GetOrCreateConsumer<FakeConsumer>("s1", "circuit-1");
@@ -250,7 +250,7 @@ public class SessionEventStreamRouterTests
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
         var channel = Channel.CreateUnbounded<IMessageEvent>();
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
              .Returns(channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken));
         orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(new List<IMessageEvent>());
@@ -282,7 +282,7 @@ public class SessionEventStreamRouterTests
         var channel1 = Channel.CreateUnbounded<IMessageEvent>();
         var channel2 = Channel.CreateUnbounded<IMessageEvent>();
         var channels = new Queue<Channel<IMessageEvent>>(new[] { channel1, channel2 });
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         orchestrator.Setup(o => o.SubscribeEvents("s1", It.IsAny<CancellationToken>()))
             .Returns(() => channels.Dequeue().Reader.ReadAllAsync());
         orchestrator.Setup(o => o.GetBufferedEvents("s1")).Returns(new List<IMessageEvent>());
@@ -319,7 +319,7 @@ public class SessionEventStreamRouterTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var orchestrator = new Mock<IChatOrchestrator>();
+        var orchestrator = new Mock<ISessionRuntime>();
         using var router = CreateRouter(orchestrator, scopeFactory.Object);
 
         var a = router.GetOrCreateConsumer<TaskCardAggregator>("sessionA", "circuit-1");
@@ -358,7 +358,7 @@ public class SessionEventStreamRouterTests
     public void GetOrCreateCircuitConsumer_ShouldReuseInstancePerCircuitAndKey()
     {
         var scopeFactory = CreateScopeFactoryFor<FakeRegistryConsumer>();
-        using var router = CreateRouter(new Mock<IChatOrchestrator>(), scopeFactory);
+        using var router = CreateRouter(new Mock<ISessionRuntime>(), scopeFactory);
         var c1 = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
         var c2 = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
         var c3 = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-b");
@@ -379,7 +379,7 @@ public class SessionEventStreamRouterTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        using var router = CreateRouter(new Mock<IChatOrchestrator>(), scopeFactory.Object);
+        using var router = CreateRouter(new Mock<ISessionRuntime>(), scopeFactory.Object);
         var a = router.GetOrCreateCircuitConsumer<FakeRegistryConsumer>("circuit-a");
         router.AttachConsumer("s1", a);
         router.DetachAllForCircuit("circuit-a");
