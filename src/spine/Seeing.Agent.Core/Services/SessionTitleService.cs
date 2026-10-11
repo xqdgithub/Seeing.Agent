@@ -18,6 +18,7 @@ namespace Seeing.Agent.Core.Services
     {
         private const string DefaultTitlePrefix = "Session ";
         private const string SyntheticMetadataKey = "synthetic";
+        private const string InboxPresentationMetadataKey = "inbox.presentation";
         private const int TitleMaxLength = 15;
         /// <summary>需覆盖 thinking 模型的 reasoning 占用，过小会导致 Content 为空。</summary>
         private const int TitleMaxTokens = 4096;
@@ -72,6 +73,11 @@ namespace Seeing.Agent.Core.Services
 
             // AGENTS.md 等注入的 user 消息，不能占用「首条真实用户消息」名额
             if (metadata.ContainsKey(ProjectInstructions.MetadataKeys.ProjectInstructions))
+                return false;
+
+            // 排除非 user 呈现的 inbox 消息（System/Assistant/None）
+            if (metadata.TryGetValue(InboxPresentationMetadataKey, out var presentation)
+                && !string.Equals(presentation?.ToString(), "user", StringComparison.OrdinalIgnoreCase))
                 return false;
 
             return true;
