@@ -35,10 +35,4 @@ public class ExecutionOptions
     /// Default: 5 minutes.
     /// </summary>
     public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromMinutes(5);
-
-    /// <summary>
-    /// Maximum number of queued executions per session.
-    /// Default: 10.
-    /// </summary>
-    public int MaxQueueSizePerSession { get; set; } = 10;
 }

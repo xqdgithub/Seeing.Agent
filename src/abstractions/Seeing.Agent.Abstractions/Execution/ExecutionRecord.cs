@@ -63,16 +63,6 @@ public class ExecutionRecord
     public int ProcessedMessageCount { get; set; }
 
     /// <summary>
-    /// Position in the queue (0 = currently executing, >0 = queued).
-    /// </summary>
-    public int QueuePosition { get; set; }
-
-    /// <summary>
-    /// When this execution entered the queue (if it was queued).
-    /// </summary>
-    public DateTime? QueuedAt { get; set; }
-
-    /// <summary>
     /// 本执行专属的取消令牌源。
     /// <para>
     /// 在入队时创建并绑定到执行记录本身：无论该记录成为当前项还是排队项，取消都只作用于本记录。
