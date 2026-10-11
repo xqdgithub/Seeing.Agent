@@ -1,0 +1,13 @@
+namespace Seeing.Agent.Abstractions.Runtime;
+
+public static class InboxMetadataKeys
+{
+    public const string Delivery = "inbox.delivery";
+    public const string Consumed = "inbox.consumed";
+    public const string SenderKind = "inbox.sender_kind";
+    public const string SenderId = "inbox.sender_id";
+    public const string SenderName = "inbox.sender_name";
+    public const string Presentation = "inbox.presentation";
+    public const string Source = "inbox.source";
+    public const string Kind = "inbox.kind";
+}
