@@ -1391,6 +1391,8 @@
             WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.GetProjectRoot()
         };
 
+        var wasBusy = false;
+
         try
         {
             // I1：会话空闲清理（CompleteSession）后消费 loop 已停止但消费者仍挂载；
@@ -1399,15 +1401,15 @@
             if (_handler != null)
                 Router.AttachConsumer(SessionState.SessionId, _handler);
 
-            // 防重复提交：已有执行则直接拒绝（避免 Enter/点击竞态打出两次 Loop）
-            if (!SessionState.TryStartExecution())
+            // 忙碌时不再拒绝：统一投递 DeliverAsync(Wake)，由消费循环天然排队续跑。
+            // 已有执行时保留既有取消令牌与执行态；空闲时才标记执行态，
+            // 使取消按钮/执行中徽标立即可用（而非等后端 ExecutionStarted 事件）。
+            wasBusy = SessionState.HasActiveExecution;
+            if (!wasBusy)
             {
-                ErrorMessage = "当前会话已有执行在进行中，请稍候";
-                return;
+                SessionState.ExecutionStatus = ExecutionStatus.Pending;
+                _executionStartedAtUtc = DateTime.UtcNow;
             }
-
-            SessionState.ExecutionStatus = ExecutionStatus.Pending;
-            _executionStartedAtUtc = DateTime.UtcNow;
 
             // 提交执行（用户消息会立即保存）
             var result = await SessionRuntime.DeliverAsync(new InboxMessage
@@ -1425,7 +1427,8 @@
             if (!result.Success)
             {
                 ErrorMessage = result.Error ?? "提交失败";
-                SessionState.CompleteExecution();
+                if (!wasBusy)
+                    SessionState.CompleteExecution();
                 SyncContextState();
                 await InvokeAsync(StateHasChanged);
                 return;
@@ -1437,9 +1440,16 @@
             _currentStreamingMessageId = string.Empty;
 
             // 更新 UI 状态（InboxResult 无可靠 ExecutionId，保留尽力而为值）
-            SessionState.ExecutionStatus = ExecutionStatus.Pending;
+            if (!wasBusy)
+            {
+                SessionState.ExecutionStatus = ExecutionStatus.Pending;
+                SessionState.CurrentExecutionId = result.ExecutionId;
+            }
             SessionState.PendingInputCount = result.PendingInputCount;
-            SessionState.CurrentExecutionId = result.ExecutionId;
+
+            // 忙碌时提示已排队（由消费循环在本轮结束后续跑）
+            if (wasBusy)
+                MessageService.Info($"已排队（待处理 {result.PendingInputCount} 条），当前轮结束后执行");
 
             SyncContextState();
             await InvokeAsync(StateHasChanged);
@@ -1448,8 +1458,11 @@
         catch (Exception ex)
         {
             ErrorMessage = $"执行失败: {ex.Message}";
-            SessionState.CompleteExecution();
-            SessionState.ExecutionStatus = null;
+            if (!wasBusy)
+            {
+                SessionState.CompleteExecution();
+                SessionState.ExecutionStatus = null;
+            }
             SyncContextState();
             await InvokeAsync(StateHasChanged);
         }

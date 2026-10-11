@@ -114,16 +114,29 @@
                     </Tooltip>
                 </SpaceItem>
                 <SpaceItem>
-                    <Tooltip Title="@(IsProcessing ? "取消执行" : "发送消息 (Enter)")">
-                        <Button Type="@(IsProcessing ? ButtonType.Default : ButtonType.Primary)"
+                    <Tooltip Title="@(IsProcessing ? "发送消息（当前轮结束后处理）" : "发送消息 (Enter)")">
+                        <Button Type="@ButtonType.Primary"
                                 Size="@ButtonSize.Default"
-                                Icon="@(IsProcessing ? IconType.Outline.CloseCircle : IconType.Outline.Send)"
-                                Danger="@IsProcessing"
-                                OnClick="@OnSendOrCancel">
-                            @(IsProcessing ? "取消" : "发送")
+                                Icon="@IconType.Outline.Send"
+                                OnClick="@OnSubmit">
+                            发送
                         </Button>
                     </Tooltip>
                 </SpaceItem>
+                @if (IsProcessing)
+                {
+                    <SpaceItem>
+                        <Tooltip Title="停止执行">
+                            <Button Type="@ButtonType.Default"
+                                    Size="@ButtonSize.Default"
+                                    Icon="@IconType.Outline.CloseCircle"
+                                    Danger
+                                    OnClick="@OnCancelClick">
+                                停止
+                            </Button>
+                        </Tooltip>
+                    </SpaceItem>
+                }
             </Space>
         </div>
     </div>
@@ -695,7 +708,7 @@
     /// </summary>
     private async Task OnSubmit()
     {
-        if ((string.IsNullOrWhiteSpace(InputText) && Attachments.Count == 0) || IsProcessing || _isSubmitting)
+        if ((string.IsNullOrWhiteSpace(InputText) && Attachments.Count == 0) || _isSubmitting)
             return;
 
         _isSubmitting = true;
@@ -731,16 +744,6 @@
             _isSubmitting = false;
             StateHasChanged();
         }
-    }
-    
-    /// <summary>
-    /// 发送/取消一体化按钮：执行中点击为取消，空闲时点击为发送
-    /// </summary>
-    private Task OnSendOrCancel()
-    {
-        if (IsProcessing)
-            return OnCancelClick();
-        return OnSubmit();
     }
     
     /// <summary>
