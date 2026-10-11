@@ -6,7 +6,7 @@ using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests;
 
-public class ChatOrchestratorServiceExtensionsTests
+public class SessionHostingServiceExtensionsTests
 {
     [Fact]
     public void AddExecutionEngine_ShouldRegisterSessionRuntimeAndDirectoryAsSingleton()

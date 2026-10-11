@@ -81,9 +81,8 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             scenario: scope.ServiceProvider.GetService<IDefaultWorkModeProvider>()?.GetDefaultScenario())
             .ConfigureAwait(false);
 
-        // 2. 鉴权：跨组鉴权在 Task 3.3 的工具层（session_inbox_send 走 tool.execute 门）实现；
-        //    运行时入口暂直接放行（与 spec §11「缺失授权器则放行」一致）。
-        // TODO(Task 3.3): 跨组投递经 IPermissionAuthorizerFactory 授权。
+        // 2. 鉴权：跨组鉴权由调用方（工具层 session_inbox_send 走 tool.execute 门）负责；
+        //    运行时入口放行（与 spec §11「缺失授权器则放行」一致）。
 
         // 3. 幂等预检：同键重复投递复用首次结果，不重复落盘
         var idemKey = string.IsNullOrWhiteSpace(message.IdempotencyKey)
