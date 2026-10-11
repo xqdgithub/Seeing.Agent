@@ -10,4 +10,6 @@ public static class InboxMetadataKeys
     public const string Presentation = "inbox.presentation";
     public const string Source = "inbox.source";
     public const string Kind = "inbox.kind";
+    public const string AgentId = "inbox.agent_id";
+    public const string ModelId = "inbox.model_id";
 }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Sessions;
@@ -223,6 +224,14 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         break;
                     }
 
+                    // Stop 二次校验：StopAsync 可能落在「终止检查通过后、标记 consumed 前」。
+                    // 必须在标记 consumed 之前判定：命中则退出且不消费本批，避免消息被静默丢失。
+                    if (_stoppedSessions.ContainsKey(sessionId))
+                    {
+                        RemoveLoop(sessionId, handle);
+                        break;
+                    }
+
                     // 单一清除点：本批全部置 consumed=true（执行体启动前一次性写）
                     foreach (var m in pending)
                     {
@@ -230,13 +239,6 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         m.Metadata = metadata.SetItem(InboxMetadataKeys.Consumed, true);
                     }
                     await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
-
-                    // Stop 二次校验：StopAsync 可能落在「终止检查通过后、执行体启动前」
-                    if (_stoppedSessions.ContainsKey(sessionId))
-                    {
-                        RemoveLoop(sessionId, handle);
-                        break;
-                    }
                 }
                 finally
                 {
@@ -273,6 +275,24 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                                 "user", StringComparison.OrdinalIgnoreCase))
                             ?.Content;
                         var batch = new InboxBatch(pending, hasUserInput, firstUserText);
+
+                        // 回填命令/标题所需输入与模型/Agent 选择：取本批最后一条非空元数据。
+                        // FirstUserText 为空但本批含 user 输入时，回退到本批最后一条 user 文本。
+                        var inputText = firstUserText;
+                        if (string.IsNullOrEmpty(inputText) && hasUserInput)
+                        {
+                            inputText = pending
+                                .LastOrDefault(m => string.Equals(
+                                    GetMetaString(m.Metadata, InboxMetadataKeys.Presentation),
+                                    "user", StringComparison.OrdinalIgnoreCase))
+                                ?.Content;
+                        }
+                        record.Input = new ChatInput { Text = inputText ?? string.Empty };
+                        record.Options = new ChatOptions
+                        {
+                            AgentId = LastNonEmptyMeta(pending, InboxMetadataKeys.AgentId),
+                            ModelId = LastNonEmptyMeta(pending, InboxMetadataKeys.ModelId)
+                        };
 
                         await _runner.RunOnceAsync(record, batch, record.Cts.Token).ConfigureAwait(false);
                         state.LastExecution = record;
@@ -392,6 +412,10 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             metadata[InboxMetadataKeys.Source] = message.SourceTag!;
         if (!string.IsNullOrEmpty(message.Kind))
             metadata[InboxMetadataKeys.Kind] = message.Kind!;
+        if (!string.IsNullOrEmpty(message.AgentId))
+            metadata[InboxMetadataKeys.AgentId] = message.AgentId!;
+        if (!string.IsNullOrEmpty(message.ModelId))
+            metadata[InboxMetadataKeys.ModelId] = message.ModelId!;
 
         return new SessionMessage
         {
@@ -451,6 +475,19 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         };
     }
 
+    /// <summary>取本批消息中指定元数据的最后一个非空值（后到者覆盖，与「最新选择」语义一致）。</summary>
+    private static string? LastNonEmptyMeta(IReadOnlyList<SessionMessage> messages, string key)
+    {
+        for (var i = messages.Count - 1; i >= 0; i--)
+        {
+            var value = GetMetaString(messages[i].Metadata, key);
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
+
     private static bool TryGetMetaBool(IReadOnlyDictionary<string, object>? metadata, string key, out bool value)
     {
         value = false;
@@ -499,17 +536,12 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
     public async Task<int> StopAsync(string sessionId, CancellationToken ct = default)
     {
-        // 级联范围：自身 + 所有 Child 子会话（父停止即放弃整棵子树，不论子是否被人接管）。
+        // 级联范围：自身 + 整棵子树（父停止即放弃所有后代，不论子是否被人接管）。
         var targets = new List<string> { sessionId };
         try
         {
-            using var scope = _services.CreateScope();
-            var groupManager = scope.ServiceProvider.GetService<ISessionGroupManager>();
-            if (groupManager is not null)
-            {
-                var children = await groupManager.ListChildrenAsync(sessionId, ct).ConfigureAwait(false);
-                targets.AddRange(children.Select(c => c.Id));
-            }
+            var descendants = await CollectSubtreeAsync(sessionId, ct).ConfigureAwait(false);
+            targets.AddRange(descendants);
         }
         catch (Exception ex)
         {
@@ -577,6 +609,51 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             "会话已停止: SessionId={SessionId}, Cascaded={Cascaded}, Cancelled={Cancelled}",
             sessionId, targets.Count - 1, cancelled);
         return cancelled;
+    }
+
+    /// <summary>
+    /// 递归收集 <paramref name="sessionId"/> 的整棵子树（所有后代 id，BFS）。
+    /// 单次枚举失败不阻断其余分支；已访问集合防止环与重复。
+    /// </summary>
+    private async Task<List<string>> CollectSubtreeAsync(string sessionId, CancellationToken ct)
+    {
+        var descendants = new List<string>();
+        var visited = new HashSet<string>(StringComparer.Ordinal) { sessionId };
+        var queue = new Queue<string>();
+        queue.Enqueue(sessionId);
+
+        while (queue.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var current = queue.Dequeue();
+
+            IReadOnlyList<SessionData> children;
+            try
+            {
+                using var scope = _services.CreateScope();
+                var groupManager = scope.ServiceProvider.GetService<ISessionGroupManager>();
+                if (groupManager is null)
+                    continue;
+
+                children = await groupManager.ListChildrenAsync(current, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "级联停止子树枚举失败: SessionId={SessionId}", current);
+                continue;
+            }
+
+            foreach (var child in children)
+            {
+                if (string.IsNullOrEmpty(child.Id) || !visited.Add(child.Id))
+                    continue;
+
+                descendants.Add(child.Id);
+                queue.Enqueue(child.Id);
+            }
+        }
+
+        return descendants;
     }
 
     public async Task<int> CancelAllInFlightAsync(CancellationToken ct = default)
