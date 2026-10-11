@@ -55,6 +55,9 @@ public static class MessageViewModelFactory
             viewModel.InboxPresentation = GetMetaString(inboxMeta, InboxMetadataKeys.Presentation);
         }
 
+        // 待消费标记（排队中）：inbox.consumed 缺失或 false，且 presentation=user
+        viewModel.IsPendingInbox = IsPendingInbox(msg);
+
         if (SystemReminderRenderer.TryParse(msg.Content ?? "", out var reminderParts))
         {
             viewModel.IsSystemReminder = true;
@@ -97,6 +100,45 @@ public static class MessageViewModelFactory
         }
 
         return viewModel;
+    }
+
+    /// <summary>
+    /// 是否为待消费（排队中）的入站 user 消息：
+    /// <c>Role==user</c> 且 <c>inbox.presentation==user</c> 且 <c>inbox.consumed != true</c>。
+    /// 系统 / 子会话 / assistant 呈现的消息不视为排队。
+    /// </summary>
+    private static bool IsPendingInbox(SessionMessage msg)
+    {
+        if (!string.Equals(msg.Role, MessageRole.User, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var metadata = msg.Metadata;
+        if (metadata is null)
+            return false;
+
+        var presentation = GetMetaString(metadata, InboxMetadataKeys.Presentation);
+        if (!string.Equals(presentation, "user", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return !(GetMetaBool(metadata, InboxMetadataKeys.Consumed) == true);
+    }
+
+    /// <summary>
+    /// 读取元数据布尔值（兼容 bool / JsonElement / 字符串）。
+    /// </summary>
+    private static bool? GetMetaBool(IReadOnlyDictionary<string, object> metadata, string key)
+    {
+        if (!metadata.TryGetValue(key, out var raw) || raw is null)
+            return null;
+
+        return raw switch
+        {
+            bool b => b,
+            System.Text.Json.JsonElement je when je.ValueKind is System.Text.Json.JsonValueKind.True
+                or System.Text.Json.JsonValueKind.False => je.GetBoolean(),
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => null
+        };
     }
 
     /// <summary>

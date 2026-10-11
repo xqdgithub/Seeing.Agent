@@ -525,6 +525,60 @@
     border-radius: var(--radius-sm);
 }
 
+/* ========== 排队中消息（输入框上方独立小卡片，区别于正式消息气泡） ========== */
+.pending-messages-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-2);
+    background: var(--color-bg-secondary, #fafafa);
+    border: 1px dashed var(--color-border, #d9d9d9);
+    border-radius: var(--radius-md);
+}
+
+.pending-message-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 320px;
+    padding: 2px var(--space-2);
+    background: var(--color-bg, #ffffff);
+    border: 1px dashed var(--color-border-secondary, #f0f0f0);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+}
+
+.pending-message-chip .pending-message-icon {
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+}
+
+.pending-message-index {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--color-bg-tertiary, #f5f5f5);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    line-height: 1;
+}
+
+.pending-message-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-secondary);
+}
+
 /* ========== 加载状态 ========== */
 .message-loading {
     display: flex;

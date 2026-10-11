@@ -176,6 +176,20 @@
                                 </Button>
                             </div>
                         }
+                        @* 排队中：已入站但尚未被消费的 user 消息（不进主时间线，独立小卡片展示） *@
+                        @if (Timeline.PendingMessages.Count > 0)
+                        {
+                            <div class="pending-messages-bar" role="status" aria-label="排队中的消息">
+                                @foreach (var (pm, idx) in Timeline.PendingMessages.Select((m, i) => (m, i + 1)))
+                                {
+                                    <div class="pending-message-chip" title="排队中，等待当前回复结束后处理">
+                                        <Icon Type="@IconType.Outline.ClockCircle" Class="pending-message-icon" />
+                                        <span class="pending-message-index">@idx</span>
+                                        <span class="pending-message-text">@Truncate(pm.Content, 80)</span>
+                                    </div>
+                                }
+                            </div>
+                        }
                         <SlotHost SlotName="session_prompt"
                                   SessionScenario="@SessionState.CurrentSession?.Scenario" />
                         <PromptInput IsProcessing="@SessionState.HasActiveExecution"
@@ -1791,6 +1805,16 @@
     private void OnClearError()
     {
         ErrorMessage = null;
+    }
+
+    /// <summary>排队卡片内容截断：超长加省略号（null/空返回空串）。</summary>
+    private static string Truncate(string? text, int max)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        var flat = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return flat.Length <= max ? flat : flat[..max] + "…";
     }
 
     /// <summary>收件箱通知图标（按发送方类型区分）。</summary>

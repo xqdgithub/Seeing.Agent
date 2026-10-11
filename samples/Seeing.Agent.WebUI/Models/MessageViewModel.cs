@@ -141,6 +141,9 @@ public class MessageViewModel
     /// <summary>入站呈现身份：user | system | assistant | none。</summary>
     public string? InboxPresentation { get; set; }
 
+    /// <summary>是否为待消费（排队中）的入站 user 消息。</summary>
+    public bool IsPendingInbox { get; set; }
+
     /// <summary>是否为非人类来源的入站消息（用于来源徽章与视觉区分）。</summary>
     public bool IsExternalInbox =>
         !string.IsNullOrEmpty(InboxSenderKind)

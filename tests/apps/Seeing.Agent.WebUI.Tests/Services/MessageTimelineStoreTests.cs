@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Reminders;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Models.Timeline;
@@ -25,6 +26,15 @@ public class MessageTimelineStoreTests
             CreatedAt = DateTime.UtcNow,
             Metadata = metadata?.ToImmutableDictionary()
         };
+
+    private static SessionMessage InboxUser(
+        string id, string content, bool consumed)
+        => Msg(id, "user", content, metadata: new Dictionary<string, object>
+        {
+            [InboxMetadataKeys.Presentation] = "user",
+            [InboxMetadataKeys.SenderKind] = "human",
+            [InboxMetadataKeys.Consumed] = consumed
+        });
 
     [Fact]
     public void ResetFromSession_ShouldGroupAssistantsByLoopId()
@@ -529,5 +539,101 @@ public class MessageTimelineStoreTests
         storeA.Items.Should().NotContain(i => i.Message != null && i.Message.Content == "B");
         storeB.Items.Should().Contain(i => i.Message != null && i.Message.Content == "B");
         storeB.Items.Should().NotContain(i => i.Message != null && i.Message.Content == "A");
+    }
+
+    [Fact]
+    public void ResetFromSession_PendingInboxUser_ShouldNotEnterTimeline()
+    {
+        var store = new MessageTimelineStore();
+        store.ResetFromSession(
+        [
+            InboxUser("u1", "queued", consumed: false),
+        ], "s1");
+
+        store.Items.Should().BeEmpty();
+        store.PendingMessages.Should().ContainSingle();
+        store.PendingMessages[0].Content.Should().Be("queued");
+        store.PendingMessages[0].IsPendingInbox.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ResetFromSession_ConsumedInboxUser_ShouldEnterTimeline()
+    {
+        var store = new MessageTimelineStore();
+        store.ResetFromSession(
+        [
+            InboxUser("u1", "done", consumed: true),
+        ], "s1");
+
+        store.PendingMessages.Should().BeEmpty();
+        store.Items.Should().ContainSingle();
+        store.Items[0].Kind.Should().Be(TimelineItemKind.User);
+        store.Items[0].Message!.Content.Should().Be("done");
+    }
+
+    [Fact]
+    public void ResetFromSession_SystemPresentation_ShouldNotBePending()
+    {
+        var store = new MessageTimelineStore();
+        var system = Msg("s1", "user", "reminder", metadata: new Dictionary<string, object>
+        {
+            [InboxMetadataKeys.Presentation] = "system",
+            [InboxMetadataKeys.Consumed] = false
+        });
+
+        store.ResetFromSession([system], "s1");
+
+        store.PendingMessages.Should().BeEmpty();
+        store.Items.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void ReconcileAppendFromSession_PendingInbox_ShouldNotDuplicateIntoItems()
+    {
+        var store = new MessageTimelineStore();
+        store.ResetFromSession([InboxUser("u1", "queued", consumed: false)], "s1");
+
+        store.ReconcileAppendFromSession(
+        [
+            InboxUser("u1", "queued", consumed: false),
+        ], "s1");
+
+        store.Items.Should().BeEmpty();
+        store.PendingMessages.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void ReconcileAppendFromSession_ConsumedPending_ShouldMoveToTimeline()
+    {
+        var store = new MessageTimelineStore();
+        store.ResetFromSession([InboxUser("u1", "queued", consumed: false)], "s1");
+        var changed = 0;
+        store.Changed += () => changed++;
+
+        store.ReconcileAppendFromSession(
+        [
+            InboxUser("u1", "queued", consumed: true),
+        ], "s1");
+
+        store.PendingMessages.Should().BeEmpty();
+        store.Items.Should().ContainSingle(i => i.Message != null && i.Message.Content == "queued");
+        changed.Should().BeGreaterThan(0, "排队消息移入主时间线需触发 Changed");
+    }
+
+    [Fact]
+    public void ReconcileAppendFromSession_NewPendingInbox_ShouldAppendToPending()
+    {
+        var store = new MessageTimelineStore();
+        store.ResetFromSession([Msg("u1", "user", "hi")], "s1");
+
+        store.ReconcileAppendFromSession(
+        [
+            Msg("u1", "user", "hi"),
+            InboxUser("u2", "queued later", consumed: false),
+        ], "s1");
+
+        store.Items.Should().ContainSingle();
+        store.PendingMessages.Should().ContainSingle();
+        store.PendingMessages[0].Content.Should().Be("queued later");
     }
 }

@@ -24,7 +24,13 @@ public sealed class MessageTimelineStore
 {
     private readonly List<TimelineItem> _items = new();
 
+    /// <summary>排队中（已入站、尚未被消费）的 user 消息投影；不进主时间线，输入框上方独立展示。</summary>
+    private readonly List<MessageViewModel> _pending = new();
+
     public IReadOnlyList<TimelineItem> Items => _items;
+
+    /// <summary>排队中消息（按入站顺序）；被消费后移入 <see cref="Items"/>。</summary>
+    public IReadOnlyList<MessageViewModel> PendingMessages => _pending;
 
     /// <summary>
     /// Incremented on each <see cref="ResetFromSession"/> so views can detect structural rebuilds
@@ -50,6 +56,7 @@ public sealed class MessageTimelineStore
     public void ResetFromSession(IEnumerable<SessionMessage> messages, string sessionId)
     {
         _items.Clear();
+        _pending.Clear();
 
         // Dedupe by Id keeping last occurrence (later wins).
         var deduped = new List<SessionMessage>();
@@ -93,6 +100,14 @@ public sealed class MessageTimelineStore
 
             var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
             vm.IsCompacted = lastSummaryIndex >= 0 && i < lastSummaryIndex;
+
+            // 排队中的入站 user 消息不进主时间线，单独投影为待消费列表
+            if (vm.IsPendingInbox)
+            {
+                _pending.Add(vm);
+                continue;
+            }
+
             var kind = ResolveKind(vm);
 
             if (kind == TimelineItemKind.AssistantTurn)
@@ -394,6 +409,26 @@ public sealed class MessageTimelineStore
 
             if (knownIds.Contains(id))
             {
+                // 已消费的排队消息：从待消费列表移入主时间线
+                var pendingIndex = _pending.FindIndex(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+                if (pendingIndex >= 0)
+                {
+                    var pendingVm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
+                    if (pendingVm.IsPendingInbox)
+                        continue; // 仍排队：保持原位（顺序由 session 顺序保证）
+
+                    _pending.RemoveAt(pendingIndex);
+                    pendingVm.IsCompacted = isCompacted;
+                    _items.Add(new TimelineItem
+                    {
+                        Key = pendingVm.Id,
+                        Kind = ResolveKind(pendingVm),
+                        Message = pendingVm
+                    });
+                    added = true;
+                    continue;
+                }
+
                 // 已知消息：压缩发生（摘要出现/移动）时同步更新折叠态
                 var existing = FindItemForMessageId(id);
                 if (existing?.Message != null && existing.Message.IsCompacted != isCompacted)
@@ -407,6 +442,16 @@ public sealed class MessageTimelineStore
 
             var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
             vm.IsCompacted = isCompacted;
+
+            // 排队中的入站 user 消息不进主时间线，单独投影为待消费列表
+            if (vm.IsPendingInbox)
+            {
+                _pending.Add(vm);
+                knownIds.Add(id);
+                added = true;
+                continue;
+            }
+
             var kind = ResolveKind(vm);
 
             if (kind == TimelineItemKind.AssistantTurn)
@@ -485,6 +530,13 @@ public sealed class MessageTimelineStore
                 if (!string.IsNullOrEmpty(m.Id))
                     ids.Add(m.Id);
             }
+        }
+
+        // 排队消息也视为已知，避免增量 reconcile 时被当作"未知"重复追加到主时间线
+        foreach (var pending in _pending)
+        {
+            if (!string.IsNullOrEmpty(pending.Id))
+                ids.Add(pending.Id);
         }
 
         return ids;
