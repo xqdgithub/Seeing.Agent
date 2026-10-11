@@ -54,13 +54,6 @@ public class SessionSummaryViewTests
     }
 
     [Fact]
-    public void Classify_Queued_ShouldReturnQueued()
-    {
-        SessionSummaryView.Classify(isExecuting: false, status: ExecutionStatus.Queued)
-            .Should().Be(SummaryState.Queued);
-    }
-
-    [Fact]
     public void Classify_Failed_ShouldReturnFailed()
     {
         SessionSummaryView.Classify(isExecuting: false, status: ExecutionStatus.Failed)

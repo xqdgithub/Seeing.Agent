@@ -11,11 +11,6 @@ public enum ExecutionStatus
     Pending,
 
     /// <summary>
-    /// The execution is queued behind another execution for the same session.
-    /// </summary>
-    Queued,
-
-    /// <summary>
     /// The execution is currently running.
     /// </summary>
     Running,

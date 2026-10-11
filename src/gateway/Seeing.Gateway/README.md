@@ -63,8 +63,7 @@ public sealed class GatewaySubmitResult
 {
     public bool Success { get; init; }
     public string SessionId { get; init; }
-    public string? ExecutionId { get; init; }
-    public int QueuePosition { get; init; }
+    public int PendingInputCount { get; init; }
     public string? Error { get; init; }
 }
 ```

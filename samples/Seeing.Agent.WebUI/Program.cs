@@ -144,7 +144,7 @@ builder.Services.AddSingleton<Seeing.Agent.TokenBudget.IBudgetStatusNotifier, Bu
 builder.Services.AddTokenBudgetHooks();
 
 // === 会话运行时（ISessionRuntime）+ 会话目录（ISessionDirectory）统一入口 ===
-builder.Services.AddChatOrchestrator();
+builder.Services.AddSessionHosting();
 
 // === 执行引擎（后台执行服务）===
 builder.Services.AddExecutionEngine(options =>

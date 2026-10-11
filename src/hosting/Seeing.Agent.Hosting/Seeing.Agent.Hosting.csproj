@@ -4,7 +4,7 @@
     <RootNamespace>Seeing.Agent.Hosting</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Description>Hosting layer: ChatOrchestrator, ExecutionJobService, Task tools, command discovery</Description>
+    <Description>Hosting layer: SessionRuntime, ExecutionRunner, Task tools, command discovery</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -79,7 +79,7 @@ public sealed class GatewayOrchestratorV2
             if (!result.Success)
                 return GatewaySubmitResult.Failed(sessionId, result.Error ?? "Submit failed");
 
-            return GatewaySubmitResult.Succeeded(sessionId, result.ExecutionId, result.PendingInputCount);
+            return GatewaySubmitResult.Succeeded(sessionId, result.PendingInputCount);
         }
         finally
         {
@@ -293,6 +293,9 @@ public sealed class GatewayOrchestratorV2
 
     private static ChatInput BuildChatInput(GatewayRequest request)
     {
+        if (request.Quote != null)
+            return BuildChatInputWithQuote(request);
+
         string? text = null;
         List<ChatAttachment>? attachments = null;
 
@@ -325,6 +328,61 @@ public sealed class GatewayOrchestratorV2
                         Base64Data = file.Url,
                         MimeType = file.MimeType ?? "application/octet-stream",
                         FileName = file.Name ?? ""
+                    });
+                }
+            }
+
+            if (attachments.Count == 0)
+                attachments = null;
+        }
+
+        return new ChatInput
+        {
+            Text = text,
+            Attachments = attachments
+        };
+    }
+
+    /// <summary>
+    /// 叠加引用上下文：经 <see cref="GatewayUserMessageComposer"/> 将 <see cref="GatewayRequest.Quote"/>
+    /// 与 <see cref="GatewayRequest.Input"/> 合成为带 <c>&lt;quoted_message&gt;</c> 信封的 user turn，
+    /// 再映射回 <see cref="ChatInput"/>（文本 + 多模态附件），供 <c>InboxMessage.Body</c>/<c>Attachments</c> 投递。
+    /// </summary>
+    private static ChatInput BuildChatInputWithQuote(GatewayRequest request)
+    {
+        var message = GatewayUserMessageComposer.Compose(request.Input, request.Quote);
+        if (message is null)
+            return new ChatInput();
+
+        var text = message.Content;
+        List<ChatAttachment>? attachments = null;
+
+        if (message.Parts is { Count: > 0 })
+        {
+            var textParts = message.Parts
+                .Where(p => p.Type == ContentPartType.Text && !string.IsNullOrEmpty(p.Text))
+                .Select(p => p.Text!);
+            text = string.Join("\n", textParts);
+
+            attachments = new List<ChatAttachment>();
+            foreach (var part in message.Parts)
+            {
+                if (part.Type == ContentPartType.Image)
+                {
+                    attachments.Add(new ChatAttachment
+                    {
+                        Base64Data = part.DataBase64 ?? part.Url ?? "",
+                        MimeType = part.MimeType ?? "image/png",
+                        FileName = part.FileName ?? ""
+                    });
+                }
+                else if (part.Type == ContentPartType.File)
+                {
+                    attachments.Add(new ChatAttachment
+                    {
+                        Base64Data = part.DataBase64 ?? part.Url ?? "",
+                        MimeType = part.MimeType ?? "application/octet-stream",
+                        FileName = part.FileName ?? ""
                     });
                 }
             }

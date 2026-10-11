@@ -14,7 +14,7 @@ namespace Seeing.Agent.Hosting.Embed;
 public static class EmbedHostingServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册 Embed Host Shape：默认 <see cref="DenyAllPermissionChannel"/> + ChatOrchestrator + ExecutionEngine。
+    /// 注册 Embed Host Shape：默认 <see cref="DenyAllPermissionChannel"/> + AddSessionHosting + ExecutionEngine。
     /// 能力包由宿主自行引用；本包不 ProjectReference Tools.* / Memory / Scheduler / Web / Blazor 等。
     /// </summary>
     /// <param name="services">服务集合</param>
@@ -39,7 +39,7 @@ public static class EmbedHostingServiceCollectionExtensions
         // 无 UI：未显式注册 IPermissionChannel 时使用 DenyAll（嵌入方应自行提供通道或 AutoApprove）
         services.TryAddSingleton<IPermissionChannel, DenyAllPermissionChannel>();
 
-        services.AddChatOrchestrator();
+        services.AddSessionHosting();
         services.AddExecutionEngine(configureExecution);
 
         return services;

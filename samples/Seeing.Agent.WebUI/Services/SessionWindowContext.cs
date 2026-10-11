@@ -102,7 +102,6 @@ public sealed class SessionWindowContext
         CanPushToParent = isChild && hasParent;
     }
 
-    public bool IsQueued { get; internal set; }
     /// <summary>当前会话未消费输入数（仅 UI 展示）。</summary>
     public int PendingInputCount { get; internal set; }
     public bool HasActiveExecution { get; internal set; }

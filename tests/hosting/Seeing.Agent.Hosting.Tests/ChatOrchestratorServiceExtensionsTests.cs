@@ -22,10 +22,10 @@ public class ChatOrchestratorServiceExtensionsTests
     }
 
     [Fact]
-    public void AddChatOrchestrator_ShouldRegisterTaskTools()
+    public void AddSessionHosting_ShouldRegisterTaskTools()
     {
         var services = new ServiceCollection();
-        services.AddChatOrchestrator();
+        services.AddSessionHosting();
 
         services.Should().Contain(d => d.ServiceType == typeof(Seeing.Agent.Hosting.Tools.TaskTool));
         services.Should().Contain(d => d.ServiceType == typeof(Seeing.Agent.Hosting.Tools.TaskStatusTool));

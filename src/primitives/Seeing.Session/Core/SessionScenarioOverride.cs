@@ -1,7 +1,7 @@
 namespace Seeing.Session.Core;
 
 /// <summary>
-/// 可选的会话级模块/工具裁剪（只能收窄进程级已启用集；结算见 ExecutionJobService）。
+/// 可选的会话级模块/工具裁剪（只能收窄进程级已启用集；结算见 ExecutionRunner）。
 /// </summary>
 public sealed class SessionScenarioOverride
 {

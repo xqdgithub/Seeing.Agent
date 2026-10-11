@@ -76,7 +76,7 @@ public class CompactionRunner
                     var message = string.IsNullOrWhiteSpace(outcome.ErrorMessage)
                         ? "压缩失败"
                         : $"压缩失败: {outcome.ErrorMessage}";
-                    // 标记 transient：UI 可见/持久化，但不进入 LLM 历史（见 ExecutionJobService.IsRuntimeNotificationMessage）
+                    // 标记 transient：UI 可见/持久化，但不进入 LLM 历史（见 ExecutionRunner.IsRuntimeNotificationMessage）
                     session.AddMessage(SessionMessage.SystemMessage(message).WithMetadata("transient", true));
                     await _sessionManager.SaveAndNotifyAsync(sessionId);
                 }

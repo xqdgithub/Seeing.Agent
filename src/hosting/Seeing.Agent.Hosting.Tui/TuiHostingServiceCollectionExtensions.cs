@@ -15,7 +15,7 @@ public static class TuiHostingServiceCollectionExtensions
 {
     /// <summary>
     /// 注册 Tui Host Shape：HostShapeDescriptor + ProcessSettlementOptions + IPermissionChannel
-    /// + ChatOrchestrator + ExecutionEngine。
+    /// + AddSessionHosting + ExecutionEngine。
     /// <para>
     /// 宿主 sample 仍须自行注册：
     /// <list type="bullet">
@@ -47,7 +47,7 @@ public static class TuiHostingServiceCollectionExtensions
         // 事件流承载通道（语义同 Hosting.Web 的 EventStreamPermissionChannel）
         services.TryAddSingleton<IPermissionChannel, TuiPermissionChannel>();
 
-        services.AddChatOrchestrator();
+        services.AddSessionHosting();
         services.AddExecutionEngine(configureExecution);
 
         return services;

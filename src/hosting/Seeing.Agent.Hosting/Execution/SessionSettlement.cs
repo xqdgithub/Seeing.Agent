@@ -5,7 +5,7 @@ using Seeing.Session.Core;
 namespace Seeing.Agent.Hosting.Execution;
 
 /// <summary>
-/// 会话级结算快照（在 <see cref="ExecutionJobService"/> 进入执行前计算，本轮不变）。
+/// 会话级结算快照（在 <see cref="ExecutionRunner"/> 进入执行前计算，本轮不变）。
 /// </summary>
 internal sealed class SessionSettlementSnapshot
 {

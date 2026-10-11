@@ -609,7 +609,7 @@ public class AgentExecutor : IAgentExecutor
         AgentContext context,
         CancellationToken cancellationToken)
     {
-        // schema 唯一计算点在 ExecutionJobService；此处只读 context.ToolSchemas
+        // schema 唯一计算点在 ExecutionRunner；此处只读 context.ToolSchemas
         var toolSchemas = context.ToolSchemas ?? (IReadOnlyList<FunctionToolSchema>)Array.Empty<FunctionToolSchema>();
 
         // 使用 PromptBuilder 构建系统提示词

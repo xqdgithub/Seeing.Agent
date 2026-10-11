@@ -289,7 +289,7 @@ namespace Seeing.Agent.Core.Tools
 
         /// <summary>
         /// 获取工具 Schema 列表（用于 LLM function calling，带 Hook 支持）。
-        /// 诊断/枚举用；写入 ChatRequest.Tools 须经 ExecutionJobService 结算后的
+        /// 诊断/枚举用；写入 ChatRequest.Tools 须经 ExecutionRunner 结算后的
         /// <see cref="GetToolSchemasAsync(IReadOnlyCollection{string}, AgentDefinition, CancellationToken)"/>。
         /// </summary>
         public async Task<List<FunctionToolSchema>> GetToolSchemasAsync()

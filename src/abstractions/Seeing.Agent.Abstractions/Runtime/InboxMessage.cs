@@ -43,12 +43,10 @@ public sealed record InboxResult
     public required bool Success { get; init; }
     public string? Error { get; init; }
     public string? MessageId { get; init; }
-    /// <summary>本轮消费产生的执行 Id（尽力而为，可能为空：循环异步启动）。</summary>
-    public string? ExecutionId { get; init; }
     public int PendingInputCount { get; init; }
 
-    public static InboxResult Ok(string? messageId = null, string? executionId = null, int pendingInputCount = 0)
-        => new() { Success = true, MessageId = messageId, ExecutionId = executionId, PendingInputCount = pendingInputCount };
+    public static InboxResult Ok(string? messageId = null, int pendingInputCount = 0)
+        => new() { Success = true, MessageId = messageId, PendingInputCount = pendingInputCount };
 
     public static InboxResult Failed(string error)
         => new() { Success = false, Error = error };

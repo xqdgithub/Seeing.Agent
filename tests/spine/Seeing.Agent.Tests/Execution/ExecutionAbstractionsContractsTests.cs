@@ -47,19 +47,6 @@ public class ExecutionAbstractionsContractsTests
     }
 
     [Fact]
-    public void ExecutionSubmitResult_ShouldExposeStatusAndFactoryMethods()
-    {
-        var type = typeof(ExecutionSubmitResult);
-
-        type.GetProperty(nameof(ExecutionSubmitResult.Success))!.PropertyType.Should().Be(typeof(bool));
-        type.GetProperty(nameof(ExecutionSubmitResult.Status))!.PropertyType.Should().Be(typeof(ExecutionStatus));
-
-        type.GetMethod(nameof(ExecutionSubmitResult.Succeeded), [typeof(string)]).Should().NotBeNull();
-        type.GetMethod(nameof(ExecutionSubmitResult.Queued), [typeof(string), typeof(int)]).Should().NotBeNull();
-        type.GetMethod(nameof(ExecutionSubmitResult.Failed), [typeof(string)]).Should().NotBeNull();
-    }
-
-    [Fact]
     public void ExecutionRecord_ShouldReferenceChatInputAndOptions()
     {
         var type = typeof(ExecutionRecord);

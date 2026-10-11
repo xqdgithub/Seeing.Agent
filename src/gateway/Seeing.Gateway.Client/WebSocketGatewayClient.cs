@@ -481,7 +481,7 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
         var result = ack == null
             ? GatewaySubmitResult.Failed("", "Empty submit ack")
             : ack.Success
-                ? GatewaySubmitResult.Succeeded(ack.SessionId, ack.ExecutionId, ack.PendingInputCount)
+                ? GatewaySubmitResult.Succeeded(ack.SessionId, ack.PendingInputCount)
                 : GatewaySubmitResult.Failed(ack.SessionId, ack.Error ?? "Submit failed");
 
         tcs.TrySetResult(result);

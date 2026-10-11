@@ -8,8 +8,6 @@ public enum SummaryState
 {
     /// <summary>执行中</summary>
     Running,
-    /// <summary>排队中</summary>
-    Queued,
     /// <summary>执行失败</summary>
     Failed,
     /// <summary>已取消</summary>
@@ -49,8 +47,6 @@ public static class SessionSummaryView
     {
         if (isExecuting || status is ExecutionStatus.Running or ExecutionStatus.Pending)
             return SummaryState.Running;
-        if (status == ExecutionStatus.Queued)
-            return SummaryState.Queued;
         if (status == ExecutionStatus.Failed)
             return SummaryState.Failed;
         if (status == ExecutionStatus.Cancelled)

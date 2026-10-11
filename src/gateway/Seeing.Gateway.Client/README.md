@@ -69,10 +69,10 @@ var request = new GatewayRequest
 };
 
 var submit = await client.SubmitAsync(request);
-if (!submit.Success || string.IsNullOrEmpty(submit.ExecutionId))
+if (!submit.Success)
     throw new InvalidOperationException(submit.Error ?? "Submit failed");
 
-await foreach (var evt in client.SubscribeAsync(request.SessionId, submit.ExecutionId))
+await foreach (var evt in client.SubscribeAsync(request.SessionId))
 {
     if (evt.Object == GatewayEventObject.Content && evt.Data?.Delta == true)
         Console.Write(evt.Data.Text);
@@ -92,13 +92,12 @@ await foreach (var inbound in wsClient.ReceiveAsync())
 {
     if (inbound.Type == GatewayWsFrameType.ChatEvent)
         Console.WriteLine(inbound.Event?.Data?.Text);
-    if (inbound.Type == GatewayWsFrameType.ExecutionComplete
-        && inbound.ExecutionComplete?.ExecutionId == submit.ExecutionId)
+    if (inbound.Type == GatewayWsFrameType.ExecutionComplete)
         break;
 }
 
-// 取消：
-await wsClient.CancelAsync(submit.ExecutionId!);
+// 取消（会话级）：
+await wsClient.CancelAsync(request.SessionId);
 ```
 
 `WebSocketGatewayClientFacade` 将 WS 连接包装为 `IGatewayClient`（Submit + Subscribe + Cancel）。
@@ -108,8 +107,8 @@ await wsClient.CancelAsync(submit.ExecutionId!);
 | 方法 | 路径 | Client 用法 |
 |------|------|-------------|
 | POST | `/api/gateway/submit` | `SubmitAsync` |
-| GET | `/api/gateway/events?sessionId=&executionId=` | `SubscribeAsync`（SSE） |
-| POST | `/api/gateway/cancel` | `CancelAsync`（body: `{ "executionId" }`） |
+| GET | `/api/gateway/events?sessionId=` | `SubscribeAsync`（SSE） |
+| POST | `/api/gateway/cancel` | `CancelAsync`（body: `{ "sessionId" }`） |
 | WS | `/api/gateway/ws` | `WebSocketGatewayClient` |
 | POST | `/api/gateway/sessions/{sessionId}/reset` | `ResetSessionAsync` |
 | GET | `/api/gateway/permissions/pending?sessionId=` | `GetPendingPermissionsAsync` |

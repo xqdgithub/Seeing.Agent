@@ -13,7 +13,7 @@ namespace Seeing.Agent.Abstractions.Tools;
 /// </para>
 /// <para>
 /// 这是「工具结果 → 模型内容」的唯一格式化入口：本轮 <c>AgentExecutor</c>、跨轮历史重建
-/// <c>ExecutionJobService</c>、UI 预览 <c>TaskCardAggregator</c> 均应收敛到此。
+/// <c>ExecutionRunner</c>、UI 预览 <c>TaskCardAggregator</c> 均应收敛到此。
 /// </para>
 /// </summary>
 public static class ToolResultFormatting

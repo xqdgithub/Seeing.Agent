@@ -135,10 +135,6 @@
     border-left: 3px solid var(--color-primary);
 }
 
-.conference-tile--queued {
-    border-left: 3px solid var(--color-border);
-}
-
 .conference-tile--done {
     border-left: 3px solid var(--color-success);
 }

@@ -17,7 +17,7 @@ public static class SessionMetadataKeys
     public const string OriginToolCallId = "origin_tool_call_id";
 
     /// <summary>
-    /// 子会话最近一次执行失败的错误信息（ExecutionJobService 在 MarkSessionError 时写入；
+    /// 子会话最近一次执行失败的错误信息（ExecutionRunner 在 MarkSessionError 时写入；
     /// 仅作运行时错误真相源，不进入 Messages/LLM 历史）。成功续跑时清除。
     /// </summary>
     public const string LastError = "last_error";

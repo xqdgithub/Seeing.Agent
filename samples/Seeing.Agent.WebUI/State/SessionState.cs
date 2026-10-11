@@ -186,13 +186,7 @@ namespace Seeing.Agent.WebUI.State
         public bool HasActiveExecution =>
             IsExecuting
             || ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Running
-            || ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Pending
-            || ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Queued;
-
-        /// <summary>
-        /// 是否在排队中
-        /// </summary>
-        public bool IsQueued => ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Queued;
+            || ExecutionStatus == global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Pending;
 
         #endregion
 

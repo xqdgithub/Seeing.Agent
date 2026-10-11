@@ -1110,7 +1110,6 @@
         Context.IsAnchor = _isAnchor;
         Context.Label = _groupMember?.Label;
         Context.SuccessorTitle = GetSuccessorTitle();
-        Context.IsQueued = SessionState.IsQueued;
         Context.PendingInputCount = SessionState.PendingInputCount;
         Context.HasActiveExecution = SessionState.HasActiveExecution;
         Context.IsExecuting = SessionState.IsExecuting;
@@ -1439,11 +1438,10 @@
             Timeline.RequestPinToBottom();
             _currentStreamingMessageId = string.Empty;
 
-            // 更新 UI 状态（InboxResult 无可靠 ExecutionId，保留尽力而为值）
+            // 更新 UI 状态（执行态由事件流回填）
             if (!wasBusy)
             {
                 SessionState.ExecutionStatus = ExecutionStatus.Pending;
-                SessionState.CurrentExecutionId = result.ExecutionId;
             }
             SessionState.PendingInputCount = result.PendingInputCount;
 
@@ -1896,8 +1894,6 @@
     /// </summary>
     private BadgeStatus GetStatusBadge()
     {
-        if (SessionState.IsQueued)
-            return BadgeStatus.Default;
         if (SessionState.IsExecuting
             || SessionState.ExecutionStatus is ExecutionStatus.Running
                 or ExecutionStatus.Pending)
@@ -1914,8 +1910,6 @@
     /// <summary>Summary 模式：左侧状态条 class（颜色随代理状态）</summary>
     private string GetStatusBarClass()
     {
-        if (SessionState.IsQueued)
-            return "conference-tile--queued";
         if (SessionState.IsExecuting
             || SessionState.ExecutionStatus is ExecutionStatus.Running
                 or ExecutionStatus.Pending)

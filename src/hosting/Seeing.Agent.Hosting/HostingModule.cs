@@ -28,7 +28,7 @@ public sealed class HostingModule : ISeeingModule
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
-        // 工具具体类型由 AddChatOrchestrator 登记。
+        // 工具具体类型由 AddSessionHosting 登记。
     }
 
     /// <inheritdoc />

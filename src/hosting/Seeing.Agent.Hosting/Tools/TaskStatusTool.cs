@@ -207,7 +207,6 @@ public class TaskStatusTool : ToolBase
     private static string MapExecutionState(ExecutionStatus status) => status switch
     {
         ExecutionStatus.Pending => "running",
-        ExecutionStatus.Queued => "running",
         ExecutionStatus.Running => "running",
         ExecutionStatus.Completed => "completed",
         ExecutionStatus.Failed => "error",
@@ -257,7 +256,6 @@ public class TaskStatusTool : ToolBase
                 state = (current ?? last)!.Status switch
                 {
                     ExecutionStatus.Pending => "running",
-                    ExecutionStatus.Queued => "running",
                     ExecutionStatus.Running => "running",
                     ExecutionStatus.Completed => "completed",
                     ExecutionStatus.Failed => "error",

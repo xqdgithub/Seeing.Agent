@@ -106,7 +106,6 @@ public sealed class TuiSessionController
 
         if (result.Success)
         {
-            current.ActiveExecutionId = result.ExecutionId;
             current.IsExecuting = true;
             current.PendingInputCount = result.PendingInputCount;
             current.Touch();

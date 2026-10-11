@@ -10,7 +10,7 @@ namespace Seeing.Agent.Hosting;
 /// <summary>
 /// 会话目录 - 会话 CRUD 的唯一权威入口（实现 <see cref="ISessionDirectory"/>）。
 /// <para>
-/// 从 <see cref="ChatOrchestrator"/> 迁出的纯会话管理职责：读取、确保、列举、创建、删除、重命名、分支。
+/// 从旧 ChatOrchestrator 迁出的纯会话管理职责：读取、确保、列举、创建、删除、重命名、分支。
 /// 不承载执行/事件编排。
 /// </para>
 /// </summary>

@@ -58,8 +58,6 @@ public record GatewaySubmitAckPayload
 {
     public required string SessionId { get; init; }
 
-    public string? ExecutionId { get; init; }
-
     public bool Success { get; init; }
 
     public string? Error { get; init; }

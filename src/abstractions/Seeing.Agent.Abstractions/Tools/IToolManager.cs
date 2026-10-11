@@ -30,7 +30,7 @@ public interface IToolManager
 
     /// <summary>
     /// 按「层1∩层2已结算 tool id 集」+ Agent Allowed/Denied（层3）生成 schema。
-    /// 唯一计算点在 ExecutionJobService；本方法不做会话级结算。
+    /// 唯一计算点在 ExecutionRunner；本方法不做会话级结算。
     /// </summary>
     Task<IReadOnlyList<FunctionToolSchema>> GetToolSchemasAsync(
         IReadOnlyCollection<string> settledToolIds,

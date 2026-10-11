@@ -25,9 +25,9 @@ namespace Seeing.Agent.Hosting;
 public static class HostingServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册会话工具与命令发现
+    /// 注册会话宿主核心：命令发现 + 任务/Todo 工具（由 <see cref="HostingModule"/> Activate 挂载）
     /// </summary>
-    public static IServiceCollection AddChatOrchestrator(this IServiceCollection services)
+    public static IServiceCollection AddSessionHosting(this IServiceCollection services)
     {
         // 注册命令发现（具体类 + Abstractions 端口）
         services.AddSingleton<CommandDiscovery>();

@@ -201,7 +201,6 @@ public sealed class GatewayWebSocketHandler
                     new GatewaySubmitAckPayload
                     {
                         SessionId = submit.SessionId,
-                        ExecutionId = submit.ExecutionId,
                         Success = submit.Success,
                         Error = submit.Error,
                         PendingInputCount = submit.PendingInputCount

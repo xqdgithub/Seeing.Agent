@@ -110,12 +110,11 @@ namespace Seeing.Agent.WebUI.Services
         public ExecutionStatus? ExecutionStatus { get; private set; }
 
         /// <summary>
-        /// 是否有活跃执行流（Running / Pending / Queued）
+        /// 是否有活跃执行流（Running / Pending）
         /// </summary>
         public bool IsStreamActive =>
             ExecutionStatus is global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Running
-                or global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Pending
-                or global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Queued;
+                or global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Pending;
 
         /// <summary>
         /// 当前 Todo 列表（由 todowrite 工具 / TodoUpdateEvent 更新）

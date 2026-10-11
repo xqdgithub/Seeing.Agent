@@ -14,7 +14,7 @@ namespace Seeing.Agent.Hosting.Headless;
 public static class HeadlessHostingServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册 Headless Host Shape：默认 <see cref="DenyAllPermissionChannel"/> + ChatOrchestrator + ExecutionEngine。
+    /// 注册 Headless Host Shape：默认 <see cref="DenyAllPermissionChannel"/> + AddSessionHosting + ExecutionEngine。
     /// 能力包由宿主 sample 自行引用；本包不 ProjectReference Tools.* / Memory / Scheduler 等。
     /// </summary>
     /// <param name="services">服务集合</param>
@@ -38,7 +38,7 @@ public static class HeadlessHostingServiceCollectionExtensions
         // 无 UI：未显式注册 IPermissionChannel 时使用 DenyAll（后台/CLI 安全默认）
         services.TryAddSingleton<IPermissionChannel, DenyAllPermissionChannel>();
 
-        services.AddChatOrchestrator();
+        services.AddSessionHosting();
         services.AddExecutionEngine(configureExecution);
 
         return services;
