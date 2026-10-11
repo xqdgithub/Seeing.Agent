@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting.Tools;
@@ -18,20 +19,17 @@ public class TaskStatusTool : ToolBase
 {
     private readonly ISessionManager _sessionManager;
     private readonly ISessionGroupManager _groupManager;
-    private readonly IExecutionSubmitter _executionSubmitter;
-    private readonly IExecutionStatusProvider _execStatusProvider;
+    private readonly ISessionRuntime _runtime;
 
     public TaskStatusTool(
         ILogger<TaskStatusTool> logger,
         ISessionManager sessionManager,
         ISessionGroupManager groupManager,
-        IExecutionSubmitter executionSubmitter,
-        IExecutionStatusProvider execStatusProvider) : base(logger)
+        ISessionRuntime runtime) : base(logger)
     {
         _sessionManager = sessionManager;
         _groupManager = groupManager;
-        _executionSubmitter = executionSubmitter;
-        _execStatusProvider = execStatusProvider;
+        _runtime = runtime;
     }
 
     public override string Id => "task_status";
@@ -65,11 +63,12 @@ public class TaskStatusTool : ToolBase
             return await GetChildTasksStatusAsync(context.SessionId);
         }
 
-        var overview = _execStatusProvider.GetOverview(taskId);
+        var overview = _runtime.GetOverview(taskId);
         var current = overview.CurrentExecution;
+        var last = overview.LastExecution;
 
-        // 无活跃/排队执行：回落到子会话消息摘要（兼容已完成落盘会话与旧后台任务）
-        if (current == null && overview.QueueLength == 0)
+        // 无活跃/最近执行：回落到子会话消息摘要（兼容已完成落盘会话与旧后台任务）
+        if (current == null && last == null)
             return await FallbackFromSessionAsync(taskId);
 
         if (wait)
@@ -79,7 +78,7 @@ public class TaskStatusTool : ToolBase
             cts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
             try
             {
-                await _executionSubmitter.WaitForExecutionAsync(current!.ExecutionId, cts.Token);
+                await _runtime.WaitForIdleAsync(taskId, cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -88,12 +87,15 @@ public class TaskStatusTool : ToolBase
                 return Success("timeout", $"task_id: {taskId}\nstate: timeout");
             }
 
-            current = _execStatusProvider.GetExecution(current!.ExecutionId);
+            var waited = _runtime.GetOverview(taskId);
+            current = waited.CurrentExecution ?? waited.LastExecution;
             if (current == null)
                 return await FallbackFromSessionAsync(taskId);
         }
 
-        var state = MapExecutionState(current!.Status);
+        // 终态来源：活跃执行优先，空闲态回落最近一轮执行记录
+        var statusRecord = current ?? last!;
+        var state = MapExecutionState(statusRecord.Status);
         var sb = new StringBuilder();
         sb.AppendLine($"task_id: {taskId}");
         sb.AppendLine($"state: {state}");
@@ -106,18 +108,18 @@ public class TaskStatusTool : ToolBase
             .Where(content => !string.IsNullOrEmpty(content));
 
         var result = allAssistants is null ? "" : string.Join("\n\n", allAssistants);
-        if (current.Status == ExecutionStatus.Completed && !string.IsNullOrEmpty(result))
+        if (statusRecord.Status == ExecutionStatus.Completed && !string.IsNullOrEmpty(result))
         {
             sb.AppendLine();
             sb.AppendLine("<task_result>");
             sb.AppendLine(result);
             sb.AppendLine("</task_result>");
         }
-        else if (!string.IsNullOrEmpty(current.ErrorMessage))
+        else if (!string.IsNullOrEmpty(statusRecord.ErrorMessage))
         {
             sb.AppendLine();
             sb.AppendLine("<task_error>");
-            sb.AppendLine(current.ErrorMessage);
+            sb.AppendLine(statusRecord.ErrorMessage);
             sb.AppendLine("</task_error>");
         }
 
@@ -169,7 +171,7 @@ public class TaskStatusTool : ToolBase
         }
         else if (state == "error")
         {
-            // 优先取会话运行时错误（ExecutionJobService.MarkSessionError 写入 Metadata，不进入 Messages/LLM 历史）；
+            // 优先取会话运行时错误（ExecutionRunner.MarkSessionError 写入 Metadata，不进入 Messages/LLM 历史）；
             // 存量兼容：旧版 ChatEventTracker 落盘的 "错误: {msg}" system 消息
             string? errMsg = null;
             if (session.Metadata?.TryGetValue(SessionMetadataKeys.LastError, out var storedErr) == true)
@@ -235,12 +237,13 @@ public class TaskStatusTool : ToolBase
 
         foreach (var child in children)
         {
-            var overview = _execStatusProvider.GetOverview(child.Id);
+            var overview = _runtime.GetOverview(child.Id);
             var current = overview.CurrentExecution;
-            
+            var last = overview.LastExecution;
+
             string state;
-            
-            if (current == null && overview.QueueLength == 0)
+
+            if (current == null && last == null)
             {
                 // 与 TaskTool 摘要一致：无活跃执行时 Active 视为已完成
                 state = child.Status switch
@@ -251,7 +254,7 @@ public class TaskStatusTool : ToolBase
             }
             else
             {
-                state = current?.Status switch
+                state = (current ?? last)!.Status switch
                 {
                     ExecutionStatus.Pending => "running",
                     ExecutionStatus.Queued => "running",

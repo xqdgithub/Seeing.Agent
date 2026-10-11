@@ -8,12 +8,9 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Reminders;
-using Seeing.Agent.Core.Reminders;
-using Seeing.Agent.Core.Scheduling;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Models;
-using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Hosting.Execution;
+using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Abstractions.Sessions;
 using Seeing.Session.Core;
 using SessionStatus = Seeing.Session.Core.SessionStatus;
 
@@ -29,9 +26,7 @@ public class TaskTool : ToolBase
     private readonly ISessionManager _sessionManager;
     private readonly ISessionGroupManager _groupManager;
     private readonly IAgentRegistry _agentRegistry;
-    private readonly IAgentLoopScheduler _loopScheduler;
-    private readonly IExecutionSubmitter _executionSubmitter;
-    private readonly IExecutionStatusProvider _execStatusProvider;
+    private readonly ISessionRuntime _runtime;
     private string? _cachedDescription;
 
     public TaskTool(
@@ -39,18 +34,14 @@ public class TaskTool : ToolBase
         ISessionManager sessionManager,
         ISessionGroupManager groupManager,
         IAgentRegistry agentRegistry,
-        IAgentLoopScheduler loopScheduler,
-        IExecutionSubmitter executionSubmitter,
-        IExecutionStatusProvider execStatusProvider,
+        ISessionRuntime runtime,
         IExecutionEventPublisher eventPublisher) : base(logger)
     {
         _sessionManager = sessionManager;
         _groupManager = groupManager;
         _agentRegistry = agentRegistry;
-        _loopScheduler = loopScheduler;
-        _executionSubmitter = executionSubmitter;
-        _execStatusProvider = execStatusProvider;
-        // 后台监听已改为轮询 WaitForExecutionAsync（摆脱事件流回放依赖），
+        _runtime = runtime;
+        // 后台监听已改为轮询 WaitForIdleAsync（摆脱事件流回放依赖），
         // 保留 eventPublisher 构造参数以维持 DI 注册与既有测试调用点不变。
         _ = eventPublisher;
     }
@@ -132,8 +123,7 @@ public class TaskTool : ToolBase
                     return Failure($"task_id '{taskId}' 不属于当前父会话");
 
                 // 快速失败：已有进行中的 Loop 或活跃执行直接拒绝（真正的原子抢占在执行引擎队列内）
-                if (_loopScheduler.IsLoopBusy(session.Id) ||
-                    _execStatusProvider.GetOverview(session.Id).HasActiveExecution)
+                if (_runtime.GetOverview(session.Id).HasActiveExecution)
                     return Failure($"Task {session.Id} is already running. Use task_status to check progress.");
             }
             else
@@ -175,51 +165,37 @@ public class TaskTool : ToolBase
                 ? prompt
                 : $"[命令触发: {command}]\n\n{prompt}";
 
-            await _sessionManager.AddMessageAsync(session.Id, new SessionMessage
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                Role = "user",
-                Content = userPrompt,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            var submitOptions = new ChatOptions
-            {
-                AgentId = agentInfo.Name,
-                ModelId = session.SelectedModel,
-                SkipUserMessagePersist = true
-                // 不再冻结父会话三态到执行级 Override：子会话由 EffectivePermissionPolicy 沿父链实时解析，
-                // 父会话在执行中切换「默认/自动/确认」可即时作用于子代理（spec §5 修订）。
-            };
-
             if (background)
             {
                 var parentSessionId = context.SessionId;
                 var desc = description;
                 var childId = session.Id;
-                // 父执行取消令牌：父会话被取消时子执行会级联取消，
-                // 此时不得再向父注入通知或触发 idle resume，否则会把用户已取消的主会话重新拉起。
-                var parentToken = context.CancellationToken;
 
-                var submitResult = await _executionSubmitter.SubmitAsync(session.Id,
-                    new ChatInput { Text = userPrompt }, submitOptions, context.CancellationToken);
-                if (!submitResult.Success || string.IsNullOrEmpty(submitResult.ExecutionId))
+                // 子会话 user 消息由 DeliverAsync 统一落盘（不再预落盘）。
+                var submitResult = await _runtime.DeliverAsync(new InboxMessage
+                {
+                    TargetSessionId = session.Id,
+                    Sender = new InboxSender { Kind = InboxSenderKind.Session, Id = context.SessionId },
+                    Body = userPrompt,
+                    Delivery = InboxDelivery.Wake,
+                    Presentation = InboxPresentation.User,
+                    AgentId = agentInfo.Name,
+                    ModelId = session.SelectedModel
+                }, context.CancellationToken);
+                if (!submitResult.Success)
                     return Failure(submitResult.Error ?? "子任务提交执行失败");
 
-                var executionId = submitResult.ExecutionId;
-
-                // 后台监听完成 → 通知父会话（复用现有 synthetic 注入语义）。
-                // 经 WaitForExecutionAsync 轮询执行记录终态，不再订阅事件流——
-                // 事件订阅依赖回放缓冲，跨子/父会话边界易漏终态。
+                // 后台监听完成 → 通知父会话。
+                // 经 WaitForIdleAsync 轮询子会话空闲，终态从 LastExecution 读取，不再订阅事件流。
                 _ = Task.Run(async () =>
                 {
                     var finalStatus = ExecutionStatus.Failed;
                     string? errorMessage = null;
                     try
                     {
-                        await _executionSubmitter.WaitForExecutionAsync(executionId, CancellationToken.None);
+                        await _runtime.WaitForIdleAsync(childId, CancellationToken.None);
 
-                        var record = _execStatusProvider.GetExecution(executionId);
+                        var record = _runtime.GetOverview(childId).LastExecution;
                         if (record != null)
                         {
                             finalStatus = record.Status;
@@ -233,89 +209,36 @@ public class TaskTool : ToolBase
 
                     try
                     {
-                        // 父会话已取消：子执行因级联取消而进入 Cancelled，属预期结果，
-                        // 不应向父注入 synthetic 通知，也不应触发 idle resume（否则重新启动已取消的主会话）。
-                        if (parentToken.IsCancellationRequested)
+                        // 投递判据 = 子自身终止原因：仅当子因父停止级联停止时不投递；
+                        // 其它终态（完成/失败/被 interrupt 等）一律投递。
+                        var child = _sessionManager.Get(childId) ?? await _sessionManager.LoadAsync(childId);
+                        if (child == null)
                             return;
 
-                        switch (finalStatus)
+                        var stopReason = child.Metadata.TryGetValue(SessionControlKeys.StopReason, out var sr) ? sr : null;
+                        if (string.Equals(stopReason, SessionControlKeys.StopReasonCascadedFromParent, StringComparison.Ordinal))
+                            return;
+
+                        var owner = child.GetControl().Owner;
+                        var (kind, body) = await BuildCompletionReportAsync(
+                            parentSessionId, finalStatus, desc, childId, errorMessage);
+
+                        await _runtime.DeliverAsync(new InboxMessage
                         {
-                            case ExecutionStatus.Completed:
-                                var outputText = ReadChildResult(childId);
-                                var statusSummary = await GetSubAgentStatusSummaryAsync(parentSessionId, childId);
-                                
-                                var completedBody = $"后台任务已完成: {desc}\ntask_id: {childId}\nstate: completed";
-                                
-                                if (!string.IsNullOrEmpty(statusSummary))
-                                {
-                                    completedBody += statusSummary;
-                                }
-                                
-                                completedBody += $"\n\n<task_result>\n{outputText}\n</task_result>";
-                                
-                                await _loopScheduler.InjectSyntheticAsync(
-                                    parentSessionId,
-                                    SystemReminderRenderer.Wrap(
-                                        completedBody,
-                                        SystemReminder.Sources.Task,
-                                        SystemReminder.Kinds.Completed,
-                                        taskId: childId),
-                                    BuildReminderMeta(childId, "completed", SystemReminder.Kinds.Completed),
-                                    CancellationToken.None);
-                                break;
-
-                            case ExecutionStatus.Cancelled:
-                                var cancelledBody =
-                                    $"Background task cancelled: {desc}\ntask_id: {childId}\nstate: cancelled";
-                                await _loopScheduler.InjectSyntheticAsync(
-                                    parentSessionId,
-                                    SystemReminderRenderer.Wrap(
-                                        cancelledBody,
-                                        SystemReminder.Sources.Task,
-                                        SystemReminder.Kinds.Cancelled,
-                                        taskId: childId),
-                                    BuildReminderMeta(childId, "cancelled", SystemReminder.Kinds.Cancelled),
-                                    CancellationToken.None);
-                                break;
-
-                            default:
-                                var failedBody =
-                                    $"Background task failed: {desc}\ntask_id: {childId}\nstate: error\n\n<task_error>\n{errorMessage ?? "未知错误"}\n</task_error>";
-                                await _loopScheduler.InjectSyntheticAsync(
-                                    parentSessionId,
-                                    SystemReminderRenderer.Wrap(
-                                        failedBody,
-                                        SystemReminder.Sources.Task,
-                                        SystemReminder.Kinds.Failed,
-                                        taskId: childId),
-                                    BuildReminderMeta(childId, "error", SystemReminder.Kinds.Failed),
-                                    CancellationToken.None);
-                                break;
-                        }
-
-                        await _loopScheduler.TryResumeWhenIdleAsync(parentSessionId, CancellationToken.None);
+                            TargetSessionId = parentSessionId,
+                            Sender = new InboxSender { Kind = InboxSenderKind.Session, Id = childId },
+                            Body = body,
+                            Delivery = owner == SessionOwner.Human ? InboxDelivery.Notify : InboxDelivery.Wake,
+                            Presentation = owner == SessionOwner.Human ? InboxPresentation.None : InboxPresentation.System,
+                            SourceTag = SystemReminder.Sources.Task,
+                            Kind = kind
+                        }, CancellationToken.None);
                     }
                     catch
                     {
                         // ignore
                     }
                 }, CancellationToken.None);
-
-                // 父会话取消/关闭时级联取消后台子执行
-                if (context.CancellationToken.CanBeCanceled)
-                {
-                    context.CancellationToken.Register(() =>
-                    {
-                        try
-                        {
-                            _ = _executionSubmitter.CancelAsync(executionId);
-                        }
-                        catch
-                        {
-                            // ignore
-                        }
-                    });
-                }
 
                 return Success(description, BuildOutput(session.Id, "running",
                     $"后台任务已启动，任务ID: {session.Id}。\n\n" +
@@ -325,28 +248,20 @@ public class TaskTool : ToolBase
                     BuildTaskMetadata(session.Id, agentInfo.Name, description, background: true));
             }
 
-            var result = await _executionSubmitter.SubmitAsync(session.Id,
-                new ChatInput { Text = userPrompt }, submitOptions, context.CancellationToken);
-            if (!result.Success || string.IsNullOrEmpty(result.ExecutionId))
+            var result = await _runtime.DeliverAsync(new InboxMessage
+            {
+                TargetSessionId = session.Id,
+                Sender = new InboxSender { Kind = InboxSenderKind.Session, Id = context.SessionId },
+                Body = userPrompt,
+                Delivery = InboxDelivery.Wake,
+                Presentation = InboxPresentation.User,
+                AgentId = agentInfo.Name,
+                ModelId = session.SelectedModel
+            }, context.CancellationToken);
+            if (!result.Success)
                 return Failure(result.Error ?? "子任务提交执行失败");
 
-            // 父 Loop 取消时级联取消子执行
-            if (context.CancellationToken.CanBeCanceled)
-            {
-                context.CancellationToken.Register(() =>
-                {
-                    try
-                    {
-                        _ = _executionSubmitter.CancelAsync(result.ExecutionId);
-                    }
-                    catch
-                    {
-                        // ignore
-                    }
-                });
-            }
-
-            await _executionSubmitter.WaitForExecutionAsync(result.ExecutionId, context.CancellationToken);
+            await _runtime.WaitForIdleAsync(session.Id, context.CancellationToken);
 
             // 父 Loop 已取消：子任务虽完成，但终态应标记为 Cancelled，避免父已取消却收到 Completed
             if (context.CancellationToken.IsCancellationRequested)
@@ -383,17 +298,35 @@ public class TaskTool : ToolBase
         return string.IsNullOrEmpty(result) ? "子任务执行完成，无输出内容。" : result;
     }
 
-    private static Dictionary<string, string> BuildReminderMeta(
-        string childId, string state, string reminderKind) =>
-        new()
+    /// <summary>
+    /// 构建后台子任务完成上报的 <c>(Kind, Body)</c>：Body 为任务正文（system-reminder 信封由
+    /// <see cref="ISessionRuntime.DeliverAsync"/> 依 SourceTag/Kind 统一构造），Kind 为提醒种类。
+    /// </summary>
+    private async Task<(string Kind, string Body)> BuildCompletionReportAsync(
+        string parentSessionId, ExecutionStatus finalStatus, string desc, string childId, string? errorMessage)
+    {
+        switch (finalStatus)
         {
-            ["task_id"] = childId,
-            ["state"] = state,
-            [SystemReminder.MetadataKeys.Reminder] = "true",
-            [SystemReminder.MetadataKeys.Source] = SystemReminder.Sources.Task,
-            [SystemReminder.MetadataKeys.Kind] = reminderKind,
-            [SystemReminder.MetadataKeys.TaskId] = childId
-        };
+            case ExecutionStatus.Completed:
+                var outputText = ReadChildResult(childId);
+                var statusSummary = await GetSubAgentStatusSummaryAsync(parentSessionId, childId);
+
+                var completedBody = $"后台任务已完成: {desc}\ntask_id: {childId}\nstate: completed";
+                if (!string.IsNullOrEmpty(statusSummary))
+                    completedBody += statusSummary;
+                completedBody += $"\n\n<task_result>\n{outputText}\n</task_result>";
+
+                return (SystemReminder.Kinds.Completed, completedBody);
+
+            case ExecutionStatus.Cancelled:
+                return (SystemReminder.Kinds.Cancelled,
+                    $"Background task cancelled: {desc}\ntask_id: {childId}\nstate: cancelled");
+
+            default:
+                return (SystemReminder.Kinds.Failed,
+                    $"Background task failed: {desc}\ntask_id: {childId}\nstate: error\n\n<task_error>\n{errorMessage ?? "未知错误"}\n</task_error>");
+        }
+    }
 
     /// <summary>
     /// 构建 task 工具结果的权威元数据（供 ChatEventTracker 映射到 SessionToolCall.Task*）。
@@ -535,7 +468,7 @@ public class TaskTool : ToolBase
     /// </summary>
     private SessionExecutionOverview GetExecutionOverview(string sessionId)
     {
-        return _execStatusProvider.GetOverview(sessionId);
+        return _runtime.GetOverview(sessionId);
     }
 
     private static JsonElement BuildObjectSchema(

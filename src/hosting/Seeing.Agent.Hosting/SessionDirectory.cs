@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core;
 using Seeing.Agent.Llm;
@@ -21,7 +20,6 @@ public sealed class SessionDirectory : ISessionDirectory
     private readonly ISessionGroupManager _groupManager;
     private readonly AgentSelectionResolver _agentSelectionResolver;
     private readonly IModelManager _modelManager;
-    private readonly IExecutionSubmitter _executionSubmitter;
     private readonly ILogger<SessionDirectory> _logger;
     private readonly IDefaultWorkModeProvider? _defaultWorkMode;
 
@@ -30,7 +28,6 @@ public sealed class SessionDirectory : ISessionDirectory
         ISessionGroupManager groupManager,
         AgentSelectionResolver agentSelectionResolver,
         IModelManager modelManager,
-        IExecutionSubmitter executionSubmitter,
         ILogger<SessionDirectory> logger,
         IDefaultWorkModeProvider? defaultWorkMode = null)
     {
@@ -38,7 +35,6 @@ public sealed class SessionDirectory : ISessionDirectory
         _groupManager = groupManager;
         _agentSelectionResolver = agentSelectionResolver;
         _modelManager = modelManager;
-        _executionSubmitter = executionSubmitter;
         _logger = logger;
         _defaultWorkMode = defaultWorkMode;
     }
@@ -109,30 +105,7 @@ public sealed class SessionDirectory : ISessionDirectory
     /// <inheritdoc/>
     public async Task DeleteAsync(string sessionId, CancellationToken ct = default)
     {
-        // 先取消被删会话自身的在途执行，避免删除后执行仍向已移除会话写入
-        try
-        {
-            await _executionSubmitter.CancelBySessionAsync(sessionId, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "删除会话时取消自身执行失败: {SessionId}", sessionId);
-        }
-
-        // 再取消子会话在途执行，然后交给组管理器递归删除 Child 子树，避免孤儿数据与悬挂执行
-        var children = await _groupManager.ListChildrenAsync(sessionId, ct);
-        foreach (var child in children)
-        {
-            try
-            {
-                await _executionSubmitter.CancelBySessionAsync(child.Id, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "删除会话时取消子会话执行失败: {ChildSessionId}", child.Id);
-            }
-        }
-
+        // 交给组管理器递归删除 Child 子树；在途执行取消由运行时/上层 StopAsync 负责。
         await _groupManager.RemoveSessionAsync(sessionId, ct);
         _logger.LogInformation("Deleted session: {SessionId}", sessionId);
     }
