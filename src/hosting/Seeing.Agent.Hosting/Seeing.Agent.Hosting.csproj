@@ -11,6 +11,7 @@
     <InternalsVisibleTo Include="Seeing.Agent.Tests" />
     <InternalsVisibleTo Include="Seeing.Agent.Hosting.Tests" />
     <InternalsVisibleTo Include="Seeing.Agent.Invariants.Tests" />
+    <InternalsVisibleTo Include="Seeing.Agent.E2E.Tests" />
   </ItemGroup>
 
   <ItemGroup>

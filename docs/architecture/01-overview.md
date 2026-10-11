@@ -84,14 +84,14 @@ Scenario       = { Name, Modules[], DefaultAgent, Seams?, Tools.Disabled? }
 ## 4. 执行主路径
 
 ```
-用户输入 → ChatOrchestrator / ExecutionJobService
+用户输入 → ISessionRuntime.DeliverAsync（SessionRuntime + 消费循环）
         → 会话结算（两层）
              · 模块层：sessionModules = scenario.Modules ∩ bootEnabled
              · 工具层：settledToolIds = ⋃ ProvidedTools − Tools.Disabled*
-        → 唯一计算 ToolSchemas + SchemaSnapshotEvent
+        → 唯一计算 ToolSchemas + SchemaSnapshotEvent（ExecutionRunner）
         → IAgentExecutor（Router → Native | ACP）
         → 工具经权限 / Hook / 装饰器
-        → 事件 → SessionEventBus → UI
+        → 事件 → SessionEventStreamRouter → UI
 ```
 
 **硬规则：** Native executor **不得**自行 `GetToolSchemas(agent)`；只读 `AgentContext.ToolSchemas`。  
@@ -105,7 +105,7 @@ Scenario       = { Name, Modules[], DefaultAgent, Seams?, Tools.Disabled? }
 | 视图 | 真相源 | 禁止 |
 |------|--------|------|
 | 模块是否启用 | `IModuleCatalog.IsEnabled`（≡ bootEnabled） | 页面 `GetService<T>()!=null` 当开关；用默认 Scenario 名当挂载真相 |
-| LLM 可见工具 | `ExecutionJobService` → `context.ToolSchemas`（会话 settledToolIds） | executor / 别处再算一版 schema |
+| LLM 可见工具 | `ExecutionRunner` → `context.ToolSchemas`（会话 settledToolIds） | executor / 别处再算一版 schema |
 | 运行时可调用工具 | `IToolManager`（仅 Activate 注册） | `ConfigureServices` 永久挂 `ITool` |
 | 侧栏 / 路由 / 插槽 | `IUiContributionRegistry`（Activate 登记）；导航可见性 = Requires ⊆ **bootEnabled** | 按进程默认 Scenario 名硬藏已挂载模块；模块页写死 `@page` 绕过 registry |
 
@@ -160,7 +160,7 @@ InitializeSeeingAsync → Load 配置 → SettlementEngine（输入 Boot / Capab
 | `ConfigureServices` 永久 `AddSingleton<ITool>` | Activate `RegisterTool` / Deactivate `Unregister` |
 | Hosting → Skills 硬引用 | Skills 经 `ICommand` / `ISkillManager` 贡献 |
 | Hosting.Gateway → Agent.Gateway | sample 显式 `AddSeeingGatewayServer` |
-| 双算 schema | 仅 `ExecutionJobService` |
+| 双算 schema | 仅 `ExecutionRunner` |
 | `src/` 根下平铺新项目 | 放入 `primitives|abstractions|spine|hosting|capabilities|gateway` |
 | Scenario 兼启动天花板 / `Modules.Enabled` 作 boot base | `Boot` + `CapabilitySets`；Scenario = 工作模式 |
 | 扁平 `ToolsDisabled` 进模块公式 | 嵌套 `Tools.Disabled`，仅工具层 |

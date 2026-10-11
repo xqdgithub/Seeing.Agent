@@ -113,8 +113,8 @@ settledToolIds = ⋃ sessionModules.ProvidedTools
 schema         = ToolManager 注册表 ∩ settledToolIds ∩ Agent AllowedTools − DeniedTools
 ```
 
-- 切换 `session.Scenario` **只对下一次 `SubmitAsync` 生效**。  
-- schema 在 `ExecutionJobService`（`src/hosting/`）按会话结算结果计算一次。  
+- 切换 `session.Scenario` **只对下一次 `DeliverAsync` 驱动的一轮执行生效**。  
+- schema 在 `ExecutionRunner`（`src/hosting/`，由 `SessionRuntime` 消费循环驱动）按会话结算结果计算一次。  
 - 场景解析与 `IScenarioCatalog` 同源（内置 ∪ `seeing.json Scenarios`）。
 
 ## 5. 热重载时序
@@ -233,7 +233,7 @@ ReloadOrchestrator 路由变更节
 | 生命周期 | `ModuleLifecycleManager` |
 | 模块 Reload | `ModuleSettlementReloadHandler`（boot 节 vs Scenarios 分流）、`ModuleReloadOptions` |
 | 总路由 | `ReloadOrchestrator` |
-| schema 单点 | `src/hosting/.../ExecutionJobService` |
+| schema 单点 | `src/hosting/.../ExecutionRunner` |
 
 ## 11 会话持久化写回（Seeing.Session）
 

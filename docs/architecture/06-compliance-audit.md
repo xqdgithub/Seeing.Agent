@@ -1,6 +1,6 @@
 # 06 合规审查
 
-**审查日期：** 2026-09-08（残留清理后复扫）；2026-09-17（权限授权子系统复扫，见下文专节）；2026-09-18（会话工具包复扫，见下文专节）；2026-09-25（全项目架构审查复扫，见下文专节）  
+**审查日期：** 2026-09-08（残留清理后复扫）；2026-09-17（权限授权子系统复扫，见下文专节）；2026-09-18（会话工具包复扫，见下文专节）；2026-09-25（全项目架构审查复扫，见下文专节）；2026-10-11（会话入站运行时复扫，见下文专节）  
 **对照：** `docs/superpowers/specs/2026-09-08-modular-architecture-design.md` + 本目录 01–05  
 **先前签字：** `.superpowers/sdd/reviews/compliance-remediation-final-r3.md` → Ready to merge: Yes  
 **深化说明：** `docs/superpowers/specs/2026-09-08-architecture-docs-deepen-design.md`
@@ -26,7 +26,7 @@
 | Core 命名空间 `Seeing.Agent.Core.*` | ✅ | spine 内已迁 |
 | 磁盘分类目录 | ✅ | `src/` 顶层仅六类；`tests/` 含镜像 + apps/plugs |
 | 能力包互硬引用（Skills/Mcp） | ✅ | Scheduler/Acp 等无 Skills/Mcp ProjectReference |
-| schema 单点（执行路径） | ✅ | Native `AgentExecutor` 只读 `context.ToolSchemas`；计算在 `ExecutionJobService` |
+| schema 单点（执行路径） | ✅ | Native `AgentExecutor` 只读 `context.ToolSchemas`；计算在 `ExecutionRunner` |
 | 无阻塞式 GetToolSchemas 同步包装 | ✅ | 已删除 `Task.Run().GetResult()` 同步 API |
 | CapabilitySet / Boot 契约落点 | ✅（目标态） | `CapabilitySetDefinition` / `ICapabilitySetCatalog` **仅** Abstractions + Core；能力包不得自实现目录或引用 Core 结算类型；会话滤镜不外键绑 CapabilitySet |
 
@@ -77,7 +77,7 @@ src/ 顶层目录
 → primitives, abstractions, spine, hosting, capabilities, gateway
 
 GetToolSchemas 调用（执行路径）
-→ ExecutionJobService 计算；AgentExecutor 读 context.ToolSchemas
+→ ExecutionRunner 计算；AgentExecutor 读 context.ToolSchemas
 → ToolsCommands 诊断查询 ToolManager（可接受）
 ```
 
@@ -225,6 +225,35 @@ rg ": ITool\b|\[Tool\(" src/spine
 # 能力包内裸 IHostedService 注册（应为零：注册型资源随 Module Activate/Deactivate 收编）
 rg "AddHostedService<" src/capabilities -g "*.cs"
 → 无命中；AcpHookRegistrationHostedService 已退役，Hook 注册移入 AcpModule.ActivateAsync/DeactivateAsync
+```
+
+---
+
+## 会话入站运行时复扫（2026-10-11）
+
+**背景：** `feat/session-inbox-runtime` 统一三套「放消息并激活」机制为 `ISessionRuntime.DeliverAsync` + 消费循环（见 [`14 会话入站运行时 Release Notes`](14-session-inbox-runtime-release-notes.md)）。
+
+| 维度 | 状态 | 证据 |
+|------|------|------|
+| 依赖方向 | ✅ | `ISessionRuntime`/`ISessionDirectory`/`InboxMessage`/`SessionControl` 契约在 Abstractions；实现 `SessionRuntime`/`ExecutionRunner`/`SessionDirectory` 在 Hosting（依赖 `Abstractions ← Core ← Hosting`，不反向） |
+| 能力包只依赖 Abstractions | ✅ | `Seeing.Agent.Tools.Session` 新工具经 `ISessionRuntime` 驱动，无 Hosting 引用 |
+| 唯一驱动入口 | ✅ | 「往会话放消息并激活」收敛为 `DeliverAsync`；`IExecutionSubmitter`/`IChatOrchestrator` 对外移除 |
+| 旧执行栈归零 | ✅ | `ExecutionJobService`/`ChatOrchestrator`/`IChatOrchestrator`/`IExecutionSubmitter`/`IExecutionStatusProvider`/`IAgentLoopScheduler`/`ISessionEventBus` 在 `src` 无代码命中（`AgentLoopScheduler` 的 `InjectSyntheticAsync`/`TryResumeWhenIdleAsync`/`HasPendingSyntheticUserMessage` 一并移除） |
+| schema 单点 | ✅ | 计算迁至 `ExecutionRunner`；`AgentExecutor` 仍只读 `context.ToolSchemas` |
+| 单写者契约 | ✅ | 执行期 assistant/tool 消息仍由 `ChatEventTracker`（`ExecutionRunner` 内）独占；投递方仅写入站消息与 `inbox.*`/`control.*` 元数据 |
+
+> **注意**：`Seeing.Agent.Gateway.Core.SessionExecutionQueue`（Gateway `(channel,session)` 通道串行锁）为不同概念，**不属删除范围**。
+
+复扫命令：
+
+```text
+# 旧执行栈类型应无代码命中
+rg "ExecutionJobService|ChatOrchestrator|IChatOrchestrator|IExecutionSubmitter|IExecutionStatusProvider|IAgentLoopScheduler|ISessionEventBus" src
+→ 无命中（仅历史文档注释）
+
+# 契约在 Abstractions、实现在 Hosting
+rg "interface ISessionRuntime|class SessionRuntime" src
+→ abstractions/.../Runtime/ISessionRuntime.cs；hosting/.../Execution/SessionRuntime.cs
 ```
 
 ---

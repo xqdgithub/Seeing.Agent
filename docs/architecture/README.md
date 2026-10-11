@@ -2,7 +2,7 @@
 
 > **权威规格：** [模块化架构设计](../superpowers/specs/2026-09-08-modular-architecture-design.md)  
 > **本文档集：** 日常开发落地规范；与规格冲突时以规格为准，并应提 PR 同步两边。  
-> **更新日期：** 2026-09-25（全项目整改：文档漂移修复、接受残留清单、release notes）  
+> **更新日期：** 2026-10-11（会话入站运行时重构：DeliverAsync 唯一驱动 + 消费循环，见 14）  
 > **深化说明：** [architecture-docs-deepen-design](../superpowers/specs/2026-09-08-architecture-docs-deepen-design.md)
 
 ## 新人 5 分钟
@@ -30,6 +30,7 @@
 | [11 全项目整改 Release Notes](11-remediation-release-notes.md) | 2026-09-25 批次 1–7 行为变更、破坏性契约、接受残留 |
 | [12 SessionMessage 内容不可变并发契约 Release Notes](12-session-message-immutability-release-notes.md) | publish-on-write 契约、不可变集合破坏性变更、迁移对照 |
 | [13 单一权威写入者 Release Notes](13-single-writer-release-notes.md) | EventStreamHandler 去写、Task* Metadata 权威来源、边界写入上收 |
+| [14 会话入站运行时 Release Notes](14-session-inbox-runtime-release-notes.md) | DeliverAsync 唯一驱动、消费循环、Ownership 接管、中断/停止、破坏性变更 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 
@@ -38,9 +39,9 @@
 1. **编译期引用 = 进程目录（available）**；**配置启用 = enabled 子集**。目录外 id 告警忽略。  
 2. **Core 是瘦脊柱**：零工具实现、零能力包 ProjectReference、不 `AddSeeingAgent`。  
 3. **能力包只依赖 Abstractions**（+ 原语 / Tools.Support）；禁止引用 Core 具体类型。  
-4. **schema 只在 `ExecutionJobService` 算一次**；executor 读 `context.ToolSchemas`。  
+4. **schema 只在 `ExecutionRunner`（会话运行时）算一次**；executor 读 `context.ToolSchemas`。  
 5. **工具在 Activate 挂载、Deactivate 卸载**；连接与 HostedService 与模块生命周期对称。  
-6. **进程场景改导航/激活；会话场景只收窄下一次 Submit**；热重载 Deactivate 默认等在途结束。  
+6. **进程场景改导航/激活；会话场景只收窄下一次 `DeliverAsync`**；热重载 Deactivate 默认等在途结束。  
 7. **单一真相源**：enabled 模块集、ToolManager 注册表、UI 贡献、HostedService 门闩必须同源结算结果，禁止旁路第二套开关。
 
 ## 磁盘目录（程序集名不变）

@@ -11,7 +11,7 @@
 | `Seeing.Session` | `src/primitives/` | — | 会话存储；`SessionData.Scenario` |
 | `Seeing.TokenEstimation` | `src/primitives/` | — | Token 估算 |
 | `Seeing.ConfigSchema` | `src/primitives/` | — | 配置 schema 辅助 |
-| `Seeing.Agent.Hosting` | `src/hosting/` | `subagent`（Task/Todo） | 执行队列、命令注册表、Task/Todo 工具 |
+| `Seeing.Agent.Hosting` | `src/hosting/` | `subagent`（Task/Todo） | 会话运行时（`SessionRuntime`/消费循环）、命令注册表、Task/Todo 工具 |
 
 ## 2. 执行世界
 

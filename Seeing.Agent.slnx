@@ -116,5 +116,8 @@
     <Project Path="tests/plugs/Seeing.Provider.MiMo.Tests/Seeing.Provider.MiMo.Tests.csproj" />
     <Project Path="tests/plugs/Seeing.Provider.OpenCodeZen.Tests/Seeing.Provider.OpenCodeZen.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/e2e/">
+    <Project Path="tests/e2e/Seeing.Agent.E2E.Tests/Seeing.Agent.E2E.Tests.csproj" />
+  </Folder>
   <Folder Name="/解决方案项/" />
 </Solution>

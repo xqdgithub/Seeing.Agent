@@ -113,10 +113,10 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 
 **执行期 `SessionData` 消息内容只有唯一写入者 `ChatEventTracker`（Hosting）。**
 
-1. 执行路径：`ExecutionJobService` **先投影（`ChatEventTracker.ApplyEvent`）再发布事件**，宿主收到事件时会话已写好。
+1. 执行路径：`ExecutionRunner`（由 `SessionRuntime` 消费循环驱动）**先投影（`ChatEventTracker.ApplyEvent`）再发布事件**，宿主收到事件时会话已写好。
 2. 宿主（WebUI `EventStreamHandler`、TUI、Gateway）均为**只读投影**：订阅事件维护本地 UI 态、从 `SessionData` 派生视图；**禁止**直接写执行期消息内容（`SessionMessage`/`SessionToolCall` 的字段，含元素标量）。
-3. 需要「投影写入」的语义（如 task 的 `TaskId/TaskAgent/TaskDescription/TaskBackground`、取消/加载的未完成标记）由 Hosting 权威路径完成：task 字段经 `TaskTool` 结果 `Metadata`（`TaskMetadataKeys`）→ `ChatEventTracker` 映射；未完成标记经 `IncompleteToolCallMarker` / `IChatOrchestrator.ReconcileIncompleteTasksAsync`。
-4. 宿主需写执行期消息内容时，一律上提为 `IChatOrchestrator` 服务端方法。
+3. 需要「投影写入」的语义（如 task 的 `TaskId/TaskAgent/TaskDescription/TaskBackground`、取消/加载的未完成标记）由 Hosting 权威路径完成：task 字段经 `TaskTool` 结果 `Metadata`（`TaskMetadataKeys`）→ `ChatEventTracker` 映射；未完成标记经 `IncompleteToolCallMarker` / `ISessionRuntime.ReconcileIncompleteTasksAsync`。
+4. 宿主需写执行期消息内容时，一律上提为 `ISessionRuntime` 服务端方法。
 5. **例外**：宿主在**非执行期**注入的会话级系统消息（如 Gateway 取消/错误横幅 `AddMessage`、会话重置）与 `SelectedModel/SelectedAcpMode` 用户显式选择不属执行期投影，仍由宿主负责。
 
 详见 [`2026-10-09-single-writer-eventstream-design.md`](../superpowers/specs/2026-10-09-single-writer-eventstream-design.md)。
