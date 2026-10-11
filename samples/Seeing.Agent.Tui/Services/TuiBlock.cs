@@ -24,6 +24,13 @@ public sealed record TuiTaskStep(string ToolName, string Summary, TuiToolStatus 
 
 public sealed record TuiTodo(string Content, string Status, string? ActiveForm);
 
+/// <summary>排队中的入站 user 消息（已入站、尚未被消费循环消费）：输入区上方独立展示，消费后提升为正式 User 块。</summary>
+public sealed record TuiPendingMessage
+{
+    public required string Id { get; init; }
+    public required string Text { get; init; }
+}
+
 /// <summary>上下文用量（当前占用 / 上限）。上限未知（0 或未配置）时为 null，状态栏只显示已用量。</summary>
 public sealed record TuiBudget(long CurrentTokens, long? MaxTokens);
 

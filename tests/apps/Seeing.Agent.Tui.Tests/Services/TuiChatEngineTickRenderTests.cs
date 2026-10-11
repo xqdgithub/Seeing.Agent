@@ -20,8 +20,9 @@ public sealed class TuiChatEngineTickRenderTests
         StatusSignature? status = null,
         int width = 120,
         int height = 40,
-        int terminalCommits = 0)
-        => new(chars, executing, background, pending, status ?? DefaultStatus, width, height, terminalCommits);
+        int terminalCommits = 0,
+        int pendingInbox = 0)
+        => new(chars, executing, background, pending, status ?? DefaultStatus, width, height, terminalCommits, pendingInbox);
 
     private static readonly StatusSignature DefaultStatus = new(new TuiBudget(1200, 200000), false, @"D:\work");
 
@@ -46,6 +47,10 @@ public sealed class TuiChatEngineTickRenderTests
     [Fact]
     public void ShouldRenderOnTick_WhenPendingApprovalsChanged_ShouldRender()
         => TuiChatEngine.ShouldRenderOnTick(Snapshot(), Snapshot(pending: 1)).Should().BeTrue();
+
+    [Fact]
+    public void ShouldRenderOnTick_WhenPendingInboxChanged_ShouldRender()
+        => TuiChatEngine.ShouldRenderOnTick(Snapshot(), Snapshot(pendingInbox: 1)).Should().BeTrue();
 
     [Fact]
     public void ShouldRenderOnTick_WhenBudgetChanged_ShouldRender()

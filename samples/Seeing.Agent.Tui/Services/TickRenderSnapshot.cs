@@ -32,5 +32,7 @@ internal readonly record struct TickRenderSnapshot(
     int Width,
     int Height,
     int TerminalCommits,
+    // 排队中入站 user 消息数：新增/消费后须重绘（输入区上方排队区）。
+    int PendingInbox = 0,
     // 选择态脏检查签名（候选拼接 hash + SelectedIndex + 可见）；默认 null 兼容无下拉历史帧与既有测试的位置构造。
     string? CompletionSignature = null);

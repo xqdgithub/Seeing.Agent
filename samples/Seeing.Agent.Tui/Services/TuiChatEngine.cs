@@ -568,11 +568,25 @@ public sealed class TuiChatEngine
         if (string.IsNullOrWhiteSpace(remaining) && _pendingAttachments.Count == 0)
             return false;
 
-        // 本地立即回显用户消息：服务端历史只在会话激活时加载，实时回合不会渲染用户侧。
-        await CommitUserMessageAsync(remaining, ct).ConfigureAwait(false);
+        // 执行中提交 = 排队：本地不立即回显到主时间线，改入排队区（消费循环取走后由
+        // ExecutionStarted 事件提升为正式 User 块）。空闲提交维持「本地立即回显」的既有低延迟行为。
+        var wasBusy = _context?.State.IsExecuting == true;
+        if (!wasBusy)
+            await CommitUserMessageAsync(remaining, ct).ConfigureAwait(false);
 
-        if (!await SubmitToServerAsync(BuildChatInput(remaining), ct).ConfigureAwait(false))
+        var inboxResult = await SubmitToServerAsync(BuildChatInput(remaining), ct).ConfigureAwait(false);
+        if (inboxResult is null)
             return false;
+
+        if (wasBusy && _context is not null)
+        {
+            _context.State.AddPending(new TuiPendingMessage
+            {
+                Id = inboxResult.MessageId ?? Guid.NewGuid().ToString("N"),
+                Text = remaining,
+            });
+            ForceRender();
+        }
 
         _pendingAttachments.Clear();
         _editor.ClearAttachments();
@@ -648,14 +662,14 @@ public sealed class TuiChatEngine
             })
             .ToList();
 
-    private async Task<bool> SubmitToServerAsync(ChatInput input, CancellationToken ct)
+    private async Task<InboxResult?> SubmitToServerAsync(ChatInput input, CancellationToken ct)
     {
         // 提交前按需重建已完成的事件泵：否则同会话再次执行的事件无订阅者、永不渲染。
         await EnsureEventSourceRebuiltAsync(ct).ConfigureAwait(false);
 
         var result = await _sessions.SubmitAsync(input, ct).ConfigureAwait(false);
         if (result.Success)
-            return true;
+            return result;
 
         _logger?.LogWarning("提交执行失败: {Error}", result.Error);
         if (_context is not null)
@@ -663,7 +677,7 @@ public sealed class TuiChatEngine
 
         // 用户消息已回显，若不在滚动历史明确告知失败，用户会误以为已发送。
         await CommitNoticeAsync($"提交失败：{result.Error ?? "未知错误"}", ct).ConfigureAwait(false);
-        return false;
+        return null;
     }
 
     /// <summary>
@@ -1011,6 +1025,10 @@ public sealed class TuiChatEngine
             _ledger.Reset(StreamStartKey(streamStart));
 
         context.Interpreter.Apply(evt);
+
+        // 本轮开始执行 = 消费循环已取走整批未读：排队区提升为正式 User 块（空闲首发无排队，no-op）。
+        if (evt is ExecutionStartedEvent && context.State.PromoteAllPending())
+            _lastRenderAt = DateTime.MinValue;
 
         if (evt is ToolCallEvent toolCall)
         {
@@ -1542,6 +1560,7 @@ public sealed class TuiChatEngine
             GetWidth(),
             GetRenderHeight(),
             _terminalCommits,
+            context.State.PendingInputCount,
             CompletionSignatureOf(
                 GetCompletionCandidates(),
                 _completionSelector?.SelectedIndex ?? -1,
@@ -1616,6 +1635,7 @@ public sealed class TuiChatEngine
             width,
             height,
             _terminalCommits,
+            context.State.PendingInputCount,
             CompletionSignatureOf(candidates, selectedIndex, _completionSelector is { Count: > 0 }));
         _lastRenderAt = DateTime.UtcNow;
     }

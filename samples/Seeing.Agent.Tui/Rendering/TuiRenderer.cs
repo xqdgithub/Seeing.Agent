@@ -96,6 +96,11 @@ public sealed class TuiRenderer
             if (completions is { Count: > 0 })
                 items.Add(BuildCompletions(completions, width, completionSelectedIndex));
 
+            // 排队中（未消费）的入站 user 消息：紧贴输入区上边界，消费后移入上方消息区。
+            var pendingBarRows = state.PendingMessages.Count > 0 ? state.PendingMessages.Count + 1 : 0;
+            if (pendingBarRows > 0)
+                items.Add(BuildPendingBar(state.PendingMessages, width));
+
             // 不再插入「运行中」占位行：执行态已由状态栏呈现，重复会出现两个运行中指示。
 
             // 输入区上边界：分隔「滚动历史/消息」与「输入区（候选 + 输入行 + 状态栏）」。
@@ -109,7 +114,7 @@ public sealed class TuiRenderer
                 items.Add(row);
 
             caret = ResolveCaret(inputBlock, statusRows.Count, maxLines);
-            hits = BuildCompletionHits(completions, inputBlock, statusRows.Count, maxLines, frameGen);
+            hits = BuildCompletionHits(completions, inputBlock, statusRows.Count, maxLines, frameGen, pendingBarRows);
         }
         catch
         {
@@ -230,12 +235,13 @@ public sealed class TuiRenderer
         InputLineBlock inputBlock,
         int statusRows,
         int maxLines,
-        long frameGen)
+        long frameGen,
+        int pendingBarRows = 0)
     {
         if (completions is not { Count: > 0 })
             return null;
 
-        var rowsBelowBlock = 1 + inputBlock.TotalRows + statusRows;
+        var rowsBelowBlock = 1 + pendingBarRows + inputBlock.TotalRows + statusRows;
         var hits = new List<TuiHitRegion>(completions.Count);
         for (var i = 0; i < completions.Count; i++)
         {
@@ -314,6 +320,36 @@ public sealed class TuiRenderer
             return new Text(string.Empty);
         }
     }
+
+    /// <summary>
+    /// 排队中消息区：每条一行 <c>[n] 内容</c>（序号 + 截断内容），置灰以示「待处理」。
+    /// 位于输入区上边界（分隔线）之上、命令候选之下；消费后这些消息移入上方消息区。
+    /// </summary>
+    private static IRenderable BuildPendingBar(IReadOnlyList<TuiPendingMessage> pending, int width)
+    {
+        var rows = new List<IRenderable>(pending.Count + 1)
+        {
+            new Markup($"[grey]· 排队中（{pending.Count}）[/]"),
+        };
+
+        for (var i = 0; i < pending.Count; i++)
+        {
+            var index = i + 1;
+            // 序号 + 分隔空格占位（序号用 ASCII，宽度按字符串长度计）
+            var prefix = $"[{index}] ";
+            var budget = Math.Max(0, width - 1 - prefix.Length - 2);
+            var text = FitToWidth(Flatten(pending[i].Text), budget);
+            rows.Add(new Markup($"[dim]{Markup.Escape(prefix + text)}[/]"));
+        }
+
+        return new Rows(rows);
+    }
+
+    /// <summary>把内容中的换行压平为空格（排队区每条单行，避免折行破坏输入区几何）。</summary>
+    private static string Flatten(string? text)
+        => string.IsNullOrEmpty(text)
+            ? string.Empty
+            : text.Replace('\r', ' ').Replace('\n', ' ');
 
     private IRenderable BuildAssistant(TuiBlock block, int width, IReadOnlyDictionary<string, int>? committedOffsets)
     {

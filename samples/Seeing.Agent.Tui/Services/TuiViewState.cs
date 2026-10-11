@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Tui.Services;
@@ -30,8 +32,14 @@ public sealed class TuiViewState
     private readonly List<TuiBlock> _blocks = [];
     private readonly Dictionary<string, int> _index = new(StringComparer.Ordinal);
 
+    // 排队中的入站 user 消息（已入站、尚未被消费循环消费）；不进 Blocks，输入区上方独立展示。
+    private readonly List<TuiPendingMessage> _pending = [];
+
     // 不可变快照：元素与 _blocks 为同一引用；只需原子替换，读取方无需加锁。
     private volatile TuiBlock[] _snapshot = [];
+
+    // 排队消息快照（与 _pending 为同一引用集合，原子替换）。
+    private volatile TuiPendingMessage[] _pendingSnapshot = [];
 
     public required string SessionId { get; init; }
     public string? Title { get; set; }
@@ -52,13 +60,18 @@ public sealed class TuiViewState
     public string? AcpMode { get; set; }
     public string? ActiveExecutionId { get; set; }
     public bool IsExecuting { get; set; }
-    public int PendingInputCount { get; set; }
+
+    /// <summary>排队中（未消费）的入站 user 消息数；状态栏「队列 N」以此为准。</summary>
+    public int PendingInputCount => _pendingSnapshot.Length;
     public string? LastError { get; set; }
     public IReadOnlyList<TuiTodo> Todos { get; set; } = [];
     public TuiBudget? Budget { get; set; }
     public long Revision { get; private set; }
 
     public IReadOnlyList<TuiBlock> Blocks => _snapshot;
+
+    /// <summary>排队中的入站 user 消息（按入站顺序）；被消费后移入 <see cref="Blocks"/>。</summary>
+    public IReadOnlyList<TuiPendingMessage> PendingMessages => _pendingSnapshot;
 
     public IEnumerable<TuiBlock> Tools => _snapshot.Where(b => b.Kind == TuiBlockKind.Tool);
 
@@ -68,6 +81,7 @@ public sealed class TuiViewState
         {
             Revision++;
             _snapshot = _blocks.ToArray();
+            _pendingSnapshot = _pending.ToArray();
         }
     }
 
@@ -144,6 +158,7 @@ public sealed class TuiViewState
         {
             _blocks.Clear();
             _index.Clear();
+            _pending.Clear();
 
             Title = session.Title;
             AgentId = session.SelectedAgent;
@@ -172,6 +187,17 @@ public sealed class TuiViewState
 
                 if (string.Equals(msg.Role, MessageRole.User, StringComparison.Ordinal))
                 {
+                    // 排队中（未消费）的入站 user 消息不进主块列表，改投影到排队区。
+                    if (IsPendingInbox(msg))
+                    {
+                        _pending.Add(new TuiPendingMessage
+                        {
+                            Id = msg.Id ?? Guid.NewGuid().ToString("N"),
+                            Text = msg.Content,
+                        });
+                        continue;
+                    }
+
                     Add(new TuiBlock
                     {
                         Key = $"user:{msg.Id ?? Guid.NewGuid().ToString("N")}",
@@ -223,6 +249,110 @@ public sealed class TuiViewState
 
             Revision++;
             _snapshot = _blocks.ToArray();
+            _pendingSnapshot = _pending.ToArray();
+        }
+    }
+
+    /// <summary>追加一条排队中的入站 user 消息（引擎在忙碌提交时调用）；返回是否实际追加（按 Id 去重）。</summary>
+    public bool AddPending(TuiPendingMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        lock (_gate)
+        {
+            if (_pending.Any(p => string.Equals(p.Id, message.Id, StringComparison.Ordinal)))
+                return false;
+
+            _pending.Add(message);
+            Revision++;
+            _pendingSnapshot = _pending.ToArray();
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 把所有排队消息提升为正式 User 块（执行开始=消费循环已取走整批时调用），清空排队区。
+    /// 返回是否有变化（供调用方决定是否重绘）。
+    /// </summary>
+    public bool PromoteAllPending()
+    {
+        lock (_gate)
+        {
+            if (_pending.Count == 0)
+                return false;
+
+            foreach (var pending in _pending)
+            {
+                Add(new TuiBlock
+                {
+                    Key = $"user:{pending.Id}",
+                    Kind = TuiBlockKind.User,
+                    Text = pending.Text,
+                    IsTerminal = true,
+                });
+            }
+
+            _pending.Clear();
+            Revision++;
+            _snapshot = _blocks.ToArray();
+            _pendingSnapshot = _pending.ToArray();
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 是否为排队中的入站 user 消息：<c>Role==user</c> 且 <c>inbox.presentation==user</c>
+    /// 且 <c>inbox.consumed != true</c>。系统 / 子会话 / assistant 呈现不计入。
+    /// </summary>
+    private static bool IsPendingInbox(SessionMessage msg)
+    {
+        if (!string.Equals(msg.Role, MessageRole.User, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var metadata = msg.Metadata;
+        if (metadata is null)
+            return false;
+
+        if (!string.Equals(GetMetaString(metadata, InboxMetadataKeys.Presentation), "user", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return !(TryGetMetaBool(metadata, InboxMetadataKeys.Consumed, out var consumed) && consumed);
+    }
+
+    private static string? GetMetaString(IReadOnlyDictionary<string, object>? metadata, string key)
+    {
+        if (metadata is null || !metadata.TryGetValue(key, out var raw) || raw is null)
+            return null;
+
+        return raw switch
+        {
+            string s => s,
+            JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+            _ => raw.ToString()
+        };
+    }
+
+    private static bool TryGetMetaBool(IReadOnlyDictionary<string, object>? metadata, string key, out bool value)
+    {
+        value = false;
+        if (metadata is null || !metadata.TryGetValue(key, out var raw) || raw is null)
+            return false;
+
+        switch (raw)
+        {
+            case bool b:
+                value = b;
+                return true;
+            case string s:
+                return bool.TryParse(s, out value);
+            case JsonElement je when je.ValueKind == JsonValueKind.True:
+                value = true;
+                return true;
+            case JsonElement je when je.ValueKind == JsonValueKind.False:
+                value = false;
+                return true;
+            default:
+                return false;
         }
     }
 

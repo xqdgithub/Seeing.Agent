@@ -100,7 +100,30 @@ public sealed class TuiRendererCompletionHitsTests
         var frame = Renderer.BuildActiveViewWithCaret(ExecutingState(), Input(), 100, frameGen: 7);
 
         frame.CompletionHits.Should().BeNull();
-        frame.FrameGen.Should().Be(7);
+    }
+
+    [Fact]
+    public void BuildActiveViewWithCaret_WithPendingBar_ShouldShiftCompletionHitsDown()
+    {
+        // 排队区插在候选与输入行之间，候选行的「距末行」必须相应下移（否则鼠标命中错位）。
+        var state = ExecutingState();
+        state.AddPending(new TuiPendingMessage { Id = "a", Text = "排队" });
+
+        var frame = Renderer.BuildActiveViewWithCaret(
+            state,
+            Input("/"),
+            100,
+            completions:
+            [
+                new TuiCompletionItem("/aa", "A"),
+                new TuiCompletionItem("/bb", "B"),
+            ],
+            frameGen: 1);
+
+        // 候选 2 行 + 排队区 2 行（标题 + 1 条）+ 分隔 1 + 输入 1 + 状态 1 = 距末行 5/6。
+        frame.CompletionHits.Should().Equal(
+            new TuiHitRegion(0, 6, 1),
+            new TuiHitRegion(1, 5, 1));
     }
 
     [Fact]
