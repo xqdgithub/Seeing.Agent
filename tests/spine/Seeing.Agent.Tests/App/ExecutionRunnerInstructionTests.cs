@@ -90,6 +90,30 @@ public class ExecutionRunnerInstructionTests
         record.Status.Should().NotBe(ExecutionStatus.Pending);
     }
 
+    [Fact]
+    public async Task RunOnce_ShouldPublish_ExecutionCompleteEvent()
+    {
+        var session = SessionData.Create();
+        var instructionManager = CreateInstructionManager(session);
+        var published = new List<IMessageEvent>();
+        var publisher = new Mock<IExecutionEventPublisher>();
+        publisher
+            .Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()))
+            .Callback<string, IMessageEvent>((_, evt) => published.Add(evt));
+
+        var runner = CreateRunner(session, instructionManager.Object, "workspace-root", publisher.Object);
+
+        await runner.RunOnceAsync(
+            NewRecord(session.Id),
+            NewBatch(),
+            TestContext.Current.CancellationToken);
+
+        // 每轮执行恰发布一次 ExecutionCompleteEvent（UI/TUI 据此结束「执行中」态）
+        var complete = published.OfType<ExecutionCompleteEvent>().ToList();
+        complete.Should().ContainSingle();
+        complete[0].ExecutionId.Should().Be("exec-1");
+    }
+
     private static ExecutionRecord NewRecord(
         string sessionId,
         string? workingDirectory = null,
@@ -125,7 +149,8 @@ public class ExecutionRunnerInstructionTests
     private static ExecutionRunner CreateRunner(
         SessionData session,
         IInstructionManager instructionManager,
-        string workspaceRoot)
+        string workspaceRoot,
+        IExecutionEventPublisher? publisher = null)
     {
         var sessionManager = new Mock<ISessionManager>();
         sessionManager
@@ -166,7 +191,7 @@ public class ExecutionRunnerInstructionTests
 
         return new ExecutionRunner(
             provider,
-            Mock.Of<IExecutionEventPublisher>(),
+            publisher ?? Mock.Of<IExecutionEventPublisher>(),
             new ExecutionOptions(),
             Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(
                 monitor => monitor.CurrentValue == new SeeingAgentOptions()),

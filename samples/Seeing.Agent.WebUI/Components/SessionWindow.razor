@@ -1010,6 +1010,8 @@
                 SessionState.CurrentExecutionId = null;
                 SessionState.CompleteExecution();
                 _executionStartedAtUtc = null;
+                // 本轮结束：刷新排队数（消费循环可能已消费剩余未读，或仍有下一轮排队）
+                SessionState.PendingInputCount = SessionRuntime.GetOverview(SessionState.SessionId).PendingInputCount;
                 SyncContextState();
             }
 

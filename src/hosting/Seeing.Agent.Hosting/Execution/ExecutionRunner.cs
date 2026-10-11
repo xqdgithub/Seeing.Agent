@@ -381,6 +381,15 @@ internal sealed class ExecutionRunner : IExecutionRunner
             {
                 _logger.LogError(ex, "Failed to save final state for execution {ExecutionId}", record.ExecutionId);
             }
+
+            // 发布执行终态事件：UI/TUI 据此结束「执行中」态并刷新。
+            // 每轮执行（含消费循环的每一轮）恰发布一次。
+            _eventPublisher.Publish(record.SessionId, new ExecutionCompleteEvent
+            {
+                SessionId = record.SessionId,
+                ExecutionId = record.ExecutionId,
+                Status = record.Status
+            });
         }
 
         return record;

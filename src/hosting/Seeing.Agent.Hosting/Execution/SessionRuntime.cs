@@ -157,7 +157,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     if (!_activeLoops.ContainsKey(sessionId))
                     {
                         // 先注册后运行（Ready 门控），避免循环体在 `_activeLoops` 登记前就结束造成条目泄漏；
-                        // 句柄持有自身 Task 引用，退出时按值匹配移除，避免误删「新循环」条目。
+                        // 句柄持有自身 Task 引用，退出时按值移除，避免误删「新循环」条目。
                         var handle = new LoopHandle();
                         var loop = Task.Run(async () =>
                         {
@@ -174,6 +174,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     gate.Release();
                 }
 
+                // 未读输入数（spec：会话当前未消费输入数）；UI 执行中经 GetOverview 实时刷新
                 var pendingCount = CountUnread(session);
                 _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).PendingInputCount = pendingCount;
                 return InboxResult.Ok(messageId: persistedMessageId, pendingInputCount: pendingCount);
@@ -778,9 +779,9 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         if (string.IsNullOrEmpty(sessionId) || !_states.TryGetValue(sessionId, out var state))
             return new SessionExecutionOverview();
 
-        var pending = state.PendingInputCount;
-        if (state.CurrentExecution is null)
-            pending = CountUnreadForSession(sessionId);
+        // 未读数始终实时计算（不依赖 Deliver 时写入的缓存值）：
+        // 消费循环标记 consumed 后未读数即下降，避免 UI 显示过期计数。
+        var pending = CountUnreadForSession(sessionId);
 
         return new SessionExecutionOverview
         {
