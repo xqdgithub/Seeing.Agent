@@ -83,6 +83,9 @@ public static class MessageEventType
 
     /// <summary>应用层轮次重试已排期（UI 展示“X 秒后重试”）</summary>
     public const string LlmRetry = "llm.retry";
+
+    /// <summary>收件箱通知（跨会话消息投递）</summary>
+    public const string InboxNotice = "inbox.notice";
 }
 
 /// <summary>
