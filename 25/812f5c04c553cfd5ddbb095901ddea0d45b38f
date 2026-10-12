@@ -1,0 +1,25 @@
+samples/Seeing.Agent.Cli/Services/OneShotOutput.cs
+  s_924bc1799dbdc5::t_8b8687b5bfea18 10
+  s_924bc1799dbdc5::t_2498ffd866276b 38-53
+samples/Seeing.Agent.Cli/Infrastructure/CliServiceBootstrap.cs
+  s_924bc1799dbdc5::t_2299fdfdeea6ff 42-45,49,54
+  s_924bc1799dbdc5::t_fcb1934ac880bd 50-51,55-61
+tests/apps/Seeing.Agent.Cli.Tests/OneShotOutputTests.cs
+  s_924bc1799dbdc5::t_a1492f4c898825 120-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "25812f5c04c553cfd5ddbb095901ddea0d45b38f",
+  "prompts": {},
+  "sessions": {
+    "s_924bc1799dbdc5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ed0cc6e0bffeU8qFvCcputZYVp",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
