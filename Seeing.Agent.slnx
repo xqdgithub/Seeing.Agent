@@ -14,6 +14,7 @@
     <Project Path="plugs/providers/Seeing.Provider.DeepSeek/Seeing.Provider.DeepSeek.csproj" />
     <Project Path="plugs/providers/Seeing.Provider.MiMo/Seeing.Provider.MiMo.csproj" />
     <Project Path="plugs/providers/Seeing.Provider.OpenCodeZen/Seeing.Provider.OpenCodeZen.csproj" />
+    <Project Path="plugs/providers/Seeing.Provider.SiliconFlow/Seeing.Provider.SiliconFlow.csproj" />
   </Folder>
   <Folder Name="/src/primitives/">
     <Project Path="src/primitives/Seeing.ConfigSchema/Seeing.ConfigSchema.csproj" />

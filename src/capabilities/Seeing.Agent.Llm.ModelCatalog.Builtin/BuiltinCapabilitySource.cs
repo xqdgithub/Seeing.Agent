@@ -107,11 +107,26 @@ public sealed class BuiltinCapabilitySource : IBatchEditableModelCapabilitySourc
             if (exact is not null)
                 return ValueTask.FromResult<ModelCapabilityEntry?>(exact);
 
+            // org/model（SiliconFlow 等）→ 用最后一段再查；大小写不敏感可命中 deepseek-v4-flash
+            if (ModelCapabilityModelIds.TryGetLeafModelId(resolved, out var leaf))
+            {
+                var byLeaf = FindEntry(providerId, leaf) ?? FindEntry(null, leaf);
+                if (byLeaf is not null)
+                    return ValueTask.FromResult<ModelCapabilityEntry?>(byLeaf);
+
+                if (ModelCapabilityModelIds.TryGetNonFreeFallbackId(leaf, out var leafBase))
+                {
+                    var leafFree = FindEntry(providerId, leafBase) ?? FindEntry(null, leafBase);
+                    if (leafFree is not null)
+                        return ValueTask.FromResult<ModelCapabilityEntry?>(leafFree);
+                }
+            }
+
             if (ModelCapabilityModelIds.TryGetNonFreeFallbackId(resolved, out var baseId))
             {
                 var fallback = FindEntry(providerId, baseId)
                                ?? FindEntry(null, baseId);
-                return ValueTask.FromResult(fallback);
+                return ValueTask.FromResult<ModelCapabilityEntry?>(fallback);
             }
 
             return ValueTask.FromResult<ModelCapabilityEntry?>(null);

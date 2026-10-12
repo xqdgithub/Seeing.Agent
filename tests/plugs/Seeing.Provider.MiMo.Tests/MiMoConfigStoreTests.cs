@@ -16,7 +16,7 @@ public class MiMoConfigStoreTests
             var store = new MiMoConfigStore(dir, NullLogger<MiMoConfigStore>.Instance);
             var options = await store.LoadAsync(TestContext.Current.CancellationToken);
             options.ApiKey.Should().BeNullOrEmpty();
-            store.ConfigFilePath.Should().Be(Path.Combine(dir, "mimo.json"));
+            store.ConfigFilePath.Should().Be(Path.Combine(dir, "providers", "mimo.json"));
         }
         finally
         {
@@ -35,7 +35,7 @@ public class MiMoConfigStoreTests
             File.Exists(store.ConfigFilePath).Should().BeTrue();
             var loaded = await store.LoadAsync(TestContext.Current.CancellationToken);
             loaded.ApiKey.Should().Be("sk-test");
-            Directory.GetFiles(dir).Should().ContainSingle(f =>
+            Directory.GetFiles(Path.Combine(dir, "providers")).Should().ContainSingle(f =>
                 f.EndsWith("mimo.json", StringComparison.OrdinalIgnoreCase));
         }
         finally
@@ -50,7 +50,8 @@ public class MiMoConfigStoreTests
         var dir = CreateTempDirectory();
         try
         {
-            var path = Path.Combine(dir, "mimo.json");
+            var path = Path.Combine(dir, "providers", "mimo.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             await File.WriteAllTextAsync(path, "{ not-json", TestContext.Current.CancellationToken);
             var store = new MiMoConfigStore(dir, NullLogger<MiMoConfigStore>.Instance);
             var options = await store.LoadAsync(TestContext.Current.CancellationToken);

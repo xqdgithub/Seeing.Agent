@@ -37,6 +37,7 @@ public static class WebHostShape
         "provider.deepseek",
         "provider.mimo",
         "provider.opencodezen",
+        "provider.siliconflow",
         "skills",
         "mcp",
         "memory",

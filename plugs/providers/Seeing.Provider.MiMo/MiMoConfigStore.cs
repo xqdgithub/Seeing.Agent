@@ -30,7 +30,7 @@ public sealed class MiMoConfigStore
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public string ConfigFilePath => Path.Combine(_directory, "mimo.json");
+    public string ConfigFilePath => Path.Combine(_directory, "providers", "mimo.json");
 
     public async Task<MiMoOptions> LoadAsync(CancellationToken ct = default)
     {
@@ -55,8 +55,8 @@ public sealed class MiMoConfigStore
     public async Task SaveAsync(MiMoOptions options, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        Directory.CreateDirectory(_directory);
         var path = ConfigFilePath;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
         var json = JsonSerializer.Serialize(options, JsonOptions);
         await File.WriteAllTextAsync(temp, json, Encoding.UTF8, ct).ConfigureAwait(false);

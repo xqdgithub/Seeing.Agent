@@ -17,7 +17,7 @@ public class OpenCodeZenConfigStoreTests
             var options = await store.LoadAsync(TestContext.Current.CancellationToken);
             options.ApiKey.Should().BeNullOrEmpty();
             options.ModelCapabilities.Should().BeNull();
-            store.ConfigFilePath.Should().Be(Path.Combine(dir, "opencode-zen.json"));
+            store.ConfigFilePath.Should().Be(Path.Combine(dir, "providers", "opencode-zen.json"));
         }
         finally
         {
@@ -62,7 +62,8 @@ public class OpenCodeZenConfigStoreTests
         var dir = CreateTempDirectory();
         try
         {
-            var path = Path.Combine(dir, "opencode-zen.json");
+            var path = Path.Combine(dir, "providers", "opencode-zen.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             await File.WriteAllTextAsync(path, "{ not-json", TestContext.Current.CancellationToken);
             var store = new OpenCodeZenConfigStore(dir, NullLogger<OpenCodeZenConfigStore>.Instance);
             var options = await store.LoadAsync(TestContext.Current.CancellationToken);

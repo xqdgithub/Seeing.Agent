@@ -49,6 +49,7 @@
 | `Seeing.Provider.DeepSeek`（`plugs/providers/`） | `provider.deepseek` | DeepSeek 网关 Provider；`DependsOn: llm.openai` |
 | `Seeing.Provider.MiMo`（`plugs/providers/`） | `provider.mimo` | 小米 MiMo 网关 Provider；`DependsOn: llm.openai` |
 | `Seeing.Provider.OpenCodeZen`（`plugs/providers/`） | `provider.opencodezen` | OpenCode Zen 网关 Provider；`DependsOn: llm.openai` |
+| `Seeing.Provider.SiliconFlow`（`plugs/providers/`） | `provider.siliconflow` | SiliconFlow 网关 Provider；`DependsOn: llm.openai` |
 
 `subagent` 为 Hosting 级能力（Task 工具）；内置场景字符串里可出现该 id。
 
@@ -98,7 +99,7 @@
 | `samples/Seeing.Agent.Embed.Demo` | Embed Shape 演示 |
 | `samples/Seeing.Gateway.ChannelHost` | 通道外进程宿主 |
 | `samples/Seeing.Gateway.*.Demo` | 通道演示 |
-| `plugs/providers/Seeing.Provider.*` | 可选 LLM Provider 插件（DeepSeek、MiMo、OpenCodeZen） |
+| `plugs/providers/Seeing.Provider.*` | 可选 LLM Provider 插件（DeepSeek、MiMo、OpenCodeZen、SiliconFlow） |
 
 Sample **自己** `ProjectReference` 能力包；Shape 包不代引用。
 

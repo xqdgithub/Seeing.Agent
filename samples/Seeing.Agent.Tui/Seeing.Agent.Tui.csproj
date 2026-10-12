@@ -51,6 +51,7 @@
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.DeepSeek\Seeing.Provider.DeepSeek.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.MiMo\Seeing.Provider.MiMo.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.OpenCodeZen\Seeing.Provider.OpenCodeZen.csproj" />
+    <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.SiliconFlow\Seeing.Provider.SiliconFlow.csproj" />
   </ItemGroup>
 
 </Project>

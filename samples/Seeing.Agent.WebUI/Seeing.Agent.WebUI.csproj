@@ -35,6 +35,7 @@
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.DeepSeek\Seeing.Provider.DeepSeek.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.MiMo\Seeing.Provider.MiMo.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.OpenCodeZen\Seeing.Provider.OpenCodeZen.csproj" />
+    <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.SiliconFlow\Seeing.Provider.SiliconFlow.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.TokenBudget\Seeing.Agent.TokenBudget.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Question\Seeing.Agent.Tools.Question.csproj" />

@@ -35,6 +35,7 @@ public static class TuiHostShape
         "provider.deepseek",
         "provider.mimo",
         "provider.opencodezen",
+        "provider.siliconflow",
         "skills",
         "mcp",
         "memory",

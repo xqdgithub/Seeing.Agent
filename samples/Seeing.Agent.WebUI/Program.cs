@@ -39,6 +39,7 @@ using Seeing.Agent.Tools.SystemOne.Extensions;
 using Seeing.Provider.DeepSeek;
 using Seeing.Provider.MiMo;
 using Seeing.Provider.OpenCodeZen;
+using Seeing.Provider.SiliconFlow;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,6 +74,7 @@ builder.Services.AddSeeingModule<BuiltinCatalogModule>(registry);
 builder.Services.AddSeeingModule<DeepSeekLlmModule>(registry);
 builder.Services.AddSeeingModule<MiMoLlmModule>(registry);
 builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
+builder.Services.AddSeeingModule<SiliconFlowLlmModule>(registry);
 builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
 builder.Services.AddSeeingAcp(registry);
 builder.Services.AddSeeingScheduler(registry);

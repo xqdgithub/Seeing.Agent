@@ -174,6 +174,30 @@ public class BuiltinCapabilitySourceTests
         }
     }
 
+    [Fact]
+    public async Task TryGet_OrgPrefixedId_FallsBackToLeafModelId()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var source = new BuiltinCapabilitySource(dir);
+            await source.LoadAsync(TestContext.Current.CancellationToken);
+
+            var entry = await source.TryGetAsync(
+                "siliconflow",
+                "deepseek-ai/DeepSeek-V4-Flash",
+                TestContext.Current.CancellationToken);
+
+            entry.Should().NotBeNull();
+            entry!.ModelId.Should().Be("deepseek-v4-flash");
+            entry.Limit!.Context.Should().Be(1_000_000);
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
     private static string CreateTempDir()
     {
         var dir = Path.Combine(Path.GetTempPath(), "builtin-cap-" + Guid.NewGuid().ToString("N"));

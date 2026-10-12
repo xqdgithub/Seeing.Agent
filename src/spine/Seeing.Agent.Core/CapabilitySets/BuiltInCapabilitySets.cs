@@ -12,6 +12,7 @@ public static class BuiltInCapabilitySets
         "provider.deepseek",
         "provider.mimo",
         "provider.opencodezen",
+        "provider.siliconflow",
     ];
 
     /// <summary>最小启动能力集模块列表。</summary>

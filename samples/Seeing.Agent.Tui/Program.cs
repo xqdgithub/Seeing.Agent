@@ -37,6 +37,7 @@ using Seeing.IO.Local;
 using Seeing.Provider.DeepSeek;
 using Seeing.Provider.MiMo;
 using Seeing.Provider.OpenCodeZen;
+using Seeing.Provider.SiliconFlow;
 
 // 任何 Console/AnsiConsole 访问之前统一 UTF-8：系统默认 GBK(936) 会让中文输入乱码。
 TuiConsoleEncoding.EnsureUtf8();
@@ -69,6 +70,7 @@ builder.Services.AddSeeingModule<BuiltinCatalogModule>(registry);
 builder.Services.AddSeeingModule<DeepSeekLlmModule>(registry);
 builder.Services.AddSeeingModule<MiMoLlmModule>(registry);
 builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
+builder.Services.AddSeeingModule<SiliconFlowLlmModule>(registry);
 builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
 builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
 builder.Services.AddSeeingAcp(registry);

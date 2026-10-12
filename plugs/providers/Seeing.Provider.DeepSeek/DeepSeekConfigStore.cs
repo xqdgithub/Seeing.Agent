@@ -30,7 +30,7 @@ public sealed class DeepSeekConfigStore
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public string ConfigFilePath => Path.Combine(_directory, "deepseek.json");
+    public string ConfigFilePath => Path.Combine(_directory, "providers", "deepseek.json");
 
     public async Task<DeepSeekOptions> LoadAsync(CancellationToken ct = default)
     {
@@ -55,8 +55,8 @@ public sealed class DeepSeekConfigStore
     public async Task SaveAsync(DeepSeekOptions options, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        Directory.CreateDirectory(_directory);
         var path = ConfigFilePath;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
         var json = JsonSerializer.Serialize(options, JsonOptions);
         await File.WriteAllTextAsync(temp, json, Encoding.UTF8, ct).ConfigureAwait(false);

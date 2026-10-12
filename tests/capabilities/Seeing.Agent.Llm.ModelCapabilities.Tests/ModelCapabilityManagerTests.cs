@@ -220,6 +220,19 @@ public class ModelCapabilityManagerTests
         ModelCapabilityModelIds.TryGetNonFreeFallbackId("foo", out _).Should().BeFalse();
     }
 
+    [Fact]
+    public void TryGetLeafModelId_TakesLastSegment()
+    {
+        ModelCapabilityModelIds.TryGetLeafModelId("deepseek-ai/DeepSeek-V4-Flash", out var leaf)
+            .Should().BeTrue();
+        leaf.Should().Be("DeepSeek-V4-Flash");
+        ModelCapabilityModelIds.TryGetLeafModelId("Pro/deepseek-ai/DeepSeek-V4", out leaf)
+            .Should().BeTrue();
+        leaf.Should().Be("DeepSeek-V4");
+        ModelCapabilityModelIds.TryGetLeafModelId("deepseek-v4-flash", out _).Should().BeFalse();
+        ModelCapabilityModelIds.TryGetLeafModelId("trailing/", out _).Should().BeFalse();
+    }
+
     private static ModelCapabilityManager CreateManager(
         ModelCapabilitiesOptions options,
         IModelCapabilitySourceRegistry registry,

@@ -6,7 +6,7 @@ using Seeing.Agent.Configuration;
 namespace Seeing.Provider.OpenCodeZen;
 
 /// <summary>
-/// OpenCode Zen 配置存储：持久化到 ~/.seeing/opencode-zen.json。
+/// OpenCode Zen 配置存储：持久化到 ~/.seeing/providers/opencode-zen.json。
 /// </summary>
 public sealed class OpenCodeZenConfigStore
 {
@@ -33,7 +33,7 @@ public sealed class OpenCodeZenConfigStore
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public string ConfigFilePath => Path.Combine(_directory, "opencode-zen.json");
+    public string ConfigFilePath => Path.Combine(_directory, "providers", "opencode-zen.json");
 
     public async Task<OpenCodeZenOptions> LoadAsync(CancellationToken ct = default)
     {
@@ -58,8 +58,8 @@ public sealed class OpenCodeZenConfigStore
     public async Task SaveAsync(OpenCodeZenOptions options, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        Directory.CreateDirectory(_directory);
         var path = ConfigFilePath;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
         var json = JsonSerializer.Serialize(options, JsonOptions);
         await File.WriteAllTextAsync(temp, json, Encoding.UTF8, ct).ConfigureAwait(false);
