@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Questions;
+﻿using System.Text;
+using Seeing.Agent.Abstractions.Questions;
 using Spectre.Console;
 
 namespace Seeing.Agent.Tui.Rendering.Prompts;
@@ -181,33 +182,84 @@ public static class QuestionPrompt
     private static Task<QuestionAnswer?> AskTextAsync(
         ITerminalSurface surface,
         Question question,
-        CancellationToken ct,
-        string? title = null)
+        CancellationToken ct)
     {
         var defaultValue = ResolveDefaultText(question);
-        var effectiveTitle = title ?? BuildTitle(question);
+        var boxTitle = string.IsNullOrWhiteSpace(question.Header) ? "文本回答" : question.Header.Trim();
+        var questionText = ResolveQuestionText(question);
         if (defaultValue is not null)
-            effectiveTitle = $"{effectiveTitle} （默认：{defaultValue}）";
+            questionText = $"{questionText} （默认：{defaultValue}）";
 
+        return AskBoxedTextAsync(surface, question, boxTitle, questionText, defaultValue, ct);
+    }
+
+    private static Task<QuestionAnswer?> AskCustomAsync(
+        ITerminalSurface surface,
+        Question question,
+        CancellationToken ct)
+    {
+        var boxTitle = $"{BuildTitle(question)} · 自定义回答";
+        return AskBoxedTextAsync(surface, question, boxTitle, questionText: null, defaultValue: null, ct);
+    }
+
+    /// <summary>
+    /// 盒装自由文本输入：以左侧开口边框把「输入区」画出来，使文本题/「其他（自定义）」一眼可辨。
+    /// <para>
+    /// 输入行仍由 Spectre <see cref="TextPrompt{T}"/> 回显，故光标即终端物理光标、IME 组合串定位不变。
+    /// 提示结束后（含 Esc 取消）整盒擦除，不留残影于滚动历史——与自绘列表控件 <c>TuiListPrompt</c> 的擦画口径一致。
+    /// </para>
+    /// </summary>
+    private static Task<QuestionAnswer?> AskBoxedTextAsync(
+        ITerminalSurface surface,
+        Question question,
+        string boxTitle,
+        string? questionText,
+        string? defaultValue,
+        CancellationToken ct)
+    {
         return surface.PromptAsync(async (console, promptCt) =>
         {
+            var consoleWidth = Math.Max(20, console.Profile.Width > 0 ? console.Profile.Width : 80);
+            var ruleWidth = consoleWidth - 1;
+            var hasQuestion = !string.IsNullOrWhiteSpace(questionText);
+
+            WriteBoxTop(console, boxTitle, ruleWidth);
+            if (hasQuestion)
+                WriteBoxRow(console, questionText!, ruleWidth);
+
+            // 输入行提示符即左边框：`│ > `，Spectre 在其后回显用户输入。
             // 不用 TextPrompt.DefaultValue：Spectre 会把默认值按 markup 解析，
             // 默认值含 "[" 时会抛「Could not find color or style」并终止引擎。
-            // 改为「标题里转义展示默认值 + 允许空提交 → 空值回退默认值」。
-            var prompt = new TextPrompt<string>(Markup.Escape(effectiveTitle));
+            // 改为「问题行注记默认值 + 允许空提交 → 空值回退默认值」。
+            var prompt = new TextPrompt<string>(Markup.Escape("│ ") + "[grey]>[/] ");
             if (defaultValue is not null || !question.Required)
                 prompt.AllowEmpty();
 
-            string text;
+            string? input = null;
+            var submitted = false;
             try
             {
-                text = await prompt.ShowAsync(console, promptCt).ConfigureAwait(false);
+                input = await prompt.ShowAsync(console, promptCt).ConfigureAwait(false);
+                submitted = true;
             }
             catch (OperationCanceledException) when (!promptCt.IsCancellationRequested)
             {
-                return null;
+                // Esc 取消：input 保持 null，下方按「取消」收敛。
+            }
+            finally
+            {
+                // 取消路径 TextPrompt 不补尾换行，先归位到下一行，底边才不接在提示符之后。
+                if (!submitted)
+                    console.WriteLine();
+
+                WriteBoxBottom(console, ruleWidth);
+                EraseBox(console, CountBoxRows(hasQuestion, input, consoleWidth));
             }
 
+            if (input is null)
+                return null;
+
+            var text = input;
             if (string.IsNullOrEmpty(text) && defaultValue is not null)
                 text = defaultValue;
 
@@ -219,33 +271,100 @@ public static class QuestionPrompt
         }, ct);
     }
 
-    private static Task<QuestionAnswer?> AskCustomAsync(
-        ITerminalSurface surface,
-        Question question,
-        CancellationToken ct)
+    /// <summary>盒装输入行的提示符显示宽（<c>│ &gt; </c>）。</summary>
+    private static readonly int BoxPromptWidth = DisplayText.Width("│ > ");
+
+    /// <summary>盒占用的物理行数（顶边 + 问题行 + 输入行 + 键位提示 + 底边），供擦画换算。</summary>
+    private static int CountBoxRows(bool hasQuestion, string? input, int consoleWidth)
     {
-        return surface.PromptAsync(async (console, promptCt) =>
+        var inputWidth = BoxPromptWidth + DisplayText.Width(input ?? string.Empty);
+        var inputRows = inputWidth <= 0 ? 1 : ((inputWidth - 1) / consoleWidth) + 1;
+        return 1 + (hasQuestion ? 1 : 0) + inputRows + 1 + 1;
+    }
+
+    /// <summary>写盒顶边 <c>┌─ {标题} ─…</c>，按显示宽补横线（宽度取保守的 <see cref="DisplayText"/> 口径）。</summary>
+    private static void WriteBoxTop(IAnsiConsole console, string title, int ruleWidth)
+    {
+        var head = "┌─ " + TruncateToWidth(title, ruleWidth - DisplayText.Width("┌─ ") - 1) + " ";
+        var tail = new string('─', Math.Max(0, (ruleWidth - DisplayText.Width(head)) / DisplayText.Width("─")));
+        console.MarkupLine($"[grey]{Markup.Escape(head + tail)}[/]");
+    }
+
+    /// <summary>写盒内左侧开口的灰色问题行 <c>│ {内容}</c>（按显示宽截断为单物理行）。</summary>
+    private static void WriteBoxRow(IAnsiConsole console, string content, int ruleWidth)
+    {
+        var text = TruncateToWidth(content, ruleWidth - DisplayText.Width("│ "));
+        console.MarkupLine($"│ [grey]{Markup.Escape(text)}[/]");
+    }
+
+    /// <summary>写键位提示行与盒底边 <c>└─…</c>（提示行按显示宽截断为单物理行）。</summary>
+    private static void WriteBoxBottom(IAnsiConsole console, int ruleWidth)
+    {
+        var hint = TruncateToWidth("│ Enter 确认 · Esc 取消", ruleWidth);
+        console.MarkupLine($"[grey]{Markup.Escape(hint)}[/]");
+        var tail = new string('─', Math.Max(0, (ruleWidth - DisplayText.Width("└")) / DisplayText.Width("─")));
+        console.MarkupLine($"[grey]└{tail}[/]");
+    }
+
+    /// <summary>
+    /// 擦除整盒：光标停在底边下一行，先归首列、重置 SGR，再上移 <paramref name="rows"/> 行到盒顶，擦到屏尾。
+    /// </summary>
+    private static void EraseBox(IAnsiConsole console, int rows)
+    {
+        if (rows <= 0)
+            return;
+
+        var builder = new StringBuilder("\r\u001b[0m");
+        builder.Append(FormattableString.Invariant($"\u001b[{rows}A"));
+        builder.Append("\u001b[J");
+        WriteRaw(console, builder.ToString());
+    }
+
+    /// <summary>直写终端（不经 Spectre 管线，保留原始转义序列）；终端不可写时忽略，不中断交互。</summary>
+    private static void WriteRaw(IAnsiConsole console, string sequence)
+    {
+        try
         {
-            var prompt = new TextPrompt<string>(Markup.Escape($"{BuildTitle(question)} — 自定义回答"));
-            if (!question.Required)
-                prompt.AllowEmpty();
+            var writer = console.Profile.Out.Writer;
+            writer.Write(sequence);
+            writer.Flush();
+        }
+        catch (IOException)
+        {
+            // 终端不可写：擦画失败无需中断问答流程。
+        }
+        catch (ObjectDisposedException)
+        {
+            // 输出已释放（停机竞态）：忽略。
+        }
+    }
 
-            string text;
-            try
-            {
-                text = await prompt.ShowAsync(console, promptCt).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!promptCt.IsCancellationRequested)
-            {
-                return null;
-            }
+    /// <summary>按显示宽截断为单物理行（超出以省略号收尾），防折行破坏擦画行数换算。</summary>
+    private static string TruncateToWidth(string value, int maxWidth)
+    {
+        if (string.IsNullOrEmpty(value) || maxWidth <= 0)
+            return string.Empty;
 
-            return new QuestionAnswer
-            {
-                QuestionId = question.Id,
-                CustomAnswer = Truncate(text),
-            };
-        }, ct);
+        if (DisplayText.Width(value) <= maxWidth)
+            return value;
+
+        var budget = maxWidth - TuiGlyphs.EllipsisWidth;
+        if (budget <= 0)
+            return TuiGlyphs.Ellipsis;
+
+        var builder = new StringBuilder();
+        var width = 0;
+        foreach (var ch in value)
+        {
+            var charWidth = DisplayText.Width(ch.ToString());
+            if (width + charWidth > budget)
+                break;
+
+            builder.Append(ch);
+            width += charWidth;
+        }
+
+        return builder.Append(TuiGlyphs.Ellipsis).ToString();
     }
 
     /// <summary>构造富样式列表项：过滤空标签，带出选项说明（可空）。</summary>
