@@ -14,6 +14,9 @@ internal class Program
 
         var rootCommand = new RootCommand("Seeing.Agent CLI 管理工具");
 
+        // 一次性提示词执行（-p）：挂在根命令上，与子命令互不干扰；无参数仍进 TUI。
+        PromptCommand.AttachTo(rootCommand);
+
         rootCommand.Subcommands.Add(InstallCommand.Create());
         rootCommand.Subcommands.Add(StartCommand.Create());
         rootCommand.Subcommands.Add(StartCommand.CreateWeb());

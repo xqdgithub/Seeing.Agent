@@ -4,6 +4,7 @@ using System.Linq;
 using FluentAssertions;
 using Seeing.Agent.Cli.Commands;
 using Seeing.Agent.Cli.Services;
+using System.CommandLine;
 using Xunit;
 
 namespace Seeing.Agent.Cli.Tests;
@@ -16,6 +17,26 @@ public class CliCommandTests
         StartCommand.Create().Name.Should().Be("start");
         StartCommand.CreateWeb().Name.Should().Be("web");
         StartCommand.CreateGateway().Name.Should().Be("gateway");
+    }
+
+    [Fact]
+    public void PromptCommand_Options_ShouldExposeOneShotSwitches()
+    {
+        PromptCommand.CreatePromptOption().Aliases.Should().Contain("-p");
+        PromptCommand.CreatePromptOption().Name.Should().Be("--prompt");
+        PromptCommand.CreateYoloOption().Name.Should().Be("--yolo");
+        PromptCommand.CreateStreamOption().Name.Should().Be("--stream");
+        PromptCommand.CreateTimeoutOption().Name.Should().Be("--timeout");
+    }
+
+    [Fact]
+    public void RootCommand_AttachTo_ShouldRegisterPromptOptions()
+    {
+        var root = new RootCommand("test");
+        PromptCommand.AttachTo(root);
+
+        var names = root.Options.Select(o => o.Name.TrimStart('-')).ToList();
+        names.Should().Contain(new[] { "prompt", "yolo", "stream", "agent", "model", "timeout", "log-level" });
     }
 
     [Fact]
