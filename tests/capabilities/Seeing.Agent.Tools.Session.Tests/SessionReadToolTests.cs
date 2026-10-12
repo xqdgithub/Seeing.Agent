@@ -70,6 +70,66 @@ public class SessionReadToolTests
     }
 
     [Fact]
+    public async Task Read_FromIdWithLimit_Should_ReadForward()
+    {
+        using var h = new SessionToolTestHarness();
+        var root = await h.CreateRootGroupedAsync("root");
+        await h.AddMessageAsync(root.Id, "user", "content-zero");
+        var m1 = await h.AddMessageAsync(root.Id, "user", "content-one");
+        await h.AddMessageAsync(root.Id, "user", "content-two");
+        await h.AddMessageAsync(root.Id, "user", "content-three");
+        var tool = CreateTool(h);
+
+        var result = await tool.ExecuteAsync(
+            Args(new { from_id = m1.Id, limit = 2 }), Context(root.Id));
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("content-one").And.Contain("content-two");
+        result.Output.Should().NotContain("content-zero").And.NotContain("content-three");
+        result.Metadata["from_index"].Should().Be(1);
+        result.Metadata["to_index"].Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Read_ToIdWithLimit_Should_ReadBackward()
+    {
+        using var h = new SessionToolTestHarness();
+        var root = await h.CreateRootGroupedAsync("root");
+        await h.AddMessageAsync(root.Id, "user", "content-zero");
+        await h.AddMessageAsync(root.Id, "user", "content-one");
+        var m2 = await h.AddMessageAsync(root.Id, "user", "content-two");
+        var m3 = await h.AddMessageAsync(root.Id, "user", "content-three");
+        await h.AddMessageAsync(root.Id, "user", "content-four");
+        var tool = CreateTool(h);
+
+        var result = await tool.ExecuteAsync(
+            Args(new { to_id = m3.Id, limit = 2 }), Context(root.Id));
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("content-two").And.Contain("content-three");
+        result.Output.Should().NotContain("content-zero").And.NotContain("content-four");
+        result.Metadata["from_index"].Should().Be(2);
+        result.Metadata["to_index"].Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Read_ToIdWithLimitLargerThanAvailable_Should_StartAtZero()
+    {
+        using var h = new SessionToolTestHarness();
+        var root = await h.CreateRootGroupedAsync("root");
+        var m0 = await h.AddMessageAsync(root.Id, "user", "content-zero");
+        await h.AddMessageAsync(root.Id, "user", "content-one");
+        var tool = CreateTool(h);
+
+        var result = await tool.ExecuteAsync(
+            Args(new { to_id = m0.Id, limit = 5 }), Context(root.Id));
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("content-zero");
+        result.Metadata["from_index"].Should().Be(0);
+    }
+
+    [Fact]
     public async Task Read_Window_Should_UseBeforeAndAfter()
     {
         using var h = new SessionToolTestHarness();

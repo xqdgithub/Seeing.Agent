@@ -29,9 +29,9 @@ public sealed class SessionReadTool : SessionToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "读取会话消息。支持 from_id/to_id 闭区间、message_id+before/after 窗口、" +
-        "offset+limit 分页三种方式。默认只读活跃消息（不含已压缩历史），" +
-        "默认隐藏工具输出；include_compacted=true 可读完整历史。绝不返回思考内容。";
+        "读取会话消息。支持五种方式：from_id[+limit]（从该消息向后读）、to_id[+limit]（读到该消息为止）、" +
+        "from_id+to_id（闭区间）、message_id+before/after（中心窗口）、offset+limit（分页）。" +
+        "默认只读活跃消息（不含已压缩历史），默认隐藏工具输出；include_compacted=true 可读完整历史。绝不返回思考内容。";
 
     /// <inheritdoc />
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
@@ -40,8 +40,8 @@ public sealed class SessionReadTool : SessionToolBase
         properties = new
         {
             session_id = new { type = "string", description = "目标会话 ID；缺省为当前会话" },
-            from_id = new { type = "string", description = "区间起始消息 ID（含）" },
-            to_id = new { type = "string", description = "区间结束消息 ID（含）" },
+            from_id = new { type = "string", description = "起始消息 ID（含）；可单用（配 limit 向后读），也可与 to_id 组成闭区间" },
+            to_id = new { type = "string", description = "结束消息 ID（含）；可单用（配 limit 向前读），也可与 from_id 组成闭区间" },
             message_id = new { type = "string", description = "窗口中心消息 ID" },
             before = new { type = "integer", minimum = 0, description = "窗口前向条数（默认 0）" },
             after = new { type = "integer", minimum = 0, description = "窗口后向条数（默认 0）" },
@@ -137,20 +137,40 @@ public sealed class SessionReadTool : SessionToolBase
 
         if (fromId is not null || toId is not null)
         {
-            if (fromId is null || toId is null)
-                return Failure("from_id 与 to_id 必须同时提供");
+            // 三种区间方式：from_id 单用（向后读）、to_id 单用（向前读）、from_id+to_id（闭区间）。
+            // limit 始终为返回条数上限。
+            if (fromId is not null && toId is not null)
+            {
+                var fromIndex = IndexOf(source, fromId);
+                var toIndex = IndexOf(source, toId);
+                if (fromIndex < 0)
+                    return Failure($"未找到消息: {fromId}");
+                if (toIndex < 0)
+                    return Failure($"未找到消息: {toId}");
+                if (fromIndex > toIndex)
+                    return Failure("from_id 必须不晚于 to_id");
 
-            var fromIndex = IndexOf(source, fromId);
-            var toIndex = IndexOf(source, toId);
-            if (fromIndex < 0)
-                return Failure($"未找到消息: {fromId}");
-            if (toIndex < 0)
-                return Failure($"未找到消息: {toId}");
-            if (fromIndex > toIndex)
-                return Failure("from_id 必须不晚于 to_id");
+                start = fromIndex;
+                end = toIndex;
+            }
+            else if (fromId is not null)
+            {
+                var fromIndex = IndexOf(source, fromId);
+                if (fromIndex < 0)
+                    return Failure($"未找到消息: {fromId}");
 
-            start = fromIndex;
-            end = toIndex;
+                start = fromIndex;
+                end = total - 1;
+            }
+            else
+            {
+                var toIndex = IndexOf(source, toId!);
+                if (toIndex < 0)
+                    return Failure($"未找到消息: {toId}");
+
+                start = Math.Max(0, toIndex - limit + 1);
+                end = toIndex;
+            }
         }
         else if (messageId is not null)
         {
