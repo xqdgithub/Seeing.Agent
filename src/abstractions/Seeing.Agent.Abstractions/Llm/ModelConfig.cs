@@ -138,10 +138,10 @@ public static class ThinkingEffortKeys
 public class ModelLimits
 {
     [JsonPropertyName("context")]
-    public int Context { get; set; } = 4096;
+    public int Context { get; set; } = ModelLimitDefaults.Context;
 
     [JsonPropertyName("output")]
-    public int Output { get; set; } = 4096;
+    public int Output { get; set; } = ModelLimitDefaults.Output;
 }
 
 /// <summary>

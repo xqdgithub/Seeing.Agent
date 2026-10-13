@@ -343,7 +343,7 @@ public class LlmService : ILlmService
             ["temperature"] = request.Temperature ?? 0.7,
             ["topP"] = request.TopP ?? 1.0,
             ["topK"] = 0,
-            ["maxTokens"] = request.MaxTokens ?? 4096,
+            ["maxTokens"] = request.MaxTokens ?? ModelLimitDefaults.Output,
             ["thinkingEffort"] = request.ThinkingEffort
         };
 
@@ -472,7 +472,7 @@ public class LlmService : ILlmService
         {
             ["temperature"] = request.Temperature ?? 0.7,
             ["topP"] = request.TopP ?? 1.0,
-            ["maxTokens"] = request.MaxTokens ?? 4096,
+            ["maxTokens"] = request.MaxTokens ?? ModelLimitDefaults.Output,
             ["thinkingEffort"] = request.ThinkingEffort
         };
 

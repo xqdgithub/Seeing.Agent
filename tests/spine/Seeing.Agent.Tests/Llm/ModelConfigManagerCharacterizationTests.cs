@@ -54,7 +54,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             CreateRegistry(providers),
             NullLogger<ModelConfigManager>.Instance);
 
-        var models = sut.GetModels();
+        var models = sut.GetCatalogModels();
 
         models.Keys.Should().BeEquivalentTo("openai/provider-model");
         models["openai/provider-model"].Provider.Should().Be("openai");
@@ -175,7 +175,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             TestContext.Current.CancellationToken);
 
         await WaitUntilAsync(
-            () => sut.GetModels().ContainsKey("openai/added-model"),
+            () => sut.GetCatalogModels().ContainsKey("openai/added-model"),
             TimeSpan.FromSeconds(5));
     }
 
@@ -205,7 +205,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
 
         // 等待初始目录刷新完成，确保后续断言不受构造时 EnqueueRefresh 干扰
         await WaitUntilAsync(
-            () => sut.GetModels().ContainsKey("openai/initial-model"),
+            () => sut.GetCatalogModels().ContainsKey("openai/initial-model"),
             TimeSpan.FromSeconds(5));
 
         // 外部修改配置：新增一个模型（Manager 不再自订阅 ConfigChanged，缓存保持旧目录）
@@ -232,7 +232,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
 
         // Assert: 队列收到刷新请求，模型目录包含新增模型
         await WaitUntilAsync(
-            () => sut.GetModels().ContainsKey("openai/added-model"),
+            () => sut.GetCatalogModels().ContainsKey("openai/added-model"),
             TimeSpan.FromSeconds(5));
     }
 
@@ -268,21 +268,21 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             NullLogger<ModelConfigManager>.Instance);
 
         await WaitUntilAsync(
-            () => sut.GetModels().ContainsKey("openai/remove") && sut.GetModels().ContainsKey("other/o1"),
+            () => sut.GetCatalogModels().ContainsKey("openai/remove") && sut.GetCatalogModels().ContainsKey("other/o1"),
             TimeSpan.FromSeconds(5));
 
         await sut.DeleteModelAsync("openai/remove", ct: TestContext.Current.CancellationToken);
 
         // 目标 provider slice 即时移除被删模型（增量刷新，不依赖外部 ReloadHandler）
         await WaitUntilAsync(
-            () => !sut.GetModels().ContainsKey("openai/remove")
-                  && !sut.GetModelsByProvider("openai").ContainsKey("openai/remove"),
+            () => !sut.GetCatalogModels().ContainsKey("openai/remove")
+                  && !sut.GetCatalogModelsByProvider("openai").ContainsKey("openai/remove"),
             TimeSpan.FromSeconds(5));
 
         // 增量语义：只改目标 provider，其它 provider 与目标保留模型不受影响
-        sut.GetModelsByProvider("openai").Should().ContainKey("openai/keep");
-        sut.GetModels().Should().ContainKey("other/o1");
-        sut.GetModelsByProvider("other").Should().ContainKey("other/o1");
+        sut.GetCatalogModelsByProvider("openai").Should().ContainKey("openai/keep");
+        sut.GetCatalogModels().Should().ContainKey("other/o1");
+        sut.GetCatalogModelsByProvider("other").Should().ContainKey("other/o1");
     }
 
     private async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
@@ -332,6 +332,135 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
             .GetProperty("models");
         models.TryGetProperty("keep-model", out _).Should().BeTrue();
         models.TryGetProperty("remove-model", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetModels_EmptySelection_HidesAllButCatalogKeepsFull()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Type = ProviderTypes.OpenAi,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["gpt-4o"] = new() { Id = "gpt-4o", Provider = "openai" },
+                    ["o1"] = new() { Id = "o1", Provider = "openai" }
+                }
+            }
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        // 未配置启用清单 → 启用视图为空；全量目录保留；隐藏模型仍可解析。
+        sut.GetModels().Should().BeEmpty();
+        sut.GetCatalogModels().Keys.Should().BeEquivalentTo("openai/gpt-4o", "openai/o1");
+        sut.GetModel("openai/gpt-4o").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task SetEnabledModels_FiltersViewAndKeepsHiddenResolvable()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Type = ProviderTypes.OpenAi,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["gpt-4o"] = new() { Id = "gpt-4o", Provider = "openai" },
+                    ["o1"] = new() { Id = "o1", Provider = "openai" }
+                }
+            }
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await sut.SetEnabledModelsAsync(
+            "openai",
+            new[] { "gpt-4o" },
+            TestContext.Current.CancellationToken);
+
+        sut.GetModels().Keys.Should().ContainSingle().Which.Should().Be("openai/gpt-4o");
+        sut.GetEnabledModelIds("openai").Should().BeEquivalentTo("gpt-4o");
+        // 隐藏模型仍可解析（不拦截执行）。
+        sut.GetModel("openai/o1").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task SetEnabledModels_EmptyList_HidesProvider()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Type = ProviderTypes.OpenAi,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["gpt-4o"] = new() { Id = "gpt-4o", Provider = "openai" }
+                }
+            }
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await sut.SetEnabledModelsAsync(
+            "openai",
+            new[] { "gpt-4o" },
+            TestContext.Current.CancellationToken);
+        sut.GetModels().Should().NotBeEmpty();
+
+        await sut.SetEnabledModelsAsync(
+            "openai",
+            Array.Empty<string>(),
+            TestContext.Current.CancellationToken);
+
+        sut.GetModels().Should().BeEmpty();
+        sut.GetEnabledModelIds("openai").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SetEnabledModels_RaisesModelConfigChanged()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["openai"] = new ProviderConfig
+            {
+                Id = "openai",
+                Type = ProviderTypes.OpenAi,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["gpt-4o"] = new() { Id = "gpt-4o", Provider = "openai" }
+                }
+            }
+        };
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        var raised = 0;
+        sut.ModelConfigChanged += (_, _) => Interlocked.Increment(ref raised);
+
+        await sut.SetEnabledModelsAsync(
+            "openai",
+            new[] { "gpt-4o" },
+            TestContext.Current.CancellationToken);
+
+        raised.Should().BeGreaterThan(0);
     }
 
     private async Task<UnifiedConfigManager> CreateConfigManagerAsync(

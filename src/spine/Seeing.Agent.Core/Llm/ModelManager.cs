@@ -127,12 +127,17 @@ public sealed class ModelManager : IModelManager
     }
 
     /// <summary>
-    /// 获取目录中全部模型配置（透传目录管理器）。
+    /// 获取目录中「已启用」的模型配置（透传目录管理器）。
     /// </summary>
     public IReadOnlyDictionary<string, ModelConfig> GetModels() => _catalog.GetModels();
 
     /// <summary>
-    /// 按模型 ID 获取模型配置，未找到返回 null。
+    /// 获取目录中全部模型配置（不经启用清单过滤，透传目录管理器）。
+    /// </summary>
+    public IReadOnlyDictionary<string, ModelConfig> GetCatalogModels() => _catalog.GetCatalogModels();
+
+    /// <summary>
+    /// 按模型 ID 获取模型配置（含未启用模型），未找到返回 null。
     /// </summary>
     public ModelConfig? GetModel(string modelId) => _catalog.GetModel(modelId);
 
@@ -142,10 +147,22 @@ public sealed class ModelManager : IModelManager
     public string? GetDefaultModel() => _catalog.GetDefaultModel();
 
     /// <summary>
-    /// 获取指定 Provider 下的模型配置字典。
+    /// 获取指定 Provider 下「已启用」的模型配置字典。
     /// </summary>
     public IReadOnlyDictionary<string, ModelConfig> GetModelsByProvider(string providerId) =>
         _catalog.GetModelsByProvider(providerId);
+
+    /// <summary>
+    /// 获取指定 Provider 下全部模型配置字典（不经启用清单过滤）。
+    /// </summary>
+    public IReadOnlyDictionary<string, ModelConfig> GetCatalogModelsByProvider(string providerId) =>
+        _catalog.GetCatalogModelsByProvider(providerId);
+
+    /// <summary>
+    /// 获取指定 Provider 的启用模型 ID 列表。
+    /// </summary>
+    public IReadOnlyList<string> GetEnabledModelIds(string providerId) =>
+        _catalog.GetEnabledModelIds(providerId);
 
     /// <summary>
     /// 解析模型生效的类型列表（缺省时按目录规则补全）。
@@ -223,6 +240,15 @@ public sealed class ModelManager : IModelManager
         _catalog.SetDefaultModelAsync(modelId, level, ct);
 
     /// <summary>
+    /// 设置指定 Provider 的启用模型清单并持久化。
+    /// </summary>
+    public Task SetEnabledModelsAsync(
+        string providerId,
+        IReadOnlyList<string> modelIds,
+        CancellationToken ct = default) =>
+        _catalog.SetEnabledModelsAsync(providerId, modelIds, ct);
+
+    /// <summary>
     /// 模型配置变更事件（透传目录管理器的同名事件）。
     /// </summary>
     public event EventHandler<ModelConfigChangedEventArgs>? ModelConfigChanged
@@ -237,7 +263,7 @@ public sealed class ModelManager : IModelManager
         if (config is null)
             return trimmed;
 
-        var keys = _catalog.GetModels()
+        var keys = _catalog.GetCatalogModels()
             .Where(kv => ReferenceEquals(kv.Value, config))
             .Select(kv => kv.Key)
             .ToList();

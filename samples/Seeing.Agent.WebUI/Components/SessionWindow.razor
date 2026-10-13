@@ -1361,11 +1361,15 @@
         // 清除错误消息
         ErrorMessage = null;
 
-        // Native 模式：发送前校验当前选择的模型真实可用（为空或不在可用目录中 → 拦截并要求选择）
+        // Native 模式：发送前校验当前选择的模型真实可用（为空或不在目录中 → 拦截并要求选择）
+        // 用全量目录判断：被启用清单隐藏的模型仍可解析、仍可执行，不应误判为不可用。
         if (!Context.IsAcpPassthrough)
         {
-            var modelAvailable = !string.IsNullOrEmpty(SessionState.SelectedModel)
-                && ModelManager.GetModelsByType(ModelType.Text).ContainsKey(SessionState.SelectedModel);
+            var selectedConfig = string.IsNullOrEmpty(SessionState.SelectedModel)
+                ? null
+                : ModelManager.GetModel(SessionState.SelectedModel);
+            var modelAvailable = selectedConfig is not null
+                && ModelManager.GetEffectiveTypes(selectedConfig).Contains(ModelType.Text);
             if (!modelAvailable)
             {
                 _modelInvalid = true;

@@ -32,11 +32,14 @@ public interface IModelConfigManager
 {
     #region 查询
 
-    /// <summary>获取所有模型配置</summary>
-    /// <remarks>模型目录聚合所有已注册 Provider 的模型。</remarks>
+    /// <summary>获取所有「已启用」模型配置（按 <c>ModelSelection</c> 白名单过滤后的子集）。</summary>
+    /// <remarks>模型目录聚合所有已注册 Provider 的模型；未启用（白名单外）的模型不出现在此视图。</remarks>
     IReadOnlyDictionary<string, ModelConfig> GetModels();
 
-    /// <summary>获取指定模型配置</summary>
+    /// <summary>获取全部模型配置（不经启用清单过滤），供管理 UI 勾选。</summary>
+    IReadOnlyDictionary<string, ModelConfig> GetCatalogModels();
+
+    /// <summary>获取指定模型配置（含未启用模型；隐藏模型仍可解析、仍可执行）。</summary>
     /// <param name="modelId">模型 ID，支持以下格式：
     /// - "gpt-4o" (不带前缀)
     /// - "openai/gpt-4o" (带 Provider 前缀)
@@ -46,14 +49,20 @@ public interface IModelConfigManager
     /// <summary>获取默认模型 ID</summary>
     string? GetDefaultModel();
 
-    /// <summary>获取指定 Provider 下的模型列表</summary>
+    /// <summary>获取指定 Provider 下「已启用」的模型列表。</summary>
     IReadOnlyDictionary<string, ModelConfig> GetModelsByProvider(string providerId);
+
+    /// <summary>获取指定 Provider 下的全部模型列表（不经启用清单过滤）。</summary>
+    IReadOnlyDictionary<string, ModelConfig> GetCatalogModelsByProvider(string providerId);
+
+    /// <summary>获取指定 Provider 的启用模型 ID 列表（可能为空）。</summary>
+    IReadOnlyList<string> GetEnabledModelIds(string providerId);
 
     /// <summary>解析有效类型：Types 空/null → [Text]</summary>
     IReadOnlyList<ModelType> GetEffectiveTypes(ModelConfig config);
 
     /// <summary>
-    /// 按类型过滤。默认 type = Text。
+    /// 按类型过滤「已启用」模型。默认 type = Text。
     /// 多标签：EffectiveTypes 包含该类型即命中。
     /// </summary>
     IReadOnlyDictionary<string, ModelConfig> GetModelsByType(
@@ -111,6 +120,18 @@ public interface IModelConfigManager
     Task SetDefaultModelAsync(
         string? modelId,
         ConfigLevel level = ConfigLevel.User,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 设置指定 Provider 的启用模型清单（allowlist）。
+    /// <para>写入 <c>ModelSelection</c> 配置节并重建启用视图；不重拉 Provider。</para>
+    /// </summary>
+    /// <param name="providerId">目标 Provider ID。</param>
+    /// <param name="modelIds">启用的模型 ID 列表；为空表示该 Provider 全部隐藏。</param>
+    /// <param name="ct">取消。</param>
+    Task SetEnabledModelsAsync(
+        string providerId,
+        IReadOnlyList<string> modelIds,
         CancellationToken ct = default);
 
     #endregion

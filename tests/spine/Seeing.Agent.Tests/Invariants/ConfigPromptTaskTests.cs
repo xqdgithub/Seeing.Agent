@@ -51,6 +51,7 @@ public class ConfigPromptTaskTests
             "DefaultAgent",
             "DefaultModel",
             "GlobalWorkspaceRoot",
+            "ModelSelection",
             "Modules",
             "Permission",
             "PluginEnabled",

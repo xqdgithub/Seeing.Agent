@@ -167,9 +167,20 @@
                                         OnClick="ShowAddModel" Disabled="@(!CanEditCurrentProvider)">
                                     添加模型
                                 </Button>
+                                <Divider Type="@DividerType.Vertical" />
+                                <AntDesign.Switch @bind-Value="_showAll" CheckedChildren="显示全部" UnCheckedChildren="仅已启用"
+                                                  OnChange="OnShowAllChanged" />
+                                <Button Size="@ButtonSize.Small" OnClick="EnableAllModelsAsync"
+                                        Disabled="@(_catalogRows.Count == 0)">全部启用</Button>
+                                <Button Size="@ButtonSize.Small" OnClick="DisableAllModelsAsync"
+                                        Disabled="@(ModelManager.GetEnabledModelIds(_selectedProviderId).Count == 0)">全部禁用</Button>
                             </Space>
                         </div>
                         <Table TItem="ModelRow" DataSource="@_modelRows" RowKey="@(m => m.Key)" Size="@TableSize.Small">
+                            <Column TData="ModelRow" Title="启用" Width="70">
+                                <AntDesign.Switch Checked="context.IsEnabled" CheckedChildren="启用" UnCheckedChildren="禁用"
+                                                 OnChange="@(v => ToggleModelEnabled(context, v))" />
+                            </Column>
                             <PropertyColumn Property="c => c.Id" Title="模型 ID" />
                             <PropertyColumn Property="c => c.Name" Title="名称" />
                             <PropertyColumn Property="c => c.Provider" Title="Provider" />
@@ -237,8 +248,30 @@
             <FormItem Label="Provider">
                 <Input Value="@_selectedProviderId" Disabled="true" />
             </FormItem>
+            <FormItem Label="添加方式">
+                <RadioGroup @bind-Value="_addModelMode">
+                    <Radio Value="@AddModelMode.FromList">从列表选择</Radio>
+                    <Radio Value="@AddModelMode.Manual">手动新建</Radio>
+                </RadioGroup>
+            </FormItem>
+            @if (_addModelMode == AddModelMode.FromList)
+            {
+                <FormItem Label="选择模型">
+                    <ModelSelectDropdown Value="@_addModelForm.Id"
+                                         ValueChanged="OnAddModelPickFromList"
+                                         ProviderId="@_selectedProviderId"
+                                         FilterType="@((ModelType?)null)"
+                                         Models="@_addModelCandidates"
+                                         Style="width: 100%;"
+                                         Placeholder="从当前 Provider 的可用模型中选择" />
+                    <div style="color: #888; font-size: 12px; margin-top: 4px;">
+                        从当前 Provider 的可用模型中选择；选中后自动预填 ID、名称与长度。
+                    </div>
+                </FormItem>
+            }
             <FormItem Label="模型 ID" Required>
-                <Input @bind-Value="@_addModelForm.Id" Placeholder="如 gpt-4o-mini 或 Qwen/Qwen3-VL-Embedding-8B" />
+                <Input @bind-Value="@_addModelForm.Id" Disabled="@(_addModelMode == AddModelMode.FromList)"
+                       Placeholder="如 gpt-4o-mini 或 Qwen/Qwen3-VL-Embedding-8B" />
             </FormItem>
             <FormItem Label="显示名称">
                 <Input @bind-Value="@_addModelForm.Name" Placeholder="可选，默认等于模型 ID" />
@@ -311,6 +344,9 @@
     private string _selectedProviderId = "";
     private string[] _selectedProviderKeys = Array.Empty<string>();
     private List<ModelRow> _modelRows = new();
+    private List<ModelRow> _catalogRows = new();
+    private bool _showAll;
+    private AddModelMode _addModelMode = AddModelMode.FromList;
     private ConfigLevel _saveLevel = ModelConfigManager.ModelStoreLevel;
     private bool _loading;
     private bool _testing;
@@ -325,6 +361,7 @@
     private bool _addModelVisible;
     private bool _addingModel;
     private readonly AddModelForm _addModelForm = new();
+    private IReadOnlyDictionary<string, ModelConfig> _addModelCandidates = new Dictionary<string, ModelConfig>();
     private IEnumerable<ModelType> _addModelTypes = new[] { ModelType.Text };
     private string _testModelKey = "";
     private string _headersJson = "{}";
@@ -471,8 +508,26 @@
 
     private void RefreshModelRows()
     {
-        var models = ModelManager.GetModelsByProvider(_selectedProviderId);
-        _modelRows = models
+        _catalogRows = BuildRows(ModelManager.GetCatalogModelsByProvider(_selectedProviderId));
+
+        _modelRows = _showAll
+            ? _catalogRows
+            : BuildRows(ModelManager.GetModelsByProvider(_selectedProviderId));
+
+        // 当前选中测试模型若不在本 Provider 列表中，回落到首项或清空
+        if (_modelRows.Count == 0)
+            _testModelKey = "";
+        else if (string.IsNullOrEmpty(_testModelKey) || _modelRows.All(m => m.Key != _testModelKey))
+            _testModelKey = _modelRows[0].Key;
+    }
+
+    private List<ModelRow> BuildRows(IReadOnlyDictionary<string, ModelConfig> models)
+    {
+        var enabledIds = new HashSet<string>(
+            ModelManager.GetEnabledModelIds(_selectedProviderId),
+            StringComparer.OrdinalIgnoreCase);
+
+        return models
             .Select(m =>
             {
                 var effective = ModelManager.GetEffectiveTypes(m.Value);
@@ -487,16 +542,56 @@
                     Output = m.Value.Limit.Output,
                     IsDefault = isDefault,
                     TypesDisplay = string.Join(", ", effective),
-                    IsFree = IsFreeModel(m.Value)
+                    IsFree = IsFreeModel(m.Value),
+                    IsEnabled = enabledIds.Contains(m.Value.Id)
                 };
             })
             .ToList();
+    }
 
-        // 当前选中测试模型若不在本 Provider 列表中，回落到首项或清空
-        if (_modelRows.Count == 0)
-            _testModelKey = "";
-        else if (string.IsNullOrEmpty(_testModelKey) || _modelRows.All(m => m.Key != _testModelKey))
-            _testModelKey = _modelRows[0].Key;
+    private void OnShowAllChanged(bool value)
+    {
+        _showAll = value;
+        RefreshModelRows();
+    }
+
+    private async Task ToggleModelEnabled(ModelRow row, bool enabled)
+    {
+        var current = ModelManager.GetEnabledModelIds(_selectedProviderId).ToList();
+
+        if (enabled)
+        {
+            if (!current.Contains(row.Id, StringComparer.OrdinalIgnoreCase))
+                current.Add(row.Id);
+        }
+        else
+        {
+            current.RemoveAll(id => string.Equals(id, row.Id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        await SaveEnabledAsync(current);
+    }
+
+    private async Task EnableAllModelsAsync()
+    {
+        var ids = _catalogRows.Select(r => r.Id).ToList();
+        await SaveEnabledAsync(ids);
+    }
+
+    private async Task DisableAllModelsAsync()
+        => await SaveEnabledAsync(new List<string>());
+
+    private async Task SaveEnabledAsync(List<string> ids)
+    {
+        try
+        {
+            await ModelManager.SetEnabledModelsAsync(_selectedProviderId, ids);
+            RefreshModelRows();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存启用清单失败: {ex.Message}");
+        }
     }
 
     private void OnTestModelKeyChanged(string? value)
@@ -648,8 +743,8 @@
 
         _editKey = row.Key;
         _editModelForm.Name = config.Name ?? config.Id;
-        _editModelForm.Context = config.Limit?.Context > 0 ? config.Limit.Context : 4096;
-        _editModelForm.Output = config.Limit?.Output > 0 ? config.Limit.Output : 4096;
+        _editModelForm.Context = config.Limit?.Context > 0 ? config.Limit.Context : ModelLimitDefaults.Context;
+        _editModelForm.Output = config.Limit?.Output > 0 ? config.Limit.Output : ModelLimitDefaults.Output;
         _editTypes = ModelManager.GetEffectiveTypes(config).ToArray();
         _editModelVisible = true;
     }
@@ -706,12 +801,44 @@
             return;
         }
 
+        _addModelMode = AddModelMode.FromList;
         _addModelForm.Id = "";
         _addModelForm.Name = "";
-        _addModelForm.Context = 4096;
-        _addModelForm.Output = 4096;
+        _addModelForm.Context = ModelLimitDefaults.Context;
+        _addModelForm.Output = ModelLimitDefaults.Output;
         _addModelTypes = new[] { ModelType.Text };
+        _addModelCandidates = BuildAddCandidates();
         _addModelVisible = true;
+    }
+
+    /// <summary>
+    /// 添加候选：当前 Provider 全量目录中尚未启用的条目。
+    /// </summary>
+    private IReadOnlyDictionary<string, ModelConfig> BuildAddCandidates()
+    {
+        var enabled = new HashSet<string>(
+            ModelManager.GetEnabledModelIds(_selectedProviderId),
+            StringComparer.OrdinalIgnoreCase);
+
+        return ModelManager.GetCatalogModelsByProvider(_selectedProviderId)
+            .Where(pair => !enabled.Contains(pair.Value.Id))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+
+    private void OnAddModelPickFromList(string? key)
+    {
+        if (string.IsNullOrEmpty(key))
+            return;
+
+        var config = ModelManager.GetModel(key);
+        if (config is null)
+            return;
+
+        _addModelForm.Id = config.Id;
+        _addModelForm.Name = config.Name ?? config.Id;
+        _addModelForm.Context = config.Limit?.Context > 0 ? config.Limit.Context : ModelLimitDefaults.Context;
+        _addModelForm.Output = config.Limit?.Output > 0 ? config.Limit.Output : ModelLimitDefaults.Output;
+        _addModelTypes = ModelManager.GetEffectiveTypes(config).ToArray();
     }
 
     private void OnAddModelTypesChanged(IEnumerable<ModelType> values)
@@ -733,8 +860,26 @@
         }
 
         var key = ModelRef.Format(_selectedProviderId, modelId);
-        if (ModelManager.GetModel(key) is not null)
+        var existing = ModelManager.GetModel(key);
+
+        // 从列表选择：模型通常已存在（配置型目录即已配置模型），此时仅确保其启用。
+        if (existing is not null)
         {
+            if (_addModelMode == AddModelMode.FromList)
+            {
+                var ids = ModelManager.GetEnabledModelIds(_selectedProviderId).ToList();
+                if (!ids.Contains(modelId, StringComparer.OrdinalIgnoreCase))
+                {
+                    ids.Add(modelId);
+                    await ModelManager.SetEnabledModelsAsync(_selectedProviderId, ids);
+                }
+
+                _addModelVisible = false;
+                RefreshModelRows();
+                MessageService.Success($"已启用模型 {key}");
+                return;
+            }
+
             MessageService.Warning($"模型已存在: {key}");
             return;
         }
@@ -754,12 +899,21 @@
                 Types = types,
                 Limit = new ModelLimits
                 {
-                    Context = _addModelForm.Context > 0 ? _addModelForm.Context : 4096,
-                    Output = _addModelForm.Output > 0 ? _addModelForm.Output : 4096
+                    Context = _addModelForm.Context > 0 ? _addModelForm.Context : ModelLimitDefaults.Context,
+                    Output = _addModelForm.Output > 0 ? _addModelForm.Output : ModelLimitDefaults.Output
                 }
             };
 
             await ModelManager.AddModelAsync(key, config, _saveLevel);
+
+            // 新增模型默认加入启用清单，避免添加后即被隐藏。
+            var enabled = ModelManager.GetEnabledModelIds(_selectedProviderId).ToList();
+            if (!enabled.Contains(modelId, StringComparer.OrdinalIgnoreCase))
+            {
+                enabled.Add(modelId);
+                await ModelManager.SetEnabledModelsAsync(_selectedProviderId, enabled);
+            }
+
             _addModelVisible = false;
             await SelectProviderAsync(_selectedProviderId);
             MessageService.Success($"已添加模型 {key}");
@@ -847,7 +1001,14 @@
         public int Output { get; set; }
         public bool IsDefault { get; set; }
         public bool IsFree { get; set; }
+        public bool IsEnabled { get; set; }
         public string TypesDisplay { get; set; } = "Text";
+    }
+
+    private enum AddModelMode
+    {
+        FromList,
+        Manual
     }
 
     private sealed class AddProviderForm { }
@@ -856,15 +1017,15 @@
     {
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
-        public int Context { get; set; } = 4096;
-        public int Output { get; set; } = 4096;
+        public int Context { get; set; } = ModelLimitDefaults.Context;
+        public int Output { get; set; } = ModelLimitDefaults.Output;
     }
 
     private sealed class EditModelForm
     {
         public string Name { get; set; } = "";
-        public int Context { get; set; } = 4096;
-        public int Output { get; set; } = 4096;
+        public int Context { get; set; } = ModelLimitDefaults.Context;
+        public int Output { get; set; } = ModelLimitDefaults.Output;
     }
 
     public void Dispose()

@@ -13,7 +13,7 @@ public class ModelCapabilityFillEmptyTests
         {
             Id = "m1",
             Provider = "p1",
-            Limit = new ModelLimits { Context = 4096, Output = 4096 }
+            Limit = new ModelLimits()
         };
         var source = new ModelCapabilityEntry
         {
@@ -54,7 +54,7 @@ public class ModelCapabilityFillEmptyTests
         var target = new ModelConfig
         {
             Id = "m1",
-            Limit = new ModelLimits { Context = 32000, Output = 4096 }
+            Limit = new ModelLimits { Context = 32000, Output = ModelLimitDefaults.Output }
         };
         var source = new ModelCapabilityEntry
         {
@@ -106,13 +106,13 @@ public class ModelCapabilityFillEmptyTests
     }
 
     [Fact]
-    public void Apply_显式4096视为未设置可被补全()
+    public void Apply_显式默认值视为未设置可被补全()
     {
         // default means unset for FillEmpty
         var target = new ModelConfig
         {
             Id = "m1",
-            Limit = new ModelLimits { Context = 4096, Output = 4096 }
+            Limit = new ModelLimits()
         };
         var source = new ModelCapabilityEntry
         {

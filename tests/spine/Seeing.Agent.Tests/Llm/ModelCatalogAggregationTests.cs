@@ -31,7 +31,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             NullLogger<ModelConfigManager>.Instance);
 
         await WaitUntilAsync(
-            () => catalog.GetModels().ContainsKey("extension/initial-model"),
+            () => catalog.GetCatalogModels().ContainsKey("extension/initial-model"),
             TimeSpan.FromSeconds(5));
 
         catalog.GetModel("extension/initial-model")!.Provider.Should().Be("extension");
@@ -67,7 +67,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
-        catalog.GetModels().Keys.Should().BeEquivalentTo(
+        catalog.GetCatalogModels().Keys.Should().BeEquivalentTo(
             "openai/configured",
             "extension/dynamic-model");
         catalog.GetModel("extension/dynamic-model")!.Provider.Should().Be("extension");
@@ -93,7 +93,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         // 且按 Provider 粒度的刷新不得使在途全量刷新作废而丢失其他 Provider 的模型。
         await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
-        catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("healthy/visible");
+        catalog.GetCatalogModels().Keys.Should().ContainSingle().Which.Should().Be("healthy/visible");
     }
 
     [Fact]
@@ -182,10 +182,10 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         await gate.AllStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         gate.Release.SetResult();
         await WaitUntilAsync(
-            () => catalog.GetModels().Count == 2,
+            () => catalog.GetCatalogModels().Count == 2,
             TimeSpan.FromSeconds(5));
 
-        catalog.GetModels().Keys.Should().BeEquivalentTo(
+        catalog.GetCatalogModels().Keys.Should().BeEquivalentTo(
             "first/visible",
             "second/also-visible");
     }
@@ -209,7 +209,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         provider.ReleaseFirstCall.SetResult();
         await latestRefresh.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
-        catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("sequence/latest");
+        catalog.GetCatalogModels().Keys.Should().ContainSingle().Which.Should().Be("sequence/latest");
     }
 
     [Fact]
@@ -226,12 +226,12 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             NullLogger<ModelConfigManager>.Instance);
 
         await WaitUntilAsync(() => provider.CallCount >= 1, TimeSpan.FromSeconds(5));
-        catalog.GetModels().Should().BeEmpty();
+        catalog.GetCatalogModels().Should().BeEmpty();
 
         provider.SetModels([new ModelConfig { Id = "recovered" }]);
         await catalog.RefreshCatalogAsync(ct: TestContext.Current.CancellationToken);
 
-        catalog.GetModels().Keys.Should().ContainSingle().Which.Should().Be("recoverable/recovered");
+        catalog.GetCatalogModels().Keys.Should().ContainSingle().Which.Should().Be("recoverable/recovered");
     }
 
     [Fact]
@@ -251,7 +251,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             NullLogger<ModelConfigManager>.Instance);
 
         await WaitUntilAsync(
-            () => catalog.GetModels().Count == 2,
+            () => catalog.GetCatalogModels().Count == 2,
             TimeSpan.FromSeconds(5));
 
         var secondCallsBefore = second.CallCount;
@@ -260,7 +260,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         await catalog.RefreshCatalogAsync("first", TestContext.Current.CancellationToken);
 
-        catalog.GetModels().Keys.Should().BeEquivalentTo("first/a2", "second/b");
+        catalog.GetCatalogModels().Keys.Should().BeEquivalentTo("first/a2", "second/b");
         second.CallCount.Should().Be(secondCallsBefore);
     }
 
@@ -287,7 +287,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             NullLogger<ModelConfigManager>.Instance);
 
         await WaitUntilAsync(
-            () => catalog.GetModels().ContainsKey("openai/gpt"),
+            () => catalog.GetCatalogModels().ContainsKey("openai/gpt"),
             TimeSpan.FromSeconds(5));
 
         await config.SaveSectionAsync(
@@ -308,7 +308,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         await catalog.RefreshCatalogAsync("openai", TestContext.Current.CancellationToken);
 
-        catalog.GetModels().Keys.Should().BeEquivalentTo("openai/gpt", "openai/added");
+        catalog.GetCatalogModels().Keys.Should().BeEquivalentTo("openai/gpt", "openai/added");
     }
 
     [Fact]
@@ -327,13 +327,13 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             registry,
             NullLogger<ModelConfigManager>.Instance);
 
-        await WaitUntilAsync(() => catalog.GetModels().Count == 2, TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() => catalog.GetCatalogModels().Count == 2, TimeSpan.FromSeconds(5));
         var firstCalls = first.CallCount;
 
         registry.Unregister("second");
 
         await WaitUntilAsync(
-            () => catalog.GetModels().Keys.All(key => !key.StartsWith("second/", StringComparison.Ordinal)),
+            () => catalog.GetCatalogModels().Keys.All(key => !key.StartsWith("second/", StringComparison.Ordinal)),
             TimeSpan.FromSeconds(5));
 
         first.CallCount.Should().Be(firstCalls);
@@ -362,7 +362,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             NullLogger<ModelConfigManager>.Instance);
 
         await WaitUntilAsync(
-            () => catalog.GetModels().ContainsKey("openai/gpt"),
+            () => catalog.GetCatalogModels().ContainsKey("openai/gpt"),
             TimeSpan.FromSeconds(5));
 
         var providersSaves = 0;
@@ -394,7 +394,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             registry,
             NullLogger<ModelConfigManager>.Instance);
 
-        await WaitUntilAsync(() => catalog.GetModels().Count == 2, TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() => catalog.GetCatalogModels().Count == 2, TimeSpan.FromSeconds(5));
         var firstCalls = first.CallCount;
         var secondCalls = second.CallCount;
 
@@ -422,14 +422,14 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         registry.Register(provider, ownerExtensionId: "ext");
 
         await WaitUntilAsync(
-            () => catalog.GetModels().ContainsKey("ghost/m"),
+            () => catalog.GetCatalogModels().ContainsKey("ghost/m"),
             TimeSpan.FromSeconds(5));
         HasProviderRefreshVersion(catalog, "ghost").Should().BeTrue();
 
         registry.Unregister("ghost");
 
         await WaitUntilAsync(
-            () => catalog.GetModels().Keys.All(key => !key.StartsWith("ghost/", StringComparison.Ordinal)),
+            () => catalog.GetCatalogModels().Keys.All(key => !key.StartsWith("ghost/", StringComparison.Ordinal)),
             TimeSpan.FromSeconds(5));
 
         HasProviderRefreshVersion(catalog, "ghost").Should().BeFalse();

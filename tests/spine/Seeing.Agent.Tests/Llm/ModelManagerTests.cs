@@ -259,6 +259,9 @@ public class ModelManagerTests
         catalog.Setup(c => c.GetModels()).Returns(models is null
             ? new Dictionary<string, ModelConfig>()
             : new Dictionary<string, ModelConfig>(models));
+        catalog.Setup(c => c.GetCatalogModels()).Returns(models is null
+            ? new Dictionary<string, ModelConfig>()
+            : new Dictionary<string, ModelConfig>(models));
 
         return new ModelManager(catalog.Object, store.Object);
     }

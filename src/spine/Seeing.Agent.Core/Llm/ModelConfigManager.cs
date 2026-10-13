@@ -29,7 +29,12 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
     // 模型索引缓存
     private IReadOnlyDictionary<string, ModelConfig> _modelCache = new Dictionary<string, ModelConfig>();
+    // 启用视图缓存：_modelCache 按 ModelSelection 白名单过滤后的子集。
+    private IReadOnlyDictionary<string, ModelConfig> _enabledCache = new Dictionary<string, ModelConfig>();
     private Lazy<Dictionary<string, Dictionary<string, ModelConfig>>> _providerIndex =
+        new(() => new Dictionary<string, Dictionary<string, ModelConfig>>(),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+    private Lazy<Dictionary<string, Dictionary<string, ModelConfig>>> _catalogProviderIndex =
         new(() => new Dictionary<string, Dictionary<string, ModelConfig>>(),
             LazyThreadSafetyMode.ExecutionAndPublication);
     private readonly List<(long Version, TaskCompletionSource Completion)> _refreshWaiters = [];
@@ -75,8 +80,11 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
     #region 查询
 
-    /// <summary>获取所有模型配置</summary>
-    public IReadOnlyDictionary<string, ModelConfig> GetModels() => _modelCache;
+    /// <summary>获取所有「已启用」模型配置（按 <c>ModelSelection</c> 白名单过滤后的子集）</summary>
+    public IReadOnlyDictionary<string, ModelConfig> GetModels() => _enabledCache;
+
+    /// <summary>获取全部模型配置（不经启用清单过滤）</summary>
+    public IReadOnlyDictionary<string, ModelConfig> GetCatalogModels() => _modelCache;
 
     /// <summary>获取指定模型配置</summary>
     public ModelConfig? GetModel(string modelId)
@@ -129,7 +137,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     /// <summary>获取默认模型 ID</summary>
     public string? GetDefaultModel() => _configManager.SeeingAgent.DefaultModel;
 
-    /// <summary>获取指定 Provider 下的模型列表</summary>
+    /// <summary>获取指定 Provider 下「已启用」的模型列表</summary>
     public IReadOnlyDictionary<string, ModelConfig> GetModelsByProvider(string providerId)
     {
         if (string.IsNullOrEmpty(providerId))
@@ -139,6 +147,31 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         return index.TryGetValue(providerId, out var models)
             ? models
             : new Dictionary<string, ModelConfig>();
+    }
+
+    /// <summary>获取指定 Provider 下的全部模型列表（不经启用清单过滤）</summary>
+    public IReadOnlyDictionary<string, ModelConfig> GetCatalogModelsByProvider(string providerId)
+    {
+        if (string.IsNullOrEmpty(providerId))
+            return new Dictionary<string, ModelConfig>();
+
+        var index = Volatile.Read(ref _catalogProviderIndex).Value;
+        return index.TryGetValue(providerId, out var models)
+            ? models
+            : new Dictionary<string, ModelConfig>();
+    }
+
+    /// <summary>获取指定 Provider 的启用模型 ID 列表</summary>
+    public IReadOnlyList<string> GetEnabledModelIds(string providerId)
+    {
+        if (string.IsNullOrEmpty(providerId))
+            return [];
+
+        var selection = GetModelSelection();
+        if (selection.Providers.TryGetValue(providerId, out var ids) && ids is { Count: > 0 })
+            return ids.ToList();
+
+        return [];
     }
 
     /// <inheritdoc />
@@ -306,6 +339,48 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         await _configManager.SaveSectionAsync("DefaultModel", modelId ?? (string)null!, ModelStoreLevel, ct);
 
         _logger.LogInformation("已设置默认模型: {ModelId}", modelId ?? "(空)");
+    }
+
+    /// <summary>设置指定 Provider 的启用模型清单（allowlist）</summary>
+    public async Task SetEnabledModelsAsync(
+        string providerId,
+        IReadOnlyList<string> modelIds,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+            throw new ArgumentException("Provider 不能为空。", nameof(providerId));
+
+        var current = GetModelSelection();
+        var providers = current.Providers.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value is null ? new List<string>() : new List<string>(pair.Value),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (modelIds is null || modelIds.Count == 0)
+        {
+            providers.Remove(providerId);
+        }
+        else
+        {
+            providers[providerId] = modelIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        var updated = new ModelSelectionConfig { Providers = providers };
+        await _configManager
+            .SaveSectionAsync("ModelSelection", updated, ConfigLevel.User, new[] { providerId }, ct)
+            .ConfigureAwait(false);
+
+        // SaveSectionAsync 已同步更新内存缓存；仅重建启用视图，不重拉 Provider。
+        RebuildEnabledView();
+
+        _logger.LogInformation(
+            "已更新 Provider {ProviderId} 启用模型清单，共 {Count} 个",
+            providerId,
+            updated.Providers.TryGetValue(providerId, out var list) ? list.Count : 0);
     }
 
     #endregion
@@ -708,9 +783,67 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     private void ReplaceCacheLocked(IReadOnlyDictionary<string, ModelConfig> models)
     {
         Volatile.Write(ref _modelCache, models);
-        _providerIndex = new Lazy<Dictionary<string, Dictionary<string, ModelConfig>>>(
+        _catalogProviderIndex = new Lazy<Dictionary<string, Dictionary<string, ModelConfig>>>(
             () => BuildProviderIndex(models),
             LazyThreadSafetyMode.ExecutionAndPublication);
+        RebuildEnabledViewLocked();
+    }
+
+    /// <summary>
+    /// 按 <c>ModelSelection</c> 白名单重建启用视图与启用 Provider 索引。
+    /// 调用方须持有 <see cref="_cacheLock"/>。
+    /// </summary>
+    private void RebuildEnabledViewLocked()
+    {
+        var selection = GetModelSelection();
+        var full = Volatile.Read(ref _modelCache);
+        var enabled = new Dictionary<string, ModelConfig>();
+
+        foreach (var (key, config) in full)
+        {
+            if (IsModelEnabled(selection, config))
+                enabled[key] = config;
+        }
+
+        Volatile.Write(ref _enabledCache, enabled);
+        _providerIndex = new Lazy<Dictionary<string, Dictionary<string, ModelConfig>>>(
+            () => BuildProviderIndex(enabled),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+    }
+
+    private static bool IsModelEnabled(ModelSelectionConfig selection, ModelConfig config)
+    {
+        if (string.IsNullOrEmpty(config.Provider))
+            return false;
+
+        if (!selection.Providers.TryGetValue(config.Provider, out var ids) || ids is null)
+            return false;
+
+        foreach (var id in ids)
+        {
+            if (string.Equals(id, config.Id, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private ModelSelectionConfig GetModelSelection()
+        => _configManager.GetSection<ModelSelectionConfig>("ModelSelection")
+           ?? new ModelSelectionConfig();
+
+    /// <summary>仅重建启用视图（供 <c>ModelSelection</c> 变更热重载使用，不重拉 Provider）。</summary>
+    internal void RebuildEnabledView()
+    {
+        lock (_cacheLock)
+        {
+            RebuildEnabledViewLocked();
+        }
+
+        ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
+        {
+            ChangeType = ModelConfigChangeType.Updated
+        });
     }
 
     private string RequireWritableProvider(string providerId)

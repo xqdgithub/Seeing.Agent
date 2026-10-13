@@ -45,6 +45,9 @@
     [Parameter] public string? Style { get; set; }
     [Parameter] public string? Class { get; set; }
 
+    /// <summary>可选自定义数据源；为 null 时使用启用目录（<c>GetModels()</c>）。</summary>
+    [Parameter] public IReadOnlyDictionary<string, ModelConfig>? Models { get; set; }
+
     private List<ModelPickerItem> _items = [];
 
     protected override void OnInitialized()
@@ -70,7 +73,8 @@
 
     private void Reload()
     {
-        _items = ModelPickerItem.Build(ModelManager.GetModels(), FilterType, ProviderId).ToList();
+        var source = Models ?? ModelManager.GetModels();
+        _items = ModelPickerItem.Build(source, FilterType, ProviderId).ToList();
         EnsureOrphanOption();
     }
 

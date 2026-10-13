@@ -24,6 +24,13 @@ public sealed class ModelReloadHandler : ReloadHandlerBase<ConfigChange>
             return Task.CompletedTask;
         }
 
+        // 启用清单变更：仅重建启用视图，不重拉 Provider。
+        if (change.ChangedSections.Contains("ModelSelection"))
+        {
+            _manager.RebuildEnabledView();
+            return Task.CompletedTask;
+        }
+
         if (!change.ChangedSections.Contains("Providers"))
             return Task.CompletedTask;
 

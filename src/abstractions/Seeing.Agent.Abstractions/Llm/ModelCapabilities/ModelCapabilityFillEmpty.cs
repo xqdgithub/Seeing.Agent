@@ -6,9 +6,14 @@ namespace Seeing.Agent.Abstractions.Llm;
 public static class ModelCapabilityFillEmpty
 {
     /// <summary>
-    /// <see cref="ModelLimits"/> 类型默认值。FillEmpty 将 4096 视为未设置（default means unset for FillEmpty）。
+    /// <see cref="ModelLimits.Context"/> 类型默认值。FillEmpty 将其视为未设置（default means unset for FillEmpty）。
     /// </summary>
-    public const int DefaultLimitUnset = 4096;
+    public const int DefaultContextUnset = ModelLimitDefaults.Context;
+
+    /// <summary>
+    /// <see cref="ModelLimits.Output"/> 类型默认值。FillEmpty 将其视为未设置（default means unset for FillEmpty）。
+    /// </summary>
+    public const int DefaultOutputUnset = ModelLimitDefaults.Output;
 
     /// <summary>
     /// 将 <paramref name="source"/> 中非空字段填入 <paramref name="target"/> 仍空的位置；原地修改并返回 target。
@@ -24,9 +29,9 @@ public static class ModelCapabilityFillEmpty
         if (source.Limit is not null)
         {
             target.Limit ??= new ModelLimits();
-            if (target.Limit.Context == DefaultLimitUnset && source.Limit.Context is int ctx)
+            if (target.Limit.Context == DefaultContextUnset && source.Limit.Context is int ctx)
                 target.Limit.Context = ctx;
-            if (target.Limit.Output == DefaultLimitUnset && source.Limit.Output is int output)
+            if (target.Limit.Output == DefaultOutputUnset && source.Limit.Output is int output)
                 target.Limit.Output = output;
         }
 

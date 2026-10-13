@@ -53,6 +53,7 @@ public sealed class ConfigSectionRegistry : IConfigSectionRegistry
             typeof(Dictionary<string, ProviderConfig>)));
         Register(new("AgentModels", "seeing.json", ConfigScope.Both,
             typeof(Dictionary<string, string>)));
+        Register(new("ModelSelection", "seeing.json", ConfigScope.Both, typeof(ModelSelectionConfig)));
         Register(new("Plugins", "seeing.json", ConfigScope.Both, typeof(List<PluginSpec>)));
         Register(new("PluginEnabled", "seeing.json", ConfigScope.Both,
             typeof(Dictionary<string, bool>)));

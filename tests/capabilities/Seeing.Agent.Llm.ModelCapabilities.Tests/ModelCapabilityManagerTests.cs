@@ -49,7 +49,7 @@ public class ModelCapabilityManagerTests
         {
             Id = "m1",
             Provider = "p1",
-            Limit = new ModelLimits { Context = 4096, Output = 4096 }
+            Limit = new ModelLimits()
         };
 
         var enriched = await manager.TryEnrichIfEnabledAsync(model, TestContext.Current.CancellationToken);
@@ -202,7 +202,7 @@ public class ModelCapabilityManagerTests
         {
             Id = "deepseek-v4-flash-free",
             Provider = "opencode-zen",
-            Limit = new ModelLimits { Context = 4096, Output = 4096 }
+            Limit = new ModelLimits()
         };
 
         var enriched = await manager.TryEnrichIfEnabledAsync(model, TestContext.Current.CancellationToken);

@@ -57,8 +57,8 @@ public class DeepSeekModelCapabilitiesTests
         var enriched = DeepSeekModelCapabilities.Apply(listed);
 
         enriched.Id.Should().Be("deepseek-unknown-future");
-        enriched.Limit.Context.Should().Be(4096);
-        enriched.Limit.Output.Should().Be(4096);
+        enriched.Limit.Context.Should().Be(ModelLimitDefaults.Context);
+        enriched.Limit.Output.Should().Be(ModelLimitDefaults.Output);
     }
 
     [Fact]

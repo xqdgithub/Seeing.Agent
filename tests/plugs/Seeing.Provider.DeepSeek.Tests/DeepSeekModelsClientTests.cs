@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Provider.DeepSeek;
 using Xunit;
 
@@ -28,7 +29,7 @@ public class DeepSeekModelsClientTests
         models[0].Id.Should().Be("deepseek-v4-flash");
         models[0].Name.Should().Be("deepseek-v4-flash");
         models[0].Provider.Should().Be("deepseek");
-        models[0].Limit.Context.Should().Be(4096);
+        models[0].Limit.Context.Should().Be(ModelLimitDefaults.Context);
         models[0].Options.Should().BeNull();
         models[1].Id.Should().Be("deepseek-v4-pro");
         models[1].Options.Should().BeNull();

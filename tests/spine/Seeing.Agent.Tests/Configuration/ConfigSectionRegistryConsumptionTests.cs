@@ -25,6 +25,7 @@ public class ConfigSectionRegistryConsumptionTests
             "DefaultAgent",
             "DefaultModel",
             "GlobalWorkspaceRoot",
+            "ModelSelection",
             "Modules",
             "Permission",
             "PluginEnabled",
